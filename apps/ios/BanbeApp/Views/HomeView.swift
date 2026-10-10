@@ -1108,7 +1108,7 @@ struct HomeView: View {
     /// whether or not For You is shown (no remount, offset preserved). HStack's leading
     /// edge follows the layout direction (RTL-safe).
     private var statusFilterRow: some View {
-        let hasForYou = app.hasForYouMatches || ProcessInfo.processInfo.arguments.contains("-fyForce") // TMP-FYFORCE
+        let hasForYou = app.hasForYouMatches
         return HStack(spacing: 8) {
             if hasForYou {
                 forYouChip

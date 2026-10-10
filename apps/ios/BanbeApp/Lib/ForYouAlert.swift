@@ -164,38 +164,106 @@ struct ForYouAttentionEffect: ViewModifier {
     var animating: Bool
     var reduceMotion: Bool
     var token: Int = 0
-    /// 1 = resting/finished.
-    @State private var phase: CGFloat = 1
+    /// Start of the current run; nil = idle (timeline paused, nothing drawn).
+    @State private var startedAt: Date?
+    @State private var stopTask: Task<Void, Never>?
+
+    // Web parity (ForYouChip.jsx CSS), evaluated per frame from elapsed time so conditionals
+    // (opacity hold-then-fade) are exact — SwiftUI would not re-evaluate them mid-animation.
+    //  halo:  keyframes 0% {spread 0, a .6} -> 100% {spread 12, a 0}, 1.2 s ease-out, x2
+    //  sheen: translateX -120% -> 220% of its own width, 2.4 s ease-in-out, once;
+    //         opacity 1 until 85% then ease-in-out to 0 (per-keyframe timing function).
+    private static let haloDuration = 1.2
+    private static let sheenDuration = 2.4
+    private static let easeOut = UnitBezier(0, 0, 0.58, 1)
+    private static let easeInOut = UnitBezier(0.42, 0, 0.58, 1)
 
     func body(content: Content) -> some View {
         content
             .overlay {
-                GeometryReader { geo in
-                    LinearGradient(colors: [.clear, Color(red: 1, green: 0.89, blue: 0.55).opacity(0.75), .clear],
-                                   startPoint: .leading, endPoint: .trailing)
-                        .frame(width: geo.size.width * 0.45)
-                        .offset(x: -geo.size.width * 0.45 + phase * geo.size.width * 1.45)
-                        .opacity(phase < 1 ? 1 : 0)
+                TimelineView(.animation(paused: startedAt == nil)) { ctx in
+                    let t = elapsed(ctx.date)
+                    let sp = t < Self.sheenDuration ? Self.easeInOut.solve(t / Self.sheenDuration) : 1
+                    let lin = t / Self.sheenDuration
+                    let op: Double = t >= Self.sheenDuration ? 0 : (lin < 0.85 ? 1 : 1 - Self.easeInOut.solve((lin - 0.85) / 0.15))
+                    GeometryReader { geo in
+                        let w = geo.size.width * 0.45
+                        // 100deg CSS gradient ~ near-horizontal, slightly tilted.
+                        LinearGradient(colors: [.clear, Color(red: 1, green: 0.886, blue: 0.549).opacity(0.75), .clear],
+                                       startPoint: UnitPoint(x: 0.0, y: 0.4), endPoint: UnitPoint(x: 1.0, y: 0.6))
+                            .frame(width: w)
+                            .offset(x: (-1.2 + 3.4 * sp) * w)
+                            .opacity(op)
+                    }
+                    .clipShape(Capsule())
+                    .allowsHitTesting(false)
                 }
-                .clipShape(Capsule())
-                .allowsHitTesting(false)
             }
             .background {
-                Capsule()
-                    .stroke(Color(red: 0.88, green: 0.65, blue: 0.15), lineWidth: 3)
-                    .scaleEffect(1 + 0.2 * phase)
-                    .opacity(Double(1 - phase) * 0.8)
-                    .allowsHitTesting(false)
+                TimelineView(.animation(paused: startedAt == nil)) { ctx in
+                    let t = elapsed(ctx.date)
+                    let total = Self.haloDuration * 2
+                    let cycle = t < total ? Self.easeOut.solve((t.truncatingRemainder(dividingBy: Self.haloDuration)) / Self.haloDuration) : 1
+                    let spread = 12 * cycle
+                    let alpha = t < total ? 0.6 * (1 - cycle) : 0
+                    // Outer-only shadow ring: stroke centred on a capsule inflated by spread/2.
+                    Capsule()
+                        .stroke(Color(red: 224 / 255, green: 165 / 255, blue: 38 / 255).opacity(alpha), lineWidth: max(spread, 0.001))
+                        .padding(-spread / 2)
+                        .allowsHitTesting(false)
+                }
             }
-            .onChange(of: animating) { _, on in run(on) }
-            .onChange(of: token) { _, _ in run(animating) }
-            // Chip may be created while already animating (Home re-entry / late-loading matches).
-            .onAppear { if animating { run(true) } }
+            // Never stop on `animating` going false: the run is self-terminating (2.6 s).
+            .onChange(of: animating) { _, on in if on { run() } }
+            .onChange(of: token) { _, _ in run() }
+            // Every time the chip appears (Home re-entry, or matches finishing loading) — not
+            // gated on the model's 3 s window, which may already have expired by then.
+            .onAppear { run() }
     }
 
-    private func run(_ on: Bool) {
-        guard on, !reduceMotion else { phase = 1; return }
-        phase = 0
-        withAnimation(.easeOut(duration: 2.4)) { phase = 1 }
+    private func elapsed(_ date: Date) -> Double {
+        guard let startedAt else { return 1_000 }
+        return max(0, date.timeIntervalSince(startedAt))
+    }
+
+    private func run() {
+        stopTask?.cancel()
+        guard !reduceMotion else { startedAt = nil; return }
+        startedAt = Date()
+        stopTask = Task {
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            if !Task.isCancelled { startedAt = nil }
+        }
+    }
+}
+
+/// CSS-style cubic-bezier(x1, y1, x2, y2) timing curve: progress x in 0...1 -> eased y.
+struct UnitBezier {
+    let ax, bx, cx, ay, by, cy: Double
+    init(_ x1: Double, _ y1: Double, _ x2: Double, _ y2: Double) {
+        cx = 3 * x1; bx = 3 * (x2 - x1) - cx; ax = 1 - cx - bx
+        cy = 3 * y1; by = 3 * (y2 - y1) - cy; ay = 1 - cy - by
+    }
+    func solve(_ x: Double) -> Double {
+        let x = min(max(x, 0), 1)
+        var t = x
+        for _ in 0..<8 {  // Newton
+            let err = ((ax * t + bx) * t + cx) * t - x
+            if abs(err) < 1e-6 { break }
+            let d = (3 * ax * t + 2 * bx) * t + cx
+            if abs(d) < 1e-6 { break }
+            t -= err / d
+        }
+        var lo = 0.0, hi = 1.0
+        if t < 0 || t > 1 || abs(((ax * t + bx) * t + cx) * t - x) > 1e-5 {  // bisection fallback
+            t = x
+            for _ in 0..<30 {
+                let v = ((ax * t + bx) * t + cx) * t
+                if abs(v - x) < 1e-6 { break }
+                if v < x { lo = t } else { hi = t }
+                t = (lo + hi) / 2
+            }
+        }
+        return ((ay * t + by) * t + cy) * t
     }
 }
