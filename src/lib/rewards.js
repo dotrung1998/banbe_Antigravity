@@ -98,12 +98,44 @@ export function streakHint(T, activeToday) {
 }
 
 export function streakLines(T, streak, tz) {
+  const zone = tz || 'Asia/Ho_Chi_Minh';
   return [
     T('Một ngày được tính khi bạn lưu một sự kiện (đã được máy chủ xác minh) hoặc được xác nhận tham dự. Mở ứng dụng hay tìm kiếm không được tính.',
       'A day counts when you save an event (verified by the server) or are confirmed as attending. Opening the app or searching does not count.'),
-    T(`Ngày được tính theo giờ cố định ${tz || 'Asia/Ho_Chi_Minh'}, mỗi ngày tối đa một lần.`, `Days follow the fixed ${tz || 'Asia/Ho_Chi_Minh'} time zone, at most once per day.`),
+    T(`Ngày và tháng được tính theo múi giờ ${zone}, mỗi ngày tối đa một lần.`, `Days and months follow the ${zone} time zone, at most once per day.`),
   ];
 }
+
+// Zones offered in the picker. Only a suggestion list: nothing is assigned automatically, a user who never
+// chooses keeps Asia/Ho_Chi_Minh (the original behaviour).
+export const SUGGESTED_TIMEZONES = [
+  ['Asia/Ho_Chi_Minh', 'Việt Nam (UTC+7)', 'Vietnam (UTC+7)'],
+  ['America/Los_Angeles', 'Mỹ – Thái Bình Dương', 'US – Pacific'],
+  ['America/Denver', 'Mỹ – Miền núi', 'US – Mountain'],
+  ['America/Chicago', 'Mỹ – Trung tâm', 'US – Central'],
+  ['America/New_York', 'Mỹ – Miền Đông', 'US – Eastern'],
+];
+
+/** The device's IANA zone if it is one we know how to label; used only to highlight a suggestion. */
+export function deviceTimezoneHint(resolve = () => Intl.DateTimeFormat().resolvedOptions().timeZone) {
+  try { const z = resolve(); return SUGGESTED_TIMEZONES.some(x => x[0] === z) ? z : null; } catch { return null; }
+}
+
+/** Normalises get_my_rewards().timezone_settings; tolerates an older server that lacks the key. */
+export function normalizeTzSettings(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    effective: raw.effective_tz || 'Asia/Ho_Chi_Minh', chosen: raw.chosen === true,
+    pending: raw.pending_tz || null, pendingFrom: raw.pending_from || null,
+    changesLeft: Number.isFinite(raw.changes_left) ? raw.changes_left : 0, nextChangeAt: raw.next_change_at || null,
+  };
+}
+
+export const TZ_ERRORS = {
+  INVALID_TIMEZONE: ['Múi giờ không hợp lệ.', 'That time zone is not valid.'],
+  TZ_CHANGE_LIMIT: ['Bạn đã đổi múi giờ 2 lần trong 30 ngày. Vui lòng thử lại sau.', 'You changed your time zone twice in the last 30 days. Please try again later.'],
+  NETWORK: ['Lỗi mạng. Chưa thay đổi gì.', 'Network error. Nothing was changed.'],
+};
 
 /** Items the signed-in user can't afford yet, with the exact shortfall. */
 export function shortfall(balance, price) { return Math.max(0, price - balance); }

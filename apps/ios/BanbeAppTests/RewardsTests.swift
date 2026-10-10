@@ -101,4 +101,33 @@ final class RewardsTests: XCTestCase {
             XCTAssertNotNil(sql.range(of: pattern, options: .regularExpression), "\(id) @ \(price)")
         }
     }
+
+    func testOlderServerPayloadWithoutTimezoneSettingsStillDecodes() throws {
+        let json = """
+        {"success":true,"balance":0,"rules":{"version":1},"streak":{"current":0,"longest":0},"badges":[],"history":[],"catalog":[]}
+        """
+        let p = try JSONDecoder().decode(RewardsPayload.self, from: Data(json.utf8))
+        XCTAssertNil(p.timezoneSettings)
+    }
+
+    func testNewPayloadDecodesTimezoneSettingsAndToleratesUnknownKeys() throws {
+        let json = """
+        {"success":true,"balance":0,"rules":{"version":1},"streak":{"current":0,"longest":0,"timezone":"America/New_York"},"badges":[],"history":[],"catalog":[],
+         "some_future_key":{"x":1},
+         "timezone_settings":{"effective_tz":"America/New_York","chosen":true,"default_tz":"Asia/Ho_Chi_Minh","pending_tz":null,"pending_from":null,"changes_left":1,"next_change_at":null}}
+        """
+        let p = try JSONDecoder().decode(RewardsPayload.self, from: Data(json.utf8))
+        XCTAssertEqual(p.timezoneSettings?.effectiveTz, "America/New_York")
+        XCTAssertEqual(p.timezoneSettings?.changesLeft, 1)
+        XCTAssertNil(p.timezoneSettings?.pendingTz)
+    }
+
+    func testTimezoneSuggestionsNeverAutoAssign() {
+        XCTAssertEqual(RewardsLogic.suggestedTimezones.first?.id, "Asia/Ho_Chi_Minh")
+        XCTAssertEqual(RewardsLogic.deviceTimezoneHint("America/Chicago"), "America/Chicago")
+        XCTAssertNil(RewardsLogic.deviceTimezoneHint("Europe/Paris"))
+        XCTAssertTrue(RewardsLogic.streakLines(tz: nil, T: en)[1].contains("Asia/Ho_Chi_Minh"))
+        XCTAssertFalse(RewardsLogic.streakLines(tz: "America/New_York", T: en)[1].contains("fixed"))
+        XCTAssertEqual(RewardsLogic.timezoneErrorMessage("TZ_CHANGE_LIMIT", T: en).prefix(11), "You changed")
+    }
 }

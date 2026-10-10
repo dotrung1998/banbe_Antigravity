@@ -57,3 +57,22 @@ test('shortfall is exact and never negative', () => {
   assert.equal(shortfall(100, 80), 0);
   assert.equal(shortfall(-40, 40), 80);
 });
+
+test('streakLines names the zone in force and no longer calls it fixed', async () => {
+  const { streakLines } = await import('../../src/lib/rewards.js');
+  const T = (vi, en) => en;
+  assert.match(streakLines(T, 1, 'America/New_York')[1], /America\/New_York/);
+  assert.doesNotMatch(streakLines(T, 1, 'America/New_York')[1], /fixed/);
+  assert.match(streakLines(T, 1, undefined)[1], /Asia\/Ho_Chi_Minh/);
+});
+
+test('timezone settings normalise and tolerate an older server without the key', async () => {
+  const { normalizeTzSettings, deviceTimezoneHint, SUGGESTED_TIMEZONES } = await import('../../src/lib/rewards.js');
+  assert.equal(normalizeTzSettings(undefined), null);
+  assert.deepEqual(normalizeTzSettings({ effective_tz: 'America/Chicago', chosen: true, pending_tz: null, changes_left: 1 }),
+    { effective: 'America/Chicago', chosen: true, pending: null, pendingFrom: null, changesLeft: 1, nextChangeAt: null });
+  assert.equal(deviceTimezoneHint(() => 'America/New_York'), 'America/New_York');
+  assert.equal(deviceTimezoneHint(() => 'Europe/Paris'), null);
+  assert.equal(deviceTimezoneHint(() => { throw new Error('x'); }), null);
+  assert.equal(SUGGESTED_TIMEZONES[0][0], 'Asia/Ho_Chi_Minh');
+});

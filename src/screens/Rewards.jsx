@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { useKeychainManifest } from '../components/KeychainCharm.jsx';
 import { designUrl, keychainFocus } from '../lib/keychain.js';
-import { historyLabel, ruleLines, noCoinLines, redemptionTermsLines, streakLines, streakHint, shortfall } from '../lib/rewards.js';
+import { historyLabel, ruleLines, noCoinLines, redemptionTermsLines, streakLines, streakHint, shortfall, SUGGESTED_TIMEZONES, deviceTimezoneHint, normalizeTzSettings, TZ_ERRORS } from '../lib/rewards.js';
 import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 import { RowIcon } from './Account.jsx';
 
@@ -16,9 +16,11 @@ const REDEEM_ERRORS = {
 // Account > Rewards & badges. Private to the signed-in account. Every number is server-computed
 // (migration 165); coins are cosmetic only and never affect booking, priority or eligibility.
 export default function Rewards() {
-  const { state: s, T, set, loadRewards, redeemReward, openEditProfile } = useBanBe();
+  const { state: s, T, set, loadRewards, redeemReward, setRewardTimezone, openEditProfile } = useBanBe();
   const manifest = useKeychainManifest();
   const [confirmCode, setConfirmCode] = useState(null);
+  const [tzBusy, setTzBusy] = useState(false);
+  const [tzError, setTzError] = useState('');
 
   useEffect(() => { if (s.user?.id) loadRewards(); }, [s.user?.id, loadRewards]);
 
@@ -28,6 +30,8 @@ export default function Rewards() {
   const nameOf = (id) => { const d = manifest.designs.find(x => x.id === id); return d ? (lang === 'en' ? d.en : d.vi) : id; };
   const confirmItem = r?.catalog?.find(c => c.code === confirmCode) || null;
   const res = s.rewardsRedeemResult;
+  const tz = normalizeTzSettings(r?.timezone_settings);
+  const deviceHint = deviceTimezoneHint();
 
   const doRedeem = async () => {
     const code = confirmCode;
@@ -172,6 +176,34 @@ export default function Rewards() {
                 </div>
               )}
             </section>
+
+            {/* Time zone (suggestion only; nothing is assigned automatically) */}
+            {tz && (
+              <section data-testid="rewards-timezone">
+                <h2 style={{ fontSize: 13, fontWeight: 600, margin: '0 0 8px', color: ink }}>{T('Múi giờ cho chuỗi ngày', 'Time zone for streak days')}</h2>
+                <div style={{ ...fieldGlass({ padding: '12px 14px', borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 8 }) }}>
+                  <select value={tz.pending || tz.effective} disabled={tzBusy || (tz.changesLeft === 0 && !tz.pending)} data-testid="rewards-timezone-select" aria-label={T('Múi giờ', 'Time zone')}
+                    onChange={async (e) => {
+                      setTzBusy(true); setTzError('');
+                      const out = await setRewardTimezone(e.target.value);
+                      setTzBusy(false);
+                      if (out && !out.ok) { const m = TZ_ERRORS[out.error] || TZ_ERRORS.NETWORK; setTzError(T(m[0], m[1])); }
+                    }}
+                    style={{ fontSize: 13, color: ink, background: 'transparent', border: `1px solid ${rule}`, borderRadius: 10, padding: '9px 10px' }}>
+                    {[...SUGGESTED_TIMEZONES, ...(SUGGESTED_TIMEZONES.some(z => z[0] === tz.effective) ? [] : [[tz.effective, tz.effective, tz.effective]])].map(([id, vi, en]) => (
+                      <option key={id} value={id}>{T(vi, en)}{id === deviceHint ? T(' (gợi ý theo thiết bị)', ' (suggested from your device)') : ''}</option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.75 }}>
+                    {tz.pending
+                      ? T(`Đổi sang ${tz.pending} có hiệu lực từ ngày kế tiếp.`, `The change to ${tz.pending} takes effect from the next day.`)
+                      : tz.chosen ? T('Đổi múi giờ có hiệu lực từ ngày kế tiếp, tối đa 2 lần mỗi 30 ngày.', 'A change takes effect from the next day, at most twice per 30 days.')
+                                  : T('Mặc định là giờ Việt Nam. Chọn múi giờ của bạn nếu khác.', 'Defaults to Vietnam time. Pick yours if different.')}
+                  </span>
+                  {tzError && <span role="alert" style={{ fontSize: 12, color: alert }}>{tzError}</span>}
+                </div>
+              </section>
+            )}
 
             {/* Rules */}
             <section data-testid="rewards-rules">

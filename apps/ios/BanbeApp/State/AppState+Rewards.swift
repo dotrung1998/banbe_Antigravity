@@ -73,6 +73,17 @@ struct RewardsPayload: Decodable, Equatable {
         var id: String { code }
         enum CodingKeys: String, CodingKey { case code, price, unlocked, designId = "design_id" }
     }
+    /// Added by migration 177; absent from an older server (decodes to nil).
+    struct TimezoneSettings: Decodable, Equatable {
+        var effectiveTz: String
+        var chosen: Bool?
+        var pendingTz: String?
+        var changesLeft: Int?
+        var nextChangeAt: String?
+        enum CodingKeys: String, CodingKey {
+            case effectiveTz = "effective_tz", chosen, pendingTz = "pending_tz", changesLeft = "changes_left", nextChangeAt = "next_change_at"
+        }
+    }
     var success: Bool
     var balance: Int
     var rules: Rules
@@ -80,6 +91,10 @@ struct RewardsPayload: Decodable, Equatable {
     var badges: [Badge]
     var history: [Entry]
     var catalog: [Item]
+    var timezoneSettings: TimezoneSettings?
+    enum CodingKeys: String, CodingKey {
+        case success, balance, rules, streak, badges, history, catalog, timezoneSettings = "timezone_settings"
+    }
 }
 
 /// Pure helpers (no AppState): unit-tested, mirrors src/lib/rewards.js.
@@ -146,8 +161,30 @@ enum RewardsLogic {
         return [
             T("Một ngày được tính khi bạn lưu một sự kiện (đã được máy chủ xác minh) hoặc được xác nhận tham dự. Mở ứng dụng hay tìm kiếm không được tính.",
               "A day counts when you save an event (verified by the server) or are confirmed as attending. Opening the app or searching does not count."),
-            T("Ngày được tính theo giờ cố định \(zone), mỗi ngày tối đa một lần.", "Days follow the fixed \(zone) time zone, at most once per day."),
+            T("Ngày và tháng được tính theo múi giờ \(zone), mỗi ngày tối đa một lần.", "Days and months follow the \(zone) time zone, at most once per day."),
         ]
+    }
+
+    /// Zones offered in the picker (suggestions only; nothing is assigned automatically — a user who never chooses
+    /// keeps Asia/Ho_Chi_Minh, the original behaviour).
+    static let suggestedTimezones: [(id: String, vi: String, en: String)] = [
+        ("Asia/Ho_Chi_Minh", "Việt Nam (UTC+7)", "Vietnam (UTC+7)"),
+        ("America/Los_Angeles", "Mỹ – Thái Bình Dương", "US – Pacific"),
+        ("America/Denver", "Mỹ – Miền núi", "US – Mountain"),
+        ("America/Chicago", "Mỹ – Trung tâm", "US – Central"),
+        ("America/New_York", "Mỹ – Miền Đông", "US – Eastern"),
+    ]
+
+    static func deviceTimezoneHint(_ id: String = TimeZone.current.identifier) -> String? {
+        suggestedTimezones.contains { $0.id == id } ? id : nil
+    }
+
+    static func timezoneErrorMessage(_ code: String?, T: (String, String) -> String) -> String {
+        switch code ?? "" {
+        case "INVALID_TIMEZONE": return T("Múi giờ không hợp lệ.", "That time zone is not valid.")
+        case "TZ_CHANGE_LIMIT": return T("Bạn đã đổi múi giờ 2 lần trong 30 ngày. Vui lòng thử lại sau.", "You changed your time zone twice in the last 30 days. Please try again later.")
+        default: return T("Lỗi mạng. Chưa thay đổi gì.", "Network error. Nothing was changed.")
+        }
     }
 
     static func termsLines(T: (String, String) -> String) -> [String] {
@@ -242,6 +279,21 @@ extension AppState {
            userID == uid, let ids = env.designIds {
             rewardsUnlocked = ids
         }
+    }
+
+    /// Chooses the zone for streak days and the monthly cap. Effective from the next local day (server rule).
+    /// Returns nil on success, otherwise the server error code.
+    func setRewardTimezone(_ tz: String) async -> String? {
+        guard let uid = userID else { return "AUTH_REQUIRED" }
+        struct Env: Decodable { var success: Bool?; var error: String? }
+        var failure: String?
+        do {
+            let env: Env = try await SupabaseService.client.rpc("set_my_reward_timezone", params: ["p_tz": tz]).execute().value
+            if env.success != true { failure = env.error ?? "ERROR" }
+        } catch { failure = "NETWORK" }
+        guard userID == uid else { return failure }
+        await loadRewards()
+        return failure
     }
 
     /// Redeems one catalog item. The server re-checks the balance inside a per-account lock; a retry is never double-charged.
