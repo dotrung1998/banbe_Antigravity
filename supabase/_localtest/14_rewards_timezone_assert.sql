@@ -144,6 +144,54 @@ BEGIN
   PERFORM pg_temp.ok((public.rewards_streak_of(ustr)->>'current')::int = 2 AND (public.rewards_streak_of(ustr)->>'longest')::int = 2, 'T5b with the bridge date the run survives and still counts 2 real days');
   PERFORM pg_temp.ok((public.rewards_streak_of(ustr)->>'active_today')::boolean = false, 'T5c a bridge is not an active day');
 
+  -- ===== F: flip-flopping zones cannot stretch a streak or earn coins from a bridge
+  PERFORM pg_temp.mkuser('7f0a000a-0000-4000-8000-00000000000a','tzf@test.dev','u7ff0a');
+  PERFORM pg_temp.setz('7f0a000a-0000-4000-8000-00000000000a','America/Los_Angeles');
+  PERFORM pg_temp.as_user('7f0a000a-0000-4000-8000-00000000000a');
+  n := (SELECT count(*) FROM public.reward_ledger WHERE user_id='7f0a000a-0000-4000-8000-00000000000a');
+  r := public.set_my_reward_timezone('Asia/Ho_Chi_Minh');                                   -- east (LA -> VN): bridge
+  UPDATE public.reward_user_settings SET pending_from_ts = now() - interval '1 hour' WHERE user_id='7f0a000a-0000-4000-8000-00000000000a';
+  r := public.set_my_reward_timezone('America/Los_Angeles');                                -- west: none
+  UPDATE public.reward_user_settings SET pending_from_ts = now() - interval '1 hour' WHERE user_id='7f0a000a-0000-4000-8000-00000000000a';
+  r := public.set_my_reward_timezone('Asia/Ho_Chi_Minh');                                   -- east again: refused (2 per 30 days)
+  PERFORM pg_temp.ok(r->>'error' = 'TZ_CHANGE_LIMIT', 'F1 east -> west -> east: the third effective change is refused');
+  PERFORM pg_temp.ok(cardinality((SELECT bridge_dates FROM public.reward_user_settings WHERE user_id='7f0a000a-0000-4000-8000-00000000000a')) = 1
+                 AND (SELECT pending_bridge FROM public.reward_user_settings WHERE user_id='7f0a000a-0000-4000-8000-00000000000a') IS NULL, 'F2 exactly one bridge date exists after the flip-flop');
+  -- a bridge never extends beyond the real days: run of 2 real days + 1 bridge still reads 2, and coins/active_today untouched
+  PERFORM pg_temp.setz('7f0a000a-0000-4000-8000-00000000000a','Asia/Ho_Chi_Minh');
+  UPDATE public.reward_user_settings SET pending_tz=NULL, pending_from_ts=NULL, pending_bridge=NULL WHERE user_id='7f0a000a-0000-4000-8000-00000000000a';
+  today_vn := public.rewards_user_local_date('7f0a000a-0000-4000-8000-00000000000a', now());
+  INSERT INTO public.reward_active_days (user_id, local_date, source) SELECT '7f0a000a-0000-4000-8000-00000000000a', today_vn - d, 'save' FROM unnest(ARRAY[3,2]) d;
+  UPDATE public.reward_user_settings SET bridge_dates = ARRAY[today_vn - 1] WHERE user_id='7f0a000a-0000-4000-8000-00000000000a';
+  PERFORM pg_temp.ok((public.rewards_streak_of('7f0a000a-0000-4000-8000-00000000000a')->>'current')::int = 2
+                 AND (public.rewards_streak_of('7f0a000a-0000-4000-8000-00000000000a')->>'longest')::int = 2, 'F3 bridge forgives the gap but adds 0 to current/longest');
+  -- two bridges in one run (max 2 per 30 days) still never count as days
+  UPDATE public.reward_user_settings SET bridge_dates = ARRAY[today_vn - 1, today_vn - 4] WHERE user_id='7f0a000a-0000-4000-8000-00000000000a';
+  PERFORM pg_temp.ok((public.rewards_streak_of('7f0a000a-0000-4000-8000-00000000000a')->>'current')::int = 2, 'F4 a second bridge date cannot add days either');
+  -- a bridge with no real day before it protects nothing (cannot start or revive a streak)
+  DELETE FROM public.reward_active_days WHERE user_id='7f0a000a-0000-4000-8000-00000000000a';
+  INSERT INTO public.reward_active_days (user_id, local_date, source) VALUES ('7f0a000a-0000-4000-8000-00000000000a', today_vn - 3, 'save');
+  UPDATE public.reward_user_settings SET bridge_dates = ARRAY[today_vn - 1] WHERE user_id='7f0a000a-0000-4000-8000-00000000000a';
+  PERFORM pg_temp.ok((public.rewards_streak_of('7f0a000a-0000-4000-8000-00000000000a')->>'current')::int = 0, 'F5 a bridge not adjacent to a real active day does not revive a dead streak');
+  UPDATE public.reward_user_settings SET bridge_dates = ARRAY[today_vn] WHERE user_id='7f0a000a-0000-4000-8000-00000000000a';
+  DELETE FROM public.reward_active_days WHERE user_id='7f0a000a-0000-4000-8000-00000000000a';
+  PERFORM pg_temp.ok((public.rewards_streak_of('7f0a000a-0000-4000-8000-00000000000a')->>'current')::int = 0
+                 AND NOT (public.rewards_streak_of('7f0a000a-0000-4000-8000-00000000000a')->>'active_today')::boolean, 'F6 a bridge alone is never an active day');
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.reward_ledger WHERE user_id='7f0a000a-0000-4000-8000-00000000000a') = n
+                 AND public.rewards_balance('7f0a000a-0000-4000-8000-00000000000a') = 0, 'F7 no ledger row and no coin came from any zone change or bridge');
+  -- two eastward effective hops (LA -> NY -> VN) = at most two bridges, then blocked
+  PERFORM pg_temp.mkuser('7f0a000b-0000-4000-8000-00000000000b','tzg@test.dev','u7fg0b');
+  PERFORM pg_temp.setz('7f0a000b-0000-4000-8000-00000000000b','America/Los_Angeles');
+  PERFORM pg_temp.as_user('7f0a000b-0000-4000-8000-00000000000b');
+  r := public.set_my_reward_timezone('America/New_York');
+  UPDATE public.reward_user_settings SET pending_from_ts = now() - interval '1 hour' WHERE user_id='7f0a000b-0000-4000-8000-00000000000b';
+  r := public.set_my_reward_timezone('Asia/Ho_Chi_Minh');
+  UPDATE public.reward_user_settings SET pending_from_ts = now() - interval '1 hour' WHERE user_id='7f0a000b-0000-4000-8000-00000000000b';
+  r := public.set_my_reward_timezone('America/Los_Angeles');
+  PERFORM pg_temp.ok(r->>'error' = 'TZ_CHANGE_LIMIT'
+                 AND cardinality((SELECT bridge_dates FROM public.reward_user_settings WHERE user_id='7f0a000b-0000-4000-8000-00000000000b')) + (SELECT (pending_bridge IS NOT NULL)::int FROM public.reward_user_settings WHERE user_id='7f0a000b-0000-4000-8000-00000000000b') <= 2,
+                 'F8 two eastward hops yield at most two bridges per 30 days, a third change is refused');
+
   -- ===== C: compatibility of the four client RPCs
   PERFORM pg_temp.as_user(uvn);
   r := public.get_my_reward_summary();

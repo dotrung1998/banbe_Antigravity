@@ -20,9 +20,17 @@
 -- keeps ONE counter for that calendar month; near the month boundary a row written under the old zone can fall into
 -- the neighbouring month by up to the zone offset difference (a few hours, <= ~16 h VN<->US west coast). Accepted.
 --
--- Streak across a change: nothing is deleted. Moving EAST (new offset > old offset) shortens the first local day
--- after the switch, so that one date is recorded as a "bridge" date: it keeps the run contiguous but is NOT counted
--- as an active day. Moving west repeats a date, which costs nothing. See rewards_streak_of.
+-- Streak across a change: nothing is deleted. Moving EAST (new offset > old offset at the switch instant) shortens
+-- the first local day after the switch, so that one date is recorded as a "bridge" date. BRIDGE RULES:
+--   1. A bridge only keeps a run contiguous. It is NEVER an active day: it adds 0 to current/longest, never sets
+--      active_today, never writes reward_active_days or the ledger, so it can never create coins.
+--   2. It only counts if the day BEFORE it is a real active day (it protects a live streak; it cannot start or
+--      revive one).
+--   3. Only eastward switches create one; westward switches repeat a date and cost nothing; a same-offset switch
+--      (e.g. Vietnam -> Bangkok) creates none.
+--   4. At most 2 effective zone changes per rolling 30 days, so at most 2 bridge dates per 30 days; cancelling or
+--      replacing a not-yet-effective request leaves no bridge. Flip-flopping east -> west -> east is stopped by the
+--      limit, and each eastward hop still needs a real active day right before its bridge.
 --
 -- ROLLBACK (data-safe): supabase/rollbacks/20261218000177_177_revert_user_timezone_functions.sql restores the 165
 -- function bodies and drops the new RPC. It does NOT drop the table/columns (they are inert and nullable); users who
@@ -219,7 +227,8 @@ BEGIN
     SELECT local_date AS d, false AS bridge FROM public.reward_active_days WHERE user_id = p_uid
     UNION ALL
     SELECT b, true FROM unnest(v_bridges) b
-     WHERE b <= v_today AND NOT EXISTS (SELECT 1 FROM public.reward_active_days a WHERE a.user_id = p_uid AND a.local_date = b)),
+     WHERE b <= v_today AND NOT EXISTS (SELECT 1 FROM public.reward_active_days a WHERE a.user_id = p_uid AND a.local_date = b)
+       AND EXISTS (SELECT 1 FROM public.reward_active_days p WHERE p.user_id = p_uid AND p.local_date = b - 1)),
   g AS (SELECT d, bridge, d - (row_number() OVER (ORDER BY d))::int AS grp FROM days)
   SELECT max(d) INTO v_lastd FROM g;
   IF v_lastd IS NOT NULL AND v_lastd >= v_today - 1 THEN
@@ -228,7 +237,8 @@ BEGIN
       SELECT local_date AS d, false AS bridge FROM public.reward_active_days WHERE user_id = p_uid
       UNION ALL
       SELECT b, true FROM unnest(v_bridges) b
-       WHERE b <= v_today AND NOT EXISTS (SELECT 1 FROM public.reward_active_days a WHERE a.user_id = p_uid AND a.local_date = b)),
+       WHERE b <= v_today AND NOT EXISTS (SELECT 1 FROM public.reward_active_days a WHERE a.user_id = p_uid AND a.local_date = b)
+       AND EXISTS (SELECT 1 FROM public.reward_active_days p WHERE p.user_id = p_uid AND p.local_date = b - 1)),
     g AS (SELECT d, bridge, d - (row_number() OVER (ORDER BY d))::int AS grp FROM days)
     SELECT count(*) FILTER (WHERE NOT bridge) INTO v_cur FROM g WHERE g.grp = (SELECT g2.grp FROM g g2 ORDER BY g2.d DESC LIMIT 1);
   END IF;
@@ -236,7 +246,8 @@ BEGIN
     SELECT local_date AS d, false AS bridge FROM public.reward_active_days WHERE user_id = p_uid
     UNION ALL
     SELECT b, true FROM unnest(v_bridges) b
-     WHERE b <= v_today AND NOT EXISTS (SELECT 1 FROM public.reward_active_days a WHERE a.user_id = p_uid AND a.local_date = b)),
+     WHERE b <= v_today AND NOT EXISTS (SELECT 1 FROM public.reward_active_days a WHERE a.user_id = p_uid AND a.local_date = b)
+       AND EXISTS (SELECT 1 FROM public.reward_active_days p WHERE p.user_id = p_uid AND p.local_date = b - 1)),
   g AS (SELECT d, bridge, d - (row_number() OVER (ORDER BY d))::int AS grp FROM days)
   SELECT COALESCE(max(n), 0) INTO v_best FROM (SELECT count(*) FILTER (WHERE NOT bridge) AS n FROM g GROUP BY grp) x;
   RETURN jsonb_build_object('current', v_cur, 'longest', v_best, 'last_active_date', v_last,
