@@ -66,6 +66,7 @@ export default function AccountGroup() {
     requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite,
     requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite,
     requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission,
+    openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote,
   } = useBanBe();
   const key = s.accountGroupKey;
 
@@ -491,6 +492,39 @@ export default function AccountGroup() {
                   </div>
                 )}
 
+                {s.adminRemoval?.votes?.length > 0 && (
+                  <div style={{ marginTop: 24 }} data-testid="admin-removal-votes">
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Cuộc Bỏ Phiếu Đang Mở', 'Open Votes')}</span>
+                    {s.adminRemoval.votes.map(v => (
+                      <div key={v.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`admin-removal-vote-${v.id}`}>
+                        <span style={{ fontSize: 13, color: ink, fontWeight: 600 }}>
+                          {v.kind === 'revoke_admin'
+                            ? T(`Gỡ ${v.target_name || 'quản trị viên'} khỏi đội ngũ quản trị`, `Remove ${v.target_name || 'this admin'} as an admin`)
+                            : T(`Bỏ quyền quản lý đội ngũ của ${v.target_name || 'quản trị viên'}`, `Remove team-management access from ${v.target_name || 'this admin'}`)}
+                        </span>
+                        <span style={{ fontSize: 12, color: ink, opacity: 0.7 }}>
+                          {T(`Mở bởi ${v.opened_by_name || 'một quản trị viên'}. Đồng ý ${v.yes} · Không ${v.no} · cần ${v.needed}/${v.electorate} phiếu đồng ý.`,
+                             `Opened by ${v.opened_by_name || 'an admin'}. Yes ${v.yes} · No ${v.no} · ${v.needed} of ${v.electorate} yes votes needed.`)}
+                          {' '}{T('Hết hạn', 'Expires')} {new Date(v.expires_at).toLocaleString(s.lang === 'en' ? 'en-US' : 'vi-VN', { dateStyle: 'medium', timeStyle: 'short' })}
+                        </span>
+                        {v.can_vote ? (
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <div onClick={() => !s.adminRemovalBusy && castAdminRemovalVote(v.id, true)} data-testid={`admin-removal-vote-yes-${v.id}`} style={{ ...inkButton({ flex: 1, padding: 10, fontSize: 12.5, opacity: s.adminRemovalBusy ? 0.6 : 1 }) }}>{T('Đồng ý', 'Approve')}</div>
+                            <div onClick={() => !s.adminRemovalBusy && castAdminRemovalVote(v.id, false)} data-testid={`admin-removal-vote-no-${v.id}`} style={{ ...fieldGlass({ flex: 1, padding: 10, fontSize: 12.5, textAlign: 'center', cursor: 'pointer', opacity: s.adminRemovalBusy ? 0.6 : 1 }) }}>{T('Từ chối', 'Reject')}</div>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 12, color: ink, opacity: 0.6 }}>
+                            {v.my_vote ? T(`Bạn đã bỏ phiếu: ${v.my_vote === 'yes' ? 'đồng ý' : 'từ chối'}.`, `You voted: ${v.my_vote === 'yes' ? 'approve' : 'reject'}.`) : T('Bạn không thể bỏ phiếu cho chính mình.', "You can't vote on your own removal.")}
+                          </span>
+                        )}
+                        {v.is_opener && (
+                          <span onClick={() => !s.adminRemovalBusy && cancelAdminRemovalVote(v.id)} data-testid={`admin-removal-vote-cancel-${v.id}`} style={{ fontSize: 12, color: ink, opacity: 0.6, cursor: 'pointer' }}>{T('Huỷ cuộc bỏ phiếu', 'Cancel this vote')}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div style={{ marginTop: 24 }}>
                   <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản Trị Viên Hiện Tại', 'Current Admins')}</span>
                   {s.adminRoster.map(a => (
@@ -498,13 +532,43 @@ export default function AccountGroup() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                         <span style={{ fontSize: 13, color: ink }}>{a.display_name || T('(Chưa đặt tên)', '(No name set)')}{a.is_self ? T(' (bạn)', ' (you)') : ''}</span>
                         {a.can_manage_admins && <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>{T('Có quyền quản lý đội ngũ', 'Can manage the admin team')}</span>}
-                        {!a.is_self && s.revokeAdminConfirmId !== a.id && (
+                        {!a.is_self && s.revokeAdminConfirmId !== a.id && s.adminRemoval?.protected_user_id !== a.id && (
                           <span onClick={() => setAdminManagementPermission(a.id, !a.can_manage_admins)} data-testid={`admin-roster-permission-${a.id}`} role="button" style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer', marginTop: 4 }}>
                             {a.can_manage_admins ? T('Bỏ quyền quản lý đội ngũ', 'Remove team-management access') : T('Cấp quyền quản lý đội ngũ', 'Allow managing the team')}
                           </span>
                         )}
+                        {s.adminRemoval?.protected_user_id === a.id && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }} data-testid="admin-protected-block">
+                            <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.8 }}>{T('Tài khoản được bảo vệ', 'Protected admin')}</span>
+                            {!a.is_self && (
+                              s.adminRemoval.admin_count < 3 ? (
+                                <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>
+                                  {T(`Chỉ có thể thay đổi khi có ít nhất 3 quản trị viên (hiện có ${s.adminRemoval.admin_count}), và phải qua bỏ phiếu.`,
+                                     `Can only be changed with at least 3 admins (now ${s.adminRemoval.admin_count}), and only by a vote.`)}
+                                </span>
+                              ) : !s.adminRemoval.can_open ? (
+                                <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>
+                                  {T('Cần ít nhất 2 quản trị viên có quyền quản lý đội ngũ (không tính tài khoản này) để bỏ phiếu. Hãy cấp quyền quản lý đội ngũ cho quản trị viên khác.', 'At least 2 admins with team-management access (not counting this account) are needed to vote. Grant team-management access to another admin first.')}
+                                </span>
+                              ) : (
+                                <>
+                                  {a.can_manage_admins && !s.adminRemoval.votes.some(v => v.kind === 'revoke_management') && (
+                                    <span onClick={() => !s.adminRemovalBusy && openAdminRemovalVote(a.id, 'revoke_management')} data-testid="admin-removal-open-management" role="button" style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>
+                                      {T('Mở bỏ phiếu: bỏ quyền quản lý đội ngũ', 'Start a vote: remove team-management access')}
+                                    </span>
+                                  )}
+                                  {!s.adminRemoval.votes.some(v => v.kind === 'revoke_admin') && (
+                                    <span onClick={() => !s.adminRemovalBusy && openAdminRemovalVote(a.id, 'revoke_admin')} data-testid="admin-removal-open-admin" role="button" style={{ fontSize: 11.5, fontWeight: 600, color: alert, cursor: 'pointer' }}>
+                                      {T('Mở bỏ phiếu: gỡ khỏi đội ngũ quản trị', 'Start a vote: remove as admin')}
+                                    </span>
+                                  )}
+                                </>
+                              )
+                            )}
+                          </div>
+                        )}
                       </div>
-                      {!a.is_self && (
+                      {!a.is_self && s.adminRemoval?.protected_user_id !== a.id && (
                         s.revokeAdminConfirmId === a.id ? (
                           <span style={{ display: 'flex', gap: 8, flex: 'none' }}>
                             <span onClick={confirmRevokeAdmin} data-testid={`admin-roster-revoke-yes-${a.id}`} style={{ fontSize: 12, fontWeight: 600, color: alert, cursor: 'pointer' }}>{T('Thu hồi?', 'Revoke?')}</span>

@@ -1957,7 +1957,7 @@ extension AppState {
                             await self.loadMyAdminInvite()
                         }
                         // The invitee answered: refresh the sender's roster/invites.
-                        if row.kind == "admin_invite_response", self.canManageAdmins {
+                        if ["admin_invite_response", "admin_removal_vote", "admin_removal_vote_result"].contains(row.kind), self.canManageAdmins {
                             await self.loadAdminTeam()
                         }
                         if row.kind == "admin_access_revoked" {
@@ -2419,7 +2419,7 @@ extension AppState {
         case "admin_invite":
             screen = .profile
             accountTab = "personal"
-        case "admin_invite_response":
+        case "admin_invite_response", "admin_removal_vote", "admin_removal_vote_result":
             if canManageAdmins {
                 accountTab = "admin"
                 accountGroupKey = "adminTeam"

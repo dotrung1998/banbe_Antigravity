@@ -931,6 +931,8 @@ const initialState = {
   // doc comment for the full RBAC model. `canManageAdmins` is a plain
   // profile column read back on sync, never client-derived/assumed.
   canManageAdmins: false, myAdminInvite: null,
+  // migration 172 — protected-admin removal votes (admin_removal_overview())
+  adminRemoval: null, adminRemovalBusy: false,
   adminRoster: [], adminInvites: [], adminTeamLoading: false,
   adminInviteEmailDraft: '', adminInviteBusy: false, adminInviteError: '',
   adminInviteConfirmEmail: null, revokeAdminInviteConfirmId: null, revokeAdminConfirmId: null,
@@ -2569,7 +2571,7 @@ export function BanBeProvider({ children }) {
           // next sign-in.
           if (n.kind === 'admin_invite') loadMyAdminInvite();
           // The invitee answered: refresh the sender's roster/invites.
-          if (n.kind === 'admin_invite_response') loadAdminTeam();
+          if (n.kind === 'admin_invite_response' || n.kind === 'admin_removal_vote' || n.kind === 'admin_removal_vote_result') loadAdminTeam();
           if (n.kind === 'admin_access_revoked') {
             set(prev => ({
               accountType: 'participant', canManageAdmins: false,
@@ -7272,13 +7274,15 @@ export function BanBeProvider({ children }) {
   const loadAdminTeam = useCallback(async () => {
     if (!s.user?.id) return;
     set({ adminTeamLoading: true });
-    const [{ data: roster, error: rosterError }, { data: invites, error: invitesError }] = await Promise.all([
+    const [{ data: roster, error: rosterError }, { data: invites, error: invitesError }, { data: removal, error: removalError }] = await Promise.all([
       supabase.rpc('list_admin_roster'),
       supabase.from('admin_invites').select('id, invited_email, status, created_at, expires_at').order('created_at', { ascending: false }),
+      supabase.rpc('admin_removal_overview'),
     ]);
     if (rosterError) console.warn('list_admin_roster failed:', rosterError);
     if (invitesError) console.warn('loadAdminTeam invites failed:', invitesError);
-    set({ adminRoster: roster || [], adminInvites: invites || [], adminTeamLoading: false });
+    if (removalError) console.warn('admin_removal_overview failed (migration 172 not applied?):', removalError);
+    set({ adminRoster: roster || [], adminInvites: invites || [], adminRemoval: removal && !removal.error ? removal : null, adminTeamLoading: false });
   }, [set, s.user?.id]);
 
   const setAdminInviteEmailDraft = useCallback((e) => set({ adminInviteEmailDraft: e.target.value, adminInviteError: '' }), [set]);
@@ -7333,6 +7337,13 @@ export function BanBeProvider({ children }) {
     CANNOT_REVOKE_SELF: T('Bạn không thể tự thu hồi quyền của chính mình.', 'You cannot revoke your own admin access.'),
     LAST_ADMIN_CANNOT_BE_REVOKED: T('Không thể thu hồi quản trị viên cuối cùng.', 'The last remaining admin cannot be revoked.'),
     TARGET_NOT_ADMIN: T('Tài khoản này không phải quản trị viên.', 'That account is not an admin.'),
+    PROTECTED_ADMIN_MIN_ADMINS: T('Tài khoản được bảo vệ này chỉ có thể bị gỡ khi có ít nhất 3 quản trị viên, và phải qua bỏ phiếu.', 'This protected admin can only be changed when there are at least 3 admins, and only by a vote.'),
+    PROTECTED_ADMIN_VOTE_REQUIRED: T('Tài khoản được bảo vệ này chỉ có thể bị gỡ qua một cuộc bỏ phiếu.', 'This protected admin can only be changed through a vote.'),
+    NOT_ENOUGH_VOTERS: T('Cần ít nhất 2 quản trị viên có quyền quản lý đội ngũ (không tính tài khoản bị gỡ) để bỏ phiếu.', 'At least 2 admins with team-management access (not counting the account in question) are needed to vote.'),
+    VOTE_ALREADY_OPEN: T('Đã có một cuộc bỏ phiếu đang mở cho việc này.', 'A vote for this is already open.'),
+    ALREADY_VOTED: T('Bạn đã bỏ phiếu rồi.', 'You have already voted.'),
+    VOTE_NOT_OPEN: T('Cuộc bỏ phiếu này đã kết thúc.', 'This vote has ended.'),
+    TARGET_HAS_NO_MANAGEMENT_ACCESS: T('Tài khoản này không còn quyền quản lý đội ngũ.', 'This account no longer has team-management access.'),
   };
   // Grant/remove `can_manage_admins` for another admin (server: set_admin_management_permission;
   // caller must already have it, target must be an admin).
@@ -7357,6 +7368,26 @@ export function BanBeProvider({ children }) {
     }
     await loadAdminTeam();
   }, [set, s.revokeAdminConfirmId, loadAdminTeam, T]);
+
+  // migration 172 — voting round for the protected admin (banbetestadmin@gmail.com).
+  const adminRemovalCall = useCallback(async (fn, params) => {
+    set({ adminRemovalBusy: true, adminInviteError: '' });
+    const { data, error } = await supabase.rpc(fn, params);
+    set({ adminRemovalBusy: false });
+    if (error || data?.success === false) {
+      console.warn(fn + ' failed:', error || data);
+      set({ adminInviteError: REVOKE_ADMIN_ERROR_MESSAGES[data?.error] || T('Không thực hiện được thao tác.', 'Could not complete that action.') });
+    }
+    await loadAdminTeam();
+    // a passed vote may have changed THIS account's own role/permission
+    if (s.user?.id) {
+      const { data: profile } = await supabase.from('profiles').select('role, can_manage_admins').eq('id', s.user.id).maybeSingle();
+      if (profile) set({ accountType: profile.role, canManageAdmins: profile.can_manage_admins === true });
+    }
+  }, [set, loadAdminTeam, s.user?.id, T]);
+  const openAdminRemovalVote = useCallback((targetId, kind) => adminRemovalCall('open_admin_removal_vote', { p_target: targetId, p_kind: kind }), [adminRemovalCall]);
+  const castAdminRemovalVote = useCallback((voteId, approve) => adminRemovalCall('cast_admin_removal_vote', { p_vote_id: voteId, p_approve: approve }), [adminRemovalCall]);
+  const cancelAdminRemovalVote = useCallback((voteId) => adminRemovalCall('cancel_admin_removal_vote', { p_vote_id: voteId }), [adminRemovalCall]);
 
   /** Owner/co-owner only — the FULL roster (every status), never shown to
    * anyone else. Direct select relies on organizer_members_select_owner. */
@@ -10362,6 +10393,8 @@ export function BanBeProvider({ children }) {
         set({ screen: 'profile', accountTab: 'personal' });
         break;
       case 'admin_invite_response':
+      case 'admin_removal_vote':
+      case 'admin_removal_vote_result':
         if (s.canManageAdmins) { set({ accountTab: 'admin' }); openAccountGroup('adminTeam'); }
         break;
       case 'admin_access_revoked':
@@ -10575,7 +10608,7 @@ export function BanBeProvider({ children }) {
     loadDisputeChats, toggleDisputeChat, openDisputeChatInInbox, loadRefundDisputeChat, sendRefundDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
     loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
@@ -10614,7 +10647,7 @@ export function BanBeProvider({ children }) {
     loadDisputeChats, toggleDisputeChat, openDisputeChatInInbox, loadRefundDisputeChat, sendRefundDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
     loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,

@@ -415,3 +415,42 @@ does) and one-time promotes accounts with an accepted invite and no later
 `profiles.role` must set that flag. Client side needs no change (it already re-reads
 `role` after accept); a signed-in invitee may need to relaunch/pull to see the tab if
 the repair ran after they accepted.
+
+## 2026-10-10 Protected admin + removal vote (migration 172)
+
+**Rule (owner-decided)**: `banbetestadmin@gmail.com` (`protected_admin_id()` resolves it by email in
+`auth.users`) can't lose team-management access (`can_manage_admins`) OR the admin role directly.
+- Fewer than 3 admins in total (`role='admin'`, protected admin counted) → removal is blocked outright
+  (`PROTECTED_ADMIN_MIN_ADMINS`). 3 or more → a vote may be opened.
+- Direct paths now refuse the protected target: `revoke_admin` and `set_admin_management_permission(.., false)`
+  return `PROTECTED_ADMIN_MIN_ADMINS` / `PROTECTED_ADMIN_VOTE_REQUIRED`. Granting it permission is unaffected.
+- **Vote**: electorate = admins with `can_manage_admins`, EXCLUDING the target (it never votes on itself);
+  needs >= 2 voters (`NOT_ENOUGH_VOTERS` — so a freshly accepted admin, who doesn't inherit
+  `can_manage_admins`, must be granted it before the vote is possible); strict majority `floor(n/2)+1` yes.
+  The opener's vote counts as yes; one ballot per voter, no changing it; 72h expiry (lazy, via
+  `_expire_admin_removal_votes()`); only the opener may cancel; one open vote per target+kind. Kinds:
+  `revoke_management`, `revoke_admin`. Fails early when a majority is no longer reachable. At apply time the
+  floor is re-checked (admin count < 3 → vote `cancelled`).
+- Tables `admin_removal_votes` / `admin_removal_ballots` (RLS on, no policies, client roles revoked). RPCs:
+  `open_admin_removal_vote(target, kind)`, `cast_admin_removal_vote(vote, approve)`,
+  `cancel_admin_removal_vote(vote)`, `admin_removal_overview()` (one jsonb read: protected id, admin_count,
+  min_admins=3, electorate, can_open, open votes with tallies/my_vote/can_vote/is_opener). Internals
+  (`_apply_admin_removal`, `_resolve_admin_removal_vote`, `_admin_total`, `_admin_electorate`) have no client
+  EXECUTE. The role change uses `app.role_change_allowed` (see the migration-171 section above).
+- Notifications: `admin_removal_vote` (to voters on open), `admin_removal_vote_result` (passed/failed, to voters
+  + target), and `admin_access_revoked` to the target when the role is removed. Both polls refresh the Admin
+  Team on these kinds; tapping opens Admin Team.
+- UI (web `AccountGroup.jsx`, iOS `AccountGroupView.swift`): roster row of the protected admin shows
+  "Protected admin", hides the direct revoke/permission buttons, and shows either why it's blocked
+  (under 3 admins / fewer than 2 voters) or "Start a vote: remove team-management access / remove as admin";
+  an "Open Votes" section shows tallies, Approve/Reject, "Cancel this vote". Web state `adminRemoval`,
+  iOS `app.adminRemoval` (`AdminRemovalOverview`). Admin guide gained a "Protected admin" section
+  (`src/data/help/admin.js`; iOS regenerated with `scripts/gen-help-content-ios.mjs`).
+- **Verified**: 36 checks against a real in-memory Postgres (PGlite) with stubbed `auth`/`profiles`/guard
+  trigger — 2-admin block, 3-admin not-enough-voters, open/duplicate/self/target rules, majority pass, early
+  fail, role demotion through the real `guard_profile_role`, expiry, cancel, non-protected admins unaffected,
+  internals not executable by `authenticated`. Web build + iOS simulator build pass. NOT run against the
+  real project or on a device/UI. **Not applied** — needs `supabase db push` (after 171).
+- Known: the vote error text for vote actions shows in the same error line as the Invite form (web
+  `adminInviteError`). Past "revoked" admins from before migration 171 may still be admins (the old
+  `revoke_admin` was a silent no-op). The protected email is hard-coded in `protected_admin_id()`.

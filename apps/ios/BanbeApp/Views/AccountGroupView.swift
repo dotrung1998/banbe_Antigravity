@@ -792,6 +792,51 @@ struct AccountGroupView: View {
                 }
             }
 
+            if let removal = app.adminRemoval, !removal.votes.isEmpty {
+                Text(app.T("Cuộc Bỏ Phiếu Đang Mở", "Open Votes")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+                ForEach(removal.votes) { v in
+                    VStack(alignment: .leading, spacing: 8) {
+                        let who = v.targetName.isEmpty ? app.T("quản trị viên", "this admin") : v.targetName
+                        Text(v.kind == "revoke_admin"
+                             ? app.T("Gỡ \(who) khỏi đội ngũ quản trị", "Remove \(who) as an admin")
+                             : app.T("Bỏ quyền quản lý đội ngũ của \(who)", "Remove team-management access from \(who)"))
+                            .font(.system(size: 13, weight: .semibold))
+                        let opener = v.openedByName.isEmpty ? app.T("một quản trị viên", "an admin") : v.openedByName
+                        let expires = v.expiresAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? ""
+                        Text(app.T("Mở bởi \(opener). Đồng ý \(v.yes) · Không \(v.no) · cần \(v.needed)/\(v.electorate) phiếu đồng ý. Hết hạn \(expires)",
+                                   "Opened by \(opener). Yes \(v.yes) · No \(v.no) · \(v.needed) of \(v.electorate) yes votes needed. Expires \(expires)"))
+                            .font(.system(size: 12)).opacity(0.7)
+                        if v.canVote {
+                            HStack(spacing: 8) {
+                                InkButton(title: app.T("Đồng ý", "Approve")) { Task { await app.castAdminRemovalVote(voteID: v.id, approve: true) } }
+                                    .opacity(app.adminRemovalBusy ? 0.6 : 1).disabled(app.adminRemovalBusy)
+                                    .accessibilityIdentifier("adminRemovalVote.yes.\(v.id)")
+                                Button(app.T("Từ chối", "Reject")) { Task { await app.castAdminRemovalVote(voteID: v.id, approve: false) } }
+                                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                                    .disabled(app.adminRemovalBusy)
+                                    .accessibilityIdentifier("adminRemovalVote.no.\(v.id)")
+                            }
+                        } else if let mine = v.myVote {
+                            Text(app.T("Bạn đã bỏ phiếu: \(mine == "yes" ? "đồng ý" : "từ chối").", "You voted: \(mine == "yes" ? "approve" : "reject").")).font(.system(size: 12)).opacity(0.6)
+                        } else {
+                            Text(app.T("Bạn không thể bỏ phiếu cho chính mình.", "You can't vote on your own removal.")).font(.system(size: 12)).opacity(0.6)
+                        }
+                        if v.isOpener {
+                            Button(app.T("Huỷ cuộc bỏ phiếu", "Cancel this vote")) { Task { await app.cancelAdminRemovalVote(voteID: v.id) } }
+                                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                                .disabled(app.adminRemovalBusy)
+                        }
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(14)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("adminRemovalVoteCard.\(v.id)")
+                }
+            }
+
             Text(app.T("Quản Trị Viên Hiện Tại", "Current Admins")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.adminRoster) { a in
                 HStack {
@@ -801,7 +846,7 @@ struct AccountGroupView: View {
                         if a.canManageAdmins {
                             Text(app.T("Có quyền quản lý đội ngũ", "Can manage the admin team")).font(.system(size: 10.5)).opacity(0.6)
                         }
-                        if !a.isSelf && app.revokeAdminConfirmID != a.id {
+                        if !a.isSelf && app.revokeAdminConfirmID != a.id && app.adminRemoval?.protectedUserId != a.id {
                             // Only an admin who already manages the team reaches this screen
                             // (server re-checks in set_admin_management_permission).
                             Button(a.canManageAdmins ? app.T("Bỏ quyền quản lý đội ngũ", "Remove team-management access") : app.T("Cấp quyền quản lý đội ngũ", "Allow managing the team"))
@@ -810,9 +855,43 @@ struct AccountGroupView: View {
                                 .padding(.top, 4)
                                 .accessibilityIdentifier("adminRosterPermission.\(a.id)")
                         }
+                        if let removal = app.adminRemoval, removal.protectedUserId == a.id {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(app.T("Tài khoản được bảo vệ", "Protected admin")).font(.system(size: 10.5, weight: .semibold)).opacity(0.8)
+                                if !a.isSelf {
+                                    if removal.adminCount < removal.minAdmins {
+                                        Text(app.T("Chỉ có thể thay đổi khi có ít nhất \(removal.minAdmins) quản trị viên (hiện có \(removal.adminCount)), và phải qua bỏ phiếu.",
+                                                   "Can only be changed with at least \(removal.minAdmins) admins (now \(removal.adminCount)), and only by a vote."))
+                                            .font(.system(size: 11.5)).opacity(0.65)
+                                    } else if !removal.canOpen {
+                                        Text(app.T("Cần ít nhất 2 quản trị viên có quyền quản lý đội ngũ (không tính tài khoản này) để bỏ phiếu. Hãy cấp quyền quản lý đội ngũ cho quản trị viên khác.",
+                                                   "At least 2 admins with team-management access (not counting this account) are needed to vote. Grant team-management access to another admin first."))
+                                            .font(.system(size: 11.5)).opacity(0.65)
+                                    } else {
+                                        if a.canManageAdmins && !removal.votes.contains(where: { $0.kind == "revoke_management" }) {
+                                            Button(app.T("Mở bỏ phiếu: bỏ quyền quản lý đội ngũ", "Start a vote: remove team-management access")) {
+                                                Task { await app.openAdminRemovalVote(targetID: a.id, kind: "revoke_management") }
+                                            }
+                                            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                                            .disabled(app.adminRemovalBusy)
+                                            .accessibilityIdentifier("adminRemovalOpen.management")
+                                        }
+                                        if !removal.votes.contains(where: { $0.kind == "revoke_admin" }) {
+                                            Button(app.T("Mở bỏ phiếu: gỡ khỏi đội ngũ quản trị", "Start a vote: remove as admin")) {
+                                                Task { await app.openAdminRemovalVote(targetID: a.id, kind: "revoke_admin") }
+                                            }
+                                            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                                            .disabled(app.adminRemovalBusy)
+                                            .accessibilityIdentifier("adminRemovalOpen.admin")
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.top, 4)
+                        }
                     }
                     Spacer(minLength: 8)
-                    if !a.isSelf {
+                    if !a.isSelf && app.adminRemoval?.protectedUserId != a.id {
                         if app.revokeAdminConfirmID == a.id {
                             HStack(spacing: 8) {
                                 Button(app.T("Thu hồi?", "Revoke?")) { Task { await app.confirmRevokeAdmin() } }

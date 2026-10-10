@@ -30,6 +30,49 @@ struct AdminInvite: Decodable, Identifiable, Hashable {
     }
 }
 
+private struct AdminVoteRPCResult: Decodable { let success: Bool?; let error: String? }
+private struct AdminVoteRoleRow: Decodable {
+    let role: String
+    let canManageAdmins: Bool
+    enum CodingKeys: String, CodingKey { case role; case canManageAdmins = "can_manage_admins" }
+}
+
+/// One open removal vote (migration 172).
+struct AdminRemovalVote: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let kind: String            // "revoke_admin" | "revoke_management"
+    let targetUserId: UUID
+    let targetName: String
+    let openedByName: String
+    let isOpener: Bool
+    let expiresAt: Date?
+    let yes: Int
+    let no: Int
+    let electorate: Int
+    let needed: Int
+    let myVote: String?         // "yes" | "no" | nil
+    let canVote: Bool
+    enum CodingKeys: String, CodingKey {
+        case id, kind, yes, no, electorate, needed
+        case targetUserId = "target_user_id", targetName = "target_name", openedByName = "opened_by_name"
+        case isOpener = "is_opener", expiresAt = "expires_at", myVote = "my_vote", canVote = "can_vote"
+    }
+}
+
+/// `admin_removal_overview()` — who is protected, the admin floor and the open votes.
+struct AdminRemovalOverview: Decodable, Hashable {
+    let protectedUserId: UUID?
+    let adminCount: Int
+    let minAdmins: Int
+    let electorate: Int
+    let canOpen: Bool
+    let votes: [AdminRemovalVote]
+    enum CodingKeys: String, CodingKey {
+        case protectedUserId = "protected_user_id", adminCount = "admin_count", minAdmins = "min_admins"
+        case electorate, votes, canOpen = "can_open"
+    }
+}
+
 struct AdminRosterRow: Decodable, Identifiable, Hashable {
     let id: UUID
     var displayName: String?
@@ -130,6 +173,13 @@ extension AppState {
             print("list_admin_roster failed:", error)
         }
         do {
+            let overview: AdminRemovalOverview = try await SupabaseService.client.rpc("admin_removal_overview").execute().value
+            adminRemoval = overview
+        } catch {
+            // Also lands here for {"error":"NOT_AUTHORIZED"} (non-manager) and when migration 172 isn't applied.
+            adminRemoval = nil
+        }
+        do {
             adminInvites = try await invitesTask
         } catch {
             print("loadAdminTeam invites failed:", error)
@@ -147,6 +197,13 @@ extension AppState {
         "CANNOT_REVOKE_SELF": ("Bạn không thể tự thu hồi quyền của chính mình.", "You cannot revoke your own admin access."),
         "LAST_ADMIN_CANNOT_BE_REVOKED": ("Không thể thu hồi quản trị viên cuối cùng.", "The last remaining admin cannot be revoked."),
         "TARGET_NOT_ADMIN": ("Tài khoản này không phải quản trị viên.", "That account is not an admin."),
+        "PROTECTED_ADMIN_MIN_ADMINS": ("Tài khoản được bảo vệ này chỉ có thể bị gỡ khi có ít nhất 3 quản trị viên, và phải qua bỏ phiếu.", "This protected admin can only be changed when there are at least 3 admins, and only by a vote."),
+        "PROTECTED_ADMIN_VOTE_REQUIRED": ("Tài khoản được bảo vệ này chỉ có thể bị gỡ qua một cuộc bỏ phiếu.", "This protected admin can only be changed through a vote."),
+        "NOT_ENOUGH_VOTERS": ("Cần ít nhất 2 quản trị viên có quyền quản lý đội ngũ (không tính tài khoản bị gỡ) để bỏ phiếu.", "At least 2 admins with team-management access (not counting the account in question) are needed to vote."),
+        "VOTE_ALREADY_OPEN": ("Đã có một cuộc bỏ phiếu đang mở cho việc này.", "A vote for this is already open."),
+        "ALREADY_VOTED": ("Bạn đã bỏ phiếu rồi.", "You have already voted."),
+        "VOTE_NOT_OPEN": ("Cuộc bỏ phiếu này đã kết thúc.", "This vote has ended."),
+        "TARGET_HAS_NO_MANAGEMENT_ACCESS": ("Tài khoản này không còn quyền quản lý đội ngũ.", "This account no longer has team-management access."),
     ]
 
     /// Explicit confirmation of the intended recipient before anything is
@@ -248,5 +305,46 @@ extension AppState {
         } catch {
             print("revoke_admin failed:", error)
         }
+    }
+
+    // migration 172 — voting round for the protected admin (banbetestadmin@gmail.com).
+    private func adminRemovalCall<P: Encodable>(_ fn: String, _ params: P) async {
+        adminRemovalBusy = true
+        adminInviteError = ""
+        defer { adminRemovalBusy = false }
+        do {
+            let result: AdminVoteRPCResult = try await SupabaseService.client.rpc(fn, params: params).execute().value
+            if result.success != true {
+                let msg = Self.revokeAdminErrorMessages[result.error ?? ""] ?? ("Không thực hiện được thao tác.", "Could not complete that action.")
+                adminInviteError = T(msg.0, msg.1)
+            }
+        } catch {
+            print("\(fn) failed:", error)
+            adminInviteError = T("Không thực hiện được thao tác.", "Could not complete that action.")
+        }
+        await loadAdminTeam()
+        // A passed vote may have changed THIS account's own role / permission.
+        if let uid = userID {
+            if let row: AdminVoteRoleRow = try? await SupabaseService.client.from("profiles")
+                .select("role, can_manage_admins").eq("id", value: uid.uuidString).single().execute().value {
+                accountType = row.role
+                canManageAdmins = row.canManageAdmins
+            }
+        }
+    }
+    func openAdminRemovalVote(targetID: UUID, kind: String) async {
+        struct P: Encodable { let pTarget: String; let pKind: String
+            enum CodingKeys: String, CodingKey { case pTarget = "p_target", pKind = "p_kind" } }
+        await adminRemovalCall("open_admin_removal_vote", P(pTarget: targetID.uuidString, pKind: kind))
+    }
+    func castAdminRemovalVote(voteID: UUID, approve: Bool) async {
+        struct P: Encodable { let pVoteId: String; let pApprove: Bool
+            enum CodingKeys: String, CodingKey { case pVoteId = "p_vote_id", pApprove = "p_approve" } }
+        await adminRemovalCall("cast_admin_removal_vote", P(pVoteId: voteID.uuidString, pApprove: approve))
+    }
+    func cancelAdminRemovalVote(voteID: UUID) async {
+        struct P: Encodable { let pVoteId: String
+            enum CodingKeys: String, CodingKey { case pVoteId = "p_vote_id" } }
+        await adminRemovalCall("cancel_admin_removal_vote", P(pVoteId: voteID.uuidString))
     }
 }

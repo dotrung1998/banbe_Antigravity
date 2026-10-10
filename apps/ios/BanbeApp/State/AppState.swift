@@ -1481,6 +1481,9 @@ final class AppState: ObservableObject {
     @Published var myAdminInvite: AdminInvite?
     @Published var adminRoster: [AdminRosterRow] = []
     @Published var adminInvites: [AdminInvite] = []
+    /// migration 172 — protected-admin removal votes (admin_removal_overview()); nil until loaded / if 172 isn't applied.
+    @Published var adminRemoval: AdminRemovalOverview?
+    @Published var adminRemovalBusy = false
     @Published var adminTeamLoading = false
     @Published var adminInviteEmailDraft = ""
     @Published var adminInviteBusy = false
