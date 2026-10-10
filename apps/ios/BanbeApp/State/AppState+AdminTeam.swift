@@ -205,6 +205,29 @@ extension AppState {
         }
     }
 
+    /// Grants/removes `can_manage_admins` for another admin (server: `set_admin_management_permission`,
+    /// caller must already have it; target must be an admin).
+    func setAdminManagementPermission(_ id: UUID, enabled: Bool) async {
+        struct Params: Encodable {
+            let pUserId: String; let pEnabled: Bool
+            enum CodingKeys: String, CodingKey { case pUserId = "p_user_id"; case pEnabled = "p_enabled" }
+        }
+        struct Result: Decodable { let success: Bool?; let error: String? }
+        do {
+            let result: Result = try await SupabaseService.client
+                .rpc("set_admin_management_permission", params: Params(pUserId: id.uuidString, pEnabled: enabled))
+                .execute().value
+            guard result.success == true else {
+                let msg = Self.revokeAdminErrorMessages[result.error ?? ""] ?? ("Không thực hiện được thao tác.", "Could not complete that action.")
+                adminInviteError = T(msg.0, msg.1)
+                return
+            }
+            await loadAdminTeam()
+        } catch {
+            print("set_admin_management_permission failed:", error)
+        }
+    }
+
     func requestRevokeAdminConfirm(_ id: UUID) { revokeAdminConfirmID = id }
     func cancelRevokeAdminConfirm() { revokeAdminConfirmID = nil }
     func confirmRevokeAdmin() async {

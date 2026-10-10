@@ -74,7 +74,9 @@ struct AccountGroupView: View {
                     case "preferences": preferencesContent
                     case "hostOps": hostOpsContent
                     case "adminReview": adminReviewContent
-                    case "adminTeam": adminTeamContent
+                    // One container, same reason as "activity" above: otherwise the Group's
+                    // `.padding(.top, 22)` is applied to every child (heading, card, row).
+                    case "adminTeam": VStack(alignment: .leading, spacing: 0) { adminTeamContent }
                     case "helpLegal": helpLegalContent
                     default: EmptyView()
                     }
@@ -798,6 +800,15 @@ struct AccountGroupView: View {
                             .font(.system(size: 13))
                         if a.canManageAdmins {
                             Text(app.T("Có quyền quản lý đội ngũ", "Can manage the admin team")).font(.system(size: 10.5)).opacity(0.6)
+                        }
+                        if !a.isSelf && app.revokeAdminConfirmID != a.id {
+                            // Only an admin who already manages the team reaches this screen
+                            // (server re-checks in set_admin_management_permission).
+                            Button(a.canManageAdmins ? app.T("Bỏ quyền quản lý đội ngũ", "Remove team-management access") : app.T("Cấp quyền quản lý đội ngũ", "Allow managing the team"))
+                            { Task { await app.setAdminManagementPermission(a.id, enabled: !a.canManageAdmins) } }
+                                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                                .padding(.top, 4)
+                                .accessibilityIdentifier("adminRosterPermission.\(a.id)")
                         }
                     }
                     Spacer(minLength: 8)

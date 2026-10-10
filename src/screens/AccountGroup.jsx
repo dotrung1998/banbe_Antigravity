@@ -65,7 +65,7 @@ export default function AccountGroup() {
     respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft,
     requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite,
     requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite,
-    requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin,
+    requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission,
   } = useBanBe();
   const key = s.accountGroupKey;
 
@@ -498,6 +498,11 @@ export default function AccountGroup() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                         <span style={{ fontSize: 13, color: ink }}>{a.display_name || T('(Chưa đặt tên)', '(No name set)')}{a.is_self ? T(' (bạn)', ' (you)') : ''}</span>
                         {a.can_manage_admins && <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>{T('Có quyền quản lý đội ngũ', 'Can manage the admin team')}</span>}
+                        {!a.is_self && s.revokeAdminConfirmId !== a.id && (
+                          <span onClick={() => setAdminManagementPermission(a.id, !a.can_manage_admins)} data-testid={`admin-roster-permission-${a.id}`} role="button" style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer', marginTop: 4 }}>
+                            {a.can_manage_admins ? T('Bỏ quyền quản lý đội ngũ', 'Remove team-management access') : T('Cấp quyền quản lý đội ngũ', 'Allow managing the team')}
+                          </span>
+                        )}
                       </div>
                       {!a.is_self && (
                         s.revokeAdminConfirmId === a.id ? (
