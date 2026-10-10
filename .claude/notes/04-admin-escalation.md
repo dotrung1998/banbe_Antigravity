@@ -346,3 +346,15 @@ Migration: none needed (no schema/RPC change, client-only). `vite build`
 clean; 269/270 pre-existing Playwright tests pass (the one failure is the
 pre-existing flaky webkit onboarding-splash timeout, unrelated); both
 dispute-flow-e2e runs pass on real Supabase, all 3 browsers.
+
+## 2026-10-10 Admin invite "Could not send the invite" — pgcrypto search_path
+
+`create_admin_invite` / `redeem_admin_invite_token` (migration 121) called
+`gen_random_bytes()`/`digest()` unqualified while their `search_path` was
+`public, auth` — pgcrypto is in `extensions` on Supabase, so the RPC threw 42883
+and the app showed its generic fallback message (only known error codes get a
+specific message). Same root cause as migration 115 (event invites). Fix:
+`supabase/migrations/20261215000168_168_fix_admin_invite_pgcrypto_search_path.sql`
+(ALTER FUNCTION ... SET search_path only). NOT yet applied — needs
+`supabase db push` after 121. Diagnose a recurrence via the Xcode console line
+`confirmAdminInvite failed:` or `select proname, proconfig from pg_proc where proname='create_admin_invite'`.
