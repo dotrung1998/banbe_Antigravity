@@ -61,5 +61,13 @@ dist-ssr
 # on purpose: it recreates the storage/auth scaffolding a bare Postgres lacks,
 # which is worthless (and misleading) anywhere but a throwaway container.
 # Run it with ./supabase/_localtest/run.sh
-/supabase/_localtest/
+/supabase/_localtest/*
+# ...except the rewards harness (audited 2026-10-10: only fake @test.dev users/phones and the public local-docker
+# defaults from the README; no secrets). 13_rewards_run.sh also needs 00_bootstrap_storage.sql + 01_seed.sql, which stay local.
+!/supabase/_localtest/README.md
+!/supabase/_localtest/13_rewards_run.sh
+!/supabase/_localtest/13_rewards_assert.sql
+!/supabase/_localtest/13b_concurrent_redeem.sh
+!/supabase/_localtest/14_rewards_timezone_run.sh
+!/supabase/_localtest/14_rewards_timezone_assert.sql
 .migration-state/
