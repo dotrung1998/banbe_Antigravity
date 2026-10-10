@@ -54,3 +54,10 @@ BEGIN
   RETURN _parts[1:array_length(_parts, 1) - 1];
 END
 $$;
+
+-- Present in a long-lived container, absent from a freshly created one; migration 123's gate reads it.
+-- Standard Supabase definition (reads the request claims GUCs), so a brand-new container reproduces the run.
+CREATE OR REPLACE FUNCTION auth.jwt()
+RETURNS jsonb LANGUAGE sql STABLE AS $$
+  SELECT coalesce(nullif(current_setting('request.jwt.claim', true), ''), nullif(current_setting('request.jwt.claims', true), ''))::jsonb
+$$;
