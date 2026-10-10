@@ -70,8 +70,22 @@ struct RewardsPayload: Decodable, Equatable {
         var designId: String
         var price: Int
         var unlocked: Bool
+        // Added by migration 179; nil from an older server.
+        var kind: String?
+        var status: String?
         var id: String { code }
-        enum CodingKeys: String, CodingKey { case code, price, unlocked, designId = "design_id" }
+        enum CodingKeys: String, CodingKey { case code, price, unlocked, designId = "design_id", kind, status }
+    }
+    /// A partner offer (migration 179). Display only: there is no redemption path yet.
+    struct Offer: Decodable, Equatable, Identifiable {
+        var code: String
+        var price: Int?
+        var titleVi: String?, titleEn: String?, descVi: String?, descEn: String?
+        var status: String?
+        var id: String { code }
+        enum CodingKeys: String, CodingKey {
+            case code, price, status, titleVi = "title_vi", titleEn = "title_en", descVi = "desc_vi", descEn = "desc_en"
+        }
     }
     /// Added by migration 177; absent from an older server (decodes to nil).
     struct TimezoneSettings: Decodable, Equatable {
@@ -92,8 +106,41 @@ struct RewardsPayload: Decodable, Equatable {
     var history: [Entry]
     var catalog: [Item]
     var timezoneSettings: TimezoneSettings?
+    /// Partner offers (migration 179). [] from an older server and while the partner_offers flag is off.
+    var offers: [Offer] = []
     enum CodingKeys: String, CodingKey {
-        case success, balance, rules, streak, badges, history, catalog, timezoneSettings = "timezone_settings"
+        case success, balance, rules, streak, badges, history, catalog, offers, timezoneSettings = "timezone_settings"
+    }
+}
+
+/// Decodes an array one element at a time and drops the ones that fail, so a single row this build cannot read
+/// never makes the whole Rewards screen fail.
+private struct LossyArray<T: Decodable>: Decodable {
+    var elements: [T]
+    private struct Skip: Decodable {}
+    init(from decoder: Decoder) throws {
+        var c = try decoder.unkeyedContainer()
+        var out: [T] = []
+        while !c.isAtEnd {
+            if let e = try? c.decode(T.self) { out.append(e) } else { _ = try? c.decode(Skip.self) }
+        }
+        elements = out
+    }
+}
+
+extension RewardsPayload {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        success = try c.decode(Bool.self, forKey: .success)
+        balance = try c.decode(Int.self, forKey: .balance)
+        rules = try c.decode(Rules.self, forKey: .rules)
+        streak = try c.decode(Streak.self, forKey: .streak)
+        badges = try c.decode([Badge].self, forKey: .badges)
+        history = try c.decode([Entry].self, forKey: .history)
+        // Keychain designs only: a row without a design_id (an offer) is skipped, never a decode failure.
+        catalog = (try c.decode(LossyArray<Item>.self, forKey: .catalog)).elements.filter { $0.kind == nil || $0.kind == "keychain_design" }
+        timezoneSettings = try c.decodeIfPresent(TimezoneSettings.self, forKey: .timezoneSettings)
+        offers = (try c.decodeIfPresent(LossyArray<Offer>.self, forKey: .offers))?.elements ?? []
     }
 }
 
@@ -107,6 +154,9 @@ enum RewardsLogic {
         let body = k.rounded() == k ? String(Int(k)) : String(format: "%.1f", k)
         return (n < 0 ? "-" : "") + body + "k"
     }
+
+    /// The Offers section is shown only when the server sent at least one offer (old server / flag off => hidden).
+    static func showsOffersSection(_ p: RewardsPayload) -> Bool { !p.offers.isEmpty }
 
     static func shortfall(balance: Int, price: Int) -> Int { max(0, price - balance) }
 

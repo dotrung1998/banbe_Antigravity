@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { useKeychainManifest } from '../components/KeychainCharm.jsx';
 import { designUrl, keychainFocus } from '../lib/keychain.js';
-import { historyLabel, ruleLines, noCoinLines, redemptionTermsLines, streakLines, streakHint, shortfall, SUGGESTED_TIMEZONES, deviceTimezoneHint, normalizeTzSettings, TZ_ERRORS } from '../lib/rewards.js';
+import { historyLabel, ruleLines, noCoinLines, redemptionTermsLines, streakLines, streakHint, shortfall, SUGGESTED_TIMEZONES, deviceTimezoneHint, normalizeTzSettings, TZ_ERRORS, splitRewardCatalog } from '../lib/rewards.js';
 import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 import { RowIcon } from './Account.jsx';
 
@@ -31,6 +31,7 @@ export default function Rewards() {
   const confirmItem = r?.catalog?.find(c => c.code === confirmCode) || null;
   const res = s.rewardsRedeemResult;
   const tz = normalizeTzSettings(r?.timezone_settings);
+  const { designs, offers, showOffers } = splitRewardCatalog(r);
   const deviceHint = deviceTimezoneHint();
 
   const doRedeem = async () => {
@@ -117,7 +118,7 @@ export default function Rewards() {
 
             {/* Redemption catalog */}
             <section data-testid="rewards-catalog">
-              <h2 style={{ fontSize: 13, fontWeight: 600, margin: '0 0 4px', color: ink }}>{T('Đổi thưởng (móc khoá)', 'Redeem (keychain designs)')}</h2>
+              <h2 style={{ fontSize: 13, fontWeight: 600, margin: '0 0 4px', color: ink }}>{T('Trang trí (móc khoá)', 'Decorations (keychain designs)')}</h2>
               <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.75, margin: '0 0 10px' }}>
                 {T('Tuỳ chọn, chỉ để trang trí. 24 mẫu miễn phí vẫn luôn dùng được.', 'Optional and cosmetic only. The 24 free charms always stay available.')}
               </p>
@@ -128,7 +129,7 @@ export default function Rewards() {
               )}
               {res && res.ok && !res.already && <div role="status" data-testid="rewards-redeem-ok" style={{ fontSize: 12.5, color: ink, margin: '0 0 8px' }}>{T('Đã mở khoá!', 'Unlocked!')}</div>}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {r.catalog.map(c => {
+                {designs.map(c => {
                   const need = shortfall(r.balance, c.price);
                   const busy = s.rewardsRedeemBusy === c.code;
                   return (
@@ -154,6 +155,25 @@ export default function Rewards() {
                 })}
               </div>
             </section>
+
+            {/* Partner offers (migration 179): hidden unless the server sends any. Display only; there is no redemption yet. */}
+            {showOffers && (
+              <section data-testid="rewards-offers">
+                <h2 style={{ fontSize: 13, fontWeight: 600, margin: '0 0 4px', color: ink }}>{T('Ưu đãi', 'Offers')}</h2>
+                <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.75, margin: '0 0 10px' }}>
+                  {T('Ưu đãi do đối tác cung cấp. Hiện chưa thể đổi.', 'Offers come from partners. They cannot be redeemed yet.')}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {offers.map(o => (
+                    <div key={o.code} data-testid={`offer-${o.code}`} style={{ ...fieldGlass({ padding: '12px 14px', borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 4 }) }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{lang === 'en' ? o.title_en : o.title_vi}</span>
+                      {(lang === 'en' ? o.desc_en : o.desc_vi) && <span style={{ fontSize: 12, color: ink, opacity: 0.75 }}>{lang === 'en' ? o.desc_en : o.desc_vi}</span>}
+                      <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{T('Chưa khả dụng', 'Not available yet')}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {/* Recent history */}
             <section data-testid="rewards-history">

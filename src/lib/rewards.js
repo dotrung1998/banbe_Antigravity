@@ -139,3 +139,21 @@ export const TZ_ERRORS = {
 
 /** Items the signed-in user can't afford yet, with the exact shortfall. */
 export function shortfall(balance, price) { return Math.max(0, price - balance); }
+
+/**
+ * Splits a get_my_rewards() payload into keychain designs and partner offers (migration 179).
+ * Works against every server version:
+ *  - before 179: no `kind`/`offers` -> every catalog row is a keychain design, offers = [].
+ *  - 179+: `catalog` holds designs only and `offers` is [] while the partner_offers flag is off.
+ * A row is only a design when it has a string design_id, so an offer can never land in the keychain list even if a
+ * server ever put one in `catalog`. Offers are display-only (no redemption path in 179).
+ */
+export function splitRewardCatalog(rewards) {
+  const catalog = Array.isArray(rewards?.catalog) ? rewards.catalog : [];
+  const designs = catalog.filter(c => c && (c.kind === undefined || c.kind === 'keychain_design') && typeof c.design_id === 'string');
+  const raw = Array.isArray(rewards?.offers) ? rewards.offers : [];
+  const offers = raw.filter(o => o && typeof o.code === 'string' && (o.kind === undefined || o.kind === 'partner_offer'))
+    .map(o => ({ code: o.code, title_vi: o.title_vi || o.code, title_en: o.title_en || o.title_vi || o.code,
+                 desc_vi: o.desc_vi || '', desc_en: o.desc_en || o.desc_vi || '', price: Number(o.price) || 0, status: o.status || 'unavailable' }));
+  return { designs, offers, showOffers: offers.length > 0 };
+}

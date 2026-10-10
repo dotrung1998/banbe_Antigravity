@@ -113,7 +113,7 @@ struct RewardsView: View {
             VStack(spacing: 8) { ForEach(r.badges) { badge($0) } }
         }
 
-        section(app.T("Đổi thưởng (móc khoá)", "Redeem (keychain designs)")) {
+        section(app.T("Trang trí (móc khoá)", "Decorations (keychain designs)")) {
             Text(app.T("Tuỳ chọn, chỉ để trang trí. 24 mẫu miễn phí vẫn luôn dùng được.", "Optional and cosmetic only. The 24 free charms always stay available."))
                 .font(.system(size: 12)).opacity(0.75).padding(.bottom, 4)
             if let res = app.rewardsRedeemResult {
@@ -125,6 +125,15 @@ struct RewardsView: View {
                 }
             }
             VStack(spacing: 8) { ForEach(r.catalog) { catalogRow($0, balance: r.balance) } }
+        }
+
+        if RewardsLogic.showsOffersSection(r) {
+            section(app.T("Ưu đãi", "Offers")) {
+                Text(app.T("Ưu đãi do đối tác cung cấp. Hiện chưa thể đổi.", "Offers come from partners. They cannot be redeemed yet."))
+                    .font(.system(size: 12)).opacity(0.75).padding(.bottom, 4)
+                VStack(spacing: 8) { ForEach(r.offers) { offerRow($0) } }
+            }
+            .accessibilityIdentifier("rewards.offers")
         }
 
         section(app.T("Lịch sử gần đây", "Recent history")) {
@@ -226,6 +235,20 @@ struct RewardsView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(app.isEN ? b.titleEn : b.titleVi). \(b.earned ? app.T("Đã đạt", "Earned") : app.T("Chưa đạt", "Locked")). \(shown) / \(b.target). \(app.isEN ? b.descEn : b.descVi)")
         .accessibilityIdentifier("rewards.badge.\(b.code)")
+    }
+
+    private func offerRow(_ o: RewardsPayload.Offer) -> some View {
+        let title = (app.lang == "en" ? o.titleEn : o.titleVi) ?? o.titleVi ?? o.titleEn ?? o.code
+        let desc = (app.lang == "en" ? o.descEn : o.descVi) ?? o.descVi ?? o.descEn ?? ""
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.system(size: 13.5, weight: .semibold))
+            if !desc.isEmpty { Text(desc).font(.system(size: 12)).opacity(0.75) }
+            Text(app.T("Chưa khả dụng", "Not available yet")).font(.system(size: 11.5)).opacity(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("rewards.offer.\(o.code)")
     }
 
     private func catalogRow(_ c: RewardsPayload.Item, balance: Int) -> some View {

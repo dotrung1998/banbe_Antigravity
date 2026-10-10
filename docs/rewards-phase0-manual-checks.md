@@ -34,5 +34,32 @@ Also reachable from the Home header streak/coin capsule.
 | B7 | Old installed iOS build against a server WITH 177 | Rewards screen works; the build ignores the extra `timezone_settings` key; no time-zone section (expected: the section only exists in the new build). |
 | B8 | Old cached web bundle against a server WITH 177 | Same as B7. |
 
+## D. "Ưu đãi / Offers" section (needs migration 179 + the flag; LOCAL/STAGING only)
+
+Section titles after 3b: the keychain list is now **"Trang trí (móc khoá) / Decorations (keychain designs)"**; partner offers get their own **"Ưu đãi / Offers"** section below it.
+Seed an offer (local DB only, see `rewards-phase0-local-setup.md` §Bước 3b):
+`insert into reward_catalog(code,kind,design_id,price,sort,title_vi,title_en,desc_vi,desc_en) values ('offer-x','partner_offer',null,50,40,'Ưu đãi X','Offer X','mô tả','description');`
+
+| # | Setup | Action | Expected |
+|---|---|---|---|
+| D1 | 179 applied, flag OFF (default), offer row exists | Open Rewards (web + iOS) | **No** "Ưu đãi/Offers" section. "Trang trí" shows exactly the 3 keychain designs. The offer appears nowhere. |
+| D2 | Flag ON: `update reward_feature_flags set enabled=true where flag='partner_offers';` | Pull to refresh / reopen Rewards | New section "Ưu đãi / Offers" between "Trang trí" and "Lịch sử gần đây" with one card: title "Ưu đãi X" (EN: "Offer X"), description, "Chưa khả dụng / Not available yet". **No Redeem button**, no price/coin wording, no cash wording. |
+| D3 | Same | Switch language VI ↔ EN | Offer title/description follow the language; section headings translate. |
+| D4 | Same | Tap the offer card | Nothing happens (display only). No dialog, no request to `redeem_reward`. |
+| D5 | Same | Check "Trang trí" | Still exactly the 3 designs; the offer is NOT among them; Redeem/Use buttons on designs work as before (B3/B4). |
+| D6 | Flag ON, mark the offer inactive: `update reward_catalog set active=false where code='offer-x';` | Reopen Rewards | Section disappears again. |
+| D7 | Flag back OFF | Reopen Rewards | Section hidden; designs unchanged; balance/streak unchanged. |
+| D8 | Any | Redeem a design after D2 | Works as before; balance drops once; the Offers section does not change. |
+
+## E. Server WITHOUT 179 (old API) and client built before 3b
+
+| # | Setup | Action | Expected |
+|---|---|---|---|
+| E1 | Server at 178 (no 179), new web/iOS build | Open Rewards | Page loads; "Trang trí" lists the 3 designs; **no** Offers section; no error banner; time-zone section present if 177 is applied (A-checks). |
+| E2 | Server at 179 (flag ON, offer present), web bundle / iOS build from BEFORE 3b | Open Rewards | Loads normally; shows the 3 designs under the old heading "Đổi thưởng (móc khoá)"; the offer is **not** visible and nothing breaks (the old client ignores `offers`; `catalog` has no design-less row). |
+| E3 | Server at 176 (no 177, no 179), new build | Open Rewards | Loads; neither the time-zone section nor Offers appears. |
+
 ## C. Not covered by automated tests (do these on a real device)
 Picker rendering/layout on small phones and dark mode, VoiceOver label of the picker, Dynamic Type at largest size, iOS menu picker dismissal, and the real midnight rollover in a non-VN zone.
+
+Also not covered automatically: the visual layout of the Offers cards (spacing, dark mode, Dynamic Type), because the repo has no DOM/UI render tests for this screen; the show/hide rule itself is unit-tested (`splitRewardCatalog`, `RewardsLogic.showsOffersSection`).

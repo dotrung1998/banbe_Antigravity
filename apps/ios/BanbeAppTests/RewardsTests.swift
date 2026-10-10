@@ -130,4 +130,63 @@ final class RewardsTests: XCTestCase {
         XCTAssertFalse(RewardsLogic.streakLines(tz: "America/New_York", T: en)[1].contains("fixed"))
         XCTAssertEqual(RewardsLogic.timezoneErrorMessage("TZ_CHANGE_LIMIT", T: en).prefix(11), "You changed")
     }
+
+    // MARK: get_my_rewards in the three shapes a device can meet (pre-177 server, 177, 179)
+
+    private static let pre177 = """
+    {"success":true,"balance":60,"rules":{"onboarding_coins":10,"attendance_coins":20,"attendance_coin_cap_per_month":10,"version":1,"timezone":"Asia/Ho_Chi_Minh"},
+     "streak":{"current":3,"longest":5,"active_today":true,"timezone":"Asia/Ho_Chi_Minh","last_active_date":"2026-10-07"},
+     "badges":[{"code":"first_outing","title_vi":"a","title_en":"b","desc_vi":"x","desc_en":"y","target":1,"progress":1,"earned":true,"earned_at":"2026-10-07T01:00:00Z"}],
+     "history":[{"id":"a","type":"award","amount":20,"reason":"attendance","created_at":"2026-10-07T01:00:00.123456+00:00","event_name":"Jazz","item_code":null}],
+     "catalog":[{"code":"rwd-comet","kind":"keychain_design","design_id":"rwd-comet","price":40,"unlocked":false},
+                {"code":"rwd-lantern","kind":"keychain_design","design_id":"rwd-lantern","price":80,"unlocked":true}],
+     "attendance_paid_this_month":1}
+    """
+    private static let v177 = """
+    {"success":true,"balance":60,"rules":{"version":1,"timezone":"Asia/Ho_Chi_Minh"},"streak":{"current":0,"longest":0,"timezone":"America/Chicago"},
+     "badges":[],"history":[],"catalog":[{"code":"rwd-comet","kind":"keychain_design","design_id":"rwd-comet","price":40,"unlocked":false}],
+     "attendance_paid_this_month":0,
+     "timezone_settings":{"effective_tz":"America/Chicago","chosen":true,"default_tz":"Asia/Ho_Chi_Minh","pending_tz":null,"pending_from":null,"changes_left":1,"next_change_at":null}}
+    """
+    private static let v179 = """
+    {"success":true,"balance":60,"rules":{"version":1,"timezone":"Asia/Ho_Chi_Minh"},"streak":{"current":1,"longest":1,"timezone":"Asia/Ho_Chi_Minh"},
+     "badges":[],"history":[],
+     "catalog":[{"code":"rwd-comet","kind":"keychain_design","design_id":"rwd-comet","price":40,"unlocked":false,"title_vi":null,"title_en":null,"desc_vi":null,"desc_en":null,"status":"available"}],
+     "offers":[{"code":"offer-x","kind":"partner_offer","price":50,"title_vi":"Ưu đãi X","title_en":"Offer X","desc_vi":"mô tả","desc_en":"description","status":"unavailable"}],
+     "attendance_paid_this_month":0,
+     "timezone_settings":{"effective_tz":"Asia/Ho_Chi_Minh","chosen":false,"default_tz":"Asia/Ho_Chi_Minh","pending_tz":null,"pending_from":null,"changes_left":2,"next_change_at":null}}
+    """
+
+    func testAllThreeServerShapesDecode() throws {
+        let d = JSONDecoder()
+        let a = try d.decode(RewardsPayload.self, from: Data(Self.pre177.utf8))
+        XCTAssertEqual(a.catalog.count, 2); XCTAssertNil(a.timezoneSettings); XCTAssertTrue(a.offers.isEmpty)
+        XCTAssertFalse(RewardsLogic.showsOffersSection(a))
+        let b = try d.decode(RewardsPayload.self, from: Data(Self.v177.utf8))
+        XCTAssertEqual(b.timezoneSettings?.effectiveTz, "America/Chicago"); XCTAssertTrue(b.offers.isEmpty)
+        XCTAssertFalse(RewardsLogic.showsOffersSection(b))
+        let c = try d.decode(RewardsPayload.self, from: Data(Self.v179.utf8))
+        XCTAssertEqual(c.catalog.count, 1); XCTAssertEqual(c.catalog[0].status, "available")
+        XCTAssertEqual(c.offers.map(\.code), ["offer-x"]); XCTAssertEqual(c.offers[0].titleEn, "Offer X")
+        XCTAssertTrue(RewardsLogic.showsOffersSection(c))
+    }
+
+    func testOffersEmptyOrFlagOffHidesTheSection() throws {
+        let flagOff = Self.v179.replacingOccurrences(of: #""offers":[{"code":"offer-x","kind":"partner_offer","price":50,"title_vi":"Ưu đãi X","title_en":"Offer X","desc_vi":"mô tả","desc_en":"description","status":"unavailable"}],"#, with: #""offers":[],"#)
+        XCTAssertTrue(flagOff.contains(#""offers":[]"#))
+        XCTAssertFalse(RewardsLogic.showsOffersSection(try JSONDecoder().decode(RewardsPayload.self, from: Data(flagOff.utf8))))
+    }
+
+    func testAnOfferThatLeaksIntoCatalogIsDroppedNotFatal() throws {
+        let leaky = Self.v179.replacingOccurrences(of: #""catalog":["#, with: #""catalog":[{"code":"offer-x","kind":"partner_offer","price":50,"unlocked":false,"status":"unavailable"},"#)
+        let p = try JSONDecoder().decode(RewardsPayload.self, from: Data(leaky.utf8))
+        XCTAssertEqual(p.catalog.map(\.code), ["rwd-comet"])   // keychain list never contains the offer, and the payload still decodes
+        XCTAssertEqual(p.offers.map(\.code), ["offer-x"])
+    }
+
+    func testMalformedOfferRowsAreSkipped() throws {
+        let bad = Self.v179.replacingOccurrences(of: #""offers":["#, with: #""offers":[{"nope":1},"#)
+        let p = try JSONDecoder().decode(RewardsPayload.self, from: Data(bad.utf8))
+        XCTAssertEqual(p.offers.map(\.code), ["offer-x"])
+    }
 }
