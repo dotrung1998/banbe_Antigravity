@@ -95,6 +95,8 @@ final class ForYouAlertModel: ObservableObject {
     @Published private(set) var state = ForYouAlertState()
     /// True for ~3 s after the pending set gains an id it hasn't animated for.
     @Published private(set) var animating = false
+    /// Bumped on every replay so the effect re-runs even when `animating` was already true.
+    @Published private(set) var replayToken = 0
     private var userID: String?
     private var animated = Set<String>()
     private var stopTask: Task<Void, Never>?
@@ -126,6 +128,7 @@ final class ForYouAlertModel: ObservableObject {
 
     /// Replays the one-shot halo (Home re-entry), regardless of pending state.
     func replay() {
+        replayToken += 1
         animating = true
         stopTask?.cancel()
         stopTask = Task { [weak self] in
@@ -160,6 +163,7 @@ import SwiftUI
 struct ForYouAttentionEffect: ViewModifier {
     var animating: Bool
     var reduceMotion: Bool
+    var token: Int = 0
     /// 1 = resting/finished.
     @State private var phase: CGFloat = 1
 
@@ -183,10 +187,15 @@ struct ForYouAttentionEffect: ViewModifier {
                     .opacity(Double(1 - phase) * 0.8)
                     .allowsHitTesting(false)
             }
-            .onChange(of: animating) { _, on in
-                guard on, !reduceMotion else { phase = 1; return }
-                phase = 0
-                withAnimation(.easeOut(duration: 2.4)) { phase = 1 }
-            }
+            .onChange(of: animating) { _, on in run(on) }
+            .onChange(of: token) { _, _ in run(animating) }
+            // Chip may be created while already animating (Home re-entry / late-loading matches).
+            .onAppear { if animating { run(true) } }
+    }
+
+    private func run(_ on: Bool) {
+        guard on, !reduceMotion else { phase = 1; return }
+        phase = 0
+        withAnimation(.easeOut(duration: 2.4)) { phase = 1 }
     }
 }

@@ -1268,7 +1268,7 @@ struct HomeView: View {
             .overlay(Capsule().stroke(active ? app.palette.ink : gold.opacity(0.7), lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .modifier(ForYouAttentionEffect(animating: forYouAlert.animating, reduceMotion: reduceMotion))
+        .modifier(ForYouAttentionEffect(animating: forYouAlert.animating, reduceMotion: reduceMotion, token: forYouAlert.replayToken))
         .accessibilityIdentifier("filter.foryou")
         .accessibilityLabel(forYouAlert.hasPending && !active
             ? app.T("Dành cho bạn, có gợi ý mới", "For You, new recommendations")
