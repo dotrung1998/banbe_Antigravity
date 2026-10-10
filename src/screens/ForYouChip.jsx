@@ -20,7 +20,7 @@ export default function ForYouChip({ T, active, pending, animate, onClick, capsu
       onClick={onClick}
       data-testid="home-filter-foryou"
       data-foryou-pending={pending ? 'true' : 'false'}
-      className={animate && pending ? 'bb-fy-animate' : undefined}
+      className={animate ? 'bb-fy-animate' : undefined}
       role="button"
       aria-label={aria}
       aria-pressed={!!active}

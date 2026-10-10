@@ -124,6 +124,16 @@ final class ForYouAlertModel: ObservableObject {
         }
     }
 
+    /// Replays the one-shot halo (Home re-entry), regardless of pending state.
+    func replay() {
+        animating = true
+        stopTask?.cancel()
+        stopTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if !Task.isCancelled { self?.animating = false }
+        }
+    }
+
     /// Read-only attach (Map): loads this account's persisted state WITHOUT observing, so a
     /// partial viewport set can never baseline/flag matches — Home owns observation.
     func attach(userID: String?) {

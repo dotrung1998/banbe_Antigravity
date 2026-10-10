@@ -42,6 +42,14 @@ export function useForYouAlert({ userId, matches, prefsVersion, loading, passive
   }, [st]);
   useEffect(() => () => clearTimeout(timer.current), []);
 
+  // Home re-entry: replay the halo every time the screen mounts, not only for new matches.
+  useEffect(() => {
+    if (passive) return;
+    setAnimateNow(true);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setAnimateNow(false), 3000);
+  }, [passive]);
+
   const ack = useCallback((loadedIds) => {
     setSt(prev => {
       const next = acknowledge(prev, loadedIds);

@@ -236,7 +236,7 @@ struct HomeView: View {
         .onChange(of: app.discoveryEventsLoading) { _, _ in observeForYouAlert() }
         .onChange(of: app.eventPrefsVersion) { _, _ in observeForYouAlert() }
         .onChange(of: app.userID) { _, _ in observeForYouAlert() }
-        .onAppear { observeForYouAlert() }
+        .onAppear { observeForYouAlert(); forYouAlert.replay() }
         .task { await app.loadRewardsSummary() }
         // The area menu's searchable fallback (see `header`): a native Menu
         // can't hold a text field, so "Search locations…" opens this sheet
@@ -1268,7 +1268,7 @@ struct HomeView: View {
             .overlay(Capsule().stroke(active ? app.palette.ink : gold.opacity(0.7), lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .modifier(ForYouAttentionEffect(animating: forYouAlert.animating && forYouAlert.hasPending, reduceMotion: reduceMotion))
+        .modifier(ForYouAttentionEffect(animating: forYouAlert.animating, reduceMotion: reduceMotion))
         .accessibilityIdentifier("filter.foryou")
         .accessibilityLabel(forYouAlert.hasPending && !active
             ? app.T("Dành cho bạn, có gợi ý mới", "For You, new recommendations")
