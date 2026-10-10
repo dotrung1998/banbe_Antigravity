@@ -33,9 +33,14 @@ struct ReserveView: View {
                                      set: { if app.attendeeDrafts.indices.contains(index) { app.attendeeDrafts[index].name = $0 } }))
                 .accessibilityIdentifier("reserve.attendee\(index).name")
             if index == 0, app.attendeeDrafts[safe: 0]?.useProfileDOB == true {
-                Text(app.T("Ngày sinh: lấy từ hồ sơ của bạn", "Date of birth: taken from your profile"))
-                    .font(.system(size: 12))
-                    .opacity(0.65)
+                HStack {
+                    Text(app.T("Ngày sinh (từ hồ sơ của bạn)", "Date of birth (from your profile)")).font(.system(size: 13))
+                    Spacer()
+                    if let d = app.attendeeDrafts[safe: 0]?.profileDOB {
+                        Text(d.formatted(.dateTime.day(.twoDigits).month(.twoDigits).year()))
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                }
                     .accessibilityIdentifier("reserve.attendee0.dobProfile")
             } else {
                 HStack {

@@ -47,6 +47,8 @@ struct AttendeeDraft: Identifiable, Equatable {
     var dob: Date?
     /// Ticket 1 only: use the birthday already on the buyer's profile (kept server-side).
     var useProfileDOB = false
+    /// The profile birthday, shown to the buyer for a double check (never sent back).
+    var profileDOB: Date?
     /// Optional, tickets 2+.
     var email = ""
 

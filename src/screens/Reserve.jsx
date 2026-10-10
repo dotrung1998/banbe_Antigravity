@@ -18,8 +18,8 @@ export default function Reserve() {
   // ticket 1 uses it automatically and the date picker is hidden for that card.
   useEffect(() => {
     let live = true;
-    supabase.rpc('my_dob_on_file').then(({ data }) => {
-      if (live && data === true) setAttendeeField(0, 'useProfileDob', true);
+    supabase.rpc('get_my_dob').then(({ data }) => {
+      if (live && typeof data === 'string' && data) { setAttendeeField(0, 'useProfileDob', true); setAttendeeField(0, 'profileDob', data); }
     }, () => {});
     return () => { live = false; };
   }, [s.eventKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -154,8 +154,8 @@ export default function Reserve() {
                 style={{ ...inputStyle, background: 'rgba(255,255,255,0.55)' }} data-testid={`reserve-attendee-${i}-name`}
               />
               {i === 0 && a.useProfileDob ? (
-                <span style={{ fontSize: 12, color: ink, opacity: 0.65 }} data-testid="reserve-attendee-0-dob-profile">
-                  {T('Ngày sinh: lấy từ hồ sơ của bạn', 'Date of birth: taken from your profile')}
+                <span style={{ fontSize: 13, color: ink }} data-testid="reserve-attendee-0-dob-profile">
+                  {T('Ngày sinh (lấy từ hồ sơ của bạn)', 'Date of birth (from your profile)')}: <b>{a.profileDob ? new Date(`${a.profileDob}T00:00:00`).toLocaleDateString(s.lang === 'en' ? 'en-GB' : 'vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}</b>
                 </span>
               ) : (
                 <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, fontSize: 13, color: ink }}>

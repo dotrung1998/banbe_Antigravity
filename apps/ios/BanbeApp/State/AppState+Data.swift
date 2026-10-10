@@ -2688,12 +2688,18 @@ extension AppState {
     func qtyPlus() { qty = min(6, qty + 1); syncAttendeeDrafts() }
 
     /// Keep the form exactly `qty` rows long without losing what's typed.
-    /// Asks the server (boolean only) whether the buyer's birthday is already on file,
-    /// and if so lets ticket 1 use it instead of a typed date.
+    /// Reads the buyer's own birthday from their profile (server-side, gate-checked) and,
+    /// if there is one, lets ticket 1 use it and shows it for a double check.
     func applyProfileDOBToFirstAttendee() async {
-        guard let has: Bool = try? await SupabaseService.client.rpc("my_dob_on_file").execute().value, has,
-              screen == .reserve, !attendeeDrafts.isEmpty else { return }
+        guard let iso: String = try? await SupabaseService.client.rpc("get_my_dob").execute().value,
+              !iso.isEmpty else { return }
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        guard let d = f.date(from: iso), screen == .reserve, !attendeeDrafts.isEmpty else { return }
         attendeeDrafts[0].useProfileDOB = true
+        attendeeDrafts[0].profileDOB = d
     }
 
     func syncAttendeeDrafts() {
