@@ -7,13 +7,14 @@ BEGIN;
 CREATE FUNCTION pg_temp.ok(c boolean, label text) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN IF c IS NOT TRUE THEN RAISE EXCEPTION 'FAIL %', label; END IF; RAISE NOTICE 'PASS %', label; END $$;
 CREATE FUNCTION pg_temp.as_user(u uuid) RETURNS void LANGUAGE sql AS $$ SELECT set_config('request.jwt.claim.sub', u::text, true) $$;
-CREATE FUNCTION pg_temp.mkuser(u uuid, handle text, age_days int DEFAULT 0, phone text DEFAULT NULL) RETURNS void LANGUAGE plpgsql AS $$
+CREATE FUNCTION pg_temp.mkuser(u uuid, handle text, age_days int DEFAULT 0, phone text DEFAULT NULL, profile_phone text DEFAULT NULL, confirmed boolean DEFAULT true) RETURNS void LANGUAGE plpgsql AS $$
 DECLARE ph text := COALESCE(phone, '+84' || lpad((abs(hashtext(handle)) % 1000000000)::text, 9, '0'));
 BEGIN
   INSERT INTO auth.users (id,email,phone,phone_confirmed_at,raw_user_meta_data,confirmed_at)
-  VALUES (u,handle||'@test.dev',ph,now(),jsonb_build_object('display_name',handle),now()) ON CONFLICT (id) DO NOTHING;
+  VALUES (u,handle||'@test.dev',ph,CASE WHEN confirmed THEN now() END,jsonb_build_object('display_name',handle),now()) ON CONFLICT (id) DO NOTHING;
   INSERT INTO profiles (id,display_name,handle,role,phone,phone_verified,created_at)
-  VALUES (u,handle,handle,'participant',ph,true,now() - age_days * interval '1 day') ON CONFLICT (id) DO NOTHING;
+  VALUES (u,handle,handle,'participant',COALESCE(profile_phone,ph),true,now() - age_days * interval '1 day') ON CONFLICT (id) DO NOTHING;
+  UPDATE profiles SET phone = COALESCE(profile_phone, ph), created_at = now() - age_days * interval '1 day' WHERE id = u;
   INSERT INTO account_phone_grandfathered(user_id,cohort) VALUES (u,'t') ON CONFLICT DO NOTHING;
 END $$;
 CREATE FUNCTION pg_temp.mkorg(o text, owner uuid) RETURNS void LANGUAGE sql AS $$
@@ -49,6 +50,7 @@ DECLARE
 BEGIN
   PERFORM pg_temp.mkuser(hostB,'u7hb01',300); PERFORM pg_temp.mkuser(hostC,'u7hc02',300); PERFORM pg_temp.mkuser(hostD,'u7hd03',300);
   PERFORM pg_temp.mkorg('rk_org_b',hostB); PERFORM pg_temp.mkorg('rk_org_c',hostC); PERFORM pg_temp.mkorg('rk_org_d',hostD);
+  PERFORM pg_temp.mkuser('7a0a0001-0000-4000-8000-000000000001'::uuid,'u7he04',300); PERFORM pg_temp.mkorg('rk_org_e','7a0a0001-0000-4000-8000-000000000001');
 
   -- ===== D: defaults
   PERFORM pg_temp.ok((SELECT enabled FROM public.reward_risk_config WHERE id=1) = false, 'D1 the flag is OFF by default');
@@ -88,6 +90,19 @@ BEGIN
     PERFORM pg_temp.attend('rk_d_future',u,hostD);
   END LOOP;
   PERFORM pg_temp.attend('rk_d_now','7f1f0001-0000-4000-8000-000000000001',hostD);
+
+  -- ===== SP: the signal must read the VERIFIED auth phone, not the client-writable profile phone
+  PERFORM pg_temp.mkev('rk_e1','rk_org_e',now() - interval '1 hour');
+  PERFORM pg_temp.mkuser('7a0a0011-0000-4000-8000-000000000011','u7sp11',100,NULL,'+84911111111');   -- profile phones typed identical, auth phones differ
+  PERFORM pg_temp.mkuser('7a0a0012-0000-4000-8000-000000000012','u7sp12',100,NULL,'+84911111111');
+  PERFORM pg_temp.mkuser('7a0a0013-0000-4000-8000-000000000013','u7sp13',100,'+84922222222',NULL,false); -- same auth phone, never confirmed
+  PERFORM pg_temp.mkuser('7a0a0014-0000-4000-8000-000000000014','u7sp14',100,'+84922222222',NULL,false);
+  PERFORM pg_temp.mkuser('7a0a0015-0000-4000-8000-000000000015','u7sp15',100,'+84933333333',NULL,true);  -- confirmed, two formats
+  PERFORM pg_temp.mkuser('7a0a0016-0000-4000-8000-000000000016','u7sp16',100,'84933333333',NULL,true);
+  FOR i IN 11..16 LOOP PERFORM pg_temp.attend('rk_e1',('7a0a00'||i||'-0000-4000-8000-0000000000'||i)::uuid,'7a0a0001-0000-4000-8000-000000000001'); END LOOP;
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.rewards_risk_compute() c WHERE c.flag_type='shared_phone' AND c.organizer_id='rk_org_e') = 1
+                 AND (SELECT jsonb_array_length(metrics->'user_ids') FROM public.rewards_risk_compute() c WHERE c.flag_type='shared_phone' AND c.organizer_id='rk_org_e') = 2,
+                 'SP shared_phone reads the verified auth.users phone (digits-normalised); spoofed profile phones and unconfirmed auth phones raise nothing');
 
   -- ===== P: preview works while disabled, writes nothing, and ranks the right hosts
   PERFORM pg_temp.as_user(admin);
@@ -129,19 +144,19 @@ BEGIN
   PERFORM pg_temp.ok((r->>'success')::boolean, 'E1 admin can enable');
   SELECT count(*) INTO ledger_before FROM public.reward_ledger; SELECT count(*) INTO checkins_before FROM public.check_ins;
   r := public.admin_run_reward_risk_scan();
-  PERFORM pg_temp.ok((r->>'enabled')::boolean AND (r->>'written')::int = pg_temp.nflags() AND pg_temp.nflags() = 4, 'E2 scan wrote exactly the 4 expected flags (A: new_accounts + repeat_guests; D: off_window + shared_phone)');
+  PERFORM pg_temp.ok((r->>'enabled')::boolean AND (r->>'written')::int = pg_temp.nflags() AND pg_temp.nflags() = 5, 'E2 scan wrote exactly the 5 expected flags (A: new_accounts + repeat_guests; D: off_window + shared_phone; E: shared_phone)');
   PERFORM pg_temp.ok(pg_temp.nflags('new_accounts','test_org_a') = 1 AND pg_temp.nflags('repeat_guests','test_org_a') = 1 AND pg_temp.nflags('off_window','rk_org_d') = 1 AND pg_temp.nflags('shared_phone','rk_org_d') = 1, 'E3 flags are the ones previewed');
   PERFORM pg_temp.ok(pg_temp.nflags(NULL,'rk_org_b') = 0 AND pg_temp.nflags(NULL,'rk_org_c') = 0, 'E4 genuine host and undone ring have no flags');
   r := public.admin_run_reward_risk_scan();
-  PERFORM pg_temp.ok(pg_temp.nflags() = 4, 'E5 re-running does not duplicate flags');
+  PERFORM pg_temp.ok(pg_temp.nflags() = 5, 'E5 re-running does not duplicate flags');
   -- review lifecycle
-  b := (SELECT id FROM public.reward_risk_flags WHERE flag_type='shared_phone');
+  b := (SELECT id FROM public.reward_risk_flags WHERE flag_type='shared_phone' AND organizer_id='rk_org_d');
   r := public.admin_review_reward_risk_flag(b,'dismissed','same family');
   PERFORM pg_temp.ok((r->>'success')::boolean AND (SELECT status FROM public.reward_risk_flags WHERE id=b) = 'dismissed' AND (SELECT reviewed_by FROM public.reward_risk_flags WHERE id=b) = admin, 'E6 admin can dismiss with a note');
   PERFORM public.admin_run_reward_risk_scan();
   PERFORM pg_temp.ok((SELECT status FROM public.reward_risk_flags WHERE id=b) = 'dismissed', 'E7 a dismissed flag is not reopened by the next scan');
   PERFORM pg_temp.ok(public.admin_review_reward_risk_flag(b,'banned')->>'error' = 'INVALID_STATUS' AND public.admin_review_reward_risk_flag(gen_random_uuid(),'open')->>'error' = 'NOT_FOUND', 'E8 invalid status / unknown id refused');
-  PERFORM pg_temp.ok(jsonb_array_length(public.admin_list_reward_risk_flags('open')->'flags') = 3 AND NOT (public.admin_list_reward_risk_flags('open')->'flags'->0 ? 'dedupe_key'), 'E9 admin list returns the open flags without internals');
+  PERFORM pg_temp.ok(jsonb_array_length(public.admin_list_reward_risk_flags('open')->'flags') = 4 AND NOT (public.admin_list_reward_risk_flags('open')->'flags'->0 ? 'dedupe_key'), 'E9 admin list returns the open flags without internals');
 
   -- ===== N: flags never act
   SELECT count(*) INTO n FROM public.reward_ledger;

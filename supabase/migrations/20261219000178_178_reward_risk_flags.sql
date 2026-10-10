@@ -24,8 +24,11 @@
 --   new_accounts   host: >= K accounts created < D days before their first attendance with this host that each
 --                  attended >= N of that host's events.
 --   off_window     event: >= M check-ins and a share >= ratio recorded outside [starts_at - B h, starts_at + A h].
---   shared_phone   host: >= 2 attendee accounts with the same profiles.phone (no device data exists; auth.users
---                  phone is normally unique, so expect ~0 hits — kept because profiles.phone has no unique index).
+--   shared_phone   host: >= 2 attendee accounts with the same VERIFIED phone. Source = auth.users.phone with
+--                  phone_confirmed_at NOT NULL (what the phone+DOB gate of migration 123 checks), digits only.
+--                  NOT profiles.phone: that column is client-writable (profiles_update_own) and can hold
+--                  unverified/spoofed numbers. No device data exists. Supabase Auth normally enforces one account
+--                  per phone, so expect ~0 hits in production; the signal is cheap insurance, not a main detector.
 -- Thresholds below are UNCALIBRATED placeholders (the real data has 0 check-ins at 2026-10-10). Expect false
 -- positives for genuine regular communities (a host whose friends really attend every week) — that is why flags
 -- only ask an admin to look.
@@ -88,11 +91,13 @@ BEGIN
   RETURN QUERY
   WITH base AS (
     SELECT ra.user_id, ra.event_id, e.organizer_id, ra.first_valid_at, ci.checked_in_at, e.starts_at,
-           p.created_at AS acct_created, NULLIF(btrim(p.phone), '') AS phone
+           p.created_at AS acct_created,
+           NULLIF(regexp_replace(COALESCE(au.phone, ''), '\D', '', 'g'), '') AS phone
       FROM public.reward_attendances ra
       JOIN public.events e ON e.id = ra.event_id
       LEFT JOIN public.check_ins ci ON ci.booking_id = ra.booking_id
       LEFT JOIN public.profiles p ON p.id = ra.user_id
+      LEFT JOIN auth.users au ON au.id = ra.user_id AND au.phone_confirmed_at IS NOT NULL
      WHERE ra.valid AND e.organizer_id IS NOT NULL
        AND COALESCE(ci.checked_in_at, ra.first_valid_at) >= now() - ((c ->> 'window_days')::int * interval '1 day')),
   pair AS (
