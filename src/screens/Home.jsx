@@ -415,6 +415,7 @@ export default function Home() {
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
     loadHomeStories, openStoryViewer, openSurveyStoryModal,
     loadMyRefunds, openMyRefunds, loadRefundQueue, goNotifications,
+    loadMyAdminInvite, openAccountGroup,
     openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, loadPulse,
     loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openEventPreferences,
   } = useBanBe();
@@ -507,6 +508,8 @@ export default function Home() {
   useEffect(() => { loadWeekendEvents(); }, [loadWeekendEvents]);
   // Task 3.3 (07-notifications.md) — active stories row.
   useEffect(() => { if (s.user?.id) loadHomeStories(); }, [s.user?.id, loadHomeStories]);
+  // The admin invite shows in the Things-to-do list below, so Home loads it itself.
+  useEffect(() => { if (s.user?.id) loadMyAdminInvite(); }, [s.user?.id, loadMyAdminInvite]);
   // Source-of-discovery pass — independent of the story ring above; own
   // initial load, own refresh, own pagination state.
   useEffect(() => { if (s.user?.id) loadHomeSurveyDiscovery(); }, [s.user?.id, loadHomeSurveyDiscovery]);
@@ -542,8 +545,10 @@ export default function Home() {
     ...buildActionCenterItems({
       role: 'goer', T, now: tickNow,
       myHolding, myPendingVerification, myRefunds: s.myRefunds || [],
+      myAdminInvite: s.myAdminInvite,
       onOpenPayment: (bookingId) => openPaymentDetails(bookingId, 'home'),
       onOpenMyRefunds: () => openMyRefunds('home'),
+      onOpenAdminInvite: () => openAccountGroup('adminTeam'),
     }),
     ...(canHost ? buildActionCenterItems({
       role: 'host', T, now: tickNow,
@@ -552,7 +557,7 @@ export default function Home() {
       onOpenRefundCenter: () => openVerifications('home'),
       onOpenDashboard: goDashboard,
     }) : []),
-  ]), [T, tickNow, myHolding, myPendingVerification, s.myRefunds, canHost, s.verifications, s.refundQueue, orgHolding, openPaymentDetails, openMyRefunds, openVerifications, goDashboard]);
+  ]), [T, tickNow, myHolding, myPendingVerification, s.myRefunds, s.myAdminInvite, openAccountGroup, canHost, s.verifications, s.refundQueue, orgHolding, openPaymentDetails, openMyRefunds, openVerifications, goDashboard]);
 
   // Home is often the screen a buyer is sitting on when a hold's countdown
   // reaches zero — not just the ticket screen. myHolding above already

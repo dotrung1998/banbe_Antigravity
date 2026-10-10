@@ -50,7 +50,22 @@ extension AppState {
     /// backed select (admin_invites_select_own), reachable regardless of
     /// current role (the whole point: the invitee isn't an admin yet).
     func loadMyAdminInvite() async {
-        guard let uid = userID else { return }
+        guard let uid = userID else { print("loadMyAdminInvite: no signed-in user, skipped"); return }
+        // Preferred: RPC (migration 169) — resolves the invite by this
+        // account's verified email and binds invited_user_id, so an invite
+        // whose user id was never stored still reaches its recipient.
+        do {
+            let rows: [AdminInvite] = try await SupabaseService.client
+                .rpc("get_my_admin_invite")
+                .execute().value
+            myAdminInvite = rows.first
+            print("loadMyAdminInvite: RPC ok, pending invites =", rows.count)
+            return
+        } catch {
+            print("get_my_admin_invite failed (migration 169 not applied?), falling back:", error)
+        }
+        // Fallback: plain RLS select (admin_invites_select_own) — only sees
+        // invites already bound to this user id.
         do {
             let rows: [AdminInvite] = try await SupabaseService.client
                 .from("admin_invites")
@@ -60,6 +75,7 @@ extension AppState {
                 .limit(1)
                 .execute().value
             myAdminInvite = rows.first
+            print("loadMyAdminInvite: fallback select ok, pending invites =", rows.count)
         } catch {
             print("loadMyAdminInvite failed:", error)
         }

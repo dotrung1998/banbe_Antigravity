@@ -279,8 +279,10 @@ export default function Account() {
   const goerActionItems = sortActionCenterItems(buildActionCenterItems({
     role: 'goer', T, now: s.now || Date.now(),
     myHolding, myPendingVerification, myRefunds: s.myRefunds || [],
+    myAdminInvite: s.myAdminInvite,
     onOpenPayment: (bookingId) => openPaymentDetails(bookingId, 'profile'),
     onOpenMyRefunds: () => openMyRefunds('profile'),
+    onOpenAdminInvite: () => openAccountGroup('adminTeam'),
   }));
   const hostActionItems = canHost ? sortActionCenterItems(buildActionCenterItems({
     role: 'host', T, now: s.now || Date.now(),
@@ -750,21 +752,6 @@ export default function Account() {
         </div>
       )}
 
-      {/* Admin Team pass (2026-10-02) — same banner shape as the Team
-          invite above, reachable regardless of current role (the invitee
-          isn't an admin yet). */}
-      {s.myAdminInvite && (
-        <div
-          onClick={() => openAccountGroup('adminTeam')}
-          data-testid="account-admin-invite-banner"
-          style={{ ...fieldGlass({ margin: '8px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
-        >
-          <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
-            <RowIcon kind="alertShield" accent={ROW_ACCENT_COLORS.adminReview} />{T('Bạn có lời mời quản trị', 'You have an admin invite')}
-          </span>
-          <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-        </div>
-      )}
 
       {/* Account extension (2026-09-27, Stage 1) — "Organizer mode OFF
           means host UI is OFF": the whole Tổ chức tab disappears while

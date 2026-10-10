@@ -39,6 +39,9 @@ struct ActionCenterInputs {
     var now: Date = Date()
     var myHolding: PayableBooking?
     var myPendingVerification: PayableBooking?
+    /// This account's own pending admin invite (loadMyAdminInvite()); nil once
+    /// accepted/declined/revoked/expired, so the item disappears with it.
+    var myAdminInvite: AdminInvite?
     var myRefunds: [RefundClaim] = []
     var verifications: [PendingVerification] = []
     var refundQueue: [RefundClaim] = []
@@ -48,6 +51,7 @@ struct ActionCenterInputs {
     var orgHolding: OrganizerHoldingSummary?
     var onOpenPayment: (UUID) -> Void = { _ in }
     var onOpenMyRefunds: () -> Void = {}
+    var onOpenAdminInvite: () -> Void = {}
     var onOpenRefundAccounts: () -> Void = {}
     var onOpenVerifications: () -> Void = {}
     var onOpenRefundCenter: () -> Void = {}
@@ -136,6 +140,21 @@ func buildActionCenterItems(_ p: ActionCenterInputs) -> [ActionCenterItem] {
                 detail: c.eventName + autoConfirmNote(c, T),
                 ctaLabel: T("Xem", "View"),
                 onTap: p.onOpenMyRefunds
+            ))
+        }
+        if let invite = p.myAdminInvite {
+            let vi = invite.expiresAt.flatMap { formatShortDate($0, lang: "vi") }
+            let en = invite.expiresAt.flatMap { formatShortDate($0, lang: "en") }
+            items.append(ActionCenterItem(
+                id: "admin-invite-\(invite.id)", testId: "action-center-admin-invite",
+                // Rare and expiring: rank with the deadline-soon items so the 3-item cap
+                // never pushes it behind a busy host's payments/refunds into "See all".
+                severity: .deadlineSoon,
+                deadline: invite.expiresAt,
+                label: T("Bạn có lời mời quản trị", "You have an admin invite"),
+                detail: (vi != nil && en != nil) ? T("Trả lời trước \(vi!)", "Respond before \(en!)") : T("Chấp nhận hoặc từ chối", "Accept or decline"),
+                ctaLabel: T("Trả lời", "Respond"),
+                onTap: p.onOpenAdminInvite
             ))
         }
 for c in p.myRefunds where c.status == "disputed" && c.disputeClosedAt == nil {

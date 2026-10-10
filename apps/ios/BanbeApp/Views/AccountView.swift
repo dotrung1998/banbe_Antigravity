@@ -78,10 +78,11 @@ struct AccountView: View {
     private var goerActionItems: [ActionCenterItem] {
         sortActionCenterItems(buildActionCenterItems(ActionCenterInputs(
             role: .goer, now: Date(),
-            myHolding: app.myHolding, myPendingVerification: app.myPendingVerification, myRefunds: app.myRefunds,
+            myHolding: app.myHolding, myPendingVerification: app.myPendingVerification, myAdminInvite: app.myAdminInvite, myRefunds: app.myRefunds,
             refundDestinations: app.refundDestinationsLoaded ? app.refundDestinations : nil,
             onOpenPayment: { app.openPaymentDetails($0, back: .profile) },
             onOpenMyRefunds: { app.openMyRefunds(back: .profile) },
+            onOpenAdminInvite: { app.accountGroupKey = "adminTeam"; app.screen = .accountGroup },
             onOpenRefundAccounts: { app.openRefundAccounts(back: .profile) },
             // "Refund dispute open › View" goes to the booking conversation
             // that dispute actually belongs to, with its card expanded.
@@ -190,7 +191,10 @@ struct AccountView: View {
         // capable admin, the roster/invites source for the Admin-tab
         // badge — same "load it here so the badge is real, not stale"
         // reasoning as pendingEventsCount below.
-        .task { if app.userID != nil { await app.loadMyAdminInvite() } }
+        // .task(id:) re-runs when the signed-in user resolves — a plain .task ran
+        // once on first appear and was skipped for good if the session was
+        // still restoring (userID nil) at that moment.
+        .task(id: app.userID) { if app.userID != nil { await app.loadMyAdminInvite() } }
         .task { if app.canManageAdmins { await app.loadAdminTeam() } }
         .task { if app.userID != nil { await app.loadMyEventCredits() } }
         .task { if app.userID != nil { await app.loadMyConfirmedEventCredits() } }
@@ -595,33 +599,6 @@ struct AccountView: View {
                 .accessibilityIdentifier("account.teamInviteBanner")
             }
 
-            // Admin Team pass (2026-10-02) — same banner shape as the Team
-            // invite above, reachable regardless of current role (the
-            // invitee isn't an admin yet).
-            if let invite = app.myAdminInvite {
-                SwipeSafeButton { app.accountGroupKey = "adminTeam"; app.screen = .accountGroup } label: {
-                    HStack(spacing: 12) {
-                        // 2026-10-02 fix — was "exclamationmark.shield", a
-                        // duplicate of the UNRELATED "adminReview" row's own
-                        // icon elsewhere on this tab, and didn't match this
-                        // banner's real destination (adminTeam, same as the
-                        // Admin Team row/"person.3.fill" below) — also
-                        // standardized to size/no-background like every
-                        // other row icon here.
-                        Image(systemName: "person.3.fill").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
-                        Text(app.T("Bạn có lời mời quản trị", "You have an admin invite")).font(.system(size: 14))
-                        Spacer()
-                        Text("›").font(.system(size: 15))
-                    }
-                    .foregroundStyle(app.palette.ink)
-                    .padding(16)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 8)
-                .accessibilityIdentifier("account.adminInviteBanner")
-                .id(invite.id)
-            }
 
             // Account extension (2026-09-27, Stage 1) — "organizer mode
             // OFF means host UI is OFF": the whole Tổ chức tab disappears

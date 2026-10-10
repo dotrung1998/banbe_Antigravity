@@ -62,10 +62,11 @@ struct HomeView: View {
     private var actionItems: [ActionCenterItem] {
         var goer = buildActionCenterItems(ActionCenterInputs(
             role: .goer, now: tick,
-            myHolding: app.myHolding, myPendingVerification: app.myPendingVerification, myRefunds: app.myRefunds,
+            myHolding: app.myHolding, myPendingVerification: app.myPendingVerification, myAdminInvite: app.myAdminInvite, myRefunds: app.myRefunds,
             refundDestinations: app.refundDestinationsLoaded ? app.refundDestinations : nil,
             onOpenPayment: { app.openPaymentDetails($0, back: .home) },
             onOpenMyRefunds: { app.openMyRefunds(back: .home) },
+            onOpenAdminInvite: { app.accountGroupKey = "adminTeam"; app.screen = .accountGroup },
             onOpenRefundAccounts: { app.openRefundAccounts(back: .home) },
             // "Refund dispute open › View" goes to the booking conversation
             // that dispute actually belongs to, with its card expanded.
@@ -193,6 +194,8 @@ struct HomeView: View {
         .task { await app.loadHomeLiveEvents() }
         // Task 3.3 (07-notifications.md) — active-story row.
         .task { if app.userID != nil { await app.loadHomeStories() } }
+        // The admin invite is a Things-to-do item, so Home loads it itself.
+        .task(id: app.userID) { if app.userID != nil { await app.loadMyAdminInvite() } }
         // Source-of-discovery pass — independent of the story ring above;
         // own initial load, own refresh, own pagination state.
         .task { if app.userID != nil { await app.loadHomeSurveyDiscovery() } }
@@ -1105,13 +1108,14 @@ struct HomeView: View {
     /// whether or not For You is shown (no remount, offset preserved). HStack's leading
     /// edge follows the layout direction (RTL-safe).
     private var statusFilterRow: some View {
-        let hasForYou = app.hasForYouMatches
+        let hasForYou = app.hasForYouMatches || ProcessInfo.processInfo.arguments.contains("-fyForce") // TMP-FYFORCE
         return HStack(spacing: 8) {
             if hasForYou {
                 forYouChip
                     .fixedSize(horizontal: true, vertical: false)
                     .layoutPriority(1)
                     .padding(.leading, 20)
+                    .zIndex(1)  // halo ring may overlap the scroller beside it
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 homeExtraFilterChips
@@ -1268,7 +1272,7 @@ struct HomeView: View {
             .overlay(Capsule().stroke(active ? app.palette.ink : gold.opacity(0.7), lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .modifier(ForYouAttentionEffect(animating: forYouAlert.animating, reduceMotion: reduceMotion, token: forYouAlert.replayToken))
+        .modifier(ForYouAttentionEffect(animating: forYouAlert.animating, reduceMotion: reduceMotion, token: reminderHaloTrigger &+ forYouAlert.replayToken))
         .accessibilityIdentifier("filter.foryou")
         .accessibilityLabel(forYouAlert.hasPending && !active
             ? app.T("Dành cho bạn, có gợi ý mới", "For You, new recommendations")

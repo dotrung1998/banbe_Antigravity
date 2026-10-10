@@ -41,20 +41,22 @@ export function sortActionCenterItems(items) {
  * @param {number} p.now
  * @param {object|null} p.myHolding - soonest-expiring held booking (goer)
  * @param {object|null} p.myPendingVerification - soonest pending-verification booking (goer)
+ * @param {object|null} p.myAdminInvite - this account's own pending admin invite (s.myAdminInvite; goer — the invitee isn't an admin yet)
  * @param {Array} p.myRefunds - goer's own refund_claims (loadMyRefunds())
  * @param {Array} p.verifications - host's payment verification queue
  * @param {Array} p.refundQueue - host's refund queue (get_host_refund_claims(), all events)
  * @param {object|null} p.orgHolding - organizerHoldingSummary (host, pre-existing signal, folded in here rather than living in a second parallel banner system)
  * @param {function} p.onOpenPayment - (bookingId) => void
  * @param {function} p.onOpenMyRefunds - () => void
+ * @param {function} p.onOpenAdminInvite - () => void (opens the accept/decline screen)
  * @param {function} p.onOpenVerifications - () => void
  * @param {function} p.onOpenRefundCenter - () => void (host, whole-account refund queue — routes to Verifications, the only cross-event host refund surface)
  * @param {function} p.onOpenDashboard - () => void
  */
 export function buildActionCenterItems({
   role, T, now,
-  myHolding, myPendingVerification, myRefunds = [], verifications = [], refundQueue = [], orgHolding = null,
-  onOpenPayment, onOpenMyRefunds, onOpenVerifications, onOpenRefundCenter, onOpenDashboard,
+  myHolding, myPendingVerification, myAdminInvite = null, myRefunds = [], verifications = [], refundQueue = [], orgHolding = null,
+  onOpenPayment, onOpenMyRefunds, onOpenAdminInvite = () => {}, onOpenVerifications, onOpenRefundCenter, onOpenDashboard,
 }) {
   const items = [];
 
@@ -114,6 +116,25 @@ export function buildActionCenterItems({
         ctaLabel: T('Xem', 'View'),
         onClick: () => onOpenPayment(myPendingVerification.id),
         testId: 'action-center-pending-verification',
+      });
+    }
+    // Source: this account's own pending admin invite (migration 121/169,
+    // loaded by loadMyAdminInvite()). Disappears the moment it's accepted,
+    // declined, revoked or expired, because s.myAdminInvite then goes null.
+    if (myAdminInvite) {
+      items.push({
+        id: 'admin-invite-' + myAdminInvite.id,
+        // Rare and expiring: rank it with the deadline-soon items so the 3-item
+        // cap never pushes it behind a busy host's payments/refunds into "See all".
+        severity: 'deadlineSoon',
+        deadline: myAdminInvite.expires_at || null,
+        label: T('Bạn có lời mời quản trị', 'You have an admin invite'),
+        detail: myAdminInvite.expires_at
+          ? T(`Trả lời trước ${formatShortDate(myAdminInvite.expires_at)}`, `Respond before ${formatShortDate(myAdminInvite.expires_at, 'en')}`)
+          : T('Chấp nhận hoặc từ chối', 'Accept or decline'),
+        ctaLabel: T('Trả lời', 'Respond'),
+        onClick: onOpenAdminInvite,
+        testId: 'action-center-admin-invite',
       });
     }
     // Source: active dispute requiring a response.

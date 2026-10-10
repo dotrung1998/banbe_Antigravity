@@ -2567,6 +2567,7 @@ export function BanBeProvider({ children }) {
           // toast is tapped, so a revoked admin loses the Admin tab (and
           // whatever RLS-backed data it showed) within one cycle, not at
           // next sign-in.
+          if (n.kind === 'admin_invite') loadMyAdminInvite();
           if (n.kind === 'admin_access_revoked') {
             set(prev => ({
               accountType: 'participant', canManageAdmins: false,
@@ -7226,6 +7227,16 @@ export function BanBeProvider({ children }) {
    * role (the whole point: the invitee isn't an admin yet). */
   const loadMyAdminInvite = useCallback(async () => {
     if (!s.user?.id) return;
+    // Preferred: RPC (migration 169) — resolves the invite by this account's
+    // verified email and binds invited_user_id, so an invite whose user id was
+    // never stored still reaches its recipient.
+    const rpc = await supabase.rpc('get_my_admin_invite');
+    if (!rpc.error) {
+      set({ myAdminInvite: (Array.isArray(rpc.data) ? rpc.data[0] : rpc.data) || null });
+      return;
+    }
+    console.warn('get_my_admin_invite failed (migration 169 not applied?), falling back:', rpc.error);
+    // Fallback: plain RLS select — only sees invites already bound to this user id.
     const { data, error } = await supabase
       .from('admin_invites')
       .select('id, status, created_at, expires_at')

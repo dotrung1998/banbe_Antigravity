@@ -358,3 +358,43 @@ specific message). Same root cause as migration 115 (event invites). Fix:
 (ALTER FUNCTION ... SET search_path only). NOT yet applied — needs
 `supabase db push` after 121. Diagnose a recurrence via the Xcode console line
 `confirmAdminInvite failed:` or `select proname, proconfig from pg_proc where proname='create_admin_invite'`.
+
+## 2026-10-10 Invitee saw no banner — `get_my_admin_invite()` (migration 169)
+
+Clients read the invitee's own invite with a table select on
+`invited_user_id = auth.uid()` (RLS `admin_invites_select_own`). An invite whose
+`invited_user_id` is NULL (email-only / unresolved at invite time) was invisible
+to its own recipient: no banner, and `respond_to_admin_invite` (needs
+`invited_user_id = auth.uid()`) could never run. Fix:
+`supabase/migrations/20261215000169_169_get_my_admin_invite.sql` — RPC resolves
+by the signed-in account's `auth.users` email, binds `invited_user_id`, expires
+stale rows, returns the pending invite. iOS `loadMyAdminInvite` and web
+`loadMyAdminInvite` now call it, and both notification polls refresh it on an
+`admin_invite` notification. Migrations 168 + 169 must be applied
+(`supabase db push`) for any of this to work. Web vite build + iOS simulator
+build pass; not run on device. If the banner is STILL missing after applying:
+check `select invited_email, invited_user_id, status, expires_at from admin_invites;`
+and that the invitee is signed in with exactly that email.
+
+Follow-up: 169 had a bug — `admin_invites.status` is the enum `admin_invite_status`
+but the RPC returned it as `text` uncast, so it errored on every call (clients
+silently fell back to the old table select). Fixed by migration 170
+(`status::text`). Clients now fall back to the plain select if the RPC errors,
+and log `get_my_admin_invite failed ...`. Lesson: a plpgsql RETURNS TABLE must
+cast enum columns; type mismatches only surface at call time, not at migration
+time.
+
+## 2026-10-10 Admin invite now lives in "Things to do" (Action Center)
+
+The standalone invite banner (bottom of Account → Personal, then briefly moved to
+the top) is REMOVED on web + iOS. The invite is now a goer item in the shared
+Action Center (`src/lib/actionCenter.js` / `apps/ios/BanbeApp/Lib/ActionCenter.swift`):
+label "Bạn có lời mời quản trị / You have an admin invite", detail "Respond before
+<expiry>", CTA "Trả lời / Respond", testId `action-center-admin-invite`, severity
+`normal` (→ `deadlineSoon` inside 24h of expiry), opens Account group `adminTeam`
+(accept/decline). Shown on Home and on Account → Your Activity. Home now loads the
+invite itself (web effect / iOS `.task(id: userID)`). Badges are NOT changed (the
+invite does not add to the Account dock badge). Verified on an iOS simulator with a
+throwaway account (since deleted): item on Home and Account, tap opens Accept/Decline;
+Accept/Decline not exercised. Known: the Admin Team screen's back label says
+"Account" even when opened from Home.

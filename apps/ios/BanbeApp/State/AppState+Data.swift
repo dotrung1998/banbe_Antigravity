@@ -1953,6 +1953,9 @@ extension AppState {
                         // tap-gated pattern as the cancellation kinds
                         // above — this poll already runs every 5s
                         // regardless of whether the toast is tapped.
+                        if row.kind == "admin_invite" {
+                            await self.loadMyAdminInvite()
+                        }
                         if row.kind == "admin_access_revoked" {
                             self.accountType = "participant"
                             self.canManageAdmins = false
