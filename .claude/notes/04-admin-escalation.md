@@ -398,3 +398,20 @@ invite does not add to the Account dock badge). Verified on an iOS simulator wit
 throwaway account (since deleted): item on Home and Account, tap opens Accept/Decline;
 Accept/Decline not exercised. Known: the Admin Team screen's back label says
 "Account" even when opened from Home.
+
+## 2026-10-10 Accepting an admin invite never granted the role — `guard_profile_role` (migration 171)
+
+`respond_to_admin_invite` (accept) and `revoke_admin` (121) did
+`UPDATE profiles SET role = ...` without setting `app.role_change_allowed`.
+`guard_profile_role()` (016) silently reverts any role change while `auth.uid()` is
+non-null and that flag isn't `'1'` — SECURITY DEFINER does not clear `auth.uid()`.
+So accept marked the invite `accepted` and notified the sender, but the account
+stayed a participant: no Admin tab. `revoke_admin` was a silent no-op the same way
+(a "revoked" admin may still be admin — review). Fix:
+`supabase/migrations/20261215000171_171_fix_admin_role_change_guard.sql` wraps the role
+UPDATE with `set_config('app.role_change_allowed','1',true)` (as `set_organizer_mode`
+does) and one-time promotes accounts with an accepted invite and no later
+`admin_revoked` log entry. Requires `supabase db push`. Lesson: any function changing
+`profiles.role` must set that flag. Client side needs no change (it already re-reads
+`role` after accept); a signed-in invitee may need to relaunch/pull to see the tab if
+the repair ran after they accepted.

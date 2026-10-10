@@ -1956,6 +1956,10 @@ extension AppState {
                         if row.kind == "admin_invite" {
                             await self.loadMyAdminInvite()
                         }
+                        // The invitee answered: refresh the sender's roster/invites.
+                        if row.kind == "admin_invite_response", self.canManageAdmins {
+                            await self.loadAdminTeam()
+                        }
                         if row.kind == "admin_access_revoked" {
                             self.accountType = "participant"
                             self.canManageAdmins = false

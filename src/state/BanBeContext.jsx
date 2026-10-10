@@ -2568,6 +2568,8 @@ export function BanBeProvider({ children }) {
           // whatever RLS-backed data it showed) within one cycle, not at
           // next sign-in.
           if (n.kind === 'admin_invite') loadMyAdminInvite();
+          // The invitee answered: refresh the sender's roster/invites.
+          if (n.kind === 'admin_invite_response') loadAdminTeam();
           if (n.kind === 'admin_access_revoked') {
             set(prev => ({
               accountType: 'participant', canManageAdmins: false,
