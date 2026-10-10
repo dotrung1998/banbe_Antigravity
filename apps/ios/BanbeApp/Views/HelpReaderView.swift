@@ -168,6 +168,11 @@ struct HelpReaderView: View {
                             .font(.system(size: 13.5)).underline()
                             .multilineTextAlignment(.leading)
                             .padding(.vertical, 6)
+                            // The whole row is the tap target, not just the underlined glyphs: with
+                            // `.buttonStyle(.plain)` a fingertip beside or between the words (or to the
+                            // right of a short title) hit nothing, so Contents looked dead.
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("\(idPrefix).toc.\(sec.id)")
