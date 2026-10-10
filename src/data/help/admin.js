@@ -29,6 +29,14 @@ export const ADMIN_GUIDE = {
       ]],
       ['p', 'Sau quyết định, hai bên nhận thông báo và email. Nếu email lỗi, lỗi chỉ hiện trên màn hình của bạn lúc đó.', 'After a decision both parties get a notification and email. If the email fails the error shows only on your screen at that moment.'],
     ]},
+    { id: 'dobfix', vi: 'Sửa ngày sinh', en: 'Birthday corrections', blocks: [
+      ['ol', [
+        ['Vào tab "Admin" > "Review & Moderation" > "Birthday corrections".', 'Open the "Admin" tab > "Review & Moderation" > "Birthday corrections".'],
+        ['Mỗi yêu cầu cho thấy người gửi, ngày sinh hiện tại, ngày được yêu cầu và lý do.', 'Each request shows who sent it, the current date of birth, the requested date and the reason.'],
+        ['"Approve" ghi đè ngày sinh đã lưu; "Decline" giữ nguyên. Bạn có thể thêm ghi chú cho người dùng.', '"Approve" overwrites the stored date of birth; "Decline" keeps it. You can add a note for the user.'],
+      ]],
+      ['tip', 'Chỉ duyệt khi lý do hợp lý. Bạn không thể xử lý yêu cầu của chính mình, và mọi quyết định đều được ghi lại.', 'Approve only when the reason is credible. You cannot decide your own request, and every decision is logged.'],
+    ]},
     { id: 'team', vi: 'Đội ngũ quản trị', en: 'Admin Team', blocks: [
       ['ul', [
         ['"Invite Admin" gửi lời mời qua email dùng một lần; email người nhận được kiểm tra khi chấp nhận.', '"Invite Admin" sends a single-use email invite; the invitee\'s email is verified when accepting.'],

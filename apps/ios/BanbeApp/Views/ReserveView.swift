@@ -42,6 +42,7 @@ struct ReserveView: View {
                     }
                 }
                     .accessibilityIdentifier("reserve.attendee0.dobProfile")
+                DobCorrectionRequestView()
             } else {
                 HStack {
                     Text(app.T("Ngày sinh", "Date of birth")).font(.system(size: 13))

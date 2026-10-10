@@ -53,9 +53,10 @@ export const PERSONAL_GUIDE = {
       ['ol', [
         ['Mở sự kiện và nhấn nút đặt chỗ ("Reserve" / "Hold ▪︎ 30 minutes").', 'Open the event and tap the reserve button ("Reserve" / "Hold ▪︎ 30 minutes").'],
         ['Chọn số vé (tối đa 6 mỗi lần đặt; mỗi sự kiện chỉ một đặt chỗ đang hiệu lực).', 'Choose the number of tickets (up to 6 per booking; one live booking per event).'],
-        ['Nhập "Full name" và "Date of birth" cho từng người tham dự.', 'Enter "Full name" and "Date of birth" for each attendee.'],
+        ['Nhập "Full name" cho từng người tham dự. Vé 1 là của bạn: ngày sinh được lấy tự động từ hồ sơ và hiển thị để bạn kiểm tra. Với các vé còn lại, nhập "Date of birth" và có thể điền thêm "Email (optional)" của người đó.', 'Enter "Full name" for each attendee. Ticket 1 is yours: the date of birth is taken from your profile automatically and shown so you can check it. For the other tickets, enter "Date of birth" and optionally "Email (optional)" for that person.'],
         ['Sự kiện miễn phí: vé được cấp ngay. Sự kiện có phí: ghế được giữ 30 phút để bạn chuyển tiền.', 'Free event: the ticket is issued immediately. Paid event: the seat is held for 30 minutes while you pay.'],
       ]],
+      ['p', 'Nếu ngày sinh lấy từ hồ sơ bị sai, nhấn "Wrong? Request a correction" dưới ngày sinh ở Vé 1, nhập ngày đúng và lý do. Quản trị viên sẽ xem xét; ngày sinh chỉ đổi khi yêu cầu được duyệt, và bạn thấy trạng thái yêu cầu ngay tại đó. Email của người tham dự chỉ được lưu cùng vé, chưa gửi thư nào đến địa chỉ đó.', 'If the date of birth taken from your profile is wrong, tap "Wrong? Request a correction" under the date of birth on Ticket 1, then enter the right date and a reason. An admin reviews it; your birthday only changes if the request is approved, and you see the request status right there. An attendee\'s email is only saved with the ticket; nothing is sent to that address yet.'],
       ['p', 'Một số sự kiện cần host chấp nhận yêu cầu của bạn trước khi thanh toán.', 'Some events need the host to accept your request before you pay.'],
       ['tip', 'Hết 30 phút mà chưa thanh toán, ghế được nhả ra. Nhấn "Reserve again" nếu còn chỗ.', 'If 30 minutes pass without payment, the seat is released. Tap "Reserve again" if there is still room.'],
     ]},

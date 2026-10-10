@@ -15,7 +15,7 @@ enum Screen: String {
     case security
     case following, rewards
     case paymentDetails, billing, payout, documents, documentView
-    case verifications, disputes, adminEvents, adminTestAccounts
+    case verifications, disputes, adminEvents, adminTestAccounts, adminDobCorrections
     case policy
     case mapExplore
     case refundAccounts, myRefunds
@@ -3403,7 +3403,7 @@ final class AppState: ObservableObject {
         // "adminReview" (Review & Moderation) rows now, not straight from
         // Account itself — same sub-section-of-a-group class of bug the
         // `.preferences`/`.security`/`.payout` cases above already fixed.
-        case .disputes, .adminEvents, .adminTestAccounts: screen = accountSubBack
+        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections: screen = accountSubBack
         case .mapExplore: goHome()
         // TASK A fix — these two cases were simply missing, so the shared
         // edge-swipe gesture's goBack() fell to `default: break` and did
@@ -3527,7 +3527,7 @@ final class AppState: ObservableObject {
         case .documents: return documentsListBack
         case .documentView: return documentBack
         case .verifications: return verificationsBack
-        case .disputes, .adminEvents, .adminTestAccounts: return accountSubBack
+        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections: return accountSubBack
         case .mapExplore: return .home
         // TASK A fix — same missing-case bug as goBack() above: without
         // these, an in-progress edge swipe from RefundAccounts/MyRefunds

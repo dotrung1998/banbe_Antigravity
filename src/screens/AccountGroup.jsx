@@ -470,7 +470,8 @@ export default function AccountGroup() {
           <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
             <Row icon="alertShield" label={T('Tranh chấp thanh toán', 'Payment Disputes')} trailing="›" testId="admin-disputes" onClick={openDisputes} />
             <Row icon="alertShield" label={T('Sự Kiện Chờ Duyệt', 'Pending Events')} trailing="›" testId="admin-events" onClick={openAdminEvents} badge={s.pendingEventsCount} />
-            <Row icon="alertShield" label={T('Tài khoản thử nghiệm', 'Test accounts')} trailing="›" testId="admin-test-accounts" onClick={() => set({ screen: 'adminTestAccounts' })} border={false} />
+            <Row icon="alertShield" label={T('Tài khoản thử nghiệm', 'Test accounts')} trailing="›" testId="admin-test-accounts" onClick={() => set({ screen: 'adminTestAccounts' })} />
+            <Row icon="alertShield" label={T('Sửa ngày sinh', 'Birthday corrections')} trailing="›" testId="admin-dob-corrections" onClick={() => set({ screen: 'adminDobCorrections' })} border={false} />
           </div>
         )}
 

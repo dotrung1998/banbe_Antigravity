@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg } from '../data/events.js';
+import DobCorrectionRequest from './DobCorrectionRequest.jsx';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
 import { paper, ink, FACE, display, fieldGlass, alert } from '../theme.js';
 
@@ -154,9 +155,12 @@ export default function Reserve() {
                 style={{ ...inputStyle, background: 'rgba(255,255,255,0.55)' }} data-testid={`reserve-attendee-${i}-name`}
               />
               {i === 0 && a.useProfileDob ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <span style={{ fontSize: 13, color: ink }} data-testid="reserve-attendee-0-dob-profile">
                   {T('Ngày sinh (lấy từ hồ sơ của bạn)', 'Date of birth (from your profile)')}: <b>{a.profileDob ? new Date(`${a.profileDob}T00:00:00`).toLocaleDateString(s.lang === 'en' ? 'en-GB' : 'vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}</b>
                 </span>
+                  <DobCorrectionRequest />
+                </div>
               ) : (
                 <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, fontSize: 13, color: ink }}>
                   {T('Ngày sinh', 'Date of birth')}
