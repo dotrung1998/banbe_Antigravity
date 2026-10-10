@@ -74,4 +74,7 @@ dist-ssr
 !/supabase/_localtest/14_rewards_timezone_assert.sql
 !/supabase/_localtest/15_rewards_risk_run.sh
 !/supabase/_localtest/15_rewards_risk_assert.sql
+!/supabase/_localtest/16_rewards_kinds_run.sh
+!/supabase/_localtest/16a_kinds_before.sql
+!/supabase/_localtest/16b_kinds_after.sql
 .migration-state/
