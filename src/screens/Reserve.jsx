@@ -1,7 +1,11 @@
+import { useEffect } from 'react';
+import { supabase } from '../lib/supabase.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg } from '../data/events.js';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
 import { paper, ink, FACE, display, fieldGlass, alert } from '../theme.js';
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export default function Reserve() {
   const {
@@ -9,6 +13,16 @@ export default function Reserve() {
     qtyMinus, qtyPlus, formNameType, setNameAtHold, submitReserve, goEditName, setAttendeeField,
   } = useBanBe();
   const s = state;
+
+  // The buyer's birthday is already on their profile (kept server-side); if so,
+  // ticket 1 uses it automatically and the date picker is hidden for that card.
+  useEffect(() => {
+    let live = true;
+    supabase.rpc('my_dob_on_file').then(({ data }) => {
+      if (live && data === true) setAttendeeField(0, 'useProfileDob', true);
+    }, () => {});
+    return () => { live = false; };
+  }, [s.eventKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 01-hold-payment.md's 2026-09-17 follow-up #6: Name/Email used to be
   // free-typed fields that never persisted anywhere (bookings has no such
@@ -25,7 +39,9 @@ export default function Reserve() {
   // every attendee gets their own QR and PDF, and the door sees their age.
   const todayIso = new Date().toISOString().slice(0, 10);
   const attendeesOk = s.attendeeDrafts.length === s.qty
-    && s.attendeeDrafts.every(a => a.name.trim().length >= 2 && a.dob && a.dob <= todayIso);
+    && s.attendeeDrafts.every((a, i) => a.name.trim().length >= 2
+      && ((i === 0 && a.useProfileDob) || (a.dob && a.dob <= todayIso))
+      && (i === 0 || !a.email?.trim() || EMAIL_RE.test(a.email.trim())));
   // Host reservation criteria (migration 162): always pre-check on opening this screen,
   // block only when the server says ineligible; re-checks on every eventPrefsVersion change.
   const crit = useReservationCriteria(s.eventKey, { alwaysCheck: true });
@@ -126,7 +142,7 @@ export default function Reserve() {
       <div style={{ margin: '22px 22px 0' }} data-testid="reserve-attendees">
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Người tham dự', 'Attendees')}</span>
         <p style={{ fontSize: 11.5, color: ink, opacity: 0.65, margin: '4px 0 0' }}>
-          {T('Mỗi vé cần tên và ngày sinh của người sẽ tham dự.', 'Each ticket needs the name and date of birth of the person attending.')}
+          {T('Mỗi vé cần tên và ngày sinh của người sẽ tham dự. Vé 1 là của bạn và dùng ngày sinh trong hồ sơ.', 'Each ticket needs the name and date of birth of the person attending. Ticket 1 is yours and uses the birthday on your profile.')}
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
           {s.attendeeDrafts.slice(0, s.qty).map((a, i) => (
@@ -137,14 +153,27 @@ export default function Reserve() {
                 placeholder={T('Họ và tên', 'Full name')} autoComplete="off"
                 style={{ ...inputStyle, background: 'rgba(255,255,255,0.55)' }} data-testid={`reserve-attendee-${i}-name`}
               />
-              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, fontSize: 13, color: ink }}>
-                {T('Ngày sinh', 'Date of birth')}
+              {i === 0 && a.useProfileDob ? (
+                <span style={{ fontSize: 12, color: ink, opacity: 0.65 }} data-testid="reserve-attendee-0-dob-profile">
+                  {T('Ngày sinh: lấy từ hồ sơ của bạn', 'Date of birth: taken from your profile')}
+                </span>
+              ) : (
+                <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, fontSize: 13, color: ink }}>
+                  {T('Ngày sinh', 'Date of birth')}
+                  <input
+                    type="date" value={a.dob} max={todayIso} onChange={(e) => setAttendeeField(i, 'dob', e.target.value)}
+                    style={{ fontFamily: FACE, fontSize: 13, color: ink, background: 'rgba(255,255,255,0.55)', border: '1px solid rgba(27,25,22,0.12)', borderRadius: 10, padding: '7px 10px' }}
+                    data-testid={`reserve-attendee-${i}-dob`}
+                  />
+                </label>
+              )}
+              {i > 0 && (
                 <input
-                  type="date" value={a.dob} max={todayIso} onChange={(e) => setAttendeeField(i, 'dob', e.target.value)}
-                  style={{ fontFamily: FACE, fontSize: 13, color: ink, background: 'rgba(255,255,255,0.55)', border: '1px solid rgba(27,25,22,0.12)', borderRadius: 10, padding: '7px 10px' }}
-                  data-testid={`reserve-attendee-${i}-dob`}
+                  type="email" value={a.email || ''} onChange={(e) => setAttendeeField(i, 'email', e.target.value)}
+                  placeholder={T('Email (không bắt buộc)', 'Email (optional)')} autoComplete="off" autoCapitalize="none"
+                  style={{ ...inputStyle, background: 'rgba(255,255,255,0.55)' }} data-testid={`reserve-attendee-${i}-email`}
                 />
-              </label>
+              )}
             </div>
           ))}
         </div>

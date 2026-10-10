@@ -32,26 +32,42 @@ struct ReserveView: View {
                        text: Binding(get: { app.attendeeDrafts[safe: index]?.name ?? "" },
                                      set: { if app.attendeeDrafts.indices.contains(index) { app.attendeeDrafts[index].name = $0 } }))
                 .accessibilityIdentifier("reserve.attendee\(index).name")
-            HStack {
-                Text(app.T("Ngày sinh", "Date of birth")).font(.system(size: 13))
-                Spacer()
-                if app.attendeeDrafts[safe: index]?.dob == nil {
-                    Button(app.T("Chọn ngày", "Choose date")) {
-                        if app.attendeeDrafts.indices.contains(index) {
-                            app.attendeeDrafts[index].dob = Calendar.current.date(byAdding: .year, value: -25, to: Date())
+            if index == 0, app.attendeeDrafts[safe: 0]?.useProfileDOB == true {
+                Text(app.T("Ngày sinh: lấy từ hồ sơ của bạn", "Date of birth: taken from your profile"))
+                    .font(.system(size: 12))
+                    .opacity(0.65)
+                    .accessibilityIdentifier("reserve.attendee0.dobProfile")
+            } else {
+                HStack {
+                    Text(app.T("Ngày sinh", "Date of birth")).font(.system(size: 13))
+                    Spacer()
+                    if app.attendeeDrafts[safe: index]?.dob == nil {
+                        Button(app.T("Chọn ngày", "Choose date")) {
+                            if app.attendeeDrafts.indices.contains(index) {
+                                app.attendeeDrafts[index].dob = Calendar.current.date(byAdding: .year, value: -25, to: Date())
+                            }
                         }
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("reserve.attendee\(index).dobPick")
+                    } else {
+                        DatePicker("", selection: Binding(
+                            get: { app.attendeeDrafts[safe: index]?.dob ?? Date() },
+                            set: { if app.attendeeDrafts.indices.contains(index) { app.attendeeDrafts[index].dob = $0 } }),
+                                   in: ...Date(), displayedComponents: .date)
+                            .labelsHidden()
+                            .accessibilityIdentifier("reserve.attendee\(index).dob")
                     }
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("reserve.attendee\(index).dobPick")
-                } else {
-                    DatePicker("", selection: Binding(
-                        get: { app.attendeeDrafts[safe: index]?.dob ?? Date() },
-                        set: { if app.attendeeDrafts.indices.contains(index) { app.attendeeDrafts[index].dob = $0 } }),
-                               in: ...Date(), displayedComponents: .date)
-                        .labelsHidden()
-                        .accessibilityIdentifier("reserve.attendee\(index).dob")
                 }
+            }
+            if index > 0 {
+                BanbeField(label: nil,
+                           placeholder: app.T("Email (không bắt buộc)", "Email (optional)"),
+                           text: Binding(get: { app.attendeeDrafts[safe: index]?.email ?? "" },
+                                         set: { if app.attendeeDrafts.indices.contains(index) { app.attendeeDrafts[index].email = $0 } }))
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.emailAddress)
+                    .accessibilityIdentifier("reserve.attendee\(index).email")
             }
         }
         .padding(13)
@@ -160,8 +176,8 @@ struct ReserveView: View {
                 Text(app.T("Người tham dự", "Attendees"))
                     .font(.system(size: 11.5, weight: .semibold))
                     .padding(.top, 22)
-                Text(app.T("Mỗi vé cần tên và ngày sinh của người sẽ tham dự.",
-                           "Each ticket needs the name and date of birth of the person attending."))
+                Text(app.T("Mỗi vé cần tên và ngày sinh của người sẽ tham dự. Vé 1 là của bạn và dùng ngày sinh trong hồ sơ.",
+                           "Each ticket needs the name and date of birth of the person attending. Ticket 1 is yours and uses the birthday on your profile."))
                     .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.65))
                     .padding(.top, 4)
                 VStack(spacing: 10) {
@@ -207,6 +223,7 @@ struct ReserveView: View {
         }
         // Pre-check + re-check after the guest edits preferences (the screen
         // reappears and/or eventPrefsVersion bumps). Server still enforces.
+        .task(id: app.eventKey) { await app.applyProfileDOBToFirstAttendee() }
         .task(id: "\(app.eventKey)|\(app.eventPrefsVersion)") {
             await app.recheckReservationEligibility(eventKey: app.eventKey)
         }

@@ -7905,7 +7905,13 @@ export function BanBeProvider({ children }) {
       // hold_seats_with_attendees() (migration 151) validates the whole party,
       // holds the seats and records every attendee in ONE transaction — a
       // booking can't exist half-named.
-      const attendees = s.attendeeDrafts.slice(0, s.qty).map(a => ({ name: a.name.trim(), dob: a.dob }));
+      // Ticket 1 (whoever taps Reserve) uses the birthday on their profile when
+      // there is one (migration 173); the others may carry an optional email.
+      const attendees = s.attendeeDrafts.slice(0, s.qty).map((a, i) => ({
+        name: a.name.trim(),
+        ...(i === 0 && a.useProfileDob ? { use_profile_dob: true } : { dob: a.dob }),
+        ...(i > 0 && a.email?.trim() ? { email: a.email.trim() } : {}),
+      }));
       const { data: booking, error } = await supabase.rpc('hold_seats_with_attendees', {
         p_event: s.eventKey,
         p_attendees: attendees,
@@ -7948,6 +7954,7 @@ export function BanBeProvider({ children }) {
         INVALID_QTY: T('Số lượng chỗ không hợp lệ.', 'That number of spots isn’t valid.'),
         INVALID_ATTENDEES: T('Thông tin người tham dự không hợp lệ.', 'The attendee details aren’t valid.'),
         INVALID_ATTENDEE_NAME: T('Mỗi người tham dự cần có tên (ít nhất 2 ký tự).', 'Every attendee needs a name (at least 2 characters).'),
+        INVALID_ATTENDEE_EMAIL: T('Email của một người tham dự không hợp lệ.', 'One attendee’s email isn’t valid.'),
         INVALID_ATTENDEE_DOB: T('Ngày sinh của một người tham dự không hợp lệ.', 'One attendee’s date of birth isn’t valid.'),
         PROFILE_NOT_FOUND: T('Không tìm thấy hồ sơ của bạn. Vui lòng thử lại.', 'We couldn’t find your profile. Please try again.'),
         EVENT_NOT_FOUND: T('Không tìm thấy sự kiện này.', 'This event could not be found.'),

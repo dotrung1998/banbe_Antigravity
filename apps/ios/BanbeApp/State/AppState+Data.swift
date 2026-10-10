@@ -2688,6 +2688,14 @@ extension AppState {
     func qtyPlus() { qty = min(6, qty + 1); syncAttendeeDrafts() }
 
     /// Keep the form exactly `qty` rows long without losing what's typed.
+    /// Asks the server (boolean only) whether the buyer's birthday is already on file,
+    /// and if so lets ticket 1 use it instead of a typed date.
+    func applyProfileDOBToFirstAttendee() async {
+        guard let has: Bool = try? await SupabaseService.client.rpc("my_dob_on_file").execute().value, has,
+              screen == .reserve, !attendeeDrafts.isEmpty else { return }
+        attendeeDrafts[0].useProfileDOB = true
+    }
+
     func syncAttendeeDrafts() {
         while attendeeDrafts.count < qty { attendeeDrafts.append(AttendeeDraft()) }
         if attendeeDrafts.count > qty { attendeeDrafts.removeLast(attendeeDrafts.count - qty) }
@@ -2730,10 +2738,14 @@ extension AppState {
             dobFormat.calendar = Calendar(identifier: .gregorian)
             dobFormat.locale = Locale(identifier: "en_US_POSIX")
             dobFormat.dateFormat = "yyyy-MM-dd"
-            let party = attendeeDrafts.prefix(qty).map {
+            // Ticket 1 uses the profile birthday when there is one (migration 173);
+            // tickets 2+ may carry an optional email.
+            let party = attendeeDrafts.prefix(qty).enumerated().map { i, d in
                 HoldSeatsWithAttendeesParams.Attendee(
-                    name: $0.name.trimmingCharacters(in: .whitespacesAndNewlines),
-                    dob: dobFormat.string(from: $0.dob ?? Date()))
+                    name: d.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                    dob: (i == 0 && d.useProfileDOB) ? nil : dobFormat.string(from: d.dob ?? Date()),
+                    useProfileDob: (i == 0 && d.useProfileDOB) ? true : nil,
+                    email: (i > 0 && !d.emailTrimmed.isEmpty) ? d.emailTrimmed : nil)
             }
             let created: Booking = try await SupabaseService.client
                 .rpc("hold_seats_with_attendees", params: HoldSeatsWithAttendeesParams(event: eventKey, attendees: Array(party)))
@@ -2771,6 +2783,7 @@ extension AppState {
                 "INVALID_QTY": T("Số lượng chỗ không hợp lệ.", "That number of spots isn’t valid."),
                 "INVALID_ATTENDEES": T("Thông tin người tham dự không hợp lệ.", "The attendee details aren’t valid."),
                 "INVALID_ATTENDEE_NAME": T("Mỗi người tham dự cần có tên (ít nhất 2 ký tự).", "Every attendee needs a name (at least 2 characters)."),
+                "INVALID_ATTENDEE_EMAIL": T("Email của một người tham dự không hợp lệ.", "One attendee’s email isn’t valid."),
                 "INVALID_ATTENDEE_DOB": T("Ngày sinh của một người tham dự không hợp lệ.", "One attendee’s date of birth isn’t valid."),
                 "PROFILE_NOT_FOUND": T("Không tìm thấy hồ sơ của bạn. Vui lòng thử lại.", "We couldn’t find your profile. Please try again."),
                 "EVENT_NOT_FOUND": T("Không tìm thấy sự kiện này.", "This event could not be found."),

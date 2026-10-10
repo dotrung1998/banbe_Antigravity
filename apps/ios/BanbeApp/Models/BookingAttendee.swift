@@ -45,14 +45,29 @@ struct AttendeeDraft: Identifiable, Equatable {
     let id = UUID()
     var name = ""
     var dob: Date?
+    /// Ticket 1 only: use the birthday already on the buyer's profile (kept server-side).
+    var useProfileDOB = false
+    /// Optional, tickets 2+.
+    var email = ""
+
+    var emailTrimmed: String { email.trimmingCharacters(in: .whitespacesAndNewlines) }
+    var emailIsValid: Bool {
+        emailTrimmed.isEmpty || emailTrimmed.range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#, options: .regularExpression) != nil
+    }
 
     var isComplete: Bool {
-        name.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 && dob != nil
+        name.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 && (dob != nil || useProfileDOB) && emailIsValid
     }
 }
 
 struct HoldSeatsWithAttendeesParams: Encodable {
-    struct Attendee: Encodable { let name: String; let dob: String }
+    struct Attendee: Encodable {
+        let name: String
+        let dob: String?
+        let useProfileDob: Bool?
+        let email: String?
+        enum CodingKeys: String, CodingKey { case name, dob, email; case useProfileDob = "use_profile_dob" }
+    }
     let event: String
     let attendees: [Attendee]
     enum CodingKeys: String, CodingKey {
