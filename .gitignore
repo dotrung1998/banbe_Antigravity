@@ -70,4 +70,6 @@ dist-ssr
 !/supabase/_localtest/13b_concurrent_redeem.sh
 !/supabase/_localtest/14_rewards_timezone_run.sh
 !/supabase/_localtest/14_rewards_timezone_assert.sql
+!/supabase/_localtest/15_rewards_risk_run.sh
+!/supabase/_localtest/15_rewards_risk_assert.sql
 .migration-state/
