@@ -134,6 +134,12 @@ supabase db push --workdir /tmp/banbe-stg-workdir-176 --db-url "$STG_DB_URL" --d
 - **[ĐÃ KIỂM CHỨNG] Không có cờ "dừng ở phiên bản N" cho `db push`/`migration up` từ xa.** Các cờ có thật là `--include-all`, `--dry-run`, `--db-url`, `--linked`, `--project-ref`; riêng `db reset` có `--version`/`--last` nhưng áp dụng cho DB local hoặc reset (huỷ dữ liệu), **không** dùng cho việc này.
 - **Cách dùng:** dùng `make_workdir <N> <thư-mục-mới>` ở mục 2.3 với N lần lượt là `20261218000177`, `20261219000178`, `20261220000179`, `20261221000180` và thư mục `/tmp/banbe-stg-workdir-177`, `-178`, `-179`, `-180`. Mỗi lần thư mục tạm chỉ có các migration ≤ N, nên đúng **một** migration đang chờ.
   ```bash
+  # Quan sát khi thực hiện trên staging (2026-10-11; 177, 178, 179, 180; phạm vi: từng migration một lần):
+  #  - mỗi migration dùng một workdir đường dẫn MỚI (-177, -178, -179, -180); dry-run luôn liệt kê đúng một file;
+  #  - ở 180, `db push` thật được ghi đầu ra vào một file mới (không qua ống) để lấy mã thoát thật (kết quả: 0);
+  #    qua ống `| tee`/`| redact` mã thoát là của lệnh cuối ống, không phải của `supabase`;
+  #  - khi một lệnh `bash -c` dài bị công cụ chặn, các bước được chạy lại thành lệnh đơn riêng lẻ (nguyên nhân bị chặn chưa xác định);
+  #  - `check_snap` đã được chạy bằng ba lệnh riêng (`test -s` hai file, rồi hai `jq -e` kiểm cấu trúc) thay cho hàm.
   apply_one() {   # apply_one 20261218000177 177   (version, nhãn thư mục)
     source /path/to/stg-guard.sh && make_workdir "$1" "/tmp/banbe-stg-workdir-$2" \
     && supabase db push --workdir "/tmp/banbe-stg-workdir-$2" --db-url "$STG_DB_URL" --dry-run
@@ -160,6 +166,12 @@ Khi staging ở 176 và đã có dữ liệu test (mục 5.2): với mỗi tài 
 **Ghi chú dòng 177 (từ phiên 177 trên staging; phạm vi từng quan sát được nêu rõ):**
 - **(a) `record_active_day` cần một favorite trong 36 giờ gần nhất.** Theo code (`177:195`): hàm đọc `favorites` của người gọi cho `p_ref`; không có dòng nào, hoặc `created_at` cũ hơn 36 giờ, thì trả `{"success": false, "error": "NOT_VERIFIED"}` (HTTP 200). Dữ liệu seed ở 5.2 **không tạo favorite**, nên **với seed hiện tại kết quả đúng là `NOT_VERIFIED`**. Quan sát trên staging (chỉ rw.main, một lần, `p_source='save'`, `p_ref='rws_evt_1'`): HTTP 200, `{"error":"NOT_VERIFIED","success":false}`. Ghi nhận là *đạt nhánh từ chối do thiếu xác minh; nhánh thành công CHƯA kiểm*. Không suy ra "không ghi dữ liệu" chỉ vì `balance` và `streak` không đổi: theo code nhánh này trả về trước câu `INSERT` vào `reward_active_days`, nhưng bảng đó chưa được quan sát trực tiếp. Muốn kiểm nhánh thành công phải tạo favorite cho tài khoản test (một ghi dữ liệu có chủ đích: thả tim `rws_evt_1` bằng tài khoản đó, trong app hoặc bằng REST với JWT của chính tài khoản), rồi gọi lại; theo code kỳ vọng `success:true` kèm `streak`, và thêm một dòng `reward_active_days` cho ngày VN tương ứng (chưa quan sát).
 - **(b) `redeem_reward` → `already_unlocked` chỉ kiểm được khi tài khoản đã có phần thưởng mở khoá.** rw.main sau seed 5.2 chưa có: lần đọc `get_my_rewards` (một lần) cho thấy cả 3 mục catalog đều chưa mở khoá (`rwd-comet` 40 xu và `rwd-lantern` 80 xu mua được với 90 xu), nên phép thử **bị bỏ qua** và **không tính là đạt**. Hai cách: (1) chấp nhận bỏ qua và ghi *CHƯA KIỂM CHỨNG*; (2) chuẩn bị bằng cách đổi **có chủ đích** một món (ví dụ `rwd-comet`, trừ 40 xu, mở khoá một thiết kế: là thay đổi dữ liệu, cần quyết định riêng, không làm âm thầm), rồi gọi lại **cùng mã**: theo code (`165:631`) kỳ vọng `success:true, already_unlocked:true` và không trừ thêm xu (chưa quan sát). Lưu ý: ở 177 bản `redeem_reward` đang chạy là bản 165; 179 giữ nguyên hành vi nhánh keychain.
+
+**Quan sát trên staging cho 178, 179, 180 (ngày 2026-10-11; chỉ rw.main là persona có bản chụp trước/sau; mỗi migration áp dụng một lần, mỗi bản chụp một lần; chỉ ghi điều đã quan sát):**
+- **178.** Đối tượng DB (kiểm bằng `psql` chỉ SELECT): bảng `reward_risk_*` (gồm `reward_risk_flag_accounts`) tồn tại, `reward_risk_config.enabled = false`; hàm admin có mặt, `anon_exec=false`, `auth_exec=true`. Bản chụp `rw.main` trước/sau 178: **không đổi**. Qua REST (từng lời gọi một lần): anon `admin_reward_risk_preview` → HTTP 401/`42501`; rw.main `admin_reward_risk_preview` và `admin_get_reward_risk_config` → HTTP 200 `NOT_ADMIN`; rw.admin `admin_reward_risk_preview` → HTTP 200, `enabled:false`, `written:0`, `would_flag:0`; `admin_get_reward_risk_config` → HTTP 200 có `config`; `admin_run_reward_risk_scan` → HTTP 200 `{"enabled":false,"success":true,"written":0}`; `admin_list_reward_risk_flags` → HTTP 200 `flags: []`. **Không quan sát:** `admin_review_reward_risk_flag`, `admin_set_reward_risk_config`, bất kỳ lần quét nào khi cờ bật, `check_in_guest`.
+- **179.** Đối tượng DB: `reward_catalog` có cột mới (gồm `title_vi`, `title_en`, `desc_vi`, `desc_en`; danh sách cột đầy đủ nằm trong bằng chứng `verify179`, không chép lại ở đây), `reward_feature_flags` có `partner_offers = false`, `redeem_reward` và `get_my_rewards` đã được thay bản (kiểm bằng `pg_get_functiondef` ở mức vị trí chuỗi), hàm và quyền theo truy vấn 5.3.0. Bản chụp `rw.main` trước/sau 179: các trường cũ (`balance`, `streak`, `badges`, `history`, `catalog` 3 mục, `paid`, `rules`) **không đổi**; trường mới do 179 thêm là **`offers`** (mảng rỗng khi cờ tắt) và **`catalog` thêm `title`/`desc`/`status`**. Không gọi `redeem_reward` và `save_my_keychain` ở bước này.
+- **180.** Đối tượng DB: `reward_event_config` (`min_group_size = 20`) và `reward_event_counters` (5 cột, không cột định danh, 0 dòng), RLS bật, `anon`/`authenticated` không có quyền bảng; `reward_feature_flags('reward_events') = false`; 13 hàm theo truy vấn 5.3.0 đều `anon_exec=false`, `auth_exec=true`; `rewards_bump_event_counter` không cấp cho `anon` lẫn `authenticated`. Bản chụp `rw.main` trước/sau 180 **giống hệt**; **180 không thêm trường nào vào `get_my_rewards`**.
+- **Sau 180:** `rw.main` có `streak.timezone = Asia/Ho_Chi_Minh` và yêu cầu múi giờ pending (xem mục 9, trạng thái cuối).
 
 ### 3.4 Gọi RPC bằng PostgREST thật và so sánh trước/sau
 Lấy JWT bằng GoTrue thật (đăng nhập mật khẩu), rồi gọi RPC qua REST bằng **khoá anon của staging**:
@@ -381,7 +393,7 @@ PostgREST gọi hàm theo **tên tham số trong body JSON**. Bảng dưới đ�
 (Số dòng có thể lệch nếu file được sửa sau này; tên hàm là thứ cần tin.)
 
 **Cách đọc kết quả, quan trọng cho P1/P2:**
-- **Chỉ HTTP 401 / 403 hoặc mã lỗi `42501` (permission denied) mới tính là "bị từ chối quyền".** PostgREST trả 401 cho vai trò `anon` và 403 cho vai trò đã đăng nhập khi gặp `42501`. **Quan sát trên staging (migration 177; phạm vi: chỉ khoá anon, không JWT người dùng, hai RPC `get_my_rewards` và `set_my_reward_timezone`, mỗi RPC một request): HTTP 401, thân `{"code":"42501","details":null,"hint":null,"message":"permission denied for function <tên hàm>"}`.** Tiêu chí chấp nhận **giữ nguyên**: 401, 403 hoặc `42501` = bị từ chối; 404/`PGRST202` = phép thử hỏng. **[CHƯA KIỂM CHỨNG]** mã 403 cho vai trò đã đăng nhập và các RPC khác; ghi lại mã thật.
+- **Chỉ HTTP 401 / 403 hoặc mã lỗi `42501` (permission denied) mới tính là "bị từ chối quyền".** PostgREST trả 401 cho vai trò `anon` và 403 cho vai trò đã đăng nhập khi gặp `42501`. **Quan sát trên staging (migration 177; phạm vi: chỉ khoá anon, không JWT người dùng, hai RPC `get_my_rewards` và `set_my_reward_timezone`, mỗi RPC một request): HTTP 401, thân `{"code":"42501","details":null,"hint":null,"message":"permission denied for function <tên hàm>"}`.** Tiêu chí chấp nhận **giữ nguyên**: 401, 403 hoặc `42501` = bị từ chối; 404/`PGRST202` = phép thử hỏng. **Quan sát thêm (2026-10-11, mỗi lời gọi một lần):** anon gọi `admin_reward_risk_preview` (178), `record_reward_event` và `admin_reward_event_report` (180) → HTTP 401, `42501`. **Mã 403 cho vai trò đã đăng nhập: đã quan sát trên 12 bảng reward** (rw.main, `GET`, xem P2 dưới); **CHƯA quan sát 403 cho RPC** (với RPC, người dùng đã đăng nhập đều có EXECUTE nên không gặp 42501). Các RPC khác: ghi lại mã thật khi kiểm.
 - **HTTP 404 hoặc mã `PGRST202` nghĩa là "không tìm thấy hàm với tên/tham số đó"** (gọi sai tên hàm, sai tên tham số, hoặc schema cache chưa nạp sau migration). **Không phải bị từ chối.** Một phép thử P1 trả 404 là **phép thử hỏng**, không phải kết quả "an toàn": sửa tên rồi chạy lại. Mã `PGRST203` = nhiều chữ ký trùng tên (không kỳ vọng ở đây).
 - **Tách "hàm có tồn tại" khỏi "quyền"** (làm trước P1, trong SQL Editor staging, chỉ đọc):
   ```sql
@@ -414,6 +426,19 @@ Mỗi dòng ghi kết quả thật vào bằng chứng. Kỳ vọng là **dự �
 | P10 | **Cron và bucket** | `select jobname from cron.job`; `select id from storage.buckets` | Khớp production |
 | P11 | **Rollback diễn tập** | Với một migration (đề xuất 180, rồi 179), chạy file rollback trong `supabase/rollbacks/` bằng SQL Editor; chạy lại bảng 3.3; rồi áp dụng lại bằng `make_workdir` nếu cần | Rollback chạy sạch; RPC cũ vẫn như bản chụp |
 | P12 | **Nhật ký** | Dashboard → *Logs* (API/Postgres) trong lúc làm A–E và P1–P11 | Không có lỗi 5xx bất thường, không có lỗi quyền ngoài ý muốn |
+
+#### 5.3.1 Kết quả đã quan sát trên staging (2026-10-11; tiêu chí chấp nhận ở bảng trên giữ nguyên: 401/403/`42501`)
+Phạm vi: persona rw.main, rw.admin, anon; mỗi lời gọi một lần, không thử lại; staging ở 180 với cờ tắt, bảng đếm 0 dòng.
+- **P1 (phần đã làm):** anon, `admin_reward_risk_preview` (178), `record_reward_event`, `admin_reward_event_report` (180): HTTP 401, `42501`. Các RPC khác của P1 (`redeem_reward` với anon...) chưa chạy ở phiên 178–180; `get_my_rewards` và `set_my_reward_timezone` đã quan sát ở phiên 177.
+- **P2:** 12 bảng (`reward_ledger`, `reward_unlocks`, `reward_active_days`, `reward_user_badges`, `reward_catalog`, `reward_user_settings`, `reward_risk_flags`, `reward_risk_flag_accounts`, `reward_risk_config`, `reward_event_counters`, `reward_event_config`, `reward_feature_flags`), `GET ?select=*&limit=1`: **anon HTTP 401 và rw.main HTTP 403, cùng mã `42501`, không trả dòng nào**. **P2 chỉ chứng minh quyền ở mức bảng (không có grant cho `anon`/`authenticated`); chưa chứng minh chính sách RLS** (không có quyền để chính sách được đánh giá). Không bảng nào trả 404 hay 200.
+- **P4 (phần đã làm):** rw.main `record_reward_event` (cờ tắt) → HTTP 200 `{"success":true,"recorded":false}`; rw.main `admin_reward_event_report` → HTTP 200 `NOT_ADMIN`; `admin_reward_risk_preview` và `admin_get_reward_risk_config` → `NOT_ADMIN`. Các RPC khác của P4: chỉ `get_my_reward_summary`, `get_my_rewards` (mọi bản chụp), `record_active_day` (nhánh `NOT_VERIFIED`) và `set_my_reward_timezone` (pending) đã chạy.
+- **P6 (phần đã làm):** rw.admin `admin_reward_event_report` → HTTP 200, 6 khoá (`from`, `to`, `min_group_size`, `rows`, `success`, `suppressed_cells`), `rows` rỗng, `suppressed_cells` 0; các RPC admin của 178 như ở 3.3. Chưa làm: bật cờ rủi ro rồi quét, `admin_review_reward_risk_flag`, `admin_set_reward_risk_config`.
+- **P9:** sau mỗi migration 177–180, gọi `get_my_reward_summary` và `get_my_rewards` ngay (HTTP 200) và các RPC mới của 178/180 ở trên: **không gặp `PGRST202`**.
+
+#### 5.3.2 Quyền EXECUTE của hàm trigger: điều đã biết, cần quyết định riêng
+- **Quan sát (truy vấn `pg_proc`, chỉ đọc, staging ở 180):** có **27 hàm trigger** trong schema `public`; **25 có `anon_exec = true`**, 2 có `false` (hai hàm này có `REVOKE` tường minh, từ migration 164 và 178). Mô hình chung (quyền mặc định của Supabase cộng `PUBLIC`) có từ trước, từ migration 165 trở đi, **không do 177–180 tạo ra**; 180 không tạo hàm trigger nào, và các hàm mới của 177–180 đều `anon_exec = false`.
+- **CHƯA kiểm chứng:** việc gọi trực tiếp một hàm trigger qua REST (có hay không được PostgREST phơi ra, và kết quả nếu gọi).
+- **Việc cần quyết định riêng** (tài liệu này không đề xuất sửa). Các lựa chọn: (1) giữ nguyên, ghi nhận là mô hình đã biết; (2) thu EXECUTE khỏi `anon`/`PUBLIC` cho từng hàm trigger bằng một migration mới có kiểm thử; (3) đổi quyền mặc định của schema (ảnh hưởng mọi hàm mới); (4) kiểm chứng việc gọi trực tiếp qua REST trước rồi mới quyết.
 
 ---
 
@@ -540,15 +565,30 @@ Phát hành client mới theo mục 8.2 của summary (chạy lại iOS `Rewards
 - `set_my_reward_timezone('America/New_York')`, rw.main, một lần: pending đúng kỳ vọng (xem 5.1 bước 3).
 - Anon, hai RPC (`get_my_rewards`, `set_my_reward_timezone`), mỗi RPC một request: HTTP 401, `42501`.
 
+**Đã quan sát thêm trên staging (phiên 178–180, ngày 2026-10-11; phạm vi: rw.main/rw.admin/anon, từng lời gọi một lần):**
+- 178, 179, 180 mỗi cái được áp dụng một mình bằng `db push --workdir <thư mục mới> --db-url` (dry-run đúng một file; push thật; `migration list` Remote 173/173 ở cuối); bản chụp rw.main trước/sau mỗi migration: trường cũ không đổi (chi tiết 3.3).
+- Đối tượng DB của 178, 179, 180, cờ tắt, hàm và quyền (3.3); 12 bảng reward từ chối quyền qua REST (anon 401, rw.main 403, `42501`; 5.3.1); anon bị từ chối ở hàm admin của 178 và 180 (401/`42501`); `record_reward_event` của rw.main trả `recorded:false` khi cờ tắt; `NOT_ADMIN` cho người thường; báo cáo sự kiện của admin rỗng; P9 không `PGRST202`.
+- Đăng nhập GoTrue thành công cho rw.main và rw.admin.
+- 27 hàm trigger trong `public`, 25 `anon_exec=true` (5.3.2).
+
 **Bỏ qua (không tính là đạt):** `redeem_reward` → `already_unlocked` (rw.main chưa có phần thưởng mở khoá; xem ghi chú (b) ở 3.3).
 
 **Chưa kiểm chứng (cần staging thật hoặc chưa làm):**
-- Nhánh thành công của `record_active_day`; `redeem_reward` (cả `already_unlocked` lẫn đổi thật).
-- Mã `403` cho vai trò đã đăng nhập (chỉ có `401` của anon); mọi RPC khác của P1 (`record_reward_event`, `admin_*`), P2 (RLS qua REST), P5–P12 (trừ phần anon ở trên).
-- Đăng nhập các tài khoản khác ngoài rw.main; sai mật khẩu; làm mới token; email_confirm của từng người.
-- `pending_bridge` (không được RPC trả ra); sự hiện diện trực tiếp của các đối tượng của 177 trong DB (bảng `reward_user_settings`, cột `period_month`…): mới chứng minh gián tiếp qua RPC và lịch sử migration.
-- 178, 179, 180 trên staging; client cũ với server mới (E1–E3, B7, B8); nhóm A–E của danh sách kiểm tay; nhóm C (giao diện thật); iOS trên thiết bị thật.
-- Áp dụng 1 → 176 bằng CLI (do bạn tự làm ngoài phiên 177, không quan sát); hành vi `--dry-run`/`--workdir` với `--db-url` ở các migration khác 177.
+- Nhánh thành công của `record_active_day`; `redeem_reward` (cả `already_unlocked` lẫn đổi thật); `save_my_keychain`.
+- `record_reward_event` khi cờ bật và khi bộ đếm có dữ liệu; `admin_reward_event_report` với dữ liệu (ngưỡng ẩn ô nhỏ, `p_by_day`).
+- Rollback 177–180 (P11).
+- Client cũ/mới với server mới (E1–E3, B7, B8).
+- Chính sách RLS riêng (P2 chỉ chứng minh quyền bảng).
+- P5, P7, P8, P10, P11, P12.
+- Nhóm kiểm tay A–E (gồm nhóm C giao diện thật); iOS trên thiết bị thật.
+- Hành vi `check_in_guest`.
+- Mã `403` cho **RPC** của người đã đăng nhập (đã quan sát 403 chỉ với `GET` trên 12 bảng).
+- Gọi trực tiếp hàm trigger qua REST (5.3.2).
+- Đăng nhập các tài khoản khác ngoài rw.main, rw.admin; sai mật khẩu; làm mới token; email_confirm của từng người.
+- `pending_bridge` (không được RPC trả ra); sự hiện diện trực tiếp của các đối tượng của 177 trong DB: mới chứng minh gián tiếp qua RPC và lịch sử migration.
+- Áp dụng 1 → 176 bằng CLI (do bạn tự làm ngoài phiên 177, không quan sát).
 - Quyền `ALTER ROLE authenticator`/`pg_cron` trên project mới; giới hạn gói miễn phí; giao diện Dashboard.
+
+**Trạng thái cuối (2026-10-11):** staging ở migration **180** (Remote 173/173), mọi cờ reward tắt, bảng đếm sự kiện 0 dòng. **rw.main đang có yêu cầu múi giờ pending sang `America/New_York`, hiệu lực `2026-10-12T17:00Z`** (đầu ngày kế tiếp theo giờ VN); sau mốc đó `streak.timezone` đổi mà không cần thao tác, nên các kiểm tra sau mốc này phải tính đến việc đó.
 - Dạng `stgrpc.py` ghi ở 3.4 (bản mới, chưa chạy).
-- Dạng hàm `make_workdir <version> <thư-mục-mới>` và `apply_one` ghi ở 2.3/3.1 (chưa chạy ở dạng này; chỉ có script tương đương đã chạy cho 177).
+- Dạng hàm `make_workdir <version> <thư-mục-mới>` và `apply_one` ghi ở 2.3/3.1 (chưa chạy ở dạng này; chỉ có script tương đương đã chạy cho 177, và lệnh đơn riêng lẻ tương đương cho 178–180).
