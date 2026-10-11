@@ -17,6 +17,15 @@
 --   * Reversing coins stays what it was: an admin-triggered `reversal` ledger row via existing tooling. Nothing
 --     here revokes coins, blocks a host, or notifies anybody.
 --
+-- ACCOUNT DELETION (identity links live in a child table, not in jsonb):
+--   Self-service deletion (api/auth/index.js -> admin.auth.admin.deleteUser) deletes auth.users, which cascades to
+--   profiles and then to every ON DELETE CASCADE child. reward_risk_flag_accounts(flag_id, user_id -> profiles ON
+--   DELETE CASCADE) therefore loses the deleted person's links automatically, with no extra code in the API.
+--   reward_risk_flags itself carries NO user id (only counts and the organizer id); the organizer row survives an
+--   owner's deletion (owner_id is set NULL), so host-level flags (repeat_guests, off_window) stay as anonymous counts.
+--   A trigger removes an identity flag that no longer means anything: shared_phone with < 2 linked accounts left,
+--   new_accounts with none left. Every other flag is untouched.
+--
 -- Signals (all computed from reward_attendances valid=true, i.e. already excluding owner/team/self/cancelled
 -- and undone check-ins, plus check_ins for time):
 --   repeat_guests  host: >= min attendees AND >= min host events AND share of attendees who attended >= N of
@@ -63,9 +72,33 @@ CREATE TABLE IF NOT EXISTS public.reward_risk_flags (
 );
 CREATE INDEX IF NOT EXISTS reward_risk_flags_status ON public.reward_risk_flags (status, last_seen_at DESC);
 
+-- Which accounts a flag is about (admin-only). Deleting an account deletes its links (cascade from auth.users -> profiles).
+CREATE TABLE IF NOT EXISTS public.reward_risk_flag_accounts (
+  flag_id uuid NOT NULL REFERENCES public.reward_risk_flags(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  PRIMARY KEY (flag_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS reward_risk_flag_accounts_user ON public.reward_risk_flag_accounts (user_id);
+
+-- After a link disappears (account deleted) an identity flag with too few accounts left is meaningless: remove it.
+CREATE OR REPLACE FUNCTION public.reward_risk_flag_accounts_prune()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
+BEGIN
+  DELETE FROM public.reward_risk_flags f
+   WHERE f.id = OLD.flag_id
+     AND ((f.flag_type = 'shared_phone' AND (SELECT count(*) FROM public.reward_risk_flag_accounts a WHERE a.flag_id = f.id) < 2)
+       OR (f.flag_type = 'new_accounts' AND NOT EXISTS (SELECT 1 FROM public.reward_risk_flag_accounts a WHERE a.flag_id = f.id)));
+  RETURN NULL;
+END;
+$$;
+DROP TRIGGER IF EXISTS reward_risk_flag_accounts_prune ON public.reward_risk_flag_accounts;
+CREATE TRIGGER reward_risk_flag_accounts_prune AFTER DELETE ON public.reward_risk_flag_accounts
+  FOR EACH ROW EXECUTE FUNCTION public.reward_risk_flag_accounts_prune();
+
 ALTER TABLE public.reward_risk_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reward_risk_flags ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.reward_risk_config, public.reward_risk_flags FROM anon, authenticated, PUBLIC;
+ALTER TABLE public.reward_risk_flag_accounts ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.reward_risk_config, public.reward_risk_flags, public.reward_risk_flag_accounts FROM anon, authenticated, PUBLIC;
 
 CREATE OR REPLACE FUNCTION public.rewards_risk_defaults()
 RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
@@ -84,7 +117,7 @@ $$;
 
 -- Pure computation: returns candidate flags, writes nothing.
 CREATE OR REPLACE FUNCTION public.rewards_risk_compute()
-RETURNS TABLE (flag_type text, organizer_id text, event_id text, metrics jsonb, dedupe_key text)
+RETURNS TABLE (flag_type text, organizer_id text, event_id text, metrics jsonb, user_ids uuid[], dedupe_key text)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE c jsonb := public.rewards_risk_cfg();
 BEGIN
@@ -110,7 +143,7 @@ BEGIN
            count(*) FILTER (WHERE pr.n >= (c ->> 'repeat_min_events_per_guest')::int) AS repeaters, h.events AS host_events
       FROM pair pr JOIN hostev h ON h.org = pr.org GROUP BY pr.org, h.events),
   s2 AS (
-    SELECT pr.org, count(*) AS accounts, jsonb_agg(pr.uid) AS uids
+    SELECT pr.org, count(*) AS accounts, array_agg(pr.uid) AS uids
       FROM pair pr
      WHERE pr.n >= (c ->> 'new_account_min_events')::int AND pr.acct_created IS NOT NULL
        AND pr.acct_created >= pr.first_att - ((c ->> 'new_account_days')::int * interval '1 day')
@@ -121,25 +154,25 @@ BEGIN
                                OR b.checked_in_at > b.starts_at + ((c ->> 'off_after_hours')::int * interval '1 hour')) AS off
       FROM base b WHERE b.checked_in_at IS NOT NULL AND b.starts_at IS NOT NULL GROUP BY b.event_id, b.organizer_id),
   s4 AS (
-    SELECT b.organizer_id AS org, md5(b.phone) AS ph, count(DISTINCT b.user_id) AS accounts, jsonb_agg(DISTINCT b.user_id) AS uids
+    SELECT b.organizer_id AS org, md5(b.phone) AS ph, count(DISTINCT b.user_id) AS accounts, array_agg(DISTINCT b.user_id) AS uids
       FROM base b WHERE b.phone IS NOT NULL GROUP BY b.organizer_id, md5(b.phone)
      HAVING count(DISTINCT b.user_id) >= (c ->> 'shared_phone_min_accounts')::int)
   SELECT 'repeat_guests'::text, s1.org, NULL::text,
          jsonb_build_object('attendees', s1.attendees, 'repeaters', s1.repeaters, 'host_events', s1.host_events,
                             'ratio', round(s1.repeaters::numeric / s1.attendees, 3)),
-         'repeat_guests:' || s1.org
+         NULL::uuid[], 'repeat_guests:' || s1.org
     FROM s1
    WHERE s1.attendees >= (c ->> 'repeat_min_attendees')::int AND s1.host_events >= (c ->> 'repeat_min_host_events')::int
      AND s1.repeaters::numeric / s1.attendees >= (c ->> 'repeat_ratio')::numeric
   UNION ALL
-  SELECT 'new_accounts', s2.org, NULL, jsonb_build_object('accounts', s2.accounts, 'user_ids', s2.uids), 'new_accounts:' || s2.org
+  SELECT 'new_accounts', s2.org, NULL, jsonb_build_object('accounts', s2.accounts), s2.uids, 'new_accounts:' || s2.org
     FROM s2 WHERE s2.accounts >= (c ->> 'new_account_cluster_min')::int
   UNION ALL
   SELECT 'off_window', s3.org, s3.ev, jsonb_build_object('checkins', s3.total, 'off_window', s3.off,
-                                                         'ratio', round(s3.off::numeric / s3.total, 3)), 'off_window:' || s3.ev
+                                                         'ratio', round(s3.off::numeric / s3.total, 3)), NULL::uuid[], 'off_window:' || s3.ev
     FROM s3 WHERE s3.off >= (c ->> 'off_min_checkins')::int AND s3.off::numeric / s3.total >= (c ->> 'off_ratio')::numeric
   UNION ALL
-  SELECT 'shared_phone', s4.org, NULL, jsonb_build_object('accounts', s4.accounts, 'user_ids', s4.uids), 'shared_phone:' || s4.org || ':' || s4.ph
+  SELECT 'shared_phone', s4.org, NULL, jsonb_build_object('accounts', s4.accounts), s4.uids, 'shared_phone:' || s4.org || ':' || s4.ph
     FROM s4;
 END;
 $$;
@@ -160,19 +193,26 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.admin_run_reward_risk_scan()
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
-DECLARE v_cfg public.reward_risk_config%ROWTYPE; v_n int;
+DECLARE v_cfg public.reward_risk_config%ROWTYPE; v_n int := 0; c record; v_id uuid;
 BEGIN
   IF NOT public.is_platform_admin() THEN RETURN jsonb_build_object('success', false, 'error', 'NOT_ADMIN'); END IF;
   SELECT * INTO v_cfg FROM public.reward_risk_config WHERE id = 1;
   IF v_cfg.enabled IS NOT TRUE THEN RETURN jsonb_build_object('success', true, 'enabled', false, 'written', 0); END IF;
-  WITH ins AS (
+  FOR c IN SELECT * FROM public.rewards_risk_compute() LOOP
     INSERT INTO public.reward_risk_flags (dedupe_key, flag_type, organizer_id, event_id, metrics, config_version)
-    SELECT c.dedupe_key, c.flag_type, c.organizer_id, c.event_id, c.metrics, v_cfg.version FROM public.rewards_risk_compute() c
+    VALUES (c.dedupe_key, c.flag_type, c.organizer_id, c.event_id, c.metrics, v_cfg.version)
     ON CONFLICT (dedupe_key) DO UPDATE
       SET metrics = EXCLUDED.metrics, last_seen_at = now(), config_version = EXCLUDED.config_version
       WHERE public.reward_risk_flags.status = 'open'      -- a dismissed/confirmed flag is never reopened or rewritten
-    RETURNING 1)
-  SELECT count(*) INTO v_n FROM ins;
+    RETURNING id INTO v_id;
+    IF v_id IS NOT NULL THEN
+      v_n := v_n + 1;
+      IF c.user_ids IS NOT NULL THEN
+        DELETE FROM public.reward_risk_flag_accounts WHERE flag_id = v_id AND NOT (user_id = ANY (c.user_ids));
+        INSERT INTO public.reward_risk_flag_accounts (flag_id, user_id) SELECT v_id, u FROM unnest(c.user_ids) u ON CONFLICT DO NOTHING;
+      END IF;
+    END IF;
+  END LOOP;
   RETURN jsonb_build_object('success', true, 'enabled', true, 'written', v_n);
 END;
 $$;
@@ -182,7 +222,9 @@ RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public,
 BEGIN
   IF NOT public.is_platform_admin() THEN RETURN jsonb_build_object('success', false, 'error', 'NOT_ADMIN'); END IF;
   RETURN jsonb_build_object('success', true, 'flags', COALESCE((
-    SELECT jsonb_agg(to_jsonb(f) - 'dedupe_key' ORDER BY f.last_seen_at DESC)
+    SELECT jsonb_agg((to_jsonb(f) - 'dedupe_key') || jsonb_build_object('user_ids', COALESCE(
+             (SELECT jsonb_agg(a.user_id ORDER BY a.user_id) FROM public.reward_risk_flag_accounts a WHERE a.flag_id = f.id), '[]'::jsonb))
+           ORDER BY f.last_seen_at DESC)
       FROM (SELECT * FROM public.reward_risk_flags WHERE status = p_status ORDER BY last_seen_at DESC LIMIT LEAST(GREATEST(p_limit, 1), 200)) f), '[]'::jsonb));
 END;
 $$;
@@ -238,7 +280,7 @@ $$;
 DO $$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['rewards_risk_defaults()','rewards_risk_cfg()','rewards_risk_compute()'] LOOP
+  FOREACH f IN ARRAY ARRAY['rewards_risk_defaults()','rewards_risk_cfg()','rewards_risk_compute()','reward_risk_flag_accounts_prune()'] LOOP
     EXECUTE format('REVOKE ALL ON FUNCTION public.%s FROM anon, authenticated, PUBLIC', f);
   END LOOP;
   FOREACH f IN ARRAY ARRAY['admin_reward_risk_preview()','admin_run_reward_risk_scan()','admin_list_reward_risk_flags(text,int)',

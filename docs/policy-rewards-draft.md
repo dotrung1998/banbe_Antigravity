@@ -6,6 +6,9 @@
 > **CẦN LUẬT SƯ DUYỆT · LAWYER REVIEW REQUIRED.** Đây là bản nháp nội bộ do kỹ thuật soạn từ những gì hệ thống thực sự làm (migration 165–180) và từ `docs/rewards-research.md`. Không phải tư vấn pháp lý hay thuế. Không điều khoản nào dưới đây có hiệu lực cho tới khi luật sư duyệt, `banbe_User_Policy.md` được sửa, và người dùng được thông báo (mục 6).
 > **LAWYER REVIEW REQUIRED.** This is an internal engineering draft written from what the system actually does (migrations 165–180) and from `docs/rewards-research.md`. It is not legal or tax advice. Nothing below takes effect until a lawyer approves it, `banbe_User_Policy.md` is amended, and users are notified (section 6).
 
+> **Quyết định hiện tại / Current decision (2026-10-11): Phương án A được chọn tạm thời; Phương án B chỉ khi có đối tác thật và luật sư duyệt.**
+> **Option A is chosen provisionally; Option B only once there is a real partner and the lawyer has approved it.**
+
 **Nhãn trạng thái / Status labels.** `[ĐANG CÓ · LIVE-IN-CODE]` = hệ thống đã làm đúng như vậy (đã áp dụng hoặc nằm trong nhánh `feat/rewards-phase0`). `[CHƯA CÓ · NOT BUILT]` = đề xuất, chưa có trong code. `[CẦN QUYẾT ĐỊNH · DECISION]` = cần chủ sản phẩm chọn. Migration 177–180 chưa được áp dụng lên production tại thời điểm soạn.
 
 ---
@@ -130,13 +133,15 @@ EN: The anti-fraud signals as written are: an unusual share of repeat guests per
 
 **4.6 Lưu giữ và xoá tài khoản · Retention and account deletion** `[ĐANG CÓ · LIVE-IN-CODE]`
 
-VI: Sổ cái xu, huy hiệu, chuỗi ngày và lựa chọn múi giờ thuộc về tài khoản của bạn và bị xoá cùng tài khoản. Bộ đếm tổng hợp ở 4.2 không gắn với tài khoản nên không bị xoá theo tài khoản (không thể xác định phần nào là của bạn). **Khoảng trống kỹ thuật đã biết:** cờ rủi ro (migration 178) lưu mã các tài khoản liên quan trong trường `metrics`, **không** bị xoá tự động khi tài khoản bị xoá; cần quyết định cách xoá hoặc ẩn danh cờ khi xoá tài khoản (chưa làm). `[CẦN LUẬT SƯ DUYỆT: thời hạn lưu của bộ đếm và của cờ rủi ro; bổ sung vào bảng ở Điều B7]`
+VI: Sổ cái xu, huy hiệu, chuỗi ngày và lựa chọn múi giờ thuộc về tài khoản của bạn và bị xoá cùng tài khoản. Bộ đếm tổng hợp ở 4.2 không gắn với tài khoản nên không bị xoá theo tài khoản (không thể xác định phần nào là của bạn). **Cờ rủi ro khi xoá tài khoản (đã xử lý trong migration 178, chưa áp dụng lên production):** cờ không còn chứa mã tài khoản. Liên kết giữa một cờ và các tài khoản liên quan nằm ở bảng riêng với khoá ngoại xoá theo tầng tới hồ sơ; việc xoá tài khoản (qua `admin.auth.admin.deleteUser`) tự xoá các liên kết đó. Cờ chỉ còn số liệu đếm và mã tổ chức của host. Một cờ "cùng số điện thoại" còn dưới 2 tài khoản, hoặc cờ "cụm tài khoản mới" hết tài khoản, bị xoá theo vì không còn ý nghĩa; các cờ khác không đổi. Cờ cấp host (khách lặp lại, ngoài khung giờ) chỉ có số liệu đếm nên ở lại sau khi host xoá tài khoản (tổ chức của host vẫn tồn tại, chỉ bị gỡ liên kết chủ sở hữu, như luồng xoá tài khoản hiện có). Thời hạn lưu của cờ chưa bị xoá theo thời gian: cần luật sư/quyết định. `[CẦN LUẬT SƯ DUYỆT: thời hạn lưu của bộ đếm và của cờ rủi ro; bổ sung vào bảng ở Điều B7]`
 
-EN: Your coin ledger, badges, streak and time-zone choice belong to your account and are deleted with it. The aggregate counters in 4.2 are not tied to an account so they are not deleted with it (it is impossible to tell which part is yours). **Known engineering gap:** risk flags (migration 178) keep the ids of the accounts involved in `metrics` and are **not** removed automatically when an account is deleted; a way to delete or anonymise flags on account deletion must be decided (not built). `[LAWYER REVIEW: retention of counters and risk flags; add to the table in Section B7]`
+EN: Your coin ledger, badges, streak and time-zone choice belong to your account and are deleted with it. The aggregate counters in 4.2 are not tied to an account so they are not deleted with it (it is impossible to tell which part is yours). **Risk flags on account deletion (handled in migration 178, not yet applied to production):** a flag no longer contains account ids. The link between a flag and its accounts lives in a separate table with a cascading foreign key to the profile; deleting an account (through `admin.auth.admin.deleteUser`) deletes those links automatically. A flag keeps only counts and the host's organizer id. A "same phone" flag left with fewer than 2 accounts, or a "cluster of new accounts" flag with none left, is removed with them because it no longer means anything; other flags are unchanged. Host-level flags (repeat guests, outside the time window) carry counts only and remain after a host deletes their account (the host's organizer row survives, only its owner link is cleared, as the existing deletion flow already does). Flags are still not deleted by age: retention needs a lawyer/decision. `[LAWYER REVIEW: retention of counters and risk flags; add to the table in Section B7]`
 
 ---
 
 ## 5. Xung đột với chính sách hiện tại và hai phương án · Conflicts with the current policy and two options `[CẦN LUẬT SƯ DUYỆT · LAWYER REVIEW REQUIRED]`
+
+**Phương án A được chọn tạm thời; B chỉ khi có đối tác thật và luật sư duyệt. · Option A is chosen provisionally; B only with a real partner and lawyer approval.**
 
 Số dòng theo `banbe_User_Policy.md` v1.1 hiện tại (dòng tiếng Việt; bản tiếng Anh nằm cạnh).
 Line numbers refer to the current `banbe_User_Policy.md` v1.1 (Vietnamese line; the English text sits next to it).

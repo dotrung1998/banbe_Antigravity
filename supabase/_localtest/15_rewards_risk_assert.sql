@@ -101,7 +101,7 @@ BEGIN
   PERFORM pg_temp.mkuser('7a0a0016-0000-4000-8000-000000000016','u7sp16',100,'84933333333',NULL,true);
   FOR i IN 11..16 LOOP PERFORM pg_temp.attend('rk_e1',('7a0a00'||i||'-0000-4000-8000-0000000000'||i)::uuid,'7a0a0001-0000-4000-8000-000000000001'); END LOOP;
   PERFORM pg_temp.ok((SELECT count(*) FROM public.rewards_risk_compute() c WHERE c.flag_type='shared_phone' AND c.organizer_id='rk_org_e') = 1
-                 AND (SELECT jsonb_array_length(metrics->'user_ids') FROM public.rewards_risk_compute() c WHERE c.flag_type='shared_phone' AND c.organizer_id='rk_org_e') = 2,
+                 AND (SELECT cardinality(user_ids) FROM public.rewards_risk_compute() c WHERE c.flag_type='shared_phone' AND c.organizer_id='rk_org_e') = 2,
                  'SP shared_phone reads the verified auth.users phone (digits-normalised); spoofed profile phones and unconfirmed auth phones raise nothing');
 
   -- ===== P: preview works while disabled, writes nothing, and ranks the right hosts
@@ -110,7 +110,7 @@ BEGIN
   PERFORM pg_temp.ok((r->>'success')::boolean AND (r->>'written')::int = 0 AND (r->>'enabled')::boolean = false, 'P1 preview is allowed while disabled and reports written=0');
   PERFORM pg_temp.ok(pg_temp.nflags() = 0, 'P2 preview wrote nothing');
   PERFORM pg_temp.ok(pg_temp.ncand('new_accounts','test_org_a') = 1 AND pg_temp.ncand('repeat_guests','test_org_a') = 1, 'P3 host + 5 new accounts: new_accounts and repeat_guests candidates');
-  PERFORM pg_temp.ok((SELECT jsonb_array_length(metrics->'user_ids') FROM public.rewards_risk_compute() c WHERE c.flag_type='new_accounts' AND c.organizer_id='test_org_a') = 5, 'P4 all 5 accounts identified for the admin');
+  PERFORM pg_temp.ok((SELECT cardinality(user_ids) FROM public.rewards_risk_compute() c WHERE c.flag_type='new_accounts' AND c.organizer_id='test_org_a') = 5, 'P4 all 5 accounts identified for the admin');
   PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.rewards_risk_compute() c WHERE c.organizer_id = 'rk_org_b'), 'P5 genuine host with many different old guests is NOT flagged (false-positive guard)');
   PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.rewards_risk_compute() c WHERE c.organizer_id = 'rk_org_c'), 'P6 undone check-ins are not counted (ring C raises nothing)');
   PERFORM pg_temp.ok(pg_temp.ncand('off_window','rk_org_d') = 1 AND NOT EXISTS (SELECT 1 FROM public.rewards_risk_compute() c WHERE c.event_id IN ('rk_d_now','rk_a1','rk_b1')), 'P7 only the far-from-start event is off-window; in-window events are not');
@@ -167,7 +167,36 @@ BEGIN
   b := pg_temp.attend('rk_a_after','7c0c0001-0000-4000-8000-000000000001',hostA);
   PERFORM pg_temp.ok(b IS NOT NULL, 'N4 a flagged host can still check guests in, with the flag ON');
   PERFORM pg_temp.ok(public.rewards_balance('7c0c0001-0000-4000-8000-000000000001') = 80, 'N5 and the guest is still rewarded normally');
-  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM pg_trigger tg JOIN pg_proc p ON p.oid = tg.tgfoid WHERE NOT tg.tgisinternal AND p.proname LIKE '%risk%'), 'N6 no trigger runs risk code (the check-in path is untouched)');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM pg_trigger tg JOIN pg_proc p ON p.oid = tg.tgfoid WHERE NOT tg.tgisinternal AND p.proname LIKE '%risk%' AND tg.tgrelid <> 'public.reward_risk_flag_accounts'::regclass), 'N6 no trigger on check_ins/bookings/ledger runs risk code (the check-in path is untouched); the only one is the prune on the flag-account links');
+
+  -- ===== D2: account deletion (api/auth deleteUser => DELETE FROM auth.users, cascading) leaves no identity behind
+  PERFORM pg_temp.as_user(admin);
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.reward_risk_flag_accounts a JOIN public.reward_risk_flags f ON f.id = a.flag_id WHERE f.flag_type = 'new_accounts' AND f.organizer_id = 'test_org_a') = 5
+                 AND (SELECT count(*) FROM public.reward_risk_flag_accounts a JOIN public.reward_risk_flags f ON f.id = a.flag_id WHERE f.flag_type = 'shared_phone' AND f.organizer_id = 'rk_org_e') = 2, 'DEL0 the scan linked the accounts in the child table');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.reward_risk_flags f WHERE f.metrics::text ~ 'user_ids' OR to_jsonb(f)::text ~ '7c0c000[0-9]-0000-4000'), 'DEL1 no flag row (metrics or any column) contains an account id any more');
+  PERFORM pg_temp.ok(jsonb_array_length((SELECT x->'user_ids' FROM jsonb_array_elements(public.admin_list_reward_risk_flags('open')->'flags') x WHERE x->>'flag_type' = 'new_accounts')) = 5, 'DEL2 the admin list still shows the 5 linked accounts');
+  CREATE TEMP TABLE _others AS SELECT id, flag_type, organizer_id, event_id, status, metrics::text AS metrics, last_seen_at FROM public.reward_risk_flags
+    WHERE NOT (flag_type = 'new_accounts' AND organizer_id = 'test_org_a') AND NOT (flag_type = 'shared_phone' AND organizer_id = 'rk_org_e');
+  -- delete one of the 5 new accounts of org A
+  DELETE FROM auth.users WHERE id = '7c0c0001-0000-4000-8000-000000000001';
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.reward_risk_flag_accounts WHERE user_id = '7c0c0001-0000-4000-8000-000000000001') AND NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = '7c0c0001-0000-4000-8000-000000000001'), 'DEL3 deleting the account removed its links');
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.reward_risk_flag_accounts a JOIN public.reward_risk_flags f ON f.id = a.flag_id WHERE f.flag_type = 'new_accounts' AND f.organizer_id = 'test_org_a') = 4
+                 AND EXISTS (SELECT 1 FROM public.reward_risk_flags WHERE flag_type = 'new_accounts' AND organizer_id = 'test_org_a'), 'DEL4 the flag stays with the other 4 accounts');
+  PERFORM pg_temp.ok(NOT (public.admin_list_reward_risk_flags('open')::text LIKE '%7c0c0001-0000-4000-8000-000000000001%'), 'DEL5 the deleted account no longer appears in the admin list');
+  -- delete one of the 2 accounts that share a phone: the shared_phone flag (and its last link) goes
+  DELETE FROM auth.users WHERE id = '7a0a0015-0000-4000-8000-000000000015';
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.reward_risk_flags WHERE flag_type = 'shared_phone' AND organizer_id = 'rk_org_e')
+                 AND NOT EXISTS (SELECT 1 FROM public.reward_risk_flag_accounts WHERE user_id = '7a0a0016-0000-4000-8000-000000000016'), 'DEL6 a shared_phone flag with fewer than 2 accounts left is removed with its last link');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM _others o LEFT JOIN public.reward_risk_flags f ON f.id = o.id WHERE f.id IS NULL OR f.status <> o.status OR f.metrics::text <> o.metrics OR f.last_seen_at <> o.last_seen_at), 'DEL7 every other flag is byte-for-byte unchanged');
+  -- delete a HOST (organizer owner): host-level flags carry no user id and stay as anonymous counts; nothing else is touched
+  DELETE FROM auth.users WHERE id = '7b0b0003-0000-4000-8000-000000000003';
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.reward_risk_flags WHERE organizer_id = 'rk_org_d' AND flag_type = 'off_window') = 1
+                 AND (SELECT owner_id FROM public.organizers WHERE id = 'rk_org_d') IS NULL, 'DEL8 deleting a host keeps the host-level (count-only) flags; the organizer row is detached, as the deletion flow already does');
+  -- a re-scan after the deletions neither resurrects the removed identity flag with the deleted account nor adds the deleted id
+  PERFORM public.admin_run_reward_risk_scan();
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.reward_risk_flag_accounts a WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = a.user_id)), 'DEL9 after a re-scan every link still points at an existing account');
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.reward_ledger WHERE user_id = '7c0c0001-0000-4000-8000-000000000001') = 0 AND pg_temp.nflags('new_accounts','test_org_a') = 1, 'DEL10 the ledger of the deleted account went with it, no coin was reversed on anybody else');
+  DROP TABLE _others;
 
   -- ===== T: thresholds live in the config table
   PERFORM pg_temp.as_user(admin);

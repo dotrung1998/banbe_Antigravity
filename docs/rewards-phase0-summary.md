@@ -6,12 +6,14 @@ Nhánh: `feat/rewards-phase0` (từ `main` tại `e399694`). Chưa push, chưa P
 
 ---
 
+**Quyết định policy (2026-10-11): Phương án A được chọn tạm thời; B chỉ khi có đối tác thật và luật sư duyệt.** Phương án A: giữ nguyên cam kết "không chạy quảng cáo", chỉ cho ưu đãi do host/địa điểm tự đăng (xem [policy-rewards-draft.md](policy-rewards-draft.md) mục 5).
+
 ## 1. Kết quả theo bước
 
 | Bước | Nội dung | Migration | Trạng thái |
 |---|---|---|---|
 | 1 | Múi giờ theo người dùng cho chuỗi ngày và trần tháng | 177 | Xong (web + iOS + DB). Cờ: không cần (NULL = hành vi cũ) |
-| 2 | Cờ gian lận host–bạn bè, chỉ phát hiện + gắn cờ | 178 | Xong. Cờ `reward_risk_config.enabled` TẮT |
+| 2 | Cờ gian lận host–bạn bè, chỉ phát hiện + gắn cờ | 178 | Xong. Cờ `reward_risk_config.enabled` TẮT. Đã sửa khoảng trống xoá tài khoản (mục 5.1) |
 | 3a/3b | Tách `kind` trong catalog (DB), rồi UI "Trang trí" / "Ưu đãi" (web + iOS) | 179 | Xong. Cờ `partner_offers` TẮT; không có đường đổi ưu đãi |
 | 4 | Bản nháp sponsors/campaigns/offers/redemptions/settlements | không (nháp) | Xong, **ngoài chuỗi**, `supabase/drafts/` |
 | 5 | Bộ đếm tổng hợp không định danh cho ưu đãi | 180 | Xong. Cờ `reward_events` TẮT |
@@ -34,7 +36,8 @@ Nhánh: `feat/rewards-phase0` (từ `main` tại `e399694`). Chưa push, chưa P
 | `0edad26` | Bản nháp sponsors/offers/redemptions (ngoài chuỗi) |
 | `92307f8` | Migration 180: bộ đếm tổng hợp không định danh (cờ tắt) |
 | `4bfcf34` | Bản nháp policy song ngữ |
-| (commit này) | Tổng kết |
+| `87bc34f` | Tổng kết Giai đoạn 0 |
+| (commit này) | Sửa 178: liên kết cờ–tài khoản ở bảng con (xoá tài khoản tự xoá liên kết); chọn phương án A |
 
 ## 3. File đã đổi
 
@@ -56,7 +59,7 @@ Cơ sở = đo trước khi sửa gì (đầu phiên). Tất cả test SQL chạ
 | `13_rewards_run.sh` (165, 76 kiểm tra) | ALL PASS, 169 migration | ALL PASS, 173 migration, cùng 76 kiểm tra |
 | `13b_concurrent_redeem.sh` (12 lệnh đổi đồng thời) | ALL PASS | ALL PASS |
 | `14_rewards_timezone_run.sh` | không có | ALL PASS (63) |
-| `15_rewards_risk_run.sh` | không có | ALL PASS (35) |
+| `15_rewards_risk_run.sh` | không có | ALL PASS (46; gồm 11 kiểm tra xoá tài khoản) |
 | `16_rewards_kinds_run.sh` (dữ liệu cũ + 179) | không có | ALL PASS (37) |
 | `17_rewards_partner_draft_run.sh` (bản nháp, rollback transaction) | không có | ALL PASS (40) |
 | `18_rewards_events_run.sh` (180 + race + rollback) | không có | ALL PASS (50) |
@@ -83,11 +86,21 @@ Cơ sở = đo trước khi sửa gì (đầu phiên). Tất cả test SQL chạ
 - **Dữ liệu cũ.** Dòng sổ cái cũ có `period_month` NULL và được tính tháng theo giờ Việt Nam; `reward_active_days.local_date` không bị tính lại. Người đổi múi giờ giữa tháng có thể có một dòng lệch tháng vài giờ ở ranh giới (đã chấp nhận, đã ghi). Ngày cầu nối (đổi múi giờ sang hướng đông) chỉ giữ chuỗi liền mạch, không thành ngày hoạt động, không tạo xu, tối đa 2 lần mỗi 30 ngày.
 - **Client cũ.** Thiết kế giữ `catalog` chỉ gồm keychain và `get_my_rewards` chỉ thêm trường; test cấu trúc đạt. Nhưng bản iOS đã cài không tự cập nhật và chưa được chạy thật với server mới (xem trên). Bản web cũ đang cache cũng chưa được thử bằng trình duyệt thật.
 - **Chưa từng chạy migration trên một Supabase thật.** Cả bốn migration (177–180) chỉ chạy trên Postgres của harness. Bạn có thể đã thử trên stack local `supabase start` (theo `rewards-phase0-local-setup.md`), tôi không có kết quả đó.
-- **Cờ rủi ro lưu `user_ids`** trong `reward_risk_flags.metrics`, **không** tự xoá khi tài khoản bị xoá (khoảng trống, chưa xử lý; xem policy 4.6).
+- **Cờ rủi ro khi xoá tài khoản: ĐÃ XỬ LÝ** (178, mục 5.1). Còn lại: thời hạn lưu cờ theo tuổi chưa có (cờ chỉ mất khi tài khoản bị xoá hoặc bị gỡ bằng tay); stack local của bạn đã chạy 178 bản cũ nên phải `supabase db reset` (mục 5.1).
 - **`shared_phone`:** nhiều khả năng không bao giờ kích hoạt vì số điện thoại trong `auth.users` thường duy nhất **[Suy luận]**; admin vẫn thấy liên kết tài khoản nên cần luật sư.
 - **Bộ đếm sự kiện:** đếm sự kiện không đếm người; ai đăng nhập cũng thổi phồng được `offer_viewed`; chênh lệch giữa báo cáo chồng cửa sổ có thể lộ delta nhỏ; nhật ký nền tảng (Supabase/Vercel) nằm ngoài DB và không được kiểm soát.
 - **Bản nháp đối tác:** không có giới hạn thử mã; chưa có RPC phát hành; chưa có công cụ admin.
 - **Số dư âm** vẫn có thể xảy ra sau thu hồi (hành vi 165, không đổi).
+
+### 5.1 Cờ rủi ro khi xoá tài khoản (đã xử lý, migration 178 chưa áp dụng lên production)
+
+- **Luồng xoá hiện có:** không có hàm xoá trong DB. `api/auth/index.js` tạo dòng theo dõi `account_deletion_requests`, dọn Storage rồi gọi `admin.auth.admin.deleteUser`, tức `DELETE` trên `auth.users`; `profiles.id → auth.users ON DELETE CASCADE`, rồi mọi bảng `… → profiles ON DELETE CASCADE` bị xoá theo (mọi bảng `reward_*` của người dùng, kể cả sổ cái); `organizers.owner_id/user_id` bị `SET NULL` (tổ chức còn lại, chỉ gỡ chủ sở hữu).
+- **Trước khi sửa:** `reward_risk_flags` không có khoá ngoại tới người dùng; mã tài khoản nằm trong `metrics.user_ids` (jsonb) nên **không** bị xoá, để lại mã mồ côi và liên kết giữa các tài khoản.
+- **Cách chọn:** bảng con `reward_risk_flag_accounts(flag_id → cờ ON DELETE CASCADE, user_id → profiles ON DELETE CASCADE)`; cờ không còn chứa mã người dùng; `rewards_risk_compute` trả mã dưới dạng cột riêng, `admin_run_reward_risk_scan` đồng bộ liên kết, `admin_list_reward_risk_flags` ghép lại `user_ids` cho admin. Trigger xoá cờ danh tính hết ý nghĩa (`shared_phone` còn < 2 tài khoản, `new_accounts` hết tài khoản). Dùng `profiles` thay vì `auth.users` cho nhất quán với các bảng reward (profile xoá theo tầng từ `auth.users`, kết quả như nhau). Cờ cấp host chỉ có số đếm nên ở lại.
+- **Vì sao không chọn cách khác:** sửa luồng xoá trong API (`api/auth`) để dọn cờ thì phụ thuộc vào một đường mã duy nhất và sẽ sót nếu tài khoản bị xoá bằng đường khác (Dashboard, script); ẩn danh (thay mã bằng NULL) giữ lại dòng vô nghĩa. Đánh đổi của bảng con: thêm một bảng và một trigger; `preview` không đổi (chỉ đếm).
+- **Giữ nguyên:** cờ chỉ để admin xem, không thu hồi xu, không chặn ai, cờ `enabled` TẮT mặc định.
+- **Vì sao sửa trực tiếp 178 là chấp nhận được:** theo bạn và kế hoạch, 178 chưa áp dụng lên production (tôi không truy vấn production). **Stack Supabase local của bạn (`supabase_db_banbe`) đã áp dụng 177, 178 và 179** (tôi chỉ đọc danh sách `schema_migrations` local); 178 trên đó là bản cũ, nên cần `supabase db reset` (chỉ local) để khớp file; không dùng được `migration up` vì phiên bản đã ghi là đã chạy. Nếu một môi trường dùng chung đã chạy 178, phải chuyển sang migration 181 bổ sung thay vì sửa file.
+- **Test:** `15_rewards_risk_run.sh` có thêm DEL0–DEL10: xoá thật một dòng `auth.users` (như API) → liên kết biến mất, cờ còn lại giữ nguyên từng byte, cờ `shared_phone` còn < 2 tài khoản bị xoá, xoá host giữ cờ cấp host, quét lại không tạo liên kết tới tài khoản đã xoá, sổ cái người xoá đi theo và không ai bị thu hồi xu.
 
 ## 6. Quyết định còn mở
 
@@ -96,7 +109,7 @@ Cơ sở = đo trước khi sửa gì (đầu phiên). Tất cả test SQL chạ
 3. **Đổi khoá `offer_id`**: bộ đếm hiện dùng mã dòng `reward_catalog` (`partner_offer`); khi `reward_offers` vào chuỗi, có đổi khoá không.
 4. **Giới hạn thử mã** cho `partner_confirm_redemption` và RPC phát hành (giới hạn mỗi người, khoá tồn kho, sinh mã): chưa có, bắt buộc trước khi bật.
 5. **Client chỉ ghi `offer_viewed`** (180): giữ thiết kế này (issued/redeemed chỉ do máy chủ) hay cho client ghi cả ba loại; và client gửi tối đa một lần mỗi ưu đãi mỗi phiên (chưa xây).
-6. **Xoá/ẩn danh cờ rủi ro khi xoá tài khoản**; thời hạn lưu cờ và bộ đếm.
+6. **Thời hạn lưu cờ rủi ro và bộ đếm** (xoá theo tuổi). Việc xoá cờ khi xoá tài khoản đã làm (mục 5.1).
 7. **Hết hạn xu** (12 tháng không hoạt động, chỉ xu kiếm được): xây hay không; **không bán xu** (đề xuất).
 8. **Admin UI** cho cờ rủi ro và báo cáo bộ đếm (hiện chỉ có RPC).
 9. **Số dư âm:** giữ nguyên hay đổi cách xử lý.
@@ -118,6 +131,7 @@ Xem đầy đủ [policy-rewards-draft.md](policy-rewards-draft.md), mục 5 và
 ## 8. Kế hoạch phát hành an toàn (tài liệu, KHÔNG thực hiện)
 
 ### 8.0 Trước khi bắt đầu
+0. **Dựng staging là một project Supabase riêng, áp dụng chuỗi migration thật (177 → 180) và kiểm tra bằng app thật (có PostgREST và GoTrue) trước khi đụng production.** Harness hiện chỉ có Postgres, không có PostgREST/GoTrue: quyền `EXECUTE`, RLS qua API và đăng nhập thật chưa được kiểm. Làm trên staging: toàn bộ mục 8.1 và nhóm A–E, kể cả E2 (bản iOS/web cũ với server mới).
 1. **Xác nhận bản sao lưu Supabase** (Dashboard → Database → Backups): xem có bản sao lưu gần nhất, và gói hiện tại có PITR hay chỉ sao lưu hằng ngày. Ghi lại thời điểm bản sao lưu. Nếu không có sao lưu dùng được, dừng. **[Tôi không kiểm tra được; việc của bạn]**
 2. **Chụp trạng thái trước** (đọc, qua tài khoản test hoặc SQL editor): kết quả `get_my_rewards` và `get_my_reward_summary` của 2 tài khoản có dữ liệu thật; số dòng `reward_ledger`, `reward_unlocks`, `reward_user_badges`, `reward_active_days`; `select version from supabase_migrations.schema_migrations order by version desc limit 5` (kỳ vọng dừng ở 176).
 3. **Kiểm tra tay trên stack local/staging** nhóm A–E trong [rewards-phase0-manual-checks.md](rewards-phase0-manual-checks.md); kể cả server dừng ở 176/178 (E1, E3) và client cũ với server 179 (E2).
@@ -137,7 +151,7 @@ Thứ tự bắt buộc: **177 → 178 → 179 → 180** (179 dựa vào bản `
 Sau mỗi bước: theo dõi nhật ký API/Postgres trong 15–30 phút (lỗi 4xx/5xx trên `get_my_rewards`, `redeem_reward`, `check_in_guest`; khoá; CPU). Chỉ sang migration kế tiếp khi sạch.
 
 ### 8.2 Phát hành client mới (sau khi cả 4 migration đã áp dụng và đã kiểm)
-1. Web: triển khai bản mới. 2. iOS: gửi bản mới qua TestFlight/App Store (bản cài sẵn không cập nhật ngay; server đã tương thích với bản cũ). 3. Sau khi client mới phát hành: kiểm lại nhóm A, D, E bằng bản thật.
+1. Web: triển khai bản mới. 2. iOS: **chạy lại iOS `RewardsTests`** trên commit phát hành (kỳ vọng 17 test, 0 fail), rồi gửi bản mới qua TestFlight/App Store (bản cài sẵn không cập nhật ngay; server đã tương thích với bản cũ). 3. **Làm lại kiểm tra E2 bằng tay** (client cũ với server 179 có cờ bật và có offer): bản iOS đã phát hành trước đây và bản web cũ phải mở được Rewards. 4. Sau khi client mới phát hành: kiểm lại nhóm A, D, E bằng bản thật.
 **Tất cả cờ vẫn TẮT** (`partner_offers`, `reward_events`, `reward_risk_config.enabled`, và `partner_confirm` không tồn tại vì bản nháp chưa vào chuỗi).
 
 ### 8.3 Tiêu chí dừng và cách tắt/lùi
@@ -158,7 +172,7 @@ Cách tắt cờ (SQL, bởi người có quyền): `update reward_feature_flags
 
 | Cờ | Điều kiện tối thiểu |
 |---|---|
-| `reward_risk_config.enabled` (178) | Chạy `admin_reward_risk_preview()` trên dữ liệu thật và xem `by_type`; chỉnh ngưỡng; **luật sư xem `shared_phone`/liên kết tài khoản và policy dòng 178**; thông báo ≥ 30 ngày và xác nhận lại (phương án A tối thiểu); quyết định về xoá cờ khi xoá tài khoản; người xem cờ là admin được chỉ định |
+| `reward_risk_config.enabled` (178) | Chạy `admin_reward_risk_preview()` trên dữ liệu thật và xem `by_type`; chỉnh ngưỡng; **luật sư xem `shared_phone`/liên kết tài khoản và policy dòng 178**; thông báo ≥ 30 ngày và xác nhận lại (phương án A tối thiểu); quyết định thời hạn lưu cờ (xoá khi xoá tài khoản đã làm); người xem cờ là admin được chỉ định |
 | `reward_events` (180) | **Cập nhật policy và luật sư xem** (dù không định danh; kể cả nhật ký nền tảng); client gửi tối đa một lần mỗi ưu đãi mỗi phiên; quyết định ngưỡng nhóm và thời hạn lưu |
 | `partner_offers` (179) | Luật sư (câu 1–3, 5, 6 trong mục 8 bản nháp policy); đã chọn phương án A/B và đã thông báo/xin lại đồng ý nếu B; có đối tác thật với thoả thuận bằng văn bản; `get_my_rewards().offers` nối `reward_offers`; RPC phát hành với giới hạn mỗi người, khoá tồn kho, giới hạn thử mã; công cụ admin. Nếu không, bật cờ chỉ hiện thẻ "chưa khả dụng" |
 | (bản nháp) `partner_confirm` | Chưa nằm trong chuỗi. Đưa vào chuỗi chỉ sau khi toàn bộ điều kiện của `partner_offers` đạt |
@@ -167,10 +181,11 @@ Cách tắt cờ (SQL, bởi người có quyền): `update reward_feature_flags
 
 1. **Xác nhận backup Supabase** (mục 8.0.1) và ghi lại.
 2. **Chụp trạng thái trước** (8.0.2).
-3. **Kiểm tay nhóm A–E** theo [rewards-phase0-manual-checks.md](rewards-phase0-manual-checks.md) trên local/staging; nhóm C (giao diện thật, iPhone thật) chỉ làm được bằng tay.
+3. **Dựng staging (project Supabase riêng) và kiểm tay nhóm A–E** theo [rewards-phase0-manual-checks.md](rewards-phase0-manual-checks.md) trên local/staging; nhóm C (giao diện thật, iPhone thật) chỉ làm được bằng tay.
 4. **Kiểm chứng hướng dẫn local** (`supabase db reset --version`, `migration up`) và cách áp từng migration một.
 5. **Duyệt hoặc sửa** các quyết định mở ở mục 6.
 6. **Gửi luật sư** [policy-rewards-draft.md](policy-rewards-draft.md) và mục 7; chọn phương án A/B; soạn thông báo; quyết định cách xin đồng ý lại.
 7. **Áp dụng migration lên production** từng cái một theo mục 8.1, kiểm tra sau mỗi cái, rồi phát hành client; theo dõi.
 8. **Dọn dẹp máy dev:** container thử `banbe-pg3` (không mở cổng; `docker rm -f banbe-pg3` khi xong); `banbe-pg2` đã dừng; `banbe-pg` đang dừng vì bạn chạy stack Supabase local.
-9. Sau khi duyệt: **push và tạo PR** (tôi chưa làm).
+9. **Đặt lại stack Supabase local** (`supabase db reset`, chỉ local) để 178 khớp bản đã sửa.
+10. Sau khi duyệt: **push và tạo PR** (tôi chưa làm).
