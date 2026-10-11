@@ -79,4 +79,7 @@ dist-ssr
 !/supabase/_localtest/16b_kinds_after.sql
 !/supabase/_localtest/17_rewards_partner_draft_run.sh
 !/supabase/_localtest/17_rewards_partner_draft_assert.sql
+!/supabase/_localtest/18_rewards_events_run.sh
+!/supabase/_localtest/18a_events_before.sql
+!/supabase/_localtest/18b_events_after.sql
 .migration-state/

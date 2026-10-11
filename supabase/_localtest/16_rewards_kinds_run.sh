@@ -11,7 +11,7 @@ docker exec "$CONTAINER" psql -U "$DBUSER" -d postgres -q -c "TRUNCATE storage.o
 psql_run < "$T/00_bootstrap_storage.sql" 2>&1 | grep -E '(ERROR|FATAL):' && { echo "bootstrap FAILED"; exit 1; }
 apply() { { printf 'BEGIN;\n'; cat "$1"; printf '\nCOMMIT;\n'; } | psql_run 2>&1 | grep -E '(ERROR|FATAL):' | head -2; }
 for f in "$ROOT"/supabase/migrations/*.sql; do
-  case "$(basename "$f")" in *_179_reward_kinds.sql) continue;; esac
+  case "$(basename "$f")" in *_179_reward_kinds.sql|*_18[0-9]_*) continue;; esac   # 179 and everything after it (they build on 179)
   err=$(apply "$f"); [ -n "$err" ] && { echo "FAILED $(basename "$f")"; echo "$err"; exit 1; }
 done
 psql_run < "$T/01_seed.sql" 2>&1 | grep -E '(ERROR|FATAL):' -A2 && { echo "seed FAILED"; exit 1; }
