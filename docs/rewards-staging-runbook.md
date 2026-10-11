@@ -82,6 +82,20 @@ Production đã áp dụng toàn bộ migration đến **176** (bạn xác nhậ
   - SMTP/mẫu email: không cần.
 
 ### 2.3 Áp dụng 1 → 176 bằng CLI, an toàn
+**Trước hết xác nhận tên và version đầy đủ của các migration** (đã đối chiếu 2026-10-11, **[ĐÃ KIỂM CHỨNG]**; chạy lại trước khi dùng):
+
+```bash
+ls supabase/migrations | tail -6
+# kỳ vọng (176 là migration cuối đã có trên production; sau 180 không có file nào):
+# 20261217000175_175_dob_correction_requests.sql
+# 20261218000176_176_ticket_list_hidden.sql
+# 20261218000177_177_user_reward_timezone.sql
+# 20261219000178_178_reward_risk_flags.sql
+# 20261220000179_179_reward_kinds.sql
+# 20261221000180_180_reward_event_counters.sql
+```
+Nếu khác, **dừng** và sửa các mã version trong `make_workdir`/`apply_one` cho khớp. Các mã đúng là `20261218000176`, `20261218000177`, `20261219000178`, `20261220000179`, `20261221000180`.
+
 Cách làm: tạo **thư mục làm việc tạm** chỉ chứa `config.toml` và các migration cần áp dụng; chạy CLI từ đó với `--workdir` và `--db-url`.
 
 ```bash
@@ -136,7 +150,7 @@ Khi staging ở 176 và đã có dữ liệu test (mục 5.2): với mỗi tài 
 |---|---|
 | **177** | `get_my_reward_summary`, `get_my_rewards`, `record_active_day('save', …)`, `redeem_reward` (mã đã mở khoá → `already_unlocked`) cho tài khoản test: kết quả khớp bản chụp trước (số dư, chuỗi, lịch sử); `get_my_rewards` có thêm `timezone_settings`; tài khoản chưa chọn múi giờ: `streak.timezone = Asia/Ho_Chi_Minh`; một check-in thử ở sự kiện test không bị chặn |
 | **178** | Bảng `reward_risk_*` (3 bảng gồm `reward_risk_flag_accounts`) tồn tại; `reward_risk_config.enabled = false`; `admin_reward_risk_preview()` (admin) trả `written: 0`; `check_in_guest` và đặt chỗ vẫn chạy |
-| **179** | `get_my_rewards`: `catalog` còn đúng 3 mục, `offers = []`; `redeem_reward` trả như cũ cho mã keychain; mở Rewards bằng **bản iOS đã phát hành** và bản web cũ: không lỗi; `save_my_keychain` vẫn `DESIGN_LOCKED` cho thiết kế chưa mở khoá |
+| **179** | `get_my_rewards`: `catalog` còn đúng 3 mục, `offers = []`; `redeem_reward` trả như cũ cho mã keychain; mở Rewards bằng **bản web cũ còn trong bộ nhớ đệm** và bản iOS cũ build trên thiết bị phát triển (xem ghi chú ở 4.2): không lỗi; `save_my_keychain` vẫn `DESIGN_LOCKED` cho thiết kế chưa mở khoá |
 | **180** | `reward_feature_flags('reward_events') = false`; `record_reward_event` (đăng nhập) trả `recorded:false`; bảng đếm rỗng |
 
 ### 3.4 Gọi RPC bằng PostgREST thật và so sánh trước/sau
@@ -144,16 +158,20 @@ Lấy JWT bằng GoTrue thật (đăng nhập mật khẩu), rồi gọi RPC qua
 
 ```bash
 source /path/to/stg-guard.sh
-login() {   # login <email> <password>  -> prints access_token  (không in ra màn hình chia sẻ, không ghi vào repo)
+# MẬT KHẨU: đừng gõ mật khẩu test trong dòng lệnh (nó vào lịch sử shell). Nhập một lần bằng read -s (không hiện, không vào lịch sử):
+#   read -s STG_TEST_PW; export STG_TEST_PW
+# và nên bật bỏ qua lịch sử cho dòng bắt đầu bằng dấu cách:  zsh: setopt HIST_IGNORE_SPACE   bash: export HISTCONTROL=ignorespace
+login() {   # login <email>  -> prints access_token  (dùng $STG_TEST_PW; không in ra màn hình chia sẻ, không ghi vào repo)
+  : "${STG_TEST_PW:?run: read -s STG_TEST_PW; export STG_TEST_PW}"
   curl -s "$STG_URL/auth/v1/token?grant_type=password" -H "apikey: $STG_ANON" -H "Content-Type: application/json" \
-       -d "{\"email\":\"$1\",\"password\":\"$2\"}" | jq -r .access_token
+       -d "{\"email\":\"$1\",\"password\":\"$STG_TEST_PW\"}" | jq -r .access_token
 }
 rpc() {     # rpc <name> <jwt|-> [json-body]
   local auth=() body="${3-}"; [ -z "$body" ] && body='{}'
   [ "$2" != "-" ] && auth=(-H "Authorization: Bearer $2")
   curl -s "$STG_URL/rest/v1/rpc/$1" -H "apikey: $STG_ANON" "${auth[@]}" -H "Content-Type: application/json" -d "$body"
 }
-JWT_MAIN="$(login rw.main@banbe-staging.test '<mật khẩu test>')"
+JWT_MAIN="$(login rw.main@banbe-staging.test)"
 mkdir -p ~/stg-evidence
 snap() {    # snap <label>   — các trường mà client CŨ đọc; bỏ trường mới
   rpc get_my_reward_summary "$JWT_MAIN" | jq -S . > ~/stg-evidence/$1.summary.json
@@ -161,11 +179,20 @@ snap() {    # snap <label>   — các trường mà client CŨ đọc; bỏ trư
       badges: [.badges[] | del(.earned_at)], history: [.history[] | {type, amount, reason}],
       catalog: [.catalog[] | {code, kind, design_id, price, unlocked}], paid: .attendance_paid_this_month}' > ~/stg-evidence/$1.rewards.json
 }
-snap before-177        # chạy ở 176
+check_snap() {   # check_snap <label>: bản chụp không rỗng và không có null ở các trường chính (chặn trường hợp RPC trả lỗi/rỗng rồi "diff giống nhau")
+  local r=~/stg-evidence/$1.rewards.json s=~/stg-evidence/$1.summary.json
+  [ -s "$r" ] && [ -s "$s" ] || { echo "BAD SNAPSHOT $1: file rỗng/không có"; return 1; }
+  jq -e '.success == true and .balance != null and .rules.version != null and .streak.current != null and .streak.longest != null
+         and .streak.active_today != null and (.badges | type == "array") and (.history | type == "array") and (.catalog | length > 0) and .paid != null' "$r" >/dev/null \
+    || { echo "BAD SNAPSHOT $1: .success!=true hoặc có null/rỗng ở trường chính (đã đăng nhập chưa? qua cổng chưa? tên RPC đúng chưa?)"; jq -c '{success, balance, error, code, message}' "$r"; return 1; }
+  jq -e '.success == true and .balance != null and .streak != null and .active_today != null' "$s" >/dev/null \
+    || { echo "BAD SUMMARY $1: .balance == null hoặc thiếu trường"; jq -c . "$s"; return 1; }
+}
+snap before-177 && check_snap before-177        # chạy ở 176
 # …áp dụng 177… rồi:
-snap after-177 && diff ~/stg-evidence/before-177.rewards.json ~/stg-evidence/after-177.rewards.json && echo "UNCHANGED"
+snap after-177 && check_snap after-177 && diff ~/stg-evidence/before-177.rewards.json ~/stg-evidence/after-177.rewards.json && echo "UNCHANGED"
 ```
-**[CHƯA KIỂM CHỨNG]** toàn bộ đoạn trên (chưa chạy với staging thật). Lưu ý: `streak.timezone` đổi nghĩa ở 177 nhưng vẫn là `Asia/Ho_Chi_Minh` cho người chưa chọn nên không nằm trong `diff` ở trên; `timezone_settings` (177) và `offers` (179) là trường mới, **không** đưa vào so sánh; khi so sánh sau 179, mọi dòng `catalog` phải giống hệt dòng cũ cho các trường cũ.
+**Tên trường đã đối chiếu (2026-10-11, **[ĐÃ KIỂM CHỨNG]** bằng đọc code):** `get_my_reward_summary` trả `success, balance, streak (số), active_today` (`165:563`, không đổi từ đó); `get_my_rewards` trả `success, balance, rules (có version, timezone), streak {current, longest, last_active_date, active_today, timezone}, badges[{code, title_vi, title_en, desc_vi, desc_en, target, progress, earned, earned_at}], history[{id, type, amount, reason, created_at, event_name, item_code}], catalog[{code, kind, design_id, price, unlocked (+ title_vi/title_en/desc_vi/desc_en/status từ 179)}], attendance_paid_this_month`, thêm `offers` (179) và `timezone_settings` (177): nguồn `179:87-136` (bản hiện hành), `177:257`, `165:575`. Đoạn `jq` ở `snap` chỉ giữ các trường cũ nên đúng với cả 176, 177 và 179. **[CHƯA KIỂM CHỨNG]** việc chạy đoạn lệnh với staging thật. Một thân phản hồi lỗi của PostgREST (ví dụ `{"code":"PGRST202",…}`) sẽ cho `null` ở mọi trường và hai bản chụp lỗi sẽ `diff` giống nhau: đó là lý do phải chạy `check_snap` trước `diff`. Lưu ý: `streak.timezone` đổi nghĩa ở 177 nhưng vẫn là `Asia/Ho_Chi_Minh` cho người chưa chọn nên không nằm trong `diff` ở trên; `timezone_settings` (177) và `offers` (179) là trường mới, **không** đưa vào so sánh; khi so sánh sau 179, mọi dòng `catalog` phải giống hệt dòng cũ cho các trường cũ.
 
 Cổng tài khoản (migration 126) có thể từ chối RPC với tài khoản chưa qua cổng. Cách xử lý cho kiểm tra API: tạo tài khoản qua API admin **có `phone` và `phone_confirm: true`** (mục 5.2); nếu cổng vẫn đòi ngày sinh theo phiên, dùng phương án `account_phone_grandfathered` ở 5.2. **[CHƯA KIỂM CHỨNG]** phương án nào chạy.
 
@@ -214,6 +241,7 @@ PROD_REF="$(cat supabase/.temp/project-ref)"; grep -c "$PROD_REF\|banbe.app" "$F
 - `apiBaseURL` trỏ `127.0.0.1:9` (không ai nghe) để mọi `/api/*` thất bại thay vì chạm production; `publicWebOrigin` suy ra từ nó (**[ĐÃ KIỂM CHỨNG]**).
 - Build & chạy simulator như mục 6.2 của `rewards-phase0-local-setup.md`. **Khôi phục khi xong:** `git checkout -- apps/ios/BanbeApp/Services/SupabaseService.swift` (hoặc `ios-restore.sh`), **không bao giờ commit file đã sửa**; kiểm `git status` sạch trước khi commit bất cứ gì.
 - Điện thoại thật: staging dùng https nên không vướng ATS như local; **[CHƯA KIỂM CHỨNG]** (cần ký số/Personal Team, xem note 18).
+- **Ghi chú rủi ro client iOS cũ (E2, B7):** iOS **chưa lên App Store**; app chỉ build bằng Apple ID miễn phí (`PersonalTeamDebug`, xem `.claude/notes/18-ios-personal-team-signing.md`), nên "bản iOS đã phát hành" **không tồn tại** ở người dùng thật: rủi ro client iOS cũ chỉ áp dụng cho thiết bị phát triển (bản build cũ còn cài trên máy). Khi thử E2/B7, **ưu tiên bản web cũ còn trong bộ nhớ đệm** (tab đang mở từ trước khi triển khai, hoặc bundle cũ được cache), vì đó mới là client cũ thật sự có thể gặp server mới; iOS cũ chỉ cần thử để chắc chắn.
 - **Client cũ (E1–E3, B7, B8):** dựng bản cũ từ worktree riêng rồi áp dụng cùng cách sửa tạm ở đó:
   ```bash
   git worktree add /tmp/banbe-old-pre177 e399694     # trước toàn bộ Giai đoạn 0
@@ -231,7 +259,7 @@ PROD_REF="$(cat supabase/.temp/project-ref)"; grep -c "$PROD_REF\|banbe.app" "$F
 3. Áp dụng **177** → bảng 3.3 → `snap after-177` → nhóm **A** (A1–A10) và **B** (B1–B8, gồm B7/B8 client cũ với server 177). Dùng SQL Editor staging thay cho `10_tz_fastforward.sql` (A6): `update reward_user_settings set pending_from_ts = now() - interval '1 minute' where user_id = (select id from auth.users where email = 'rw.main@banbe-staging.test') and pending_tz is not null;`.
 4. Áp dụng **178** → bảng 3.3 (kèm 5.3 mục P6).
 5. **E1** (server 178, client mới): Rewards mở bình thường, có mục múi giờ, không có Ưu đãi.
-6. Áp dụng **179** → bảng 3.3 → nhóm **D** (D1–D8; tạo offer và bật/tắt cờ bằng SQL Editor, cú pháp trong `rewards-phase0-local-setup.md` mục "Bước 3b", đổi `supabase_db_banbe` thành SQL Editor staging) và **E2** (client cũ `/tmp/banbe-old-*` với server 179, cờ bật và có offer: Rewards mở được, thấy 3 thiết kế, không thấy offer).
+6. Áp dụng **179** → bảng 3.3 → nhóm **D** (D1–D8; tạo offer và bật/tắt cờ bằng SQL Editor, cú pháp trong `rewards-phase0-local-setup.md` mục "Bước 3b", đổi `supabase_db_banbe` thành SQL Editor staging) và **E2** (client cũ với server 179, cờ bật và có offer: Rewards mở được, thấy 3 thiết kế, không thấy offer). Thử **web cũ trước** (tab/bundle cũ còn trong bộ nhớ đệm), rồi iOS cũ build từ `/tmp/banbe-old-*` (chỉ là thiết bị phát triển; iOS chưa lên App Store).
 7. Áp dụng **180** → bảng 3.3 → P-checks.
 8. Nhóm **C** (giao diện thật, máy nhỏ, dark mode, Dynamic Type, VoiceOver): làm bằng tay trên simulator/iPhone, ghi ảnh chụp.
 
@@ -239,10 +267,10 @@ PROD_REF="$(cat supabase/.temp/project-ref)"; grep -c "$PROD_REF\|banbe.app" "$F
 Tài khoản mật khẩu, đã xác nhận email và số điện thoại, tạo bằng API admin của **staging** (khoá `service_role` của staging; **[CHƯA KIỂM CHỨNG]** các trường được chấp nhận):
 
 ```bash
-source /path/to/stg-guard.sh; : "${STG_SERVICE:?export STG_SERVICE only for this step}"
+source /path/to/stg-guard.sh; : "${STG_SERVICE:?export STG_SERVICE only for this step}"; : "${STG_TEST_PW:?read -s STG_TEST_PW; export STG_TEST_PW}"
 mk() {   # mk <email> <phone> <display_name>
   curl -s "$STG_URL/auth/v1/admin/users" -H "apikey: $STG_SERVICE" -H "Authorization: Bearer $STG_SERVICE" -H "Content-Type: application/json" \
-   -d "{\"email\":\"$1\",\"password\":\"<mật khẩu test>\",\"email_confirm\":true,\"phone\":\"$2\",\"phone_confirm\":true,\"user_metadata\":{\"display_name\":\"$3\"}}" | jq '{id, email}'
+   -d "{\"email\":\"$1\",\"password\":\"$STG_TEST_PW\",\"email_confirm\":true,\"phone\":\"$2\",\"phone_confirm\":true,\"user_metadata\":{\"display_name\":\"$3\"}}" | jq '{id, email}'
 }
 mk rw.main@banbe-staging.test  +84900200001 "RW Main"
 mk rw.fresh@banbe-staging.test +84900200002 "RW Fresh"
@@ -288,12 +316,50 @@ SELECT u.id, (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - n, 'save' FROM auth
 - Để quan sát A–E đúng như mô tả, đối chiếu số xu/chuỗi bằng truy vấn đọc trong SQL Editor trước và sau (như `13_numbers.sql`).
 
 ### 5.3 Kiểm tra chỉ staging làm được (harness không có PostgREST/GoTrue)
+
+#### 5.3.0 Tên tham số RPC (đã đối chiếu với migration) và cách đọc mã lỗi
+PostgREST gọi hàm theo **tên tham số trong body JSON**. Bảng dưới đã đối chiếu 2026-10-11 với định nghĩa hàm (**[ĐÃ KIỂM CHỨNG]** bằng đọc code); các tên dùng ở P1/P4 và 3.4 đều đúng:
+
+| RPC | Tham số (body JSON) | Nguồn (file:dòng, bản hiện hành; bản trước trong ngoặc) |
+|---|---|---|
+| `get_my_reward_summary` | không có: `{}` | `165:563` |
+| `get_my_rewards` | không có: `{}` | `179:87` (177:257, 165:575) |
+| `redeem_reward` | `p_item_code` | `179:50` (165:631) |
+| `record_active_day` | `p_source`, `p_ref` (tuỳ chọn) | `177:195` (165:658) |
+| `set_my_reward_timezone` | `p_tz` | `177:301` |
+| `record_reward_event` | `p_offer_id`, `p_event_type` (mặc định `offer_viewed`), `p_region` (mặc định `UNKNOWN`) | `180:84` |
+| `admin_reward_event_report` | `p_from`, `p_to`, `p_by_day` (đều tuỳ chọn): `{}` được | `180:97` |
+| `admin_reward_risk_preview` / `admin_run_reward_risk_scan` / `admin_get_reward_risk_config` | không có: `{}` | `178:180` / `178:194` / `178:245` |
+| `admin_list_reward_risk_flags` | `p_status` (mặc định `open`), `p_limit` | `178:220` |
+| `admin_review_reward_risk_flag` | `p_id` (uuid), `p_status`, `p_note` | `178:232` |
+| `admin_set_reward_risk_config` | `p_enabled`, `p_thresholds` | `178:256` |
+
+(Số dòng có thể lệch nếu file được sửa sau này; tên hàm là thứ cần tin.)
+
+**Cách đọc kết quả, quan trọng cho P1/P2:**
+- **Chỉ HTTP 401 / 403 hoặc mã lỗi `42501` (permission denied) mới tính là "bị từ chối quyền".** PostgREST trả 401 cho vai trò `anon` và 403 cho vai trò đã đăng nhập khi gặp `42501`. **[CHƯA KIỂM CHỨNG]** mã chính xác trên staging; ghi lại mã thật.
+- **HTTP 404 hoặc mã `PGRST202` nghĩa là "không tìm thấy hàm với tên/tham số đó"** (gọi sai tên hàm, sai tên tham số, hoặc schema cache chưa nạp sau migration). **Không phải bị từ chối.** Một phép thử P1 trả 404 là **phép thử hỏng**, không phải kết quả "an toàn": sửa tên rồi chạy lại. Mã `PGRST203` = nhiều chữ ký trùng tên (không kỳ vọng ở đây).
+- **Tách "hàm có tồn tại" khỏi "quyền"** (làm trước P1, trong SQL Editor staging, chỉ đọc):
+  ```sql
+  select p.proname, pg_get_function_identity_arguments(p.oid) as args,
+         has_function_privilege('anon', p.oid, 'EXECUTE')          as anon_exec,
+         has_function_privilege('authenticated', p.oid, 'EXECUTE') as auth_exec
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public'
+     and p.proname in ('get_my_reward_summary','get_my_rewards','redeem_reward','record_active_day','set_my_reward_timezone',
+                       'record_reward_event','admin_reward_event_report','admin_reward_risk_preview','admin_run_reward_risk_scan',
+                       'admin_list_reward_risk_flags','admin_review_reward_risk_flag','admin_get_reward_risk_config','admin_set_reward_risk_config')
+   order by 1;
+  ```
+  Kỳ vọng (từ code): mọi hàm có mặt (sau 180), `anon_exec = false`, `auth_exec = true`. Nếu một hàm thiếu, P1 cho hàm đó sẽ trả 404/PGRST202 (không phải "bị từ chối"). Cách thứ hai: danh sách `/rpc/...` của PostgREST (`curl "$STG_URL/rest/v1/" -H "apikey: $STG_ANON" | jq '.paths | keys | map(select(startswith("/rpc/")))'`), **[CHƯA KIỂM CHỨNG]** (Supabase có thể hạn chế OpenAPI với khoá anon).
+- Quy trình cho mỗi RPC ở P1: (1) bảng SQL trên xác nhận hàm tồn tại và `anon_exec=false`; (2) gọi bằng anon, kỳ vọng 401/403/`42501`; (3) gọi lại với JWT hợp lệ (P4), kỳ vọng 200. Cả ba khớp mới tính là đạt.
+
 Mỗi dòng ghi kết quả thật vào bằng chứng. Kỳ vọng là **dự đoán** từ code; nếu khác, đó là phát hiện cần điều tra, không phải lỗi của runbook.
 
 | # | Kiểm tra | Cách làm | Kỳ vọng (CHƯA KIỂM CHỨNG) |
 |---|---|---|---|
-| P1 | **Quyền EXECUTE qua khoá anon (không đăng nhập)** | `rpc get_my_rewards -`, `rpc redeem_reward - '{"p_item_code":"rwd-comet"}'`, `rpc set_my_reward_timezone -  '{"p_tz":"America/Chicago"}'`, `rpc record_reward_event - '{"p_offer_id":"x"}'`, `rpc admin_reward_event_report -`, `rpc admin_reward_risk_preview -` (đều với khoá anon, không `Authorization`) | Bị từ chối (HTTP 401/403, mã `42501` hoặc tương đương); không có dữ liệu trả về |
-| P2 | **RLS/quyền bảng qua REST** (JWT người dùng thường **và** anon) | `GET $STG_URL/rest/v1/<bảng>?select=*` cho từng bảng: `reward_ledger`, `reward_unlocks`, `reward_active_days`, `reward_user_badges`, `reward_catalog`, `reward_user_settings`, `reward_risk_flags`, `reward_risk_flag_accounts`, `reward_risk_config`, `reward_event_counters`, `reward_event_config`, `reward_feature_flags` | Bị từ chối (không trả hàng nào, kể cả của chính người dùng); không bảng nào lộ qua REST |
+| P1 | **Quyền EXECUTE qua khoá anon (không đăng nhập)** | `rpc get_my_rewards -`, `rpc redeem_reward - '{"p_item_code":"rwd-comet"}'`, `rpc set_my_reward_timezone -  '{"p_tz":"America/Chicago"}'`, `rpc record_reward_event - '{"p_offer_id":"x"}'`, `rpc admin_reward_event_report -`, `rpc admin_reward_risk_preview -` (đều với khoá anon, không `Authorization`) | **HTTP 401/403 hoặc `42501`** (không phải 404/`PGRST202`; xem 5.3.0); không có dữ liệu trả về |
+| P2 | **RLS/quyền bảng qua REST** (JWT người dùng thường **và** anon) | `GET $STG_URL/rest/v1/<bảng>?select=*` cho từng bảng: `reward_ledger`, `reward_unlocks`, `reward_active_days`, `reward_user_badges`, `reward_catalog`, `reward_user_settings`, `reward_risk_flags`, `reward_risk_flag_accounts`, `reward_risk_config`, `reward_event_counters`, `reward_event_config`, `reward_feature_flags` | **401/403/`42501`** (không phải 404: một bảng không được cấp quyền vẫn tồn tại; 404 nghĩa là sai tên bảng); không trả hàng nào, kể cả của chính người dùng |
 | P3 | **Đăng nhập GoTrue thật** | `login` ở 3.4 với từng tài khoản; thử sai mật khẩu; đăng xuất; làm mới token | Token hợp lệ; sai mật khẩu bị từ chối |
 | P4 | **RPC của người dùng thường qua REST** | Với JWT `rw.main`: `get_my_reward_summary`, `get_my_rewards`, `record_active_day`, `redeem_reward`, `set_my_reward_timezone`, `record_reward_event` (cờ tắt) | Thành công; `record_reward_event` trả `recorded:false`; `admin_*` trả `NOT_ADMIN` |
 | P5 | **Cổng tài khoản (126) với RPC mới** | Tài khoản chưa qua cổng (tạo thêm một tài khoản không có DOB/điện thoại) gọi RPC rewards | Bị cổng chặn theo cách các RPC cũ vẫn bị chặn (không khác biệt giữa RPC cũ và mới) |
@@ -339,14 +405,76 @@ Staging đạt là **điều kiện cần, không đủ**: staging có dữ li�
 ## 7. Dọn dẹp / xoá staging
 
 1. **Client:** khôi phục iOS: `git checkout -- apps/ios/BanbeApp/Services/SupabaseService.swift`; xoá `.env.rewardsstaging.local`; dừng dev server; xoá app khỏi simulator; `git worktree remove /tmp/banbe-old-pre177 /tmp/banbe-old-pre3b`.
-2. **Máy:** `rm -rf /tmp/banbe-stg-workdir ~/stg-evidence` (sau khi đã lưu bằng chứng cần giữ, đã che khoá); `unset STG_REF STG_URL STG_ANON STG_DB_URL STG_SERVICE`; xoá dòng chứa khoá khỏi lịch sử shell nếu có (`history`); kiểm tra `git status` sạch (không có thay đổi trong `apps/ios` hay file `.env*`).
+2. **Máy:** `rm -rf /tmp/banbe-stg-workdir ~/stg-evidence` (sau khi đã lưu bằng chứng cần giữ, đã che khoá); `unset STG_REF STG_URL STG_ANON STG_DB_URL STG_SERVICE STG_TEST_PW JWT_MAIN`; **xoá lịch sử shell chứa mật khẩu test, khoá hoặc chuỗi kết nối**: kiểm tra bằng `fc -l 1 | grep -iE 'password|STG_|service|eyJ'` (zsh) hoặc `history | grep -iE …` (bash); xoá các dòng đó (`fc -W` rồi sửa `~/.zsh_history`, hoặc `history -d <n>` ở bash; `history -c` / `: > ~/.zsh_history` xoá hết nếu chấp nhận mất lịch sử); đóng terminal sau khi dọn; kiểm tra `git status` sạch (không có thay đổi trong `apps/ios` hay file `.env*`).
 3. **Dashboard staging:** *Project Settings → General → Delete project* (xoá hẳn) hoặc *Pause project* nếu muốn giữ để dùng lại. **[CHƯA KIỂM CHỨNG]** tên mục chính xác. Xoá project huỷ luôn các khoá của nó; nếu giữ lại, **xoay khoá** (*Settings → API*) sau khi dùng xong.
 4. **Xác nhận không đụng production:** `supabase migration list --db-url "<production>"` **không** thuộc runbook này (không truy vấn production). Thay vào đó xác nhận bằng chứng 6.2 cho thấy chỉ có `STG_REF` và không có mã production nào trong đầu ra.
 5. Nếu staging được giữ cho vòng phát hành kế tiếp: đưa nó về lại 176 là **không** thể bằng rollback (các file rollback chỉ lùi chức năng, không xoá bảng khi có dữ liệu). Tạo project mới (mục 1) thay vì tái sử dụng.
 
 ---
 
-## 8. Tóm tắt đã/chưa kiểm chứng
+## 8. Áp dụng lên production (quy trình TƯƠNG LAI, KHÔNG thực hiện trong phiên này)
+
+> **Chỉ làm khi bạn quyết định, sau khi staging đạt.** Mọi lệnh ở đây nhắm **production**; tài liệu chỉ mô tả. Không lệnh nào trong runbook này được chạy cho đến khi mọi điều kiện tiên quyết dưới đây đúng. Nguyên tắc: **cùng cách làm từng cái một như staging**, chỉ đổi đích sang production bằng `--db-url` tường minh, kèm một guard đảo ngược.
+
+### 8.1 Điều kiện tiên quyết (tất cả phải đúng)
+1. **Staging đạt** theo mục 6.1 (kèm bằng chứng 6.2 đã lưu).
+2. **Bản sao lưu production đã xác nhận** (Dashboard → Database → Backups; ghi thời điểm, loại PITR/hằng ngày) và bạn biết cách khôi phục.
+3. **Đã chụp trạng thái trước** (mục 8.0.2 của summary): kết quả `get_my_reward_summary`/`get_my_rewards` của tài khoản của chính bạn hoặc tài khoản test (không đăng nhập thay người dùng thật), số dòng các bảng reward, `select version from supabase_migrations.schema_migrations order by version desc limit 5` (kỳ vọng dừng ở 176).
+4. **Khung giờ ít người dùng** đã chọn; **người trực** (ít nhất một người khác có thể xem nhật ký) đã chốt; kênh liên lạc khi có sự cố.
+5. **Mọi cờ TẮT** và sẽ giữ TẮT: `reward_risk_config.enabled`, `reward_feature_flags('partner_offers')`, `reward_feature_flags('reward_events')`. Không bật gì trong quy trình này (điều kiện bật cờ: mục 8.4 của summary).
+6. Client mới **chưa** phát hành (chỉ phát hành sau khi cả bốn migration đã áp dụng và kiểm xong; summary 8.2).
+7. Bạn là người **tự gõ** mã production và chuỗi kết nối (không do công cụ hay script suy ra), và `STG_*` không còn đặt trong shell dùng cho production (`unset STG_REF STG_URL STG_ANON STG_DB_URL STG_SERVICE`).
+
+### 8.2 prod-guard.sh (đặt NGOÀI repo; đảo ngược stg-guard.sh)
+```bash
+# prod-guard.sh — RUN IT WITH BASH (do not source it from zsh: it uses bash read -p and ${!var}):  bash /path/to/prod-guard.sh
+# Run it BEFORE any command that targets production.
+# Aborts unless: the production ref was TYPED by a human, it matches the connection string, it is not a staging value,
+# and the human re-confirms by typing the last 4 characters. Never prints keys or connection strings.
+read -r -p "Type the PRODUCTION project ref: " PROD_REF_TYPED
+: "${PROD_DB_URL:?export PROD_DB_URL (production connection string, percent-encoded) first}"
+fail() { echo "STOP: $1"; exit 1; }
+[ "${#PROD_REF_TYPED}" -eq 20 ]                        || fail "a project ref has 20 characters"
+case "$PROD_DB_URL" in *"$PROD_REF_TYPED"*) ;; *) fail "PROD_DB_URL does not contain the production ref you typed";; esac
+for v in STG_REF STG_URL STG_DB_URL; do
+  [ -z "${!v:-}" ] || { case "${!v}" in *"$PROD_REF_TYPED"*) fail "$v contains the production ref (staging value equals production)";; esac; }
+done
+[ -z "${STG_REF:-}" ] || [ "$STG_REF" != "$PROD_REF_TYPED" ] || fail "STG_REF equals the production ref"
+LINKED="$(cat "$(git rev-parse --show-toplevel)/supabase/.temp/project-ref" 2>/dev/null)"   # informational cross-check only
+[ -z "$LINKED" ] || [ "$LINKED" = "$PROD_REF_TYPED" ] || fail "the repo is linked to a different project than the one you typed"
+read -r -p "Re-type the LAST 4 characters of the production ref to confirm: " C4
+[ "$C4" = "${PROD_REF_TYPED: -4}" ] || fail "confirmation does not match"
+echo "OK: production target confirmed (…${PROD_REF_TYPED: -4}). Every command below acts on PRODUCTION."
+exit 0
+```
+**[CHƯA KIỂM CHỨNG]** (script chưa chạy; vì chạy bằng `bash` riêng nên không để lại biến trong shell của bạn: chỉ `PROD_DB_URL` cần được export). Dùng **một terminal riêng** cho production, mở mới, không dùng terminal staging. Không dùng `--linked` ngay cả cho production: luôn `--db-url "$PROD_DB_URL"` và `--workdir /tmp/banbe-prod-workdir`.
+
+### 8.3 Từng migration, từng cái một
+Dùng `make_workdir` (mục 2.3) nhưng thư mục đích là `/tmp/banbe-prod-workdir` (đổi biến `W`). Với N lần lượt `20261218000177`, `20261219000178`, `20261220000179`, `20261221000180`:
+```bash
+bash /path/to/prod-guard.sh                        # PROD_DB_URL đã export; phải in "OK: production target confirmed". Nếu KHÔNG in OK: dừng, KHÔNG chạy các dòng sau
+supabase migration list --db-url "$PROD_DB_URL"    # trước migration đầu tiên: Remote kết thúc ở 20261218000176
+make_workdir <N>                                    # thư mục tạm chỉ chứa migration ≤ N
+supabase db push --workdir /tmp/banbe-prod-workdir --db-url "$PROD_DB_URL" --dry-run
+# DỪNG và ĐỌC: phải liệt kê ĐÚNG MỘT file (migration N). Nếu không đúng một file, hoặc file không phải N: KHÔNG chạy tiếp.
+supabase db push --workdir /tmp/banbe-prod-workdir --db-url "$PROD_DB_URL"        # không --include-seed, không --include-all, không --linked
+```
+- Thứ tự bắt buộc **177 → 178 → 179 → 180** (179 dựa vào 177; 180 dựa vào 179).
+- **Sau mỗi migration:** chạy bảng kiểm tra ở mục 3.3 (RPC cũ vẫn chạy so với bản chụp trước, kết quả không đổi) bằng tài khoản của bạn/tài khoản test; **theo dõi nhật ký (Dashboard → Logs: API và Postgres) 15–30 phút**: lỗi 4xx/5xx trên `get_my_rewards`, `redeem_reward`, `check_in_guest`, khoá, CPU. Chỉ sang migration kế tiếp khi sạch.
+- **Tiêu chí dừng:** bất kỳ RPC cũ nào khác bản chụp, số dư hoặc chuỗi của ai đó thay đổi, lỗi mới ở check-in/đặt chỗ, tăng đột biến lỗi hoặc khoá, hoặc `--dry-run` liệt kê khác một file. Khi dừng: **không áp dụng gì thêm**, báo người trực.
+
+### 8.4 Cách lùi (theo mục 8.3 của `rewards-phase0-summary.md`)
+- Bốn migration đều lùi **không mất dữ liệu** bằng file trong `supabase/rollbacks/`: `…177_177_revert_user_timezone_functions.sql`, `…178_178_revert_reward_risk.sql`, `…179_179_revert_reward_kinds.sql`, `…180_180_revert_reward_event_counters.sql`; các cờ tắt bằng SQL (`update reward_feature_flags set enabled=false …`, `update reward_risk_config set enabled=false where id=1`). Chạy file rollback trong SQL Editor của production, một cái, theo thứ tự ngược 180 → 177 chỉ khi cần.
+- **TUYỆT ĐỐI KHÔNG dùng `supabase/rollbacks/…166_revert_rewards.sql` trên production:** nó xoá toàn bộ sổ cái, huy hiệu, streak và unlock.
+- Phương án cuối: khôi phục từ bản sao lưu (làm mất mọi thay đổi sau thời điểm sao lưu); chỉ khi mọi cách lùi đều không đủ.
+- Sau khi lùi, chạy lại bảng 3.3 và so với bản chụp trước.
+
+### 8.5 Sau khi xong
+Phát hành client mới theo mục 8.2 của summary (chạy lại iOS `RewardsTests`, kiểm tra E2 bằng web cũ trước), **cờ vẫn TẮT**; dọn: `rm -rf /tmp/banbe-prod-workdir`; `unset PROD_DB_URL PROD_REF_TYPED C4`; xoá lịch sử shell của terminal production (mục 7.2); đóng terminal.
+
+---
+
+## 9. Tóm tắt đã/chưa kiểm chứng
 
 **Đã kiểm chứng (trong phiên soạn):** repo đang `link` vào production (`supabase/.temp/project-ref`); CLI 2.120.0 có `db push` (`--dry-run`, `--db-url`, `--include-all`, `--include-seed`, `--workdir` toàn cục), `db reset` (`--no-seed`, `--version`, `--last`), `migration up/list/repair`, `projects create`, `functions deploy`, `secrets set`, `unlink`; không có cờ "dừng ở phiên bản N" cho áp dụng từ xa; cấu trúc migration (extension, cron, bucket, `authenticator`, gate 126); `seed.sql` gốc hỏng; iOS/web có giá trị dự phòng production; script local `make_web_env.sh`, `check_web_local.sh`, `ios-point-local.sh` tồn tại và cách chúng hoạt động.
 
