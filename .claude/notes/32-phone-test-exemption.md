@@ -26,3 +26,6 @@ Why not reuse `account_phone_grandfathered`: it also waives DOB enrollment and i
 
 ## Tests
 `bash supabase/tests/159_test_exempt/run.sh` (Docker, throwaway Postgres): idempotent apply, exempt-but-unverified, DOB still required, email-code DOB confirm kept, normal user blocked, verified user, no client access to the table, cohort unchanged, user-delete cascade, rollback, abort on drift.
+
+## Global bypass switch (migration 181, 2026-10-13 — IMPLEMENTED LOCALLY, NOT APPLIED)
+Admin master switch "Bypass SMS for everyone" at the top of Test accounts (web `AdminTestAccounts.jsx`, iOS `AdminTestAccountsView.swift`): liquid-glass switch, tap opens a confirm dialog (both directions), never flips directly. Backend: `app_gate_settings` row `phone_bypass_all` (default off, service-role only) + `admin_get_phone_bypass_all()` / `admin_set_phone_bypass_all(bool)` (platform-admin only, audited in `app_gate_settings_audit`). 181 patches the SAME `v_test_exempt` line in `account_gate_status()`/`set_date_of_birth()` to also be true while the switch is on, so only the phone step is waived (DOB, RLS gate unchanged; phone stays unverified). Rollback: `supabase/rollbacks/20261222000181_181_revert_phone_bypass_all.sql`. Not covered by `supabase/tests/159_test_exempt` yet; iOS builds, web builds, neither run against a DB/device.

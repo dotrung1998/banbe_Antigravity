@@ -53,6 +53,13 @@ struct AdminTestAccountsView: View {
         }
     }
 
+    private struct BypassState: Decodable { let success: Bool?; let error: String?; let enabled: Bool? }
+
+    // Global "waive SMS for everyone" switch (migration 181). nil = not loaded.
+    @State private var bypassAll: Bool?
+    @State private var bypassBusy = false
+    @State private var confirmTo: Bool?
+
     @State private var email = ""
     @State private var found: Found?
     @State private var nameQuery = ""
@@ -67,6 +74,7 @@ struct AdminTestAccountsView: View {
 
     private func errorText(_ code: String?) -> String {
         switch code {
+        case "INVALID_VALUE": return app.T("Giá trị không hợp lệ.", "Invalid value.")
         case "NOT_AUTHORIZED": return app.T("Bạn không có quyền.", "You are not allowed to do this.")
         case "USER_NOT_FOUND": return app.T("Không tìm thấy tài khoản với email này.", "No account with that email.")
         case "INVALID_TARGET": return app.T("Không thể áp dụng cho chính bạn.", "You can't change your own account here.")
@@ -96,6 +104,61 @@ struct AdminTestAccountsView: View {
             .padding(14)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .accessibilityIdentifier(id)
+    }
+
+    private func loadBypass() async {
+        let r: BypassState? = try? await SupabaseService.client.rpc("admin_get_phone_bypass_all").execute().value
+        if r?.success == true { bypassAll = r?.enabled ?? false }
+    }
+
+    private func applyBypass() async {
+        guard let next = confirmTo else { return }
+        bypassBusy = true; message = ""
+        defer { bypassBusy = false; confirmTo = nil }
+        do {
+            let r: BypassState = try await SupabaseService.client
+                .rpc("admin_set_phone_bypass_all", params: ["p_enabled": next]).execute().value
+            guard r.success == true else { show(errorText(r.error), error: true); return }
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) { bypassAll = r.enabled ?? next }
+            show(next ? app.T("Đã BẬT: mọi người dùng được bỏ qua bước SMS.", "Turned ON: every user can skip the SMS step.")
+                      : app.T("Đã TẮT: bước SMS được áp dụng lại.", "Turned OFF: the SMS step applies again."), error: false)
+        } catch { show(errorText(nil), error: true) }
+    }
+
+    /// Liquid Glass switch: frosted track that darkens when on, glass knob with a
+    /// spring slide. A tap only opens the confirmation; it never flips directly.
+    private var bypassSwitch: some View {
+        let on = bypassAll == true
+        let loading = bypassAll == nil || bypassBusy
+        return Button {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            confirmTo = !on
+        } label: {
+            ZStack(alignment: on ? .trailing : .leading) {
+                glassSurface(Capsule(), tint: app.palette.ink.opacity(on ? 0.82 : 0.10))
+                    .frame(width: 64, height: 38)
+                glassSurface(Circle(), tint: .white.opacity(0.85))
+                    .frame(width: 30, height: 30)
+                    .shadow(color: .black.opacity(0.25), radius: 5, y: 2)
+                    .padding(4)
+            }
+            .animation(.spring(response: 0.45, dampingFraction: 0.72), value: on)
+            .opacity(loading ? 0.6 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(loading)
+        .accessibilityIdentifier("adminTest.bypassSwitch")
+        .accessibilityValue(on ? "on" : "off")
+    }
+
+    @ViewBuilder
+    private func glassSurface<S: Shape>(_ shape: S, tint: Color) -> some View {
+        if #available(iOS 26.0, *) {
+            shape.fill(tint).glassEffect(.regular.interactive(), in: shape)
+        } else {
+            shape.fill(tint).background(.ultraThinMaterial, in: shape)
+                .overlay(shape.stroke(.white.opacity(0.4), lineWidth: 1))
+        }
     }
 
     private func lookup(_ target: String? = nil) async {
@@ -158,7 +221,24 @@ struct AdminTestAccountsView: View {
                            "Waive the SMS step for a test account. The phone is NOT marked verified, no SMS is sent, and the date-of-birth steps still apply."))
                     .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
 
-                field("email@example.com", text: $email, id: "adminTest.email", keyboard: .emailAddress).padding(.top, 14)
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(app.T("Bỏ qua SMS cho tất cả", "Bypass SMS for everyone"))
+                            .font(.system(size: 14, weight: .semibold))
+                        Text(bypassAll == nil ? app.T("Đang tải…", "Loading…")
+                             : bypassAll == true ? app.T("ĐANG BẬT — không ai phải xác minh SMS.", "ON — nobody has to verify by SMS.")
+                             : app.T("Đang tắt — người dùng phải xác minh SMS.", "Off — users must verify by SMS."))
+                            .font(.system(size: 11.5)).opacity(0.7)
+                    }
+                    Spacer(minLength: 0)
+                    bypassSwitch
+                }
+                .padding(.horizontal, 16).padding(.vertical, 14)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .padding(.top, 14)
+                .accessibilityIdentifier("adminTest.bypassCard")
+
+                field("email@example.com", text: $email, id: "adminTest.email", keyboard: .emailAddress).padding(.top, 10)
                 InkButton(title: app.T("Tìm tài khoản", "Find account")) { Task { await lookup() } }
                     .disabled(busy || email.trimmingCharacters(in: .whitespaces).isEmpty)
                     .padding(.top, 12)
@@ -226,6 +306,20 @@ struct AdminTestAccountsView: View {
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 30).padding(.bottom, 42)
+        }
+        .task { await loadBypass() }
+        .alert(confirmTo == true ? app.T("Bật bỏ qua SMS cho tất cả?", "Bypass SMS for everyone?")
+                                 : app.T("Tắt bỏ qua SMS?", "Turn the SMS bypass off?"),
+               isPresented: Binding(get: { confirmTo != nil }, set: { if !$0 { confirmTo = nil } })) {
+            Button(app.T("Huỷ", "Cancel"), role: .cancel) { confirmTo = nil }
+            Button(confirmTo == true ? app.T("Bật", "Turn on") : app.T("Tắt", "Turn off"),
+                   role: confirmTo == true ? .destructive : nil) { Task { await applyBypass() } }
+        } message: {
+            Text(confirmTo == true
+                 ? app.T("Mọi người dùng trên web và iOS sẽ không phải xác minh số điện thoại bằng SMS. Ngày sinh vẫn bắt buộc.",
+                         "Every user on web and iOS will be able to continue without SMS phone verification. Date of birth is still required.")
+                 : app.T("Người dùng chưa xác minh sẽ phải xác minh số điện thoại bằng SMS trở lại.",
+                         "Users who are not verified will have to verify their phone by SMS again."))
         }
     }
 }
