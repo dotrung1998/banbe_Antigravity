@@ -450,12 +450,6 @@ test.describe('Login & Signup Notification Messages', () => {
     });
   });
 
-  test('shows Zalo not available error', async ({ page }) => {
-    await openLogin(page);
-    await page.locator('[data-screen-label="Login"]').getByText('Tiếp tục với Zalo').click();
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Zalo chưa khả dụng/);
-  });
-
   // Google/Facebook are real OAuth now (note 10), but — after a regression
   // where the consent checkbox briefly gated them and reappeared on the
   // Login tab to have somewhere to render — neither is gated on consent at
@@ -468,48 +462,12 @@ test.describe('Login & Signup Notification Messages', () => {
     const login = page.locator('[data-screen-label="Login"]');
     await expect(login.getByTestId('login-google')).toBeVisible();
     await expect(login.getByTestId('login-facebook')).toBeVisible();
+    await expect(login.getByTestId('login-facebook')).toHaveAttribute('aria-disabled', 'true');
+    await expect(login.getByTestId('login-facebook-note')).toBeVisible();
     await expect(login.getByTestId('login-policy-consent')).toHaveCount(0);
 
     await page.getByText('Đăng ký', { exact: true }).click();
     await expect(login.getByTestId('login-policy-consent')).toBeVisible();
   });
 
-  test('shows Instagram not available error', async ({ page }) => {
-    await openLogin(page);
-    await page.locator('[data-screen-label="Login"]').getByText('Instagram').click();
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Instagram chưa khả dụng/);
-  });
-
-  test('shows phone required error when sending OTP without phone number', async ({ page }) => {
-    await openLogin(page);
-    await page.locator('[data-screen-label="Login"]').getByText('Gửi OTP').click();
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Nhập số điện thoại trước/);
-  });
-
-  test('shows OTP code required error when verifying without code', async ({ page }) => {
-    await openLogin(page);
-
-    await page.route('**/auth/v1/otp', async route => {
-      const req = route.request();
-      const body = JSON.parse(req.postData() || '{}');
-      if (!body.token) {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ data: { session: null, user: null, message: 'OTP sent' }, error: null }),
-        });
-      } else {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ data: { session: { access_token: 'test', user: { id: 'test' } }, user: { id: 'test' } }, error: null }),
-        });
-      }
-    });
-
-    await page.locator('input[placeholder="+84 901 234 567"]').fill('+84901234567');
-    await page.locator('[data-screen-label="Login"]').getByText('Gửi OTP').click();
-    await page.locator('[data-screen-label="Login"]').getByText('Xác nhận').click();
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Nhập mã OTP/);
-  });
 });

@@ -4,8 +4,8 @@ import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../them
 export default function Login() {
   const {
     state, T, set,
-    loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType,
-    loginPasswordType, loginPasswordConfirmType, toggleLang, pickTheme, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram,
+    loginEmailType, loginNicknameType, loginEmailKey, loginEmailCodeType,
+    loginPasswordType, loginPasswordConfirmType, toggleLang, pickTheme, loginGoogle,
     emailValid, passwordValid, setAuthMethod, requestPasswordResetSubmit, submitCurrentForm,
     togglePolicyConsent, openPolicy,
   } = useBanBe();
@@ -66,7 +66,6 @@ export default function Login() {
     marginTop: 14, padding: '15px 0', borderRadius: 18, cursor: valid ? 'pointer' : 'default',
     ...(valid ? {} : { background: 'rgba(var(--bb-fg-rgb), 0.16)', color: ink, boxShadow: 'none', border: 'none', textShadow: 'none' }),
   });
-  const smallBtn = { flex: 1, padding: '10px 4px', borderRadius: 12, background: 'var(--bb-field)', color: ink, fontSize: 12, fontWeight: 500, textAlign: 'center', cursor: 'pointer' };
   const dark = s.theme === 'dark';
 
   return (
@@ -90,7 +89,8 @@ export default function Login() {
       {/* Real Supabase OAuth, not gated on the consent checkbox (note 10). */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
         <div onClick={loginGoogle} data-testid="login-google" style={oauthBtn}>{T('Tiếp tục với Google', 'Continue with Google')}</div>
-        <div onClick={loginFacebook} data-testid="login-facebook" style={oauthBtn}>{T('Tiếp tục với Facebook', 'Continue with Facebook')}</div>
+        <div aria-disabled="true" data-testid="login-facebook" style={{ ...oauthBtn, opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' }}>{T('Tiếp tục với Facebook', 'Continue with Facebook')}</div>
+        <p style={{ fontSize: 11.5, lineHeight: 1.4, color: ink, opacity: 0.7, margin: '-2px 0 0', textAlign: 'center' }} data-testid="login-facebook-note">{T('Đăng nhập Facebook đang được phát triển.', 'Facebook login is under development.')}</p>
       </div>
 
       {awaitingCode ? (
@@ -141,26 +141,6 @@ export default function Login() {
       {s.loginSentVia === 'phone' && <p style={note()}>{T('Đã gửi mã OTP. Hãy nhập mã để tiếp tục.', 'OTP sent. Enter the code to continue.')}</p>}
       {s.reserveError && <p style={note({ color: alert })}>{s.reserveError}</p>}
 
-      {/* Web-only extras with no iOS counterpart (Zalo / phone OTP /
-          Instagram are still stubs; kept for behaviour + tests), pushed
-          below the main iOS-shaped form and kept visually quiet. */}
-      <div style={{ marginTop: 22, paddingTop: 14, borderTop: `1px solid ${rule}` }}>
-        {!awaitingCode && (
-          <input value={s.loginPhoneNumber} onChange={loginPhoneType} placeholder="+84 901 234 567" inputMode="tel" style={fieldStyle()} />
-        )}
-        {s.loginSentVia === 'phone' && (
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <input value={s.loginCode} onChange={loginCodeType} placeholder={T('Mã OTP', 'OTP code')} inputMode="numeric" style={fieldStyle({ flex: 1, width: 'auto' })} />
-            <div onClick={verifyLoginCode} style={{ ...smallBtn, flex: 'none', padding: '14px 14px', fontWeight: 600 }}>{T('Xác nhận', 'Verify')}</div>
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <div onClick={loginPhone} style={smallBtn}>{T('Gửi OTP', 'Send OTP')}</div>
-          <div onClick={loginZalo} style={smallBtn}>{T('Tiếp tục với Zalo', 'Continue with Zalo')}</div>
-          <div onClick={loginInstagram} style={smallBtn}>Instagram</div>
-        </div>
-      </div>
-      <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: '16px 0 0', textAlign: 'center', opacity: 0.8 }}>{T('Đã giữ chỗ sự kiện nào thì bạn đã đăng nhập sẵn.', "If you've already reserved a spot, you're already logged in.")}</p>
     </div>
   );
 }

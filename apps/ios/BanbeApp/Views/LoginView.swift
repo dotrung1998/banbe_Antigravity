@@ -128,10 +128,16 @@ struct LoginView: View {
                         Task { await auth.signInWithGoogle() }
                     }
                     .accessibilityIdentifier("login.google")
-                    oauthButton(app.T("Tiếp tục với Facebook", "Continue with Facebook")) {
-                        Task { await auth.signInWithFacebook() }
-                    }
-                    .accessibilityIdentifier("login.facebook")
+                    // Facebook sign-in is switched off while it is under development.
+                    oauthButton(app.T("Tiếp tục với Facebook", "Continue with Facebook")) {}
+                        .disabled(true)
+                        .opacity(0.4)
+                        .accessibilityIdentifier("login.facebook")
+                    Text(app.T("Đăng nhập Facebook đang được phát triển.", "Facebook login is under development."))
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(app.palette.ink.opacity(0.7))
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("login.facebookNote")
                 }
                 .padding(.top, 16)
 
