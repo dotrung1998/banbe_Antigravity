@@ -4,6 +4,7 @@ import { getSupabaseAdmin, resolveAuthUserId, linkRegistration, getRedirectUrl }
 import { findOpenEventsBlockingDeletion } from '../_lib/accountDeletion.js';
 import { createClient } from '@supabase/supabase-js';
 import { signReauthProof, verifyReauthProof } from '../_lib/reauthProof.js';
+import { gatherOrganizerFacts, planOrganizerCleanup, applyOrganizerCleanup } from '../_lib/organizerCleanup.js';
 import { renderEmail, renderEmailText } from '../_lib/emailTemplate.js';
 
 // Consolidated dispatcher for the /api/auth/* trio, folded together to fit
@@ -458,6 +459,27 @@ async function handleDeleteAccount(req, res, admin, body) {
     // the account itself, but it IS recorded so it can be found/cleaned up
     // later rather than silently vanishing from view.
     await markStep(admin, requestId, 'avatar_storage', `failed: ${error?.message || error}`);
+  }
+
+  // Step 1b — host profile. Deleting the auth user would leave each owned organizer behind with no owner
+  // but still carrying its name, intro, photo, bank/MoMo and contact details (and Storage objects are never
+  // cascaded). Remove what nothing depends on; anonymize what guests' records still reference. Must run
+  // BEFORE deleteUser, which is what clears the ownership link. A database failure aborts so the request
+  // can be retried; file-removal problems are recorded, not fatal.
+  try {
+    const summary = [];
+    for (const org of ownedOrgs || []) {
+      const facts = await gatherOrganizerFacts(admin, org.id, userId);
+      const action = planOrganizerCleanup(facts);
+      const result = await applyOrganizerCleanup(admin, org.id, action);
+      summary.push(`${org.id}:${action}${result.filesRemoved ? `(${result.filesRemoved} files)` : ''}${result.notes.length ? `[${result.notes.join('; ')}]` : ''}`);
+    }
+    await markStep(admin, requestId, 'organizer_cleanup', summary.length ? `ok: ${summary.join(', ')}` : 'ok: none');
+  } catch (error) {
+    await markStep(admin, requestId, 'organizer_cleanup', `failed: ${error?.message || error}`);
+    await admin.from('account_deletion_requests').update({ status: 'failed', error_detail: `organizer_cleanup: ${error?.message || error}` }).eq('id', requestId);
+    console.error('Account deletion: organizer cleanup failed:', error);
+    return res.status(502).json({ error: 'ACCOUNT_DELETION_ORGANIZER_CLEANUP_FAILED' });
   }
 
   // Step 2 — the actual account deletion. `profiles.id REFERENCES
