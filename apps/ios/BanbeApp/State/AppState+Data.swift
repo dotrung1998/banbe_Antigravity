@@ -457,6 +457,22 @@ extension AppState {
             myOrgEventKeys = []
             myOrgEventOrganizerID = [:]
             orgRegName = ""
+            // Organizer identity belongs to ONE account: without this, the next account on this device
+            // inherited the previous organizer id and its host setup saved to an organizer it did not own.
+            myOrganizerID = nil
+            myOrganizerIDs = []
+            myOrganizerIdsStatus = "idle"
+            myOrganizerAvatarPath = ""
+            myOrganizerAvatarR2Ref = nil
+            orgRegDesc = ""
+            orgRegIntroLong = ""
+            orgRegLinks = []
+            myOrgPublishedEventCount = nil
+            myOrgHostingSinceYear = nil
+            ensureOrganizerStatus = "idle"
+            ensureOrganizerErrorCode = ""
+            hostSetupOpen = false
+            organizerProfile = nil
             notifications = []
             toasts = []
             unreadMessages = 0

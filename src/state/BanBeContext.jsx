@@ -1753,13 +1753,24 @@ export function BanBeProvider({ children }) {
     return () => clearInterval(id);
   }, []);
 
+  // Organizer identity belongs to ONE account. Without this reset, signing out (or deleting the
+  // account) and then signing in as someone else on the same page kept the previous account's
+  // organizer id, so the new account's host setup saved to an organizer it did not own (RLS error).
+  const ORGANIZER_IDENTITY_RESET = {
+    myOrganizerId: null, myOrganizerIds: [], myOrganizerIdsStatus: 'idle',
+    myOrganizerAvatarPath: '', myOrganizerAvatarR2Ref: '',
+    orgRegName: '', orgRegDesc: '', orgRegIntroLong: '', orgRegLinks: [],
+    myOrgEventKeys: [], myOrgEventOrganizerId: {}, myOrgPublishedEventCount: null, myOrgHostingSinceYear: null,
+    ensureOrganizerStatus: 'idle', ensureOrganizerError: '', hostSetupOpen: false,
+    organizerProfile: null, hasHosted: false,
+  };
   useEffect(() => {
     let active = true;
     const syncUser = async (user) => {
       if (!active) return;
       if (!user) {
         favoritesUidRef.current = null;
-        set({ user: null, referralCode: null, sessionChecked: true, favorites: [], authSyncing: false });
+        set({ user: null, referralCode: null, sessionChecked: true, favorites: [], authSyncing: false, ...ORGANIZER_IDENTITY_RESET });
         return;
       }
       // Stage 1 (retention roadmap P0) — real `favorites` rows, keyed by
@@ -1774,7 +1785,7 @@ export function BanBeProvider({ children }) {
       // own load resolves, so they never leak across accounts.
       if (favoritesUidRef.current !== user.id) {
         favoritesUidRef.current = user.id;
-        set({ favorites: [] });
+        set({ favorites: [], ...ORGANIZER_IDENTITY_RESET });
         const { data: favRows, error: favError } = await supabase
           .from('favorites').select('event_id').eq('user_id', user.id);
         if (favError) console.warn('Failed to load favorites:', favError);
