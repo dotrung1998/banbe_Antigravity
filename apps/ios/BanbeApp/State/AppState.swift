@@ -2310,6 +2310,10 @@ final class AppState: ObservableObject {
     var myOrgEvents: [CatalogEvent] {
         let scopedKeys = myOrgEventKeys.filter { myOrgEventOrganizerID[$0] == myOrganizerID }
         if scopedKeys.isEmpty {
+            // Demo fallback only for an account with no real organizer. A real organizer with no
+            // events yet must stay empty, else it shows (and offers Check-in on) whatever demo
+            // event was last opened, which belongs to another organizer.
+            guard myOrganizerID == nil else { return [] }
             return EventCatalog.all.filter { $0.orgName == currentEvent.orgName }.map(withLive)
         }
         let catalogOwned = EventCatalog.all.filter { scopedKeys.contains($0.key) }.map(withLive)
