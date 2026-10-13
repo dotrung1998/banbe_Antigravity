@@ -35,9 +35,10 @@ export function useEnsureOrganizer({ s, set, supabase, loadMyEvents }) {
     if (shouldEnsureOrganizer({
       userId, organizerMode: s.organizerMode, idsStatus: s.myOrganizerIdsStatus,
       ownedCount: s.myOrganizerIds.length, ensureStatus: s.ensureOrganizerStatus,
+      modeBusy: !!s.organizerModeBusy,
     })) attempt();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, s.organizerMode, s.myOrganizerIdsStatus, s.myOrganizerIds.length, s.ensureOrganizerStatus]);
+  }, [userId, s.organizerMode, s.myOrganizerIdsStatus, s.myOrganizerIds.length, s.ensureOrganizerStatus, s.organizerModeBusy]);
 
   // Explicit user Retry; ignored while a call is in flight (no double submit).
   return useCallback(() => {

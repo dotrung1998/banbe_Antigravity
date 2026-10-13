@@ -35,6 +35,7 @@ import StoryViewer from './screens/sheets/StoryViewer.jsx';
 import PulseViewer from './screens/sheets/PulseViewer.jsx';
 import SurveyResponseModal from './screens/sheets/SurveyResponseModal.jsx';
 import DeleteAccountSheet from './screens/sheets/DeleteAccountSheet.jsx';
+import HostSetupSheet from './screens/sheets/HostSetupSheet.jsx';
 import Preferences from './screens/Preferences.jsx';
 import EditName from './screens/EditName.jsx';
 import Notifications from './screens/Notifications.jsx';
@@ -703,6 +704,7 @@ function Shell() {
           entry point can still open it even on a screen without the dock. */}
       <StoryCreateOverlay />
       {state.deleteAccountOpen && <DeleteAccountSheet />}
+      {state.hostSetupOpen && state.user && <HostSetupSheet />}
       <ToastStack />
       {/* account gate (web parity) — blocking overlay above every screen until the server gate clears */}
       <AccountGate />

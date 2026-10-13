@@ -20,12 +20,17 @@ export function deriveDefaultOrganizerName(displayName, lang = 'en') {
 /**
  * Should the client call ensure_my_organizer now?
  * Only when organizer mode is on, the owned-organizer lookup has CONFIRMED
- * zero (status 'loaded', never 'idle'/'loading'/'error'), and no ensure is
+ * zero (status 'loaded', never 'idle'/'loading'/'error'), the organizer-mode change has
+ * settled (not `modeBusy`), and no ensure is
  * in flight or already failed (a failed attempt waits for an explicit Retry,
  * so there is no automatic retry loop).
  */
-export function shouldEnsureOrganizer({ userId, organizerMode, idsStatus, ownedCount, ensureStatus = 'idle' }) {
+export function shouldEnsureOrganizer({ userId, organizerMode, idsStatus, ownedCount, ensureStatus = 'idle', modeBusy = false }) {
   if (!userId || !organizerMode) return false;
+  // organizerMode flips on optimistically before set_organizer_mode returns; ensure_my_organizer
+  // would run while the server role is still 'participant' and fail with ORGANIZER_MODE_REQUIRED
+  // (shown as a "retry" card). Wait for the mode change to settle.
+  if (modeBusy) return false;
   if (idsStatus !== 'loaded') return false;
   if ((ownedCount || 0) > 0) return false;
   if (ensureStatus === 'loading' || ensureStatus === 'error') return false;

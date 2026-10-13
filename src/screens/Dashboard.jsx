@@ -237,7 +237,9 @@ export default function Dashboard() {
             style={{ flex: 'none', width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }}
           />
         ) : (
-          <div data-testid="dashboard-organizer-avatar-fallback" style={bg(ev.img, { flex: 'none', width: 56, height: 56, borderRadius: '50%' })} />
+          <div data-testid="dashboard-organizer-avatar-fallback" style={{ flex: 'none', width: 56, height: 56, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: ink, color: paper, ...display(22) }}>
+            {(s.orgRegName || s.user?.name || 'B').trim()[0]?.toUpperCase() || 'B'}
+          </div>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
           {/* Personal-vs-organizer hierarchy pass (2026-09-27) — the real
@@ -245,7 +247,7 @@ export default function Dashboard() {
               loadMyOrgStats/saveOrganizerProfile) once this account
               actually has one; the demo-catalogue ev.orgName is only ever
               a fallback for a never-hosted dev/seed account. */}
-          <h1 style={{ ...display(24, { margin: 0, lineHeight: 1.2 }) }}>{s.orgRegName || ev.orgName}</h1>
+          <h1 style={{ ...display(24, { margin: 0, lineHeight: 1.2 }) }}>{s.orgRegName || (s.myOrganizerId ? '' : ev.orgName)}</h1>
           {/* Real owner, never guessed/invented — this page only ever
               renders for the signed-in account's OWN organizer, so the
               viewer IS the owner. Never persisted as part of the name

@@ -15,6 +15,7 @@ import { useAccountGate } from '../lib/accountGate.js';
 import { createFollowSync } from '../lib/followSync.js';
 import { isRewardsUnavailable, normalizeSummary } from '../lib/rewards.js';
 import { normalizeForSave as normalizeEventPrefsForSave, isMissingFunctionError as isEventPrefsFnMissing, everyone as everyoneCriteria, normalizeCriteria, criteriaIsEveryone } from '../lib/eventPrefs.js';
+import { hostSetupResolved, markHostSetup } from '../lib/hostSetupFlag.js';
 import { useEnsureOrganizer } from '../lib/useEnsureOrganizer.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
 import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, isMissingColumnError } from '../lib/mediaUrls.js';
@@ -558,6 +559,7 @@ const initialState = {
   myOrganizerIdsStatus: 'idle',
   // ensure_my_organizer (migration 163) wiring — see lib/useEnsureOrganizer.js.
   ensureOrganizerStatus: 'idle', ensureOrganizerError: '',
+  hostSetupOpen: false,
   // Distinct from refundQueueLoading (in flight) — a transport error or
   // RPC success:false, surfaced in Verifications.jsx instead of silently
   // rendering as an empty queue ("do not show failed loading as empty").
@@ -5952,6 +5954,9 @@ export function BanBeProvider({ children }) {
         accountType: data.role, organizerMode: confirmed, organizerModeError: '', organizerModeBusy: false,
         ...(!confirmed && HOST_ONLY_SCREENS.has(prev.screen) ? { screen: 'profile', accountTab: 'personal' } : {}),
         ...(!confirmed && prev.accountTab === 'host' ? { accountTab: 'personal' } : {}),
+        // First activation: a returning host who already has a photo, or one who finished/skipped
+        // setup before, never sees it again.
+        ...(confirmed && !prev.myOrganizerAvatarPath && !hostSetupResolved(prev.user?.id) ? { hostSetupOpen: true } : {}),
       }));
     } else {
       set({ organizerModeBusy: false });
@@ -5968,6 +5973,10 @@ export function BanBeProvider({ children }) {
     applyOrganizerMode(!s.organizerMode);
   }, [set, s.user, s.organizerMode, s.organizerModeBusy, applyOrganizerMode]);
   const retryEnsureOrganizer = useEnsureOrganizer({ s, set, supabase, loadMyEvents });
+  const closeHostSetup = useCallback((how = 'skipped') => {
+    markHostSetup(s.user?.id, how);
+    set({ hostSetupOpen: false });
+  }, [set, s.user?.id]);
 
   // ---- navigation ----
   const goHome = useCallback(() => set({ screen: 'home' }), [set]);
@@ -9012,8 +9021,13 @@ export function BanBeProvider({ children }) {
    */
   const setAccountTab = useCallback((tab) => set({ accountTab: tab }), [set]);
 
-  const saveOrganizerProfile = useCallback(async (avatarFile) => {
-    if (!s.myOrganizerId) return;
+  const saveOrganizerProfile = useCallback(async (avatarFile, overrides = {}) => {
+    // `overrides` lets the first-time host setup sheet save right after the organizer is created,
+    // before this closure has re-rendered with the new id / typed values.
+    const organizerId = overrides.organizerId || s.myOrganizerId;
+    const orgName = (overrides.name ?? s.orgRegName).trim();
+    const orgIntro = (overrides.intro ?? s.orgRegDesc).trim();
+    if (!organizerId) return { ok: false };
     set({ orgProfileSaving: true, orgProfileError: '', orgProfileSaved: false });
     try {
       let avatarPath = null;
@@ -9022,7 +9036,7 @@ export function BanBeProvider({ children }) {
         if (!['image/jpeg', 'image/png', 'image/webp'].includes(avatarFile.type)) throw new Error('INVALID_IMAGE_TYPE');
         if (avatarFile.size > 5 * 1024 * 1024) throw new Error('IMAGE_TOO_LARGE');
         // R2 media API first (server decides eligibility); legacy upload on `provider:'supabase'`.
-        const viaApi = await tryMediaApiUpload({ kind: 'organizer_avatar', organizerId: s.myOrganizerId, file: avatarFile });
+        const viaApi = await tryMediaApiUpload({ kind: 'organizer_avatar', organizerId, file: avatarFile });
         if (viaApi.provider === 'r2') { avatarPath = viaApi.ref; avatarR2Ref = viaApi.ref; }
       }
       if (avatarFile && !avatarPath) {
@@ -9033,16 +9047,16 @@ export function BanBeProvider({ children }) {
         } catch {
           // CONVERT_FAILED — upload the original rather than block the host.
         }
-        const path = `${s.myOrganizerId}/avatar-${Date.now()}.${ext}`;
+        const path = `${organizerId}/avatar-${Date.now()}.${ext}`;
         const { error: upErr } = await supabase.storage.from('organizer-photos').upload(path, blob, { upsert: true, contentType, cacheControl: '31536000' });
         if (upErr) throw upErr;
         avatarPath = path;
       }
       const links = s.orgRegLinks.filter(l => l.url.trim());
       const { data, error } = await supabase.rpc('update_organizer_profile', {
-        p_organizer_id: s.myOrganizerId,
-        p_name: s.orgRegName.trim(),
-        p_intro: s.orgRegDesc.trim(),
+        p_organizer_id: organizerId,
+        p_name: orgName,
+        p_intro: orgIntro,
         p_avatar_path: avatarPath,
         p_intro_long: s.orgRegIntroLong,
         p_social_links: links,
@@ -9062,13 +9076,14 @@ export function BanBeProvider({ children }) {
       // than a blanket refetch or leaving a stale local copy around.
       set(prev => ({
         orgProfileSaving: false, orgProfileSaved: true,
+        orgRegName: orgName, orgRegDesc: orgIntro,
         myOrganizerAvatarPath: avatarPath || prev.myOrganizerAvatarPath,
         myOrganizerAvatarR2Ref: avatarPath ? avatarR2Ref : prev.myOrganizerAvatarR2Ref,
-        organizerProfile: (prev.organizerProfile && prev.organizerProfile.id === prev.myOrganizerId)
+        organizerProfile: (prev.organizerProfile && prev.organizerProfile.id === organizerId)
           ? {
               ...prev.organizerProfile,
-              name: prev.orgRegName.trim(),
-              about: prev.orgRegDesc.trim(),
+              name: orgName,
+              about: orgIntro,
               avatar_path: avatarPath || prev.organizerProfile.avatar_path,
               avatar_r2_ref: avatarPath ? avatarR2Ref : prev.organizerProfile.avatar_r2_ref,
               intro_long: prev.orgRegIntroLong,
@@ -9076,6 +9091,7 @@ export function BanBeProvider({ children }) {
             }
           : prev.organizerProfile,
       }));
+      return { ok: true };
     } catch (err) {
       console.warn('saveOrganizerProfile failed:', err);
       const message = err.message === 'INVALID_NAME'
@@ -9092,6 +9108,7 @@ export function BanBeProvider({ children }) {
         ? T('Ảnh tối đa 5MB.', 'Photo must be under 5MB.')
         : (err.message || T('Không thể lưu. Vui lòng thử lại.', 'Could not save. Please try again.'));
       set({ orgProfileSaving: false, orgProfileError: message });
+      return { ok: false, error: message };
     }
   }, [set, s.myOrganizerId, s.orgRegName, s.orgRegDesc, s.orgRegIntroLong, s.orgRegLinks, s.myOrganizerAvatarPath, T]);
 
@@ -10617,7 +10634,7 @@ export function BanBeProvider({ children }) {
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
-    canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer,
+    canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, closeHostSetup,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
     loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
@@ -10656,7 +10673,7 @@ export function BanBeProvider({ children }) {
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
-    canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer,
+    canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, closeHostSetup,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
     loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,

@@ -100,3 +100,9 @@ test('migration: name never from email/phone/handle', () => {
   assert.match(code, /My events/);
   assert.match(code, /Sự kiện của tôi/);
 });
+
+test('does not ensure while the organizer-mode change is still in flight (optimistic flip race)', () => {
+  const base = { userId: 'u', organizerMode: true, idsStatus: 'loaded', ownedCount: 0 };
+  assert.equal(shouldEnsureOrganizer({ ...base, modeBusy: true }), false);
+  assert.equal(shouldEnsureOrganizer({ ...base, modeBusy: false }), true);
+});
