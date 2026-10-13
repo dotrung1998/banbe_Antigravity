@@ -184,9 +184,8 @@ export default function Dashboard() {
   const myOrgEventKeysForEv = s.myOrgEventKeys.filter(k => s.myOrgEventOrganizerId[k] === s.myOrganizerId);
   const myEvents = (myOrgEventKeysForEv.length
     ? EVENTS.filter(e => myOrgEventKeysForEv.includes(e.key))
-    // Demo fallback only for an account with no real organizer; a real one with no events yet
-    // must stay empty, not borrow the last-opened demo event of another organizer.
-    : (s.myOrganizerId ? [] : EVENTS.filter(e => e.orgName === ev.orgName))
+    // No demo fallback: a host with no events yet sees none.
+    : []
   ).map(e => {
     const overrides = liveEventOverrides(s.homeLiveEvents[e.key], e);
     return overrides ? { ...e, ...overrides } : e;
