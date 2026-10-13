@@ -317,8 +317,9 @@ async function handleVerifyReauth(req, res, admin, body) {
       if (error) console.warn('verify_reauth: verifyOtp rejected:', error.status, error.code, error.message);
       return res.status(400).json({ error: 'REAUTH_CODE_INVALID' });
     }
-    // Drop the session that verification just created; nobody needs it.
-    await throwaway.auth.signOut().catch(() => {});
+    // Drop ONLY the session that verification just created (scope 'local'); the default global scope
+    // would revoke every session of the account, including the caller's own.
+    await throwaway.auth.signOut({ scope: 'local' }).catch(() => {});
     return res.status(200).json({ proof: signReauthProof(userId, process.env.SUPABASE_SERVICE_ROLE_KEY) });
   } catch (error) {
     console.error('verify_reauth failed:', error);
