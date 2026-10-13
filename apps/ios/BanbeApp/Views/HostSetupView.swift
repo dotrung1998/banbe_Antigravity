@@ -189,9 +189,9 @@ struct HostSetupView: View {
                     .accessibilityIdentifier("hostSetup.cover.\(c.id)")
                 }
             }
-            .padding(4)
+            .padding(6)
         }
-        .padding(-4)
+        .padding(-6)
     }
 
     private func selectionRing(_ on: Bool) -> some View {
@@ -202,27 +202,27 @@ struct HostSetupView: View {
 
     // MARK: save + reveal
 
-    /// The organizer row is created by ensure_my_organizer once the mode change settles; wait for it
-    /// here (retrying quietly) instead of surfacing a "retry" card on the Account screen.
-    private func waitForOrganizer() async -> String? {
-        let deadline = Date().addingTimeInterval(15)
-        var kicked = 0
-        while Date() < deadline {
-            if let id = app.myOrganizerID { return id }
-            if app.ensureOrganizerStatus == "error", kicked < 3 { kicked += 1; app.retryEnsureOrganizer() }
-            try? await Task.sleep(nanoseconds: 250_000_000)
+    /// The organizer row is created by ensure_my_organizer. Call it directly (with a few quiet retries)
+    /// instead of waiting on the background trigger, whose gating can keep it from ever running.
+    private func obtainOrganizer() async -> String? {
+        if let id = app.myOrganizerID ?? app.myOrganizerIDs.first { return id }
+        for attempt in 1...3 {
+            await app.ensureOrganizerIfNeeded(force: true, modeSettled: true)
+            if let id = app.myOrganizerID ?? app.myOrganizerIDs.first { return id }
+            try? await Task.sleep(nanoseconds: UInt64(700_000_000 * attempt))
         }
-        return app.myOrganizerID
+        return nil
     }
 
     private func finish() async {
         guard canSubmit else { return }
         phase = .saving; error = ""
         let image = uploaded ?? (HostStockCover.all.first { $0.id == coverID } ?? HostStockCover.all[0]).image(side: 640)
-        guard let organizerID = await waitForOrganizer() else {
+        guard let organizerID = await obtainOrganizer() else {
             phase = .form
             error = app.T("Chưa tạo được hồ sơ lúc này. Kiểm tra kết nối rồi nhấn Tạo hồ sơ lại.",
                           "We couldn't create your profile just now. Check your connection and tap Create again.")
+                + (app.ensureOrganizerErrorCode.isEmpty ? "" : " (\(app.ensureOrganizerErrorCode))")
             return
         }
         let ok = await app.saveOrganizerProfile(avatarImage: image, organizerID: organizerID,

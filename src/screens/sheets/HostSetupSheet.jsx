@@ -26,7 +26,7 @@ const CSS = `
 `;
 
 export default function HostSetupSheet() {
-  const { state: s, T, set, saveOrganizerProfile, retryEnsureOrganizer, closeHostSetup } = useBanBe();
+  const { state: s, T, set, saveOrganizerProfile, ensureOrganizerNow, closeHostSetup } = useBanBe();
   const lang = s.lang === 'en' ? 'en' : 'vi';
   const stateRef = useRef(s);
   stateRef.current = s;
@@ -58,18 +58,19 @@ export default function HostSetupSheet() {
     setCoverId('');
   };
 
-  // The organizer row is created by ensure_my_organizer once the mode change settles; wait for it
-  // here (retrying quietly) instead of surfacing a "retry" card on the Account screen.
-  const waitForOrganizer = async () => {
-    const deadline = Date.now() + 15000;
-    let kicked = 0;
-    while (Date.now() < deadline) {
-      const cur = stateRef.current;
-      if (cur.myOrganizerId) return cur.myOrganizerId;
-      if (cur.ensureOrganizerStatus === 'error' && kicked < 3) { kicked += 1; retryEnsureOrganizer(); }
-      await sleep(250);
+  // The organizer row is created by ensure_my_organizer. Call it directly (with a few quiet retries)
+  // instead of waiting on the background hook, whose gating can keep it from ever running.
+  const obtainOrganizer = async () => {
+    if (stateRef.current.myOrganizerId) return { id: stateRef.current.myOrganizerId };
+    let last = '';
+    for (let i = 0; i < 3; i++) {
+      const r = await ensureOrganizerNow();
+      if (r?.ok) return { id: r.organizerId };
+      last = r?.error || 'UNKNOWN';
+      if (stateRef.current.myOrganizerId) return { id: stateRef.current.myOrganizerId };
+      await sleep(700 * (i + 1));
     }
-    return stateRef.current.myOrganizerId || null;
+    return { error: last };
   };
 
   const finish = async () => {
@@ -77,14 +78,15 @@ export default function HostSetupSheet() {
     setPhase('saving'); setError('');
     try {
       const file = upload ? upload.file : await stockCoverFile(HOST_STOCK_COVERS.find(c => c.id === coverId) || HOST_STOCK_COVERS[0]);
-      const organizerId = await waitForOrganizer();
-      if (!organizerId) throw new Error('NO_ORGANIZER');
+      const got = await obtainOrganizer();
+      if (!got.id) throw Object.assign(new Error('NO_ORGANIZER'), { code: got.error });
+      const organizerId = got.id;
       const res = await saveOrganizerProfile(file, { organizerId, name: name.trim(), intro: intro.trim() });
       if (!res?.ok) throw new Error(res?.error || 'SAVE_FAILED');
     } catch (e) {
       setPhase('form');
       setError(e.message === 'NO_ORGANIZER'
-        ? T('Chưa tạo được hồ sơ lúc này. Kiểm tra kết nối rồi nhấn Tạo hồ sơ lại.', "We couldn't create your profile just now. Check your connection and tap Create again.")
+        ? T('Chưa tạo được hồ sơ lúc này. Kiểm tra kết nối rồi nhấn Tạo hồ sơ lại.', "We couldn't create your profile just now. Check your connection and tap Create again.") + (e.code ? ` (${e.code})` : '')
         : (e.message && e.message !== 'SAVE_FAILED' ? e.message : T('Không thể lưu. Vui lòng thử lại.', 'Could not save. Please try again.')));
       return;
     }
@@ -144,7 +146,7 @@ export default function HostSetupSheet() {
           </div>
 
           <div style={label}>{T('Ảnh bìa', 'Cover')}</div>
-          <div data-hscroll style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '4px 2px 8px', margin: '0 -2px' }}>
+          <div data-hscroll style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '6px 6px 10px', margin: '0 -6px' }}>
             <div
               className="bb-host-tile" role="button" data-testid="host-setup-upload" onClick={() => fileInputRef.current?.click()}
               style={{

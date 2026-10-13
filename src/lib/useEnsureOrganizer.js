@@ -16,7 +16,7 @@ export function useEnsureOrganizer({ s, set, supabase, loadMyEvents }) {
     const r = await run();
     if (!r.ok) {
       set({ ensureOrganizerStatus: 'error', ensureOrganizerError: r.error });
-      return;
+      return r;
     }
     set(prev => ({
       ensureOrganizerStatus: 'idle', ensureOrganizerError: '',
@@ -25,6 +25,7 @@ export function useEnsureOrganizer({ s, set, supabase, loadMyEvents }) {
       orgRegName: prev.orgRegName || r.name,
     }));
     if (userId) loadMyEvents(userId);
+    return r;
   }, [run, set, userId, loadMyEvents]);
 
   useEffect(() => {
@@ -41,8 +42,11 @@ export function useEnsureOrganizer({ s, set, supabase, loadMyEvents }) {
   }, [userId, s.organizerMode, s.myOrganizerIdsStatus, s.myOrganizerIds.length, s.ensureOrganizerStatus, s.organizerModeBusy]);
 
   // Explicit user Retry; ignored while a call is in flight (no double submit).
-  return useCallback(() => {
+  const retry = useCallback(() => {
     if (s.ensureOrganizerStatus === 'loading') return;
     attempt();
   }, [attempt, s.ensureOrganizerStatus]);
+  // `now` runs ensure immediately and resolves with {ok, organizerId, error}. It bypasses the
+  // automatic-run gating above, for callers (the host setup sheet) that need the organizer right now.
+  return { retry, now: attempt };
 }

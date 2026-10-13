@@ -168,7 +168,7 @@ export default function Account() {
     loadMyOrgStats, setAccountTab, openPublicProfile, openReports, openAccountGroup, goSurveysHosting,
     loadMyOrganizerMemberships,
     loadMyEventCredits, loadMyConfirmedEventCredits,
-    loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, retryEnsureOrganizer,
+    loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openHostSetup,
   } = useBanBe();
   const s = state;
   const myKeychain = useMyKeychain();
@@ -833,16 +833,13 @@ export default function Account() {
       {/* ensure_my_organizer (migration 163): organizer mode is on but no owned
           organizer yet (created lazily at first event before) — show progress,
           or an error with ONE explicit Retry (no automatic retry loop). */}
-      {canHost && s.organizerMode && !s.myOrganizerId && s.myOrganizerIdsStatus === 'loaded' && !s.myOrganizerIds.length && (
-        <div data-testid="org-profile-ensure" style={{ ...cardGlass({ margin: '22px 20px 0', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }}>
-          {s.ensureOrganizerStatus === 'error' ? (
-            <>
-              <span style={{ fontSize: 13 }}>{T('Chưa tạo được hồ sơ tổ chức. Vui lòng thử lại.', 'We could not set up your organizer profile. Please try again.')}</span>
-              <button type="button" data-testid="org-profile-ensure-retry" onClick={retryEnsureOrganizer} style={{ alignSelf: 'flex-start', padding: '8px 14px', borderRadius: 999, border: '1px solid currentColor', background: 'transparent', color: 'inherit', cursor: 'pointer' }}>{T('Thử lại', 'Retry')}</button>
-            </>
-          ) : (
-            <span style={{ fontSize: 13, opacity: 0.8 }}>{T('Đang chuẩn bị hồ sơ tổ chức…', 'Setting up your organizer profile…')}</span>
-          )}
+      {canHost && s.organizerMode && !s.myOrganizerId && !s.hostSetupOpen && (
+        <div data-testid="org-profile-ensure" style={{ ...cardGlass({ margin: '22px 20px 0', padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 10 }) }}>
+          <span style={{ ...display(18, { lineHeight: 1.3 }) }}>{T('Hoàn tất hồ sơ tổ chức', 'Finish your host profile')}</span>
+          <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, opacity: 0.75, margin: 0 }}>
+            {T('Chọn ảnh bìa, đặt tên và viết vài dòng giới thiệu để khách biết bạn là ai.', 'Pick a cover, name it and add a short intro so guests know who you are.')}
+          </p>
+          <div role="button" data-testid="org-profile-ensure-setup" onClick={openHostSetup} style={{ ...inkButton({ marginTop: 4, borderRadius: 18, padding: 14, fontSize: 14 }) }}>{T('Thiết lập hồ sơ', 'Set up profile')}</div>
         </div>
       )}
       {canHost && s.myOrganizerId && (

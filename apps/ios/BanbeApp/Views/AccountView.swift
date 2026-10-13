@@ -1765,24 +1765,21 @@ struct AccountView: View {
     // như khách" button.
     @ViewBuilder
     private func orgProfileCard() -> some View {
-        if app.canHost, app.organizerMode, app.myOrganizerID == nil, app.myOrganizerIdsStatus == "loaded", app.myOrganizerIDs.isEmpty {
-            // ensure_my_organizer (migration 163) progress / error + one explicit Retry.
-            VStack(alignment: .leading, spacing: 8) {
-                if app.ensureOrganizerStatus == "error" {
-                    Text(app.T("Chưa tạo được hồ sơ tổ chức. Vui lòng thử lại.", "We could not set up your organizer profile. Please try again."))
-                        .font(.system(size: 13))
-                    Button(app.T("Thử lại", "Retry")) { app.retryEnsureOrganizer() }
-                        .accessibilityIdentifier("account.ensureOrganizerRetry")
-                } else {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                        Text(app.T("Đang chuẩn bị hồ sơ tổ chức…", "Setting up your organizer profile…")).font(.system(size: 13))
-                    }
-                }
+        if app.canHost, app.organizerMode, app.myOrganizerID == nil, !app.hostSetupOpen {
+            // No organizer yet (setup skipped, or it could not finish): offer the setup sheet again.
+            VStack(alignment: .leading, spacing: 10) {
+                Text(app.T("Hoàn tất hồ sơ tổ chức", "Finish your host profile")).font(BanbeTheme.display(18))
+                Text(app.T("Chọn ảnh bìa, đặt tên và viết vài dòng giới thiệu để khách biết bạn là ai.",
+                           "Pick a cover, name it and add a short intro so guests know who you are."))
+                    .font(.system(size: 12.5)).opacity(0.75)
+                InkButton(title: app.T("Thiết lập hồ sơ", "Set up profile")) { app.hostSetupOpen = true }
+                    .accessibilityIdentifier("account.setupHostProfile")
             }
             .foregroundStyle(app.palette.ink)
-            .padding(16)
+            .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.top, 22)
             .accessibilityIdentifier("account.ensureOrganizer")
         } else if app.canHost, app.myOrganizerID != nil {
             SwipeSafeButton {

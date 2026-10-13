@@ -542,6 +542,8 @@ final class AppState: ObservableObject {
     /// First-time host setup sheet (cover / name / intro + reveal animation). Opened when host mode is
     /// first confirmed on for an account with no organizer photo; see HostSetupView.
     @Published var hostSetupOpen = false
+    /// Last ensure_my_organizer failure reason (code/message), shown in the setup sheet to aid diagnosis.
+    @Published var ensureOrganizerErrorCode = ""
     /// Global frame of the Account > Host profile card, so the reveal's dots know where to assemble.
     @Published var hostCardFrame: CGRect = .zero
     // Part B audit (2026-09-28) — Dashboard-identity-mismatch fix (mirrors

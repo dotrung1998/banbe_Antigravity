@@ -56,6 +56,7 @@ extension AppState {
             let r: EnsureMyOrganizerResult = try await SupabaseService.client
                 .rpc("ensure_my_organizer").execute().value
             guard r.success, let id = r.organizerId else {
+                ensureOrganizerErrorCode = r.error ?? "EMPTY_RESULT"
                 ensureOrganizerStatus = "error"
                 return
             }
@@ -68,6 +69,7 @@ extension AppState {
             #if DEBUG
             print("[ensureOrganizer] failed:", error)
             #endif
+            ensureOrganizerErrorCode = (error as? PostgrestError)?.code ?? "RPC_ERROR"
             ensureOrganizerStatus = "error"
         }
     }
