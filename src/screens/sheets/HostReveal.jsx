@@ -1,13 +1,13 @@
 import { useEffect, useRef } from 'react';
 import {
-  REVEAL_TIMELINE, REVEAL_TOTAL, buildParticles, particleState, sampleInRoundedRect, mulberry32, clamp01,
+  REVEAL_TIMELINE, REVEAL_TOTAL, buildParticles, particleState, sampleInRoundedRect, mulberry32, clamp01, flashLevel,
 } from '../../lib/hostReveal.js';
 
 // Full-bleed canvas overlay for the host-profile reveal: dots leave the setup sheet's elements,
 // swirl into a rotating Earth-like sphere, then coalesce into the host card. Purely visual; the
 // parent decides when it starts and unmounts it on `onDone`.
 
-const DOT_COUNT = 900;
+const DOT_COUNT = 1500;
 
 function relRect(el, origin, k) {
   const r = el.getBoundingClientRect();
@@ -77,6 +77,28 @@ export default function HostReveal({ sourceRoot, targetSelector, onDone }) {
         ctx.fill();
       }
       ctx.globalAlpha = 1;
+      // The finished card lights up: a bright bloom hugging its outline that rises fast and decays.
+      const flash = flashLevel(t);
+      if (flash > 0) {
+        const { left, top, width, height } = target;
+        const r = Math.min(22, width / 2, height / 2);
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(left + r, top);
+        ctx.arcTo(left + width, top, left + width, top + height, r);
+        ctx.arcTo(left + width, top + height, left, top + height, r);
+        ctx.arcTo(left, top + height, left, top, r);
+        ctx.arcTo(left, top, left + width, top, r);
+        ctx.closePath();
+        ctx.shadowColor = 'rgba(255,255,255,0.95)';
+        ctx.shadowBlur = 70 * flash;
+        ctx.fillStyle = `rgba(255,255,255,${0.42 * flash})`;
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = `rgba(255,255,255,${0.9 * flash})`;
+        ctx.stroke();
+        ctx.restore();
+      }
       if (t < REVEAL_TOTAL) raf = requestAnimationFrame(frame);
       else if (!finished) { finished = true; onDone?.(); }
     };

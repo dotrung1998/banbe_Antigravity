@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildParticles, particleState, fibonacciSphere, REVEAL_TIMELINE, REVEAL_TOTAL, mulberry32 } from '../../src/lib/hostReveal.js';
+import { buildParticles, particleState, fibonacciSphere, REVEAL_TIMELINE, REVEAL_TOTAL, REVEAL_FLASH_START, flashLevel, mulberry32 } from '../../src/lib/hostReveal.js';
 import { HOST_STOCK_COVERS } from '../../src/lib/hostStockCovers.js';
 
 const view = { cx: 200, cy: 300, radius: 90 };
@@ -21,7 +21,7 @@ test('prng is deterministic', () => {
 
 test('timeline total is the sum of the phases', () => {
   const t = REVEAL_TIMELINE;
-  assert.equal(REVEAL_TOTAL, t.gather + t.form + t.spin + t.coalesce);
+  assert.equal(REVEAL_TOTAL, t.gather + t.form + t.spin + t.coalesce + t.flash);
 });
 
 test('particles start in the sources, sit on the sphere mid-spin, and end inside the target card', () => {
@@ -56,4 +56,22 @@ test('sphere has both near and far dots, and alpha stays in range throughout', (
 test('stock covers have unique ids and valid colours', () => {
   assert.equal(new Set(HOST_STOCK_COVERS.map(c => c.id)).size, HOST_STOCK_COVERS.length);
   for (const c of HOST_STOCK_COVERS) for (const k of ['a', 'b', 'glow']) assert.match(c[k], /^#[0-9A-F]{6}$/i);
+});
+
+test('dots stay at full strength while forming the card, then fade once it lights up', () => {
+  const parts = mk();
+  for (const p of parts) {
+    assert.equal(particleState(p, REVEAL_FLASH_START - 1, view).alpha > 0.9, true);
+    assert.equal(particleState(p, REVEAL_FLASH_START, view).alpha, 1);
+    assert.equal(particleState(p, REVEAL_TOTAL, view).alpha, 0);
+  }
+});
+
+test('flash level is dark before and after the flash phase and peaks inside it', () => {
+  assert.equal(flashLevel(0), 0);
+  assert.equal(flashLevel(REVEAL_FLASH_START), 0);
+  assert.equal(flashLevel(REVEAL_TOTAL), 0);
+  let peak = 0;
+  for (let t = REVEAL_FLASH_START; t < REVEAL_TOTAL; t += 20) peak = Math.max(peak, flashLevel(t));
+  assert.ok(peak > 0.9 && peak <= 1);
 });

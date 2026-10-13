@@ -4,7 +4,7 @@ import { paper, ink, alert, display } from '../../theme.js';
 import { fieldGlass, inkButton, insetField } from '../hostStyle.js';
 import { HOST_STOCK_COVERS, stockCoverDataUrl, stockCoverFile } from '../../lib/hostStockCovers.js';
 import { deriveDefaultOrganizerName } from '../../lib/ensureOrganizer.js';
-import { REVEAL_TOTAL } from '../../lib/hostReveal.js';
+import { REVEAL_FLASH_START } from '../../lib/hostReveal.js';
 import HostReveal from './HostReveal.jsx';
 
 // First-time host setup (replaces the old "retry" card on Account > Host): choose a cover from the
@@ -98,7 +98,8 @@ export default function HostSetupSheet() {
       setTimeout(() => setFade({ dark: true, out: true }), 150);
       setTimeout(() => closeHostSetup('done'), 700);
     } else {
-      setTimeout(() => setFade({ dark: true, out: true }), REVEAL_TOTAL - 650);
+      // The dark backdrop lifts exactly as the finished card lights up.
+      setTimeout(() => setFade({ dark: true, out: true }), REVEAL_FLASH_START);
     }
   };
 
@@ -114,13 +115,13 @@ export default function HostSetupSheet() {
         position: 'fixed', inset: 0, zIndex: 95, display: 'flex', flexDirection: 'column', overflow: 'hidden',
         background: fade.dark ? 'rgba(14,12,9,0.94)' : paper,
         opacity: fade.out ? 0 : 1,
-        transition: `background 600ms ease, opacity ${fade.out ? 650 : 300}ms ease`,
+        transition: `background 600ms ease, opacity ${fade.out ? 800 : 300}ms ease`,
       }}
     >
       <style>{CSS}</style>
       <div
         className="bb-host-sheet-in"
-        style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', opacity: revealing ? 0 : 1, transition: 'opacity 520ms ease', pointerEvents: revealing ? 'none' : 'auto' }}
+        style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', opacity: revealing ? 0 : 1, transition: 'opacity 320ms ease', pointerEvents: revealing ? 'none' : 'auto' }}
       >
         <div style={{ flex: 'none', display: 'flex', justifyContent: 'flex-end', padding: 'calc(env(safe-area-inset-top, 0px) + 16px) 22px 0' }}>
           <span
@@ -130,8 +131,8 @@ export default function HostSetupSheet() {
         </div>
 
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '8px 22px 24px' }}>
-          <h1 style={{ ...display(30, { margin: '6px 0 8px', lineHeight: 1.15 }) }}>{T('Tạo hồ sơ tổ chức', 'Set up your host profile')}</h1>
-          <p style={{ fontSize: 14, lineHeight: 1.5, color: ink, opacity: 0.68, margin: 0 }}>
+          <h1 data-reveal-src data-radius="8" style={{ ...display(30, { margin: '6px 0 8px', lineHeight: 1.15 }) }}>{T('Tạo hồ sơ tổ chức', 'Set up your host profile')}</h1>
+          <p data-reveal-src data-radius="8" style={{ fontSize: 14, lineHeight: 1.5, color: ink, opacity: 0.68, margin: 0 }}>
             {T('Đây là diện mạo khách sẽ thấy. Bạn có thể đổi bất cứ lúc nào.', "This is how guests will see you. You can change it any time.")}
           </p>
 
@@ -146,7 +147,7 @@ export default function HostSetupSheet() {
           </div>
 
           <div style={label}>{T('Ảnh bìa', 'Cover')}</div>
-          <div data-hscroll style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '6px 6px 10px', margin: '0 -6px' }}>
+          <div data-reveal-src data-radius="18" data-hscroll style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '6px 6px 10px', margin: '0 -6px' }}>
             <div
               className="bb-host-tile" role="button" data-testid="host-setup-upload" onClick={() => fileInputRef.current?.click()}
               style={{
@@ -178,7 +179,7 @@ export default function HostSetupSheet() {
 
           <div style={label}>{T('Tên', 'Name')}</div>
           <input
-            value={name} maxLength={NAME_MAX} onChange={e => setName(e.target.value)} data-testid="host-setup-name"
+            data-reveal-src data-radius="12" value={name} maxLength={NAME_MAX} onChange={e => setName(e.target.value)} data-testid="host-setup-name"
             placeholder={T('Tên tổ chức của bạn', 'Your host name')} style={input}
           />
 
@@ -187,7 +188,7 @@ export default function HostSetupSheet() {
             <span style={{ letterSpacing: 0, textTransform: 'none', fontWeight: 500 }}>{intro.length}/{INTRO_MAX}</span>
           </div>
           <textarea
-            value={intro} maxLength={INTRO_MAX} rows={4} onChange={e => setIntro(e.target.value)} data-testid="host-setup-intro"
+            data-reveal-src data-radius="12" value={intro} maxLength={INTRO_MAX} rows={4} onChange={e => setIntro(e.target.value)} data-testid="host-setup-intro"
             placeholder={T('Bạn tổ chức những gì? Vì sao khách nên đến?', 'What do you host? Why should guests come?')}
             style={{ ...input, resize: 'none', lineHeight: 1.5 }}
           />

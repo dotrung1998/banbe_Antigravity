@@ -12,7 +12,7 @@ final class HostRevealTests: XCTestCase {
 
     func testTimelineTotal() {
         let t = HostReveal.Timeline.self
-        XCTAssertEqual(t.total, t.gather + t.form + t.spin + t.coalesce)
+        XCTAssertEqual(t.total, t.gather + t.form + t.spin + t.coalesce + t.flash)
     }
 
     func testSphereSitsOnSphereMidSpinAndEndsInsideTargetFaded() {
@@ -39,5 +39,23 @@ final class HostRevealTests: XCTestCase {
     func testStockCoversRender() {
         XCTAssertEqual(Set(HostStockCover.all.map(\.id)).count, HostStockCover.all.count)
         XCTAssertEqual(HostStockCover.all[0].image(side: 64).size.width, 64)
+    }
+
+    func testDotsHoldStrengthWhileFormingTheCardThenFade() {
+        for p in make() {
+            XCTAssertGreaterThan(HostReveal.state(p, at: HostReveal.Timeline.flashStart - 1, view: view).alpha, 0.9)
+            XCTAssertEqual(HostReveal.state(p, at: HostReveal.Timeline.flashStart, view: view).alpha, 1)
+            XCTAssertEqual(HostReveal.state(p, at: HostReveal.Timeline.total, view: view).alpha, 0)
+        }
+    }
+
+    func testFlashLevelPeaksInsideFlashPhaseOnly() {
+        XCTAssertEqual(HostReveal.flashLevel(0), 0)
+        XCTAssertEqual(HostReveal.flashLevel(HostReveal.Timeline.flashStart), 0)
+        XCTAssertEqual(HostReveal.flashLevel(HostReveal.Timeline.total), 0)
+        var peak = 0.0
+        var t = HostReveal.Timeline.flashStart
+        while t < HostReveal.Timeline.total { peak = max(peak, HostReveal.flashLevel(t)); t += 20 }
+        XCTAssertTrue(peak > 0.9 && peak <= 1)
     }
 }

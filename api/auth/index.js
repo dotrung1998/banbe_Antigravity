@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { getMissingEmailVariables, sendWithGmail } from '../_lib/email.js';
 import { getSupabaseAdmin, resolveAuthUserId, linkRegistration, getRedirectUrl } from '../_lib/authLookup.js';
 import { findOpenEventsBlockingDeletion } from '../_lib/accountDeletion.js';
+import { createClient } from '@supabase/supabase-js';
+import { signReauthProof, verifyReauthProof } from '../_lib/reauthProof.js';
 import { renderEmail, renderEmailText } from '../_lib/emailTemplate.js';
 
 // Consolidated dispatcher for the /api/auth/* trio, folded together to fit
@@ -291,6 +293,30 @@ async function markStep(admin, requestId, stepKey, value) {
   }
 }
 
+// Verifies the emailed login code for the CALLER's own account on a throwaway client, so the
+// caller's real session is never replaced (a new session would trigger the date-of-birth gate).
+// Returns a short-lived proof that delete_account requires.
+async function handleVerifyReauth(req, res, admin, body) {
+  const token = getText((req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
+  if (!token) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const { data: userData, error: userError } = await admin.auth.getUser(token);
+  if (userError || !userData?.user) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const { id: userId, email } = userData.user;
+  const code = getText(body.code);
+  if (!email) return res.status(400).json({ error: 'REAUTH_EMAIL_REQUIRED' });
+  if (!code) return res.status(400).json({ error: 'REAUTH_CODE_REQUIRED' });
+
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED' });
+  const throwaway = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  const { data, error } = await throwaway.auth.verifyOtp({ email, token: code, type: 'email' });
+  if (error || data?.user?.id !== userId) return res.status(400).json({ error: 'REAUTH_CODE_INVALID' });
+  // Drop the session that verification just created; nobody needs it.
+  await throwaway.auth.signOut().catch(() => {});
+  return res.status(200).json({ proof: signReauthProof(userId, process.env.SUPABASE_SERVICE_ROLE_KEY) });
+}
+
 async function handleDeleteAccount(req, res, admin, body) {
   // The user id to delete comes ONLY from the caller's own verified bearer
   // token — never from a client-supplied body field. This is the one new
@@ -302,6 +328,11 @@ async function handleDeleteAccount(req, res, admin, body) {
   const { data: userData, error: userError } = await admin.auth.getUser(token);
   if (userError || !userData?.user) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   const userId = userData.user.id;
+
+  // Re-authentication proof from verify_reauth (below). Required server-side, not just a client flag.
+  if (!verifyReauthProof(getText(body.reauthProof), userId, process.env.SUPABASE_SERVICE_ROLE_KEY)) {
+    return res.status(403).json({ error: 'REAUTH_REQUIRED' });
+  }
 
   // Open-event refusal — matches Policy's own "refused while you still own
   // an open event" claim. "Open" = a currently live or pending-review
@@ -427,6 +458,10 @@ export default async function handler(req, res) {
   if (type === 'delete_account') {
     if (!admin) return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED', missing: ['SUPABASE_SERVICE_ROLE_KEY'] });
     return handleDeleteAccount(req, res, admin, body);
+  }
+  if (type === 'verify_reauth') {
+    if (!admin) return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED', missing: ['SUPABASE_SERVICE_ROLE_KEY'] });
+    return handleVerifyReauth(req, res, admin, body);
   }
 
   const missing = [

@@ -162,12 +162,35 @@ enum AuthAPIService {
     /// (DeleteAccountView) can read `openEvents` on a 409 refusal or
     /// `requestId` on success, mirroring web's equivalent fetch in
     /// BanBeContext.jsx's `confirmDeleteAccount`.
-    static func deleteAccount(reasonCode: String?, reasonText: String?) async throws -> [String: Any] {
+    /// Verifies the emailed login code for account deletion on the SERVER (type: verify_reauth) and returns
+    /// a short-lived proof that `deleteAccount` must send. Verifying it with the Supabase client instead
+    /// creates a NEW session, which the account gate answers with a date-of-birth re-confirmation that
+    /// interrupts the deletion flow.
+    static func verifyDeleteReauth(code: String) async throws -> String {
+        guard let url = URL(string: AppConfig.apiBaseURL + "/api/auth"),
+              let token = try? await SupabaseService.client.auth.session.accessToken
+        else { throw AuthAPIError(code: "AUTH_REQUIRED") }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["type": "verify_reauth", "code": code])
+        let (data, response): (Data, URLResponse)
+        do { (data, response) = try await URLSession.shared.data(for: request) }
+        catch { throw AuthAPIError(code: "REAUTH_FAILED") }
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode), let proof = json["proof"] as? String else {
+            throw AuthAPIError(code: json["error"] as? String ?? "REAUTH_FAILED")
+        }
+        return proof
+    }
+
+    static func deleteAccount(reasonCode: String?, reasonText: String?, reauthProof: String) async throws -> [String: Any] {
         guard let url = URL(string: AppConfig.apiBaseURL + "/api/auth"),
               let token = try? await SupabaseService.client.auth.session.accessToken
         else { throw AuthAPIError(code: "AUTH_REQUIRED") }
 
-        var body: [String: Any] = ["type": "delete_account"]
+        var body: [String: Any] = ["type": "delete_account", "reauthProof": reauthProof]
         if let reasonCode, !reasonCode.isEmpty { body["reasonCode"] = reasonCode }
         if let reasonText, !reasonText.isEmpty { body["reasonText"] = reasonText }
 

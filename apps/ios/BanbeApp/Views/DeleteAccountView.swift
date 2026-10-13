@@ -37,6 +37,7 @@ struct DeleteAccountView: View {
     @State private var reauthSent = false
     @State private var reauthCode = ""
     @State private var reauthVerified = false
+    @State private var reauthProof = ""
     @State private var reauthBusy = false
     @State private var reauthError = ""
     @State private var submitError = ""
@@ -171,14 +172,16 @@ struct DeleteAccountView: View {
                 Button {
                     Task {
                         reauthBusy = true
-                        await auth.verifyEmailCode(email: auth.session?.user.email ?? "", code: reauthCode, mode: .login)
-                        reauthBusy = false
-                        if let err = auth.errorMessage {
-                            reauthError = err
-                        } else {
+                        do {
+                            reauthProof = try await AuthAPIService.verifyDeleteReauth(code: reauthCode.trimmingCharacters(in: .whitespaces))
                             reauthVerified = true
                             reauthError = ""
+                        } catch {
+                            reauthError = (error as? AuthAPIError)?.code == "REAUTH_CODE_INVALID"
+                                ? app.T("Mã không đúng hoặc đã hết hạn.", "That code is wrong or has expired.")
+                                : app.T("Không thể xác minh lúc này. Vui lòng thử lại.", "We couldn't verify right now. Please try again.")
                         }
+                        reauthBusy = false
                     }
                 } label: {
                     Text(reauthBusy ? app.T("Đang kiểm tra…", "Checking…") : app.T("Xác minh", "Verify"))
@@ -224,7 +227,7 @@ struct DeleteAccountView: View {
             step = .submitting
             Task {
                 do {
-                    _ = try await AuthAPIService.deleteAccount(reasonCode: reasonCode.isEmpty ? nil : reasonCode, reasonText: reasonText.isEmpty ? nil : reasonText)
+                    _ = try await AuthAPIService.deleteAccount(reasonCode: reasonCode.isEmpty ? nil : reasonCode, reasonText: reasonText.isEmpty ? nil : reasonText, reauthProof: reauthProof)
                     step = .done
                     // Client-side session cleanup — sign out of the
                     // now-nonexistent session and drop this device's push
@@ -234,7 +237,13 @@ struct DeleteAccountView: View {
                     await auth.signOut()
                     app.forgetPushTokenLocally()
                 } catch {
-                    submitError = error.localizedDescription
+                    if (error as? AccountDeletionError)?.code == "REAUTH_REQUIRED" {
+                        // The 10-minute proof expired: ask for a fresh code.
+                        reauthVerified = false; reauthProof = ""; reauthSent = false; reauthCode = ""
+                        submitError = app.T("Phiên xác minh đã hết hạn. Vui lòng xác minh lại.", "Your verification expired. Please verify again.")
+                    } else {
+                        submitError = error.localizedDescription
+                    }
                     step = .confirm
                 }
             }

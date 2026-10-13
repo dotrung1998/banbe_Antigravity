@@ -9,8 +9,17 @@ enum HostReveal {
         static let form = 1700.0      // cloud -> sphere
         static let spin = 1100.0      // sphere rotates on its own
         static let coalesce = 1100.0  // sphere -> host card
-        static var total: Double { gather + form + spin + coalesce }
+        static let flash = 900.0      // dots fade out as the finished card lights up
+        static var total: Double { gather + form + spin + coalesce + flash }
         static var coalesceStart: Double { gather + form + spin }
+        static var flashStart: Double { total - flash }
+    }
+
+    /// 0..1 brightness of the card bloom at time t (0 outside the flash phase): quick rise, long fall.
+    static func flashLevel(_ t: Double) -> Double {
+        let u = (t - Timeline.flashStart) / Timeline.flash
+        if u <= 0 || u >= 1 { return 0 }
+        return pow(sin(Double.pi * pow(u, 0.6)), 1.2)
     }
 
     struct SourceRect { var rect: CGRect; var radius: CGFloat = 14 }
@@ -107,7 +116,7 @@ enum HostReveal {
 
     static func state(_ p: Particle, at t: Double, view v: View) -> State {
         let gather = Timeline.gather, form = Timeline.form, coalesce = Timeline.coalesce
-        let tForm0 = gather, tSpin0 = gather + form, tCoal0 = Timeline.coalesceStart
+        let tForm0 = gather, tSpin0 = gather + form, tCoal0 = Timeline.coalesceStart, tFlash0 = Timeline.flashStart
         func sphereAt(_ time: Double) -> (x: Double, y: Double, depth: Double) {
             let rot = time * v.spinRate
             let x = p.sx3 * cos(rot) - p.sz3 * sin(rot)
@@ -120,32 +129,35 @@ enum HostReveal {
             let ox = x - v.cx, oy = y - v.cy, a = turns * .pi * 2, c = cos(a), s = sin(a)
             return (v.cx + ox * c - oy * s, v.cy + ox * s + oy * c)
         }
-        var x = 0.0, y = 0.0, depth = 0.0, alpha = 1.0, scale = 1.0
+        var x = 0.0, y = 0.0, depth = 0.0, alpha = 1.0
+        var shade = 1.0 // weight of the sphere look (near dots bigger/brighter, far dim, land brighter)
         if t < tForm0 {
+            // Dots ARE the form's elements: full strength from the first frame, then they peel away.
             let k = easeInOut(clamp01((t / gather - p.delay) / (1 - p.delay)))
             let sw = swirl(lerp(p.sx, p.cloudX, k), lerp(p.sy, p.cloudY, k), 0.25 * p.swirl * k)
-            x = sw.0; y = sw.1; alpha = 0.35 + 0.65 * k
+            x = sw.0; y = sw.1; alpha = 0.9 + 0.1 * k; shade = 0
         } else if t < tSpin0 {
             let k = easeInOut(clamp01((t - tForm0) / form))
             let s = sphereAt(t)
             let sw = swirl(lerp(p.cloudX, s.x, k), lerp(p.cloudY, s.y, k), (1 - k) * 1.15 * p.swirl)
-            x = sw.0; y = sw.1; depth = s.depth * k
+            x = sw.0; y = sw.1; depth = s.depth * k; shade = k
         } else if t < tCoal0 {
             let s = sphereAt(t)
             x = s.x; y = s.y; depth = s.depth
-        } else {
+        } else if t < tFlash0 {
             let k = easeInOut(clamp01((t - tCoal0) / coalesce))
             let s = sphereAt(t)
             let sw = swirl(lerp(s.x, p.dx, k), lerp(s.y, p.dy, k), (1 - k) * 0.12 * p.swirl)
             x = lerp(sw.0, p.dx, k * k); y = lerp(sw.1, p.dy, k * k)
-            depth = s.depth * (1 - k)
-            alpha = 1 - easeOut(clamp01((k - 0.75) / 0.25))
+            depth = s.depth * (1 - k); shade = 1 - k
+        } else {
+            // The card is assembled: dots settle in place and fade as the real card lights up.
+            x = p.dx; y = p.dy; shade = 0
+            alpha = 1 - clamp01((t - tFlash0) / 320)
         }
-        if t >= tForm0 {
-            let d = (depth + 1) / 2
-            scale = 0.65 + 0.7 * d
-            alpha *= (0.25 + 0.75 * d) * (p.land ? 1 : 0.62)
-        }
+        let d = (depth + 1) / 2
+        let scale = lerp(1, 0.65 + 0.7 * d, shade)
+        alpha *= lerp(1, (0.25 + 0.75 * d) * (p.land ? 1 : 0.62), shade)
         return State(x: x, y: y, r: p.size * scale, alpha: clamp01(alpha), depth: depth)
     }
 }

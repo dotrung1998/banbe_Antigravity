@@ -6,8 +6,17 @@ export const REVEAL_TIMELINE = {
   form: 1700,      // cloud -> sphere
   spin: 1100,      // sphere rotates on its own
   coalesce: 1100,  // sphere -> host card
+  flash: 900,      // dots fade out as the finished card lights up
 };
-export const REVEAL_TOTAL = REVEAL_TIMELINE.gather + REVEAL_TIMELINE.form + REVEAL_TIMELINE.spin + REVEAL_TIMELINE.coalesce;
+export const REVEAL_TOTAL = REVEAL_TIMELINE.gather + REVEAL_TIMELINE.form + REVEAL_TIMELINE.spin + REVEAL_TIMELINE.coalesce + REVEAL_TIMELINE.flash;
+export const REVEAL_FLASH_START = REVEAL_TOTAL - REVEAL_TIMELINE.flash;
+
+/** 0..1 brightness of the card bloom at time t (0 outside the flash phase): quick rise, long fall. */
+export function flashLevel(t) {
+  const u = (t - REVEAL_FLASH_START) / REVEAL_TIMELINE.flash;
+  if (u <= 0 || u >= 1) return 0;
+  return Math.pow(Math.sin(Math.PI * Math.pow(u, 0.6)), 1.2);
+}
 
 export const clamp01 = v => Math.min(1, Math.max(0, v));
 export const easeInOut = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -96,7 +105,7 @@ export function buildParticles({ count, sources, target, cx, cy, radius, seed = 
 /** Position + draw hints for one particle at time t (ms). */
 export function particleState(p, t, { cx, cy, radius, tilt = 0.35, spinRate = 0.0011 }) {
   const { gather, form, spin, coalesce } = REVEAL_TIMELINE;
-  const tForm0 = gather, tSpin0 = gather + form, tCoal0 = tSpin0 + spin;
+  const tForm0 = gather, tSpin0 = gather + form, tCoal0 = tSpin0 + spin, tFlash0 = tCoal0 + coalesce;
   const sphereAt = (time) => {
     const rot = time * spinRate;
     const cosR = Math.cos(rot), sinR = Math.sin(rot);
@@ -112,37 +121,40 @@ export function particleState(p, t, { cx, cy, radius, tilt = 0.35, spinRate = 0.
     const a = turns * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
     return { x: cx + ox * c - oy * s, y: cy + ox * s + oy * c };
   };
-  let x, y, depth = 0, alpha = 1, scale = 1;
+  let x, y, depth = 0, alpha = 1;
+  let shade = 1; // weight of the sphere look (near dots bigger/brighter, far dim, land brighter)
   if (t < tForm0) {
+    // Dots ARE the form's elements: full strength from the first frame, then they peel away.
     const k = easeInOut(clamp01((t / gather - p.delay) / (1 - p.delay)));
     const base = { x: lerp(p.sx, p.cloudX, k), y: lerp(p.sy, p.cloudY, k) };
     const sw = swirlAround(base.x, base.y, 0.25 * p.swirl * k);
-    x = sw.x; y = sw.y;
-    alpha = 0.35 + 0.65 * k;
+    x = sw.x; y = sw.y; alpha = 0.9 + 0.1 * k;
+    shade = 0;
   } else if (t < tSpin0) {
     const k = easeInOut(clamp01((t - tForm0) / form));
     const target = sphereAt(t);
     const base = { x: lerp(p.cloudX, target.x, k), y: lerp(p.cloudY, target.y, k) };
-    const sw = swirlAround(base.x, base.y, (1 - k) * 0.9 * p.swirl + 0.25 * p.swirl * (1 - k));
+    const sw = swirlAround(base.x, base.y, (1 - k) * 1.15 * p.swirl);
     x = sw.x; y = sw.y; depth = target.depth * k;
+    shade = k;
   } else if (t < tCoal0) {
     const s = sphereAt(t);
     x = s.x; y = s.y; depth = s.depth;
-  } else {
+  } else if (t < tFlash0) {
     const k = easeInOut(clamp01((t - tCoal0) / coalesce));
     const s = sphereAt(t);
     const base = { x: lerp(s.x, p.dx, k), y: lerp(s.y, p.dy, k) };
     const sw = swirlAround(base.x, base.y, (1 - k) * 0.12 * p.swirl);
     x = lerp(sw.x, p.dx, k * k); y = lerp(sw.y, p.dy, k * k);
     depth = s.depth * (1 - k);
-    alpha = 1 - easeOut(clamp01((k - 0.75) / 0.25));
+    shade = 1 - k;
+  } else {
+    // The card is assembled: dots settle in place and fade as the real card lights up.
+    x = p.dx; y = p.dy; shade = 0;
+    alpha = 1 - clamp01((t - tFlash0) / 320);
   }
-  // Sphere look: near-side dots larger/brighter, far side dim; land brighter than ocean.
-  const onSphere = t >= tForm0;
-  if (onSphere) {
-    const d = (depth + 1) / 2; // 0 far .. 1 near
-    scale = 0.65 + 0.7 * d;
-    alpha *= (0.25 + 0.75 * d) * (p.land ? 1 : 0.62);
-  }
+  const d = (depth + 1) / 2; // 0 far .. 1 near
+  const scale = lerp(1, 0.65 + 0.7 * d, shade);
+  alpha *= lerp(1, (0.25 + 0.75 * d) * (p.land ? 1 : 0.62), shade);
   return { x, y, r: p.size * scale, alpha: clamp01(alpha), depth };
 }

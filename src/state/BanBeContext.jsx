@@ -957,7 +957,7 @@ const initialState = {
   deleteAccountOpen: false, deleteAccountStep: 'intro', // 'intro' | 'reason' | 'confirm' | 'submitting' | 'done'
   deleteAccountReasonCode: '', deleteAccountReasonText: '',
   deleteAccountPhraseInput: '', deleteAccountReauthSent: false, deleteAccountReauthCode: '',
-  deleteAccountReauthVerified: false, deleteAccountReauthBusy: false, deleteAccountReauthError: '',
+  deleteAccountReauthVerified: false, deleteAccountReauthProof: '', deleteAccountReauthBusy: false, deleteAccountReauthError: '',
   deleteAccountSubmitting: false, deleteAccountError: '', deleteAccountOAuthProvider: null,
   // 2026-09-25 fix pass — third Pulse tab: individual event photos ranked
   // by real engagement (photo_likes/photo_shares, migration 083), a
@@ -8395,7 +8395,7 @@ export function BanBeProvider({ children }) {
   const openDeleteAccount = useCallback(() => {
     set({
       deleteAccountOpen: true, deleteAccountStep: 'intro', deleteAccountReasonCode: '', deleteAccountReasonText: '',
-      deleteAccountPhraseInput: '', deleteAccountReauthSent: false, deleteAccountReauthCode: '', deleteAccountReauthVerified: false,
+      deleteAccountPhraseInput: '', deleteAccountReauthSent: false, deleteAccountReauthCode: '', deleteAccountReauthVerified: false, deleteAccountReauthProof: '',
       deleteAccountReauthBusy: false, deleteAccountReauthError: '', deleteAccountSubmitting: false, deleteAccountError: '',
       // Only a Google/Facebook `identities` provider (note 10) changes the
       // reauth affordance shown — 'apple' is deliberately never checked
@@ -8425,22 +8425,35 @@ export function BanBeProvider({ children }) {
     }
   }, [set, s.user, T, authEmailErrorMessage]);
 
-  // Verifying the code refreshes the real Supabase session (a genuine,
-  // server-checked proof of live control of the account's own credential —
-  // never a local/biometric-only check, which is exactly this ticket's own
-  // "Face ID alone is not sufficient server-side identity proof" rule).
+  // The emailed code is verified by /api/auth (verify_reauth) on a throwaway client and answered with a
+  // short-lived proof that delete_account requires. Verifying it here with supabase.auth.verifyOtp would
+  // create a NEW session, and the server's account gate then demands a date-of-birth re-confirmation,
+  // which interrupted the deletion flow. Still a real, server-checked proof of control of the email.
   const verifyDeleteAccountReauthCode = useCallback(async () => {
-    const email = s.user?.email;
-    const token = s.deleteAccountReauthCode.trim();
-    if (!token) return set({ deleteAccountReauthError: T('Nhập mã đã gửi tới email của bạn.', 'Enter the code sent to your email.') });
+    const code = s.deleteAccountReauthCode.trim();
+    if (!code) return set({ deleteAccountReauthError: T('Nhập mã đã gửi tới email của bạn.', 'Enter the code sent to your email.') });
     set({ deleteAccountReauthBusy: true, deleteAccountReauthError: '' });
-    const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
-    if (error) {
-      set({ deleteAccountReauthBusy: false, deleteAccountReauthError: T('Mã không đúng hoặc đã hết hạn.', 'That code is wrong or has expired.') });
-      return;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) throw new Error('NO_SESSION');
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type: 'verify_reauth', code }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.proof) throw new Error(payload.error || 'REAUTH_FAILED');
+      set({ deleteAccountReauthBusy: false, deleteAccountReauthVerified: true, deleteAccountReauthProof: payload.proof, deleteAccountReauthError: '' });
+    } catch (e) {
+      set({
+        deleteAccountReauthBusy: false,
+        deleteAccountReauthError: e.message === 'REAUTH_CODE_INVALID'
+          ? T('Mã không đúng hoặc đã hết hạn.', 'That code is wrong or has expired.')
+          : T('Không thể xác minh lúc này. Vui lòng thử lại.', "We couldn't verify right now. Please try again."),
+      });
     }
-    set({ deleteAccountReauthBusy: false, deleteAccountReauthVerified: true, deleteAccountReauthError: '' });
-  }, [set, s.user, s.deleteAccountReauthCode, T]);
+  }, [set, s.deleteAccountReauthCode, T]);
 
   const DELETE_ACCOUNT_PHRASE = 'DELETE banbe';
   const deleteAccountPhraseMatches = s.deleteAccountPhraseInput.trim() === DELETE_ACCOUNT_PHRASE;
@@ -8461,6 +8474,7 @@ export function BanBeProvider({ children }) {
         headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           type: 'delete_account',
+          reauthProof: s.deleteAccountReauthProof,
           reasonCode: s.deleteAccountReasonCode || null,
           reasonText: s.deleteAccountReasonText || null,
         }),
@@ -8473,6 +8487,10 @@ export function BanBeProvider({ children }) {
             `Bạn vẫn đang tổ chức sự kiện đang mở${names ? ` (${names})` : ''}. Vui lòng hủy hoặc kết thúc sự kiện trước khi xóa tài khoản.`,
             `You still own an open event${names ? ` (${names})` : ''}. Please cancel or end it before deleting your account.`
           ));
+        }
+        if (payload.error === 'REAUTH_REQUIRED') {
+          set({ deleteAccountReauthVerified: false, deleteAccountReauthProof: '', deleteAccountReauthSent: false, deleteAccountReauthCode: '' });
+          throw new Error(T('Phiên xác minh đã hết hạn. Vui lòng xác minh lại.', 'Your verification expired. Please verify again.'));
         }
         throw new Error(payload.error || 'ACCOUNT_DELETION_FAILED');
       }
@@ -8494,7 +8512,7 @@ export function BanBeProvider({ children }) {
     } catch (e) {
       set({ deleteAccountSubmitting: false, deleteAccountStep: 'confirm', deleteAccountError: e.message || String(e) });
     }
-  }, [set, s.deleteAccountReauthVerified, s.deleteAccountSubmitting, s.deleteAccountReasonCode, s.deleteAccountReasonText, deleteAccountPhraseMatches, T]);
+  }, [set, s.deleteAccountReauthVerified, s.deleteAccountReauthProof, s.deleteAccountSubmitting, s.deleteAccountReasonCode, s.deleteAccountReasonText, deleteAccountPhraseMatches, T]);
 
   // ---- Account > Security ----
   const securityPasswordType = useCallback((e) => set({ securityPassword: e.target.value, securityError: '', securitySaved: false }), [set]);
