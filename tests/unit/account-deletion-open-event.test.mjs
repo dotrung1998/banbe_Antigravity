@@ -43,3 +43,13 @@ test('no events at all never blocks deletion', () => {
   assert.equal(isDeletionBlockedByOpenEvents(null), false);
   assert.equal(isDeletionBlockedByOpenEvents(undefined), false);
 });
+
+test('a live event that started 12h+ ago (cron not yet run) does not block deletion', () => {
+  const now = Date.parse('2026-10-13T12:00:00Z');
+  const events = [
+    { id: 'e1', name: 'Lapsed', status: 'live', starts_at: '2026-10-12T20:00:00Z' },
+    { id: 'e2', name: 'Upcoming', status: 'live', starts_at: '2026-10-14T20:00:00Z' },
+    { id: 'e3', name: 'Recent', status: 'live', starts_at: '2026-10-13T06:00:00Z' },
+  ];
+  assert.deepEqual(findOpenEventsBlockingDeletion(events, now).map(e => e.id).sort(), ['e2', 'e3']);
+});

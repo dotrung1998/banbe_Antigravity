@@ -9,10 +9,22 @@
 // for the full reasoning).
 const OPEN_STATUSES = new Set(['live', 'review']);
 
-export function findOpenEventsBlockingDeletion(events) {
-  return (events || []).filter(e => OPEN_STATUSES.has(e?.status));
+// Events have no end time and the DB only flips `live` -> `ended` via a cron
+// (note 38). The apps already treat a live event that started 12h+ ago as
+// over (host profile "Past events"), so it must not block deletion either —
+// otherwise the host sees "0 upcoming" yet is told they own an open event.
+const LAPSED_AFTER_MS = 12 * 60 * 60 * 1000;
+
+function hasLapsed(event, now) {
+  if (event?.status !== 'live' || !event?.starts_at) return false;
+  const startsAt = Date.parse(event.starts_at);
+  return Number.isFinite(startsAt) && now - startsAt >= LAPSED_AFTER_MS;
 }
 
-export function isDeletionBlockedByOpenEvents(events) {
-  return findOpenEventsBlockingDeletion(events).length > 0;
+export function findOpenEventsBlockingDeletion(events, now = Date.now()) {
+  return (events || []).filter(e => OPEN_STATUSES.has(e?.status) && !hasLapsed(e, now));
+}
+
+export function isDeletionBlockedByOpenEvents(events, now = Date.now()) {
+  return findOpenEventsBlockingDeletion(events, now).length > 0;
 }

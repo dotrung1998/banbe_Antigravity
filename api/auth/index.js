@@ -325,7 +325,7 @@ async function handleDeleteAccount(req, res, admin, body) {
     // twice (once in this query's own `.in(...)`, once conceptually).
     const { data: candidateEvents, error: eventsError } = await admin
       .from('events')
-      .select('id, name, status')
+      .select('id, name, status, starts_at')
       .in('organizer_id', orgIds);
     if (eventsError) {
       console.error('Account deletion: open-event lookup failed:', eventsError);
