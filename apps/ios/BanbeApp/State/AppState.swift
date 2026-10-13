@@ -539,6 +539,11 @@ final class AppState: ObservableObject {
     @Published var myOrganizerIdsStatus = "idle"
     /// ensure_my_organizer (migration 163): "idle" | "loading" | "error".
     @Published var ensureOrganizerStatus = "idle"
+    /// First-time host setup sheet (cover / name / intro + reveal animation). Opened when host mode is
+    /// first confirmed on for an account with no organizer photo; see HostSetupView.
+    @Published var hostSetupOpen = false
+    /// Global frame of the Account > Host profile card, so the reveal's dots know where to assemble.
+    @Published var hostCardFrame: CGRect = .zero
     // Part B audit (2026-09-28) — Dashboard-identity-mismatch fix (mirrors
     // web's BanBeContext.jsx `myOrgEventOrganizerId`). `myOrgEventKeys` above
     // stays the full union across every organizer row this account owns

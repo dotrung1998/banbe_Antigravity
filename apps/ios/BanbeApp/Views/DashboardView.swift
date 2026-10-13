@@ -131,7 +131,12 @@ struct DashboardView: View {
                                     .clipShape(Circle())
                                     .accessibilityIdentifier("dashboard.organizerAvatar")
                             } else {
-                                CatalogPhoto(path: event.img, height: 56, width: 56, cornerRadius: 28)
+                                // No demo-catalogue photo: a host without a photo gets a monogram of their own name.
+                                Text((app.orgRegName.first.map(String.init) ?? app.displayName.first.map(String.init) ?? "B").uppercased())
+                                    .font(BanbeTheme.display(22))
+                                    .foregroundStyle(app.palette.paper)
+                                    .frame(width: 56, height: 56)
+                                    .background(app.palette.ink, in: Circle())
                                     .accessibilityIdentifier("dashboard.organizerAvatarFallback")
                             }
                             VStack(alignment: .leading, spacing: 5) {
@@ -143,7 +148,7 @@ struct DashboardView: View {
                                 // catalogue event.orgName is only ever a
                                 // fallback for a never-hosted dev/seed
                                 // account.
-                                Text(app.orgRegName.isEmpty ? event.orgName : app.orgRegName).font(BanbeTheme.display(24))
+                                Text(app.orgRegName.isEmpty && app.myOrganizerID == nil ? event.orgName : app.orgRegName).font(BanbeTheme.display(24))
                                 // Real owner, never guessed/invented — this
                                 // screen only ever renders for the signed-in
                                 // account's OWN organizer, so the viewer IS

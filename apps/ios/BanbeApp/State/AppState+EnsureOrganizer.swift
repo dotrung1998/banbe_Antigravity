@@ -19,9 +19,12 @@ enum EnsureOrganizerLogic {
     /// Call only when organizer mode is on, the owned-organizer lookup is a
     /// CONFIRMED empty result, and no ensure is running or already failed
     /// (a failure waits for an explicit Retry; no automatic loop).
+    /// `modeBusy`: organizerMode flips on optimistically before set_organizer_mode returns, so
+    /// ensure_my_organizer would run while the server role is still `participant` and fail with
+    /// ORGANIZER_MODE_REQUIRED (the old "retry" card). Wait for the mode change to settle.
     static func shouldEnsure(hasUser: Bool, organizerMode: Bool, idsStatus: String,
-                             ownedCount: Int, ensureStatus: String) -> Bool {
-        guard hasUser, organizerMode, idsStatus == "loaded", ownedCount == 0 else { return false }
+                             ownedCount: Int, ensureStatus: String, modeBusy: Bool = false) -> Bool {
+        guard hasUser, organizerMode, !modeBusy, idsStatus == "loaded", ownedCount == 0 else { return false }
         return ensureStatus != "loading" && ensureStatus != "error"
     }
 }
@@ -37,13 +40,16 @@ private struct EnsureMyOrganizerResult: Decodable {
 extension AppState {
     /// Idempotent + single-flight (status guard). Refreshes myOrganizerID/IDs
     /// and the Host card immediately. Never touches roles or publishes.
-    func ensureOrganizerIfNeeded(force: Bool = false) async {
+    /// `modeSettled`: pass true from the organizer-mode toggle itself right after the server confirmed
+    /// the change (its busy flag is still set at that point).
+    func ensureOrganizerIfNeeded(force: Bool = false, modeSettled: Bool = false) async {
         guard userID != nil else { return }
         if ensureOrganizerStatus == "loading" { return }
         if !force {
             guard EnsureOrganizerLogic.shouldEnsure(
                 hasUser: true, organizerMode: organizerMode, idsStatus: myOrganizerIdsStatus,
-                ownedCount: myOrganizerIDs.count, ensureStatus: ensureOrganizerStatus) else { return }
+                ownedCount: myOrganizerIDs.count, ensureStatus: ensureOrganizerStatus,
+                modeBusy: organizerModeBusy && !modeSettled) else { return }
         } else if !organizerMode || !myOrganizerIDs.isEmpty { return }
         ensureOrganizerStatus = "loading"
         do {
@@ -69,5 +75,22 @@ extension AppState {
     func retryEnsureOrganizer() {
         guard ensureOrganizerStatus == "error" else { return }
         Task { await ensureOrganizerIfNeeded(force: true) }
+    }
+}
+
+// MARK: - First-time host setup flag
+
+extension AppState {
+    private func hostSetupKey(_ uid: UUID) -> String { "banbe.hostSetup.v1:\(uid.uuidString)" }
+
+    /// True once the user finished or skipped the setup sheet (per account, per device).
+    var hostSetupResolved: Bool {
+        guard let uid = userID else { return true }
+        return UserDefaults.standard.string(forKey: hostSetupKey(uid)) != nil
+    }
+
+    func finishHostSetup(_ how: String) {
+        if let uid = userID { UserDefaults.standard.set(how, forKey: hostSetupKey(uid)) }
+        hostSetupOpen = false
     }
 }

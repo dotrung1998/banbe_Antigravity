@@ -797,6 +797,12 @@ struct RootView: View {
             // suspend/resume.
             PulseTeaserBubbleView().zIndex(29)
 
+            // First-time host setup (cover / name / intro + reveal). Full-screen, above everything in
+            // this window; the dock is hidden via the onboarding flag below.
+            if app.hostSetupOpen, app.userID != nil {
+                HostSetupView().zIndex(40)
+            }
+
             // Notification banner fix pass (2026-09-30 third) — `ToastOverlay`
             // moved OUT of this main window entirely (was here, rendered
             // BENEATH MapExplore's native filter/list `.sheet()` — the same
@@ -1135,7 +1141,7 @@ struct RootView: View {
         // reasoning as storyViewer/pulseOpen above. A dedicated overlay flag
         // (`setSurveyModalOpen`, BottomTabBarOverlay.swift) so this can never
         // be clobbered by, or clobber, any other modal's own hide reason.
-        .onChange(of: app.needsSettingsOnboarding || app.needsPreferencesOnboarding) { _, open in
+        .onChange(of: app.needsSettingsOnboarding || app.needsPreferencesOnboarding || app.hostSetupOpen) { _, open in
             BottomTabBarOverlay.shared.setOnboardingOpen(open)
         }
         .onChange(of: app.storySurveyModalPublicID) { _, publicID in

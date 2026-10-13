@@ -1872,6 +1872,12 @@ struct AccountView: View {
             .overlay {
                 if app.hostReminderPhase != nil { EventReminderHalo(trigger: hostHaloTrigger, cornerRadius: 14) }
             }
+            // Where the host-setup reveal's dots assemble.
+            .background(GeometryReader { g in
+                Color.clear
+                    .onAppear { app.hostCardFrame = g.frame(in: .global) }
+                    .onChange(of: g.frame(in: .global)) { _, f in app.hostCardFrame = f }
+            })
             .padding(.top, 22)
             .accessibilityIdentifier("org.profile.card")
         }

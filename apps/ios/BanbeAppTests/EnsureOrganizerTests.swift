@@ -29,3 +29,14 @@ final class EnsureOrganizerTests: XCTestCase {
         }
     }
 }
+
+final class EnsureOrganizerModeBusyTests: XCTestCase {
+    func testDoesNotEnsureWhileOrganizerModeChangeIsInFlight() {
+        func go(busy: Bool) -> Bool {
+            EnsureOrganizerLogic.shouldEnsure(hasUser: true, organizerMode: true, idsStatus: "loaded",
+                                              ownedCount: 0, ensureStatus: "idle", modeBusy: busy)
+        }
+        XCTAssertFalse(go(busy: true), "optimistic flip: server role is not organizer yet")
+        XCTAssertTrue(go(busy: false))
+    }
+}

@@ -902,8 +902,14 @@ extension AppState {
     /// avatar upload goes to the organizer-photos bucket, path-scoped to
     /// this organizer's own id (never another host's — migration 090's
     /// own storage policies).
-    func saveOrganizerProfile(avatarImage: UIImage?) async {
-        guard let organizerID = myOrganizerID else { return }
+    /// `organizerID`/`name`/`intro` let the first-time host setup sheet save right after the organizer
+    /// is created. Returns whether the save fully succeeded; `orgProfileError` carries the reason.
+    @discardableResult
+    func saveOrganizerProfile(avatarImage: UIImage?, organizerID overrideID: String? = nil,
+                              name overrideName: String? = nil, intro overrideIntro: String? = nil) async -> Bool {
+        guard let organizerID = overrideID ?? myOrganizerID else { return false }
+        let orgName = (overrideName ?? orgRegName).trimmingCharacters(in: .whitespaces)
+        let orgIntro = (overrideIntro ?? orgRegDesc).trimmingCharacters(in: .whitespacesAndNewlines)
         orgProfileSaving = true
         orgProfileError = ""
         // iPhone fix pass (2026-09-27), Issue 2 — separated from the RPC's
@@ -920,12 +926,12 @@ extension AppState {
                 #if DEBUG
                 print("[orgAvatar] stage=decode result=FAILED — UIImage.jpegData returned nil")
                 #endif
-                return
+                return false
             }
             if data.count > 5 * 1024 * 1024 {
                 orgProfileSaving = false
                 orgProfileError = T("Ảnh tối đa 5MB.", "Photo must be under 5MB.")
-                return
+                return false
             }
             let path = "\(organizerID)/avatar-\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
             do {
@@ -953,7 +959,7 @@ extension AppState {
                 print("saveOrganizerProfile upload failed:", error)
                 orgProfileSaving = false
                 orgProfileError = T("Không thể tải ảnh lên. Vui lòng thử lại.", "Could not upload the image. Please try again.")
-                return
+                return false
             }
         }
         do {
@@ -972,8 +978,8 @@ extension AppState {
             let links = orgRegLinks.filter { !$0.url.trimmingCharacters(in: .whitespaces).isEmpty }
             let result: [String: JSONValue] = try await SupabaseService.client
                 .rpc("update_organizer_profile", params: Params(
-                    organizerId: organizerID, name: orgRegName.trimmingCharacters(in: .whitespaces),
-                    intro: orgRegDesc.trimmingCharacters(in: .whitespacesAndNewlines), avatarPath: avatarPath,
+                    organizerId: organizerID, name: orgName,
+                    intro: orgIntro, avatarPath: avatarPath,
                     introLong: orgRegIntroLong, socialLinks: links
                 ))
                 .execute().value
@@ -1001,7 +1007,7 @@ extension AppState {
                 }
                 if let avatarR2Ref { await MediaUploader.delete(ref: avatarR2Ref) }
                 orgProfileSaving = false
-                return
+                return false
             }
             if let avatarPath { myOrganizerAvatarPath = avatarPath; myOrganizerAvatarR2Ref = nil }
             if let avatarR2Ref { myOrganizerAvatarPath = avatarR2Ref; myOrganizerAvatarR2Ref = avatarR2Ref }
@@ -1014,15 +1020,18 @@ extension AppState {
             // it fell back to `organizerProfile.avatarPath` — the stale
             // pre-save value — until the whole screen was reopened. Patches
             // ONLY the fields this save actually changed, in place.
+            orgRegName = orgName
+            orgRegDesc = orgIntro
             if organizerProfile?.id == organizerID {
-                organizerProfile?.name = orgRegName.trimmingCharacters(in: .whitespaces)
-                organizerProfile?.about = orgRegDesc.trimmingCharacters(in: .whitespacesAndNewlines)
+                organizerProfile?.name = orgName
+                organizerProfile?.about = orgIntro
                 if let avatarPath { organizerProfile?.avatarPath = avatarPath; organizerProfile?.avatarR2Ref = nil }
                 if let avatarR2Ref { organizerProfile?.avatarPath = avatarR2Ref; organizerProfile?.avatarR2Ref = avatarR2Ref }
                 organizerProfile?.introLong = orgRegIntroLong
                 organizerProfile?.socialLinks = links
             }
             orgProfileSaving = false
+            return true
         } catch {
             #if DEBUG
             print("[orgAvatar] stage=save result=FAILED(threw) organizerID=\(organizerID) error=\(error)")
@@ -1034,6 +1043,7 @@ extension AppState {
             if let avatarR2Ref { await MediaUploader.delete(ref: avatarR2Ref) }
             orgProfileSaving = false
             orgProfileError = T("Không thể lưu. Vui lòng thử lại.", "Could not save. Please try again.")
+            return false
         }
     }
 
@@ -1514,7 +1524,10 @@ extension AppState {
                     if accountTab == "host" { accountTab = "personal" }
                 }
             }
-            if confirmed { await ensureOrganizerIfNeeded() }
+            // First activation: a returning host who already has a photo, or one who finished/skipped
+            // setup before, never sees the setup sheet again.
+            if confirmed, myOrganizerAvatarPath.isEmpty, !hostSetupResolved { hostSetupOpen = true }
+            if confirmed { await ensureOrganizerIfNeeded(modeSettled: true) }
         } catch {
             // Rolling back in silence is what makes the switch look like it
             // "turns itself back off" — always say why it went back.
