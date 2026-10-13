@@ -38,6 +38,10 @@ struct DeleteAccountView: View {
     @State private var reauthCode = ""
     @State private var reauthVerified = false
     @State private var reauthProof = ""
+    /// Step 1 asks for the date of birth right here; the emailed code is the fallback for an account with none on file.
+    @State private var reauthMode = "dob"
+    @State private var dob = DateOfBirthInput()
+    @State private var dobProblem = ""
     @State private var reauthBusy = false
     @State private var reauthError = ""
     @State private var submitError = ""
@@ -124,6 +128,50 @@ struct DeleteAccountView: View {
         primaryButton(app.T("Tiếp tục", "Continue"), identifier: "deleteAccount.reasonContinue") { step = .confirm }
     }
 
+    private func reauthMessage(_ error: Error) -> String {
+        let f = error as? ReauthFailure
+        switch f?.code {
+        case "REAUTH_CODE_INVALID": return app.T("Mã không đúng hoặc đã hết hạn.", "That code is wrong or has expired.")
+        case "REAUTH_DOB_INCORRECT":
+            let n = f?.attemptsLeft ?? 0
+            return app.T("Ngày sinh chưa đúng. Còn \(n) lần thử.", "That date of birth isn't right. \(n) tries left.")
+        case "REAUTH_DOB_LOCKED":
+            let mins = max(1, Int(ceil(Double(f?.retryAfter ?? 900) / 60)))
+            return app.T("Bạn đã nhập sai quá nhiều lần. Thử lại sau \(mins) phút.", "Too many wrong tries. Try again in \(mins) min.")
+        case "REAUTH_DOB_NOT_SET":
+            return app.T("Tài khoản này chưa có ngày sinh. Hãy xác minh bằng mã gửi qua email.", "This account has no date of birth on file. Verify with an emailed code instead.")
+        case "AUTH_REQUIRED":
+            return app.T("Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.", "Your session has expired. Please sign in again.")
+        default:
+            return app.T("Không thể xác minh lúc này. Vui lòng thử lại.", "We couldn't verify right now. Please try again.")
+                + (f.map { " (\($0.code))" } ?? "")
+        }
+    }
+
+    private func submitDob() async {
+        switch dob.validate() {
+        case .failure(let problem):
+            dobProblem = {
+                switch problem {
+                case .incomplete: return app.T("Nhập đủ ngày, tháng và năm (4 chữ số).", "Enter the day, month and a 4-digit year.")
+                case .invalidDate: return app.T("Ngày này không có trong lịch.", "That date doesn't exist.")
+                case .future: return app.T("Ngày sinh không thể ở tương lai.", "Date of birth can't be in the future.")
+                case .tooOld: return app.T("Hãy nhập năm sinh từ 1900 trở đi.", "Enter a year from 1900 onward.")
+                }
+            }()
+        case .success(let iso):
+            dobProblem = ""; reauthError = ""; reauthBusy = true
+            do {
+                reauthProof = try await AuthAPIService.verifyDeleteReauth(dob: iso)
+                reauthVerified = true
+            } catch {
+                reauthError = reauthMessage(error)
+                if (error as? ReauthFailure)?.code == "REAUTH_DOB_NOT_SET" { reauthMode = "email" }
+            }
+            reauthBusy = false
+        }
+    }
+
     @ViewBuilder
     private var confirmSection: some View {
         Text(app.T("Xác nhận xóa", "Confirm deletion")).font(BanbeTheme.display(20))
@@ -139,7 +187,35 @@ struct DeleteAccountView: View {
         // only and is never read here as server-side proof.
         VStack(alignment: .leading, spacing: 8) {
             Text(app.T("Bước 1 — Xác minh danh tính", "Step 1 — Verify it’s you")).font(.system(size: 12.5, weight: .semibold))
-            if let provider = oauthProvider {
+            if reauthMode == "dob" || reauthVerified {
+                if reauthVerified {
+                    Label(app.T("Đã xác minh", "Verified"), systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 13)).foregroundStyle(.green)
+                        .accessibilityIdentifier("deleteAccount.reauthDone")
+                } else {
+                    Text(app.T("Nhập ngày sinh của bạn để xác nhận đây là bạn.", "Enter your date of birth to confirm it’s you."))
+                        .font(.system(size: 12.5)).opacity(0.8)
+                    DOBFieldsView(input: $dob, identifierPrefix: "deleteAccount.dob")
+                    Button {
+                        Task { await submitDob() }
+                    } label: {
+                        Text(reauthBusy ? app.T("Đang kiểm tra…", "Checking…") : app.T("Xác minh", "Verify"))
+                    }
+                    .buttonStyle(DeleteAccountButtonStyle(app: app))
+                    .disabled(reauthBusy)
+                    .accessibilityIdentifier("deleteAccount.dobVerify")
+                    if !dobProblem.isEmpty || !reauthError.isEmpty {
+                        Text(dobProblem.isEmpty ? reauthError : dobProblem)
+                            .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                            .accessibilityIdentifier("deleteAccount.dobError")
+                    }
+                    Button(app.T("Dùng mã gửi qua email thay thế", "Use an emailed code instead")) {
+                        dobProblem = ""; reauthError = ""; reauthMode = "email"
+                    }
+                    .font(.system(size: 12)).underline().opacity(0.75).buttonStyle(.plain)
+                    .accessibilityIdentifier("deleteAccount.useEmail")
+                }
+            } else if let provider = oauthProvider {
                 Text(app.T(
                     "Tài khoản này đăng nhập qua \(provider). Vui lòng đăng xuất và đăng nhập lại gần đây trước khi xóa tài khoản.",
                     "This account signs in via \(provider). Please sign out and sign back in recently before deleting."
@@ -177,10 +253,7 @@ struct DeleteAccountView: View {
                             reauthVerified = true
                             reauthError = ""
                         } catch {
-                            reauthError = (error as? AuthAPIError)?.code == "REAUTH_CODE_INVALID"
-                                ? app.T("Mã không đúng hoặc đã hết hạn.", "That code is wrong or has expired.")
-                                : app.T("Không thể xác minh lúc này. Vui lòng thử lại.", "We couldn't verify right now. Please try again.")
-                                    + ((error as? AuthAPIError).map { " (\($0.code))" } ?? "")
+                            reauthError = reauthMessage(error)
                         }
                         reauthBusy = false
                     }
@@ -193,6 +266,11 @@ struct DeleteAccountView: View {
                 if !reauthError.isEmpty {
                     Text(reauthError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                 }
+            }
+            if reauthMode == "email", !reauthVerified {
+                Button(app.T("Dùng ngày sinh thay thế", "Use date of birth instead")) { reauthError = ""; reauthMode = "dob" }
+                    .font(.system(size: 12)).underline().opacity(0.75).buttonStyle(.plain)
+                    .accessibilityIdentifier("deleteAccount.useDob")
             }
         }
         .padding(14)

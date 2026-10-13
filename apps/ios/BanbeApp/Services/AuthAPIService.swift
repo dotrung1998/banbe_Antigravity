@@ -49,6 +49,13 @@ struct AuthAPIError: LocalizedError {
 /// payload alongside the code so the caller can read `openEvents` on a
 /// `ACCOUNT_DELETION_BLOCKED_OPEN_EVENT` refusal, unlike the plain
 /// `AuthAPIError` above which only ever needs a static message.
+/// Why re-authentication for deletion failed (code from /api/auth verify_reauth).
+struct ReauthFailure: Error {
+    let code: String
+    var attemptsLeft: Int? = nil
+    var retryAfter: Int? = nil
+}
+
 struct AccountDeletionError: LocalizedError {
     let code: String
     let payload: [String: Any]
@@ -162,25 +169,30 @@ enum AuthAPIService {
     /// (DeleteAccountView) can read `openEvents` on a 409 refusal or
     /// `requestId` on success, mirroring web's equivalent fetch in
     /// BanBeContext.jsx's `confirmDeleteAccount`.
-    /// Verifies the emailed login code for account deletion on the SERVER (type: verify_reauth) and returns
-    /// a short-lived proof that `deleteAccount` must send. Verifying it with the Supabase client instead
-    /// creates a NEW session, which the account gate answers with a date-of-birth re-confirmation that
-    /// interrupts the deletion flow.
-    static func verifyDeleteReauth(code: String) async throws -> String {
+    /// Re-authentication for account deletion, checked on the SERVER for the caller's own account (type:
+    /// verify_reauth) and answered with a short-lived proof that `deleteAccount` must send. Pass either the
+    /// emailed login `code` or the ISO `dob` ("YYYY-MM-DD", checked by the account gate's own rate-limited
+    /// RPC). Neither replaces the caller's session; verifying with the Supabase client would create a NEW
+    /// session, which the account gate answers with a date-of-birth re-confirmation that interrupts deletion.
+    static func verifyDeleteReauth(code: String? = nil, dob: String? = nil) async throws -> String {
         guard let url = URL(string: AppConfig.apiBaseURL + "/api/auth"),
               let token = try? await SupabaseService.client.auth.session.accessToken
-        else { throw AuthAPIError(code: "AUTH_REQUIRED") }
+        else { throw ReauthFailure(code: "AUTH_REQUIRED") }
+        var body: [String: Any] = ["type": "verify_reauth"]
+        if let code { body["code"] = code }
+        if let dob { body["dob"] = dob }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["type": "verify_reauth", "code": code])
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response): (Data, URLResponse)
         do { (data, response) = try await URLSession.shared.data(for: request) }
-        catch { throw AuthAPIError(code: "REAUTH_FAILED") }
+        catch { throw ReauthFailure(code: "REAUTH_FAILED") }
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode), let proof = json["proof"] as? String else {
-            throw AuthAPIError(code: json["error"] as? String ?? "REAUTH_FAILED")
+            throw ReauthFailure(code: json["error"] as? String ?? "REAUTH_FAILED",
+                                attemptsLeft: json["attemptsLeft"] as? Int, retryAfter: json["retryAfter"] as? Int)
         }
         return proof
     }

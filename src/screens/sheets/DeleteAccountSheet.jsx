@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useBanBe } from '../../state/BanBeContext.jsx';
+import { digitsOnly, validateDob, dobProblemText } from '../../lib/dob.js';
 import { paper, ink, rule, cardGlass, fieldGlass, inkButton, alert, display } from '../../theme.js';
 
 // Account deletion (Task 2, Account/Settings pass) — a full-screen sheet
@@ -36,10 +38,35 @@ function SheetShell({ onClose, children }) {
 export default function DeleteAccountSheet() {
   const { state: s, T, closeDeleteAccount, setDeleteAccountStep,
     setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput,
-    setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode,
+    setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob,
     confirmDeleteAccount, deleteAccountPhraseMatches, goHome } = useBanBe();
 
+  // Step 1 asks for the date of birth right here (no sign-out / sign-in); the emailed code is the fallback
+  // for an account with no date of birth on file.
+  const [reauthMode, setReauthMode] = useState('dob');
+  const [dob, setDob] = useState({ day: '', month: '', year: '' });
+  const [dobProblem, setDobProblem] = useState('');
+
   if (!s.deleteAccountOpen) return null;
+
+  const submitDob = async () => {
+    const v = validateDob(dob);
+    if (!v.iso) { setDobProblem(dobProblemText(v.problem, T)); return; }
+    setDobProblem('');
+    if (await verifyDeleteAccountReauthDob(v.iso) === 'needs_email') setReauthMode('email');
+  };
+  const dobField = (key, label, ph, max) => (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: key === 'year' ? 1.4 : 1, minWidth: 0 }}>
+      <span style={{ fontSize: 11, fontWeight: 600, color: ink }}>{label}</span>
+      <input
+        value={dob[key]} placeholder={ph} inputMode="numeric" autoComplete="off" data-testid={`delete-account-dob-${key}`}
+        onChange={(e) => setDob({ ...dob, [key]: digitsOnly(e.target.value, max) })}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !s.deleteAccountReauthBusy) submitDob(); }}
+        style={{ ...fieldGlass({ padding: '11px 6px', fontSize: 15, color: ink, textAlign: 'center', width: '100%', boxSizing: 'border-box' }) }}
+      />
+    </label>
+  );
+  const linkStyle = { fontSize: 12, color: ink, opacity: 0.75, textDecoration: 'underline', cursor: 'pointer', marginTop: 10, display: 'inline-block' };
 
   const step = s.deleteAccountStep;
   const identityLabel = s.user?.name || s.user?.email || T('tài khoản của bạn', 'your account');
@@ -120,7 +147,25 @@ export default function DeleteAccountSheet() {
             nothing server-side ever reads it. */}
         <div style={{ ...cardGlass({ marginTop: 14, padding: '14px 16px' }) }} data-testid="delete-account-reauth">
           <span style={{ fontSize: 12.5, fontWeight: 600, color: ink }}>{T('Bước 1 — Xác minh danh tính', 'Step 1 — Verify it’s you')}</span>
-          {s.deleteAccountOAuthProvider ? (
+          {(reauthMode === 'dob' || s.deleteAccountReauthVerified) ? (
+            s.deleteAccountReauthVerified ? (
+              <p style={{ fontSize: 12.5, color: ink, marginTop: 8 }} data-testid="delete-account-reauth-done">✓ {T('Đã xác minh', 'Verified')}</p>
+            ) : (
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="delete-account-dob">
+                <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.8 }}>{T('Nhập ngày sinh của bạn để xác nhận đây là bạn.', 'Enter your date of birth to confirm it’s you.')}</p>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {dobField('day', T('Ngày', 'Day'), 'DD', 2)}
+                  {dobField('month', T('Tháng', 'Month'), 'MM', 2)}
+                  {dobField('year', T('Năm', 'Year'), 'YYYY', 4)}
+                </div>
+                <div onClick={s.deleteAccountReauthBusy ? undefined : submitDob} data-testid="delete-account-dob-verify" style={{ ...inkButton({ borderRadius: 12, padding: 11, fontSize: 13 }), opacity: s.deleteAccountReauthBusy ? 0.5 : 1 }}>
+                  {s.deleteAccountReauthBusy ? T('Đang kiểm tra…', 'Checking…') : T('Xác minh', 'Verify')}
+                </div>
+                {(dobProblem || s.deleteAccountReauthError) && <span style={{ fontSize: 11.5, color: alert }} data-testid="delete-account-dob-error">{dobProblem || s.deleteAccountReauthError}</span>}
+                <span role="button" onClick={() => { setDobProblem(''); setReauthMode('email'); }} data-testid="delete-account-use-email" style={linkStyle}>{T('Dùng mã gửi qua email thay thế', 'Use an emailed code instead')}</span>
+              </div>
+            )
+          ) : s.deleteAccountOAuthProvider ? (
             <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, marginTop: 8 }}>
               {T(
                 `Tài khoản này đăng nhập qua ${s.deleteAccountOAuthProvider}. Vui lòng đăng xuất và đăng nhập lại gần đây trước khi xóa tài khoản (banbe chưa hỗ trợ xác thực lại qua ${s.deleteAccountOAuthProvider} ngay tại đây).`,
@@ -147,6 +192,9 @@ export default function DeleteAccountSheet() {
               </div>
               {s.deleteAccountReauthError && <span style={{ fontSize: 11.5, color: alert }}>{s.deleteAccountReauthError}</span>}
             </div>
+          )}
+          {reauthMode === 'email' && !s.deleteAccountReauthVerified && (
+            <span role="button" onClick={() => setReauthMode('dob')} data-testid="delete-account-use-dob" style={linkStyle}>{T('Dùng ngày sinh thay thế', 'Use date of birth instead')}</span>
           )}
         </div>
 

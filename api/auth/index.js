@@ -293,22 +293,55 @@ async function markStep(admin, requestId, stepKey, value) {
   }
 }
 
-// Verifies the emailed login code for the CALLER's own account on a throwaway client, so the
-// caller's real session is never replaced (a new session would trigger the date-of-birth gate).
-// Returns a short-lived proof that delete_account requires.
+// Re-authentication for account deletion. Two ways, both checked on the server for the CALLER's own
+// account, and neither replaces the caller's real session (a new session would trigger the account
+// gate's date-of-birth re-confirmation and interrupt the deletion flow):
+//   - { dob: 'YYYY-MM-DD' }  the account gate's own confirm_date_of_birth RPC, run as the caller
+//                            (rate limited and locked out after 5 wrong answers by the database).
+//   - { code }               the emailed login code, verified on a throwaway client.
+// Success returns a short-lived proof that delete_account requires.
 async function handleVerifyReauth(req, res, admin, body) {
   const token = getText((req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
   if (!token) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   const { data: userData, error: userError } = await admin.auth.getUser(token);
   if (userError || !userData?.user) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   const { id: userId, email } = userData.user;
+  const dob = getText(body.dob);
   const code = getText(body.code);
-  if (!email) return res.status(400).json({ error: 'REAUTH_EMAIL_REQUIRED' });
-  if (!code) return res.status(400).json({ error: 'REAUTH_CODE_REQUIRED' });
 
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const proof = () => res.status(200).json({ proof: signReauthProof(userId, process.env.SUPABASE_SERVICE_ROLE_KEY) });
+
+  if (dob) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) return res.status(400).json({ error: 'REAUTH_DOB_INVALID' });
+    if (!url || !anonKey) return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED' });
+    try {
+      const r = await fetch(`${url}/rest/v1/rpc/confirm_date_of_birth`, {
+        method: 'POST',
+        headers: { apikey: anonKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_dob: dob }),
+      });
+      const result = await r.json().catch(() => null);
+      if (!r.ok || !result) return res.status(502).json({ error: 'REAUTH_SERVER_ERROR' });
+      if (result.success === true) {
+        // The account has no date of birth on file, so there is nothing to compare against.
+        if (result.not_required) return res.status(400).json({ error: 'REAUTH_DOB_NOT_SET' });
+        return proof();
+      }
+      if (result.error === 'LOCKED') return res.status(429).json({ error: 'REAUTH_DOB_LOCKED', retryAfter: result.retry_after_seconds });
+      if (result.error === 'INCORRECT') return res.status(400).json({ error: 'REAUTH_DOB_INCORRECT', attemptsLeft: result.attempts_left });
+      return res.status(400).json({ error: 'REAUTH_DOB_FAILED' });
+    } catch (error) {
+      console.error('verify_reauth (dob) failed:', error);
+      return res.status(500).json({ error: 'REAUTH_SERVER_ERROR' });
+    }
+  }
+
+  if (!email) return res.status(400).json({ error: 'REAUTH_EMAIL_REQUIRED' });
+  if (!code) return res.status(400).json({ error: 'REAUTH_CODE_REQUIRED' });
   // Prefer the anon key; fall back to the service key (the client is throwaway and never persists).
-  const key = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = anonKey || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED' });
   try {
     const throwaway = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
@@ -320,7 +353,7 @@ async function handleVerifyReauth(req, res, admin, body) {
     // Drop ONLY the session that verification just created (scope 'local'); the default global scope
     // would revoke every session of the account, including the caller's own.
     await throwaway.auth.signOut({ scope: 'local' }).catch(() => {});
-    return res.status(200).json({ proof: signReauthProof(userId, process.env.SUPABASE_SERVICE_ROLE_KEY) });
+    return proof();
   } catch (error) {
     console.error('verify_reauth failed:', error);
     return res.status(500).json({ error: 'REAUTH_SERVER_ERROR' });
