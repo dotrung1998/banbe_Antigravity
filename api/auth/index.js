@@ -307,14 +307,23 @@ async function handleVerifyReauth(req, res, admin, body) {
   if (!code) return res.status(400).json({ error: 'REAUTH_CODE_REQUIRED' });
 
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED' });
-  const throwaway = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-  const { data, error } = await throwaway.auth.verifyOtp({ email, token: code, type: 'email' });
-  if (error || data?.user?.id !== userId) return res.status(400).json({ error: 'REAUTH_CODE_INVALID' });
-  // Drop the session that verification just created; nobody needs it.
-  await throwaway.auth.signOut().catch(() => {});
-  return res.status(200).json({ proof: signReauthProof(userId, process.env.SUPABASE_SERVICE_ROLE_KEY) });
+  // Prefer the anon key; fall back to the service key (the client is throwaway and never persists).
+  const key = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED' });
+  try {
+    const throwaway = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+    const { data, error } = await throwaway.auth.verifyOtp({ email, token: code, type: 'email' });
+    if (error || data?.user?.id !== userId) {
+      if (error) console.warn('verify_reauth: verifyOtp rejected:', error.status, error.code, error.message);
+      return res.status(400).json({ error: 'REAUTH_CODE_INVALID' });
+    }
+    // Drop the session that verification just created; nobody needs it.
+    await throwaway.auth.signOut().catch(() => {});
+    return res.status(200).json({ proof: signReauthProof(userId, process.env.SUPABASE_SERVICE_ROLE_KEY) });
+  } catch (error) {
+    console.error('verify_reauth failed:', error);
+    return res.status(500).json({ error: 'REAUTH_SERVER_ERROR' });
+  }
 }
 
 async function handleDeleteAccount(req, res, admin, body) {

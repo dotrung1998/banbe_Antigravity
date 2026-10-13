@@ -180,6 +180,7 @@ struct DeleteAccountView: View {
                             reauthError = (error as? AuthAPIError)?.code == "REAUTH_CODE_INVALID"
                                 ? app.T("Mã không đúng hoặc đã hết hạn.", "That code is wrong or has expired.")
                                 : app.T("Không thể xác minh lúc này. Vui lòng thử lại.", "We couldn't verify right now. Please try again.")
+                                    + ((error as? AuthAPIError).map { " (\($0.code))" } ?? "")
                         }
                         reauthBusy = false
                     }

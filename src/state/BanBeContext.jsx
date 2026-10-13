@@ -8450,7 +8450,7 @@ export function BanBeProvider({ children }) {
         deleteAccountReauthBusy: false,
         deleteAccountReauthError: e.message === 'REAUTH_CODE_INVALID'
           ? T('Mã không đúng hoặc đã hết hạn.', 'That code is wrong or has expired.')
-          : T('Không thể xác minh lúc này. Vui lòng thử lại.', "We couldn't verify right now. Please try again."),
+          : T('Không thể xác minh lúc này. Vui lòng thử lại.', "We couldn't verify right now. Please try again.") + (e.message && e.message !== 'REAUTH_FAILED' ? ` (${e.message})` : ''),
       });
     }
   }, [set, s.deleteAccountReauthCode, T]);
