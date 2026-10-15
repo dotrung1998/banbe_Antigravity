@@ -1229,7 +1229,7 @@ export default function Home() {
       )}
 
       {feed.map(ev => (
-        <div key={ev.key} data-testid={`home-event-${ev.key}`} onClick={() => goEvent(ev.key)} style={{ cursor: 'pointer', paddingBottom: 6 }}>
+        <div key={ev.key} data-testid={`home-event-${ev.key}`} data-zoom-src={ev.key} onClick={() => goEvent(ev.key)} style={{ cursor: 'pointer', paddingBottom: 6 }}>
           <div style={{ position: 'relative' }}>
             {/* Discovery-bug fix — a real event with no uploaded photo yet
                 gets the same honest "Chưa có ảnh" placeholder the weekend
@@ -1297,7 +1297,7 @@ export default function Home() {
           {weekendList.length > 0 ? (
             <div data-hscroll="true" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 10 }}>
               {weekendList.map(e => (
-                <div key={e.key} data-testid={`weekend-event-${e.key}`} onClick={() => goEvent(e.key)} style={{ flex: 'none', width: 168, cursor: 'pointer' }}>
+                <div key={e.key} data-testid={`weekend-event-${e.key}`} data-zoom-src={e.key} onClick={() => goEvent(e.key)} style={{ flex: 'none', width: 168, cursor: 'pointer' }}>
                   <div style={{ position: 'relative' }}>
                     {e.photoUrl ? (
                       <div style={bg(e.photoUrl, { width: 168, height: 110 })} />

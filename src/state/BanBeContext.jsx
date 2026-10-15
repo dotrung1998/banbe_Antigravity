@@ -6533,7 +6533,7 @@ export function BanBeProvider({ children }) {
     let stats = null;
     if (organizerId) {
       const { data } = await supabase.rpc('get_organizer_profile', { p_organizer_id: organizerId });
-      if (data && data.success !== false) stats = { count: Number(data.event_count) || 0, sinceYear: data.hosting_since_year || null };
+      if (data && data.success !== false) stats = { count: Number(data.event_count) || 0, sinceYear: data.hosting_since_year || null, avatarPath: data.avatar_path || null, avatarR2Ref: data.avatar_r2_ref || null };
     }
     set(prev => ({ eventOrgStats: { ...prev.eventOrgStats, [key]: stats } }));
   }, [set, s.eventOrgStats, s.realEventsById]);

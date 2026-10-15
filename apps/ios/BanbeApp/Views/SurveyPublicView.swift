@@ -185,20 +185,10 @@ struct SurveyPublicView: View {
         // Lets a drag-to-scroll gesture dismiss the keyboard too, per this
         // ticket's "allow keyboard dismissal by scrolling interactively".
         .scrollDismissesKeyboard(.interactively)
-        .toolbar {
-            // Number-pad keyboards (Group size) have no Return key at all,
-            // and most of this form's other fields are optional chips/
-            // checkboxes with no natural "next field" — one shared Done
-            // action, above every keyboard this screen ever shows, resigns
-            // focus without submitting anything.
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button(app.T("Xong", "Done")) { focusedField = nil }
-                    .font(.system(size: 14, weight: .semibold))
-            }
-        }
         .background(app.palette.paper)
         .foregroundStyle(app.palette.ink)
+        // Presented as a full-screen cover (outside the main tree's keyboard toolbar) only when `asModal`.
+        .keyboardDoneToolbar(asModal)
         // REAL root cause of three failed keyboard-scroll attempts in a
         // row: this used to unconditionally ignore the bottom safe area
         // (so the paper background extends behind the home indicator when

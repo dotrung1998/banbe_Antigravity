@@ -210,14 +210,6 @@ struct SurveysHostingView: View {
             if app.screen != .surveyPublic && app.screen != .surveysHosting { app.surveysHostingTab = "active" }
         }
         .scrollDismissesKeyboard(.interactively)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button(app.T("Xong", "Done")) {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-            }
-        }
         .background(app.palette.paper)
         .foregroundStyle(app.palette.ink)
         .task { await app.loadMySurveys() }

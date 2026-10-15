@@ -932,6 +932,46 @@ struct FocusableTextField: UIViewRepresentable {
 /// RootView's gesture — no race to get right), and is what `perform`
 /// actually checks, not a live/instantaneous read that could lose a race
 /// against `RootView` resetting its own state right at release.
+/// A "Xong" / "Done" button above the keyboard (the system gives it the Liquid Glass look on iOS 26). Attached once
+/// near the top of the main view tree, and again on anything presented separately (sheets, full-screen covers),
+/// which is not part of that tree.
+struct KeyboardDoneToolbar: ViewModifier {
+    var enabled = true
+    @EnvironmentObject private var app: AppState
+    func body(content: Content) -> some View {
+        content.toolbar {
+            if enabled {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button(app.T("Xong", "Done")) {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+}
+extension View {
+    func keyboardDoneToolbar(_ enabled: Bool = true) -> some View { modifier(KeyboardDoneToolbar(enabled: enabled)) }
+}
+
+/// Registers this view's on-screen frame as the place Event Detail zooms out of (and back into) for `key`.
+struct ZoomSourceModifier: ViewModifier {
+    let key: String
+    @EnvironmentObject private var app: AppState
+    func body(content: Content) -> some View {
+        content.background(GeometryReader { g in
+            Color.clear
+                .onAppear { app.eventZoomFrames[key] = g.frame(in: .global) }
+                .onChange(of: g.frame(in: .global)) { _, f in app.eventZoomFrames[key] = f }
+        })
+    }
+}
+extension View {
+    func zoomSource(_ key: String) -> some View { modifier(ZoomSourceModifier(key: key)) }
+}
+
 struct SwipeSafeButton<Label: View>: View {
     let action: () -> Void
     @ViewBuilder let label: () -> Label

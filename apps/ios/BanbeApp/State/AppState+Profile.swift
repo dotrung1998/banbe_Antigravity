@@ -106,6 +106,9 @@ struct PublicProfileCreditedEvent: Decodable, Equatable, Identifiable {
 struct OrganizerStats: Equatable {
     let count: Int
     let sinceYear: Int?
+    /// organizers.avatar_path / avatar_r2_ref, so Event Detail can show the host's small round photo.
+    var avatarPath: String? = nil
+    var avatarR2Ref: String? = nil
 }
 
 struct OrganizerProfile: Decodable, Equatable {
@@ -457,7 +460,7 @@ extension AppState {
             .rpc("get_organizer_profile", params: ["p_organizer_id": organizerID])
             .execute().value,
             result.success == true else { return }
-        organizerStats[organizerID] = OrganizerStats(count: result.eventCount ?? 0, sinceYear: result.hostingSinceYear)
+        organizerStats[organizerID] = OrganizerStats(count: result.eventCount ?? 0, sinceYear: result.hostingSinceYear, avatarPath: result.avatarPath, avatarR2Ref: result.avatarR2Ref)
     }
     func loadEventOrgStats(forEventKey key: String) async {
         let id: String?
@@ -467,6 +470,9 @@ extension AppState {
         await loadOrganizerStats(organizerID: id)
     }
     func backFromOrganizerProfile() {
+        Haptics.light()
+        eventClosing = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.eventClosing = false }
         let toPulse = organizerProfileReturnsToPulse
         organizerProfileReturnsToPulse = false
         if organizerProfileBackScreen == .event, !organizerProfileEventKey.isEmpty, eventKey != organizerProfileEventKey {

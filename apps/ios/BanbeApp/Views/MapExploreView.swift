@@ -1051,9 +1051,9 @@ struct MapExploreView: View {
                 // first; `cosmetic?.img` remains only for an actual demo
                 // catalogue event (id genuinely matches a bundled entry).
                 if let url = app.mapEventCoverURLs[ev.id] {
-                    CatalogPhoto(path: url.absoluteString, height: 64, width: 64, cornerRadius: 10)
+                    CatalogPhoto(path: url.absoluteString, height: 64, width: 64, cornerRadius: 10).zoomSource(ev.id)
                 } else if let path = cosmetic?.img {
-                    CatalogPhoto(path: path, height: 64, width: 64, cornerRadius: 10)
+                    CatalogPhoto(path: path, height: 64, width: 64, cornerRadius: 10).zoomSource(ev.id)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .top) {
@@ -1483,9 +1483,9 @@ struct MapExploreView: View {
                         // event's own resolved real photo before ever
                         // falling back to the static demo catalogue join.
                         if let url = app.mapEventCoverURLs[ev.id] {
-                            CatalogPhoto(path: url.absoluteString, height: 52, width: 52, cornerRadius: 10)
+                            CatalogPhoto(path: url.absoluteString, height: 52, width: 52, cornerRadius: 10).zoomSource(ev.id)
                         } else if let path = EventCatalog.find(ev.id)?.img {
-                            CatalogPhoto(path: path, height: 52, width: 52, cornerRadius: 10)
+                            CatalogPhoto(path: path, height: 52, width: 52, cornerRadius: 10).zoomSource(ev.id)
                         }
                         VStack(alignment: .leading, spacing: 2) {
                             Text(ev.name).font(.system(size: 14, weight: .semibold))

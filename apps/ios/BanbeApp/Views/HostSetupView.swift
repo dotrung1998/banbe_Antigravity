@@ -176,14 +176,6 @@ struct HostSetupView: View {
             .accessibilityIdentifier("hostSetup.submit")
         }
         .foregroundStyle(app.palette.ink)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button(app.T("Xong", "Done")) {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-            }
-        }
     }
 
     private func sectionLabel(_ text: String) -> some View {

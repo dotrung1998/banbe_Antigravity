@@ -177,7 +177,12 @@ struct RootView: View {
         app.mapCloseSwipeCancelled = true
     }
 
-    private var isPeeking: Bool { isDragTracking || isCommittingBack }
+    /// Event Detail is being pulled down to close (vertical, driven by EventDetailView itself): the screen
+    /// underneath shows through, flush (no sideways parallax), while the event screen shrinks away.
+    private var isEventDismissing: Bool { app.eventDismissProgress > 0 && app.screen == .event }
+    /// Event Detail is zooming open out of a card: keep the screen it came from drawn underneath meanwhile.
+    private var isEventOpening: Bool { app.eventOpening && app.screen == .event }
+    private var isPeeking: Bool { isDragTracking || isCommittingBack || ((isEventDismissing || isEventOpening) && !app.eventHasLiveUnderlay) }
 
     // Stage 2 — same 70pt commit distance as the web equivalent
     // (App.jsx's Shell, SWIPE_COMMIT_PX).
@@ -344,6 +349,24 @@ struct RootView: View {
     /// everything inside it) reverts to ordinary declaration-order z-order
     /// against RootView's OTHER siblings — restoring the edge-swipe strip's
     /// and every overlay's rightful place above it.
+    /// Event Detail grows in from slightly smaller and shrinks away when it closes; whatever it closes onto just
+    /// fades in place. Every other screen keeps the push/pop slide.
+    private func transition(for screen: Screen) -> AnyTransition {
+        if screen == .event {
+            // Event Detail animates itself (zooming out of / back into the tapped card), so no transition here.
+            return .asymmetric(insertion: .identity, removal: .opacity)
+        }
+        if screen == .organizerProfile {
+            return .asymmetric(insertion: .scale(scale: 0.9).combined(with: .opacity),
+                               removal: .scale(scale: 0.88).combined(with: .opacity))
+        }
+        if app.eventOpening || app.eventClosing { return .identity }
+        return .asymmetric(
+            insertion: .opacity.combined(with: .move(edge: .leading)),
+            removal: .opacity.combined(with: .move(edge: .trailing))
+        )
+    }
+
     private var rootScreenStack: some View {
         ZStack {
             ForEach(rootScreensToRender, id: \.self) { s in
@@ -351,10 +374,7 @@ struct RootView: View {
                 // Only the CURRENT screen plays the push/pop cross-fade — the
                 // neighbor is positioned manually (offsetForRootScreen) and
                 // must never independently fade/slide in on its own.
-                .transition(s == app.screen ? .asymmetric(
-                    insertion: .opacity.combined(with: .move(edge: .leading)),
-                    removal: .opacity.combined(with: .move(edge: .trailing))
-                ) : .identity)
+                .transition(s == app.screen ? transition(for: s) : .identity)
                 .offset(x: offsetForRootScreen(s))
                 // Accidental-tap-during-swipe fix (2026-09-29) — this used to
                 // stay `true` for the CURRENT screen through an entire, slow
@@ -410,6 +430,9 @@ struct RootView: View {
     /// right before AND right after `app.screen` flips to it, so SwiftUI
     /// never tears it down in between.
     private var rootScreensToRender: [Screen] {
+        // Event Detail over Home/Map: keep that screen mounted underneath (same instance, so its scroll position and
+        // camera are untouched when the event closes).
+        if app.eventHasLiveUnderlay { return [app.eventBackScreen, app.screen] }
         guard BottomTabBar.visibleScreens.contains(app.screen), let neighbor = tabSwipeNeighbor else { return [app.screen] }
         return [app.screen, neighbor]
     }
@@ -418,6 +441,7 @@ struct RootView: View {
         if screen == app.screen {
             return (isCommittingBack ? UIScreen.main.bounds.width : dragTranslation) + tabSwipeTranslation
         }
+        if app.eventHasLiveUnderlay { return isDragTracking || isCommittingBack ? peekOffset : 0 }
         // The tab-swipe neighbor only (edge-swipe-back's own peek is a
         // separate, mutually-exclusive mechanism — see this gesture's own
         // doc comment) — positioned exactly one screen-width away in the
@@ -479,7 +503,14 @@ struct RootView: View {
     /// slightly off-frame rather than sitting flush at 0, the same subtle
     /// depth cue UIKit's pop transition gives the view underneath.
     private var peekOffset: CGFloat {
-        -(1 - dragProgress) * UIScreen.main.bounds.width * 0.28
+        if (isEventDismissing || isEventOpening) && !isDragTracking { return 0 }
+        return -(1 - dragProgress) * UIScreen.main.bounds.width * 0.28
+    }
+    /// Dimming on the revealed screen: eases off as the swipe/pull progresses.
+    private var peekDim: Double {
+        if isEventOpening && !isEventDismissing { return 0.18 }
+        if isEventDismissing && !isDragTracking { return 0.28 * (1 - Double(app.eventDismissProgress)) }
+        return Double(1 - dragProgress) * 0.1
     }
 
     var body: some View {
@@ -544,12 +575,12 @@ struct RootView: View {
                     // no hit-testing) instead of the screen under it.
                     PulseViewerView()
                         .offset(x: peekOffset)
-                        .overlay(Color.black.opacity((1 - dragProgress) * 0.1))
+                        .overlay(Color.black.opacity(peekDim))
                         .allowsHitTesting(false)
-                } else if !eventDetailFromStory {
+                } else if !eventDetailFromStory && !app.eventHasLiveUnderlay {
                     screenView(for: app.backTargetScreen, isPreview: true, isActive: false)
                         .offset(x: peekOffset)
-                        .overlay(Color.black.opacity((1 - dragProgress) * 0.1))
+                        .overlay(Color.black.opacity(peekDim))
                         .allowsHitTesting(false)
                 }
             }
@@ -634,7 +665,10 @@ struct RootView: View {
             .onChange(of: isScreenLevelSwipeActive) { _, active in
                 if active { app.isRootSwipeActive = true } else { app.isRootSwipeActive = false }
             }
-            .animation(isCommittingBack || dragTranslation > 0 || tabSwipeCommittingTarget != nil ? nil : .easeInOut(duration: 0.28), value: app.screen)
+            .animation(isCommittingBack || dragTranslation > 0 || tabSwipeCommittingTarget != nil || app.eventDismissProgress > 0 || (app.eventClosing && app.screen != .event)
+                        ? nil
+                        : ((app.screen == .event || app.screen == .organizerProfile || app.eventClosing) ? .spring(response: 0.55, dampingFraction: 0.88) : .easeInOut(duration: 0.28)),
+                        value: app.screen)
             .scrollDisabled(isScreenLevelSwipeActive)
             // Depth cue on the dragged edge, same as UIKit's pop shadow.
             .shadow(color: .black.opacity(dragProgress * 0.16), radius: 16, x: -6, y: 0)
@@ -976,6 +1010,7 @@ struct RootView: View {
         // same open/close animation and drag-to-dismiss) as the profile share
         // card. Closing by any route runs closePulseViewer() so the organizer/
         // photo panels are cleared with it.
+        .keyboardDoneToolbar()
         .sheet(isPresented: Binding(
             get: { app.pulseOpen },
             set: { if !$0 { app.closePulseViewer() } }

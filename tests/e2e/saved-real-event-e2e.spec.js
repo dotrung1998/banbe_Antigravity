@@ -96,7 +96,7 @@ test.describe('Real (non-catalogue) event — save/weekend E2E (retention roadma
     const eventScreen = page.locator('[data-screen-label="Event"]');
     await expect(eventScreen).toBeVisible({ timeout: 5000 });
     await expect(eventScreen.getByText(EVENT_NAME)).toBeVisible();
-    await expect(page.getByTestId('event-detail-save')).toHaveText(/Đã lưu/);
+    await expect(page.getByTestId('event-detail-save')).toHaveAttribute('aria-label', /Đã lưu/); // icon-only button now
 
     // Confirms the real DB row, not just optimistic client state — the
     // persist itself is fire-and-forget from toggleFav's own click handler
@@ -121,7 +121,7 @@ test.describe('Real (non-catalogue) event — save/weekend E2E (retention roadma
     await savedScreen.getByText(EVENT_NAME).click();
     await expect(eventScreen).toBeVisible({ timeout: 5000 });
     await page.getByTestId('event-detail-save').click();
-    await expect(page.getByTestId('event-detail-save')).toHaveText(/^Lưu$/);
+    await expect(page.getByTestId('event-detail-save')).toHaveAttribute('aria-label', /^Lưu$/);
 
     await expect(async () => {
       const { data: favRowAfter } = await admin.from('favorites').select('*').eq('user_id', sharedUserId).eq('event_id', eventId).maybeSingle();

@@ -87,7 +87,7 @@ export default function EventList() {
       {list.length > 0 ? (
         <div style={{ ...fieldGlass({ margin: '20px 20px 0', display: 'flex', flexDirection: 'column' }) }}>
           {list.map((e, i) => (
-            <div key={e.key} onClick={e.unavailable ? undefined : () => goEvent(e.key)} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '13px 16px', borderBottom: i < list.length - 1 ? `1px solid ${rule}` : 'none', cursor: e.unavailable ? 'default' : 'pointer' }}>
+            <div key={e.key} data-zoom-src={e.key} onClick={e.unavailable ? undefined : () => goEvent(e.key)} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '13px 16px', borderBottom: i < list.length - 1 ? `1px solid ${rule}` : 'none', cursor: e.unavailable ? 'default' : 'pointer' }}>
               {e.photoUrl ? (
                 <div style={bg(e.photoUrl, { flex: 'none', width: 52, height: 52, borderRadius: 10 })} />
               ) : (

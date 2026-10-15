@@ -58,17 +58,27 @@ export default function DockCreateButton() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // Drag the tray down to dismiss. The pointer is only captured once it has actually moved (a plain tap must
+  // reach the menu row under the finger: capturing on pointer-down redirected the click to the tray itself, so
+  // tapping a row's text did nothing — only a perfectly placed tap on its icon happened to get through).
   const onTrayPointerDown = (e) => {
-    dragRef.current = { startY: e.clientY, dragging: true };
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+    dragRef.current = { startY: e.clientY, pointerId: e.pointerId, dragging: false };
   };
   const onTrayPointerMove = (e) => {
-    if (!dragRef.current?.dragging) return;
-    setDragY(Math.max(0, e.clientY - dragRef.current.startY));
+    const d = dragRef.current;
+    if (!d) return;
+    const dy = e.clientY - d.startY;
+    if (!d.dragging) {
+      if (dy < 8) return;
+      d.dragging = true;
+      e.currentTarget.setPointerCapture?.(d.pointerId);
+    }
+    setDragY(Math.max(0, dy));
   };
   const onTrayPointerUp = () => {
-    if (!dragRef.current?.dragging) return;
-    dragRef.current.dragging = false;
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (!d?.dragging) return;
     if (dragY > 60) close(); else setDragY(0);
   };
 

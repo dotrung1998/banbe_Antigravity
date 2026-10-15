@@ -592,7 +592,7 @@ struct HomeView: View {
                         SwipeSafeButton { app.goEvent(event.key) } label: {
                             VStack(alignment: .leading, spacing: 7) {
                                 ZStack(alignment: .topLeading) {
-                                    CatalogPhoto(path: event.img, height: 96, width: 152, cornerRadius: 12)
+                                    CatalogPhoto(path: event.img, height: 96, width: 152, cornerRadius: 12).zoomSource(event.key)
                                     if reminderPhase(event) != nil {
                                         EventReminderHalo(trigger: reminderHaloTrigger, cornerRadius: 12)
                                             .frame(width: 152, height: 96)
@@ -1392,7 +1392,7 @@ struct EventCard: View {
         SwipeSafeButton { app.goEvent(event.key) } label: {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .topTrailing) {
-                    CatalogPhoto(path: event.img, height: 272, cornerRadius: 14)
+                    CatalogPhoto(path: event.img, height: 272, cornerRadius: 14).zoomSource(event.key)
                         .overlay(alignment: .bottom) {
                             LinearGradient(
                                 colors: [app.palette.paper.opacity(0), app.palette.paper],

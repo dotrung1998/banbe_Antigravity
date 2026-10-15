@@ -458,6 +458,7 @@ struct PulseViewerView: View {
         // (including that photo tile) to the same rounded rect the
         // background already uses, making left/right symmetric.
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .zoomSource(item.eventId)
         .background {
             GeometryReader { proxy in
                 Color.clear.preference(key: PulseSourceFramePreferenceKey.self, value: [pulseSourceKey(item.id): proxy.frame(in: .named("pulse.overlay"))])
@@ -615,7 +616,7 @@ struct PulseViewerView: View {
                 .onAppear {
                     guard expandedPanelKey == sourceKey else { return }
                     guard !reduceMotion else { return }
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) { expandedPanelProgress = 1 }
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.86)) { expandedPanelProgress = 1 }
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -625,7 +626,8 @@ struct PulseViewerView: View {
 
     private func closeExpandedPanel(onClose: @escaping () -> Void) {
         guard !reduceMotion, expandedPanelProgress > 0.01 else { onClose(); return }
-        withAnimation(.spring(response: 0.26, dampingFraction: 0.9), completionCriteria: .logicallyComplete, {
+        Haptics.light()
+        withAnimation(.easeInOut(duration: 0.42), completionCriteria: .logicallyComplete, {
             expandedPanelProgress = 0
         }, completion: onClose)
     }

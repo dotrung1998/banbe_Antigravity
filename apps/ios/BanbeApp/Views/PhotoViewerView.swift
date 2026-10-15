@@ -35,6 +35,16 @@ struct PhotoViewerView: View {
     @State private var photoRect: CGRect = .zero
     // Non-nil only while the shrink-back dismiss animation is playing.
     @State private var dismissTransform: (scale: CGSize, offset: CGSize)?
+    // Opening: the photo starts at its thumbnail's rect (`openFrom`) and grows to its place; `presented` flips on
+    // once that start pose is in effect, so the first frame is already at the thumbnail (no flash of the end state).
+    @State private var openFrom: (scale: CGSize, offset: CGSize)?
+    @State private var presented = false
+    private var openingStarted: Bool { presented || openFrom != nil }
+    /// Fade level for backdrop/dim/captions: in with the open, out with a drag or the dismiss.
+    private var chromeOpacity: Double {
+        if dismissTransform != nil || !presented { return 0 }
+        return Double(1 - dragProgress)
+    }
     // Task 2b follow-up: live 1:1 drag-follow for the dismiss gesture —
     // previously this view only evaluated `value.translation` once, in
     // `onEnded`, with no visual feedback while the finger was still down.
@@ -84,7 +94,7 @@ struct PhotoViewerView: View {
     /// dismisses); anything short of that (including a plain tap, which
     /// never moves at all) is a tap instead.
     private let swipeThreshold: CGFloat = 44
-    private let dismissDuration: Double = 0.28
+    private let dismissDuration: Double = 0.44
 
     /// Same easing this app already uses for its entrance animations.
     private var dismissAnimation: Animation {
@@ -108,12 +118,32 @@ struct PhotoViewerView: View {
     // NEW target computed here, regardless of which state produced the
     // starting value — SwiftUI tracks the resolved value per frame, not
     // which `@State` fed it.
+    /// Grows the photo from its thumbnail to its resting place (backdrop and captions fade in alongside), the exact
+    /// reverse of `dismiss()`. Waits for the photo's real frame; runs once.
+    private func beginOpening() {
+        guard !openingStarted, photoRect.width > 0, photoRect.height > 0 else { return }
+        let o = item.originRect
+        if o.width > 0, o.height > 0 {
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) {
+                openFrom = (CGSize(width: o.width / photoRect.width, height: o.height / photoRect.height),
+                            CGSize(width: o.midX - photoRect.midX, height: o.midY - photoRect.midY))
+            }
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.86)) { presented = true }
+            }
+        } else {
+            withAnimation(.easeOut(duration: 0.2)) { presented = true }
+        }
+    }
+
     private func dismiss() {
         guard dismissTransform == nil else { return }
         guard photoRect.width > 0, photoRect.height > 0 else { app.closePhoto(); return }
         let o = item.originRect
         let scale = CGSize(width: o.width / photoRect.width, height: o.height / photoRect.height)
         let offset = CGSize(width: o.midX - photoRect.midX, height: o.midY - photoRect.midY)
+        Haptics.light()
         withAnimation(dismissAnimation) {
             dismissTransform = (scale, offset)
         }
@@ -201,7 +231,7 @@ struct PhotoViewerView: View {
                     // drag continues, revealing Event Detail underneath —
                     // unanimated (no `.animation(value:)` targets this),
                     // same live 1:1 reasoning as the photo's own offset.
-                    .opacity(1 - dragProgress)
+                    .opacity(chromeOpacity)
 
                 // The "stage": credit, photo and the tagline/actions row
                 // stacked tight against one another as one column, so the
@@ -213,6 +243,7 @@ struct PhotoViewerView: View {
                     caption(app.T("Ảnh của", "Photo by") + " \(item.organizer)")
                         .accessibilityIdentifier("photoViewer.credit")
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .opacity(chromeOpacity)
 
                     // Aspect-FIT foreground (replaces the old fixed
                     // `height / 3` CatalogPhoto, whose RemoteImage is
@@ -235,12 +266,20 @@ struct PhotoViewerView: View {
                         .background(
                             GeometryReader { photoGeo in
                                 Color.clear
-                                    .onAppear { photoRect = photoGeo.frame(in: .global) }
-                                    .onChange(of: photoGeo.frame(in: .global)) { _, newValue in photoRect = newValue }
+                                    .onAppear { photoRect = photoGeo.frame(in: .global); beginOpening() }
+                                    .onChange(of: photoGeo.frame(in: .global)) { _, newValue in
+                                        // `.offset` moves this reported frame too, so only the RESTING frame may be recorded: while
+                                        // dragging, opening or closing it would include that offset, and a swipe-down would then
+                                        // compute its way back to the thumbnail from the wrong place (tap-outside never drifted).
+                                        guard dismissTransform == nil, !isDraggingDown, presented || openFrom == nil else { return }
+                                        photoRect = newValue
+                                        beginOpening()
+                                    }
                             }
                         )
-                        .scaleEffect(dismissTransform?.scale ?? (isDraggingDown ? CGSize(width: 1 - dragProgress * 0.06, height: 1 - dragProgress * 0.06) : CGSize(width: 1, height: 1)))
-                        .offset(dismissTransform?.offset ?? (isDraggingDown ? dragTranslation : .zero))
+                        .scaleEffect(dismissTransform?.scale ?? (presented ? (isDraggingDown ? CGSize(width: 1 - dragProgress * 0.3, height: 1 - dragProgress * 0.3) : CGSize(width: 1, height: 1)) : (openFrom?.scale ?? CGSize(width: 1, height: 1))))
+                        .offset(dismissTransform?.offset ?? (presented ? (isDraggingDown ? dragTranslation : .zero) : (openFrom?.offset ?? .zero)))
+                        .opacity(openingStarted ? 1 : 0)
                         .contentShape(Rectangle())
                         .highPriorityGesture(
                             DragGesture(minimumDistance: 0)
@@ -292,6 +331,7 @@ struct PhotoViewerView: View {
 
                     pageIndicator
                         .accessibilityIdentifier("photoViewer.pageIndicator")
+                        .opacity(chromeOpacity)
 
                     // Top-aligned, not bottom: the row is as tall as the
                     // 34pt icon buttons, and bottom-aligning the tagline
@@ -304,6 +344,7 @@ struct PhotoViewerView: View {
                         Spacer(minLength: 12)
                         actions
                     }
+                    .opacity(chromeOpacity)
                 }
                 .frame(width: columnWidth)
                 // Task 3 follow-up (real-device report: backdrop tap does
@@ -355,7 +396,8 @@ struct PhotoViewerView: View {
         // block that sets `dismissTransform` in `dismiss()` — no separate
         // `.animation(value:)` needed here, that transaction already
         // covers every dependent property, this one included.
-        .opacity(dismissTransform == nil ? 1 : 0)
+        // (No fade of the whole viewer here: that made the photo vanish while it was still shrinking back onto its
+        // thumbnail. Only the backdrop, dim and captions fade, each on its own, so the photo itself stays solid.)
     }
 
     /// The current index's decoded photo, if there is one yet — from this

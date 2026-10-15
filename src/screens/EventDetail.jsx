@@ -1,14 +1,94 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { recentZoomOrigin } from '../lib/zoomOrigin.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg, mapsUrl } from '../data/events.js';
 import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
 import FollowingBadge from '../components/FollowingBadge.jsx';
+import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
+
+// Airbnb-style layout (mirrors iOS EventDetailView): the photo is a pinned backdrop that fades out while the
+// rounded info sheet scrolls up over it; pulling down from the very top closes the screen with a shrink.
+const HERO_H = 400;
+const SHEET_OVERLAP = 40;
+const SHEET_RADIUS = 46; // the iPhone's own screen-corner curvature
+const PINNED_STRIP = 120; // with the info fully pulled up, this much of the photo stays visible above it
+
+const ico = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true };
+const IconShare = () => (<svg {...ico} width={18} height={18}><path d="M12 15V3M8 7l4-4 4 4" /><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8" /></svg>);
+const IconHeart = ({ filled }) => (<svg {...ico} width={18} height={18} fill={filled ? '#C8372D' : 'none'} stroke={filled ? '#C8372D' : 'currentColor'}><path d="M12 20.5S3.5 15 3.5 9.2A4.7 4.7 0 0 1 12 6.5a4.7 4.7 0 0 1 8.5 2.7c0 5.8-8.5 11.3-8.5 11.3Z" /></svg>);
+const IconHouse = () => (<svg {...ico}><path d="M4 11l8-7 8 7" /><path d="M6 10v10h12V10" /></svg>);
+const IconMap = () => (<svg {...ico}><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z" /><path d="M9 4v14M15 6v14" /></svg>);
+const IconCamera = () => (<svg {...ico}><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.4" /></svg>);
+const IconList = () => (<svg {...ico}><path d="M4 7l1.6 1.6L8 6M4 15l1.6 1.6L8 14" /><path d="M11 7h9M11 15h9" /></svg>);
+const IconPerson = () => (<svg {...ico}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="10" r="3" /><path d="M6.2 18.2c1.4-2.3 3.4-3.2 5.8-3.2s4.4.9 5.8 3.2" /></svg>);
+const IconChat = () => (<svg {...ico}><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-5 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" /></svg>);
+const iconCol = { flex: 'none', width: 22, display: 'inline-flex', justifyContent: 'center', color: ink, opacity: 0.8 };
 
 export default function EventDetail() {
   const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
   const s = state;
+  const scrollerRef = useRef(null);
+  const heroRef = useRef(null);
+  const heroImgRef = useRef(null);
+  const cardRef = useRef(null);
+  const dimRef = useRef(null);
+  // (The open animation uses fill-mode `backwards`: a filling transform animation would override the drag/close inline transform.)
+  const dragRef = useRef({ active: false, startY: 0, startX: 0, dy: 0, closing: false });
+  // Zoom out of the tapped card (and back into it on close), like iOS. `null` when opened from anywhere without one.
+  const zoomRef = useRef(undefined);
+  if (zoomRef.current === undefined) zoomRef.current = recentZoomOrigin();
+  const zoomPose = (o, R) => {
+    const sc = Math.max(0.05, o.width / R.width);
+    return {
+      transformOrigin: '0 0',
+      transform: `translate(${o.left - R.left}px, ${o.top - R.top}px) scale(${sc})`,
+      clipPath: `inset(0px 0px ${Math.max(0, R.height - o.height / sc)}px 0px round ${14 / sc}px)`,
+    };
+  };
+  const ZOOM_MS = 560;
+  const ZOOM_EASE = 'cubic-bezier(.22,.9,.3,1)';
+  // The photo is the shared element: it grows out of the tapped card to the full-bleed cover. The page itself
+  // (background, info sheet, buttons: everything marked data-fade) fades in after the photo has started to move.
+  const fadeEls = () => Array.from(cardRef.current?.querySelectorAll('[data-fade]') || []);
+  useLayoutEffect(() => {
+    const o = zoomRef.current; const hero = heroRef.current;
+    if (!o || !hero || !hero.animate) return;
+    const R = hero.getBoundingClientRect();
+    if (!R.width || !R.height) return;
+    hero.animate([zoomPose(o, R), { transformOrigin: '0 0', transform: 'translate(0px, 0px) scale(1)', clipPath: 'inset(0px 0px 0px 0px round 0px)' }], { duration: ZOOM_MS, easing: ZOOM_EASE });
+    fadeEls().forEach(el => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 360, delay: 200, easing: 'ease-out', fill: 'backwards' }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // A small physical tap (where the device supports it) as the screen opens and closes, like iOS.
+  const buzz = () => { try { navigator.vibrate?.(10); } catch { /* unsupported */ } };
+  useEffect(() => { buzz(); }, []);
+  // Close with the same shrink-and-fade the pull-down finishes with, then navigate back.
+  const closeWithShrink = () => {
+    const card = cardRef.current;
+    const d = dragRef.current;
+    if (d.closing) return;
+    d.closing = true;
+    buzz();
+    if (!card) { backFromEvent(); return; }
+    const o = zoomRef.current; const hero = heroRef.current;
+    if (o && hero?.animate) {
+      // Drop any pull-down pose, fade the page out first, then shrink the photo back into the card it came from.
+      card.style.transition = 'none'; card.style.transform = ''; card.style.borderRadius = ''; card.style.overflow = '';
+      fadeEls().forEach(el => el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, easing: 'ease-in', fill: 'forwards' }));
+      const R = hero.getBoundingClientRect();
+      hero.animate([{ transformOrigin: '0 0', transform: 'translate(0px, 0px) scale(1)', clipPath: 'inset(0px 0px 0px 0px round 0px)' }, zoomPose(o, R)], { duration: ZOOM_MS - 40, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
+      setTimeout(() => backFromEvent(), ZOOM_MS - 60);
+      return;
+    }
+    card.style.transition = 'transform 0.44s cubic-bezier(.4,0,.6,1), opacity 0.4s ease, border-radius 0.3s ease';
+    card.style.transform = 'translateY(60px) scale(0.86)';
+    card.style.opacity = '0';
+    card.style.borderRadius = `${SHEET_RADIUS}px`;
+    card.style.overflow = 'hidden';
+    setTimeout(() => backFromEvent(), 430);
+  };
   // Host reservation criteria (migration 162). Not gated on "real" events: a demo-catalogue key
   // (e.g. 'bepnho') can also be a real DB row with criteria; a key with no row resolves to Everyone.
   const crit = useReservationCriteria(ev.key);
@@ -158,47 +238,118 @@ export default function EventDetail() {
     ? { ...inkButton({ flex: 'none', margin: '0 20px 22px', padding: '15px 0' }) }
     : { flex: 'none', margin: '0 20px 22px', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 0', borderRadius: 18, cursor: (ended || ev.cancelled) ? 'default' : 'pointer', background: 'var(--bb-field)', color: ink };
 
+  // The photo backdrop fades to the page colour and drifts up slowly as the sheet rises over it.
+  const onSheetScroll = (e) => {
+    const t = Math.max(0, e.currentTarget.scrollTop);
+    // Fades only part-way: the strip left above the pulled-up info stays clearly visible.
+    if (heroRef.current) heroRef.current.style.opacity = String(1 - 0.4 * Math.min(1, t / (HERO_H * 0.62)));
+    if (heroImgRef.current) heroImgRef.current.style.transform = `translateY(${-Math.min(t, HERO_H) * 0.3}px)`;
+  };
+
+  // Pull down from the very top to close: the screen follows the finger (shrinking, rounding, dimming); a long
+  // pull or a flick finishes with the same shrink-and-fade, anything else springs back. Never starts mid-scroll
+  // (so it also replaces the app-wide pull-to-refresh here, which App.jsx skips for this screen).
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    const card = cardRef.current;
+    if (!scroller || !card) return undefined;
+    const d = dragRef.current;
+    const apply = (dy, animate) => {
+      const p = Math.min(1, Math.max(0, dy / 320));
+      card.style.transition = animate ? 'transform 0.34s cubic-bezier(.22,.61,.36,1), opacity 0.24s ease, border-radius 0.3s ease' : 'none';
+      card.style.transform = dy ? `translateY(${dy * 0.35}px) scale(${1 - 0.16 * p})` : '';
+      card.style.borderRadius = dy ? `${Math.min(SHEET_RADIUS, p * 120)}px` : '';
+      card.style.overflow = dy ? 'hidden' : '';
+      if (dimRef.current) { dimRef.current.style.transition = animate ? 'opacity 0.3s ease' : 'none'; dimRef.current.style.opacity = String(dy ? 0.42 * (1 - p * 0.6) : 0); }
+    };
+    const begin = (x, y) => { d.active = false; d.startX = x; d.startY = y; d.dy = 0; d.tracking = scroller.scrollTop <= 1 && !d.closing; };
+    const move = (x, y, e) => {
+      if (!d.tracking || d.closing) return;
+      const dx = x - d.startX; const dy = y - d.startY;
+      if (!d.active) {
+        if (dy > 10 && dy > Math.abs(dx) * 1.2 && scroller.scrollTop <= 1) d.active = true; else return;
+      }
+      d.dy = Math.max(0, dy);
+      if (e.cancelable) e.preventDefault();
+      apply(d.dy, false);
+    };
+    const finish = (velocityPx) => {
+      if (!d.active) { d.tracking = false; return; }
+      d.active = false; d.tracking = false;
+      if (d.dy > 140 || velocityPx > 0.9) {
+        d.closing = true;
+        d.closing = false;
+        closeWithShrink();
+      } else {
+        apply(0, true);
+      }
+    };
+    let last = { y: 0, t: 0, v: 0 };
+    const track = (y) => { const now = performance.now(); if (last.t) last.v = (y - last.y) / Math.max(1, now - last.t); last = { y, t: now, v: last.v }; };
+    const ts = (e) => { const t = e.touches[0]; last = { y: t.clientY, t: 0, v: 0 }; begin(t.clientX, t.clientY); };
+    const tm = (e) => { const t = e.touches[0]; track(t.clientY); move(t.clientX, t.clientY, e); };
+    const te = () => finish(last.v);
+    scroller.addEventListener('touchstart', ts, { passive: true });
+    scroller.addEventListener('touchmove', tm, { passive: false });
+    scroller.addEventListener('touchend', te);
+    scroller.addEventListener('touchcancel', te);
+    // Mouse (desktop) — same gesture, tracked on the window while the button is down.
+    const mm = (e) => { track(e.clientY); move(e.clientX, e.clientY, e); };
+    const mu = () => { window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu); finish(last.v); };
+    const md = (e) => { if (e.button !== 0) return; last = { y: e.clientY, t: 0, v: 0 }; begin(e.clientX, e.clientY); window.addEventListener('mousemove', mm); window.addEventListener('mouseup', mu); };
+    scroller.addEventListener('mousedown', md);
+    return () => {
+      scroller.removeEventListener('touchstart', ts); scroller.removeEventListener('touchmove', tm);
+      scroller.removeEventListener('touchend', te); scroller.removeEventListener('touchcancel', te);
+      scroller.removeEventListener('mousedown', md);
+      window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const orgAvatarUrl = orgStats ? organizerAvatarPublicUrl(orgStats.avatarPath, orgStats.avatarR2Ref, 'thumb') : '';
+  const orgInitial = (ev.orgName || '').trim().slice(0, 1).toUpperCase();
+  // Round icon buttons, top-right, side by side (Share, then Save) — same glass disc as the back pill.
+  const iconBtn = (extra) => photoPill({ position: 'fixed', top: 66, width: 40, height: 40, padding: 0, zIndex: 5, borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', ...extra });
+
   return (
-    <div style={{ animation: 'banbeFade 0.32s ease both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Event">
+    <div style={{ position: 'relative', height: '100%' }} data-screen-label="Event">
+      <div ref={dimRef} aria-hidden style={{ position: 'fixed', inset: 0, background: 'rgb(12,12,12)', opacity: 0, pointerEvents: 'none', zIndex: 0 }} />
+    <div ref={cardRef} style={{ animation: zoomRef.current ? undefined : 'banbeEventIn 0.55s cubic-bezier(.34,1.2,.5,1) backwards', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
+      <div data-fade aria-hidden style={{ position: 'absolute', inset: 0, background: paper, zIndex: -1 }} />
       {/* Task 3 (14-photo-viewer.md follow-up notes / 06-design-tokens.md):
           moved out of the photo header (which scrolls away with the rest
           of the content, inside this screen's OWN scroll container below —
           not the shared Shell-level one) into a fixed overlay, so both
           stay visible/tappable the whole time the user scrolls. */}
-      <div onClick={backFromEvent} data-testid="event-detail-back" style={photoPill({ position: 'fixed', top: 66, left: 16, padding: '8px 14px', zIndex: 5, borderRadius: 999 })}>‹ {backLabel}</div>
-      <div onClick={() => shareEvent(ev)} style={photoPill({ position: 'fixed', top: 66, right: 16, padding: '8px 14px', zIndex: 5, minWidth: 84, textAlign: 'center', boxSizing: 'border-box', borderRadius: 999 })}>
-        {s.shared ? T('Đã sao chép link', 'Link copied') : T('Chia sẻ', 'Share')}
-      </div>
+      <div data-fade onClick={closeWithShrink} data-testid="event-detail-back" style={photoPill({ position: 'fixed', top: 66, left: 16, padding: '8px 14px', zIndex: 5, borderRadius: 999 })}>‹ {backLabel}</div>
+      <div data-fade onClick={() => shareEvent(ev)} role="button" aria-label={T('Chia sẻ', 'Share')} data-testid="event-detail-share" style={iconBtn({ right: 66 })}><IconShare /></div>
       {/* Blocker fix (retention roadmap follow-up) — EventDetail had no save
-          affordance at all before this pass, so a real event opened
-          directly (not via a card that already has its own "Lưu" chip,
-          e.g. a shared link) had no way to be saved from here. Uses Stage
-          1's exact same isSaved/toggleFav — already catalogue-agnostic
-          (both key off the real `favorites` table by event id), so this
-          works identically for a static demo event and a real host-created
-          one with no special-casing. */}
-      <div
-        onClick={() => toggleFav(ev.key)}
-        data-testid="event-detail-save"
-        style={photoPill({ position: 'fixed', top: 112, right: 16, padding: '8px 14px', zIndex: 5, minWidth: 84, textAlign: 'center', boxSizing: 'border-box', borderRadius: 999 })}
-      >
-        {isSaved(ev.key) ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')}
-      </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <div style={{ position: 'relative', height: 400 }}>
+          affordance at all before this pass. Uses Stage 1's exact same
+          isSaved/toggleFav — already catalogue-agnostic (both key off the
+          real `favorites` table by event id), so this works identically for
+          a static demo event and a real host-created one. */}
+      <div data-fade onClick={() => toggleFav(ev.key)} role="button" aria-label={isSaved(ev.key) ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')} data-testid="event-detail-save" style={iconBtn({ right: 16 })}><IconHeart filled={isSaved(ev.key)} /></div>
+      {s.shared && (
+        <div style={{ position: 'fixed', top: 112, right: 16, zIndex: 5, fontSize: 11.5, color: ink, background: 'rgba(var(--bb-bg-rgb),0.9)', borderRadius: 999, padding: '5px 10px' }}>{T('Đã sao chép link', 'Link copied')}</div>
+      )}
+      {/* The photo is pinned behind everything; the scrolling sheet starts PINNED_STRIP down the screen (rounded top),
+          so a band of the photo stays visible above the info however far it is pulled up. */}
+      <div ref={heroRef} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: HERO_H, zIndex: 0, pointerEvents: 'none' }}>
         {ev.img ? (
-          <div style={bg(ev.img, { width: '100%', height: '100%', borderRadius: 0 })} />
+          <div ref={heroImgRef} style={bg(ev.img, { width: '100%', height: '100%', borderRadius: 0 })} />
         ) : (
           // A real event with no photo yet (or one still loading/
           // unavailable) — an honest neutral block, never a wrong demo
           // event's photo standing in for it.
           <div style={{ width: '100%', height: '100%', background: rule }} />
         )}
-        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 78, pointerEvents: 'none', background: `linear-gradient(to bottom, rgba(var(--bb-bg-rgb),0) 0%, rgba(var(--bb-bg-rgb),0.3) 62%, ${paper} 100%)` }} />
       </div>
-      <div style={{ padding: '22px 22px 30px', display: 'flex', flexDirection: 'column' }}>
+      <div ref={scrollerRef} data-fade onScroll={onSheetScroll} style={{ position: 'relative', zIndex: 1, flex: 1, minHeight: 0, marginTop: PINNED_STRIP, borderRadius: `${SHEET_RADIUS}px ${SHEET_RADIUS}px 0 0`, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
+      <div style={{ height: HERO_H - SHEET_OVERLAP - PINNED_STRIP }} aria-hidden />
+      <div style={{ position: 'relative', zIndex: 1, background: paper, borderRadius: `${SHEET_RADIUS}px ${SHEET_RADIUS}px 0 0`, boxShadow: '0 -4px 14px rgba(0,0,0,0.10)', padding: '30px 22px 30px', display: 'flex', flexDirection: 'column' }}>
         {!cameFromHome && (
-          <div onClick={goHome} style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer', marginBottom: 10 }}>{T('▪︎ Về trang chính', '▪︎ Back to home')}</div>
+          <div onClick={goHome} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: ink, opacity: 0.8, cursor: 'pointer', marginBottom: 10 }}><IconHouse />{T('Về trang chính', 'Back to home')}</div>
         )}
         {/* Task 1a: only when this screen was reached from Home, not from
             tapping the event inside Map's own sheet list — reuses the
@@ -210,7 +361,7 @@ export default function EventDetail() {
             renders for a pin/list tap — appears automatically once there,
             since `openEventOnMap` sets `selectedId` the same way. */}
         {showOpenInMap && (
-          <div data-testid="event-open-in-map" onClick={() => openEventOnMap(ev)} style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer', marginBottom: 10 }}>{T('▪︎ Xem trên bản đồ', '▪︎ Open in map')}</div>
+          <div data-testid="event-open-in-map" onClick={() => openEventOnMap(ev)} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: ink, opacity: 0.8, cursor: 'pointer', marginBottom: 10 }}><IconMap />{T('Xem trên bản đồ', 'Open in map')}</div>
         )}
         {/* Task 4B (2026-09-22 follow-up) — only when the signed-in
             account actually owns/manages this exact event's organizer
@@ -223,9 +374,9 @@ export default function EventDetail() {
           <div
             data-testid="event-share-to-story"
             onClick={s.storyCreateBusy ? undefined : () => setShareConfirmOpen(true)}
-            style={{ fontSize: 11.5, color: ink, opacity: s.storyCreateBusy ? 0.4 : 0.65, cursor: s.storyCreateBusy ? 'default' : 'pointer', marginBottom: 10 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: ink, opacity: s.storyCreateBusy ? 0.5 : 0.8, cursor: s.storyCreateBusy ? 'default' : 'pointer', marginBottom: 10 }}
           >
-            {s.storyCreateBusy ? T('Đang đăng…', 'Posting…') : T('▪︎ Chia sẻ lên Story', '▪︎ Share to Story')}
+            <IconCamera />{s.storyCreateBusy ? T('Đang đăng…', 'Posting…') : T('Chia sẻ lên Story', 'Share to Story')}
           </div>
         )}
         {shareStoryMsg && (
@@ -328,7 +479,7 @@ export default function EventDetail() {
               aria-label={T('Giới thiệu và bao gồm, xem thêm', 'Introduction and included, view more')}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 18, padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13, cursor: 'pointer' }}
             >
-              <span style={{ color: ink, flex: 'none' }}>{T('Bao gồm', 'Included')}</span>
+              <span style={{ color: ink, flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 12 }}><span style={iconCol}><IconList /></span>{T('Bao gồm', 'Included')}</span>
               <span style={{ color: ink, textAlign: 'right', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '2px 6px' }}>
                 {includedItems.length > 0 ? (
                   includedItems.map((it, i) => (
@@ -347,16 +498,22 @@ export default function EventDetail() {
             </div>
           ) : null}
           <div onClick={() => openOrganizerOfEvent(ev.key, 'event')} data-testid="event-organizer-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13, cursor: 'pointer' }}>
-            <span style={{ color: ink }}>{T('Người tổ chức', 'Organizer')}</span>
+            <span style={{ color: ink, display: 'inline-flex', alignItems: 'center', gap: 12 }}><span style={iconCol}><IconPerson /></span>{T('Người tổ chức', 'Organizer')}</span>
             <span style={{ color: ink, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               {evOrgFollowed && <FollowingBadge T={T} testId="event-organizer-following" />}
-              <span>{T('Ghé', 'Visit')} {ev.orgName} ›</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {T('Ghé', 'Visit')}
+                <span style={{ width: 24, height: 24, borderRadius: '50%', overflow: 'hidden', background: 'var(--bb-field)', border: `0.5px solid ${rule}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600 }}>
+                  {orgAvatarUrl ? <img src={orgAvatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : orgInitial}
+                </span>
+                {ev.orgName} ›
+              </span>
             </span>
           </div>
           {/* Moved here from the retired Organizer screen (merged into the
               host profile): message the host straight from the event. */}
           <div onClick={goChat} data-testid="organizer-message" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13, cursor: 'pointer' }}>
-            <span style={{ color: ink }}>{T('Liên hệ', 'Contact')}</span>
+            <span style={{ color: ink, display: 'inline-flex', alignItems: 'center', gap: 12 }}><span style={iconCol}><IconChat /></span>{T('Liên hệ', 'Contact')}</span>
             <span style={{ color: ink }}>{T('Nhắn cho', 'Message')} {ev.orgName} ›</span>
           </div>
           {evOrgStats && (
@@ -403,7 +560,7 @@ export default function EventDetail() {
         </div>
       </div>
       </div>
-      <div onClick={reserveBarTap} style={reserveBarStyle} data-testid="event-reserve-bar" aria-disabled={criteriaBlocked || undefined}>{reserveBarLabel}</div>
+      <div data-fade onClick={reserveBarTap} style={reserveBarStyle} data-testid="event-reserve-bar" aria-disabled={criteriaBlocked || undefined}>{reserveBarLabel}</div>
       {includedSheetOpen && (
         <div
           onClick={() => setIncludedSheetOpen(false)}
@@ -456,6 +613,7 @@ export default function EventDetail() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

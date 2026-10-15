@@ -73,7 +73,7 @@ function usePulseImageDecode(urls) {
 // offered this gesture at all, so the scrollable card list's own vertical
 // scroll and every tab/card tap elsewhere are untouched.
 const EDGE_ZONE_PX = 24;
-const DISMISS_DURATION_MS = 260;
+const DISMISS_DURATION_MS = 440;
 
 function eventPhotoUrl(path) {
   if (!path) return null;
@@ -106,7 +106,16 @@ function FilledHeart({ size = 16 }) {
 // `apps/ios/BanbeApp/Views/PulseViewerView.swift`'s `pulseExpandedPanel`
 // exactly, same shared-backdrop-image / no-separate-boxed-media-panel
 // approach, so preview/expanded behavior matches on both platforms.
-function ExpandedPanel({ photoUrl, title, subtitle, metaLine, onClose, closeTestId, testId, children }) {
+function ExpandedPanel({ photoUrl, title, subtitle, metaLine, onClose: onCloseNow, closeTestId, testId, children }) {
+  // Opens and closes with a scale (not an instant pop), at the same pace as Event Detail / the photo viewer.
+  const [leaving, setLeaving] = useState(false);
+  const onClose = () => {
+    if (leaving) return;
+    setLeaving(true);
+    try { navigator.vibrate?.(10); } catch { /* unsupported */ }
+    setTimeout(onCloseNow, 400);
+  };
+  useEffect(() => { try { navigator.vibrate?.(10); } catch { /* unsupported */ } }, []);
   return (
     <div
       onClick={onClose}
@@ -114,11 +123,13 @@ function ExpandedPanel({ photoUrl, title, subtitle, metaLine, onClose, closeTest
       style={{
         position: 'fixed', inset: 0, background: 'rgba(20,18,15,0.55)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 70, padding: 20,
+        opacity: leaving ? 0 : 1, transition: 'opacity 0.4s ease',
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
+          animation: leaving ? 'banbePanelOut 0.4s cubic-bezier(.4,0,.6,1) forwards' : 'banbePanelIn 0.5s cubic-bezier(.34,1.2,.5,1) backwards',
           position: 'relative', width: '100%', maxWidth: 420, maxHeight: 'calc(100vh - 64px)',
           display: 'flex', flexDirection: 'column', borderRadius: 26, overflow: 'hidden',
           background: 'rgba(250,248,244,0.78)', backdropFilter: 'blur(26px) saturate(160%)', WebkitBackdropFilter: 'blur(26px) saturate(160%)',
@@ -282,7 +293,7 @@ export default function PulseViewer() {
         borderRadius: '24px 24px 0 0', overflow: 'hidden', boxShadow: '0 -10px 40px rgba(27,25,22,0.18)',
         transform: `translateY(${slideY}px)`,
         transition: isDragging ? 'none' : `transform ${DISMISS_DURATION_MS}ms cubic-bezier(.22,.61,.36,1)`,
-        animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both',
+        animation: 'banbeSheetIn 0.5s cubic-bezier(.22,.61,.36,1) both',
       }}
       data-testid="pulse-viewer"
     >

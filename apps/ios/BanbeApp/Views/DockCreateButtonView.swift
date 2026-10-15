@@ -118,6 +118,8 @@ struct DockCreateButtonView: View {
                     .background(.thinMaterial, in: Circle())
                     .overlay(Circle().strokeBorder(app.palette.ink.opacity(0.06)))
                     .shadow(color: .black.opacity(0.16), radius: 14, x: 0, y: 6)
+                    // The whole disc opens the menu, not just the plus glyph in its middle.
+                    .contentShape(Circle())
             }
             .accessibilityIdentifier("dock.createButton")
             .accessibilityLabel(app.T("Tạo mới", "Create"))

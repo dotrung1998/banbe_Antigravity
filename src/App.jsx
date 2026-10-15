@@ -381,7 +381,7 @@ function Shell() {
         // left entirely to the browser's own native handling. Excludes
         // 'mapExplore' (see runRefresh's own comment on why) — its own
         // list container implements this locally instead.
-        g.phase = (dy > 0 && g.scrollTopAtStart <= 0 && stateRef.current.screen !== 'mapExplore') ? 'pull' : 'native-scroll';
+        g.phase = (dy > 0 && g.scrollTopAtStart <= 0 && stateRef.current.screen !== 'mapExplore' && stateRef.current.screen !== 'event') ? 'pull' : 'native-scroll';
       } else {
         const overHscroll = e.target?.closest?.('[data-hscroll]');
         const screen = stateRef.current.screen;

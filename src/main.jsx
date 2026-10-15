@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import { applyGlassOpacity } from './lib/glassOpacity.js'
+import { installZoomOrigin } from './lib/zoomOrigin.js'
 import App from './App.jsx'
 import { PublicPolicy } from './screens/Policy.jsx'
 import PublicDataDeletion from './screens/PublicDataDeletion.jsx'
@@ -15,6 +16,7 @@ const Root = publicPath === '/privacy' ? PublicPolicy
   : App
 
 applyGlassOpacity()
+installZoomOrigin()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

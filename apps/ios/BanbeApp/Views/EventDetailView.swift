@@ -1,5 +1,22 @@
 import SwiftUI
 
+private extension View {
+    /// Live vertical scroll offset (0 at the very top), straight from the scroll view where the system provides it
+    /// (iOS 18+); older systems rely on the preference-key reading set up by the caller.
+    @ViewBuilder func trackingScrollOffset(_ offset: Binding<CGFloat>) -> some View {
+        if #available(iOS 18.0, *) {
+            self.onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, new in offset.wrappedValue = new }
+        } else {
+            self
+        }
+    }
+}
+
+private struct EventScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 /// Port of src/screens/EventDetail.jsx — hero photo with back/share pills,
 /// the address as a Maps link, details, organizer row, photo strip, and the
 /// bottom action bar (which shows your ticket if you already hold one).
@@ -15,6 +32,74 @@ struct EventDetailView: View {
     // surfaced differently there (an always-visible intro section plus
     // its own separate included-only sheet) vs. here (one sheet, both).
     @State private var introIncludedSheetOpen = false
+
+    // Airbnb-style layout: the photo is a fixed backdrop that fades out while the rounded info sheet scrolls up over it.
+    private let heroHeight: CGFloat = 400
+    private let sheetOverlap: CGFloat = 40
+    // Matches the iPhone's own screen-corner curvature (~47-55pt on current models).
+    private let sheetRadius: CGFloat = 46
+    /// With the info fully pulled up, this much of the photo (from the top of the screen) stays visible above it.
+    private let pinnedStrip: CGFloat = 120
+    @State private var scrollOffset: CGFloat = 0
+    // Drag-down-to-close (only from the very top of the scroll view).
+    @State private var dismissDrag: CGFloat = 0
+    @State private var isDismissDragging = false
+    @State private var isDismissing = false
+    /// Whether the current touch started with the scroll view already at the very top. Closing is only allowed
+    /// then: scrolling up to the top and carrying on in the SAME drag must not close the screen.
+    @State private var dragBeganAtTop: Bool?
+    /// 0 = shrunk into the card it opened from, 1 = full screen. Flipped (animated) on appear and on close.
+    @State private var presented = false
+    /// The page itself (background, info sheet, buttons): fades in after the photo starts growing, out before it shrinks.
+    @State private var contentShown = false
+    private var screenSize: CGSize { UIScreen.main.bounds.size }
+    private var bottomInset: CGFloat {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.keyWindow?.safeAreaInsets.bottom ?? 0
+    }
+    /// Where this screen zooms out of / back into: the tapped card's photo (nil when opened from somewhere with none).
+    /// Only meaningful while zooming (opening: the rect captured at the tap; closing: the card's live frame, or that
+    /// same rect if the card has scrolled away). At rest, and for opens that did not start from a card, it is nil.
+    private var zoomOrigin: CGRect? {
+        // Opened from Map: no card to zoom from; the screen opens from, and closes toward, the centre of the screen.
+        guard app.eventBackScreen != .mapExplore else { return nil }
+        if app.eventOpening { return app.eventOriginRect }
+        if isDismissing { return app.zoomOrigin(for: event.key) ?? app.eventOriginRect }
+        return nil
+    }
+    /// True when there is no card to zoom from/into: the whole screen then scales up from the centre and fades.
+    private var centerPose: Bool { zoomOrigin == nil }
+    private var zoomT: CGFloat { presented ? 1 : 0 }
+    /// The cover photo's frame (screen coordinates): the tapped card's photo at 0, the full-bleed cover at 1. With no
+    /// card to come from it grows from a slightly inset copy of the cover.
+    private var heroFrame: CGRect {
+        let full = CGRect(x: 0, y: 0, width: screenSize.width, height: topInset + heroHeight)
+        let from = zoomOrigin ?? full
+        func lerp(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * zoomT }
+        return CGRect(x: lerp(from.minX, full.minX), y: lerp(from.minY, full.minY),
+                      width: lerp(from.width, full.width), height: lerp(from.height, full.height))
+    }
+    private func closeAnimated() {
+        guard !isDismissing else { return }
+        isDismissing = true
+        Haptics.light()
+        // RootView draws a stand-in underneath only when there is no live screen there (publishing this would make
+        // every screen re-render, Home included, mid-animation).
+        let live = app.eventHasLiveUnderlay
+        if !live { app.eventDismissProgress = max(app.eventDismissProgress, 0.001) }
+        withAnimation(.easeIn(duration: centerPose ? 0.34 : 0.22)) { contentShown = false }
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.92)) { presented = false; dismissDrag = 0 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.62) {
+            app.backFromEvent()
+            DispatchQueue.main.async {
+                if app.eventDismissProgress != 0 { app.eventDismissProgress = 0 }
+                isDismissing = false
+            }
+        }
+    }
+    private var topInset: CGFloat {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.keyWindow?.safeAreaInsets.top ?? 0
+    }
+    private var dismissProgress: CGFloat { min(1, max(0, dismissDrag / 320)) }
 
     private var event: CatalogEvent { app.currentEvent }
     // STAGE D (2026-09-25) — real event_photos URLs, replacing the static
@@ -79,16 +164,44 @@ struct EventDetailView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            app.palette.paper.ignoresSafeArea()
+            // The page background and everything on it fade in AFTER the photo has started growing out of the card
+            // (and fade out first when closing), so it reads as the card's photo expanding, not a screen on top.
+            app.palette.paper.ignoresSafeArea().opacity(contentShown ? 1 : 0)
+            // The photo is a layer of the screen itself (not inside the stack below), so it can reach the very top
+            // edge, under the status bar, and both side edges. It is also the shared element: its frame runs from
+            // the tapped card's photo to the full-bleed cover (see `heroFrame`).
+            heroBackdrop
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .ignoresSafeArea(edges: .top)
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        hero
+                        // Room for the backdrop photo; the sheet below starts `sheetOverlap` up inside it. This
+                        // content starts at the safe-area top, and the photo is `topInset` taller than `heroHeight`.
+                        Color.clear.frame(height: topInset + heroHeight - sheetOverlap - pinnedStrip)
                         details
+                            .background(
+                                app.palette.paper,
+                                in: UnevenRoundedRectangle(topLeadingRadius: sheetRadius, topTrailingRadius: sheetRadius, style: .continuous)
+                            )
+                            .shadow(color: .black.opacity(0.10), radius: 14, y: -4)
                     }
+                    .background(GeometryReader { g in
+                        Color.clear.preference(key: EventScrollOffsetKey.self, value: -g.frame(in: .named("eventScroll")).minY)
+                    })
                 }
+                .coordinateSpace(name: "eventScroll")
+                .onPreferenceChange(EventScrollOffsetKey.self) { if #unavailable(iOS 18.0) { scrollOffset = $0 } }
+                .trackingScrollOffset($scrollOffset)
+                .scrollDisabled(isDismissDragging)
+                .simultaneousGesture(dismissGesture)
+                // The scrolling area starts `pinnedStrip` down the screen, with the sheet's own rounded top corners,
+                // so a band of the photo stays visible above the info however far it is pulled up.
+                .mask { UnevenRoundedRectangle(topLeadingRadius: sheetRadius, topTrailingRadius: sheetRadius, style: .continuous) }
+                .padding(.top, max(0, pinnedStrip - topInset))
                 actionBar
             }
+            .opacity(contentShown ? 1 : 0)
             // Task 3 follow-up: back/share used to live INSIDE `hero`,
             // which scrolls away with the rest of the content the instant
             // the user scrolls the photo out of view. Rendered here
@@ -96,8 +209,24 @@ struct EventDetailView: View {
             // descendant of it — so they float persistently regardless of
             // scroll position, the same floating-pill treatment the map
             // screen's own back/compass buttons already get.
-            backShareRow
+            backShareRow.opacity(contentShown ? 1 : 0)
         }
+        // No card to come from (Map): the whole screen grows from / shrinks toward the middle of the screen.
+        .scaleEffect(centerPose ? 0.84 + 0.16 * zoomT : 1)
+        // Drag-down-to-close: the whole screen shrinks toward the middle, rounds off and dims while the screen
+        // underneath (RootView peeks it) shows through.
+        // A mask that ignores the safe area (a plain clipShape would cut the full-bleed photo off at the status bar).
+        .mask { RoundedRectangle(cornerRadius: min(sheetRadius, dismissProgress * 120), style: .continuous).ignoresSafeArea() }
+        .scaleEffect(1 - 0.16 * dismissProgress)
+        .offset(y: dismissDrag * 0.35)
+        .onAppear {
+            Haptics.light()
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.9)) { presented = true }
+                withAnimation(.easeOut(duration: 0.36).delay(zoomOrigin == nil ? 0 : 0.2)) { contentShown = true }
+            }
+        }
+        .onDisappear { if app.eventDismissProgress != 0 { app.eventDismissProgress = 0 } }
         .sheet(isPresented: $shareConfirmOpen) { shareConfirmSheet }
         .sheet(isPresented: $introIncludedSheetOpen) {
             CardSheet(title: app.T("Giới thiệu & Bao gồm", "About & Included"),
@@ -119,6 +248,38 @@ struct EventDetailView: View {
                 await app.recheckReservationEligibility(eventKey: event.key)
             }
         }
+    }
+
+    /// Pull down from the very top to close: the screen follows the finger (shrinking), and a long enough pull or a
+    /// flick finishes the close with the same shrink-and-fade. Anything else springs back. Never starts mid-scroll.
+    private var dismissGesture: some Gesture {
+        DragGesture(minimumDistance: 10, coordinateSpace: .global)
+            .onChanged { value in
+                guard !isDismissing else { return }
+                let dx = value.translation.width, dy = value.translation.height
+                if dragBeganAtTop == nil { dragBeganAtTop = scrollOffset <= 12 }
+                guard dragBeganAtTop == true else { return }
+                if !isDismissDragging {
+                    guard scrollOffset <= 1, dy > 0, dy > abs(dx) * 1.2 else { return }
+                    isDismissDragging = true
+                }
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) {
+                    dismissDrag = max(0, dy)
+                    if !app.eventHasLiveUnderlay { app.eventDismissProgress = max(0.001, dismissProgress) }
+                }
+            }
+            .onEnded { value in
+                defer { dragBeganAtTop = nil }
+                guard isDismissDragging else { return }
+                isDismissDragging = false
+                if dismissDrag > 140 || value.predictedEndTranslation.height > 420 {
+                    closeAnimated()
+                } else {
+                    withAnimation(.spring(response: 0.46, dampingFraction: 0.86)) { dismissDrag = 0 }
+                    if app.eventDismissProgress != 0 { app.eventDismissProgress = 0 }
+                }
+            }
     }
 
     @ViewBuilder
@@ -177,8 +338,8 @@ struct EventDetailView: View {
     }
 
     private var backShareRow: some View {
-        HStack {
-            pill("‹ \(backLabel)") { app.backFromEvent() }
+        HStack(alignment: .top) {
+            pill("‹ \(backLabel)") { closeAnimated() }
                 .accessibilityIdentifier("event.back")
                 // Follow-up bug 2: an explicit, map-specific
                 // accessibility label — distinct from the visible pill
@@ -190,40 +351,58 @@ struct EventDetailView: View {
                         : "‹ \(backLabel)"
                 )
             Spacer()
-            pill(app.sharedFlash ? app.T("Đã sao chép link", "Link copied") : app.T("Chia sẻ", "Share")) {
-                share()
+            // Share and Save as plain icons side by side. Save uses the same isSaved/toggleFavorite Home's own
+            // EventCard does (catalogue-agnostic: keys off the real `favorites` table by event id).
+            VStack(alignment: .trailing, spacing: 6) {
+                HStack(spacing: 10) {
+                    iconButton("square.and.arrow.up", label: app.T("Chia sẻ", "Share")) { share() }
+                        .accessibilityIdentifier("event.share")
+                    iconButton(app.isSaved(event.key) ? "heart.fill" : "heart",
+                               label: app.isSaved(event.key) ? app.T("Đã lưu", "Saved") : app.T("Lưu", "Save"),
+                               tint: app.isSaved(event.key) ? Color(hex: 0xC8372D) : nil) {
+                        app.toggleFavorite(event.key)
+                    }
+                    .accessibilityIdentifier("event.save")
+                }
+                if app.sharedFlash {
+                    Text(app.T("Đã sao chép link", "Link copied"))
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(app.palette.ink)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(app.palette.paper.opacity(0.9), in: Capsule())
+                        .transition(.opacity)
+                }
             }
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
-        // Blocker fix (retention roadmap follow-up) — EventDetail had no
-        // save affordance at all before this pass. Uses the exact same
-        // isSaved/toggleFavorite Home's own EventCard already does —
-        // already catalogue-agnostic (both key off the real `favorites`
-        // table by event id), so this works identically for a static demo
-        // event and a real host-created one with no special-casing.
-        .overlay(alignment: .bottom) {
-            HStack {
-                Spacer()
-                pill(app.isSaved(event.key) ? app.T("Đã lưu", "Saved") : app.T("Lưu", "Save")) {
-                    app.toggleFavorite(event.key)
-                }
-                .accessibilityIdentifier("event.save")
-            }
-            .padding(.horizontal, 16)
-            .offset(y: 44)
-        }
     }
 
-    private var hero: some View {
-        CatalogPhoto(path: event.img, height: 400, cornerRadius: 0)
-            .overlay(alignment: .bottom) {
-                LinearGradient(
-                    colors: [app.palette.paper.opacity(0), app.palette.paper],
-                    startPoint: .top, endPoint: .bottom
-                )
-                .frame(height: 78)
-            }
+    /// Round glass icon button for the photo's top-right corner (same disc treatment as the back pill).
+    private func iconButton(_ symbol: String, label: String, tint: Color? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(tint ?? app.palette.ink)
+                .frame(width: 40, height: 40)
+                .background(app.palette.paper.opacity(0.85), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
+    /// The cover photo, full-bleed to the top and side edges, pinned behind the scrolling sheet. It fades to the
+    /// page colour as the sheet rises over it, and drifts up a little more slowly than the content.
+    private var heroBackdrop: some View {
+        // Fades only part-way (never to nothing): the strip left above the pulled-up info stays clearly visible.
+        let fade = min(1, max(0, scrollOffset / (heroHeight * 0.62))) * zoomT
+        let f = heroFrame
+        return ZStack { RemoteImage(path: event.img, maxPixel: 1100) }   // no placeholder fill: the card shows through until the photo is ready
+            .frame(width: f.width, height: f.height)
+            .clipShape(RoundedRectangle(cornerRadius: 14 * (1 - zoomT), style: .continuous))
+            .opacity((1 - 0.4 * fade) * (centerPose ? (contentShown ? 1 : 0) : 1))
+            .offset(x: f.minX, y: f.minY - min(max(scrollOffset, 0), heroHeight) * 0.3 * zoomT)
+            .accessibilityHidden(true)
     }
 
     private func pill(_ text: String, action: @escaping () -> Void) -> some View {
@@ -241,9 +420,7 @@ struct EventDetailView: View {
     private var details: some View {
         VStack(alignment: .leading, spacing: 0) {
             if app.eventBackScreen != .home {
-                Button(app.T("▪︎ Về trang chính", "▪︎ Back to home")) { app.goHome() }
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(app.palette.ink.opacity(0.65))
+                Button { app.goHome() } label: { linkLabel("house", app.T("Về trang chính", "Back to home")) }
                     .buttonStyle(.plain)
                     .padding(.bottom, 10)
             }
@@ -275,9 +452,7 @@ struct EventDetailView: View {
             // open — honest omission instead of a button that silently
             // no-ops (`openEventOnMap`'s own guard).
             if app.eventBackScreen == .home, event.lat != nil, event.lng != nil {
-                Button(app.T("▪︎ Xem trên bản đồ", "▪︎ Open in map")) { app.openEventOnMap(event) }
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(app.palette.ink.opacity(0.65))
+                Button { app.openEventOnMap(event) } label: { linkLabel("map", app.T("Xem trên bản đồ", "Open in map")) }
                     .buttonStyle(.plain)
                     .padding(.bottom, 10)
                     .accessibilityIdentifier("event.openInMap")
@@ -295,9 +470,8 @@ struct EventDetailView: View {
                 Button {
                     shareConfirmOpen = true
                 } label: {
-                    Text(app.storyCreateBusy ? app.T("Đang đăng…", "Posting…") : app.T("▪︎ Chia sẻ lên Story", "▪︎ Share to Story"))
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(app.palette.ink.opacity(app.storyCreateBusy ? 0.4 : 0.65))
+                    linkLabel("camera", app.storyCreateBusy ? app.T("Đang đăng…", "Posting…") : app.T("Chia sẻ lên Story", "Share to Story"))
+                        .opacity(app.storyCreateBusy ? 0.6 : 1)
                 }
                 .buttonStyle(.plain)
                 .disabled(app.storyCreateBusy)
@@ -380,16 +554,12 @@ struct EventDetailView: View {
                 } else if !event.included.isEmpty {
                     detailRow(app.T("Bao gồm", "Included"), value: event.included)
                 }
-                Button { app.openEventOrganizer(eventKey: app.eventKey) } label: {
-                    detailRow(app.T("Người tổ chức", "Organizer"),
-                              value: (app.isFollowing(app.eventOrganizerID[event.key]) ? "✓ " + app.T("Đang theo dõi", "Following") + "  " : "")
-                                   + app.T("Ghé", "Visit") + " \(event.orgName) ›")
-                }
+                Button { app.openEventOrganizer(eventKey: app.eventKey) } label: { organizerRow }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("event.organizer")
                 // Moved here from the retired standalone organizer page.
                 Button { app.goChat() } label: {
-                    detailRow(app.T("Liên hệ", "Contact"),
+                    detailRow(app.T("Liên hệ", "Contact"), leading: AnyView(rowIcon("bubble.left")),
                               value: app.T("Nhắn cho", "Message") + " \(event.orgName.isEmpty ? event.hostShort : event.orgName) ›")
                 }
                 .buttonStyle(.plain)
@@ -477,12 +647,73 @@ struct EventDetailView: View {
         }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 22)
+        .padding(.top, 30)
         .padding(.bottom, 30)
     }
 
-    private func detailRow(_ label: String, value: String) -> some View {
+    /// Small icon + text link used for the quick actions above the title.
+    private func linkLabel(_ symbol: String, _ text: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: symbol).font(.system(size: 12.5, weight: .regular))
+            Text(text).font(.system(size: 12))
+        }
+        .foregroundStyle(app.palette.ink.opacity(0.72))
+    }
+
+    /// Leading icon for a detail row (a fixed-width column so labels line up).
+    private func rowIcon(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 15, weight: .regular))
+            .frame(width: 22, height: 22)
+            .foregroundStyle(app.palette.ink.opacity(0.8))
+    }
+
+    /// The host's small round photo (their initial when there is none), for the Organizer row.
+    private var organizerAvatar: some View {
+        let stats = app.eventOrganizerID[event.key].flatMap { app.organizerStats[$0] }
+        let url = MediaURLs.organizerAvatar(path: stats?.avatarPath, r2Ref: stats?.avatarR2Ref, variant: .thumb)
+        return ZStack {
+            Circle().fill(app.palette.field)
+            if let url {
+                RemoteImage(path: url.absoluteString, maxPixel: 96)
+            } else {
+                Text(String(event.orgName.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
+                    .font(.system(size: 11, weight: .semibold))
+            }
+        }
+        .frame(width: 24, height: 24)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(app.palette.rule, lineWidth: 0.5))
+    }
+
+    /// "Organizer ……… (Following) Visit (round photo) Name ›": an icon leads the row like the others, and the host's
+    /// round photo sits between the word "Visit" and the name.
+    private var organizerRow: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                rowIcon("person.crop.circle")
+                Text(app.T("Người tổ chức", "Organizer")).font(.system(size: 13))
+                Spacer(minLength: 0)
+                if app.isFollowing(app.eventOrganizerID[event.key]) {
+                    Text("✓ " + app.T("Đang theo dõi", "Following")).font(.system(size: 13))
+                }
+                HStack(spacing: 6) {
+                    Text(app.T("Ghé", "Visit")).font(.system(size: 13))
+                    organizerAvatar
+                    Text("\(event.orgName) ›").font(.system(size: 13))
+                }
+            }
+            .padding(.vertical, 12)
+            .foregroundStyle(app.palette.ink)
+            Divider().overlay(app.palette.rule)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func detailRow(_ label: String, leading: AnyView? = nil, value: String) -> some View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 18) {
+                if let leading { leading.padding(.trailing, -6) }
                 Text(label).font(.system(size: 13))
                 Spacer(minLength: 0)
                 Text(value).font(.system(size: 13)).multilineTextAlignment(.trailing)
@@ -504,6 +735,7 @@ struct EventDetailView: View {
     private var includedRow: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 18) {
+                rowIcon("checklist").padding(.trailing, -6)
                 Text(app.T("Bao gồm", "Included")).font(.system(size: 13))
                 Spacer(minLength: 0)
                 Text(includedRowSummary)

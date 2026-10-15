@@ -713,6 +713,36 @@ final class AppState: ObservableObject {
     @Published var calendarPickerEvent: CatalogEvent?
     @Published var calendarError = ""
     @Published var sharedFlash = false
+    /// 0...1 while an Event Detail is being dragged down to close it (RootView shows the screen underneath and
+    /// skips the slide transition while this is > 0). Set only by EventDetailView.
+    @Published var eventDismissProgress: CGFloat = 0
+    /// True for a moment after Event Detail is closed: RootView then fades the screen it lands on in place (no
+    /// sideways slide) and animates with a spring, so the event shrinks away into it.
+    /// Plain (not @Published) on purpose: flipping these used to re-render every screen, Home included, right as the
+    /// close animation finished, which is where the stutter came from. Readers pick them up in the render that
+    /// the screen change itself causes.
+    var eventClosing = false
+    /// Event Detail was opened over Home or Map: that screen stays mounted (and keeps its scroll/camera) underneath
+    /// instead of being rebuilt on the way back, so closing the event can never make it jump.
+    var eventHasLiveUnderlay: Bool {
+        screen == .event && !eventBackIsStory && eventBackScreen == .home
+    }
+    /// True while Event Detail is zooming open out of the card that was tapped: RootView keeps the previous
+    /// screen drawn underneath for that moment instead of removing it.
+    var eventOpening = false
+    /// Bumped once per open so RootView renders (and sees `eventOpening`) BEFORE the screen it is leaving is removed.
+    @Published var eventOpenTick = 0
+    /// The tapped card's photo frame (global coordinates) that Event Detail zooms out of and back into.
+    @Published var eventOriginRect: CGRect?
+    /// Global frame of each on-screen event card photo, by event key (see `zoomSource`). Not @Published: it
+    /// changes every frame while scrolling and nothing renders from it.
+    var eventZoomFrames: [String: CGRect] = [:]
+    /// The card photo to zoom from, if that card is actually on screen right now.
+    func zoomOrigin(for key: String) -> CGRect? {
+        guard let r = eventZoomFrames[key], r.width > 24, r.height > 24,
+              UIScreen.main.bounds.insetBy(dx: -40, dy: -40).intersects(r) else { return nil }
+        return r
+    }
 
     // MARK: Chat
     @Published var chatThreadID: UUID?
@@ -2822,7 +2852,15 @@ final class AppState: ObservableObject {
         let fromEventChat = screen == .chat && AppState.resolveChatBackTarget(chatBack) == .event
         if screen != .event && !fromEventOrganizer && !fromEventChat { eventBackScreen = screen }
         eventKey = key
-        screen = .event
+        // Zoom out of the tapped card when it is on screen (nil otherwise: Event Detail then grows from the middle).
+        // The screen being left must see `eventOpening` BEFORE it is removed (its removal transition is read from
+        // its last render), so it never slides away to the side; the switch therefore waits one turn.
+        // Map: no card to zoom from (the event just opens from the centre of the screen, and Map comes back fresh).
+        eventOriginRect = (screen == .mapExplore) ? nil : zoomOrigin(for: key)
+        eventOpening = true
+        eventOpenTick += 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in self?.eventOpening = false }
+        DispatchQueue.main.async { [weak self] in self?.screen = .event }
         eventBackIsStory = false
         storyReturnHostName = nil
         Task { await loadBookingForCurrentEvent() }
@@ -2886,6 +2924,9 @@ final class AppState: ObservableObject {
     /// moment `screen` stops being `.event` (RootView's own
     /// `storyUnderlaysEvent` check).
     func backFromEvent() {
+        Haptics.light()
+        eventClosing = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.eventClosing = false }
         if eventBackScreen == .mapExplore {
             returnToMapExplore()
         } else {

@@ -138,6 +138,22 @@ input::placeholder {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Event Detail opening: grows in from slightly smaller with a small overshoot (iOS: spring scale-in). */
+@keyframes banbeEventIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Pulse item panel: grows in from slightly smaller / shrinks away, at the same pace as Event Detail and the photo viewer. */
+@keyframes banbePanelIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes banbePanelOut {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.9); }
+}
+
 @keyframes banbeFade {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -320,3 +336,14 @@ input::placeholder {
 
 /* Dark mode: the wordmark is black artwork, so tint it to a bright amber. */
 [data-bb-theme="dark"] img[src="/banbe-wordmark.png"] { filter: url(#bb-logo-tint); }
+
+/* iOS Safari zooms the page in whenever a focused field's text is smaller than 16px (and does not zoom back out
+   on its own). Keeping every field at 16px on touch devices makes focusing a field just focus it. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  textarea,
+  select,
+  [contenteditable="true"] {
+    font-size: 16px !important;
+  }
+}

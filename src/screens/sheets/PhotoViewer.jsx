@@ -21,7 +21,7 @@ function Icon({ name, filled }) {
 // banbeIn/banbeSheetIn) — reused here for the dismiss transform rather than a
 // new curve.
 const DISMISS_EASING = 'cubic-bezier(.22,.61,.36,1)';
-const DISMISS_MS = 280;
+const DISMISS_MS = 440;
 
 // A swipe/tap past this many px counts as a deliberate gesture rather than
 // noise; short of it in both axes is a plain tap.
@@ -94,6 +94,27 @@ export default function PhotoViewer() {
     const t = setTimeout(() => setEntered(true), 240);
     return () => clearTimeout(t);
   }, [index]);
+  // Opening: the photo grows from its thumbnail to its resting place (the reverse of dismiss()), once its real
+  // box is known (an <img> has no size until it decodes). Runs once per viewer.
+  const openedRef = useRef(false);
+  const originForOpen = s.photoViewer?.originRect;
+  useEffect(() => {
+    openedRef.current = false;
+    const el = photoRef.current;
+    if (!el || !originForOpen) return undefined;
+    let raf = 0;
+    const tryOpen = () => {
+      if (openedRef.current) return;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) { raf = requestAnimationFrame(tryOpen); return; }
+      openedRef.current = true;
+      const from = `translate(${(originForOpen.left + originForOpen.width / 2) - (r.left + r.width / 2)}px, ${(originForOpen.top + originForOpen.height / 2) - (r.top + r.height / 2)}px) scale(${originForOpen.width / r.width}, ${originForOpen.height / r.height})`;
+      el.animate([{ transform: from }, { transform: 'none' }], { duration: DISMISS_MS + 60, easing: DISMISS_EASING });
+    };
+    tryOpen();
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.photoViewer?.gallery]);
   if (!s.photoViewer) return null;
 
   const { gallery, organizer, originRect } = s.photoViewer;
@@ -124,7 +145,16 @@ export default function PhotoViewer() {
     if (closing) return;
     const el = photoRef.current;
     if (!el || !originRect) { closePhoto(); return; }
+    // Measure the photo's RESTING box: a swipe-down has already moved/scaled it with inline styles, and the target
+    // transform below is relative to the resting box. (It used to measure the dragged box, so a swipe landed
+    // offset, and kept the drag's `transition: none` so it jumped instead of animating — unlike tapping outside.)
+    const dragged = el.style.transform;
+    el.style.transition = 'none';
+    el.style.transform = 'none';
     const current = el.getBoundingClientRect();
+    el.style.transform = dragged;
+    void el.offsetWidth; // commit the dragged pose as the animation's starting point
+    el.style.transition = `transform ${DISMISS_MS}ms ${DISMISS_EASING}`;
     // The photo is now an <img> sized by its own natural aspect (see the
     // stage below), so before it has decoded its box is 0x0 — a scale
     // computed against that would be Infinity. Nothing on screen to shrink
@@ -138,10 +168,11 @@ export default function PhotoViewer() {
     // element's OWN declared `transform`/`transition` (in the JSX below)
     // take back over on the next render with the real `closing` value, so
     // this just needs to not leave a stale `transition: none` behind.
-    if (backdropRef.current) { backdropRef.current.style.transition = ''; backdropRef.current.style.opacity = ''; }
-    if (dimRef.current) { dimRef.current.style.transition = ''; dimRef.current.style.opacity = ''; }
-    if (creditRef.current) { creditRef.current.style.transition = ''; creditRef.current.style.opacity = ''; }
-    if (taglineRowRef.current) { taglineRowRef.current.style.transition = ''; taglineRowRef.current.style.opacity = ''; }
+    // The photo shrinks (staying opaque) onto its thumbnail while the backdrop, dim and captions fade out with it,
+    // like iOS — rather than the whole viewer fading, which made the shrinking photo itself turn see-through.
+    for (const r of [backdropRef, dimRef, creditRef, taglineRowRef]) {
+      if (r.current) { r.current.style.transition = `opacity ${DISMISS_MS}ms ease`; r.current.style.opacity = '0'; }
+    }
     setClosing({ transform: `translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY})` });
     setTimeout(closePhoto, DISMISS_MS);
   };
@@ -170,7 +201,7 @@ export default function PhotoViewer() {
     }
     const progress = Math.min(1, dy / DRAG_REVEAL_DISTANCE);
     const el = photoRef.current;
-    if (el) { el.style.transition = 'none'; el.style.transform = `translateY(${dy}px) scale(${1 - progress * 0.06})`; }
+    if (el) { el.style.transition = 'none'; el.style.transform = `translateY(${dy}px) scale(${1 - progress * 0.3})`; }
     if (backdropRef.current) { backdropRef.current.style.transition = 'none'; backdropRef.current.style.opacity = String(1 - progress); }
     if (dimRef.current) { dimRef.current.style.transition = 'none'; dimRef.current.style.opacity = String(1 - progress); }
     // Task 4: caption/buttons fade out in step with the backdrop, so they
@@ -261,7 +292,7 @@ export default function PhotoViewer() {
       style={{
         position: 'absolute', inset: 0, ...pin, zIndex: 24, overflow: 'hidden', containerType: 'size',
         animation: entered ? undefined : 'banbeFade 0.2s ease both',
-        opacity: closing ? 0 : 1,
+        // (No opacity fade of the whole viewer on close any more: see dismiss().)
         // Always present, even before there's anything to transition —
         // adding this in the SAME render that first changes `opacity`
         // (rather than before it) gives the browser no earlier frame to
@@ -351,7 +382,7 @@ export default function PhotoViewer() {
             WebkitUserSelect: 'none',
             WebkitUserDrag: 'none',
             WebkitTouchCallout: 'none',
-            animation: entered ? undefined : 'banbeIn 0.22s cubic-bezier(.22,.61,.36,1) both',
+            animation: entered || originRect ? undefined : 'banbeIn 0.22s cubic-bezier(.22,.61,.36,1) both',
             transform: closing ? closing.transform : 'none',
             transformOrigin: 'center',
             // Always present — same reasoning as the backdrop's opacity

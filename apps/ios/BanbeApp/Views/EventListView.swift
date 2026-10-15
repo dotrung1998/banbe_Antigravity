@@ -52,7 +52,7 @@ struct EventListView: View {
                         ForEach(Array(events.enumerated()), id: \.element.key) { index, event in
                             Button { app.goEvent(event.key) } label: {
                                 HStack(spacing: 12) {
-                                    CatalogPhoto(path: event.img, height: 52, width: 52, cornerRadius: 10)
+                                    CatalogPhoto(path: event.img, height: 52, width: 52, cornerRadius: 10).zoomSource(event.key)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(event.name).font(BanbeTheme.display(15)).lineLimit(1)
                                         Text(app.trStatus(app.stripKm(event.meta, event: event)))
