@@ -208,6 +208,7 @@ export default function MapExplore() {
   const mapDivRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
+  const prevMarkerKeysRef = useRef(new Set());
   // Marker class of whichever map is live (MapKit adapter's, or MapLibre's once it is loaded).
   const markerCtorRef = useRef(null);
   const listRef = useRef(null);
@@ -649,12 +650,26 @@ export default function MapExplore() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    markersRef.current.forEach(m => m.remove());
+    // Markers from the previous run stay until the new ones exist: the ones that are still wanted are swapped out
+    // at once, the ones that no longer are (filtered away) shrink/fade first. Newly appearing ones grow/fade in.
+    const oldMarkers = markersRef.current;
     markersRef.current = [];
+    const prevKeys = prevMarkerKeysRef.current;
+    const newKeys = new Set();
+    const finishOld = () => {
+      oldMarkers.forEach((m) => {
+        if (newKeys.has(m.__key) || !m.__el) { m.remove(); return; }
+        const inner = m.__el.firstElementChild || m.__el;
+        inner.style.transition = 'opacity 0.24s ease, transform 0.24s ease';
+        inner.style.opacity = '0';
+        if (inner !== m.__el) inner.style.transform = 'scale(0.4)';
+        setTimeout(() => m.remove(), 250);
+      });
+    };
     let cancelled = false;
     (async () => {
       const MarkerCtor = markerCtorRef.current;
-      if (cancelled || !MarkerCtor) return;
+      if (cancelled || !MarkerCtor) { oldMarkers.forEach(m => m.remove()); return; }
       for (const ev of events) {
         // Stage 3 — the unbounded list load no longer requires
         // coordinates (see fetchLiveEvents's own comment); a row without
@@ -674,7 +689,11 @@ export default function MapExplore() {
           const dotEl = document.createElement('div');
           dotEl.setAttribute('data-testid', `map-dot-${ev.id}`);
           dotEl.style.cssText = `width:9px;height:9px;border-radius:50%;background:${CAT_DOT_COLOR[ev.catKey] || CAT_DOT_COLOR.all};border:1px solid ${paper};opacity:0.85;pointer-events:none;`;
+          const dotKey = `${ev.id}:d`;
+          newKeys.add(dotKey);
+          if (prevKeys.size && !prevKeys.has(dotKey)) dotEl.style.animation = 'banbeDotIn 0.3s ease both';
           const dotMarker = new MarkerCtor({ element: dotEl }).setLngLat([ev.lng, ev.lat]).addTo(map);
+          dotMarker.__key = dotKey; dotMarker.__el = dotEl;
           markersRef.current.push(dotMarker);
           continue;
         }
@@ -716,15 +735,22 @@ export default function MapExplore() {
           dot.style.cssText = `position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:${ev.urgent ? '#9A3E2D' : '#48582F'};border:1.5px solid ${paper};`;
           pinEl.appendChild(dot);
         }
+        const pinKey = `${ev.id}:p`;
+        newKeys.add(pinKey);
         if (isSelected && lastAnimatedPinIdRef.current !== ev.id) {
           pinEl.style.animation = 'banbePinPop 0.32s cubic-bezier(.22,.61,.36,1) both';
           lastAnimatedPinIdRef.current = ev.id;
+        } else if (prevKeys.size && !prevKeys.has(pinKey)) {
+          pinEl.style.animation = 'banbePinIn 0.3s cubic-bezier(.22,.61,.36,1) both';
         }
         pinEl.addEventListener('click', (e) => { e.stopPropagation(); selectEvent(ev); });
         el.appendChild(pinEl);
         const marker = new MarkerCtor({ element: el }).setLngLat([ev.lng, ev.lat]).addTo(map);
+        marker.__key = pinKey; marker.__el = el;
         markersRef.current.push(marker);
       }
+      prevMarkerKeysRef.current = newKeys;
+      finishOld();
     })();
     return () => { cancelled = true; };
     // B3 — `visibleIdSet` (derived from `catFilter`/`openNowOnly`/
@@ -1401,7 +1427,7 @@ export default function MapExplore() {
               key={ev.id}
               onClick={() => selectEvent(ev)}
               data-testid={`map-list-item-${ev.id}`}
-              style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: `1px solid ${rule}`, cursor: 'pointer', alignItems: 'center' }}
+              style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: `1px solid ${rule}`, cursor: 'pointer', alignItems: 'center', animation: 'banbeRowIn 0.3s cubic-bezier(.22,.61,.36,1) backwards' }}
             >
               {ev.img && <div style={{ width: 52, height: 52, borderRadius: 10, backgroundImage: `url(${ev.img})`, backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0 }} />}
               <div style={{ flex: 1, minWidth: 0 }}>

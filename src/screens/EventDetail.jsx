@@ -265,6 +265,9 @@ export default function EventDetail() {
     const begin = (x, y) => { d.active = false; d.startX = x; d.startY = y; d.dy = 0; d.tracking = scroller.scrollTop <= 1 && !d.closing; };
     const move = (x, y, e) => {
       if (!d.tracking || d.closing) return;
+      // Once this touch has scrolled the sheet at all, it is a scroll for the rest of the gesture: scrolling up and
+      // back down to the top in one go must never turn into pull-down-to-close.
+      if (scroller.scrollTop > 1) { d.tracking = false; return; }
       const dx = x - d.startX; const dy = y - d.startY;
       if (!d.active) {
         if (dy > 10 && dy > Math.abs(dx) * 1.2 && scroller.scrollTop <= 1) d.active = true; else return;
@@ -313,7 +316,9 @@ export default function EventDetail() {
   const iconBtn = (extra) => photoPill({ position: 'fixed', top: 66, width: 40, height: 40, padding: 0, zIndex: 5, borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', ...extra });
 
   return (
-    <div style={{ position: 'relative', height: '100%' }} data-screen-label="Event">
+    // `absolute, inset 0` (like Chat): fills the app's scroll viewport exactly, whatever the surrounding grid does
+    // with percentage heights, so the sheet below scrolls INSIDE this screen instead of the page growing.
+    <div style={{ position: 'absolute', inset: 0 }} data-screen-label="Event">
       <div ref={dimRef} aria-hidden style={{ position: 'fixed', inset: 0, background: 'rgb(12,12,12)', opacity: 0, pointerEvents: 'none', zIndex: 0 }} />
     <div ref={cardRef} style={{ animation: zoomRef.current ? undefined : 'banbeEventIn 0.55s cubic-bezier(.34,1.2,.5,1) backwards', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
       <div data-fade aria-hidden style={{ position: 'absolute', inset: 0, background: paper, zIndex: -1 }} />
