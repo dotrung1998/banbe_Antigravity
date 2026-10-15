@@ -27,6 +27,7 @@ struct HostSetupView: View {
     @State private var darkBackdrop = false
     @State private var fadedOut = false
     @State private var finalTarget: CGRect?
+    @State private var shown = false
 
     private let nameMax = 80, introMax = 280
     private var previewImage: UIImage? {
@@ -37,10 +38,17 @@ struct HostSetupView: View {
 
     var body: some View {
         GeometryReader { geo in
-            ZStack {
-                (darkBackdrop ? Color(hex: 0x0E0C09).opacity(0.94) : app.palette.paper).ignoresSafeArea()
+            ZStack(alignment: .bottom) {
+                // Same look as the share-card sheet: dimmed screen behind, a panel that slides up from the bottom.
+                (darkBackdrop ? Color(hex: 0x0E0C09).opacity(0.94) : Color.black.opacity(shown ? 0.3 : 0))
+                    .ignoresSafeArea()
+                    .animation(.easeOut(duration: 0.3), value: shown)
                 content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(app.palette.paper, in: UnevenRoundedRectangle(topLeadingRadius: 38, topTrailingRadius: 38, style: .continuous))
+                    .padding(.top, 56)
                     .opacity(phase == .reveal ? 0 : 1)
+                    .offset(y: shown ? 0 : geo.size.height)
                     .animation(.easeOut(duration: 0.32), value: phase == .reveal)
                     .allowsHitTesting(phase != .reveal)
                 if phase == .reveal, let start = revealStart, !particles.isEmpty {
@@ -49,13 +57,14 @@ struct HostSetupView: View {
             }
             .opacity(fadedOut ? 0 : 1)
             .onAppear {
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.92)) { shown = true }
                 origin = geo.frame(in: .global).origin
                 canvasSize = geo.size
                 if name.isEmpty { name = EnsureOrganizerLogic.defaultName(displayName: app.user?.displayName, isEN: app.isEN) }
             }
             .onChange(of: geo.size) { _, new in canvasSize = new; origin = geo.frame(in: .global).origin }
         }
-        .ignoresSafeArea()
+        .ignoresSafeArea(.container) // not .keyboard: the panel shrinks above the keyboard so Create stays reachable
         .onPreferenceChange(RevealSourceKey.self) { sourceFrames = $0 }
         .onChange(of: pickerItem) { _, item in
             Task {
@@ -70,29 +79,33 @@ struct HostSetupView: View {
 
     private var content: some View {
         VStack(spacing: 0) {
-            HStack {
-                Spacer()
-                // X = "I don't want to be a host right now": organizer mode goes back off and no organizer
-                // profile is created (it is only created by the Create button below).
-                Button { if phase == .form { app.cancelHostSetup() } } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(width: 34, height: 34)
-                        .background(app.palette.field, in: Circle())
+            Capsule().fill(app.palette.ink.opacity(0.22)).frame(width: 36, height: 5).padding(.top, 8)
+            ZStack {
+                Text(app.T("Hồ sơ tổ chức", "Host profile"))
+                    .font(.system(size: 17, weight: .semibold))
+                HStack {
+                    Spacer()
+                    // X = "I don't want to be a host right now": organizer mode goes back off and no organizer
+                    // profile is created (it is only created by the Create button below).
+                    Button { if phase == .form { app.cancelHostSetup() } } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .frame(width: 40, height: 40)
+                            .background(app.palette.paper, in: Circle())
+                            .overlay(Circle().stroke(app.palette.rule))
+                    }
+                    .opacity(phase == .form ? 1 : 0.3)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(app.T("Đóng", "Close"))
+                    .accessibilityIdentifier("hostSetup.skip")
                 }
-                .opacity(phase == .form ? 1 : 0.3)
-                .buttonStyle(.plain)
-                .accessibilityLabel(app.T("Đóng", "Close"))
-                .accessibilityIdentifier("hostSetup.skip")
             }
-            .padding(.horizontal, 22).padding(.top, 60)
+            .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 6)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(app.T("Tạo hồ sơ tổ chức", "Set up your host profile"))
-                        .font(BanbeTheme.display(30)).padding(.top, 6).revealSource()
                     Text(app.T("Đây là diện mạo khách sẽ thấy. Bạn có thể đổi bất cứ lúc nào.", "This is how guests will see you. You can change it any time."))
-                        .font(.system(size: 14)).opacity(0.68).padding(.top, 8).revealSource()
+                        .font(.system(size: 14)).opacity(0.68).padding(.top, 10).revealSource()
 
                     previewCard.padding(.top, 22)
 
@@ -139,6 +152,14 @@ struct HostSetupView: View {
             .accessibilityIdentifier("hostSetup.submit")
         }
         .foregroundStyle(app.palette.ink)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button(app.T("Huỷ", "Cancel")) {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
+        }
     }
 
     private func sectionLabel(_ text: String) -> some View {
