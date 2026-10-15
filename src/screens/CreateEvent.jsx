@@ -9,6 +9,7 @@ import { parseExcelOrZipPackage } from '../lib/excelEventImport.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { paper, ink, rule, FACE, display, alert } from '../theme.js';
 import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
+import { loadMapKit } from '../lib/mapkit.js';
 
 const IMPORT_FIELD_LABELS = {
   name: ['Tên sự kiện', 'Event name'],
@@ -66,6 +67,9 @@ export default function CreateEvent() {
   // gửi" button ever calls createSubmit; the form's own primary button
   // only ever opens this step.
   const [reviewOpen, setReviewOpen] = useState(false);
+  // True only when Apple MapKit is enabled and authorised (else the OpenStreetMap credit stays).
+  const [usingMapKit, setUsingMapKit] = useState(false);
+  useEffect(() => { let on = true; loadMapKit().then(m => { if (on && m) setUsingMapKit(true); }); return () => { on = false; }; }, []);
   // TASK 3 (event creation validation pass) — required-field errors only
   // render after a real attempt to proceed (never on first paint of a
   // blank form), same "show after attempt" convention the address hint
@@ -402,11 +406,11 @@ export default function CreateEvent() {
                   </span>
                 </div>
               ))}
-              {/* Nominatim's usage policy requires attribution wherever
-                  its results are shown, same as MapExplore's own
-                  MapLibre attribution elsewhere in this app. */}
+              {/* Nominatim's usage policy requires attribution wherever its results are shown, same as
+                  MapExplore's own MapLibre attribution elsewhere in this app. With MapKit live the results
+                  are Apple Maps data, so the credit says that instead. */}
               <div style={{ padding: '6px 12px', fontSize: 9.5, color: ink, opacity: 0.45, borderTop: `1px solid ${rule}` }}>
-                © OpenStreetMap contributors
+                {usingMapKit ? T('Kết quả từ Apple Maps', 'Results from Apple Maps') : '© OpenStreetMap contributors'}
               </div>
             </div>
           )}

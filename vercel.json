@@ -4,6 +4,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/mapkit-token",
+      "destination": "/api/calendar?op=mapkit-token"
+    },
+    {
       "source": "/api/geocode",
       "destination": "/api/calendar?op=geocode"
     },

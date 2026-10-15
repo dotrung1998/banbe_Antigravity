@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBanBe } from '../../state/BanBeContext.jsx';
 import { paper, ink, rule, alert, display } from '../../theme.js';
-import { inkButton, insetField } from '../hostStyle.js';
+import { fieldGlass, inkButton } from '../hostStyle.js';
 import { HOST_STOCK_COVERS, stockCoverDataUrl, stockCoverFile } from '../../lib/hostStockCovers.js';
 import { deriveDefaultOrganizerName } from '../../lib/ensureOrganizer.js';
 import { REVEAL_FLASH_START } from '../../lib/hostReveal.js';
@@ -43,13 +43,13 @@ export default function HostSetupSheet() {
   const [error, setError] = useState('');
   const [fade, setFade] = useState({ dark: false, out: false });
   const [typing, setTyping] = useState(false);
-  // On phones the on-screen keyboard shrinks only the visual viewport; follow it so the panel (and the
-  // Cancel bar) stay above the keyboard instead of hiding behind it.
-  const [vvh, setVvh] = useState(null);
+  // On phones the on-screen keyboard shrinks only the visual viewport; lift the panel's bottom edge by the
+  // covered height so it (and the Done bar) stay above the keyboard. 0 on desktop, where nothing covers it.
+  const [kb, setKb] = useState(0);
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
     if (!vv) return undefined;
-    const on = () => setVvh(vv.height);
+    const on = () => setKb(Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)));
     on();
     vv.addEventListener('resize', on);
     return () => vv.removeEventListener('resize', on);
@@ -123,14 +123,14 @@ export default function HostSetupSheet() {
 
   const revealing = phase === 'reveal';
   const label = { fontSize: 11, fontWeight: 600, letterSpacing: 0.6, textTransform: 'uppercase', color: ink, opacity: 0.55, margin: '26px 0 10px' };
-  const input = insetField({ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', padding: '14px 16px', fontSize: 15, color: ink, fontFamily: 'inherit' });
+  const input = fieldGlass({ borderRadius: 12, width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', padding: '14px 16px', fontSize: 15, color: ink, fontFamily: 'inherit' });
 
   return (
     <div
       ref={rootRef}
       data-testid="host-setup-sheet"
       style={{
-        position: 'fixed', top: 0, left: 0, right: 0, height: vvh || '100%', zIndex: 95, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: kb, zIndex: 95, display: 'flex', flexDirection: 'column', overflow: 'hidden',
         // Same look as the share-card sheet: dimmed screen behind, a panel sliding up from the bottom.
         background: fade.dark ? 'rgba(14,12,9,0.94)' : 'rgba(0,0,0,0.3)',
         opacity: fade.out ? 0 : 1,
@@ -172,7 +172,7 @@ export default function HostSetupSheet() {
               className="bb-host-tile" role="button" data-testid="host-setup-upload" onClick={() => fileInputRef.current?.click()}
               style={{
                 flex: 'none', width: 64, height: 64, borderRadius: 18, boxSizing: 'border-box', cursor: 'pointer', position: 'relative', overflow: 'hidden',
-                border: upload ? 'none' : `1.5px dashed ${ink}55`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: upload ? 'none' : '1.5px dashed color-mix(in srgb, var(--bb-fg) 35%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 boxShadow: upload ? `0 0 0 2px ${paper}, 0 0 0 4px ${ink}` : 'none',
               }}
             >

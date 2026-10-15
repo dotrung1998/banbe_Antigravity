@@ -1,5 +1,7 @@
 import { screenHeight } from '../lib/viewport.js';
 import { loadMapStyle } from '../lib/mapStyle.js';
+import { loadMapKit } from '../lib/mapkit.js';
+import { createMapKitMap } from '../lib/mapkitAdapter.js';
 import { SHEET_SNAPS, computeMapLayout, snapForSelection } from '../lib/mapLayout.js';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useBanBe, resolveCoverUrl, firstPhotoUrlByEvent } from '../state/BanBeContext.jsx';
@@ -206,6 +208,8 @@ export default function MapExplore() {
   const mapDivRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
+  // Marker class of whichever map is live (MapKit adapter's, or MapLibre's once it is loaded).
+  const markerCtorRef = useRef(null);
   const listRef = useRef(null);
   const listScrollRestoredRef = useRef(false);
   const [events, setEvents] = useState([]);
@@ -361,6 +365,7 @@ export default function MapExplore() {
     if (themeRef.current === mode) return undefined;
     themeRef.current = mode;
     let cancelled = false;
+    if (mapRef.current?.__isMapKit) { mapRef.current.setColorScheme(mode); return undefined; }
     loadMapStyle(mode).then(style => { if (!cancelled && mapRef.current) mapRef.current.setStyle(style); });
     return () => { cancelled = true; };
   }, [s.theme]);
@@ -461,50 +466,60 @@ export default function MapExplore() {
       const center = restored?.cameraCenter
         || densityHotspot(initial.map(e => ({ lat: e.lat, lng: e.lng }))) || { lat: 10.7769, lng: 106.7009 };
 
-      // maplibre-gl 6.x ships pure named ESM exports — there is no
-      // `default` export. `(await import(...)).default` was silently
-      // `undefined`, so `new maplibregl.Map(...)` threw and the map never
-      // initialized (11-realtime-map.md: "web map doesn't render at all").
-      const maplibregl = await import('maplibre-gl');
-      // maplibre-gl locates its tile-decoding worker at runtime via
-      // `new URL('./maplibre-gl-worker.mjs', import.meta.url)`, computed
-      // from a variable rather than a static string literal — Vite/
-      // Rollup's special `new Worker(new URL(...))` bundling only
-      // recognizes a literal, so it never bundles this worker at all; a
-      // production build then never emits `maplibre-gl-worker.mjs` and the
-      // URL 404s (a static host's SPA fallback can mask this as an HTTP
-      // 200 of index.html) — the map style/sprite/source *metadata* still
-      // load fine over plain fetch from the main thread, but no vector
-      // tile is ever decoded into pixels, so only markers (plain DOM
-      // elements, not part of the tile canvas) paint; the base map stays
-      // blank/gray. Confirmed via Playwright's `page.on('worker', ...)`:
-      // the worker was created and immediately closed. vite.config.js's
-      // `maplibreWorkerFiles()` plugin serves/emits the worker file (and
-      // the sibling `maplibre-gl-shared.mjs` it itself imports — a bare
-      // `?url` copy of just the worker file breaks that relative import
-      // once it's alone in a hashed output directory) at this fixed path,
-      // identically in dev and in a production build, so this path always
-      // resolves regardless of mode. See 11-realtime-map.md.
-      maplibregl.setWorkerUrl('/maplibre-gl-worker/maplibre-gl-worker.mjs');
+      // Apple MapKit JS when enabled + authorised (src/lib/mapkit.js); otherwise the OpenStreetMap map below.
+      const mapkit = await loadMapKit();
       if (!active || !mapDivRef.current || mapRef.current) return;
+      let map;
+      if (mapkit) {
+        map = createMapKitMap(mapkit, { container: mapDivRef.current, center, zoom: restored?.cameraZoom ?? 13, theme: themeRef.current });
+        markerCtorRef.current = map.Marker;
+      } else {
+        // maplibre-gl 6.x ships pure named ESM exports — there is no
+        // `default` export. `(await import(...)).default` was silently
+        // `undefined`, so `new maplibregl.Map(...)` threw and the map never
+        // initialized (11-realtime-map.md: "web map doesn't render at all").
+        const maplibregl = await import('maplibre-gl');
+        // maplibre-gl locates its tile-decoding worker at runtime via
+        // `new URL('./maplibre-gl-worker.mjs', import.meta.url)`, computed
+        // from a variable rather than a static string literal — Vite/
+        // Rollup's special `new Worker(new URL(...))` bundling only
+        // recognizes a literal, so it never bundles this worker at all; a
+        // production build then never emits `maplibre-gl-worker.mjs` and the
+        // URL 404s (a static host's SPA fallback can mask this as an HTTP
+        // 200 of index.html) — the map style/sprite/source *metadata* still
+        // load fine over plain fetch from the main thread, but no vector
+        // tile is ever decoded into pixels, so only markers (plain DOM
+        // elements, not part of the tile canvas) paint; the base map stays
+        // blank/gray. Confirmed via Playwright's `page.on('worker', ...)`:
+        // the worker was created and immediately closed. vite.config.js's
+        // `maplibreWorkerFiles()` plugin serves/emits the worker file (and
+        // the sibling `maplibre-gl-shared.mjs` it itself imports — a bare
+        // `?url` copy of just the worker file breaks that relative import
+        // once it's alone in a hashed output directory) at this fixed path,
+        // identically in dev and in a production build, so this path always
+        // resolves regardless of mode. See 11-realtime-map.md.
+        maplibregl.setWorkerUrl('/maplibre-gl-worker/maplibre-gl-worker.mjs');
+        if (!active || !mapDivRef.current || mapRef.current) return;
 
-      const map = new maplibregl.Map({
-        container: mapDivRef.current,
-        style: await loadMapStyle(themeRef.current),
-        attributionControl: false,
-        center: [center.lng, center.lat],
-        zoom: restored?.cameraZoom ?? 13,
-      });
-      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-      // Required OpenFreeMap/OSM credit stays fully visible (not collapsed behind the "i" button);
-      // the CSS below lifts it above the bottom sheet.
-      map.addControl(new maplibregl.AttributionControl({ compact: false, customAttribution: undefined }), 'bottom-right');
-      // The map container is `inset: 0` of this screen's box; keep the canvas in sync with any
-      // container change (sheet/viewport/Safari toolbar), not just window resizes.
-      if (typeof ResizeObserver !== 'undefined' && mapDivRef.current) {
-        const mro = new ResizeObserver(() => map.resize());
-        mro.observe(mapDivRef.current);
-        map.__bbResizeObserver = mro;
+        map = new maplibregl.Map({
+          container: mapDivRef.current,
+          style: await loadMapStyle(themeRef.current),
+          attributionControl: false,
+          center: [center.lng, center.lat],
+          zoom: restored?.cameraZoom ?? 13,
+        });
+        map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+        // Required OpenFreeMap/OSM credit stays fully visible (not collapsed behind the "i" button);
+        // the CSS below lifts it above the bottom sheet.
+        map.addControl(new maplibregl.AttributionControl({ compact: false, customAttribution: undefined }), 'bottom-right');
+        // The map container is `inset: 0` of this screen's box; keep the canvas in sync with any
+        // container change (sheet/viewport/Safari toolbar), not just window resizes.
+        if (typeof ResizeObserver !== 'undefined' && mapDivRef.current) {
+          const mro = new ResizeObserver(() => map.resize());
+          mro.observe(mapDivRef.current);
+          map.__bbResizeObserver = mro;
+        }
+        markerCtorRef.current = maplibregl.Marker;
       }
       map.on('moveend', () => {
         if (!lastQueriedBounds.current) { lastQueriedBounds.current = map.getBounds(); return; }
@@ -638,8 +653,8 @@ export default function MapExplore() {
     markersRef.current = [];
     let cancelled = false;
     (async () => {
-      const maplibregl = await import('maplibre-gl');
-      if (cancelled) return;
+      const MarkerCtor = markerCtorRef.current;
+      if (cancelled || !MarkerCtor) return;
       for (const ev of events) {
         // Stage 3 — the unbounded list load no longer requires
         // coordinates (see fetchLiveEvents's own comment); a row without
@@ -659,7 +674,7 @@ export default function MapExplore() {
           const dotEl = document.createElement('div');
           dotEl.setAttribute('data-testid', `map-dot-${ev.id}`);
           dotEl.style.cssText = `width:9px;height:9px;border-radius:50%;background:${CAT_DOT_COLOR[ev.catKey] || CAT_DOT_COLOR.all};border:1px solid ${paper};opacity:0.85;pointer-events:none;`;
-          const dotMarker = new maplibregl.Marker({ element: dotEl }).setLngLat([ev.lng, ev.lat]).addTo(map);
+          const dotMarker = new MarkerCtor({ element: dotEl }).setLngLat([ev.lng, ev.lat]).addTo(map);
           markersRef.current.push(dotMarker);
           continue;
         }
@@ -707,7 +722,7 @@ export default function MapExplore() {
         }
         pinEl.addEventListener('click', (e) => { e.stopPropagation(); selectEvent(ev); });
         el.appendChild(pinEl);
-        const marker = new maplibregl.Marker({ element: el }).setLngLat([ev.lng, ev.lat]).addTo(map);
+        const marker = new MarkerCtor({ element: el }).setLngLat([ev.lng, ev.lat]).addTo(map);
         markersRef.current.push(marker);
       }
     })();

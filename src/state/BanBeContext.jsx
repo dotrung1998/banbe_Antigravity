@@ -17,6 +17,8 @@ import { isRewardsUnavailable, normalizeSummary } from '../lib/rewards.js';
 import { normalizeForSave as normalizeEventPrefsForSave, isMissingFunctionError as isEventPrefsFnMissing, everyone as everyoneCriteria, normalizeCriteria, criteriaIsEveryone } from '../lib/eventPrefs.js';
 import { hostSetupResolved, markHostSetup } from '../lib/hostSetupFlag.js';
 import { useEnsureOrganizer } from '../lib/useEnsureOrganizer.js';
+import { loadMapKit } from '../lib/mapkit.js';
+import { mapKitSearch } from '../lib/mapkitAdapter.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
 import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, isMissingColumnError } from '../lib/mediaUrls.js';
 
@@ -9264,16 +9266,28 @@ export function BanBeProvider({ children }) {
     };
   }
 
+  /**
+   * Address candidates for `query`. Apple MapKit search when MapKit is enabled and authorised (the same data
+   * iOS's MKLocalSearch uses); otherwise, or if MapKit errors, OpenStreetMap via /api/geocode.
+   */
+  const fetchAddressCandidates = async (query) => {
+    const mapkit = await loadMapKit();
+    if (mapkit) {
+      try { return await mapKitSearch(mapkit, query); } catch (e) { console.warn('MapKit search failed, using OpenStreetMap:', e); }
+    }
+    const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error('GEOCODE_HTTP_' + res.status);
+    const rows = await res.json();
+    return (rows || []).map(shapeAddressSuggestion).filter(Boolean);
+  };
+
   /** Same geocoder + result shape Create Event's address search uses, but
    * stateless (returns the suggestions instead of writing create* state) so
    * the survey form can pick structured locations without touching the
    * event draft. */
   const searchAddressSuggestions = useCallback(async (query) => {
     try {
-      const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`, { headers: { Accept: 'application/json' } });
-      if (!res.ok) throw new Error('GEOCODE_HTTP_' + res.status);
-      const rows = await res.json();
-      const suggestions = (rows || []).map(shapeAddressSuggestion).filter(Boolean);
+      const suggestions = await fetchAddressCandidates(query);
       return { suggestions, error: suggestions.length ? '' : T('Không tìm thấy địa chỉ nào. Thử ghi rõ số nhà và đường.', 'No addresses found. Try including a house number and street.') };
     } catch (err) {
       console.warn('searchAddressSuggestions failed:', err);
@@ -9285,12 +9299,8 @@ export function BanBeProvider({ children }) {
     const seq = ++createAddressSeq.current;
     set({ createAddressSearching: true, createAddressSearchError: '' });
     try {
-      const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`, { headers: { Accept: 'application/json' } });
+      const suggestions = await fetchAddressCandidates(query);
       if (seq !== createAddressSeq.current) return; // a newer search has since started
-      if (!res.ok) throw new Error('GEOCODE_HTTP_' + res.status);
-      const rows = await res.json();
-      if (seq !== createAddressSeq.current) return;
-      const suggestions = (rows || []).map(shapeAddressSuggestion).filter(Boolean);
       set({
         createAddressSearching: false, createAddressSuggestions: suggestions,
         createAddressSearchError: suggestions.length ? '' : T(
