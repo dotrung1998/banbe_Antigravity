@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBanBe } from '../../state/BanBeContext.jsx';
-import { paper, ink, alert, display } from '../../theme.js';
-import { fieldGlass, inkButton, insetField } from '../hostStyle.js';
+import { paper, ink, rule, alert, display } from '../../theme.js';
+import { inkButton, insetField } from '../hostStyle.js';
 import { HOST_STOCK_COVERS, stockCoverDataUrl, stockCoverFile } from '../../lib/hostStockCovers.js';
 import { deriveDefaultOrganizerName } from '../../lib/ensureOrganizer.js';
 import { REVEAL_FLASH_START } from '../../lib/hostReveal.js';
@@ -20,7 +20,8 @@ const reduceMotion = () => typeof window !== 'undefined' && window.matchMedia?.(
 
 const CSS = `
 @keyframes bbHostIn { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
-.bb-host-sheet-in { animation: bbHostIn 520ms cubic-bezier(.2,.8,.2,1) both; }
+@keyframes bbHostUp { from { transform: translateY(100%); } to { transform: none; } }
+.bb-host-sheet-in { animation: bbHostUp 420ms cubic-bezier(.2,.8,.2,1) both; }
 .bb-host-tile { transition: transform 180ms ease, box-shadow 180ms ease; }
 .bb-host-tile:active { transform: scale(.94); }
 `;
@@ -41,6 +42,20 @@ export default function HostSetupSheet() {
   const [phase, setPhase] = useState('form'); // form | saving | reveal
   const [error, setError] = useState('');
   const [fade, setFade] = useState({ dark: false, out: false });
+  const [typing, setTyping] = useState(false);
+  // On phones the on-screen keyboard shrinks only the visual viewport; follow it so the panel (and the
+  // Cancel bar) stay above the keyboard instead of hiding behind it.
+  const [vvh, setVvh] = useState(null);
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return undefined;
+    const on = () => setVvh(vv.height);
+    on();
+    vv.addEventListener('resize', on);
+    return () => vv.removeEventListener('resize', on);
+  }, []);
+  const hideKeyboard = () => { document.activeElement?.blur?.(); setTyping(false); };
+  const kbProps = { onFocus: () => setTyping(true), onBlur: () => setTyping(false) };
 
   useEffect(() => () => { if (upload?.url) URL.revokeObjectURL(upload.url); }, [upload]);
 
@@ -92,6 +107,9 @@ export default function HostSetupSheet() {
     }
     // Land on the host card the dots will assemble into.
     set({ screen: 'profile', accountTab: 'host' });
+    // The Host tab may be scrolled (screens keep their scroll position); the dots assemble into the card, so
+    // bring the whole card into view. The reveal re-aims at the card's real position late in the animation.
+    setTimeout(() => document.querySelector('[data-testid="app-scroll-viewport"]')?.scrollTo({ top: 0, behavior: 'smooth' }), 350);
     setPhase('reveal');
     setFade({ dark: true, out: false });
     if (reduceMotion()) {
@@ -112,8 +130,9 @@ export default function HostSetupSheet() {
       ref={rootRef}
       data-testid="host-setup-sheet"
       style={{
-        position: 'fixed', inset: 0, zIndex: 95, display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        background: fade.dark ? 'rgba(14,12,9,0.94)' : paper,
+        position: 'fixed', top: 0, left: 0, right: 0, height: vvh || '100%', zIndex: 95, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        // Same look as the share-card sheet: dimmed screen behind, a panel sliding up from the bottom.
+        background: fade.dark ? 'rgba(14,12,9,0.94)' : 'rgba(0,0,0,0.3)',
         opacity: fade.out ? 0 : 1,
         transition: `background 600ms ease, opacity ${fade.out ? 800 : 300}ms ease`,
       }}
@@ -121,18 +140,19 @@ export default function HostSetupSheet() {
       <style>{CSS}</style>
       <div
         className="bb-host-sheet-in"
-        style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', opacity: revealing ? 0 : 1, transition: 'opacity 320ms ease', pointerEvents: revealing ? 'none' : 'auto' }}
+        style={{ flex: 1, minHeight: 0, marginTop: 'calc(env(safe-area-inset-top, 0px) + 12px)', background: paper, borderRadius: '38px 38px 0 0', display: 'flex', flexDirection: 'column', opacity: revealing ? 0 : 1, transition: 'opacity 320ms ease', pointerEvents: revealing ? 'none' : 'auto' }}
       >
-        <div style={{ flex: 'none', display: 'flex', justifyContent: 'flex-end', padding: 'calc(env(safe-area-inset-top, 0px) + 16px) 22px 0' }}>
+        <div aria-hidden style={{ flex: 'none', width: 36, height: 5, borderRadius: 3, background: ink, opacity: 0.22, margin: '8px auto 0' }} />
+        <div style={{ flex: 'none', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 18px 6px', minHeight: 40 }}>
+          <div style={{ fontSize: 17, fontWeight: 600, color: ink }}>{T('Hồ sơ tổ chức', 'Host profile')}</div>
           <button
             type="button" aria-label={T('Đóng', 'Close')} data-testid="host-setup-skip" onClick={phase === 'form' ? () => closeHostSetup('cancelled') : undefined}
-            style={fieldGlass({ width: 34, height: 34, borderRadius: 17, border: 'none', color: ink, fontSize: 16, fontWeight: 600, lineHeight: 1, opacity: phase === 'form' ? 1 : 0.3, cursor: 'pointer' })}
+            style={{ position: 'absolute', right: 18, top: 8, width: 44, height: 44, borderRadius: 22, background: 'color-mix(in srgb, var(--bb-field) 55%, transparent)', backdropFilter: 'blur(14px) saturate(1.6)', WebkitBackdropFilter: 'blur(14px) saturate(1.6)', border: `0.5px solid ${rule}`, boxShadow: '0 2px 10px rgba(0,0,0,0.08)', color: ink, fontSize: 22, fontWeight: 400, lineHeight: 1, padding: 0, opacity: phase === 'form' ? 1 : 0.3, cursor: 'pointer' }}
           >✕</button>
         </div>
 
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '8px 22px 24px' }}>
-          <h1 data-reveal-src data-radius="8" style={{ ...display(30, { margin: '6px 0 8px', lineHeight: 1.15 }) }}>{T('Tạo hồ sơ tổ chức', 'Set up your host profile')}</h1>
-          <p data-reveal-src data-radius="8" style={{ fontSize: 14, lineHeight: 1.5, color: ink, opacity: 0.68, margin: 0 }}>
+          <p data-reveal-src data-radius="8" style={{ fontSize: 14, lineHeight: 1.5, color: ink, opacity: 0.68, margin: '10px 0 0' }}>
             {T('Đây là diện mạo khách sẽ thấy. Bạn có thể đổi bất cứ lúc nào.', "This is how guests will see you. You can change it any time.")}
           </p>
 
@@ -179,7 +199,7 @@ export default function HostSetupSheet() {
 
           <div style={label}>{T('Tên', 'Name')}</div>
           <input
-            data-reveal-src data-radius="12" value={name} maxLength={NAME_MAX} onChange={e => setName(e.target.value)} data-testid="host-setup-name"
+            data-reveal-src data-radius="12" {...kbProps} value={name} maxLength={NAME_MAX} onChange={e => setName(e.target.value)} data-testid="host-setup-name"
             placeholder={T('Tên tổ chức của bạn', 'Your host name')} style={input}
           />
 
@@ -188,7 +208,7 @@ export default function HostSetupSheet() {
             <span style={{ letterSpacing: 0, textTransform: 'none', fontWeight: 500 }}>{intro.length}/{INTRO_MAX}</span>
           </div>
           <textarea
-            data-reveal-src data-radius="12" value={intro} maxLength={INTRO_MAX} rows={4} onChange={e => setIntro(e.target.value)} data-testid="host-setup-intro"
+            data-reveal-src data-radius="12" {...kbProps} value={intro} maxLength={INTRO_MAX} rows={4} onChange={e => setIntro(e.target.value)} data-testid="host-setup-intro"
             placeholder={T('Bạn tổ chức những gì? Vì sao khách nên đến?', 'What do you host? Why should guests come?')}
             style={{ ...input, resize: 'none', lineHeight: 1.5 }}
           />
@@ -196,6 +216,15 @@ export default function HostSetupSheet() {
           {error && <p data-testid="host-setup-error" style={{ fontSize: 12.5, lineHeight: 1.5, color: alert, margin: '14px 0 0' }}>{error}</p>}
         </div>
 
+        {typing && (
+          <div style={{ flex: 'none', display: 'flex', justifyContent: 'flex-end', padding: '4px 22px' }}>
+            <button
+              type="button" data-testid="host-setup-keyboard-done"
+              onPointerDown={e => e.preventDefault()} onClick={hideKeyboard}
+              style={{ background: 'none', border: 'none', color: ink, fontSize: 15, fontWeight: 600, padding: '8px 4px', cursor: 'pointer' }}
+            >{T('Xong', 'Done')}</button>
+          </div>
+        )}
         <div data-reveal-src data-radius="18" style={{ flex: 'none', margin: '0 22px calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
           <div
             role="button" aria-disabled={!canSubmit} data-testid="host-setup-submit" onClick={canSubmit ? finish : undefined}

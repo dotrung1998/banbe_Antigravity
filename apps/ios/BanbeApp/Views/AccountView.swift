@@ -1876,6 +1876,7 @@ struct AccountView: View {
                     .onChange(of: g.frame(in: .global)) { _, f in app.hostCardFrame = f }
             })
             .padding(.top, 22)
+            .id("account-host-card") // scroll target: the host-setup reveal brings the whole card into view
             .accessibilityIdentifier("org.profile.card")
         }
     }

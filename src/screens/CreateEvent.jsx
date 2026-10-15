@@ -264,8 +264,12 @@ export default function CreateEvent() {
     cursor: s.createName.trim() && !s.createSent ? 'pointer' : 'default', transition: 'background .15s',
   };
 
+  // fill-mode `backwards`, not `both`: banbeIn animates transform, and a transform animation that is still
+  // "filling" after it ends keeps this element the containing block of position:fixed children (the Review step
+  // below) in Safari. Review then spanned this whole tall form instead of the screen, which showed up as a
+  // screen-high blank gap and a confirm button far below. The end state is identical (opacity 1, no transform).
   return (
-    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Create event">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) backwards', minHeight: '100%', background: paper }} data-screen-label="Create event">
       <div onClick={createBack} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {createBackLabel}</div>
       <div style={{ padding: '14px 22px 40px', display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Dành cho người tổ chức', 'For organizers')}</span>

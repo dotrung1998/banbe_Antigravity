@@ -8,6 +8,7 @@ import SwiftUI
 /// HostSetupSheet.jsx / HostReveal.jsx.
 struct HostSetupView: View {
     @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     private enum Phase { case form, saving, reveal }
 
@@ -88,11 +89,17 @@ struct HostSetupView: View {
                     // X = "I don't want to be a host right now": organizer mode goes back off and no organizer
                     // profile is created (it is only created by the Create button below).
                     Button { if phase == .form { app.cancelHostSetup() } } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .semibold))
-                            .frame(width: 40, height: 40)
-                            .background(app.palette.paper, in: Circle())
-                            .overlay(Circle().stroke(app.palette.rule))
+                        // Liquid Glass disc, 44pt with a 22pt glyph: the same as the system X on the share-card sheet.
+                        let icon = Image(systemName: "xmark")
+                            .font(.system(size: 22, weight: .regular))
+                            .foregroundStyle(app.palette.ink)
+                            .frame(width: 44, height: 44)
+                        if #available(iOS 26.0, *), !reduceTransparency {
+                            icon.glassEffect(.regular.interactive(), in: Circle())
+                        } else {
+                            icon.background(.ultraThinMaterial, in: Circle())
+                                .overlay(Circle().stroke(app.palette.rule, lineWidth: 0.5))
+                        }
                     }
                     .opacity(phase == .form ? 1 : 0.3)
                     .buttonStyle(.plain)
@@ -155,7 +162,7 @@ struct HostSetupView: View {
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button(app.T("Huỷ", "Cancel")) {
+                Button(app.T("Xong", "Done")) {
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                 }
             }
@@ -268,7 +275,18 @@ struct HostSetupView: View {
         // Land on the host card the dots will assemble into.
         app.screen = .profile
         app.accountTab = "host"
+        scrollHostCardIntoView()
         startReveal()
+    }
+
+    /// The Host tab may be scrolled (it keeps the position of earlier visits); the dots assemble into the card,
+    /// so bring the whole card into view before they get there. The reveal re-aims at the card's measured frame
+    /// late in the animation, long after this scroll has finished.
+    private func scrollHostCardIntoView() {
+        Task {
+            try? await Task.sleep(nanoseconds: 350_000_000) // let the Host tab mount first
+            withAnimation(.easeInOut(duration: 0.6)) { app.accountScrollAnchorIDByTab["host"] = "account-host-card" }
+        }
     }
 
     private func startReveal() {
@@ -347,7 +365,7 @@ struct HostSetupView: View {
                 if flash > 0, let card = target {
                     let path = Path(roundedRect: card, cornerRadius: 22)
                     ctx.drawLayer { layer in
-                        layer.addFilter(.shadow(color: .white.opacity(0.95), radius: 40 * flash, x: 0, y: 0))
+                        layer.addFilter(.shadow(color: .white.opacity(0.95), radius: 70 * flash, x: 0, y: 0))
                         layer.fill(path, with: .color(.white.opacity(0.42 * flash)))
                     }
                     ctx.stroke(path, with: .color(.white.opacity(0.9 * flash)), lineWidth: 1.5)

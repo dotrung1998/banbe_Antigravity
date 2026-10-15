@@ -9270,8 +9270,7 @@ export function BanBeProvider({ children }) {
    * event draft. */
   const searchAddressSuggestions = useCallback(async (query) => {
     try {
-      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&q=${encodeURIComponent(query + ', Việt Nam')}`;
-      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`, { headers: { Accept: 'application/json' } });
       if (!res.ok) throw new Error('GEOCODE_HTTP_' + res.status);
       const rows = await res.json();
       const suggestions = (rows || []).map(shapeAddressSuggestion).filter(Boolean);
@@ -9286,8 +9285,7 @@ export function BanBeProvider({ children }) {
     const seq = ++createAddressSeq.current;
     set({ createAddressSearching: true, createAddressSearchError: '' });
     try {
-      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&q=${encodeURIComponent(query + ', Việt Nam')}`;
-      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`, { headers: { Accept: 'application/json' } });
       if (seq !== createAddressSeq.current) return; // a newer search has since started
       if (!res.ok) throw new Error('GEOCODE_HTTP_' + res.status);
       const rows = await res.json();

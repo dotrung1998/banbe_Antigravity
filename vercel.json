@@ -4,6 +4,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/geocode",
+      "destination": "/api/calendar?op=geocode"
+    },
+    {
       "source": "/api/wallet-pass",
       "destination": "/api/wallet?op=pass"
     },

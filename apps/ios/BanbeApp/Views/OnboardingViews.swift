@@ -707,11 +707,9 @@ struct CreateEventView: View {
                         Divider().overlay(app.palette.rule)
                     }
                 }
-                // Nominatim/MapKit attribution — MKLocalSearch results are
-                // Apple's own MapKit data, but this list uses the same
-                // visual convention regardless of provider for consistency
-                // between platforms.
-                Text("© OpenStreetMap contributors")
+                // These suggestions come from MapKit (MKLocalSearch), i.e. Apple Maps data. (Web's list is
+                // OpenStreetMap Nominatim and says so itself.)
+                Text(app.T("Kết quả từ Apple Maps", "Results from Apple Maps"))
                     .font(.system(size: 9.5)).opacity(0.45)
                     .padding(.horizontal, 10).padding(.vertical, 6)
             }

@@ -6,6 +6,8 @@
 //
 //   ?title=&start=<unix seconds>&end=<unix seconds>&loc=&desc=&uid=
 
+import geocode from './_lib/handlers/geocode.js';
+
 const MAX_TEXT = 500;
 
 function clean(value, max = MAX_TEXT) {
@@ -25,7 +27,9 @@ function icsDate(seconds) {
   return new Date(seconds * 1000).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 }
 
+// Hobby plan = 12 functions, so the address search shares this one (vercel.json: /api/geocode -> ?op=geocode).
 export default function handler(req, res) {
+  if ((Array.isArray(req.query?.op) ? req.query.op[0] : req.query?.op) === 'geocode') return geocode(req, res);
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.setHeader('Allow', 'GET, HEAD');
     return res.status(405).end();
