@@ -29,6 +29,8 @@ struct HostSetupView: View {
     @State private var fadedOut = false
     @State private var finalTarget: CGRect?
     @State private var shown = false
+    /// 0...1: how far the black backdrop has opened a window onto the finished host card (reveal only).
+    @State private var holeOpen: Double = 0
 
     private let nameMax = 80, introMax = 280
     private var previewImage: UIImage? {
@@ -41,9 +43,24 @@ struct HostSetupView: View {
         GeometryReader { geo in
             ZStack(alignment: .bottom) {
                 // Same look as the share-card sheet: dimmed screen behind, a panel that slides up from the bottom.
-                (darkBackdrop ? Color(hex: 0x0E0C09).opacity(0.94) : Color.black.opacity(shown ? 0.3 : 0))
+                // During the reveal the screen goes fully black. The finished host card is shown first (a window
+                // opens in the black where it sits), then the black fades to reveal the whole Account screen.
+                (darkBackdrop ? Color.black : Color.black.opacity(shown ? 0.3 : 0))
                     .ignoresSafeArea()
                     .animation(.easeOut(duration: 0.3), value: shown)
+                    .mask {
+                        ZStack {
+                            Rectangle().ignoresSafeArea()
+                            if let card = cardTargetForDrawing {
+                                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                    .frame(width: card.width, height: card.height)
+                                    .position(x: card.midX, y: card.midY)
+                                    .blendMode(.destinationOut)
+                                    .opacity(holeOpen)
+                            }
+                        }
+                        .compositingGroup()
+                    }
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(app.palette.paper, in: UnevenRoundedRectangle(topLeadingRadius: 38, topTrailingRadius: 38, style: .continuous))
@@ -317,10 +334,12 @@ struct HostSetupView: View {
             finalTarget = target
             var rng = HostReveal.Mulberry32(seed: 99)
             if let target { for i in particles.indices { let d = HostReveal.sample(in: target, radius: 22, rng: &rng); particles[i].dx = d.x; particles[i].dy = d.y } }
-            // The dark backdrop lifts exactly as the finished card lights up.
+            // The finished card appears in the black first, then the black lifts to show the whole Account screen.
             try? await Task.sleep(nanoseconds: UInt64((HostReveal.Timeline.flashStart - HostReveal.Timeline.coalesceStart + 50) * 1_000_000))
-            withAnimation(.easeInOut(duration: 0.8)) { fadedOut = true }
-            try? await Task.sleep(nanoseconds: UInt64((HostReveal.Timeline.flash + 100) * 1_000_000))
+            withAnimation(.easeOut(duration: 0.5)) { holeOpen = 1 }          // 1. the host card appears
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            withAnimation(.easeInOut(duration: 0.8)) { fadedOut = true }     // 2. then the whole Account screen
+            try? await Task.sleep(nanoseconds: 900_000_000)
             app.finishHostSetup("done")
         }
     }

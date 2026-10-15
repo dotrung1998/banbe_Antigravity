@@ -42,6 +42,8 @@ export default function HostSetupSheet() {
   const [phase, setPhase] = useState('form'); // form | saving | reveal
   const [error, setError] = useState('');
   const [fade, setFade] = useState({ dark: false, out: false });
+  // Where the finished host card sits (root-relative px), once the reveal reaches it: a window opens in the black there.
+  const [hole, setHole] = useState(null);
   const [typing, setTyping] = useState(false);
   // On phones the on-screen keyboard shrinks only the visual viewport; lift the panel's bottom edge by the
   // covered height so it (and the Done bar) stay above the keyboard. 0 on desktop, where nothing covers it.
@@ -116,8 +118,14 @@ export default function HostSetupSheet() {
       setTimeout(() => setFade({ dark: true, out: true }), 150);
       setTimeout(() => closeHostSetup('done'), 700);
     } else {
-      // The dark backdrop lifts exactly as the finished card lights up.
-      setTimeout(() => setFade({ dark: true, out: true }), REVEAL_FLASH_START);
+      // The screen is fully black during the reveal. When the dots have formed the card, the card appears in
+      // the black first; then the black fades out to show the whole Account screen.
+      setTimeout(() => {
+        const card = document.querySelector('[data-testid="org-profile-card"]')?.getBoundingClientRect();
+        const root = rootRef.current?.getBoundingClientRect();
+        if (card && root) setHole({ left: card.left - root.left, top: card.top - root.top, width: card.width, height: card.height });
+      }, REVEAL_FLASH_START);
+      setTimeout(() => setFade({ dark: true, out: true }), REVEAL_FLASH_START + 700);
     }
   };
 
@@ -132,12 +140,20 @@ export default function HostSetupSheet() {
       style={{
         position: 'fixed', top: 0, left: 0, right: 0, bottom: kb, zIndex: 95, display: 'flex', flexDirection: 'column', overflow: 'hidden',
         // Same look as the share-card sheet: dimmed screen behind, a panel sliding up from the bottom.
-        background: fade.dark ? 'rgba(14,12,9,0.94)' : 'rgba(0,0,0,0.3)',
+        background: hole ? 'transparent' : (fade.dark ? '#000' : 'rgba(0,0,0,0.3)'),
         opacity: fade.out ? 0 : 1,
-        transition: `background 600ms ease, opacity ${fade.out ? 800 : 300}ms ease`,
+        transition: `background ${hole ? 500 : 600}ms ease, opacity ${fade.out ? 800 : 300}ms ease`,
       }}
     >
       <style>{CSS}</style>
+      {hole && (
+        // The window onto the finished card: transparent inside, black everywhere else (the huge shadow). The
+        // opaque black root background fades to transparent so only this black remains. Under the dot canvas.
+        <div
+          aria-hidden
+          style={{ position: 'absolute', left: hole.left, top: hole.top, width: hole.width, height: hole.height, borderRadius: 22, boxShadow: '0 0 0 4000px #000', pointerEvents: 'none' }}
+        />
+      )}
       <div
         className="bb-host-sheet-in"
         style={{ flex: 1, minHeight: 0, marginTop: 'calc(env(safe-area-inset-top, 0px) + 12px)', background: paper, borderRadius: '38px 38px 0 0', display: 'flex', flexDirection: 'column', opacity: revealing ? 0 : 1, transition: 'opacity 320ms ease', pointerEvents: revealing ? 'none' : 'auto' }}
@@ -236,7 +252,7 @@ export default function HostSetupSheet() {
       </div>
 
       {revealing && !reduceMotion() && (
-        <HostReveal sourceRoot={rootRef.current} targetSelector='[data-testid="org-profile-card"]' onDone={() => closeHostSetup('done')} />
+        <HostReveal sourceRoot={rootRef.current} targetSelector='[data-testid="org-profile-card"]' onDone={() => setTimeout(() => closeHostSetup('done'), 700) /* let the black finish fading out first */} />
       )}
     </div>
   );
