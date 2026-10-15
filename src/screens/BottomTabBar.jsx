@@ -243,7 +243,9 @@ export default function BottomTabBar({ collapsed }) {
   // ticket's own "a plain tap still selects immediately with no gooey
   // animation needed" instruction) without adding a separate tap/drag
   // branch to the existing commit logic below.
-  const DRAG_MOVE_THRESHOLD = 4;
+  // A tap on a phone always jitters a few px; only a real drag (well past that) engages the gooey drag blobs.
+  // At 4px a plain tap flashed the grey blobs for a moment, which read as a glitch.
+  const DRAG_MOVE_THRESHOLD = 14;
 
   const measure = () => {
     const bar = barRef.current;
@@ -297,6 +299,9 @@ export default function BottomTabBar({ collapsed }) {
     const idx = items.findIndex((it) => it.key === s.screen);
     activeIndexRef.current = idx === -1 ? null : idx;
     setActiveIndex(idx === -1 ? null : idx);
+    // Whatever a gesture left behind (goo blobs, a half-placed highlight) is cleared on every screen change.
+    gooEngagedRef.current = false;
+    if (gooLayerRef.current) gooLayerRef.current.style.opacity = '0';
     if (idx !== -1) placeHighlight(idx, true);
     else if (highlightRef.current) highlightRef.current.style.opacity = '0';
     // eslint-disable-next-line react-hooks/exhaustive-deps

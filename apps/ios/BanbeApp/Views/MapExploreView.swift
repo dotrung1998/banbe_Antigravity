@@ -1602,13 +1602,13 @@ struct MapExploreView: View {
             .overlay(Capsule().stroke(active ? app.palette.ink : gold.opacity(0.7), lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .modifier(ForYouAttentionEffect(animating: forYouAlert.animating && forYouAlert.hasPending, reduceMotion: reduceMotion))
+        .modifier(ForYouAttentionEffect(animating: forYouAlert.animating, reduceMotion: reduceMotion, token: forYouAlert.replayToken))
         .accessibilityIdentifier("map.filter.foryou")
         .accessibilityAddTraits(active ? .isSelected : [])
         .accessibilityLabel(forYouAlert.hasPending && !active
             ? app.T("Dành cho bạn, có gợi ý mới", "For You, new recommendations")
             : app.T("Dành cho bạn", "For You"))
-        .onAppear { forYouAlert.attach(userID: app.userID?.uuidString) }
+        .onAppear { forYouAlert.attach(userID: app.userID?.uuidString); forYouAlert.replay() }   // glow on arrival, like Home
         .onChange(of: app.userID) { _, id in forYouAlert.attach(userID: id?.uuidString) }
     }
 
