@@ -39,7 +39,7 @@ export function useEnsureOrganizer({ s, set, supabase, loadMyEvents }) {
       userId, organizerMode: s.organizerMode, idsStatus: s.myOrganizerIdsStatus,
       ownedCount: s.myOrganizerIds.length, ensureStatus: s.ensureOrganizerStatus,
       modeBusy: !!s.organizerModeBusy,
-    })) attempt();
+    })) set({ hostSetupOpen: true }); // never create silently: the setup sheet's Create button does (`now`)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, s.organizerMode, s.myOrganizerIdsStatus, s.myOrganizerIds.length, s.ensureOrganizerStatus, s.organizerModeBusy, s.hostSetupOpen]);
 

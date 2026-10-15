@@ -54,6 +54,10 @@ extension AppState {
                 ownedCount: myOrganizerIDs.count, ensureStatus: ensureOrganizerStatus,
                 modeBusy: organizerModeBusy && !modeSettled) else { return }
         } else if !organizerMode || !myOrganizerIDs.isEmpty { return }
+        // Organizer mode is on but the account owns no organizer: never create one silently. Ask for the
+        // host profile through the setup sheet, whose Create button is the only thing that creates it
+        // (`force`), regardless of whether this device remembers an earlier setup.
+        if !force { hostSetupOpen = true; return }
         ensureOrganizerStatus = "loading"
         do {
             let r: EnsureMyOrganizerResult = try await SupabaseService.client
