@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import { applyGlassOpacity } from './lib/glassOpacity.js'
 import App from './App.jsx'
 import { PublicPolicy } from './screens/Policy.jsx'
 import PublicDataDeletion from './screens/PublicDataDeletion.jsx'
@@ -12,6 +13,8 @@ const publicPath = window.location.pathname.replace(/\/+$/, '')
 const Root = publicPath === '/privacy' ? PublicPolicy
   : publicPath === '/data-deletion' ? PublicDataDeletion
   : App
+
+applyGlassOpacity()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

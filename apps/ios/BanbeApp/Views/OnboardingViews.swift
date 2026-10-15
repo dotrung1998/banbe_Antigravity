@@ -1134,6 +1134,11 @@ struct CreateEventView: View {
                         .foregroundStyle(BanbeTheme.alert)
                         .padding(.top, 12)
                 }
+                Text(app.T("Hoàn toàn miễn phí: không phí đăng, không phí giao dịch, không phí ẩn.", "Completely free: no listing fee, no transaction fee, no hidden fees."))
+                    .font(.system(size: 11)).multilineTextAlignment(.center)
+                    .frame(maxWidth: 230)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 12)
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 22)

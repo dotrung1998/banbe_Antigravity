@@ -1,3 +1,4 @@
+import { glassCapsuleInactive } from '../lib/glassOpacity.js';
 import { useEffect, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS } from '../data/events.js';
@@ -412,7 +413,7 @@ export default function Account() {
               fontSize: 13, fontWeight: 600, padding: '9px 16px', borderRadius: 999, cursor: 'pointer',
               ...(accountTab === tab.key
                 ? { background: 'rgba(var(--bb-fg-rgb), 0.92)', color: paper, border: '1px solid transparent', boxShadow: '0 2px 6px rgba(27,25,22,0.18)' }
-                : { background: 'linear-gradient(180deg, rgba(255,255,255,0.35), rgba(255,255,255,0.05)), rgba(var(--bb-fg-rgb), 0.06)', color: ink, border: '1px solid rgba(var(--bb-fg-rgb), 0.14)', backdropFilter: 'blur(14px) saturate(1.1)', WebkitBackdropFilter: 'blur(14px) saturate(1.1)', boxShadow: '0 2px 8px rgba(27,25,22,0.08), inset 0 1px 0 rgba(255,255,255,0.5)' }),
+                : { ...glassCapsuleInactive, color: ink }),
               display: 'flex', alignItems: 'center', gap: 6,
             }}
           >

@@ -544,6 +544,10 @@ struct HomeView: View {
                             .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
                             .foregroundStyle(app.palette.ink)
                     }
+                    // A system Menu keeps its label rendered from the last build until its identity changes, so the glass
+                    // (which follows Preferences' Liquid Glass slider) stayed at the old opacity. Keying the Menu on the
+                    // setting rebuilds the label whenever it changes.
+                    .id("header.area.glass.\(Int((app.glassOpacity * 100).rounded()))")
                     .accessibilityIdentifier("header.area")
                     // No `toggleTheme()` exists on iOS — Preferences.swift's
                     // own theme picker already uses `pickTheme(_:)` directly

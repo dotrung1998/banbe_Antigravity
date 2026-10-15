@@ -1,3 +1,4 @@
+import { glassCapsuleInactive } from '../lib/glassOpacity.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useBanBe } from '../state/BanBeContext.jsx';
@@ -389,10 +390,9 @@ function homeCapsule(extra, active = false) {
     display: 'inline-flex', alignItems: 'center', height: 36, boxSizing: 'border-box', padding: '0 14px',
     borderRadius: 999, fontSize: 14, whiteSpace: 'nowrap', cursor: 'pointer', flex: 'none', userSelect: 'none',
     color: active ? 'var(--bb-bg)' : ink,
-    background: active ? 'rgba(var(--bb-fg-rgb), 0.92)' : 'linear-gradient(180deg, rgba(255,255,255,0.35), rgba(255,255,255,0.05)), rgba(var(--bb-fg-rgb), 0.06)',
-    backdropFilter: 'blur(14px) saturate(1.1)', WebkitBackdropFilter: 'blur(14px) saturate(1.1)',
-    border: '1px solid ' + (active ? 'transparent' : 'rgba(var(--bb-fg-rgb), 0.14)'),
-    boxShadow: active ? '0 2px 6px rgba(27,25,22,0.18)' : '0 2px 8px rgba(27,25,22,0.08), inset 0 1px 0 rgba(255,255,255,0.5)',
+    ...(active
+      ? { background: 'rgba(var(--bb-fg-rgb), 0.92)', border: '1px solid transparent', boxShadow: '0 2px 6px rgba(27,25,22,0.18)', backdropFilter: 'blur(14px) saturate(1.1)', WebkitBackdropFilter: 'blur(14px) saturate(1.1)' }
+      : glassCapsuleInactive),
     ...extra,
   };
 }

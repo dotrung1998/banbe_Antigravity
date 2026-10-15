@@ -2,6 +2,8 @@
   box-sizing: border-box;
 }
 
+:root { --bb-glass: 0.82; } /* Liquid Glass opacity, set from Preferences (src/lib/glassOpacity.js) */
+
 :root, [data-bb-theme="light"] {
   --bb-bg: #F7F4EC;
   --bb-fg: #1B1916;

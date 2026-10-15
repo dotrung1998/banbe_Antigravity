@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { getGlassOpacity, setGlassOpacity, glassCapsuleInactive } from '../lib/glassOpacity.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 
@@ -31,6 +33,10 @@ export default function Preferences() {
           ))}
         </Section>
 
+        <Section title={T('Liquid Glass', 'Liquid Glass')}>
+          <GlassCard T={T} />
+        </Section>
+
         <Section title={T('Chứng từ thanh toán', 'Payment documents')}>
           <Choice
             active={state.autoEmailDocuments}
@@ -41,6 +47,34 @@ export default function Preferences() {
           />
         </Section>
       </div>
+    </div>
+  );
+}
+
+// iOS PreferencesView.liquidGlassPreview: title + percentage, a preview over a paper tile, the opacity slider.
+function GlassCard({ T }) {
+  const [pct, setPct] = useState(() => Math.round(getGlassOpacity() * 100));
+  return (
+    <div style={{ ...cardGlass({ padding: '15px 18px', display: 'flex', flexDirection: 'column', gap: 12 }), border: `1px solid ${rule}` }} data-testid="preferences-glass-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ ...display(17) }}>Liquid Glass</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: ink, opacity: 0.65 }}>{pct}%</span>
+      </div>
+      <div style={{ height: 170, borderRadius: 22, background: paper, border: `1px solid ${rule}`, boxSizing: 'border-box', padding: 18, display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'flex-end', overflow: 'hidden' }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: ink, opacity: 0.6 }}>{T('Khu vực', 'Area')}</span>
+        <span style={{ ...display(22) }}>{T('Tất cả khu vực', 'All areas')}</span>
+        <span style={{ fontSize: 12, color: ink, opacity: 0.62 }}>{T('Chạm để mở bộ lọc khu vực', 'Tap to open the area filter')}</span>
+        <span style={{ ...glassCapsuleInactive, alignSelf: 'flex-start', fontSize: 11.5, fontWeight: 600, color: ink, padding: '8px 12px', borderRadius: 999 }}>{T('Khu vực', 'Area')}</span>
+      </div>
+      <input
+        type="range" min={0} max={100} step={5} value={pct}
+        aria-label={T('Độ trong Liquid Glass', 'Liquid Glass opacity')} data-testid="preferences-glass-slider"
+        onChange={e => { const v = Number(e.target.value); setPct(v); setGlassOpacity(v / 100); }}
+        style={{ width: '100%', accentColor: 'var(--bb-fg)' }}
+      />
+      <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.68, margin: 0 }}>
+        {T('Trong suốt hơn giúp nền hiển thị rõ hơn; đậm hơn tăng độ tương phản cho nội dung và nút.', 'Clear is more transparent; tinted increases opacity and contrast for content and controls.')}
+      </p>
     </div>
   );
 }
