@@ -1543,7 +1543,7 @@ extension AppState {
             // First activation: a returning host who already has a photo, or one who finished/skipped
             // setup before, never sees the setup sheet again.
             if confirmed, myOrganizerAvatarPath.isEmpty, !hostSetupResolved { hostSetupOpen = true }
-            if confirmed { await ensureOrganizerIfNeeded(modeSettled: true) }
+            if confirmed, !hostSetupOpen { await ensureOrganizerIfNeeded(modeSettled: true) }
         } catch {
             // Rolling back in silence is what makes the switch look like it
             // "turns itself back off" — always say why it went back.

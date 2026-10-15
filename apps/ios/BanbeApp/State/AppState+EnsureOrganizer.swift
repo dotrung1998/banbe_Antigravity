@@ -45,6 +45,9 @@ extension AppState {
     func ensureOrganizerIfNeeded(force: Bool = false, modeSettled: Bool = false) async {
         guard userID != nil else { return }
         if ensureOrganizerStatus == "loading" { return }
+        // While the setup sheet is open the user has not agreed to create a host profile yet; only the
+        // sheet's own Create button (force) may create it.
+        if !force && hostSetupOpen { return }
         if !force {
             guard EnsureOrganizerLogic.shouldEnsure(
                 hasUser: true, organizerMode: organizerMode, idsStatus: myOrganizerIdsStatus,
@@ -89,6 +92,18 @@ extension AppState {
     var hostSetupResolved: Bool {
         guard let uid = userID else { return true }
         return UserDefaults.standard.string(forKey: hostSetupKey(uid)) != nil
+    }
+
+    /// X on the setup sheet: not becoming a host after all. Organizer mode goes back off and nothing is
+    /// created; the sheet is not marked resolved, so switching organizer mode on again offers it again.
+    func cancelHostSetup() {
+        hostSetupOpen = false
+        Task {
+            // The toggle that opened the sheet may still be finishing; applyOrganizerMode ignores calls until it is.
+            var waited = 0
+            while organizerModeInFlight, waited < 30 { try? await Task.sleep(nanoseconds: 100_000_000); waited += 1 }
+            await applyOrganizerMode(false)
+        }
     }
 
     func finishHostSetup(_ how: String) {

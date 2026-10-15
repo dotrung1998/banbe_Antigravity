@@ -124,10 +124,10 @@ export default function HostSetupSheet() {
         style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', opacity: revealing ? 0 : 1, transition: 'opacity 320ms ease', pointerEvents: revealing ? 'none' : 'auto' }}
       >
         <div style={{ flex: 'none', display: 'flex', justifyContent: 'flex-end', padding: 'calc(env(safe-area-inset-top, 0px) + 16px) 22px 0' }}>
-          <span
-            role="button" data-testid="host-setup-skip" onClick={phase === 'form' ? () => closeHostSetup('skipped') : undefined}
-            style={{ fontSize: 13.5, fontWeight: 600, color: ink, opacity: phase === 'form' ? 0.6 : 0.25, cursor: 'pointer' }}
-          >{T('Để sau', 'Not now')}</span>
+          <button
+            type="button" aria-label={T('Đóng', 'Close')} data-testid="host-setup-skip" onClick={phase === 'form' ? () => closeHostSetup('cancelled') : undefined}
+            style={fieldGlass({ width: 34, height: 34, borderRadius: 17, border: 'none', color: ink, fontSize: 16, fontWeight: 600, lineHeight: 1, opacity: phase === 'form' ? 1 : 0.3, cursor: 'pointer' })}
+          >✕</button>
         </div>
 
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '8px 22px 24px' }}>
@@ -136,7 +136,7 @@ export default function HostSetupSheet() {
             {T('Đây là diện mạo khách sẽ thấy. Bạn có thể đổi bất cứ lúc nào.', "This is how guests will see you. You can change it any time.")}
           </p>
 
-          <div data-reveal-src data-radius="24" style={fieldGlass({ marginTop: 22, padding: '26px 20px 22px', borderRadius: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textAlign: 'center' })}>
+          <div style={{ marginTop: 22, padding: '8px 0 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textAlign: 'center' }}>
             <div data-reveal-src data-radius="30" style={{ width: 104, height: 104, borderRadius: 30, overflow: 'hidden', background: ink, boxShadow: '0 10px 30px rgba(0,0,0,0.16)' }}>
               {previewUrl && <img src={previewUrl} alt="" data-testid="host-setup-preview" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
             </div>

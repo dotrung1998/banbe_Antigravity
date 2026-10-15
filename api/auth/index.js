@@ -316,11 +316,15 @@ async function handleVerifyReauth(req, res, admin, body) {
 
   if (dob) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) return res.status(400).json({ error: 'REAUTH_DOB_INVALID' });
-    if (!url || !anonKey) return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED' });
+    // PostgREST takes the ROLE from the caller's bearer token; `apikey` only has to be a valid project key.
+    // So when the anon key isn't set on the server, the service key works as the gateway key and the RPC
+    // still runs as the caller (auth.uid() = caller).
+    const gatewayKey = anonKey || process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !gatewayKey) return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED' });
     try {
       const r = await fetch(`${url}/rest/v1/rpc/confirm_date_of_birth`, {
         method: 'POST',
-        headers: { apikey: anonKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { apikey: gatewayKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ p_dob: dob }),
       });
       const result = await r.json().catch(() => null);

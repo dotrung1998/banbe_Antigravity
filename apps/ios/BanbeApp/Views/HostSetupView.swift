@@ -72,11 +72,18 @@ struct HostSetupView: View {
         VStack(spacing: 0) {
             HStack {
                 Spacer()
-                Button(app.T("Để sau", "Not now")) { if phase == .form { app.finishHostSetup("skipped") } }
-                    .font(.system(size: 13.5, weight: .semibold))
-                    .opacity(phase == .form ? 0.6 : 0.25)
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("hostSetup.skip")
+                // X = "I don't want to be a host right now": organizer mode goes back off and no organizer
+                // profile is created (it is only created by the Create button below).
+                Button { if phase == .form { app.cancelHostSetup() } } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 34, height: 34)
+                        .background(app.palette.field, in: Circle())
+                }
+                .opacity(phase == .form ? 1 : 0.3)
+                .buttonStyle(.plain)
+                .accessibilityLabel(app.T("Đóng", "Close"))
+                .accessibilityIdentifier("hostSetup.skip")
             }
             .padding(.horizontal, 22).padding(.top, 60)
 
@@ -155,9 +162,7 @@ struct HostSetupView: View {
                 .frame(maxWidth: 300)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 26).padding(.bottom, 22).padding(.horizontal, 20)
-        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .revealSource(radius: 24)
+        .padding(.top, 8).padding(.bottom, 4)
     }
 
     private var coverRow: some View {

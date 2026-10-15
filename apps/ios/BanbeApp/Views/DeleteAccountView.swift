@@ -144,7 +144,6 @@ struct DeleteAccountView: View {
             return app.T("Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.", "Your session has expired. Please sign in again.")
         default:
             return app.T("Không thể xác minh lúc này. Vui lòng thử lại.", "We couldn't verify right now. Please try again.")
-                + (f.map { " (\($0.code))" } ?? "")
         }
     }
 

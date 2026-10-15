@@ -33,13 +33,15 @@ export function useEnsureOrganizer({ s, set, supabase, loadMyEvents }) {
       lastUserRef.current = userId;
       if (s.ensureOrganizerStatus === 'error') set({ ensureOrganizerStatus: 'idle', ensureOrganizerError: '' });
     }
-    if (shouldEnsureOrganizer({
+    // While the setup sheet is open the user has not agreed to create a host profile yet; only the
+    // sheet's own Create button (`now`) may create it.
+    if (!s.hostSetupOpen && shouldEnsureOrganizer({
       userId, organizerMode: s.organizerMode, idsStatus: s.myOrganizerIdsStatus,
       ownedCount: s.myOrganizerIds.length, ensureStatus: s.ensureOrganizerStatus,
       modeBusy: !!s.organizerModeBusy,
     })) attempt();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, s.organizerMode, s.myOrganizerIdsStatus, s.myOrganizerIds.length, s.ensureOrganizerStatus, s.organizerModeBusy]);
+  }, [userId, s.organizerMode, s.myOrganizerIdsStatus, s.myOrganizerIds.length, s.ensureOrganizerStatus, s.organizerModeBusy, s.hostSetupOpen]);
 
   // Explicit user Retry; ignored while a call is in flight (no double submit).
   const retry = useCallback(() => {

@@ -5986,9 +5986,12 @@ export function BanBeProvider({ children }) {
   const { retry: retryEnsureOrganizer, now: ensureOrganizerNow } = useEnsureOrganizer({ s, set, supabase, loadMyEvents });
   const openHostSetup = useCallback(() => set({ hostSetupOpen: true }), [set]);
   const closeHostSetup = useCallback((how = 'skipped') => {
-    markHostSetup(s.user?.id, how);
     set({ hostSetupOpen: false });
-  }, [set, s.user?.id]);
+    // 'cancelled' (the X): not becoming a host after all. Organizer mode goes back off, nothing is created,
+    // and the sheet is not marked resolved, so switching organizer mode on again offers it again.
+    if (how === 'cancelled') { applyOrganizerMode(false); return; }
+    markHostSetup(s.user?.id, how);
+  }, [set, s.user?.id, applyOrganizerMode]);
 
   // ---- navigation ----
   const goHome = useCallback(() => set({ screen: 'home' }), [set]);
@@ -8454,7 +8457,7 @@ export function BanBeProvider({ children }) {
         REAUTH_DOB_LOCKED: T(`Bạn đã nhập sai quá nhiều lần. Thử lại sau ${mins} phút.`, `Too many wrong tries. Try again in ${mins} min.`),
         REAUTH_DOB_NOT_SET: T('Tài khoản này chưa có ngày sinh. Hãy xác minh bằng mã gửi qua email.', 'This account has no date of birth on file. Verify with an emailed code instead.'),
         AUTH_REQUIRED: T('Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.', 'Your session has expired. Please sign in again.'),
-      }[e.message] || (errorText + (e.message && e.message !== 'REAUTH_FAILED' ? ` (${e.message})` : ''));
+      }[e.message] || errorText;
       set({ deleteAccountReauthBusy: false, deleteAccountReauthError: message });
       return e.message === 'REAUTH_DOB_NOT_SET' ? 'needs_email' : 'error';
     }
