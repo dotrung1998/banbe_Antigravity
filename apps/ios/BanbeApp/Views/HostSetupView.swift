@@ -166,7 +166,9 @@ struct HostSetupView: View {
     }
 
     private var coverRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        // The PhotosPicker label closure is nonisolated, so read the main-actor palette out here.
+        let ink = app.palette.ink
+        return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 PhotosPicker(selection: $pickerItem, matching: .images) {
                     ZStack {
@@ -174,7 +176,7 @@ struct HostSetupView: View {
                             Image(uiImage: uploaded).resizable().scaledToFill()
                         } else {
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .strokeBorder(app.palette.ink.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                                .strokeBorder(ink.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
                             Image(systemName: "plus").font(.system(size: 18, weight: .regular)).opacity(0.7)
                         }
                     }
