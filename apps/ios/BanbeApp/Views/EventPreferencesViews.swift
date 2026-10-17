@@ -1,4 +1,3 @@
-import CoreLocation
 import SwiftUI
 
 // Event preferences UI (note 34): the shared chips form, Account > Event
@@ -51,14 +50,7 @@ struct EventPreferencesForm: View {
 
     /// "No preference" is exclusive with everything else; an empty set = skipped (nil).
     private func toggle(_ selection: Binding<[String]?>, _ id: String) {
-        let cur = selection.wrappedValue ?? []
-        if id == EventPrefTaxonomy.noPreference {
-            selection.wrappedValue = cur == [id] ? nil : [id]
-            return
-        }
-        var arr = cur.filter { $0 != EventPrefTaxonomy.noPreference }
-        if let i = arr.firstIndex(of: id) { arr.remove(at: i) } else { arr.append(id) }
-        selection.wrappedValue = arr.isEmpty ? nil : arr
+        selection.wrappedValue = PrefSelection.toggle(selection.wrappedValue, id)
     }
 
     // MARK: budget (single select, explicit ranges)
@@ -90,14 +82,12 @@ struct EventPreferencesForm: View {
     }
 
     private func pickBudget(_ tier: String) {
-        if prefs.budget?.tier == tier { prefs.budget = nil; return }
-        let noCurrency = tier == "free" || tier == EventPrefTaxonomy.noPreference
-        prefs.budget = BudgetPref(tier: tier, currency: noCurrency ? nil : region.currency)
+        prefs.budget = PrefSelection.pickBudget(prefs.budget, tier: tier, region: region)
     }
 
     private func setRegion(_ r: BudgetRegion) {
         region = r
-        if var b = prefs.budget, b.currency != nil { b.currency = r.currency; prefs.budget = b }
+        prefs.budget = PrefSelection.switchRegion(prefs.budget, to: r)
     }
 
     // MARK: chip
@@ -121,7 +111,7 @@ struct EventPreferencesForm: View {
 }
 
 /// The privacy footer shared by both entry points.
-private struct EventPrefsPrivacyNote: View {
+struct EventPrefsPrivacyNote: View {
     @EnvironmentObject var app: AppState
     var body: some View {
         Text(app.T("Câu trả lời chỉ thuộc về tài khoản của bạn và không bao giờ hiển thị cho host. Đây là sở thích bạn tự khai, không phải thông tin đã được xác minh.",
@@ -216,115 +206,42 @@ struct EventPreferencesView: View {
     }
 }
 
-// MARK: - Onboarding overlay
 
-/// Full-screen, mounted by RootView below the Face ID lock once the account
-/// gates have cleared. Settings review first, then the five questions.
+// MARK: - Onboarding settings step
+
+/// The short account-settings review that follows the personalization story
+/// (only when the server still owes it). It writes a setting only when the
+/// final value differs from the current one, then marks
+/// `complete_settings_onboarding` — the same contract as before.
 ///
-/// No-repeat: finishing or skipping calls `complete_*` which sets a server
-/// marker. If that call fails the user stays in the step with Retry and
-/// "Skip for now"; Skip closes the step for this session only (it flips the
-/// in-memory flag, the server marker stays unset) so it may reappear on the
-/// next launch.
-struct EventOnboardingOverlay: View {
+/// Face ID and location are no longer asked here: Face ID is offered in the
+/// Home activation checklist and Account > Security (still device-local),
+/// location when Map or the area picker first needs it. The promotional-texts
+/// row keeps its existing default and wording EXACTLY — changing that is a
+/// consent decision (see .claude/notes/43-ios-reports-onboarding-redesign.md).
+struct OnboardingSettingsStep: View {
     @EnvironmentObject var app: AppState
-
-    var body: some View {
-        ZStack {
-            app.palette.paper.ignoresSafeArea()
-            if app.needsSettingsOnboarding {
-                EventSettingsStep()
-            } else {
-                EventQuestionsStep()
-            }
-        }
-        .transition(.opacity)
-    }
-}
-
-/// Requests the real iOS location permission without touching AppState's
-/// persisted `located` flag (that's only set once authorization succeeds).
-private final class LocationPermissionRequester: NSObject, CLLocationManagerDelegate {
-    private let manager = CLLocationManager()
-    private var continuation: CheckedContinuation<CLAuthorizationStatus, Never>?
-    override init() { super.init(); manager.delegate = self }
-
-    /// Resolves with the status once the user answers the system prompt
-    /// (immediately if it was already decided).
-    func requestWhenInUse() async -> CLAuthorizationStatus {
-        guard manager.authorizationStatus == .notDetermined else { return manager.authorizationStatus }
-        return await withCheckedContinuation { c in
-            continuation = c
-            manager.requestWhenInUseAuthorization()
-        }
-    }
-
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        guard manager.authorizationStatus != .notDetermined, let c = continuation else { return }
-        continuation = nil
-        c.resume(returning: manager.authorizationStatus)
-    }
-}
-
-/// "Step n of 2" with a filled/empty bar per step, so people know where they are.
-private struct OnboardingStepIndicator: View {
-    @EnvironmentObject var app: AppState
-    let step: Int
-    let total = 2
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                ForEach(1...total, id: \.self) { i in
-                    Capsule().fill(app.palette.ink.opacity(i <= step ? 1 : 0.18)).frame(height: 4)
-                }
-            }
-            Text(app.T("Bước \(step)/\(total)", "Step \(step) of \(total)"))
-                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.65))
-        }
-        .padding(.bottom, 22)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(app.T("Bước \(step) trên \(total)", "Step \(step) of \(total)"))
-        .accessibilityIdentifier("onboarding.stepIndicator")
-    }
-}
-
-private struct EventSettingsStep: View {
-    @EnvironmentObject var app: AppState
-    @EnvironmentObject var auth: AuthViewModel
     @AppStorage(Haptics.defaultsKey) private var hapticsStored = true
+    let onDone: () -> Void
 
     @State private var haptics = true
     @State private var emailDocs = false
+    @State private var promo = true
     @State private var seeded = false
     @State private var busy = false
     @State private var failed = false
-    @State private var areaPickerOpen = false
-    @State private var promo = true
-    @State private var faceOn = true
-    @State private var locOn = true
-    @State private var faceIDMessage = ""
-    @State private var requester = LocationPermissionRequester()
-
-    private var biometryName: String {
-        BiometricAuthService.biometryType() == .touchID ? "Touch ID" : "Face ID"
-    }
-    private var canBiometric: Bool { BiometricAuthService.canAuthenticate() }
-    private var locAuthorized: Bool {
-        app.locationAuthStatus == .authorizedWhenInUse || app.locationAuthStatus == .authorizedAlways
-    }
-    private var locBlocked: Bool {
-        app.locationAuthStatus == .denied || app.locationAuthStatus == .restricted
-    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                OnboardingStepIndicator(step: 1)
-                Text(app.T("Xem nhanh cài đặt", "Quick settings review"))
-                    .font(BanbeTheme.display(27))
-                Text(app.T("Tất cả đều không bắt buộc, bạn có thể đổi lại bất cứ lúc nào trong Tài khoản.",
-                           "Everything here is optional, you can change it any time in Account."))
-                    .font(.system(size: 13.5)).lineSpacing(3).padding(.top, 10)
+                Text(app.T("Một chút cài đặt cuối", "A few last settings"))
+                    .font(.system(.title, design: .rounded).weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("onboarding.settings")
+                Text(app.T("Không bắt buộc, đổi lại bất cứ lúc nào trong Tài khoản.",
+                           "Optional, change them any time in Account."))
+                    .font(.subheadline).lineSpacing(3).padding(.top, 8)
+                    .foregroundStyle(app.palette.ink.opacity(0.75))
 
                 VStack(spacing: 10) {
                     switchRow(app.T("Rung phản hồi", "Haptic feedback"),
@@ -334,20 +251,28 @@ private struct EventSettingsStep: View {
                               app.T("Tự gửi hoá đơn/biên nhận tới email của bạn.",
                                     "Automatically email invoices and receipts to you."),
                               on: emailDocs, id: "onboarding.settings.emailDocs") { emailDocs.toggle() }
-                    switchRow(app.T("Tin nhắn quảng bá từ host", "Host promotional texts"),
-                              app.T("Bật mặc định cho tài khoản mới. Host bạn đã tương tác có thể soạn tin quảng bá SMS, host tự gửi; banbe không gửi hộ. Nhấn Tiếp tục là bạn đồng ý; tắt công tắc nếu không muốn. Đổi lại bất cứ lúc nào tại Tài khoản > Bảo mật.",
-                                    "On by default for new accounts. Hosts you've interacted with may compose a promo text that they send themselves; banbe doesn't send for them. Tapping Continue records your agreement, switch it off if you don't want this. Change it any time in Account > Security."),
-                              on: promo, id: "onboarding.settings.promo") { promo.toggle() }
-                    .disabled(app.hostPromoConsent == nil)
                 }
                 .padding(.top, 22)
 
-                recommendedSection.padding(.top, 26)
+                // A separate decision, visually and semantically apart from the
+                // convenience toggles above.
+                Text(app.T("Liên lạc quảng bá", "Promotional messages"))
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(app.palette.ink.opacity(0.7))
+                    .accessibilityAddTraits(.isHeader)
+                    .padding(.top, 26)
+                switchRow(app.T("Tin nhắn quảng bá từ host", "Host promotional texts"),
+                          app.T("Bật mặc định cho tài khoản mới. Host bạn đã tương tác có thể soạn tin quảng bá SMS, host tự gửi; banbe không gửi hộ. Nhấn Tiếp tục là bạn đồng ý; tắt công tắc nếu không muốn. Đổi lại bất cứ lúc nào tại Tài khoản > Bảo mật.",
+                                "On by default for new accounts. Hosts you've interacted with may compose a promo text that they send themselves; banbe doesn't send for them. Tapping Continue records your agreement, switch it off if you don't want this. Change it any time in Account > Security."),
+                          on: promo, id: "onboarding.settings.promo") { promo.toggle() }
+                    .disabled(app.hostPromoConsent == nil)
+                    .padding(.top, 10)
 
                 if failed {
-                    Text(app.T("Chưa hoàn tất được bước này. Thử lại, hoặc bỏ qua lúc này (bước này có thể hiện lại lần mở sau).",
-                               "Couldn't finish this step. Retry, or skip for now (it may reappear next time you open the app)."))
-                        .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert).padding(.top, 16)
+                    Label(app.T("Chưa hoàn tất được bước này. Thử lại, hoặc bỏ qua lúc này (bước này có thể hiện lại lần mở sau).",
+                                "Couldn't finish this step. Retry, or skip for now (it may reappear next time you open the app)."),
+                          systemImage: "exclamationmark.circle")
+                        .font(.footnote).foregroundStyle(BanbeTheme.alert).padding(.top, 16)
                 }
 
                 InkButton(title: busy ? app.T("Đang lưu…", "Saving…")
@@ -357,17 +282,21 @@ private struct EventSettingsStep: View {
                     .padding(.top, 22)
 
                 if failed {
-                    Button { app.needsSettingsOnboarding = false } label: {
+                    Button {
+                        // Session-only: the server marker stays unset.
+                        app.needsSettingsOnboarding = false
+                        onDone()
+                    } label: {
                         Text(app.T("Bỏ qua lúc này", "Skip for now"))
-                            .font(.system(size: 13, weight: .semibold)).underline()
-                            .frame(maxWidth: .infinity).padding(.top, 14)
+                            .font(.subheadline.weight(.semibold)).underline()
+                            .frame(maxWidth: .infinity, minHeight: 44).padding(.top, 6)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("onboarding.settings.skip")
                 }
             }
             .foregroundStyle(app.palette.ink)
-            .padding(.horizontal, 30).padding(.top, 60).padding(.bottom, 42)
+            .padding(.horizontal, 24).padding(.top, 40).padding(.bottom, 42)
         }
         .task {
             guard !seeded else { return }
@@ -380,69 +309,6 @@ private struct EventSettingsStep: View {
             emailDocs = isNew ? true : app.autoEmailDocuments
             // Existing prompted accounts keep their CURRENT consent/choices.
             promo = isNew ? true : (app.hostPromoConsent ?? false)
-            faceOn = canBiometric && (isNew ? true : auth.faceIDEnabled)
-            locOn = isNew ? true : (app.located == true)
-        }
-        .sheet(isPresented: $areaPickerOpen) { LocationPickerSheet(isPresented: $areaPickerOpen) }
-    }
-
-    // MARK: recommended features
-
-    private var recommendedSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(app.T("Tính năng gợi ý", "Recommended features"))
-                .font(.system(size: 11.5, weight: .semibold))
-            Text(app.T("Bật sẵn cho bạn; tắt nếu không muốn. Hệ thống sẽ hỏi quyền khi bạn nhấn Tiếp tục. Vị trí chỉ dùng để hiện khoảng cách, không lưu và không chia sẻ với host.",
-                       "On for you by default; switch off any you don't want. iOS will ask for permission when you tap Continue. Location is only used for distances, not stored or shared with hosts."))
-                .font(.system(size: 12)).lineSpacing(3).foregroundStyle(app.palette.ink.opacity(0.75))
-
-            VStack(spacing: 10) {
-                switchRow(app.T("Mở khoá bằng \(biometryName)", "Unlock with \(biometryName)"),
-                          canBiometric
-                            ? app.T("Hỏi \(biometryName) mỗi lần mở lại ứng dụng. Chỉ lưu trên máy này.",
-                                    "Ask for \(biometryName) each time you return. Stored on this device only.")
-                            : app.T("Không khả dụng trên thiết bị này (chưa cài đặt hoặc không hỗ trợ).",
-                                    "Unavailable on this device (not set up or unsupported)."),
-                          on: faceOn && canBiometric, id: "onboarding.settings.faceID") { faceOn.toggle() }
-                    .disabled(!canBiometric)
-                switchRow(app.T("Vị trí", "Location"), locationStatusText,
-                          on: locOn, id: "onboarding.settings.location") { locOn.toggle() }
-            }
-            if !faceIDMessage.isEmpty {
-                Text(faceIDMessage).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
-            }
-
-            if locBlocked {
-                HStack(spacing: 18) {
-                    Button { LocationService.openSettings() } label: {
-                        Text(app.T("Mở Cài đặt", "Open Settings")).font(.system(size: 12.5, weight: .semibold)).underline()
-                    }
-                    .accessibilityIdentifier("onboarding.settings.openSettings")
-                    Button { areaPickerOpen = true } label: {
-                        Text(app.T("Chọn khu vực thủ công", "Choose an area manually"))
-                            .font(.system(size: 12.5, weight: .semibold)).underline()
-                    }
-                    .accessibilityIdentifier("onboarding.settings.pickArea")
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private var locationStatusText: String {
-        switch app.locationAuthStatus {
-        case .authorizedWhenInUse, .authorizedAlways:
-            return app.T("Chỉ dùng để hiện khoảng cách sự kiện.", "Only used to show event distances.")
-        case .denied: return app.T("Đã bị từ chối trong Cài đặt, bạn có thể chọn khu vực thủ công.", "Denied in Settings, you can pick an area manually.")
-        case .restricted: return app.T("Bị hạn chế trên thiết bị này, hãy chọn khu vực thủ công.", "Restricted on this device, pick an area manually.")
-        default: return app.T("Hiện khoảng cách tới sự kiện gần bạn.", "Shows how far events are from you.")
-        }
-    }
-
-    private func statusLine(_ text: String, ok: Bool) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: ok ? "checkmark.circle.fill" : "circle").font(.system(size: 13))
-            Text(text).font(.system(size: 12.5))
         }
     }
 
@@ -451,8 +317,9 @@ private struct EventSettingsStep: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(BanbeTheme.display(16))
-                    Text(detail).font(.system(size: 11.5)).multilineTextAlignment(.leading)
+                    Text(title).font(.system(.headline, design: .rounded))
+                    Text(detail).font(.footnote).multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
                 ZStack(alignment: on ? .trailing : .leading) {
@@ -460,45 +327,18 @@ private struct EventSettingsStep: View {
                     Circle().fill(app.palette.paper).frame(width: 20, height: 20).padding(3)
                 }
                 .animation(.easeInOut(duration: 0.15), value: on)
+                .accessibilityHidden(true)
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 18).padding(.vertical, 15)
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityValue(on ? app.T("Bật", "On") : app.T("Tắt", "Off"))
         .accessibilityIdentifier(id)
-    }
-
-    // MARK: actions
-
-    /// Face ID and location are asked separately; each is shown/persisted only
-    /// when the system actually granted it. Both are device-local choices.
-    private func applyRecommended() async {
-        faceIDMessage = ""
-        if canBiometric {
-            if faceOn && !auth.faceIDEnabled {
-                let ok = await auth.setFaceIDEnabled(
-                    true,
-                    reason: app.T("Xác nhận để bật khoá \(biometryName) cho banbe.",
-                                  "Confirm to turn on \(biometryName) for banbe."))
-                if !ok {
-                    faceIDMessage = app.T("Chưa bật được \(biometryName). Bạn có thể bật sau trong Tài khoản > Bảo mật.",
-                                          "Couldn't turn on \(biometryName). You can enable it later in Account > Security.")
-                }
-            } else if !faceOn && auth.faceIDEnabled {
-                _ = await auth.setFaceIDEnabled(false, reason: "")
-            }
-        }
-        if locOn {
-            let status = await requester.requestWhenInUse()
-            // Persist "located" only once the OS actually granted access.
-            if (status == .authorizedWhenInUse || status == .authorizedAlways) && app.located != true { app.allowLocation() }
-        } else if app.located == true {
-            app.denyLocation()
-        }
     }
 
     private func finish() async {
@@ -508,65 +348,11 @@ private struct EventSettingsStep: View {
         if haptics != hapticsStored { hapticsStored = haptics }
         if emailDocs != app.autoEmailDocuments { app.toggleAutoEmailDocuments() }
         if promo != (app.hostPromoConsent ?? false) { _ = await app.setHostPromoConsent(promo) }
-        await applyRecommended()
-        failed = !(await app.completeSettingsOnboarding())
-    }
-}
-
-private struct EventQuestionsStep: View {
-    @EnvironmentObject var app: AppState
-
-    @State private var draft = EventPreferences()
-    @State private var region = BudgetRegion.deviceDefault()
-    @State private var busy = false
-    @State private var failed = false
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                OnboardingStepIndicator(step: app.needsSettingsOnboarding ? 1 : 2)
-                Text(app.T("Vài câu hỏi nhanh", "A few quick questions"))
-                    .font(BanbeTheme.display(27))
-                Text(app.T("Giúp chúng tôi gợi ý sự kiện hợp với bạn. Bỏ qua câu nào cũng được.",
-                           "Helps us suggest events you'll like. Skip any question you like."))
-                    .font(.system(size: 13.5)).lineSpacing(3).padding(.top, 10)
-
-                EventPreferencesForm(prefs: $draft, region: $region).padding(.top, 24)
-                EventPrefsPrivacyNote().padding(.top, 22)
-
-                if failed {
-                    Text(app.T("Chưa lưu được. Thử lại, hoặc bỏ qua lúc này (bước này có thể hiện lại lần mở sau).",
-                               "Couldn't save. Retry, or skip for now (this step may reappear next time you open the app)."))
-                        .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert).padding(.top, 14)
-                }
-
-                InkButton(title: busy ? app.T("Đang lưu…", "Saving…")
-                                      : failed ? app.T("Thử lại", "Retry") : app.T("Hoàn tất", "Finish"),
-                          enabled: !busy) { Task { await complete(skipAll: false) } }
-                    .accessibilityIdentifier("onboarding.prefs.finish")
-                    .padding(.top, 20)
-
-                Button {
-                    if failed { app.needsPreferencesOnboarding = false } else { Task { await complete(skipAll: true) } }
-                } label: {
-                    Text(failed ? app.T("Bỏ qua lúc này", "Skip for now") : app.T("Bỏ qua tất cả", "Skip all"))
-                        .font(.system(size: 13, weight: .semibold)).underline()
-                        .frame(maxWidth: .infinity).padding(.top, 14)
-                }
-                .buttonStyle(.plain)
-                .disabled(busy)
-                .accessibilityIdentifier("onboarding.prefs.skip")
-            }
-            .foregroundStyle(app.palette.ink)
-            .padding(.horizontal, 30).padding(.top, 60).padding(.bottom, 42)
+        if await app.completeSettingsOnboarding() {
+            failed = false
+            onDone()
+        } else {
+            failed = true
         }
-    }
-
-    private func complete(skipAll: Bool) async {
-        busy = true
-        defer { busy = false }
-        let answered = draft.normalizedForSave()
-        let ok = await app.completePreferencesOnboarding(skipAll || answered.isEmpty ? nil : draft)
-        failed = !ok
     }
 }

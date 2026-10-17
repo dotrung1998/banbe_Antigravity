@@ -24,9 +24,23 @@ struct BanbeApp: App {
         #endif
     }
 
+    /// DEBUG builds can be launched straight into a deterministic fixture
+    /// (`-uiFixture <name>`, App/UITestFixtures.swift); otherwise the real app.
+    @ViewBuilder private var rootView: some View {
+        #if DEBUG
+        if let fixture = UITestFixture.name {
+            UITestFixtureRoot(name: fixture)
+        } else {
+            RootView()
+        }
+        #else
+        RootView()
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
-            RootView()
+            rootView
                 .environmentObject(authViewModel)
                 .environmentObject(appState)
                 .onOpenURL { url in appState.handleDeepLink(url) }

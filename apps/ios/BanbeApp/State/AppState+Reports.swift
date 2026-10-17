@@ -106,7 +106,7 @@ extension AppState {
         reportsBackScreen = back
         reportsData = nil
         reportsError = ""
-        reportsExpanded = []
+        reportsLoadedAt = nil
         screen = .reports
         Task { await fetchAccountKpis(scope: scope, organizerID: organizerID ?? "", rangeDays: reportsRangeDays, customStart: reportsCustomStart, customEnd: reportsCustomEnd) }
     }
@@ -129,6 +129,11 @@ extension AppState {
     }()
 
     func fetchAccountKpis(scope: String, organizerID: String, rangeDays: ReportsRangeDays, customStart: Date, customEnd: Date) async {
+        #if DEBUG
+        if UITestFixture.isActive { return } // fixture payload stays put
+        #endif
+        reportsRequestSeq += 1
+        let requestID = reportsRequestSeq
         reportsLoading = true
         reportsError = ""
         let now = Date()
@@ -151,18 +156,29 @@ extension AppState {
                     pOrganizerId: scope == "host" ? organizerID : nil
                 ))
                 .execute().value
+            // A newer request (range/scope change, retry) superseded this one.
+            guard requestID == reportsRequestSeq, scope == reportsScope else { return }
             guard result.success else {
                 reportsLoading = false
                 reportsError = T("Không thể tải số liệu lúc này. Vui lòng thử lại.", "Couldn't load these numbers right now. Please try again.")
                 return
             }
             reportsData = result
+            reportsLoadedAt = Date()
             reportsLoading = false
         } catch {
+            guard requestID == reportsRequestSeq else { return }
             print("fetchAccountKpis failed:", error)
             reportsLoading = false
+            // Any data already on screen stays (shown as stale); only the error is new.
             reportsError = T("Không thể tải số liệu lúc này. Vui lòng thử lại.", "Couldn't load these numbers right now. Please try again.")
         }
+    }
+
+    /// Pull-to-refresh: same parameters, awaited so the indicator tracks it.
+    func refreshAccountKpis() async {
+        await fetchAccountKpis(scope: reportsScope, organizerID: reportsOrganizerId, rangeDays: reportsRangeDays,
+                               customStart: reportsCustomStart, customEnd: reportsCustomEnd)
     }
 
     /// Reload with whatever scope/organizer/range are ALREADY committed —
@@ -182,12 +198,6 @@ extension AppState {
         reportsCustomEnd = end
         loadAccountKpis()
     }
-
-    func toggleReportCard(_ key: String) {
-        if reportsExpanded.contains(key) { reportsExpanded.remove(key) } else { reportsExpanded.insert(key) }
-    }
-    func expandAllReportCards() { reportsExpanded = Set((reportsData?.metrics ?? []).map(\.key)) }
-    func collapseAllReportCards() { reportsExpanded = [] }
 
     // MARK: - Export
 

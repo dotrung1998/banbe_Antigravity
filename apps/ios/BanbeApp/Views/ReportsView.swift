@@ -1,258 +1,364 @@
 import SwiftUI
-import Charts
 
-private let roleLabels: [String: (String, String)] = [
-    "personal": ("Cá nhân", "Personal"), "host": ("Tổ chức", "Host"), "admin": ("Quản trị", "Admin"),
-]
+// Metrics & Reports — a role-aware dashboard over the ONE canonical
+// get_account_kpis payload (migration 097): header + range, primary insight,
+// KPI overview, needs attention, trends, and a per-metric details sheet.
+// Mapping/formatting lives in Lib/ReportsPresentation.swift; components in
+// ReportsDashboardComponents.swift; fetch/export in AppState+Reports.swift.
 
-private func vnDate(_ iso: String) -> String {
-    guard let d = ISO8601DateFormatter().date(from: iso) ?? {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.date(from: iso)
-    }() else { return iso }
-    let df = DateFormatter()
-    df.dateFormat = "dd/MM"
-    df.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
-    return df.string(from: d)
+/// `sheet(item:)` needs Identifiable; a String key alone isn't.
+private struct ReportDetailTarget: Identifiable {
+    let key: String
+    var id: String { key }
 }
 
-/// The mini chart — a real Swift Charts `Chart`, not a third-party
-/// dependency, with its own title/range baked directly into the view (so
-/// rasterizing THIS exact view for "Lưu ảnh" already carries them, per the
-/// ticket's own "PNG with title, range and readable labels" ask).
-struct ReportChartView: View {
-    @EnvironmentObject private var app: AppState
-    let metric: AccountKpiMetric
-    let rangeLabel: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(ReportMetricLabels.label(metric, app.T)).font(.system(size: 13, weight: .semibold))
-            Text(rangeLabel).font(.system(size: 11)).opacity(0.6)
-            if let series = metric.series, !series.isEmpty {
-                Chart(series) { point in
-                    BarMark(x: .value("d", vnDate(point.d)), y: .value("v", point.v))
-                        .foregroundStyle(.primary.opacity(point.v > 0 ? 0.82 : 0.12))
-                }
-                .frame(height: 160)
-                .chartYAxis { AxisMarks(position: .leading) }
-            }
-        }
-        .padding(12)
-        .background(Color(uiColor: .systemBackground))
-    }
+private struct ReportExportFile: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
 }
 
 struct ReportsView: View {
     @EnvironmentObject private var app: AppState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var detail: ReportDetailTarget?
     @State private var showCustomRange = false
 
-    private var roleLabel: String {
-        guard let pair = roleLabels[app.reportsScope] else { return app.reportsScope }
-        return app.T(pair.0, pair.1)
+    private var dashboard: ReportsDashboard? {
+        app.reportsData.map { ReportsPresentation.dashboard($0, fallbackScope: app.reportsScope, T: app.T) }
     }
-    private var rangeLabel: String {
-        guard let range = app.reportsData?.range,
-              let s = ISO8601DateFormatter().date(from: range.start), let e = ISO8601DateFormatter().date(from: range.end) else { return "" }
-        let df = DateFormatter(); df.dateFormat = "dd/MM/yyyy"; df.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
-        return "\(df.string(from: s)) – \(df.string(from: e))"
-    }
+    private var roleLabel: String { ReportRole(scope: app.reportsData?.scope ?? app.reportsScope).label(app.T) }
+    private var rangeLabel: String { ReportsPresentation.rangeText(app.reportsData?.range) }
+    /// Data is on screen but a different range is being fetched.
+    private var refreshing: Bool { app.reportsLoading && app.reportsData != nil }
 
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(onRefresh: { await app.refreshAccountKpis() }) {
             VStack(alignment: .leading, spacing: 0) {
                 BackLink(label: app.T("Quay lại", "Back")) { app.backFromReports() }
                     .padding(.top, 16)
 
-                // 2026-10-02 fix — "Metrics & Reports" had no icon at all
-                // in its header, unlike AccountGroupView's own page
-                // headers; same icon the entry row uses on every tab it's
-                // reachable from, tinted with the shared "reports" accent.
-                HStack(spacing: 10) {
-                    Image(systemName: "chart.bar.doc.horizontal")
-                        .font(.system(size: 20, weight: .medium))
-                        .frame(width: 34, height: 34)
-                        .background((ROW_ACCENT_COLORS["reports"] ?? .clear).opacity(0.33), in: Circle())
-                    Text(app.T("Số liệu & báo cáo", "Metrics & Reports"))
-                        .font(BanbeTheme.display(24))
-                }
-                .padding(.top, 10)
-                Text(roleLabel).font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.65))
+                header.padding(.top, 10)
+                rangePicker.padding(.top, 14)
 
-                rangePicker.padding(.top, 16)
-
-                HStack(spacing: 14) {
-                    Button(app.T("Mở tất cả", "Expand all")) { app.expandAllReportCards() }
-                    Button(app.T("Thu gọn tất cả", "Collapse all")) { app.collapseAllReportCards() }
-                }
-                .font(.system(size: 11.5, weight: .semibold))
-                .buttonStyle(.plain)
-                .padding(.top, 12)
-
-                if app.reportsLoading && app.reportsData == nil {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
-                } else if !app.reportsError.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(app.reportsError).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
-                        InkButton(title: app.T("Thử lại", "Retry")) { app.loadAccountKpis() }
-                    }
-                    .padding(.top, 20)
-                } else if let metrics = app.reportsData?.metrics {
-                    if metrics.isEmpty {
-                        Text(app.T("Chưa có số liệu.", "Nothing to show yet."))
-                            .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.6))
-                            .frame(maxWidth: .infinity).padding(.top, 60)
-                    } else {
-                        LazyVStack(spacing: 10) {
-                            ForEach(metrics) { metric in
-                                MetricCardView(metric: metric, rangeLabel: rangeLabel, expanded: app.reportsExpanded.contains(metric.key))
-                            }
-                        }
-                        .padding(.top, 16)
-
-                        HStack(spacing: 10) {
-                            if let url = app.reportsExportedFileURL {
-                                ShareLink(item: url) {
-                                    Text(app.T("Chia sẻ tệp đã xuất", "Share exported file"))
-                                        .font(.system(size: 12.5, weight: .semibold))
-                                        .frame(maxWidth: .infinity).padding(.vertical, 13)
-                                        .foregroundStyle(app.palette.ink)
-                                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
-                                }
-                            }
-                        }
-                        .padding(.top, 12)
-
-                        HStack(spacing: 10) {
-                            Button(app.T("Tải dữ liệu JSON", "Download JSON")) { app.exportReportsJson() }
-                                .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
-                                .frame(maxWidth: .infinity).padding(.vertical, 13)
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
-                            Button(app.reportsExportBusy == "pdf" ? app.T("Đang tạo…", "Generating…") : app.T("Tải báo cáo PDF", "Download PDF report")) {
-                                app.exportReportsPdf()
-                            }
-                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.paper)
-                            .frame(maxWidth: .infinity).padding(.vertical, 13)
-                            .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12))
-                            .disabled(!app.reportsExportBusy.isEmpty)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.top, 12)
-                        .padding(.bottom, 40)
-                    }
-                }
+                content
+                    .padding(.top, 18)
+                    .padding(.bottom, 40)
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 20)
         }
+        .sheet(item: $detail) { target in
+            ReportMetricDetailSheet(metricKey: target.key) { detail = nil }
+                .environmentObject(app)
+                .presentationDragIndicator(.visible)
+                .sheet(item: exportBinding(presentedFromDetail: true)) { file in
+                    BanbeShareSheet(items: [file.url]).ignoresSafeArea()
+                }
+        }
+        .sheet(item: exportBinding(presentedFromDetail: false)) { file in
+            BanbeShareSheet(items: [file.url]).ignoresSafeArea()
+        }
+        .sheet(isPresented: $showCustomRange) {
+            ReportCustomRangeSheet(isPresented: $showCustomRange).environmentObject(app)
+        }
     }
 
-    private var rangePicker: some View {
-        HStack(spacing: 6) {
-            ForEach([(ReportsRangeDays.days7, "7"), (.days30, "30"), (.days90, "90")], id: \.1) { days, label in
-                Button {
-                    app.setReportsRangeDays(days)
-                } label: {
-                    Text(app.T("\(label) ngày", "\(label)d"))
-                        .font(.system(size: 12, weight: .semibold))
-                        .padding(.horizontal, 14).padding(.vertical, 7)
-                        .background(app.reportsRangeDays == days ? app.palette.ink : .clear, in: Capsule())
-                        .foregroundStyle(app.reportsRangeDays == days ? app.palette.paper : app.palette.ink)
-                        .overlay(Capsule().stroke(app.reportsRangeDays == days ? .clear : app.palette.rule))
+    /// The finished export opens the share sheet from whichever layer is on
+    /// top (the details sheet or the dashboard) — never both at once.
+    private func exportBinding(presentedFromDetail: Bool) -> Binding<ReportExportFile?> {
+        Binding(
+            get: {
+                guard (detail != nil) == presentedFromDetail else { return nil }
+                return app.reportsExportedFileURL.map(ReportExportFile.init)
+            },
+            set: { if $0 == nil { app.reportsExportedFileURL = nil } }
+        )
+    }
+
+    // MARK: header
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Image(systemName: "chart.bar.doc.horizontal")
+                    .font(.system(size: 20, weight: .medium))
+                    .frame(width: 34, height: 34)
+                    .background((ROW_ACCENT_COLORS["reports"] ?? .clear).opacity(0.33), in: Circle())
+                    .accessibilityHidden(true)
+                Text(app.T("Số liệu & báo cáo", "Metrics & Reports"))
+                    .font(.system(.title2, design: .rounded).weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 8)
+                overflowMenu
+            }
+            // One text run, so large Dynamic Type wraps it as a sentence.
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(Text(roleLabel).fontWeight(.semibold))\(rangeLabel.isEmpty ? "" : "  ·  \(rangeLabel)")")
+                if app.reportsLoading {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text(app.T("Đang cập nhật…", "Updating…"))
+                    }
                 }
-                .buttonStyle(.plain)
+            }
+            .font(.footnote)
+            .foregroundStyle(app.palette.ink.opacity(0.7))
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("reports.subtitle")
+        }
+    }
+
+    private var overflowMenu: some View {
+        Menu {
+            Button { Task { await app.refreshAccountKpis() } } label: {
+                Label(app.T("Làm mới", "Refresh"), systemImage: "arrow.clockwise")
+            }
+            Section(app.T("Xuất báo cáo", "Export report")) {
+                Button { app.exportReportsPdf() } label: {
+                    Label(app.T("Báo cáo PDF", "PDF report"), systemImage: "doc.richtext")
+                }
+                .accessibilityIdentifier("reports.export.pdf")
+                Button { app.exportReportsJson() } label: {
+                    Label(app.T("Dữ liệu JSON", "JSON data"), systemImage: "curlybraces")
+                }
+                .accessibilityIdentifier("reports.export.json")
+            }
+            .disabled(app.reportsData == nil || !app.reportsExportBusy.isEmpty)
+        } label: {
+            Image(systemName: app.reportsExportBusy.isEmpty ? "ellipsis.circle" : "hourglass")
+                .font(.system(size: 22, weight: .regular))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(app.T("Xuất và tuỳ chọn khác", "Export and more"))
+        .accessibilityIdentifier("reports.menu")
+    }
+
+    // MARK: range
+
+    private var rangePicker: some View {
+        let options: [(ReportsRangeDays, String, String)] = [
+            (.days7, "7 ngày", "7d"), (.days30, "30 ngày", "30d"), (.days90, "90 ngày", "90d"),
+        ]
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(options, id: \.2) { days, vi, en in
+                    rangeChip(app.T(vi, en), selected: app.reportsRangeDays == days, id: "reports.range.\(en)") {
+                        app.setReportsRangeDays(days)
+                    }
+                }
+                rangeChip(app.T("Tuỳ chọn…", "Custom…"), selected: app.reportsRangeDays == .custom, id: "reports.range.custom") {
+                    showCustomRange = true
+                }
             }
         }
+    }
+
+    private func rangeChip(_ text: String, selected: Bool, id: String, action: @escaping () -> Void) -> some View {
+        Button {
+            Haptics.selection()
+            action()
+        } label: {
+            Text(text)
+                .font(.footnote.weight(.semibold))
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .frame(minHeight: 36)
+                .background(selected ? app.palette.ink : .clear, in: Capsule())
+                .foregroundStyle(selected ? app.palette.paper : app.palette.ink)
+                .overlay(Capsule().stroke(selected ? .clear : app.palette.rule))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .accessibilityIdentifier(id)
+    }
+
+    // MARK: states
+
+    @ViewBuilder
+    private var content: some View {
+        if let dashboard {
+            VStack(alignment: .leading, spacing: 12) {
+                if !app.reportsError.isEmpty { staleBanner }
+                if dashboard.isEmpty {
+                    emptyState
+                } else {
+                    loaded(dashboard)
+                        .opacity(refreshing ? 0.5 : 1)
+                        .allowsHitTesting(!refreshing)
+                        .animation(.easeInOut(duration: 0.2), value: refreshing)
+                }
+            }
+        } else if !app.reportsError.isEmpty && !app.reportsLoading {
+            errorState
+        } else {
+            ReportsSkeleton()
+        }
+    }
+
+    private var errorState: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(app.reportsError, systemImage: "wifi.exclamationmark")
+                .font(.subheadline)
+                .foregroundStyle(BanbeTheme.alert)
+                .accessibilityIdentifier("reports.error")
+            InkButton(title: app.T("Thử lại", "Retry")) { app.loadAccountKpis() }
+                .accessibilityIdentifier("reports.retry")
+        }
+        .reportCard()
+    }
+
+    private var staleBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "clock.arrow.circlepath").accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(app.T("Chưa làm mới được.", "Couldn't refresh."))
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier("reports.stale")
+                if let at = app.reportsLoadedAt {
+                    Text(app.T("Đang hiện số liệu lúc \(at.formatted(date: .omitted, time: .shortened)).",
+                               "Showing numbers from \(at.formatted(date: .omitted, time: .shortened))."))
+                        .font(.footnote)
+                }
+            }
+            Spacer(minLength: 8)
+            Button(app.T("Thử lại", "Retry")) { app.loadAccountKpis() }
+                .font(.footnote.weight(.semibold))
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("reports.stale.retry")
+        }
+        .padding(14)
+        .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "chart.bar").font(.title).opacity(0.5).accessibilityHidden(true)
+            Text(app.T("Chưa có số liệu.", "Nothing to show yet."))
+                .font(.subheadline)
+                .foregroundStyle(app.palette.ink.opacity(0.7))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 50)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("reports.empty")
+    }
+
+    // MARK: dashboard
+
+    @ViewBuilder
+    private func loaded(_ d: ReportsDashboard) -> some View {
+        if d.attentionFirst { attentionSection(d.attention) }
+        if let primary = d.primary {
+            ReportPrimaryCard(metric: primary) { open(primary.key) }
+        }
+        if !d.overview.isEmpty {
+            ReportSectionTitle(text: app.T("Tổng quan", "Overview"))
+            LazyVGrid(columns: gridColumns, spacing: 12) {
+                ForEach(d.overview) { m in ReportKpiTile(metric: m) { open(m.key) } }
+            }
+        }
+        if !d.attentionFirst { attentionSection(d.attention) }
+        if !d.trends.isEmpty {
+            ReportSectionTitle(text: app.T("Xu hướng", "Trends"))
+            ForEach(d.trends) { m in ReportTrendCard(metric: m) { open(m.key) } }
+        }
+        allMetrics(d.all)
+    }
+
+    @ViewBuilder
+    private func attentionSection(_ items: [ReportAttentionItem]) -> some View {
+        if !items.isEmpty {
+            ReportSectionTitle(text: app.T("Cần chú ý", "Needs attention"))
+            ForEach(items) { item in ReportAttentionCard(item: item) { open(item.key) } }
+        }
+    }
+
+    /// Every metric, one line each — the index into the details sheet, so no
+    /// metric is ever unreachable whatever the cards above chose to feature.
+    private func allMetrics(_ all: [ReportMetricPresentation]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ReportSectionTitle(text: app.T("Tất cả số liệu", "All metrics")).padding(.bottom, 6)
+            ForEach(Array(all.enumerated()), id: \.element.id) { i, m in
+                Button { open(m.key) } label: {
+                    HStack(spacing: 10) {
+                        Text(m.title).font(.subheadline).multilineTextAlignment(.leading)
+                        Spacer(minLength: 8)
+                        Text(m.valueText).font(.subheadline.weight(.semibold))
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).opacity(0.4)
+                            .accessibilityHidden(true)
+                    }
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(m.accessibilityValue)
+                .accessibilityHint(app.T("Mở chi tiết", "Opens details"))
+                .accessibilityIdentifier("reports.all.\(m.key)")
+                if i < all.count - 1 { Divider().overlay(app.palette.rule) }
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private var gridColumns: [GridItem] {
+        dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+    }
+
+    private func open(_ key: String) {
+        Haptics.light()
+        detail = ReportDetailTarget(key: key)
     }
 }
 
-private struct MetricCardView: View {
-    @EnvironmentObject private var app: AppState
-    let metric: AccountKpiMetric
-    let rangeLabel: String
-    let expanded: Bool
-    @State private var savingImage = false
-    @State private var saveResultMessage: String?
+// MARK: - Custom range
 
-    private var displayValue: String {
-        if metric.unit == "vnd" {
-            let n: Double = { if case .number(let v) = metric.value { return v }; return 0 }()
-            let f = NumberFormatter(); f.numberStyle = .decimal; f.groupingSeparator = "."
-            return "\(f.string(from: NSNumber(value: n)) ?? "0") đ"
-        }
-        if metric.unit == "days" { return app.T("\(metric.value.displayString) ngày", "\(metric.value.displayString) days") }
-        return metric.value.displayString
+private struct ReportCustomRangeSheet: View {
+    @EnvironmentObject private var app: AppState
+    @Binding var isPresented: Bool
+    @State private var start = Date()
+    @State private var end = Date()
+    @State private var seeded = false
+
+    /// The RPC builds a daily series for the whole range; a year is plenty.
+    private static let maxDays = 366
+    private var tooLong: Bool {
+        (Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0) >= Self.maxDays
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Button { app.toggleReportCard(metric.key) } label: {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(ReportMetricLabels.label(metric, app.T)).font(.system(size: 13, weight: .semibold))
-                        Text(metric.series?.isEmpty == false ? rangeLabel : app.T("Hiện tại", "Right now"))
-                            .font(.system(size: 11)).opacity(0.6)
-                    }
-                    Spacer()
-                    Text(displayValue).font(.system(size: 16, weight: .bold))
-                    Image(systemName: "chevron.down").font(.system(size: 11)).opacity(0.55)
-                        .rotationEffect(.degrees(expanded ? 180 : 0))
+        CardSheet(title: app.T("Khoảng tuỳ chọn", "Custom range"), closeID: "reports.custom.close",
+                  onClose: { isPresented = false }) {
+            VStack(alignment: .leading, spacing: 16) {
+                DatePicker(app.T("Từ ngày", "From"), selection: $start, in: ...end, displayedComponents: .date)
+                    .accessibilityIdentifier("reports.custom.start")
+                DatePicker(app.T("Đến ngày", "To"), selection: $end, in: start...Date(), displayedComponents: .date)
+                    .accessibilityIdentifier("reports.custom.end")
+                if tooLong {
+                    Label(app.T("Chọn tối đa 1 năm.", "Pick at most one year."), systemImage: "exclamationmark.circle")
+                        .font(.footnote)
+                        .foregroundStyle(BanbeTheme.alert)
                 }
-                .foregroundStyle(app.palette.ink)
-                .padding(14)
+                InkButton(title: app.T("Áp dụng", "Apply"), enabled: !tooLong) {
+                    app.setReportsCustomRange(start: start, end: end)
+                    isPresented = false
+                }
+                .accessibilityIdentifier("reports.custom.apply")
             }
-            .buttonStyle(.plain)
-
-            if expanded {
-                VStack(alignment: .leading, spacing: 12) {
-                    if let series = metric.series, !series.isEmpty {
-                        ReportChartView(metric: metric, rangeLabel: rangeLabel)
-                            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 10))
-                        Button(savingImage ? app.T("Đang lưu…", "Saving…") : app.T("Lưu ảnh", "Save image")) {
-                            Task {
-                                savingImage = true
-                                let ok = await app.saveReportChartImage(ReportChartView(metric: metric, rangeLabel: rangeLabel).frame(width: 340))
-                                saveResultMessage = ok ? app.T("Đã lưu vào Ảnh", "Saved to Photos") : app.T("Không thể lưu ảnh", "Couldn't save the image")
-                                savingImage = false
-                            }
-                        }
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .disabled(savingImage)
-                        if let msg = saveResultMessage {
-                            Text(msg).font(.system(size: 10.5)).opacity(0.6)
-                        }
-                    } else {
-                        Text(app.T("Số liệu hiện tại, không theo biểu đồ thời gian.", "A current total, not a time series."))
-                            .font(.system(size: 11.5)).opacity(0.6)
-                    }
-
-                    HStack {
-                        Text(app.T("Dữ liệu chi tiết", "Underlying Data")).font(.system(size: 11.5, weight: .semibold))
-                        Spacer()
-                        Button(app.T("Tải CSV", "Download CSV")) { app.exportReportCardCsv(metric.key) }
-                            .font(.system(size: 11.5, weight: .semibold))
-                    }
-
-                    let rows = metric.rows ?? []
-                    if rows.isEmpty {
-                        Text(app.T("Không có dữ liệu trong khoảng thời gian này.", "No data in this range."))
-                            .font(.system(size: 12)).opacity(0.6)
-                    } else {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                let columns = rows[0].keys.sorted()
-                                Text(columns.joined(separator: "  •  ")).font(.system(size: 10.5, weight: .semibold)).opacity(0.6)
-                                ForEach(Array(rows.prefix(50).enumerated()), id: \.offset) { _, row in
-                                    Text(columns.map { row[$0]?.displayString ?? "" }.joined(separator: "  •  "))
-                                        .font(.system(size: 11))
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(14)
-                .padding(.top, -6)
+            .environment(\.locale, Locale(identifier: app.isEN ? "en_US" : "vi_VN"))
+        }
+        .presentationDetents([.medium])
+        .onAppear {
+            guard !seeded else { return }
+            seeded = true
+            if app.reportsRangeDays == .custom {
+                start = app.reportsCustomStart; end = app.reportsCustomEnd
+            } else {
+                end = Date()
+                start = Calendar.current.date(byAdding: .day, value: -30, to: end) ?? end
             }
         }
-        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }

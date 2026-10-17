@@ -455,6 +455,11 @@ final class AppState: ObservableObject {
     /// Defaults-ON only apply to a brand-new account; an existing user prompted
     /// once must see (and keep) their CURRENT settings instead.
     @Published var eventOnboardingIsNewAccount = false
+    /// Keeps the onboarding overlay up after the server markers clear, so the
+    /// personalized reveal can show (OnboardingFlowViews.swift).
+    @Published var onboardingFlowActive = false
+    /// Post-onboarding Home checklist (Lib/ActivationChecklist.swift), per account.
+    @Published var activation = ActivationChecklistState()
     /// Where Account > Event preferences returns to (set by the entry row).
     /// When set (e.g. from the "Update my preferences" prompt on a reservation),
     /// Back/Done from Event preferences returns HERE instead of the Account group.
@@ -612,6 +617,9 @@ final class AppState: ObservableObject {
     // web's identical `discoveryEvents`/`loadDiscoveryEvents`.
     @Published var discoveryEvents: [CatalogEvent] = []
     @Published var discoveryEventsLoading = false
+    /// The last discovery load failed (offline, server error). The list is
+    /// still emptied as before; this only lets a screen say so honestly.
+    @Published var discoveryEventsLoadFailed = false
     /// For You alert version per discovery event id (ForYouAlert.version); set just before `discoveryEvents`.
     var discoveryAlertVersions: [String: String] = [:]
     // Event review queue (event submission -> review -> publish) — this
@@ -1505,9 +1513,14 @@ final class AppState: ObservableObject {
     @Published var reportsData: AccountKpiReport?
     @Published var reportsLoading = false
     @Published var reportsError = ""
-    @Published var reportsExpanded: Set<String> = []
+    // When `reportsData` was last fetched successfully. A failed refresh keeps
+    // the previous data on screen, labelled stale with this time.
+    @Published var reportsLoadedAt: Date?
+    // Monotonic request id: only the newest get_account_kpis response may land
+    // (a quick 7 → 30 → 90 switch must never end on the 30-day numbers).
+    var reportsRequestSeq = 0
     @Published var reportsExportBusy = ""
-    // A `ShareLink` binds to this the instant an export (CSV/JSON/PDF)
+    // The share sheet presents itself the instant an export (CSV/JSON/PDF)
     // finishes writing its temp file — the native iOS share sheet.
     @Published var reportsExportedFileURL: URL?
     // Organizer Team pass (2026-09-27, Stage 1) — see AppState+Team.swift.
@@ -2033,6 +2046,10 @@ final class AppState: ObservableObject {
         }
         locationAuthStatus = locationService.authorizationStatus
         locationService.onAuthorizationChange = { [weak self] status in
+            if self?.locationAuthStatus == .notDetermined && status != .notDetermined {
+                let granted = status == .authorizedWhenInUse || status == .authorizedAlways
+                Analytics.track(.permissionResult(permission: "location", result: granted ? "granted" : "denied"))
+            }
             self?.locationAuthStatus = status
         }
         // The splash always shows now (Task 2) — `screen` always starts
@@ -2852,6 +2869,7 @@ final class AppState: ObservableObject {
         let fromEventChat = screen == .chat && AppState.resolveChatBackTarget(chatBack) == .event
         if screen != .event && !fromEventOrganizer && !fromEventChat { eventBackScreen = screen }
         eventKey = key
+        noteEventOpened()
         // Zoom out of the tapped card when it is on screen (nil otherwise: Event Detail then grows from the middle).
         // The screen being left must see `eventOpening` BEFORE it is removed (its removal transition is read from
         // its last render), so it never slides away to the side; the switch therefore waits one turn.
@@ -3624,6 +3642,7 @@ final class AppState: ObservableObject {
         Haptics.selection()
         let wasSaved = favorites.contains(key)
         if let index = favorites.firstIndex(of: key) { favorites.remove(at: index) } else { favorites.append(key) }
+        if !wasSaved { Analytics.trackFirst(.firstEventSaved, userID: userID) }
         guard let uid = userID else { return } // signed-out: local-only, same as before this ticket
         favoriteToggleInFlight.insert(key)
         Task { await persistFavoriteToggle(eventKey: key, uid: uid, wasSaved: wasSaved) }
@@ -3677,6 +3696,7 @@ final class AppState: ObservableObject {
     func askLocation() { if located == nil { askingLocation = true } }
 
     func allowLocation() {
+        if locationAuthStatus == .notDetermined { Analytics.track(.permissionPrompted(permission: "location")) }
         askingLocation = false
         located = true
         UserDefaults.standard.set(true, forKey: "banbe.located")

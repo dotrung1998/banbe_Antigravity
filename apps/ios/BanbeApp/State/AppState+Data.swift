@@ -628,6 +628,8 @@ extension AppState {
     }
 
     func signOut() async {
+        // An unfinished onboarding draft holds this account's private answers.
+        if let uid = userID { OnboardingDraftStore().clear(uid: uid) }
         try? await SupabaseService.client.auth.signOut()
         // Private media (chat attachments, invite-only event photos, payment
         // documents) must not survive into the next account on a shared
@@ -2782,6 +2784,7 @@ extension AppState {
                     useProfileDob: (i == 0 && d.useProfileDOB) ? true : nil,
                     email: (i > 0 && !d.emailTrimmed.isEmpty) ? d.emailTrimmed : nil)
             }
+            Analytics.trackFirst(.firstReservationStarted, userID: userID)
             let created: Booking = try await SupabaseService.client
                 .rpc("hold_seats_with_attendees", params: HoldSeatsWithAttendeesParams(event: eventKey, attendees: Array(party)))
                 .execute().value
@@ -3541,6 +3544,9 @@ try await SupabaseService.client
     /// This is the array `feed` (below) was missing entirely before this
     /// fix — see this property's own doc comment on `AppState.swift`.
     func loadDiscoveryEvents() async {
+        #if DEBUG
+        if UITestFixture.isActive { return } // fixture data must not be replaced by a network read
+        #endif
         discoveryEventsLoading = true
         defer { discoveryEventsLoading = false }
         do {
@@ -3569,9 +3575,11 @@ try await SupabaseService.client
             }
             discoveryAlertVersions = Dictionary(rows.map { ($0.id, ForYouAlert.version(reviewedAt: $0.reviewedAt, submittedAt: $0.submittedAt, status: $0.status, visibility: $0.visibility)) }, uniquingKeysWith: { a, _ in a })
             discoveryEvents = shaped
+            discoveryEventsLoadFailed = false
         } catch {
             print("loadDiscoveryEvents failed:", error)
             discoveryEvents = []
+            discoveryEventsLoadFailed = true
         }
     }
 

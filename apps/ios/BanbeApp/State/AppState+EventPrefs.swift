@@ -25,6 +25,8 @@ extension AppState {
         needsPreferencesOnboarding = false
         eventOnboardingIsNewAccount = false
         filterForYou = false
+        onboardingFlowActive = false
+        activation = ActivationChecklistState()
     }
 
     private static func isFunctionMissing(_ error: Error) -> Bool {
@@ -49,6 +51,7 @@ extension AppState {
             needsPreferencesOnboarding = s.needsPreferencesStep == true
             eventOnboardingIsNewAccount = s.isNewAccount == true
             eventPrefsLoaded = true
+            if let uid = userID { activation = ActivationChecklist.load(uid: uid) }
         } catch {
             if Self.isFunctionMissing(error) {
                 needsSettingsOnboarding = false
@@ -110,6 +113,37 @@ extension AppState {
             needsPreferencesOnboarding = false
             return true
         } catch { print("completePreferencesOnboarding failed:", error); return false }
+    }
+
+    // MARK: onboarding flow hand-off
+
+    /// Ends the personalization flow: hides the overlay, turns on For You when
+    /// it has real matches, switches on the Home checklist and opens the event
+    /// the reveal was tapped on, if any.
+    func finishOnboardingFlow(showForYou: Bool, openEventKey: String?, answeredPreferences: Bool) {
+        onboardingFlowActive = false
+        if answeredPreferences, let uid = userID, !activation.enabled {
+            activation.enabled = true
+            ActivationChecklist.save(activation, uid: uid)
+        }
+        if showForYou && hasForYouMatches {
+            filterForYou = true
+            screen = .home
+        }
+        if let key = openEventKey { goEvent(key) }
+    }
+
+    func dismissActivationChecklist() {
+        activation.dismissed = true
+        if let uid = userID { ActivationChecklist.save(activation, uid: uid) }
+    }
+
+    /// Called from every "open an event" path that goes through `goEvent`.
+    func noteEventOpened() {
+        Analytics.trackFirst(.firstEventOpened, userID: userID)
+        guard activation.enabled, !activation.openedEvent, let uid = userID else { return }
+        activation.openedEvent = true
+        ActivationChecklist.save(activation, uid: uid)
     }
 
     // MARK: reservation criteria

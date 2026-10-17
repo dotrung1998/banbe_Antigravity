@@ -134,6 +134,7 @@ struct HomeView: View {
                     // roles this account can hold. heldEvent itself stays in use
                     // for tagging the "Your events" strip further down.
                     ActionCenterView(items: actionItems, onSeeAll: { app.goNotifications() })
+                    ActivationChecklistCard()
                     if !app.savedStrip.isEmpty { savedStrip }
                     storyRow
                     surveyDiscoveryRow

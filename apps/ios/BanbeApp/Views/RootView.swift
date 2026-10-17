@@ -898,11 +898,13 @@ struct RootView: View {
             // has also finished loading — otherwise the login form reappears for
             // about a second between the gate clearing and Home appearing.
             if auth.session != nil && (auth.gate != .ready || app.appliedSessionUID != auth.session?.user.id) && app.screen != .splash { AccountGateOverlay() }
-            // Post-signup event onboarding (settings review, then five optional
-            // questions). Server markers make it one-time; below the Face ID lock.
+            // Post-signup personalization (five optional questions → reveal →
+            // short settings review). Server markers make it one-time;
+            // `onboardingFlowActive` keeps it up for the reveal after they clear.
+            // Below the Face ID lock.
             if auth.session != nil && auth.gate == .ready && app.appliedSessionUID == auth.session?.user.id
                 && app.screen != .splash && !auth.isLocked
-                && (app.needsSettingsOnboarding || app.needsPreferencesOnboarding) {
+                && (app.needsSettingsOnboarding || app.needsPreferencesOnboarding || app.onboardingFlowActive) {
                 EventOnboardingOverlay()
             }
             // Mounted during the splash too (invisible), so the Face ID prompt starts
@@ -1176,7 +1178,7 @@ struct RootView: View {
         // reasoning as storyViewer/pulseOpen above. A dedicated overlay flag
         // (`setSurveyModalOpen`, BottomTabBarOverlay.swift) so this can never
         // be clobbered by, or clobber, any other modal's own hide reason.
-        .onChange(of: app.needsSettingsOnboarding || app.needsPreferencesOnboarding || app.hostSetupOpen) { _, open in
+        .onChange(of: app.needsSettingsOnboarding || app.needsPreferencesOnboarding || app.onboardingFlowActive || app.hostSetupOpen) { _, open in
             BottomTabBarOverlay.shared.setOnboardingOpen(open)
         }
         .onChange(of: app.storySurveyModalPublicID) { _, publicID in
