@@ -83,7 +83,7 @@ struct ReportsView: View {
                 Image(systemName: "chart.bar.doc.horizontal")
                     .font(.system(size: 20, weight: .medium))
                     .frame(width: 34, height: 34)
-                    .background((ROW_ACCENT_COLORS["reports"] ?? .clear).opacity(0.33), in: Circle())
+                    .background(reportsAccent.opacity(0.33), in: Circle())
                     .accessibilityHidden(true)
                 Text(app.T("Số liệu & báo cáo", "Metrics & Reports"))
                     .font(.system(.title2, design: .rounded).weight(.semibold))
@@ -141,7 +141,7 @@ struct ReportsView: View {
             (.days7, "7 ngày", "7d"), (.days30, "30 ngày", "30d"), (.days90, "90 ngày", "90d"),
         ]
         return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 ForEach(options, id: \.2) { days, vi, en in
                     rangeChip(app.T(vi, en), selected: app.reportsRangeDays == days, id: "reports.range.\(en)") {
                         app.setReportsRangeDays(days)
@@ -151,6 +151,8 @@ struct ReportsView: View {
                     showCustomRange = true
                 }
             }
+            .padding(4)
+            .background(app.palette.field, in: Capsule())
         }
     }
 
@@ -164,8 +166,8 @@ struct ReportsView: View {
                 .padding(.horizontal, 14).padding(.vertical, 8)
                 .frame(minHeight: 36)
                 .background(selected ? app.palette.ink : .clear, in: Capsule())
-                .foregroundStyle(selected ? app.palette.paper : app.palette.ink)
-                .overlay(Capsule().stroke(selected ? .clear : app.palette.rule))
+                .foregroundStyle(selected ? app.palette.paper : app.palette.ink.opacity(0.75))
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
@@ -247,15 +249,15 @@ struct ReportsView: View {
 
     @ViewBuilder
     private func loaded(_ d: ReportsDashboard) -> some View {
+        // Admin's job is the backlog, so it stays above the hero (note 43).
         if d.attentionFirst { attentionSection(d.attention) }
         if let primary = d.primary {
-            ReportPrimaryCard(metric: primary) { open(primary.key) }
+            ReportPrimaryCard(metric: primary, role: d.role) { open(primary.key) }
+                .padding(.top, d.attentionFirst ? 6 : 0)
         }
         if !d.overview.isEmpty {
             ReportSectionTitle(text: app.T("Tổng quan", "Overview"))
-            LazyVGrid(columns: gridColumns, spacing: 12) {
-                ForEach(d.overview) { m in ReportKpiTile(metric: m) { open(m.key) } }
-            }
+            overviewGrid(d)
         }
         if !d.attentionFirst { attentionSection(d.attention) }
         if !d.insights.isEmpty {
@@ -264,51 +266,69 @@ struct ReportsView: View {
         }
         if !d.trends.isEmpty {
             ReportSectionTitle(text: app.T("Xu hướng", "Trends"))
-            ForEach(d.trends) { m in ReportTrendCard(metric: m) { open(m.key) } }
+            ForEach(d.trends) { m in ReportTrendCard(metric: m, role: d.role) { open(m.key) } }
         }
         allMetrics(d.all)
+    }
+
+    /// `Grid`, not `LazyVGrid`: tiles in one row stretch to the same height.
+    private func overviewGrid(_ d: ReportsDashboard) -> some View {
+        let perRow = dynamicTypeSize.isAccessibilitySize ? 1 : 2
+        let rows = stride(from: 0, to: d.overview.count, by: perRow).map {
+            Array(d.overview[$0..<min($0 + perRow, d.overview.count)])
+        }
+        return Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+            ForEach(rows, id: \.first?.id) { row in
+                GridRow {
+                    ForEach(row) { m in ReportKpiTile(metric: m, role: d.role) { open(m.key) } }
+                    if row.count < perRow { Color.clear.gridCellUnsizedAxes([.horizontal, .vertical]) }
+                }
+            }
+        }
     }
 
     @ViewBuilder
     private func attentionSection(_ items: [ReportAttentionItem]) -> some View {
         if !items.isEmpty {
-            ReportSectionTitle(text: app.T("Cần chú ý", "Needs attention"))
-            ForEach(items) { item in ReportAttentionCard(item: item) { open(item.key) } }
+            ReportSectionTitle(text: app.T("Cần chú ý", "Needs attention"), count: items.count)
+            ForEach(items) { item in ReportAttentionCard(item: item) { open(item.targetKey) } }
         }
     }
 
     /// Every metric, one line each — the index into the details sheet, so no
     /// metric is ever unreachable whatever the cards above chose to feature.
     private func allMetrics(_ all: [ReportMetricPresentation]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ReportSectionTitle(text: app.T("Tất cả số liệu", "All metrics")).padding(.bottom, 6)
-            ForEach(Array(all.enumerated()), id: \.element.id) { i, m in
-                Button { open(m.key) } label: {
-                    HStack(spacing: 10) {
-                        Text(m.title).font(.subheadline).multilineTextAlignment(.leading)
-                        Spacer(minLength: 8)
-                        Text(m.valueText).font(.subheadline.weight(.semibold))
-                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).opacity(0.4)
-                            .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 8) {
+            ReportSectionTitle(text: app.T("Tất cả số liệu", "All metrics"))
+            VStack(spacing: 0) {
+                ForEach(Array(all.enumerated()), id: \.element.id) { i, m in
+                    Button { open(m.key) } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: ReportsPresentation.symbol(for: m.key))
+                                .font(.footnote.weight(.semibold))
+                                .frame(width: 22)
+                                .opacity(0.55)
+                                .accessibilityHidden(true)
+                            Text(m.title).font(.subheadline).multilineTextAlignment(.leading)
+                            Spacer(minLength: 8)
+                            Text(m.valueText).font(.subheadline.weight(.semibold)).monospacedDigit()
+                            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).opacity(0.4)
+                                .accessibilityHidden(true)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 13)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.vertical, 12)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityValue(m.accessibilityValue)
+                    .accessibilityHint(app.T("Mở chi tiết", "Opens details"))
+                    .accessibilityIdentifier("reports.all.\(m.key)")
+                    if i < all.count - 1 { Divider().overlay(app.palette.rule).padding(.leading, 50) }
                 }
-                .buttonStyle(.plain)
-                .accessibilityElement(children: .combine)
-                .accessibilityValue(m.accessibilityValue)
-                .accessibilityHint(app.T("Mở chi tiết", "Opens details"))
-                .accessibilityIdentifier("reports.all.\(m.key)")
-                if i < all.count - 1 { Divider().overlay(app.palette.rule) }
             }
+            .reportCard(padding: 0)
         }
-        .padding(.top, 8)
-    }
-
-    private var gridColumns: [GridItem] {
-        dynamicTypeSize.isAccessibilitySize
-            ? [GridItem(.flexible())]
-            : [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
     }
 
     private func open(_ key: String) {

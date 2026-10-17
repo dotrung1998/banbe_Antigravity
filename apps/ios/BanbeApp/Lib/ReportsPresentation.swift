@@ -82,6 +82,10 @@ struct ReportAttentionItem: Identifiable, Equatable {
     let valueText: String
     let message: String
     let symbol: String
+    /// The metric whose rows explain the item, when it isn't `key` itself
+    /// (refunds overdue is a bare count; its claims live under refunds owed).
+    var opens: String? = nil
+    var targetKey: String { opens ?? key }
 }
 
 /// Part of a whole where numerator and denominator count the SAME population
@@ -345,7 +349,8 @@ enum ReportsPresentation {
                                    valueText: formatValue(overdue, kind: .count, metricKey: m.key, T: T),
                                    message: T("\(n) khoản hoàn tiền đã quá hạn. Hãy hoàn tiền cho khách sớm nhất có thể.",
                                               "\(n) refund\(n == 1 ? " is" : "s are") past the deadline. Refund the guest\(n == 1 ? "" : "s") as soon as you can."),
-                                   symbol: "exclamationmark.triangle"))
+                                   symbol: "exclamationmark.triangle",
+                                   opens: (find("refunds_owed")?.rows?.isEmpty == false) ? "refunds_owed" : nil))
             }
             if let m = find("refunds_owed"), num(m) > 0 {
                 let claims = m.rows?.count ?? 0
@@ -377,6 +382,107 @@ enum ReportsPresentation {
             }
         }
         return items
+    }
+
+    // MARK: what each number means
+
+    /// One line under a value, restating the RPC's own definition (migration
+    /// 097) — never a judgement, target or comparison. Unknown keys fall
+    /// back to the honest "in this range"/"right now".
+    static func meaning(_ m: ReportMetricPresentation, role: ReportRole,
+                        T: (String, String) -> String) -> String {
+        switch (role, m.key) {
+        case (.personal, "confirmed_bookings"):
+            return T("Đã thanh toán và xác nhận, đặt trong khoảng này", "Paid and confirmed, booked in this range")
+        case (.personal, "attended_events"):
+            return T("Lượt check-in của bạn trong khoảng này", "Your check-ins in this range")
+        case (.personal, "upcoming_events"):
+            return T("Sự kiện bạn đã đặt, chưa diễn ra", "Booked events still ahead")
+        case (.personal, "saved_events"):
+            return T("Đang có trong mục đã lưu", "On your saved list now")
+        case (.personal, "outstanding_refunds"):
+            return T("Hoàn tiền bạn chưa nhận", "Refunds you haven't received yet")
+        case (.host, "confirmed_seats"):
+            return T("Số chỗ trong các đặt chỗ đã thanh toán trong khoảng này", "Seats in paid bookings made in this range")
+        case (.host, "confirmed_payment_amount"):
+            return T("Tổng các đặt chỗ đã xác nhận trong khoảng này", "Sum of confirmed bookings in this range")
+        case (.host, "check_ins"):
+            return T("Khách đã check-in trong khoảng này", "Guests checked in during this range")
+        case (.host, "upcoming_events"):
+            return T("Đang mở bán, chưa bắt đầu", "Live and not started yet")
+        case (.host, "published_events"):
+            return T("Đang mở hoặc đã kết thúc, từ trước đến nay", "Live or ended, all time")
+        case (.host, "refunds_owed"):
+            return T("Còn phải hoàn cho khách", "Still to refund to guests")
+        case (.host, "refunds_overdue"):
+            return T("Đã quá hạn hoàn tiền", "Past the refund deadline")
+        case (.admin, "platform_new_bookings"):
+            return T("Đặt chỗ mới trên banbe trong khoảng này, mọi trạng thái", "New bookings on banbe in this range, any status")
+        case (.admin, "platform_new_events"):
+            return T("Sự kiện tạo trong khoảng này, mọi trạng thái", "Events created in this range, any status")
+        case (.admin, "pending_event_reviews"):
+            return T("Đang chờ trong hàng duyệt", "Waiting in the review queue")
+        case (.admin, "unresolved_disputes"):
+            return T("Tranh chấp đặt chỗ và hoàn tiền đang mở", "Open booking and refund disputes")
+        case (.admin, "backlog_avg_age_days"):
+            return T("Tính trên duyệt và tranh chấp đang mở", "Across open reviews and disputes")
+        default:
+            return m.isTimeSeries ? T("Trong khoảng đã chọn", "In this range") : T("Hiện tại", "Right now")
+        }
+    }
+
+    /// A neutral glyph per metric, decoration only (always next to its title).
+    static func symbol(for key: String) -> String {
+        switch key {
+        case "saved_events": return "bookmark"
+        case "confirmed_bookings", "platform_new_bookings": return "ticket"
+        case "attended_events", "check_ins": return "checkmark.seal"
+        case "upcoming_events": return "calendar"
+        case "outstanding_refunds", "refunds_owed": return "arrow.uturn.backward.circle"
+        case "refunds_overdue": return "exclamationmark.triangle"
+        case "published_events": return "megaphone"
+        case "confirmed_seats": return "person.2"
+        case "confirmed_payment_amount": return "banknote"
+        case "pending_event_reviews": return "tray.full"
+        case "unresolved_disputes": return "exclamationmark.bubble"
+        case "backlog_avg_age_days": return "hourglass"
+        case "platform_new_events": return "sparkles"
+        default: return "chart.bar"
+        }
+    }
+
+    /// "0.4/day" · "41K₫/day" — the series total over every day in the range
+    /// (zero days included), so it's exactly total ÷ days, nothing smoothed.
+    static func dailyAverageText(_ s: ReportSeriesSummary, kind: ReportValueKind,
+                                 T: (String, String) -> String) -> String {
+        let n = s.dailyAverage
+        let value: String
+        if kind == .money {
+            value = compact(n, kind: .money, T: T) + "₫"
+        } else if n >= 10 {
+            value = groupedInteger(n, T: T)
+        } else {
+            let f = NumberFormatter()
+            f.numberStyle = .decimal
+            f.minimumFractionDigits = 0
+            f.maximumFractionDigits = 1
+            f.decimalSeparator = isVI(T) ? "," : "."
+            value = f.string(from: NSNumber(value: n)) ?? String(n)
+        }
+        return T("\(value)/ngày", "\(value)/day")
+    }
+
+    /// What tapping an attention card actually shows: the claims/queue rows.
+    static func attentionAction(_ item: ReportAttentionItem, T: (String, String) -> String) -> String {
+        switch item.key {
+        case "outstanding_refunds": return T("Xem các khoản hoàn tiền", "See refund claims")
+        case "refunds_overdue":
+            return item.opens == nil ? T("Mở chi tiết", "Open details") : T("Xem khoản quá hạn", "See overdue claims")
+        case "refunds_owed": return T("Xem các khoản còn nợ", "See claims owed")
+        case "pending_event_reviews": return T("Xem hàng chờ duyệt", "See the review queue")
+        case "unresolved_disputes": return T("Xem tranh chấp đang mở", "See open disputes")
+        default: return T("Mở chi tiết", "Open details")
+        }
     }
 
     // MARK: series

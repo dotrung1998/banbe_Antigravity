@@ -13,11 +13,13 @@ import SwiftUI
 struct ReportCardSurface: ViewModifier {
     @EnvironmentObject private var app: AppState
     var padding: CGFloat = 16
+    /// Stretch to the row height (KPI grid), so neighbouring tiles line up.
+    var fillHeight = false
 
     func body(content: Content) -> some View {
         content
             .padding(padding)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: fillHeight ? .infinity : nil, alignment: .topLeading)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -27,20 +29,75 @@ struct ReportCardSurface: ViewModifier {
     }
 }
 
-extension View {
-    func reportCard(padding: CGFloat = 16) -> some View { modifier(ReportCardSurface(padding: padding)) }
+/// The hero's warmer, layered surface: the screen's own Reports accent
+/// (moss, as on the header icon) washing into the usual card fill.
+struct ReportHeroSurface: ViewModifier {
+    @EnvironmentObject private var app: AppState
+
+    func body(content: Content) -> some View {
+        let dark = app.theme == "dark"
+        let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+        content
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                shape.fill(app.palette.field)
+                shape.fill(LinearGradient(colors: [reportsAccent.opacity(dark ? 0.2 : 0.55), reportsAccent.opacity(0)],
+                                          startPoint: .topLeading, endPoint: .bottomTrailing))
+            }
+            .overlay(shape.stroke(app.palette.ink.opacity(dark ? 0.14 : 0.05), lineWidth: 1))
+            .shadow(color: app.palette.ink.opacity(dark ? 0 : 0.08), radius: 18, x: 0, y: 8)
+    }
 }
 
-/// Small uppercase-free section heading used between dashboard groups.
+/// The Reports screen accent, shared with its header icon and Account row.
+var reportsAccent: Color { ROW_ACCENT_COLORS["reports"] ?? .clear }
+
+extension View {
+    func reportCard(padding: CGFloat = 16, fillHeight: Bool = false) -> some View {
+        modifier(ReportCardSurface(padding: padding, fillHeight: fillHeight))
+    }
+    func reportHeroCard() -> some View { modifier(ReportHeroSurface()) }
+}
+
+/// A metric's glyph in the screen's accent circle. Decoration only — it
+/// always sits next to the metric's title, so it's hidden from VoiceOver.
+struct ReportGlyph: View {
+    @EnvironmentObject private var app: AppState
+    let symbol: String
+    var size: CGFloat = 28
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.48, weight: .semibold))
+            .foregroundStyle(app.palette.ink.opacity(0.8))
+            .frame(width: size, height: size)
+            .background(reportsAccent.opacity(app.theme == "dark" ? 0.28 : 0.5), in: Circle())
+            .accessibilityHidden(true)
+    }
+}
+
+/// Section heading between dashboard groups, with an optional count.
 struct ReportSectionTitle: View {
     @EnvironmentObject private var app: AppState
     let text: String
+    var count: Int? = nil
     var body: some View {
-        Text(text)
-            .font(.system(.subheadline, design: .rounded).weight(.semibold))
-            .foregroundStyle(app.palette.ink.opacity(0.7))
-            .accessibilityAddTraits(.isHeader)
-            .padding(.top, 8)
+        HStack(spacing: 8) {
+            Text(text)
+                .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                .foregroundStyle(app.palette.ink.opacity(0.75))
+            if let count {
+                Text("\(count)")
+                    .font(.caption.weight(.bold)).monospacedDigit()
+                    .padding(.horizontal, 7).padding(.vertical, 1)
+                    .background(app.palette.ink.opacity(0.08), in: Capsule())
+                    .foregroundStyle(app.palette.ink.opacity(0.7))
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+        .padding(.top, 14)
     }
 }
 
@@ -131,134 +188,257 @@ struct ReportChartView: View {
     }
 }
 
+// MARK: - Dashboard charts
+
+/// Dashboard-only daily bars: data first, no axes or grid. The peak day is
+/// the one full-strength bar and carries its value; the first/last days
+/// under the plot name the range — so the meaning reads without touching
+/// anything. Zero days stay as faint stubs so the rhythm of the range shows.
+/// (The detail sheet and the "Save image" export keep `ReportTrendChart`,
+/// unchanged.)
+struct ReportDailyBars: View {
+    @EnvironmentObject private var app: AppState
+    let metric: ReportMetricPresentation
+    var height: CGFloat = 110
+
+    private var maxValue: Double { metric.series.map(\.value).max() ?? 0 }
+
+    var body: some View {
+        let peak = metric.summary?.peak
+        let top = max(maxValue, 1)
+        VStack(spacing: 6) {
+            Chart(metric.series) { p in
+                // Every day that reaches the peak value looks the same; only
+                // the first (the one the stats name) carries the label.
+                let atPeak = peak.map { p.value == $0.value } ?? false
+                BarMark(x: .value(app.T("Ngày", "Day"), p.date, unit: .day),
+                        y: .value(metric.title, p.value > 0 ? p.value : top * 0.03),
+                        width: .ratio(0.62))
+                    .foregroundStyle(app.palette.ink.opacity(atPeak ? 0.95 : (p.value > 0 ? 0.5 : 0.12)))
+                    .cornerRadius(metric.series.count > 45 ? 1 : 3)
+                    .annotation(position: .top, spacing: 3) {
+                        if p.dayKey == peak?.dayKey {
+                            Text(ReportsPresentation.compact(p.value, kind: metric.kind, T: app.T))
+                                .font(.caption2.weight(.bold)).monospacedDigit()
+                                .foregroundStyle(app.palette.ink)
+                                .fixedSize()
+                        }
+                    }
+            }
+            .chartXAxis(.hidden)
+            .chartYAxis(.hidden)
+            // Headroom for the peak label.
+            .chartYScale(domain: 0...(top * 1.28))
+            .frame(height: height)
+
+            if let first = metric.series.first, let last = metric.series.last {
+                HStack {
+                    Text(ReportsPresentation.formatDay(first.date, T: app.T))
+                    Spacer(minLength: 8)
+                    Text(ReportsPresentation.formatDay(last.date, T: app.T))
+                }
+                .font(.caption2).monospacedDigit()
+                .foregroundStyle(app.palette.ink.opacity(0.55))
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(metric.title)
+        .accessibilityValue(ReportsPresentation.seriesSentence(metric, T: app.T))
+    }
+}
+
+/// Three facts read off the same series — peak, active days, daily average.
+/// Side by side when they fit, stacked otherwise.
+struct ReportSeriesStats: View {
+    @EnvironmentObject private var app: AppState
+    let metric: ReportMetricPresentation
+    let summary: ReportSeriesSummary
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                items(divided: true)
+            }
+            VStack(alignment: .leading, spacing: 10) { items(divided: false) }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func items(divided: Bool) -> some View {
+        if let peak = summary.peak {
+            stat(app.T("Cao nhất", "Peak"),
+                 ReportsPresentation.compact(peak.value, kind: metric.kind, T: app.T),
+                 ReportsPresentation.formatDay(peak.date, T: app.T), divided: divided)
+        }
+        if divided { separator }
+        stat(app.T("Hoạt động", "Active days"), "\(summary.activeDays)/\(summary.dayCount)",
+             app.T("ngày", "days"), divided: divided)
+        if divided { separator }
+        stat(app.T("Trung bình", "Daily average"),
+             ReportsPresentation.dailyAverageText(summary, kind: metric.kind, T: app.T), nil, divided: divided)
+    }
+
+    private var separator: some View {
+        Rectangle().fill(app.palette.ink.opacity(0.12)).frame(width: 1).frame(maxHeight: 36)
+    }
+
+    private func stat(_ label: String, _ value: String, _ detail: String?, divided: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(app.palette.ink.opacity(0.6))
+                .lineLimit(1)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(value)
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold)).monospacedDigit()
+                    .lineLimit(1)
+                if let detail {
+                    Text(detail).font(.caption).foregroundStyle(app.palette.ink.opacity(0.6)).lineLimit(1)
+                }
+            }
+        }
+        .frame(maxWidth: divided ? .infinity : nil, alignment: .leading)
+    }
+}
+
 // MARK: - Cards
 
-/// The one large card at the top: headline value, a compact real chart and
-/// two facts read off the same series. No delta — there is no prior period.
+/// The one hero at the top: one dominant number, what it counts (the RPC's
+/// own definition), the real daily bars behind it and three facts read off
+/// the same series. No delta, target or benchmark — there is no prior period.
 struct ReportPrimaryCard: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .largeTitle) private var valueSize: CGFloat = 46
     let metric: ReportMetricPresentation
+    let role: ReportRole
     let onOpen: () -> Void
 
     var body: some View {
         Button(action: onOpen) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 10) {
+                    ReportGlyph(symbol: ReportsPresentation.symbol(for: metric.key), size: 30)
                     Text(metric.title)
                         .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .multilineTextAlignment(.leading)
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).opacity(0.45)
                         .accessibilityHidden(true)
                 }
                 Text(metric.valueText)
-                    .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                    .minimumScaleFactor(0.6)
+                    .font(.system(size: valueSize, weight: .bold, design: .rounded)).monospacedDigit()
+                    .minimumScaleFactor(0.5)
                     .lineLimit(1)
-                Text(metric.isTimeSeries ? app.T("Trong khoảng đã chọn", "In this range") : app.T("Hiện tại", "Right now"))
+                    .padding(.top, 14)
+                Text(ReportsPresentation.meaning(metric, role: role, T: app.T))
                     .font(.footnote)
-                    .foregroundStyle(app.palette.ink.opacity(0.65))
+                    .foregroundStyle(app.palette.ink.opacity(0.7))
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
 
                 if let summary = metric.summary {
-                    if summary.hasActivity && dynamicTypeSize.isAccessibilitySize {
-                        // Large text: a readable sentence instead of a squeezed chart.
-                        Text(ReportsPresentation.seriesSentence(metric, T: app.T))
-                            .font(.footnote).fixedSize(horizontal: false, vertical: true)
-                    } else if summary.hasActivity {
-                        ReportSparkline(metric: metric).frame(height: 64).padding(.top, 4)
-                        facts(summary)
-                    } else {
-                        Label(app.T("Không có hoạt động trong khoảng này.", "No activity in this range."),
-                              systemImage: "minus.circle")
-                            .font(.footnote)
-                            .foregroundStyle(app.palette.ink.opacity(0.65))
-                            .padding(.top, 2)
+                    Group {
+                        if summary.hasActivity && dynamicTypeSize.isAccessibilitySize {
+                            // Large text: a readable sentence instead of a squeezed chart.
+                            Text(ReportsPresentation.seriesSentence(metric, T: app.T))
+                                .font(.footnote).fixedSize(horizontal: false, vertical: true)
+                        } else if summary.hasActivity {
+                            VStack(alignment: .leading, spacing: 14) {
+                                ReportDailyBars(metric: metric, height: 104)
+                                Divider().overlay(app.palette.ink.opacity(0.08))
+                                ReportSeriesStats(metric: metric, summary: summary)
+                            }
+                        } else {
+                            Label(app.T("Không có hoạt động trong khoảng này.", "No activity in this range."),
+                                  systemImage: "minus.circle")
+                                .font(.footnote)
+                                .foregroundStyle(app.palette.ink.opacity(0.65))
+                        }
                     }
+                    .padding(.top, 18)
                 }
             }
             .foregroundStyle(app.palette.ink)
-            .reportCard(padding: 18)
+            .reportHeroCard()
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(metric.title)
-        .accessibilityValue("\(metric.accessibilityValue). \(ReportsPresentation.seriesSentence(metric, T: app.T))")
+        .accessibilityValue("\(metric.accessibilityValue). \(ReportsPresentation.meaning(metric, role: role, T: app.T)). \(ReportsPresentation.seriesSentence(metric, T: app.T))")
         .accessibilityHint(app.T("Mở chi tiết", "Opens details"))
         .accessibilityIdentifier("reports.primary.\(metric.key)")
     }
-
-    private func facts(_ s: ReportSeriesSummary) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 16) { factItems(s) }
-            VStack(alignment: .leading, spacing: 6) { factItems(s) }
-        }
-        .font(.footnote)
-        .foregroundStyle(app.palette.ink.opacity(0.75))
-    }
-
-    @ViewBuilder
-    private func factItems(_ s: ReportSeriesSummary) -> some View {
-        if let peak = s.peak {
-            Label(app.T("Cao nhất \(ReportsPresentation.compact(peak.value, kind: metric.kind, T: app.T)) · \(ReportsPresentation.formatDay(peak.date, T: app.T))",
-                        "Peak \(ReportsPresentation.compact(peak.value, kind: metric.kind, T: app.T)) · \(ReportsPresentation.formatDay(peak.date, T: app.T))"),
-                  systemImage: "arrow.up.to.line")
-        }
-        Label(app.T("\(s.activeDays)/\(s.dayCount) ngày có hoạt động", "Active \(s.activeDays) of \(s.dayCount) days"),
-              systemImage: "calendar")
-    }
 }
 
-/// A compact KPI tile for the overview grid.
+/// A KPI tile: title, the number, one line of what it counts, and a compact
+/// strip only when there is a genuine series with activity.
 struct ReportKpiTile: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let metric: ReportMetricPresentation
+    let role: ReportRole
     let onOpen: () -> Void
 
     var body: some View {
         Button(action: onOpen) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(metric.title)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(app.palette.ink.opacity(0.72))
-                    .lineLimit(2)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(metric.title)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(app.palette.ink.opacity(0.78))
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        ReportGlyph(symbol: ReportsPresentation.symbol(for: metric.key), size: 26)
+                    }
+                }
+                Text(metric.valueText)
+                    .font(.system(.title, design: .rounded).weight(.bold)).monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .padding(.top, 8)
+                Text(ReportsPresentation.meaning(metric, role: role, T: app.T))
+                    .font(.caption)
+                    .foregroundStyle(app.palette.ink.opacity(0.6))
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-                Text(metric.valueText)
-                    .font(.system(.title2, design: .rounded).weight(.bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.55)
-                // A compact strip only for a genuine series with activity.
+                    .padding(.top, 2)
+                Spacer(minLength: 10)
                 if metric.summary?.hasActivity == true && !dynamicTypeSize.isAccessibilitySize {
-                    ReportSparkline(metric: metric).frame(height: 18)
+                    ReportSparkline(metric: metric).frame(height: 22)
                         .accessibilityHidden(true)
                         .accessibilityIdentifier("reports.kpi.strip.\(metric.key)")
                 }
-                Text(metric.isTimeSeries ? app.T("Trong khoảng đã chọn", "In this range") : app.T("Hiện tại", "Right now"))
-                    .font(.caption)
-                    .foregroundStyle(app.palette.ink.opacity(0.6))
             }
-            .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
             .foregroundStyle(app.palette.ink)
-            .reportCard(padding: 14)
+            .reportCard(padding: 14, fillHeight: true)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(metric.title)
-        .accessibilityValue(metric.accessibilityValue)
+        .accessibilityValue("\(metric.accessibilityValue). \(ReportsPresentation.meaning(metric, role: role, T: app.T))")
         .accessibilityHint(app.T("Mở chi tiết", "Opens details"))
         .accessibilityIdentifier("reports.kpi.\(metric.key)")
     }
 }
 
-/// "Needs attention": icon + words carry the state, the accent only repeats it.
+/// "Needs attention": a state badge in words, the amount, what's going on
+/// and what tapping shows. Icon + words + leading rule carry the state; the
+/// tint only repeats it. Alert red is kept for genuinely late/conflicting
+/// items; a queue gets the calmer honey.
 struct ReportAttentionCard: View {
     @EnvironmentObject private var app: AppState
     let item: ReportAttentionItem
     let onOpen: () -> Void
 
-    private var tint: Color { item.severity == .pending ? app.palette.honey : BanbeTheme.alert }
+    private var calm: Bool { item.severity == .pending }
+    private var tint: Color { calm ? app.palette.honey : BanbeTheme.alert }
     private var badge: String {
         switch item.severity {
         case .overdue: return app.T("Quá hạn", "Overdue")
@@ -268,70 +448,97 @@ struct ReportAttentionCard: View {
     }
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
         Button(action: onOpen) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: item.symbol)
-                    .font(.title3.weight(.semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(tint)
-                    .frame(minWidth: 28)
-                    .padding(.leading, 6)
+                    .frame(width: 36, height: 36)
+                    .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(item.title).font(.subheadline.weight(.semibold))
+                    HStack(alignment: .center, spacing: 8) {
+                        Text(badge)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(tint)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(tint.opacity(0.14), in: Capsule())
                         Spacer(minLength: 8)
-                        Text(item.valueText).font(.system(.headline, design: .rounded).weight(.bold))
+                        Text(item.valueText)
+                            .font(.system(.title3, design: .rounded).weight(.bold)).monospacedDigit()
+                            .lineLimit(1).minimumScaleFactor(0.6)
                     }
+                    Text(item.title).font(.subheadline.weight(.semibold))
+                        .padding(.top, 2)
                     Text(item.message)
                         .font(.footnote)
                         .foregroundStyle(app.palette.ink.opacity(0.75))
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(badge)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(tint)
-                        .padding(.top, 2)
+                    HStack(spacing: 4) {
+                        Text(ReportsPresentation.attentionAction(item, T: app.T))
+                        Image(systemName: "arrow.right").accessibilityHidden(true)
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .padding(.top, 6)
                 }
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).opacity(0.45)
-                    .accessibilityHidden(true)
             }
             .foregroundStyle(app.palette.ink)
             .padding(16)
+            .padding(.leading, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .background {
+                shape.fill(app.palette.field)
+                shape.fill(calm ? app.palette.honeyBg.opacity(0.7) : BanbeTheme.alert.opacity(0.07))
+            }
+            .overlay(shape.stroke(tint.opacity(0.22), lineWidth: 1))
             .overlay(alignment: .leading) {
                 // A leading rule, so the state never depends on the icon colour alone.
-                RoundedRectangle(cornerRadius: 2).fill(tint).frame(width: 4).padding(.vertical, 14)
+                RoundedRectangle(cornerRadius: 2).fill(tint).frame(width: 4).padding(.vertical, 16)
             }
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(badge): \(item.title)")
         .accessibilityValue("\(item.valueText). \(item.message)")
-        .accessibilityHint(app.T("Mở chi tiết", "Opens details"))
+        .accessibilityHint(ReportsPresentation.attentionAction(item, T: app.T))
         .accessibilityIdentifier("reports.attention.\(item.key)")
     }
 }
 
-/// A larger chart card for each remaining genuine series.
+/// A chart card for each remaining genuine series: total, meaning, the same
+/// daily bars as the hero and a one-line peak/active-days fact.
 struct ReportTrendCard: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let metric: ReportMetricPresentation
+    let role: ReportRole
     let onOpen: () -> Void
 
     var body: some View {
         Button(action: onOpen) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(metric.title).font(.subheadline.weight(.semibold))
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 10) {
+                    ReportGlyph(symbol: ReportsPresentation.symbol(for: metric.key), size: 26)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(metric.title).font(.subheadline.weight(.semibold))
+                            .multilineTextAlignment(.leading)
+                        Text(ReportsPresentation.meaning(metric, role: role, T: app.T))
+                            .font(.caption).foregroundStyle(app.palette.ink.opacity(0.6))
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Spacer(minLength: 8)
-                    Text(metric.valueText).font(.system(.headline, design: .rounded).weight(.bold))
+                    Text(metric.valueText)
+                        .font(.system(.title3, design: .rounded).weight(.bold)).monospacedDigit()
+                        .lineLimit(1).minimumScaleFactor(0.6)
                 }
-                if metric.summary?.hasActivity == true && dynamicTypeSize.isAccessibilitySize {
+                if let s = metric.summary, s.hasActivity, dynamicTypeSize.isAccessibilitySize {
                     Text(ReportsPresentation.seriesSentence(metric, T: app.T))
                         .font(.footnote).fixedSize(horizontal: false, vertical: true)
-                } else if metric.summary?.hasActivity == true {
-                    ReportTrendChart(metric: metric, height: 150)
+                } else if let s = metric.summary, s.hasActivity {
+                    ReportDailyBars(metric: metric, height: 84).padding(.top, 4)
+                    ReportSeriesStats(metric: metric, summary: s).padding(.top, 2)
                 } else {
                     Label(app.T("Không có hoạt động trong khoảng này.", "No activity in this range."),
                           systemImage: "minus.circle")
@@ -452,19 +659,19 @@ struct ReportsSkeleton: View {
     @EnvironmentObject private var app: AppState
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            block(height: 196)
+            block(height: 300, radius: 24)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                ForEach(0..<4, id: \.self) { _ in block(height: 96) }
+                ForEach(0..<4, id: \.self) { _ in block(height: 150) }
             }
-            block(height: 210)
+            block(height: 200)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(app.T("Đang tải số liệu", "Loading metrics"))
         .accessibilityIdentifier("reports.skeleton")
     }
 
-    private func block(height: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
+    private func block(height: CGFloat, radius: CGFloat = 20) -> some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
             .fill(app.palette.field)
             .frame(height: height)
             .overlay(alignment: .topLeading) {

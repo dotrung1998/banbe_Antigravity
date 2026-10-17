@@ -167,4 +167,50 @@ final class ReportsPresentationTests: XCTestCase {
         XCTAssertEqual(ReportsPresentation.cell("status", .string("owed"), T: en), "Waiting for host refund")
         XCTAssertNil(ReportsPresentation.cell("due_at", .null, T: en))
     }
+
+    // MARK: visual refinement pass (note 46)
+
+    func testMeaningFollowsRoleAndFallsBackHonestly() {
+        let host = dash(ReportsFixtures.hostJSON, en)
+        let personal = dash(ReportsFixtures.personalJSON, en)
+        let hostUpcoming = host.all.first { $0.key == "upcoming_events" }!
+        let personalUpcoming = personal.all.first { $0.key == "upcoming_events" }!
+        XCTAssertEqual(ReportsPresentation.meaning(hostUpcoming, role: .host, T: en), "Live and not started yet")
+        XCTAssertEqual(ReportsPresentation.meaning(personalUpcoming, role: .personal, T: en), "Booked events still ahead")
+        // Payment amount is never called revenue (migration 097's own rule).
+        let amount = host.all.first { $0.key == "confirmed_payment_amount" }!
+        XCTAssertFalse(ReportsPresentation.meaning(amount, role: .host, T: en).lowercased().contains("revenue"))
+
+        let unknown = ReportsPresentation.metric(
+            AccountKpiMetric(key: "future_metric", label: "Mới", unit: "count", value: .number(2), series: nil, rows: nil), T: en)
+        XCTAssertEqual(ReportsPresentation.meaning(unknown, role: .host, T: en), "Right now")
+        XCTAssertEqual(ReportsPresentation.symbol(for: "future_metric"), "chart.bar")
+    }
+
+    func testDailyAverageIsTotalOverEveryDay() {
+        let host = dash(ReportsFixtures.hostJSON, en)
+        let seats = host.all.first { $0.key == "confirmed_seats" }!   // 0,3,2 over 3 days
+        XCTAssertEqual(ReportsPresentation.dailyAverageText(seats.summary!, kind: .count, T: en), "1.7/day")
+        XCTAssertEqual(ReportsPresentation.dailyAverageText(seats.summary!, kind: .count, T: vi), "1,7/ngày")
+        let amount = host.all.first { $0.key == "confirmed_payment_amount" }!   // 1,250,000 over 3 days
+        XCTAssertEqual(ReportsPresentation.dailyAverageText(amount.summary!, kind: .money, T: en), "417K₫/day")
+    }
+
+    func testOverdueCardOpensTheOwedClaims() {
+        let d = dash(ReportsFixtures.hostJSON, en)
+        let overdue = d.attention.first { $0.key == "refunds_overdue" }!
+        XCTAssertEqual(overdue.targetKey, "refunds_owed", "the overdue count has no rows; the claims live under refunds_owed")
+        XCTAssertEqual(ReportsPresentation.attentionAction(overdue, T: en), "See overdue claims")
+        let owed = d.attention.first { $0.key == "refunds_owed" }!
+        XCTAssertEqual(owed.targetKey, "refunds_owed")
+
+        // Without owed rows the card opens itself, and says so plainly.
+        let json = """
+        {"success":true,"scope":"host","metrics":[
+         {"key":"refunds_overdue","label":"Hoàn tiền quá hạn","unit":"count","value":2}]}
+        """
+        let bare = dash(json, en).attention.first!
+        XCTAssertEqual(bare.targetKey, "refunds_overdue")
+        XCTAssertEqual(ReportsPresentation.attentionAction(bare, T: en), "Open details")
+    }
 }
