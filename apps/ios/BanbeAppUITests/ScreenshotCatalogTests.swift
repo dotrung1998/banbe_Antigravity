@@ -58,7 +58,7 @@ final class ScreenshotCatalogTests: XCTestCase {
     @discardableResult
     private func launchSignedIn(role: String = "goer", scenario: String = "default") -> XCUIApplication {
         let app = launch(role: role, scenario: scenario)
-        if app.otherElements["screen.login"].waitForExistence(timeout: 45) {
+        if app.reachLogin(timeout: 45) {
             app.buttons["login.method.password"].tap()
             let email = app.textFields["login.email"]
             XCTAssertTrue(email.waitForExistence(timeout: 5))
@@ -198,7 +198,7 @@ final class ScreenshotCatalogTests: XCTestCase {
         app.buttons["theme.light"].tap() // back to the default theme so downstream groups aren't affected.
         app.buttons["onboarding.continue"].tap()
 
-        if app.otherElements["screen.login"].waitForExistence(timeout: 18) {
+        if app.reachLogin(timeout: 18) {
             capture("01-onboarding-auth", 4, "login", "Login", "Mandatory sign-in gate — no guest browsing exists in this app.", role: "goer", app: app)
             app.buttons["login.method.password"].tap()
             let email = app.textFields["login.email"]
@@ -393,7 +393,8 @@ final class ScreenshotCatalogTests: XCTestCase {
     func testGroupE_Notifications() {
         let app = launchSignedIn(role: "goer", scenario: "notifications")
 
-        tab(app, "tab.notifications").tap()
+        // Note 44 — Notifications moved from the dock to Home's header bell.
+        any(app, "home.notifications").tap()
         XCTAssertTrue(app.otherElements["screen.notifications"].waitForExistence(timeout: 15))
         capture("05-notifications", 1, "list", "Notification list", "Whatever notifications currently exist for the account.", role: "goer", app: app)
 

@@ -34,6 +34,8 @@ struct AccountView: View {
     /// Bumped whenever Account becomes visible; replays the host card's reminder halo.
     @State private var hostHaloTrigger = 0
     @EnvironmentObject var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     // Task 3 (07-notifications.md) — story creation, hosts only.
     // TASK 1 (dock "+" native-menu pass) — the three trigger flags this
     // used to own as local @State (storyPhotoItem/storyCameraOpen/
@@ -137,6 +139,7 @@ struct AccountView: View {
     private var searchQuery: String { app.accountSearchQuery }
     @FocusState private var searchFocused: Bool
     @State private var imageCacheClearedAt: Date?
+    @State private var tabBarFrame: CGRect = .zero
 
     var body: some View {
         // Pull-to-refresh header fix (2026-09-29 follow-up) — Messages'
@@ -183,6 +186,12 @@ struct AccountView: View {
                 if searchOpen { accountSearchResults } else { accountContent }
             }
         }
+        // Note 45 — swipe left/right between Personal / Host / Admin, from the header, the tab
+        // strip or the content. While there are several tabs a horizontal swipe belongs to them:
+        // it never hops to another dock section (tap the dock for that).
+        .contentShape(Rectangle())   // empty header/margin space must count as a touch target for the swipe too
+        .simultaneousGesture(accountTabSwipe)
+        .rootSwipeExclusion("account.tabs", enabled: accountTabs.count > 1 && !searchOpen)
         }
         .task { if app.userID != nil { await app.loadHomeStories() } }
         .task { if app.userID != nil { await app.loadMyOrganizerMemberships() } }
@@ -318,15 +327,112 @@ struct AccountView: View {
     /// (`accountTabs`/`accountTabButton`) and `app.accountTab` state,
     /// unchanged — purely a layout move, no new tab/navigation system.
     private var accountTabsBar: some View {
-        HStack(spacing: 6) {
-            ForEach(accountTabs, id: \.0) { key, label, badge in
-                accountTabButton(key: key, label: label, badge: badge)
+        let tabs = accountTabs
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                // Large text: stacked full-width rows read better than three squeezed segments.
+                VStack(spacing: 8) {
+                    ForEach(tabs, id: \.0) { key, label, badge in
+                        accountTabSegment(key: key, label: label, badge: badge, stacked: true)
+                    }
+                }
+            } else {
+                GlassSegmentedControl(
+                    segments: tabs.map { key, label, badge in
+                        GlassSegment(id: key, label: label, icon: accountTabIcon(key), badge: badge,
+                                     badgeID: "account.tab.\(key).badge",
+                                     spokenLabel: badge > 0 ? app.T("\(label), \(badge) mục mới", "\(label), \(badge) new item(s)") : label,
+                                     identifier: "account.tab.\(key)")
+                    },
+                    selection: app.accountTab, height: 52, frame: $tabBarFrame,
+                    onSelect: { selectAccountTab($0) })
             }
         }
+        // Three segments stay readable up to the first accessibility size; beyond it the
+        // rows are already stacked full width and the page itself keeps scaling.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 12)
         .background(app.palette.paper)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("account.tabs")
+    }
+
+    private func accountTabIcon(_ key: String) -> String {
+        switch key {
+        case "host": return "storefront"
+        case "admin": return "checkmark.shield"
+        default: return "person.crop.circle"
+        }
+    }
+
+    /// One large, clearly-labelled segment: icon + title (+ count badge), a 52pt target,
+    /// selection shown by the sliding ink capsule AND the inverted text — never colour alone.
+    @ViewBuilder
+    private func accountTabSegment(key: String, label: String, badge: Int, stacked: Bool) -> some View {
+        let selected = app.accountTab == key
+        SwipeSafeButton {
+            selectAccountTab(key)
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: accountTabIcon(key)).font(.system(size: 16, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text(label)
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                if badge > 0 {
+                    Text(AccountBadges.format(badge))
+                        .font(.system(size: 11, weight: .bold)).monospacedDigit()
+                        .padding(.horizontal, 5)
+                        .frame(minWidth: 18, minHeight: 18)
+                        .background(selected ? app.palette.paper : BanbeTheme.alert, in: Capsule())
+                        .foregroundStyle(selected ? app.palette.ink : BanbeTheme.onAlert)
+                        .accessibilityIdentifier("account.tab.\(key).badge")
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: stacked ? 56 : 52)
+            .foregroundStyle(selected ? app.palette.paper : app.palette.ink)
+            .background {
+                if stacked { Capsule().fill(selected ? app.palette.ink : app.palette.field) }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(badge > 0 ? app.T("\(label), \(badge) mục mới", "\(label), \(badge) new item(s)") : label)
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("account.tab.\(key)")
+    }
+
+    /// Switch tab with a light fade; the tab you switch TO opens at its top.
+    private func selectAccountTab(_ key: String) {
+        guard app.accountTab != key else { return }
+        Haptics.selection()
+        app.accountScrollAnchorIDByTab[key] = nil
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { app.accountTab = key }
+    }
+
+    /// One tab left/right. Does nothing at either end (no wrap-around, no hop to another section).
+    private func moveAccountTab(_ delta: Int) {
+        let tabs = accountTabs
+        guard let i = tabs.firstIndex(where: { $0.0 == app.accountTab }) else { return }
+        let j = i + delta
+        guard tabs.indices.contains(j) else { return }
+        selectAccountTab(tabs[j].0)
+    }
+
+    private var accountTabSwipe: some Gesture {
+        DragGesture(minimumDistance: 28, coordinateSpace: .named("rootGesture"))
+            .onEnded { v in
+                guard !searchOpen, accountTabs.count > 1 else { return }
+                // A drag that starts on the glass bubble belongs to the bubble.
+                guard !tabBarFrame.contains(v.startLocation) else { return }
+                let dx = v.translation.width, dy = v.translation.height
+                // Clearly horizontal and long enough; a vertical scroll never counts.
+                guard abs(dx) >= 60, abs(dx) > abs(dy) * 1.8 else { return }
+                moveAccountTab(dx < 0 ? 1 : -1)
+            }
     }
 
     private var accountContent: some View {
@@ -460,6 +566,17 @@ struct AccountView: View {
                     counterGroupRow(value: app.favorites.count, label: app.T("Sự Kiện Đã Lưu", "Saved Events"), icon: "bookmark", identifier: "account.savedCard") { app.goSavedList() }
                 }
                 .id("account-stats")
+                groupDivider()
+                // Note 44 — Schedule's second door, and Notifications' home in
+                // Account now that its dock slot went to Schedule.
+                row(app.T("Lịch của tôi", "My schedule"), identifier: "account.schedule", icon: "calendar", trailing: "›") {
+                    app.goSchedule()
+                }
+                groupDivider()
+                row(app.T("Thông báo", "Notifications"), identifier: "account.notifications", icon: "bell",
+                    trailing: app.unreadNotifications > 0 ? "\(app.unreadNotifications) ›" : "›") {
+                    app.goNotifications(back: .profile)
+                }
                 groupDivider()
                 groupCardRow(groupKey: "payments", icon: "banknote", label: app.T("Thanh Toán & Giấy Tờ", "Payments & Documents"), badge: AccountBadges.myRefundActionCount(myRefunds: app.myRefunds))
                 groupDivider()
@@ -687,6 +804,7 @@ struct AccountView: View {
         // `retryScrollRestoreIfNeeded` already uses for a full screen
         // return, just re-keyed per tab instead of per screen visit.
         .id(app.accountTab)
+        .transition(.opacity)
         .sheet(isPresented: $shareCardOpen) { shareCardSheet }
         .sheet(isPresented: $eventStoryPickerOpen) { eventStoryPicker }
     }
@@ -743,6 +861,10 @@ struct AccountView: View {
               "vé ticket booking đặt chỗ giữ chỗ hold qr check-in đã hủy hết hạn cancelled expired my tickets vé của tôi") { openGroup("activity") },
             e("going", "personal", actVi, actEn, "Đang tham gia", "Going", "checkmark.circle",
               "attending sắp tham gia sự kiện của tôi my events upcoming") { app.goGoingList() },
+            e("schedule", "personal", actVi, actEn, "Lịch của tôi", "My schedule", "calendar",
+              "lịch schedule calendar agenda kế hoạch plans hôm nay today tuần week") { app.goSchedule() },
+            e("notifications", "personal", actVi, actEn, "Thông báo", "Notifications", "bell",
+              "thông báo notifications chuông bell alerts cập nhật updates") { app.goNotifications(back: .profile) },
             e("saved", "personal", actVi, actEn, "Sự Kiện Đã Lưu", "Saved Events", "bookmark",
               "lưu yêu thích favorites favourite bookmark wishlist") { app.goSavedList() },
             e("past", "personal", actVi, actEn, "Sự Kiện Quá Khứ", "Past Events", "calendar.badge.checkmark",
@@ -922,81 +1044,6 @@ struct AccountView: View {
             tabs.append(("admin", app.T("Quản Trị", "Admin"), adminBadge))
         }
         return tabs
-    }
-
-    /// Same Liquid Glass capsule as Home's header buttons (`homeGlassCapsule`
-    /// in HomeView), so Account's tab pills match them.
-    @ViewBuilder
-    private func accountGlassCapsule(active: Bool) -> some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer {
-                Capsule()
-                    .fill(active
-                          ? app.palette.ink.opacity(0.92)
-                          : app.palette.ink.opacity(0.04 + 0.20 * app.glassOpacity))
-                    .glassEffect(.regular.interactive(), in: Capsule())
-                    .opacity(active ? 1 : app.glassOpacity)
-            }
-        } else if active {
-            Capsule().fill(app.palette.ink)
-        } else {
-            Capsule()
-                .fill(app.palette.ink.opacity(0.04 + 0.20 * app.glassOpacity))
-                .background(.thinMaterial, in: Capsule())
-                .opacity(app.glassOpacity)
-        }
-    }
-
-    @ViewBuilder
-    private func accountTabButton(key: String, label: String, badge: Int = 0) -> some View {
-        SwipeSafeButton {
-            if app.accountTab != key { Haptics.selection(); app.accountScrollAnchorIDByTab[key] = nil }   // a tab you switch TO opens at its top
-            app.accountTab = key
-        } label: {
-            HStack(spacing: 6) {
-                Text(label).font(.system(size: 13, weight: .semibold))
-                if badge > 0 {
-                    Text(AccountBadges.format(badge))
-                        .font(.system(size: 10, weight: .bold))
-                        .padding(.horizontal, 4)
-                        .frame(minWidth: 16, minHeight: 16)
-                        .background(app.accountTab == key ? app.palette.paper : BanbeTheme.alert, in: Capsule())
-                        .foregroundStyle(app.accountTab == key ? app.palette.ink : .white)
-                        .accessibilityIdentifier("account.tab.\(key).badge")
-                        .accessibilityLabel(app.T("\(badge) mục mới", "\(badge) new item(s)"))
-                }
-            }
-                .padding(.horizontal, 16).padding(.vertical, 9)
-                .background { accountGlassCapsule(active: app.accountTab == key) }
-                .foregroundStyle(app.accountTab == key ? app.palette.paper : app.palette.ink)
-        }
-        .buttonStyle(.plain)
-        // iPhone fix pass (2026-09-27, post-ec06c78), Issue 3 — Account
-        // (`.profile`) is a root dock screen, so RootView's own
-        // `tabSwipeGesture` (`DragGesture(minimumDistance: 8)`) is attached
-        // as a `.simultaneousGesture` across this ENTIRE screen, including
-        // this tab row. A `.simultaneousGesture` ancestor and a descendant
-        // Button are each supposed to recognize independently, but a real
-        // tap's own small incidental finger movement — worse mid an active
-        // root-tab cross-fade `.animation`, when SwiftUI is already busy
-        // resolving this same drag recognizer for the transition itself —
-        // can leave the Button's own tap waiting on that ancestor gesture
-        // to first conclude "not a drag" before committing, reading as a
-        // dropped or delayed tap. `.highPriorityGesture(TapGesture())`
-        // gives this row's own tap unconditional priority the instant a
-        // touch ends without crossing tabSwipeGesture's own commit
-        // distance — the same "more specific interaction wins outright"
-        // precedence this file's `edgeSwipe` already establishes over
-        // whatever's underneath it. Assigning the same `app.accountTab`
-        // value the Button's own action also sets is idempotent — never a
-        // double-toggle — so both handlers safely agree.
-        .highPriorityGesture(TapGesture().onEnded {
-            if !app.isRootSwipeActive {
-                if app.accountTab != key { Haptics.selection(); app.accountScrollAnchorIDByTab[key] = nil }
-                app.accountTab = key
-            }
-        })
-        .accessibilityIdentifier("account.tab.\(key)")
     }
 
     // Account extension (2026-09-27, Stage 3) — the one recognizable "Số

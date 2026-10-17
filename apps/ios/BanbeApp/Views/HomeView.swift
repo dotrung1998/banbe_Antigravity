@@ -379,27 +379,12 @@ struct HomeView: View {
 
     // MARK: Header
 
+    /// Native system glass (note 45). A selected chip/capsule is the same
+    /// glass tinted with the ink colour, so selection reads without any
+    /// hand-tuned opacity. Follows iOS Settings (Liquid Glass / Reduce Transparency).
     @ViewBuilder
     private func homeGlassCapsule(active: Bool = false) -> some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer {
-                Capsule()
-                    .fill(active
-                          ? app.palette.ink.opacity(0.92)
-                          : app.palette.ink.opacity(0.04 + 0.20 * app.glassOpacity))
-                    .glassEffect(.regular.interactive(), in: Capsule())
-                      .opacity(active ? 1 : app.glassOpacity)
-            }
-        } else {
-            if active {
-                Capsule().fill(app.palette.ink)
-            } else {
-                Capsule()
-                    .fill(app.palette.ink.opacity(0.04 + 0.20 * app.glassOpacity))
-                    .background(.thinMaterial, in: Capsule())
-                    .opacity(app.glassOpacity)
-            }
-        }
+        Color.clear.nativeGlassCapsule(interactive: true, tint: active ? app.palette.ink : nil)
     }
 
     // Task 2c (2026-09-21 follow-up) — a quick Appearance (light/dark)
@@ -416,40 +401,56 @@ struct HomeView: View {
     /// With the shortcuts the row can get tight on narrow iPhones, so it degrades in a fixed order
     /// (ViewThatFits): full -> drop the "Home" title -> smaller wordmark. Every control keeps a 44pt
     /// touch target and the search button never moves.
+    /// The "Home" title never drops (note 45): with the streak/coins capsule, the bell and the
+    /// search button the row gets tight on narrower phones, so it shrinks in a fixed order
+    /// (ViewThatFits) — controls to 46/44pt, then the wordmark and title step down, and only as a
+    /// last resort the wordmark goes (the title stays). Every control keeps a 44pt touch target.
     @ViewBuilder
     private var headerTopRow: some View {
-        if rewardShortcutsVisible {
-            ViewThatFits(in: .horizontal) {
-                headerTopRow(wordmark: 96, showTitle: true)
-                headerTopRow(wordmark: 96, showTitle: false)
-                headerTopRow(wordmark: 80, showTitle: false)
-            }
-        } else {
-            headerTopRow(wordmark: BanbeLogo.headerWordmarkWidth, showTitle: true)
+        ViewThatFits(in: .horizontal) {
+            // The logo stays at the shared header size (112pt, as Account/Messages/Schedule) as long
+            // as possible — the controls on the right shrink first.
+            headerTopRow(wordmark: BanbeLogo.headerWordmarkWidth, titleSize: 27, control: 52)
+            headerTopRow(wordmark: BanbeLogo.headerWordmarkWidth, titleSize: 27, control: 42, compact: true)
+            headerTopRow(wordmark: BanbeLogo.headerWordmarkWidth, titleSize: 27, control: 36, compact: true, spacing: 3)
+            headerTopRow(wordmark: BanbeLogo.headerWordmarkWidth, titleSize: 24, control: 34, compact: true, spacing: 2)
+            headerTopRow(wordmark: 96, titleSize: 27, control: 46)
+            headerTopRow(wordmark: 80, titleSize: 24, control: 46)
+            headerTopRow(wordmark: 70, titleSize: 22, control: 44, spacing: 4)
+            headerTopRow(wordmark: 58, titleSize: 21, control: 44, spacing: 3)
+            headerTopRow(wordmark: nil, titleSize: 24, control: 44)
         }
     }
 
-    private func headerTopRow(wordmark: CGFloat, showTitle: Bool) -> some View {
-        HStack(alignment: .center, spacing: 6) {
-            HStack(spacing: 10) {
-                BanbeLogo(kind: .wordmark, width: wordmark)
-                if showTitle {
-                    // Home-specific label, same font/color as the other sections' titles.
-                    Text(app.T("Nhà", "Home"))
-                        .font(BanbeTheme.display(27))
-                        .foregroundStyle(app.palette.ink)
-                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                }
+    private func headerTopRow(wordmark: CGFloat?, titleSize: CGFloat, control: CGFloat, compact: Bool = false, spacing: CGFloat = 6) -> some View {
+        HStack(alignment: .center, spacing: spacing) {
+            HStack(spacing: wordmark.map { $0 > 90 ? 10 : (spacing < 5 ? 4 : 6) } ?? 0) {
+                if let wordmark { BanbeLogo(kind: .wordmark, width: wordmark) }
+                // Home-specific label, same font/color as the other sections' titles.
+                Text(app.T("Nhà", "Home"))
+                    .font(BanbeTheme.display(titleSize))
+                    .foregroundStyle(app.palette.ink)
+                    .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("home.title")
             }
             Spacer(minLength: 0)
-            if rewardShortcutsVisible { rewardShortcuts }
-            // Search lives in the header's top-right corner, part of the fixed header.
-            HomeSearchButton()
+            if rewardShortcutsVisible { rewardShortcuts(compact: compact, height: control) }
+            // Note 44 — Notifications left the dock for Schedule; its bell (and
+            // unread badge) lives here, always visible on Home.
+            // Below 44pt the visible circle shrinks but the touch target stays 44pt (the
+            // neighbouring targets overlap only their empty margins).
+            HomeNotificationsButton(size: control)
+                .frame(width: max(control, 44), height: max(control, 44))
+                .padding(.horizontal, -(max(44 - control, 0) / 2))
+            HomeSearchButton(size: control)
+                .frame(width: max(control, 44), height: max(control, 44))
+                .padding(.horizontal, -(max(44 - control, 0) / 2))
         }
     }
 
     /// One glass capsule, two separate buttons (streak, coins), both opening Account > Rewards & badges.
-    private var rewardShortcuts: some View {
+    private func rewardShortcuts(compact: Bool, height: CGFloat) -> some View {
         let sum = app.rewardsSummary ?? RewardSummary(balance: 0, streak: 0, activeToday: false)
         return HStack(spacing: 0) {
             Button {
@@ -457,10 +458,10 @@ struct HomeView: View {
                 app.openRewards(from: .home)
             } label: {
                 HStack(spacing: 4) {
-                    Text("🔥").font(.system(size: 16)).opacity(sum.streak > 0 ? 1 : 0.45).accessibilityHidden(true)
-                    Text("\(sum.streak)").font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                    Text("🔥").font(.system(size: compact ? 14 : 16)).opacity(sum.streak > 0 ? 1 : 0.45).accessibilityHidden(true)
+                    Text("\(sum.streak)").font(.system(size: compact ? 12 : 13, weight: .semibold)).monospacedDigit()
                 }
-                .padding(.horizontal, 8).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                .padding(.horizontal, compact ? 5 : 8).frame(minWidth: compact ? 36 : 44, minHeight: compact ? max(height, 34) : 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(app.T("Chuỗi \(sum.streak) ngày. Mở phần thưởng", "\(sum.streak)-day streak. Open rewards"))
@@ -471,10 +472,10 @@ struct HomeView: View {
                 app.openRewards(from: .home)
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: "circle.hexagongrid.circle").font(.system(size: 15, weight: .medium)).accessibilityHidden(true)
-                    Text(RewardsLogic.compactCoins(sum.balance)).font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                    Image(systemName: "circle.hexagongrid.circle").font(.system(size: compact ? 13 : 15, weight: .medium)).accessibilityHidden(true)
+                    Text(RewardsLogic.compactCoins(sum.balance)).font(.system(size: compact ? 12 : 13, weight: .semibold)).monospacedDigit()
                 }
-                .padding(.horizontal, 8).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                .padding(.horizontal, compact ? 5 : 8).frame(minWidth: compact ? 36 : 44, minHeight: compact ? max(height, 34) : 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(app.T("\(sum.balance) xu. Mở phần thưởng và huy hiệu", "\(sum.balance) coins. Open rewards and badges"))
@@ -482,7 +483,6 @@ struct HomeView: View {
         }
         .foregroundStyle(app.palette.ink)
         .background { homeGlassCapsule() }
-        .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
         .fixedSize()
     }
 
@@ -512,7 +512,6 @@ struct HomeView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .padding(.horizontal, 12).padding(.vertical, 7)
                         .background { homeGlassCapsule() }
-                        .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
                         .buttonStyle(HomeControlPressStyle())
                         .accessibilityIdentifier("header.lang")
                     // "banbe ▪︎" prefix dropped (2026-09-29 follow-up) — was
@@ -542,13 +541,8 @@ struct HomeView: View {
                             .font(.system(size: 13, weight: .semibold))
                             .padding(.horizontal, 12).padding(.vertical, 7)
                             .background { homeGlassCapsule() }
-                            .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
-                            .foregroundStyle(app.palette.ink)
+                                .foregroundStyle(app.palette.ink)
                     }
-                    // A system Menu keeps its label rendered from the last build until its identity changes, so the glass
-                    // (which follows Preferences' Liquid Glass slider) stayed at the old opacity. Keying the Menu on the
-                    // setting rebuilds the label whenever it changes.
-                    .id("header.area.glass.\(Int((app.glassOpacity * 100).rounded()))")
                     .accessibilityIdentifier("header.area")
                     // No `toggleTheme()` exists on iOS — Preferences.swift's
                     // own theme picker already uses `pickTheme(_:)` directly
@@ -562,8 +556,7 @@ struct HomeView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .padding(.horizontal, 12).padding(.vertical, 7)
                     .background { homeGlassCapsule() }
-                    .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
-                    .buttonStyle(HomeControlPressStyle())
+                                .buttonStyle(HomeControlPressStyle())
                     .accessibilityIdentifier("header.theme")
                 }
                 .fixedSize(horizontal: true, vertical: false)
@@ -1174,7 +1167,6 @@ struct HomeView: View {
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .foregroundStyle(active ? app.palette.paper : app.palette.ink)
                             .background { homeGlassCapsule(active: active) }
-                            .overlay(Capsule().stroke(active ? .clear : app.palette.rule.opacity(0.7), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("filter.\(filter.key)")
@@ -1218,7 +1210,6 @@ struct HomeView: View {
                         .padding(.horizontal, 12).padding(.vertical, 6)
                         .foregroundStyle(chip.active ? app.palette.paper : app.palette.ink)
                         .background { homeGlassCapsule(active: chip.active) }
-                        .overlay(Capsule().stroke(chip.active ? app.palette.ink : .clear, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("filter.\(chip.key.lowercased())")
@@ -1519,10 +1510,46 @@ private struct PulseRingGlyph: View {
 /// Home's search button — top-right of the fixed header, always visible
 /// (it no longer floats above the dock or hides when the feed scrolls), in a
 /// larger Liquid Glass circle so it reads clearly against the paper.
+/// Home header bell → Notifications (back returns Home). Unread count is
+/// text in a badge AND in the spoken label, never colour alone.
+struct HomeNotificationsButton: View {
+    @EnvironmentObject private var app: AppState
+    var size: CGFloat = 52
+
+    var body: some View {
+        SwipeSafeButton {
+            Haptics.light()
+            app.goNotifications(back: .home)
+        } label: {
+            NotificationsGlyph(color: app.palette.ink, filled: false)
+                .frame(width: 24, height: 24)
+                .frame(width: size, height: size)
+                .background { Color.clear.nativeGlass(Circle(), interactive: true) }
+                .overlay(alignment: .topTrailing) {
+                    if app.unreadNotifications > 0 {
+                        Text(app.unreadNotifications > 99 ? "99+" : "\(app.unreadNotifications)")
+                            .font(.system(size: 11, weight: .bold)).monospacedDigit()
+                            .foregroundStyle(BanbeTheme.onAlert)
+                            .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
+                            .background(BanbeTheme.alert, in: Capsule())
+                            .offset(x: 2, y: -2)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("home.notifications")
+        .accessibilityLabel(app.unreadNotifications > 0
+            ? app.T("Thông báo, \(app.unreadNotifications) chưa đọc", "Notifications, \(app.unreadNotifications) unread")
+            : app.T("Thông báo", "Notifications"))
+    }
+}
+
 struct HomeSearchButton: View {
     @EnvironmentObject private var app: AppState
 
-    private static let size: CGFloat = 52
+    var size: CGFloat = 52
 
     var body: some View {
         SwipeSafeButton {
@@ -1532,7 +1559,7 @@ struct HomeSearchButton: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 21, weight: .semibold))
                 .foregroundStyle(app.palette.ink)
-                .frame(width: Self.size, height: Self.size)
+                .frame(width: size, height: size)
                 .background { glass }
                 .contentShape(Circle())
         }
@@ -1543,18 +1570,6 @@ struct HomeSearchButton: View {
 
     @ViewBuilder
     private var glass: some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer {
-                Circle()
-                    .fill(.clear)
-                    .glassEffect(.regular.interactive(), in: Circle())
-            }
-            .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
-        } else {
-            Circle()
-                .fill(.thinMaterial)
-                .overlay(Circle().strokeBorder(app.palette.ink.opacity(0.10)))
-                .shadow(color: .black.opacity(0.14), radius: 10, x: 0, y: 4)
-        }
+        Color.clear.nativeGlass(Circle(), interactive: true)
     }
 }

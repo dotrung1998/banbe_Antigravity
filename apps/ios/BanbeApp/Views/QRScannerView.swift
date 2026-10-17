@@ -87,17 +87,7 @@ struct QRScannerView: View {
 
             controls
         }
-        .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: 26, style: .continuous).fill(app.palette.paper.opacity(0.92))
-                if #available(iOS 26.0, *) {
-                    GlassEffectContainer {
-                        Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                            .opacity(app.glassOpacity)
-                    }
-                }
-            }
-        }
+        .nativeGlassPanel(cornerRadius: 26)
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(Color.white.opacity(0.18), lineWidth: 1))
         .shadow(color: .black.opacity(0.28), radius: 22, y: 12)

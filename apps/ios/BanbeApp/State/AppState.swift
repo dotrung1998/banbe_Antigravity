@@ -27,6 +27,9 @@ enum Screen: String {
     case surveysHosting
     case helpGuide, helpFaq
     case eventPreferences
+    // Note 44 — signed-out public entry, and the Schedule dock tab.
+    case welcome
+    case schedule
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -311,6 +314,27 @@ final class AppState: ObservableObject {
     @Published var storyReturnHostName: String?
     @Published var authReturnScreen: Screen = .home
     @Published var authBackScreen: Screen = .home
+    /// Which Login tab the next Login screen opens on (note 44) — an explicit
+    /// route intent instead of LoginView's own default.
+    @Published var authIntent: AuthEntryIntent = .login
+    /// Typed email / display name survive Back to the welcome screen and a
+    /// Login ↔ Sign up switch. Never passwords or codes. Cleared on sign-in.
+    @Published var authDraftEmail = ""
+    @Published var authDraftName = ""
+    /// Direction of the last public-entry/auth move, for AuthMotion.
+    @Published var authNavForward = true
+    /// Where Notifications returns to now that it is not a dock tab.
+    @Published var notificationsBack: Screen = .home
+    // Schedule tab (note 44) — session state only; reset on sign-out.
+    @Published var scheduleMode: ScheduleMode = .mine
+    @Published var scheduleSelectedDate = Date()
+    /// Device-local "Add to banbe Schedule" keys for the signed-in account.
+    @Published var scheduleAddedKeys: [String] = []
+    // Perf (note 45): AppState republishes `now` every second and every screen
+    // observing it re-evaluates, so Schedule's derived data is memoized (not
+    // @Published — it is a pure cache) and its loads are throttled.
+    var scheduleCache: (key: Int, value: ScheduleSnapshot)?
+    var scheduleLoadedAt: Date?
     /// True only when Login was reached by force (the mandatory post-
     /// splash/post-onboarding gate, or the guard in RootView catching an
     /// unauthenticated screen change) rather than a deliberate "sign in to
@@ -338,7 +362,7 @@ final class AppState: ObservableObject {
     // pre-existing gap, out of scope in the prior ticket); now directly
     // in scope, since a signed-out Team page visitor must be able to tap
     // a member card through to their public profile.
-    static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .login, .policy, .organizerProfile, .organizerTeam, .publicProfile, .surveyPublic]
+    static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .welcome, .login, .policy, .organizerProfile, .organizerTeam, .publicProfile, .surveyPublic]
 
     // MARK: - Screenshot Catalog (docs/demo-screenshots)
     // Test-only launch flags for `scripts/capture_ios_catalog.sh` /
@@ -398,12 +422,6 @@ final class AppState: ObservableObject {
     }
     @Published var theme: String = UserDefaults.standard.string(forKey: "banbe.theme") ?? "light" {
         didSet { UserDefaults.standard.set(theme, forKey: "banbe.theme") }
-    }
-    /// Local appearance preference for the native Liquid Glass surfaces.
-    /// Kept device-local because the glass effect is an iOS presentation
-    /// setting, not profile data shared with the web client.
-    @Published var glassOpacity: Double = UserDefaults.standard.object(forKey: "banbe.glassOpacity") as? Double ?? 0.82 {
-        didSet { UserDefaults.standard.set(glassOpacity, forKey: "banbe.glassOpacity") }
     }
     // Location hierarchy (migration 112) — now a `LocationHierarchy` node
     // ID ("all", "c:VN", "c:VN|a:Quận 1", …) instead of one of six
@@ -1153,6 +1171,9 @@ final class AppState: ObservableObject {
 
     // MARK: Payments & documents (supabase migration 024)
     @Published var paymentBookings: [PayableBooking] = []
+    /// The last bookings load failed (the list is emptied as before; this only
+    /// lets Schedule say so honestly instead of showing "no plans").
+    @Published var paymentBookingsLoadFailed = false
     @Published var paymentsLoading = false
     @Published var paymentBookingID: UUID?
     @Published var paymentCopied = ""
@@ -2041,6 +2062,9 @@ final class AppState: ObservableObject {
     private var chatPollTimer: Timer?
 
     init() {
+        // Note 45 — the in-app Liquid Glass opacity setting is gone (glass now
+        // follows the system); drop the value an older build stored.
+        UserDefaults.standard.removeObject(forKey: "banbe.glassOpacity")
         locationService.onUpdate = { [weak self] coords in
             self?.userCoords = coords
         }
@@ -2455,7 +2479,7 @@ final class AppState: ObservableObject {
     // realEventsByID cache the weekend section and `currentEvent` use — see
     // resolvedEvent(for:). `nil` here (still loading) is skipped quietly,
     // never flashed as "unavailable".
-    private func resolvedEvent(for key: String) -> CatalogEvent? {
+    func resolvedEvent(for key: String) -> CatalogEvent? {
         if let catalogEvent = EventCatalog.all.first(where: { $0.key == key }) {
             return withLive(catalogEvent)
         }
@@ -2600,14 +2624,13 @@ final class AppState: ObservableObject {
         // building a general route-restoration system this ticket didn't
         // ask for. Only trusted when actually signed in.
         let restored: Screen? = isSignedIn ? Self.restorableScreen(from: UserDefaults.standard.string(forKey: "banbe.lastScreen")) : nil
-        let target: Screen = restored ?? .home
-        if isSignedIn {
-            screen = target
-        } else {
-            screen = .login
-            authMandatory = true
-            authReturnScreen = target
-            authBackScreen = target
+        // Note 44 — signed out lands on the single public welcome screen,
+        // whose "Log in" is one tap; signed in never sees it.
+        screen = PublicEntryRouting.destination(isSignedIn: isSignedIn, restored: restored)
+        if !isSignedIn {
+            authMandatory = false
+            authReturnScreen = .home
+            authBackScreen = .welcome
         }
     }
 
@@ -2848,6 +2871,10 @@ final class AppState: ObservableObject {
     // whichever row of its "Current events" list is tapped, including the
     // event you arrived from (that list contains it too).
     func goEvent(_ key: String) {
+        #if DEBUG
+        // Fixtures (App/UITestFixtures.swift) never touch the network.
+        if UITestFixture.isActive { eventKey = key; noteEventOpened(); screen = .event; return }
+        #endif
         // A fresh, non-story-originated event open discards any RETAINED
         // story viewer (BUG 1, 2026-09-22 tenth follow-up: `storyViewer`
         // now stays live/retained across an event opened FROM a story —
@@ -3354,7 +3381,29 @@ final class AppState: ObservableObject {
     func requireAuth(returnTo: Screen, backTo: Screen) {
         authReturnScreen = returnTo
         authBackScreen = backTo
+        authNavForward = true
         screen = .login
+    }
+
+    /// Welcome → Login, preselected. No intermediate pages for "Log in".
+    func openAuth(_ intent: AuthEntryIntent, from origin: Screen = .welcome) {
+        authIntent = intent
+        authBackScreen = origin
+        authMandatory = false
+        authNavForward = true
+        screen = .login
+    }
+
+    /// Login's Back (link or edge): reverse direction, keep typed email/name.
+    func backFromLogin() {
+        authNavForward = false
+        screen = authBackScreen
+    }
+
+    func clearAuthDraft() {
+        authDraftEmail = ""
+        authDraftName = ""
+        authIntent = .login
     }
 
     /// Whether an edge swipe should do anything on the current screen — the
@@ -3403,7 +3452,7 @@ final class AppState: ObservableObject {
 
     var canSwipeBack: Bool {
         switch screen {
-        case .splash, .langPick, .themePick, .home, .login: return false
+        case .splash, .langPick, .themePick, .home, .login, .welcome: return false
         case .create: return !isCreateReviewOpen
         default: return true
         }
@@ -3453,9 +3502,11 @@ final class AppState: ObservableObject {
         // no longer always `.profile` — `editNameReturnScreen` (set by
         // `goEditName()`, see its own comment) tracks whichever one it was.
         case .editName: screen = editNameReturnScreen
-        case .login: screen = authBackScreen
+        case .login: backFromLogin()
         case .confirmed: screen = confirmedBack
-        case .refunded, .notifications: goHome()
+        case .refunded: goHome()
+        case .notifications: screen = notificationsBack
+        case .schedule: goHome()
         case .paymentDetails: screen = paymentDetailsBackTarget
         case .billing: screen = .paymentDetails
         // Sub-section-of-a-group back-navigation fix (2026-09-29, second
@@ -3554,6 +3605,10 @@ final class AppState: ObservableObject {
         case .accountGroup: return accountGroupTitle(for: accountGroupKey)
         case .notifications: return T("Thông báo", "Notifications")
         case .event: return T("Sự kiện", "Event")
+        case .home: return T("Trang chính", "Home")
+        case .schedule: return T("Lịch", "Schedule")
+        case .inbox: return T("Tin nhắn", "Messages")
+        case .mapExplore: return T("Bản đồ", "Map")
         default: return T("Tài khoản", "Account")
         }
     }
@@ -3586,7 +3641,8 @@ final class AppState: ObservableObject {
         case .editName: return editNameReturnScreen
         case .login: return authBackScreen
         case .confirmed: return confirmedBack
-        case .refunded, .notifications: return .home
+        case .refunded, .schedule: return .home
+        case .notifications: return notificationsBack
         case .paymentDetails: return paymentDetailsBackTarget
         case .billing: return .paymentDetails
         case .payout: return accountSubBack

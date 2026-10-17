@@ -35,8 +35,6 @@
 	<string></string>
 	<key>MEDIA_R2_READS</key>
 	<string></string>
-	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>banbe adds an event to your calendar when you tap "Add to Calendar" on a ticket.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>banbe uses your camera to scan a guest's ticket QR code at check-in, and to attach a photo to a chat message.</string>
 	<key>NSFaceIDUsageDescription</key>

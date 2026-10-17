@@ -127,7 +127,7 @@ final class InteractionPrecedenceUITests: XCTestCase {
         app.buttons["tab.inbox"].tap()
         XCTAssertTrue(app.otherElements["screen.inbox"].waitForExistence(timeout: 5))
 
-        // dockOrder is [home, map, notifications, inbox, profile] — a
+        // dockOrder is [home, map, schedule, inbox, profile] — a
         // leftward swipe (negative translation) commits to the NEXT tab,
         // profile. dy=0.06 lands well inside the header/search-and-
         // settings row, above where the List's rows begin.
@@ -179,7 +179,7 @@ final class InteractionPrecedenceUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["screen.inbox"].waitForExistence(timeout: 3),
                       "Opening a row's actions menu must never trigger root-tab navigation")
         XCTAssertFalse(app.otherElements["screen.profile"].exists)
-        XCTAssertFalse(app.otherElements["screen.notifications"].exists)
+        XCTAssertFalse(app.otherElements["screen.schedule"].exists)
     }
 
     @discardableResult
@@ -188,7 +188,7 @@ final class InteractionPrecedenceUITests: XCTestCase {
         app.launchArguments += ["-banbe.onboarded", "YES"]
         app.launch()
 
-        if app.otherElements["screen.login"].waitForExistence(timeout: 45) {
+        if app.reachLogin(timeout: 45) {
             app.buttons["login.method.password"].tap()
             let email = app.textFields["login.email"]
             XCTAssertTrue(email.waitForExistence(timeout: 5))

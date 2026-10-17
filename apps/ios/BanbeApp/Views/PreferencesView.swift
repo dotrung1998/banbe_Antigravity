@@ -49,11 +49,14 @@ struct PreferencesView: View {
                            active: app.theme == "dark") { app.pickTheme("dark") }
                         .accessibilityIdentifier("pref.theme.dark")
 
-                    liquidGlassPreview
-                    .foregroundStyle(app.palette.ink)
-                    .padding(.horizontal, 18).padding(.vertical, 15)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+                    // Note 45 — glass follows iOS Settings (Display & Brightness >
+                    // Liquid Glass, Reduce Transparency); no in-app setting.
+                    Text(app.T("Hiệu ứng kính (Liquid Glass) theo cài đặt của iPhone: Cài đặt > Màn hình & Độ sáng.",
+                               "Glass effects follow your iPhone's own setting: Settings > Display & Brightness."))
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(app.palette.ink.opacity(0.68))
+                        .lineSpacing(3)
+                        .accessibilityIdentifier("pref.glassNote")
                 }
 
                 section(app.T("Phản hồi xúc giác", "Haptic Feedback")) {
@@ -107,96 +110,6 @@ struct PreferencesView: View {
             )
         }
         .buttonStyle(.plain)
-    }
-
-    private var liquidGlassPreview: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(app.T("Liquid Glass", "Liquid Glass"))
-                    .font(BanbeTheme.display(17))
-                Spacer()
-                Text("\(Int(app.glassOpacity * 100))%")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(app.palette.ink.opacity(0.65))
-            }
-
-            ZStack(alignment: .bottom) {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(app.palette.paper)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .stroke(app.palette.rule, lineWidth: 1)
-                    }
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(app.T("Khu vực", "Area"))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(app.palette.ink.opacity(0.6))
-                    Text(app.currentAreaLabel)
-                        .font(BanbeTheme.display(22))
-                    Text(app.T("Chạm để mở bộ lọc khu vực", "Tap to open the area filter"))
-                        .font(.system(size: 12))
-                        .foregroundStyle(app.palette.ink.opacity(0.62))
-                    HStack(spacing: 8) {
-                        previewCapsule(app.T("Khu vực", "Area"))
-                    }
-                }
-                .padding(18)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(height: 170)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-
-            HStack(spacing: 10) {
-                Image(systemName: "square.on.square")
-                    .font(.system(size: 20))
-                    .foregroundStyle(app.palette.ink.opacity(0.58))
-                    .accessibilityHidden(true)
-                Slider(value: $app.glassOpacity, in: 0.0...1.0, step: 0.05)
-                    .tint(app.palette.ink)
-                    .accessibilityIdentifier("pref.glassOpacity")
-                    .accessibilityLabel(app.T("Độ trong Liquid Glass", "Liquid Glass opacity"))
-                    .accessibilityValue("\(Int(app.glassOpacity * 100))%")
-                Image(systemName: "rectangle.on.rectangle")
-                    .font(.system(size: 20))
-                    .foregroundStyle(app.palette.ink.opacity(0.58))
-                    .accessibilityHidden(true)
-            }
-            Text(app.T(
-                "Trong suốt hơn giúp nền hiển thị rõ hơn; đậm hơn tăng độ tương phản cho nội dung và nút.",
-                "Clear is more transparent; tinted increases opacity and contrast for content and controls."
-            ))
-            .font(.system(size: 12.5))
-            .foregroundStyle(app.palette.ink.opacity(0.68))
-            .lineSpacing(3)
-        }
-        .foregroundStyle(app.palette.ink)
-        .padding(.horizontal, 18).padding(.vertical, 15)
-        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
-    }
-
-    @ViewBuilder
-    private func previewCapsule(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 11.5, weight: .semibold))
-            .foregroundStyle(app.palette.ink)
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background {
-                if #available(iOS 26.0, *) {
-                    GlassEffectContainer {
-                        Capsule()
-                            .fill(app.palette.ink.opacity(0.04 + 0.20 * app.glassOpacity))
-                            .glassEffect(.regular.interactive(), in: Capsule())
-                            .opacity(app.glassOpacity)
-                    }
-                } else {
-                    Capsule()
-                        .fill(app.palette.ink.opacity(0.04 + 0.20 * app.glassOpacity))
-                        .background(.thinMaterial, in: Capsule())
-                        .opacity(app.glassOpacity)
-                }
-            }
-            .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
     }
 }
 

@@ -185,9 +185,9 @@ struct AreaMenuOptions: View {
 }
 
 extension View {
-    /// The floating Liquid Glass card used by Home's area picker (26pt
-    /// corners, glass fill following `glassOpacity`, hairline stroke), shared
-    /// so Map's picker looks identical.
+    /// The floating native glass card used by Home's area picker, shared so
+    /// Map's picker looks identical. Pure system glass (note 45): it follows
+    /// iOS Settings, with only a hairline for definition.
     func glassPanel() -> some View { modifier(GlassPanelModifier()) }
 }
 
@@ -196,22 +196,7 @@ private struct GlassPanelModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .background {
-                if #available(iOS 26.0, *) {
-                    GlassEffectContainer {
-                        RoundedRectangle(cornerRadius: 26, style: .continuous)
-                            .fill(.clear)
-                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                            .opacity(app.glassOpacity)
-                    }
-                } else {
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .fill(app.palette.paper.opacity(0.28 * app.glassOpacity))
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                        .opacity(app.glassOpacity)
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .nativeGlassPanel(cornerRadius: 26)
             .overlay {
                 RoundedRectangle(cornerRadius: 26, style: .continuous)
                     .stroke(app.palette.rule.opacity(0.65), lineWidth: 1)

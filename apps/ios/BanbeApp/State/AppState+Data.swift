@@ -1,6 +1,5 @@
 import Foundation
 import Supabase
-import EventKit
 import UIKit
 import Photos
 import CoreLocation
@@ -436,6 +435,10 @@ extension AppState {
     /// preferences and this account's real bookings/organizer events —
     /// the same work syncUser() does on the web.
     func applySession(_ session: Session?) async {
+        #if DEBUG
+        // The "shell" UI-test fixture mounts the real RootView on seeded signed-in state.
+        if UITestFixture.name?.hasPrefix("shell") == true { return }
+        #endif
         // Records WHICH session finished loading its account data, so the
         // splash can wait for it (a nil run at launch must not count for a
         // restored session that arrives a moment later).
@@ -494,10 +497,13 @@ extension AppState {
             paymentBookingsSeq += 1
             paymentBookings = []
             myRefunds = []
+            resetScheduleState()
             return
         }
         userID = session.user.id
         userEmail = session.user.email
+        refreshScheduleAdded()
+        clearAuthDraft()
         syncFollowOwner()
         syncRewardsOwner()
         // Once per session: the flag is reset on sign-out, so token refreshes
@@ -646,13 +652,13 @@ extension AppState {
         favorites = []
         homeSurveyDiscoveryExpanded = false
         await applySession(nil)
-        // Lands on Login, not Home — Task 1: no guest browsing after
-        // signing out. authMandatory since there's nothing legitimate left
-        // to go "back" to.
-        screen = .login
-        authMandatory = true
+        // Note 44 — lands on the single public welcome screen (one tap to Log
+        // in from there), not straight into Login. Still no guest browsing.
+        authNavForward = false
+        screen = .welcome
+        authMandatory = false
         authReturnScreen = .home
-        authBackScreen = .home
+        authBackScreen = .welcome
         // TASK 4 (Reserve→edit-name pass) — clear the return context, same
         // belt-and-suspenders spirit as authReturnScreen/authBackScreen
         // above, so a later sign-in never inherits a stale return target.
@@ -1674,7 +1680,10 @@ extension AppState {
 
     // MARK: - Notifications
 
-    func goNotifications() {
+    /// Notifications is no longer a dock tab (Schedule took its slot, note 44),
+    /// so it is a pushed screen that returns where it was opened from.
+    func goNotifications(back: Screen? = nil) {
+        if screen != .notifications { notificationsBack = back ?? screen }
         screen = .notifications
         Task { await loadNotifications() }
     }
@@ -2876,41 +2885,9 @@ extension AppState {
         return f.string(from: d)
     }
 
-    /// EventKit — the real Apple Calendar path. Requests access every time
-    /// (EKEventStore itself no-ops instantly if already granted; this also
-    /// means a user who denied it the first time gets a fresh chance to
-    /// reconsider rather than being silently stuck forever).
-    func addToCalendarApple(_ event: CatalogEvent) {
-        let store = EKEventStore()
-        Task {
-            do {
-                let granted: Bool
-                if #available(iOS 17.0, *) {
-                    granted = try await store.requestFullAccessToEvents()
-                } else {
-                    granted = try await store.requestAccess(to: .event)
-                }
-                guard granted else {
-                    calendarError = T("banbe cần quyền truy cập Lịch để thêm sự kiện này. Bật trong Cài đặt > banbe > Lịch.",
-                                      "banbe needs Calendar access to add this event. Turn it on in Settings > banbe > Calendar.")
-                    return
-                }
-                let ekEvent = EKEvent(eventStore: store)
-                ekEvent.title = event.name
-                ekEvent.startDate = event.startDate ?? Date()
-                ekEvent.endDate = ekEvent.startDate.addingTimeInterval(2 * 60 * 60)
-                ekEvent.location = event.locationLabel ?? event.where
-                ekEvent.notes = event.desc
-                ekEvent.calendar = store.defaultCalendarForNewEvents
-                try store.save(ekEvent, span: .thisEvent)
-                calAdded = true
-                calendarPickerEvent = nil
-            } catch {
-                print("addToCalendarApple failed:", error)
-                calendarError = T("Không thể thêm vào lịch. Thử lại nhé.", "Couldn't add to your calendar. Please try again.")
-            }
-        }
-    }
+    // Apple Calendar export moved to the system event editor (note 44,
+    // Lib/CalendarExport.swift): it needs no calendar permission and never
+    // writes silently. The old path here requested FULL calendar access.
 
     // MARK: - Chat
 

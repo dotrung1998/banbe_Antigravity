@@ -17,17 +17,19 @@ struct BottomTabBar: View {
     @EnvironmentObject var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    static let visibleScreens: Set<Screen> = [.home, .mapExplore, .notifications, .inbox, .profile]
+    // Note 44 — Schedule took Notifications' slot (still exactly five items;
+    // Notifications moved to the Home header bell + Account, never removed).
+    static let visibleScreens: Set<Screen> = [.home, .mapExplore, .schedule, .inbox, .profile]
     // Stage 2 (2026-09-27 nav/discovery pass) — the ordered list RootView's
     // own root-tab swipe gesture navigates through; must match this file's
     // own `items` order exactly (that array can't be reused directly — it's
     // built with @EnvironmentObject-dependent actions/labels below).
-    static let dockOrder: [Screen] = [.home, .mapExplore, .notifications, .inbox, .profile]
+    static let dockOrder: [Screen] = [.home, .mapExplore, .schedule, .inbox, .profile]
     static func goto(_ screen: Screen, app: AppState) {
         switch screen {
         case .home: app.goHome()
         case .mapExplore: app.goMapExplore()
-        case .notifications: app.goNotifications()
+        case .schedule: app.goSchedule()
         case .inbox: app.goInbox()
         case .profile: app.goProfile()
         default: break
@@ -133,7 +135,7 @@ struct BottomTabBar: View {
         [
             Item(id: "home", icon: { AnyView(HomeGlyph(color: $0, filled: $1)) }, label: app.T("Trang chính", "Home"), action: { app.goHome() }, badge: 0),
             Item(id: "map", icon: { AnyView(MapGlyph(color: $0, filled: $1)) }, label: app.T("Bản đồ", "Map"), action: { app.goMapExplore() }, badge: 0),
-            Item(id: "notifications", icon: { AnyView(NotificationsGlyph(color: $0, filled: $1)) }, label: app.T("Thông báo", "Notifications"), action: { app.goNotifications() }, badge: app.unreadNotifications, badgeCapped: true),
+            Item(id: "schedule", icon: { AnyView(ScheduleGlyph(color: $0, filled: $1)) }, label: app.T("Lịch", "Schedule"), action: { app.goSchedule() }, badge: 0),
             // Unread count: number of conversations with an unread message
             // — see refreshUnreadMessageCount() (AppState+Data.swift),
             // refreshed on the same 5s poll as unreadNotifications.
@@ -252,7 +254,7 @@ struct BottomTabBar: View {
         switch app.screen {
         case .home: activeID = "home"
         case .mapExplore: activeID = "map"
-        case .notifications: activeID = "notifications"
+        case .schedule: activeID = "schedule"
         case .inbox: activeID = "inbox"
         case .profile: activeID = "profile"
         default: activeID = nil
@@ -328,7 +330,7 @@ struct BottomTabBar: View {
         switch screen {
         case .home: return "home"
         case .mapExplore: return "map"
-        case .notifications: return "notifications"
+        case .schedule: return "schedule"
         case .inbox: return "inbox"
         case .profile: return "profile"
         default: return nil
@@ -726,6 +728,10 @@ enum RootTabOutline {
                 p.addCurve(to: CGPoint(x: 12 * s, y: 3 * s), control1: CGPoint(x: 18 * s, y: 5.6 * s), control2: CGPoint(x: 15.3 * s, y: 3 * s))
                 p.closeSubpath()
             }
+        case .schedule:
+            // Same outline as ScheduleGlyph's page.
+            return RoundedRectangle(cornerRadius: 3 * s, style: .continuous)
+                .path(in: CGRect(x: 4.5 * s, y: 5.5 * s, width: 15 * s, height: 14 * s))
         case .notifications:
             return Path { p in
                 p.move(to: CGPoint(x: 7 * s, y: 13.1 * s))
@@ -826,7 +832,8 @@ private struct MapGlyph: View {
     }
 }
 
-private struct NotificationsGlyph: View {
+/// The bell — no longer a dock icon (note 44); reused by Home's header bell.
+struct NotificationsGlyph: View {
     let color: Color
     var filled: Bool = false
     var body: some View {
@@ -848,6 +855,40 @@ private struct NotificationsGlyph: View {
                 if filled { bell.fill(color) } else { bell.stroke(color, style: StrokeStyle(lineWidth: 2.2 * s, lineJoin: .round)) }
                 Path { p in p.addArc(center: CGPoint(x: 12 * s, y: 18.6 * s), radius: 2.4 * s, startAngle: .degrees(0), endAngle: .degrees(180), clockwise: false) }
                     .stroke(color, style: StrokeStyle(lineWidth: 2 * s, lineCap: .round))
+            }
+        }
+    }
+}
+
+/// Schedule: a calendar page (rounded square, two binding rings, a header
+/// rule and one marked day). Same outline/filled convention as the others.
+private struct ScheduleGlyph: View {
+    let color: Color
+    var filled: Bool = false
+    var body: some View {
+        GeometryReader { geo in
+            let s = geo.size.width / 24
+            let page = RoundedRectangle(cornerRadius: 3 * s, style: .continuous)
+            ZStack {
+                if filled {
+                    page.fill(color).frame(width: 15 * s, height: 14 * s).position(x: 12 * s, y: 12.5 * s)
+                } else {
+                    page.stroke(color, lineWidth: 2.2 * s).frame(width: 15 * s, height: 14 * s).position(x: 12 * s, y: 12.5 * s)
+                }
+                let inner = filled ? Color(uiColor: .systemBackground) : color
+                Path { p in
+                    p.move(to: CGPoint(x: 5.5 * s, y: 10 * s)); p.addLine(to: CGPoint(x: 18.5 * s, y: 10 * s))
+                }
+                .stroke(inner, style: StrokeStyle(lineWidth: 1.8 * s, lineCap: .round))
+                Path { p in
+                    p.move(to: CGPoint(x: 8.5 * s, y: 3.5 * s)); p.addLine(to: CGPoint(x: 8.5 * s, y: 7 * s))
+                    p.move(to: CGPoint(x: 15.5 * s, y: 3.5 * s)); p.addLine(to: CGPoint(x: 15.5 * s, y: 7 * s))
+                }
+                .stroke(color, style: StrokeStyle(lineWidth: 2.2 * s, lineCap: .round))
+                RoundedRectangle(cornerRadius: 1 * s)
+                    .fill(inner)
+                    .frame(width: 3.4 * s, height: 3.4 * s)
+                    .position(x: 14.6 * s, y: 14.6 * s)
             }
         }
     }

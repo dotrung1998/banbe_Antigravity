@@ -10,9 +10,9 @@ struct ActivationChecklistCard: View {
     @State private var faceIDMessage = ""
     @State private var faceIDBusy = false
 
-    private var biometricsAvailable: Bool { BiometricAuthService.canAuthenticate() }
+    private var biometricsAvailable: Bool { BiometricAuthService.cachedAvailability.available }
     private var items: [ActivationChecklistItem] { ActivationChecklist.items(biometricsAvailable: biometricsAvailable) }
-    private var biometryName: String { BiometricAuthService.biometryType() == .touchID ? "Touch ID" : "Face ID" }
+    private var biometryName: String { BiometricAuthService.cachedAvailability.type == .touchID ? "Touch ID" : "Face ID" }
 
     private func done(_ item: ActivationChecklistItem) -> Bool {
         ActivationChecklist.isDone(item, state: app.activation, hasSavedEvent: !app.favorites.isEmpty,
@@ -20,8 +20,12 @@ struct ActivationChecklistCard: View {
     }
 
     var body: some View {
-        if ActivationChecklist.isVisible(state: app.activation, items: items,
+        // Cheap exit first: for almost everyone the checklist is off or dismissed, and this body
+        // re-runs every second with Home — it must cost nothing then.
+        if app.activation.enabled && !app.activation.dismissed,
+           ActivationChecklist.isVisible(state: app.activation, items: items,
                                          hasSavedEvent: !app.favorites.isEmpty, faceIDEnabled: auth.faceIDEnabled) {
+            let doneCount = items.filter(done).count
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(app.T("Bắt đầu với banbe", "Get started with banbe"))
@@ -29,11 +33,11 @@ struct ActivationChecklistCard: View {
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityIdentifier("activation.card")
                     Spacer()
-                    Text("\(items.filter(done).count)/\(items.count)")
+                    Text("\(doneCount)/\(items.count)")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(app.palette.ink.opacity(0.65))
-                        .accessibilityLabel(app.T("Đã xong \(items.filter(done).count) trên \(items.count)",
-                                                  "\(items.filter(done).count) of \(items.count) done"))
+                        .accessibilityLabel(app.T("Đã xong \(doneCount) trên \(items.count)",
+                                                  "\(doneCount) of \(items.count) done"))
                     Button { app.dismissActivationChecklist() } label: {
                         Image(systemName: "xmark").font(.footnote.weight(.semibold))
                             .frame(width: 44, height: 44).contentShape(Rectangle())

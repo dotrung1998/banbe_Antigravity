@@ -258,6 +258,10 @@ struct ReportsView: View {
             }
         }
         if !d.attentionFirst { attentionSection(d.attention) }
+        if !d.insights.isEmpty {
+            ReportSectionTitle(text: app.T("Phân tích", "Breakdown"))
+            ForEach(d.insights) { i in ReportInsightCard(insight: i) { open(i.metricKey) } }
+        }
         if !d.trends.isEmpty {
             ReportSectionTitle(text: app.T("Xu hướng", "Trends"))
             ForEach(d.trends) { m in ReportTrendCard(metric: m) { open(m.key) } }

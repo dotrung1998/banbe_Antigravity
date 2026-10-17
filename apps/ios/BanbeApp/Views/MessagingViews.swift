@@ -1538,9 +1538,13 @@ struct NotificationsView: View {
         ZStack {
         app.palette.paper.ignoresSafeArea()
         VStack(alignment: .leading, spacing: 0) {
+            // Note 44 — no longer a dock tab, so it needs its own way back.
+            BackLink(label: app.backLabel(for: app.notificationsBack)) { app.screen = app.notificationsBack }
+                .padding(.horizontal, 20).padding(.top, 12)
+                .accessibilityIdentifier("notifications.back")
             notificationsHeader
             ZStack {
-            ScreenScaffold(tracksBottomBarScroll: true, refreshIndicatorTopPadding: 16, onRefresh: { await app.loadNotifications() }) {
+            ScreenScaffold(tracksBottomBarScroll: false, refreshIndicatorTopPadding: 16, onRefresh: { await app.loadNotifications() }) {
                 VStack(alignment: .leading, spacing: 0) {
                     if selectionMode, !app.selectedNotificationIDs.isEmpty {
                         HStack {

@@ -137,6 +137,7 @@ struct ReportChartView: View {
 /// two facts read off the same series. No delta — there is no prior period.
 struct ReportPrimaryCard: View {
     @EnvironmentObject private var app: AppState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let metric: ReportMetricPresentation
     let onOpen: () -> Void
 
@@ -159,7 +160,11 @@ struct ReportPrimaryCard: View {
                     .foregroundStyle(app.palette.ink.opacity(0.65))
 
                 if let summary = metric.summary {
-                    if summary.hasActivity {
+                    if summary.hasActivity && dynamicTypeSize.isAccessibilitySize {
+                        // Large text: a readable sentence instead of a squeezed chart.
+                        Text(ReportsPresentation.seriesSentence(metric, T: app.T))
+                            .font(.footnote).fixedSize(horizontal: false, vertical: true)
+                    } else if summary.hasActivity {
                         ReportSparkline(metric: metric).frame(height: 64).padding(.top, 4)
                         facts(summary)
                     } else {
@@ -206,6 +211,7 @@ struct ReportPrimaryCard: View {
 /// A compact KPI tile for the overview grid.
 struct ReportKpiTile: View {
     @EnvironmentObject private var app: AppState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let metric: ReportMetricPresentation
     let onOpen: () -> Void
 
@@ -223,6 +229,12 @@ struct ReportKpiTile: View {
                     .font(.system(.title2, design: .rounded).weight(.bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.55)
+                // A compact strip only for a genuine series with activity.
+                if metric.summary?.hasActivity == true && !dynamicTypeSize.isAccessibilitySize {
+                    ReportSparkline(metric: metric).frame(height: 18)
+                        .accessibilityHidden(true)
+                        .accessibilityIdentifier("reports.kpi.strip.\(metric.key)")
+                }
                 Text(metric.isTimeSeries ? app.T("Trong khoảng đã chọn", "In this range") : app.T("Hiện tại", "Right now"))
                     .font(.caption)
                     .foregroundStyle(app.palette.ink.opacity(0.6))
@@ -261,7 +273,8 @@ struct ReportAttentionCard: View {
                 Image(systemName: item.symbol)
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(tint)
-                    .frame(width: 28)
+                    .frame(minWidth: 28)
+                    .padding(.leading, 6)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline) {
@@ -302,6 +315,7 @@ struct ReportAttentionCard: View {
 /// A larger chart card for each remaining genuine series.
 struct ReportTrendCard: View {
     @EnvironmentObject private var app: AppState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let metric: ReportMetricPresentation
     let onOpen: () -> Void
 
@@ -313,7 +327,10 @@ struct ReportTrendCard: View {
                     Spacer(minLength: 8)
                     Text(metric.valueText).font(.system(.headline, design: .rounded).weight(.bold))
                 }
-                if metric.summary?.hasActivity == true {
+                if metric.summary?.hasActivity == true && dynamicTypeSize.isAccessibilitySize {
+                    Text(ReportsPresentation.seriesSentence(metric, T: app.T))
+                        .font(.footnote).fixedSize(horizontal: false, vertical: true)
+                } else if metric.summary?.hasActivity == true {
                     ReportTrendChart(metric: metric, height: 150)
                 } else {
                     Label(app.T("Không có hoạt động trong khoảng này.", "No activity in this range."),
@@ -331,6 +348,99 @@ struct ReportTrendCard: View {
         .accessibilityValue("\(metric.accessibilityValue). \(ReportsPresentation.seriesSentence(metric, T: app.T))")
         .accessibilityHint(app.T("Mở chi tiết", "Opens details"))
         .accessibilityIdentifier("reports.trend.\(metric.key)")
+    }
+}
+
+// MARK: - Breakdowns
+
+/// A share (ring + "n of m") or a distribution (segmented bar + labelled
+/// legend). Every value is printed as text; segments differ by both shade
+/// and a separator, and the legend names each one — never colour alone.
+struct ReportInsightCard: View {
+    @EnvironmentObject private var app: AppState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let insight: ReportInsight
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(title).font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).opacity(0.45)
+                        .accessibilityHidden(true)
+                }
+                if dynamicTypeSize.isAccessibilitySize {
+                    Text(ReportsPresentation.insightSentence(insight, T: app.T))
+                        .font(.footnote).fixedSize(horizontal: false, vertical: true)
+                } else {
+                    switch insight {
+                    case .share(let s): share(s)
+                    case .distribution(let d): distribution(d)
+                    }
+                }
+            }
+            .foregroundStyle(app.palette.ink)
+            .reportCard()
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(ReportsPresentation.insightSentence(insight, T: app.T))
+        .accessibilityHint(app.T("Mở chi tiết", "Opens details"))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("reports.insight.\(insight.id)")
+    }
+
+    private var title: String {
+        switch insight {
+        case .share(let s): return s.title
+        case .distribution(let d): return d.title
+        }
+    }
+
+    private func share(_ s: ReportShareInsight) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle().stroke(app.palette.ink.opacity(0.12), lineWidth: 7)
+                Circle().trim(from: 0, to: s.fraction)
+                    .stroke(app.palette.ink, style: StrokeStyle(lineWidth: 7, lineCap: .butt))
+                    .rotationEffect(.degrees(-90))
+                Text("\(s.numerator)/\(s.denominator)")
+                    .font(.system(.footnote, design: .rounded).weight(.bold)).monospacedDigit()
+            }
+            .frame(width: 58, height: 58)
+            Text(s.caption).font(.footnote).foregroundStyle(app.palette.ink.opacity(0.8))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func distribution(_ d: ReportDistributionInsight) -> some View {
+        let shades: [Double] = [0.9, 0.55, 0.32, 0.18]
+        return VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { geo in
+                HStack(spacing: 2) {
+                    ForEach(Array(d.segments.enumerated()), id: \.element.id) { i, seg in
+                        if seg.count > 0 {
+                            Rectangle().fill(app.palette.ink.opacity(shades[i % shades.count]))
+                                .frame(width: max(4, (geo.size.width - CGFloat(d.segments.count - 1) * 2) * CGFloat(seg.count) / CGFloat(max(d.total, 1))))
+                        }
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            }
+            .frame(height: 12)
+            ForEach(Array(d.segments.enumerated()), id: \.element.id) { i, seg in
+                HStack(spacing: 8) {
+                    RoundedRectangle(cornerRadius: 2).fill(app.palette.ink.opacity(shades[i % shades.count]))
+                        .frame(width: 10, height: 10)
+                    Text(seg.label).font(.footnote)
+                    Spacer(minLength: 8)
+                    Text("\(seg.count)").font(.footnote.weight(.semibold)).monospacedDigit()
+                }
+            }
+        }
     }
 }
 

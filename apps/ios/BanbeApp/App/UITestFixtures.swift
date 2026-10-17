@@ -14,12 +14,15 @@ import SwiftUI
 enum UITestFixture {
     static let name: String? = UserDefaults.standard.string(forKey: "uiFixture")
     static var isActive: Bool { name != nil }
+    /// `-uiFixtureMonth YES` opens Schedule's month sheet at launch (screenshots).
+    static let opensMonth = UserDefaults.standard.bool(forKey: "uiFixtureMonth")
     /// Stable fake account id so the draft store/relaunch tests have a key.
     static let userID = UUID(uuidString: "00000000-0000-4000-8000-00000000F1F0")!
 }
 
 struct UITestFixtureRoot: View {
     @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let name: String
     @State private var flow: OnboardingCoordinator?
     @State private var ready = false
@@ -30,6 +33,11 @@ struct UITestFixtureRoot: View {
             if ready {
                 if name.hasPrefix("reports") {
                     ReportsView()
+                } else if name.hasPrefix("shell") {
+                    // The REAL RootView (dock, swipe gestures, headers) on seeded signed-in state.
+                    RootView()
+                } else if isRouted {
+                    routed
                 } else if let flow {
                     if flow.state.stage == .finished {
                         Text("Fixture finished").accessibilityIdentifier("fixture.finished")
@@ -45,9 +53,149 @@ struct UITestFixtureRoot: View {
 
     private func configure() {
         guard !ready else { return }
-        app.userID = UITestFixture.userID
-        if name.hasPrefix("reports") { configureReports() } else { configureOnboarding() }
+        let signedOut = name.hasPrefix("auth") || name == "routing.signedOut"
+        if !signedOut { app.userID = UITestFixture.userID }
+        if name.hasPrefix("shell") { configureShell() }
+        else if name.hasPrefix("reports") { configureReports() }
+        else if isRouted { configureRouted() }
+        else { configureOnboarding() }
         ready = true
+    }
+
+    // MARK: shell (real RootView)
+
+    /// `shell.home` / `shell.schedule` / `shell.account` / `shell.accountSolo`
+    /// (Account with only the Personal tab). Seeds the same fake events as the
+    /// schedule fixtures and keeps the signed-in state (applySession is skipped).
+    private func configureShell() {
+        // The dock window starts "shown" in its own bookkeeping and only really appears on the
+        // first hidden→visible change (the splash does that in the real app); do it here.
+        BottomTabBarOverlay.shared.updateVisibility(for: .splash)
+        configureSchedule()
+        let variant = name.split(separator: ".").dropFirst().first.map(String.init) ?? "home"
+        app.organizerMode = variant == "account"
+        app.accountType = variant == "account" ? "admin" : "participant"
+        app.accountTab = "personal"
+        // Streak/coins capsule visible: the tightest Home header layout.
+        app.rewardsSummary = RewardSummary(balance: 120, streak: 3, activeToday: true)
+        app.rewardsSummaryStatus = .loaded
+        switch variant {
+        case "schedule": app.screen = .schedule
+        case "account", "accountSolo": app.screen = .profile
+        default: app.screen = .home
+        }
+    }
+
+    // MARK: routed fixtures (public entry, routing, schedule, plan actions)
+
+    private var isRouted: Bool {
+        name.hasPrefix("auth") || name.hasPrefix("routing") || name.hasPrefix("schedule") || name.hasPrefix("plan")
+    }
+
+    /// A tiny stand-in for RootView's screen switch: only the screens these
+    /// fixtures exercise; every other destination renders a marker.
+    @ViewBuilder
+    private var routed: some View {
+        ZStack {
+            switch app.screen {
+            case .welcome: WelcomeView().transition(AuthMotion.transition(forward: app.authNavForward, reduceMotion: reduceMotion))
+            case .login: LoginView().transition(AuthMotion.transition(forward: app.authNavForward, reduceMotion: reduceMotion))
+            case .schedule: ScheduleView()
+            case .event:
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Fixture event \(app.eventKey)").accessibilityIdentifier("fixture.event.\(app.eventKey)")
+                        if let e = app.resolvedEvent(for: app.eventKey) { EventPlanTitleRow(event: e) }
+                        Button("Back to schedule") { app.screen = .schedule }.accessibilityIdentifier("fixture.backToSchedule")
+                    }
+                    .padding(20)
+                }
+            default:
+                Text("screen \(app.screen.rawValue)").accessibilityIdentifier("fixture.screen.\(app.screen.rawValue)")
+            }
+        }
+        .animation(app.screen == .welcome || app.screen == .login ? AuthMotion.animation(reduceMotion: reduceMotion) : nil,
+                   value: app.screen)
+    }
+
+    private func configureRouted() {
+        switch name {
+        case "routing.signedIn":
+            app.screen = .splash
+            app.dismissSplash(isSignedIn: true)
+        case "routing.signedOut":
+            app.screen = .splash
+            app.dismissSplash(isSignedIn: false)
+        case "routing.signOut":
+            app.screen = .home
+            Task { await app.signOut() }
+        case let n where n.hasPrefix("auth"):
+            app.screen = .welcome
+        case let n where n.hasPrefix("schedule") || n.hasPrefix("plan"):
+            configureSchedule()
+        default:
+            break
+        }
+    }
+
+    /// Two days from today (device zone) so nothing is in the past.
+    static var scheduleDay: Date {
+        let cal = Calendar.current
+        return cal.date(byAdding: .day, value: 2, to: cal.startOfDay(for: Date())) ?? Date()
+    }
+
+    private func configureSchedule() {
+        let cal = Calendar.current
+        let day = Self.scheduleDay
+        func at(_ dayOffset: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+            let d = cal.date(byAdding: .day, value: dayOffset, to: day) ?? day
+            return cal.date(bySettingHour: hour, minute: minute, second: 0, of: d) ?? d
+        }
+        let iso = ISO8601DateFormatter()
+        func row(_ id: String, _ name: String, _ start: Date, _ cat: String) -> [String: Any] {
+            ["id": id, "name": name, "status": "live", "visibility": "public", "cat_key": cat, "price_vnd": 0,
+             "country_code": "VN", "seats_remaining": 10, "capacity": 20, "organizer_id": "fx-org",
+             "starts_at": iso.string(from: start)]
+        }
+        let rows = [
+            row("fx-hosted", "Fixture host supper", at(0, 13), "supper"),
+            row("fx-added", "Fixture added gallery", at(0, 18), "gallery"),
+            row("fx-near", "Fixture rooftop set", at(0, 14), "music"),
+            row("fx-later", "Fixture print show", at(1, 10), "gallery"),
+        ]
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let data = try? JSONSerialization.data(withJSONObject: rows),
+              let summaries = try? decoder.decode([RealEventSummary].self, from: data) else { return }
+        let events = summaries.map { CatalogEvent.fromReal($0) }
+        for e in events { app.realEventsByID[e.key] = e }
+
+        let empty = name == "schedule.empty"
+        let failed = name == "schedule.error"
+        // Hosted: the account's own organizer owns fx-hosted.
+        if !empty && !failed {
+            app.myOrganizerID = "fx-org"
+            app.myOrgEventKeys = ["fx-hosted"]
+            app.myOrgEventOrganizerID = ["fx-hosted": "fx-org"]
+            app.myOrgEventSummaries = summaries.filter { $0.id == "fx-hosted" }
+        }
+        // Manual addition (device-local store), reset per launch.
+        let store = InAppCalendarStore()
+        store.clear(uid: UITestFixture.userID)
+        if !empty && !failed && !name.hasPrefix("plan") { store.add("fx-added", uid: UITestFixture.userID) }
+        app.refreshScheduleAdded()
+        // Discover pool (public + live), including the hosted one to prove dedupe.
+        app.discoveryEvents = failed ? [] : events.filter { $0.key != "fx-added" || name.hasPrefix("plan") }
+        app.discoveryEventsLoadFailed = failed
+        app.paymentBookingsLoadFailed = failed
+        app.scheduleSelectedDate = day
+        if name.hasPrefix("plan") {
+            app.eventKey = "fx-added"
+            app.screen = .event
+        } else {
+            app.scheduleMode = name == "schedule.discover" ? .discover : .mine
+            app.screen = .schedule
+        }
     }
 
     // MARK: reports

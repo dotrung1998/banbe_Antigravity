@@ -8,6 +8,7 @@ import PhotosUI
 struct RootView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var auth: AuthViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Live-follows the finger while an edge swipe is in progress, the same
     // way UIKit's interactivePopGestureRecognizer drags the current view
@@ -352,6 +353,11 @@ struct RootView: View {
     /// Event Detail grows in from slightly smaller and shrinks away when it closes; whatever it closes onto just
     /// fades in place. Every other screen keeps the push/pop slide.
     private func transition(for screen: Screen) -> AnyTransition {
+        // Note 44 — public entry ↔ auth: one short direction-aware motion
+        // (cross-fade only under Reduce Motion).
+        if screen == .welcome || screen == .login {
+            return AuthMotion.transition(forward: app.authNavForward, reduceMotion: reduceMotion)
+        }
         if screen == .event {
             // Event Detail animates itself (zooming out of / back into the tapped card), so no transition here.
             return .asymmetric(insertion: .identity, removal: .opacity)
@@ -667,7 +673,9 @@ struct RootView: View {
             }
             .animation(isCommittingBack || dragTranslation > 0 || tabSwipeCommittingTarget != nil || app.eventDismissProgress > 0 || (app.eventClosing && app.screen != .event)
                         ? nil
-                        : ((app.screen == .event || app.screen == .organizerProfile || app.eventClosing) ? .spring(response: 0.55, dampingFraction: 0.88) : .easeInOut(duration: 0.28)),
+                        : ((app.screen == .event || app.screen == .organizerProfile || app.eventClosing) ? .spring(response: 0.55, dampingFraction: 0.88)
+                           : (app.screen == .welcome || app.screen == .login) ? AuthMotion.animation(reduceMotion: reduceMotion)
+                           : .easeInOut(duration: 0.28)),
                         value: app.screen)
             .scrollDisabled(isScreenLevelSwipeActive)
             // Depth cue on the dragged edge, same as UIKit's pop shadow.
@@ -1033,7 +1041,7 @@ struct RootView: View {
                 // Navigating earlier (on the raw session change) tripped the
                 // "no guest browsing" guard below, which bounced the user back
                 // to Login and left them stuck there until a relaunch.
-                if auth.session != nil && app.screen == .login { app.screen = app.authReturnScreen }
+                if auth.session != nil && (app.screen == .login || app.screen == .welcome) { app.screen = app.authReturnScreen }
                 // A gift claim link that arrived before there was a session
                 // parks its code (see AppState.openGiftImport); once there IS
                 // a verified session, finish the job the link started instead
@@ -1073,10 +1081,15 @@ struct RootView: View {
                 app.storyLibraryPickerOpen = false
                 app.storyCameraOpen = false
             }
-            if !app.isSignedIn && !AppState.guestAllowedScreens.contains(newScreen) {
-                app.authMandatory = true
-                app.authReturnScreen = newScreen
-                app.authBackScreen = newScreen
+            if let redirect = PublicEntryRouting.protectedRedirect(isSignedIn: app.isSignedIn, target: newScreen,
+                                                                     guestAllowed: AppState.guestAllowedScreens) {
+                // Protected action while signed out: Login directly, returning
+                // to what was asked for; Back goes to the public welcome
+                // screen (note 44) — always a way out, never a guest view.
+                app.authMandatory = false
+                app.authReturnScreen = redirect.returnTo
+                app.authBackScreen = redirect.backTo
+                app.authNavForward = true
                 app.screen = .login
             }
             // BUG 1 fix (2026-09-22 tenth follow-up) — `app.storyViewer`
@@ -1305,6 +1318,8 @@ struct RootView: View {
         case .rewards: RewardsView()
         case .editName: EditNameView()
         case .notifications: NotificationsView()
+        case .welcome: WelcomeView()
+        case .schedule: ScheduleView()
         case .eventList: EventListView()
         case .security: SecurityView()
         case .paymentDetails: PaymentDetailsView()

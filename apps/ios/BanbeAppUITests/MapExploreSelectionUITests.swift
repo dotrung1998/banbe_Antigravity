@@ -46,7 +46,7 @@ final class MapExploreSelectionUITests: XCTestCase {
         app.launchArguments += ["-banbe.onboarded", "YES"]
         app.launch()
 
-        if app.otherElements["screen.login"].waitForExistence(timeout: 45) {
+        if app.reachLogin(timeout: 45) {
             app.buttons["login.method.password"].tap()
             let email = app.textFields["login.email"]
             XCTAssertTrue(email.waitForExistence(timeout: 5))
@@ -150,7 +150,7 @@ final class MapExploreSelectionUITests: XCTestCase {
         app.launchArguments += ["-banbe.onboarded", "YES"]
         app.launch()
 
-        if app.otherElements["screen.login"].waitForExistence(timeout: 45) {
+        if app.reachLogin(timeout: 45) {
             app.buttons["login.method.password"].tap()
             let email = app.textFields["login.email"]
             XCTAssertTrue(email.waitForExistence(timeout: 5))

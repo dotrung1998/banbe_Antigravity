@@ -36,6 +36,7 @@ extension AppState {
             // paymentBookingsSeq's own doc comment (AppState.swift).
             guard seq == paymentBookingsSeq else { return }
             paymentBookings = rows.map(\.asPayable)
+            paymentBookingsLoadFailed = false
             // The reserve flow's own countdown (Home's held-event banner) must
             // stop as soon as the booking it belongs to is cancelled.
             if let current = booking?.id, paymentBookings.contains(where: { $0.id == current && $0.status == "cancelled" }) {
@@ -46,6 +47,7 @@ extension AppState {
             print("loadPaymentBookings failed:", error)
             guard seq == paymentBookingsSeq else { return }
             paymentBookings = []
+            paymentBookingsLoadFailed = true
             paymentsLoading = false
         }
     }

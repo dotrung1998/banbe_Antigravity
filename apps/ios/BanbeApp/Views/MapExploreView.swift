@@ -381,7 +381,7 @@ struct MapExploreView: View {
                     Text(app.T("← Đóng", "← Close"))
                         .font(.system(size: 12, weight: .semibold))
                         .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(.regularMaterial, in: Capsule())
+                        .nativeGlassCapsule(interactive: true)
                 }
                 .accessibilityIdentifier("map.back")
 
@@ -391,7 +391,7 @@ struct MapExploreView: View {
                     Text("🧭")
                         .font(.system(size: 17))
                         .frame(width: 38, height: 38)
-                        .background(.regularMaterial, in: Circle())
+                        .nativeGlass(Circle(), interactive: true)
                         .opacity(compassOpacity)
                 }
                 .accessibilityIdentifier("map.compass")
@@ -418,7 +418,7 @@ struct MapExploreView: View {
                     Text(app.T("Tìm ở đây", "Search here"))
                         .font(.system(size: 12, weight: .semibold))
                         .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(.regularMaterial, in: Capsule())
+                        .nativeGlassCapsule(interactive: true)
                 }
                 .accessibilityIdentifier("map.searchHere")
                 .foregroundStyle(app.palette.ink)
@@ -1405,7 +1405,7 @@ struct MapExploreView: View {
                         Text("\(cat.glyph) \(app.T(cat.vi, cat.en))")
                             .font(.system(size: 12, weight: catFilter == cat.key ? .bold : .regular))
                             .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(.thinMaterial, in: Capsule())
+                            .nativeGlassCapsule(interactive: true)
                             .onTapGesture {
                                 if catFilter != cat.key { Haptics.selection() }
                                 catFilter = cat.key
@@ -1430,20 +1430,20 @@ struct MapExploreView: View {
                     .font(.system(size: 11, weight: app.area == LocationHierarchy.allID ? .regular : .bold))
                     .lineLimit(1)
                     .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(.thinMaterial, in: Capsule())
+                    .nativeGlassCapsule(interactive: true)
                     .onTapGesture { locationPickerOpen = true }
                     .accessibilityAddTraits(.isButton)
                     .accessibilityIdentifier("map.area")
                 Text(app.T("Còn chỗ", "Open now"))
                     .font(.system(size: 11, weight: openNowOnly ? .bold : .regular))
                     .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(.thinMaterial, in: Capsule())
+                    .nativeGlassCapsule(interactive: true)
                     .onTapGesture { Haptics.selection(); openNowOnly.toggle() }
                 if app.locationAuthStatus == .authorizedWhenInUse || app.locationAuthStatus == .authorizedAlways {
                     Text(app.T("Gần bạn", "Nearby"))
                         .font(.system(size: 11, weight: sortByDistance ? .bold : .regular))
                         .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(.thinMaterial, in: Capsule())
+                        .nativeGlassCapsule(interactive: true)
                         .onTapGesture { Haptics.selection(); sortByDistance.toggle() }
                 }
               }
@@ -1598,7 +1598,7 @@ struct MapExploreView: View {
             }
             .padding(.horizontal, 10).padding(.vertical, 5)
             .foregroundStyle(active ? app.palette.paper : app.palette.ink)
-            .background(active ? AnyShapeStyle(app.palette.ink) : AnyShapeStyle(.thinMaterial), in: Capsule())
+            .nativeGlassCapsule(interactive: true, tint: active ? app.palette.ink : nil)
             .overlay(Capsule().stroke(active ? app.palette.ink : gold.opacity(0.7), lineWidth: 1))
         }
         .buttonStyle(.plain)

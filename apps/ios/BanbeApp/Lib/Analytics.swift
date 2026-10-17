@@ -27,6 +27,28 @@ enum AnalyticsEvent: Equatable {
     case permissionPrompted(permission: String)
     /// `result` ∈ granted | denied | unavailable.
     case permissionResult(permission: String, result: String)
+    // Public entry (signed out).
+    case publicEntryViewed
+    case publicEntryGetStarted
+    case publicEntryLogin
+    case publicStoryOpened
+    case publicStoryCompleted
+    /// `step` = the story page index the person left from.
+    case publicStorySkipped(step: Int)
+    // Schedule.
+    case scheduleOpened
+    /// `mode` ∈ mine | discover.
+    case scheduleModeSelected(mode: String)
+    /// `bucket` ∈ past | today | next7 | later — never the date itself.
+    case scheduleDaySelected(bucket: String)
+    case scheduleConflictShown(countBucket: String)
+    case banbeScheduleAdd
+    case banbeScheduleRemove
+    /// `result` ∈ added | alreadyAdded | removed | notPresent | ineligible.
+    case banbeScheduleResult(result: String)
+    case systemCalendarEditorOpened
+    /// `result` ∈ saved | cancelled | deleted | unavailable.
+    case systemCalendarEditorResult(result: String)
 
     var name: String {
         switch self {
@@ -41,6 +63,21 @@ enum AnalyticsEvent: Equatable {
         case .firstReservationStarted: return "first_reservation_started"
         case .permissionPrompted: return "permission_prompted"
         case .permissionResult: return "permission_result"
+        case .publicEntryViewed: return "public_entry_viewed"
+        case .publicEntryGetStarted: return "public_entry_get_started"
+        case .publicEntryLogin: return "public_entry_login"
+        case .publicStoryOpened: return "public_story_opened"
+        case .publicStoryCompleted: return "public_story_completed"
+        case .publicStorySkipped: return "public_story_skipped"
+        case .scheduleOpened: return "schedule_opened"
+        case .scheduleModeSelected: return "schedule_mode_selected"
+        case .scheduleDaySelected: return "schedule_day_selected"
+        case .scheduleConflictShown: return "schedule_conflict_shown"
+        case .banbeScheduleAdd: return "banbe_schedule_add"
+        case .banbeScheduleRemove: return "banbe_schedule_remove"
+        case .banbeScheduleResult: return "banbe_schedule_result"
+        case .systemCalendarEditorOpened: return "system_calendar_editor_opened"
+        case .systemCalendarEditorResult: return "system_calendar_editor_result"
         }
     }
 
@@ -59,6 +96,16 @@ enum AnalyticsEvent: Equatable {
             return ["permission": p]
         case .permissionResult(let p, let r):
             return ["permission": p, "result": r]
+        case .publicStorySkipped(let step):
+            return ["step": String(step)]
+        case .scheduleModeSelected(let mode):
+            return ["mode": mode]
+        case .scheduleDaySelected(let bucket):
+            return ["day_bucket": bucket]
+        case .scheduleConflictShown(let bucket):
+            return ["count_bucket": bucket]
+        case .banbeScheduleResult(let r), .systemCalendarEditorResult(let r):
+            return ["result": r]
         default:
             return [:]
         }

@@ -496,10 +496,8 @@ struct EventDetailView: View {
                 }
             }
 
-            Text(event.name)
-                .font(BanbeTheme.display(29))
-                .padding(.top, 8)
-                .padding(.bottom, 10)
+            // Note 46 — the title with the compact banbe Schedule / Apple Calendar button.
+            EventPlanTitleRow(event: event)
 
             if let mapsURL = event.mapsURL {
                 Button {

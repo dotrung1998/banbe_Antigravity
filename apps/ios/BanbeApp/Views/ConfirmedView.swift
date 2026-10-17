@@ -18,6 +18,8 @@ struct ConfirmedView: View {
     // app's established polling convention elsewhere (AttendanceView's own
     // 6s poll, 41340ee; PaymentViews' 6s poll).
     @State private var receiptPollTask: Task<Void, Never>?
+    /// Note 44 — Apple Calendar goes through the system editor (no access request).
+    @State private var appleCalendarRequest: CalendarExportRequest?
     @State private var walletDesignOpen = false
     /// Attendee tickets ticked for download (migration 151).
     @State private var selectedAttendeeIDs: Set<UUID> = []
@@ -338,7 +340,14 @@ struct ConfirmedView: View {
                                 Label("Google Calendar", systemImage: "globe")
                             }
                             .accessibilityIdentifier("confirmed.calendar.google")
-                            Button { app.addToCalendarApple(event) } label: {
+                            Button {
+                                Analytics.track(.systemCalendarEditorOpened)
+                                if let draft = app.calendarDraft(for: event) {
+                                    appleCalendarRequest = CalendarExportRequest(draft: draft)
+                                } else {
+                                    app.calendarError = app.T("Sự kiện này chưa có giờ bắt đầu.", "This event has no start time yet.")
+                                }
+                            } label: {
                                 Label(app.T("Lịch Apple", "Apple Calendar"), systemImage: "calendar")
                             }
                             .accessibilityIdentifier("confirmed.calendar.apple")
@@ -351,6 +360,14 @@ struct ConfirmedView: View {
                         .buttonStyle(.plain)
                     }
                     .accessibilityIdentifier("confirmed.addToCalendar")
+                    .sheet(item: $appleCalendarRequest) { req in
+                        SystemEventEditor(draft: req.draft) { result in
+                            appleCalendarRequest = nil
+                            Analytics.track(.systemCalendarEditorResult(result: result.rawValue))
+                            if result == .saved { app.calAdded = true }
+                        }
+                        .ignoresSafeArea()
+                    }
                     if !app.calendarError.isEmpty {
                         Text(app.calendarError)
                             .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)

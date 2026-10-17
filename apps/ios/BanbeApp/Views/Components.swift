@@ -349,6 +349,8 @@ struct InkButton: View {
     let title: String
     var enabled = true
     var cornerRadius: CGFloat = 18
+    /// nil = the original fixed 15pt; pass a text style to scale with Dynamic Type.
+    var font: Font? = nil
     let action: () -> Void
 
     @EnvironmentObject private var app: AppState
@@ -356,7 +358,7 @@ struct InkButton: View {
     var body: some View {
         Button(action: { if enabled { action() } }) {
             Text(title)
-                .font(.system(size: 15, weight: .semibold))
+                .font(font ?? .system(size: 15, weight: .semibold))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 15)
                 .background(

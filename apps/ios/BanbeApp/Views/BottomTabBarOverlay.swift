@@ -228,6 +228,9 @@ final class BottomTabBarOverlay {
     /// `.sheet` from several screens, so the card itself reports in, and the
     /// dock hides exactly as it does for Pulse.
     private var shareCardOpen = false
+    /// Sheets that cover the dock's area (Schedule's month view, …). Any open
+    /// id hides the dock; it returns when the last one closes. Note 45.
+    private var openSheets: Set<String> = []
     // FIX PASS (2026-09-30, Map-sheet layering) — the dock "+" tray
     // (`DockCreateTrayView`) now renders inside THIS window (moved out of
     // RootView's main-window ZStack, where it rendered under MapExplore's
@@ -373,6 +376,14 @@ final class BottomTabBarOverlay {
         applyVisibility()
     }
 
+    func setSheetOpen(_ id: String, _ open: Bool) {
+        if open { openSheets.insert(id) } else { openSheets.remove(id) }
+        applyVisibility()
+    }
+
+    /// Test seam: is any sheet currently asking for the dock to hide?
+    var hasOpenSheets: Bool { !openSheets.isEmpty }
+
     func setOnboardingOpen(_ open: Bool) {
         onboardingOpen = open
         applyVisibility()
@@ -434,7 +445,7 @@ final class BottomTabBarOverlay {
     }
 
     private func applyVisibility() {
-        let shouldShow = !(appLocked || forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || surveyModalOpen || onboardingOpen || shareCardOpen)
+        let shouldShow = !(appLocked || forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || surveyModalOpen || onboardingOpen || shareCardOpen || !openSheets.isEmpty)
             && BottomTabBar.visibleScreens.contains(currentScreen)
         guard shouldShow != lastShown else { return }
         lastShown = shouldShow

@@ -84,6 +84,50 @@ struct ReportAttentionItem: Identifiable, Equatable {
     let symbol: String
 }
 
+/// Part of a whole where numerator and denominator count the SAME population
+/// from the same payload (never two differently-scoped metrics).
+struct ReportShareInsight: Equatable {
+    let key: String
+    let title: String
+    let numerator: Int
+    let denominator: Int
+    let caption: String
+    var fraction: Double { denominator > 0 ? Double(numerator) / Double(denominator) : 0 }
+}
+
+struct ReportDistributionSegment: Identifiable, Equatable {
+    let id: String
+    let label: String
+    let count: Int
+}
+
+/// Real grouped counts read straight off the returned rows/values.
+struct ReportDistributionInsight: Equatable {
+    let key: String
+    let title: String
+    let segments: [ReportDistributionSegment]
+    var total: Int { segments.reduce(0) { $0 + $1.count } }
+}
+
+enum ReportInsight: Identifiable, Equatable {
+    case share(ReportShareInsight)
+    case distribution(ReportDistributionInsight)
+
+    var id: String {
+        switch self {
+        case .share(let s): return "share.\(s.key)"
+        case .distribution(let d): return "dist.\(d.key).\(d.title)"
+        }
+    }
+    /// The metric whose details the insight opens.
+    var metricKey: String {
+        switch self {
+        case .share(let s): return s.key
+        case .distribution(let d): return d.key
+        }
+    }
+}
+
 struct ReportsDashboard: Equatable {
     let role: ReportRole
     let primary: ReportMetricPresentation?
@@ -94,6 +138,8 @@ struct ReportsDashboard: Equatable {
     let all: [ReportMetricPresentation]
     /// Admin leads with its backlog; the other roles lead with the primary insight.
     let attentionFirst: Bool
+    /// Breakdowns the payload truthfully supports (may be empty).
+    var insights: [ReportInsight] = []
     var isEmpty: Bool { all.isEmpty }
 }
 
@@ -168,7 +214,87 @@ enum ReportsPresentation {
         let trends = layout.trends.compactMap { byKey[$0] }.filter(\.isTimeSeries)
 
         return ReportsDashboard(role: role, primary: primary, overview: overview, attention: attention,
-                                trends: trends, all: all, attentionFirst: layout.attentionFirst)
+                                trends: trends, all: all, attentionFirst: layout.attentionFirst,
+                                insights: insights(role: role, metrics: metrics, T: T))
+    }
+
+    // MARK: breakdowns (only what the payload supports)
+
+    static func insights(role: ReportRole, metrics: [AccountKpiMetric],
+                         T: (String, String) -> String) -> [ReportInsight] {
+        func find(_ key: String) -> AccountKpiMetric? { metrics.first { $0.key == key } }
+        func num(_ m: AccountKpiMetric?) -> Int {
+            if let m, case .number(let n) = m.value { return Int(n.rounded()) }
+            return 0
+        }
+        var out: [ReportInsight] = []
+        switch role {
+        case .personal:
+            // Outstanding refund claims by status (owed vs host-marked-sent).
+            if let m = find("outstanding_refunds"), let rows = m.rows, !rows.isEmpty {
+                let owed = rows.filter { $0["status"]?.displayString == "owed" }.count
+                let sent = rows.filter { $0["status"]?.displayString == "host_marked_sent" }.count
+                let segs = [
+                    ReportDistributionSegment(id: "owed", label: statusLabel("owed", T: T), count: owed),
+                    ReportDistributionSegment(id: "host_marked_sent", label: statusLabel("host_marked_sent", T: T), count: sent),
+                ].filter { $0.count > 0 }
+                if !segs.isEmpty {
+                    out.append(.distribution(.init(key: m.key, title: T("Hoàn tiền đang chờ theo trạng thái", "Pending refunds by status"), segments: segs)))
+                }
+            }
+        case .host:
+            // Of the owed refund claims (one population, one CTE), how many are past due.
+            if let m = find("refunds_owed"), let rows = m.rows, !rows.isEmpty {
+                let overdue = rows.filter { if case .bool(true)? = $0["overdue"] { return true }; return false }.count
+                out.append(.share(.init(key: m.key, title: T("Hoàn tiền đã quá hạn", "Refunds past their deadline"),
+                                        numerator: overdue, denominator: rows.count,
+                                        caption: T("\(overdue)/\(rows.count) khoản hoàn tiền còn nợ đã quá hạn",
+                                                   "\(overdue) of \(rows.count) owed refund claim\(rows.count == 1 ? "" : "s") overdue"))))
+            }
+        case .admin:
+            let reviews = find("pending_event_reviews"), disputes = find("unresolved_disputes")
+            let r = num(reviews), d = num(disputes)
+            if r + d > 0 {
+                out.append(.distribution(.init(
+                    key: r > 0 ? "pending_event_reviews" : "unresolved_disputes",
+                    title: T("Hàng chờ đang mở", "Open backlog"),
+                    segments: [
+                        .init(id: "reviews", label: T("Sự kiện chờ duyệt", "Event reviews"), count: r),
+                        .init(id: "disputes", label: T("Tranh chấp", "Disputes"), count: d),
+                    ].filter { $0.count > 0 })))
+            }
+            let ages: [Double] = [reviews, disputes].compactMap { $0 }.flatMap { m in
+                (m.rows ?? []).compactMap { row -> Double? in
+                    if case .number(let a)? = row["age_days"] { return a }; return nil
+                }
+            }
+            if !ages.isEmpty {
+                let buckets: [(String, String, String, (Double) -> Bool)] = [
+                    ("lt1", "Dưới 1 ngày", "Under 1 day", { $0 < 1 }),
+                    ("1to3", "1–3 ngày", "1–3 days", { $0 >= 1 && $0 < 3 }),
+                    ("3to7", "3–7 ngày", "3–7 days", { $0 >= 3 && $0 < 7 }),
+                    ("7plus", "Từ 7 ngày", "7+ days", { $0 >= 7 }),
+                ]
+                let segs = buckets.map { id, vi, en, test in
+                    ReportDistributionSegment(id: id, label: T(vi, en), count: ages.filter(test).count)
+                }
+                out.append(.distribution(.init(key: r > 0 ? "pending_event_reviews" : "unresolved_disputes",
+                                               title: T("Thời gian chờ của hàng chờ", "How long items have waited"),
+                                               segments: segs)))
+            }
+        }
+        return out
+    }
+
+    /// One sentence for VoiceOver and for the large-text fallback.
+    static func insightSentence(_ i: ReportInsight, T: (String, String) -> String) -> String {
+        switch i {
+        case .share(let s):
+            return s.caption + "."
+        case .distribution(let d):
+            let parts = d.segments.map { "\($0.label): \($0.count)" }.joined(separator: ", ")
+            return T("\(d.title). Tổng \(d.total). \(parts).", "\(d.title). Total \(d.total). \(parts).")
+        }
     }
 
     static func metric(_ m: AccountKpiMetric, T: (String, String) -> String) -> ReportMetricPresentation {

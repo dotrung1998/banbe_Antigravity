@@ -115,9 +115,9 @@ struct DockCreateButtonView: View {
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(app.palette.ink)
                     .frame(width: BottomTabBar.createButtonSize, height: BottomTabBar.createButtonSize)
-                    .background(.thinMaterial, in: Circle())
-                    .overlay(Circle().strokeBorder(app.palette.ink.opacity(0.06)))
-                    .shadow(color: .black.opacity(0.16), radius: 14, x: 0, y: 6)
+                    // Native glass like the dock beside it (note 45) — it used to be a
+                    // plain material, which read as a different surface next to the glass.
+                    .nativeGlass(Circle(), interactive: true)
                     // The whole disc opens the menu, not just the plus glyph in its middle.
                     .contentShape(Circle())
             }

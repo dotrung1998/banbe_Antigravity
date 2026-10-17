@@ -11,10 +11,8 @@ struct LoginView: View {
 
     @EnvironmentObject var app: AppState
     @EnvironmentObject var auth: AuthViewModel
-    @State private var mode: AuthMode = .login
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var method: Method = .code
-    @State private var email = ""
-    @State private var displayName = ""
     @State private var code = ""
     @State private var password = ""
     @State private var passwordConfirm = ""
@@ -24,6 +22,15 @@ struct LoginView: View {
     /// The same pattern every /api/auth/* endpoint enforces, checked
     /// against the trimmed value those endpoints actually receive — so the
     /// button never offers to send something the server will bounce.
+    // Note 44 — the tab comes from the route intent (Welcome "Log in" vs
+    // "Get started"), and typed email/name live in AppState so Back to the
+    // welcome screen or a Log in ↔ Sign up switch never loses them.
+    private var mode: AuthMode { app.authIntent.mode }
+    private var email: String { app.authDraftEmail }
+    private var displayName: String { app.authDraftName }
+    private var emailBinding: Binding<String> { $app.authDraftEmail }
+    private var nameBinding: Binding<String> { $app.authDraftName }
+
     private var emailFormatOk: Bool {
         let trimmed = email.trimmingCharacters(in: .whitespaces)
         return trimmed.range(of: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", options: .regularExpression) != nil
@@ -67,7 +74,8 @@ struct LoginView: View {
                 // legitimate for Back to go.
                 HStack(spacing: 8) {
                     if !app.authMandatory {
-                        BackLink(label: app.T("Quay lại", "Back")) { app.screen = app.authBackScreen }
+                        BackLink(label: app.T("Quay lại", "Back")) { app.backFromLogin() }
+                            .accessibilityIdentifier("login.back")
                     }
                     Spacer(minLength: 0)
                     // Language and theme are reachable before signing in, so the very first
@@ -81,7 +89,11 @@ struct LoginView: View {
                 HStack(spacing: 16) {
                     ForEach([AuthMode.login, AuthMode.signup], id: \.self) { option in
                         Button {
-                            mode = option
+                            guard option != mode else { return }
+                            app.authNavForward = option == .signup
+                            withAnimation(AuthMotion.animation(reduceMotion: reduceMotion)) {
+                                app.authIntent = option == .signup ? .signup : .login
+                            }
                             resetFormState()
                         } label: {
                             VStack(spacing: 6) {
@@ -92,8 +104,11 @@ struct LoginView: View {
                                     .frame(height: 2)
                             }
                             .fixedSize()
+                            .frame(minHeight: 44)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityAddTraits(mode == option ? [.isSelected] : [])
+                        .accessibilityIdentifier(option == .login ? "login.mode.login" : "login.mode.signup")
                     }
                     Spacer()
                 }
@@ -105,6 +120,10 @@ struct LoginView: View {
                      : app.T("Chào mừng trở lại", "Welcome back"))
                     .font(BanbeTheme.display(25))
                     .padding(.top, 16)
+                    .id(mode)
+                    .transition(AuthMotion.transition(forward: app.authNavForward, reduceMotion: reduceMotion))
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("login.heading")
 
                 Text(app.T(
                     "Một tài khoản cho tất cả. Muốn tổ chức sự kiện, bạn chỉ cần bật chế độ tổ chức trong Tài khoản.",
@@ -152,9 +171,10 @@ struct LoginView: View {
                     VStack(spacing: 12) {
                         if mode == .signup {
                             BanbeField(label: nil, placeholder: app.T("Tên hiển thị của bạn", "Your display name"),
-                                       text: $displayName)
+                                       text: nameBinding)
+                                .accessibilityIdentifier("login.displayName")
                         }
-                        BanbeField(label: nil, placeholder: "ban@email.com", text: $email, keyboard: .emailAddress)
+                        BanbeField(label: nil, placeholder: "ban@email.com", text: emailBinding, keyboard: .emailAddress)
                             .accessibilityIdentifier("login.email")
                         if showEmailFormatError {
                             Text(app.T("Email chưa đúng định dạng (ví dụ: ban@email.com)",

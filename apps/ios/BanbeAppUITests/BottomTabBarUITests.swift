@@ -30,7 +30,7 @@ final class BottomTabBarUITests: XCTestCase {
         app.launchArguments += ["-banbe.onboarded", "YES"]
         app.launch()
 
-        if app.otherElements["screen.login"].waitForExistence(timeout: 45) {
+        if app.reachLogin(timeout: 45) {
             app.buttons["login.method.password"].tap()
             let email = app.textFields["login.email"]
             XCTAssertTrue(email.waitForExistence(timeout: 5))
@@ -66,9 +66,11 @@ final class BottomTabBarUITests: XCTestCase {
         XCTAssertTrue(tab(app, "tab.map").waitForExistence(timeout: 10),
                       "Expected the bottom tab bar to render on Home")
 
-        tab(app, "tab.notifications").tap()
-        XCTAssertTrue(app.otherElements["screen.notifications"].waitForExistence(timeout: 10),
-                      "tab.notifications did not navigate")
+        // Note 44 — Schedule took Notifications' dock slot (still five items).
+        XCTAssertFalse(tab(app, "tab.notifications").exists, "Notifications is no longer a dock tab")
+        tab(app, "tab.schedule").tap()
+        XCTAssertTrue(app.otherElements["screen.schedule"].waitForExistence(timeout: 10),
+                      "tab.schedule did not navigate")
 
         tab(app, "tab.inbox").tap()
         XCTAssertTrue(app.otherElements["screen.inbox"].waitForExistence(timeout: 10),
@@ -140,8 +142,8 @@ final class BottomTabBarUITests: XCTestCase {
         // Rapid tap immediately after a completed drag/release — the
         // gesture's own `isDragging`/`activeID` bookkeeping must have
         // already handed back control by the time this lands.
-        tab(app, "tab.notifications").tap()
-        XCTAssertTrue(app.otherElements["screen.notifications"].waitForExistence(timeout: 10),
+        tab(app, "tab.schedule").tap()
+        XCTAssertTrue(app.otherElements["screen.schedule"].waitForExistence(timeout: 10),
                       "Rapid tap immediately after a drag release did not navigate")
     }
 
@@ -194,5 +196,17 @@ final class BottomTabBarUITests: XCTestCase {
         tab(app, "tab.profile").tap()
         XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 10),
                       "Tab bar did not respond to a normal tap after a long-pause drag")
+    }
+
+    /// Note 44 — Notifications stays one tap away from Home (header bell with
+    /// the unread badge) and returns to where it was opened.
+    func testNotificationsReachableFromHomeBellAndBack() {
+        let app = launchSignedIn()
+        let bell = app.descendants(matching: .any)["home.notifications"].firstMatch
+        XCTAssertTrue(bell.waitForExistence(timeout: 15), "Home header bell missing")
+        bell.tap()
+        XCTAssertTrue(app.otherElements["screen.notifications"].waitForExistence(timeout: 10))
+        app.descendants(matching: .any)["notifications.back"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["screen.home"].waitForExistence(timeout: 10))
     }
 }

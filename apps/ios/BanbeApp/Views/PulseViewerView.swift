@@ -573,19 +573,7 @@ struct PulseViewerView: View {
                         if let image = expandedPanelImage {
                             Image(uiImage: image).resizable().scaledToFill().blur(radius: 28).opacity(0.08)
                         }
-                        RoundedRectangle(cornerRadius: 26, style: .continuous)
-                            .fill(app.palette.paper.opacity(0.28))
-                        if #available(iOS 26.0, *), !reduceTransparency {
-                            GlassEffectContainer {
-                                Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                                    .opacity(app.glassOpacity)
-                            }
-                        } else {
-                            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                                .fill(app.palette.paper.opacity(0.28 * app.glassOpacity))
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                                .opacity(app.glassOpacity)
-                        }
+                        Color.clear.nativeGlassPanel(cornerRadius: 26)
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))

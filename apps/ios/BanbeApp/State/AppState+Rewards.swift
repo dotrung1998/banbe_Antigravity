@@ -193,6 +193,9 @@ extension AppState {
     }
 
     func loadRewardsSummary() async {
+        #if DEBUG
+        if UITestFixture.isActive { return } // fixtures seed the summary themselves
+        #endif
         guard let uid = userID else { return }
         if rewardsOwnerID != uid { rewardsOwnerID = uid }
         struct Env: Decodable {
