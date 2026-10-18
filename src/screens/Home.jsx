@@ -946,7 +946,17 @@ export default function Home() {
         </div>
         <div data-hscroll="true" style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', padding: '2px 0 4px' }}>
           <span onClick={toggleLang} data-testid="home-lang-toggle" style={homeCapsule({ fontWeight: 600 })}>{T('EN', 'VN')}</span>
-          <span onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); set({ areaMenuOpen: true, areaMenuAnchor: { left: r.left, bottom: r.bottom } }); }} aria-haspopup="menu" data-testid="home-area-toggle" style={homeCapsule({ fontWeight: 600 })}>{curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label} <span style={{ fontSize: 9, marginLeft: 5 }}>▾</span></span>
+          <span onClick={(e) => {
+            // Anchor in the coordinates of the overlay container: on desktop the app sits inside a phone frame
+            // (.bb-screen is the containing block for fixed overlays); elsewhere .bb-screen is display:contents
+            // and its rect is empty, so the viewport is the reference.
+            const r = e.currentTarget.getBoundingClientRect();
+            const frame = e.currentTarget.closest('.bb-screen')?.getBoundingClientRect();
+            const inFrame = frame && frame.width > 0;
+            set({ areaMenuOpen: true, areaMenuAnchor: {
+              left: r.left - (inFrame ? frame.left : 0), bottom: r.bottom - (inFrame ? frame.top : 0),
+              width: inFrame ? frame.width : window.innerWidth } });
+          }} aria-haspopup="menu" data-testid="home-area-toggle" style={homeCapsule({ fontWeight: 600 })}>{curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label} <span style={{ fontSize: 9, marginLeft: 5 }}>▾</span></span>
           <span onClick={toggleTheme} data-testid="home-theme-toggle" style={homeCapsule({ fontWeight: 600 })}>{s.theme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}</span>
         </div>
       </div>

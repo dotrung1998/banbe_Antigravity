@@ -452,16 +452,18 @@ export default function Account() {
             data-testid={`account-tab-${tab.key}`}
             role="tab" aria-selected={accountTab === tab.key}
             style={{
-              flex: 1, minWidth: 0, minHeight: 44, fontSize: 15, fontWeight: 600, padding: '0 10px', borderRadius: 999, cursor: 'pointer', color: ink,
-              border: '1px solid transparent', transition: 'background .2s, box-shadow .2s',
+              flex: 1, minWidth: 0, minHeight: 44, fontSize: 14, fontWeight: 600, padding: '0 6px', borderRadius: 999, cursor: 'pointer', color: ink,
+              transition: 'background .2s, box-shadow .2s', outline: 'none', WebkitTapHighlightColor: 'transparent',
+              // Always the FULL `border` shorthand in both states: mixing it with a `borderColor` override made
+              // React clear just the colour on deselect, leaving a black (currentColor) ring on the old tab.
               ...(accountTab === tab.key
                 // The selected segment is a raised glass bubble, like iOS GlassSegmentedControl.
-                ? { background: 'linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.18)), var(--bb-bg)', borderColor: 'rgba(var(--bb-fg-rgb),0.12)', boxShadow: '0 4px 14px rgba(27,25,22,0.14), inset 0 1px 0 rgba(255,255,255,0.6)' }
-                : {}),
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap',
+                ? { border: '1px solid rgba(var(--bb-fg-rgb),0.12)', background: 'linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.18)), var(--bb-bg)', boxShadow: '0 4px 14px rgba(27,25,22,0.14), inset 0 1px 0 rgba(255,255,255,0.6)' }
+                : { border: '1px solid transparent', background: 'transparent', boxShadow: 'none' }),
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, whiteSpace: 'nowrap',
             }}
           >
-            <RowIcon kind={tab.icon} size={20} />
+            <RowIcon kind={tab.icon} size={18} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
             {!!tab.badge && (
               <span
