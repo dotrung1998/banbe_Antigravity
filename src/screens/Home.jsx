@@ -2,14 +2,14 @@ import { glassCapsuleInactive } from '../lib/glassOpacity.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { EVENTS, bg, agoLabel } from '../data/events.js';
+import { EVENTS, bg, agoLabel, haversineKm, catalogStartMs } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
 import { prefsIsEmpty } from '../lib/eventPrefs.js';
 import { forYouRankEvents } from '../lib/forYou.js';
 import { forYouEventVersion } from '../lib/forYouAlert.js';
 import { useForYouAlert } from '../lib/useForYouAlert.js';
 import ForYouChip from './ForYouChip.jsx';
-import { reminderPhase, REMINDER_CSS, reminderRank } from '../lib/eventReminder.js';
+import { reminderPhase, reminderRank } from '../lib/eventReminder.js';
 import { compactCoins, shortcutLabels } from '../lib/rewards.js';
 import { HEADER, hitSlop } from '../lib/homeHeaderLayout.js';
 
@@ -27,6 +27,11 @@ import ActionCenter from './ActionCenter.jsx';
 import ActivationChecklistCard from './ActivationChecklistCard.jsx';
 import { GuestBrowseBanner } from './GuestPromptSheet.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
+import { CategoryRow, HomeSearchBar, DiscoveryCard, DiscoveryRow, NextUpBanner } from '../components/home/HomeDiscoveryParts.jsx';
+import HomeFilterSheet, { DATE_LABELS, RELAX_LABELS, SORT_LABELS } from './sheets/HomeFilterSheet.jsx';
+import {
+  applyDiscoveryFilters, sortEvents, fillBadge, activeFilterCount, optionCounts, relaxationHints, DEFAULT_FILTERS,
+} from '../lib/homeDiscovery.js';
 
 // A5 (2026-09-27 Pulse/loading UX pass) — one-at-a-time Banbe-styled
 // speech bubbles beside the Home Pulse ring: label -> real top 1/2/3
@@ -368,30 +373,18 @@ function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen
 // itself advances/dismisses the teaser sequence (the existing, unchanged
 // behavior), which is a deliberate, separate action from opening Pulse.
 
-// Second, independent chip row (12-home-filters.md) — multi-select,
-// AND-combined with FILTER_DEFS' category row and the area picker, not a
-// third incompatible filter system: each reuses an existing definition
-// (isGoing's status set from note 04, isSaved's favorites, e.soldOut's
-// static catalogue flag) rather than recomputing any of them.
-//
-// 2026-09-21 follow-up (07-notifications.md) — extended with notConfirmed
-// (a refinement of the original three, now that isGoing is scoped to
-// genuinely-confirmed — see BanBeContext.jsx's own comment on isGoing) plus
-// upcoming/ended, using the same live-status data the "Sự kiện của bạn"
-// strip's real 48h expiry now needs anyway (homeLiveEvents) — not a
-// separate concept.
-//
-// Second follow-up (same day): notAttending/notSaved removed entirely per
-// this ticket's own instruction (redundant inverses that cluttered the
-// row without earning their keep) — Upcoming/Saved/Attending reordered to
-// lead, Ended kept last.
-const HOME_EXTRA_FILTERS = [
-  { key: 'upcoming', vi: 'Sắp diễn ra', en: 'Upcoming' },
-  { key: 'saved', vi: 'Đã lưu', en: 'Saved' },
-  { key: 'attending', vi: 'Đang tham gia', en: 'Attending' },
-  { key: 'notConfirmed', vi: 'Chưa xác nhận', en: 'Not confirmed' },
-  { key: 'soldOut', vi: 'Hết chỗ', en: 'Sold out' },
+// Quick chips (note 50): one-tap shortcuts into the same filters the filter sheet edits (src/lib/homeDiscovery.js).
+// The old status chips (Saved / Attending / Not confirmed / Sold out) left Home: they filter YOUR events, which
+// live in Schedule and Account > Saved/Going, not discovery. A chip that would return 0 events is hidden.
+const QUICK_CHIPS = [
+  { key: 'today', vi: 'Hôm nay', en: 'Today', apply: f => ({ ...f, date: f.date === 'today' ? 'any' : 'today' }), on: f => f.date === 'today', dim: 'date' },
+  { key: 'weekend', vi: 'Cuối tuần này', en: 'This weekend', apply: f => ({ ...f, date: f.date === 'weekend' ? 'any' : 'weekend' }), on: f => f.date === 'weekend', dim: 'date' },
+  { key: 'free', vi: 'Miễn phí', en: 'Free', apply: f => ({ ...f, free: !f.free, priceMin: null, priceMax: null }), on: f => f.free, dim: 'free' },
+  { key: 'almostFull', vi: 'Sắp hết chỗ', en: 'Almost full', apply: f => ({ ...f, almostFull: !f.almostFull }), on: f => f.almostFull, dim: 'almostFull' },
 ];
+const LAYOUT_KEY = 'banbe_home_layout_v1';
+const readLayout = () => { try { return localStorage.getItem(LAYOUT_KEY) === 'list' ? 'list' : 'cards'; } catch { return 'cards'; } };
+const ENDED_AFTER_MS = 12 * 3600000;
 
 // iOS HomeView.homeGlassCapsule parity: translucent ink-tinted fill, 1px
 // hairline, soft shadow, 999px radius, fixed 36px height.
@@ -422,8 +415,8 @@ export const FILTER_DEFS = [
 
 export default function Home() {
   const {
-    state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, isAwaitingConfirmation, toggleFav,
-    goEvent, openArea, toggleLang, toggleTheme, pickFilter, clearFilters, toggleHomeFilter, openEventSearch, goMapExplore,
+    state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, toggleFav,
+    goEvent, openArea, pickFilter, clearFilters, toggleHomeFilter, goMapExplore,
     becomeHost, switchToHost,
     canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary, loadHomeLiveEvents,
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
@@ -432,6 +425,7 @@ export default function Home() {
     loadMyAdminInvite, openAccountGroup,
     openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, loadPulse,
     loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openEventPreferences,
+    openSearch, setHomeFilters, located,
   } = useBanBe();
 
   const s = state;
@@ -457,34 +451,6 @@ export default function Home() {
   };
   const pulseRingRef = useRef(null);
 
-  // Home search relocation (2026-09-28 dock/search pass) — the search
-  // entry used to be a small icon in the top header (2026-09-27); moved to
-  // a floating button, lower-right, above the dock (see HomeSearchFab
-  // render near the end of this component). Mirrors App.jsx's own
-  // `handleScroll`/`barCollapsed` hide-on-scroll-down/show-on-scroll-up
-  // convention (same 4px thresholds, same "always show once back at the
-  // top" rule) rather than inventing a new one — that scroll state is
-  // local to App.jsx (screens get no props, only context) so this listens
-  // directly on the same shared scroll viewport
-  // (`[data-testid="app-scroll-viewport"]`, App.jsx) instead of duplicating
-  // it through context.
-  const [searchFabHidden, setSearchFabHidden] = useState(false);
-  const searchScrollTopRef = useRef(0);
-  useEffect(() => {
-    const el = document.querySelector('[data-testid="app-scroll-viewport"]');
-    if (!el) return undefined;
-    searchScrollTopRef.current = el.scrollTop;
-    const onScroll = () => {
-      const top = el.scrollTop;
-      const delta = top - searchScrollTopRef.current;
-      if (top <= 4) setSearchFabHidden(false);
-      else if (delta > 4) setSearchFabHidden(true);
-      else if (delta < -4) setSearchFabHidden(false);
-      searchScrollTopRef.current = top;
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
-  }, []);
   const openSaved = (sv) => (sv.toEvent === 'event' ? goEvent(sv.key) : set({ screen: sv.toEvent, eventKey: sv.key }));
   const heldEv = s.holdDeadline && s.holdDeadline > s.now ? EVENTS.find(e => e.key === s.eventKey) : null;
 
@@ -587,12 +553,6 @@ export default function Home() {
     if (justLapsed) forfeitExpiredHold(justLapsed);
   }, [s.paymentBookings, tickNow, forfeitExpiredHold]);
 
-  const filters = FILTER_DEFS.map(f => ({
-    key: f.key,
-    label: T(f.vi, f.en),
-    style: homeCapsule({ fontWeight: s.filter === f.key ? 600 : 400 }, s.filter === f.key),
-  }));
-
   // Discovery-bug fix — every real event (loadDiscoveryEvents above),
   // reshaped to the exact same card fields the static catalogue's own
   // `withLive` output has, so it flows through the SAME filter/sort/map
@@ -650,6 +610,9 @@ export default function Home() {
         // For You candidates (src/lib/forYou.js) need the raw price.
         priceVnd: e.priceVnd || 0,
         status: e.status,
+        // Note 50: Search, the fill badge and the Nearest sort need these; they used to be dropped here.
+        keywords: e.keywords || [], organizerName: e.organizerName || '', organizerId: e.organizerId,
+        capacity: e.capacity ?? null, lat: e.lat, lng: e.lng, description: e.description || '',
       };
     }), [s.discoveryEvents]);
 
@@ -726,11 +689,6 @@ export default function Home() {
     // 12h+ past its start is already over even if the server cron hasn't flipped it yet.
     .filter(e => e.endedHoursAgo == null && !(e.startsAtRaw && Date.now() - new Date(e.startsAtRaw).getTime() > 12 * 3600000))
     .filter(e => !e.inviteOnly && (s.filter === 'all' || e.catKey === s.filter || e.cat2Key === s.filter) && curArea.match(e))
-    .filter(e => !s.filterAttending || isGoing(e.key))
-    .filter(e => !s.filterNotConfirmed || isAwaitingConfirmation(e.key))
-    .filter(e => !s.filterSaved || isSaved(e.key))
-    .filter(e => !s.filterSoldOut || e.soldOut)
-    .filter(e => !s.filterUpcoming || (!e.cancelled && e.endedHoursAgo == null))
     .filter(e => !forYouActive || forYouOrder.has(e.key))
     .sort((a, b) => demoted(a) - demoted(b))
     .sort((a, b) => (forYouActive ? forYouOrder.get(a.key) - forYouOrder.get(b.key) : 0))
@@ -750,7 +708,84 @@ export default function Home() {
         goingLabel: trStatus('Đang tham gia' + ((s.tickets[e.key] || 1) > 1 ? ' ▪︎ ' + s.tickets[e.key] + ' vé' : '')),
         saveLabel: saved ? T('Đã lưu', 'Saved') : T('Lưu', 'Save'),
       };
-    }), [realEventsSorted, s.filter, s.filterAttending, s.filterNotConfirmed, s.filterSaved, s.filterSoldOut, s.filterUpcoming, s.filterEnded, forYouActive, forYouOrder, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, isAwaitingConfirmation, trStatus, stripKm, T]);
+    }), [realEventsSorted, s.filter, forYouActive, forYouOrder, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, trStatus, stripKm, T]);
+
+  // Popular sort + "Popular this week" label: the same Banbe Pulse score the Pulse viewer ranks by (note 17).
+  const pulseScore = useMemo(() => new Map((s.pulseDaily || []).map(p => [p.event_id, Number(p.score) || 0])), [s.pulseDaily]);
+  // ---- Discovery layer (note 50) ----------------------------------------------------------------
+  // `feed` above is the category + area + For You base. Every event is normalized ONCE into the
+  // src/lib/homeDiscovery.js item shape so quick chips, the filter sheet, its per-pill counts and the
+  // feed all run the same pure logic (no second filter path to drift).
+  // Demo events run on their own simulated "today"; catalogStartMs (events.js) shifts them by the same offset
+  // their "in N days" label already uses, so a demo "tomorrow" is tomorrow here too.
+  const nowMs = Date.now();
+  const discoveryItems = useMemo(() => feed.map(e => {
+    const live = s.homeLiveEvents[e.key];
+    const startsAt = e.startsAtRaw ? Date.parse(e.startsAtRaw) : catalogStartMs(e, live?.starts_at);
+    const fillRow = s.eventFill[e.key];
+    const priceVnd = e.isReal ? (e.priceVnd || 0)
+      : /miễn phí|free/i.test(e.price || '') ? 0 : (parseInt(String(e.price || '').replace(/[^\d]/g, ''), 10) || null);
+    const distanceKm = located && s.userCoords && e.lat != null && e.lng != null ? haversineKm(s.userCoords, e) : null;
+    return {
+      key: e.key, startsAt, priceVnd, catKeys: [e.catKey, e.cat2Key].filter(Boolean),
+      booked: fillRow ? fillRow.booked : null, capacity: fillRow ? fillRow.capacity : null,
+      soldOut: !!e.soldOut, distanceKm, popularity: pulseScore.get(e.key) ?? null, ev: e,
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [feed, s.eventFill, s.homeLiveEvents, located, s.userCoords, pulseScore]);
+  const homeFilters = s.homeFilters || DEFAULT_FILTERS;
+  const shownItems = useMemo(() => {
+    const filtered = applyDiscoveryFilters(discoveryItems, homeFilters, nowMs);
+    // For You keeps its own ranking; any explicit sort overrides it, Soonest keeps the feed's order.
+    return s.homeSort && s.homeSort !== 'soonest' ? sortEvents(filtered, s.homeSort) : filtered;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discoveryItems, homeFilters, s.homeSort, Math.floor(nowMs / 60000)]);
+  const quickCounts = useMemo(() => ({
+    ...optionCounts(discoveryItems, homeFilters, 'date', ['today', 'weekend'], nowMs),
+    free: optionCounts(discoveryItems, homeFilters, 'free', null, nowMs).true,
+    almostFull: optionCounts(discoveryItems, homeFilters, 'almostFull', null, nowMs).true,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [discoveryItems, homeFilters, Math.floor(nowMs / 60000)]);
+  const relaxHints = useMemo(() => (shownItems.length < 3 ? relaxationHints(discoveryItems, homeFilters, nowMs) : []),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [discoveryItems, homeFilters, shownItems.length]);
+  const filterBadge = activeFilterCount(homeFilters) + (s.homeSort && s.homeSort !== 'soonest' ? 1 : 0);
+  const [layoutMode, setLayoutMode] = useState(readLayout);
+  const pickLayout = (m) => { setLayoutMode(m); try { localStorage.setItem(LAYOUT_KEY, m); } catch { /* per-viewer convenience only */ } };
+
+  const badgeDate = (ms) => {
+    if (ms == null) return '';
+    const d = new Date(ms);
+    const wd = T(['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][d.getDay()], ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][d.getDay()]);
+    const hh = String(d.getHours()).padStart(2, '0'), mm = String(d.getMinutes()).padStart(2, '0');
+    const sameDay = (a, b) => a.toDateString() === b.toDateString();
+    const today = new Date(); const tomorrow = new Date(Date.now() + 86400000);
+    const day = sameDay(d, today) ? T('HÔM NAY', 'TODAY') : sameDay(d, tomorrow) ? T('MAI', 'TMRW') : `${wd} ${d.getDate()}/${d.getMonth() + 1}`;
+    return `${day} · ${hh}:${mm}`;
+  };
+  // Best-match label: the top For You match, only when the user has answers. Without answers the first card
+  // is "Popular this week" when it's the area's top Pulse event — never called a "match".
+  const topPulseKey = useMemo(() => {
+    let best = null;
+    for (const it of discoveryItems) if (it.popularity != null && (!best || it.popularity > best.popularity)) best = it;
+    return best?.key || null;
+  }, [discoveryItems]);
+  const cards = useMemo(() => shownItems.map((it, i) => {
+    const e = it.ev;
+    const fill = fillBadge(it.booked, it.capacity);
+    if (e.soldOut && fill.left == null) fill.soldOut = true;
+    const meta = [e.isReal ? e.area : e.locationLabel, it.distanceKm != null ? `${it.distanceKm.toFixed(1).replace('.', ',')} km` : null, trStatus(e.catDisplay || e.cat)]
+      .filter(Boolean).join(' · ');
+    let label = null;
+    if (i === 0 && forYouRanked.length && forYouRanked[0].key === e.key) label = 'best';
+    else if (i === 0 && !forYouActive && topPulseKey === e.key) label = 'popular';
+    return {
+      key: e.key, name: e.name, img: e.img, dateBadge: badgeDate(it.startsAt),
+      priceLabel: it.priceVnd === 0 ? T('Miễn phí', 'Free') : trStatus(e.price), isFree: it.priceVnd === 0,
+      metaLine: meta, fill, cancelled: !!e.cancelled, saved: e.saved, going: e.going, label,
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [shownItems, forYouRanked, forYouActive, topPulseKey, trStatus, T]);
 
   // Retention roadmap P1 ("Cuối tuần này") — reuses the SAME district
   // (curArea) and category (s.filter) picks already driving the main feed
@@ -777,7 +812,10 @@ export default function Home() {
     })), [s.weekendEvents, curArea, s.filter, isSaved, T]);
 
   const heldKey = heldEv ? heldEv.key : null;
-  const savedKeys = [...new Set([...s.favorites, ...s.attending, ...s.invited, ...(heldKey ? [heldKey] : [])])];
+  // Note 50: the "Your events" strip is gone (Schedule + Account own your events). What stays is the one part
+  // with real value: the note-37 reminder, as a "Next up" banner. Only a confirmed ticket can carry a reminder,
+  // so only those keys are resolved here.
+  const savedKeys = [...new Set([...s.attending, ...s.favorites, ...s.invited])].filter(k => isGoing(k) && k !== heldKey);
 
   // Blocker fix (retention roadmap follow-up) — a saved/attending/invited
   // event that ISN'T one of the 20 static demo ones (a real, host-created
@@ -861,6 +899,7 @@ export default function Home() {
     // Reminder events (starting within 24h / happening now) lead the strip, "live" first;
     // Array.sort is stable so everything else keeps its existing order.
     .sort((a, b) => reminderRank(a.reminder) - reminderRank(b.reminder));
+  const nextUp = savedList.find(x => x.reminder) || null;
 
   const homeHostLinkLabel = hasHosted ? T('Trang tổ chức của bạn', 'Your host page') : T('Dành cho người tổ chức ▪︎ hoàn toàn miễn phí', 'For organizers ▪︎ completely free');
   const homeHostLink = hasHosted ? () => switchToHost('home') : becomeHost;
@@ -953,43 +992,36 @@ export default function Home() {
               </span>
             )}
           </button>
-          <div
-            onClick={openEventSearch}
-            data-testid="home-search-fab"
-            aria-label={T('Tìm sự kiện', 'Search events')}
-            role="button"
-            style={{ width: HEADER.minTouch, height: HEADER.minTouch, margin: -hitSlop(HEADER.search), display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', cursor: 'pointer', color: ink }}
-          >
-            <span aria-hidden="true" style={{ ...homeCapsule(), width: HEADER.search, height: HEADER.search, borderRadius: '50%', padding: 0, justifyContent: 'center' }}>
-            <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.35-4.35" />
-            </svg>
-            </span>
-          </div>
           </div>
         </div>
-        <div data-hscroll="true" style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', padding: '2px 0 4px' }}>
-          <span onClick={toggleLang} data-testid="home-lang-toggle" style={homeCapsule({ fontWeight: 600 })}>{T('EN', 'VN')}</span>
-          <span onClick={(e) => {
-            // Anchor in the coordinates of the overlay container: on desktop the app sits inside a phone frame
-            // (.bb-screen is the containing block for fixed overlays); elsewhere .bb-screen is display:contents
-            // and its rect is empty, so the viewport is the reference.
-            const r = e.currentTarget.getBoundingClientRect();
-            const frame = e.currentTarget.closest('.bb-screen')?.getBoundingClientRect();
-            const inFrame = frame && frame.width > 0;
-            set({ areaMenuOpen: true, areaMenuAnchor: {
-              left: r.left - (inFrame ? frame.left : 0), bottom: r.bottom - (inFrame ? frame.top : 0),
-              width: inFrame ? frame.width : window.innerWidth } });
-          }} aria-haspopup="menu" data-testid="home-area-toggle" style={homeCapsule({ fontWeight: 600 })}>{curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label} <span style={{ fontSize: 9, marginLeft: 5 }}>▾</span></span>
-          <span onClick={toggleTheme} data-testid="home-theme-toggle" style={homeCapsule({ fontWeight: 600 })}>{s.theme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}</span>
-        </div>
+        {/* Note 50: language + theme live in Settings > Language & Appearance; the area menu is a location pill
+            ("Deliver to"-style) and the full-width search bar takes the slot "Your events" used to fill. */}
+        <button type="button" onClick={(e) => {
+          // Anchor in the coordinates of the overlay container: on desktop the app sits inside a phone frame
+          // (.bb-screen is the containing block for fixed overlays); elsewhere .bb-screen is display:contents
+          // and its rect is empty, so the viewport is the reference.
+          const r = e.currentTarget.getBoundingClientRect();
+          const frame = e.currentTarget.closest('.bb-screen')?.getBoundingClientRect();
+          const inFrame = frame && frame.width > 0;
+          set({ areaMenuOpen: true, areaMenuAnchor: {
+            left: r.left - (inFrame ? frame.left : 0), bottom: r.bottom - (inFrame ? frame.top : 0),
+            width: inFrame ? frame.width : window.innerWidth } });
+        }} aria-haspopup="menu" data-testid="home-area-toggle"
+          style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 32, padding: 0, border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>
+          <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
+          <span style={{ opacity: 0.6, fontWeight: 500 }}>{T('Gần', 'Near')}</span>
+          {curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label}
+          <span aria-hidden="true" style={{ fontSize: 9, marginLeft: 2 }}>▾</span>
+        </button>
+        <HomeSearchBar onOpen={openSearch} T={T} />
       </div>
 
       {/* TASK A (2026-10-01 UX foundation pass) — replaces the old fixed
           four-banner block: one unified, priority-sorted, 3-card-capped
           Action Center covering both roles this account can hold. See
           src/lib/actionCenter.js for the source list and ordering rule. */}
+      <NextUpBanner item={nextUp && { ...nextUp, when: nextUp.status }} onOpen={() => openSaved(nextUp)} T={T} />
+
       {/* Note 49: a guest sees a sign-in banner instead of the personal Action Center / checklist. */}
       {s.user ? (
         <>
@@ -997,37 +1029,6 @@ export default function Home() {
           <ActivationChecklistCard />
         </>
       ) : <GuestBrowseBanner />}
-
-      {savedList.length > 0 && (
-        <div style={{ padding: '16px 20px 4px', borderBottom: `1px solid ${rule}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-            <span style={{ ...display(SECTION_TITLE) }}>{T('Sự kiện của bạn', 'Your events')}</span>
-            <span style={{ fontSize: 11.5, color: ink }}>{T('Sự kiện đã qua sẽ ẩn sau 48h', 'Past events clear after 48h')}</span>
-          </div>
-          <div data-hscroll="true" style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '12px 14px 6px', margin: '-12px -14px 0' }}>
-            {savedList.map(sv => (
-              <div key={sv.key} onClick={sv.unavailable ? undefined : () => openSaved(sv)} style={{ flex: 'none', width: 164, cursor: sv.unavailable ? 'default' : 'pointer' }}>
-                <div style={{ position: 'relative', '--bb-rem-r': '18px' }} className={sv.reminder ? 'bb-rem-card' : undefined} data-testid={sv.reminder ? 'home-event-reminder' : undefined} data-reminder={sv.reminder || undefined}>
-                  {sv.reminder && <style>{REMINDER_CSS}</style>}
-                  {sv.photoUrl ? (
-                    <div style={bg(sv.photoUrl, { width: 164, height: 104, borderRadius: 18, filter: 'none' })} />
-                  ) : (
-                    <div style={{ ...cardGlass({ width: 164, height: 104, borderRadius: 18 }), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ fontSize: 10.5, color: ink, opacity: 0.55 }}>{sv.unavailable ? sv.tag : T('Chưa có ảnh', 'No photo yet')}</span>
-                    </div>
-                  )}
-                  <span style={photoChip(sv.chip, { top: 8, left: 8, fontSize: 10, padding: '5px 11px', borderRadius: 999 })}>{sv.reminder && <span aria-hidden="true" style={{ color: '#FFD76A', marginInlineEnd: 4 }}>★</span>}{sv.tag}</span>
-                  {sv.canRemove && (
-                    <span onClick={(ev) => { ev.stopPropagation(); toggleFav(sv.key); }} style={lightChip({ top: 6, right: 6, fontSize: 10, padding: '4px 8px', borderRadius: 12 })}>{T('Bỏ', 'Remove')}</span>
-                  )}
-                </div>
-                <div style={{ ...display(17, { marginTop: 8, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{sv.name}</div>
-                <div style={{ fontSize: 12, color: ink, marginTop: 2, opacity: 0.8 }}>{sv.status}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Task 3.3 (07-notifications.md) — active-story row, between "Your
           events" and the main event list, per this ticket's own placement.
@@ -1103,6 +1104,178 @@ export default function Home() {
         )}
       </div>
 
+      <CategoryRow value={s.filter} onPick={pickFilter} T={T} />
+
+      {/* Quick row: Filters + Sort open the sheet; For You stays pinned at the leading edge (notes 34/36); the
+          one-tap chips scroll (data-hscroll so the root tab swipe ignores them). */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0 6px', paddingInlineStart: 20 }}>
+        <button type="button" onClick={() => set({ homeFilterSheetOpen: true })} data-testid="home-filters-button"
+          aria-label={filterBadge ? T(`Bộ lọc, ${filterBadge} đang bật`, `Filters, ${filterBadge} on`) : T('Bộ lọc', 'Filters')}
+          style={{ ...homeCapsule({ padding: '0 12px', gap: 6, position: 'relative', border: 'none', fontFamily: 'inherit' }, filterBadge > 0) }}>
+          <svg aria-hidden="true" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
+          {filterBadge > 0 && <span data-testid="home-filters-badge" style={{ fontSize: 12, fontWeight: 700 }}>{filterBadge}</span>}
+        </button>
+        <button type="button" onClick={() => set({ homeFilterSheetOpen: true })} data-testid="home-sort-button"
+          aria-label={T(`Sắp xếp: ${SORT_LABELS[s.homeSort || 'soonest'][0]}`, `Sort: ${SORT_LABELS[s.homeSort || 'soonest'][1]}`)}
+          style={{ ...homeCapsule({ padding: '0 12px', border: 'none', fontFamily: 'inherit' }) }}>
+          <svg aria-hidden="true" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M7 4v16M3.5 16.5 7 20l3.5-3.5M17 20V4M13.5 7.5 17 4l3.5 3.5" /></svg>
+        </button>
+        {hasForYou && (
+          <ForYouChip
+            T={T}
+            active={!!s.filterForYou}
+            pending={forYouAlert.pending}
+            animate={forYouAlert.animate}
+            capsuleStyle={homeCapsule({ fontWeight: s.filterForYou ? 600 : 400 }, !!s.filterForYou)}
+            onClick={() => {
+              if (!s.filterForYou) forYouAlert.acknowledge(forYouRanked.map(m => m.key));
+              toggleHomeFilter('forYou');
+            }}
+          />
+        )}
+        <div data-hscroll="true" data-testid="home-filter-extra-scroller" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', paddingInlineEnd: 20 }}>
+          {QUICK_CHIPS.map(c => {
+            const active = c.on(homeFilters);
+            const n = quickCounts[c.key];
+            if (!active && !n) return null;
+            return (
+              <button type="button" key={c.key} onClick={() => setHomeFilters(c.apply)} aria-pressed={active}
+                data-testid={`home-quick-${c.key.toLowerCase()}`}
+                style={homeCapsule({ fontWeight: active ? 600 : 400, border: 'none', fontFamily: 'inherit', gap: 6 }, active)}>
+                {T(c.vi, c.en)}
+                {!active && <span style={{ fontSize: 12, opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>{n}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {forYouActive && (
+        <div style={{ padding: '0 20px 4px' }}>
+          <span
+            onClick={() => openEventPreferences('home')}
+            data-testid="home-foryou-edit-answers"
+            role="button"
+            style={{ fontSize: 12.5, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer' }}
+          >
+            {T('Chỉnh câu trả lời của bạn', 'Edit my answers')}
+          </span>
+        </div>
+      )}
+
+      {/* Section header: what you're looking through, and a cards/list switch (no single default suits everyone). */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px 12px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+          <span style={{ ...display(SECTION_TITLE), whiteSpace: 'nowrap' }}>
+            {homeFilters.date !== 'any' && DATE_LABELS[homeFilters.date] ? T(...DATE_LABELS[homeFilters.date]) : forYouActive ? T('Dành cho bạn', 'For you') : T('Sắp diễn ra', 'Upcoming')}
+          </span>
+          <span data-testid="home-result-count" data-count={shownItems.length} style={{ fontSize: 13, opacity: 0.6, whiteSpace: 'nowrap' }}>
+            {T(`${shownItems.length} sự kiện`, `${shownItems.length} event${shownItems.length === 1 ? '' : 's'}`)}
+          </span>
+        </div>
+        <div role="radiogroup" aria-label={T('Kiểu hiển thị', 'Layout')} style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 999, background: 'rgba(var(--bb-fg-rgb),0.06)' }}>
+          {[['cards', T('Thẻ', 'Cards'), 'M4 4h16v7H4zM4 13h16v7H4z'], ['list', T('Danh sách', 'List'), 'M4 6h16M4 12h16M4 18h16']].map(([m, lbl, d]) => (
+            <button key={m} type="button" role="radio" aria-checked={layoutMode === m} aria-label={lbl} onClick={() => pickLayout(m)} data-testid={`home-layout-${m}`}
+              style={{ width: 34, height: 30, borderRadius: 999, border: 'none', cursor: 'pointer', color: ink, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: layoutMode === m ? 'var(--bb-bg)' : 'transparent', boxShadow: layoutMode === m ? '0 1px 3px rgba(27,25,22,0.18)' : 'none' }}>
+              <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {cards.map(ev => (layoutMode === 'list'
+        ? <DiscoveryRow key={ev.key} ev={ev} onOpen={() => goEvent(ev.key)} T={T} />
+        : <DiscoveryCard key={ev.key} ev={ev} onOpen={() => goEvent(ev.key)} onToggleSave={() => toggleFav(ev.key)} T={T} />))}
+
+      {/* Requirements are soft: when filters leave almost nothing, offer the one change that adds the most. */}
+      {relaxHints.length > 0 && feed.length > 0 && (
+        <div data-testid="home-relax-hints" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '4px 20px 18px' }}>
+          {relaxHints.map(h => (
+            <button key={h.id} type="button" onClick={() => setHomeFilters(h.filters)} data-testid={`home-relax-${h.id}`}
+              style={homeCapsule({ border: 'none', fontFamily: 'inherit', fontWeight: 600 })}>
+              {T(`+${h.gain} sự kiện nếu ${RELAX_LABELS[h.id][0]}`, `+${h.gain} event${h.gain === 1 ? '' : 's'} with ${RELAX_LABELS[h.id][1]}`)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {cards.length === 0 && (
+        <div style={{ padding: '20px 0 30px' }}>
+          {/* Note 48 (iOS parity): a cute scene + one clear next step instead of a bare line. */}
+          <EmptyState scene="findPlans" testId="home-empty"
+            title={T('Tuần này hơi yên ắng…', 'A quiet week here…')}
+            message={curArea.key === 'all'
+              ? T('Chưa có buổi nào khớp bộ lọc này. Bỏ lọc để xem mọi buổi vui tuần này nhé!', 'Nothing matches these filters yet. Clear them to see every fun gathering this week!')
+              : T(`Chưa có buổi nào ở ${curArea.label} khớp bộ lọc. Xem tất cả hoặc mở bản đồ để tìm quanh bạn nhé!`, `Nothing in ${curArea.label} matches these filters yet. See everything, or open the map to look around you!`)}
+            actionLabel={T('Xem tất cả sự kiện', 'See all events')} actionTestId="home-empty-see-all" onAction={() => { clearFilters(); set({ homeSort: 'soonest' }); }}
+            secondaryLabel={T('Tìm trên bản đồ', 'Look on the map')} secondaryTestId="home-empty-map" onSecondary={goMapExplore} />
+        </div>
+      )}
+
+      {cards.length > 0 && (
+        <div style={{ padding: '34px 20px 6px', textAlign: 'center', borderTop: `1px solid ${rule}` }}>
+          <p style={{ ...display(11.5, { margin: 0 }) }}>{T('Hết rồi, ra ngoài chơi thôi!', "That's it, go have fun!")}</p>
+        </div>
+      )}
+
+      {/* Retention roadmap P1 ("Cuối tuần này") — real live+public events
+          for the applicable weekend (see loadWeekendEvents), never demo
+          cards. Placed after the main feed (not the "Sự kiện của bạn"
+          strip near the top) on purpose: it's a discovery section, not a
+          personal one, and keeping the main feed's own card markup first
+          in the DOM avoids collisions with generic "first card containing
+          this event's name" test/query patterns already written against
+          it. Suppressed during the very first load (list still empty AND
+          still loading) so it never flashes the empty state for an
+          instant before real data arrives — same "no false state on
+          initial load" bar Stage 1's favorites work already holds to. */}
+      {homeFilters.date !== 'weekend' && !(s.weekendEventsLoading && weekendList.length === 0) && (
+        <div data-testid="home-weekend-section" style={{ padding: '16px 20px 4px', borderTop: `1px solid ${rule}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+            <span style={{ ...display(SECTION_TITLE) }}>{T('Cuối tuần này', 'This weekend')}</span>
+          </div>
+          {weekendList.length > 0 ? (
+            <div data-hscroll="true" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 10 }}>
+              {weekendList.map(e => (
+                <div key={e.key} data-testid={`weekend-event-${e.key}`} data-zoom-src={e.key} onClick={() => goEvent(e.key)} style={{ flex: 'none', width: 168, cursor: 'pointer' }}>
+                  <div style={{ position: 'relative' }}>
+                    {e.photoUrl ? (
+                      <div style={bg(e.photoUrl, { width: 168, height: 110 })} />
+                    ) : (
+                      // Honest placeholder — never a static demo photo
+                      // standing in for a real one (roadmap's own rule).
+                      <div style={{ ...cardGlass({ width: 168, height: 110 }), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontSize: 11, color: ink, opacity: 0.55 }}>{T('Chưa có ảnh', 'No photo yet')}</span>
+                      </div>
+                    )}
+                    <span
+                      onClick={(ev) => { ev.stopPropagation(); toggleFav(e.key); }}
+                      data-testid={`weekend-save-${e.key}`}
+                      style={e.saved ? photoChip(CHIP_COLORS.going, { top: 6, right: 6, fontSize: 9, padding: '4px 8px', borderRadius: 12 }) : lightChip({ top: 6, right: 6, fontSize: 9, padding: '4px 8px', borderRadius: 12 })}
+                    >
+                      {e.saved ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')}
+                    </span>
+                    {e.soldOut && (
+                      <span style={photoChip(CHIP_COLORS.cancelled, { bottom: 6, left: 6, fontSize: 9, padding: '4px 8px', borderRadius: 12 })}>{T('Hết chỗ', 'Sold out')}</span>
+                    )}
+                  </div>
+                  <div style={{ ...display(14, { marginTop: 7, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</div>
+                  <div style={{ fontSize: 11, color: ink, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{trStatus(e.when)}{e.area ? ' ▪︎ ' + e.area : ''}</div>
+                  <div style={{ fontSize: 11, color: ink, marginTop: 1, display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                    <span>{e.priceDisplay}</span>
+                    <span>{e.seatsDisplay}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p data-testid="weekend-empty" style={{ fontSize: 12.5, color: ink, opacity: 0.7, padding: '4px 0 12px' }}>
+              {T('Chưa có sự kiện phù hợp cuối tuần này.', 'No matching events this weekend yet.')}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Section 5 — public survey-story discovery, independent of follow
           status (s.homeSurveyDiscovery is built that way in
           loadHomeStories()'s own comment — never mixed into the
@@ -1120,7 +1293,7 @@ export default function Home() {
           impossible here too. */}
       {/* Note 49: surveys need an account (the discovery RPC is authenticated-only) — hidden for a guest. */}
       {s.user && (
-      <div style={{ padding: '0 20px 16px' }} data-testid="home-survey-discovery-section">
+      <div style={{ padding: '16px 20px 16px', borderTop: `1px solid ${rule}` }} data-testid="home-survey-discovery-section">
         {/* Collapse/expand pass — collapsed by default; the compact
             horizontal strip below (already the "compact cards, not a tall
             stack" shape this ticket asks for) only renders while expanded.
@@ -1231,186 +1404,21 @@ export default function Home() {
       </div>
       )}
 
-      <div data-hscroll="true" style={{ display: 'flex', gap: 8, padding: '14px 20px 8px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-        {filters.map(f => (
-          <span key={f.key} onClick={() => pickFilter(f.key)} style={f.style}>{f.label}</span>
-        ))}
-      </div>
-
-      {/* Task 2 (2026-09-21 follow-up) — `flexWrap: 'wrap'` + no
-          `overflowX` instead of a horizontally-scrolling single row: every
-          chip is now always visible (wraps to a second line if it doesn't
-          fit), no swipe needed to see the rest. */}
-      {/* For You is pinned at the leading edge (not scrollable); only the extra
-          chips live in the scroller. The scroller keeps data-hscroll so the
-          root tab swipe ignores it, and keeps one stable position whether or
-          not For You is rendered (no remount, scroll offset preserved). */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 0 14px', paddingInlineStart: 20 }}>
-        {hasForYou && (
-          <ForYouChip
-            T={T}
-            active={!!s.filterForYou}
-            pending={forYouAlert.pending}
-            animate={forYouAlert.animate}
-            capsuleStyle={homeCapsule({ fontWeight: s.filterForYou ? 600 : 400 }, !!s.filterForYou)}
-            onClick={() => {
-              if (!s.filterForYou) forYouAlert.acknowledge(forYouRanked.map(m => m.key));
-              toggleHomeFilter('forYou');
-            }}
-          />
-        )}
-        <div data-hscroll="true" data-testid="home-filter-extra-scroller" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', paddingInlineEnd: 20 }}>
-        {HOME_EXTRA_FILTERS.map(f => {
-          // Every filter key maps to its state field by simple
-          // capitalization (attending -> filterAttending, notConfirmed ->
-          // filterNotConfirmed, ...) — see BanBeContext.jsx's HOME_FILTER_STATE_KEY.
-          const active = s['filter' + f.key[0].toUpperCase() + f.key.slice(1)];
-          return (
-            <span
-              key={f.key}
-              onClick={() => toggleHomeFilter(f.key)}
-              data-testid={`home-filter-${f.key.toLowerCase()}`}
-              style={homeCapsule({ fontWeight: active ? 600 : 400 }, !!active)}
-            >
-              {T(f.vi, f.en)}
-            </span>
-          );
-        })}
-        </div>
-      </div>
-      {forYouActive && (
-        <div style={{ padding: '0 20px 12px' }}>
-          <span
-            onClick={() => openEventPreferences('home')}
-            data-testid="home-foryou-edit-answers"
-            role="button"
-            style={{ fontSize: 12.5, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer' }}
-          >
-            {T('Chỉnh câu trả lời của bạn', 'Edit my answers')}
-          </span>
-        </div>
-      )}
-
-      {feed.map(ev => (
-        <div key={ev.key} data-testid={`home-event-${ev.key}`} data-zoom-src={ev.key} onClick={() => goEvent(ev.key)} style={{ cursor: 'pointer', paddingBottom: 6 }}>
-          <div style={{ position: 'relative' }}>
-            {/* Discovery-bug fix — a real event with no uploaded photo yet
-                gets the same honest "Chưa có ảnh" placeholder the weekend
-                strip already uses below, never a static demo photo standing
-                in for a real one. Static catalogue cards always have `img`
-                set (bundled imports), so this branch is a no-op for them. */}
-            {ev.isReal && !ev.img ? (
-              <div style={{ ...cardGlass({ width: 'calc(100% - 40px)', height: 272, margin: '0 20px', borderRadius: '14px 14px 0 0' }), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: 12, color: ink, opacity: 0.55 }}>{T('Chưa có ảnh', 'No photo yet')}</span>
-              </div>
-            ) : (
-              <div style={bg(ev.img, { width: 'calc(100% - 40px)', height: 272, margin: '0 20px', borderRadius: '14px 14px 0 0' })} />
-            )}
-            <div style={{ position: 'absolute', left: 20, right: 20, bottom: 0, height: 58, background: `linear-gradient(to bottom, rgba(var(--bb-bg-rgb),0) 0%, rgba(var(--bb-bg-rgb),0.3) 62%, ${paper} 100%)`, pointerEvents: 'none' }} />
-            <span
-              onClick={(e) => { e.stopPropagation(); toggleFav(ev.key); }}
-              style={ev.saved ? photoChip(CHIP_COLORS.going, { top: 12, right: 30 }) : lightChip({ top: 12, right: 30 })}
-            >{ev.saveLabel}</span>
-            {ev.going && (
-              <span style={photoChip(CHIP_COLORS.going, { bottom: 12, left: 30 })}>{ev.goingLabel}</span>
-            )}
-          </div>
-          <div style={{ padding: '14px 20px 18px', display: 'grid', gridTemplateColumns: '1fr auto', columnGap: 16 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-              <span style={{ ...display(22, { lineHeight: 1.2 }) }}>{ev.name}</span>
-              <span style={{ fontSize: 12.5, lineHeight: 1.35, color: ink, marginTop: 1 }}>{ev.metaDisplay}</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, paddingTop: 4 }}>
-              <span style={{ fontSize: 13, color: ink, whiteSpace: 'nowrap' }}>{trStatus(ev.price)}</span>
-              <span style={{ fontSize: 11.5, color: ink, whiteSpace: 'nowrap', textAlign: 'right' }}>{ev.seatsDisplay}</span>
-            </div>
-          </div>
-        </div>
-      ))}
-
-      {feed.length === 0 && (
-        <div style={{ padding: '20px 0 30px' }}>
-          {/* Note 48 (iOS parity): a cute scene + one clear next step instead of a bare line. */}
-          <EmptyState scene="findPlans" testId="home-empty"
-            title={T('Tuần này hơi yên ắng…', 'A quiet week here…')}
-            message={curArea.key === 'all'
-              ? T('Chưa có buổi nào khớp bộ lọc này. Bỏ lọc để xem mọi buổi vui tuần này nhé!', 'Nothing matches these filters yet. Clear them to see every fun gathering this week!')
-              : T(`Chưa có buổi nào ở ${curArea.label} khớp bộ lọc. Xem tất cả hoặc mở bản đồ để tìm quanh bạn nhé!`, `Nothing in ${curArea.label} matches these filters yet. See everything, or open the map to look around you!`)}
-            actionLabel={T('Xem tất cả sự kiện', 'See all events')} actionTestId="home-empty-see-all" onAction={clearFilters}
-            secondaryLabel={T('Tìm trên bản đồ', 'Look on the map')} secondaryTestId="home-empty-map" onSecondary={goMapExplore} />
-        </div>
-      )}
-
-      {feed.length > 0 && (
-        <div style={{ padding: '34px 20px 6px', textAlign: 'center', borderTop: `1px solid ${rule}` }}>
-          <p style={{ ...display(11.5, { margin: 0 }) }}>{T('Hết rồi, ra ngoài chơi thôi!', "That's it, go have fun!")}</p>
-        </div>
-      )}
-
-      {/* Retention roadmap P1 ("Cuối tuần này") — real live+public events
-          for the applicable weekend (see loadWeekendEvents), never demo
-          cards. Placed after the main feed (not the "Sự kiện của bạn"
-          strip near the top) on purpose: it's a discovery section, not a
-          personal one, and keeping the main feed's own card markup first
-          in the DOM avoids collisions with generic "first card containing
-          this event's name" test/query patterns already written against
-          it. Suppressed during the very first load (list still empty AND
-          still loading) so it never flashes the empty state for an
-          instant before real data arrives — same "no false state on
-          initial load" bar Stage 1's favorites work already holds to. */}
-      {!(s.weekendEventsLoading && weekendList.length === 0) && (
-        <div data-testid="home-weekend-section" style={{ padding: '16px 20px 4px', borderTop: `1px solid ${rule}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-            <span style={{ ...display(SECTION_TITLE) }}>{T('Cuối tuần này', 'This weekend')}</span>
-          </div>
-          {weekendList.length > 0 ? (
-            <div data-hscroll="true" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 10 }}>
-              {weekendList.map(e => (
-                <div key={e.key} data-testid={`weekend-event-${e.key}`} data-zoom-src={e.key} onClick={() => goEvent(e.key)} style={{ flex: 'none', width: 168, cursor: 'pointer' }}>
-                  <div style={{ position: 'relative' }}>
-                    {e.photoUrl ? (
-                      <div style={bg(e.photoUrl, { width: 168, height: 110 })} />
-                    ) : (
-                      // Honest placeholder — never a static demo photo
-                      // standing in for a real one (roadmap's own rule).
-                      <div style={{ ...cardGlass({ width: 168, height: 110 }), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontSize: 11, color: ink, opacity: 0.55 }}>{T('Chưa có ảnh', 'No photo yet')}</span>
-                      </div>
-                    )}
-                    <span
-                      onClick={(ev) => { ev.stopPropagation(); toggleFav(e.key); }}
-                      data-testid={`weekend-save-${e.key}`}
-                      style={e.saved ? photoChip(CHIP_COLORS.going, { top: 6, right: 6, fontSize: 9, padding: '4px 8px', borderRadius: 12 }) : lightChip({ top: 6, right: 6, fontSize: 9, padding: '4px 8px', borderRadius: 12 })}
-                    >
-                      {e.saved ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')}
-                    </span>
-                    {e.soldOut && (
-                      <span style={photoChip(CHIP_COLORS.cancelled, { bottom: 6, left: 6, fontSize: 9, padding: '4px 8px', borderRadius: 12 })}>{T('Hết chỗ', 'Sold out')}</span>
-                    )}
-                  </div>
-                  <div style={{ ...display(14, { marginTop: 7, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</div>
-                  <div style={{ fontSize: 11, color: ink, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{trStatus(e.when)}{e.area ? ' ▪︎ ' + e.area : ''}</div>
-                  <div style={{ fontSize: 11, color: ink, marginTop: 1, display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                    <span>{e.priceDisplay}</span>
-                    <span>{e.seatsDisplay}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p data-testid="weekend-empty" style={{ fontSize: 12.5, color: ink, opacity: 0.7, padding: '4px 0 12px' }}>
-              {T('Chưa có sự kiện phù hợp cuối tuần này.', 'No matching events this weekend yet.')}
-            </p>
-          )}
-        </div>
-      )}
-
       <div style={{ padding: '6px 20px 8px', fontSize: 11, color: ink }}>
         {T('Vài buổi vui dành cho riêng bạn tuần này. Không xếp hạng, không quảng cáo, không lướt vô tận.', 'A few fun gatherings made just for you this week. No ratings, no ads, no endless scrolling.')}
       </div>
       <div onClick={homeHostLink} style={{ padding: '4px 20px 44px', fontSize: 14.5, fontWeight: 600, letterSpacing: '-0.01em', color: ink, cursor: 'pointer' }}>{homeHostLinkLabel} ›</div>
     </div>
-
+    {s.homeFilterSheetOpen && (
+      <HomeFilterSheet
+        items={discoveryItems} filters={homeFilters} sort={s.homeSort} now={nowMs} T={T}
+        canSortNearest={!!(located && s.userCoords)}
+        areaLabel={curArea.key === 'all' ? '' : curArea.label}
+        onOpenArea={() => { set({ homeFilterSheetOpen: false }); openArea(); }}
+        onClose={() => set({ homeFilterSheetOpen: false })}
+        onApply={(f, sort) => { setHomeFilters(f); set({ homeFilterSheetOpen: false, homeSort: sort }); }}
+      />
+    )}
     </>
   );
 }

@@ -228,6 +228,18 @@ function relDays(dayShort) {
   return Math.round((d - TODAY) / 86400000);
 }
 
+/**
+ * Real start (ms) for a catalogue event: the live DB row's starts_at when there is one, else the demo date
+ * shifted by (real today - simulated TODAY) — the same offset its "in N days" label already uses, so Home's
+ * date chips, the date badge and Search all agree with that label (note 50).
+ */
+export function catalogStartMs(e, liveStartsAt, now = Date.now()) {
+  if (liveStartsAt) return Date.parse(liveStartsAt);
+  if (!(e?.startDate instanceof Date)) return null;
+  const today = new Date(now); today.setHours(0, 0, 0, 0);
+  return e.startDate.getTime() + (today.getTime() - TODAY.getTime());
+}
+
 export function untilLabel(n) {
   return n === 0 ? 'Hôm nay' : n === 1 ? 'Ngày mai' : 'Còn ' + n + ' ngày';
 }

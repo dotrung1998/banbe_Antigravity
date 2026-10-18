@@ -70,93 +70,50 @@ test.describe('Account — grouped entry cards, role-gated', () => {
   });
 });
 
-test.describe('Home — quick event search entry', () => {
-  test('opens MapExplore with the search field focused and filters real events by name', async ({ page }) => {
+test.describe('Home — search entry (note 50)', () => {
+  test('the search bar opens /search, groups live results, and "See on map" carries the query', async ({ page }) => {
     await setupToHome(page);
     await expect(page.locator('[data-screen-label="Home"]')).toBeVisible();
+    // The old header magnifier and floating fab are gone; one full-width bar replaces them.
+    await expect(page.getByTestId('home-search-button')).toHaveCount(0);
+    await expect(page.getByTestId('home-search-fab')).toHaveCount(0);
 
-    await page.getByTestId('home-search-fab').click();
-    await page.waitForSelector('[data-screen-label="MapExplore"]');
-    const input = page.getByTestId('map-search-input');
-    // Real-device follow-up (2026-09-28) — this must hold with NO second
-    // tap/focus() of any kind on the input anywhere above or below this
-    // line: the single `home-search-fab` click above is the only
-    // interaction that's supposed to be needed. `toBeFocused()` polls
-    // (Playwright's built-in retrying assertion, never a fixed sleep)
-    // until the transition settles and the field is genuinely focused.
+    await page.getByTestId('home-search-bar').click();
+    await page.waitForSelector('[data-screen-label="Search"]');
+    await expect(page).toHaveURL(/\/search$/);
+    const input = page.getByTestId('search-input');
     await expect(input).toBeFocused();
-    // Belt-and-suspenders: the real DOM `document.activeElement` itself
-    // (not just Playwright's own focus bookkeeping) is this exact input,
-    // confirmed via polling rather than a one-shot read.
-    await expect.poll(() => page.evaluate(() =>
-      document.activeElement?.getAttribute('data-testid')
-    )).toBe('map-search-input');
 
-    // A real, live-loaded event's own name (seeded demo data, migration
-    // 020) — never an invented/fabricated result.
-    await page.locator('[data-testid^="map-list-item-"]').first().waitFor({ timeout: 10000 });
-    const firstName = await page.locator('[data-testid^="map-list-item-"]').first().locator('div').first().innerText();
-    const term = firstName.slice(0, Math.min(4, firstName.length));
+    // A real, rendered event's own name — never an invented result.
+    await page.getByTestId('search-back').click();
+    await page.waitForSelector('[data-screen-label="Home"]');
+    const firstCard = page.locator('[data-testid^="home-event-"]').first();
+    await firstCard.waitFor({ timeout: 10000 });
+    const key = (await firstCard.getAttribute('data-testid')).replace('home-event-', '');
+    await page.getByTestId('home-search-bar').click();
+    await page.waitForSelector('[data-screen-label="Search"]');
+    await input.fill('supper');
+    await expect(page.getByTestId('search-group-events')).toBeVisible();
+    const count = Number(await page.getByTestId('search-results').getAttribute('data-count'));
+    expect(count).toBeGreaterThan(0);
 
-    await input.fill(term);
-    await expect(page.locator(`[data-testid^="map-list-item-"]:has-text("${term}")`).first()).toBeVisible({ timeout: 5000 });
-
-    // A nonsense query yields the honest "no results" state, not a blank
-    // panel or invented rows.
     await input.fill('zzzznonexistenteventzzzz');
-    await expect(page.getByTestId('map-search-no-results')).toBeVisible();
-    await expect(page.locator('[data-testid^="map-list-item-"]')).toHaveCount(0);
+    await expect(page.getByTestId('search-empty')).toBeVisible();
 
-    await input.fill('');
-    await page.getByTestId('map-back').click();
-    await expect(page.locator('[data-screen-label="Home"]')).toBeVisible();
+    await input.fill('supper');
+    await page.getByTestId('search-see-on-map').click();
+    await page.waitForSelector('[data-screen-label="MapExplore"]');
+    await expect(page.getByTestId('map-search-input')).toHaveValue('supper');
+    expect(key.length).toBeGreaterThan(0);
   });
 
-  // Real-device follow-up (2026-09-28) — the OLD top-header search icon
-  // (data-testid="home-search-button", beside the wordmark) was reported
-  // still visible on a real iPhone after the dock/search relocation commit.
-  // Turned out the web fix itself was already correct (the icon really is
-  // gone, replaced by `home-search-fab`) — the real gap was iOS, which never
-  // got touched at all (see apps/ios/BanbeApp/Views/HomeView.swift). This
-  // negative assertion guards the web side against ever silently
-  // reintroducing that old element, and confirms the fab is a true
-  // fixed-position sibling unaffected by Home's own scroll position — the
-  // exact containing-block bug class (a transform-holding ancestor from an
-  // animation's fill-mode) already found once in this codebase for the
-  // Pulse teaser bubble (see Home.jsx's own PulseTeaserBubble doc comment).
-  test('old header search icon is gone, and the floating fab is unaffected by Home scroll', async ({ page }) => {
+  test('back/forward between Home and Search keeps the URL in sync', async ({ page }) => {
     await setupToHome(page);
-    await expect(page.locator('[data-screen-label="Home"]')).toBeVisible();
-
-    // Negative assertion — a regression can't silently reintroduce the old
-    // header icon without this failing.
-    await expect(page.getByTestId('home-search-button')).toHaveCount(0);
-
-    const fab = page.getByTestId('home-search-fab');
-    await expect(fab).toBeVisible();
-    const scrollViewport = page.locator('[data-testid="app-scroll-viewport"]');
-
-    // A small scroll (below the 4px hide-on-scroll-down threshold, see
-    // Home.jsx's own searchFabHidden effect) must leave the fab's on-screen
-    // rect completely unchanged — it is `position: fixed` against the
-    // viewport, never against Home's own (scrolled) content box.
-    const before = await fab.boundingBox();
-    await scrollViewport.evaluate((el) => { el.scrollTop = 2; });
-    const afterTinyScroll = await fab.boundingBox();
-    expect(afterTinyScroll).toEqual(before);
-
-    // A real scroll-down hides it (intentional hide/reveal-on-scroll
-    // behavior, matching the dock's own shrink-on-scroll-down convention —
-    // see Home.jsx's own doc comment on searchFabHidden) — but scrolling
-    // back to the top must restore the EXACT same fixed rect, not a
-    // position drifted by however far the content itself scrolled.
-    await scrollViewport.evaluate((el) => { el.scrollTop = el.scrollHeight; });
-    await expect(fab).toHaveCSS('opacity', '0');
-    await scrollViewport.evaluate((el) => { el.scrollTop = 0; });
-    await expect(fab).toBeVisible();
-    // The reveal itself is a 0.22s CSS transition (translateY/scale/opacity
-    // — see Home.jsx's own searchFabHidden style) — poll rather than a
-    // single immediate read, so this doesn't race a mid-transition frame.
-    await expect.poll(() => fab.boundingBox()).toEqual(before);
+    await page.getByTestId('home-search-bar').click();
+    await expect(page).toHaveURL(/\/search$/);
+    await page.goBack();
+    await page.waitForSelector('[data-screen-label="Home"]');
+    await page.goForward();
+    await page.waitForSelector('[data-screen-label="Search"]');
   });
 });

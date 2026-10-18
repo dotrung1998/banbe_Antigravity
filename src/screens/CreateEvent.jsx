@@ -12,6 +12,19 @@ import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
 import { loadMapKit } from '../lib/mapkit.js';
 import { CountStepper, StepProgress } from '../components/ui/FormControls.jsx';
 import { PRICE_QUICK_PICKS, SEAT_QUICK_PICKS, TIME_QUICK_PICKS, dateQuickPicks, similarPriceRange, createDraftMatchesDefaults } from '../lib/smartDefaults.js';
+import { recipeChecks, recipeCopy, estimateOutcome, pricePosition, formatVndShort, slotLabel, hasBenchmarks, HOST_GOALS } from '../lib/eventRecipe.js';
+import { useHostBenchmarks } from '../lib/useHostBenchmarks.js';
+import { track } from '../lib/analytics.js';
+import RecipeSheet, { RecipeMeter, RecipeList } from './sheets/RecipeSheet.jsx';
+
+// Optional per-event goal (note 50). Weights the recipe; stored host-only (migration 186), never shown to guests.
+const GOAL_LABELS = {
+  fill_seats: ['Kín mọi chỗ', 'Fill every seat'],
+  regular_crowd: ['Xây nhóm khách quen', 'Build a regular crowd'],
+  try_idea: ['Thử ý tưởng mới', 'Try a new idea'],
+  small_premium: ['Nhỏ & cao cấp', 'Small & premium'],
+};
+const POSITION_LABELS = { free: ['miễn phí', 'free'], below: ['dưới mức thường', 'below typical'], typical: ['mức thường gặp', 'typical'], premium: ['cao cấp', 'premium'] };
 
 const IMPORT_FIELD_LABELS = {
   name: ['Tên sự kiện', 'Event name'],
@@ -308,6 +321,49 @@ export default function CreateEvent() {
     fieldErrors.included && T('mục bao gồm', 'an included item'),
     fieldErrors.photos && T(`ít nhất ${MIN_PHOTOS} ảnh`, `at least ${MIN_PHOTOS} photos`),
   ].filter(Boolean);
+  // ---- Recipe for success (note 50) ----------------------------------------------------------------
+  const primaryCat = s.createCats[0] || '';
+  const { benchmarks, demand } = useHostBenchmarks(primaryCat, s.createCity, !!s.user && !s.createSent);
+  const bench = hasBenchmarks(benchmarks) ? benchmarks : null;
+  const draftStartsAt = s.createEventDate && s.createEventTime
+    ? Date.parse(`${s.createEventDate}T${String(s.createEventTime).slice(0, 5)}:00+07:00`) : null;
+  const draftPriceVnd = parseInt((String(s.createPrice || '').match(/[\d.]+/) || ['0'])[0].replace(/\./g, ''), 10) || 0;
+  const draftKeywords = (s.createKeywords || '').split(',').map(k => k.trim()).filter(Boolean);
+  const recipe = useMemo(() => recipeChecks({
+    name: s.createName, description: s.createDesc, intro: s.createIntro,
+    includedCount: (s.createIncludedItems || []).filter(it => (it.label || '').trim()).length,
+    keywords: draftKeywords, priceVnd: draftPriceVnd,
+    seats: parseInt(String(s.createSeats || '').replace(/\D/g, ''), 10) || 0,
+    startsAt: Number.isFinite(draftStartsAt) ? draftStartsAt : null,
+    photos: items.length, chatGreeting: `${s.createChatGreeting || ''}${s.createChatGreetingEn || ''}`,
+  }, bench, s.createHostGoal, Date.now()),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [s.createName, s.createDesc, s.createIntro, s.createIncludedItems, s.createKeywords, draftPriceVnd, s.createSeats, draftStartsAt, items.length, s.createChatGreeting, s.createChatGreetingEn, bench, s.createHostGoal]);
+  const recipeById = Object.fromEntries(recipe.map(c => [c.id, c]));
+  const [recipeOpen, setRecipeOpen] = useState(false);
+  const openRecipe = () => { setRecipeOpen(true); track('recipe_opened'); };
+  const fixIngredient = (c) => { track('recipe_fix_tapped', { ingredient: c.id }); setReviewOpen(false); goTo(c.fix.step); };
+  // Editing: show the goal the host picked last time (host-only read).
+  useEffect(() => {
+    if (!s.createEditEventId || !s.user) return;
+    let live = true;
+    supabase.rpc('get_event_host_goal', { p_event_id: s.createEditEventId })
+      .then(({ data, error }) => { if (live && !error && HOST_GOALS.includes(data)) set({ createHostGoal: data }); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [s.createEditEventId, s.user, set]);
+  const outcome = estimateOutcome(draftPriceVnd, parseInt(String(s.createSeats || '').replace(/\D/g, ''), 10) || 0, bench?.fill?.median_fill ?? null);
+  const slotFill = (dateStr, timeStr) => {
+    if (!bench || !dateStr || !timeStr) return null;
+    const ms = Date.parse(`${dateStr}T${timeStr}:00+07:00`);
+    if (!Number.isFinite(ms)) return null;
+    const d = new Date(ms + 7 * 3600000);
+    const dow = ((d.getUTCDay() + 6) % 7) + 1;
+    const h = d.getUTCHours();
+    const slot = h < 17 ? 'afternoon' : h < 21 ? 'evening' : 'late';
+    return (bench.slots || []).find(c => c.dow === dow && c.slot === slot) || null;
+  };
+
   const hasUnsavedInput = !s.createEditEventId && !s.createSent && (
     [s.createName, s.createDesc, s.createLoc, s.createIntro, s.createKeywords].some(v => (v || '').trim())
     || photos.length > 0 || (s.createAppliedDefaults && !createDraftMatchesDefaults(s)));
@@ -345,6 +401,7 @@ export default function CreateEvent() {
         <div style={{ position: 'sticky', top: 0, zIndex: 5, background: paper, padding: '10px 22px 12px' }}>
           <StepProgress testId="create-progress" steps={sections.map(x => x.title)} completed={sections.map(x => x.done)}
             current={step} message={progressMessage} onSelect={goTo} />
+          {step > 0 && <RecipeMeter checks={recipe} onOpen={openRecipe} T={T} />}
         </div>
       )}
       <div style={{ padding: '14px 22px 40px', display: 'flex', flexDirection: 'column' }}>
@@ -380,6 +437,22 @@ export default function CreateEvent() {
         {step === 1 && (
           <StepCard title={T('Cơ bản', 'Basics')} id="create-section-basics">
             <BigField icon="sparkles" label={T('Tên sự kiện', 'Event name')} required value={s.createName} onChange={createNameType} placeholder="Bếp Nhỏ №13" testId="create-name" />
+            <div style={fieldCol} data-testid="create-goal">
+              <FormLabel icon="target" text={T('Điều quan trọng nhất với sự kiện này?', 'What matters most for this event?')} tag={T('Tuỳ chọn', 'Optional')} />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {HOST_GOALS.map(g => {
+                  const on = s.createHostGoal === g;
+                  return (
+                    <button key={g} type="button" aria-pressed={on} data-testid={`create-goal-${g}`} onClick={() => set({ createHostGoal: on ? null : g })}
+                      style={{ fontSize: 14, fontFamily: 'inherit', padding: '10px 14px', borderRadius: 999, cursor: 'pointer',
+                        border: on ? '1px solid transparent' : `1px solid ${rule}`, background: on ? ink : paper, color: on ? paper : ink, fontWeight: on ? 600 : 400 }}>
+                      {T(...GOAL_LABELS[g])}
+                    </button>
+                  );
+                })}
+              </div>
+              <p style={hintText}>{T('Chỉ bạn thấy. Giúp banbe đưa gợi ý phù hợp hơn.', 'Only you see this. It tunes the tips below to what you want.')}</p>
+            </div>
             <div>
               <BigField icon="text" label={T('Mô tả', 'Description')} required value={s.createDesc} onChange={createDescType} placeholder={T('Mười bốn chỗ. Một ga-ra cải tạo…', 'Fourteen seats. A converted garage…')} />
               {attemptedReview && fieldErrors.desc && <p style={errText}>{T('Hãy nhập mô tả.', 'Please enter a description.')}</p>}
@@ -416,11 +489,26 @@ export default function CreateEvent() {
                 })}
               </div>
               {attemptedReview && fieldErrors.cats && <p style={errText}>{T('Hãy chọn ít nhất một danh mục.', 'Please pick at least one category.')}</p>}
+              {demand != null && primaryCat && (
+                <p data-testid="create-audience-demand" style={{ ...hintText, fontWeight: 600, opacity: 0.85 }}>
+                  {T(`${demand}+ người trên banbe thích ${(CAT_DEFS.find(c => c.key === primaryCat) || {}).vi || primaryCat}.`, `${demand}+ people on banbe are into ${(CAT_DEFS.find(c => c.key === primaryCat) || {}).en || primaryCat}.`)}
+                </p>
+              )}
             </div>
             <div style={fieldCol}>
               <BigField icon="search" label={T('Từ khoá tìm kiếm', 'Search keywords')} value={s.createKeywords} onChange={createKeywordsType}
                 placeholder={T('vd. tiệc tối, rượu vang, ẩm thực Việt', 'e.g. supper club, wine, Vietnamese food')} />
               <p style={hintText}>{T('Cách nhau bằng dấu phẩy. Để trống sẽ tự dùng danh mục đã chọn ở trên.', 'Comma-separated. Left blank, the category picked above is used instead.')}</p>
+              {recipeById.keywords?.suggestions?.length > 0 && (
+                <div data-testid="create-keyword-suggestions" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                  <span style={{ ...hintText, margin: 0 }}>{T('Host khác hay dùng:', 'Other hosts use:')}</span>
+                  {recipeById.keywords.suggestions.map(k => (
+                    <button key={k} type="button" data-testid="create-keyword-suggestion"
+                      onClick={() => set({ createKeywords: [...draftKeywords, k].join(', ') })}
+                      style={{ fontSize: 12.5, fontFamily: 'inherit', padding: '5px 10px', borderRadius: 999, border: `1px solid ${rule}`, background: 'none', color: ink, cursor: 'pointer' }}>+ {k}</button>
+                  ))}
+                </div>
+              )}
             </div>
             <div style={fieldCol}>
               <FormLabel icon="checklist" text={T('Bao gồm', 'Included')} required tag={`${s.createIncludedItems.length}/3`} />
@@ -536,9 +624,13 @@ export default function CreateEvent() {
                   data-testid="create-event-time" aria-label={T('Giờ', 'Time')} style={{ ...bigInput, flex: 1 }} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }} data-testid="create-date-quickpicks">
-                {dateQuickPicks().map(p => (
-                  <PickTile key={p.en} label={T(p.vi, p.en)} selected={s.createEventDate === p.date} onClick={() => set({ createEventDate: p.date })} />
-                ))}
+                {dateQuickPicks().map(p => {
+                  const cell = slotFill(p.date, (s.createEventTime || '19:00').slice(0, 5));
+                  return (
+                    <PickTile key={p.en} label={T(p.vi, p.en)} sub={cell ? T(`kín ${Math.round(cell.median_fill * 100)}%`, `fills ${Math.round(cell.median_fill * 100)}%`) : null}
+                      selected={s.createEventDate === p.date} onClick={() => set({ createEventDate: p.date })} />
+                  );
+                })}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }} data-testid="create-time-quickpicks">
                 {TIME_QUICK_PICKS.map(t => (
@@ -546,6 +638,16 @@ export default function CreateEvent() {
                 ))}
               </div>
               {attemptedReview && fieldErrors.dateTime && <p style={errText}>{T('Hãy chọn ngày và giờ diễn ra.', 'Please pick a date and time.')}</p>}
+              {recipeById.timing?.status !== 'missing' && (
+                <Insight testId="create-timing-insight" check={recipeById.timing} T={T}
+                  line={recipeById.timing.source === 'data'
+                    ? T(`${slotLabel(recipeById.timing.dow, recipeById.timing.slot, T)} thường kín ${Math.round(recipeById.timing.ownFill * 100)}%.`, `${slotLabel(recipeById.timing.dow, recipeById.timing.slot, T)} usually fills ${Math.round(recipeById.timing.ownFill * 100)}%.`)
+                    : null} />
+              )}
+              {recipeById.lead?.status === 'improve' && (
+                <Insight testId="create-lead-insight" check={recipeById.lead} T={T}
+                  line={T(`Còn ${Math.max(recipeById.lead.days, 0)} ngày — sự kiện kín chỗ thường đăng trước ~${recipeById.lead.target} ngày.`, `${Math.max(recipeById.lead.days, 0)} days to go — events that fill are usually posted ~${recipeById.lead.target} days ahead.`)} />
+              )}
             </div>
           </StepCard>
         )}
@@ -554,17 +656,24 @@ export default function CreateEvent() {
           <StepCard title={T('Vé & ai được đặt', 'Tickets & who can book')} id="create-section-tickets">
             <div style={fieldCol}>
               <FormLabel icon="tag" text={T('Giá vé', 'Price')} tag={similar ? T('Gợi ý', 'Suggested') : null} />
+              {bench?.price && <PriceMarket price={bench.price} mine={draftPriceVnd} T={T} catLabel={createCatLabel} />}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-                {PRICE_QUICK_PICKS.map(v => (
-                  <PickTile key={v} testId={`create-price-${v}`} label={v === 0 ? T('Miễn phí', 'Free') : formatVnd(v)}
-                    selected={s.createPrice !== '' && priceDigits === v} onClick={() => set({ createPrice: String(v) })} />
-                ))}
+                {PRICE_QUICK_PICKS.map(v => {
+                  const pos = bench?.price ? pricePosition(v, bench.price) : null;
+                  return (
+                    <PickTile key={v} testId={`create-price-${v}`} label={v === 0 ? T('Miễn phí', 'Free') : (pos ? formatVndShort(v) : formatVnd(v))}
+                      sub={pos && v > 0 ? T(...POSITION_LABELS[pos]) : null}
+                      selected={s.createPrice !== '' && priceDigits === v} onClick={() => set({ createPrice: String(v) })} />
+                  );
+                })}
               </div>
               <input value={s.createPrice} onChange={createPriceType} placeholder={T('Giá khác, vd. 450.000', 'Other price, e.g. 450,000')} aria-label={T('Giá vé', 'Ticket price')} inputMode="numeric" style={bigInput} />
               <span data-testid="create-price-hint" style={hintText}>
-                {similar
-                  ? T(`Sự kiện tương tự: ${formatVnd(similar[0])}–${formatVnd(similar[1])}`, `Similar events: ${formatVnd(similar[0])}–${formatVnd(similar[1])}`)
-                  : T('Để trống là miễn phí.', 'Leave empty for a free event.')}
+                {bench?.price
+                  ? T(`Thường gặp: ${formatVndShort(bench.price.p25)}–${formatVndShort(bench.price.p75)} (${bench.price.n} sự kiện tương tự). Để trống là miễn phí.`, `Typical: ${formatVndShort(bench.price.p25)}–${formatVndShort(bench.price.p75)} (${bench.price.n} similar events). Leave empty for a free event.`)
+                  : similar
+                    ? T(`Sự kiện tương tự: ${formatVnd(similar[0])}–${formatVnd(similar[1])}`, `Similar events: ${formatVnd(similar[0])}–${formatVnd(similar[1])}`)
+                    : T('Để trống là miễn phí.', 'Leave empty for a free event.')}
               </span>
             </div>
             <div style={fieldCol}>
@@ -579,6 +688,18 @@ export default function CreateEvent() {
                 ))}
               </div>
               {attemptedReview && fieldErrors.seats && <p style={errText}>{T('Hãy nhập số chỗ lớn hơn 0.', 'Please enter a number of seats greater than 0.')}</p>}
+              <Insight testId="create-seats-insight" check={recipeById.seats} T={T}
+                line={recipeById.seats.typicalGuests != null ? T(`Sự kiện tương tự thường đón ~${recipeById.seats.typicalGuests} khách.`, `Similar events usually welcome ~${recipeById.seats.typicalGuests} guests.`) : null} />
+              {outcome && (
+                <div data-testid="create-outcome" data-basis={outcome.basis} style={{ ...cardGlass({ padding: '12px 14px' }), fontSize: 13.5, lineHeight: 1.45 }}>
+                  <b>{outcome.basis === 'similar'
+                    ? T(`~${outcome.guests} khách${draftPriceVnd > 0 ? ` · ~${formatVndShort(outcome.revenueVnd)}` : ''}`, `~${outcome.guests} guests${draftPriceVnd > 0 ? ` · ~${formatVndShort(outcome.revenueVnd)}` : ''}`)
+                    : T(`${outcome.guests} khách${draftPriceVnd > 0 ? ` · ${formatVndShort(outcome.revenueVnd)}` : ''}`, `${outcome.guests} guests${draftPriceVnd > 0 ? ` · ${formatVndShort(outcome.revenueVnd)}` : ''}`)}</b>
+                  <span style={{ opacity: 0.7 }}>{' '}{outcome.basis === 'similar'
+                    ? T(`nếu kín như sự kiện tương tự (~${Math.round(outcome.fill * 100)}%)`, `if it fills like similar events (~${Math.round(outcome.fill * 100)}%)`)
+                    : T('nếu bán hết chỗ', 'if every seat sells')}{draftPriceVnd > 0 ? T(', trước mọi khoản phí.', ', before any fees.') : '.'}</span>
+                </div>
+              )}
             </div>
             <div style={fieldCol}>
               <FormLabel icon="lock" text={T('Quyền riêng tư', 'Privacy')} />
@@ -610,6 +731,10 @@ export default function CreateEvent() {
             <FormLabel icon="photo" text={T('Hình ảnh', 'Photos')} required />
             <span style={{ fontSize: 10.5, color: ink }}>{photos.length}/{MAX_PHOTOS} ({T(`tối thiểu ${MIN_PHOTOS}`, `min ${MIN_PHOTOS}`)})</span>
           </div>
+          <Insight testId="create-photos-insight" check={recipeById.photos} T={T}
+            line={recipeById.photos.source === 'data'
+              ? T(`Sự kiện kín chỗ thường có ${recipeById.photos.target}+ ảnh.`, `Events that filled well had ${recipeById.photos.target}+ photos.`)
+              : T(`Mẹo: ${recipeById.photos.target}+ ảnh cho khách thấy không khí.`, `Tip: ${recipeById.photos.target}+ photos show guests the vibe.`)} />
           <input
             ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple
             style={{ display: 'none' }} onChange={onPickPhotos}
@@ -745,6 +870,8 @@ export default function CreateEvent() {
           items={items}
           coverKey={coverKey}
           createCatLabel={createCatLabel}
+          recipe={recipe}
+          onFixRecipe={fixIngredient}
           onBack={() => setReviewOpen(false)}
           // TASK 3 (event creation validation pass) — defense-in-depth:
           // Review's own fields are read-only display, but re-check here
@@ -756,10 +883,15 @@ export default function CreateEvent() {
           // s.createError already showing, never the chooser.
           onConfirm={async () => {
             if (!s.createName.trim() || hasFieldErrors) { setReviewOpen(false); setAttemptedReview(true); return; }
+            const good = recipe.filter(c => c.status === 'good').length;
+            track('submit_recipe_score', { bucket: good >= 9 ? '9-10' : good >= 7 ? '7-8' : good >= 4 ? '4-6' : '0-3' });
             const ok = await createSubmit(newFilesInOrder, coverIndex, { removePhotoIds: removedExistingIds, existingCoverPath, defaultKeywordsLabel: createCatLabel });
             if (ok) { setReviewOpen(false); setSuccessChooserOpen(true); }
           }}
         />
+      )}
+      {recipeOpen && (
+        <RecipeSheet checks={recipe} hasData={!!bench} n={bench?.n} onFix={fixIngredient} onClose={() => setRecipeOpen(false)} T={T} />
       )}
       {successChooserOpen && (
         <SubmitSuccessChooser
@@ -795,7 +927,7 @@ export default function CreateEvent() {
  * own scroll container rather than a separate route, so there is no
  * navigation/back-stack state to reconcile.
  */
-function ReviewStep({ T, trStatus, stripKm, s, items, coverKey, createCatLabel, onBack, onConfirm }) {
+function ReviewStep({ T, trStatus, stripKm, s, items, coverKey, createCatLabel, recipe, onFixRecipe, onBack, onConfirm }) {
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [tab, setTab] = useState('private');
   const dateLabel = [s.createEventDate, s.createEventTime].filter(Boolean).join(' ▪︎ ') || T('Chưa chọn', 'Not set');
@@ -865,6 +997,16 @@ function ReviewStep({ T, trStatus, stripKm, s, items, coverKey, createCatLabel, 
         {tab === 'private' ? (
           <>
             <h1 style={{ ...display(24, { margin: '4px 0 0' }) }}>{s.createName.trim() || T('(Chưa đặt tên)', '(Untitled)')}</h1>
+
+            {recipe && (
+              <div data-testid="create-review-recipe" style={{ ...cardGlass({ marginTop: 18, padding: '10px 16px 4px' }) }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700 }}>
+                  {T(`Công thức thành công: ${recipe.filter(c => c.status === 'good').length}/${recipe.length}`, `Recipe for success: ${recipe.filter(c => c.status === 'good').length}/${recipe.length}`)}
+                  <span style={{ fontWeight: 400, opacity: 0.65 }}>{' · '}{T('không bắt buộc để gửi', 'never required to submit')}</span>
+                </div>
+                <RecipeList checks={recipe} onFix={onFixRecipe} T={T} compact />
+              </div>
+            )}
 
             <div style={{ ...cardGlass({ marginTop: 18, padding: '4px 16px', display: 'flex', flexDirection: 'column' }) }}>
               {row(T('Danh mục', 'Category'), createCatLabel)}
@@ -1085,6 +1227,7 @@ const ICON_PATHS = {
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm5-2 5 5',
   checklist: 'M4 6l2 2 3-3M4 13l2 2 3-3M12 7h8M12 14h8M12 20h8',
   photo: 'M3 5h18v14H3zM8 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM21 16l-5-5-9 8',
+  target: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-4a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-4a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z',
 };
 
 function Icon({ name }) {
@@ -1116,14 +1259,62 @@ function BigField({ icon, label, required, value, onChange, placeholder, testId 
   );
 }
 
-function PickTile({ label, selected, onClick, testId }) {
+// `sub` (note 50): the option's outcome BEFORE it's chosen ("fills 85%", "typical"), like a filter pill's count.
+function PickTile({ label, sub, selected, onClick, testId }) {
   return (
     <button type="button" onClick={onClick} aria-pressed={selected} data-testid={testId}
-      style={{ minHeight: 48, padding: '0 4px', borderRadius: 14, fontFamily: 'inherit', fontSize: 15, fontWeight: selected ? 600 : 400, cursor: 'pointer',
-        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      style={{ minHeight: 48, padding: '4px 4px', borderRadius: 14, fontFamily: 'inherit', fontSize: 15, fontWeight: selected ? 600 : 400, cursor: 'pointer',
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1,
         border: selected ? '1px solid transparent' : `1px solid ${rule}`, background: selected ? ink : paper, color: selected ? paper : ink }}>
-      {label}
+      <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+      {sub && <span data-testid={testId ? `${testId}-sub` : undefined} style={{ fontSize: 10.5, fontWeight: 500, opacity: 0.7 }}>{sub}</span>}
     </button>
+  );
+}
+
+// One insight line per field (note 50, the video's "busier" caveat): the line is short; the evidence and the
+// full reasoning sit behind "Why?". A data line only appears when the benchmark slice exists; otherwise the
+// recipe's general tip (no numbers) is shown, and nothing at all when the ingredient is already fine and
+// there is no data to add.
+function Insight({ check, line, T, testId }) {
+  const [open, setOpen] = useState(false);
+  if (!check) return null;
+  const copy = recipeCopy(check, T);
+  const text = line || (check.status !== 'good' ? copy.title : null);
+  if (!text) return null;
+  return (
+    <div data-testid={testId} data-source={check.source} data-status={check.status} style={{ fontSize: 12.5, lineHeight: 1.5, color: ink }}>
+      <span aria-hidden="true" style={{ color: check.status === 'good' ? ink : 'var(--bb-honey)', marginInlineEnd: 6 }}>{check.status === 'good' ? '✓' : '✦'}</span>
+      <span style={{ opacity: 0.85 }}>{text}</span>{' '}
+      <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open}
+        style={{ border: 'none', background: 'none', padding: 0, color: ink, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', opacity: 0.75 }}>
+        {T('Vì sao?', 'Why?')}
+      </button>
+      {open && <div style={{ marginTop: 4, opacity: 0.7 }}>{copy.detail}</div>}
+    </div>
+  );
+}
+
+// Price histogram of similar events (get_host_benchmarks) with this event's own price marked — the market
+// behind the decision, same idea as the Home filter's histogram.
+function PriceMarket({ price, mine, T, catLabel }) {
+  const counts = price.histogram || [];
+  const peak = Math.max(1, ...counts);
+  const span = Math.max(1, price.max - price.min);
+  const markerPct = mine > 0 ? Math.max(0, Math.min(100, ((mine - price.min) / span) * 100)) : null;
+  return (
+    <div data-testid="create-price-market" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span style={{ ...hintText, opacity: 0.8 }}>
+        {T(`${catLabel} · trung vị ${formatVndShort(price.median)} · ${price.n} sự kiện`, `${catLabel} · median ${formatVndShort(price.median)} · ${price.n} events`)}
+      </span>
+      <div aria-hidden="true" style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', gap: 3, height: 44 }}>
+        {counts.map((c, i) => <div key={i} style={{ flex: 1, height: `${Math.max(6, (c / peak) * 100)}%`, borderRadius: 3, background: 'rgba(var(--bb-fg-rgb),0.2)' }} />)}
+        {markerPct != null && <div data-testid="create-price-marker" style={{ position: 'absolute', top: -4, bottom: -4, left: `calc(${markerPct}% - 1px)`, width: 2, borderRadius: 1, background: ink }} />}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, opacity: 0.6 }}>
+        <span>{formatVndShort(price.min)}</span><span>{formatVndShort(price.max)}</span>
+      </div>
+    </div>
   );
 }
 

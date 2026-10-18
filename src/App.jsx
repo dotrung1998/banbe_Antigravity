@@ -66,6 +66,7 @@ import PublicProfile from './screens/PublicProfile.jsx';
 import OrganizerProfile from './screens/OrganizerProfile.jsx';
 import Reports from './screens/Reports.jsx';
 import Schedule from './screens/Schedule.jsx';
+import Search from './screens/Search.jsx';
 import Welcome from './screens/Welcome.jsx';
 import GuestPromptSheet from './screens/GuestPromptSheet.jsx';
 import TeamPage from './screens/TeamPage.jsx';
@@ -104,6 +105,7 @@ const SCREENS = {
   editName: EditName,
   notifications: Notifications,
   schedule: Schedule,
+  search: Search,
   welcome: Welcome,
   eventList: EventList,
   security: Security,

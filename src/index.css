@@ -362,3 +362,14 @@ input::placeholder {
 @media (prefers-reduced-motion: reduce) {
   .bb-charm, .bb-slide, .bb-row-reveal { animation: none !important; }
 }
+
+/* Dual-handle price range (HomeFilterSheet, note 50): two stacked native range inputs. Only the thumbs take
+   pointer events so both handles stay draggable; the shared track is drawn once by the first input. */
+.bb-range { -webkit-appearance: none; appearance: none; background: transparent; margin: 0; pointer-events: none; height: 28px; }
+.bb-range::-webkit-slider-runnable-track { height: 3px; background: rgba(var(--bb-fg-rgb), 0.18); border-radius: 2px; }
+.bb-range + .bb-range::-webkit-slider-runnable-track { background: transparent; }
+.bb-range::-moz-range-track { height: 3px; background: rgba(var(--bb-fg-rgb), 0.18); border-radius: 2px; }
+.bb-range + .bb-range::-moz-range-track { background: transparent; }
+.bb-range::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 26px; height: 26px; margin-top: -11.5px; border-radius: 50%; background: var(--bb-bg); border: 1px solid rgba(var(--bb-fg-rgb), 0.25); box-shadow: 0 2px 6px rgba(27,25,22,0.22); cursor: grab; }
+.bb-range::-moz-range-thumb { pointer-events: auto; width: 24px; height: 24px; border-radius: 50%; background: var(--bb-bg); border: 1px solid rgba(var(--bb-fg-rgb), 0.25); box-shadow: 0 2px 6px rgba(27,25,22,0.22); cursor: grab; }
+.bb-range:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--bb-fg); outline-offset: 2px; }

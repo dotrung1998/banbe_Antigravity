@@ -23,7 +23,9 @@ test.describe('Home For You pinned chip', () => {
     const forYou = page.getByTestId('home-filter-foryou');
     const hasForYou = await forYou.count() > 0;
     const before = hasForYou ? await forYou.boundingBox() : null;
-    const first = page.getByTestId('home-filter-upcoming');
+    // Quick chips (note 50) hide at 0 events, so take whichever one is showing.
+    const first = sc.locator('button').first();
+    if (await first.count() === 0) test.skip(true, 'no quick chip has events for this account');
     const firstBefore = await first.boundingBox();
     await sc.evaluate(el => { el.scrollLeft = 80; });
     await page.waitForTimeout(100);

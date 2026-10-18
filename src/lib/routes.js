@@ -18,6 +18,7 @@ const dec = (v) => { try { return decodeURIComponent(v); } catch { return v; } }
 const STATIC = {
   home: '/',
   mapExplore: '/map',
+  search: '/search',
   inbox: '/inbox',
   profile: '/profile',
   login: '/login',

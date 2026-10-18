@@ -8,7 +8,8 @@ export const COMMON_BANKS = [
   'ACB', 'VPBank', 'TPBank', 'Agribank', 'Sacombank',
 ];
 
-export const FIRST_EVENT_SEATS = 14;
+// Seats are never pre-filled (note 48 follow-up; note 50): the Tickets step shows how many guests similar events
+// welcome instead of guessing a number for the host. The old FIRST_EVENT_SEATS = 14 constant was unused and is gone.
 export const FIRST_EVENT_TIME = '19:00';
 export const PRICE_QUICK_PICKS = [0, 200000, 300000, 500000];
 export const SEAT_QUICK_PICKS = [10, 20, 30, 50];

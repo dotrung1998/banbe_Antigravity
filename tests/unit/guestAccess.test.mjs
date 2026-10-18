@@ -6,7 +6,7 @@ import { GUEST_BROWSE_SCREENS, PROMPT_CONTEXTS, promptCopy, promptBenefits, make
 const en = (_v, e) => e;
 
 test('guests browse Home, Map and an event only', () => {
-  assert.deepEqual([...GUEST_BROWSE_SCREENS].sort(), ['event', 'home', 'mapExplore']);
+  assert.deepEqual([...GUEST_BROWSE_SCREENS].sort(), ['event', 'home', 'mapExplore', 'search']);
   for (const personal of ['profile', 'inbox', 'schedule', 'reserve', 'chat', 'notifications', 'reports', 'dashboard']) {
     assert.equal(GUEST_BROWSE_SCREENS.has(personal), false, personal);
   }

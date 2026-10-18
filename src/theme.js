@@ -54,6 +54,10 @@ export const display = (size, extra) => ({
   fontFamily: DISPLAY_FACE, fontWeight: 600, letterSpacing: '-0.02em', fontSize: size, color: ink, ...extra,
 });
 
+// One shape language for discovery surfaces (note 50, "4 levels" video lesson): cards and icon tiles share
+// one radius, chips/pills are fully round. Mirrors apps/ios/BanbeApp/Views/BanbeTheme.swift `BanbeTheme.Radius`.
+export const RADIUS = { card: 14, tile: 14, thumb: 12, pill: 999 };
+
 // ---- Glass recipes (exact, from the handoff) ----
 
 // Safari (and some Chromium builds) fail to clip `backdrop-filter` to

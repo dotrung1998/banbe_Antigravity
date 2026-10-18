@@ -28,6 +28,7 @@ import { mapKitSearch } from '../lib/mapkitAdapter.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
 import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, isMissingColumnError } from '../lib/mediaUrls.js';
 import { eventDraftDefaults, createDefaultsPatch, createDraftMatchesDefaults } from '../lib/smartDefaults.js';
+import { DEFAULT_FILTERS as HOME_DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
 
 /** Media-API upload with the current session token. Resolves `{provider:'supabase'}`
  * when the caller must use the legacy path; throws MediaUploadError only after bytes were PUT. */
@@ -565,6 +566,14 @@ const initialState = {
   // Home "For You" gold-star chip (34-onboarding-for-you-criteria.md). Only ever
   // true while Home has >=1 matching event; Home auto-resets it otherwise.
   filterForYou: false,
+  // Discovery Home (note 50): filter-sheet filters + quick chips (src/lib/homeDiscovery.js shape), sort mode,
+  // the open filter sheet, real seat fill per live public event (get_public_event_fill, migration 186;
+  // `{}` when the function isn't deployed yet — badges then simply don't show), and the Search screen query.
+  homeFilters: HOME_DEFAULT_FILTERS,
+  homeSort: 'soonest',
+  homeFilterSheetOpen: false,
+  eventFill: {},
+  searchQuery: '',
   // Host reservation criteria (migration 162): criteria cache by event id,
   // the guest eligibility pre-check, and the create-flow retry target.
   eventCriteriaByKey: {},
@@ -1171,6 +1180,9 @@ const initialState = {
   // visibility() never touches `approval`, and admin review (085) still
   // applies to every event regardless of visibility.
   createVisibility: 'public',
+  // Optional "What matters most for this event?" (note 50, migration 186): null | 'fill_seats' |
+  // 'regular_crowd' | 'try_idea' | 'small_premium'. Weights the recipe; stored host-only, never shown to guests.
+  createHostGoal: null,
   // Host reservation criteria (migration 162). createCriteria is the form value;
   // createCriteriaLoaded is what the event had when editing started;
   // createCriteriaLoad: 'ready' | 'loading' | 'failed' | 'unsupported'.
@@ -2521,6 +2533,18 @@ export function BanBeProvider({ children }) {
       discoveryEvents: shaped, discoveryEventsLoading: false, discoveryEventsLoadFailed: false,
       realEventsById: { ...prev.realEventsById, ...Object.fromEntries(shaped.map(e => [e.key, e])) },
     }));
+    // Real seat fill (migration 186) — counts bookings with the SAME booking_holds_seat() rule hold_seats
+    // enforces, because `seats_remaining` is never decremented after insert. Best-effort: a missing function
+    // (not deployed yet) or an error leaves eventFill untouched, so no badge is ever guessed.
+    const liveIds = shaped.filter(e => e.status === 'live' && e.visibility === 'public').map(e => e.key).slice(0, 300);
+    if (liveIds.length) {
+      const { data: fillRows, error: fillError } = await supabase.rpc('get_public_event_fill', { p_event_ids: liveIds });
+      if (!fillError && Array.isArray(fillRows)) {
+        set(prev => ({ eventFill: { ...prev.eventFill, ...Object.fromEntries(fillRows.map(r => [r.event_id, { booked: r.booked, capacity: r.capacity }])) } }));
+      } else if (fillError && import.meta.env?.DEV) {
+        console.warn('get_public_event_fill unavailable (migration 186 not applied?):', fillError.message);
+      }
+    }
   }, [set]);
 
   // Dedupe concurrent loadRealEventsById() calls for the same id (e.g. Home
@@ -6200,6 +6224,11 @@ export function BanBeProvider({ children }) {
   // pattern its own bug-2 snapshot restore already uses) to autofocus the
   // input immediately.
   const openEventSearch = useCallback(() => set({ screen: 'mapExplore', mapExploreState: { focusSearch: true } }), [set]);
+  // Discovery Home (note 50): the Home search bar opens the Search screen (/search), not Map.
+  const openSearch = useCallback(() => set({ screen: 'search' }), [set]);
+  const setHomeFilters = useCallback((next) => set(prev => ({
+    homeFilters: { ...HOME_DEFAULT_FILTERS, ...(typeof next === 'function' ? next(prev.homeFilters) : next) },
+  })), [set]);
   // "Open in Map" (Event Detail, home-entry only) — the reverse direction of
   // MapExplore.jsx's own openEventDetail(): that one snapshots the map's
   // live state right before leaving for Event Detail; this one builds a
@@ -6355,7 +6384,7 @@ export function BanBeProvider({ children }) {
       createCountryCode: '', createStateProvince: '', createNeighborhood: '',
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
       ...createDefaultsPatch(eventDraftDefaults(null)),
-      createIncludedItems: [], createIntro: '', createKeywords: '', createChatGreeting: '', createChatGreetingEn: '', createVisibility: 'public',
+      createIncludedItems: [], createIntro: '', createKeywords: '', createChatGreeting: '', createChatGreetingEn: '', createVisibility: 'public', createHostGoal: null,
       createCriteria: everyoneCriteria(), createCriteriaLoaded: everyoneCriteria(), createCriteriaLoad: 'ready', createCriteriaRetryEventId: null,
     }));
     // Smart defaults (note 48): upgrade the first-event defaults to "copy my
@@ -8049,6 +8078,7 @@ export function BanBeProvider({ children }) {
     filter: 'all', area: LOCATION_ALL,
     filterAttending: false, filterSaved: false, filterSoldOut: false,
     filterNotConfirmed: false, filterUpcoming: false, filterEnded: false, filterForYou: false,
+    homeFilters: HOME_DEFAULT_FILTERS,
   }), [set]);
   // Home's second chip row (12-home-filters.md, extended 2026-09-21) — each
   // independent, AND-combined with `filter`/`area` and with each other, not
@@ -9985,6 +10015,13 @@ export function BanBeProvider({ children }) {
         });
         if (visibilityError) console.warn('set_event_visibility failed:', visibilityError);
 
+        // Host goal (note 50, migration 186) — host-only side table, best-effort like keywords/visibility.
+        // On edit it is always written so a host can clear an earlier answer.
+        if (s.createHostGoal || s.createEditEventId) {
+          const { error: goalError } = await supabase.rpc('set_event_host_goal', { p_event_id: eventId, p_goal: s.createHostGoal });
+          if (goalError && import.meta.env?.DEV) console.warn('set_event_host_goal failed (migration 186 not applied?):', goalError.message);
+        }
+
         // Reservation criteria (migration 162). NOT best-effort: a restriction the
         // host chose must not silently go out unrestricted. The event is already
         // in review (not resubmittable), so on failure we finish the remaining
@@ -10092,7 +10129,7 @@ export function BanBeProvider({ children }) {
     } finally {
       createSubmitInFlightRef.current = false;
     }
-  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createCountryCode, s.createStateProvince, s.createNeighborhood, s.createLat, s.createLng, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.createChatGreeting, s.createChatGreetingEn, s.createCriteria, s.createCriteriaLoaded, s.createCriteriaLoad, s.createCriteriaRetryEventId, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
+  }, [set, s.createName, s.createHostGoal, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createCountryCode, s.createStateProvince, s.createNeighborhood, s.createLat, s.createLng, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.createChatGreeting, s.createChatGreetingEn, s.createCriteria, s.createCriteriaLoaded, s.createCriteriaLoad, s.createCriteriaRetryEventId, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
 
   /**
@@ -10883,7 +10920,7 @@ export function BanBeProvider({ children }) {
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
     isSaved, isGoing, isAwaitingConfirmation, sendEventAnnouncement, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
-    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
+    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch, openSearch, setHomeFilters,
     loadNotifications, loadInboxThreads,
     goChat, goLogin, goDashboard, goCreate, clearCreateDefaults, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
@@ -10922,7 +10959,7 @@ export function BanBeProvider({ children }) {
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
     isSaved, isGoing, isAwaitingConfirmation, sendEventAnnouncement, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
-    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
+    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch, openSearch, setHomeFilters,
     loadNotifications, loadInboxThreads,
     goChat, goLogin, goDashboard, goCreate, clearCreateDefaults, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,

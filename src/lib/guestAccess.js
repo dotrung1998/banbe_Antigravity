@@ -6,7 +6,8 @@
 // "Log in", "Not now"); signing in resumes what they were doing.
 
 /** The screens a guest can browse (on top of the pre-login screens). */
-export const GUEST_BROWSE_SCREENS = new Set(['home', 'mapExplore', 'event']);
+// 'search' (note 50): the Search screen only reads public events, same as Home/Map.
+export const GUEST_BROWSE_SCREENS = new Set(['home', 'mapExplore', 'event', 'search']);
 
 export const PROMPT_CONTEXTS = ['save', 'follow', 'reserve', 'message', 'like'];
 
