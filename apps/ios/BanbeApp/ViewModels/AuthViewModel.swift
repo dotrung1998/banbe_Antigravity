@@ -53,6 +53,11 @@ final class AuthViewModel: ObservableObject {
     private var authListenerTask: Task<Void, Never>?
 
     init() {
+        #if DEBUG
+        // UI-test fixtures are offline and hermetic: never restore a real session left in the simulator's keychain by an
+        // earlier real-login run (it would raise the account gate over the fixture mid-test).
+        if UITestFixture.isActive { sessionChecked = true; return }
+        #endif
         authListenerTask = Task { [weak self] in
             guard let self else { return }
             // Restores any persisted session on launch, then keeps listening

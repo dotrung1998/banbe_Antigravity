@@ -643,6 +643,7 @@ struct AccountView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("account.following")
+                if app.rewardsEnabled {
                 groupDivider()
                 SwipeSafeButton { app.openRewards(from: .profile) } label: {
                     HStack(spacing: 12) {
@@ -657,6 +658,7 @@ struct AccountView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("account.rewards")
+                }
                 groupDivider()
                 // App Preferences is the destination name for language,
                 // appearance, and Liquid Glass controls.
@@ -949,7 +951,8 @@ struct AccountView: View {
                   "admin guide hướng dẫn quản trị help trợ giúp") { app.helpGuideKey = "admin"; app.screen = .helpGuide },
             ]
         }
-        return list
+        // Rewards & badges can be hidden by an admin (migration 187): its search entry goes with the row.
+        return list.filter { $0.id != "rewards" || app.rewardsEnabled }
     }
 
     /// Search results, grouped under the tab they belong to (Personal /

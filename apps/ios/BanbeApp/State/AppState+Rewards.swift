@@ -196,7 +196,7 @@ extension AppState {
         #if DEBUG
         if UITestFixture.isActive { return } // fixtures seed the summary themselves
         #endif
-        guard let uid = userID else { return }
+        guard let uid = userID, rewardsEnabled else { return } // an admin has hidden Rewards & badges (migration 187)
         if rewardsOwnerID != uid { rewardsOwnerID = uid }
         struct Env: Decodable {
             var success: Bool?
@@ -219,7 +219,7 @@ extension AppState {
     }
 
     func loadRewards() async {
-        guard let uid = userID else { return }
+        guard let uid = userID, rewardsEnabled else { return }
         if rewardsStatus != .loaded { rewardsStatus = .loading }
         do {
             let payload: RewardsPayload = try await SupabaseService.client.rpc("get_my_rewards").execute().value
@@ -273,7 +273,7 @@ extension AppState {
 
     /// After a successful save: ask the server to verify it and count the day. Never blocks the save.
     func recordSaveDay(eventKey: String) async {
-        guard userID != nil, rewardsSummaryStatus != .unavailable else { return }
+        guard userID != nil, rewardsEnabled, rewardsSummaryStatus != .unavailable else { return }
         struct Env: Decodable { var success: Bool? }
         if let env: Env = try? await SupabaseService.client
             .rpc("record_active_day", params: ["p_source": "save", "p_ref": eventKey]).execute().value, env.success == true {

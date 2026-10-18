@@ -24,6 +24,13 @@ enum UITestFixture {
     static let opensFilters = UserDefaults.standard.bool(forKey: "uiFixtureFilters")
     static let searchQuery = UserDefaults.standard.string(forKey: "uiFixtureSearch") ?? ""
     static let seedsBenchmarks = UserDefaults.standard.bool(forKey: "uiFixtureBench")
+    /// `-uiFixtureForYou YES` gives the fixture account event preferences that match its events, so Home shows the
+    /// pinned For You chip (used to check it is the same height as Filters / Sort / the quick chips).
+    static let seedsForYou = UserDefaults.standard.bool(forKey: "uiFixtureForYou")
+    /// Note 51 — `-uiFixturePulse YES` seeds the daily Banbe Pulse ranking (the Home ticker's content);
+    /// `-uiFixtureRewards off` is an admin having hidden Rewards & badges (migration 187).
+    static let seedsPulse = UserDefaults.standard.bool(forKey: "uiFixturePulse")
+    static let rewardsSwitch = UserDefaults.standard.string(forKey: "uiFixtureRewards") ?? "on"
     /// Stable fake account id so the draft store/relaunch tests have a key.
     static let userID = UUID(uuidString: "00000000-0000-4000-8000-00000000F1F0")!
 }
@@ -91,7 +98,7 @@ struct UITestFixtureRoot: View {
         configureSchedule()
         let variant = name.split(separator: ".").dropFirst().first.map(String.init) ?? "home"
         app.organizerMode = variant == "account"
-        app.accountType = variant == "account" ? "admin" : "participant"
+        app.accountType = (variant == "account" || variant == "adminFeatures") ? "admin" : "participant"
         app.accountTab = "personal"
         // Streak/coins capsule visible: the tightest Home header layout.
         app.rewardsSummary = RewardSummary(balance: 120, streak: 3, activeToday: true)
@@ -99,9 +106,24 @@ struct UITestFixtureRoot: View {
         // Real seat fill for two fixture events: one almost full, one with social proof (note 50).
         app.eventFill = ["fx-hosted": (booked: 18, capacity: 20), "fx-near": (booked: 6, capacity: 20)]
         app.homeFilterSheetOpen = UITestFixture.opensFilters
+        if UITestFixture.rewardsSwitch == "off" { app.featureFlags = ["rewards": false] }
+        if UITestFixture.seedsPulse {
+            app.pulseDaily = ["Supper club 6 món ở Quận 3", "Đêm nhạc acoustic Thảo Điền", "Gallery walk Bình Thạnh"].enumerated().map { i, name in
+                let json = """
+                {"event_id":"fx-pulse-\(i)","event_name":"\(name)","organizer_id":"o","organizer_name":"Host","organizer_verified":false,"score":\(40 - i * 10)}
+                """
+                return try! JSONDecoder().decode(PulseItem.self, from: Data(json.utf8))
+            }
+        }
+        if UITestFixture.seedsForYou {
+            app.eventPrefs = EventPreferences(interests: ["supper", "gallery", "music"], goals: ["meet_people"], availability: ["evening"],
+                                              budget: BudgetPref(tier: "flexible", currency: nil), languages: ["vi", "en"])
+            app.eventPrefsVersion += 1
+        }
         switch variant {
         case "schedule": app.screen = .schedule
         case "account", "accountSolo": app.screen = .profile
+        case "adminFeatures": app.screen = .adminFeatures
         case "search":
             app.searchQuery = UITestFixture.searchQuery
             app.screen = .search

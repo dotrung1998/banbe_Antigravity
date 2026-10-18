@@ -113,9 +113,11 @@ struct HomeView: View {
                 // the eager VStack kicked off all ~21 hero downloads at launch
                 // and they all fought for the same bandwidth.
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    // Note 50 order: Next-up (note-37 reminder only) → Action Center / guest banner → stories →
+                    // Note 50/51 order: Pulse ticker → Next-up (note-37 reminder only) → Action Center / guest banner → stories (only if any) →
                     // categories → quick row → "Upcoming · N" → feed → hints → empty/footer → weekend → surveys.
                     // The old "Your events" strip and status chips are gone (Schedule + Account own your events).
+                    // Banbe Pulse: one slim ticker line (note 51), replacing the big tile in the story row.
+                    PulseTickerView().padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 6)
                     if let next = nextUp {
                         NextUpBanner(event: next.event, phase: next.phase, haloTrigger: reminderHaloTrigger)
                     }
@@ -125,7 +127,7 @@ struct HomeView: View {
                     } else {
                         GuestBrowseBanner()
                     }
-                    storyRow
+                    if !app.homeStories.isEmpty { storyRow }
                     HomeCategoryRow()
                     quickRow(snap)
                     if app.filterForYou && app.hasForYouMatches { forYouEditRow.padding(.bottom, 4) }
@@ -198,6 +200,8 @@ struct HomeView: View {
         // Retention roadmap P1 ("Cuối tuần này") — public info, same as
         // loadHomeLiveEvents above (runs for every visitor).
         .task { await app.loadWeekendEvents() }
+        // Banbe Pulse ticker + the Popular sort both read the daily ranking (public, so guests too).
+        .task { await app.loadPulse(period: .daily) }
         // Home-visibility fix (2026-09-29) — public info, same as
         // loadWeekendEvents above (runs for every visitor); this is what
         // actually populates `app.feed` with real events at all (see
@@ -249,35 +253,9 @@ struct HomeView: View {
         }
         // Note 50 — every filter in one sheet over the results; edits a draft until "Show N events".
         .sheet(isPresented: $app.homeFilterSheetOpen) {
-            HomeFilterSheet(items: makeSnapshot().items, now: Date(), onOpenArea: {
-                app.homeFilterSheetOpen = false
-                // One sheet at a time: open the searchable location list once the filter sheet is gone.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { areaSearchOpen = true }
-            }, onClose: { app.homeFilterSheetOpen = false })
+            HomeFilterSheet(items: makeSnapshot().items, now: Date(), onClose: { app.homeFilterSheetOpen = false })
             .environmentObject(app)
         }
-        // The Pulse RING's frame is no longer tracked anywhere at all — no
-        // PreferenceKey, no probe, no `AppState` property. The teaser bubble
-        // is drawn inside `storyRow`'s own content these days, so there is
-        // nothing to keep in sync. See `PulseTeaserBubbleContent`
-        // (PulseTeaserBubbleView.swift) and `storyRow` below.
-        // Home search relocation (2026-09-28 follow-up — real-device report:
-        // the top-header search icon was still showing on a real iPhone).
-        // Root cause: the 2026-09-28 dock/search pass that relocated web's
-        // Home search to a floating button above the dock (src/screens/
-        // Home.jsx, HomeSearchFab) never touched this iOS file at all — its
-        // own commit only mentions the web dock/search fix; the header
-        // button below (`home.searchButton`, 2026-09-27) was never removed
-        // and no iOS equivalent of the floating button was ever added. Fixed
-        // here: header button removed (see `header` below) and replaced with
-        // this `.overlay`, attached to the WHOLE `ScreenScaffold` (this
-        // modifier chain's own receiver), not to anything inside its
-        // `ScrollView` content closure above — so it's a true sibling of the
-        // scrolling feed, at the same view-hierarchy level web's fix put it
-        // at (a sibling of the animated root div, never a descendant of it).
-        // It therefore can never scroll away or get clipped by the feed's
-        // own content, matching this ticket's "outside any scrolling/
-        // animated containing block" requirement.
     }
 
     /// TASK 4 (2026-09-22 nineteenth follow-up) — real root cause,
@@ -398,7 +376,7 @@ struct HomeView: View {
     // MARK: header top row (wordmark + title, streak/coin shortcuts, search)
 
     /// Shown only once the server has answered (migration 165 applied); never a placeholder number.
-    private var rewardShortcutsVisible: Bool { app.rewardsSummaryStatus == .loaded && app.rewardsSummary != nil }
+    private var rewardShortcutsVisible: Bool { app.rewardsEnabled && app.rewardsSummaryStatus == .loaded && app.rewardsSummary != nil }
 
     /// With the shortcuts the row can get tight on narrow iPhones, so it degrades in a fixed order
     /// (ViewThatFits): full -> drop the "Home" title -> smaller wordmark. Every control keeps a 44pt
@@ -485,29 +463,66 @@ struct HomeView: View {
         .fixedSize()
     }
 
-    /// Note 50: language + theme live in Settings > Language & Appearance; the area menu is a location pill
-    /// ("Near Everywhere ▾") and the full-width search bar opens the Search screen.
+    /// Note 50: a location pill ("Near Everywhere ▾") with the quick language and light/dark switches right
+    /// beside it (plain text, same style), then the full-width search bar that opens the Search screen.
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             headerTopRow
             // Area menu parity pass — a native `Menu`, the same mechanism the chat composer's "+" uses, so
             // presentation, glass, anchoring and dismissal are the system's. The label holds everything.
-            Menu {
-                AreaMenuOptions { areaSearchOpen = true }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "mappin").font(.system(size: 13, weight: .semibold))
-                    Text(app.T("Gần", "Near")).fontWeight(.medium).opacity(0.6)
-                    Text(app.area == LocationHierarchy.allID ? app.T("Mọi nơi", "Everywhere") : app.currentAreaLabel)
-                        .lineLimit(1)
-                    Text("▾").font(.system(size: 9))
+            // The quick language + light/dark switches sit right beside it in the SAME plain style (icon + text,
+            // no capsule); each shows what a tap switches TO, as the old capsules did.
+            HStack(spacing: 16) {
+                Menu {
+                    AreaMenuOptions { areaSearchOpen = true }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "mappin").font(.system(size: 13, weight: .semibold))
+                        Text(app.T("Gần", "Near")).fontWeight(.medium).opacity(0.6).fixedSize()
+                        Text(app.area == LocationHierarchy.allID ? app.T("Mọi nơi", "Everywhere") : app.currentAreaLabel)
+                            .lineLimit(1)
+                        Text("▾").font(.system(size: 9))
+                    }
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(app.palette.ink)
+                    .frame(minHeight: 32)
+                    .contentShape(Rectangle())
                 }
-                .font(.system(size: 13.5, weight: .semibold))
-                .foregroundStyle(app.palette.ink)
-                .frame(minHeight: 32)
-                .contentShape(Rectangle())
+                .accessibilityIdentifier("header.area")
+                Button {
+                    Haptics.light()
+                    app.toggleLang()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "globe").font(.system(size: 13, weight: .semibold))
+                        Text(app.T("EN", "VN"))
+                    }
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(app.palette.ink)
+                    .frame(minHeight: 32)
+                    .contentShape(Rectangle())
+                }
+                .fixedSize()
+                .accessibilityLabel(app.T("Chuyển sang English", "Switch to Vietnamese"))
+                .accessibilityIdentifier("header.lang")
+                Button {
+                    Haptics.light()
+                    app.pickTheme(app.theme == "dark" ? "light" : "dark")
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: app.theme == "dark" ? "sun.max" : "moon").font(.system(size: 13, weight: .semibold))
+                        Text(app.theme == "dark" ? app.T("Sáng", "Light") : app.T("Tối", "Dark"))
+                    }
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(app.palette.ink)
+                    .frame(minHeight: 32)
+                    .contentShape(Rectangle())
+                }
+                .fixedSize()
+                .accessibilityLabel(app.theme == "dark" ? app.T("Chuyển sang giao diện sáng", "Switch to light mode")
+                                                        : app.T("Chuyển sang giao diện tối", "Switch to dark mode"))
+                .accessibilityIdentifier("header.theme")
             }
-            .accessibilityIdentifier("header.area")
             HomeSearchBar()
                 .padding(.bottom, 2)
         }
@@ -516,67 +531,37 @@ struct HomeView: View {
         .padding(.horizontal, 20)
         .padding(.top, 16)
     }
-    // MARK: Story row (Task 3.3, 07-notifications.md) — between "Your
-    // events" and the main event list, per this ticket's own placement.
-    // TASK E (2026-10-01 UX foundation pass) — "Banbe Pulse" is now a
-    // PERMANENT first entry (index 0), so this row is no longer
-    // conditional on real stories existing (was `if !app.homeStories.
-    // isEmpty`) — always shows at least Pulse. Never rendered on Map (this
-    // row only exists on Home).
+    // MARK: Story row (Task 3.3, 07-notifications.md)
+    // Host stories only. Banbe Pulse moved to the ticker at the top of the feed (note 51, PulseTickerView), so this
+    // row is shown ONLY when there are stories: no stories, no row, no empty band. Compact 52pt rings.
     private var storyRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
-                SwipeSafeButton { app.openPulseViewer() } label: {
-                    VStack(spacing: 5) {
-                        PulseRingGlyph()
-                            // Same-space pass (2026-09-28, this pass): the
-                            // `RingFrameProbe` that used to sit here as this
-                            // glyph's `.background()` — reporting the ring's
-                            // own on-screen frame up to the teaser bubble
-                            // through a callback — is GONE, along with
-                            // `AppState.pulseRingFrame`/`pulseBubbleFrameSink`
-                            // and the whole callback pipeline behind them
-                            // (PreferenceKey -> KVO probe -> imperative
-                            // `UIHostingController` frame writes). Each of
-                            // those still left the bubble frozen at a fixed
-                            // screen position during a real finger-drag. The
-                            // bubble is now drawn INSIDE `storyRow`'s own
-                            // content, in this ring's exact scrolling
-                            // coordinate space — see `PulseTeaserBubbleContent`
-                            // (PulseTeaserBubbleView.swift) and the
-                            // `.overlay` on this row's HStack below.
-                        Text(app.T("Banbe Pulse", "Banbe Pulse"))
-                            .font(.system(size: 9.5)).foregroundStyle(app.palette.ink).lineLimit(1).frame(width: 60)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("home.pulseAvatar")
+            HStack(spacing: 12) {
                 ForEach(app.homeStories) { group in
                     SwipeSafeButton { app.openStoryViewer(group.organizerId, originRect: app.storyRingFrames[group.organizerId]) } label: {
-                        VStack(spacing: 5) {
+                        VStack(spacing: 4) {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
                                     .strokeBorder(group.allViewed ? Color.clear : BanbeTheme.alert, lineWidth: 2.5)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                                             .strokeBorder(group.allViewed ? app.palette.rule : .clear, lineWidth: 2.5)
                                     )
-                                    .frame(width: 56, height: 56)
+                                    .frame(width: 52, height: 52)
                                 Text(String(group.orgName.prefix(1)).uppercased())
-                                    .font(.system(size: 16, weight: .bold))
+                                    .font(.system(size: 15, weight: .bold))
                                     .foregroundStyle(app.palette.ink)
-                                    .frame(width: 48, height: 48)
-                                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                                    .frame(width: 44, height: 44)
+                                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                             }
                             Text(group.orgName)
                                 .font(.system(size: 9.5))
                                 .foregroundStyle(app.palette.ink)
                                 .lineLimit(1)
-                                .frame(width: 60)
+                                .frame(width: 56)
                         }
-                        // Task 1 — reports this ring's own global frame
-                        // (the 56x56 ZStack above, not the label/text) via
-                        // StoryRingFramePreferenceKey.
+                        // Reports this ring's own global frame (the 52x52 ZStack above, not the label/text) via
+                        // StoryRingFramePreferenceKey, so the viewer can zoom out of it.
                         .background(
                             GeometryReader { geo in
                                 Color.clear.preference(
@@ -591,86 +576,9 @@ struct HomeView: View {
                 }
             }
             .padding(.horizontal, 20)
-            // Same-space pass (2026-09-28, this pass) — THE teaser bubble.
-            // It is part of this row's own content, i.e. inside the exact
-            // same scrolling coordinate space as the Pulse ring it points at
-            // (the ring is in the HStack above), so the feed's vertical
-            // scroll AND this row's own horizontal scroll move ring and
-            // bubble together as one piece of content — by construction,
-            // with no callback, KVO, `convert(_:to:)` or SwiftUI render
-            // commit anywhere in between. That is the whole fix for the
-            // real-device report of the bubble sitting fixed on screen while
-            // the ring scrolled: nothing positions it separately from the
-            // ring any more.
-            //
-            // The anchor is this row's own layout constant, never a guess
-            // about the screen: `padding(.horizontal, 20)` above plus half of
-            // the ring's 56x56 glyph (centred in the 60pt-wide `VStack` that
-            // also holds its label — verified at runtime as mid-x 50) is 50,
-            // and the glyph starts at this content's own top, so its mid-y
-            // is 28.
-            //
-            // Two SwiftUI specifics this deliberately works around, both
-            // confirmed on a real accessibility dump of this row rather than
-            // assumed:
-            //  * the bubble gets a DEFINITE 230pt-wide layout box
-            //    (`.frame(width:)`, content leading-aligned inside it) —
-            //    this row's content is only as wide as the rings it holds
-            //    (100pt with Pulse alone), and letting the proposal decide
-            //    squeezed the copy to ~50pt and wrapped it two characters per
-            //    line. The bubble itself still hugs its own copy up to that
-            //    cap: 230 + 50 stays inside even a 375pt-wide iPhone.
-            //  * the bottom edge is put on the anchor with a zero-height
-            //    box (`.frame(height: 0, alignment: .bottom)`, with
-            //    `.fixedSize(vertical:)` so the copy keeps its real height)
-            //    rather than an `.alignmentGuide(.top)` — a guide is ignored
-            //    by `.overlay(alignment:)` here, which is what left the
-            //    bubble's TOP sitting on the ring's centre line instead of
-            //    its bottom. A zero-height box also means the row's own
-            //    height never depends on the bubble's copy, so no step
-            //    advance can nudge the feed below it.
-            // Repositioned (2026-09-29 follow-up, reverted second pass) —
-            // growing fully leftward from the ring's centre (previous pass)
-            // ran the box off the LEFT edge of the screen entirely (the
-            // ring sits only ~70pt from the screen's own left edge, nowhere
-            // near enough room for a 230pt-wide box to grow into), clipping
-            // the longest copy. Back to growing UP-RIGHT (box's leading
-            // edge anchored near the ring, content left-aligned — plenty of
-            // screen width in that direction) but shifted 20pt further
-            // LEFT than the ring's exact centre so the box overlaps the
-            // ring slightly, per this pass's own explicit request. Tail
-            // unchanged, at the bubble's own bottom-leading corner
-            // (`Triangle`'s own `.overlay(alignment: .bottomLeading)` in
-            // PulseTeaserBubbleContent).
-            .overlay(alignment: .topLeading) {
-                if app.pulseTeaserStep >= 0 {
-                    PulseTeaserBubbleContent(
-                        step: app.pulseTeaserStep,
-                        onTap: { app.pulseTeaserAdvance?() },
-                        onOpenFeaturedPhotos: { app.pulseTeaserOpenPhotos?() }
-                    )
-                    .frame(width: Self.pulseBubbleMaxWidth, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(height: 0, alignment: .bottom)
-                    .padding(.leading, Self.pulseRingMidXInRow - 20)
-                    .padding(.top, Self.pulseRingMidYInRow)
-                }
-            }
         }
-        // The bubble is anchored at the ring's centre and grows UPWARD, so
-        // the tallest copy this sequence shows (the 3-line ranked list)
-        // reaches above the row's own top edge. Without this, the horizontal
-        // scroller would clip it to its own bounds; disabling that clip is
-        // the "not clipped by the horizontal story row" requirement, and it
-        // can only ever affect the bubble itself — nothing else in this row
-        // draws outside it. Still clipped by the feed's own vertical
-        // ScrollView as it scrolls away, exactly like the ring.
-        .scrollClipDisabled()
-        // The story row owns horizontal scrolling. Register its real bounds
-        // (the scroller itself — before the top clearance padding below) in
-        // the same root coordinate space tabSwipeGesture uses, exactly like
-        // "Your events" does, so a swipe that starts on a story ring scrolls
-        // the row and never commits Home -> Map.
+        // The story row owns horizontal scrolling. Register its real bounds in the same root coordinate space
+        // tabSwipeGesture uses, so a swipe that starts on a story ring scrolls the row and never commits Home -> Map.
         .background {
             GeometryReader { geo in
                 Color.clear.preference(
@@ -679,21 +587,8 @@ struct HomeView: View {
                 )
             }
         }
-        // Extra top clearance (2026-09-29 follow-up, real-device report) —
-        // the teaser bubble grows upward from the ring's centre (see the
-        // comment above) and, when little/nothing renders above this row
-        // (e.g. an empty Action Center), had no room to grow into: it
-        // reached above this screen's own header and rendered over the
-        // "home" title. This row (Pulse ring + its bubble) is shifted down
-        // by that much extra so the bubble's tallest content (the 3-line
-        // ranked list) is always fully clear of the header above, without
-        // changing the bubble's own top-left/pointer-at-bottom-left design.
-        // Note 50: the extra room is only reserved while the teaser bubble actually shows (otherwise it left a
-        // large empty band between the new search bar and the stories).
-        .padding(.top, app.pulseTeaserStep >= 0 ? 65 : 14)
-        .animation(.easeOut(duration: 0.2), value: app.pulseTeaserStep >= 0)
-        .padding(.bottom, 14)
-        .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
+        .padding(.top, 10)
+        .padding(.bottom, 6)
     }
 
     /// Section 5 — public survey discovery. Source-of-discovery pass —
@@ -907,25 +802,6 @@ struct HomeView: View {
         .frame(width: 28, height: 28)
     }
 
-    /// The Pulse ring's centre point inside `storyRow`'s own content space —
-    /// see that row's own comment for how these two numbers are derived from
-    /// its layout constants (`padding(.horizontal, 20)`, the 60pt-wide ring
-    /// column, and the 56x56 glyph at the top of that column). Named rather
-    /// than inlined so the bubble's anchor and the row that has to satisfy it
-    /// stay visibly in sync.
-    /// The widest any step's copy is allowed to be, i.e. the width of the
-    /// bubble's own layout box in `storyRow` (which is why the copy wraps
-    /// here rather than running off the trailing edge of the screen): the
-    /// bubble's leading edge sits 50pt into the row, so 230 + 50 stays
-    /// inside even a 375pt-wide iPhone.
-    private static let pulseBubbleMaxWidth: CGFloat = 230
-    private static let pulseRingMidXInRow: CGFloat = 50
-    // Shifted down from the ring's own vertical centre (28) so the
-    // bubble's bottom (it grows UPWARD from this anchor) now dips down
-    // just enough to barely overlap the "Banbe Pulse" label under the
-    // ring, per this pass's explicit request.
-    private static let pulseRingMidYInRow: CGFloat = 10
-
     /// Reminder only for a ticket-holder's own event (not a hold, not merely saved).
     private func reminderPhase(_ event: CatalogEvent) -> EventReminder.Phase? {
         guard app.isGoing(event.key), event.key != app.heldEvent?.key,
@@ -1016,7 +892,7 @@ struct HomeView: View {
                 label: label
             )
         }
-        let badge = HomeDiscovery.activeFilterCount(f) + (app.homeSort != "soonest" ? 1 : 0)
+        let badge = HomeDiscovery.activeFilterCount(f)
         return Snapshot(items: items, shown: shown, cards: cards, quickCounts: quick, relaxHints: hints, filterBadge: badge)
     }
 
@@ -1042,13 +918,33 @@ struct HomeView: View {
             .accessibilityLabel(snap.filterBadge > 0 ? app.T("Bộ lọc, \(snap.filterBadge) đang bật", "Filters, \(snap.filterBadge) on")
                                                      : app.T("Bộ lọc", "Filters"))
             .accessibilityIdentifier("home.filtersButton")
-            SwipeSafeButton {
-                Haptics.light()
-                app.homeFilterSheetOpen = true
+            // Sort is its own native pop-up (same mechanism as the area menu) with ONLY the sort options.
+            // The capsule turns "on" while a non-default sort is chosen.
+            let sortActive = app.homeSort != "soonest"
+            Menu {
+                ForEach(HomeDiscovery.sortModes, id: \.self) { mode in
+                    let l = HomeDiscovery.sortLabels[mode] ?? (mode, mode)
+                    let needsLocation = mode == "nearest" && !(app.located == true && app.userCoords != nil)
+                    Button {
+                        Haptics.selection()
+                        if needsLocation { app.allowLocation() } else { app.homeSort = mode }
+                    } label: {
+                        if app.homeSort == mode {
+                            Label(app.T(l.vi, l.en), systemImage: "checkmark")
+                        } else if needsLocation {
+                            Label(app.T("\(l.vi) ▪︎ bật vị trí", "\(l.en) ▪︎ turn on location"), systemImage: "location")
+                        } else {
+                            Text(app.T(l.vi, l.en))
+                        }
+                    }
+                    .accessibilityIdentifier("home.sort.\(mode)")
+                }
             } label: {
                 Image(systemName: "arrow.up.arrow.down").font(.system(size: 14, weight: .semibold))
                     .padding(.horizontal, 12).frame(minWidth: 44, minHeight: 36)
-                    .background { homeGlassCapsule() }
+                    .foregroundStyle(sortActive ? app.palette.paper : app.palette.ink)
+                    .background { homeGlassCapsule(active: sortActive) }
+                    .contentShape(Capsule())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(app.T("Sắp xếp: \(HomeDiscovery.sortLabels[app.homeSort]?.vi ?? "")",
@@ -1203,7 +1099,7 @@ struct HomeView: View {
                 Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
                     .foregroundStyle(active ? app.palette.paper : gold)
                 Text(app.T("Dành cho bạn", "For You"))
-                    .font(.system(size: 12, weight: active ? .bold : .regular))
+                    .font(.system(size: 13, weight: active ? .bold : .regular))
                     .lineLimit(1)
                 if forYouAlert.hasPending {
                     // White on #7A5200 = ~6.9:1 (AA); static, retained until acknowledged.
@@ -1215,7 +1111,7 @@ struct HomeView: View {
                         .accessibilityHidden(true)
                 }
             }
-            .padding(.horizontal, 12).padding(.vertical, 6)
+            .padding(.horizontal, 14).frame(minHeight: 36)  // same height as Filters / Sort / the quick chips
             .foregroundStyle(active ? app.palette.paper : app.palette.ink)
             .background { homeGlassCapsule(active: active) }
             .overlay(Capsule().stroke(active ? app.palette.ink : gold.opacity(0.7), lineWidth: 1))
@@ -1291,7 +1187,7 @@ struct HomeView: View {
     private var weekendList: [CatalogEvent] {
         Array(app.weekendEvents.map(app.withLive)
             .filter { app.matchesArea($0) }
-            .filter { app.filter == "all" || $0.catKey == app.filter || $0.cat2Key == app.filter }
+            .filter { e in app.homeFilters.cats.isEmpty || app.homeFilters.cats.contains(e.catKey) || e.cat2Key.map(app.homeFilters.cats.contains) == true }
             .prefix(12))
     }
 
@@ -1366,55 +1262,6 @@ struct RootGestureExclusionZonePreferenceKey: PreferenceKey {
     static var defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { _, new in new }
-    }
-}
-
-/// TASK 3 (2026-10-05 fix pass) — replaces the Pulse ring's static two-tone
-/// gradient + plain "✦" with a refined multicolor shimmer, still built
-/// entirely from Banbe's own existing dusty-rose/sage palette (the same two
-/// colors the old `LinearGradient` used, plus one warm sand tone already in
-/// that same muted family — never a saturated rainbow). `hueRotation`
-/// slowly cycling an `AngularGradient` is one continuous system-driven
-/// animation, not a per-frame `Timer`/`TimelineView` redraw loop — cheap
-/// for a 56×56 view and, since `HomeView` (the only place this is used) is
-/// swapped out of the screen-switch entirely on navigation, it stops
-/// running the instant Home isn't the visible screen, with no extra
-/// visibility plumbing needed. `scenePhase` still pauses it explicitly
-/// while backgrounded, and Reduce Motion skips starting it at all, leaving
-/// the gradient's own resting frame — still colorful, just not moving — as
-/// the "beautiful static state" this ticket asks for.
-private struct PulseRingGlyph: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var rotate = false
-
-    private static let colors: [Color] = [
-        Color(red: 0.91, green: 0.79, blue: 0.76), // dusty rose — the old gradient's own first stop
-        Color(red: 0.87, green: 0.75, blue: 0.62), // warm sand — a third stop in the same muted family
-        Color(red: 0.78, green: 0.80, blue: 0.70), // sage — the old gradient's own second stop
-    ]
-
-    var body: some View {
-        ZStack {
-            AngularGradient(colors: Self.colors + [Self.colors[0]], center: .center)
-                .hueRotation(.degrees(rotate ? 360 : 0))
-            Text("✦")
-                .font(.system(size: 20))
-                .foregroundStyle(.white.opacity(0.92))
-                .shadow(color: .white.opacity(0.5), radius: 3)
-        }
-        .frame(width: 56, height: 56)
-        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-        .onAppear { startIfEligible() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { startIfEligible() } else { rotate = false }
-        }
-        .onChange(of: reduceMotion) { _, _ in startIfEligible() }
-    }
-
-    private func startIfEligible() {
-        guard !reduceMotion, scenePhase == .active else { rotate = false; return }
-        withAnimation(.linear(duration: 7).repeatForever(autoreverses: false)) { rotate = true }
     }
 }
 

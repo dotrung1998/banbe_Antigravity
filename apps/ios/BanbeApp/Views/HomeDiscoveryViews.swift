@@ -47,7 +47,8 @@ struct HomeCategoryRow: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(HomeDiscovery.categories, id: \.key) { c in
-                    let active = app.filter == c.key
+                    let cats = app.homeFilters.cats
+                    let active = c.key == "all" ? cats.isEmpty : cats.contains(c.key)
                     SwipeSafeButton {
                         if !active { Haptics.selection() }
                         app.pickFilter(c.key)

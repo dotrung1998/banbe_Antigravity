@@ -12,7 +12,6 @@ struct HomeFilterSheet: View {
     @EnvironmentObject private var app: AppState
     let items: [HomeDiscovery.Item]
     let now: Date
-    let onOpenArea: () -> Void
     let onClose: () -> Void
 
     @State private var draft = HomeDiscovery.Filters.default
@@ -20,6 +19,8 @@ struct HomeFilterSheet: View {
     @State private var forTwo = false
     @State private var seeded = false
     @State private var datePickerOpen = false
+    /// The location picker slides up OVER this sheet; this sheet (and its draft) stays alive underneath.
+    @State private var areaOpen = false
     @State private var pickedDate = Date()
 
     private static let priceStep = 50_000
@@ -70,6 +71,10 @@ struct HomeFilterSheet: View {
             seeded = true
             draft = app.homeFilters
             draftSort = app.homeSort
+        }
+        .sheet(isPresented: $areaOpen) {
+            LocationPickerSheet(isPresented: $areaOpen, doneMode: true)
+                .environmentObject(app)
         }
         .presentationDetents([.fraction(0.88), .large])
         .presentationDragIndicator(.visible)
@@ -319,7 +324,7 @@ struct HomeFilterSheet: View {
 
     private var locationSection: some View {
         section(app.T("Khu vực", "Location")) {
-            Button(action: onOpenArea) {
+            Button { Haptics.selection(); areaOpen = true } label: {
                 HStack {
                     Text(areaLabel ?? app.T("Mọi nơi", "Everywhere"))
                     Spacer()

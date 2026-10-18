@@ -843,16 +843,6 @@ struct RootView: View {
             // second SwiftUI transition on top of it.
             if app.loading { loadingOverlay }
 
-            // Pulse teaser pass (2026-09-27) — always in the tree (now just
-            // the sequence's state machine/timers on a zero-size invisible
-            // view — the visible bubble is drawn by `HomeView.storyRow`, in
-            // the ring's own scrolling space; see
-            // `PulseTeaserBubbleView`'s own doc comment), never gated on
-            // `app.pulseOpen`/`app.screen` here, since it needs to keep
-            // observing `app.screen`'s own changes itself to know when to
-            // suspend/resume.
-            PulseTeaserBubbleView().zIndex(29)
-
             // First-time host setup (cover / name / intro + reveal). Full-screen, above everything in
             // this window; the dock is hidden via the onboarding flag below.
             if app.hostSetupOpen, app.userID != nil {
@@ -1341,7 +1331,11 @@ struct RootView: View {
         case .preferences: PreferencesView()
         case .eventPreferences: EventPreferencesView()
         case .following: FollowingView()
-        case .rewards: RewardsView()
+        case .rewards:
+            // Hidden by an admin (migration 187), whether this was a deep link or the flag flipped while it was
+            // open: show nothing and leave through Back's own target.
+            if app.rewardsEnabled { RewardsView() }
+            else { Color.clear.onAppear { app.screen = app.rewardsBackScreen } }
         case .editName: EditNameView()
         case .notifications: NotificationsView()
         case .welcome: WelcomeView()
@@ -1358,6 +1352,7 @@ struct RootView: View {
         case .disputes: AdminDashboardView()
         case .adminEvents: AdminEventsView()
         case .adminTestAccounts: if app.isAdmin { AdminTestAccountsView() }
+        case .adminFeatures: if app.isAdmin { AdminFeaturesView() }
         case .adminDobCorrections: if app.isAdmin { AdminDobCorrectionsView() }
         case .refundAccounts: RefundAccountsView()
         case .myRefunds: MyRefundsView()

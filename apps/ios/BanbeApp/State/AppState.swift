@@ -15,7 +15,7 @@ enum Screen: String {
     case security
     case following, rewards
     case paymentDetails, billing, payout, documents, documentView
-    case verifications, disputes, adminEvents, adminTestAccounts, adminDobCorrections
+    case verifications, disputes, adminEvents, adminTestAccounts, adminDobCorrections, adminFeatures
     case policy
     case mapExplore
     case refundAccounts, myRefunds
@@ -457,7 +457,8 @@ final class AppState: ObservableObject {
     /// Live DB location of each demo-catalogue event, keyed by slug —
     /// populated by `loadHomeLiveEvents()` (same rows Map reads).
     @Published var homeEventLocations: [String: EventLocation] = [:]
-    @Published var filter: String = "all"
+    // Category: the single selection lives in `homeFilters.cats` (the main row and the filter sheet edit the same
+    // value), so a category picked on Home is already ticked when the sheet opens.
     // Home's second, independent chip row (12-home-filters.md) — multi-select,
     // AND-combined with `filter`/`area` above, not folded into either.
     @Published var filterAttending = false
@@ -566,6 +567,19 @@ final class AppState: ObservableObject {
     var followBusy = Set<String>()
     var followOwnerID: UUID?
     // Rewards & badges (AppState+Rewards.swift). Server-computed; nil/unavailable hides the feature.
+    // Platform feature flags (migration 187, note 51; AppState+FeatureFlags.swift). Platform-level, so NOT reset on
+    // sign-out. Seeded from the last answer cached on this device; a missing key means "on".
+    @Published var featureFlags: [String: Bool] = AppState.initialFeatureFlags() {
+        didSet { featureFlagsDidChange(from: oldValue) }
+    }
+    @Published var featureFlagBusy = ""
+    var featureFlagsFetchedAt: Date?
+    private static func initialFeatureFlags() -> [String: Bool] {
+        #if DEBUG
+        if UITestFixture.isActive { return [:] } // fixtures never read a cache left by a real run
+        #endif
+        return FeatureFlags.read()
+    }
     @Published var rewardsSummary: RewardSummary?
     @Published var rewardsSummaryStatus: RewardsStatus = .idle
     @Published var rewards: RewardsPayload?
@@ -909,41 +923,6 @@ final class AppState: ObservableObject {
     /// A screen's own swipe (Schedule week/day) is in progress; buttons under
     /// the finger must not fire on release.
     @Published var isLocalSwipeActive = false
-    // Pulse teaser pass (2026-09-27), reworked by the same-space pass
-    // (2026-09-28, after a second real-device report of the bubble sitting
-    // fixed on screen while the ring scrolled) — the teaser's own sequence
-    // position, published by `PulseTeaserBubbleView` (RootView.swift — it
-    // stays a RootView sibling so its timers keep running while Home isn't
-    // the mounted screen) and rendered by `HomeView.storyRow`, which draws
-    // the bubble INSIDE the story row's own content — the very same
-    // scrolling coordinate space as the Pulse ring it points at — so UIKit
-    // moves the two together with no callback, KVO, coordinate conversion
-    // or SwiftUI render commit in the path. Because of that, this is only
-    // ever written on a real state change (a step advance, a tap, a
-    // dismiss), never once per scroll frame, so a plain `@Published` read
-    // in HomeView is all the bubble needs.
-    //
-    // This REPLACES the previous pair of properties here — `pulseRingFrame`
-    // (the ring's own on-screen frame, measured via the now-deleted
-    // `RingFrameProbe` in Components.swift and written straight from its KVO
-    // callback in HomeView) and `pulseBubbleFrameSink` (an imperative
-    // `UIView.frame` write into a hosted bubble, via the now-deleted
-    // `PulseBubblePositioningHost`). Both were attempts to keep a
-    // screen-positioned overlay in sync with the ring through callbacks,
-    // and both still left the bubble frozen at a fixed screen position
-    // during a real finger-drag; see `PulseTeaserBubbleView`'s own
-    // "Same-space pass" doc comment for the full history. Nothing reads a
-    // ring frame any more, so there is no replacement for them.
-    @Published var pulseTeaserStep: Int = -1
-    /// The two tap actions the bubble calls — `advanceOrDismiss()` (a tap
-    /// anywhere on the bubble) and `openFeaturedPhotos()` (the final step's
-    /// "Bấm xem thêm" link). Both still live in `PulseTeaserBubbleView`,
-    /// which owns the sequence; these are just the handles Home needs to
-    /// reach them without owning (or duplicating) that state machine. A tap
-    /// is a one-off event, never a per-scroll-frame one, so a plain closure
-    /// is immune to every timing problem the positioning code used to fight.
-    var pulseTeaserAdvance: (() -> Void)?
-    var pulseTeaserOpenPhotos: (() -> Void)?
     @Published var storyCreatePreviewImage: UIImage?
     // Story editor draft (text stickers + one link); `storyEditingID` is set
     // when editing an already-posted story instead of creating a new one.
@@ -2494,7 +2473,6 @@ final class AppState: ObservableObject {
             .filter { !$0.inviteOnly }
             // Ended events leave the feed; they live on the host's profile under "Past events".
             .filter { $0.endedHoursAgo == nil }
-            .filter { filter == "all" || $0.catKey == filter || $0.cat2Key == filter }
             .filter { matchesArea($0) }
         let attendance = categoryAndArea
             .filter { !filterAttending || isGoing($0.key) }
@@ -3665,7 +3643,7 @@ final class AppState: ObservableObject {
         // "adminReview" (Review & Moderation) rows now, not straight from
         // Account itself — same sub-section-of-a-group class of bug the
         // `.preferences`/`.security`/`.payout` cases above already fixed.
-        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections: screen = accountSubBack
+        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures: screen = accountSubBack
         case .mapExplore: goHome()
         case .search: screen = searchBackScreen
         // TASK A fix — these two cases were simply missing, so the shared
@@ -3795,7 +3773,7 @@ final class AppState: ObservableObject {
         case .documents: return documentsListBack
         case .documentView: return documentBack
         case .verifications: return verificationsBack
-        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections: return accountSubBack
+        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures: return accountSubBack
         case .mapExplore: return .home
         case .search: return searchBackScreen
         // TASK A fix — same missing-case bug as goBack() above: without
@@ -3869,9 +3847,9 @@ final class AppState: ObservableObject {
         Task { await persistFollowToggle(eventKey: key, uid: uid, wasFollowing: wasFollowing) }
     }
 
-    func pickFilter(_ key: String) { filter = key }
+    func pickFilter(_ key: String) { homeFilters.cats = key == "all" ? [] : [key] }
     func clearFilters() {
-        filter = "all"; area = "all"
+        area = "all"
         filterAttending = false; filterSaved = false; filterSoldOut = false
         filterNotConfirmed = false
         filterUpcoming = false; filterEnded = false

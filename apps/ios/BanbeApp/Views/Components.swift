@@ -843,19 +843,6 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
     }
 }
 
-// Pulse-teaser note (2026-09-28, same-space pass): `RingFrameProbe` used
-// to live here — an invisible probe attached to Home's Pulse ring that
-// KVO-observed every ancestor `UIScrollView`'s `contentOffset` and
-// reported the ring's `convert(bounds, to: nil)` frame up to
-// `app.pulseRingFrame` / `pulseBubbleFrameSink`, which an imperatively
-// hosted bubble then turned into its own `UIView.frame`. It is deleted
-// along with that whole pipeline: on a real device the bubble still sat
-// fixed on screen while the ring scrolled, so the teaser bubble is no
-// longer positioned from any reported frame at all — `HomeView.storyRow`
-// draws it inside the story row's own scrolling coordinate space
-// instead (see `PulseTeaserBubbleContent` in PulseTeaserBubbleView.swift
-// and `PulseTeaserBubbleView`'s own "Same-space pass" writeup).
-
 // Map search-focus fix (2026-09-28, fourth pass) — `SheetPresentationSettledProbe`
 // used to live here: an invisible `UIViewRepresentable` walking the real
 // UIKit responder chain for `UIViewController.transitionCoordinator`, to

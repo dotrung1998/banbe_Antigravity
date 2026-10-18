@@ -399,24 +399,39 @@ struct LocationPickerList: View {
 struct LocationPickerSheet: View {
     @EnvironmentObject private var app: AppState
     @Binding var isPresented: Bool
+    /// Filter-sheet mode (note 50): presented ON TOP of the filter sheet. A pick only moves the selection (the
+    /// checkmark and the counts behind update), and the header's "Done" dismisses it, so the filter draft is
+    /// never lost. Everywhere else a pick closes the picker, as before.
+    var doneMode = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(app.T("Khu vực", "Location")).font(.system(size: 11.5, weight: .semibold))
                 Spacer()
-                Button { isPresented = false } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(app.palette.ink.opacity(0.6))
-                        .padding(4)
+                if doneMode {
+                    Button { Haptics.selection(); isPresented = false } label: {
+                        Text(app.T("Xong", "Done"))
+                            .font(.system(size: 15, weight: .semibold))
+                            .padding(.horizontal, 6).frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("home.filter.area.done")
+                } else {
+                    Button { isPresented = false } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(app.palette.ink.opacity(0.6))
+                            .padding(4)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("map.area.close")
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("map.area.close")
             }
             LocationPickerList { id in
                 app.area = LocationHierarchy.migrateSelection(id)
-                isPresented = false
+                if !doneMode { isPresented = false }
             }
 
             // Same location on/off toggle as Home's area picker.

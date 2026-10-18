@@ -595,11 +595,11 @@ final class ScreenshotCatalogTests: XCTestCase {
             skip("public-profile / public-profile-qr — the shared account has no handle saved yet this run")
         }
 
-        // TASK E — Banbe Pulse: a permanent ring entry, always present.
+        // TASK E — Banbe Pulse: the ticker at the top of Home, always present.
         let app3 = launchSignedIn(role: "goer", scenario: "ux-foundation-pulse")
         XCTAssertTrue(app3.otherElements["screen.home"].waitForExistence(timeout: 20))
-        XCTAssertTrue(any(app3, "home.pulseAvatar").waitForExistence(timeout: 10), "Expected the permanent Banbe Pulse ring entry")
-        any(app3, "home.pulseAvatar").tap()
+        XCTAssertTrue(any(app3, "home.pulseTicker").waitForExistence(timeout: 10), "Expected the Banbe Pulse ticker at the top of Home")
+        any(app3, "home.pulseTicker").tap()
         if any(app3, "pulse.card").waitForExistence(timeout: 6) {
             capture("09-ux-foundation", 7, "pulse-daily", "Banbe Pulse — Hôm nay", "Today's ranked public event/organizer cards.", role: "goer", app: app3)
             app3.buttons["Tuần này"].tap()

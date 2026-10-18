@@ -697,6 +697,8 @@ struct AccountGroupView: View {
             row(app.T("Tài khoản thử nghiệm", "Test accounts"), identifier: "admin.testAccounts", icon: "person.badge.shield.checkmark", trailing: "›") { if app.isAdmin { app.screen = .adminTestAccounts } }
             Divider().overlay(app.palette.rule)
             row(app.T("Sửa ngày sinh", "Birthday corrections"), identifier: "admin.dobCorrections", icon: "calendar.badge.exclamationmark", trailing: "›") { if app.isAdmin { app.screen = .adminDobCorrections } }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Công tắc tính năng", "Feature switches"), identifier: "admin.features", icon: "switch.2", trailing: "›") { if app.isAdmin { app.screen = .adminFeatures } }
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }

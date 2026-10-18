@@ -39,8 +39,8 @@ final class DiscoveryFixtureUITests: XCTestCase {
         el(app, "home.layout.cards").tap() // the layout is remembered on the device
         XCTAssertTrue(el(app, "home.searchBar").exists, "full-width search bar")
         XCTAssertTrue(el(app, "header.area").exists, "location pill")
-        XCTAssertFalse(el(app, "header.lang").exists, "EN/VN moved to Settings")
-        XCTAssertFalse(el(app, "header.theme").exists, "Light/Dark moved to Settings")
+        XCTAssertTrue(el(app, "header.lang").exists, "EN/VN quick switch sits beside the location pill")
+        XCTAssertTrue(el(app, "header.theme").exists, "Light/Dark quick switch sits beside the location pill")
         XCTAssertTrue(el(app, "filter.popup").exists, "category tiles include Pop-up")
         XCTAssertTrue(el(app, "home.filtersButton").exists)
         XCTAssertTrue(el(app, "home.sortButton").exists)
@@ -70,6 +70,123 @@ final class DiscoveryFixtureUITests: XCTestCase {
         XCTAssertEqual(badge.label, "ALMOST FULL · 2 LEFT")
         XCTAssertTrue(app.buttons["Fixture host supper"].firstMatch.exists)
         XCTAssertFalse(app.buttons["Fixture rooftop set"].firstMatch.exists, "6 of 20 is not almost full")
+    }
+
+    /// Sort is its own pop-up with ONLY the sort options (not the filter sheet).
+    func testSortButtonOpensSortMenuOnly() {
+        let app = launch("home")
+        XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 20))
+        el(app, "home.sortButton").tap()
+        XCTAssertTrue(el(app, "home.sort.price").waitForExistence(timeout: 5), "sort options are listed")
+        XCTAssertFalse(el(app, "home.filterSheet").exists, "the filter sheet must not open")
+        el(app, "home.sort.price").tap()
+        XCTAssertFalse(el(app, "home.sort.price").waitForExistence(timeout: 2), "the menu closes after a pick")
+        XCTAssertFalse(el(app, "home.filtersButton").label.contains("1"), "sort does not count as a filter")
+    }
+
+    /// A category picked on the main row is already ticked when the filter sheet opens, and the other
+    /// categories stay available (they used to show 0 and disable, because the sheet only saw the filtered feed).
+    func testCategoryPickedOnHomeIsPreselectedInSheet() {
+        let app = launch("home")
+        XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 20))
+        el(app, "filter.gallery").tap()
+        el(app, "home.filtersButton").tap()
+        let gallery = el(app, "home.filter.cat.gallery")
+        XCTAssertTrue(gallery.waitForExistence(timeout: 5))
+        XCTAssertTrue(gallery.isSelected, "the Home category is pre-selected")
+        let music = el(app, "home.filter.cat.music")
+        XCTAssertTrue(music.exists)
+        XCTAssertTrue(music.isEnabled, "other categories are not disabled")
+    }
+
+    /// The location picker slides up OVER the filter sheet; "Done" slides it down and the sheet (with its draft) is still there.
+    func testLocationPickerOverlaysFilterSheetAndDoneReturns() {
+        let app = launch("home", extra: ["-uiFixtureFilters", "YES"])
+        XCTAssertTrue(el(app, "home.filter.apply").waitForExistence(timeout: 20))
+        el(app, "home.filter.cat.gallery").tap() // a draft change that must survive the picker
+        el(app, "home.filter.area").tap()
+        let done = el(app, "home.filter.area.done")
+        XCTAssertTrue(done.waitForExistence(timeout: 5), "the picker opens with a Done button")
+        done.tap()
+        XCTAssertTrue(done.waitForNonExistence(timeout: 5), "Done dismisses the picker")
+        XCTAssertTrue(el(app, "home.filter.apply").waitForExistence(timeout: 5), "the filter sheet is still open")
+        XCTAssertTrue(el(app, "home.filter.cat.gallery").isSelected, "the draft was kept")
+    }
+
+    /// The pinned For You chip sits in the same row as Filters / Sort and is vertically centred with them (it used
+    /// to be ~8pt shorter). XCUITest reports the chip's inner star icon as the element frame, so this checks the
+    /// centre line, and the screenshot shows the height.
+    func testForYouChipIsAlignedWithOtherChips() {
+        let app = launch("home", extra: ["-uiFixtureForYou", "YES"])
+        XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 20))
+        let forYou = app.buttons["filter.foryou"].firstMatch
+        XCTAssertTrue(forYou.waitForExistence(timeout: 10), "For You chip is shown for an account with preferences")
+        let filters = app.buttons["home.filtersButton"].firstMatch
+        Thread.sleep(forTimeInterval: 0.6)
+        shot("home-foryou-chip")
+        XCTAssertEqual(forYou.frame.midY, filters.frame.midY, accuracy: 1.0, "For You \(forYou.frame) vs Filters \(filters.frame)")
+    }
+
+    // MARK: Pulse ticker (note 51)
+
+    /// Pulse is one slim ticker line at the top of the feed, above the categories, and tapping it opens the viewer.
+    func testPulseTickerSitsAtTopAndOpensViewer() {
+        let app = launch("home", extra: ["-uiFixturePulse", "YES"])
+        XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 20))
+        let ticker = app.buttons["home.pulseTicker"].firstMatch
+        XCTAssertTrue(ticker.waitForExistence(timeout: 10))
+        XCTAssertLessThanOrEqual(ticker.frame.height, 44, "one slim line")
+        let screenW = app.windows.firstMatch.frame.width
+        XCTAssertLessThanOrEqual(ticker.frame.maxX, screenW - 8, "the capsule stays inside the screen (its text must not widen it)")
+        XCTAssertGreaterThanOrEqual(ticker.frame.minX, 8)
+        XCTAssertTrue(ticker.label.contains("Gallery walk Bình Thạnh"), "the label lists the ranked events: \(ticker.label)")
+        XCTAssertEqual(ticker.value as? String, "3")
+        XCTAssertLessThan(ticker.frame.maxY, app.buttons["filter.supper"].firstMatch.frame.minY, "above the category row")
+        XCTAssertFalse(el(app, "home.storyAvatar").exists, "no stories: no story row")
+        Thread.sleep(forTimeInterval: 0.6)
+        shot("home-pulse-ticker")
+        ticker.tap()
+        XCTAssertTrue(el(app, "pulse.close").waitForExistence(timeout: 6), "the Pulse viewer opens")
+    }
+
+    /// Without any ranking the ticker is a static invitation, not an empty box, and it is still tappable.
+    func testPulseTickerWithoutRankingIsAStaticInvitation() {
+        let app = launch("home")
+        XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 20))
+        XCTAssertTrue(el(app, "home.pulseTicker.empty").waitForExistence(timeout: 10))
+        app.buttons["home.pulseTicker"].firstMatch.tap()
+        XCTAssertTrue(el(app, "pulse.close").waitForExistence(timeout: 6))
+    }
+
+    // MARK: Rewards switch (note 51)
+
+    /// An admin hid Rewards & badges: no streak/coins capsule on Home (and it is there when the switch is on).
+    func testRewardsSwitchOffHidesTheHomeCapsule() {
+        let on = launch("home")
+        XCTAssertTrue(el(on, "home.title").waitForExistence(timeout: 20))
+        XCTAssertTrue(el(on, "home.coins").waitForExistence(timeout: 5), "capsule is shown while the switch is on")
+        on.terminate()
+        let off = launch("home", extra: ["-uiFixtureRewards", "off"])
+        XCTAssertTrue(el(off, "home.title").waitForExistence(timeout: 20))
+        XCTAssertFalse(el(off, "home.coins").waitForExistence(timeout: 3), "capsule is hidden")
+        XCTAssertFalse(el(off, "home.streak").exists)
+        XCTAssertTrue(el(off, "header.area").exists, "the rest of the header is intact")
+    }
+
+    /// The admin screen shows the state, flips it, and Account loses the Rewards row.
+    func testAdminFeatureSwitchFlipsState() {
+        let app = launch("adminFeatures")
+        let state = el(app, "adminFeatures.rewards.state")
+        XCTAssertTrue(state.waitForExistence(timeout: 20))
+        XCTAssertEqual(state.label, "Visible to everyone")
+        let sw = el(app, "adminFeatures.rewards.switch")
+        XCTAssertEqual(sw.value as? String, "on")
+        sw.tap()
+        XCTAssertTrue(NSPredicate(format: "label == 'Hidden from everyone'").evaluate(with: state) || state.waitForExistence(timeout: 2))
+        let flipped = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'Hidden from everyone'"), object: state)
+        XCTAssertEqual(XCTWaiter().wait(for: [flipped], timeout: 5), .completed)
+        XCTAssertEqual(el(app, "adminFeatures.rewards.switch").value as? String, "off")
+        shot("admin-feature-switches")
     }
 
     // MARK: Filter sheet

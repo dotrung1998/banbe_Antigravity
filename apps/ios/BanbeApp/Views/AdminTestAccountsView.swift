@@ -125,39 +125,10 @@ struct AdminTestAccountsView: View {
         } catch { show(errorText(nil), error: true) }
     }
 
-    /// Liquid Glass switch: frosted track that darkens when on, glass knob with a
-    /// spring slide. A tap only opens the confirmation; it never flips directly.
+    /// A tap only opens the confirmation; it never flips directly (shared look: Views/GlassSwitch.swift).
     private var bypassSwitch: some View {
-        let on = bypassAll == true
-        let loading = bypassAll == nil || bypassBusy
-        return Button {
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-            confirmTo = !on
-        } label: {
-            ZStack(alignment: on ? .trailing : .leading) {
-                glassSurface(Capsule(), tint: app.palette.ink.opacity(on ? 0.82 : 0.10))
-                    .frame(width: 64, height: 38)
-                glassSurface(Circle(), tint: .white.opacity(0.85))
-                    .frame(width: 30, height: 30)
-                    .shadow(color: .black.opacity(0.25), radius: 5, y: 2)
-                    .padding(4)
-            }
-            .animation(.spring(response: 0.45, dampingFraction: 0.72), value: on)
-            .opacity(loading ? 0.6 : 1)
-        }
-        .buttonStyle(.plain)
-        .disabled(loading)
-        .accessibilityIdentifier("adminTest.bypassSwitch")
-        .accessibilityValue(on ? "on" : "off")
-    }
-
-    @ViewBuilder
-    private func glassSurface<S: Shape>(_ shape: S, tint: Color) -> some View {
-        if #available(iOS 26.0, *) {
-            shape.fill(tint).glassEffect(.regular.interactive(), in: shape)
-        } else {
-            shape.fill(tint).background(.ultraThinMaterial, in: shape)
-                .overlay(shape.stroke(.white.opacity(0.4), lineWidth: 1))
+        GlassSwitch(isOn: bypassAll == true, loading: bypassAll == nil || bypassBusy, identifier: "adminTest.bypassSwitch") {
+            confirmTo = !(bypassAll == true)
         }
     }
 

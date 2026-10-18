@@ -5,6 +5,7 @@ struct BanbeApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var authViewModel = AuthViewModel()
     @StateObject private var appState = AppState()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         StorageImageCache.install()
@@ -44,6 +45,12 @@ struct BanbeApp: App {
                 .environmentObject(authViewModel)
                 .environmentObject(appState)
                 .onOpenURL { url in appState.handleDeepLink(url) }
+                // Platform feature flags (migration 187): read on start and on every return to the foreground
+                // (throttled inside), so an admin's switch reaches a running app within seconds.
+                .task { await appState.loadFeatureFlags() }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { Task { await appState.loadFeatureFlags() } }
+                }
                 // TASK D (2026-10-01 UX foundation pass) — universal links
                 // (https://banbe.app/...) arrive as an NSUserActivity, not
                 // through onOpenURL (that's only ever the custom `banbe://`

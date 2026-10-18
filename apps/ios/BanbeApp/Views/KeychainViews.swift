@@ -467,8 +467,8 @@ struct KeychainSettingsSection: View {
 
     private func picker(_ m: KeychainManifest) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Reward designs are only offered once rewards are live for this account.
-            ForEach(m.groups.filter { $0.id != "rewards" || app.rewardsSummaryStatus == .loaded }) { g in
+            // Reward designs are only offered once rewards are live for this account (and not hidden by an admin).
+            ForEach(m.groups.filter { $0.id != "rewards" || (app.rewardsEnabled && app.rewardsSummaryStatus == .loaded) }) { g in
                 Text(app.isEN ? g.en : g.vi).font(.system(size: 11, weight: .semibold)).opacity(0.7)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 52), spacing: 8)], alignment: .leading, spacing: 8) {
                     ForEach(m.designs(in: g.id)) { d in tile(d) }
@@ -521,7 +521,7 @@ struct KeychainSettingsSection: View {
             : (app.isEN ? d.en : d.vi))
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("keychain.design.\(d.id)")
-        .task { if d.reward == true, app.rewardsSummaryStatus == .loaded, app.rewardsUnlocked.isEmpty { await app.loadRewardsUnlocked() } }
+        .task { if d.reward == true, app.rewardsEnabled, app.rewardsSummaryStatus == .loaded, app.rewardsUnlocked.isEmpty { await app.loadRewardsUnlocked() } }
     }
 
     private var anchorPicker: some View {
