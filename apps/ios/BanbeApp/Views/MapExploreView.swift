@@ -87,6 +87,8 @@ struct MapExploreView: View {
     // writes this same plain `Bool` two-way instead.
     @State private var searchFieldFocused = false
     private let startFocusedOnSearch: Bool
+    /// Note 50 — Search's "See on map": the query a fresh open starts with (one-shot, like the focus intent).
+    private let seedQuery: String?
     @State private var initialCenterSet: Bool
     // Defaults to the "tall" snap point (covers most of the screen, leaving
     // a small map strip visible at top) per the ticket's layout spec — not
@@ -221,8 +223,9 @@ struct MapExploreView: View {
     /// `.presentationDetents` selection — the sheet's native slide-up-from-
     /// bottom presentation animation then plays directly TO the saved
     /// detent, not to the default one first.
-    init(restored: MapExploreState?, isPreview: Bool = false, startFocusedOnSearch: Bool = false, isActive: Bool = true) {
+    init(restored: MapExploreState?, isPreview: Bool = false, startFocusedOnSearch: Bool = false, isActive: Bool = true, seedQuery: String? = nil) {
         hadRestoredState = restored != nil
+        self.seedQuery = seedQuery
         self.isPreview = isPreview
         self.isActive = isActive
         self.startFocusedOnSearch = startFocusedOnSearch
@@ -282,7 +285,7 @@ struct MapExploreView: View {
             _cameraPosition = State(initialValue: .automatic)
             _catFilter = State(initialValue: "all")
             _forYouOn = State(initialValue: false)
-            _searchQuery = State(initialValue: "")
+            _searchQuery = State(initialValue: seedQuery ?? "")
             _openNowOnly = State(initialValue: false)
             _sortByDistance = State(initialValue: false)
             _sheetDetent = State(initialValue: .fraction(0.72))
@@ -663,6 +666,7 @@ struct MapExploreView: View {
                 // open, another restore) never reads a stale `true` left
                 // over from this one.
                 if startFocusedOnSearch { app.mapExploreFocusSearch = false }
+                if seedQuery != nil { app.mapExploreSeedQuery = nil }
             }
         }
         .onChange(of: app.mapCloseSwipeCancelled) { _, cancelled in

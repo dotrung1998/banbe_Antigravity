@@ -30,6 +30,8 @@ enum Screen: String {
     // Note 44 — signed-out public entry, and the Schedule dock tab.
     case welcome
     case schedule
+    // Note 50 — the Home search bar opens this (it used to open Map).
+    case search
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -370,9 +372,10 @@ final class AppState: ObservableObject {
     // `events_select_public` = live/ended/cancelled AND public), and
     // `applySession(nil)` clears every per-account list they could show.
     static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .welcome, .login, .policy, .organizerProfile, .organizerTeam, .publicProfile, .surveyPublic,
-                                                   .home, .mapExplore, .event]
+                                                   .home, .mapExplore, .event, .search]
     /// Guest-browsable screens a Login "Back" can return to (note 48).
-    static let guestBrowseScreens: Set<Screen> = [.home, .mapExplore, .event, .organizerProfile, .organizerTeam, .publicProfile]
+    // `.search` (note 50) only reads the same public events Home/Map do.
+    static let guestBrowseScreens: Set<Screen> = [.home, .mapExplore, .event, .search, .organizerProfile, .organizerTeam, .publicProfile]
 
     // MARK: - Screenshot Catalog (docs/demo-screenshots)
     // Test-only launch flags for `scripts/capture_ios_catalog.sh` /
@@ -469,6 +472,22 @@ final class AppState: ObservableObject {
     /// Gold-star "For You" chip (migration 162 / note 34) — composes with the
     /// area/category/status filters above like every other chip.
     @Published var filterForYou = false
+
+    // MARK: Discovery Home (note 50)
+    /// Filter-sheet filters + quick chips (Lib/HomeDiscovery.swift shape); AND-composed with `filter`/`area`.
+    @Published var homeFilters = HomeDiscovery.Filters.default
+    /// soonest | nearest | popular | price. "soonest" keeps the feed's own order (For You ranking survives).
+    @Published var homeSort = "soonest"
+    @Published var homeFilterSheetOpen = false
+    /// Real seat fill per live public event (get_public_event_fill, migration 186). Empty when the
+    /// function isn't deployed: badges then simply don't show. `seats_remaining` is never decremented
+    /// after insert, so it is never used for "N left".
+    @Published var eventFill: [String: (booked: Int, capacity: Int)] = [:]
+    /// The Search screen's query, kept while it's open.
+    @Published var searchQuery = ""
+    @Published var searchBackScreen: Screen = .home
+    /// One-shot query Map applies on its next fresh open ("See on map" from Search).
+    @Published var mapExploreSeedQuery: String?
 
     // MARK: Event preferences + onboarding (migration 162, note 34)
     /// The signed-in user's own declared preferences (nil = never answered).
@@ -1918,6 +1937,13 @@ final class AppState: ObservableObject {
     // form): visibility is who can even see/book the event; approval is
     // whether a booking still needs the host's manual OK.
     @Published var createVisibility = "public"
+    /// Optional "What matters most for this event?" (note 50, migration 186): nil | fill_seats |
+    /// regular_crowd | try_idea | small_premium. Weights the recipe; stored host-only, never shown to guests.
+    @Published var createHostGoal: String?
+    /// get_host_benchmarks / get_audience_demand answers, cached per session by "cat|city" / cat.
+    /// A stored nil means "asked, nothing usable" (offline, not deployed, cold start) — not asked again.
+    var hostBenchmarksCache: [String: HostBenchmarks?] = [:]
+    var audienceDemandCache: [String: Int?] = [:]
     /// Host "Reservation criteria" (migration 162) — default Everyone.
     @Published var createCriteria: ReservationCriteria = .everyone
     /// Set when a create succeeded but saving criteria failed: the retry reuses this event.
@@ -3374,6 +3400,7 @@ final class AppState: ObservableObject {
         createPrice = ""
         createSeats = ""
         createVisibility = "public"
+        createHostGoal = nil
         createCriteria = .everyone
         createCriteriaRetryEventID = nil
         createIntro = ""
@@ -3640,6 +3667,7 @@ final class AppState: ObservableObject {
         // `.preferences`/`.security`/`.payout` cases above already fixed.
         case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections: screen = accountSubBack
         case .mapExplore: goHome()
+        case .search: screen = searchBackScreen
         // TASK A fix — these two cases were simply missing, so the shared
         // edge-swipe gesture's goBack() fell to `default: break` and did
         // nothing at all for RefundAccountsView/MyRefundsView (the reported
@@ -3769,6 +3797,7 @@ final class AppState: ObservableObject {
         case .verifications: return verificationsBack
         case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections: return accountSubBack
         case .mapExplore: return .home
+        case .search: return searchBackScreen
         // TASK A fix — same missing-case bug as goBack() above: without
         // these, an in-progress edge swipe from RefundAccounts/MyRefunds
         // peeked Home behind the dragged screen instead of Account, which
@@ -3847,6 +3876,7 @@ final class AppState: ObservableObject {
         filterNotConfirmed = false
         filterUpcoming = false; filterEnded = false
         filterForYou = false
+        homeFilters = .default
     }
 
     /// Home's second chip row (12-home-filters.md, extended 2026-09-21) —
@@ -3885,11 +3915,6 @@ final class AppState: ObservableObject {
         located = false
         userCoords = nil
         UserDefaults.standard.set(false, forKey: "banbe.located")
-    }
-
-    /// Distance line shown under each card once location is shared.
-    func metaLine(for event: CatalogEvent) -> String {
-        trStatus(event.catDisplay) + " ▪︎ " + trStatus(stripKm(event.meta, event: event))
     }
 
     /// Seats/status label for a feed card — mirrors the web feed's rules.

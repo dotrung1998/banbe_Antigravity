@@ -340,6 +340,11 @@ struct CreateEventView: View {
     /// Note 48: Create event is a 5-step flow, one section per page.
     @State private var currentStep: Section = .host
     @State private var stepSeeded = false
+    /// Note 50 — "recipe for success": get_host_benchmarks for the primary category + city (nil = tips only,
+    /// never numbers) and the platform-wide audience count for the category.
+    @State private var benchmarks: HostBenchmarks?
+    @State private var audienceDemand: Int?
+    @State private var recipeOpen = false
 
     private var removedExistingIDs: [UUID] {
         let kept = Set(galleryItems.compactMap { if case .existing(let id, _) = $0.kind { return id }; return nil })
@@ -411,6 +416,55 @@ struct CreateEventView: View {
         return app.T("Còn thiếu: ", "Still needed: ") + items.joined(separator: ", ")
     }
 
+    // MARK: Recipe for success (note 50)
+
+    private var bench: HostBenchmarks? { EventRecipe.hasBenchmarks(benchmarks) ? benchmarks : nil }
+    private var primaryCat: String { app.createCats.first ?? "" }
+    private var benchmarkKey: String { "\(primaryCat)|\(app.createCity.lowercased())|\(app.isSignedIn)|\(app.createSent)" }
+    private var draftPriceVnd: Int { priceDigits ?? 0 }
+    private var draftKeywords: [String] {
+        app.createKeywords.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+    /// The picked Vietnam date + Vietnam wall-clock time as one instant.
+    private var draftStartsAt: Date? {
+        guard let d = app.createEventDate, let t = app.createEventTime else { return nil }
+        return Self.vnInstant(day: d, time: t)
+    }
+    private static func vnInstant(day: Date, time: Date) -> Date? {
+        let cal = SmartDefaults.vnCalendar
+        let dc = cal.dateComponents([.year, .month, .day], from: day)
+        let tc = cal.dateComponents([.hour, .minute], from: time)
+        return cal.date(from: DateComponents(year: dc.year, month: dc.month, day: dc.day, hour: tc.hour, minute: tc.minute))
+    }
+    private var recipe: [EventRecipe.Check] {
+        EventRecipe.checks(EventRecipe.Draft(
+            name: app.createName, description: app.createDesc, intro: app.createIntro,
+            includedCount: app.createIncludedItems.filter { !$0.label.trimmingCharacters(in: .whitespaces).isEmpty }.count,
+            keywords: draftKeywords, priceVnd: draftPriceVnd, seats: seatsBinding, startsAt: draftStartsAt,
+            photos: galleryItems.count, chatGreeting: app.createChatGreeting + app.createChatGreetingEn
+        ), benchmarks: bench, goal: app.createHostGoal, now: Date())
+    }
+    private func recipeCheck(_ id: String) -> EventRecipe.Check? { recipe.first { $0.id == id } }
+    private var createCatLabel: String {
+        app.createCats.compactMap { key in categories.first(where: { $0.key == key }).map { app.T($0.vi, $0.en) } }
+            .joined(separator: " ▪︎ ")
+    }
+    private func openRecipe() {
+        Analytics.track(.recipeOpened)
+        recipeOpen = true
+    }
+    private func fixIngredient(_ c: EventRecipe.Check) {
+        Analytics.track(.recipeFixTapped(ingredient: c.id))
+        withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = false }
+        goTo(Section(rawValue: c.fix.step) ?? .basics)
+    }
+    /// Fill rate of the benchmark cell a date quick pick would land in (with the current time, else 19:00).
+    private func slotFill(day: Date, time: Date?) -> Double? {
+        guard let bench, let t = time ?? SmartDefaults.timeOfDay("19:00"), let at = Self.vnInstant(day: day, time: t) else { return nil }
+        let (dow, slot) = EventRecipe.localParts(at)
+        return bench.slots?.first { $0.dow == dow && $0.slot == slot }?.medianFill
+    }
+
     /// Something the host typed or picked would be lost by leaving.
     private var hasUnsavedInput: Bool {
         guard app.createEditEventId == nil, !app.createSent else { return false }
@@ -466,6 +520,12 @@ struct CreateEventView: View {
                 }
                 Spacer()
                 Text("\(galleryItems.count)/\(maxPhotos) (\(app.T("tối thiểu \(minPhotos)", "min \(minPhotos)")))").font(.system(size: 10.5))
+            }
+            if let photos = recipeCheck("photos") {
+                RecipeInsight(check: photos, line: photos.source == .data
+                              ? app.T("Sự kiện kín chỗ thường có \(photos.target ?? 0)+ ảnh.", "Events that filled well had \(photos.target ?? 0)+ photos.")
+                              : app.T("Mẹo: \(photos.target ?? 0)+ ảnh cho khách thấy không khí.", "Tip: \(photos.target ?? 0)+ photos show guests the vibe."),
+                              identifier: "create.photosInsight")
             }
             VStack(spacing: 8) {
                 ForEach(Array(galleryItems.enumerated()), id: \.element.id) { index, item in
@@ -855,7 +915,8 @@ struct CreateEventView: View {
             }
         }
         .sheet(isPresented: $dateTimeSheetOpen) {
-            EventDateTimeSheet(date: $app.createEventDate, time: $app.createEventTime)
+            EventDateTimeSheet(date: $app.createEventDate, time: $app.createEventTime,
+                               slotFill: bench == nil ? nil : { day, time in slotFill(day: day, time: time) })
                 .environmentObject(app)
         }
     }
@@ -879,6 +940,8 @@ struct CreateEventView: View {
                     categories: categories,
                     galleryItems: galleryItems,
                     coverItemID: coverItemID,
+                    recipe: recipe,
+                    onFixRecipe: fixIngredient,
                     dateLabel: {
                         if let date = app.createEventDate, let time = app.createEventTime {
                             return "\(Self.vnDateLabelFormatter.string(from: date)) ▪︎ \(Self.vnTimeLabelFormatter.string(from: time))"
@@ -908,6 +971,8 @@ struct CreateEventView: View {
                         // submission chooser; a failure leaves Review open
                         // with data intact and app.createError already
                         // showing, never the chooser.
+                        let good = EventRecipe.score(recipe).good
+                        Analytics.track(.submitRecipeScore(bucket: good >= 9 ? "9-10" : good >= 7 ? "7-8" : good >= 4 ? "4-6" : "0-3"))
                         let ok = await app.submitCreateEvent(
                             newImages: newImagesInOrder, coverNewIndex: coverNewIndex,
                             removeExistingPhotoIDs: removedExistingIDs, existingCoverPath: existingCoverPath,
@@ -980,16 +1045,20 @@ struct CreateEventView: View {
                 // "Host" is already ticked when an organizer profile exists.
                 .safeAreaInset(edge: .top, spacing: 0) {
                     if !app.createSent {
-                        StepProgress(steps: sectionTitles,
-                                     current: currentStep.rawValue,
-                                     completed: Section.allCases.map(sectionDone),
-                                     message: createProgressMessage,
-                                     identifier: "create.progress",
-                                     onSelect: { index in
-                                         if let section = Section(rawValue: index) { goTo(section) }
-                                     })
-                            .padding(.horizontal, 22).padding(.top, 6).padding(.bottom, 10)
-                            .background(app.palette.paper)
+                        VStack(spacing: 10) {
+                            StepProgress(steps: sectionTitles,
+                                         current: currentStep.rawValue,
+                                         completed: Section.allCases.map(sectionDone),
+                                         message: createProgressMessage,
+                                         identifier: "create.progress",
+                                         onSelect: { index in
+                                             if let section = Section(rawValue: index) { goTo(section) }
+                                         })
+                            // Note 50: "Recipe 7/10 · See tips" — informational, never blocks a step or submit.
+                            if currentStep != .host { RecipeMeter(checks: recipe, onOpen: openRecipe) }
+                        }
+                        .padding(.horizontal, 22).padding(.top, 6).padding(.bottom, 10)
+                        .background(app.palette.paper)
                     }
                 }
                 .onAppear {
@@ -1001,6 +1070,21 @@ struct CreateEventView: View {
                         if app.createEditEventId != nil || sectionDone(.host) { currentStep = .basics }
                     }
                 }
+        }
+        .sheet(isPresented: $recipeOpen) {
+            RecipeSheet(checks: recipe, hasData: bench != nil, n: bench?.n, onFix: fixIngredient,
+                        onClose: { recipeOpen = false })
+                .environmentObject(app)
+        }
+        // One get_host_benchmarks per category+city change (debounced while picking, cached per session),
+        // best-effort: nil keeps the recipe on general tips, with no numbers.
+        .task(id: benchmarkKey) {
+            guard app.isSignedIn, !app.createSent else { benchmarks = nil; audienceDemand = nil; return }
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
+            let cat = primaryCat
+            benchmarks = await app.hostBenchmarks(cat: cat, city: app.createCity)
+            audienceDemand = cat.isEmpty ? nil : await app.audienceDemand(cat: cat)
         }
         .confirmationDialog(app.T("Bỏ sự kiện này?", "Discard this event?"),
                             isPresented: $discardConfirmOpen, titleVisibility: .visible) {
@@ -1070,6 +1154,7 @@ struct CreateEventView: View {
                                    placeholder: app.T("Tên sự kiện của bạn", "Your event name"), text: $app.createName,
                                    required: true, icon: "sparkles")
                             .id(Section.basics.anchor)
+                        goalPicker()
                         BanbeField(label: app.T("Mô tả", "Description"),
                                    placeholder: app.T("Buổi này có gì?", "What happens?"), text: $app.createDesc,
                                    required: true, icon: "text.alignleft")
@@ -1100,6 +1185,12 @@ struct CreateEventView: View {
                             Text(app.T("Hãy chọn ít nhất một danh mục.", "Please pick at least one category."))
                                 .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
                         }
+                        // Note 50: only when the server answered with a real (floored, ≥10) count.
+                        if let demand = audienceDemand, let cat = categories.first(where: { $0.key == primaryCat }) {
+                            Text(app.T("\(demand)+ người trên banbe thích \(cat.vi).", "\(demand)+ people on banbe are into \(cat.en)."))
+                                .font(.system(size: 12, weight: .semibold)).opacity(0.85)
+                                .accessibilityIdentifier("create.audienceDemand")
+                        }
 
                         // Keyword-search fix (migration 108) — so this event
                         // actually surfaces in Map's search box for terms
@@ -1122,6 +1213,7 @@ struct CreateEventView: View {
                                 "Comma-separated — left blank, the category picked above is used instead."
                             ))
                             .font(.system(size: 11)).opacity(0.75)
+                            keywordSuggestions()
                         }
                         .foregroundStyle(app.palette.ink)
 
@@ -1171,6 +1263,7 @@ struct CreateEventView: View {
                         .font(.system(size: 11)).opacity(0.75).foregroundStyle(app.palette.ink)
                         locationConfirmSection()
                         dateTimeRow()
+                        timingInsights()
                     }
                 }
                 if currentStep == .tickets {
@@ -1456,15 +1549,32 @@ struct CreateEventView: View {
                      "Similar events: \(EventLabels.vnd(range.lowerBound))–\(EventLabels.vnd(range.upperBound))")
     }
 
-    /// A big, bordered quick-pick tile (the video's 6:00 / 6:30 / 7:00 buttons).
-    private func pickTile(_ title: String, selected: Bool, id: String, action: @escaping () -> Void) -> some View {
+    /// Benchmarks first ("Typical: 280k₫–380k₫ (13 similar events)"), then the loaded-events hint, then free.
+    private var priceHint: String {
+        if let p = bench?.price, p.p25 != nil {
+            let band = "\(EventRecipe.formatVndShort(p.p25))–\(EventRecipe.formatVndShort(p.p75))"
+            return app.T("Thường gặp: \(band) (\(p.n ?? 0) sự kiện tương tự). Để trống là miễn phí.",
+                         "Typical: \(band) (\(p.n ?? 0) similar events). Leave empty for a free event.")
+        }
+        return similarPriceHint ?? app.T("Để trống là miễn phí.", "Leave empty for a free event.")
+    }
+
+    /// A big, bordered quick-pick tile (the video's 6:00 / 6:30 / 7:00 buttons). `sub` = that option's
+    /// outcome before it's chosen (note 50).
+    private func pickTile(_ title: String, sub: String? = nil, selected: Bool, id: String, action: @escaping () -> Void) -> some View {
         Button {
             Haptics.selection()
             action()
         } label: {
-            Text(title)
-                .font(.system(size: 15, weight: selected ? .semibold : .regular))
-                .lineLimit(1).minimumScaleFactor(0.7)
+            VStack(spacing: 1) {
+                Text(title)
+                    .font(.system(size: 15, weight: selected ? .semibold : .regular))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                if let sub {
+                    Text(sub).font(.system(size: 10.5, weight: .medium)).opacity(0.7).lineLimit(1).minimumScaleFactor(0.7)
+                }
+            }
+                .padding(.horizontal, 4)
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .foregroundStyle(selected ? app.palette.paper : app.palette.ink)
                 .background(selected ? app.palette.ink : app.palette.paper,
@@ -1478,15 +1588,113 @@ struct CreateEventView: View {
         .accessibilityIdentifier(id)
     }
 
+    /// Optional per-event goal (note 50). Weights the recipe; stored host-only (migration 186), never shown to guests.
+    private func goalPicker() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            FormFieldLabel(icon: "target", text: app.T("Điều quan trọng nhất với sự kiện này?", "What matters most for this event?"),
+                           trailing: app.T("Tuỳ chọn", "Optional"))
+            FlowRow(spacing: 8) {
+                ForEach(EventRecipe.hostGoals, id: \.self) { goal in
+                    let label = EventRecipe.goalLabels[goal] ?? (goal, goal)
+                    ChoiceChip(title: app.T(label.vi, label.en), selected: app.createHostGoal == goal,
+                               identifier: "create.goal.\(goal)") {
+                        app.createHostGoal = app.createHostGoal == goal ? nil : goal
+                    }
+                }
+            }
+            Text(app.T("Chỉ bạn thấy. Giúp banbe đưa gợi ý phù hợp hơn.", "Only you see this. It tunes the tips below to what you want."))
+                .font(.system(size: 11)).opacity(0.75)
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.top, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("create.goal")
+    }
+
+    /// Keywords other hosts in this slice actually use (only from benchmarks; none on a cold start).
+    @ViewBuilder
+    private func keywordSuggestions() -> some View {
+        if let k = recipeCheck("keywords"), !k.suggestions.isEmpty {
+            FlowRow(spacing: 6) {
+                Text(app.T("Host khác hay dùng:", "Other hosts use:")).font(.system(size: 11)).opacity(0.75)
+                    .frame(minHeight: 32)
+                ForEach(k.suggestions, id: \.self) { word in
+                    Button {
+                        Haptics.selection()
+                        app.createKeywords = (draftKeywords + [word]).joined(separator: ", ")
+                    } label: {
+                        Text("+ \(word)").font(.system(size: 12.5))
+                            .padding(.horizontal, 10).frame(minHeight: 32)
+                            .overlay(Capsule().strokeBorder(app.palette.rule, lineWidth: 1))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(app.T("Thêm từ khoá \(word)", "Add keyword \(word)"))
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("create.keywordSuggestions")
+        }
+    }
+
+    /// Day/time: this slot's fill when the benchmark cell exists, else the general tip; lead time only when
+    /// it's short. At most one line each, details behind "Why?".
+    @ViewBuilder
+    private func timingInsights() -> some View {
+        if let timing = recipeCheck("timing"), timing.status != .missing {
+            RecipeInsight(check: timing, line: timing.source == .data ? {
+                let label = EventRecipe.slotLabel(dow: timing.dow ?? 0, slot: timing.slot ?? "", app.T)
+                return app.T("\(label) thường kín \(EventRecipe.pct(timing.ownFill)).", "\(label) usually fills \(EventRecipe.pct(timing.ownFill)).")
+            }() : nil, identifier: "create.timingInsight")
+        }
+        if let lead = recipeCheck("lead"), lead.status == .improve {
+            let days = max(lead.days ?? 0, 0)
+            RecipeInsight(check: lead, line: app.T("Còn \(days) ngày — sự kiện kín chỗ thường đăng trước ~\(lead.target ?? 0) ngày.",
+                                                   "\(days) days to go — events that fill are usually posted ~\(lead.target ?? 0) days ahead."),
+                          identifier: "create.leadInsight")
+        }
+    }
+
+    /// "~10 guests · ~3M₫ if it fills like similar events" — never an invented rate: without data it's the
+    /// honest full-house figure. Always "before any fees".
+    @ViewBuilder
+    private func outcomeLine() -> some View {
+        if let o = EventRecipe.estimateOutcome(priceVnd: draftPriceVnd, seats: seatsBinding, medianFill: bench?.fill?.medianFill) {
+            let money = draftPriceVnd > 0 ? " · " + (o.basis == "similar" ? "~" : "") + EventRecipe.formatVndShort(o.revenueVnd) : ""
+            let head = o.basis == "similar" ? app.T("~\(o.guests) khách", "~\(o.guests) guests") + money
+                                             : app.T("\(o.guests) khách", "\(o.guests) guests") + money
+            let basis = o.basis == "similar"
+                ? app.T("nếu kín như sự kiện tương tự (~\(EventRecipe.pct(o.fill)))", "if it fills like similar events (~\(EventRecipe.pct(o.fill)))")
+                : app.T("nếu bán hết chỗ", "if every seat sells")
+            let tail = draftPriceVnd > 0 ? app.T(", trước mọi khoản phí.", ", before any fees.") : "."
+            (Text(head).bold() + Text(" " + basis + tail).foregroundColor(app.palette.ink.opacity(0.7)))
+                .font(.system(size: 13.5))
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14).padding(.vertical, 12)
+                .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+                .accessibilityIdentifier("create.outcome")
+                .accessibilityValue(o.basis)
+        }
+    }
+
     /// Price as quick picks + free entry; seats as a stepper with quick picks.
     @ViewBuilder
     private func ticketsSection() -> some View {
         VStack(alignment: .leading, spacing: 10) {
             FormFieldLabel(icon: "tag", text: app.T("Giá vé", "Price"),
                            trailing: similarPriceHint == nil ? nil : app.T("Gợi ý", "Suggested"))
+            if let market = bench?.price {
+                PriceMarketView(price: market, mine: draftPriceVnd, catLabel: createCatLabel)
+            }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                 ForEach(SmartDefaults.priceQuickPicks, id: \.self) { value in
+                    // The option's outcome BEFORE it's chosen ("typical", "premium"), like a filter pill's count.
+                    let pos = value > 0 ? EventRecipe.pricePosition(value, bench?.price).flatMap { bench?.price == nil ? nil : EventRecipe.positionLabels[$0] } : nil
                     pickTile(value == 0 ? app.T("Miễn phí", "Free") : EventLabels.vnd(value),
+                             sub: pos.map { app.T($0.vi, $0.en) },
                              selected: !app.createPrice.isEmpty && priceDigits == value,
                              id: "create.price.\(value)") { app.createPrice = String(value) }
                 }
@@ -1494,7 +1702,7 @@ struct CreateEventView: View {
             BanbeField(label: nil, placeholder: app.T("Giá khác, vd. 450.000", "Other price, e.g. 450,000"),
                        text: $app.createPrice, keyboard: .numberPad, icon: "tag")
                 .accessibilityLabel(app.T("Giá vé", "Price"))
-            Text(similarPriceHint ?? app.T("Để trống là miễn phí.", "Leave empty for a free event."))
+            Text(priceHint)
                 .font(.system(size: 12)).opacity(0.7)
                 .accessibilityIdentifier("create.priceHint")
 
@@ -1515,6 +1723,10 @@ struct CreateEventView: View {
                     pickTile("\(n)", selected: seatsBinding == n, id: "create.seats.\(n)") { app.createSeats = String(n) }
                 }
             }
+            RecipeInsight(check: recipeCheck("seats"), line: recipeCheck("seats")?.typicalGuests.map {
+                app.T("Sự kiện tương tự thường đón ~\(EventRecipe.num($0)) khách.", "Similar events usually welcome ~\(EventRecipe.num($0)) guests.")
+            }, identifier: "create.seatsInsight")
+            outcomeLine()
         }
         .foregroundStyle(app.palette.ink)
         .id(Section.tickets.anchor)
@@ -1553,6 +1765,9 @@ private struct CreateEventReviewSheet: View {
     let categories: [(key: String, vi: String, en: String)]
     let galleryItems: [StagedGalleryItem]
     let coverItemID: String?
+    /// Note 50 — the full recipe checklist above Submit; informational, never blocking.
+    let recipe: [EventRecipe.Check]
+    let onFixRecipe: (EventRecipe.Check) -> Void
     let dateLabel: String
     // Swipe-to-back "blank white space" fix (2026-09-29) — this sheet is no
     // longer a `.fullScreenCover` (see `CreateEventView.body`'s own doc
@@ -1739,6 +1954,23 @@ private struct CreateEventReviewSheet: View {
                         Text(app.createName.trimmingCharacters(in: .whitespaces).isEmpty ? app.T("(Chưa đặt tên)", "(Untitled)") : app.createName)
                             .font(BanbeTheme.display(24))
                             .padding(.top, 4)
+
+                        if !recipe.isEmpty {
+                            let score = EventRecipe.score(recipe)
+                            VStack(alignment: .leading, spacing: 0) {
+                                (Text(app.T("Công thức thành công: \(score.good)/\(score.total)", "Recipe for success: \(score.good)/\(score.total)")).bold()
+                                 + Text(" · " + app.T("không bắt buộc để gửi", "never required to submit")).foregroundColor(app.palette.ink.opacity(0.65)))
+                                    .font(.system(size: 12.5))
+                                    .padding(.top, 10)
+                                RecipeList(checks: recipe, compact: true, onFix: onFixRecipe)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 4)
+                            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .padding(.top, 18)
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("create.reviewRecipe")
+                        }
 
                         VStack(alignment: .leading, spacing: 0) {
                             row(app.T("Danh mục", "Category"), categoryLabel)
@@ -2273,6 +2505,8 @@ private extension Array {
 struct EventDateTimeSheet: View {
     @Binding var date: Date?
     @Binding var time: Date?
+    /// Note 50 — fill rate of the benchmark slot a quick pick lands in (create flow only; nil = no data).
+    var slotFill: ((Date, Date?) -> Double?)? = nil
     @EnvironmentObject var app: AppState
     @Environment(\.dismiss) private var dismiss
 
@@ -2288,9 +2522,10 @@ struct EventDateTimeSheet: View {
     // so the range argument is stable for the sheet's whole lifetime.
     private let minSelectableDate: Date
 
-    init(date: Binding<Date?>, time: Binding<Date?>) {
+    init(date: Binding<Date?>, time: Binding<Date?>, slotFill: ((Date, Date?) -> Double?)? = nil) {
         self._date = date
         self._time = time
+        self.slotFill = slotFill
         let calendar = Self.vnCalendar
         let today = calendar.startOfDay(for: Date())
         self._draftDate = State(initialValue: date.wrappedValue ?? today)
@@ -2362,7 +2597,8 @@ extension EventDateTimeSheet {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     ForEach(Array(SmartDefaults.dateQuickPicks().enumerated()), id: \.offset) { _, pick in
-                        ChoiceChip(title: app.T(pick.label.vi, pick.label.en),
+                        let fill = slotFill?(pick.date, draftTime).map { EventRecipe.pct($0) }
+                        ChoiceChip(title: app.T(pick.label.vi, pick.label.en) + (fill.map { app.T(" · kín \($0)", " · fills \($0)") } ?? ""),
                                    selected: Self.vnCalendar.isDate(draftDate, inSameDayAs: pick.date),
                                    compact: true, identifier: "dateSheet.day.\(pick.label.en)") {
                             draftDate = pick.date

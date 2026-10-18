@@ -87,7 +87,6 @@ struct EventDraftDefaults: Equatable {
 
 @MainActor
 extension SmartDefaults {
-    static let firstEventSeats = 14
     static let firstEventTime = "19:00:00"
     /// Saturday in Calendar's 1 = Sunday numbering.
     static let saturday = 7
@@ -117,8 +116,9 @@ extension SmartDefaults {
     }
 
     /// Defaults for a brand-new event draft. A returning host gets their own
-    /// last event's weekday, time, price, seats and category; a first-time
-    /// host gets next Saturday 19:00, 14 seats and no price.
+    /// last event's weekday, time, price and category; a first-time host gets
+    /// next Saturday 19:00 and no price. Seats are never pre-filled (0): the
+    /// host always sets capacity themselves (note 48 follow-up).
     static func eventDraftDefaults(last: LastEventSnapshot?, now: Date = Date()) -> EventDraftDefaults {
         let fallbackTime = timeOfDay(firstEventTime)!
         guard let last else {

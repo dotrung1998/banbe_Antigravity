@@ -267,7 +267,7 @@ enum ProgressEncouragement {
     }
 }
 
-private struct OptionalIdentifier: ViewModifier {
+struct OptionalIdentifier: ViewModifier {
     let identifier: String?
     func body(content: Content) -> some View {
         if let identifier { content.accessibilityIdentifier(identifier) } else { content }

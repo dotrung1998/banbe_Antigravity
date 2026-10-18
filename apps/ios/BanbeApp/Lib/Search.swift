@@ -61,6 +61,22 @@ enum SearchMatch {
         return normalize(parts.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.joined(separator: " "))
     }
 
+    /// The same document for a Home/Search `CatalogEvent` (real or demo), so the Search screen
+    /// (note 50) and Map agree on what a query finds.
+    static func buildDoc(for event: CatalogEvent) -> String {
+        var parts: [String] = [event.name, event.locationLabel ?? "", event.catDisplay, event.cat]
+        for key in [event.catKey, event.cat2Key].compactMap({ $0 }) where key != "all" {
+            parts.append(key)
+            parts.append(contentsOf: categoryAliases[key] ?? [])
+        }
+        if let city = event.location?.city { parts.append(city) }
+        parts.append(event.orgName.isEmpty ? event.hostShort : event.orgName)
+        parts.append(event.desc)
+        if let intro = event.intro { parts.append(intro) }
+        parts.append(contentsOf: event.keywords ?? [])
+        return normalize(parts.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.joined(separator: " "))
+    }
+
     /// AND semantics across whitespace-separated tokens, substring/prefix
     /// per token (not exact-word) — "supp" must match inside "supper club".
     static func matches(doc: String, query rawQuery: String) -> Bool {

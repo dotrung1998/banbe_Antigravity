@@ -19,6 +19,11 @@ enum UITestFixture {
     static var homeMounts = 0
     /// `-uiFixtureMonth YES` opens Schedule's month sheet at launch (screenshots).
     static let opensMonth = UserDefaults.standard.bool(forKey: "uiFixtureMonth")
+    /// Note 50 — `-uiFixtureFilters YES` opens Home's filter sheet; `-uiFixtureSearch <q>` pre-fills Search;
+    /// `-uiFixtureBench YES` seeds the create flow with the synthetic benchmark payload from EventRecipeTests.
+    static let opensFilters = UserDefaults.standard.bool(forKey: "uiFixtureFilters")
+    static let searchQuery = UserDefaults.standard.string(forKey: "uiFixtureSearch") ?? ""
+    static let seedsBenchmarks = UserDefaults.standard.bool(forKey: "uiFixtureBench")
     /// Stable fake account id so the draft store/relaunch tests have a key.
     static let userID = UUID(uuidString: "00000000-0000-4000-8000-00000000F1F0")!
 }
@@ -77,7 +82,7 @@ struct UITestFixtureRoot: View {
     // MARK: shell (real RootView)
 
     /// `shell.home` / `shell.schedule` / `shell.account` / `shell.accountSolo`
-    /// (Account with only the Personal tab). Seeds the same fake events as the
+    /// (Account with only the Personal tab) / `shell.search` / `shell.create` (note 50). Seeds the same fake events as the
     /// schedule fixtures and keeps the signed-in state (applySession is skipped).
     private func configureShell() {
         // The dock window starts "shown" in its own bookkeeping and only really appears on the
@@ -91,10 +96,49 @@ struct UITestFixtureRoot: View {
         // Streak/coins capsule visible: the tightest Home header layout.
         app.rewardsSummary = RewardSummary(balance: 120, streak: 3, activeToday: true)
         app.rewardsSummaryStatus = .loaded
+        // Real seat fill for two fixture events: one almost full, one with social proof (note 50).
+        app.eventFill = ["fx-hosted": (booked: 18, capacity: 20), "fx-near": (booked: 6, capacity: 20)]
+        app.homeFilterSheetOpen = UITestFixture.opensFilters
         switch variant {
         case "schedule": app.screen = .schedule
         case "account", "accountSolo": app.screen = .profile
+        case "search":
+            app.searchQuery = UITestFixture.searchQuery
+            app.screen = .search
+        case "create":
+            configureCreateDraft()
+            app.screen = .create
         default: app.screen = .home
+        }
+    }
+
+    /// A half-finished draft so the recipe meter has something to say (synthetic data only).
+    private func configureCreateDraft() {
+        app.organizerMode = true
+        app.orgRegName = "Fixture Host"
+        app.createOriginScreen = .home
+        app.createName = "Six-course supper club in District 3"
+        app.createCats = ["supper"]
+        app.createDesc = "A long table for sixteen in a converted garage."
+        app.createKeywords = "wine"
+        app.createIncludedItems = [IncludedItem(label: "5 courses", detail: "")]
+        app.createPrice = "300000"
+        app.createSeats = "16"
+        app.createCity = "Hồ Chí Minh"
+        app.createEventDate = SmartDefaults.nextWeekday(SmartDefaults.saturday, after: Date(), minDaysAhead: 3)
+        app.createEventTime = SmartDefaults.timeOfDay("19:00")
+        if UITestFixture.seedsBenchmarks {
+            let json = #"""
+            {"success": true, "level": "category_city", "n": 13, "free_share": 0,
+             "price": {"n": 13, "p25": 280000, "median": 320000, "p75": 380000, "min": 220000, "max": 440000,
+                       "histogram": [2, 1, 1, 2, 1, 1, 1, 1, 1, 2]},
+             "fill": {"n": 12, "median_fill": 0.6, "median_capacity": 20, "median_booked": 12},
+             "slots": [{"dow": 6, "slot": "evening", "n": 8, "median_fill": 0.85},
+                       {"dow": 3, "slot": "evening", "n": 5, "median_fill": 0.5}],
+             "well_filled": {"n": 6, "median_photos": 6, "intro_share": 0.5, "included_share": 1, "median_lead_days": 16.4},
+             "keywords": ["wine", "rooftop", "chef"]}
+            """#
+            app.hostBenchmarksCache["supper|hồ chí minh"] = try? JSONDecoder().decode(HostBenchmarks.self, from: Data(json.utf8))
         }
     }
 

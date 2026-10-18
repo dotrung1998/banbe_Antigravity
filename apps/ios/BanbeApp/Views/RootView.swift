@@ -399,6 +399,10 @@ struct RootView: View {
                 // gesture's own recognition threshold) is completely
                 // unaffected.
                 .allowsHitTesting(s == app.screen && !isScreenLevelSwipeActive)
+                // Only the current screen is in the accessibility tree. The live Home underlay under Event Detail
+                // (note 47) used to stay exposed: VoiceOver could reach Home behind the event, and UI tests saw
+                // Home's header as covering Event Detail's Back pill. A plain modifier — no identity change.
+                .accessibilityHidden(s != app.screen)
                 .zIndex(s == app.screen ? 1 : 0)
             }
         }
@@ -1317,7 +1321,7 @@ struct RootView: View {
         // in a later `.task` — so the very first frame this switch draws
         // already shows the restored camera/detent/filters/selection
         // instead of flashing the defaults for a frame first.
-        case .mapExplore: MapExploreView(restored: app.mapExploreState, isPreview: isPreview, startFocusedOnSearch: app.mapExploreFocusSearch, isActive: isActive)
+        case .mapExplore: MapExploreView(restored: app.mapExploreState, isPreview: isPreview, startFocusedOnSearch: app.mapExploreFocusSearch, isActive: isActive, seedQuery: app.mapExploreSeedQuery)
         case .home: HomeView()
         case .profile: AccountView()
         // TASK 2 (2026-09-22 twenty-first follow-up) — see InboxView's own
@@ -1342,6 +1346,7 @@ struct RootView: View {
         case .notifications: NotificationsView()
         case .welcome: WelcomeView()
         case .schedule: ScheduleView()
+        case .search: SearchView()
         case .eventList: EventListView()
         case .security: SecurityView()
         case .paymentDetails: PaymentDetailsView()

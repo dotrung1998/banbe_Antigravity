@@ -168,22 +168,16 @@ final class MapExploreSelectionUITests: XCTestCase {
         return app
     }
 
-    /// Requirement 1 — the one-shot "focus Map search" intent: tapping
-    /// Home's floating search button must land on Map Explore with the
-    /// keyboard already up, no second tap needed. Guards specifically
-    /// against `SheetPresentationSettledProbe`'s
-    /// `animate(alongsideTransition:completion:)` call silently no-op'ing
-    /// when scheduled too late in the transition's own lifecycle (its
-    /// `Bool` return value was never checked before this pass — see that
-    /// type's own doc comment in Components.swift) — the exact failure
-    /// mode that leaves the field visible but unfocused.
-    func testHomeSearchFabOpensMapWithKeyboardFocused() {
+    /// Requirement 1 (note 50) — Home's search bar opens the Search screen with the keyboard already up,
+    /// no second tap needed (it used to open Map's search field; Map is now reached from Search's
+    /// "See on map", which carries the query).
+    func testHomeSearchBarOpensSearchWithKeyboardFocused() {
         let app = launchToHomeSignedIn()
-        app.buttons["home.searchFab"].tap()
+        app.buttons["home.searchBar"].tap()
 
-        XCTAssertTrue(app.otherElements["screen.mapExplore"].waitForExistence(timeout: 10),
-                      "Expected the search FAB to open Map Explore")
-        XCTAssertTrue(app.textFields["map.searchInput"].waitForExistence(timeout: 5),
+        XCTAssertTrue(app.otherElements["screen.search"].waitForExistence(timeout: 10),
+                      "Expected the search bar to open the Search screen")
+        XCTAssertTrue(app.textFields["search.input"].waitForExistence(timeout: 5),
                       "Expected the search field itself to be on screen")
         XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 8),
                       "Expected the keyboard to already be up without a second tap on the field")
@@ -200,12 +194,14 @@ final class MapExploreSelectionUITests: XCTestCase {
     /// doesn't have a matching result right now.
     func testSearchResultSelectionClosesKeyboardAndStaysClosedAfterEventDetailRoundTrip() throws {
         let app = launchToHomeSignedIn()
-        app.buttons["home.searchFab"].tap()
+        // Note 50: Home search → Search screen → "See on map" carries the query to Map.
+        app.buttons["home.searchBar"].tap()
+        let query = app.textFields["search.input"]
+        XCTAssertTrue(query.waitForExistence(timeout: 10))
+        query.typeText("AEIE")
+        app.buttons["search.seeOnMap"].tap()
         XCTAssertTrue(app.otherElements["screen.mapExplore"].waitForExistence(timeout: 10))
-
-        let searchField = app.textFields["map.searchInput"]
-        XCTAssertTrue(searchField.waitForExistence(timeout: 5))
-        searchField.typeText("AEIE")
+        XCTAssertTrue(app.textFields["map.searchInput"].waitForExistence(timeout: 5))
 
         let resultRow = app.staticTexts.matching(identifier: "AEIE: Mở Xưởng").firstMatch
         try XCTSkipUnless(resultRow.waitForExistence(timeout: 10),

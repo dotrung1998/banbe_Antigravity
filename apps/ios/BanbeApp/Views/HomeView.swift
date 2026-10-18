@@ -1,26 +1,15 @@
 import SwiftUI
 import UIKit
 
-private struct HomeControlPressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .offset(y: configuration.isPressed ? 1 : 0)
-            .animation(
-                .spring(response: 0.42, dampingFraction: 0.72, blendDuration: 0.14),
-                value: configuration.isPressed
-            )
-    }
-}
-
 /// Home's area control is a native `Menu` mounted inline on this header
 /// (see `header` below), so nothing needs to know where it sits on screen any
 /// more: the former HomeAreaFramePreferenceKey existed only to feed the
 /// removed AreaSheetView's anchored placement math, and is gone with it.
 
-/// The feed — a port of src/screens/Home.jsx: header (wordmark, language
-/// toggle, area picker, notification bell, messages, account), the held-spot
-/// banner, the "Your events" strip, category filters, and the photo cards.
+/// The feed — a port of src/screens/Home.jsx (note 50 discovery layout): header (wordmark + title, rewards
+/// capsule, bell), location pill, full-width search bar, Next-up reminder, Action Center, stories, category
+/// tiles, quick row (Filters / Sort / For You / one-tap chips), "Upcoming · N" with a cards/list switch, the
+/// feed, relax hints, the "This weekend" rail, surveys and the host link.
 struct HomeView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.scenePhase) private var scenePhase
@@ -41,13 +30,8 @@ struct HomeView: View {
     @StateObject private var forYouAlert = ForYouAlertModel()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private let filters: [(key: String, vi: String, en: String)] = [
-        ("all", "Tất cả", "All"),
-        ("supper", "Supper club", "Supper club"),
-        ("fashion", "Thời trang", "Fashion"),
-        ("gallery", "Phòng tranh", "Gallery"),
-        ("music", "Nhạc", "Music"),
-    ]
+    /// Note 50 — cards (default) or a compact list; a per-device convenience, like web's localStorage.
+    @AppStorage("banbe.homeLayout.v1") private var layoutMode = "cards"
 
     /// Any of these showing is reason enough to tick every second; none of
     /// them showing means no clock runs at all.
@@ -111,6 +95,7 @@ struct HomeView: View {
         // showed straight through it. Matches InboxView's own
         // `ZStack { app.palette.paper.ignoresSafeArea(); VStack { header; ... } }`
         // shape exactly, which never had this bug.
+        let snap = makeSnapshot()
         ZStack {
             app.palette.paper.ignoresSafeArea()
         VStack(alignment: .leading, spacing: 0) {
@@ -128,33 +113,37 @@ struct HomeView: View {
                 // the eager VStack kicked off all ~21 hero downloads at launch
                 // and they all fought for the same bandwidth.
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    // TASK A (2026-10-01 UX foundation pass) — replaces the old
-                    // fixed four-banner `paymentBanners` block: one unified,
-                    // priority-sorted, 3-card-capped Action Center covering both
-                    // roles this account can hold. heldEvent itself stays in use
-                    // for tagging the "Your events" strip further down.
+                    // Note 50 order: Next-up (note-37 reminder only) → Action Center / guest banner → stories →
+                    // categories → quick row → "Upcoming · N" → feed → hints → empty/footer → weekend → surveys.
+                    // The old "Your events" strip and status chips are gone (Schedule + Account own your events).
+                    if let next = nextUp {
+                        NextUpBanner(event: next.event, phase: next.phase, haloTrigger: reminderHaloTrigger)
+                    }
                     if app.isSignedIn {
                         ActionCenterView(items: actionItems, onSeeAll: { app.goNotifications() })
                         ActivationChecklistCard()
                     } else {
                         GuestBrowseBanner()
                     }
-                    if !app.savedStrip.isEmpty { savedStrip }
                     storyRow
+                    HomeCategoryRow()
+                    quickRow(snap)
+                    if app.filterForYou && app.hasForYouMatches { forYouEditRow.padding(.bottom, 4) }
+                    sectionHeader(snap)
+                    ForEach(snap.cards) { card in
+                        Group {
+                            if layoutMode == "list" { DiscoveryRow(model: card) } else { DiscoveryCard(model: card) }
+                        }
+                        .id(card.key)
+                    }
+                    // Requirements are soft: when filters leave almost nothing, offer the one change that adds the most.
+                    if !snap.relaxHints.isEmpty && !snap.items.isEmpty { relaxHintsRow(snap.relaxHints) }
+                    if snap.cards.isEmpty { emptyState } else { footer }
+                    if app.homeFilters.date != "weekend" { weekendSection }
                     // Survey discovery is authenticated-only server-side
                     // (get_public_survey_discovery); hide it for guests.
                     if app.isSignedIn { surveyDiscoveryRow }
-                    filterSection
-                    if app.feed.isEmpty {
-                        emptyState
-                    } else {
-                        ForEach(app.feed) { event in
-                            EventCard(event: event)
-                                .id(event.key)
-                        }
-                        footer
-                    }
-                    weekendSection
+                    tagline
                     hostLink
                 }
                 .padding(.bottom, 100)
@@ -215,8 +204,8 @@ struct HomeView: View {
         // `discoveryEvents`'s own doc comment on AppState.swift).
         .task { await app.loadDiscoveryEvents() }
         // Blocker fix (retention roadmap follow-up) — a saved/attending
-        // real (non-catalogue) event needs its own fetch for savedStrip to
-        // resolve it instead of quietly skipping it.
+        // real (non-catalogue) event needs its own fetch for the Next-up
+        // reminder to resolve it instead of quietly skipping it.
         .task { await app.loadMissingRealEvents(for: app.favorites + app.attending) }
         .onChange(of: app.screen) { _, new in if new == .home { reminderHaloTrigger += 1 } }
         .onAppear {
@@ -257,6 +246,15 @@ struct HomeView: View {
         // instead. Same picker Map Explore uses, same `app.area` selection.
         .sheet(isPresented: $areaSearchOpen) {
             LocationPickerSheet(isPresented: $areaSearchOpen)
+        }
+        // Note 50 — every filter in one sheet over the results; edits a draft until "Show N events".
+        .sheet(isPresented: $app.homeFilterSheetOpen) {
+            HomeFilterSheet(items: makeSnapshot().items, now: Date(), onOpenArea: {
+                app.homeFilterSheetOpen = false
+                // One sheet at a time: open the searchable location list once the filter sheet is gone.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { areaSearchOpen = true }
+            }, onClose: { app.homeFilterSheetOpen = false })
+            .environmentObject(app)
         }
         // The Pulse RING's frame is no longer tracked anywhere at all — no
         // PreferenceKey, no probe, no `AppState` property. The teaser bubble
@@ -397,12 +395,6 @@ struct HomeView: View {
         Color.clear.nativeGlassCapsule(interactive: true, tint: active ? app.palette.ink : nil)
     }
 
-    // Task 2c (2026-09-21 follow-up) — a quick Appearance (light/dark)
-    // toggle next to the existing language/area switchers, separated by
-    // this app's own "▪" glyph (already used throughout its copy, e.g.
-    // event captions like "Th 5, 09.07 ▪ 21:00") rather than a new divider
-    // style. Wired to the SAME `toggleTheme` Preferences already uses — no
-    // parallel theme state.
     // MARK: header top row (wordmark + title, streak/coin shortcuts, search)
 
     /// Shown only once the server has answered (migration 165 applied); never a placeholder number.
@@ -453,9 +445,6 @@ struct HomeView: View {
             HomeNotificationsButton(size: control)
                 .frame(width: max(control, 44), height: max(control, 44))
                 .padding(.horizontal, -(max(44 - control, 0) / 2))
-            HomeSearchButton(size: control)
-                .frame(width: max(control, 44), height: max(control, 44))
-                .padding(.horizontal, -(max(44 - control, 0) / 2))
         }
     }
 
@@ -496,155 +485,37 @@ struct HomeView: View {
         .fixedSize()
     }
 
+    /// Note 50: language + theme live in Settings > Language & Appearance; the area menu is a location pill
+    /// ("Near Everywhere ▾") and the full-width search bar opens the Search screen.
     private var header: some View {
-        // Alignment changed from `.firstTextBaseline` to `.center` (2026-09-29
-        // follow-up, wordmark doubled in size) — baseline alignment anchors a
-        // non-text view's BOTTOM to the text baseline, so as the wordmark
-        // image grows taller it pushes upward past the row's top and can
-        // clip the quick-switch row on the trailing side along with it.
-        // Centering keeps every sibling vertically centered in the row
-        // regardless of the wordmark's height, so the lang/area/theme
-        // buttons stay fully visible at any wordmark size.
         VStack(alignment: .leading, spacing: 8) {
             headerTopRow
-            HStack {
-                Spacer(minLength: 0)
-                ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    // Bolder/larger + bigger hit-area (2026-09-29 follow-up)
-                    // — bumped 13pt/semibold -> 15pt/bold and 4pt -> 7pt
-                    // vertical padding on all three quick-switch buttons for
-                    // easier tapping.
-                    Button(app.T("EN", "VN")) {
-                        Haptics.light()
-                        app.toggleLang()
-                    }
-                        .font(.system(size: 13, weight: .semibold))
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background { homeGlassCapsule() }
-                        .buttonStyle(HomeControlPressStyle())
-                        .accessibilityIdentifier("header.lang")
-                    // "banbe ▪︎" prefix dropped (2026-09-29 follow-up) — was
-                    // crowding out the actual region name; the control's own
-                    // accessibility identifier and action already make it
-                    // unambiguous which control this is without a label
-                    // prefix repeating the app's own name.
-                    //
-                    // Area menu parity pass — this is a native `Menu` now, the
-                    // same mechanism the chat composer's "+" attach button and
-                    // Inbox's own row menus use, replacing the hand-rolled
-                    // anchored glass panel (the former AreaSheetView) and all
-                    // of its own scale/opacity reveal. Everything about how it
-                    // presents — animation, Liquid Glass look, anchoring,
-                    // outside-tap dismissal, edge/safe-area handling,
-                    // light/dark, Reduce Motion — is therefore the system's and
-                    // cannot drift from the chat "+" menu.
-                    Menu {
-                        AreaMenuOptions { areaSearchOpen = true }
-                    } label: {
-                        // The glass surface, stroke and padding live INSIDE the
-                        // label, exactly like the chat "+" (ChatAttachButton puts
-                        // its circle background inside its Menu label). Applied
-                        // outside the Menu, the surface stayed behind as a
-                        // separate layer while only the text morphed.
-                        Text("\(app.currentAreaLabel) ▾")
-                            .font(.system(size: 13, weight: .semibold))
-                            .padding(.horizontal, 12).padding(.vertical, 7)
-                            .background { homeGlassCapsule() }
-                                .foregroundStyle(app.palette.ink)
-                    }
-                    .accessibilityIdentifier("header.area")
-                    // No `toggleTheme()` exists on iOS — Preferences.swift's
-                    // own theme picker already uses `pickTheme(_:)` directly
-                    // (the exact write path, incl. persistence); this just
-                    // calls the same function with the flipped value rather
-                    // than adding a parallel toggle.
-                    Button(app.theme == "dark" ? app.T("Sáng", "Light") : app.T("Tối", "Dark")) {
-                        Haptics.light()
-                        app.pickTheme(app.theme == "dark" ? "light" : "dark")
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background { homeGlassCapsule() }
-                                .buttonStyle(HomeControlPressStyle())
-                    .accessibilityIdentifier("header.theme")
+            // Area menu parity pass — a native `Menu`, the same mechanism the chat composer's "+" uses, so
+            // presentation, glass, anchoring and dismissal are the system's. The label holds everything.
+            Menu {
+                AreaMenuOptions { areaSearchOpen = true }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "mappin").font(.system(size: 13, weight: .semibold))
+                    Text(app.T("Gần", "Near")).fontWeight(.medium).opacity(0.6)
+                    Text(app.area == LocationHierarchy.allID ? app.T("Mọi nơi", "Everywhere") : app.currentAreaLabel)
+                        .lineLimit(1)
+                    Text("▾").font(.system(size: 9))
                 }
-                .fixedSize(horizontal: true, vertical: false)
-                }
+                .font(.system(size: 13.5, weight: .semibold))
+                .foregroundStyle(app.palette.ink)
+                .frame(minHeight: 32)
+                .contentShape(Rectangle())
             }
+            .accessibilityIdentifier("header.area")
+            HomeSearchBar()
+                .padding(.bottom, 2)
         }
         .buttonStyle(.plain)
         .foregroundStyle(app.palette.ink)
-        // The web header fits in a narrower face; scale rather than clip if
-        // a longer area name (or English) pushes the row past the edge.
         .padding(.horizontal, 20)
         .padding(.top, 16)
     }
-
-    // MARK: Your events
-
-    private var savedStrip: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(app.T("Sự kiện của bạn", "Your events")).font(BanbeTheme.display(15))
-                Spacer()
-                Text(app.T("Sự kiện đã qua sẽ ẩn sau 48h", "Past events clear after 48h")).font(.system(size: 11.5))
-            }
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: 10) {
-                    ForEach(sortedSavedStrip) { event in
-                        SwipeSafeButton { app.goEvent(event.key) } label: {
-                            VStack(alignment: .leading, spacing: 7) {
-                                ZStack(alignment: .topLeading) {
-                                    CatalogPhoto(path: event.img, height: 96, width: 152, cornerRadius: 12).zoomSource(event.key)
-                                    if reminderPhase(event) != nil {
-                                        EventReminderHalo(trigger: reminderHaloTrigger, cornerRadius: 12)
-                                            .frame(width: 152, height: 96)
-                                    }
-                                    HStack(spacing: 4) {
-                                        if reminderPhase(event) != nil {
-                                            Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(hex: 0xFFD76A))
-                                        }
-                                        PhotoChip(text: app.trStatus(savedTag(event).0), background: savedTag(event).1)
-                                    }
-                                    .padding(6)
-                                }
-                                .accessibilityIdentifier(reminderPhase(event) != nil ? "home.eventReminder" : "home.savedEvent")
-                                Text(event.name)
-                                    .font(BanbeTheme.display(15))
-                                    .lineLimit(1)
-                                Text(app.trStatus(savedStatus(event)))
-                                    .font(.system(size: 11))
-                            }
-                            .frame(width: 152, alignment: .leading)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                // Room for the reminder halo (a ScrollView clips), cancelled out below.
-                .padding(.vertical, 12).padding(.horizontal, 12)
-            }
-            .padding(.vertical, -12).padding(.horizontal, -12)
-        }
-        .foregroundStyle(app.palette.ink)
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
-        // The events strip owns horizontal scrolling. Register its real
-        // bounds in the same root coordinate space used by tabSwipeGesture,
-        // so a swipe that starts on an event stays with this ScrollView
-        // instead of committing Home -> Map.
-        .background {
-            GeometryReader { geo in
-                Color.clear.preference(
-                    key: RootGestureExclusionZonePreferenceKey.self,
-                    value: ["savedEvents": geo.frame(in: .named("rootGesture"))]
-                )
-            }
-        }
-        .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
-    }
-
     // MARK: Story row (Task 3.3, 07-notifications.md) — between "Your
     // events" and the main event list, per this ticket's own placement.
     // TASK E (2026-10-01 UX foundation pass) — "Banbe Pulse" is now a
@@ -817,7 +688,10 @@ struct HomeView: View {
         // by that much extra so the bubble's tallest content (the 3-line
         // ranked list) is always fully clear of the header above, without
         // changing the bubble's own top-left/pointer-at-bottom-left design.
-        .padding(.top, 65)
+        // Note 50: the extra room is only reserved while the teaser bubble actually shows (otherwise it left a
+        // large empty band between the new search bar and the stories).
+        .padding(.top, app.pulseTeaserStep >= 0 ? 65 : 14)
+        .animation(.easeOut(duration: 0.2), value: app.pulseTeaserStep >= 0)
         .padding(.bottom, 14)
         .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
     }
@@ -1052,30 +926,6 @@ struct HomeView: View {
     // ring, per this pass's explicit request.
     private static let pulseRingMidYInRow: CGFloat = 10
 
-    /// Matches the web strip's tag rules: cancelled / past / on hold /
-    /// paid / saved, each with its own chip colour.
-    private func savedTag(_ event: CatalogEvent) -> (String, Color) {
-        if event.cancelled { return ("Đã hủy", BanbeTheme.Chip.cancelled) }
-        if event.endedHoursAgo != nil { return ("Đã diễn ra", BanbeTheme.Chip.past) }
-        if event.key == app.heldEvent?.key { return ("Đang giữ", BanbeTheme.Chip.hold) }
-        if let phase = reminderPhase(event) {
-            return (phase == .live ? "Đang diễn ra" : "Sắp diễn ra", BanbeTheme.Chip.reminder)
-        }
-        if app.isGoing(event.key) { return ("Đã thanh toán", BanbeTheme.Chip.going) }
-        return ("Đã lưu", BanbeTheme.Chip.saved)
-    }
-
-    /// Reminder events (starting within 24h / happening now) lead the strip, "live" first;
-    /// sorted(by:) is not guaranteed stable, so ties fall back to the original index.
-    private var sortedSavedStrip: [CatalogEvent] {
-        func rank(_ e: CatalogEvent) -> Int {
-            switch reminderPhase(e) { case .live?: return 0; case .soon?: return 1; case nil: return 2 }
-        }
-        return app.savedStrip.enumerated()
-            .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
-            .map(\.element)
-    }
-
     /// Reminder only for a ticket-holder's own event (not a hold, not merely saved).
     private func reminderPhase(_ event: CatalogEvent) -> EventReminder.Phase? {
         guard app.isGoing(event.key), event.key != app.heldEvent?.key,
@@ -1083,62 +933,234 @@ struct HomeView: View {
         return EventReminder.phase(startsAt: event.startDate)
     }
 
-    private func savedStatus(_ event: CatalogEvent) -> String {
-        let tix = app.tickets[event.key] ?? 1
-        let suffix = tix > 1 ? " ▪︎ \(tix) vé" : ""
-        if event.cancelled { return "Đã hoàn tiền" }
-        if let ended = event.endedHoursAgo { return EventLabels.ago(ended) }
-        if event.key == app.heldEvent?.key { return "Trả để xác nhận" + suffix }
-        if app.isGoing(event.key) { return event.untilLabel + suffix }
-        return event.untilLabel
+    /// The note-37 reminder, surfaced only as the Next-up banner: the most urgent confirmed ticket (live before
+    /// soon) among saved/attending/held events. Same rule as before (Lib/EventReminder.swift).
+    private var nextUp: (event: CatalogEvent, phase: EventReminder.Phase)? {
+        let candidates = app.savedStrip.compactMap { e in reminderPhase(e).map { (event: e, phase: $0) } }
+        return candidates.first { $0.phase == .live } ?? candidates.first
     }
 
-    // MARK: Filters
+    // MARK: Discovery snapshot (note 50)
 
-    /// Two filter rows (categories on top, status chips below), each its OWN
-    /// horizontal ScrollView so they swipe independently. Like the "Your
-    /// events" strip, each row registers its real bounds as a root-gesture
-    /// exclusion zone, so a swipe starting on either row scrolls the chips
-    /// and never commits Home -> Map.
-    private var filterSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            filterRow(zone: "homeFilterCategories") { filterTabs }
-            statusFilterRow
-            if app.filterForYou && app.hasForYouMatches { forYouEditRow }
+    /// `app.feed` (category + area + For You) normalized ONCE into the Lib/HomeDiscovery.swift item shape, so
+    /// quick chips, the filter sheet, its per-pill counts and the feed all run the same pure logic.
+    private struct Snapshot {
+        let items: [HomeDiscovery.Item]
+        let shown: [HomeDiscovery.Item]
+        let cards: [DiscoveryCardModel]
+        let quickCounts: [String: Int]
+        let relaxHints: [HomeDiscovery.RelaxHint]
+        let filterBadge: Int
+    }
+
+    private static let quickChips: [(key: String, vi: String, en: String)] = [
+        ("today", "Hôm nay", "Today"), ("weekend", "Cuối tuần này", "This weekend"),
+        ("free", "Miễn phí", "Free"), ("almostFull", "Sắp hết chỗ", "Almost full"),
+    ]
+
+    private func quickActive(_ key: String, _ f: HomeDiscovery.Filters) -> Bool {
+        switch key {
+        case "today": return f.date == "today"
+        case "weekend": return f.date == "weekend"
+        case "free": return f.free
+        default: return f.almostFull
         }
-        .padding(.top, 16)
-        .padding(.bottom, 14)
     }
 
-    /// Second row: For You pinned at the leading edge (never scrolls, never shrinks);
-    /// the remaining chips scroll on their own to its right, registered as the same
-    /// root-gesture exclusion zone as before. The ScrollView keeps one stable position
-    /// whether or not For You is shown (no remount, offset preserved). HStack's leading
-    /// edge follows the layout direction (RTL-safe).
-    private var statusFilterRow: some View {
-        let hasForYou = app.hasForYouMatches
-        return HStack(spacing: 8) {
-            if hasForYou {
+    private func toggleQuick(_ key: String) {
+        var f = app.homeFilters
+        switch key {
+        case "today": f.date = f.date == "today" ? "any" : "today"
+        case "weekend": f.date = f.date == "weekend" ? "any" : "weekend"
+        case "free": f.free.toggle(); f.priceMin = nil; f.priceMax = nil
+        default: f.almostFull.toggle()
+        }
+        app.setHomeFilters(f)
+    }
+
+    /// The whole discovery pass for one render (Home re-renders on many AppState changes; this keeps it to
+    /// one pass over the feed).
+    private func makeSnapshot(now: Date = Date()) -> Snapshot {
+        let feed = app.feed
+        let scores = app.pulseScores
+        let items = feed.map { app.discoveryItem(for: $0, now: now, scores: scores) }
+        let byKey = Dictionary(feed.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+        let f = app.homeFilters
+        let filtered = HomeDiscovery.apply(items, f, now: now)
+        // For You keeps its own ranking; any explicit sort overrides it, Soonest keeps the feed's order.
+        let shown = app.homeSort != "soonest" ? HomeDiscovery.sort(filtered, mode: app.homeSort) : filtered
+        var quick = HomeDiscovery.optionCounts(items, f, .date, options: ["today", "weekend"], now: now)
+        quick["free"] = HomeDiscovery.optionCounts(items, f, .free, now: now)["true"]
+        quick["almostFull"] = HomeDiscovery.optionCounts(items, f, .almostFull, now: now)["true"]
+        let hints = shown.count < 3 ? HomeDiscovery.relaxationHints(items, f, now: now) : []
+        // Best-match label: the top For You match, only when the user has answers. Without answers the first
+        // card is "Popular this week" when it's the area's top Pulse event — never called a "match".
+        let topForYou = app.forYouMatches.first?.key
+        let forYouActive = app.filterForYou && app.hasForYouMatches
+        let topPulse = items.filter { $0.popularity != nil }.max { ($0.popularity ?? 0) < ($1.popularity ?? 0) }?.key
+        let cards: [DiscoveryCardModel] = shown.enumerated().compactMap { i, it in
+            guard let e = byKey[it.key] else { return nil }
+            var fill = HomeDiscovery.fillBadge(booked: it.booked, capacity: it.capacity)
+            if e.soldOut && fill.left == nil { fill.soldOut = true }
+            var label: String?
+            if i == 0 && topForYou == e.key { label = "best" }
+            else if i == 0 && !forYouActive && topPulse == e.key { label = "popular" }
+            return DiscoveryCardModel(
+                key: e.key, name: e.name, img: e.img,
+                dateBadge: app.discoveryDateBadge(it.startsAt, now: now),
+                priceLabel: it.priceVnd == 0 ? app.T("Miễn phí", "Free") : app.trStatus(e.price),
+                isFree: it.priceVnd == 0,
+                metaLine: app.metaLine(for: e, distanceKm: it.distanceKm),
+                fill: fill, cancelled: e.cancelled,
+                going: app.isGoing(e.key) && !e.cancelled && e.endedHoursAgo == nil,
+                label: label
+            )
+        }
+        let badge = HomeDiscovery.activeFilterCount(f) + (app.homeSort != "soonest" ? 1 : 0)
+        return Snapshot(items: items, shown: shown, cards: cards, quickCounts: quick, relaxHints: hints, filterBadge: badge)
+    }
+
+    /// Filters + Sort open the sheet; For You stays pinned at the leading edge (notes 34/36); the one-tap chips
+    /// scroll on their own (registered as a root-gesture exclusion zone). A chip with 0 events hides unless on.
+    private func quickRow(_ snap: Snapshot) -> some View {
+        HStack(spacing: 8) {
+            SwipeSafeButton {
+                Haptics.light()
+                app.homeFilterSheetOpen = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "slider.horizontal.3").font(.system(size: 14, weight: .semibold))
+                    if snap.filterBadge > 0 {
+                        Text("\(snap.filterBadge)").font(.system(size: 12, weight: .bold)).monospacedDigit()
+                    }
+                }
+                .padding(.horizontal, 12).frame(minWidth: 44, minHeight: 36)
+                .foregroundStyle(snap.filterBadge > 0 ? app.palette.paper : app.palette.ink)
+                .background { homeGlassCapsule(active: snap.filterBadge > 0) }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(snap.filterBadge > 0 ? app.T("Bộ lọc, \(snap.filterBadge) đang bật", "Filters, \(snap.filterBadge) on")
+                                                     : app.T("Bộ lọc", "Filters"))
+            .accessibilityIdentifier("home.filtersButton")
+            SwipeSafeButton {
+                Haptics.light()
+                app.homeFilterSheetOpen = true
+            } label: {
+                Image(systemName: "arrow.up.arrow.down").font(.system(size: 14, weight: .semibold))
+                    .padding(.horizontal, 12).frame(minWidth: 44, minHeight: 36)
+                    .background { homeGlassCapsule() }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(app.T("Sắp xếp: \(HomeDiscovery.sortLabels[app.homeSort]?.vi ?? "")",
+                                      "Sort: \(HomeDiscovery.sortLabels[app.homeSort]?.en ?? "")"))
+            .accessibilityIdentifier("home.sortButton")
+            if app.hasForYouMatches {
                 forYouChip
                     .fixedSize(horizontal: true, vertical: false)
                     .layoutPriority(1)
-                    .padding(.leading, 20)
                     .zIndex(1)  // halo ring may overlap the scroller beside it
             }
             ScrollView(.horizontal, showsIndicators: false) {
-                homeExtraFilterChips
-                    .padding(.leading, hasForYou ? 0 : 20)
-                    .padding(.trailing, 20)
+                HStack(spacing: 8) {
+                    ForEach(Self.quickChips, id: \.key) { chip in
+                        let active = quickActive(chip.key, app.homeFilters)
+                        let n = snap.quickCounts[chip.key] ?? 0
+                        if active || n > 0 {
+                            SwipeSafeButton {
+                                Haptics.selection()
+                                toggleQuick(chip.key)
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Text(app.T(chip.vi, chip.en))
+                                    if !active { Text("\(n)").font(.system(size: 12)).monospacedDigit().opacity(0.6) }
+                                }
+                                .font(.system(size: 13, weight: active ? .semibold : .regular))
+                                .lineLimit(1)
+                                .padding(.horizontal, 14).frame(minHeight: 36)
+                                .foregroundStyle(active ? app.palette.paper : app.palette.ink)
+                                .background { homeGlassCapsule(active: active) }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(active ? .isSelected : [])
+                            .accessibilityIdentifier("home.quick.\(chip.key)")
+                        }
+                    }
+                }
+                .padding(.trailing, 20)
+                .padding(.vertical, 2)
             }
-            .background {
-                GeometryReader { geo in
-                    Color.clear.preference(
-                        key: RootGestureExclusionZonePreferenceKey.self,
-                        value: ["homeFilterStatus": geo.frame(in: .named("rootGesture"))]
-                    )
+            .rootSwipeExclusion("homeQuickChips")
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.leading, 20)
+        .padding(.top, 10).padding(.bottom, 6)
+    }
+
+    /// What you're looking through, and a cards/list switch (no single default suits everyone).
+    private func sectionHeader(_ snap: Snapshot) -> some View {
+        let date = app.homeFilters.date
+        let title: String = {
+            if date != "any", let l = HomeDiscovery.dateLabels[date] { return app.T(l.vi, l.en) }
+            if app.filterForYou && app.hasForYouMatches { return app.T("Dành cho bạn", "For you") }
+            return app.T("Sắp diễn ra", "Upcoming")
+        }()
+        let n = snap.shown.count
+        return HStack(alignment: .center) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title).font(BanbeTheme.display(20)).lineLimit(1).accessibilityAddTraits(.isHeader)
+                Text(app.T("\(n) sự kiện", "\(n) event\(n == 1 ? "" : "s")"))
+                    .font(.system(size: 13)).opacity(0.6).lineLimit(1)
+                    .accessibilityIdentifier("home.resultCount")
+            }
+            Spacer(minLength: 8)
+            HStack(spacing: 2) {
+                ForEach([("cards", app.T("Thẻ", "Cards"), "rectangle.grid.1x2"), ("list", app.T("Danh sách", "List"), "list.bullet")], id: \.0) { mode, label, icon in
+                    let on = layoutMode == mode
+                    Button {
+                        Haptics.selection()
+                        layoutMode = mode
+                    } label: {
+                        Image(systemName: icon).font(.system(size: 13, weight: .semibold))
+                            .frame(width: 36, height: 30)
+                            .background(on ? app.palette.paper : Color.clear, in: Capsule())
+                            .overlay(Capsule().strokeBorder(app.palette.rule.opacity(on ? 1 : 0), lineWidth: 1))
+                            .shadow(color: .black.opacity(on ? 0.15 : 0), radius: 1.5, y: 1)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(label)
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                    .accessibilityIdentifier("home.layout.\(mode)")
                 }
             }
+            .padding(.horizontal, 2)
+            .background(app.palette.ink.opacity(0.06), in: Capsule().inset(by: 7))
         }
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 20)
+        .padding(.top, 6).padding(.bottom, 4)
+    }
+
+    private func relaxHintsRow(_ hints: [HomeDiscovery.RelaxHint]) -> some View {
+        FlowRow(spacing: 8) {
+            ForEach(hints, id: \.id) { h in
+                let l = HomeDiscovery.relaxLabels[h.id] ?? (h.id, h.id)
+                SwipeSafeButton {
+                    Haptics.selection()
+                    app.setHomeFilters(h.filters)
+                } label: {
+                    Text(app.T("+\(h.gain) sự kiện nếu \(l.vi)", "+\(h.gain) event\(h.gain == 1 ? "" : "s") with \(l.en)"))
+                        .font(.system(size: 13, weight: .semibold))
+                        .padding(.horizontal, 14).frame(minHeight: 36)
+                        .background { homeGlassCapsule() }
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("home.relax.\(h.id)")
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 18)
     }
 
     private func observeForYouAlert() {
@@ -1149,85 +1171,6 @@ struct HomeView: View {
                             prefsVersion: app.eventPrefsVersion,
                             loading: app.discoveryEventsLoading || app.eventPrefs == nil)
     }
-
-    private func filterRow<Content: View>(zone: String, @ViewBuilder content: () -> Content) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            content().padding(.horizontal, 20)
-        }
-        .background {
-            GeometryReader { geo in
-                Color.clear.preference(
-                    key: RootGestureExclusionZonePreferenceKey.self,
-                    value: [zone: geo.frame(in: .named("rootGesture"))]
-                )
-            }
-        }
-    }
-
-    private var filterTabs: some View {
-        HStack(spacing: 8) {
-                ForEach(filters, id: \.key) { filter in
-                    let active = app.filter == filter.key
-                    SwipeSafeButton {
-                        if app.filter != filter.key { Haptics.selection() }
-                        app.pickFilter(filter.key)
-                    } label: {
-                        Text(app.T(filter.vi, filter.en))
-                            .font(.system(size: 12.5, weight: active ? .semibold : .regular))
-                            .padding(.horizontal, 14).padding(.vertical, 8)
-                            .foregroundStyle(active ? app.palette.paper : app.palette.ink)
-                            .background { homeGlassCapsule(active: active) }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("filter.\(filter.key)")
-                }
-        }
-        .foregroundStyle(app.palette.ink)
-    }
-
-    // Second, independent chip row (12-home-filters.md) — multi-select,
-    // AND-combined with filterTabs' category row and the area picker, not a
-    // third incompatible filter system: each reuses an existing definition
-    // (isGoing's status set from note 04, isSaved's favorites, .soldOut's
-    // static catalogue flag) rather than recomputing any of them.
-    //
-    // 2026-09-21 follow-up — extended with notConfirmed/upcoming/ended
-    // (mirrors src/screens/Home.jsx's HOME_EXTRA_FILTERS exactly).
-    //
-    // Second follow-up (same day): notAttending/notSaved removed entirely
-    // per this ticket's own instruction; Upcoming/Saved/Attending reordered
-    // to lead, Ended kept last. Also switched from a horizontally-scrolling
-    // `ScrollView` to `FlowLayout` (MapExploreView.swift's own reusable
-    // wrapping layout, already used for Map Explore's category row) — every
-    // chip is now always visible, wrapping to a second line instead of
-    // requiring a swipe to see the rest.
-    private var homeExtraFilterChips: some View {
-        let chips: [(key: String, vi: String, en: String, active: Bool)] = [
-            ("upcoming", "Sắp diễn ra", "Upcoming", app.filterUpcoming),
-            ("saved", "Đã lưu", "Saved", app.filterSaved),
-            ("attending", "Đang tham gia", "Attending", app.filterAttending),
-            ("notConfirmed", "Chưa xác nhận", "Not confirmed", app.filterNotConfirmed),
-            ("soldOut", "Hết chỗ", "Sold out", app.filterSoldOut),
-        ]
-        return HStack(spacing: 8) {
-            ForEach(chips, id: \.key) { chip in
-                SwipeSafeButton {
-                    Haptics.selection()
-                    app.toggleHomeFilter(chip.key)
-                } label: {
-                    Text(app.T(chip.vi, chip.en))
-                        .font(.system(size: 12, weight: chip.active ? .bold : .regular))
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .foregroundStyle(chip.active ? app.palette.paper : app.palette.ink)
-                        .background { homeGlassCapsule(active: chip.active) }
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("filter.\(chip.key.lowercased())")
-            }
-        }
-        .foregroundStyle(app.palette.ink)
-    }
-
     /// Quick shortcut while For You is active: edit the answers, and Back /
     /// swipe-back returns here with For You still on (`eventPrefsReturnScreen`).
     private var forYouEditRow: some View {
@@ -1308,7 +1251,7 @@ struct HomeView: View {
             actionTitle: app.T("Xem tất cả sự kiện", "See all events"),
             actionIcon: "sparkles",
             actionID: "home.empty.seeAll",
-            action: { app.clearFilters() },
+            action: { app.clearFilters(); app.homeSort = "soonest" },
             secondaryTitle: app.T("Tìm trên bản đồ", "Look on the map"),
             secondaryID: "home.empty.map",
             secondaryAction: { app.goMapExplore() },
@@ -1323,55 +1266,67 @@ struct HomeView: View {
             Text(app.T("Hết rồi, ra ngoài chơi thôi!", "That's it, go have fun!"))
                 .font(BanbeTheme.display(11.5))
                 .padding(.top, 34)
-            Text(app.T(
-                "Vài buổi vui dành cho riêng bạn tuần này. Không xếp hạng, không quảng cáo, không lướt vô tận.",
-                "A few fun gatherings made just for you this week. No ratings, no ads, no endless scrolling."
-            ))
-            .font(.system(size: 11))
-            .padding(.top, 12)
-            .padding(.horizontal, 20)
+                .padding(.bottom, 6)
         }
         .foregroundStyle(app.palette.ink)
         .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
     }
 
-    /// Retention roadmap P1 ("Cuối tuần này") — real live+public events for
-    /// the applicable weekend (app.weekendEvents), never demo cards. Placed
-    /// after the main feed (not the "Sự kiện của bạn" strip near the top)
-    /// on purpose: it's a discovery section, not a personal one. Reuses
-    /// `EventCard` — the exact same view every catalogue card in the main
-    /// feed already uses — since `CatalogEvent.fromReal` shapes a real row
-    /// into the same type; no separate rendering path to keep in sync.
+    private var tagline: some View {
+        Text(app.T(
+            "Vài buổi vui dành cho riêng bạn tuần này. Không xếp hạng, không quảng cáo, không lướt vô tận.",
+            "A few fun gatherings made just for you this week. No ratings, no ads, no endless scrolling."
+        ))
+        .font(.system(size: 11))
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 20)
+        .padding(.top, 6)
+    }
+
+    /// Retention roadmap P1 ("Cuối tuần này") — real live+public events for the applicable weekend
+    /// (app.weekendEvents), never demo cards. After the main feed on purpose: it's a discovery section, not a
+    /// personal one. Note 50: a compact rail (web parity), hidden while the weekend date filter is on, and it
+    /// now follows the SAME area + category picks as the feed (it used to ignore both on iOS).
+    private var weekendList: [CatalogEvent] {
+        Array(app.weekendEvents.map(app.withLive)
+            .filter { app.matchesArea($0) }
+            .filter { app.filter == "all" || $0.catKey == app.filter || $0.cat2Key == app.filter }
+            .prefix(12))
+    }
+
+    @ViewBuilder
     private var weekendSection: some View {
-        Group {
-            if !app.weekendEvents.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(app.T("Cuối tuần này", "This weekend"))
-                        .font(BanbeTheme.display(15))
-                        .padding(.horizontal, 20)
-                        .padding(.top, 16)
-                        .padding(.bottom, 10)
-                    ForEach(app.weekendEvents) { event in
-                        EventCard(event: event)
-                            .id("weekend-\(event.key)")
-                    }
-                }
-            } else if !app.weekendEventsLoading {
-                // Quiet empty state — no demo cards, never invented.
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(app.T("Cuối tuần này", "This weekend"))
-                        .font(BanbeTheme.display(15))
+        let list = weekendList
+        // Suppressed during the very first load so it never flashes the empty state.
+        if !(app.weekendEventsLoading && list.isEmpty) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(app.T("Cuối tuần này", "This weekend"))
+                    .font(BanbeTheme.display(20))
+                    .accessibilityAddTraits(.isHeader)
+                    .padding(.horizontal, 20)
+                if list.isEmpty {
                     Text(app.T("Chưa có sự kiện phù hợp cuối tuần này.", "No matching events this weekend yet."))
-                        .font(.system(size: 12.5))
-                        .opacity(0.7)
+                        .font(.system(size: 12.5)).opacity(0.7)
+                        .padding(.horizontal, 20).padding(.bottom, 12)
+                        .accessibilityIdentifier("weekend.empty")
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(alignment: .top, spacing: 10) {
+                            ForEach(list) { event in WeekendRailCard(event: event).id("weekend-\(event.key)") }
+                        }
+                        .padding(.horizontal, 20).padding(.bottom, 10)
+                    }
+                    .rootSwipeExclusion("homeWeekend")
                 }
-                .foregroundStyle(app.palette.ink)
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
             }
+            .foregroundStyle(app.palette.ink)
+            .padding(.top, 16)
+            .overlay(alignment: .top) { Rectangle().fill(app.palette.rule).frame(height: 1) }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("home.weekendSection")
         }
     }
-
     private var hostLink: some View {
         SwipeSafeButton {
             if app.hasHosted { app.switchToHost() } else { app.goHostIntro() }
@@ -1386,65 +1341,6 @@ struct HomeView: View {
                 .padding(.top, 16)
         }
         .buttonStyle(.plain)
-    }
-}
-
-/// One feed card — hero photo with the Save/Going chips over it, then the
-/// name, meta line and price/seats, as on the web feed.
-struct EventCard: View {
-    let event: CatalogEvent
-    @EnvironmentObject private var app: AppState
-
-    var body: some View {
-        SwipeSafeButton { app.goEvent(event.key) } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .topTrailing) {
-                    CatalogPhoto(path: event.img, height: 272, cornerRadius: 14).zoomSource(event.key)
-                        .overlay(alignment: .bottom) {
-                            LinearGradient(
-                                colors: [app.palette.paper.opacity(0), app.palette.paper],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                            .frame(height: 58)
-                        }
-                    SwipeSafeButton { app.toggleFavorite(event.key) } label: {
-                        PhotoChip(
-                            text: app.isSaved(event.key) ? app.T("Đã lưu", "Saved") : app.T("Lưu", "Save"),
-                            background: app.isSaved(event.key) ? BanbeTheme.Chip.going : app.palette.paper.opacity(0.62),
-                            foreground: app.isSaved(event.key) ? .white : app.palette.ink
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .padding(12)
-
-                    if app.isGoing(event.key) && event.isOpen {
-                        PhotoChip(text: app.trStatus("Đang tham gia"), background: BanbeTheme.Chip.going)
-                            .padding(12)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                    }
-                }
-
-                HStack(alignment: .top, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(event.name).font(BanbeTheme.display(22))
-                        Text(app.metaLine(for: event)).font(.system(size: 12.5))
-                    }
-                    Spacer(minLength: 0)
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text(app.trStatus(event.price)).font(.system(size: 13))
-                        Text(app.seatsLabel(for: event))
-                            .font(.system(size: 11.5))
-                            .multilineTextAlignment(.trailing)
-                    }
-                }
-                .foregroundStyle(app.palette.ink)
-                .padding(.top, 14)
-                .padding(.bottom, 18)
-            }
-            .padding(.horizontal, 20)
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("card.\(event.key)")
     }
 }
 
@@ -1522,9 +1418,6 @@ private struct PulseRingGlyph: View {
     }
 }
 
-/// Home's search button — top-right of the fixed header, always visible
-/// (it no longer floats above the dock or hides when the feed scrolls), in a
-/// larger Liquid Glass circle so it reads clearly against the paper.
 /// Home header bell → Notifications (back returns Home). Unread count is
 /// text in a badge AND in the spoken label, never colour alone.
 struct HomeNotificationsButton: View {
@@ -1558,33 +1451,5 @@ struct HomeNotificationsButton: View {
         .accessibilityLabel(app.unreadNotifications > 0
             ? app.T("Thông báo, \(app.unreadNotifications) chưa đọc", "Notifications, \(app.unreadNotifications) unread")
             : app.T("Thông báo", "Notifications"))
-    }
-}
-
-struct HomeSearchButton: View {
-    @EnvironmentObject private var app: AppState
-
-    var size: CGFloat = 52
-
-    var body: some View {
-        SwipeSafeButton {
-            Haptics.light()
-            app.openEventSearch()
-        } label: {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundStyle(app.palette.ink)
-                .frame(width: size, height: size)
-                .background { glass }
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("home.searchFab")
-        .accessibilityLabel(app.T("Tìm sự kiện", "Search events"))
-    }
-
-    @ViewBuilder
-    private var glass: some View {
-        Color.clear.nativeGlass(Circle(), interactive: true)
     }
 }

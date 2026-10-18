@@ -33,11 +33,13 @@ final class ShellFixtureUITests: XCTestCase {
         XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 20), "the word Home must stay in the header")
         XCTAssertEqual(el(app, "home.title").label, "Home")
         XCTAssertTrue(el(app, "home.notifications").exists)
-        XCTAssertTrue(el(app, "home.searchFab").exists)
+        // Note 50: the round search button became the full-width search bar under the header row.
+        XCTAssertTrue(el(app, "home.searchBar").exists)
         XCTAssertTrue(app.images["banbe"].firstMatch.exists)
-        // Title and the two controls must not overlap or run off-screen.
+        // Title and the bell must not overlap; nothing runs off-screen.
         let screen = app.windows.firstMatch.frame
-        XCTAssertLessThanOrEqual(el(app, "home.searchFab").frame.maxX, screen.maxX)
+        XCTAssertLessThanOrEqual(el(app, "home.searchBar").frame.maxX, screen.maxX)
+        XCTAssertLessThanOrEqual(el(app, "home.notifications").frame.maxX, screen.maxX)
         XCTAssertLessThan(el(app, "home.title").frame.maxX, el(app, "home.notifications").frame.minX)
     }
 

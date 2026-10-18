@@ -85,6 +85,10 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
     /// `AppState.eventLocation(_:)` resolves demo events from their live DB
     /// row instead.
     var location: EventLocation? = nil
+    /// Real events only (set by `fromReal`, not in `CodingKeys`): search keywords and the
+    /// organizer row id, so Search can match keywords and open the host (note 50).
+    var keywords: [String]? = nil
+    var organizerId: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case key, catKey, cat, cat2Key, catDisplay, name, img, lat, lng, meta
@@ -370,7 +374,9 @@ extension CatalogEvent {
             locationLabel: real.area,
             intro: introOrNil,
             includedItems: itemsOrNil,
-            location: real.location
+            location: real.location,
+            keywords: real.keywords,
+            organizerId: real.organizerId
         )
     }
 

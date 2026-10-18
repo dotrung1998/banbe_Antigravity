@@ -3573,6 +3573,8 @@ try await SupabaseService.client
             discoveryAlertVersions = Dictionary(rows.map { ($0.id, ForYouAlert.version(reviewedAt: $0.reviewedAt, submittedAt: $0.submittedAt, status: $0.status, visibility: $0.visibility)) }, uniquingKeysWith: { a, _ in a })
             discoveryEvents = shaped
             discoveryEventsLoadFailed = false
+            // Real seat fill for the cards (note 50, migration 186) — best-effort, see loadPublicEventFill.
+            await loadPublicEventFill(ids: rows.filter { $0.status == "live" && $0.visibility == "public" }.map(\.id))
         } catch {
             print("loadDiscoveryEvents failed:", error)
             discoveryEvents = []
@@ -5127,6 +5129,12 @@ try await SupabaseService.client
                     print("set_event_visibility failed:", error)
                 }
 
+                // Host goal (note 50, migration 186) — host-only side table, best-effort like keywords.
+                // On edit it is always written so a host can clear an earlier answer.
+                if createHostGoal != nil || createEditEventId != nil {
+                    await saveEventHostGoal(eventID: eventID, goal: createHostGoal)
+                }
+
                 // Reservation criteria (migration 162). A host who chose a
                 // restriction must never see the event go out unrestricted
                 // because this call failed — block with a message and keep
@@ -5294,6 +5302,12 @@ try await SupabaseService.client
         createPostalCode = real.postalCode ?? ""
         createVisibility = real.visibility
         createCriteria = .everyone
+        // Note 50: the goal picked last time (host-only read), best-effort.
+        createHostGoal = nil
+        do {
+            let editID = real.id
+            Task { [weak self] in await self?.loadEventHostGoal(eventID: editID) }
+        }
         do {
             let editID = real.id
             Task { [weak self] in

@@ -69,6 +69,17 @@ enum BanbeTheme {
         static let reminder = Color(hex: 0x7A5200).opacity(0.82)
     }
 
+    /// One shape language for discovery surfaces (note 50): cards and icon tiles share one radius,
+    /// thumbnails a slightly smaller one, chips/pills are fully round (use `Capsule()`). Mirrors
+    /// src/theme.js `RADIUS`.
+    enum Radius {
+        static let card: CGFloat = 14
+        static let tile: CGFloat = 14
+        static let thumb: CGFloat = 12
+        /// Web's 999px; on iOS draw pills with `Capsule()`.
+        static let pill: CGFloat = .infinity
+    }
+
     /// Display/title face: the web app uses Jost/Be Vietnam Pro at weight
     /// 600 with tight tracking; rounded system is the closest stock match
     /// without shipping the fonts.
