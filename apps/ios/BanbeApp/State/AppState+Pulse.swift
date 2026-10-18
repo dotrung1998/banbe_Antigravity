@@ -125,6 +125,9 @@ private struct LikedPhotoRow: Decodable {
 
 extension AppState {
     func loadPulse(period: PulseTab) async {
+        #if DEBUG
+        if UITestFixture.isActive { return } // fixtures seed their own ranking; a real network answer must not replace it
+        #endif
         let seq: Int
         if period == .weekly { pulseWeeklySeq += 1; seq = pulseWeeklySeq; pulseWeeklyLoading = true }
         else { pulseDailySeq += 1; seq = pulseDailySeq; pulseDailyLoading = true }

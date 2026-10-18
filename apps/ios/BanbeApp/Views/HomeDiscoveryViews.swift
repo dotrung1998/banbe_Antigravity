@@ -221,7 +221,6 @@ struct DiscoveryCard: View {
                     Text(model.name)
                         .font(BanbeTheme.display(18))
                         .lineLimit(1)
-                        .accessibilityIdentifier("card.\(model.key)")
                     Spacer(minLength: 0)
                     Text(model.priceLabel)
                         .font(.system(size: 15, weight: .bold))
@@ -249,8 +248,9 @@ struct DiscoveryCard: View {
             .padding(.bottom, 22)
         }
         .buttonStyle(.plain)
-        // `card.<key>` sits on the photo and the name only (UI tests open events through it): set on the whole
-        // button it would overwrite the Save / badge identifiers inside.
+        // `card.<key>` sits on the photo ONLY (UI tests open events through it, so it must match exactly one element):
+        // set on the whole button it would overwrite the Save / badge identifiers inside, and on the name as well it
+        // would match twice.
     }
 }
 
@@ -268,7 +268,6 @@ struct DiscoveryRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(model.name).font(BanbeTheme.display(15.5)).lineLimit(1)
-                            .accessibilityIdentifier("card.\(model.key)")
                         Spacer(minLength: 0)
                         Text(model.priceLabel)
                             .font(.system(size: 13.5, weight: .bold))
