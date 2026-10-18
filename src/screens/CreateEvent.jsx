@@ -10,7 +10,7 @@ import { formatVnd } from '../lib/paymentDocument.js';
 import { paper, ink, rule, FACE, display, alert } from '../theme.js';
 import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
 import { loadMapKit } from '../lib/mapkit.js';
-import { ChoiceChip, CountStepper, StepProgress } from '../components/ui/FormControls.jsx';
+import { CountStepper, StepProgress } from '../components/ui/FormControls.jsx';
 import { PRICE_QUICK_PICKS, SEAT_QUICK_PICKS, TIME_QUICK_PICKS, dateQuickPicks, similarPriceRange, createDraftMatchesDefaults } from '../lib/smartDefaults.js';
 
 const IMPORT_FIELD_LABELS = {
@@ -275,7 +275,29 @@ export default function CreateEvent() {
     { id: 'create-section-photos', title: T('Ảnh', 'Photos'), done: !fieldErrors.photos },
   ];
   const firstIncomplete = sections.findIndex(x => !x.done);
-  const scrollToSection = (i) => document.getElementById(sections[i]?.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Start where there's work: skip Host when the organizer profile is filled (or when editing).
+  const [step, setStep] = useState(() => (s.createEditEventId || (s.orgRegName || '').trim() ? 1 : 0));
+  const topRef = useRef(null);
+  const goTo = (i) => {
+    if (i < 0 || i >= sections.length) return;
+    document.activeElement?.blur?.();
+    setStep(i);
+    requestAnimationFrame(() => topRef.current?.scrollIntoView({ block: 'start' }));
+  };
+  const doneCount = sections.filter(x => x.done).length;
+  const left = sections.length - doneCount;
+  const progressMessage = doneCount === 0 ? T('Bắt đầu thôi! ✨', "Let's get started! ✨")
+    : left === 0 ? T('Xong hết rồi, xem lại nhé! 🎉', 'All set, time to review! 🎉')
+      : left === 1 ? T('Sắp xong rồi, còn 1 bước 🔥', 'Almost there, 1 step left 🔥')
+        : T(`Bạn đang làm rất tốt, còn ${left} bước 🔥`, `You're doing great, ${left} steps left 🔥`);
+  // What's still missing on THIS step (shown above Next; never blocks it — fill in any order).
+  const stepGaps = [
+    [!(s.orgRegName || '').trim() && T('tên host', 'host name')],
+    [!nameOk && T('tên sự kiện', 'event name'), fieldErrors.desc && T('mô tả', 'description'), fieldErrors.cats && T('danh mục', 'a category'), fieldErrors.included && T('mục bao gồm', 'an included item')],
+    [!s.createLocConfirmed && T('địa chỉ gợi ý', 'a suggested address'), fieldErrors.dateTime && T('ngày & giờ', 'date & time')],
+    [fieldErrors.seats && T('số chỗ', 'seats')],
+    [fieldErrors.photos && T(`ít nhất ${MIN_PHOTOS} ảnh`, `at least ${MIN_PHOTOS} photos`)],
+  ][step].filter(Boolean);
   const missing = [
     !nameOk && T('tên sự kiện', 'event name'),
     fieldErrors.desc && T('mô tả', 'description'),
@@ -316,11 +338,13 @@ export default function CreateEvent() {
   // screen-high blank gap and a confirm button far below. The end state is identical (opacity 1, no transform).
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) backwards', minHeight: '100%', background: paper }} data-screen-label="Create event">
-      <div onClick={leaveCreate} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {createBackLabel}</div>
+      <div ref={topRef} onClick={leaveCreate} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {createBackLabel}</div>
+      {/* Note 48 (iOS parity): a 5-step flow, one section per page. The sticky numbered bar shows %, an encouraging
+          line and a ✓ per finished step; tap any step to jump there. */}
       {!s.createSent && (
-        <div style={{ position: 'sticky', top: 0, zIndex: 5, background: paper, padding: '10px 22px 10px' }}>
+        <div style={{ position: 'sticky', top: 0, zIndex: 5, background: paper, padding: '10px 22px 12px' }}>
           <StepProgress testId="create-progress" steps={sections.map(x => x.title)} completed={sections.map(x => x.done)}
-            current={firstIncomplete === -1 ? sections.length : firstIncomplete} onSelect={scrollToSection} />
+            current={step} message={progressMessage} onSelect={goTo} />
         </div>
       )}
       <div style={{ padding: '14px 22px 40px', display: 'flex', flexDirection: 'column' }}>
@@ -333,88 +357,105 @@ export default function CreateEvent() {
             {T('Bị từ chối: ', 'Rejected: ') + s.realEventsById[s.createEditEventId].rejectionReason}
           </p>
         )}
-        {!s.createEditEventId && !s.createSent && s.createAppliedDefaults && (
-          <div data-testid="create-defaults-notice" style={{ ...cardGlass({ marginTop: 14, padding: 12 }), fontSize: 12, lineHeight: 1.5, color: ink }}>
+        {(step === 2 || step === 3) && !s.createEditEventId && !s.createSent && s.createAppliedDefaults && (
+          <div data-testid="create-defaults-notice" style={{ ...cardGlass({ marginTop: 14, padding: 12 }), fontSize: 12.5, lineHeight: 1.5, color: ink }}>
             {s.createDefaultsSource
-              ? T(`Đã điền sẵn thời gian, giá và số chỗ từ "${s.createDefaultsSource}". Đổi bất cứ gì bạn muốn.`, `Time, price and seats are pre-filled from "${s.createDefaultsSource}". Change anything you like.`)
-              : T('Đã chọn sẵn Thứ Bảy tới lúc 19:00 và 14 chỗ. Đổi bất cứ gì bạn muốn.', 'We picked next Saturday at 19:00 and 14 seats. Change anything you like.')}
+              ? T(`Đã điền sẵn thời gian và giá từ "${s.createDefaultsSource}". Đổi bất cứ gì bạn muốn.`, `Time and price are pre-filled from "${s.createDefaultsSource}". Change anything you like.`)
+              : T('Đã chọn sẵn Thứ Bảy tới lúc 19:00. Đổi bất cứ lúc nào bạn muốn.', 'We picked next Saturday at 19:00. Change it any time.')}
             <button type="button" onClick={clearCreateDefaults} data-testid="create-start-blank"
-              style={{ display: 'block', marginTop: 4, padding: 0, background: 'none', border: 'none', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, color: ink, textDecoration: 'underline', cursor: 'pointer' }}>
+              style={{ display: 'block', marginTop: 4, padding: 0, background: 'none', border: 'none', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, color: ink, textDecoration: 'underline', cursor: 'pointer' }}>
               {T('Bắt đầu trống', 'Start blank')}
             </button>
           </div>
         )}
 
-        <div id="create-section-host" style={{ ...cardGlass({ marginTop: 22, padding: 16, display: 'flex', flexDirection: 'column', gap: 12, scrollMarginTop: 90 }) }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Hồ sơ người tổ chức', 'Organizer profile')}</span>
-            <span style={{ fontSize: 10.5, color: ink }}>{T('Hiện trên trang của bạn', 'Shown on your page')}</span>
-          </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <Field style={{ flex: 1.2 }} label={T('Tên', 'Name')} value={s.orgRegName} onChange={orgRegNameType} placeholder="Bếp Nhỏ" />
-            <Field style={{ flex: 1 }} label="Instagram" value={s.orgRegIg} onChange={orgRegIgType} placeholder="@bepnho.saigon" />
-          </div>
-          <Field label={T('Giới thiệu', 'About')} value={s.orgRegDesc} onChange={orgRegDescType} placeholder={T('Minh nấu cho người lạ từ 2021…', 'Minh has cooked for strangers since 2021…')} />
-        </div>
+        {step === 0 && (
+          <StepCard title={T('Hồ sơ người tổ chức', 'Organizer profile')} id="create-section-host">
+            <BigField icon="person" label={T('Tên', 'Name')} value={s.orgRegName} onChange={orgRegNameType} placeholder="Bếp Nhỏ" />
+            <BigField icon="at" label="Instagram" value={s.orgRegIg} onChange={orgRegIgType} placeholder="@bepnho.saigon" />
+            <BigField icon="quote" label={T('Giới thiệu', 'About')} value={s.orgRegDesc} onChange={orgRegDescType} placeholder={T('Minh nấu cho người lạ từ 2021…', 'Minh has cooked for strangers since 2021…')} />
+          </StepCard>
+        )}
 
-        <div style={{ ...cardGlass({ marginTop: 22, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }) }}>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Sự kiện', 'Event')}</span>
-        <div id="create-section-basics" style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0, scrollMarginTop: 90 }}>
-          <label style={labelStyle}>{T('Tên sự kiện', 'Event name')} <span style={{ color: alert }}>*</span></label>
-          <input value={s.createName} onChange={createNameType} placeholder="Bếp Nhỏ №13" style={fieldInput} />
-        </div>
+        {step === 1 && (
+          <StepCard title={T('Cơ bản', 'Basics')} id="create-section-basics">
+            <BigField icon="sparkles" label={T('Tên sự kiện', 'Event name')} required value={s.createName} onChange={createNameType} placeholder="Bếp Nhỏ №13" testId="create-name" />
+            <div>
+              <BigField icon="text" label={T('Mô tả', 'Description')} required value={s.createDesc} onChange={createDescType} placeholder={T('Mười bốn chỗ. Một ga-ra cải tạo…', 'Fourteen seats. A converted garage…')} />
+              {attemptedReview && fieldErrors.desc && <p style={errText}>{T('Hãy nhập mô tả.', 'Please enter a description.')}</p>}
+            </div>
+            <div style={fieldCol}>
+              <FormLabel icon="doc" text={T('Giới thiệu sự kiện', 'Event introduction')} tag={`${s.createIntro.length}/4000`} />
+              <p style={hintText}>{T('Một đoạn giới thiệu dài hơn, hấp dẫn. Tách dòng trống giữa các đoạn. Không phải quảng cáo giả, không phải "Bao gồm".', 'A longer, attractive write-up. Leave a blank line between paragraphs. Not fabricated marketing copy, not the same as "Included".')}</p>
+              <textarea value={s.createIntro} onChange={createIntroType} maxLength={4000} rows={6}
+                placeholder={T('Một buổi tối ấm cúng cho mười bốn người lạ…\n\nMón chính là…', 'A cozy evening for fourteen strangers…\n\nThe main course is…')}
+                style={{ ...bigInput, resize: 'vertical', lineHeight: 1.5 }} />
+            </div>
+            <div style={fieldCol}>
+              <FormLabel icon="bubble" text={T('Lời nhắn mở đầu', 'Opening message')} tag={T('Tuỳ chọn', 'Optional')} />
+              <p style={hintText}>{T('Hiện như tin nhắn đầu tiên từ bạn khi khách bấm "Nhắn cho người tổ chức", theo ngôn ngữ của khách. Để trống cả hai sẽ dùng lời chào mặc định.', 'Shown as the first message from you when a guest taps "Message host", in the guest\'s language. Leave both blank for a default greeting.')}</p>
+              <div style={subLabel}><span>{T('Tiếng Việt', 'Vietnamese')}</span><span style={{ opacity: 0.6 }}>{s.createChatGreeting.length}/500</span></div>
+              <textarea value={s.createChatGreeting} onChange={createChatGreetingType} maxLength={500} rows={3} data-testid="create-chat-greeting"
+                placeholder="Chào bạn! Mình sẽ trả lời sớm nhất có thể…" style={{ ...bigInput, resize: 'vertical', lineHeight: 1.5 }} />
+              <div style={subLabel}><span>{T('Tiếng Anh', 'English')}</span><span style={{ opacity: 0.6 }}>{s.createChatGreetingEn.length}/500</span></div>
+              <textarea value={s.createChatGreetingEn} onChange={createChatGreetingEnType} maxLength={500} rows={3} data-testid="create-chat-greeting-en"
+                placeholder="Hi! Happy to answer any questions, I'll reply as soon as I can." style={{ ...bigInput, resize: 'vertical', lineHeight: 1.5 }} />
+            </div>
+            <div style={fieldCol}>
+              <FormLabel icon="grid" text={T('Danh mục', 'Categories')} required tag={T('Tối đa 2', 'Up to 2')} />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {CAT_DEFS.map(c => {
+                  const on = s.createCats.includes(c.key);
+                  return (
+                    <button key={c.key} type="button" onClick={() => pickCreateCat(c.key)} aria-pressed={on} data-testid={`create-cat-${c.key}`}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 15, fontFamily: 'inherit', padding: '12px 16px', borderRadius: 999, cursor: 'pointer',
+                        border: on ? '1px solid transparent' : `1px solid ${rule}`, background: on ? ink : paper, color: on ? paper : ink, fontWeight: on ? 600 : 400 }}>
+                      <span aria-hidden>{CAT_EMOJI[c.key] || '✦'}</span>{T(c.vi, c.en)}
+                    </button>
+                  );
+                })}
+              </div>
+              {attemptedReview && fieldErrors.cats && <p style={errText}>{T('Hãy chọn ít nhất một danh mục.', 'Please pick at least one category.')}</p>}
+            </div>
+            <div style={fieldCol}>
+              <BigField icon="search" label={T('Từ khoá tìm kiếm', 'Search keywords')} value={s.createKeywords} onChange={createKeywordsType}
+                placeholder={T('vd. tiệc tối, rượu vang, ẩm thực Việt', 'e.g. supper club, wine, Vietnamese food')} />
+              <p style={hintText}>{T('Cách nhau bằng dấu phẩy. Để trống sẽ tự dùng danh mục đã chọn ở trên.', 'Comma-separated. Left blank, the category picked above is used instead.')}</p>
+            </div>
+            <div style={fieldCol}>
+              <FormLabel icon="checklist" text={T('Bao gồm', 'Included')} required tag={`${s.createIncludedItems.length}/3`} />
+              {s.createIncludedItems.map((it, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 8px 14px 16px', borderRadius: 14, background: paper, border: `1px solid ${rule}` }}>
+                  <span aria-hidden style={{ fontSize: 18, lineHeight: '24px' }}>✅</span>
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <input value={it.label} maxLength={60} onChange={(e) => setCreateIncludedItem(i, 'label', e.target.value)}
+                      placeholder={T('Tên mục (vd. 5 món)', 'Label (e.g. 5 courses)')} data-testid={`create-included-${i}-label`}
+                      style={{ border: 'none', background: 'none', outline: 'none', fontFamily: FACE, fontSize: 16, fontWeight: 600, color: ink, padding: 0 }} />
+                    <div style={{ height: 1, background: rule }} />
+                    <input value={it.detail} maxLength={300} onChange={(e) => setCreateIncludedItem(i, 'detail', e.target.value)}
+                      placeholder={T('Mô tả (không bắt buộc)', 'Detail (optional)')} data-testid={`create-included-${i}-detail`}
+                      style={{ border: 'none', background: 'none', outline: 'none', fontFamily: FACE, fontSize: 15, color: ink, opacity: 0.85, padding: 0 }} />
+                  </div>
+                  <button type="button" onClick={() => removeCreateIncludedItem(i)} aria-label={T('Xoá mục', 'Remove item')}
+                    style={{ width: 44, height: 44, marginTop: -10, border: 'none', background: 'none', color: ink, opacity: 0.4, fontSize: 18, cursor: 'pointer' }}>ⓧ</button>
+                </div>
+              ))}
+              {s.createIncludedItems.length < 3 && (
+                <button type="button" onClick={addCreateIncludedItem} data-testid="create-included-add"
+                  style={{ minHeight: 52, borderRadius: 14, border: `1.2px dashed rgba(var(--bb-fg-rgb),0.3)`, background: 'transparent', color: ink, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+                  ⊕ {T('Thêm mục', 'Add item')}
+                </button>
+              )}
+              {attemptedReview && fieldErrors.included && <p style={errText}>{T('Hãy thêm ít nhất một mục Bao gồm.', 'Please add at least one Included item.')}</p>}
+            </div>
+          </StepCard>
+        )}
 
+        {step === 2 && (
+          <StepCard title={T('Thời gian & địa điểm', 'When & where')} id="create-section-when">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
-          <label style={labelStyle}>{T('Mô tả', 'Description')} <span style={{ color: alert }}>*</span></label>
-          <input value={s.createDesc} onChange={createDescType} placeholder={T('Mười bốn chỗ. Một ga-ra cải tạo…', 'Fourteen seats. A converted garage…')} style={fieldInput} />
-          {attemptedReview && fieldErrors.desc && <p style={{ fontSize: 11, color: alert, margin: 0 }}>{T('Hãy nhập mô tả.', 'Please enter a description.')}</p>}
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <label style={labelStyle}>{T('Giới thiệu sự kiện', 'Event introduction')}</label>
-            <span style={{ fontSize: 10.5, color: ink }}>{s.createIntro.length}/4000</span>
-          </div>
-          <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.75 }}>
-            {T('Một đoạn giới thiệu dài hơn, hấp dẫn. Tách dòng trống giữa các đoạn. Không phải quảng cáo giả, không phải "Bao gồm".', 'A longer, attractive write-up. Leave a blank line between paragraphs. Not fabricated marketing copy, not the same as "Included".')}
-          </p>
-          <textarea
-            value={s.createIntro} onChange={createIntroType} maxLength={4000} rows={6}
-            placeholder={T('Một buổi tối ấm cúng cho mười bốn người lạ…\n\nMón chính là…', 'A cozy evening for fourteen strangers…\n\nThe main course is…')}
-            style={{ ...fieldInput, resize: 'vertical', lineHeight: 1.5, fontFamily: FACE }}
-          />
-        </div>
-
-        {/* Message-host pass (migration 156) — shown as the first bubble from
-            the host when a goer taps "Message <host>"; display-only, never
-            stored as a message. */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <label style={labelStyle}>{T('Lời nhắn mở đầu', 'Opening message')}</label>
-            <span style={{ fontSize: 10.5, color: ink }}>{s.createChatGreeting.length}/500 · {s.createChatGreetingEn.length}/500</span>
-          </div>
-          <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.75 }}>
-            {T('Không bắt buộc. Hiện như tin nhắn đầu tiên từ bạn khi khách bấm "Nhắn cho người tổ chức", theo ngôn ngữ của khách. Để trống cả hai sẽ dùng lời chào mặc định.', 'Optional. Shown as the first message from you when a guest taps "Message host", in the guest\'s language. Leave both blank for a default greeting.')}
-          </p>
-          <label style={{ ...labelStyle, fontSize: 11 }}>{T('Tiếng Việt', 'Vietnamese')}</label>
-          <textarea
-            value={s.createChatGreeting} onChange={createChatGreetingType} maxLength={500} rows={3}
-            data-testid="create-chat-greeting"
-            placeholder={T('Chào bạn! Mình sẽ trả lời sớm nhất có thể…', 'Chào bạn! Mình sẽ trả lời sớm nhất có thể…')}
-            style={{ ...fieldInput, resize: 'vertical', lineHeight: 1.5, fontFamily: FACE }}
-          />
-          <label style={{ ...labelStyle, fontSize: 11 }}>{T('Tiếng Anh', 'English')}</label>
-          <textarea
-            value={s.createChatGreetingEn} onChange={createChatGreetingEnType} maxLength={500} rows={3}
-            data-testid="create-chat-greeting-en"
-            placeholder="Hi! Happy to answer any questions, I'll reply as soon as I can."
-            style={{ ...fieldInput, resize: 'vertical', lineHeight: 1.5, fontFamily: FACE }}
-          />
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
-          <label style={labelStyle}>{T('Địa điểm', 'Location')} <span style={{ color: alert }}>*</span></label>
-          <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.75 }}>
+          <FormLabel icon="pin" text={T('Địa điểm', 'Location')} required />
+          <p style={hintText}>
             {T(
               'Gõ số nhà + tên đường (hoặc tên địa điểm nếu không có số nhà) rồi chọn một gợi ý — cần thiết để đăng sự kiện.',
               'Type a house number + street (or a venue name if there is no house number), then pick a suggestion — required to publish.'
@@ -430,7 +471,7 @@ export default function CreateEvent() {
           <input
             value={s.createLoc} onChange={createLocType}
             placeholder={T('12 Nguyễn Văn Đậu, hoặc tên địa điểm…', '12 Nguyễn Văn Đậu, or a venue name…')}
-            style={fieldInput} data-testid="create-location-input"
+            style={bigInput} data-testid="create-location-input"
             autoComplete="off"
           />
           {s.createAddressSearching && (
@@ -486,156 +527,87 @@ export default function CreateEvent() {
           )}
         </div>
 
-        <div id="create-section-when" style={{ display: 'flex', gap: 10, marginTop: 0, scrollMarginTop: 90 }}>
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={labelStyle}>{T('Ngày', 'Date')} <span style={{ color: alert }}>*</span></label>
-            <input
-              type="date" value={s.createEventDate} onChange={createEventDateType}
-              min={new Date().toISOString().slice(0, 10)}
-              data-testid="create-event-date" style={fieldInput}
-            />
-          </div>
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={labelStyle}>{T('Giờ', 'Time')} <span style={{ color: alert }}>*</span></label>
-            <input
-              type="time" value={s.createEventTime} onChange={createEventTimeType}
-              data-testid="create-event-time" style={fieldInput}
-            />
-          </div>
-        </div>
-        {/* Note 48: the common choices one tap away; the native pickers stay. */}
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto' }} data-testid="create-date-quickpicks">
-          {dateQuickPicks().map(p => (
-            <ChoiceChip key={p.en} compact label={T(p.vi, p.en)} selected={s.createEventDate === p.date} onClick={() => set({ createEventDate: p.date })} />
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto' }} data-testid="create-time-quickpicks">
-          {TIME_QUICK_PICKS.map(t => (
-            <ChoiceChip key={t} compact label={t} selected={(s.createEventTime || '').slice(0, 5) === t} onClick={() => set({ createEventTime: t })} />
-          ))}
-        </div>
-        {attemptedReview && fieldErrors.dateTime && <p style={{ fontSize: 11, color: alert, margin: '6px 0 0' }}>{T('Hãy chọn ngày và giờ diễn ra.', 'Please pick a date and time.')}</p>}
-
-        <div id="create-section-tickets" style={{ display: 'flex', flexDirection: 'column', gap: 6, scrollMarginTop: 90 }}>
-          <label style={labelStyle}>{T('Giá vé', 'Ticket price')}</label>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {PRICE_QUICK_PICKS.map(v => (
-              <ChoiceChip key={v} compact testId={`create-price-${v}`} label={v === 0 ? T('Miễn phí', 'Free') : formatVnd(v)}
-                selected={s.createPrice !== '' && priceDigits === v} onClick={() => set({ createPrice: String(v) })} />
-            ))}
-          </div>
-          <input value={s.createPrice} onChange={createPriceType} placeholder={T('Giá khác, vd. 450.000', 'Other price, e.g. 450,000')} aria-label={T('Giá vé', 'Ticket price')} style={fieldInput} />
-          <span data-testid="create-price-hint" style={{ fontSize: 11, color: ink, opacity: 0.7 }}>
-            {similar
-              ? T(`Sự kiện tương tự: ${formatVnd(similar[0])}–${formatVnd(similar[1])}`, `Similar events: ${formatVnd(similar[0])}–${formatVnd(similar[1])}`)
-              : T('Để trống là miễn phí.', 'Leave empty for a free event.')}
-          </span>
-          <label style={{ ...labelStyle, marginTop: 6 }}>{T('Số chỗ', 'Seats')} <span style={{ color: alert }}>*</span></label>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {SEAT_QUICK_PICKS.map(n => (
-                <ChoiceChip key={n} compact testId={`create-seats-${n}`} label={String(n)} selected={seatsNum === n} onClick={() => set({ createSeats: String(n) })} />
-              ))}
+            <div style={fieldCol}>
+              <FormLabel icon="calendar" text={T('Ngày & giờ', 'Date & time')} required tag={T('Giờ Việt Nam', 'Vietnam time')} />
+              <div style={{ display: 'flex', gap: 10 }}>
+                <input type="date" value={s.createEventDate} onChange={createEventDateType} min={new Date().toISOString().slice(0, 10)}
+                  data-testid="create-event-date" aria-label={T('Ngày', 'Date')} style={{ ...bigInput, flex: 1.3 }} />
+                <input type="time" value={s.createEventTime} onChange={createEventTimeType}
+                  data-testid="create-event-time" aria-label={T('Giờ', 'Time')} style={{ ...bigInput, flex: 1 }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }} data-testid="create-date-quickpicks">
+                {dateQuickPicks().map(p => (
+                  <PickTile key={p.en} label={T(p.vi, p.en)} selected={s.createEventDate === p.date} onClick={() => set({ createEventDate: p.date })} />
+                ))}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }} data-testid="create-time-quickpicks">
+                {TIME_QUICK_PICKS.map(t => (
+                  <PickTile key={t} label={t} selected={(s.createEventTime || '').slice(0, 5) === t} onClick={() => set({ createEventTime: t })} />
+                ))}
+              </div>
+              {attemptedReview && fieldErrors.dateTime && <p style={errText}>{T('Hãy chọn ngày và giờ diễn ra.', 'Please pick a date and time.')}</p>}
             </div>
-            <CountStepper testId="create-seats-stepper" value={seatsNum} min={0} max={500} unit={T('chỗ', 'seats')}
-              onChange={(n) => set({ createSeats: n ? String(n) : '' })} />
-          </div>
-        </div>
-        {attemptedReview && fieldErrors.seats && <p style={{ fontSize: 11, color: alert, margin: '6px 0 0' }}>{T('Hãy nhập số chỗ lớn hơn 0.', 'Please enter a number of seats greater than 0.')}</p>}
+          </StepCard>
+        )}
 
-        {/* Strict invite-only events (migration 113) — Public vs Invite-Only
-            is deliberately a peer of every other form field here, not a
-            separate "advanced" section: it changes who can even discover
-            the event, so it needs the same visibility a host gives price/
-            capacity. Kept separate from approval mode (not exposed in this
-            form at all) and from admin review — see set_event_visibility's
-            own migration comment: private is not auto-approved. */}
-        <div style={{ marginTop: 0 }}>
-          <label style={labelStyle}>{T('Quyền riêng tư', 'Privacy')}</label>
-          <div style={{ display: 'flex', gap: 8, marginTop: 0 }}>
-            {[
-              { key: 'public', vi: 'Công khai', en: 'Public' },
-              { key: 'invite', vi: 'Chỉ mời', en: 'Invite-only' },
-            ].map(opt => (
-              <button
-                key={opt.key}
-                type="button"
-                onClick={() => pickCreateVisibility(opt.key)}
-                data-testid={`create-visibility-${opt.key}`}
-                style={{
-                  flex: 1, padding: '10px 12px', borderRadius: 10,
-                  border: `1px solid ${s.createVisibility === opt.key ? ink : rule}`,
-                  background: s.createVisibility === opt.key ? ink : 'transparent',
-                  color: s.createVisibility === opt.key ? paper : ink,
-                  fontSize: 13, cursor: 'pointer',
-                }}
-              >
-                {T(opt.vi, opt.en)}
-              </button>
-            ))}
-          </div>
-          <p style={{ fontSize: 11, color: ink, opacity: 0.6, margin: '6px 0 0' }}>
-            {s.createVisibility === 'invite'
-              ? T('Chỉ người được mời mới thấy và đặt được sự kiện này. Bạn vẫn cần được banbe duyệt.', 'Only invited people can see or book this event. It still needs banbe approval.')
-              : T('Ai cũng có thể tìm thấy và đặt sự kiện này.', 'Anyone can discover and book this event.')}
-          </p>
-        </div>
+        {step === 3 && (
+          <StepCard title={T('Vé & ai được đặt', 'Tickets & who can book')} id="create-section-tickets">
+            <div style={fieldCol}>
+              <FormLabel icon="tag" text={T('Giá vé', 'Price')} tag={similar ? T('Gợi ý', 'Suggested') : null} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                {PRICE_QUICK_PICKS.map(v => (
+                  <PickTile key={v} testId={`create-price-${v}`} label={v === 0 ? T('Miễn phí', 'Free') : formatVnd(v)}
+                    selected={s.createPrice !== '' && priceDigits === v} onClick={() => set({ createPrice: String(v) })} />
+                ))}
+              </div>
+              <input value={s.createPrice} onChange={createPriceType} placeholder={T('Giá khác, vd. 450.000', 'Other price, e.g. 450,000')} aria-label={T('Giá vé', 'Ticket price')} inputMode="numeric" style={bigInput} />
+              <span data-testid="create-price-hint" style={hintText}>
+                {similar
+                  ? T(`Sự kiện tương tự: ${formatVnd(similar[0])}–${formatVnd(similar[1])}`, `Similar events: ${formatVnd(similar[0])}–${formatVnd(similar[1])}`)
+                  : T('Để trống là miễn phí.', 'Leave empty for a free event.')}
+              </span>
+            </div>
+            <div style={fieldCol}>
+              <FormLabel icon="people" text={T('Số chỗ', 'Seats')} required />
+              <div style={{ padding: '10px 14px', borderRadius: 14, background: paper, border: `1px solid ${rule}` }}>
+                <CountStepper testId="create-seats-stepper" value={seatsNum} min={0} max={500} unit={T('chỗ', 'seats')}
+                  onChange={(n) => set({ createSeats: n ? String(n) : '' })} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                {SEAT_QUICK_PICKS.map(n => (
+                  <PickTile key={n} testId={`create-seats-${n}`} label={String(n)} selected={seatsNum === n} onClick={() => set({ createSeats: String(n) })} />
+                ))}
+              </div>
+              {attemptedReview && fieldErrors.seats && <p style={errText}>{T('Hãy nhập số chỗ lớn hơn 0.', 'Please enter a number of seats greater than 0.')}</p>}
+            </div>
+            <div style={fieldCol}>
+              <FormLabel icon="lock" text={T('Quyền riêng tư', 'Privacy')} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[{ key: 'public', vi: 'Công khai', en: 'Public', icon: '🌏' }, { key: 'invite', vi: 'Chỉ mời', en: 'Invite-only', icon: '✉️' }].map(opt => {
+                  const on = s.createVisibility === opt.key;
+                  return (
+                    <button key={opt.key} type="button" onClick={() => pickCreateVisibility(opt.key)} data-testid={`create-visibility-${opt.key}`} aria-pressed={on}
+                      style={{ flex: 1, minHeight: 76, borderRadius: 16, border: on ? '1px solid transparent' : `1px solid ${rule}`, background: on ? ink : paper, color: on ? paper : ink,
+                        fontFamily: 'inherit', fontSize: 15, fontWeight: on ? 600 : 400, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      <span aria-hidden style={{ fontSize: 20 }}>{opt.icon}</span>{T(opt.vi, opt.en)}
+                    </button>
+                  );
+                })}
+              </div>
+              <p style={hintText}>
+                {s.createVisibility === 'invite'
+                  ? T('Chỉ người được mời mới thấy và đặt được sự kiện này. Bạn vẫn cần được banbe duyệt.', 'Only invited people can see or book this event. It still needs banbe approval.')
+                  : T('Ai cũng có thể tìm thấy và đặt sự kiện này.', 'Anyone can discover and book this event.')}
+              </p>
+            </div>
+            <ReservationCriteriaPicker criteria={s.createCriteria} onChange={setCreateCriteria} loadState={s.createCriteriaLoad} />
+          </StepCard>
+        )}
 
-        <ReservationCriteriaPicker criteria={s.createCriteria} onChange={setCreateCriteria} loadState={s.createCriteriaLoad} />
-
-        <div style={{ marginTop: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontSize: 11.5, color: ink }}>{T('Danh mục', 'Category')} <span style={{ color: alert }}>*</span></span>
-            <span style={{ fontSize: 10.5, color: ink }}>{T('Tối đa 2 danh mục', 'Max 2 categories')}</span>
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 0 }}>
-            {CAT_DEFS.map(c => {
-              const on = s.createCats.includes(c.key);
-              const isSecond = on && s.createCats[1] === c.key;
-              return (
-                <span key={c.key} onClick={() => pickCreateCat(c.key)} style={{ fontSize: 12.5, padding: '9px 14px', borderRadius: 999, cursor: 'pointer', border: on ? '1px solid transparent' : `1px solid ${rule}`, background: on ? ink : 'transparent', color: on ? paper : ink, fontWeight: on ? 600 : 400 }}>
-                  {T(c.vi, c.en)}{isSecond ? ' ▪︎ +' : ''}
-                </span>
-              );
-            })}
-          </div>
-          {attemptedReview && fieldErrors.cats && <p style={{ fontSize: 11, color: alert, margin: '6px 0 0' }}>{T('Hãy chọn ít nhất một danh mục.', 'Please pick at least one category.')}</p>}
-        </div>
-
-        {/* Keyword-search fix (migration 108) — so this event actually
-            surfaces in Map's search box for terms beyond its literal
-            name/district. Left blank, submission defaults it to the
-            category label(s) picked just above (never silently empty). */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
-          <label style={labelStyle}>{T('Từ khoá tìm kiếm', 'Search keywords')}</label>
-          <input
-            value={s.createKeywords} onChange={createKeywordsType}
-            placeholder={T('vd. tiệc tối, rượu vang, ẩm thực Việt', 'e.g. supper club, wine, Vietnamese food')}
-            style={fieldInput}
-          />
-          <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.75 }}>
-            {T('Cách nhau bằng dấu phẩy. Để trống sẽ tự dùng danh mục đã chọn ở trên.', 'Comma-separated. Left blank, the category picked above is used instead.')}
-          </p>
-        </div>
-
-        </div>
-
-        {/* Photo-management cleanup (task 1, screenshot 1 follow-up) — a
-            clean vertical list, one row per photo, replacing the old
-            4-column grid where remove/reorder/cover controls were tiny
-            absolutely-positioned pills stacked on top of each other and on
-            top of the thumbnail itself. Each row's own thumbnail is a
-            fixed, stable 64x64 square (same `bg()` cover-fit helper
-            EventDetail's own photo strip uses — matches its presentation,
-            just laid out as a row instead of a horizontal strip since this
-            view also needs room for per-photo controls). Remove/reorder/
-            set-cover are the SAME actions the old grid had (this data model
-            has no drag-and-drop reordering — only up/down-swap — so nothing
-            new was invented), just given their own normal flex-row space
-            instead of overlapping the photo. */}
+        {step === 4 && (
         <div id="create-section-photos" style={{ marginTop: 22, scrollMarginTop: 90 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontSize: 11.5, color: ink }}>{T('Hình ảnh', 'Photos')} <span style={{ color: alert }}>*</span></span>
+            <FormLabel icon="photo" text={T('Hình ảnh', 'Photos')} required />
             <span style={{ fontSize: 10.5, color: ink }}>{photos.length}/{MAX_PHOTOS} ({T(`tối thiểu ${MIN_PHOTOS}`, `min ${MIN_PHOTOS}`)})</span>
           </div>
           <input
@@ -711,73 +683,54 @@ export default function CreateEvent() {
           )}
         </div>
 
-        <div style={{ marginTop: 22 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontSize: 11.5, color: ink }}>{T('Bao gồm', 'Included')} <span style={{ color: alert }}>*</span></span>
-            <span style={{ fontSize: 10.5, color: ink }}>{T('Tối đa 3 mục', 'Up to 3 items')}</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-            {s.createIncludedItems.map((it, i) => (
-              <div key={i} style={{ ...cardGlass({ padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }) }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    value={it.label} maxLength={60}
-                    onChange={(e) => setCreateIncludedItem(i, 'label', e.target.value)}
-                    placeholder={T('Tên mục (vd. Nước uống)', 'Label (e.g. Drinks)')}
-                    style={{ ...insetField({ padding: '9px 11px' }), flex: 1, fontSize: 13, fontFamily: FACE, color: ink, outline: 'none', border: 'none', minWidth: 0 }}
-                  />
-                  <span onClick={() => removeCreateIncludedItem(i)} style={{ fontSize: 12, color: ink, opacity: 0.6, cursor: 'pointer', flex: 'none' }}>{T('Xoá', 'Remove')}</span>
-                </div>
-                <input
-                  value={it.detail} maxLength={300}
-                  onChange={(e) => setCreateIncludedItem(i, 'detail', e.target.value)}
-                  placeholder={T('Giải thích rõ hơn (không bắt buộc)', 'Fuller explanation (optional)')}
-                  style={{ ...insetField({ padding: '9px 11px' }), fontSize: 12.5, fontFamily: FACE, color: ink, outline: 'none', border: 'none' }}
-                />
-              </div>
-            ))}
-            {s.createIncludedItems.length < 3 && (
-              <span onClick={addCreateIncludedItem} style={{ fontSize: 12.5, color: ink, fontWeight: 600, cursor: 'pointer' }}>+ {T('Thêm mục', 'Add item')}</span>
+        )}
+
+        {step < 4 && !s.createSent && (
+          <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {stepGaps.length > 0 && (
+              <p data-testid="create-step-gaps" style={{ fontSize: 12.5, textAlign: 'center', color: ink, opacity: 0.7, margin: 0 }}>
+                {T('Còn thiếu ở bước này: ', 'Still needed here: ') + stepGaps.join(', ')}
+              </p>
             )}
+            <div style={{ display: 'flex', gap: 10 }}>
+              {step > 0 && (
+                <button type="button" onClick={() => goTo(step - 1)} data-testid="create-step-back" aria-label={T('Quay lại: ', 'Back: ') + sections[step - 1].title}
+                  style={{ width: 54, height: 52, flex: 'none', borderRadius: 999, border: `1px solid ${rule}`, background: 'transparent', color: ink, fontSize: 18, cursor: 'pointer' }}>‹</button>
+              )}
+              <button type="button" onClick={() => goTo(step + 1)} data-testid="create-step-next"
+                style={{ flex: 1, minHeight: 52, borderRadius: 999, border: 'none', background: ink, color: paper, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+                {T('Tiếp: ', 'Next: ') + sections[step + 1].title}
+              </button>
+            </div>
           </div>
-          {attemptedReview && fieldErrors.included && <p style={{ fontSize: 11, color: alert, margin: '6px 0 0' }}>{T('Hãy thêm ít nhất một mục Bao gồm.', 'Please add at least one Included item.')}</p>}
-        </div>
+        )}
 
-        {/* Palette picker and the Excel/ZIP upload are not offered (iOS never had them): the event keeps the
-            default palette, and the form is filled in by hand. */}
-
-        {/* Address-autocomplete fix pass (2026-09-28) — a visible hint
-            BEFORE the host attempts to submit, not only after a failed
-            attempt (createError below still covers the server-side gate
-            as a backstop). */}
-
-        {/* No SLA is actually monitored server-side — the previous "duyệt
-            trong 48 giờ"/"reviews within 48h" copy promised a turnaround
-            time nothing enforced. Accurate instead of reassuring. */}
-        {/* "Review before submitting" step (task 1) — this button now only
-            OPENS the review step below; only that step's own "Xác nhận và
-            gửi" ever actually submits. Still gated on the same
-            createName/createSent checks the old direct-submit button used.
-            TASK 3 (event creation validation pass) — also blocked while any
-            required field above is missing; a first click on an invalid
-            form flips `attemptedReview` (surfacing every field-level error
-            above) instead of opening Review at all. */}
-        <div
-          onClick={s.createSent ? undefined : () => {
-            if (!canReview) { setAttemptedReview(true); if (firstIncomplete !== -1) scrollToSection(firstIncomplete); return; }
-            setReviewOpen(true);
-          }}
-          data-testid="create-open-review"
-          style={createBtnStyle}
-        >
-          {s.createSent
-            ? T('Đã gửi, đang chờ Banbe duyệt', 'Submitted, waiting for Banbe to review')
-            : T('Xem lại sự kiện của bạn', 'Review your event')}
-        </div>
-        {!s.createSent && missing.length > 0 && (
-          <p data-testid="create-missing-summary" style={{ fontSize: 11.5, lineHeight: 1.5, color: attemptedReview ? alert : ink, opacity: attemptedReview ? 1 : 0.7, margin: '8px 0 0', textAlign: 'center' }}>
-            {T('Còn thiếu: ', 'Still needed: ') + missing.join(', ')}
-          </p>
+        {(step === 4 || s.createSent) && (
+          <>
+            {!s.createSent && (
+              <button type="button" onClick={() => goTo(3)} data-testid="create-step-back"
+                style={{ alignSelf: 'flex-start', marginTop: 18, minHeight: 44, border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                ‹ {T('Quay lại: Vé', 'Back: Tickets')}
+              </button>
+            )}
+            <div
+              onClick={s.createSent ? undefined : () => {
+                if (!canReview) { setAttemptedReview(true); if (firstIncomplete !== -1) goTo(firstIncomplete); return; }
+                setReviewOpen(true);
+              }}
+              data-testid="create-open-review"
+              style={createBtnStyle}
+            >
+              {s.createSent
+                ? T('Đã gửi, đang chờ Banbe duyệt', 'Submitted, waiting for Banbe to review')
+                : T('Xem lại sự kiện của bạn', 'Review your event')}
+            </div>
+            {!s.createSent && missing.length > 0 && (
+              <p data-testid="create-missing-summary" style={{ fontSize: 11.5, lineHeight: 1.5, color: attemptedReview ? alert : ink, opacity: attemptedReview ? 1 : 0.7, margin: '8px 0 0', textAlign: 'center' }}>
+                {T('Còn thiếu: ', 'Still needed: ') + missing.join(', ')}
+              </p>
+            )}
+          </>
         )}
         {s.createError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createError}</p>}
         {s.createMediaError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createMediaError}</p>}
@@ -1106,3 +1059,79 @@ function Field({ label, value, onChange, placeholder, style }) {
 
 const labelStyle = { fontSize: 11.5, color: ink };
 const fieldInput = { ...insetField({ padding: '13px 14px' }), fontSize: 14, fontFamily: FACE, color: ink, outline: 'none', minWidth: 0, width: '100%', boxSizing: 'border-box', border: 'none' };
+
+// Note 48 form style (iOS parity): icon + uppercase label, large rounded outlined inputs, big pick tiles.
+const bigInput = { width: '100%', boxSizing: 'border-box', fontSize: 16, padding: '15px 16px', borderRadius: 14, border: `1px solid ${rule}`, background: paper, color: ink, fontFamily: FACE, outline: 'none' };
+const fieldCol = { display: 'flex', flexDirection: 'column', gap: 8 };
+const hintText = { fontSize: 12.5, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.7 };
+const errText = { fontSize: 11.5, color: alert, margin: '6px 0 0' };
+const subLabel = { display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 500, color: ink, marginTop: 4 };
+const CAT_EMOJI = { supper: '🍽', fashion: '👕', gallery: '🖼', music: '🎵', popup: '🏪' };
+
+const ICON_PATHS = {
+  person: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0',
+  at: 'M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm0 0v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.5 7.1',
+  quote: 'M7 7h4v4H8a3 3 0 0 0-1 2.2V17M14 7h4v4h-3a3 3 0 0 0-1 2.2V17',
+  sparkles: 'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2 2M16 16l2 2M6 18l2-2M16 8l2-2',
+  text: 'M4 6h16M4 10h16M4 14h12M4 18h9',
+  doc: 'M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6',
+  bubble: 'M4 5h16v11H9l-5 4z',
+  pin: 'M12 21s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Zm0-9a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
+  calendar: 'M4 6h16v15H4zM4 10h16M8 3v4M16 3v4',
+  tag: 'M3 12V4h8l10 10-8 8zM7.5 7.5h.01',
+  people: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm-6 9a6 6 0 0 1 12 0M16 4.5a3.5 3.5 0 0 1 0 6.5M18 20a6 6 0 0 0-2.5-4.9',
+  lock: 'M6 11h12v10H6zM8 11V8a4 4 0 0 1 8 0v3',
+  grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm5-2 5 5',
+  checklist: 'M4 6l2 2 3-3M4 13l2 2 3-3M12 7h8M12 14h8M12 20h8',
+  photo: 'M3 5h18v14H3zM8 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM21 16l-5-5-9 8',
+};
+
+function Icon({ name }) {
+  return (
+    <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
+      <path d={ICON_PATHS[name] || ICON_PATHS.sparkles} />
+    </svg>
+  );
+}
+
+function FormLabel({ icon, text, required, tag }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: ink, opacity: 0.85 }}>
+      <Icon name={icon} />
+      <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{text}</span>
+      {required && <span style={{ color: alert, fontSize: 12, fontWeight: 600 }}>*</span>}
+      <span style={{ flex: 1 }} />
+      {tag && <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, background: 'rgba(var(--bb-fg-rgb),0.08)' }}>{tag}</span>}
+    </div>
+  );
+}
+
+function BigField({ icon, label, required, value, onChange, placeholder, testId }) {
+  return (
+    <label style={fieldCol}>
+      <FormLabel icon={icon} text={label} required={required} />
+      <input value={value} onChange={onChange} placeholder={placeholder} data-testid={testId} style={bigInput} />
+    </label>
+  );
+}
+
+function PickTile({ label, selected, onClick, testId }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={selected} data-testid={testId}
+      style={{ minHeight: 48, padding: '0 4px', borderRadius: 14, fontFamily: 'inherit', fontSize: 15, fontWeight: selected ? 600 : 400, cursor: 'pointer',
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        border: selected ? '1px solid transparent' : `1px solid ${rule}`, background: selected ? ink : paper, color: selected ? paper : ink }}>
+      {label}
+    </button>
+  );
+}
+
+function StepCard({ title, id, children }) {
+  return (
+    <div id={id} style={{ ...cardGlass({ marginTop: 22, padding: 18, display: 'flex', flexDirection: 'column', gap: 18 }) }}>
+      <h2 style={display(20, { margin: 0 })}>{title}</h2>
+      {children}
+    </div>
+  );
+}

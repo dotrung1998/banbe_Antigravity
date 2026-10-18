@@ -120,7 +120,7 @@ function classifyAtLoad(n, now) {
 
 export default function Notifications() {
   const {
-    state, T, trStatus, goHome, openNotification, deleteNotification, deleteNotifications,
+    state, T, trStatus, goHome, backFromNotifications, openNotification, deleteNotification, deleteNotifications,
     markNotificationRead, markNotificationUnread, muteNotificationKind,
   } = useBanBe();
   const s = state;
@@ -232,7 +232,12 @@ export default function Notifications() {
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Notifications">
-      <div style={{ padding: '62px 24px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+      {/* Note 44 web parity: a pushed screen now (Schedule took its dock slot), so it has its own Back. */}
+      <div style={{ padding: '58px 24px 0' }}>
+        <button type="button" onClick={backFromNotifications} data-testid="notifications-back"
+          style={{ background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</button>
+      </div>
+      <div style={{ padding: '10px 24px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
         {/* iOS parity: wordmark BEFORE the title, inline (hidden while the
             search field is showing). Search input replaces the title,
             mirroring Inbox.jsx's own search-open state. */}

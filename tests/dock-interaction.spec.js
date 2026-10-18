@@ -21,9 +21,9 @@ test.describe('Bottom dock — tap, drag-select, layering', () => {
     await setupToHome(page);
     await page.waitForSelector('[data-screen-label="Home"]');
 
-    await page.getByTestId('tab-notifications').click();
-    await page.waitForSelector('[data-screen-label="Notifications"]');
-    await expect(page.getByTestId('tab-notifications')).toHaveAttribute('aria-selected', 'true');
+    await page.getByTestId('tab-schedule').click();
+    await page.waitForSelector('[data-screen-label="Schedule"]');
+    await expect(page.getByTestId('tab-schedule')).toHaveAttribute('aria-selected', 'true');
   });
 
   test('dragging along the dock and releasing over a different tab commits that tab exactly once', async ({ page }) => {
@@ -156,7 +156,7 @@ test.describe('Bottom dock — liquid droplet drag (goo layer)', () => {
     const bar = page.getByTestId('bottom-tab-bar');
     const barBox = await bar.boundingBox();
     const homeBox = await page.getByTestId('tab-home').boundingBox();
-    const notifBox = await page.getByTestId('tab-notifications').boundingBox();
+    const notifBox = await page.getByTestId('tab-schedule').boundingBox();
     const profileBox = await page.getByTestId('tab-profile').boundingBox();
     const y = barBox.y + barBox.height / 2;
 
@@ -226,7 +226,7 @@ test.describe('Bottom dock — liquid droplet drag (goo layer)', () => {
     const barBox = await bar.boundingBox();
     const homeBox = await page.getByTestId('tab-home').boundingBox();
     const inboxBox = await page.getByTestId('tab-inbox').boundingBox();
-    const notifBox = await page.getByTestId('tab-notifications').boundingBox();
+    const notifBox = await page.getByTestId('tab-schedule').boundingBox();
     const y = barBox.y + barBox.height / 2;
 
     // Complete drag: Home -> Inbox.
@@ -244,9 +244,9 @@ test.describe('Bottom dock — liquid droplet drag (goo layer)', () => {
     // Notifications, not get eaten/misrouted by drag-settle bookkeeping
     // left over from the previous gesture (the goo layer's fade-out,
     // `gooEngagedRef`, etc.).
-    await page.getByTestId('tab-notifications').click();
-    await page.waitForSelector('[data-screen-label="Notifications"]', { timeout: 5000 });
-    await expect(page.getByTestId('tab-notifications')).toHaveAttribute('aria-selected', 'true');
+    await page.getByTestId('tab-schedule').click();
+    await page.waitForSelector('[data-screen-label="Schedule"]', { timeout: 5000 });
+    await expect(page.getByTestId('tab-schedule')).toHaveAttribute('aria-selected', 'true');
   });
 
   test('a real drag engages the goo layer and both blobs move; a plain tap never engages it', async ({ page }) => {

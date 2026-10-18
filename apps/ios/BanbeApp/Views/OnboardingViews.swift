@@ -337,6 +337,9 @@ struct CreateEventView: View {
     @State private var attemptedReview = false
     @State private var discardConfirmOpen = false
     @State private var scrollProxy: ScrollViewProxy?
+    /// Note 48: Create event is a 5-step flow, one section per page.
+    @State private var currentStep: Section = .host
+    @State private var stepSeeded = false
 
     private var removedExistingIDs: [UUID] {
         let kept = Set(galleryItems.compactMap { if case .existing(let id, _) = $0.kind { return id }; return nil })
@@ -603,10 +606,11 @@ struct CreateEventView: View {
     @ViewBuilder
     private func greetingEditor() -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(app.T("Lời nhắn mở đầu (tuỳ chọn)", "Opening message (optional)")).font(.system(size: 11.5))
+            FormFieldLabel(icon: "bubble.left", text: app.T("Lời nhắn mở đầu", "Opening message"),
+                           trailing: app.T("Tuỳ chọn", "Optional"))
             Text(app.T("Hiện ở đầu cuộc trò chuyện khi khách nhấn \"Nhắn cho bạn\". Để trống để dùng lời chào mặc định. Chỉ để hiển thị, không lưu như tin nhắn.",
                         "Shown at the top of the chat when a guest taps \"Message\" you. Leave blank for a default greeting. Display only — not stored as a message."))
-                .font(.system(size: 11)).opacity(0.75)
+                .font(.system(size: 12.5)).opacity(0.7)
             greetingField(label: app.T("Tiếng Việt", "Vietnamese"), text: $app.createChatGreeting, id: "create.chatGreeting")
             greetingField(label: app.T("Tiếng Anh", "English"), text: $app.createChatGreetingEn, id: "create.chatGreetingEn")
         }
@@ -617,15 +621,12 @@ struct CreateEventView: View {
     private func greetingField(label: String, text: Binding<String>, id: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(label).font(.system(size: 11))
+                Text(label).font(.system(size: 13, weight: .medium))
                 Spacer()
-                Text("\(text.wrappedValue.count)/500").font(.system(size: 10.5))
+                Text("\(text.wrappedValue.count)/500").font(.system(size: 11)).monospacedDigit().opacity(0.6)
             }
             TextEditor(text: text)
-                .font(.system(size: 14))
-                .frame(minHeight: 70)
-                .padding(8)
-                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .roundedFormEditor(app: app, minHeight: 80)
                 .accessibilityIdentifier(id)
                 .onChange(of: text.wrappedValue) { _, newValue in
                     if newValue.count > 500 { text.wrappedValue = String(newValue.prefix(500)) }
@@ -637,18 +638,14 @@ struct CreateEventView: View {
     private func introEditor() -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text(app.T("Giới thiệu sự kiện", "Event introduction")).font(.system(size: 11.5))
-                Spacer()
-                Text("\(app.createIntro.count)/4000").font(.system(size: 10.5))
+                FormFieldLabel(icon: "doc.text", text: app.T("Giới thiệu sự kiện", "Event introduction"),
+                               trailing: "\(app.createIntro.count)/4000")
             }
             Text(app.T("Một đoạn giới thiệu dài hơn, hấp dẫn. Tách dòng trống giữa các đoạn. Không phải quảng cáo giả, không phải \"Bao gồm\".",
                         "A longer, attractive write-up. Leave a blank line between paragraphs. Not fabricated marketing copy, not the same as \"Included\"."))
-                .font(.system(size: 11)).opacity(0.75)
+                .font(.system(size: 12.5)).opacity(0.7)
             TextEditor(text: $app.createIntro)
-                .font(.system(size: 14))
-                .frame(minHeight: 110)
-                .padding(8)
-                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .roundedFormEditor(app: app, minHeight: 130)
                 .onChange(of: app.createIntro) { _, newValue in
                     if newValue.count > 4000 { app.createIntro = String(newValue.prefix(4000)) }
                 }
@@ -666,46 +663,58 @@ struct CreateEventView: View {
     @ViewBuilder
     private func includedItemsEditor() -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 4) {
-                Text(app.T("Bao gồm", "Included")).font(.system(size: 11.5))
-                Text("*").font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
-            }
+            FormFieldLabel(icon: "checklist", text: app.T("Bao gồm", "Included"), required: true,
+                           trailing: "\(app.createIncludedItems.count)/3")
             ForEach(Array(app.createIncludedItems.enumerated()), id: \.offset) { index, item in
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 18))
+                        .padding(.top, 3)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 8) {
                         TextField(
                             app.T("Tên (vd. 5 món)", "Label (e.g. 5 courses)"),
-                            text: Binding(
-                                get: { item.label },
-                                set: { app.setCreateIncludedItemLabel(index, $0) }
-                            )
+                            text: Binding(get: { item.label }, set: { app.setCreateIncludedItemLabel(index, $0) })
                         )
-                        .font(.system(size: 13.5))
-                        Button {
-                            app.removeCreateIncludedItem(at: index)
-                        } label: {
-                            Image(systemName: "xmark").font(.system(size: 11)).opacity(0.6)
-                        }
-                        .buttonStyle(.plain)
+                        .font(.system(size: 16, weight: .semibold))
+                        .accessibilityIdentifier("create.included.\(index).label")
+                        Divider()
+                        TextField(
+                            app.T("Mô tả (không bắt buộc)", "Detail (optional)"),
+                            text: Binding(get: { item.detail }, set: { app.setCreateIncludedItemDetail(index, $0) })
+                        )
+                        .font(.system(size: 15))
+                        .opacity(0.85)
+                        .accessibilityIdentifier("create.included.\(index).detail")
                     }
-                    TextField(
-                        app.T("Mô tả (không bắt buộc)", "Detail (optional)"),
-                        text: Binding(
-                            get: { item.detail },
-                            set: { app.setCreateIncludedItemDetail(index, $0) }
-                        )
-                    )
-                    .font(.system(size: 12.5))
-                    .opacity(0.8)
+                    Button {
+                        app.removeCreateIncludedItem(at: index)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(app.palette.ink.opacity(0.35))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, -10)
+                    .accessibilityLabel(app.T("Xoá mục", "Remove item"))
                 }
-                .padding(10)
-                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.leading, 16).padding(.trailing, 6).padding(.vertical, 14)
+                .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
             }
             if app.createIncludedItems.count < 3 {
                 Button { app.addCreateIncludedItem() } label: {
-                    Text(app.T("+ Thêm mục", "+ Add item")).font(.system(size: 12.5, weight: .semibold))
+                    Label(app.T("Thêm mục", "Add item"), systemImage: "plus.circle.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(app.palette.ink.opacity(0.3), style: StrokeStyle(lineWidth: 1.2, dash: [5, 4])))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("create.included.add")
             }
             if !includedValid && !app.createSent && attemptedReview {
                 Text(app.T("Hãy thêm ít nhất một mục Bao gồm.", "Please add at least one Included item."))
@@ -713,6 +722,7 @@ struct CreateEventView: View {
             }
         }
         .foregroundStyle(app.palette.ink)
+        .padding(.top, 8)
     }
 
     // Address-autocomplete fix pass (2026-09-28) — replaces the old
@@ -797,31 +807,48 @@ struct CreateEventView: View {
         return f
     }()
 
+    /// "Tomorrow, Sat 25 Oct" style (the video's "Tomorrow, Fri 25 Mar").
+    private func friendlyDateLabel(_ date: Date) -> String {
+        let cal = SmartDefaults.vnCalendar
+        let f = DateFormatter()
+        f.timeZone = AppState.vietnamTimeZone
+        f.locale = Locale(identifier: app.isEN ? "en_GB" : "vi_VN")
+        f.dateFormat = app.isEN ? "EEE d MMM" : "EEEE, d/M"
+        let base = f.string(from: date)
+        if cal.isDateInToday(date) { return app.T("Hôm nay, ", "Today, ") + base }
+        if cal.isDateInTomorrow(date) { return app.T("Ngày mai, ", "Tomorrow, ") + base }
+        return base
+    }
+
     @ViewBuilder
     private func dateTimeRow() -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 4) {
-                Text(app.T("Ngày & giờ (giờ Việt Nam)", "Date & time (Vietnam time)")).font(.system(size: 11.5))
-                Text("*").font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
-            }
+            FormFieldLabel(icon: "calendar", text: app.T("Ngày & giờ", "Date & time"), required: true,
+                           trailing: app.T("Giờ Việt Nam", "Vietnam time"))
             Button {
                 dateTimeSheetOpen = true
             } label: {
-                HStack {
+                HStack(spacing: 10) {
                     if let date = app.createEventDate, let time = app.createEventTime {
-                        Text("\(Self.vnDateLabelFormatter.string(from: date)) ▪︎ \(Self.vnTimeLabelFormatter.string(from: time))")
+                        Text(friendlyDateLabel(date))
+                            .font(.system(size: 16, weight: .semibold))
+                        Text(Self.vnTimeLabelFormatter.string(from: time))
+                            .font(.system(size: 16))
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(app.palette.ink.opacity(0.07), in: Capsule())
                     } else {
-                        Text(app.T("Chọn ngày & giờ", "Pick date & time")).opacity(0.6)
+                        Text(app.T("Chọn ngày & giờ", "Pick date & time")).font(.system(size: 16)).opacity(0.5)
                     }
                     Spacer()
-                    Image(systemName: "calendar")
+                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).opacity(0.5)
                 }
-                .font(.system(size: 14))
                 .foregroundStyle(app.palette.ink)
-                .padding(13)
-                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.horizontal, 16).padding(.vertical, 15)
+                .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("create.dateTime")
             if !dateTimeValid && !app.createSent && attemptedReview {
                 Text(app.T("Hãy chọn ngày và giờ diễn ra.", "Please pick a date and time."))
                     .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
@@ -954,18 +981,26 @@ struct CreateEventView: View {
                 .safeAreaInset(edge: .top, spacing: 0) {
                     if !app.createSent {
                         StepProgress(steps: sectionTitles,
-                                     current: firstIncompleteSection?.rawValue ?? Section.allCases.count,
+                                     current: currentStep.rawValue,
                                      completed: Section.allCases.map(sectionDone),
+                                     message: createProgressMessage,
                                      identifier: "create.progress",
                                      onSelect: { index in
-                                         guard let section = Section(rawValue: index) else { return }
-                                         withAnimation { proxy.scrollTo(section.anchor, anchor: .top) }
+                                         if let section = Section(rawValue: index) { goTo(section) }
                                      })
                             .padding(.horizontal, 22).padding(.top, 6).padding(.bottom, 10)
                             .background(app.palette.paper)
                     }
                 }
-                .onAppear { scrollProxy = proxy }
+                .onAppear {
+                    scrollProxy = proxy
+                    // Start where there's work: skip Host when the organizer
+                    // profile is already filled (or when editing an event).
+                    if !stepSeeded {
+                        stepSeeded = true
+                        if app.createEditEventId != nil || sectionDone(.host) { currentStep = .basics }
+                    }
+                }
         }
         .confirmationDialog(app.T("Bỏ sự kiện này?", "Discard this event?"),
                             isPresented: $discardConfirmOpen, titleVisibility: .visible) {
@@ -1015,158 +1050,179 @@ struct CreateEventView: View {
                         .padding(.top, 10)
                 }
 
-                defaultsNotice()
+                if currentStep == .whenWhere || currentStep == .tickets { defaultsNotice() }
 
-                group(app.T("Hồ sơ người tổ chức", "Organizer profile")) {
-                    BanbeField(label: app.T("Tên", "Name"), placeholder: "Bếp Nhỏ", text: $app.orgRegName)
-                        .id(Section.host.anchor)
-                    BanbeField(label: "Instagram", placeholder: "@bepnho.saigon", text: $app.orgRegIg)
-                    BanbeField(label: app.T("Giới thiệu", "About"),
-                               placeholder: app.T("Mình nấu cho người lạ từ 2021…", "I cook for strangers since 2021…"),
-                               text: $app.orgRegDesc)
+                stepNavHeader()
+
+                if currentStep == .host {
+                    group(app.T("Hồ sơ người tổ chức", "Organizer profile")) {
+                        BanbeField(label: app.T("Tên", "Name"), placeholder: "Bếp Nhỏ", text: $app.orgRegName, icon: "person.crop.circle")
+                            .id(Section.host.anchor)
+                        BanbeField(label: "Instagram", placeholder: "@bepnho.saigon", text: $app.orgRegIg, icon: "at")
+                        BanbeField(label: app.T("Giới thiệu", "About"),
+                                   placeholder: app.T("Mình nấu cho người lạ từ 2021…", "I cook for strangers since 2021…"),
+                                   text: $app.orgRegDesc, icon: "text.quote")
+                    }
                 }
-
-                group(app.T("Sự kiện", "Event")) {
-                    BanbeField(label: app.T("Tên sự kiện", "Event name"),
-                               placeholder: app.T("Tên sự kiện của bạn", "Your event name"), text: $app.createName,
-                               required: true)
-                        .id(Section.basics.anchor)
-                    BanbeField(label: app.T("Mô tả", "Description"),
-                               placeholder: app.T("Buổi này có gì?", "What happens?"), text: $app.createDesc,
-                               required: true)
-                    if !descValid && !app.createSent && attemptedReview {
-                        Text(app.T("Hãy nhập mô tả.", "Please enter a description."))
-                            .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
-                    }
-                    introEditor()
-                    greetingEditor()
-                    BanbeField(
-                        label: app.T("Địa điểm", "Location"),
-                        placeholder: app.T("12 Nguyễn Văn Đậu, hoặc tên địa điểm…", "12 Nguyễn Văn Đậu, or a venue name…"),
-                        text: $app.createLoc,
-                        required: true
-                    )
-                    .id(Section.whenWhere.anchor)
-                    .onChange(of: app.createLoc) { _, newValue in
-                        createAddressSearchTask?.cancel()
-                        // A stale confirmation/point for a since-edited
-                        // address is worse than none — see
-                        // createLocConfirmed's own doc comment.
-                        app.createLat = nil
-                        app.createLng = nil
-                        app.createLocLabel = ""
-                        app.createAddressLine = ""
-                        app.createDistrict = ""
-                        app.createCity = ""
-                        app.createPostalCode = ""
-                        app.createCountryCode = nil
-                        app.createStateProvince = nil
-                        app.createNeighborhood = nil
-                        app.createLocConfirmed = false
-                        app.createAddressSuggestions = []
-                        app.createAddressSearchError = ""
-                        let query = newValue.trimmingCharacters(in: .whitespaces)
-                        guard query.count >= 4 else { app.createAddressSearching = false; return }
-                        createAddressSearchTask = Task {
-                            try? await Task.sleep(nanoseconds: 500_000_000)
-                            guard !Task.isCancelled else { return }
-                            await app.searchCreateAddress(query)
+                if currentStep == .basics {
+                    group(app.T("Cơ bản", "Basics")) {
+                        BanbeField(label: app.T("Tên sự kiện", "Event name"),
+                                   placeholder: app.T("Tên sự kiện của bạn", "Your event name"), text: $app.createName,
+                                   required: true, icon: "sparkles")
+                            .id(Section.basics.anchor)
+                        BanbeField(label: app.T("Mô tả", "Description"),
+                                   placeholder: app.T("Buổi này có gì?", "What happens?"), text: $app.createDesc,
+                                   required: true, icon: "text.alignleft")
+                        if !descValid && !app.createSent && attemptedReview {
+                            Text(app.T("Hãy nhập mô tả.", "Please enter a description."))
+                                .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
                         }
-                    }
-                    Text(app.T(
-                        "Gõ số nhà + tên đường (hoặc tên địa điểm nếu không có số nhà) rồi chọn một gợi ý — cần thiết để đăng sự kiện.",
-                        "Type a house number + street (or a venue name if there is no house number), then pick a suggestion — required to publish."
-                    ))
-                    .font(.system(size: 11)).opacity(0.75).foregroundStyle(app.palette.ink)
-                    locationConfirmSection()
-                    dateTimeRow()
-                    ticketsSection()
-                    if !seatsValid && !app.createSent && attemptedReview {
-                        Text(app.T("Hãy nhập số chỗ lớn hơn 0.", "Please enter a number of seats greater than 0."))
-                            .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
-                    }
-
-                    // Strict invite-only events (migration 113) — a peer of
-                    // every other field here, not a separate "advanced"
-                    // section: it changes who can even discover the event.
-                    // Deliberately separate from approval mode (not exposed
-                    // in this form) and admin review — private is not
-                    // auto-approved, per set_event_visibility's own comment.
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(app.T("Quyền riêng tư", "Privacy")).font(.system(size: 11.5))
-                        HStack(spacing: 8) {
-                            ForEach([("public", "Công khai", "Public"), ("invite", "Chỉ mời", "Invite-only")], id: \.0) { key, vi, en in
-                                let active = app.createVisibility == key
-                                Button { app.createVisibility = key } label: {
-                                    Text(app.T(vi, en))
-                                        .font(.system(size: 13))
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 10)
-                                        .background(active ? app.palette.ink : .clear, in: RoundedRectangle(cornerRadius: 10))
+                        introEditor()
+                        greetingEditor()
+                        FormFieldLabel(icon: "square.grid.2x2", text: app.T("Hạng mục", "Categories"), required: true,
+                                       trailing: app.T("Tối đa 2", "Up to 2"))
+                            .padding(.top, 8)
+                        FlowRow(spacing: 8) {
+                            ForEach(categories, id: \.key) { category in
+                                let active = app.createCats.contains(category.key)
+                                Button { app.pickCreateCategory(category.key) } label: {
+                                    Label(app.T(category.vi, category.en), systemImage: categoryIcon(category.key))
+                                        .font(.system(size: 15, weight: active ? .semibold : .regular))
                                         .foregroundStyle(active ? app.palette.paper : app.palette.ink)
-                                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(active ? .clear : app.palette.rule))
+                                        .padding(.horizontal, 16).padding(.vertical, 12)
+                                        .background(active ? app.palette.ink : app.palette.paper, in: Capsule())
+                                        .overlay(Capsule().stroke(active ? .clear : app.palette.rule, lineWidth: 1))
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityIdentifier("create-visibility-\(key)")
                             }
                         }
-                        Text(app.createVisibility == "invite"
-                             ? app.T("Chỉ người được mời mới thấy và đặt được sự kiện này. Bạn vẫn cần được banbe duyệt.", "Only invited people can see or book this event. It still needs banbe approval.")
-                             : app.T("Ai cũng có thể tìm thấy và đặt sự kiện này.", "Anyone can discover and book this event."))
-                            .font(.system(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
-                    }
-
-                    ReservationCriteriaPicker()
-
-                    HStack(spacing: 4) {
-                        Text(app.T("Hạng mục ▪︎ chọn tối đa 2", "Categories ▪︎ up to 2"))
-                            .font(.system(size: 11.5))
-                        Text("*").font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
-                    }
-                    FlowRow(spacing: 8) {
-                        ForEach(categories, id: \.key) { category in
-                            let active = app.createCats.contains(category.key)
-                            Button { app.pickCreateCategory(category.key) } label: {
-                                Text(app.T(category.vi, category.en))
-                                    .font(.system(size: 12.5, weight: active ? .semibold : .regular))
-                                    .foregroundStyle(active ? app.palette.paper : app.palette.ink)
-                                    .padding(.horizontal, 14).padding(.vertical, 9)
-                                    .background(active ? app.palette.ink : .clear, in: Capsule())
-                                    .overlay(Capsule().stroke(active ? .clear : app.palette.rule, lineWidth: 1))
-                            }
-                            .buttonStyle(.plain)
+                        if !catsValid && !app.createSent && attemptedReview {
+                            Text(app.T("Hãy chọn ít nhất một danh mục.", "Please pick at least one category."))
+                                .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
                         }
-                    }
-                    if !catsValid && !app.createSent && attemptedReview {
-                        Text(app.T("Hãy chọn ít nhất một danh mục.", "Please pick at least one category."))
-                            .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
-                    }
 
-                    // Keyword-search fix (migration 108) — so this event
-                    // actually surfaces in Map's search box for terms
-                    // beyond its literal name/district. Left blank,
-                    // submission defaults it to the category label(s)
-                    // picked just above (never silently empty).
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(app.T("Từ khoá tìm kiếm", "Search keywords")).font(.system(size: 11.5))
-                        TextField(
-                            app.T("vd. tiệc tối, rượu vang, ẩm thực Việt", "e.g. supper club, wine, Vietnamese food"),
-                            text: $app.createKeywords
+                        // Keyword-search fix (migration 108) — so this event
+                        // actually surfaces in Map's search box for terms
+                        // beyond its literal name/district. Left blank,
+                        // submission defaults it to the category label(s)
+                        // picked just above (never silently empty).
+                        VStack(alignment: .leading, spacing: 5) {
+                            FormFieldLabel(icon: "magnifyingglass", text: app.T("Từ khoá tìm kiếm", "Search keywords"))
+                                .padding(.top, 8)
+                            TextField(
+                                app.T("vd. tiệc tối, rượu vang, ẩm thực Việt", "e.g. supper club, wine, Vietnamese food"),
+                                text: $app.createKeywords
+                            )
+                            .font(.system(size: 16))
+                            .padding(.horizontal, 16).padding(.vertical, 15)
+                            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+                            Text(app.T(
+                                "Cách nhau bằng dấu phẩy — để trống sẽ tự dùng danh mục đã chọn ở trên.",
+                                "Comma-separated — left blank, the category picked above is used instead."
+                            ))
+                            .font(.system(size: 11)).opacity(0.75)
+                        }
+                        .foregroundStyle(app.palette.ink)
+
+                        includedItemsEditor()
+                    }
+                }
+                if currentStep == .whenWhere {
+                    group(app.T("Thời gian & địa điểm", "When & where")) {
+                        BanbeField(
+                            label: app.T("Địa điểm", "Location"),
+                            placeholder: app.T("12 Nguyễn Văn Đậu, hoặc tên địa điểm…", "12 Nguyễn Văn Đậu, or a venue name…"),
+                            text: $app.createLoc,
+                            required: true,
+                            icon: "mappin.and.ellipse"
                         )
-                        .font(.system(size: 14))
+                        .id(Section.whenWhere.anchor)
+                        .onChange(of: app.createLoc) { _, newValue in
+                            createAddressSearchTask?.cancel()
+                            // A stale confirmation/point for a since-edited
+                            // address is worse than none — see
+                            // createLocConfirmed's own doc comment.
+                            app.createLat = nil
+                            app.createLng = nil
+                            app.createLocLabel = ""
+                            app.createAddressLine = ""
+                            app.createDistrict = ""
+                            app.createCity = ""
+                            app.createPostalCode = ""
+                            app.createCountryCode = nil
+                            app.createStateProvince = nil
+                            app.createNeighborhood = nil
+                            app.createLocConfirmed = false
+                            app.createAddressSuggestions = []
+                            app.createAddressSearchError = ""
+                            let query = newValue.trimmingCharacters(in: .whitespaces)
+                            guard query.count >= 4 else { app.createAddressSearching = false; return }
+                            createAddressSearchTask = Task {
+                                try? await Task.sleep(nanoseconds: 500_000_000)
+                                guard !Task.isCancelled else { return }
+                                await app.searchCreateAddress(query)
+                            }
+                        }
                         Text(app.T(
-                            "Cách nhau bằng dấu phẩy — để trống sẽ tự dùng danh mục đã chọn ở trên.",
-                            "Comma-separated — left blank, the category picked above is used instead."
+                            "Gõ số nhà + tên đường (hoặc tên địa điểm nếu không có số nhà) rồi chọn một gợi ý — cần thiết để đăng sự kiện.",
+                            "Type a house number + street (or a venue name if there is no house number), then pick a suggestion — required to publish."
                         ))
-                        .font(.system(size: 11)).opacity(0.75)
+                        .font(.system(size: 11)).opacity(0.75).foregroundStyle(app.palette.ink)
+                        locationConfirmSection()
+                        dateTimeRow()
                     }
-                    .foregroundStyle(app.palette.ink)
+                }
+                if currentStep == .tickets {
+                    group(app.T("Vé & ai được đặt", "Tickets & who can book")) {
+                        ticketsSection()
+                        if !seatsValid && !app.createSent && attemptedReview {
+                            Text(app.T("Hãy nhập số chỗ lớn hơn 0.", "Please enter a number of seats greater than 0."))
+                                .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                        }
 
-                    includedItemsEditor()
+                        // Strict invite-only events (migration 113) — a peer of
+                        // every other field here, not a separate "advanced"
+                        // section: it changes who can even discover the event.
+                        // Deliberately separate from approval mode (not exposed
+                        // in this form) and admin review — private is not
+                        // auto-approved, per set_event_visibility's own comment.
+                        VStack(alignment: .leading, spacing: 6) {
+                            FormFieldLabel(icon: "lock", text: app.T("Quyền riêng tư", "Privacy")).padding(.top, 12)
+                            HStack(spacing: 8) {
+                                ForEach([("public", "Công khai", "Public"), ("invite", "Chỉ mời", "Invite-only")], id: \.0) { key, vi, en in
+                                    let active = app.createVisibility == key
+                                    Button { app.createVisibility = key } label: {
+                                        VStack(spacing: 6) {
+                                            Image(systemName: key == "public" ? "globe.asia.australia" : "envelope.badge").font(.system(size: 20))
+                                            Text(app.T(vi, en)).font(.system(size: 15, weight: active ? .semibold : .regular))
+                                        }
+                                        .frame(maxWidth: .infinity, minHeight: 76)
+                                        .background(active ? app.palette.ink : app.palette.paper, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                        .foregroundStyle(active ? app.palette.paper : app.palette.ink)
+                                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(active ? .clear : app.palette.rule))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityIdentifier("create-visibility-\(key)")
+                                }
+                            }
+                            Text(app.createVisibility == "invite"
+                                 ? app.T("Chỉ người được mời mới thấy và đặt được sự kiện này. Bạn vẫn cần được banbe duyệt.", "Only invited people can see or book this event. It still needs banbe approval.")
+                                 : app.T("Ai cũng có thể tìm thấy và đặt sự kiện này.", "Anyone can discover and book this event."))
+                                .font(.system(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
+                        }
+
+                        ReservationCriteriaPicker()
+                    }
+                }
+                if currentStep == .photos {
+                    gallerySection()
+                        .padding(.top, 22)
                 }
 
-                gallerySection()
-                    .id(Section.photos.anchor)
+                if currentStep != .photos {
+                    stepNavFooter()
+                }
 
                 // TASK 3 (event creation validation pass) — the "Download
                 // the Excel template" entry (a `ShareLink` to the bundled
@@ -1186,6 +1242,17 @@ struct CreateEventView: View {
                 // "Review before submitting" step (task 1) — this button now
                 // only OPENS the review sheet; only that sheet's own
                 // "Xác nhận và gửi" ever actually calls submitCreateEvent.
+                if currentStep == .photos || app.createSent {
+                if !app.createSent {
+                    Button { goTo(.tickets) } label: {
+                        Label(app.T("Quay lại: Vé", "Back: Tickets"), systemImage: "chevron.left")
+                            .font(.system(size: 14, weight: .semibold))
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 18)
+                    .accessibilityIdentifier("create.step.back")
+                }
                 InkButton(title: app.createSent
                           ? app.T("Đã gửi, đang chờ Banbe duyệt", "Submitted, waiting for Banbe to review")
                           : app.T("Xem lại sự kiện của bạn", "Review your event"),
@@ -1195,9 +1262,7 @@ struct CreateEventView: View {
                     // scrolls to it, instead of a silent disabled button.
                     guard canOpenReview else {
                         attemptedReview = true
-                        if let first = firstIncompleteSection {
-                            withAnimation { scrollProxy?.scrollTo(first.anchor, anchor: .top) }
-                        }
+                        if let first = firstIncompleteSection { goTo(first) }
                         return
                     }
                     // Keyboard-stays-up fix (2026-09-29) — opening the review
@@ -1220,6 +1285,7 @@ struct CreateEventView: View {
                         .multilineTextAlignment(.center)
                         .padding(.top, 8)
                         .accessibilityIdentifier("create.missingSummary")
+                }
                 }
 
                 if !app.createError.isEmpty {
@@ -1253,6 +1319,96 @@ struct CreateEventView: View {
         .onAppear { seedGalleryIfNeeded() }
     }
 
+    private func categoryIcon(_ key: String) -> String {
+        switch key {
+        case "supper": return "fork.knife"
+        case "fashion": return "tshirt"
+        case "gallery": return "photo.artframe"
+        case "music": return "music.note"
+        case "popup": return "storefront"
+        default: return "sparkles"
+        }
+    }
+
+    /// Encouraging line for the step bar, by how many steps are done.
+    private var createProgressMessage: String {
+        let done = Section.allCases.filter(sectionDone).count
+        let left = Section.allCases.count - done
+        switch done {
+        case 0: return app.T("Bắt đầu thôi! ✨", "Let's get started! ✨")
+        case Section.allCases.count: return app.T("Xong hết rồi, xem lại nhé! 🎉", "All set, time to review! 🎉")
+        default: return left == 1 ? app.T("Sắp xong rồi, còn 1 bước 🔥", "Almost there, 1 step left 🔥")
+                                   : app.T("Bạn đang làm rất tốt, còn \(left) bước 🔥", "You're doing great, \(left) steps left 🔥")
+        }
+    }
+
+    private func goTo(_ section: Section) {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        withAnimation(.easeInOut(duration: 0.2)) { currentStep = section }
+        DispatchQueue.main.async { scrollProxy?.scrollTo("create.top", anchor: .top) }
+    }
+
+    /// Top-of-page anchor for step changes.
+    private func stepNavHeader() -> some View {
+        Color.clear.frame(height: 0).id("create.top")
+    }
+
+    /// What's still missing on THIS step (shown above Next; never blocks it).
+    private var currentStepGaps: [String] {
+        switch currentStep {
+        case .host: return app.orgRegName.trimmingCharacters(in: .whitespaces).isEmpty ? [app.T("tên host", "host name")] : []
+        case .basics:
+            return [!nameValid ? app.T("tên sự kiện", "event name") : nil,
+                    !descValid ? app.T("mô tả", "description") : nil,
+                    !catsValid ? app.T("danh mục", "a category") : nil,
+                    !includedValid ? app.T("mục bao gồm", "an included item") : nil].compactMap { $0 }
+        case .whenWhere:
+            return [!app.createLocConfirmed ? app.T("địa chỉ gợi ý", "a suggested address") : nil,
+                    !dateTimeValid ? app.T("ngày & giờ", "date & time") : nil].compactMap { $0 }
+        case .tickets: return seatsValid ? [] : [app.T("số chỗ", "seats")]
+        case .photos: return photosValid ? [] : [app.T("ít nhất \(minPhotos) ảnh", "at least \(minPhotos) photos")]
+        }
+    }
+
+    /// Back / Next under each step. Next is never blocked: hosts can fill in
+    /// any order and come back (finished steps show a check in the bar).
+    private func stepNavFooter() -> some View {
+        let next = Section(rawValue: currentStep.rawValue + 1)
+        let prev = Section(rawValue: currentStep.rawValue - 1)
+        return VStack(spacing: 10) {
+            if !currentStepGaps.isEmpty {
+                Text(app.T("Còn thiếu ở bước này: ", "Still needed here: ") + currentStepGaps.joined(separator: ", "))
+                    .font(.system(size: 12))
+                    .foregroundStyle(app.palette.ink.opacity(0.7))
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("create.step.gaps")
+            }
+            HStack(spacing: 10) {
+                if let prev {
+                    Button { goTo(prev) } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(width: 54, height: 52)
+                            .overlay(RoundedRectangle(cornerRadius: 999).stroke(app.palette.rule, lineWidth: 1))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(app.T("Quay lại: ", "Back: ") + sectionTitles[prev.rawValue])
+                    .accessibilityIdentifier("create.step.back")
+                }
+                if let next {
+                    InkButton(title: app.T("Tiếp: ", "Next: ") + sectionTitles[next.rawValue], cornerRadius: 999) {
+                        goTo(next)
+                    }
+                    .accessibilityIdentifier("create.step.next")
+                }
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.top, 24)
+    }
+
     /// Note 48: what was pre-filled, and a one-tap way out of it.
     @ViewBuilder
     private func defaultsNotice() -> some View {
@@ -1261,10 +1417,10 @@ struct CreateEventView: View {
                 Image(systemName: "wand.and.stars").accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(app.createDefaultsSource.map {
-                        app.T("Đã điền sẵn thời gian, giá và số chỗ từ \"\($0)\". Đổi bất cứ gì bạn muốn.",
-                              "Time, price and seats are pre-filled from \"\($0)\". Change anything you like.")
-                    } ?? app.T("Đã chọn sẵn Thứ Bảy tới lúc 19:00 và 14 chỗ. Đổi bất cứ gì bạn muốn.",
-                               "We picked next Saturday at 19:00 and 14 seats. Change anything you like."))
+                        app.T("Đã điền sẵn thời gian và giá từ \"\($0)\". Đổi bất cứ gì bạn muốn.",
+                              "Time and price are pre-filled from \"\($0)\". Change anything you like.")
+                    } ?? app.T("Đã chọn sẵn Thứ Bảy tới lúc 19:00. Đổi bất cứ lúc nào bạn muốn.",
+                               "We picked next Saturday at 19:00. Change it any time."))
                         .font(.system(size: 12))
                         .fixedSize(horizontal: false, vertical: true)
                     Button(app.T("Bắt đầu trống", "Start blank")) {
@@ -1300,43 +1456,63 @@ struct CreateEventView: View {
                      "Similar events: \(EventLabels.vnd(range.lowerBound))–\(EventLabels.vnd(range.upperBound))")
     }
 
+    /// A big, bordered quick-pick tile (the video's 6:00 / 6:30 / 7:00 buttons).
+    private func pickTile(_ title: String, selected: Bool, id: String, action: @escaping () -> Void) -> some View {
+        Button {
+            Haptics.selection()
+            action()
+        } label: {
+            Text(title)
+                .font(.system(size: 15, weight: selected ? .semibold : .regular))
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .foregroundStyle(selected ? app.palette.paper : app.palette.ink)
+                .background(selected ? app.palette.ink : app.palette.paper,
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(app.palette.rule, lineWidth: selected ? 0 : 1))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
+        .accessibilityIdentifier(id)
+    }
+
     /// Price as quick picks + free entry; seats as a stepper with quick picks.
     @ViewBuilder
     private func ticketsSection() -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("Giá vé", "Price")).font(.system(size: 11.5))
-            FlowRow(spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
+            FormFieldLabel(icon: "tag", text: app.T("Giá vé", "Price"),
+                           trailing: similarPriceHint == nil ? nil : app.T("Gợi ý", "Suggested"))
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                 ForEach(SmartDefaults.priceQuickPicks, id: \.self) { value in
-                    ChoiceChip(title: value == 0 ? app.T("Miễn phí", "Free") : EventLabels.vnd(value),
-                               selected: !app.createPrice.isEmpty && priceDigits == value, compact: true,
-                               identifier: "create.price.\(value)") {
-                        app.createPrice = String(value)
-                    }
+                    pickTile(value == 0 ? app.T("Miễn phí", "Free") : EventLabels.vnd(value),
+                             selected: !app.createPrice.isEmpty && priceDigits == value,
+                             id: "create.price.\(value)") { app.createPrice = String(value) }
                 }
             }
             BanbeField(label: nil, placeholder: app.T("Giá khác, vd. 450.000", "Other price, e.g. 450,000"),
-                       text: $app.createPrice, keyboard: .numberPad)
+                       text: $app.createPrice, keyboard: .numberPad, icon: "tag")
                 .accessibilityLabel(app.T("Giá vé", "Price"))
             Text(similarPriceHint ?? app.T("Để trống là miễn phí.", "Leave empty for a free event."))
-                .font(.system(size: 11)).opacity(0.7)
+                .font(.system(size: 12)).opacity(0.7)
                 .accessibilityIdentifier("create.priceHint")
 
-            HStack(spacing: 3) {
-                Text(app.T("Số chỗ", "Seats")).font(.system(size: 11.5))
-                Text("*").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
-            }
-            .padding(.top, 6)
+            FormFieldLabel(icon: "person.2", text: app.T("Số chỗ", "Seats"), required: true)
+                .padding(.top, 12)
             HStack {
-                FlowRow(spacing: 6) {
-                    ForEach([10, 20, 30, 50], id: \.self) { n in
-                        ChoiceChip(title: "\(n)", selected: seatsBinding == n, compact: true,
-                                   identifier: "create.seats.\(n)") { app.createSeats = String(n) }
-                    }
-                }
-                Spacer(minLength: 8)
                 CountStepper(value: max(seatsBinding, 0), range: 0...SmartDefaults.seatRange.upperBound,
                              unit: app.T("chỗ", "seats"), identifier: "create.seatsStepper") { newValue in
                     app.createSeats = newValue == 0 ? "" : String(newValue)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                ForEach([10, 20, 30, 50], id: \.self) { n in
+                    pickTile("\(n)", selected: seatsBinding == n, id: "create.seats.\(n)") { app.createSeats = String(n) }
                 }
             }
         }
@@ -1345,11 +1521,12 @@ struct CreateEventView: View {
     }
 
     private func group<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title).font(.system(size: 11.5, weight: .semibold))
+        VStack(alignment: .leading, spacing: 16) {
+            Text(title).font(.system(.title3, design: .rounded).weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
             content()
         }
-        .padding(16)
+        .padding(18)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.top, 22)
     }
@@ -2244,5 +2421,19 @@ struct FlowRow: Layout {
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
         }
+    }
+}
+
+/// Note 48 form style for multi-line text: large, rounded, outlined, and no
+/// stray system-white background behind the TextEditor.
+extension View {
+    func roundedFormEditor(app: AppState, minHeight: CGFloat) -> some View {
+        self
+            .font(.system(size: 16))
+            .scrollContentBackground(.hidden)
+            .frame(minHeight: minHeight)
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
     }
 }

@@ -353,3 +353,12 @@ input::placeholder {
     font-size: 16px !important;
   }
 }
+
+/* Note 48 (iOS parity): charm sway for empty states, day slide for Schedule, row reveal for the inline month. */
+@keyframes bbCharmSway { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
+@keyframes bbSlideFromRight { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes bbSlideFromLeft { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+@keyframes bbRowReveal { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .bb-charm, .bb-slide, .bb-row-reveal { animation: none !important; }
+}

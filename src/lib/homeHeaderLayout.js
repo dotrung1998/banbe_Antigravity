@@ -1,5 +1,6 @@
 // Width budget for Home's header row: wordmark + "Home" title on the left; on the right one
-// capsule holding two separate buttons (streak, coins) next to the Search circle. Every control
+// capsule holding two separate buttons (streak, coins) next to the Notifications bell and Search circles (the bell
+// moved here when Schedule took Notifications' dock slot — note 44 web parity). Every control
 // keeps a >= 44 pt touch target. iOS uses ViewThatFits (drops the title first); web measures the row with a
 // ResizeObserver and applies the same rule (`titleFits`). Numbers are conservative estimates, not measurements.
 export const HEADER = {
@@ -14,18 +15,33 @@ export const HEADER = {
   divider: 1,
   groupGap: 6,         // capsule <-> search
   search: 44,
+  bell: 44,
   minTouch: 44,
 };
 const btnWidth = (chars) => Math.max(HEADER.minTouch, HEADER.btnPad * 2 + HEADER.icon + HEADER.iconGap + chars * HEADER.digit);
 
 /** Estimated total content width of the header row. */
-export function estimateHeaderWidth({ streakChars = 1, coinChars = 3, showTitle = true, showShortcuts = true } = {}) {
-  const left = HEADER.wordmark + (showTitle ? HEADER.wordmarkGap + HEADER.title : 0);
-  const right = (showShortcuts ? btnWidth(streakChars) + HEADER.divider + btnWidth(coinChars) + HEADER.groupGap : 0) + HEADER.search;
+export function estimateHeaderWidth({ streakChars = 1, coinChars = 3, showTitle = true, showShortcuts = true, showBell = true, wordmark = HEADER.wordmark } = {}) {
+  const left = wordmark + (wordmark && showTitle ? HEADER.wordmarkGap : 0) + (showTitle ? HEADER.title : 0);
+  const right = (showShortcuts ? btnWidth(streakChars) + HEADER.divider + btnWidth(coinChars) + HEADER.groupGap : 0)
+    + (showBell ? HEADER.bell + HEADER.groupGap : 0) + HEADER.search;
   return HEADER.sidePad * 2 + left + right;
 }
 
-/** The title is the first thing dropped: shown only when the whole row (with it) still fits. */
-export const titleFits = (viewport, opts = {}) => estimateHeaderWidth({ ...opts, showTitle: true }) <= viewport;
-export const headerFits = (viewport, opts = {}) => estimateHeaderWidth({ ...opts, showTitle: titleFits(viewport, opts) }) <= viewport;
+/** Wordmark sizes tried, largest first (iOS note 45 steps it down before giving anything else up). */
+export const WORDMARK_STEPS = [HEADER.wordmark, 70, 58];
+
+/**
+ * { wordmark, showTitle }: keep the title with the largest wordmark that fits; else drop the title (largest wordmark
+ * that fits); last resort, no wordmark. Every control always keeps its 44px target.
+ */
+export function headerLayout(viewport, opts = {}) {
+  for (const wordmark of WORDMARK_STEPS) if (estimateHeaderWidth({ ...opts, wordmark, showTitle: true }) <= viewport) return { wordmark, showTitle: true };
+  for (const wordmark of WORDMARK_STEPS) if (estimateHeaderWidth({ ...opts, wordmark, showTitle: false }) <= viewport) return { wordmark, showTitle: false };
+  return { wordmark: 0, showTitle: false };
+}
+
+/** The title is dropped only after the wordmark has shrunk as far as it goes. */
+export const titleFits = (viewport, opts = {}) => headerLayout(viewport, opts).showTitle;
+export const headerFits = (viewport, opts = {}) => estimateHeaderWidth({ ...opts, ...headerLayout(viewport, opts) }) <= viewport;
 export const buttonWidth = btnWidth;

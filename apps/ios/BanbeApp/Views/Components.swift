@@ -405,10 +405,34 @@ struct BanbeField: View {
     // actually block it (event name, confirmed address) rather than
     // finding out only from the error message afterward.
     var required = false
+    /// Note 48 form style: an SF Symbol before an uppercase label, and a
+    /// larger, bordered input (used by Create event). nil = original look.
+    var icon: String? = nil
 
     @EnvironmentObject private var app: AppState
 
     var body: some View {
+        if let icon { iconStyle(icon) } else { plainStyle }
+    }
+
+    private func iconStyle(_ icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let label { FormFieldLabel(icon: icon, text: label, required: required) }
+            Group {
+                if secure { SecureField(placeholder, text: $text) } else { TextField(placeholder, text: $text) }
+            }
+            .font(.system(size: 16))
+            .keyboardType(keyboard)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(keyboard == .emailAddress ? .never : .sentences)
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 16).padding(.vertical, 15)
+            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+        }
+    }
+
+    private var plainStyle: some View {
         VStack(alignment: .leading, spacing: 5) {
             if let label {
                 HStack(spacing: 3) {
@@ -433,6 +457,40 @@ struct BanbeField: View {
             .padding(13)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
+    }
+}
+
+/// Icon + uppercase label above a form field (note 48 form style).
+struct FormFieldLabel: View {
+    let icon: String
+    let text: String
+    var required = false
+    var trailing: String? = nil
+
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 18)
+                .accessibilityHidden(true)
+            Text(text.uppercased())
+                .font(.system(size: 12, weight: .semibold))
+                .kerning(0.6)
+            if required {
+                Text("*").font(.system(size: 12, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                    .accessibilityLabel(app.T("bắt buộc", "required"))
+            }
+            Spacer(minLength: 0)
+            if let trailing {
+                Text(trailing).font(.system(size: 11, weight: .semibold))
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(app.palette.ink.opacity(0.08), in: Capsule())
+            }
+        }
+        .foregroundStyle(app.palette.ink.opacity(0.8))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -1013,9 +1071,12 @@ struct SwipeSafeButton<Label: View>: View {
                 // currently true (almost always `false` — a swipe hasn't
                 // had time to lock in yet at touch-down), never carried
                 // over stale from a previous, unrelated press.
-                if pressing { sawSwipeDuringPress = app.isRootSwipeActive }
+                if pressing { sawSwipeDuringPress = app.isRootSwipeActive || app.isLocalSwipeActive }
             })
             .onChange(of: app.isRootSwipeActive) { _, active in
+                if active { sawSwipeDuringPress = true }
+            }
+            .onChange(of: app.isLocalSwipeActive) { _, active in
                 if active { sawSwipeDuringPress = true }
             }
     }

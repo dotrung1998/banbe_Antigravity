@@ -346,6 +346,9 @@ struct AccountView: View {
                     },
                     selection: app.accountTab, height: 52, frame: $tabBarFrame,
                     onSelect: { selectAccountTab($0) })
+                // Press-and-hold on the bubble belongs to the tabs from the very first touch, even
+                // on the first visit before the measured exclusion zone exists (note 48).
+                .claimsRootSwipe()
             }
         }
         // Three segments stay readable up to the first accessibility size; beyond it the

@@ -135,6 +135,8 @@ struct StepProgress: View {
     /// Optional encouraging line shown under the bar.
     var message: String? = nil
     var showsPercent = true
+    /// The thin fill bar above the steps; off for a pure numbered stepper.
+    var showsBar = true
     var identifier: String? = nil
     /// When set, step labels become buttons (e.g. scroll to a form section).
     var onSelect: ((Int) -> Void)? = nil
@@ -166,6 +168,7 @@ struct StepProgress: View {
                     }
                 }
             }
+            if showsBar {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(app.palette.ink.opacity(0.12))
@@ -175,7 +178,8 @@ struct StepProgress: View {
             }
             .frame(height: 5)
             .animation(.easeOut(duration: 0.25), value: doneCount)
-            HStack(alignment: .top, spacing: 4) {
+            }
+            HStack(alignment: .top, spacing: 0) {
                 ForEach(Array(steps.enumerated()), id: \.offset) { index, title in
                     stepLabel(index: index, title: title)
                         .frame(maxWidth: .infinity)
@@ -194,34 +198,58 @@ struct StepProgress: View {
                      "Step \(position) of \(steps.count): \(name), \(percent)% complete")
     }
 
+    /// One column: a numbered circle (a check once done) on a connector line
+    /// that runs through the column, so circles and labels always align.
     @ViewBuilder
     private func stepLabel(index: Int, title: String) -> some View {
         let done = isDone(index)
-        let active = index == current && !done
-        let content = VStack(spacing: 4) {
+        let active = index == current
+        let lineColor: (Bool) -> Color = { $0 ? app.palette.ink : app.palette.ink.opacity(0.14) }
+        let content = VStack(spacing: 6) {
             ZStack {
-                Circle()
-                    .fill(done ? app.palette.ink : (active ? app.palette.ink.opacity(0.14) : app.palette.field))
-                    .overlay(Circle().stroke(app.palette.rule, lineWidth: done ? 0 : 1))
-                if done {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(app.palette.paper)
-                } else if active {
-                    Circle().fill(app.palette.ink).frame(width: 7, height: 7)
+                HStack(spacing: 0) {
+                    Rectangle().fill(index == 0 ? .clear : lineColor(isDone(index - 1)))
+                    Rectangle().fill(index == steps.count - 1 ? .clear : lineColor(done))
+                }
+                .frame(height: 2)
+                ZStack {
+                    Circle()
+                        .fill(done || active ? app.palette.ink : app.palette.paper)
+                    Circle()
+                        .stroke(done || active ? Color.clear : app.palette.ink.opacity(0.25), lineWidth: 1.5)
+                    if done && !active {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(app.palette.paper)
+                    } else {
+                        Text("\(index + 1)")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(done || active ? app.palette.paper : app.palette.ink.opacity(0.6))
+                    }
+                }
+                .frame(width: 28, height: 28)
+                // The step you're on gets a halo; a finished current step keeps its number.
+                .overlay(Circle().stroke(app.palette.ink.opacity(active ? 0.22 : 0), lineWidth: 4).padding(-4))
+                .overlay(alignment: .topTrailing) {
+                    if done && active {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(app.palette.ink, app.palette.paper)
+                            .offset(x: 5, y: -5)
+                    }
                 }
             }
-            .frame(width: 20, height: 20)
             Text(title)
-                .font(.system(size: 10.5, weight: active ? .semibold : .regular))
+                .font(.system(size: 11, weight: active ? .semibold : .regular))
                 .foregroundStyle(app.palette.ink.opacity(active || done ? 1 : 0.55))
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.7)
         }
         if let onSelect {
             Button { onSelect(index) } label: { content.contentShape(Rectangle()) }
                 .buttonStyle(.plain)
                 .accessibilityLabel(done ? app.T("\(title), xong", "\(title), done") : title)
+                .accessibilityAddTraits(active ? .isSelected : [])
         } else {
             content
         }

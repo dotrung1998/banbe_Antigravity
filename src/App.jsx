@@ -1,6 +1,6 @@
 import PhoneStatusBar from './components/PhoneFrame.jsx';
 import { ImportSheet, ImportedTicketSheet } from './screens/sheets/TicketImportSheet.jsx';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { BanBeProvider, useBanBe } from './state/BanBeContext.jsx';
 import useUrlSync from './lib/useUrlSync.js';
 import BottomTabBar, { showsBottomBar, DOCK_ORDER, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET } from './screens/BottomTabBar.jsx';
@@ -64,6 +64,9 @@ import EditProfile from './screens/EditProfile.jsx';
 import PublicProfile from './screens/PublicProfile.jsx';
 import OrganizerProfile from './screens/OrganizerProfile.jsx';
 import Reports from './screens/Reports.jsx';
+import Schedule from './screens/Schedule.jsx';
+import Welcome from './screens/Welcome.jsx';
+import GuestPromptSheet from './screens/GuestPromptSheet.jsx';
 import TeamPage from './screens/TeamPage.jsx';
 import SurveyPublic from './screens/SurveyPublic.jsx';
 import SurveysHosting from './screens/SurveysHosting.jsx';
@@ -99,6 +102,8 @@ const SCREENS = {
   rewards: Rewards,
   editName: EditName,
   notifications: Notifications,
+  schedule: Schedule,
+  welcome: Welcome,
   eventList: EventList,
   security: Security,
   paymentDetails: PaymentDetails,
@@ -202,7 +207,7 @@ function Shell() {
   useUrlSync(goc);
   const {
     state, T,
-    goHome, goMapExplore, goNotifications, goInbox, goProfile,
+    goHome, goMapExplore, goNotifications, goSchedule, goInbox, goProfile,
     loadHomeLiveEvents, loadDiscoveryEvents, loadWeekendEvents, loadHomeStories, loadHomeSurveyDiscovery,
     loadNotifications, loadInboxThreads,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadMyOrgStats,
@@ -214,6 +219,19 @@ function Shell() {
   const scrollRaf = useRef(null);
   const pendingScrollTop = useRef(0);
   const [barCollapsed, setBarCollapsed] = useState(false);
+  // Note 48 (iOS parity): moving to another section — a screen, an Account tab, the Inbox view or a
+  // Schedule mode (announced by that screen via the 'bb:section-change' event) — puts the dock back
+  // at full size, and scroll events in the next moment can't shrink it straight back.
+  const dockCollapseSuppressedUntil = useRef(0);
+  const resetDockForNewSection = useCallback(() => {
+    dockCollapseSuppressedUntil.current = Date.now() + 600;
+    setBarCollapsed(false);
+  }, []);
+  useEffect(() => { resetDockForNewSection(); }, [state.accountTab, state.inboxView, resetDockForNewSection]);
+  useEffect(() => {
+    window.addEventListener('bb:section-change', resetDockForNewSection);
+    return () => window.removeEventListener('bb:section-change', resetDockForNewSection);
+  }, [resetDockForNewSection]);
   // Stage 2 (2026-09-27 nav/discovery pass) — always mirrors the latest
   // `state` so async gesture code (the pull-to-refresh await below) can
   // read fresh values without a stale closure, without re-subscribing
@@ -314,6 +332,8 @@ function Shell() {
       ]);
     } else if (screen === 'notifications') {
       await loadNotifications();
+    } else if (screen === 'schedule') {
+      await Promise.all([loadDiscoveryEvents(), ...(s.user?.id ? [loadPaymentBookings()] : [])]);
     } else if (screen === 'inbox') {
       await loadInboxThreads();
     } else if (screen === 'profile') {
@@ -342,7 +362,7 @@ function Shell() {
 
   const gotoDockIndex = (idx) => {
     const key = DOCK_ORDER[idx];
-    ({ home: goHome, mapExplore: goMapExplore, notifications: goNotifications, inbox: goInbox, profile: goProfile })[key]?.();
+    ({ home: goHome, mapExplore: goMapExplore, schedule: goSchedule, inbox: goInbox, profile: goProfile })[key]?.();
   };
 
   const onGesturePointerDown = (e) => {
@@ -519,6 +539,7 @@ function Shell() {
     if (el) el.scrollTop = target;
     lastScrollTop.current = target;
     if (scrollRaf.current) { cancelAnimationFrame(scrollRaf.current); scrollRaf.current = null; }
+    dockCollapseSuppressedUntil.current = Date.now() + 600;
     setBarCollapsed(false);
 
     // Home task 3 (2026-09-21 follow-up) — this synchronous restore alone
@@ -587,6 +608,7 @@ function Shell() {
       // deliberate scroll registers reliably rather than needing an
       // unusually large jump between two coalesced rAF frames.
       const scrollingDown = latestTop - lastScrollTop.current;
+      if (Date.now() < dockCollapseSuppressedUntil.current) { lastScrollTop.current = latestTop; return; }
       if (latestTop <= 4) setBarCollapsed(false);
       else if (scrollingDown > 4) setBarCollapsed(true);
       else if (scrollingDown < -4) setBarCollapsed(false);
@@ -710,6 +732,7 @@ function Shell() {
       <AccountGate />
       {/* event onboarding (note 34) — below the gate, above every screen */}
       <EventOnboarding />
+      <GuestPromptSheet />
      </div></div>
     </div>
   );

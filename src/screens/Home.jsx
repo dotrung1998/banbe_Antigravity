@@ -11,12 +11,15 @@ import { useForYouAlert } from '../lib/useForYouAlert.js';
 import ForYouChip from './ForYouChip.jsx';
 import { reminderPhase, REMINDER_CSS, reminderRank } from '../lib/eventReminder.js';
 import { compactCoins, shortcutLabels } from '../lib/rewards.js';
-import { HEADER, titleFits } from '../lib/homeHeaderLayout.js';
+import { HEADER, headerLayout } from '../lib/homeHeaderLayout.js';
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass, barGlass } from '../theme.js';
 import { BAR_HEIGHT, BAR_BOTTOM_OFFSET, DOCK_MARGIN } from './BottomTabBar.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import ActionCenter from './ActionCenter.jsx';
+import ActivationChecklistCard from './ActivationChecklistCard.jsx';
+import { GuestBrowseBanner } from './GuestPromptSheet.jsx';
+import EmptyState from '../components/ui/EmptyState.jsx';
 
 // A5 (2026-09-27 Pulse/loading UX pass) — one-at-a-time Banbe-styled
 // speech bubbles beside the Home Pulse ring: label -> real top 1/2/3
@@ -409,7 +412,7 @@ export const FILTER_DEFS = [
 export default function Home() {
   const {
     state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, isAwaitingConfirmation, toggleFav,
-    goEvent, openArea, toggleLang, toggleTheme, pickFilter, clearFilters, toggleHomeFilter, openEventSearch,
+    goEvent, openArea, toggleLang, toggleTheme, pickFilter, clearFilters, toggleHomeFilter, openEventSearch, goMapExplore,
     becomeHost, switchToHost,
     canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary, loadHomeLiveEvents,
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
@@ -848,11 +851,6 @@ export default function Home() {
     // Array.sort is stable so everything else keeps its existing order.
     .sort((a, b) => reminderRank(a.reminder) - reminderRank(b.reminder));
 
-  const feedEmptyMsg = T(
-    'Chưa có buổi nào ở ' + (curArea.key === 'all' ? 'mục này' : curArea.label) + ' tuần này, thử mục khác xem sao!',
-    'Nothing in ' + (curArea.key === 'all' ? 'this category' : curArea.label) + ' this week, try another one!'
-  );
-
   const homeHostLinkLabel = hasHosted ? T('Trang tổ chức của bạn', 'Your host page') : T('Dành cho người tổ chức ▪︎ hoàn toàn miễn phí', 'For organizers ▪︎ completely free');
   const homeHostLink = hasHosted ? () => switchToHost('home') : becomeHost;
 
@@ -862,13 +860,16 @@ export default function Home() {
   const shortcutsOn = s.rewardsSummaryStatus === 'loaded' && !!s.rewardsSummary;
   const streakChars = String(s.rewardsSummary?.streak ?? 0).length;
   const coinChars = compactCoins(s.rewardsSummary?.balance ?? 0).length;
-  const [showTitle, setShowTitle] = useState(true);
+  const [layout, setLayout] = useState({ wordmark: 96, showTitle: true });
+  const showTitle = layout.showTitle;
   useEffect(() => {
     const el = headerRef.current;
     if (!el) return undefined;
     const measure = () => {
       const w = el.clientWidth + HEADER.sidePad * 2;
-      setShowTitle(shortcutsOn ? titleFits(w, { streakChars, coinChars }) : true);
+      // Wordmark steps down first, then the title goes, then (last resort) the wordmark (iOS note 45 order).
+      const l = headerLayout(w, { streakChars, coinChars, showShortcuts: shortcutsOn });
+      setLayout(shortcutsOn ? l : { wordmark: l.wordmark === HEADER.wordmark ? 96 : l.wordmark, showTitle: l.showTitle });
     };
     measure();
     if (typeof ResizeObserver === 'undefined') return undefined;
@@ -887,7 +888,7 @@ export default function Home() {
       <div style={{ padding: '62px 20px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div ref={headerRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: shortcutsOn ? HEADER.wordmarkGap : 10, minWidth: 0 }}>
-            <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: shortcutsOn ? HEADER.wordmark : 96, height: 'auto', display: 'block', flex: 'none' }} />
+            {layout.wordmark > 0 && <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: layout.wordmark, height: 'auto', display: 'block', flex: 'none' }} />}
             {showTitle && <span className="bb-home-title" style={{ ...display(27), lineHeight: 1.1, whiteSpace: 'nowrap' }}>{T('Nhà', 'Home')}</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }} data-testid="home-header-actions">
@@ -911,6 +912,24 @@ export default function Home() {
               </div>
             );
           })()}
+          {/* Note 44 web parity: Notifications left the dock (Schedule took its slot), so its bell lives here. */}
+          <button
+            type="button"
+            onClick={goNotifications}
+            data-testid="home-notifications"
+            aria-label={s.unreadNotifications ? T(`Thông báo, ${s.unreadNotifications} chưa đọc`, `Notifications, ${s.unreadNotifications} unread`) : T('Thông báo', 'Notifications')}
+            style={{ ...homeCapsule(), position: 'relative', width: shortcutsOn ? HEADER.bell : 48, height: shortcutsOn ? HEADER.bell : 48, borderRadius: '50%', padding: 0, justifyContent: 'center', flex: 'none', border: 'none', color: ink, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            <svg aria-hidden="true" width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3.5c-2.8 0-5 2.2-5 5v4.6l-1.6 2.7c-.3.5.1 1.2.7 1.2h11.8c.6 0 1-.7.7-1.2L17 13.1V8.5c0-2.8-2.2-5-5-5z" />
+              <path d="M9.6 18.6a2.4 2.4 0 0 0 4.8 0" />
+            </svg>
+            {s.unreadNotifications > 0 && (
+              <span aria-hidden="true" data-testid="home-notifications-badge" style={{ position: 'absolute', top: 2, right: 0, minWidth: 16, height: 16, borderRadius: 8, padding: '0 4px', boxSizing: 'border-box', background: 'var(--bb-alert)', color: 'var(--bb-on-alert)', fontSize: 10, fontWeight: 700, lineHeight: '16px', textAlign: 'center' }}>
+                {s.unreadNotifications > 9 ? '9+' : s.unreadNotifications}
+              </span>
+            )}
+          </button>
           <div
             onClick={openEventSearch}
             data-testid="home-search-fab"
@@ -936,7 +955,13 @@ export default function Home() {
           four-banner block: one unified, priority-sorted, 3-card-capped
           Action Center covering both roles this account can hold. See
           src/lib/actionCenter.js for the source list and ordering rule. */}
-      <ActionCenter items={actionItems} onSeeAll={goNotifications} T={T} />
+      {/* Note 49: a guest sees a sign-in banner instead of the personal Action Center / checklist. */}
+      {s.user ? (
+        <>
+          <ActionCenter items={actionItems} onSeeAll={goNotifications} T={T} />
+          <ActivationChecklistCard />
+        </>
+      ) : <GuestBrowseBanner />}
 
       {savedList.length > 0 && (
         <div style={{ padding: '16px 20px 4px', borderBottom: `1px solid ${rule}` }}>
@@ -1058,6 +1083,8 @@ export default function Home() {
           function's own comment); `card.survey_id` as the React key is the
           same dedup key, so a render-level duplicate is structurally
           impossible here too. */}
+      {/* Note 49: surveys need an account (the discovery RPC is authenticated-only) — hidden for a guest. */}
+      {s.user && (
       <div style={{ padding: '0 20px 16px' }} data-testid="home-survey-discovery-section">
         {/* Collapse/expand pass — collapsed by default; the compact
             horizontal strip below (already the "compact cards, not a tall
@@ -1167,6 +1194,7 @@ export default function Home() {
         </div>
         )}
       </div>
+      )}
 
       <div data-hscroll="true" style={{ display: 'flex', gap: 8, padding: '14px 20px 8px', overflowX: 'auto', scrollbarWidth: 'none' }}>
         {filters.map(f => (
@@ -1266,9 +1294,15 @@ export default function Home() {
       ))}
 
       {feed.length === 0 && (
-        <div style={{ padding: '60px 40px 70px', textAlign: 'center' }}>
-          <p style={{ fontSize: 14, lineHeight: 1.55, color: ink }}>{feedEmptyMsg}</p>
-          <span onClick={clearFilters} style={{ display: 'inline-block', marginTop: 10, fontSize: 12.5, color: ink, cursor: 'pointer' }}>{T('Xem tất cả', 'See all')}</span>
+        <div style={{ padding: '20px 0 30px' }}>
+          {/* Note 48 (iOS parity): a cute scene + one clear next step instead of a bare line. */}
+          <EmptyState scene="findPlans" testId="home-empty"
+            title={T('Tuần này hơi yên ắng…', 'A quiet week here…')}
+            message={curArea.key === 'all'
+              ? T('Chưa có buổi nào khớp bộ lọc này. Bỏ lọc để xem mọi buổi vui tuần này nhé!', 'Nothing matches these filters yet. Clear them to see every fun gathering this week!')
+              : T(`Chưa có buổi nào ở ${curArea.label} khớp bộ lọc. Xem tất cả hoặc mở bản đồ để tìm quanh bạn nhé!`, `Nothing in ${curArea.label} matches these filters yet. See everything, or open the map to look around you!`)}
+            actionLabel={T('Xem tất cả sự kiện', 'See all events')} actionTestId="home-empty-see-all" onAction={clearFilters}
+            secondaryLabel={T('Tìm trên bản đồ', 'Look on the map')} secondaryTestId="home-empty-map" onSecondary={goMapExplore} />
         </div>
       )}
 

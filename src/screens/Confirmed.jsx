@@ -9,6 +9,7 @@ import BanbeLoadingVisual from './BanbeLoadingVisual.jsx';
 import { downloadTicketPdfs, googleCalendarUrl } from '../lib/ticketPdf.js';
 import GiftTicketSheet from './sheets/GiftTicketSheet.jsx';
 import { giftPdfData, isAppleWalletBrowser, addToAppleWallet, walletErrorMessage } from '../lib/giftTicket.js';
+import { BookingJourneyProgress } from '../components/ui/FormControls.jsx';
 
 export default function Confirmed() {
   const {
@@ -231,6 +232,10 @@ export default function Confirmed() {
           : T('Quay lại', 'Back')}
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px 30px 0' }}>
+        {/* Note 48 (iOS parity): Event ✓ → Hold → Pay → Ticket; hidden once the booking left the happy path. */}
+        {s.booking && !isExpired && !isDisputed && (
+          <div style={{ marginBottom: 18 }}><BookingJourneyProgress current={isPaid ? 4 : isPendingVerification ? 3 : 2} T={T} /></div>
+        )}
         <span style={{ fontSize: 11.5, color: ink }}>{confirmEyebrow}</span>
         <h2 style={{ ...display(27, { lineHeight: 1.35, margin: '12px 0 0' }) }}>{confirmHeading}</h2>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '18px 0 0' }}>{confirmNote}</p>

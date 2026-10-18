@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { screenToPath, pathToRoute, TRANSIENT_SCREENS } from './routes.js';
+import { GUEST_BROWSE_SCREENS } from './guestAccess.js';
 
 // Deep link the visitor opened the app on (read once, before React mounts).
 // Paths already handled by BanBeContext's own shared-link boot code (/u/<handle>,
@@ -46,11 +47,15 @@ export default function useUrlSync(goc) {
     prevScreen.current = screen;
 
     if (pending.current) {
-      const waiting = TRANSIENT_SCREENS.has(screen) || screen === 'home';
+      const waiting = TRANSIENT_SCREENS.has(screen) || screen === 'home' || screen === 'welcome';
       if (waiting) {
         // Through onboarding/sign-in and sitting on Home with a session: go
         // to the linked screen. Otherwise leave the URL as the visitor typed it.
-        const guestOk = pending.current.screen === 'policy' && screen === 'login' && state.sessionChecked && !state.user;
+        const signedOut = state.sessionChecked && !state.user;
+        const guestOk = (pending.current.screen === 'policy' && screen === 'login' && signedOut)
+          // Note 49: a guest's link to Home / Map / an event opens as soon as they reach Welcome or Home;
+          // any other link keeps waiting for sign-in.
+          || (signedOut && GUEST_BROWSE_SCREENS.has(pending.current.screen) && (screen === 'welcome' || screen === 'home'));
         if ((screen === 'home' && state.user) || guestOk) {
           const route = pending.current;
           pending.current = null;

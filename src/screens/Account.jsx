@@ -34,15 +34,18 @@ function organizerAvatarUrl(path, r2Ref, variant = 'thumb') {
 // SAME string get_account_kpis (migration 097) expects — never re-derived
 // inside Reports.jsx itself, so what the user tapped is exactly what gets
 // fetched.
-export function ReportsRow({ label, onClick, testId }) {
+export function ReportsRow({ label, onClick, testId, icon = 'checklist', badge = 0, badgeLabel }) {
   return (
     <div
       onClick={onClick}
       data-testid={testId}
       style={{ ...fieldGlass({ margin: '18px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
     >
-      <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="checklist" />{label}</span>
-      <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind={icon} />{label}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {badge > 0 && <span aria-label={badgeLabel} style={{ minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px', boxSizing: 'border-box', background: 'var(--bb-alert)', color: 'var(--bb-on-alert)', fontSize: 11, fontWeight: 700, lineHeight: '20px', textAlign: 'center' }}>{badge > 99 ? '99+' : badge}</span>}
+        <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+      </span>
     </div>
   );
 }
@@ -77,6 +80,7 @@ export function RowIcon({ kind, size = 22, accent }) {
   const common = { width: glyphSize, height: glyphSize, viewBox: '0 0 24 24', fill: 'none', stroke: ink, strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
   const byKind = {
     pencil: <path d="M15.2 4.3l4.5 4.5L8.4 20.1H4v-4.4z" />,
+    bell: <><path d="M12 3.5c-2.8 0-5 2.2-5 5v4.6l-1.6 2.7c-.3.5.1 1.2.7 1.2h11.8c.6 0 1-.7.7-1.2L17 13.1V8.5c0-2.8-2.2-5-5-5z" /><path d="M9.6 18.6a2.4 2.4 0 0 0 4.8 0" /></>,
     calendarCheck: <><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17" /><path d="M8 3v4M16 3v4" /><path d="M8.7 14.7l2 2 4.3-4.3" /></>,
     sliders: <><path d="M4 6.5h6M14 6.5h6M4 12h9M17 12h3M4 17.5h11M19 17.5h1" /><circle cx="12" cy="6.5" r="2.1" /><circle cx="15" cy="12" r="2.1" /><circle cx="17" cy="17.5" r="2.1" /></>,
     receipt: <><path d="M6.5 3h11v18l-2.3-1.5L13 21l-2.2-1.5L8.5 21l-2-1.5V3z" /><path d="M9.2 8.2h5.6M9.2 12h5.6M9.2 15.8h3.6" /></>,
@@ -169,7 +173,7 @@ export default function Account() {
     loadMyOrgStats, setAccountTab, openPublicProfile, openReports, openAccountGroup, goSurveysHosting,
     loadMyOrganizerMemberships,
     loadMyEventCredits, loadMyConfirmedEventCredits,
-    loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openHostSetup,
+    loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openHostSetup, goNotifications,
   } = useBanBe();
   const s = state;
   const myKeychain = useMyKeychain();
@@ -623,6 +627,9 @@ export default function Account() {
       />
 
       <ReportsRow label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} testId="account-reports-personal" onClick={() => openReports('personal', null, 'profile')} />
+      {/* Note 44 web parity: Notifications left the dock; reachable here, from the Home bell and Action Center. */}
+      <ReportsRow label={T('Thông báo', 'Notifications')} icon="bell" testId="account-notifications" onClick={goNotifications}
+        badge={s.unreadNotifications || 0} badgeLabel={T(`${s.unreadNotifications || 0} chưa đọc`, `${s.unreadNotifications || 0} unread`)} />
 
       {referralLink && (
         <div style={{ ...cardGlass({ margin: '20px 20px 0', padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, cursor: 'pointer' }) }} onClick={shareReferral}>

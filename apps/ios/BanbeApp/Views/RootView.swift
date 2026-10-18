@@ -239,7 +239,10 @@ struct RootView: View {
                     // reaches either end of the strip (where it keeps
                     // scrolling, or stops) never flips back to "horizontal"
                     // mid-gesture, since this branch already returned.
-                    if app.rootGestureExclusionZones.values.contains(where: { $0.contains(value.startLocation) }) {
+                    // Schedule owns every horizontal swipe (week strip = weeks, list = days), so
+                    // the dock swipe never starts there; no measured frame needed (note 48).
+                    if app.rootSwipeClaimedByControl || app.screen == .schedule
+                        || app.rootGestureExclusionZones.values.contains(where: { $0.contains(value.startLocation) }) {
                         tabSwipeDirection = "vertical"
                         return
                     }
@@ -1068,6 +1071,11 @@ struct RootView: View {
         // targeted fixes (finishOnboarding, dismissSplash, signOut) don't
         // — e.g. goHome()'s plain `screen = .home`, callable from
         // anywhere, has no auth check of its own.
+        // Sections inside a screen count as "a different section" too: the
+        // dock returns to full size there as well.
+        .onChange(of: app.accountTab) { _, _ in app.resetDockSizeForNewSection() }
+        .onChange(of: app.scheduleMode) { _, _ in app.resetDockSizeForNewSection() }
+        .onChange(of: app.inboxView) { _, _ in app.resetDockSizeForNewSection() }
         .onChange(of: app.screen) { oldScreen, newScreen in
             // iPhone fix pass (2026-09-27), Item 1 — see `navGeneration`'s
             // own doc comment (top of this file): every real screen change,
@@ -1132,7 +1140,7 @@ struct RootView: View {
             }
             // Every screen change starts the bottom tab bar back at full
             // size, matching src/App.jsx Shell's own per-screen reset.
-            app.bottomBarCollapsed = false
+            app.resetDockSizeForNewSection()
             // BUG follow-up (a5fd823 real-device report: Reserve/View
             // Ticket unresponsive on Event Detail) — see
             // BottomTabBarOverlay.updateVisibility()'s own doc comment for

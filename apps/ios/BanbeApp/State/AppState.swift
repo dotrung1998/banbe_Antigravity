@@ -882,6 +882,14 @@ final class AppState: ObservableObject {
     // from this dict on the very next preference pass, instead of leaving a
     // stale dead zone behind.
     @Published var rootGestureExclusionZones: [String: CGRect] = [:]
+    /// A control under the finger owns this touch (set at touch-DOWN by
+    /// `claimsRootSwipe()`), so the root dock-tab swipe must not start.
+    /// Unlike the measured exclusion zones it can't be stale or missing on a
+    /// screen's first appearance.
+    var rootSwipeClaimedByControl = false
+    /// A screen's own swipe (Schedule week/day) is in progress; buttons under
+    /// the finger must not fire on release.
+    @Published var isLocalSwipeActive = false
     // Pulse teaser pass (2026-09-27), reworked by the same-space pass
     // (2026-09-28, after a second real-device report of the bubble sitting
     // fixed on screen while the ring scrolled) — the teaser's own sequence
@@ -2756,6 +2764,7 @@ final class AppState: ObservableObject {
     /// entirely when the value wouldn't change, so it can't restart the
     /// same animation mid-flight against itself.
     private var lastScaffoldScrollUpdate = Date.distantPast
+    private var dockCollapseSuppressedUntil = Date.distantPast
 
     /// Refresh-indicator fix pass (2026-09-27, follow-up A) — the one
     /// trigger point `ScreenScaffold`'s custom pull gesture and
@@ -2838,7 +2847,20 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Restore the dock to full size when the person moves to another
+    /// section (screen, Account tab, Schedule mode, Inbox view). Scroll events
+    /// in the next moment (momentum or the restored offset of the screen
+    /// being entered) must not shrink it straight back, so collapsing is
+    /// paused briefly and the scroll baseline is reset.
+    func resetDockSizeForNewSection() {
+        dockCollapseSuppressedUntil = Date().addingTimeInterval(0.6)
+        lastScaffoldScrollOffset = 0
+        guard bottomBarCollapsed else { return }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { bottomBarCollapsed = false }
+    }
+
     func noteScaffoldScroll(_ offsetY: CGFloat, userDriven: Bool) {
+        guard Date() >= dockCollapseSuppressedUntil else { lastScaffoldScrollOffset = offsetY; return }
         // Note 47: the dock only shrinks while the user is scrolling a screen down. Programmatic moves (a tab's
         // scroll position restored when you come back to it, first layout) just re-baseline, so returning to the
         // screen that shrank the dock no longer shrinks it again.
@@ -3406,7 +3428,7 @@ final class AppState: ObservableObject {
         createEventDate = d.date
         createEventTime = d.time
         createPrice = d.price ?? ""
-        createSeats = String(d.seats)
+        createSeats = d.seats > 0 ? String(d.seats) : ""
         createCats = d.categories
         createDefaultsSource = d.sourceName
         createAppliedDefaults = d
@@ -3427,7 +3449,7 @@ final class AppState: ObservableObject {
     var createDraftMatchesAppliedDefaults: Bool {
         guard let d = createAppliedDefaults else { return false }
         return createEventDate == d.date && createEventTime == d.time && createPrice == (d.price ?? "")
-            && createSeats == String(d.seats) && createCats == d.categories
+            && createSeats == (d.seats > 0 ? String(d.seats) : "") && createCats == d.categories
     }
 
     // "Bao gồm" item editing (mirrors web's addCreateIncludedItem/

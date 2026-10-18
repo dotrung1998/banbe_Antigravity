@@ -49,39 +49,55 @@ export function encouragement(remaining, T) {
   return T(`Tốt lắm, còn ${remaining} bước`, `Nice, ${remaining} steps to go`);
 }
 
-export function StepProgress({ steps, current, completed, message, showPercent = true, onSelect, testId }) {
+export function StepProgress({ steps, current, completed, message, showPercent = true, showBar = true, onSelect, testId }) {
   const isDone = (i) => (completed ? !!completed[i] : i < current);
   const doneCount = completed ? completed.filter(Boolean).length : current;
   const pct = stepPercent(doneCount, steps.length);
+  const line = (on) => (on ? ink : 'rgba(var(--bb-fg-rgb),0.14)');
   return (
     <div data-testid={testId} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
-      aria-valuetext={`${pct}%`} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      aria-valuetext={`${pct}%`} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {(showPercent || message) && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600, color: ink }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, fontWeight: 600, color: ink }}>
           <span>{message || ''}</span>
           {showPercent && <span style={{ opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>{pct}%</span>}
         </div>
       )}
-      <div style={{ height: 5, borderRadius: 999, background: 'rgba(27,25,22,0.12)', overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: ink, borderRadius: 999, transition: 'width .25s ease-out' }} />
-      </div>
-      <div style={{ display: 'flex', gap: 4 }}>
+      {showBar && (
+        <div style={{ height: 5, borderRadius: 999, background: 'rgba(var(--bb-fg-rgb),0.12)', overflow: 'hidden' }}>
+          <div style={{ width: `${pct}%`, height: '100%', background: ink, borderRadius: 999, transition: 'width .25s ease-out' }} />
+        </div>
+      )}
+      <div style={{ display: 'flex' }}>
         {steps.map((title, i) => {
           const done = isDone(i);
-          const active = i === current && !done;
+          const active = i === current;
+          const filled = done || active;
+          // Numbered circle (✓ once done) on a connector that runs through the column, so circles and labels align.
           const body = (
             <>
-              <span aria-hidden style={{
-                width: 20, height: 20, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: done ? ink : active ? 'rgba(27,25,22,0.14)' : 'transparent', color: paper, fontSize: 11, fontWeight: 700,
-                border: done ? 'none' : `1px solid ${RULE}`,
-              }}>{done ? '✓' : active ? <span style={{ width: 7, height: 7, borderRadius: 999, background: ink }} /> : null}</span>
-              <span style={{ fontSize: 10.5, fontWeight: active ? 600 : 400, opacity: active || done ? 1 : 0.55, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{title}</span>
+              <span style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: 36 }}>
+                <span aria-hidden style={{ position: 'absolute', left: 0, width: '50%', height: 2, background: i === 0 ? 'transparent' : line(isDone(i - 1)) }} />
+                <span aria-hidden style={{ position: 'absolute', right: 0, width: '50%', height: 2, background: i === steps.length - 1 ? 'transparent' : line(done) }} />
+                <span style={{ position: 'relative', width: 28, height: 28, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: filled ? ink : paper, color: filled ? paper : 'rgba(var(--bb-fg-rgb),0.6)', fontSize: 13, fontWeight: 700,
+                  border: filled ? 'none' : '1.5px solid rgba(var(--bb-fg-rgb),0.25)', boxSizing: 'border-box',
+                  boxShadow: active ? '0 0 0 4px rgba(var(--bb-fg-rgb),0.18)' : 'none' }}>
+                  {done && !active ? '✓' : i + 1}
+                  {done && active && (
+                    <span aria-hidden style={{ position: 'absolute', top: -5, right: -5, width: 14, height: 14, borderRadius: 7, background: paper, color: ink,
+                      fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1.5px solid ${ink}`, boxSizing: 'border-box' }}>✓</span>
+                  )}
+                </span>
+              </span>
+              <span style={{ fontSize: 11, fontWeight: active ? 600 : 400, opacity: active || done ? 1 : 0.55, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{title}</span>
             </>
           );
           const style = { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, color: ink };
           return onSelect
-            ? <button key={i} type="button" onClick={() => onSelect(i)} style={{ ...style, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}>{body}</button>
+            ? <button key={i} type="button" onClick={() => onSelect(i)} aria-current={active ? 'step' : undefined}
+                aria-label={done ? `${title} ✓` : title}
+                style={{ ...style, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}>{body}</button>
             : <div key={i} style={style}>{body}</div>;
         })}
       </div>

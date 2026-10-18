@@ -57,7 +57,7 @@ final class SmartDefaultsTests: XCTestCase {
     func testFirstEventDefaultsNeverInventAPrice() {
         let d = SmartDefaults.eventDraftDefaults(last: nil, now: vnInstant("2026-10-15 10:00"))
         XCTAssertNil(d.price, "a first event's price is never pre-filled")
-        XCTAssertEqual(d.seats, 14)
+        XCTAssertEqual(d.seats, 0, "capacity is never pre-filled")
         XCTAssertEqual(vnTime(d.time), "19:00")
         XCTAssertEqual(vnDay(d.date), "2026-10-17")
         XCTAssertEqual(d.categories, [])
@@ -72,7 +72,7 @@ final class SmartDefaultsTests: XCTestCase {
         XCTAssertEqual(vnDay(d.date), "2026-10-23", "same weekday (Friday), at least 2 days out")
         XCTAssertEqual(vnTime(d.time), "18:30")
         XCTAssertEqual(d.price, "250000")
-        XCTAssertEqual(d.seats, 20)
+        XCTAssertEqual(d.seats, 0, "capacity is never copied either")
         XCTAssertEqual(d.categories, ["music"])
         XCTAssertEqual(d.sourceName, "Jazz night")
     }
@@ -84,7 +84,7 @@ final class SmartDefaultsTests: XCTestCase {
         XCTAssertEqual(vnDay(d.date), "2026-10-17", "no date → Saturday")
         XCTAssertEqual(vnTime(d.time), "19:30", "HH:mm is accepted")
         XCTAssertNil(d.price)
-        XCTAssertEqual(d.seats, 14)
+        XCTAssertEqual(d.seats, 0)
     }
 
     func testDateQuickPicksAreOrderedAndInTheFuture() {
@@ -146,7 +146,7 @@ final class SmartDefaultsTests: XCTestCase {
         app.myOrgEventSummaries = []
         app.applyCreateDefaults()
         XCTAssertNotNil(app.createEventDate)
-        XCTAssertEqual(app.createSeats, "14")
+        XCTAssertEqual(app.createSeats, "", "seats start empty (0)")
         XCTAssertEqual(app.createPrice, "")
         XCTAssertTrue(app.createDraftMatchesAppliedDefaults)
 

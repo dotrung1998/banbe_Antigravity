@@ -1294,22 +1294,27 @@ struct HomeView: View {
 
     // MARK: Empty / footer
 
+    /// Note 48: a cute scene + one clear next step instead of a bare line.
     private var emptyState: some View {
-        VStack(spacing: 10) {
-            Text(app.T(
-                "Chưa có buổi nào ở \(app.area == LocationHierarchy.allID ? "mục này" : app.currentAreaLabel) tuần này, thử mục khác xem sao!",
-                "Nothing in \(app.area == LocationHierarchy.allID ? "this category" : app.currentAreaLabel) this week, try another one!"
-            ))
-            .font(.system(size: 14))
-            .multilineTextAlignment(.center)
-            Button(app.T("Xem tất cả", "See all")) { app.clearFilters() }
-                .font(.system(size: 12.5))
-                .buttonStyle(.plain)
-        }
-        .foregroundStyle(app.palette.ink)
-        .padding(.horizontal, 40)
-        .padding(.vertical, 60)
-        .frame(maxWidth: .infinity)
+        let place = app.area == LocationHierarchy.allID ? nil : app.currentAreaLabel
+        return MotivatingEmptyState(
+            scene: .findPlans,
+            title: app.T("Tuần này hơi yên ắng…", "A quiet week here…"),
+            message: place.map {
+                app.T("Chưa có buổi nào ở \($0) khớp bộ lọc. Xem tất cả hoặc mở bản đồ để tìm quanh bạn nhé!",
+                      "Nothing in \($0) matches these filters yet. See everything, or open the map to look around you!")
+            } ?? app.T("Chưa có buổi nào khớp bộ lọc này. Bỏ lọc để xem mọi buổi vui tuần này nhé!",
+                       "Nothing matches these filters yet. Clear them to see every fun gathering this week!"),
+            actionTitle: app.T("Xem tất cả sự kiện", "See all events"),
+            actionIcon: "sparkles",
+            actionID: "home.empty.seeAll",
+            action: { app.clearFilters() },
+            secondaryTitle: app.T("Tìm trên bản đồ", "Look on the map"),
+            secondaryID: "home.empty.map",
+            secondaryAction: { app.goMapExplore() },
+            identifier: "home.empty"
+        )
+        .padding(.vertical, 20)
     }
 
     private var footer: some View {

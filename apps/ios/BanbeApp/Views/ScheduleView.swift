@@ -29,6 +29,12 @@ private struct ScheduleScreen: View {
     @State private var exportMessage: String?
     @State private var trackedConflicts: Set<String> = []
     @State private var modeBarFrame: CGRect = .zero
+    /// Note 48: the week strip expands in place into the whole month (swipe
+    /// down), and folds back to the week (swipe up).
+    @State private var monthExpanded = false
+    @State private var stripFrame: CGRect = .zero
+    /// Direction of the last day/week change, for the slide transition.
+    @State private var forward = true
 
     private var calendar: Calendar { Calendar.current }
     private var agendaZone: TimeZone { calendar.timeZone }
@@ -62,24 +68,27 @@ private struct ScheduleScreen: View {
                             .accessibilityIdentifier("schedule.dayTitle")
                         content
                             .id("\(app.scheduleMode.rawValue).\(calendar.startOfDay(for: selected).timeIntervalSince1970)")
-                            .transition(.opacity)
+                            .transition(reduceMotion ? .opacity
+                                        : .asymmetric(insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
+                                                      removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity)))
                         if let exportMessage {
                             Text(exportMessage).font(.footnote).foregroundStyle(app.palette.ink.opacity(0.75))
                                 .accessibilityIdentifier("schedule.exportMessage")
                         }
                     }
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: app.scheduleMode)
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: calendar.startOfDay(for: selected))
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: calendar.startOfDay(for: selected))
                     .padding(.horizontal, 20)
                     .padding(.bottom, 110)
                 }
             }
         }
         .foregroundStyle(app.palette.ink)
-        // Swipe left/right anywhere switches My schedule <-> Discover, exactly like Account's tabs:
-        // same gesture thresholds, no wrap-around, and it never hops to another dock section.
+        // Note 48: on the week strip, left/right = previous/next week (month when expanded) and
+        // down/up = open/close the month; anywhere below, left/right = previous/next day. Never
+        // hops to another dock section (RootView), and taps under a moving finger don't fire.
         .contentShape(Rectangle())
-        .simultaneousGesture(modeSwipe)
+        .simultaneousGesture(scheduleSwipe)
         .rootSwipeExclusion("schedule.tabs")
         // Deferred: this screen is mounted as a neighbor the moment a dock-tab swipe starts, and
         // a load republishes app-wide state — loading mid-drag is what made the swipe stutter.
@@ -114,6 +123,13 @@ private struct ScheduleScreen: View {
                 // Seven columns can't grow without splitting numbers; the full-size
                 // day title right below restates the selection.
                 weekStrip.dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                    .background {
+                        GeometryReader { geo in
+                            Color.clear
+                                .onAppear { stripFrame = geo.frame(in: .named("rootGesture")) }
+                                .onChange(of: geo.frame(in: .named("rootGesture"))) { _, f in stripFrame = f }
+                        }
+                    }
             }
         }
     }
@@ -203,70 +219,160 @@ private struct ScheduleScreen: View {
     // MARK: week strip
 
     private var weekStrip: some View {
+        let grid = SchedulePresentation.monthGrid(containing: selected, calendar: calendar)
+        let allDays = grid.flatMap { $0.map(\.date) }
         let busy: Set<Date> = app.scheduleMode == .mine
-            ? SchedulePresentation.busyDays(week, items: mine.items, calendar: calendar)
-            : Set(week.filter { !SchedulePresentation.events(discover, on: $0, calendar: calendar).isEmpty })
-        return HStack(spacing: 0) {
-            stepButton(-7, symbol: "chevron.left", label: app.T("Tuần trước", "Previous week"), id: "schedule.prevWeek")
-            ForEach(week, id: \.self) { day in dayPill(day, busy: busy.contains(day)) }
-            stepButton(7, symbol: "chevron.right", label: app.T("Tuần sau", "Next week"), id: "schedule.nextWeek")
+            ? SchedulePresentation.busyDays(allDays, items: mine.items, calendar: calendar)
+            : Set(allDays.filter { !SchedulePresentation.events(discover, on: $0, calendar: calendar).isEmpty })
+        return VStack(spacing: 4) {
+            if monthExpanded {
+                // Weekday letters once, above the grid (each collapsed pill carries its own).
+                HStack(spacing: 0) {
+                    Color.clear.frame(width: 44, height: 1)
+                    ForEach(grid.first ?? [], id: \.date) { d in
+                        Text(weekdayLetter(d.date)).font(.caption.weight(.bold))
+                            .frame(maxWidth: .infinity)
+                    }
+                    Color.clear.frame(width: 44, height: 1)
+                }
+                .transition(.opacity)
+            }
+            ForEach(Array(grid.enumerated()), id: \.offset) { _, row in
+                let isSelectedRow = row.contains { calendar.isDate($0.date, inSameDayAs: selected) }
+                if monthExpanded || isSelectedRow {
+                    HStack(spacing: 0) {
+                        if monthExpanded ? row.first?.date == grid.first?.first?.date : isSelectedRow {
+                            stepButton(monthExpanded ? -1 : -7, months: monthExpanded, symbol: "chevron.left",
+                                       label: monthExpanded ? app.T("Tháng trước", "Previous month") : app.T("Tuần trước", "Previous week"),
+                                       id: "schedule.prevWeek")
+                        } else { Color.clear.frame(width: 44, height: 1) }
+                        ForEach(row, id: \.date) { d in
+                            dayPill(d.date, busy: busy.contains(calendar.startOfDay(for: d.date)) || busy.contains(d.date),
+                                    compact: monthExpanded, inMonth: d.inMonth)
+                        }
+                        if monthExpanded ? row.first?.date == grid.first?.first?.date : isSelectedRow {
+                            stepButton(monthExpanded ? 1 : 7, months: monthExpanded, symbol: "chevron.right",
+                                       label: monthExpanded ? app.T("Tháng sau", "Next month") : app.T("Tuần sau", "Next week"),
+                                       id: "schedule.nextWeek")
+                        } else { Color.clear.frame(width: 44, height: 1) }
+                    }
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .top)), removal: .opacity))
+                }
+            }
+            // Grabber: shows the strip can be pulled; tap does the same as the swipe.
+            Button {
+                setMonthExpanded(!monthExpanded)
+            } label: {
+                Capsule().fill(app.palette.ink.opacity(0.22)).frame(width: 36, height: 4)
+                    .frame(maxWidth: .infinity, minHeight: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(monthExpanded ? app.T("Thu gọn về tuần", "Collapse to week") : app.T("Mở cả tháng", "Show the whole month"))
+            .accessibilityIdentifier("schedule.monthToggle")
         }
+        .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: monthExpanded)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: calendar.startOfDay(for: selected))
     }
 
-    private func stepButton(_ days: Int, symbol: String, label: String, id: String) -> some View {
+    private func setMonthExpanded(_ open: Bool) {
+        guard open != monthExpanded else { return }
+        Haptics.selection()
+        monthExpanded = open
+    }
+
+    private func weekdayLetter(_ day: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: vi ? "vi_VN" : "en_US")
+        f.timeZone = agendaZone
+        f.dateFormat = "EEEEE"
+        return f.string(from: day)
+    }
+
+    private func stepButton(_ amount: Int, months: Bool = false, symbol: String, label: String, id: String) -> some View {
         Button {
-            if let d = calendar.date(byAdding: .day, value: days, to: selected) { select(d) }
+            shift(by: amount, component: months ? .month : .day)
         } label: {
             Image(systemName: symbol).font(.footnote.weight(.semibold))
-                .frame(width: 44, height: 56).contentShape(Rectangle())
+                .frame(width: 44, height: months ? 44 : 56).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
         .accessibilityIdentifier(id)
     }
 
-    private func dayPill(_ day: Date, busy: Bool) -> some View {
+    private func shift(by amount: Int, component: Calendar.Component) {
+        guard let d = calendar.date(byAdding: component, value: amount, to: selected) else { return }
+        forward = amount > 0
+        select(d)
+    }
+
+    private func dayPill(_ day: Date, busy: Bool, compact: Bool = false, inMonth: Bool = true) -> some View {
         let isSelected = calendar.isDate(day, inSameDayAs: selected)
         let isToday = calendar.isDateInToday(day)
-        let f = DateFormatter()
-        f.locale = Locale(identifier: vi ? "vi_VN" : "en_US")
-        f.timeZone = agendaZone
-        f.dateFormat = "EEEEE"
-        let weekday = f.string(from: day)
         let number = calendar.component(.day, from: day)
-        return Button { select(day) } label: {
+        // SwipeSafeButton: a swipe that starts on a day never selects it on release.
+        return SwipeSafeButton {
+            forward = day > selected
+            select(day)
+        } label: {
             VStack(spacing: 4) {
-                Text(weekday).font(.caption.weight(.bold))
+                if !compact { Text(weekdayLetter(day)).font(.caption.weight(.bold)) }
                 Text("\(number)").font(.system(.callout, design: .rounded).weight(isSelected || isToday ? .bold : .regular))
                 Circle().fill(busy ? (isSelected ? app.palette.paper : app.palette.ink) : .clear)
                     .frame(width: 5, height: 5)
             }
-            .foregroundStyle(isSelected ? app.palette.paper : app.palette.ink)
-            .frame(maxWidth: .infinity, minHeight: 56)
+            .foregroundStyle(isSelected ? app.palette.paper : app.palette.ink.opacity(inMonth ? 1 : 0.35))
+            .frame(maxWidth: .infinity, minHeight: compact ? 44 : 56)
             .background(isSelected ? app.palette.ink : .clear, in: Capsule())
             .overlay(Capsule().stroke(isToday && !isSelected ? app.palette.ink : .clear, lineWidth: 1.2))
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
         .accessibilityLabel(SchedulePresentation.dayTitle(day, calendar: calendar, vi: vi))
         .accessibilityValue([isToday ? app.T("Hôm nay", "Today") : nil,
                              busy ? app.T("Có sự kiện", "Has events") : nil].compactMap { $0 }.joined(separator: ", "))
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-        .accessibilityIdentifier("schedule.day.\(calendar.component(.weekday, from: day))")
+        .accessibilityIdentifier(compact ? "schedule.monthDay.\(number)" : "schedule.day.\(calendar.component(.weekday, from: day))")
     }
 
-    private var modeSwipe: some Gesture {
-        DragGesture(minimumDistance: 28, coordinateSpace: .named("rootGesture"))
+    private var scheduleSwipe: some Gesture {
+        DragGesture(minimumDistance: 16, coordinateSpace: .named("rootGesture"))
+            .onChanged { v in
+                guard !modeBarFrame.contains(v.startLocation), !app.isLocalSwipeActive else { return }
+                let dx = abs(v.translation.width), dy = abs(v.translation.height)
+                // Lock out taps once it's clearly a swipe we handle (any direction on the strip,
+                // horizontal elsewhere — vertical there is the list's own scroll).
+                if stripFrame.insetBy(dx: 0, dy: -10).contains(v.startLocation) ? max(dx, dy) > 12 : dx > 14 && dx > dy {
+                    app.isLocalSwipeActive = true
+                }
+            }
             .onEnded { v in
+                defer { DispatchQueue.main.async { app.isLocalSwipeActive = false } }
                 guard !modeBarFrame.contains(v.startLocation) else { return }   // the bubble's own drag
                 let dx = v.translation.width, dy = v.translation.height
-                guard abs(dx) >= 60, abs(dx) > abs(dy) * 1.8 else { return }
-                let target: ScheduleMode = dx < 0 ? .discover : .mine
-                guard target != app.scheduleMode else { return }
-                Haptics.selection()
-                app.scheduleMode = target
-                Analytics.track(.scheduleModeSelected(mode: target.rawValue))
+                let horizontal = abs(dx) >= 50 && abs(dx) > abs(dy) * 1.4
+                let vertical = abs(dy) >= 36 && abs(dy) > abs(dx) * 1.4
+                if stripFrame.insetBy(dx: 0, dy: -10).contains(v.startLocation) {
+                    if horizontal {
+                        shift(by: dx < 0 ? (monthExpanded ? 1 : 7) : (monthExpanded ? -1 : -7),
+                              component: monthExpanded ? .month : .day)
+                    } else if vertical {
+                        setMonthExpanded(dy > 0)
+                    }
+                } else if horizontal {
+                    shift(by: dx < 0 ? 1 : -1, component: .day)
+                }
             }
+    }
+
+    /// The next day after the selected one with a discoverable event (≤ 60 days).
+    private var nextDiscoverDay: Date? {
+        guard !discover.isEmpty else { return nil }
+        for offset in 1...60 {
+            guard let d = calendar.date(byAdding: .day, value: offset, to: calendar.startOfDay(for: selected)) else { break }
+            if !SchedulePresentation.events(discover, on: d, calendar: calendar).isEmpty { return d }
+        }
+        return nil
     }
 
     private func select(_ d: Date) {
@@ -294,20 +400,20 @@ private struct ScheduleScreen: View {
         } else if loading && mine.items.isEmpty {
             loadingRows
         } else if items.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(app.T("Chưa có kế hoạch nào trong ngày này.", "Nothing planned for this day."))
-                    .font(.subheadline)
-                    .accessibilityIdentifier("schedule.empty.mine")
-                Button {
+            MotivatingEmptyState(
+                scene: .freeDay,
+                title: app.T("Ngày này còn trống!", "This day is wide open!"),
+                message: app.T("Chưa có kế hoạch nào. Tìm một buổi vui để gặp người mới nhé.",
+                               "Nothing planned yet. Find something fun and meet new people."),
+                actionTitle: app.T("Khám phá sự kiện ngày này", "Discover events on this day"),
+                actionIcon: "sparkles",
+                actionID: "schedule.empty.toDiscover",
+                action: {
                     app.scheduleMode = .discover
                     Analytics.track(.scheduleModeSelected(mode: "discover"))
-                } label: {
-                    Label(app.T("Khám phá sự kiện ngày này", "Discover events on this day"), systemImage: "sparkles")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(minHeight: 44)
-                }
-                .accessibilityIdentifier("schedule.empty.toDiscover")
-            }
+                },
+                identifier: "schedule.empty.mine"
+            )
         } else {
             VStack(spacing: 10) {
                 ForEach(items) { item in mineCard(item) }
@@ -329,11 +435,27 @@ private struct ScheduleScreen: View {
         } else if (loading || app.discoveryEventsLoading) && discover.isEmpty {
             loadingRows
         } else if events.isEmpty {
-            Text(discover.isEmpty
-                 ? app.T("Hiện chưa có sự kiện công khai sắp tới nào để đặt chỗ.", "There are no upcoming public events open for booking right now.")
-                 : app.T("Không có sự kiện công khai nào ngày này. Ngày có chấm là ngày có sự kiện.", "No public events on this day. Days with a dot have events."))
-                .font(.subheadline)
-                .accessibilityIdentifier("schedule.empty.discover")
+            // Note 48: point at the next day that actually has something, else the map.
+            let next = nextDiscoverDay
+            MotivatingEmptyState(
+                scene: .explore,
+                title: discover.isEmpty ? app.T("Sắp có buổi mới thôi!", "New events are on their way!")
+                                        : app.T("Hôm nay chưa có buổi nào", "Nothing on this day"),
+                message: discover.isEmpty
+                    ? app.T("Hiện chưa có sự kiện công khai sắp tới nào để đặt chỗ. Xem bản đồ hoặc quay lại sau nhé.",
+                            "There are no upcoming public events open for booking right now. Peek at the map or check back soon.")
+                    : app.T("Không có sự kiện công khai nào ngày này. Ngày có chấm là ngày có sự kiện.",
+                            "No public events on this day. Days with a dot have events."),
+                actionTitle: next.map { app.T("Tới \(SchedulePresentation.dayTitle($0, calendar: calendar, vi: vi))",
+                                              "Go to \(SchedulePresentation.dayTitle($0, calendar: calendar, vi: vi))") }
+                    ?? app.T("Mở bản đồ", "Open the map"),
+                actionIcon: next == nil ? "map" : "arrow.right.circle",
+                actionID: "schedule.empty.next",
+                action: {
+                    if let next { forward = true; select(next) } else { app.goMapExplore() }
+                },
+                identifier: "schedule.empty.discover"
+            )
         } else {
             VStack(spacing: 10) {
                 ForEach(events, id: \.key) { e in discoverCard(e) }

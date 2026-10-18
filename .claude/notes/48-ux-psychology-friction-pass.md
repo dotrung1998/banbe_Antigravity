@@ -8,7 +8,7 @@ Status: IMPLEMENTED LOCALLY (iOS: everything below; web: everything except guest
 
 | Principle | What changed |
 |---|---|
-| 1 Smart defaults | Create event pre-fills from the host's last event (weekday, time, price, seats, category) or, for a first event, next Saturday ≥2 days out at 19:00 with 14 seats and no price. A "Prefilled from …" notice offers **Start blank**. Location is never copied, since a new address must be re-confirmed. Date/time quick picks were added to the shared `EventDateTimeSheet` (surveys get them too). Price chips: Free/200k/300k/500k. Seats: chips (10/20/30/50) plus a stepper. Refund accounts: holder pre-filled from the profile name, plus top-10 Vietnamese bank chips. Buttons now state the outcome: "Hold 2 seats ▪︎ 30 min", "Review your event", "Save account". |
+| 1 Smart defaults | Create event pre-fills from the host's last event (weekday, time, price, category) or, for a first event, next Saturday ≥2 days out at 19:00 with no price. **Seats are never pre-filled on iOS** (start at 0, so the Tickets step only ticks once the host sets capacity; user request 2026-10-18). Web still pre-fills 14 / the last event's capacity — align when web gets the step flow. A "Prefilled from …" notice offers **Start blank**. Location is never copied, since a new address must be re-confirmed. Date/time quick picks were added to the shared `EventDateTimeSheet` (surveys get them too). Price chips: Free/200k/300k/500k. Seats: chips (10/20/30/50) plus a stepper. Refund accounts: holder pre-filled from the profile name, plus top-10 Vietnamese bank chips. Buttons now state the outcome: "Hold 2 seats ▪︎ 30 min", "Review your event", "Save account". |
 | 2 Goal gradient | Shared `StepProgress` (named steps, %, head start). Onboarding counts "Account ✓" as done, so question 1 opens at 17%. Booking journey "Event ✓ → Hold → Pay → Ticket" appears on Reserve and Confirmed (hidden for expired/disputed bookings). Create event has a sticky, tappable section bar (Host/Basics/When & where/Tickets/Photos, any order). Account gate shows "Account ✓ · Phone · Birthday". |
 | 3 Reciprocity / 4 IKEA | **iOS only:** read-only guest browsing of Home/Map/Event. Welcome's primary button is now "Explore events". Save/Follow/Reserve/Message/Like open a contextual `GuestPromptSheet` ("Continue" / "Log in" / "Not now"). Sign-in resumes the action (`AuthResume`). |
 | 5 Loss (honest) | Leaving a new create-event draft with input asks "Discard this event? Your N photos and details will be lost." with neutral Keep editing / Discard buttons. The hold countdown already existed (ConfirmedView). |
@@ -80,3 +80,8 @@ Also part of this pass:
   - A real guest session against production data. Network UI suites are still environment-blocked by the DOB gate (note 44).
   - VoiceOver on the new controls (they have adjustable/selected traits, but haven't been audited by hand).
   - Web controls rendered in a browser.
+
+## 2026-10-18 follow-ups (iOS, from on-device review)
+- Guest sign-in sheet hides the dock (`.hidesDock`) and was redesigned (context icon tile, 3 benefit rows, Continue / Log in / Not now).
+- Dock returns to full size on any section change (screen, Account tab, Schedule mode, Inbox view) via `resetDockSizeForNewSection()`, with a 0.6s scroll-collapse pause.
+- Create event is a 5-step flow (one section per page, Back/Next, tap a numbered step to jump), numbered step bar with % + encouraging line, icon labels + large rounded outlined fields (`BanbeField(icon:)`, `FormFieldLabel`, `roundedFormEditor`), redesigned Included editor.

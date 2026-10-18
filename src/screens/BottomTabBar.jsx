@@ -35,6 +35,7 @@ export const TAB_OUTLINE_SHAPES = {
   home: { path: 'M6 19.5 V10 L4 11.5 L12 4 L20 11.5 L18 10 V19.5 Z' },
   mapExplore: { path: 'M12 3c-3.3 0-6 2.6-6 6.1C6 13.4 12 21 12 21s6-7.6 6-11.9C18 5.6 15.3 3 12 3z' },
   notifications: { path: 'M12 3.5c-2.8 0-5 2.2-5 5v4.6l-1.6 2.7c-.3.5.1 1.2.7 1.2h11.8c.6 0 1-.7.7-1.2L17 13.1V8.5c0-2.8-2.2-5-5-5z' },
+  schedule: { path: 'M6.4 5.5 H17.6 A2.4 2.4 0 0 1 20 7.9 V17.6 A2.4 2.4 0 0 1 17.6 20 H6.4 A2.4 2.4 0 0 1 4 17.6 V7.9 A2.4 2.4 0 0 1 6.4 5.5 Z M4 10 H20' },
   // Refresh-indicator fix pass (2026-09-27, follow-up B) — a bare rect/
   // circle read as a generic box/dot, not the dock's own envelope/person;
   // each is now the real glyph's full outline (body + V flap; head +
@@ -61,6 +62,14 @@ const ICONS = {
     <svg viewBox="0 0 24 24" width="100%" height="100%">
       <path d="M12 3.5c-2.8 0-5 2.2-5 5v4.6l-1.6 2.7c-.3.5.1 1.2.7 1.2h11.8c.6 0 1-.7.7-1.2L17 13.1V8.5c0-2.8-2.2-5-5-5z" fill={filled ? c : 'none'} stroke={c} strokeWidth={filled ? 0 : 2.2} strokeLinejoin="round" />
       <path d="M9.6 18.6a2.4 2.4 0 0 0 4.8 0" stroke={c} strokeWidth="2" strokeLinecap="round" fill="none" />
+    </svg>
+  ),
+  // Note 44 web parity: Schedule (a calendar page) replaces Notifications in the dock.
+  schedule: (c, filled) => (
+    <svg viewBox="0 0 24 24" width="100%" height="100%">
+      <rect x="4" y="5.5" width="16" height="14.5" rx="2.4" fill={filled ? c : 'none'} stroke={c} strokeWidth="2.4" />
+      <path d="M4 10h16M8.5 3.5v3.5M15.5 3.5v3.5" stroke={filled ? CUTOUT : c} strokeWidth="2.2" strokeLinecap="round" fill="none" />
+      <circle cx="12" cy="14.8" r="1.6" fill={filled ? CUTOUT : c} />
     </svg>
   ),
   inbox: (c, filled) => (
@@ -94,7 +103,9 @@ const ICONS = {
 // viewport for their own CTA (Reserve's "Hold · 30 minutes", HostIntro's
 // "Create your first event", etc.) are deliberately excluded so the two
 // never collide.
-const BAR_SCREENS = new Set(['home', 'mapExplore', 'notifications', 'inbox', 'profile']);
+// Note 44 web parity: Schedule replaced Notifications in the dock; Notifications is now a pushed screen with Back
+// (Home bell, Account row, Action Center "See all").
+const BAR_SCREENS = new Set(['home', 'mapExplore', 'schedule', 'inbox', 'profile']);
 
 export function showsBottomBar(screen) {
   return BAR_SCREENS.has(screen);
@@ -104,7 +115,7 @@ export function showsBottomBar(screen) {
 // swipe (App.jsx's Shell) navigates through; must match `items` above's
 // own key order exactly (that array can't be reused directly — it's built
 // from hooks inside the component below).
-export const DOCK_ORDER = ['home', 'mapExplore', 'notifications', 'inbox', 'profile'];
+export const DOCK_ORDER = ['home', 'mapExplore', 'schedule', 'inbox', 'profile'];
 
 // BUG 2 (64f2719) / BUG 3 (623ec1e) follow-ups: bumped from 22/19
 // (expanded/collapsed) to one fixed, bigger size, then bumped again for
@@ -168,7 +179,7 @@ export const DOCK_GAP = 10;
 export const CREATE_SIZE = BAR_HEIGHT;
 
 export default function BottomTabBar({ collapsed }) {
-  const { state, T, goHome, goProfile, goInbox, goNotifications, goMapExplore } = useBanBe();
+  const { state, T, goHome, goProfile, goInbox, goSchedule, goMapExplore } = useBanBe();
   const s = state;
 
   // Notifications' badge is s.unreadNotifications (bell inbox, per-account
@@ -192,10 +203,10 @@ export default function BottomTabBar({ collapsed }) {
   const items = useMemo(() => [
     { key: 'home', icon: 'home', onClick: goHome, label: T('Trang chính', 'Home'), testId: 'tab-home', badge: 0, badgeCapped: false },
     { key: 'mapExplore', icon: 'map', onClick: goMapExplore, label: T('Bản đồ', 'Map'), testId: 'tab-map', badge: 0, badgeCapped: false },
-    { key: 'notifications', icon: 'notifications', onClick: goNotifications, label: T('Thông báo', 'Notifications'), testId: 'tab-notifications', badge: s.unreadNotifications || 0, badgeCapped: true, badgeCap: 9 },
+    { key: 'schedule', icon: 'schedule', onClick: goSchedule, label: T('Lịch', 'Schedule'), testId: 'tab-schedule', badge: 0, badgeCapped: false },
     { key: 'inbox', icon: 'inbox', onClick: goInbox, label: T('Tin nhắn', 'Messages'), testId: 'tab-inbox', badge: s.unreadMessages || 0, badgeCapped: false },
     { key: 'profile', icon: 'profile', onClick: goProfile, label: T('Tài khoản', 'Account'), testId: 'tab-profile', badge: accountBadge, badgeCapped: true, badgeCap: 99 },
-  ], [goHome, goMapExplore, goNotifications, goInbox, goProfile, T, s.unreadNotifications, s.unreadMessages, accountBadge]);
+  ], [goHome, goMapExplore, goSchedule, goInbox, goProfile, T, s.unreadMessages, accountBadge]);
 
   // FEATURE — scrub-to-select: press anywhere on the bar and drag; a soft
   // highlight blob follows the finger in real time and lands on whichever

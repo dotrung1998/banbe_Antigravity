@@ -41,14 +41,15 @@ export function nextWeekday(weekday, now = new Date(), minDaysAhead = 2) {
  */
 export function eventDraftDefaults(last, now = new Date()) {
   if (!last) {
-    return { date: nextWeekday(SATURDAY, now), time: FIRST_EVENT_TIME, price: '', seats: String(FIRST_EVENT_SEATS), cats: [], sourceName: null };
+    // Seats are never pre-filled (iOS parity, note 48): the host always sets capacity.
+    return { date: nextWeekday(SATURDAY, now), time: FIRST_EVENT_TIME, price: '', seats: '', cats: [], sourceName: null };
   }
   const weekday = last.event_date ? new Date(`${last.event_date}T00:00:00Z`).getUTCDay() : SATURDAY;
   return {
     date: nextWeekday(weekday, now),
     time: (last.event_time || FIRST_EVENT_TIME).slice(0, 5),
     price: last.price_vnd != null ? String(last.price_vnd) : '',
-    seats: String(last.capacity && last.capacity > 0 ? Math.min(last.capacity, 500) : FIRST_EVENT_SEATS),
+    seats: '',
     cats: last.cat_key ? [last.cat_key] : [],
     sourceName: last.name || null,
   };

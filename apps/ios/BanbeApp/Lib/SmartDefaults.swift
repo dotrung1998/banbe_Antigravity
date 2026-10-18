@@ -78,6 +78,7 @@ struct EventDraftDefaults: Equatable {
     let time: Date
     /// nil = leave the price empty (never invent a price for a first event).
     let price: String?
+    /// 0 = left empty: the host always sets capacity themselves.
     let seats: Int
     let categories: [String]
     /// Name of the event the values came from; nil for first-event defaults.
@@ -122,17 +123,16 @@ extension SmartDefaults {
         let fallbackTime = timeOfDay(firstEventTime)!
         guard let last else {
             return EventDraftDefaults(date: nextWeekday(saturday, after: now), time: fallbackTime,
-                                      price: nil, seats: firstEventSeats, categories: [], sourceName: nil)
+                                      price: nil, seats: 0, categories: [], sourceName: nil)
         }
         let weekday = last.eventDate
             .flatMap { AppState.vnDateFormatter.date(from: $0) }
             .map { vnCalendar.component(.weekday, from: $0) } ?? saturday
-        let seats = last.capacity.map { min(max($0, seatRange.lowerBound), seatRange.upperBound) } ?? firstEventSeats
         return EventDraftDefaults(
             date: nextWeekday(weekday, after: now),
             time: last.eventTime.flatMap(timeOfDay) ?? fallbackTime,
             price: last.priceVnd.map(String.init),
-            seats: seats,
+            seats: 0,
             categories: last.catKey.map { [$0] } ?? [],
             sourceName: last.name
         )

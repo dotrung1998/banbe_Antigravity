@@ -101,7 +101,30 @@ private struct RootSwipeExclusionModifier: ViewModifier {
     }
 }
 
+/// Claims every touch that lands on this view for the view itself: the root
+/// dock-tab swipe sees the claim from touch-down, before it classifies the
+/// drag. `@GestureState` resets on its own when the touch ends or is
+/// cancelled, so the claim can never get stuck.
+private struct ClaimsRootSwipeModifier: ViewModifier {
+    @EnvironmentObject private var app: AppState
+    @GestureState private var touching = false
+
+    func body(content: Content) -> some View {
+        content
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .updating($touching) { _, state, _ in state = true }
+            )
+            .onChange(of: touching) { _, t in app.rootSwipeClaimedByControl = t }
+            .onDisappear { app.rootSwipeClaimedByControl = false }
+    }
+}
+
 extension View {
+    /// Use on controls with their own horizontal drag that are NOT inside a
+    /// ScrollView (a zero-distance drag on scroll content can block scrolling).
+    func claimsRootSwipe() -> some View { modifier(ClaimsRootSwipeModifier()) }
+
     /// A horizontal swipe that starts on this view does not switch dock tabs.
     func rootSwipeExclusion(_ id: String, enabled: Bool = true) -> some View {
         modifier(RootSwipeExclusionModifier(id: id, enabled: enabled))

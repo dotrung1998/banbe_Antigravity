@@ -1,4 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { loadChecklist, saveChecklist } from '../lib/activationChecklist.js';
+import { calendarDraft, googleCalendarUrl, downloadIcs } from '../lib/calendarExport.js';
+import { mySchedule as scheduleMySchedule, discover as scheduleDiscover, canAdd as scheduleCanAdd, scheduleStore } from '../lib/schedulePresentation.js';
+import { track } from '../lib/analytics.js';
+import { GUEST_BROWSE_SCREENS, makePrompt, loginBackTarget } from '../lib/guestAccess.js';
+import { forYouTimeZone } from '../lib/forYou.js';
 import { EVENTS, findEvent, isCosmeticCatalogMatch, haversineKm } from '../data/events.js';
 import { supabase, getAuthRedirectUrl } from '../lib/supabase.js';
 import { requestAuthEmail, requestPasswordSignup, requestPasswordReset } from '../lib/authEmail.js';
@@ -414,7 +420,44 @@ if (typeof window !== 'undefined') {
 // gap flagged, out of scope, in the prior ticket's own report) — now
 // directly in scope: "tap a member card to open their personal public
 // profile" must work for a signed-out Team page visitor too.
-const GUEST_ALLOWED_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy', 'organizerProfile', 'organizerTeam', 'publicProfile', 'surveyPublic']);
+// Note 49 (web parity of note 48): read-only guest browsing — 'welcome' plus Home, Map and an event
+// (GUEST_BROWSE_SCREENS, lib/guestAccess.js). Everything personal still lands on Login (guard below) or asks first
+// with a contextual prompt (promptSignIn). Public data only: see note 49's audit and migration 185.
+const GUEST_ALLOWED_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy', 'organizerProfile', 'organizerTeam', 'publicProfile', 'surveyPublic', 'welcome', ...GUEST_BROWSE_SCREENS]);
+
+// Note 49: everything that belongs to ONE signed-in account. Reset from initialState on EVERY way a session ends
+// (logout, token expiry / SIGNED_OUT, account deletion), so a guest on a shared browser never sees the previous
+// account's bookings, tickets, stories, organizer identity, chats or private events. Keys missing from
+// initialState are ignored.
+const PRIVATE_STATE_KEYS = [
+  'referralCode', 'favorites', 'attending', 'tickets', 'booking', 'holdDeadline', 'paymentBookings', 'paymentBookingsLoadFailed',
+  'verifications', 'organizerHoldingSummary', 'homeStories', 'homeSurveyDiscovery', 'homeSurveyDiscoveryHasMore',
+  'homeSurveyDiscoveryExpanded', 'myAdminInvite', 'photoEngagement', 'photoEngagementBusy', 'storyViewer', 'storyViewedIds',
+  'storyReturnSnapshot', 'inboxThreads', 'inboxThreadPrefs', 'chatThreadId', 'chatMessages', 'chatAttachmentUrls', 'chatOtherName',
+  'chatDraftOrganizerId', 'chatGreeting', 'chatGreetingEn', 'chatGreetingFor', 'notificationBookingById',
+  'notificationEventPhotoByEventId', 'notificationAvatarByUserId', 'documents', 'documentFileUrl', 'proofUrls', 'importedTickets',
+  'reportsData', 'mySurveys', 'mySurveyCandidates', 'myOrganizerInvites', 'myTeamMemberships', 'orgTeamRoster', 'adminRoster',
+  'adminInvites', 'myEventCredits', 'bookingAttendees', 'attendeeDrafts', 'following', 'accountType', 'organizerMode', 'mode',
+  'hasHosted', 'canManageAdmins', 'pendingEventsCount', 'refundCenterClaims', 'refundCenterSelected', 'refundQueue',
+  'refundDestinations', 'myRefunds', 'paymentRefundClaim', 'attendanceGuests', 'myOrganizerId', 'myOrganizerIds',
+  'myOrganizerIdsStatus', 'myOrganizerAvatarPath', 'myOrganizerAvatarR2Ref', 'orgRegName', 'orgRegDesc', 'orgRegIntroLong',
+  'orgRegLinks', 'myOrgEventKeys', 'myOrgEventOrganizerId', 'myOrgPublishedEventCount', 'myOrgHostingSinceYear',
+  'ensureOrganizerStatus', 'ensureOrganizerError', 'hostSetupOpen', 'organizerProfile', 'scheduleAddedKeys', 'guestPrompt',
+];
+const isPublicEventRow = (e) => !!e && e.visibility === 'public' && ['live', 'ended', 'cancelled'].includes(e.status);
+/** The signed-out state patch. Cached events keep only public rows (a private/invite/draft event fetched while
+ * signed in must not stay readable to a guest without a refetch). */
+function signedOutState(prev) {
+  const patch = { user: null };
+  for (const k of PRIVATE_STATE_KEYS) {
+    if (!(k in initialState)) continue;
+    const v = initialState[k];
+    patch[k] = v instanceof Set ? new Set() : Array.isArray(v) ? [] : (v && typeof v === 'object') ? { ...v } : v;
+  }
+  patch.homeSurveyDiscoveryLoading = false;
+  patch.realEventsById = Object.fromEntries(Object.entries(prev?.realEventsById || {}).filter(([, e]) => isPublicEventRow(e)));
+  return patch;
+}
 // Account extension (2026-09-27, Stage 1) — the internal, organizer-mode-
 // gated management screens: real event creation/editing, the organizer
 // management dashboard, and event check-in. Deliberately EXCLUDES
@@ -628,12 +671,25 @@ const initialState = {
   // feed, merged into Home's main `feed` (see loadDiscoveryEvents below).
   discoveryEvents: [],
   discoveryEventsLoading: false,
+  // Note 43 web parity: the last discovery load failed (the onboarding reveal shows an honest offline state).
+  discoveryEventsLoadFailed: false,
+  // Note 43 web parity: the personalization flow is on screen. Keeps the overlay up through the reveal after the
+  // server's "owed" markers clear on save; cleared by finishOnboardingFlow.
+  onboardingFlowActive: false,
+  // Home "Get started" checklist (lib/activationChecklist.js), this browser only, per account.
+  activation: { enabled: false, dismissed: false, openedEvent: false },
+  // Note 44 web parity: events put on the banbe Schedule by hand (this browser only, per account).
+  scheduleAddedKeys: [],
+  // Note 49: the contextual sign-in prompt shown to a guest (lib/guestAccess.js makePrompt), or null.
+  guestPrompt: null,
 
   // ---- payments & documents (supabase migration 024) ----
   // banbe still never touches the money. These carry the details a guest
   // needs to transfer directly to the organizer, and the paperwork both
   // sides keep afterwards.
   paymentBookings: [],
+  // Note 44 web parity: the last bookings load failed (Schedule says its list may be incomplete).
+  paymentBookingsLoadFailed: false,
   paymentsLoading: false,
   paymentBookingId: null,
   paymentCopied: '',
@@ -923,6 +979,8 @@ const initialState = {
   reportsRangeDays: 30, reportsCustomStart: '', reportsCustomEnd: '',
   reportsData: null, reportsLoading: false, reportsError: '',
   reportsExpanded: new Set(),
+  // Note 43/46 web parity: when the shown numbers were fetched (stale banner) and which metric's details sheet is open.
+  reportsLoadedAt: null, reportsDetailKey: null,
   reportsExportBusy: '',
   // Organizer Team pass (2026-09-27, Stage 1) — real, opt-in organizer
   // membership (organizer_members, migration 098). `myOrganizerInvites`
@@ -1438,10 +1496,9 @@ function postAuthDestination(prev) {
   // goes to `target` optimistically in the meantime and lets that guard
   // correct course (bounce to Login) the moment it knows for sure.
   if (prev.user || !prev.sessionChecked) return { screen: target };
-  return {
-    screen: 'login', authMode: 'login', authMandatory: true,
-    authReturnScreen: target, authBackScreen: target,
-  };
+  // Note 49: a signed-out visitor lands on Welcome (Explore events / Create an account / Log in), never a forced
+  // Login; a shared organizer link still opens straight on that (guest-allowed) page.
+  return { screen: target === 'organizerProfile' ? target : 'welcome' };
 }
 
 // TASK 1 (2026-09-22 nineteenth follow-up) — ONE canonical kind -> required-
@@ -1777,7 +1834,7 @@ export function BanBeProvider({ children }) {
       if (!active) return;
       if (!user) {
         favoritesUidRef.current = null;
-        set({ user: null, referralCode: null, sessionChecked: true, favorites: [], authSyncing: false, ...ORGANIZER_IDENTITY_RESET });
+        set(prev => ({ ...signedOutState(prev), sessionChecked: true, authSyncing: false, ...ORGANIZER_IDENTITY_RESET }));
         return;
       }
       // Stage 1 (retention roadmap P0) — real `favorites` rows, keyed by
@@ -1982,7 +2039,12 @@ export function BanBeProvider({ children }) {
         }));
         syncUser(session.user);
       }
-      if (active && !session) set({ user: null, sessionChecked: true });
+      // Token expiry / sign-out from another tab / account deletion: same full reset as logout (note 49 audit —
+      // this used to clear only `user`, leaving bookings, organizer identity, stories… for the next guest).
+      if (active && !session) {
+        favoritesUidRef.current = null;
+        set(prev => (prev.user ? { ...signedOutState(prev), sessionChecked: true, ...ORGANIZER_IDENTITY_RESET } : { sessionChecked: true }));
+      }
     });
     return () => {
       active = false;
@@ -2001,11 +2063,14 @@ export function BanBeProvider({ children }) {
   // session even arrives — the splash screen's own ~2.6s already covers
   // this in the common case, but this effect can fire independently of
   // splash (e.g. a stray screen change right as sessionChecked settles).
+  // Note 49: a guest is never trapped — Login keeps a Back to the screen they were browsing (or Welcome).
+  const lastGuestBrowseRef = useRef('welcome');
+  useEffect(() => { if (!s.user && GUEST_BROWSE_SCREENS.has(s.screen)) lastGuestBrowseRef.current = s.screen; }, [s.user, s.screen]);
   useEffect(() => {
     if (s.sessionChecked && !s.user && !s.authSyncing && !GUEST_ALLOWED_SCREENS.has(s.screen)) {
       set({
-        screen: 'login', authMode: 'login', authMandatory: true,
-        authReturnScreen: s.screen, authBackScreen: s.screen,
+        screen: 'login', authMode: 'login', authMandatory: false,
+        authReturnScreen: s.screen, authBackScreen: loginBackTarget(lastGuestBrowseRef.current),
       });
     }
   }, [s.sessionChecked, s.user, s.authSyncing, s.screen, set]);
@@ -2435,7 +2500,7 @@ export function BanBeProvider({ children }) {
       .limit(300));
     if (error) {
       console.warn('Failed to load discovery events:', error);
-      set({ discoveryEvents: [], discoveryEventsLoading: false });
+      set({ discoveryEvents: [], discoveryEventsLoading: false, discoveryEventsLoadFailed: true });
       return;
     }
     const events = rows || [];
@@ -2453,7 +2518,7 @@ export function BanBeProvider({ children }) {
       organizerName: orgNameById[e.organizer_id],
     }));
     set(prev => ({
-      discoveryEvents: shaped, discoveryEventsLoading: false,
+      discoveryEvents: shaped, discoveryEventsLoading: false, discoveryEventsLoadFailed: false,
       realEventsById: { ...prev.realEventsById, ...Object.fromEntries(shaped.map(e => [e.key, e])) },
     }));
   }, [set]);
@@ -2959,6 +3024,37 @@ export function BanBeProvider({ children }) {
 
   const EN = s.lang === 'en';
   const T = useCallback((vi, en) => (EN ? en : vi), [EN]);
+
+  // ---- Note 49 (web parity of note 48): guest browsing, contextual sign-in, resume ----
+  const RESUME_KEY = 'banbe.authResume.v1';
+  /** Opens Login/Sign up on purpose (never "mandatory"): Back returns to where the visitor was. */
+  const openAuth = useCallback((mode, from) => set(prev => {
+    const origin = from || prev.screen;
+    return {
+      screen: 'login', authMode: mode === 'signup' ? 'signup' : 'login', authMandatory: false, guestPrompt: null,
+      authBackScreen: origin === 'welcome' ? 'welcome' : loginBackTarget(origin),
+      authReturnScreen: GUEST_BROWSE_SCREENS.has(origin) ? origin : 'home',
+    };
+  }), [set]);
+  const browseAsGuest = useCallback(() => { track('guest_browse_started'); set({ screen: 'home' }); }, [set]);
+  /** Asks a guest to sign in for something personal; `opts.eventKey` lets Reserve/Message resume afterwards. */
+  const promptSignIn = useCallback((context, opts = {}) => {
+    set(prev => ({ guestPrompt: makePrompt(context, { screen: prev.screen, eventKey: opts.eventKey ?? prev.eventKey }) }));
+    track('guest_signin_prompt_shown', { context });
+  }, [set]);
+  const dismissGuestPrompt = useCallback(() => set({ guestPrompt: null }), [set]);
+  const continueFromGuestPrompt = useCallback((mode) => {
+    const prompt = s.guestPrompt;
+    if (!prompt) return;
+    track('guest_signin_prompt_accepted', { context: prompt.context });
+    // sessionStorage, not just memory: an OAuth sign-in reloads the tab.
+    try { if (prompt.resume) sessionStorage.setItem(RESUME_KEY, JSON.stringify(prompt.resume)); else sessionStorage.removeItem(RESUME_KEY); } catch { /* ignore */ }
+    set({
+      guestPrompt: null, photoViewer: null, pulseOpen: false, pulseOrganizerSheet: null, pulsePhotoSheet: null,
+      screen: 'login', authMode: mode === 'signup' ? 'signup' : 'login', authMandatory: false,
+      authReturnScreen: prompt.returnTo, authBackScreen: prompt.returnTo,
+    });
+  }, [set, s.guestPrompt]);
   const toggleTheme = useCallback(() => {
     const next = s.theme === 'dark' ? 'light' : 'dark';
     set({ theme: next });
@@ -3030,7 +3126,8 @@ export function BanBeProvider({ children }) {
    * double tap/racing toggle on the same photo id, same guard shape the
    * Pulse-only version already had. */
   const togglePhotoLike = useCallback(async (photoId) => {
-    if (!s.user?.id) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'profile' });
+    // Note 49: asks in place (it used to send the guest to Account, under the still-open photo viewer).
+    if (!s.user?.id) return promptSignIn('like');
     if (s.photoEngagementBusy[photoId]) return;
     const cur = s.photoEngagement[photoId] || { likeCount: 0, shareCount: 0, likedByMe: false };
     const wasLiked = cur.likedByMe;
@@ -3137,9 +3234,9 @@ export function BanBeProvider({ children }) {
       .order('created_at', { ascending: false });
     if (error) {
       console.warn('loadPaymentBookings failed:', error);
-      return set({ paymentsLoading: false, paymentBookings: [] });
+      return set({ paymentsLoading: false, paymentBookings: [], paymentBookingsLoadFailed: true });
     }
-    set({ paymentsLoading: false, paymentBookings: data || [] });
+    set({ paymentsLoading: false, paymentBookings: data || [], paymentBookingsLoadFailed: false });
   }, [set, s.user?.id]);
 
   const openPaymentDetails = useCallback((bookingId, back = 'profile') => {
@@ -4847,7 +4944,7 @@ export function BanBeProvider({ children }) {
     eventPrefs: null, eventPrefsVersion: 0, eventPrefsLoaded: false,
     needsSettingsOnboarding: false, needsPreferencesOnboarding: false,
     eventOnboardingIsNewAccount: false, eventPrefsReturnScreen: null,
-    filterForYou: false, eligibilityByKey: {},
+    filterForYou: false, eligibilityByKey: {}, onboardingFlowActive: false,
   }), [set]);
 
   const loadEventPreferences = useCallback(async () => {
@@ -4929,6 +5026,30 @@ export function BanBeProvider({ children }) {
       return true;
     } catch (e) { console.warn('completePreferencesOnboarding failed:', e); return false; }
   }, [set]);
+  // ---- Note 43 web parity: onboarding hand-off + Home activation checklist ----
+  const activationUid = s.user?.id || null;
+  const activationRef = useRef({ uid: null, state: null });
+  activationRef.current = { uid: activationUid, state: s.activation };
+  useEffect(() => {
+    set({ activation: loadChecklist(activationUid) });
+  }, [activationUid, set]);
+  const updateActivation = useCallback((patch) => {
+    const { uid, state: cur } = activationRef.current;
+    const next = { ...cur, ...patch };
+    saveChecklist(next, uid);
+    set({ activation: next });
+  }, [set]);
+  const dismissActivationChecklist = useCallback(() => updateActivation({ dismissed: true }), [updateActivation]);
+  /** Ends the personalization flow: hides the overlay, switches on the Home checklist when questions were
+   * answered, turns on For You when it has real matches and opens the event tapped on the reveal, if any. */
+  const finishOnboardingFlow = useCallback(({ showForYou, hasMatches, openEventKey, answeredPreferences }) => {
+    set({ onboardingFlowActive: false });
+    if (answeredPreferences && !activationRef.current.state?.enabled) updateActivation({ enabled: true });
+    if (showForYou && hasMatches) set({ filterForYou: true, screen: 'home' });
+    if (openEventKey) goEventRef.current?.(openEventKey);
+  }, [set, updateActivation]);
+  const goEventRef = useRef(null);
+
   const openSecurity = useCallback(() => set({
     screen: 'security', securityPassword: '', securityPasswordConfirm: '',
     securityError: '', securitySaved: false, securityResetSent: false,
@@ -5052,10 +5173,11 @@ export function BanBeProvider({ children }) {
   // account's own favorites.
   const recordSaveDayRef = useRef(null); // assigned by the rewards block below (defined later in this component)
   const toggleFav = useCallback((k) => {
+    // Note 49: a guest's save used to flip locally and vanish at sign-in; it now asks.
+    if (!s.user) return promptSignIn('save', { eventKey: k });
     if (favToggleInFlightRef.current.has(k)) return;
     const wasSaved = s.favorites.includes(k);
     set(prev => ({ favorites: wasSaved ? prev.favorites.filter(x => x !== k) : [...prev.favorites, k] }));
-    if (!s.user) return; // signed-out guest: local-only, same as before this ticket
     const uid = s.user.id;
     favToggleInFlightRef.current.add(k);
     (async () => {
@@ -5609,9 +5731,10 @@ export function BanBeProvider({ children }) {
   const closePulseOrganizerSheet = useCallback(() => set({ pulseOrganizerSheet: null }), [set]);
   /** Follow straight from the Pulse organizer sheet — same single write path as every other control. */
   const followPulseOrganizer = useCallback(async (organizerId) => {
-    if (!s.user?.id || !organizerId) return;
+    if (!s.user?.id) return promptSignIn('follow');
+    if (!organizerId) return;
     await setFollowing(organizerId, !s.followedOrgIds.includes(organizerId));
-  }, [s.user?.id, s.followedOrgIds, setFollowing]);
+  }, [s.user?.id, s.followedOrgIds, setFollowing, promptSignIn]);
 
   // 2026-09-25 fix pass — the ranked-photo popup: photo + organizer
   // identity/verified badge + a "view event" action, per this ticket's own
@@ -6002,6 +6125,64 @@ export function BanBeProvider({ children }) {
 
   // ---- navigation ----
   const goHome = useCallback(() => set({ screen: 'home' }), [set]);
+
+  // ---- Note 44/45 web parity: banbe Schedule ----
+  const scheduleUid = s.user?.id || null;
+  useEffect(() => { set({ scheduleAddedKeys: scheduleStore.keys(scheduleUid) }); }, [scheduleUid, set]);
+  const goSchedule = useCallback(() => { set({ screen: 'schedule' }); track('schedule_opened'); }, [set]);
+
+  /** A shaped real event -> what the schedule needs. No end times exist (note 38). */
+  const scheduleInfoFor = useCallback((e) => {
+    if (!e) return null;
+    const start = e.startsAt ? Date.parse(e.startsAt) : null;
+    return {
+      key: e.key, title: e.name || '', start: Number.isFinite(start) ? start : null, end: null,
+      timeZone: forYouTimeZone(e.countryCode, e.stateProvince) || null,
+      location: [e.neighborhood, e.city || e.area].filter(Boolean).join(', ') || e.area || '',
+      cancelled: e.status === 'cancelled',
+      // Note 38's client rule: an event is over 12h after its start, even before the hourly cron marks it ended.
+      ended: e.status === 'ended' || (Number.isFinite(start) && Date.now() - start > 12 * 3600e3),
+      inviteOnly: e.visibility !== 'public', soldOut: !!e.soldOut,
+    };
+  }, []);
+
+  const scheduleSnapshot = useMemo(() => {
+    const now = Date.now();
+    const bookings = (s.paymentBookings || []).map(b => ({
+      eventKey: b.event_id, status: b.status, paymentState: b.payment_state,
+      holdExpiresAt: b.hold_expires_at ? Date.parse(b.hold_expires_at) : null,
+      // Gift columns (migration 151) are honoured when the row carries them.
+      giftedAway: !!b.gifted_at && b.claimed_by_user_id !== s.user?.id,
+    }));
+    const hostedKeys = s.myOrgEventKeys || [];
+    const keys = new Set([...bookings.map(b => b.eventKey), ...hostedKeys, ...(s.scheduleAddedKeys || [])]);
+    const events = {};
+    for (const k of keys) { const info = scheduleInfoFor(s.realEventsById[k]); if (info) events[k] = info; }
+    const mine = scheduleMySchedule({ bookings, hostedKeys, addedKeys: s.scheduleAddedKeys || [], events, now });
+    const discoverList = scheduleDiscover((s.discoveryEvents || []).map(scheduleInfoFor).filter(Boolean), new Set(mine.items.map(i => i.id)), now);
+    const missingKeys = [...keys].filter(k => !(k in s.realEventsById));
+    return { mine, discover: discoverList, missingKeys };
+  // A 30s bucket keeps "now"-dependent rules (holds, discover cut-off) fresh without recomputing every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.paymentBookings, s.myOrgEventKeys, s.scheduleAddedKeys, s.realEventsById, s.discoveryEvents, s.user?.id, scheduleInfoFor, Math.floor(Date.now() / 30000)]);
+
+  /** 'added' | 'alreadyThere' | 'needsSignIn' | 'ineligible' */
+  const addToBanbeSchedule = useCallback((eventKey) => {
+    track('banbe_schedule_add');
+    if (!scheduleUid) return 'needsSignIn';
+    if (scheduleSnapshot.mine.items.some(i => i.id === eventKey)) { track('banbe_schedule_result', { result: 'alreadyAdded' }); return 'alreadyThere'; }
+    if (!scheduleCanAdd(scheduleInfoFor(s.realEventsById[eventKey]))) { track('banbe_schedule_result', { result: 'ineligible' }); return 'ineligible'; }
+    const r = scheduleStore.add(eventKey, scheduleUid);
+    set({ scheduleAddedKeys: scheduleStore.keys(scheduleUid) });
+    track('banbe_schedule_result', { result: r });
+    return 'added';
+  }, [scheduleUid, scheduleSnapshot, scheduleInfoFor, s.realEventsById, set]);
+  const removeFromBanbeSchedule = useCallback((eventKey) => {
+    if (!scheduleUid) return;
+    scheduleStore.remove(eventKey, scheduleUid);
+    set({ scheduleAddedKeys: scheduleStore.keys(scheduleUid) });
+    track('banbe_schedule_remove');
+  }, [scheduleUid, set]);
   const goMapExplore = useCallback(() => set({ screen: 'mapExplore' }), [set]);
   const backFromMapExplore = useCallback(() => set({ screen: 'home' }), [set]);
   // Plain setter, not map-specific logic — MapExplore.jsx owns deciding
@@ -6087,6 +6268,11 @@ export function BanBeProvider({ children }) {
     storyReturnSnapshot: null,
     storyReturnHostName: null,
   })), [set]);
+  goEventRef.current = goEvent;
+  // "Open an event that fits you" (Home checklist, note 43) — every goEvent open counts.
+  useEffect(() => {
+    if (s.screen === 'event' && s.activation?.enabled && !s.activation.openedEvent) updateActivation({ openedEvent: true });
+  }, [s.screen, s.activation, updateActivation]);
   // BUG 3 fix (2026-09-22 follow-up) — real bug, confirmed by reading: the
   // back PILL always read `BACK_LABELS[eventBackScreen]` (EventDetail.jsx),
   // which for a story-opened event resolves to "banbe"/"Home" (whatever
@@ -6127,7 +6313,8 @@ export function BanBeProvider({ children }) {
       storyViewer: null,
     };
   }), [set]);
-  const goReserve = useCallback(() => set(s.user ? { screen: 'reserve', attendeeDrafts: makeAttendeeDrafts(s.qty, s.user.name) } : { screen: 'login', authMode: 'login', authReturnScreen: 'reserve', authBackScreen: 'event' }), [set, s.user, s.qty]);
+  // Note 49: a guest is asked first; sign-in resumes through goReserve itself so attendee drafts are rebuilt.
+  const goReserve = useCallback(() => (s.user ? set({ screen: 'reserve', attendeeDrafts: makeAttendeeDrafts(s.qty, s.user.name) }) : promptSignIn('reserve')), [set, s.user, s.qty, promptSignIn]);
   const backToEvent = useCallback(() => set({ screen: 'event' }), [set]);
   const goLogin = useCallback(() => set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'home' }), [set]);
   // `back` is only honored when it's really a screen name — several call
@@ -6262,9 +6449,12 @@ export function BanBeProvider({ children }) {
     // render, before that listener has necessarily fired, never shows this
     // account's saves.
     favoritesUidRef.current = null;
-    set({
+    set(prev => ({
+      // Note 49: the full per-account reset (logout used to miss bookings, tickets, stories, organizer identity…).
+      ...signedOutState(prev), ...ORGANIZER_IDENTITY_RESET,
       user: null, accountType: 'participant', organizerMode: false, hasHosted: false, mode: 'goer',
-      screen: 'login', authMode: 'login', authMandatory: true, authReturnScreen: 'home', authBackScreen: 'home',
+      // Signing out lands on Welcome (note 44/48 parity), not a forced Login.
+      screen: 'welcome', authMode: 'login', authMandatory: false, authReturnScreen: 'home', authBackScreen: 'welcome',
       // TASK 4 (Reserve→edit-name pass) — same belt-and-suspenders spirit
       // as authReturnScreen/authBackScreen above.
       editNameReturnScreen: 'profile',
@@ -6280,7 +6470,7 @@ export function BanBeProvider({ children }) {
       // load completes.
       refundCenterClaims: [], refundCenterSelected: [], refundQueue: [], refundDestinations: [],
       myRefunds: [], paymentRefundClaim: null, attendanceGuests: [],
-    });
+    }));
   }, [set]);
   // (Defined after `logout` — a const used in a deps array before its
   // declaration is a TDZ crash that blanks the whole app.)
@@ -7033,14 +7223,15 @@ export function BanBeProvider({ children }) {
   }, [set, T]);
 
   const toggleFollowOrganizer = useCallback(async (organizerId) => {
-    if (!s.user?.id || !organizerId) return;
+    if (!s.user?.id) return promptSignIn('follow');
+    if (!organizerId) return;
     // The server-fresh flag a profile loaded with wins over a possibly stale local list
     // (another device may have changed it); fall back to the canonical list.
     const fresh = s.publicProfile?.organizer?.id === organizerId ? s.publicProfile.organizer.following
       : s.organizerProfile?.id === organizerId ? s.organizerProfile.following : undefined;
     const wasFollowing = fresh !== undefined ? !!fresh : s.followedOrgIds.includes(organizerId);
     await setFollowing(organizerId, !wasFollowing);
-  }, [s.user?.id, s.publicProfile, s.organizerProfile, s.followedOrgIds, setFollowing]);
+  }, [s.user?.id, s.publicProfile, s.organizerProfile, s.followedOrgIds, setFollowing, promptSignIn]);
 
   // ---- Account extension (2026-09-27, Stage 3) — KPI reports ----
   // One RPC (get_account_kpis, migration 097) serves the on-screen cards,
@@ -7062,21 +7253,26 @@ export function BanBeProvider({ children }) {
    * value until React commits) — same reason `openOrganizerProfile` takes
    * `organizerId` as a parameter instead of reading `s.organizerProfileId`
    * right after setting it. */
+  // Only the latest request may land: a quick 7 -> 30 -> 90 switch could otherwise show an older response last.
+  const reportsRequestSeq = useRef(0);
   const fetchAccountKpis = useCallback(async (scope, organizerId, rangeDays, customStart, customEnd) => {
     const { start, end } = reportsRangeBounds(rangeDays, customStart, customEnd);
+    const seq = ++reportsRequestSeq.current;
     set({ reportsLoading: true, reportsError: '' });
     const { data, error } = await supabase.rpc('get_account_kpis', {
       p_scope: scope, p_start: start.toISOString(), p_end: end.toISOString(),
       p_organizer_id: scope === 'host' ? organizerId : null,
     });
+    if (seq !== reportsRequestSeq.current) return;
     if (error || data?.success === false) {
       console.warn('fetchAccountKpis failed:', error || data);
+      // A failed refresh keeps the numbers already on screen (shown as stale, with their time and Retry).
       return set({
-        reportsLoading: false, reportsData: null,
+        reportsLoading: false,
         reportsError: T('Không thể tải số liệu lúc này. Vui lòng thử lại.', "Couldn't load these numbers right now. Please try again."),
       });
     }
-    set({ reportsLoading: false, reportsData: data, reportsError: '' });
+    set({ reportsLoading: false, reportsData: data, reportsError: '', reportsLoadedAt: Date.now() });
   }, [set, T]);
 
   // Re-fetches with whatever scope/organizer/range are ALREADY committed in
@@ -7094,7 +7290,7 @@ export function BanBeProvider({ children }) {
   const openReports = useCallback((scope, organizerId, back = 'profile') => {
     set({
       screen: 'reports', reportsScope: scope, reportsOrganizerId: organizerId || '', reportsBack: back,
-      reportsData: null, reportsError: '', reportsExpanded: new Set(),
+      reportsData: null, reportsError: '', reportsExpanded: new Set(), reportsLoadedAt: null, reportsDetailKey: null,
     });
     fetchAccountKpis(scope, organizerId, s.reportsRangeDays, s.reportsCustomStart, s.reportsCustomEnd);
   }, [set, fetchAccountKpis, s.reportsRangeDays, s.reportsCustomStart, s.reportsCustomEnd]);
@@ -7118,6 +7314,8 @@ export function BanBeProvider({ children }) {
     reportsExpanded: new Set((prev.reportsData?.metrics || []).map(m => m.key)),
   })), [set]);
   const collapseAllReportCards = useCallback(() => set({ reportsExpanded: new Set() }), [set]);
+  const openReportDetail = useCallback((key) => set({ reportsDetailKey: key }), [set]);
+  const closeReportDetail = useCallback(() => set({ reportsDetailKey: null }), [set]);
 
   // Spreadsheet-injection guard: Excel/Sheets treats a cell starting with
   // =, +, -, @, tab or CR as a FORMULA — a hostile event/organizer name
@@ -7687,10 +7885,13 @@ export function BanBeProvider({ children }) {
       notificationBookingById: bookingById, notificationEventPhotoByEventId: eventPhotoByEventId, notificationAvatarByUserId: avatarByUserId,
     });
   }, [set, s.user?.id, s.mutedNotificationKinds]);
+  // Note 44 web parity: Notifications left the dock (Schedule took its slot) and is a pushed screen; Back returns to
+  // wherever it was opened from (Home bell, Account row, Action Center "See all", a deep link -> Home).
   const goNotifications = useCallback(() => {
-    set({ screen: 'notifications' });
+    set(prev => ({ screen: 'notifications', notificationsBack: prev.screen === 'notifications' ? prev.notificationsBack : prev.screen }));
     loadNotifications();
   }, [set, loadNotifications]);
+  const backFromNotifications = useCallback(() => set(prev => ({ screen: prev.notificationsBack && prev.notificationsBack !== 'notifications' ? prev.notificationsBack : 'home' })), [set]);
   // Marks one notification read — never all of them at once, and never just
   // from opening the screen. Read status is the visible signal of "have I
   // actually looked at this one", so it has to follow an actual tap on that
@@ -8139,50 +8340,26 @@ export function BanBeProvider({ children }) {
   const openCalendarPicker = useCallback(() => set({ calendarPickerFor: s.eventKey }), [set, s.eventKey]);
   const closeCalendarPicker = useCallback(() => set({ calendarPickerFor: null }), [set]);
 
-  const pad2 = (n) => String(n).padStart(2, '0');
-  const toICSDate = (d) => (
-    d.getUTCFullYear() + pad2(d.getUTCMonth() + 1) + pad2(d.getUTCDate())
-    + 'T' + pad2(d.getUTCHours()) + pad2(d.getUTCMinutes()) + pad2(d.getUTCSeconds()) + 'Z'
-  );
-  const calendarEventFor = (ev) => {
-    const start = ev.startDate || new Date();
-    const end = new Date(start.getTime() + 2 * 60 * 60 * 1000); // 2h default — this catalogue has no end time of its own
-    return { title: ev.name, start, end, location: ev.locationLabel || ev.where || '', description: ev.desc || '' };
-  };
+  // Note 44 web parity: one shared, honest export (lib/calendarExport.js) — no start time means nothing is exported
+  // (this used to invent "now"); no end time means a 2h default the note in the event says so.
+  const calendarDraftFor = (ev) => calendarDraft({
+    title: ev.name, start: ev.startDate ? new Date(ev.startDate).getTime() : (ev.startsAt ? Date.parse(ev.startsAt) : null),
+    end: null, location: ev.locationLabel || ev.where || '', eventKey: ev.key, origin: window.location.origin,
+  }, T);
 
   const addToCalendarGoogle = useCallback((ev) => {
-    const { title, start, end, location, description } = calendarEventFor(ev);
-    const params = new URLSearchParams({
-      action: 'TEMPLATE', text: title,
-      dates: `${toICSDate(start)}/${toICSDate(end)}`,
-      details: description, location,
-    });
-    window.open(`https://calendar.google.com/calendar/render?${params.toString()}`, '_blank', 'noopener');
-    set({ calAdded: true, calendarPickerFor: null });
-  }, [set]);
+    const draft = calendarDraftFor(ev);
+    if (draft) window.open(googleCalendarUrl(draft), '_blank', 'noopener');
+    set({ calAdded: !!draft, calendarPickerFor: null });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [set, T]);
 
   const addToCalendarICS = useCallback((ev) => {
-    const { title, start, end, location, description } = calendarEventFor(ev);
-    const esc = (v) => String(v).replace(/[\\,;]/g, (m) => '\\' + m).replace(/\n/g, '\\n');
-    const ics = [
-      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//banbe//event//VI', 'BEGIN:VEVENT',
-      `UID:${(crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))}@banbe.app`,
-      `DTSTAMP:${toICSDate(new Date())}`,
-      `DTSTART:${toICSDate(start)}`,
-      `DTEND:${toICSDate(end)}`,
-      `SUMMARY:${esc(title)}`,
-      `LOCATION:${esc(location)}`,
-      `DESCRIPTION:${esc(description)}`,
-      'END:VEVENT', 'END:VCALENDAR',
-    ].join('\r\n');
-    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `${ev.key || 'event'}.ics`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    set({ calAdded: true, calendarPickerFor: null });
-  }, [set]);
+    const draft = calendarDraftFor(ev);
+    if (draft) downloadIcs(draft, `${ev.key || 'event'}.ics`, { uid: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) });
+    set({ calAdded: !!draft, calendarPickerFor: null });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [set, T]);
   const giveTicket = useCallback((ev) => {
     const url = 'https://banbe.app/ve/' + ev.key + '-x7f2';
     if (navigator.share) navigator.share({ title: 'banbe ▪︎ ' + ev.name, text: T('Mình có vé cho bạn', 'I have a ticket for you'), url }).catch(() => {});
@@ -8750,7 +8927,9 @@ export function BanBeProvider({ children }) {
   // conversation — that always opens a specific, already-known thread
   // (see openThread, used from Inbox).
   const openChatFor = useCallback(async (key, back) => {
-    if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'chat', authBackScreen: 'event' });
+    // Note 49: a guest is asked first; sign-in re-runs this (thread lookup, organizer id) instead of landing on an
+    // empty chat that could not send.
+    if (!s.user) return promptSignIn('message', { eventKey: key });
     // findEvent() falls back to EVENTS[0] ("Bếp Nhỏ") for any key that isn't a
     // catalogue event, so a real, host-created event used to get that demo
     // host's name as the chat title. Only trust it for genuine catalogue keys.
@@ -8813,6 +8992,17 @@ export function BanBeProvider({ children }) {
   // "Message the host" from an event/organizer/refund screen — always about
   // whichever event is currently open.
   const goChat = useCallback(() => openChatFor(s.eventKey, 'event'), [openChatFor, s.eventKey]);
+  // Note 49: after a guest signs in from a Reserve/Message prompt, pick up exactly where they were (kept in
+  // sessionStorage so it survives an OAuth redirect). Runs once the profile has synced and Login is gone.
+  useEffect(() => {
+    if (!s.user?.id || s.authSyncing || s.screen === 'login' || s.screen === 'policy') return;
+    let resume = null;
+    try { resume = JSON.parse(sessionStorage.getItem('banbe.authResume.v1') || 'null'); sessionStorage.removeItem('banbe.authResume.v1'); } catch { /* ignore */ }
+    if (!resume?.eventKey) return;
+    if (resume.type === 'reserve') set({ eventKey: resume.eventKey, screen: 'reserve', attendeeDrafts: makeAttendeeDrafts(s.qty, s.user.name) });
+    else if (resume.type === 'chat') openChatFor(resume.eventKey, resume.back || 'event');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.user?.id, s.authSyncing, s.screen]);
   // Opens a specific, already-known thread — used from Inbox, on either side
   // (guest continuing a conversation, or organizer replying to a guest).
   const openThread = useCallback((threadId, eventKey, back, otherName) => {
@@ -10712,10 +10902,10 @@ export function BanBeProvider({ children }) {
     loadDisputeChats, toggleDisputeChat, openDisputeChatInInbox, loadRefundDisputeChat, sendRefundDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
-    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
+    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
@@ -10751,10 +10941,10 @@ export function BanBeProvider({ children }) {
     loadDisputeChats, toggleDisputeChat, openDisputeChatInInbox, loadRefundDisputeChat, sendRefundDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
-    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
+    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,

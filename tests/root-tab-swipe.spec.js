@@ -67,7 +67,7 @@ test.describe('Root-tab horizontal swipe', () => {
     }
     await page.mouse.up();
 
-    await page.waitForSelector('[data-screen-label="Notifications"]', { timeout: 5000 });
+    await page.waitForSelector('[data-screen-label="Schedule"]', { timeout: 5000 });
     await page.waitForTimeout(300);
 
     // From a non-Map root screen, swiping right (mid-screen, no edge
@@ -121,8 +121,8 @@ test.describe('Root-tab horizontal swipe', () => {
     // Land on Notifications first via a plain dock tap (not a swipe) —
     // avoids Map entirely, whose own native map/filter-sheet layout is a
     // separate, unrelated case not what this test targets.
-    await page.getByTestId('tab-notifications').click();
-    await page.waitForSelector('[data-screen-label="Notifications"]');
+    await page.getByTestId('tab-schedule').click();
+    await page.waitForSelector('[data-screen-label="Schedule"]');
 
     const box = await appBox(page);
     const midY = box.y + Math.min(box.height, 600) / 2;

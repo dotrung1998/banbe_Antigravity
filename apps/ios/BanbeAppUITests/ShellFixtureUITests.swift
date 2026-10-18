@@ -104,12 +104,32 @@ final class ShellFixtureUITests: XCTestCase {
         XCTAssertEqual(el(app, "schedule.dayTitle").label, before, "and back")
     }
 
-    func testSwipeOverTheAgendaStillSwitchesDockSections() {
+    /// Note 48: the list area swipes between days and never leaves Schedule.
+    func testSwipeOverTheAgendaChangesDayAndNeverTheSection() {
         let app = launch("schedule")
         XCTAssertTrue(el(app, "schedule.dayTitle").waitForExistence(timeout: 20))
+        let before = el(app, "schedule.dayTitle").label
         swipe(app, y: 0.62, from: 0.85, to: 0.15)
-        XCTAssertTrue(app.otherElements["screen.inbox"].waitForExistence(timeout: 8),
-                      "the exclusion is only the strip/mode picker, not the whole screen")
+        XCTAssertTrue(app.otherElements["screen.schedule"].waitForExistence(timeout: 3), "still on Schedule")
+        XCTAssertFalse(app.otherElements["screen.inbox"].exists)
+        XCTAssertNotEqual(el(app, "schedule.dayTitle").label, before, "the swipe moved to the next day")
+        swipe(app, y: 0.62, from: 0.15, to: 0.85)
+        XCTAssertEqual(el(app, "schedule.dayTitle").label, before, "and back")
+    }
+
+    /// Note 48: swipe down on the week strip opens the month in place; up closes it.
+    func testWeekStripSwipeDownOpensMonthAndUpCloses() {
+        let app = launch("schedule")
+        XCTAssertTrue(el(app, "schedule.dayTitle").waitForExistence(timeout: 20))
+        let strip = el(app, "schedule.nextWeek").frame
+        let start = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: app.windows.firstMatch.frame.width / 2, dy: strip.midY))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 90)))
+        XCTAssertTrue(el(app, "schedule.monthDay.15").waitForExistence(timeout: 3), "the whole month is shown")
+        let now = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: app.windows.firstMatch.frame.width / 2, dy: el(app, "schedule.nextWeek").frame.midY))
+        now.press(forDuration: 0.05, thenDragTo: now.withOffset(CGVector(dx: 0, dy: -90)))
+        XCTAssertTrue(el(app, "schedule.monthDay.15").waitForNonExistence(timeout: 3), "back to the week")
     }
 
     // MARK: 4 — Account tabs
