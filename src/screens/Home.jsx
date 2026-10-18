@@ -1,5 +1,5 @@
 import { glassCapsuleInactive } from '../lib/glassOpacity.js';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, bg, agoLabel } from '../data/events.js';
@@ -11,7 +11,14 @@ import { useForYouAlert } from '../lib/useForYouAlert.js';
 import ForYouChip from './ForYouChip.jsx';
 import { reminderPhase, REMINDER_CSS, reminderRank } from '../lib/eventReminder.js';
 import { compactCoins, shortcutLabels } from '../lib/rewards.js';
-import { HEADER, headerLayout, hitSlop } from '../lib/homeHeaderLayout.js';
+import { HEADER, hitSlop } from '../lib/homeHeaderLayout.js';
+
+// Header fit order (iOS note 45): wordmark steps down before the title goes; 96 matches every other screen.
+const HEADER_FIT_STEPS = [
+  { wordmark: 96, showTitle: true }, { wordmark: 80, showTitle: true }, { wordmark: 70, showTitle: true },
+  { wordmark: 96, showTitle: false }, { wordmark: 80, showTitle: false }, { wordmark: 70, showTitle: false },
+  { wordmark: 0, showTitle: false },
+];
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass, barGlass } from '../theme.js';
 import { BAR_HEIGHT, BAR_BOTTOM_OFFSET, DOCK_MARGIN } from './BottomTabBar.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
@@ -388,6 +395,10 @@ const HOME_EXTRA_FILTERS = [
 
 // iOS HomeView.homeGlassCapsule parity: translucent ink-tinted fill, 1px
 // hairline, soft shadow, 999px radius, fixed 36px height.
+// One heading size for every Home section ("Your events", "Help Shape…", "This weekend"), in the same display
+// face as the screen titles ("Schedule", "Account"…), so the headings read as one family.
+const SECTION_TITLE = 20;
+
 function homeCapsule(extra, active = false) {
   return {
     display: 'inline-flex', alignItems: 'center', height: 36, boxSizing: 'border-box', padding: '0 14px',
@@ -860,23 +871,30 @@ export default function Home() {
   const shortcutsOn = s.rewardsSummaryStatus === 'loaded' && !!s.rewardsSummary;
   const streakChars = String(s.rewardsSummary?.streak ?? 0).length;
   const coinChars = compactCoins(s.rewardsSummary?.balance ?? 0).length;
-  const [layout, setLayout] = useState({ wordmark: 96, showTitle: true });
+  // MEASURED, not estimated (2026-10-18): the estimate undershot the real control widths, so the title was
+  // overlapped by the capsule. Start from the full layout (96px wordmark + title) and step down while the left
+  // group would touch the right group: smaller wordmark first, then drop the title, last resort no wordmark.
+  const [fitStep, setFitStep] = useState(0);
+  const layout = HEADER_FIT_STEPS[fitStep] || HEADER_FIT_STEPS[HEADER_FIT_STEPS.length - 1];
   const showTitle = layout.showTitle;
+  const headerKey = `${shortcutsOn}|${streakChars}|${coinChars}|${s.lang}|${s.unreadNotifications > 0}`;
   useEffect(() => {
     const el = headerRef.current;
-    if (!el) return undefined;
-    const measure = () => {
-      const w = el.clientWidth + HEADER.sidePad * 2;
-      // Wordmark steps down first, then the title goes, then (last resort) the wordmark (iOS note 45 order).
-      const l = headerLayout(w, { streakChars, coinChars, showShortcuts: shortcutsOn });
-      setLayout(shortcutsOn ? l : { wordmark: l.wordmark === HEADER.wordmark ? 96 : l.wordmark, showTitle: l.showTitle });
-    };
-    measure();
-    if (typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(measure);
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    let last = el.clientWidth;
+    const ro = new ResizeObserver(() => { if (el.clientWidth !== last) { last = el.clientWidth; setFitStep(0); } });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [shortcutsOn, streakChars, coinChars]);
+  }, []);
+  useEffect(() => { setFitStep(0); }, [headerKey]);
+  useLayoutEffect(() => {
+    const el = headerRef.current;
+    if (!el || fitStep >= HEADER_FIT_STEPS.length - 1) return;
+    const left = el.children[0], right = el.children[1];
+    if (!left || !right) return;
+    const overflow = left.getBoundingClientRect().right + 8 > right.getBoundingClientRect().left + 0.5;
+    if (overflow) setFitStep(fitStep + 1);
+  });
 
   return (
     <>
@@ -899,7 +917,7 @@ export default function Home() {
             const key = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
             // 38px visual capsule; each half keeps a 44px tall tap area via vertical hit slop.
             const slop = hitSlop(HEADER.capsule);
-            const btn = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: HEADER.iconGap, minWidth: HEADER.capsule, padding: `${slop}px ${HEADER.btnPad}px`, margin: `-${slop}px 0`, boxSizing: 'content-box', fontVariantNumeric: 'tabular-nums', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', flex: 'none' };
+            const btn = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: HEADER.iconGap, minWidth: HEADER.capsule - 2 * HEADER.btnPad, padding: `${slop}px ${HEADER.btnPad}px`, margin: `-${slop}px 0`, boxSizing: 'content-box', fontVariantNumeric: 'tabular-nums', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', flex: 'none' };
             return (
               <div style={{ ...homeCapsule(), height: HEADER.capsule, padding: 0, gap: 0, alignItems: 'center', flex: 'none' }} data-testid="home-reward-shortcuts">
                 <div onClick={open} onKeyDown={key} role="button" tabIndex={0} aria-label={lbl.streak} data-testid="home-streak" style={btn}>
@@ -983,7 +1001,7 @@ export default function Home() {
       {savedList.length > 0 && (
         <div style={{ padding: '16px 20px 4px', borderBottom: `1px solid ${rule}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-            <span style={{ ...display(18) }}>{T('Sự kiện của bạn', 'Your events')}</span>
+            <span style={{ ...display(SECTION_TITLE) }}>{T('Sự kiện của bạn', 'Your events')}</span>
             <span style={{ fontSize: 11.5, color: ink }}>{T('Sự kiện đã qua sẽ ẩn sau 48h', 'Past events clear after 48h')}</span>
           </div>
           <div data-hscroll="true" style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '12px 14px 6px', margin: '-12px -14px 0' }}>
@@ -1114,7 +1132,7 @@ export default function Home() {
           data-testid="home-survey-discovery-toggle"
           style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', minHeight: 32 }}
         >
-          <span style={{ fontSize: 14, fontWeight: 600, color: ink, opacity: 0.7 }}>
+          <span style={{ ...display(SECTION_TITLE) }}>
             {T('Góp ý cho sự kiện sắp tới', 'Help Shape Upcoming Events')}
           </span>
           {!s.homeSurveyDiscoveryLoading && !s.homeSurveyDiscoveryError && s.homeSurveyDiscovery.length > 0 && (
@@ -1343,7 +1361,7 @@ export default function Home() {
       {!(s.weekendEventsLoading && weekendList.length === 0) && (
         <div data-testid="home-weekend-section" style={{ padding: '16px 20px 4px', borderTop: `1px solid ${rule}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-            <span style={{ ...display(15) }}>{T('Cuối tuần này', 'This weekend')}</span>
+            <span style={{ ...display(SECTION_TITLE) }}>{T('Cuối tuần này', 'This weekend')}</span>
           </div>
           {weekendList.length > 0 ? (
             <div data-hscroll="true" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 10 }}>
