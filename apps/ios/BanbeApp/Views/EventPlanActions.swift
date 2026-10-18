@@ -98,9 +98,8 @@ struct EventPlanTitleRow: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(app.palette.ink)
                 Text(statusLabel)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(app.palette.ink)
-                    .lineLimit(1)
             }
             .fixedSize()
             .contentShape(Rectangle())
