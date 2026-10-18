@@ -85,7 +85,11 @@ extension AppState {
     /// count bump — the same bug class in Swift as in a JS state updater
     /// that runs after an `await`.
     func togglePhotoLike(_ photoId: String) async {
-        guard isSignedIn else { requireAuth(returnTo: .profile, backTo: .profile); return }
+        // Note 48: ask in place and come back here, not to Account.
+        guard isSignedIn else {
+            if pulseOpen { closePulseViewer(); try? await Task.sleep(nanoseconds: 400_000_000) }
+            promptSignIn(.like); return
+        }
         guard !photoEngagementBusy.contains(photoId) else { return }
         let cur = photoEngagement[photoId] ?? PhotoEngagement(likeCount: 0, shareCount: 0, likedByMe: false)
         let wasLiked = cur.likedByMe

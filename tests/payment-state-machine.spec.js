@@ -99,8 +99,9 @@ test.describe('Payment screens wiring', () => {
     // guards against unfixed until 031). Copy promising a different number
     // than hold_seats() actually honors is exactly the kind of mismatch a
     // buyer only discovers under pressure, mid-transfer.
-    expect(src).toContain('Giữ chỗ ▪︎ 30 phút');
-    expect(src).toContain('Hold ▪︎ 30 minutes');
+    // Note 48: the label also states the seat count ("Hold 2 seats ▪︎ 30 min").
+    expect(src).toContain('chỗ ▪︎ 30 phút');
+    expect(src).toContain('▪︎ 30 min');
     expect(src).not.toMatch(/60 phút|60 minutes/);
   });
 

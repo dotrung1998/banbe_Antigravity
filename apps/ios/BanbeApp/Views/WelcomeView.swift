@@ -137,24 +137,35 @@ struct WelcomeView: View {
         }
     }
 
-    /// Get started (primary) and Log in (secondary but just as visible).
+    /// Note 48 (reciprocity): "Explore events" first — real events before
+    /// any ask — then Create account and Log in, both still one tap.
     private var ctas: some View {
         VStack(spacing: 10) {
-            InkButton(title: app.T("Bắt đầu", "Get started"), font: .headline) {
+            InkButton(title: app.T("Khám phá sự kiện", "Explore events"), font: .headline) {
+                app.browseAsGuest()
+            }
+            .accessibilityIdentifier("welcome.explore")
+            Button {
                 Analytics.track(.publicEntryGetStarted)
                 app.openAuth(.signup)
+            } label: {
+                Text(app.T("Tạo tài khoản", "Create an account"))
+                    .font(.headline)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.ink, lineWidth: 1.2))
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .accessibilityIdentifier("welcome.getStarted")
             Button {
                 Analytics.track(.publicEntryLogin)
                 app.openAuth(.login)
             } label: {
                 Text(app.T("Đã có tài khoản? Đăng nhập", "Already have an account? Log in"))
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
                     .multilineTextAlignment(.center)
-                    .padding(.vertical, 12)
-                    .frame(maxWidth: .infinity, minHeight: 50)
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.ink, lineWidth: 1.2))
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

@@ -230,7 +230,12 @@ extension AppState {
 
     /// Follow/unfollow straight from the Pulse organizer sheet — the same single write path as every control.
     func followPulseOrganizer(_ organizerID: String) async {
-        guard userID != nil else { return }
+        guard userID != nil else {
+            // Pulse is itself a sheet: close it first so the prompt can show.
+            closePulseViewer()
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            return promptSignIn(.follow)
+        }
         await setFollowing(organizerID, !followedOrgIDs.contains(organizerID))
     }
 

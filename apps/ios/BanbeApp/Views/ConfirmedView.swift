@@ -51,6 +51,14 @@ struct ConfirmedView: View {
     private var isDisputed: Bool { phase == .disputed }
     private var isExpired: Bool { phase == .expired }
     private var awaitingPayment: Bool { app.booking != nil && !isPaid && !isExpired }
+    /// Booking journey step (note 48); hidden for expired/disputed bookings,
+    /// which have left the happy path.
+    private var journeyStep: Int? {
+        guard app.booking != nil, !isExpired, !isDisputed else { return nil }
+        if isPaid { return 4 }
+        if isPendingVerification { return 3 }
+        return 2
+    }
     private var holdDeadline: Date? { app.booking?.holdExpiresAt ?? app.holdDeadline }
     private var countdown: String {
         Countdown.format(Countdown.secondsUntil(holdDeadline, now: app.now))
@@ -95,6 +103,10 @@ struct ConfirmedView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
+                        if let journeyStep {
+                            BookingJourneyProgress(current: journeyStep)
+                                .padding(.bottom, 16)
+                        }
                         Text(isPaid ? app.T("Đã xác nhận", "Confirmed")
                              : isHolding ? app.T("Đang giữ chỗ cho bạn", "Holding your spot")
                              : isPendingVerification ? app.T("Đang chờ xác nhận", "Awaiting confirmation")

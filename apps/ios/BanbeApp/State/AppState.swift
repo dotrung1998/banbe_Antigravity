@@ -362,7 +362,17 @@ final class AppState: ObservableObject {
     // pre-existing gap, out of scope in the prior ticket); now directly
     // in scope, since a signed-out Team page visitor must be able to tap
     // a member card through to their public profile.
-    static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .welcome, .login, .policy, .organizerProfile, .organizerTeam, .publicProfile, .surveyPublic]
+    // Note 48 (reciprocity: value before the ask) — Home, Map and Event
+    // Detail are browsable signed out, read-only. Everything that writes or
+    // is personal (Reserve, Message, Save, Follow, Schedule, Account, Inbox)
+    // still goes through `promptSignIn`/`requireAuth` or the RootView guard.
+    // Audited: these screens read only anon-visible public data (events
+    // `events_select_public` = live/ended/cancelled AND public), and
+    // `applySession(nil)` clears every per-account list they could show.
+    static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .welcome, .login, .policy, .organizerProfile, .organizerTeam, .publicProfile, .surveyPublic,
+                                                   .home, .mapExplore, .event]
+    /// Guest-browsable screens a Login "Back" can return to (note 48).
+    static let guestBrowseScreens: Set<Screen> = [.home, .mapExplore, .event, .organizerProfile, .organizerTeam, .publicProfile]
 
     // MARK: - Screenshot Catalog (docs/demo-screenshots)
     // Test-only launch flags for `scripts/capture_ios_catalog.sh` /
@@ -1884,6 +1894,16 @@ final class AppState: ObservableObject {
     @Published var createEventTime: Date?
     @Published var createPrice = ""
     @Published var createSeats = ""
+    /// Smart defaults (note 48): the event the new draft's time/price/seats
+    /// were copied from, shown as a dismissible notice; nil = first-event
+    /// defaults or none.
+    @Published var createDefaultsSource: String?
+    /// Note 48: the contextual "sign in to …" sheet shown to a guest.
+    @Published var guestPrompt: GuestPrompt?
+    /// What to finish after the guest signs in from that sheet.
+    var pendingAuthResume: AuthResume?
+    /// The defaults last applied, to tell untouched fields from edited ones.
+    var createAppliedDefaults: EventDraftDefaults?
     // Strict invite-only events (migration 113) — "public" | "invite",
     // same field/values as web's `s.createVisibility` (BanBeContext.jsx).
     // Deliberately separate from `events.approval` (not exposed in this
@@ -2879,9 +2899,10 @@ final class AppState: ObservableObject {
     func goEvent(_ key: String) {
         // Fixtures (App/UITestFixtures.swift) never touch the network, but still run the real navigation and zoom
         // bookkeeping below so the open/close animation can be tested.
-        var offline = false
         #if DEBUG
-        offline = UITestFixture.isActive
+        let offline = UITestFixture.isActive
+        #else
+        let offline = false
         #endif
         // A fresh, non-story-originated event open discards any RETAINED
         // story viewer (BUG 1, 2026-09-22 tenth follow-up: `storyViewer`
@@ -2921,9 +2942,10 @@ final class AppState: ObservableObject {
         DispatchQueue.main.async { [weak self] in self?.screen = .event }
         eventBackIsStory = false
         storyReturnHostName = nil
-        guard !offline else { return }
-        Task { await loadBookingForCurrentEvent() }
-        Task { await loadLiveEventStatus() }
+        if !offline {
+            Task { await loadBookingForCurrentEvent() }
+            Task { await loadLiveEventStatus() }
+        }
     }
     /// Task 4C / BUG 3 (2026-09-22 follow-up) — tapping an event-share
     /// story's card/CTA. `screen` was never changed while the story
@@ -3281,7 +3303,12 @@ final class AppState: ObservableObject {
     func backFromEventList() { screen = eventListBack }
 
     func goReserve() {
-        guard isSignedIn else { return requireAuth(returnTo: .reserve, backTo: .event) }
+        // Note 48: after sign-in, resume through goReserve() itself so the
+        // attendee drafts and eligibility check are set up (landing on
+        // `.reserve` directly skipped both).
+        guard isSignedIn else {
+            return promptSignIn(.reserve, returnTo: .event, backTo: .event, resume: .reserve(eventKey: eventKey))
+        }
         formName = user?.displayName ?? ""
         reserveNameError = ""
         // A fresh party for each purchase; ticket 1 is usually the buyer.
@@ -3349,7 +3376,58 @@ final class AppState: ObservableObject {
         createAddressSearchError = ""
         createIncludedItems = []
         createKeywords = ""
+        applyCreateDefaults()
         screen = .create
+        // The host's events may not be loaded yet; once they are, upgrade the
+        // first-event defaults to "copy my last event" if nothing was touched.
+        if createDefaultsSource == nil, canHost {
+            Task { [weak self] in
+                await self?.loadMyOrgEventSummaries()
+                guard let self, self.screen == .create, self.createEditEventId == nil,
+                      self.createDefaultsSource == nil, self.createDraftMatchesAppliedDefaults else { return }
+                self.applyCreateDefaults()
+            }
+        }
+    }
+
+    /// The host's most recent event that has a date, as a defaults source.
+    var lastHostedEventSnapshot: LastEventSnapshot? {
+        myOrgEventSummaries
+            .filter { $0.eventDate != nil }
+            .max { ($0.submittedAt ?? $0.startsAt ?? .distantPast) < ($1.submittedAt ?? $1.startsAt ?? .distantPast) }
+            .map { LastEventSnapshot(name: $0.name, eventDate: $0.eventDate, eventTime: $0.eventTime,
+                                     priceVnd: $0.priceVnd, capacity: $0.capacity, catKey: $0.catKey) }
+    }
+
+    /// Pre-fill a NEW draft (never an edit) with smart defaults (note 48).
+    func applyCreateDefaults() {
+        guard createEditEventId == nil else { return }
+        let d = SmartDefaults.eventDraftDefaults(last: lastHostedEventSnapshot)
+        createEventDate = d.date
+        createEventTime = d.time
+        createPrice = d.price ?? ""
+        createSeats = String(d.seats)
+        createCats = d.categories
+        createDefaultsSource = d.sourceName
+        createAppliedDefaults = d
+    }
+
+    /// "Start blank": drop every smart default (note 48).
+    func clearCreateDefaults() {
+        Analytics.track(.createEventStartedBlank)
+        createEventDate = nil
+        createEventTime = nil
+        createPrice = ""
+        createSeats = ""
+        createCats = []
+        createDefaultsSource = nil
+        createAppliedDefaults = nil
+    }
+
+    var createDraftMatchesAppliedDefaults: Bool {
+        guard let d = createAppliedDefaults else { return false }
+        return createEventDate == d.date && createEventTime == d.time && createPrice == (d.price ?? "")
+            && createSeats == String(d.seats) && createCats == d.categories
     }
 
     // "Bao gồm" item editing (mirrors web's addCreateIncludedItem/
@@ -3712,6 +3790,8 @@ final class AppState: ObservableObject {
     // writes for the same row, and a rollback that only applies if this is
     // still the same signed-in account by the time the request settles.
     func toggleFavorite(_ key: String) {
+        // Note 48: a guest's save used to flip locally and vanish; ask instead.
+        guard isSignedIn else { return promptSignIn(.save) }
         guard !favoriteToggleInFlight.contains(key) else { return }
         Haptics.selection()
         let wasSaved = favorites.contains(key)
@@ -3731,6 +3811,7 @@ final class AppState: ObservableObject {
     // the event's real organizer_id, best-effort (a demo-catalogue event
     // with no real DB row only updates local state, same as before).
     func toggleFollow(_ key: String) {
+        guard isSignedIn else { return promptSignIn(.follow) }
         let wasFollowing = following.contains(key)
         if let index = following.firstIndex(of: key) { following.remove(at: index) } else { following.append(key) }
         guard let uid = userID else { return }

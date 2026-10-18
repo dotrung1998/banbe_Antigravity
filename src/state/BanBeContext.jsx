@@ -21,6 +21,7 @@ import { loadMapKit } from '../lib/mapkit.js';
 import { mapKitSearch } from '../lib/mapkitAdapter.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
 import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, isMissingColumnError } from '../lib/mediaUrls.js';
+import { eventDraftDefaults, createDefaultsPatch, createDraftMatchesDefaults } from '../lib/smartDefaults.js';
 
 /** Media-API upload with the current session token. Resolves `{provider:'supabase'}`
  * when the caller must use the legacy path; throws MediaUploadError only after bytes were PUT. */
@@ -1097,6 +1098,10 @@ const initialState = {
   // into starts_at server-side exactly the same way (migration 087/088's
   // `(p_event_date + p_event_time) AT TIME ZONE 'Asia/Ho_Chi_Minh'`).
   createEventDate: '',
+  // Smart defaults (note 48): the event a new draft was pre-filled from (null
+  // = first-event defaults or none) and the applied values themselves.
+  createDefaultsSource: null,
+  createAppliedDefaults: null,
   createEventTime: '',
   createPrice: '',
   createSeats: '',
@@ -6162,11 +6167,29 @@ export function BanBeProvider({ children }) {
       createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
       createCountryCode: '', createStateProvince: '', createNeighborhood: '',
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
-      createEventDate: '', createEventTime: '', createPrice: '', createSeats: '',
+      ...createDefaultsPatch(eventDraftDefaults(null)),
       createIncludedItems: [], createIntro: '', createKeywords: '', createChatGreeting: '', createChatGreetingEn: '', createVisibility: 'public',
       createCriteria: everyoneCriteria(), createCriteriaLoaded: everyoneCriteria(), createCriteriaLoad: 'ready', createCriteriaRetryEventId: null,
     }));
-  }, [set, s.user, canHost, enableOrganizerMode]);
+    // Smart defaults (note 48): upgrade the first-event defaults to "copy my
+    // last event" once it loads — only while the draft is still untouched.
+    const orgIds = s.myOrganizerIds || [];
+    if (orgIds.length) {
+      supabase.from('events').select('name, event_date, event_time, price_vnd, capacity, cat_key')
+        .in('organizer_id', orgIds).not('event_date', 'is', null)
+        .order('submitted_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle()
+        .then(({ data }) => {
+          if (!data) return;
+          set(prev => (prev.screen === 'create' && !prev.createEditEventId && createDraftMatchesDefaults(prev)
+            ? createDefaultsPatch(eventDraftDefaults(data)) : {}));
+        }, () => {});
+    }
+  }, [set, s.user, s.myOrganizerIds, canHost, enableOrganizerMode]);
+  // "Start blank": drop every smart default (note 48).
+  const clearCreateDefaults = useCallback(() => set({
+    createEventDate: '', createEventTime: '', createPrice: '', createSeats: '', createCats: [],
+    createDefaultsSource: null, createAppliedDefaults: null,
+  }), [set]);
   const openHeld = useCallback(() => set({ screen: 'confirmed' }), [set]);
   const goHostIntro = useCallback(() => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'hostIntro', authBackScreen: 'profile' });
@@ -9898,7 +9921,7 @@ export function BanBeProvider({ children }) {
       // hardcoded its own destination instead. Now the real source of
       // truth createBack reads (see its own comment above).
       screen: 'create', createOriginScreen: 'dashboard',
-      createEditEventId: eventId, createSent: false, createError: '',
+      createEditEventId: eventId, createSent: false, createError: '', createDefaultsSource: null, createAppliedDefaults: null,
       createName: real.name || '', createCats: real.catKey ? [real.catKey] : [],
       createDesc: real.description || '',
       // Address-autocomplete fix pass (2026-09-28) — an event that
@@ -10672,7 +10695,7 @@ export function BanBeProvider({ children }) {
     isSaved, isGoing, isAwaitingConfirmation, sendEventAnnouncement, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
     loadNotifications, loadInboxThreads,
-    goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
+    goChat, goLogin, goDashboard, goCreate, clearCreateDefaults, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
     loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof, openBookingConfirmed, backFromConfirmed,
     openBilling, billingNameType, billingAddressType, billingPhoneType, billingTaxCodeType, saveBillingDetails,
@@ -10711,7 +10734,7 @@ export function BanBeProvider({ children }) {
     isSaved, isGoing, isAwaitingConfirmation, sendEventAnnouncement, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
     loadNotifications, loadInboxThreads,
-    goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
+    goChat, goLogin, goDashboard, goCreate, clearCreateDefaults, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
     loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof, openBookingConfirmed, backFromConfirmed,
     openBilling, billingNameType, billingAddressType, billingPhoneType, billingTaxCodeType, saveBillingDetails,

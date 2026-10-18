@@ -5,6 +5,7 @@ import { bg } from '../data/events.js';
 import DobCorrectionRequest from './DobCorrectionRequest.jsx';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
 import { paper, ink, FACE, display, fieldGlass, alert } from '../theme.js';
+import { CountStepper, InkButton, BookingJourneyProgress } from '../components/ui/FormControls.jsx';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -47,6 +48,19 @@ export default function Reserve() {
   // block only when the server says ineligible; re-checks on every eventPrefsVersion change.
   const crit = useReservationCriteria(s.eventKey, { alwaysCheck: true });
   const formOk = hasName && attendeesOk && !crit.blocked;
+  // Note 48: say which field blocks "Hold" instead of a silent grey button.
+  const holdBlockReason = (() => {
+    if (!hasName) return T('Lưu tên của bạn ở trên', 'Save your name above');
+    if (crit.blocked) return null; // CriteriaUnmetCard explains itself
+    const drafts = s.attendeeDrafts.slice(0, s.qty);
+    for (let i = 0; i < drafts.length; i++) {
+      const a = drafts[i];
+      if (a.name.trim().length < 2) return T(`Nhập họ tên cho vé ${i + 1}`, `Add the name for ticket ${i + 1}`);
+      if (!((i === 0 && a.useProfileDob) || (a.dob && a.dob <= todayIso))) return T(`Chọn ngày sinh cho vé ${i + 1}`, `Add the date of birth for ticket ${i + 1}`);
+      if (i > 0 && a.email?.trim() && !EMAIL_RE.test(a.email.trim())) return T(`Kiểm tra email của vé ${i + 1}`, `Check the email for ticket ${i + 1}`);
+    }
+    return null;
+  })();
   const submitNameAtHold = async () => {
     await setNameAtHold(s.formName);
   };
@@ -61,17 +75,15 @@ export default function Reserve() {
   // the kind of mismatch a buyer only discovers under pressure). PHASE 2's
   // own verification window is the separate 60-minute number — see
   // PaymentDetails.jsx/Confirmed.jsx, never this screen.
-  const reserveBtnLabel = T('Giữ chỗ ▪︎ 30 phút', 'Hold ▪︎ 30 minutes');
-  const reserveBtnStyle = {
-    margin: '18px 22px 0', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 16, borderRadius: 999,
-    background: formOk ? ink : 'rgba(27,25,22,0.16)',
-    color: formOk ? paper : ink,
-    cursor: formOk ? 'pointer' : 'default', transition: 'background .15s',
-  };
+  const reserveBtnLabel = s.loading
+    ? T('Đang giữ chỗ…', 'Holding…')
+    : s.qty === 1 ? T('Giữ 1 chỗ ▪︎ 30 phút', 'Hold 1 seat ▪︎ 30 min') : T(`Giữ ${s.qty} chỗ ▪︎ 30 phút`, `Hold ${s.qty} seats ▪︎ 30 min`);
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Reserve">
       <div onClick={backToEvent} style={{ padding: '70px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</div>
+      {/* Goal gradient (note 48): picking the event already counts. */}
+      <div style={{ padding: '14px 22px 0' }}><BookingJourneyProgress current={1} T={T} /></div>
       <div style={{ padding: '16px 22px 0' }}>
         <h2 style={{ ...display(24, { margin: 0 }) }}>{T('Gần xong rồi.', 'Almost there.')}</h2>
       </div>
@@ -133,11 +145,8 @@ export default function Reserve() {
             <span style={{ fontSize: 14, fontWeight: 600, color: ink }}>{s.qty} {T('vé', 'tickets')}</span>
             <span style={{ fontSize: 11.5, color: ink }}>{qtyTotalLabel}</span>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span onClick={qtyMinus} style={{ width: 32, height: 32, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, cursor: s.qty > 1 ? 'pointer' : 'default', color: s.qty > 1 ? ink : 'rgba(27,25,22,0.16)', border: '1px solid rgba(27,25,22,0.16)', userSelect: 'none' }}>−</span>
-            <span style={{ ...display(18, { minWidth: 20, textAlign: 'center' }) }}>{s.qty}</span>
-            <span onClick={qtyPlus} style={{ width: 32, height: 32, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, cursor: s.qty < 6 ? 'pointer' : 'default', color: s.qty < 6 ? ink : 'rgba(27,25,22,0.16)', border: '1px solid rgba(27,25,22,0.16)', userSelect: 'none' }}>+</span>
-          </div>
+          <CountStepper value={s.qty} min={1} max={6} unit={T('vé', 'tickets')} testId="reserve-qty"
+            onChange={(n) => (n > s.qty ? qtyPlus() : qtyMinus())} />
         </div>
       </div>
       <div style={{ margin: '22px 22px 0' }} data-testid="reserve-attendees">
@@ -187,7 +196,10 @@ export default function Reserve() {
       </div>
       {crit.restricted && <WhoCanReserve criteria={crit.criteria} style={{ margin: '14px 22px 0' }} />}
       {crit.blocked && <CriteriaUnmetCard eligibility={crit.eligibility} returnTo="reserve" style={{ margin: '12px 22px 0' }} />}
-      <div onClick={() => submitReserve(formOk)} style={reserveBtnStyle} data-testid="reserve-submit" aria-disabled={!formOk || undefined}>{reserveBtnLabel}</div>
+      <div style={{ margin: '18px 22px 0' }}>
+        <InkButton testId="reserve-submit" label={reserveBtnLabel} enabled={formOk && !s.loading}
+          reason={s.loading ? null : holdBlockReason} onClick={() => submitReserve(formOk)} />
+      </div>
       {s.reserveError && <div style={{ margin: '12px 22px 0', fontSize: 12, lineHeight: 1.5, color: alert }}>{s.reserveError}</div>}
       <div style={{ height: 40 }} />
     </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, alert } from '../theme.js';
+import { CountStepper } from '../components/ui/FormControls.jsx';
 
 const chipStyle = (active) => ({
   padding: '8px 14px', borderRadius: 999, fontSize: 13, cursor: 'pointer',
@@ -310,12 +311,9 @@ export default function SurveyPublic() {
               <div style={{ fontSize: 12.5, opacity: 0.7, marginBottom: 8 }}>
                 {T('Số người (tính cả bạn)', 'Group size (including you)')}
               </div>
-              <input
-                type="number" min={config.group_size_min || 1} max={config.group_size_max || 50}
-                value={draft.groupSize ?? ''}
-                onChange={(e) => updateSurveyDraft({ groupSize: e.target.value ? parseInt(e.target.value, 10) : null })}
-                style={{ width: 100, padding: '8px 12px', borderRadius: 8, border: `1px solid ${rule}`, fontSize: 14 }}
-              />
+              {/* Note 48: a stepper instead of typing; 0 = not answered. */}
+              <CountStepper testId="survey-group-size" value={draft.groupSize ?? 0} min={0} max={config.group_size_max || 50}
+                unit={T('người', 'people')} onChange={(n) => updateSurveyDraft({ groupSize: n || null })} />
             </div>
 
             {/* Budget */}

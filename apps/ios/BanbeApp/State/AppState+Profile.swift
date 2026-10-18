@@ -358,7 +358,7 @@ extension AppState {
     /// holds this organizer id — never both unconditionally, since only
     /// one is ever the actual match.
     func toggleFollowOrganizer(_ organizerID: String) async {
-        guard userID != nil else { return }
+        guard userID != nil else { return promptSignIn(.follow) }
         // A server-fresh flag a profile loaded with wins over a possibly stale local list.
         let fresh: Bool? = publicProfile?.organizer?.id == organizerID ? publicProfile?.organizer?.following
             : (organizerProfile?.id == organizerID ? organizerProfile?.following : nil)

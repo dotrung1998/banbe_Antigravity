@@ -17,6 +17,23 @@ struct ReserveView: View {
     // RPC Account's "Đổi tên" uses) instead of a value that goes nowhere.
     private var hasName: Bool { !(app.user?.displayName ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
     private var formOK: Bool { hasName && app.attendeesComplete && app.reserveEligibilityBlock == nil }
+    /// Why "Hold" is disabled, in on-screen order (note 48). The eligibility
+    /// block already explains itself with CriteriaUnmetCard, so no caption.
+    private var holdBlockReason: String? {
+        if !hasName { return app.T("Lưu tên của bạn ở trên", "Save your name above") }
+        if app.reserveEligibilityBlock != nil { return nil }
+        switch SmartDefaults.attendeeGap(Array(app.attendeeDrafts.prefix(app.qty))) {
+        case .name(let n): return app.T("Nhập họ tên cho vé \(n)", "Add the name for ticket \(n)")
+        case .dob(let n): return app.T("Chọn ngày sinh cho vé \(n)", "Add the date of birth for ticket \(n)")
+        case .email(let n): return app.T("Kiểm tra email của vé \(n)", "Check the email for ticket \(n)")
+        case nil: return nil
+        }
+    }
+    private var holdTitle: String {
+        app.qty == 1
+            ? app.T("Giữ 1 chỗ ▪︎ 30 phút", "Hold 1 seat ▪︎ 30 min")
+            : app.T("Giữ \(app.qty) chỗ ▪︎ 30 phút", "Hold \(app.qty) seats ▪︎ 30 min")
+    }
     private var totalLabel: String {
         event.isFree ? "Miễn phí" : EventLabels.vnd(event.priceVnd * app.qty)
     }
@@ -84,6 +101,10 @@ struct ReserveView: View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
                 BackLink(label: app.T("Quay lại", "Back")) { app.backToEvent() }
+
+                // Goal gradient (note 48): picking the event already counts.
+                BookingJourneyProgress(current: 1)
+                    .padding(.top, 14)
 
                 Text(app.T("Gần xong rồi.", "Almost there."))
                     .font(BanbeTheme.display(24))
@@ -166,10 +187,9 @@ struct ReserveView: View {
                             .font(.system(size: 11.5))
                     }
                     Spacer()
-                    HStack(spacing: 8) {
-                        stepper("−", enabled: app.qty > 1) { app.qtyMinus() }
-                        Text("\(app.qty)").font(BanbeTheme.display(18)).frame(minWidth: 20)
-                        stepper("+", enabled: app.qty < 6) { app.qtyPlus() }
+                    CountStepper(value: app.qty, range: 1...6, unit: app.T("vé", "tickets"),
+                                 identifier: "reserve.qty") { newValue in
+                        if newValue > app.qty { app.qtyPlus() } else if newValue < app.qty { app.qtyMinus() }
                     }
                 }
                 .foregroundStyle(app.palette.ink)
@@ -208,9 +228,10 @@ struct ReserveView: View {
 
                 InkButton(title: app.loading
                           ? app.T("Đang giữ chỗ…", "Holding…")
-                          : app.T("Giữ chỗ ▪︎ 30 phút", "Hold ▪︎ 30 minutes"),
+                          : holdTitle,
                           enabled: formOK && !app.loading,
-                          cornerRadius: 999) {
+                          cornerRadius: 999,
+                          disabledReason: app.loading ? nil : holdBlockReason) {
                     Task { await app.submitReserve() }
                 }
                 .padding(.top, 18)
@@ -233,17 +254,6 @@ struct ReserveView: View {
         .task(id: "\(app.eventKey)|\(app.eventPrefsVersion)") {
             await app.recheckReservationEligibility(eventKey: app.eventKey)
         }
-    }
-
-    private func stepper(_ symbol: String, enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: { if enabled { action() } }) {
-            Text(symbol)
-                .font(.system(size: 18))
-                .frame(width: 32, height: 32)
-                .foregroundStyle(enabled ? app.palette.ink : app.palette.ink.opacity(0.3))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
     }
 }
 

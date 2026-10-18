@@ -84,7 +84,19 @@ final class PublicEntryScheduleUITests: XCTestCase {
         let app = launch("auth", lang: "vi")
         XCTAssertTrue(el(app, "welcome.login").waitForExistence(timeout: 10))
         XCTAssertEqual(el(app, "welcome.login").label, "Đã có tài khoản? Đăng nhập")
-        XCTAssertTrue(app.buttons["Bắt đầu"].exists)
+        // Note 48: "Explore events" (browse first) is primary; account creation stays one tap.
+        XCTAssertTrue(app.buttons["Khám phá sự kiện"].exists)
+        XCTAssertTrue(app.buttons["Tạo tài khoản"].exists)
+    }
+
+    /// Note 48 — Welcome's primary action opens Home as a guest, read-only.
+    func testExploreEventsBrowsesHomeAsGuest() {
+        let app = launch("auth")
+        XCTAssertTrue(el(app, "welcome.explore").waitForExistence(timeout: 10))
+        el(app, "welcome.explore").tap()
+        // The routed `auth` fixture renders a marker for screens it doesn't host.
+        XCTAssertTrue(el(app, "fixture.screen.home").waitForExistence(timeout: 5), "a guest lands on Home, not Login")
+        XCTAssertFalse(el(app, "login.mode.login").exists)
     }
 
     func testReduceMotionStillNavigates() {

@@ -67,12 +67,15 @@ enum PublicEntryRouting {
         let backTo: Screen
     }
 
-    /// The "no guest browsing" guard: a signed-out move to a protected screen
-    /// goes to Login, returning to that screen after sign-in, with Back to the
+    /// The protected-screen guard: a signed-out move to a protected screen
+    /// goes to Login, returning to that screen after sign-in. Back returns to
+    /// the guest-browsable screen the person came from (note 48), else the
     /// public welcome screen. nil = allowed as is.
-    static func protectedRedirect(isSignedIn: Bool, target: Screen, guestAllowed: Set<Screen>) -> Redirect? {
+    static func protectedRedirect(isSignedIn: Bool, target: Screen, guestAllowed: Set<Screen>,
+                                  from origin: Screen? = nil, browsable: Set<Screen> = []) -> Redirect? {
         guard !isSignedIn, !guestAllowed.contains(target) else { return nil }
-        return Redirect(returnTo: target, backTo: .welcome)
+        let back = origin.flatMap { browsable.contains($0) ? $0 : nil } ?? .welcome
+        return Redirect(returnTo: target, backTo: back)
     }
 }
 

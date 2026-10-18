@@ -498,6 +498,24 @@ extension AppState {
             paymentBookings = []
             myRefunds = []
             resetScheduleState()
+            // Note 48 — guests can now browse Home/Map/Event signed out, so
+            // nothing from the account that just left may stay on screen:
+            // its story ring (signed private-bucket URLs), survey cards,
+            // admin invite (Action Center), refund/host data, likes, and any
+            // invite-only events or private photo URLs it could see.
+            homeStories = []
+            homeSurveyDiscovery = []
+            homeSurveyDiscoveryHasMore = false
+            myAdminInvite = nil
+            refundDestinations = []
+            refundDestinationsLoaded = false
+            verifications = []
+            refundQueue = []
+            organizerHoldingSummary = nil
+            following = []
+            photoEngagement = [:]
+            realEventsByID = [:]
+            eventPhotoURLs = [:]
             return
         }
         userID = session.user.id
@@ -2901,7 +2919,9 @@ extension AppState {
     /// nothing in the inbox). Never used for the organizer's own side — that
     /// always opens a specific known thread (see openThread, used from Inbox).
     func openChat(for key: String, back: Screen) async {
-        guard let uid = userID else { return requireAuth(returnTo: .chat, backTo: .event) }
+        guard let uid = userID else {
+            return promptSignIn(.message, returnTo: screen, backTo: screen, resume: .chat(eventKey: key, back: back))
+        }
         eventKey = key
         chatBack = back
         chatThreadID = nil
@@ -5231,6 +5251,8 @@ try await SupabaseService.client
         // instead of guessing from `hasHosted`.
         createOriginScreen = .dashboard
         createEditEventId = real.id
+        createDefaultsSource = nil
+        createAppliedDefaults = nil
         createSent = false
         createError = ""
         createName = real.name

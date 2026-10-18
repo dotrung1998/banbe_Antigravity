@@ -1028,6 +1028,9 @@ struct RootView: View {
         // card. Closing by any route runs closePulseViewer() so the organizer/
         // photo panels are cleared with it.
         .keyboardDoneToolbar()
+        .sheet(item: $app.guestPrompt) { prompt in
+            GuestPromptSheet(prompt: prompt).environmentObject(app)
+        }
         .sheet(isPresented: Binding(
             get: { app.pulseOpen },
             set: { if !$0 { app.closePulseViewer() } }
@@ -1049,6 +1052,9 @@ struct RootView: View {
                 // "no guest browsing" guard below, which bounced the user back
                 // to Login and left them stuck there until a relaunch.
                 if auth.session != nil && (app.screen == .login || app.screen == .welcome) { app.screen = app.authReturnScreen }
+                // Note 48: finish what a guest prompt was asked for (e.g. set
+                // up Reserve properly, open the chat thread).
+                if auth.session != nil { app.runPendingAuthResume() }
                 // A gift claim link that arrived before there was a session
                 // parks its code (see AppState.openGiftImport); once there IS
                 // a verified session, finish the job the link started instead
@@ -1089,7 +1095,8 @@ struct RootView: View {
                 app.storyCameraOpen = false
             }
             if let redirect = PublicEntryRouting.protectedRedirect(isSignedIn: app.isSignedIn, target: newScreen,
-                                                                     guestAllowed: AppState.guestAllowedScreens) {
+                                                                     guestAllowed: AppState.guestAllowedScreens,
+                                                                     from: oldScreen, browsable: AppState.guestBrowseScreens) {
                 // Protected action while signed out: Login directly, returning
                 // to what was asked for; Back goes to the public welcome
                 // screen (note 44) — always a way out, never a guest view.

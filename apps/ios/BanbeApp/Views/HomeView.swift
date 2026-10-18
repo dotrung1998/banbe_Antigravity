@@ -133,11 +133,17 @@ struct HomeView: View {
                     // priority-sorted, 3-card-capped Action Center covering both
                     // roles this account can hold. heldEvent itself stays in use
                     // for tagging the "Your events" strip further down.
-                    ActionCenterView(items: actionItems, onSeeAll: { app.goNotifications() })
-                    ActivationChecklistCard()
+                    if app.isSignedIn {
+                        ActionCenterView(items: actionItems, onSeeAll: { app.goNotifications() })
+                        ActivationChecklistCard()
+                    } else {
+                        GuestBrowseBanner()
+                    }
                     if !app.savedStrip.isEmpty { savedStrip }
                     storyRow
-                    surveyDiscoveryRow
+                    // Survey discovery is authenticated-only server-side
+                    // (get_public_survey_discovery); hide it for guests.
+                    if app.isSignedIn { surveyDiscoveryRow }
                     filterSection
                     if app.feed.isEmpty {
                         emptyState

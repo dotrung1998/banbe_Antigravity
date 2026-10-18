@@ -2,6 +2,8 @@
 
 ## Status: WORKING (web + iOS), fast Playwright suite stabilized in 8cbaa78
 
+> 2026-10-18 (note 48): iOS no longer requires login to browse — Home/Map/Event Detail are read-only for guests; personal actions prompt sign-in. Web still requires login. See .claude/notes/48-ux-psychology-friction-pass.md.
+
 ## What changed
 - No guest/anonymous browsing of any screen — Home, Event, Account, disputes, etc. all require a session. A guest visitor lands on the mandatory Login screen instead.
 - Login/sign-up requires ticking an unchecked "Tôi đồng ý với Điều khoản sử dụng và Thông báo quyền riêng tư" consent checkbox before submit is allowed.

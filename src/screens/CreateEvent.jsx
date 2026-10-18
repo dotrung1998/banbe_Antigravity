@@ -10,6 +10,8 @@ import { formatVnd } from '../lib/paymentDocument.js';
 import { paper, ink, rule, FACE, display, alert } from '../theme.js';
 import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
 import { loadMapKit } from '../lib/mapkit.js';
+import { ChoiceChip, CountStepper, StepProgress } from '../components/ui/FormControls.jsx';
+import { PRICE_QUICK_PICKS, SEAT_QUICK_PICKS, TIME_QUICK_PICKS, dateQuickPicks, similarPriceRange, createDraftMatchesDefaults } from '../lib/smartDefaults.js';
 
 const IMPORT_FIELD_LABELS = {
   name: ['Tên sự kiện', 'Event name'],
@@ -44,7 +46,7 @@ export default function CreateEvent() {
     pickCreateCat, pickCreatePalette, pickCreateVisibility, setCreateCriteria,
     addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent,
     createSubmit, goEvent, loadHomeLiveEvents,
-    goCreate, goHome, goDashboard, goProfile,
+    goCreate, goHome, goDashboard, goProfile, set, clearCreateDefaults,
   } = useBanBe();
   const s = state;
 
@@ -260,6 +262,47 @@ export default function CreateEvent() {
   // Same rule as iOS: Review stays dimmed until the name, a confirmed address and every required field are in.
   // Tapping it while dimmed still flips `attemptedReview` so the missing fields are flagged.
   const canReview = !!s.createName.trim() && !!s.createLocConfirmed && !hasFieldErrors;
+
+  // Note 48 — named, tappable progress sections (goal gradient), a "still
+  // needed" summary instead of a silent grey button, and honest loss framing
+  // when leaving a draft.
+  const nameOk = !!s.createName.trim();
+  const sections = [
+    { id: 'create-section-host', title: T('Host', 'Host'), done: !!(s.orgRegName || '').trim() },
+    { id: 'create-section-basics', title: T('Cơ bản', 'Basics'), done: nameOk && !fieldErrors.desc && !fieldErrors.cats && !fieldErrors.included },
+    { id: 'create-section-when', title: T('Thời gian & nơi', 'When & where'), done: !!s.createLocConfirmed && !fieldErrors.dateTime },
+    { id: 'create-section-tickets', title: T('Vé', 'Tickets'), done: !fieldErrors.seats },
+    { id: 'create-section-photos', title: T('Ảnh', 'Photos'), done: !fieldErrors.photos },
+  ];
+  const firstIncomplete = sections.findIndex(x => !x.done);
+  const scrollToSection = (i) => document.getElementById(sections[i]?.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const missing = [
+    !nameOk && T('tên sự kiện', 'event name'),
+    fieldErrors.desc && T('mô tả', 'description'),
+    !s.createLocConfirmed && T('địa chỉ gợi ý', 'a suggested address'),
+    fieldErrors.dateTime && T('ngày & giờ', 'date & time'),
+    fieldErrors.seats && T('số chỗ', 'seats'),
+    fieldErrors.cats && T('danh mục', 'a category'),
+    fieldErrors.included && T('mục bao gồm', 'an included item'),
+    fieldErrors.photos && T(`ít nhất ${MIN_PHOTOS} ảnh`, `at least ${MIN_PHOTOS} photos`),
+  ].filter(Boolean);
+  const hasUnsavedInput = !s.createEditEventId && !s.createSent && (
+    [s.createName, s.createDesc, s.createLoc, s.createIntro, s.createKeywords].some(v => (v || '').trim())
+    || photos.length > 0 || (s.createAppliedDefaults && !createDraftMatchesDefaults(s)));
+  const leaveCreate = () => {
+    if (hasUnsavedInput) {
+      const msg = photos.length
+        ? T(`Bỏ sự kiện này? ${photos.length} ảnh và thông tin bạn đã nhập sẽ mất.`, `Discard this event? Your ${photos.length} photos and details will be lost.`)
+        : T('Bỏ sự kiện này? Thông tin bạn đã nhập sẽ mất.', "Discard this event? The details you've entered will be lost.");
+      if (!window.confirm(msg)) return;
+    }
+    createBack();
+  };
+  const priceDigits = parseInt(String(s.createPrice || '').replace(/\D/g, ''), 10);
+  const seatsNum = parseInt(String(s.createSeats || '').replace(/\D/g, ''), 10) || 0;
+  const similar = s.createCats.length
+    ? similarPriceRange((s.discoveryEvents || []).filter(e => s.createCats.includes(e.catKey)).map(e => e.priceVnd || 0))
+    : null;
   const createBtnStyle = {
     marginTop: 26, fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 15, borderRadius: 999,
     background: s.createSent ? 'rgba(27,25,22,0.16)' : (canReview ? ink : 'rgba(27,25,22,0.16)'),
@@ -273,7 +316,13 @@ export default function CreateEvent() {
   // screen-high blank gap and a confirm button far below. The end state is identical (opacity 1, no transform).
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) backwards', minHeight: '100%', background: paper }} data-screen-label="Create event">
-      <div onClick={createBack} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {createBackLabel}</div>
+      <div onClick={leaveCreate} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {createBackLabel}</div>
+      {!s.createSent && (
+        <div style={{ position: 'sticky', top: 0, zIndex: 5, background: paper, padding: '10px 22px 10px' }}>
+          <StepProgress testId="create-progress" steps={sections.map(x => x.title)} completed={sections.map(x => x.done)}
+            current={firstIncomplete === -1 ? sections.length : firstIncomplete} onSelect={scrollToSection} />
+        </div>
+      )}
       <div style={{ padding: '14px 22px 40px', display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Dành cho người tổ chức', 'For organizers')}</span>
         <h1 style={{ ...display(26, { margin: '8px 0 0' }) }}>
@@ -284,8 +333,19 @@ export default function CreateEvent() {
             {T('Bị từ chối: ', 'Rejected: ') + s.realEventsById[s.createEditEventId].rejectionReason}
           </p>
         )}
+        {!s.createEditEventId && !s.createSent && s.createAppliedDefaults && (
+          <div data-testid="create-defaults-notice" style={{ ...cardGlass({ marginTop: 14, padding: 12 }), fontSize: 12, lineHeight: 1.5, color: ink }}>
+            {s.createDefaultsSource
+              ? T(`Đã điền sẵn thời gian, giá và số chỗ từ "${s.createDefaultsSource}". Đổi bất cứ gì bạn muốn.`, `Time, price and seats are pre-filled from "${s.createDefaultsSource}". Change anything you like.`)
+              : T('Đã chọn sẵn Thứ Bảy tới lúc 19:00 và 14 chỗ. Đổi bất cứ gì bạn muốn.', 'We picked next Saturday at 19:00 and 14 seats. Change anything you like.')}
+            <button type="button" onClick={clearCreateDefaults} data-testid="create-start-blank"
+              style={{ display: 'block', marginTop: 4, padding: 0, background: 'none', border: 'none', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, color: ink, textDecoration: 'underline', cursor: 'pointer' }}>
+              {T('Bắt đầu trống', 'Start blank')}
+            </button>
+          </div>
+        )}
 
-        <div style={{ ...cardGlass({ marginTop: 22, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }) }}>
+        <div id="create-section-host" style={{ ...cardGlass({ marginTop: 22, padding: 16, display: 'flex', flexDirection: 'column', gap: 12, scrollMarginTop: 90 }) }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Hồ sơ người tổ chức', 'Organizer profile')}</span>
             <span style={{ fontSize: 10.5, color: ink }}>{T('Hiện trên trang của bạn', 'Shown on your page')}</span>
@@ -299,7 +359,7 @@ export default function CreateEvent() {
 
         <div style={{ ...cardGlass({ marginTop: 22, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }) }}>
           <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Sự kiện', 'Event')}</span>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
+        <div id="create-section-basics" style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0, scrollMarginTop: 90 }}>
           <label style={labelStyle}>{T('Tên sự kiện', 'Event name')} <span style={{ color: alert }}>*</span></label>
           <input value={s.createName} onChange={createNameType} placeholder="Bếp Nhỏ №13" style={fieldInput} />
         </div>
@@ -426,7 +486,7 @@ export default function CreateEvent() {
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 0 }}>
+        <div id="create-section-when" style={{ display: 'flex', gap: 10, marginTop: 0, scrollMarginTop: 90 }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
             <label style={labelStyle}>{T('Ngày', 'Date')} <span style={{ color: alert }}>*</span></label>
             <input
@@ -443,16 +503,42 @@ export default function CreateEvent() {
             />
           </div>
         </div>
+        {/* Note 48: the common choices one tap away; the native pickers stay. */}
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto' }} data-testid="create-date-quickpicks">
+          {dateQuickPicks().map(p => (
+            <ChoiceChip key={p.en} compact label={T(p.vi, p.en)} selected={s.createEventDate === p.date} onClick={() => set({ createEventDate: p.date })} />
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto' }} data-testid="create-time-quickpicks">
+          {TIME_QUICK_PICKS.map(t => (
+            <ChoiceChip key={t} compact label={t} selected={(s.createEventTime || '').slice(0, 5) === t} onClick={() => set({ createEventTime: t })} />
+          ))}
+        </div>
         {attemptedReview && fieldErrors.dateTime && <p style={{ fontSize: 11, color: alert, margin: '6px 0 0' }}>{T('Hãy chọn ngày và giờ diễn ra.', 'Please pick a date and time.')}</p>}
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 0 }}>
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={labelStyle}>{T('Giá vé', 'Ticket price')}</label>
-            <input value={s.createPrice} onChange={createPriceType} placeholder="500.000₫" style={fieldInput} />
+        <div id="create-section-tickets" style={{ display: 'flex', flexDirection: 'column', gap: 6, scrollMarginTop: 90 }}>
+          <label style={labelStyle}>{T('Giá vé', 'Ticket price')}</label>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {PRICE_QUICK_PICKS.map(v => (
+              <ChoiceChip key={v} compact testId={`create-price-${v}`} label={v === 0 ? T('Miễn phí', 'Free') : formatVnd(v)}
+                selected={s.createPrice !== '' && priceDigits === v} onClick={() => set({ createPrice: String(v) })} />
+            ))}
           </div>
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={labelStyle}>{T('Số chỗ', 'Seats')} <span style={{ color: alert }}>*</span></label>
-            <input value={s.createSeats} onChange={createSeatsType} placeholder="14" style={fieldInput} />
+          <input value={s.createPrice} onChange={createPriceType} placeholder={T('Giá khác, vd. 450.000', 'Other price, e.g. 450,000')} aria-label={T('Giá vé', 'Ticket price')} style={fieldInput} />
+          <span data-testid="create-price-hint" style={{ fontSize: 11, color: ink, opacity: 0.7 }}>
+            {similar
+              ? T(`Sự kiện tương tự: ${formatVnd(similar[0])}–${formatVnd(similar[1])}`, `Similar events: ${formatVnd(similar[0])}–${formatVnd(similar[1])}`)
+              : T('Để trống là miễn phí.', 'Leave empty for a free event.')}
+          </span>
+          <label style={{ ...labelStyle, marginTop: 6 }}>{T('Số chỗ', 'Seats')} <span style={{ color: alert }}>*</span></label>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {SEAT_QUICK_PICKS.map(n => (
+                <ChoiceChip key={n} compact testId={`create-seats-${n}`} label={String(n)} selected={seatsNum === n} onClick={() => set({ createSeats: String(n) })} />
+              ))}
+            </div>
+            <CountStepper testId="create-seats-stepper" value={seatsNum} min={0} max={500} unit={T('chỗ', 'seats')}
+              onChange={(n) => set({ createSeats: n ? String(n) : '' })} />
           </div>
         </div>
         {attemptedReview && fieldErrors.seats && <p style={{ fontSize: 11, color: alert, margin: '6px 0 0' }}>{T('Hãy nhập số chỗ lớn hơn 0.', 'Please enter a number of seats greater than 0.')}</p>}
@@ -547,7 +633,7 @@ export default function CreateEvent() {
             has no drag-and-drop reordering — only up/down-swap — so nothing
             new was invented), just given their own normal flex-row space
             instead of overlapping the photo. */}
-        <div style={{ marginTop: 22 }}>
+        <div id="create-section-photos" style={{ marginTop: 22, scrollMarginTop: 90 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <span style={{ fontSize: 11.5, color: ink }}>{T('Hình ảnh', 'Photos')} <span style={{ color: alert }}>*</span></span>
             <span style={{ fontSize: 10.5, color: ink }}>{photos.length}/{MAX_PHOTOS} ({T(`tối thiểu ${MIN_PHOTOS}`, `min ${MIN_PHOTOS}`)})</span>
@@ -664,11 +750,7 @@ export default function CreateEvent() {
             BEFORE the host attempts to submit, not only after a failed
             attempt (createError below still covers the server-side gate
             as a backstop). */}
-        {!s.createLocConfirmed && (
-          <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '0 0 10px', textAlign: 'center' }}>
-            {T('Chọn một địa chỉ gợi ý ở trên trước khi đăng.', 'Pick a suggested address above before publishing.')}
-          </p>
-        )}
+
         {/* No SLA is actually monitored server-side — the previous "duyệt
             trong 48 giờ"/"reviews within 48h" copy promised a turnaround
             time nothing enforced. Accurate instead of reassuring. */}
@@ -682,7 +764,7 @@ export default function CreateEvent() {
             above) instead of opening Review at all. */}
         <div
           onClick={s.createSent ? undefined : () => {
-            if (!canReview) { setAttemptedReview(true); return; }
+            if (!canReview) { setAttemptedReview(true); if (firstIncomplete !== -1) scrollToSection(firstIncomplete); return; }
             setReviewOpen(true);
           }}
           data-testid="create-open-review"
@@ -690,8 +772,13 @@ export default function CreateEvent() {
         >
           {s.createSent
             ? T('Đã gửi, đang chờ Banbe duyệt', 'Submitted, waiting for Banbe to review')
-            : T('Xem lại trước khi gửi', 'Review before submitting')}
+            : T('Xem lại sự kiện của bạn', 'Review your event')}
         </div>
+        {!s.createSent && missing.length > 0 && (
+          <p data-testid="create-missing-summary" style={{ fontSize: 11.5, lineHeight: 1.5, color: attemptedReview ? alert : ink, opacity: attemptedReview ? 1 : 0.7, margin: '8px 0 0', textAlign: 'center' }}>
+            {T('Còn thiếu: ', 'Still needed: ') + missing.join(', ')}
+          </p>
+        )}
         {s.createError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createError}</p>}
         {s.createMediaError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createMediaError}</p>}
         <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: '12px auto 0', textAlign: 'center', maxWidth: '23ch' }}>{T('Hoàn toàn miễn phí: không phí đăng, không phí giao dịch, không phí ẩn.', 'Completely free: no listing fee, no transaction fee, no hidden fees.')}</p>

@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { useAccountGate, getHostPromoConsent, setHostPromoConsent } from '../lib/accountGate.js';
 import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
+import { StepProgress, encouragement } from '../components/ui/FormControls.jsx';
 import { normalizeForSave, budgetRegionDefault } from '../lib/eventPrefs.js';
 import { EventPreferencesForm, EventPrefsPrivacyNote } from './EventPreferences.jsx';
 
@@ -26,16 +27,14 @@ export function useEventOnboardingActive() {
     && !NOT_ONBOARDING_SCREENS.has(s.screen) && (s.needsSettingsOnboarding || s.needsPreferencesOnboarding);
 }
 
+// Goal gradient (note 48): creating the account is step 1 and already done,
+// so the first onboarding screen opens at 33%, never 0%.
 function StepIndicator({ step, total = 2 }) {
   const { T } = useBanBe();
+  const steps = [T('Tài khoản', 'Account'), T('Cài đặt', 'Settings'), T('Sở thích', 'Interests')].slice(0, total + 1);
   return (
     <div data-testid="onboarding-step-indicator" aria-label={T(`Bước ${step} trên ${total}`, `Step ${step} of ${total}`)} style={{ marginBottom: 22 }}>
-      <div style={{ display: 'flex', gap: 6 }}>
-        {Array.from({ length: total }, (_, i) => (
-          <span key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: ink, opacity: i + 1 <= step ? 1 : 0.18 }} />
-        ))}
-      </div>
-      <div style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.65, marginTop: 8 }}>{T(`Bước ${step}/${total}`, `Step ${step} of ${total}`)}</div>
+      <StepProgress steps={steps} current={step} message={encouragement(steps.length - step, T)} />
     </div>
   );
 }
@@ -69,24 +68,17 @@ const LinkBtn = ({ label, onClick, testId, disabled }) => (
     style={{ fontSize: 13, fontWeight: 600, textDecoration: 'underline', textAlign: 'center', marginTop: 14, cursor: disabled ? 'default' : 'pointer', color: ink, opacity: disabled ? 0.5 : 1 }}>{label}</div>
 );
 
-/** Resolves true only when the browser actually grants a position. */
-function requestBrowserLocation() {
-  return new Promise((resolve) => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) { resolve(false); return; }
-    navigator.geolocation.getCurrentPosition(() => resolve(true), () => resolve(false), { maximumAge: 5 * 60 * 1000, timeout: 10000 });
-  });
-}
-
 function SettingsStep() {
-  const { state: s, T, set, toggleAutoEmailDocuments, allowLocation, denyLocation, openArea, completeSettingsOnboarding } = useBanBe();
+  const { state: s, T, set, toggleAutoEmailDocuments, completeSettingsOnboarding } = useBanBe();
   const isNew = s.eventOnboardingIsNewAccount;
   // New account: ordinary non-sensitive settings default ON. An existing prompted
   // account shows and keeps what it already has; only changed toggles are written.
+  // Consent is never pre-ticked (note 48): promo starts OFF for new accounts.
+  // Location is no longer asked here (iOS parity, note 43): Map/area picker
+  // request it when they actually need it.
   const [emailDocs, setEmailDocs] = useState(() => (isNew ? true : s.autoEmailDocuments));
-  const [promo, setPromo] = useState(isNew);
+  const [promo, setPromo] = useState(false);
   const [promoCurrent, setPromoCurrent] = useState(null); // null = unknown (read failed / loading)
-  const [locOn, setLocOn] = useState(() => (isNew ? true : s.located === true));
-  const [locProblem, setLocProblem] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -95,7 +87,7 @@ function SettingsStep() {
     getHostPromoConsent().then(v => {
       if (!live) return;
       setPromoCurrent(v);
-      setPromo(isNew ? true : (v ?? false));
+      setPromo(isNew ? false : (v ?? false));
     });
     return () => { live = false; };
   }, [isNew]);
@@ -104,12 +96,6 @@ function SettingsStep() {
     if (busy) return;
     setBusy(true); setFailed(false);
     try {
-      // Location: persist "enabled" only if the browser actually grants it.
-      if (locOn) {
-        const granted = await requestBrowserLocation();
-        if (granted) { if (s.located !== true) allowLocation(); }
-        else { setLocOn(false); setLocProblem(true); return; } // stay one tap: pick an area, or Continue again
-      } else if (s.located === true) denyLocation();
       // Write a setting only when the final toggle differs from its current value.
       if (emailDocs !== s.autoEmailDocuments) toggleAutoEmailDocuments();
       if (promoCurrent !== null && promo !== promoCurrent) {
@@ -134,29 +120,8 @@ function SettingsStep() {
           detail={T('Tự gửi hoá đơn/biên nhận tới email của bạn. Đổi lại tại Tài khoản > Cài đặt > Tùy chỉnh ứng dụng.', 'Automatically email invoices and receipts to you. Change it in Account > Settings > App Preferences.')} />
         <SwitchRow testId="onboarding-settings-promo" on={promo} disabled={promoCurrent === null} onClick={() => setPromo(v => !v)}
           title={T('Tin nhắn quảng bá từ host', 'Host promotional texts')}
-          detail={T('Bật mặc định cho tài khoản mới. Host bạn đã tương tác có thể soạn tin quảng bá SMS, host tự gửi; banbe không gửi hộ. Nhấn Tiếp tục là bạn đồng ý; tắt công tắc nếu không muốn. Đổi lại bất cứ lúc nào tại Tài khoản > Cài đặt > Bảo mật.',
-            "On by default for new accounts. Hosts you've interacted with may compose a promo text that they send themselves; banbe doesn't send for them. Tapping Continue records your agreement, switch it off if you don't want this. Change it any time in Account > Settings > Security.")} />
-      </div>
-      <div style={{ marginTop: 26 }}>
-        <div style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Tính năng gợi ý', 'Recommended features')}</div>
-        <p style={{ fontSize: 12, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 10px' }}>
-          {T('Bật sẵn cho bạn; tắt nếu không muốn. Trình duyệt sẽ hỏi quyền khi bạn nhấn Tiếp tục. Vị trí chỉ dùng để hiện khoảng cách, không lưu và không chia sẻ với host.',
-            "On for you by default; switch off any you don't want. Your browser will ask for permission when you tap Continue. Location is only used for distances, not stored or shared with hosts.")}
-        </p>
-        <SwitchRow testId="onboarding-settings-location" on={locOn} onClick={() => { setLocOn(v => !v); setLocProblem(false); }}
-          title={T('Vị trí', 'Location')}
-          detail={T('Hiện khoảng cách tới sự kiện gần bạn.', 'Shows how far events are from you.')} />
-        {locProblem && (
-          <div data-testid="onboarding-settings-location-problem" style={{ marginTop: 10 }}>
-            <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: 0 }}>
-              {T('Chưa bật được vị trí (bị từ chối hoặc không khả dụng trên trình duyệt này). Bạn có thể chọn khu vực thủ công, rồi nhấn Tiếp tục.',
-                "Couldn't turn on location (denied or unavailable in this browser). You can choose an area manually, then tap Continue.")}
-            </p>
-            <div onClick={openArea} role="button" data-testid="onboarding-settings-pickArea" style={{ fontSize: 12.5, fontWeight: 600, textDecoration: 'underline', marginTop: 8, cursor: 'pointer' }}>
-              {T('Chọn khu vực thủ công', 'Choose an area manually')}
-            </div>
-          </div>
-        )}
+          detail={T('Tắt trừ khi bạn bật. Nếu bật, host bạn đã tương tác có thể soạn tin quảng bá SMS và tự gửi; banbe không gửi hộ. Đổi lại bất cứ lúc nào tại Tài khoản > Cài đặt > Bảo mật.',
+            "Off unless you switch it on. If on, hosts you've interacted with may compose a promo text that they send themselves; banbe doesn't send for them. Change it any time in Account > Settings > Security.")} />
       </div>
       {failed && (
         <p data-testid="onboarding-settings-error" style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '16px 0 0' }}>

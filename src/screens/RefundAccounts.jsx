@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
+import { ChoiceChip } from '../components/ui/FormControls.jsx';
+import { COMMON_BANKS } from '../lib/smartDefaults.js';
 
 function maskAccountNumber(number) {
   const s = String(number || '');
@@ -58,7 +60,8 @@ export default function RefundAccounts() {
   const [savedFlash, setSavedFlash] = useState(false);
 
   const openAddForm = () => {
-    setFormOpen(true); setEditingId(null); setLabel(''); setBank(''); setAccount(''); setHolder(''); setNote('');
+    // Smart default (note 48): the holder is usually the person themself.
+    setFormOpen(true); setEditingId(null); setLabel(''); setBank(''); setAccount(''); setHolder((s.user?.name || '').trim()); setNote('');
     setSetDefault(s.refundDestinations.length === 0); setConfirmed(false);
   };
   const openEditForm = (d) => {
@@ -67,6 +70,10 @@ export default function RefundAccounts() {
   };
 
   const canSave = bank.trim() && account.trim() && holder.trim() && confirmed && !s.refundDestinationBusy;
+  const saveGapReason = !bank.trim() ? T('Chọn hoặc nhập ngân hàng', 'Pick or type a bank')
+    : !account.trim() ? T('Nhập số tài khoản', 'Enter the account number')
+    : !holder.trim() ? T('Nhập tên chủ tài khoản', 'Enter the account holder name')
+    : !confirmed ? T('Xác nhận thông tin là chính xác', 'Confirm the details are correct') : null;
 
   const doSave = async () => {
     if (!canSave) return;
@@ -239,7 +246,12 @@ export default function RefundAccounts() {
         <div style={{ ...cardGlass({ margin: '18px 22px 40px', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 8 }) }}>
           <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={T('Nhãn (VD: Tài khoản chính)', 'Label (e.g. Main account)')}
                  style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }} />
-          <input value={bank} onChange={(e) => setBank(e.target.value)} placeholder={T('Tên ngân hàng', 'Bank name')}
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }} aria-label={T('Ngân hàng phổ biến', 'Common banks')}>
+            {COMMON_BANKS.map((name) => (
+              <ChoiceChip key={name} compact label={name} selected={bank === name} onClick={() => setBank(name)} testId={`refund-bank-chip-${name}`} />
+            ))}
+          </div>
+          <input value={bank} onChange={(e) => setBank(e.target.value)} placeholder={T('Tên ngân hàng (hoặc chọn ở trên)', 'Bank name (or pick above)')}
                  style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }} />
           <input value={account} onChange={(e) => setAccount(e.target.value)} placeholder={T('Số tài khoản', 'Account number')}
                  style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }} />
@@ -256,13 +268,16 @@ export default function RefundAccounts() {
             {T('Tôi xác nhận thông tin tài khoản trên là chính xác.', 'I confirm this account information is correct.')}
           </label>
           {s.refundDestinationError && <p style={{ fontSize: 12, color: alert, margin: 0 }}>{s.refundDestinationError}</p>}
+          {saveGapReason && !s.refundDestinationBusy && (
+            <p data-testid="refund-account-save-reason" style={{ fontSize: 12, color: ink, opacity: 0.7, margin: 0, textAlign: 'right' }}>{saveGapReason}</p>
+          )}
           <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
             <div onClick={() => setFormOpen(false)} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 12, border: `1px solid ${rule}`, fontSize: 13, color: ink, cursor: 'pointer' }}>
               {T('Huỷ', 'Cancel')}
             </div>
-            <div onClick={doSave} style={{ ...inkButton({ flex: 1, borderRadius: 12, padding: 12, fontSize: 13, opacity: canSave ? 1 : 0.5 }) }} data-testid="refund-account-save">
-              {s.refundDestinationBusy ? T('Đang lưu…', 'Saving…') : T('Lưu', 'Save')}
-            </div>
+            <button type="button" disabled={!canSave} onClick={doSave} style={{ ...inkButton({ flex: 1, borderRadius: 12, padding: 12, fontSize: 13, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'default', fontFamily: 'inherit' }) }} data-testid="refund-account-save">
+              {s.refundDestinationBusy ? T('Đang lưu…', 'Saving…') : T('Lưu tài khoản', 'Save account')}
+            </button>
           </div>
         </div>
       )}

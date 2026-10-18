@@ -153,13 +153,28 @@ private struct OnboardingTopBar: View {
                 .accessibilityIdentifier("onboarding.skipQuestion")
             }
             .buttonStyle(.plain)
-            HStack(spacing: 4) {
-                ForEach(1...OnboardingQuestion.count, id: \.self) { i in
-                    Capsule().fill(app.palette.ink.opacity(i <= step ? 1 : 0.15)).frame(height: 4)
-                }
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(app.T("Câu \(step) trên \(OnboardingQuestion.count)", "Question \(step) of \(OnboardingQuestion.count)"))
+            // Goal gradient (note 48): creating the account (or, for a guest,
+            // opening banbe) is step 1 and already done, so question 1 never
+            // opens at 0%.
+            StepProgress(steps: stepTitles,
+                         current: step,
+                         message: ProgressEncouragement.line(remaining: stepTitles.count - step, T: app.T),
+                         identifier: "onboarding.stepProgress")
+        }
+    }
+
+    private var stepTitles: [String] {
+        [app.isSignedIn ? app.T("Tài khoản", "Account") : app.T("Bắt đầu", "Start")]
+            + OnboardingQuestion.allCases.map(stepTitle)
+    }
+
+    private func stepTitle(_ q: OnboardingQuestion) -> String {
+        switch q {
+        case .goals: return app.T("Mục tiêu", "Goals")
+        case .interests: return app.T("Sở thích", "Interests")
+        case .availability: return app.T("Thời gian", "Time")
+        case .budget: return app.T("Ngân sách", "Budget")
+        case .languages: return app.T("Ngôn ngữ", "Language")
         }
     }
 }

@@ -351,11 +351,31 @@ struct InkButton: View {
     var cornerRadius: CGFloat = 18
     /// nil = the original fixed 15pt; pass a text style to scale with Dynamic Type.
     var font: Font? = nil
+    /// Why the button is disabled, shown as a caption under it (note 48).
+    /// nil = no caption (the original behaviour).
+    var disabledReason: String? = nil
     let action: () -> Void
 
     @EnvironmentObject private var app: AppState
 
     var body: some View {
+        if !enabled, let disabledReason, !disabledReason.isEmpty {
+            VStack(spacing: 8) {
+                button.accessibilityHint(disabledReason)
+                Text(disabledReason)
+                    .font(.footnote)
+                    .foregroundStyle(app.palette.ink.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityHidden(true)
+                    .accessibilityIdentifier("inkButton.disabledReason")
+            }
+        } else {
+            button
+        }
+    }
+
+    private var button: some View {
         Button(action: { if enabled { action() } }) {
             Text(title)
                 .font(font ?? .system(size: 15, weight: .semibold))

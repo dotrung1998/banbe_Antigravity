@@ -35,6 +35,12 @@ enum AnalyticsEvent: Equatable {
     case publicStoryCompleted
     /// `step` = the story page index the person left from.
     case publicStorySkipped(step: Int)
+    // Guest browsing + friction pass (note 48).
+    case guestBrowseStarted
+    /// `context` ∈ save | follow | reserve | message | like.
+    case guestSignInPromptShown(context: String)
+    case guestSignInPromptAccepted(context: String)
+    case createEventStartedBlank
     // Schedule.
     case scheduleOpened
     /// `mode` ∈ mine | discover.
@@ -69,6 +75,10 @@ enum AnalyticsEvent: Equatable {
         case .publicStoryOpened: return "public_story_opened"
         case .publicStoryCompleted: return "public_story_completed"
         case .publicStorySkipped: return "public_story_skipped"
+        case .guestBrowseStarted: return "guest_browse_started"
+        case .guestSignInPromptShown: return "guest_signin_prompt_shown"
+        case .guestSignInPromptAccepted: return "guest_signin_prompt_accepted"
+        case .createEventStartedBlank: return "create_event_started_blank"
         case .scheduleOpened: return "schedule_opened"
         case .scheduleModeSelected: return "schedule_mode_selected"
         case .scheduleDaySelected: return "schedule_day_selected"
@@ -98,6 +108,8 @@ enum AnalyticsEvent: Equatable {
             return ["permission": p, "result": r]
         case .publicStorySkipped(let step):
             return ["step": String(step)]
+        case .guestSignInPromptShown(let c), .guestSignInPromptAccepted(let c):
+            return ["context": c]
         case .scheduleModeSelected(let mode):
             return ["mode": mode]
         case .scheduleDaySelected(let bucket):

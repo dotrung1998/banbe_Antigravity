@@ -33,8 +33,20 @@ struct RefundAccountsView: View {
             && confirmed && !app.refundDestinationBusy
     }
 
+    private var saveGapReason: String? {
+        switch SmartDefaults.refundAccountGap(bank: bank, account: account, holder: holder, confirmed: confirmed) {
+        case .bank: return app.T("Chọn hoặc nhập ngân hàng", "Pick or type a bank")
+        case .account: return app.T("Nhập số tài khoản", "Enter the account number")
+        case .holder: return app.T("Nhập tên chủ tài khoản", "Enter the account holder name")
+        case .confirm: return app.T("Xác nhận thông tin là chính xác", "Confirm the details are correct")
+        case nil: return nil
+        }
+    }
+
     private func openAddForm() {
-        formOpen = true; editingID = nil; label = ""; bank = ""; account = ""; holder = ""; note = ""; pendingQR = nil
+        // Smart default (note 48): the holder is usually the person themself.
+        let ownName = (app.user?.displayName ?? "").trimmingCharacters(in: .whitespaces)
+        formOpen = true; editingID = nil; label = ""; bank = ""; account = ""; holder = ownName; note = ""; pendingQR = nil
         setDefault = app.refundDestinations.isEmpty; confirmed = false
     }
     private func openEditForm(_ d: RefundDestination) {
@@ -283,8 +295,19 @@ struct RefundAccountsView: View {
         VStack(alignment: .leading, spacing: 8) {
             TextField(app.T("Nhãn (VD: Tài khoản chính)", "Label (e.g. Main account)"), text: $label)
                 .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
-            TextField(app.T("Tên ngân hàng", "Bank name"), text: $bank)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(SmartDefaults.commonBanks, id: \.self) { name in
+                        ChoiceChip(title: name, selected: bank == name, compact: true,
+                                   identifier: "refund.bankChip.\(name)") { bank = name }
+                    }
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(app.T("Ngân hàng phổ biến", "Common banks"))
+            TextField(app.T("Tên ngân hàng (hoặc chọn ở trên)", "Bank name (or pick above)"), text: $bank)
                 .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                .accessibilityIdentifier("refund.bankField")
             TextField(app.T("Số tài khoản", "Account number"), text: $account)
                 .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
                 .keyboardType(.numberPad)
@@ -305,12 +328,19 @@ struct RefundAccountsView: View {
             if !app.refundDestinationError.isEmpty {
                 Text(app.refundDestinationError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
             }
+            if let saveGapReason, !app.refundDestinationBusy {
+                Text(saveGapReason)
+                    .font(.footnote).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .accessibilityIdentifier("refund.accountSaveReason")
+            }
             HStack(spacing: 10) {
                 Button(app.T("Huỷ", "Cancel")) { formOpen = false }
                     .font(.system(size: 13)).foregroundStyle(app.palette.ink)
                     .frame(maxWidth: .infinity).padding(12)
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
-                InkButton(title: app.refundDestinationBusy ? app.T("Đang lưu…", "Saving…") : app.T("Lưu", "Save"), action: doSave)
+                InkButton(title: app.refundDestinationBusy ? app.T("Đang lưu…", "Saving…") : app.T("Lưu tài khoản", "Save account"),
+                          enabled: canSave, action: doSave)
                     .accessibilityIdentifier("refund.accountSave")
             }
         }

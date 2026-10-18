@@ -62,6 +62,9 @@ private struct GateScaffold<Content: View>: View {
     @EnvironmentObject private var app: AppState
     let title: String
     let subtitle: String
+    /// Registration step in progress (note 48): account creation is step 0
+    /// and already done, so enrollment never looks like starting over.
+    var registrationStep: Int? = nil
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -69,6 +72,14 @@ private struct GateScaffold<Content: View>: View {
             VStack(alignment: .leading, spacing: 0) {
                 BanbeLogo(kind: .wordmark, width: BanbeLogo.headerWordmarkWidth)
                     .padding(.top, 36)
+                if let registrationStep {
+                    StepProgress(steps: [app.T("Tài khoản", "Account"), app.T("Điện thoại", "Phone"),
+                                         app.T("Ngày sinh", "Birthday")],
+                                 current: registrationStep,
+                                 message: ProgressEncouragement.line(remaining: 3 - registrationStep, T: app.T),
+                                 identifier: "gate.progress")
+                        .padding(.top, 24)
+                }
                 Text(title).font(BanbeTheme.display(26)).padding(.top, 28)
                 Text(subtitle)
                     .font(.system(size: 14)).lineSpacing(3)
@@ -334,7 +345,8 @@ struct PhoneEnrollmentView: View {
             subtitle: model.codeSent
                 ? app.T("Nhập mã 6 số vừa được gửi qua SMS.", "Enter the 6-digit code we just texted you.")
                 : app.T("Thêm số điện thoại có mã quốc gia để hoàn tất đăng ký. Chúng tôi sẽ gửi một mã SMS.",
-                        "Add a phone number with its country code to finish registering. We'll text you a code.")
+                        "Add a phone number with its country code to finish registering. We'll text you a code."),
+            registrationStep: 1
         ) {
             PhoneVerificationForm(model: model)
         }
@@ -410,7 +422,8 @@ struct DOBEnrollmentView: View {
     var body: some View {
         GateScaffold(
             title: app.T("Ngày sinh", "Date of birth"),
-            subtitle: app.T("Nhập ngày sinh của bạn để hoàn tất đăng ký.", "Enter your date of birth to complete registration.")
+            subtitle: app.T("Nhập ngày sinh của bạn để hoàn tất đăng ký.", "Enter your date of birth to complete registration."),
+            registrationStep: 2
         ) {
             DOBFieldsView(input: $input, identifierPrefix: "gate.enroll")
             Text(app.T("Bạn không thể tự đổi ngày sinh sau khi lưu.", "You can't change your date of birth yourself after saving."))

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, alert } from '../theme.js';
 import { surveyPublicUrl } from '../lib/surveyLink.js';
+import { CountStepper, OptionChipsEditor } from '../components/ui/FormControls.jsx';
 import { supabase } from '../lib/supabase.js';
 import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
 import SurveyStoryCard from './sheets/SurveyStoryCard.jsx';
@@ -110,9 +111,8 @@ function PillRow({ children, small }) {
   return <div style={{ display: 'flex', gap: 8, marginTop: small ? 0 : 12, marginBottom: small ? 12 : 0, animation: small ? 'sgFade .26s cubic-bezier(.3,.9,.3,1)' : undefined }}>{children}</div>;
 }
 
-function parseOptionsInput(text) {
-  return (text || '')
-    .split(',')
+function parseOptionsInput(labels) {
+  return (labels || [])
     .map(s => s.trim())
     .filter(Boolean)
     .map((label, i) => ({ id: `o${i + 1}`, label }));
@@ -127,7 +127,7 @@ function slotLabel(sl) {
 function CreateSurveyForm({ T, onCreate, busy, error, searchAddressSuggestions }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [closesInDays, setClosesInDays] = useState('7');
+  const [closesInDays, setClosesInDays] = useState(7);
   // Structured slots (same native date/time inputs as Create Event), so a
   // suggested draft's date/time can be applied to the event verbatim.
   const [slots, setSlots] = useState([]);
@@ -167,13 +167,13 @@ function CreateSurveyForm({ T, onCreate, busy, error, searchAddressSuggestions }
     }]);
     locSeq.current += 1; setLocQuery(''); setLocSuggestions([]); setLocError(''); setLocSearching(false);
   };
-  const [budgetOptions, setBudgetOptions] = useState('Dưới 300k, 300-600k, Trên 600k');
-  const [activityOptions, setActivityOptions] = useState('');
-  const [groupSizeMax, setGroupSizeMax] = useState('20');
+  const [budgetOptions, setBudgetOptions] = useState(['Dưới 300k', '300-600k', 'Trên 600k']);
+  const [activityOptions, setActivityOptions] = useState([]);
+  const [groupSizeMax, setGroupSizeMax] = useState(20);
 
   const submit = () => {
     const opensAt = new Date().toISOString();
-    const days = Math.max(1, parseInt(closesInDays, 10) || 7);
+    const days = Math.max(1, closesInDays || 7);
     const closesAt = new Date(Date.now() + days * 86400000).toISOString();
     onCreate({
       title, description, opensAt, closesAt,
@@ -183,7 +183,7 @@ function CreateSurveyForm({ T, onCreate, busy, error, searchAddressSuggestions }
         budget_options: parseOptionsInput(budgetOptions),
         activity_options: parseOptionsInput(activityOptions),
         group_size_min: 1,
-        group_size_max: Math.max(1, parseInt(groupSizeMax, 10) || 20),
+        group_size_max: Math.max(1, groupSizeMax || 20),
         required: { date_options: slots.length > 0, location_options: locations.length > 0 },
       },
     });
@@ -204,7 +204,7 @@ function CreateSurveyForm({ T, onCreate, busy, error, searchAddressSuggestions }
       </div>
       <div>
         <label style={labelStyle}>{T('Đóng sau (ngày)', 'Closes in (days)')}</label>
-        <input style={{ ...inputStyle, width: 100 }} type="number" min={1} value={closesInDays} onChange={(e) => setClosesInDays(e.target.value)} />
+        <CountStepper testId="survey-closes-in" value={closesInDays} min={1} max={60} unit={T('ngày', 'days')} onChange={setClosesInDays} />
       </div>
       <div>
         <label style={labelStyle}>{T('Lựa chọn ngày/giờ (có thể thêm nhiều)', 'Date/time options (add as many as you like)')}</label>
@@ -253,16 +253,16 @@ function CreateSurveyForm({ T, onCreate, busy, error, searchAddressSuggestions }
         )}
       </div>
       <div>
-        <label style={labelStyle}>{T('Mức ngân sách (cách nhau bởi dấu phẩy)', 'Budget ranges (comma-separated)')}</label>
-        <input style={inputStyle} value={budgetOptions} onChange={(e) => setBudgetOptions(e.target.value)} />
+        <label style={labelStyle}>{T('Mức ngân sách', 'Budget ranges')}</label>
+        <OptionChipsEditor testId="survey-budget" T={T} options={budgetOptions} onChange={setBudgetOptions} placeholder={T('Thêm mức, vd. 600k-1tr', 'Add a range, e.g. 600k-1m')} />
       </div>
       <div>
-        <label style={labelStyle}>{T('Hoạt động mong muốn (cách nhau bởi dấu phẩy, không bắt buộc)', 'Desired activities (comma-separated, optional)')}</label>
-        <input style={inputStyle} value={activityOptions} onChange={(e) => setActivityOptions(e.target.value)} />
+        <label style={labelStyle}>{T('Hoạt động mong muốn (không bắt buộc)', 'Desired activities (optional)')}</label>
+        <OptionChipsEditor testId="survey-activities" T={T} options={activityOptions} onChange={setActivityOptions} placeholder={T('Thêm hoạt động', 'Add an activity')} />
       </div>
       <div>
         <label style={labelStyle}>{T('Số người tối đa mỗi nhóm', 'Max group size')}</label>
-        <input style={{ ...inputStyle, width: 100 }} type="number" min={1} value={groupSizeMax} onChange={(e) => setGroupSizeMax(e.target.value)} />
+        <CountStepper testId="survey-group-max" value={groupSizeMax} min={2} max={200} unit={T('người', 'people')} onChange={setGroupSizeMax} />
       </div>
       {error && <div style={{ fontSize: 12.5, color: alert }}>{error}</div>}
       <div

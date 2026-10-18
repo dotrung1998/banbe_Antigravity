@@ -665,7 +665,7 @@ private struct CreateSurveyFormView: View {
 
     @State private var title = ""
     @State private var description = ""
-    @State private var closesInDays = "7"
+    @State private var closesInDays = 7
     // Structured date/time slots, picked with the same EventDateTimeSheet
     // Create Event uses, so a suggested draft's date/time can be applied
     // to the event verbatim.
@@ -680,12 +680,12 @@ private struct CreateSurveyFormView: View {
     @State private var locSuggestions: [AddressSuggestion] = []
     @State private var locSearching = false
     @State private var locError = ""
-    @State private var budgetOptions = "Dưới 300k, 300-600k, Trên 600k"
-    @State private var activityOptions = ""
-    @State private var groupSizeMax = "20"
+    @State private var budgetOptions = ["Dưới 300k", "300-600k", "Trên 600k"]
+    @State private var activityOptions: [String] = []
+    @State private var groupSizeMax = 20
 
-    private func parseOptions(_ text: String) -> [SurveyOption] {
-        text.components(separatedBy: ",")
+    private func parseOptions(_ labels: [String]) -> [SurveyOption] {
+        labels
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
             .enumerated()
@@ -816,12 +816,16 @@ private struct CreateSurveyFormView: View {
         VStack(alignment: .leading, spacing: 12) {
             field(app.T("Tiêu đề", "Title"), $title)
             field(app.T("Mô tả", "Description"), $description)
-            field(app.T("Đóng sau (ngày)", "Closes in (days)"), $closesInDays, keyboard: .numberPad)
+            stepperRow(app.T("Đóng sau (ngày)", "Closes in (days)"), value: $closesInDays, range: 1...60,
+                       unit: app.T("ngày", "days"), id: "survey.closesInDays")
             slotsSection
             locationsSection
-            field(app.T("Mức ngân sách (cách nhau bởi dấu phẩy)", "Budget ranges (comma-separated)"), $budgetOptions)
-            field(app.T("Hoạt động mong muốn (không bắt buộc)", "Desired activities (optional)"), $activityOptions)
-            field(app.T("Số người tối đa mỗi nhóm", "Max group size"), $groupSizeMax, keyboard: .numberPad)
+            optionsRow(app.T("Mức ngân sách", "Budget ranges"), $budgetOptions,
+                       placeholder: app.T("Thêm mức, vd. 600k-1tr", "Add a range, e.g. 600k-1m"), id: "survey.budget")
+            optionsRow(app.T("Hoạt động mong muốn (không bắt buộc)", "Desired activities (optional)"), $activityOptions,
+                       placeholder: app.T("Thêm hoạt động", "Add an activity"), id: "survey.activities")
+            stepperRow(app.T("Số người tối đa mỗi nhóm", "Max group size"), value: $groupSizeMax, range: 2...200,
+                       unit: app.T("người", "people"), id: "survey.groupSizeMax")
 
             if !app.mySurveyCreateError.isEmpty {
                 Text(app.mySurveyCreateError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
@@ -834,10 +838,10 @@ private struct CreateSurveyFormView: View {
                 config.budgetOptions = parseOptions(budgetOptions)
                 config.activityOptions = parseOptions(activityOptions)
                 config.groupSizeMin = 1
-                config.groupSizeMax = Int(groupSizeMax) ?? 20
+                config.groupSizeMax = groupSizeMax
                 config.required = ["date_options": !slots.isEmpty, "location_options": !locations.isEmpty]
                 Task {
-                    let ok = await app.createSurvey(title: title, description: description, closesInDays: Int(closesInDays) ?? 7, config: config)
+                    let ok = await app.createSurvey(title: title, description: description, closesInDays: closesInDays, config: config)
                     if ok { onCreated() }
                 }
             } label: {
@@ -854,6 +858,21 @@ private struct CreateSurveyFormView: View {
         }
         .padding(16)
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+    }
+
+    private func stepperRow(_ label: String, value: Binding<Int>, range: ClosedRange<Int>, unit: String, id: String) -> some View {
+        HStack {
+            Text(label).font(.system(size: 11.5)).opacity(0.7)
+            Spacer()
+            CountStepper(value: value, range: range, unit: unit, identifier: id)
+        }
+    }
+
+    private func optionsRow(_ label: String, _ options: Binding<[String]>, placeholder: String, id: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label).font(.system(size: 11.5)).opacity(0.7)
+            OptionChipsEditor(options: options, placeholder: placeholder, identifier: id)
+        }
     }
 
     private func field(_ label: String, _ text: Binding<String>, keyboard: UIKeyboardType = .default) -> some View {

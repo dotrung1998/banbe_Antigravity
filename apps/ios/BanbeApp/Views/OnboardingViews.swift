@@ -332,6 +332,11 @@ struct CreateEventView: View {
     // success" default (pending events) per this ticket's own instruction.
     @State private var successChooserOpen = false
     @State private var successChoiceMade = false
+    /// Note 48: field errors stay quiet until the host asks to review (or
+    /// taps "what's missing"), instead of shouting from the first render.
+    @State private var attemptedReview = false
+    @State private var discardConfirmOpen = false
+    @State private var scrollProxy: ScrollViewProxy?
 
     private var removedExistingIDs: [UUID] {
         let kept = Set(galleryItems.compactMap { if case .existing(let id, _) = $0.kind { return id }; return nil })
@@ -366,6 +371,51 @@ struct CreateEventView: View {
     private var includedValid: Bool { app.createIncludedItems.contains { !$0.label.trimmingCharacters(in: .whitespaces).isEmpty } }
     private var photosValid: Bool { galleryItems.count >= minPhotos && galleryItems.count <= maxPhotos }
     private var hasCreateFieldErrors: Bool { !descValid || !dateTimeValid || !seatsValid || !catsValid || !includedValid || !photosValid }
+    private var nameValid: Bool { !app.createName.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var canOpenReview: Bool { nameValid && app.createLocConfirmed && !hasCreateFieldErrors }
+
+    /// Note 48 progress sections, in on-screen order.
+    private enum Section: Int, CaseIterable { case host, basics, whenWhere, tickets, photos
+        var anchor: String { "create.section.\(rawValue)" }
+    }
+    private var sectionTitles: [String] {
+        [app.T("Host", "Host"), app.T("Cơ bản", "Basics"), app.T("Thời gian & nơi", "When & where"),
+         app.T("Vé", "Tickets"), app.T("Ảnh", "Photos")]
+    }
+    private func sectionDone(_ section: Section) -> Bool {
+        switch section {
+        case .host: return !app.orgRegName.trimmingCharacters(in: .whitespaces).isEmpty
+        case .basics: return nameValid && descValid && catsValid && includedValid
+        case .whenWhere: return app.createLocConfirmed && dateTimeValid
+        case .tickets: return seatsValid
+        case .photos: return photosValid
+        }
+    }
+    private var firstIncompleteSection: Section? { Section.allCases.first { !sectionDone($0) } }
+
+    /// "Still needed: …" — every blocker, in on-screen order.
+    private var missingSummary: String? {
+        var items: [String] = []
+        if !nameValid { items.append(app.T("tên sự kiện", "event name")) }
+        if !descValid { items.append(app.T("mô tả", "description")) }
+        if !app.createLocConfirmed { items.append(app.T("địa chỉ gợi ý", "a suggested address")) }
+        if !dateTimeValid { items.append(app.T("ngày & giờ", "date & time")) }
+        if !seatsValid { items.append(app.T("số chỗ", "seats")) }
+        if !catsValid { items.append(app.T("danh mục", "a category")) }
+        if !includedValid { items.append(app.T("mục bao gồm", "an included item")) }
+        if !photosValid { items.append(app.T("ít nhất \(minPhotos) ảnh", "at least \(minPhotos) photos")) }
+        guard !items.isEmpty else { return nil }
+        return app.T("Còn thiếu: ", "Still needed: ") + items.joined(separator: ", ")
+    }
+
+    /// Something the host typed or picked would be lost by leaving.
+    private var hasUnsavedInput: Bool {
+        guard app.createEditEventId == nil, !app.createSent else { return false }
+        let typed = [app.createName, app.createDesc, app.createLoc, app.createIntro, app.createKeywords]
+            .contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        let touchedDefaults = app.createAppliedDefaults != nil && !app.createDraftMatchesAppliedDefaults
+        return typed || !galleryItems.isEmpty || touchedDefaults
+    }
 
     private func seedGalleryIfNeeded() {
         guard let editID = app.createEditEventId else {
@@ -517,7 +567,7 @@ struct CreateEventView: View {
             }
             if !photoError.isEmpty {
                 Text(photoError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
-            } else if !photosValid && !app.createSent {
+            } else if !photosValid && !app.createSent && attemptedReview {
                 Text(app.T("Cần tối thiểu \(minPhotos) và tối đa \(maxPhotos) ảnh khả dụng.", "Minimum \(minPhotos), maximum \(maxPhotos) available photos."))
                     .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
             }
@@ -657,7 +707,7 @@ struct CreateEventView: View {
                 }
                 .buttonStyle(.plain)
             }
-            if !includedValid && !app.createSent {
+            if !includedValid && !app.createSent && attemptedReview {
                 Text(app.T("Hãy thêm ít nhất một mục Bao gồm.", "Please add at least one Included item."))
                     .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
             }
@@ -772,7 +822,7 @@ struct CreateEventView: View {
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .buttonStyle(.plain)
-            if !dateTimeValid && !app.createSent {
+            if !dateTimeValid && !app.createSent && attemptedReview {
                 Text(app.T("Hãy chọn ngày và giờ diễn ra.", "Please pick a date and time."))
                     .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
             }
@@ -897,6 +947,43 @@ struct CreateEventView: View {
     }
 
     private var createFormBody: some View {
+        ScrollViewReader { proxy in
+            createFormScroll
+                // Goal gradient (note 48): a sticky, tappable section bar;
+                // "Host" is already ticked when an organizer profile exists.
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if !app.createSent {
+                        StepProgress(steps: sectionTitles,
+                                     current: firstIncompleteSection?.rawValue ?? Section.allCases.count,
+                                     completed: Section.allCases.map(sectionDone),
+                                     identifier: "create.progress",
+                                     onSelect: { index in
+                                         guard let section = Section(rawValue: index) else { return }
+                                         withAnimation { proxy.scrollTo(section.anchor, anchor: .top) }
+                                     })
+                            .padding(.horizontal, 22).padding(.top, 6).padding(.bottom, 10)
+                            .background(app.palette.paper)
+                    }
+                }
+                .onAppear { scrollProxy = proxy }
+        }
+        .confirmationDialog(app.T("Bỏ sự kiện này?", "Discard this event?"),
+                            isPresented: $discardConfirmOpen, titleVisibility: .visible) {
+            Button(app.T("Bỏ", "Discard"), role: .destructive) { app.createBack() }
+            Button(app.T("Tiếp tục chỉnh sửa", "Keep editing"), role: .cancel) {}
+        } message: {
+            Text(discardMessage)
+        }
+    }
+
+    private var discardMessage: String {
+        galleryItems.isEmpty
+            ? app.T("Thông tin bạn đã nhập sẽ mất.", "The details you've entered will be lost.")
+            : app.T("\(galleryItems.count) ảnh và thông tin bạn đã nhập sẽ mất.",
+                    "Your \(galleryItems.count) photos and details will be lost.")
+    }
+
+    private var createFormScroll: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
                 // Stage 1 fix — this used to name a fixed destination,
@@ -905,7 +992,8 @@ struct CreateEventView: View {
                 // createOriginScreen's own comment) instead of always
                 // landing on Dashboard/HostIntro.
                 BackLink(label: app.T("Quay lại", "Back")) {
-                    app.createBack()
+                    // Note 48 (honest loss framing): say what leaving loses.
+                    if hasUnsavedInput { discardConfirmOpen = true } else { app.createBack() }
                 }
 
                 Text(app.T("Dành cho người tổ chức", "For organizers"))
@@ -927,8 +1015,11 @@ struct CreateEventView: View {
                         .padding(.top, 10)
                 }
 
+                defaultsNotice()
+
                 group(app.T("Hồ sơ người tổ chức", "Organizer profile")) {
                     BanbeField(label: app.T("Tên", "Name"), placeholder: "Bếp Nhỏ", text: $app.orgRegName)
+                        .id(Section.host.anchor)
                     BanbeField(label: "Instagram", placeholder: "@bepnho.saigon", text: $app.orgRegIg)
                     BanbeField(label: app.T("Giới thiệu", "About"),
                                placeholder: app.T("Mình nấu cho người lạ từ 2021…", "I cook for strangers since 2021…"),
@@ -939,10 +1030,11 @@ struct CreateEventView: View {
                     BanbeField(label: app.T("Tên sự kiện", "Event name"),
                                placeholder: app.T("Tên sự kiện của bạn", "Your event name"), text: $app.createName,
                                required: true)
+                        .id(Section.basics.anchor)
                     BanbeField(label: app.T("Mô tả", "Description"),
                                placeholder: app.T("Buổi này có gì?", "What happens?"), text: $app.createDesc,
                                required: true)
-                    if !descValid && !app.createSent {
+                    if !descValid && !app.createSent && attemptedReview {
                         Text(app.T("Hãy nhập mô tả.", "Please enter a description."))
                             .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
                     }
@@ -954,6 +1046,7 @@ struct CreateEventView: View {
                         text: $app.createLoc,
                         required: true
                     )
+                    .id(Section.whenWhere.anchor)
                     .onChange(of: app.createLoc) { _, newValue in
                         createAddressSearchTask?.cancel()
                         // A stale confirmation/point for a since-edited
@@ -987,13 +1080,8 @@ struct CreateEventView: View {
                     .font(.system(size: 11)).opacity(0.75).foregroundStyle(app.palette.ink)
                     locationConfirmSection()
                     dateTimeRow()
-                    HStack(spacing: 10) {
-                        BanbeField(label: app.T("Giá", "Price"), placeholder: "900.000", text: $app.createPrice,
-                                   keyboard: .numberPad)
-                        BanbeField(label: app.T("Số chỗ", "Seats"), placeholder: "14", text: $app.createSeats,
-                                   keyboard: .numberPad, required: true)
-                    }
-                    if !seatsValid && !app.createSent {
+                    ticketsSection()
+                    if !seatsValid && !app.createSent && attemptedReview {
                         Text(app.T("Hãy nhập số chỗ lớn hơn 0.", "Please enter a number of seats greater than 0."))
                             .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
                     }
@@ -1049,7 +1137,7 @@ struct CreateEventView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    if !catsValid && !app.createSent {
+                    if !catsValid && !app.createSent && attemptedReview {
                         Text(app.T("Hãy chọn ít nhất một danh mục.", "Please pick at least one category."))
                             .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
                     }
@@ -1078,6 +1166,7 @@ struct CreateEventView: View {
                 }
 
                 gallerySection()
+                    .id(Section.photos.anchor)
 
                 // TASK 3 (event creation validation pass) — the "Download
                 // the Excel template" entry (a `ShareLink` to the bundled
@@ -1099,10 +1188,18 @@ struct CreateEventView: View {
                 // "Xác nhận và gửi" ever actually calls submitCreateEvent.
                 InkButton(title: app.createSent
                           ? app.T("Đã gửi, đang chờ Banbe duyệt", "Submitted, waiting for Banbe to review")
-                          : app.T("Xem lại trước khi gửi", "Review before submitting"),
-                          enabled: !app.createName.trimmingCharacters(in: .whitespaces).isEmpty
-                              && app.createLocConfirmed && !hasCreateFieldErrors && !app.createSent && !app.loading,
+                          : app.T("Xem lại sự kiện của bạn", "Review your event"),
+                          enabled: !app.createSent && !app.loading,
                           cornerRadius: 999) {
+                    // Note 48: tapping with gaps reveals what's missing and
+                    // scrolls to it, instead of a silent disabled button.
+                    guard canOpenReview else {
+                        attemptedReview = true
+                        if let first = firstIncompleteSection {
+                            withAnimation { scrollProxy?.scrollTo(first.anchor, anchor: .top) }
+                        }
+                        return
+                    }
                     // Keyboard-stays-up fix (2026-09-29) — opening the review
                     // used to rely on `.fullScreenCover` implicitly resigning
                     // first responder (a new modal context takes it away for
@@ -1115,11 +1212,14 @@ struct CreateEventView: View {
                 }
                 .padding(.top, 26)
 
-                if !app.createLocConfirmed && !app.createSent {
-                    Text(app.T("Chọn một địa chỉ gợi ý ở trên trước khi đăng.", "Pick a suggested address above before publishing."))
-                        .font(.system(size: 11.5)).opacity(0.7)
-                        .foregroundStyle(app.palette.ink)
+                if let missingSummary, !app.createSent {
+                    Text(missingSummary)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(attemptedReview ? BanbeTheme.alert : app.palette.ink.opacity(0.7))
+                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
                         .padding(.top, 8)
+                        .accessibilityIdentifier("create.missingSummary")
                 }
 
                 if !app.createError.isEmpty {
@@ -1151,6 +1251,97 @@ struct CreateEventView: View {
         }
         .onChange(of: app.eventPhotos) { _, _ in seedGalleryIfNeeded() }
         .onAppear { seedGalleryIfNeeded() }
+    }
+
+    /// Note 48: what was pre-filled, and a one-tap way out of it.
+    @ViewBuilder
+    private func defaultsNotice() -> some View {
+        if app.createEditEventId == nil, !app.createSent, app.createAppliedDefaults != nil {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "wand.and.stars").accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(app.createDefaultsSource.map {
+                        app.T("Đã điền sẵn thời gian, giá và số chỗ từ \"\($0)\". Đổi bất cứ gì bạn muốn.",
+                              "Time, price and seats are pre-filled from \"\($0)\". Change anything you like.")
+                    } ?? app.T("Đã chọn sẵn Thứ Bảy tới lúc 19:00 và 14 chỗ. Đổi bất cứ gì bạn muốn.",
+                               "We picked next Saturday at 19:00 and 14 seats. Change anything you like."))
+                        .font(.system(size: 12))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(app.T("Bắt đầu trống", "Start blank")) {
+                        withAnimation { app.clearCreateDefaults() }
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .buttonStyle(.plain)
+                    .underline()
+                    .accessibilityIdentifier("create.startBlank")
+                }
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(12)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.top, 14)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("create.defaultsNotice")
+        }
+    }
+
+    private var seatsBinding: Int { Int(app.createSeats.filter(\.isNumber)) ?? 0 }
+    private var priceDigits: Int? { Int(app.createPrice.filter(\.isNumber)) }
+
+    /// Contrast hint (note 48, honest anchoring): prices of similar live
+    /// events in the same category, never shown with too few samples.
+    private var similarPriceHint: String? {
+        let cats = Set(app.createCats)
+        guard !cats.isEmpty else { return nil }
+        let prices = app.discoveryEvents.filter { cats.contains($0.catKey) }.map(\.priceVnd)
+        guard let range = SmartDefaults.similarPriceRange(prices) else { return nil }
+        return app.T("Sự kiện tương tự: \(EventLabels.vnd(range.lowerBound))–\(EventLabels.vnd(range.upperBound))",
+                     "Similar events: \(EventLabels.vnd(range.lowerBound))–\(EventLabels.vnd(range.upperBound))")
+    }
+
+    /// Price as quick picks + free entry; seats as a stepper with quick picks.
+    @ViewBuilder
+    private func ticketsSection() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(app.T("Giá vé", "Price")).font(.system(size: 11.5))
+            FlowRow(spacing: 6) {
+                ForEach(SmartDefaults.priceQuickPicks, id: \.self) { value in
+                    ChoiceChip(title: value == 0 ? app.T("Miễn phí", "Free") : EventLabels.vnd(value),
+                               selected: !app.createPrice.isEmpty && priceDigits == value, compact: true,
+                               identifier: "create.price.\(value)") {
+                        app.createPrice = String(value)
+                    }
+                }
+            }
+            BanbeField(label: nil, placeholder: app.T("Giá khác, vd. 450.000", "Other price, e.g. 450,000"),
+                       text: $app.createPrice, keyboard: .numberPad)
+                .accessibilityLabel(app.T("Giá vé", "Price"))
+            Text(similarPriceHint ?? app.T("Để trống là miễn phí.", "Leave empty for a free event."))
+                .font(.system(size: 11)).opacity(0.7)
+                .accessibilityIdentifier("create.priceHint")
+
+            HStack(spacing: 3) {
+                Text(app.T("Số chỗ", "Seats")).font(.system(size: 11.5))
+                Text("*").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+            }
+            .padding(.top, 6)
+            HStack {
+                FlowRow(spacing: 6) {
+                    ForEach([10, 20, 30, 50], id: \.self) { n in
+                        ChoiceChip(title: "\(n)", selected: seatsBinding == n, compact: true,
+                                   identifier: "create.seats.\(n)") { app.createSeats = String(n) }
+                    }
+                }
+                Spacer(minLength: 8)
+                CountStepper(value: max(seatsBinding, 0), range: 0...SmartDefaults.seatRange.upperBound,
+                             unit: app.T("chỗ", "seats"), identifier: "create.seatsStepper") { newValue in
+                    app.createSeats = newValue == 0 ? "" : String(newValue)
+                }
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .id(Section.tickets.anchor)
     }
 
     private func group<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -1939,6 +2130,7 @@ struct EventDateTimeSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                quickPicks
                 DatePicker(
                     "", selection: $draftDate, in: minSelectableDate...,
                     displayedComponents: [.date]
@@ -1975,6 +2167,46 @@ struct EventDateTimeSheet: View {
                 }
             }
         }
+    }
+}
+
+extension EventDateTimeSheet {
+    private static let hhmm: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = AppState.vietnamTimeZone
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    /// Note 48: the common choices one tap away; the full pickers stay below.
+    var quickPicks: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(Array(SmartDefaults.dateQuickPicks().enumerated()), id: \.offset) { _, pick in
+                        ChoiceChip(title: app.T(pick.label.vi, pick.label.en),
+                                   selected: Self.vnCalendar.isDate(draftDate, inSameDayAs: pick.date),
+                                   compact: true, identifier: "dateSheet.day.\(pick.label.en)") {
+                            draftDate = pick.date
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(SmartDefaults.timeQuickPicks, id: \.self) { t in
+                        ChoiceChip(title: t, selected: Self.hhmm.string(from: draftTime) == t,
+                                   compact: true, identifier: "dateSheet.time.\(t)") {
+                            if let d = SmartDefaults.timeOfDay(t) { draftTime = d }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+        .padding(.bottom, 4)
     }
 }
 

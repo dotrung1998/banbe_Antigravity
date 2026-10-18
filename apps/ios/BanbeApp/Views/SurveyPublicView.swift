@@ -333,12 +333,12 @@ struct SurveyPublicView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(app.T("Số người (tính cả bạn)", "Group size (including you)")).font(.system(size: 12)).opacity(0.7)
-                TextField("", value: $app.surveyDraft.groupSize, format: .number)
-                    .keyboardType(.numberPad)
-                    .focused($focusedField, equals: .groupSize)
-                    .padding(10)
-                    .frame(width: 100)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(app.palette.rule))
+                // Note 48: a stepper instead of typing; 0 = not answered.
+                CountStepper(value: app.surveyDraft.groupSize ?? 0,
+                             range: 0...(config.groupSizeMax ?? 50),
+                             unit: app.T("người", "people"), identifier: "survey.groupSize") { newValue in
+                    app.surveyDraft.groupSize = newValue == 0 ? nil : newValue
+                }
             }
             .id(SurveyFocusField.groupSize)
 

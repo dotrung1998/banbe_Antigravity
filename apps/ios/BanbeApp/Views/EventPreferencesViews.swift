@@ -217,8 +217,9 @@ struct EventPreferencesView: View {
 /// Face ID and location are no longer asked here: Face ID is offered in the
 /// Home activation checklist and Account > Security (still device-local),
 /// location when Map or the area picker first needs it. The promotional-texts
-/// row keeps its existing default and wording EXACTLY — changing that is a
-/// consent decision (see .claude/notes/43-ios-reports-onboarding-redesign.md).
+/// row starts OFF and is written only when the person switches it on (note 48,
+/// resolving note 43's open consent decision): silence is not consent, and the
+/// server's own default (migration 123) is already OFF.
 struct OnboardingSettingsStep: View {
     @EnvironmentObject var app: AppState
     @AppStorage(Haptics.defaultsKey) private var hapticsStored = true
@@ -226,7 +227,7 @@ struct OnboardingSettingsStep: View {
 
     @State private var haptics = true
     @State private var emailDocs = false
-    @State private var promo = true
+    @State private var promo = false
     @State private var seeded = false
     @State private var busy = false
     @State private var failed = false
@@ -262,8 +263,8 @@ struct OnboardingSettingsStep: View {
                     .accessibilityAddTraits(.isHeader)
                     .padding(.top, 26)
                 switchRow(app.T("Tin nhắn quảng bá từ host", "Host promotional texts"),
-                          app.T("Bật mặc định cho tài khoản mới. Host bạn đã tương tác có thể soạn tin quảng bá SMS, host tự gửi; banbe không gửi hộ. Nhấn Tiếp tục là bạn đồng ý; tắt công tắc nếu không muốn. Đổi lại bất cứ lúc nào tại Tài khoản > Bảo mật.",
-                                "On by default for new accounts. Hosts you've interacted with may compose a promo text that they send themselves; banbe doesn't send for them. Tapping Continue records your agreement, switch it off if you don't want this. Change it any time in Account > Security."),
+                          app.T("Tắt trừ khi bạn bật. Nếu bật, host bạn đã tương tác có thể soạn tin quảng bá SMS và tự gửi; banbe không gửi hộ. Đổi lại bất cứ lúc nào tại Tài khoản > Bảo mật.",
+                                "Off unless you switch it on. If on, hosts you've interacted with may compose a promo text that they send themselves; banbe doesn't send for them. Change it any time in Account > Security."),
                           on: promo, id: "onboarding.settings.promo") { promo.toggle() }
                     .disabled(app.hostPromoConsent == nil)
                     .padding(.top, 10)
@@ -307,8 +308,9 @@ struct OnboardingSettingsStep: View {
             let isNew = app.eventOnboardingIsNewAccount
             haptics = isNew ? true : hapticsStored
             emailDocs = isNew ? true : app.autoEmailDocuments
-            // Existing prompted accounts keep their CURRENT consent/choices.
-            promo = isNew ? true : (app.hostPromoConsent ?? false)
+            // Consent is never pre-ticked: new accounts start OFF, existing
+            // accounts show their CURRENT stored choice.
+            promo = isNew ? false : (app.hostPromoConsent ?? false)
         }
     }
 
@@ -347,7 +349,9 @@ struct OnboardingSettingsStep: View {
         // Write a setting only when the final toggle differs from its current value.
         if haptics != hapticsStored { hapticsStored = haptics }
         if emailDocs != app.autoEmailDocuments { app.toggleAutoEmailDocuments() }
-        if promo != (app.hostPromoConsent ?? false) { _ = await app.setHostPromoConsent(promo) }
+        // Only write consent when the current value actually loaded (the row is
+        // disabled otherwise) and the person changed it.
+        if let current = app.hostPromoConsent, promo != current { _ = await app.setHostPromoConsent(promo) }
         if await app.completeSettingsOnboarding() {
             failed = false
             onDone()
