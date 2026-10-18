@@ -277,6 +277,9 @@ function Shell() {
   // now" condition `showBar` already computes (no sheet/story/Pulse/area-
   // sheet open) — a full-screen gesture layer has no business engaging
   // over any of those.
+  // The screen an open Event Detail goes back to (never 'event' itself), rendered beneath it — see the screens grid.
+  const eventUnderlay = state.screen === 'event' && state.eventBackScreen && state.eventBackScreen !== 'event' && SCREENS[state.eventBackScreen]
+    ? state.eventBackScreen : null;
   const gestureBlocked = !showBar || state.askingLocation || state.scanningQr || state.photoViewer || state.chatPhotoViewer || state.reasonPrompt;
   const SWIPE_START_PX = 10;
   const SWIPE_COMMIT_PX = 70;
@@ -689,8 +692,12 @@ function Shell() {
             the destination the way changing `<Screen key={state.screen}/>`'s
             own key used to. */}
         <div style={{ paddingBottom: showBar ? 92 : 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
-          {[state.screen, ...(swipeNeighbor ? [swipeNeighbor] : [])].map((s) => {
+          {[...(eventUnderlay ? [eventUnderlay] : []), state.screen, ...(swipeNeighbor ? [swipeNeighbor] : [])].map((s) => {
             const isCurrent = s === state.screen;
+            // iOS parity (2026-10-18): the screen an open event returns to stays mounted BENEATH it (inert), so
+            // closing the event shows Home (not a blank page) behind the shrinking card, and Home keeps its
+            // instance, scroll position and data instead of remounting. Same `key` before and after the close.
+            const isUnderlay = !isCurrent && s === eventUnderlay;
             const ScreenComp = SCREENS[s] || Home;
             const off = isCurrent ? swipeX : neighborOffset(s);
             return (
@@ -702,6 +709,8 @@ function Shell() {
                   transition: (isSwiping || isPulling) ? 'none' : 'transform 0.25s cubic-bezier(.22,.61,.36,1)',
                   pointerEvents: isCurrent ? undefined : 'none',
                 }}
+                aria-hidden={isUnderlay || undefined}
+                ref={(el) => { if (el) { if (isUnderlay) el.setAttribute('inert', ''); else el.removeAttribute('inert'); } }}
               >
                 <ScreenComp />
               </div>
