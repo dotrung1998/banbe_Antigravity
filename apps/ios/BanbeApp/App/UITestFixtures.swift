@@ -14,6 +14,9 @@ import SwiftUI
 enum UITestFixture {
     static let name: String? = UserDefaults.standard.string(forKey: "uiFixture")
     static var isActive: Bool { name != nil }
+    /// How many times a HomeView has appeared (HomeView's own onAppear bumps it). The shell fixture shows it as
+    /// `fixture.homeMounts`, so a test can prove the Home under Event Detail is the same live instance (note 47).
+    static var homeMounts = 0
     /// `-uiFixtureMonth YES` opens Schedule's month sheet at launch (screenshots).
     static let opensMonth = UserDefaults.standard.bool(forKey: "uiFixtureMonth")
     /// Stable fake account id so the draft store/relaunch tests have a key.
@@ -36,6 +39,15 @@ struct UITestFixtureRoot: View {
                 } else if name.hasPrefix("shell") {
                     // The REAL RootView (dock, swipe gestures, headers) on seeded signed-in state.
                     RootView()
+                        .overlay(alignment: .topLeading) {
+                            // Re-read a few times a second: the counter is a plain static, not observable state.
+                            TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                                Text("\(UITestFixture.homeMounts)")
+                                    .font(.system(size: 1)).opacity(0.01)
+                                    .accessibilityIdentifier("fixture.homeMounts")
+                            }
+                            .allowsHitTesting(false)
+                        }
                 } else if isRouted {
                     routed
                 } else if let flow {

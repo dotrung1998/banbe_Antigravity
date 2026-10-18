@@ -643,12 +643,19 @@ struct RootView: View {
             // itself has stable identity across the branch switch (only
             // ITS content changes), so its own `.onChange` keeps observing
             // continuously right through this transition.
+            // Event zoom fix (note 47) — this used to be `if dock screen { rootScreenStack.simultaneousGesture(…) }
+            // else { rootScreenStack }`. Two branches are two different views to SwiftUI, so EVERY navigation between
+            // a dock screen and a pushed one (Home -> Event Detail and back) destroyed the whole screen stack and
+            // built a new one: the "live" Home kept underneath Event Detail was in fact a brand-new HomeView on each
+            // open and close (re-running its ~10 `.task` loaders, scroll restore and photo loads mid-zoom), and the
+            // old and new stacks cross-faded over the paper background — the jerk and the white flash from the
+            // second open on. One branch, with the tab swipe switched off by its gesture mask (`.subviews` = this
+            // recognizer disabled, every child gesture untouched — so it still never competes with the edge-swipe
+            // strip on a pushed screen), keeps the stack's identity stable through every navigation.
             Group {
-                if BottomTabBar.visibleScreens.contains(app.screen) {
-                    rootScreenStack.simultaneousGesture(tabSwipeGesture)
-                } else {
-                    rootScreenStack
-                }
+                rootScreenStack
+                    .simultaneousGesture(tabSwipeGesture,
+                                         including: BottomTabBar.visibleScreens.contains(app.screen) ? .all : .subviews)
             }
             // Survey-list gesture fix (real-device report: the earlier
             // `.global`-space zone check still let a survey-row drag commit

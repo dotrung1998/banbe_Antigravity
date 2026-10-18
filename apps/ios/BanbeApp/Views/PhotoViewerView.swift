@@ -57,6 +57,8 @@ struct PhotoViewerView: View {
     // swipe-browse drag is never affected.
     @State private var dragTranslation: CGSize = .zero
     @State private var isDraggingDown = false
+    /// Past `swipeThreshold`: letting go closes. The one haptic tick of a close happens on crossing it (note 47).
+    @State private var dismissArmed = false
     // The decoded foreground photo, tagged with the path it belongs to so a
     // page change never sizes/draws the new index from the previous
     // photo's pixels. Released with this view on dismiss (NSCache in
@@ -143,7 +145,6 @@ struct PhotoViewerView: View {
         let o = item.originRect
         let scale = CGSize(width: o.width / photoRect.width, height: o.height / photoRect.height)
         let offset = CGSize(width: o.midX - photoRect.midX, height: o.midY - photoRect.midY)
-        Haptics.light()
         withAnimation(dismissAnimation) {
             dismissTransform = (scale, offset)
         }
@@ -293,8 +294,14 @@ struct PhotoViewerView: View {
                                         isDraggingDown = true
                                         dragTranslation = value.translation
                                     }
+                                    let armed = isDraggingDown && dy > swipeThreshold && dy > abs(dx)
+                                    if armed != dismissArmed {
+                                        dismissArmed = armed
+                                        if armed { Haptics.light() }
+                                    }
                                 }
                                 .onEnded { value in
+                                    dismissArmed = false
                                     let dx = value.translation.width
                                     let dy = value.translation.height
                                     if abs(dy) > abs(dx) && dy > swipeThreshold {

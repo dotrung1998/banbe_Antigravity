@@ -44,6 +44,8 @@ struct EventDetailView: View {
     // Drag-down-to-close (only from the very top of the scroll view).
     @State private var dismissDrag: CGFloat = 0
     @State private var isDismissDragging = false
+    /// The drag has passed the point where letting go closes the screen (the one haptic tick of a close, note 47).
+    @State private var dismissArmed = false
     @State private var isDismissing = false
     /// Whether the current touch started with the scroll view already at the very top. Closing is only allowed
     /// then: scrolling up to the top and carrying on in the SAME drag must not close the screen.
@@ -52,6 +54,12 @@ struct EventDetailView: View {
     @State private var presented = false
     /// The page itself (background, info sheet, buttons): fades in after the photo starts growing, out before it shrinks.
     @State private var contentShown = false
+    /// Where the cover photo actually was on screen the moment a close began (drag pose included). The close then
+    /// runs from here straight into the card — the same path as the Back button — instead of unwinding the drag
+    /// pose on top of the shrink, which made the photo dip below the card until the screen switched (note 47).
+    @State private var closeStart: CGRect?
+    /// Centre (global) of the page layers the drag pose scales around; the photo is posed with the same numbers.
+    @State private var poseAnchor: CGPoint = .zero
     private var screenSize: CGSize { UIScreen.main.bounds.size }
     private var bottomInset: CGFloat {
         UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.keyWindow?.safeAreaInsets.bottom ?? 0
@@ -62,8 +70,9 @@ struct EventDetailView: View {
     private var zoomOrigin: CGRect? {
         // Opened from Map: no card to zoom from; the screen opens from, and closes toward, the centre of the screen.
         guard app.eventBackScreen != .mapExplore else { return nil }
-        if app.eventOpening { return app.eventOriginRect }
+        // Closing wins over a still-flagged open (closed within 1.4s of opening): shrink into the card's live frame.
         if isDismissing { return app.zoomOrigin(for: event.key) ?? app.eventOriginRect }
+        if app.eventOpening { return app.eventOriginRect }
         return nil
     }
     /// True when there is no card to zoom from/into: the whole screen then scales up from the centre and fades.
@@ -72,26 +81,45 @@ struct EventDetailView: View {
     /// The cover photo's frame (screen coordinates): the tapped card's photo at 0, the full-bleed cover at 1. With no
     /// card to come from it grows from a slightly inset copy of the cover.
     private var heroFrame: CGRect {
-        let full = CGRect(x: 0, y: 0, width: screenSize.width, height: topInset + heroHeight)
+        let full = closeStart ?? CGRect(x: 0, y: 0, width: screenSize.width, height: topInset + heroHeight)
         let from = zoomOrigin ?? full
         func lerp(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * zoomT }
         return CGRect(x: lerp(from.minX, full.minX), y: lerp(from.minY, full.minY),
                       width: lerp(from.width, full.width), height: lerp(from.height, full.height))
     }
+    /// Drag-down pose: shrink around the page centre and follow the finger at a third of its travel.
+    private var dragScale: CGFloat { 1 - 0.16 * dismissProgress }
+    private func dragPosed(_ r: CGRect) -> CGRect {
+        let s = dragScale, a = poseAnchor, dy = dismissDrag * 0.35
+        return CGRect(x: a.x + (r.minX - a.x) * s, y: a.y + (r.minY - a.y) * s + dy,
+                      width: r.width * s, height: r.height * s)
+    }
+    /// The cover photo's on-screen frame: the zoom frame, its scroll parallax and (while dragged) the drag pose. The
+    /// photo is NOT inside the posed layers, so nothing but this decides where it is.
+    private var heroScreenFrame: CGRect {
+        let f = heroFrame
+        guard closeStart == nil else { return f }
+        let parallax = min(max(scrollOffset, 0), heroHeight) * 0.3 * zoomT
+        return dragPosed(f.offsetBy(dx: 0, dy: -parallax))
+    }
     private func closeAnimated() {
         guard !isDismissing else { return }
         isDismissing = true
-        Haptics.light()
+        // Freeze the photo where it is right now; the page layers keep their drag pose and just fade.
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { closeStart = heroScreenFrame }
         // RootView draws a stand-in underneath only when there is no live screen there (publishing this would make
         // every screen re-render, Home included, mid-animation).
         let live = app.eventHasLiveUnderlay
         if !live { app.eventDismissProgress = max(app.eventDismissProgress, 0.001) }
         withAnimation(.easeIn(duration: centerPose ? 0.34 : 0.22)) { contentShown = false }
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.92)) { presented = false; dismissDrag = 0 }
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.92)) { presented = false }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.62) {
             app.backFromEvent()
             DispatchQueue.main.async {
                 if app.eventDismissProgress != 0 { app.eventDismissProgress = 0 }
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) { closeStart = nil; dismissDrag = 0 }
                 isDismissing = false
             }
         }
@@ -100,6 +128,8 @@ struct EventDetailView: View {
         UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.keyWindow?.safeAreaInsets.top ?? 0
     }
     private var dismissProgress: CGFloat { min(1, max(0, dismissDrag / 320)) }
+    /// Letting go past this pull closes the screen.
+    private let dismissCloseDistance: CGFloat = 140
 
     private var event: CatalogEvent { app.currentEvent }
     // STAGE D (2026-09-25) — real event_photos URLs, replacing the static
@@ -167,6 +197,13 @@ struct EventDetailView: View {
             // The page background and everything on it fade in AFTER the photo has started growing out of the card
             // (and fade out first when closing), so it reads as the card's photo expanding, not a screen on top.
             app.palette.paper.ignoresSafeArea().opacity(contentShown ? 1 : 0)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(GeometryReader { g in
+                    Color.clear
+                        .onAppear { poseAnchor = CGPoint(x: g.frame(in: .global).midX, y: g.frame(in: .global).midY) }
+                        .onChange(of: g.frame(in: .global)) { _, f in poseAnchor = CGPoint(x: f.midX, y: f.midY) }
+                })
+                .modifier(dragPose)
             // The photo is a layer of the screen itself (not inside the stack below), so it can reach the very top
             // edge, under the status bar, and both side edges. It is also the shared element: its frame runs from
             // the tapped card's photo to the full-bleed cover (see `heroFrame`).
@@ -202,6 +239,8 @@ struct EventDetailView: View {
                 actionBar
             }
             .opacity(contentShown ? 1 : 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .modifier(dragPose)
             // Task 3 follow-up: back/share used to live INSIDE `hero`,
             // which scrolls away with the rest of the content the instant
             // the user scrolls the photo out of view. Rendered here
@@ -210,17 +249,12 @@ struct EventDetailView: View {
             // scroll position, the same floating-pill treatment the map
             // screen's own back/compass buttons already get.
             backShareRow.opacity(contentShown ? 1 : 0)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .modifier(dragPose)
         }
         // No card to come from (Map): the whole screen grows from / shrinks toward the middle of the screen.
         .scaleEffect(centerPose ? 0.84 + 0.16 * zoomT : 1)
-        // Drag-down-to-close: the whole screen shrinks toward the middle, rounds off and dims while the screen
-        // underneath (RootView peeks it) shows through.
-        // A mask that ignores the safe area (a plain clipShape would cut the full-bleed photo off at the status bar).
-        .mask { RoundedRectangle(cornerRadius: min(sheetRadius, dismissProgress * 120), style: .continuous).ignoresSafeArea() }
-        .scaleEffect(1 - 0.16 * dismissProgress)
-        .offset(y: dismissDrag * 0.35)
         .onAppear {
-            Haptics.light()
             DispatchQueue.main.async {
                 withAnimation(.spring(response: 0.6, dampingFraction: 0.9)) { presented = true }
                 withAnimation(.easeOut(duration: 0.36).delay(zoomOrigin == nil ? 0 : 0.2)) { contentShown = true }
@@ -268,12 +302,19 @@ struct EventDetailView: View {
                     dismissDrag = max(0, dy)
                     if !app.eventHasLiveUnderlay { app.eventDismissProgress = max(0.001, dismissProgress) }
                 }
+                // One tick when the drag passes the close point (and again if it comes back and crosses it again);
+                // nothing on release or when the screen underneath settles.
+                let armed = dismissDrag > dismissCloseDistance
+                if armed != dismissArmed {
+                    dismissArmed = armed
+                    if armed { Haptics.light() }
+                }
             }
             .onEnded { value in
-                defer { dragBeganAtTop = nil }
+                defer { dragBeganAtTop = nil; dismissArmed = false }
                 guard isDismissDragging else { return }
                 isDismissDragging = false
-                if dismissDrag > 140 || value.predictedEndTranslation.height > 420 {
+                if dismissDrag > dismissCloseDistance || value.predictedEndTranslation.height > 420 {
                     closeAnimated()
                 } else {
                     withAnimation(.spring(response: 0.46, dampingFraction: 0.86)) { dismissDrag = 0 }
@@ -396,13 +437,24 @@ struct EventDetailView: View {
     private var heroBackdrop: some View {
         // Fades only part-way (never to nothing): the strip left above the pulled-up info stays clearly visible.
         let fade = min(1, max(0, scrollOffset / (heroHeight * 0.62))) * zoomT
-        let f = heroFrame
+        let f = heroScreenFrame
+        // Card corners while zoomed in; while dragged, the posed page's own rounding (the page mask no longer covers
+        // the photo, see `dragPose`).
+        let radius = max(14 * (1 - zoomT), closeStart == nil ? min(sheetRadius, dismissProgress * 120) * dragScale : 0)
         return ZStack { RemoteImage(path: event.img, maxPixel: 1100) }   // no placeholder fill: the card shows through until the photo is ready
             .frame(width: f.width, height: f.height)
-            .clipShape(RoundedRectangle(cornerRadius: 14 * (1 - zoomT), style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
             .opacity((1 - 0.4 * fade) * (centerPose ? (contentShown ? 1 : 0) : 1))
-            .offset(x: f.minX, y: f.minY - min(max(scrollOffset, 0), heroHeight) * 0.3 * zoomT)
+            .offset(x: f.minX, y: f.minY)
             .accessibilityHidden(true)
+    }
+
+    /// Drag-down-to-close for the page layers (background, info sheet, buttons): shrink toward the middle, round off
+    /// and follow the finger while the screen underneath shows through. Each layer fills the same frame, so they all
+    /// scale around the same centre (`poseAnchor`), which `dragPosed` uses for the photo. A mask that ignores the safe
+    /// area (a plain clipShape would cut the background off at the status bar).
+    private var dragPose: DragPoseModifier {
+        DragPoseModifier(radius: min(sheetRadius, dismissProgress * 120), scale: dragScale, offsetY: dismissDrag * 0.35)
     }
 
     private func pill(_ text: String, action: @escaping () -> Void) -> some View {
@@ -892,5 +944,17 @@ extension UIApplication {
         var top = scene?.keyWindow?.rootViewController
         while let presented = top?.presentedViewController { top = presented }
         return top
+    }
+}
+
+private struct DragPoseModifier: ViewModifier {
+    let radius: CGFloat
+    let scale: CGFloat
+    let offsetY: CGFloat
+    func body(content: Content) -> some View {
+        content
+            .mask { RoundedRectangle(cornerRadius: radius, style: .continuous).ignoresSafeArea() }
+            .scaleEffect(scale)
+            .offset(y: offsetY)
     }
 }

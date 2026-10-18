@@ -219,6 +219,10 @@ struct HomeView: View {
             retryScrollRestoreIfNeeded()
         }
         .onDisappear { tickTask?.cancel() }
+        #if DEBUG
+        // Shell fixture tests assert Home is never rebuilt by opening/closing an event (note 47).
+        .onAppear { if UITestFixture.isActive { UITestFixture.homeMounts += 1 } }
+        #endif
         // Task 1 (2026-09-22 twelfth follow-up) — collects every visible
         // story ring's own global frame for StoryViewerView's expand/
         // shrink-toward-ring transition (see AppState.swift's own comment

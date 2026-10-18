@@ -555,8 +555,8 @@ struct ScreenScaffold<Content: View>: View {
                         (tracksBottomBarScroll || onRefresh != nil)
                             ? AnyView(ScaffoldScrollProbe(
                                 restoreOffsetY: restoreOffsetY, onOffset: onScrollOffset,
-                                onChange: { offsetY in
-                                    if tracksBottomBarScroll { app.noteScaffoldScroll(offsetY) }
+                                onChange: { offsetY, userDriven in
+                                    if tracksBottomBarScroll { app.noteScaffoldScroll(offsetY, userDriven: userDriven) }
                                 },
                                 onPullPhase: onRefresh != nil ? { phase, translationY in
                                     switch phase {
@@ -643,7 +643,7 @@ enum ScaffoldPullPhase { case began, changed, ended, cancelled }
 struct ScaffoldScrollProbe: UIViewRepresentable {
     var restoreOffsetY: CGFloat? = nil
     var onOffset: ((CGFloat) -> Void)? = nil
-    let onChange: (CGFloat) -> Void
+    let onChange: (CGFloat, Bool) -> Void
     var onPullPhase: ((ScaffoldPullPhase, CGFloat) -> Void)? = nil
 
     func makeUIView(context: Context) -> ProbeView {
@@ -662,7 +662,7 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
     }
 
     final class ProbeView: UIView {
-        var onChange: ((CGFloat) -> Void)?
+        var onChange: ((CGFloat, Bool) -> Void)?
         var onPullPhase: ((ScaffoldPullPhase, CGFloat) -> Void)?
         var restoreOffsetY: CGFloat?
         var onOffset: ((CGFloat) -> Void)?
@@ -693,11 +693,13 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
                     // every doc comment referencing "offsetY" assume that
                     // sign, so nothing downstream needed to change.
                     observation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] sv, _ in
-                        self?.onChange?(-sv.contentOffset.y)
+                        // Note 47: only a finger-driven scroll (dragging, or its momentum) may move the dock; a
+                        // restored scroll position on returning to a tab used to read as "scrolled down".
+                        self?.onChange?(-sv.contentOffset.y, sv.isTracking || sv.isDragging || sv.isDecelerating)
                         if self?.restoring == false { self?.onOffset?(sv.contentOffset.y) }
                     }
                     beginRestoreIfNeeded(scrollView)
-                    onChange?(-scrollView.contentOffset.y)
+                    onChange?(-scrollView.contentOffset.y, false)
                     if onPullPhase != nil {
                         scrollView.panGestureRecognizer.addTarget(self, action: #selector(handlePanStateChange(_:)))
                         attachedGesture = scrollView.panGestureRecognizer

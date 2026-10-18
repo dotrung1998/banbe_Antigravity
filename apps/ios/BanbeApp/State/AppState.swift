@@ -748,6 +748,8 @@ final class AppState: ObservableObject {
     /// close animation finished, which is where the stutter came from. Readers pick them up in the render that
     /// the screen change itself causes.
     var eventClosing = false
+    /// Bumped per close so only the latest close's timer clears `eventClosing`.
+    private var eventCloseGeneration = 0
     /// Event Detail was opened over Home or Map: that screen stays mounted (and keeps its scroll/camera) underneath
     /// instead of being rebuilt on the way back, so closing the event can never make it jump.
     var eventHasLiveUnderlay: Bool {
@@ -2816,7 +2818,11 @@ final class AppState: ObservableObject {
         }
     }
 
-    func noteScaffoldScroll(_ offsetY: CGFloat) {
+    func noteScaffoldScroll(_ offsetY: CGFloat, userDriven: Bool) {
+        // Note 47: the dock only shrinks while the user is scrolling a screen down. Programmatic moves (a tab's
+        // scroll position restored when you come back to it, first layout) just re-baseline, so returning to the
+        // screen that shrank the dock no longer shrinks it again.
+        guard userDriven else { lastScaffoldScrollOffset = offsetY; return }
         let now = Date()
         guard now.timeIntervalSince(lastScaffoldScrollUpdate) > 0.033 else { return }
         lastScaffoldScrollUpdate = now
@@ -2871,9 +2877,11 @@ final class AppState: ObservableObject {
     // whichever row of its "Current events" list is tapped, including the
     // event you arrived from (that list contains it too).
     func goEvent(_ key: String) {
+        // Fixtures (App/UITestFixtures.swift) never touch the network, but still run the real navigation and zoom
+        // bookkeeping below so the open/close animation can be tested.
+        var offline = false
         #if DEBUG
-        // Fixtures (App/UITestFixtures.swift) never touch the network.
-        if UITestFixture.isActive { eventKey = key; noteEventOpened(); screen = .event; return }
+        offline = UITestFixture.isActive
         #endif
         // A fresh, non-story-originated event open discards any RETAINED
         // story viewer (BUG 1, 2026-09-22 tenth follow-up: `storyViewer`
@@ -2904,10 +2912,16 @@ final class AppState: ObservableObject {
         eventOriginRect = (screen == .mapExplore) ? nil : zoomOrigin(for: key)
         eventOpening = true
         eventOpenTick += 1
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in self?.eventOpening = false }
+        // Only THIS open's timer may end it: an open -> close -> reopen inside 1.4s used to have the first open's
+        // timer clear the flag halfway through the second zoom, snapping its origin away from the card (note 47).
+        let tick = eventOpenTick
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
+            if self?.eventOpenTick == tick { self?.eventOpening = false }
+        }
         DispatchQueue.main.async { [weak self] in self?.screen = .event }
         eventBackIsStory = false
         storyReturnHostName = nil
+        guard !offline else { return }
         Task { await loadBookingForCurrentEvent() }
         Task { await loadLiveEventStatus() }
     }
@@ -2969,9 +2983,14 @@ final class AppState: ObservableObject {
     /// moment `screen` stops being `.event` (RootView's own
     /// `storyUnderlaysEvent` check).
     func backFromEvent() {
-        Haptics.light()
         eventClosing = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.eventClosing = false }
+        // The open is over once it is closed; a still-pending open timer must not leave it flagged (note 47).
+        eventOpening = false
+        eventCloseGeneration += 1
+        let generation = eventCloseGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            if self?.eventCloseGeneration == generation { self?.eventClosing = false }
+        }
         if eventBackScreen == .mapExplore {
             returnToMapExplore()
         } else {
@@ -3044,7 +3063,6 @@ final class AppState: ObservableObject {
     /// its own doc comment), no separate `eventKey` param — each gallery
     /// entry carries its own `eventId`.
     func openPhoto(gallery: [PhotoGalleryItem], index: Int, organizer: String, originRect: CGRect) {
-        Haptics.light()
         photoViewer = PhotoViewerItem(gallery: gallery, index: index, organizer: organizer, originRect: originRect)
     }
     func closePhoto() { photoViewer = nil }

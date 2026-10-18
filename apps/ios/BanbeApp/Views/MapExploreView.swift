@@ -1527,7 +1527,7 @@ struct MapExploreView: View {
                     .background(
                         ev.id == visibleEvents.first?.id
                             ? AnyView(ScaffoldScrollProbe(
-                                onChange: { _ in },
+                                onChange: { _, _ in },
                                 onPullPhase: { phase, translationY in
                                     switch phase {
                                     case .began: app.beginRootPull()

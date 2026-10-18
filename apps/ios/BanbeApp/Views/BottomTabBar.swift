@@ -318,9 +318,7 @@ struct BottomTabBar: View {
                 activeID = id
                 finishTouch()
                 if let id, let item = items.first(where: { $0.id == id }) {
-                    // One selection tick, only when this lands on a DIFFERENT
-                    // tab than the screen already showing.
-                    if tabID(for: app.screen) != id { Haptics.selection() }
+                    // No haptic on switching tabs (note 47).
                     item.action()
                 }
             }

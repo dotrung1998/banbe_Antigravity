@@ -149,4 +149,100 @@ final class ShellFixtureUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["screen.inbox"].waitForExistence(timeout: 8),
                       "nothing to swipe between, so the dock swipe stays available")
     }
+
+    // MARK: Note 47 — event zoom from Home
+
+    /// The card's title sits right above the dock window; tap its photo instead.
+    private func openCard(_ app: XCUIApplication, _ title: String) {
+        let card = app.buttons[title].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 20))
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -5)).tap()
+        XCTAssertTrue(el(app, "event.back").waitForExistence(timeout: 5))
+    }
+
+    /// Home under Event Detail must be the SAME live HomeView on every open and close — a rebuilt one re-runs its
+    /// loaders mid-zoom and cross-fades over the paper background (the jerk + white flash from the second open on).
+    func testOpeningAndClosingEventsNeverRebuildsHome() {
+        let app = launch("home")
+        XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 20))
+        let mounts = el(app, "fixture.homeMounts")
+        XCTAssertTrue(mounts.waitForExistence(timeout: 5))
+        let before = mounts.label
+        for _ in 0..<3 {
+            openCard(app, "Fixture host supper")
+            Thread.sleep(forTimeInterval: 1.0)
+            el(app, "event.back").tap()
+            XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 5))
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+        // Quick reopen inside the 1.4s open window: still lands on the event, Home still the same instance.
+        openCard(app, "Fixture host supper")
+        el(app, "event.back").tap()
+        openCard(app, "Fixture host supper")
+        Thread.sleep(forTimeInterval: 1.0)
+        el(app, "event.back").tap()
+        XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.6)
+        XCTAssertEqual(mounts.label, before, "Home was rebuilt by an event open/close")
+    }
+
+    /// The tab-swipe gesture is now always attached (masked off on pushed screens): the leading-edge swipe back
+    /// from Event Detail must still win and land on Home.
+    func testEdgeSwipeBackFromEventStillReachesHome() {
+        let app = launch("home")
+        openCard(app, "Fixture host supper")
+        Thread.sleep(forTimeInterval: 1.0)
+        swipe(app, y: 0.5, from: 0.01, to: 0.9)
+        XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 5))
+        XCTAssertFalse(el(app, "event.back").exists)
+    }
+
+    /// Drag-down close lands on the same live Home as the Back button (no rebuild), and a short pull springs back.
+    func testDragDownClosesEventOntoTheSameHome() {
+        let app = launch("home")
+        XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 20))
+        let mounts = el(app, "fixture.homeMounts")
+        XCTAssertTrue(mounts.waitForExistence(timeout: 5))
+        let before = mounts.label
+        openCard(app, "Fixture host supper")
+        Thread.sleep(forTimeInterval: 1.2)
+        let w = app.windows.firstMatch
+        // Short pull: below the close point, so it springs back and stays on the event.
+        w.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+            .press(forDuration: 0.05, thenDragTo: w.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
+        Thread.sleep(forTimeInterval: 0.8)
+        XCTAssertTrue(el(app, "event.back").exists, "a short pull must not close the event")
+        // Long pull: closes.
+        w.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+            .press(forDuration: 0.05, thenDragTo: w.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)))
+        XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.8)
+        XCTAssertFalse(el(app, "event.back").exists)
+        XCTAssertEqual(mounts.label, before, "Home was rebuilt by the drag close")
+    }
+
+    /// The dock shrinks only while a screen is scrolled down by the user: coming back to the tab that shrank it
+    /// (whose scroll position is restored) must leave it full size.
+    func testDockStaysExpandedWhenReturningToTheTabThatShrankIt() {
+        let app = launch("home")
+        XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 20))
+        let tab = el(app, "tab.map")
+        XCTAssertTrue(tab.waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 0.5)
+        let expanded = tab.frame.width
+        // Scroll Home down (finger moves up) and keep the finger moving so the dock sees a live scroll.
+        let w = app.windows.firstMatch
+        w.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+            .press(forDuration: 0.05, thenDragTo: w.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)))
+        Thread.sleep(forTimeInterval: 0.8)
+        XCTAssertLessThan(tab.frame.width, expanded - 1, "scrolling Home down should shrink the dock")
+        // Another tab that also reports its scroll (Account): its top-of-page offset used to become the baseline,
+        // so Home's restored offset then read as a big scroll down.
+        el(app, "tab.profile").tap()
+        Thread.sleep(forTimeInterval: 1.5)
+        el(app, "tab.home").tap()
+        XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1.5)
+        XCTAssertEqual(tab.frame.width, expanded, accuracy: 1, "returning to Home must not shrink the dock again")
+    }
 }
