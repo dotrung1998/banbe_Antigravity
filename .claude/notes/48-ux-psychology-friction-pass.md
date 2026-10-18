@@ -85,3 +85,6 @@ Also part of this pass:
 - Guest sign-in sheet hides the dock (`.hidesDock`) and was redesigned (context icon tile, 3 benefit rows, Continue / Log in / Not now).
 - Dock returns to full size on any section change (screen, Account tab, Schedule mode, Inbox view) via `resetDockSizeForNewSection()`, with a 0.6s scroll-collapse pause.
 - Create event is a 5-step flow (one section per page, Back/Next, tap a numbered step to jump), numbered step bar with % + encouraging line, icon labels + large rounded outlined fields (`BanbeField(icon:)`, `FormFieldLabel`, `roundedFormEditor`), redesigned Included editor.
+
+## Update 2026-10-18 (note 50)
+Seats are NOT pre-filled for a first event (the "14 seats" default described above was never wired; the unused web `FIRST_EVENT_SEATS` constant is removed). The Tickets step now shows how many guests similar events welcome instead (k-anonymous benchmarks, migration 186).

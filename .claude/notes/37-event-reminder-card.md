@@ -24,3 +24,6 @@ Status: IMPLEMENTED LOCALLY (web + iOS), not committed. `vite build` + iOS simul
 - Dashboard "Submitted events" and "Past events" are collapsed by default (count shown in the header), like Team. NOTE: collapsed by default means a "Needs fixing" submission is hidden until expanded; the header count still includes it.
 - Account host card (first block in the Host tab): when any of the host's open events is within 24h of starting or in progress (`reminderPhase`), it gets the gold border + halo (replays whenever Account becomes visible), a "Check-in" label left of the ›, and a full-strength ›. Web computes it in Account.jsx (loads live events + real events for the host's keys); iOS `AppState.hostReminderPhase`.
 - Dashboard Back always returns to Account when opened from Account: the Account Action Center entry now passes `profile`/`.profile` (it passed nothing, so Back went to a stale target such as Home). Opening the Dashboard from Home's "Your host page" or a notification still returns to where it came from.
+
+## Update 2026-10-18 (note 50)
+The Home "Your events" strip was removed. The reminder rule here is unchanged and now drives a single "Next up" banner on Home (`NextUpBanner`, same `home-event-reminder` testid, same gold star/halo CSS), shown only while the rule fires.
