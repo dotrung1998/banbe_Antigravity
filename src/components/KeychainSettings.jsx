@@ -27,10 +27,10 @@ function Chip({ on, onClick, children, testId, disabled }) {
 }
 
 export default function KeychainSettings() {
-  const { T, state, set: setApp, loadRewardsUnlocked } = useBanBe();
+  const { T, state, set: setApp, loadRewardsUnlocked, rewardsEnabled } = useBanBe();
   const lang = state.lang;
   // Reward designs (migration 165) are optional and only offered once rewards are live for this account.
-  const rewardsLive = state.rewardsSummaryStatus === 'loaded';
+  const rewardsLive = rewardsEnabled && state.rewardsSummaryStatus === 'loaded';
   const unlocked = state.rewardsUnlocked || [];
   useEffect(() => { if (state.user?.id && rewardsLive) loadRewardsUnlocked(); }, [state.user?.id, rewardsLive, loadRewardsUnlocked]);
   const manifest = useKeychainManifest();

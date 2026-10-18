@@ -210,7 +210,7 @@ export default function Account() {
     loadMyOrgStats, setAccountTab, openPublicProfile, openReports, openAccountGroup, goSurveysHosting,
     loadMyOrganizerMemberships,
     loadMyEventCredits, loadMyConfirmedEventCredits,
-    loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openHostSetup, goNotifications, goSchedule,
+    loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openHostSetup, goNotifications, goSchedule, rewardsEnabled,
   } = useBanBe();
   const s = state;
   const myKeychain = useMyKeychain();
@@ -709,8 +709,10 @@ export default function Account() {
           onClick={() => s.user?.handle && openPublicProfile(s.user.handle, 'profile')} />
         <GroupedRow icon="heart" label={T('Đang theo dõi', 'Following')} testId="account-following"
           trailing={s.followedStatus === 'loaded' ? String(s.followedOrgIds.length) : null} onClick={() => set({ screen: 'following' })} />
-        <GroupedRow icon="hexCoin" label={T('Phần Thưởng & Huy Hiệu', 'Rewards & Badges')} testId="account-rewards"
-          onClick={() => set({ screen: 'rewards', rewardsBack: 'profile' })} />
+        {rewardsEnabled && (
+          <GroupedRow icon="hexCoin" label={T('Phần Thưởng & Huy Hiệu', 'Rewards & Badges')} testId="account-rewards"
+            onClick={() => set({ screen: 'rewards', rewardsBack: 'profile' })} />
+        )}
         {/* groupKey/testid/route unchanged ("preferences" — see AccountGroup.jsx's GROUP_META). */}
         <GroupCard grouped groupKey="preferences" iconKind="sliders" label={T('Cài Đặt', 'Settings')} onClick={() => openAccountGroup('preferences')} />
         {/* Help & Legal opens the helpLegal group (Terms -> policy screen, Guides, Q&A) — see AccountGroup.jsx. */}

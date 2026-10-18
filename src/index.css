@@ -154,6 +154,11 @@ input::placeholder {
   to { opacity: 0; transform: scale(0.9); }
 }
 
+@keyframes banbeSheetOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(40px); }
+}
+
 @keyframes banbeFade {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -373,3 +378,10 @@ input::placeholder {
 .bb-range::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 26px; height: 26px; margin-top: -11.5px; border-radius: 50%; background: var(--bb-bg); border: 1px solid rgba(var(--bb-fg-rgb), 0.25); box-shadow: 0 2px 6px rgba(27,25,22,0.22); cursor: grab; }
 .bb-range::-moz-range-thumb { pointer-events: auto; width: 24px; height: 24px; border-radius: 50%; background: var(--bb-bg); border: 1px solid rgba(var(--bb-fg-rgb), 0.25); box-shadow: 0 2px 6px rgba(27,25,22,0.22); cursor: grab; }
 .bb-range:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--bb-fg); outline-offset: 2px; }
+
+/* Home Pulse ticker (note 51): a seamless marquee over two identical copies. Pauses on hover/focus; no motion when
+   the user asks for reduced motion (the component also swaps to a static ellipsised line). */
+@keyframes bbTicker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.bb-ticker-run { display: inline-flex; flex: none; white-space: nowrap; will-change: transform; animation: bbTicker var(--bb-ticker-dur, 24s) linear infinite; }
+.bb-ticker:hover .bb-ticker-run, .bb-ticker:focus-visible .bb-ticker-run { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .bb-ticker-run { animation: none; } }

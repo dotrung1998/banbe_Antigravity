@@ -37,12 +37,12 @@ export const CATEGORY_DEFS = [
 ];
 
 /** Quiet tinted rounded-square tiles; they stay out of the way of the event photos below. */
-export function CategoryRow({ value, onPick, T }) {
+export function CategoryRow({ values = [], onPick, T }) {
   return (
     <div data-hscroll="true" data-testid="home-category-row" role="tablist" aria-label={T('Danh mục', 'Categories')}
       style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none', padding: '12px 14px 4px' }}>
       {CATEGORY_DEFS.map(c => {
-        const active = value === c.key;
+        const active = c.key === 'all' ? values.length === 0 : values.includes(c.key);
         return (
           <button key={c.key} type="button" role="tab" aria-selected={active} onClick={() => onPick(c.key)}
             data-testid={`home-category-${c.key}`}

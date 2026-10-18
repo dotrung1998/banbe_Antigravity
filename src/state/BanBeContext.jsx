@@ -29,6 +29,7 @@ import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from 
 import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, isMissingColumnError } from '../lib/mediaUrls.js';
 import { eventDraftDefaults, createDefaultsPatch, createDraftMatchesDefaults } from '../lib/smartDefaults.js';
 import { DEFAULT_FILTERS as HOME_DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
+import { flagOn, normalizeFlags, readCachedFlags, writeCachedFlags } from '../lib/featureFlags.js';
 
 /** Media-API upload with the current session token. Resolves `{provider:'supabase'}`
  * when the caller must use the legacy path; throws MediaUploadError only after bytes were PUT. */
@@ -574,6 +575,10 @@ const initialState = {
   homeFilterSheetOpen: false,
   eventFill: {},
   searchQuery: '',
+  // Platform feature flags (migration 187, note 51). Platform-level, so NOT reset on sign-out. Seeded from the last
+  // answer cached on this device; a missing key means "on" (src/lib/featureFlags.js).
+  featureFlags: readCachedFlags(),
+  featureFlagBusy: '',
   // Host reservation criteria (migration 162): criteria cache by event id,
   // the guest eligibility pre-check, and the create-flow retry target.
   eventCriteriaByKey: {},
@@ -5310,18 +5315,19 @@ export function BanBeProvider({ children }) {
     rewardsSummary: null, rewardsSummaryStatus: 'idle', rewards: null, rewardsStatus: 'idle',
     rewardsUnlocked: [], rewardsRedeemBusy: '', rewardsRedeemResult: null,
   }), [set]);
+  const rewardsEnabled = flagOn(s.featureFlags, 'rewards');
   const loadRewardsSummary = useCallback(async () => {
     const uid = s.user?.id;
-    if (!uid) return;
+    if (!uid || !rewardsEnabled) return; // an admin has hidden Rewards & badges (migration 187): no requests, no numbers
     const { data, error } = await supabase.rpc('get_my_reward_summary');
     if (rewardsUidRef.current !== uid) return; // account changed meanwhile
     if (error) { set({ rewardsSummaryStatus: isRewardsUnavailable(error) ? 'unavailable' : 'error' }); return; }
     const sum = normalizeSummary(data);
     set(sum ? { rewardsSummary: sum, rewardsSummaryStatus: 'loaded' } : { rewardsSummaryStatus: 'error' });
-  }, [s.user?.id, set]);
+  }, [s.user?.id, rewardsEnabled, set]);
   const loadRewards = useCallback(async () => {
     const uid = s.user?.id;
-    if (!uid) return;
+    if (!uid || !rewardsEnabled) return;
     set(prev => ({ rewardsStatus: prev.rewardsStatus === 'loaded' ? 'loaded' : 'loading' }));
     const [full, unlocked] = await Promise.all([supabase.rpc('get_my_rewards'), supabase.rpc('get_my_unlocked_cosmetics')]);
     if (rewardsUidRef.current !== uid) return;
@@ -5333,7 +5339,7 @@ export function BanBeProvider({ children }) {
       rewardsSummaryStatus: 'loaded',
       rewardsUnlocked: Array.isArray(unlocked.data?.design_ids) ? unlocked.data.design_ids : [],
     });
-  }, [s.user?.id, set]);
+  }, [s.user?.id, rewardsEnabled, set]);
   const loadRewardsUnlocked = useCallback(async () => {
     const uid = s.user?.id;
     if (!uid) return;
@@ -5356,12 +5362,12 @@ export function BanBeProvider({ children }) {
   /** After a successful save: ask the server to verify it and count the day. Fire-and-forget; never blocks the save. */
   const recordSaveDay = useCallback(async (eventId) => {
     const uid = s.user?.id;
-    if (!uid || s.rewardsSummaryStatus === 'unavailable') return;
+    if (!uid || !rewardsEnabled || s.rewardsSummaryStatus === 'unavailable') return;
     try {
       const { error } = await supabase.rpc('record_active_day', { p_source: 'save', p_ref: eventId });
       if (!error && rewardsUidRef.current === uid) loadRewardsSummary();
     } catch { /* streak is best-effort */ }
-  }, [s.user?.id, s.rewardsSummaryStatus, loadRewardsSummary]);
+  }, [s.user?.id, rewardsEnabled, s.rewardsSummaryStatus, loadRewardsSummary]);
   recordSaveDayRef.current = recordSaveDay;
   // Per account: clear when it changes/signs out, then load the Home summary once signed in.
   useEffect(() => {
@@ -5381,6 +5387,52 @@ export function BanBeProvider({ children }) {
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [s.user?.id, loadRewardsSummary]);
+
+  // ============ Platform feature flags (migration 187, note 51) ============
+  // Read the flags on start, whenever the tab becomes visible again (at most every 20s) and on sign-in/out, so an
+  // admin's switch reaches open sessions quickly. Best-effort: an error or a missing function leaves the last-known
+  // flags untouched (see src/lib/featureFlags.js). Turning Rewards off clears its numbers; turning it on loads them.
+  const loadFeatureFlags = useCallback(async () => {
+    const { data, error } = await supabase.rpc('get_feature_flags');
+    if (error || !data) return;
+    const next = normalizeFlags(data);
+    writeCachedFlags(next);
+    set({ featureFlags: next });
+  }, [set]);
+  useEffect(() => { loadFeatureFlags(); }, [loadFeatureFlags, s.user?.id]);
+  useEffect(() => {
+    let last = Date.now();
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - last < 20000) return;
+      last = Date.now();
+      loadFeatureFlags();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [loadFeatureFlags]);
+  const prevRewardsEnabledRef = useRef(rewardsEnabled);
+  useEffect(() => {
+    if (prevRewardsEnabledRef.current === rewardsEnabled) return; // only react to a change, never double-load on mount
+    prevRewardsEnabledRef.current = rewardsEnabled;
+    if (!rewardsEnabled) { resetRewardsState(); return; }
+    if (s.user?.id && !s.authSyncing) loadRewardsSummary();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rewardsEnabled]);
+  /** Admin only (the server enforces it). Resolves { ok, error? }; the local flag changes only after the server accepted. */
+  const setFeatureFlag = useCallback(async (key, enabled) => {
+    if (s.featureFlagBusy) return { ok: false, error: 'BUSY' };
+    set({ featureFlagBusy: key });
+    const { data, error } = await supabase.rpc('admin_set_feature_flag', { p_key: key, p_enabled: enabled });
+    if (error || data?.success !== true) {
+      set({ featureFlagBusy: '' });
+      const missing = error && (error.code === 'PGRST202' || error.code === '42883');
+      return { ok: false, error: data?.error || (missing ? 'NOT_DEPLOYED' : 'NETWORK') };
+    }
+    const next = { ...normalizeFlags(s.featureFlags), [key]: enabled };
+    writeCachedFlags(next);
+    set({ featureFlags: next, featureFlagBusy: '' });
+    return { ok: true };
+  }, [s.featureFlagBusy, s.featureFlags, set]);
 
   // ============ Stories (Task 3, 07-notifications.md) ============
   // RLS (migration 066) already does every access check that matters here —
@@ -8073,7 +8125,11 @@ export function BanBeProvider({ children }) {
   const askLocation = useCallback(() => set({ askingLocation: true }), [set]);
 
   // ---- filter ----
-  const pickFilter = useCallback((key) => set({ filter: key }), [set]);
+  // Category: the single selection lives in homeFilters.cats (the main row and the filter sheet edit the same
+  // value), so a category picked on Home is already ticked when the filter sheet opens.
+  const pickFilter = useCallback((key) => set(prev => ({
+    homeFilters: { ...HOME_DEFAULT_FILTERS, ...prev.homeFilters, cats: key === 'all' ? [] : [key] },
+  })), [set]);
   const clearFilters = useCallback(() => set({
     filter: 'all', area: LOCATION_ALL,
     filterAttending: false, filterSaved: false, filterSoldOut: false,
@@ -10942,7 +10998,7 @@ export function BanBeProvider({ children }) {
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
-    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
+    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, rewardsEnabled, loadFeatureFlags, setFeatureFlag, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
@@ -10981,7 +11037,7 @@ export function BanBeProvider({ children }) {
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
-    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
+    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, rewardsEnabled, loadFeatureFlags, setFeatureFlag, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useBanBe } from '../../state/BanBeContext.jsx';
 import { paper, ink, rule, dockGlass } from '../../theme.js';
 import {
@@ -24,11 +25,29 @@ import {
 //    never written by search, so clearing the query restores it exactly.
 //  - picking any node (including the empty US root) only calls pickArea —
 //    it never touches the GPS/location-permission flow below.
-export default function AreaSheet() {
+//
+// `embedded` (note 50): the Home filter sheet opens this ON TOP of itself as a bottom sheet that slides up over it.
+// A pick only moves the selection (checkmark + the counts behind update); "Done" (or the backdrop / Esc) slides it
+// back down and calls `onDone`, so the filter sheet and its draft are never closed or rebuilt.
+export default function AreaSheet({ embedded = false, onDone }) {
   const { state, set, T, located, pickArea, allowLocation, denyLocation, locationTree, curArea } = useBanBe();
   const s = state;
   const lang = s.lang === 'en' ? 'en' : 'vi';
-  const closeArea = () => set({ areaAsking: false });
+  const [leaving, setLeaving] = useState(false);
+  const leaveTimer = useRef(null);
+  useEffect(() => () => clearTimeout(leaveTimer.current), []);
+  const closeArea = () => {
+    if (!embedded) { set({ areaAsking: false }); return; }
+    if (leaving) return;
+    setLeaving(true);
+    leaveTimer.current = setTimeout(() => onDone?.(), 220);
+  };
+  useEffect(() => {
+    if (!embedded) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeArea(); } };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
   const tree = locationTree;
 
   const labelOf = (node) => (node.kind === 'country' ? countryLabel(node.value, lang) : node.value);
@@ -98,19 +117,31 @@ export default function AreaSheet() {
     <span style={{ fontSize: 10.5, fontWeight: 400, color: ink, opacity: 0.55 }}>{T('khu vực quen thuộc', 'familiar area')}</span>
   );
 
-  return (
-    <div onClick={closeArea} style={{ position: 'absolute', inset: 0, zIndex: 21, background: 'rgba(12,12,12,0.32)', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '4px 16px 86px', boxSizing: 'border-box', animation: 'banbeFade 0.2s ease both' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ ...dockGlass({ borderRadius: 26, background: 'color-mix(in srgb, var(--bb-bg) 92%, transparent)', border: '1px solid var(--bb-rule, rgba(var(--bb-fg-rgb), 0.12))' }), position: 'relative', padding: '22px 24px 16px', display: 'flex', flexDirection: 'column', maxHeight: '100%', minHeight: 0, boxSizing: 'border-box', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+  const embeddedBackdrop = { position: 'fixed', inset: 0, zIndex: 2300, background: 'rgba(12,12,12,0.4)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: leaving ? 'banbeFade 0.22s ease reverse both' : 'banbeFade 0.2s ease both' };
+  const centeredBackdrop = { position: 'absolute', inset: 0, zIndex: 21, background: 'rgba(12,12,12,0.32)', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '4px 16px 86px', boxSizing: 'border-box', animation: 'banbeFade 0.2s ease both' };
+  const centeredCard = { ...dockGlass({ borderRadius: 26, background: 'color-mix(in srgb, var(--bb-bg) 92%, transparent)', border: '1px solid var(--bb-rule, rgba(var(--bb-fg-rgb), 0.12))' }), position: 'relative', padding: '22px 24px 16px', display: 'flex', flexDirection: 'column', maxHeight: '100%', minHeight: 0, boxSizing: 'border-box', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' };
+  const embeddedCard = { background: paper, color: ink, borderRadius: '22px 22px 0 0', position: 'relative', padding: '18px 22px 26px', display: 'flex', flexDirection: 'column', maxHeight: '86%', minHeight: 0, boxSizing: 'border-box', animation: leaving ? 'banbeSheetOut 0.22s cubic-bezier(.4,0,1,1) both' : 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' };
+
+  const sheet = (
+    <div onClick={closeArea} data-testid={embedded ? 'filter-area-backdrop' : undefined} style={embedded ? embeddedBackdrop : centeredBackdrop}>
+      <div onClick={(e) => e.stopPropagation()} data-testid={embedded ? 'filter-area-sheet' : undefined} role={embedded ? 'dialog' : undefined} aria-modal={embedded ? true : undefined} style={embedded ? embeddedCard : centeredCard}>
         {/* Absolutely positioned (not a sibling-wrapping header row) so
             "Khu vực" stays a direct child of this sheet container —
             existing tests locate the sheet via
             `page.getByText('Khu vực').locator('..')`. */}
-        <span
-          onClick={closeArea}
-          data-testid="area-sheet-close"
-          aria-label="Đóng"
-          style={{ position: 'absolute', top: 20, right: 20, color: ink, opacity: 0.6, cursor: 'pointer', padding: 4, lineHeight: 0 }}
-        ><svg width={13} height={13} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round"><path d="M2 2l8 8M10 2l-8 8" /></svg></span>
+        {embedded ? (
+          <button type="button" onClick={closeArea} data-testid="filter-area-done"
+            style={{ position: 'absolute', top: 10, right: 12, minHeight: 44, padding: '0 10px', border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+            {T('Xong', 'Done')}
+          </button>
+        ) : (
+          <span
+            onClick={closeArea}
+            data-testid="area-sheet-close"
+            aria-label="Đóng"
+            style={{ position: 'absolute', top: 20, right: 20, color: ink, opacity: 0.6, cursor: 'pointer', padding: 4, lineHeight: 0 }}
+          ><svg width={13} height={13} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round"><path d="M2 2l8 8M10 2l-8 8" /></svg></span>
+        )}
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>Khu vực</span>
         <span data-testid="area-sheet-current" style={{ fontSize: 12, color: ink, opacity: 0.65, marginTop: 4 }}>
           {T('Đang xem: ', 'Showing: ')}{curArea.key === LOCATION_ALL ? T('Tất cả khu vực', 'All areas') : curArea.label}
@@ -126,7 +157,7 @@ export default function AreaSheet() {
           />
           {query && <span onClick={() => setQuery('')} data-testid="area-sheet-search-clear" style={{ cursor: 'pointer', color: ink, opacity: 0.5, fontSize: 16, lineHeight: 1 }}>×</span>}
         </div>
-        <div data-testid="area-sheet-tree" style={{ display: 'flex', flexDirection: 'column', marginTop: 6, overflowY: 'auto', minHeight: 0, maxHeight: 380 }}>
+        <div data-testid="area-sheet-tree" style={{ display: 'flex', flexDirection: 'column', marginTop: 6, overflowY: 'auto', minHeight: 0, maxHeight: embedded ? '60vh' : 380 }}>
           {!search && (
             <div onClick={() => pickArea(LOCATION_ALL)} data-testid="area-node-all" style={{ ...rowBase, fontWeight: curArea.key === LOCATION_ALL ? 600 : 400 }}>
               {spacer}
@@ -191,4 +222,7 @@ export default function AreaSheet() {
       </div>
     </div>
   );
+  if (!embedded) return sheet;
+  const target = typeof document !== 'undefined' ? (document.querySelector('.bb-screen') || document.body) : null;
+  return target ? createPortal(sheet, target) : null;
 }

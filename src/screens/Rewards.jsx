@@ -16,11 +16,14 @@ const REDEEM_ERRORS = {
 // Account > Rewards & badges. Private to the signed-in account. Every number is server-computed
 // (migration 165); coins are cosmetic only and never affect booking, priority or eligibility.
 export default function Rewards() {
-  const { state: s, T, set, loadRewards, redeemReward, openEditProfile } = useBanBe();
+  const { state: s, T, set, loadRewards, redeemReward, openEditProfile, rewardsEnabled } = useBanBe();
   const manifest = useKeychainManifest();
   const [confirmCode, setConfirmCode] = useState(null);
 
   useEffect(() => { if (s.user?.id) loadRewards(); }, [s.user?.id, loadRewards]);
+  // Hidden by an admin (migration 187): leave through Back's own target, whether this was a deep link or the flag
+  // flipped while the screen was open. Nothing is rendered meanwhile.
+  useEffect(() => { if (!rewardsEnabled) set({ screen: s.rewardsBack === 'home' ? 'home' : 'profile' }); }, [rewardsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const r = s.rewards;
   const loading = s.rewardsStatus === 'loading' || s.rewardsStatus === 'idle';
@@ -34,6 +37,8 @@ export default function Rewards() {
     setConfirmCode(null);
     if (code) await redeemReward(code);
   };
+
+  if (!rewardsEnabled) return null;
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Rewards">

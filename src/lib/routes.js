@@ -47,6 +47,7 @@ const STATIC = {
   disputes: '/disputes',
   adminEvents: '/admin/events',
   adminTestAccounts: '/admin/test-accounts',
+  adminFeatures: '/admin/features',
   adminDobCorrections: '/admin/birthday-corrections',
   policy: '/policy',
   faq: '/help/faq',

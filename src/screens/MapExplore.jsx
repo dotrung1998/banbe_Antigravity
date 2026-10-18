@@ -30,8 +30,8 @@ const CAT_GLYPH = { all: '▪︎', supper: '🍽️', fashion: '👗', gallery: 
 // color, not the same color for every event": this app has no prior
 // per-category color anywhere (grepped both platforms before adding
 // this) — three of these four ARE an existing app palette, reused
-// verbatim: Home.jsx's own Pulse-ring gradient (`bb-pulse-ring`, the same
-// dusty-rose/sand/sage trio already shown on the Pulse entry). FILTER_DEFS
+// verbatim: the Pulse gradient (the dusty-rose/sand/sage trio, now on the Home
+// Pulse ticker's chip). FILTER_DEFS
 // has one more non-"all" category (music) than that trio has colors, so
 // one additional muted tone was added in the same dusty/desaturated
 // family (never a saturated/rainbow color, matching this app's whole

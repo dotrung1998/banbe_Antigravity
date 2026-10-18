@@ -270,9 +270,6 @@ export default function AccountGate() {
   }
   return (
     <div data-testid="account-gate" data-gate={gate} style={{ position: 'fixed', inset: 0, zIndex: 2000, background: paper, overflowY: 'auto', animation: 'banbeFade 0.25s ease both' }}>
-      {/* Home's Pulse teaser bubble is portaled to <body> (outside this overlay's
-          stacking context) and would float over the gate; hide it while gated. */}
-      <style>{'[data-testid="home-pulse-teaser-bubble"]{display:none !important}'}</style>
       <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100%' }}>{body}</div>
     </div>
   );

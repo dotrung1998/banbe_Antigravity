@@ -1,6 +1,5 @@
 import { glassCapsuleInactive } from '../lib/glassOpacity.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, bg, agoLabel, haversineKm, catalogStartMs } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
@@ -29,349 +28,11 @@ import { GuestBrowseBanner } from './GuestPromptSheet.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { CategoryRow, HomeSearchBar, DiscoveryCard, DiscoveryRow, NextUpBanner } from '../components/home/HomeDiscoveryParts.jsx';
 import HomeFilterSheet, { DATE_LABELS, RELAX_LABELS, SORT_LABELS } from './sheets/HomeFilterSheet.jsx';
+import SortMenu from './sheets/SortMenu.jsx';
+import PulseTicker from '../components/home/PulseTicker.jsx';
 import {
   applyDiscoveryFilters, sortEvents, fillBadge, activeFilterCount, optionCounts, relaxationHints, DEFAULT_FILTERS,
 } from '../lib/homeDiscovery.js';
-
-// A5 (2026-09-27 Pulse/loading UX pass) — one-at-a-time Banbe-styled
-// speech bubbles beside the Home Pulse ring: label -> real top 1/2/3
-// event names (fetched via the SAME loadPulse('daily') the Pulse viewer
-// itself uses — never a second/invented ranking source) -> two more
-// labels, then hidden. Dismissed immediately by tapping outside it,
-// tapping the Pulse avatar itself (which opens Pulse), or on unmount.
-//
-// Timing-rule pass (2026-09-28) — replaced the old "seen once ever"
-// localStorage boolean with a real wall-clock repeat rule: show the
-// sequence the first time an eligible signed-in user views Home, then
-// allow it again 5 minutes after the previous sequence finished/was
-// dismissed. `BUBBLE_SEQUENCE_VERSION` bumped v1 -> v2 specifically so
-// the OLD one-time "seen" key can never be read by this logic again (an
-// old v1 key would otherwise block every user who'd already seen the v1
-// sequence once, forever) — a fresh namespace, not a migration, per this
-// pass's own "clear/ignore any old one-time-seen flag" instruction.
-// Storage now holds an epoch-ms timestamp (`lastShownAt`), not a boolean,
-// checked against `BUBBLE_REPEAT_MS` both on mount and on a lightweight
-// poll while Home stays open — real elapsed time, never a render/tab-
-// switch count. `stepRef` mirrors `step` so the poll (and any stale
-// closure from an earlier render) always reads the CURRENT step, never
-// restarting a sequence that's already showing and never stacking a
-// second one.
-//
-// Positioning pass (2026-09-28) — real root cause of "obscured on web"
-// confirmed by reading the CSS, not guessed: `src/index.css`'s `banbeIn`/
-// `bbIn` keyframes ended with an explicit `transform: translateY(0)`,
-// which — combined with every caller's `animation-fill-mode: both` —
-// left a non-`none` transform permanently applied to Home's own root
-// wrapper after its 0.32s entrance animation finished. A non-`none`
-// transform on an ancestor establishes a NEW containing block for
-// `position:fixed` descendants, so this bubble's "fixed" coordinates were
-// silently being resolved against Home's own box instead of the
-// viewport — never a z-index problem. "Fixed" at the keyframe itself
-// (index.css) by dropping the explicit `transform: translateY(0)` from
-// the "to" state.
-//
-// Positioning pass 2 (2026-09-28, same-day real-device follow-up) — the
-// FIRST pass's own fix above did not actually work, confirmed by
-// measuring the real rendered DOM on a live page (getComputedStyle +
-// getBoundingClientRect down the ancestor chain), not re-guessed: Home's
-// own root wrapper's `transform` computed style is STILL a non-`none`
-// matrix (`matrix(1,0,0,1,0,0)`, the IDENTITY matrix, not the keyword
-// `none`) for the ENTIRE lifetime of the mounted screen — well past the
-// animation's own 0.32s duration and confirmed still present multiple
-// seconds later. Root cause: when a CSS animation interpolates the
-// `transform` property between keyframes at all (even when only ONE
-// keyframe — here, `from` — actually declares it), every browser engine
-// computes and serializes the animated value as a matrix for the WHOLE
-// active+"fill: both" duration, including exactly at 100%; it never
-// reverts to the literal keyword `none`, regardless of whether the
-// numeric result is the identity transform. So `animation-fill-mode:
-// both` holds that computed MATRIX (not `none`) on the element forever,
-// which still establishes a new containing block for `position:fixed`
-// descendants per spec — the previous pass's fix (dropping the explicit
-// transform from the "to" keyframe) reduced the interpolated end value to
-// the identity matrix but could not make it compute to `none`, because
-// `transform` is touched by the animation at all. The OLD "beside the
-// ring" test happened to keep passing through this because its own
-// assertions were loose one-sided inequalities (`bubbleBox.x >=
-// ringBox.x + ringBox.width`), which stay true even when the bubble's
-// real on-screen position is offset by a constant (the transformed
-// ancestor's own left edge) — exactly why this pass's new test asserts
-// an actual rect INTERSECTION instead, which a constant offset does
-// break, and did catch this.
-//
-// Actual fix: stop trying to keep `banbeIn`/`bbIn` transform-free at every
-// future call site (a whack-a-mole this ticket's own history shows
-// doesn't hold) and instead render this bubble through a REACT PORTAL
-// straight to `document.body` — same architecture iOS already uses
-// (`PulseTeaserBubbleView` is a RootView ZStack SIBLING, never nested
-// inside `HomeView`, see that file's own doc comment). A portal target
-// outside Home's own DOM subtree can never be affected by ANY transform
-// on ANY of Home's ancestors, present or future, closing this entire bug
-// class rather than patching today's one instance of it again.
-//
-// Placement itself: the bubble must visibly OVERLAP the ring's
-// UPPER-RIGHT QUARTER — sit above-and-to-the-right of the ring, its own
-// bottom-left corner anchored at the ring's CENTER point (`ringRect`'s
-// own midpoint, not an edge). Extending up-and-right from that one
-// anchor point necessarily overlaps exactly the ring's upper-right
-// quadrant (x >= ring midX, y <= ring midY) whenever the bubble is at
-// least as wide/tall as the ring's own radius — true for every real
-// piece of copy this sequence ever shows. The pointer stays on the
-// bubble's own LEFT edge (unchanged side), moved from vertically-centered
-// to near the BOTTOM of that edge so its tip lands close to the anchor
-// point itself (the ring's center), keeping "still pointing at the ring"
-// true under the new placement. Still measured off the real ring rect
-// (`getBoundingClientRect`, never a hardcoded offset) and clamped to the
-// viewport exactly as before — only the anchor math and the
-// portal/render-target changed, not the step-sequence/5-minute-repeat
-// logic above.
-const BUBBLE_SEQUENCE_VERSION = 'v2';
-const BUBBLE_STEP_MS = { label: 3200, names: 4600 };
-const BUBBLE_VIEWPORT_MARGIN = 12;
-const BUBBLE_REPEAT_MS = 5 * 60 * 1000;
-
-function pulseBubbleLastShownKey(userId) {
-  return `banbe_pulse_bubbles_lastshown_${BUBBLE_SEQUENCE_VERSION}_${userId || 'guest'}`;
-}
-
-function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen, loadPulse, ringRef }) {
-  const [step, setStep] = useState(-1); // -1 = not started/hidden, 0..3 = the 4 sequence steps
-  const stepRef = useRef(step);
-  useEffect(() => { stepRef.current = step; }, [step]);
-  const [reduceMotion] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
-  );
-  // `document.hidden` (the app backgrounded, or the tab switched away from
-  // in a desktop browser): the sequence pauses rather than silently
-  // burning through steps the user never saw, and is never STARTED while
-  // hidden either (see the repeat-check effect below).
-  const [pageVisible, setPageVisible] = useState(() => typeof document === 'undefined' || !document.hidden);
-  useEffect(() => {
-    const onVisibility = () => setPageVisible(!document.hidden);
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, []);
-  // The ring's own live on-screen rect, remeasured whenever it could
-  // plausibly move (mount, resize, any scroll anywhere — `true` for the
-  // capture-phase option so a scroll on an ancestor container, not just
-  // window, is caught too).
-  const [ringRect, setRingRect] = useState(null);
-  useEffect(() => {
-    const measure = () => { if (ringRef.current) setRingRect(ringRef.current.getBoundingClientRect()); };
-    measure();
-    window.addEventListener('resize', measure);
-    window.addEventListener('scroll', measure, true);
-    return () => {
-      window.removeEventListener('resize', measure);
-      window.removeEventListener('scroll', measure, true);
-    };
-  }, [ringRef, step]);
-
-  const dismiss = () => {
-    setStep(-1);
-    try { window.localStorage.setItem(pulseBubbleLastShownKey(userId), String(Date.now())); } catch { /* private mode etc. — best-effort only */ }
-  };
-
-  // Real wall-clock repeat rule: checked immediately on eligibility (a
-  // real userId, Home visible) and re-checked on a light poll so a
-  // sequence starts the instant 5 real minutes have elapsed while Home
-  // stays open — not just on the next mount. Never restarts a sequence
-  // that's already running (`stepRef.current !== -1` guard) and never
-  // fires while the tab/app isn't visible.
-  useEffect(() => {
-    if (!userId) return;
-    const tryStart = () => {
-      if (stepRef.current !== -1) return; // already showing — never stack/restart
-      if (typeof document !== 'undefined' && document.hidden) return; // Home not visible
-      let lastShown = 0;
-      try { lastShown = Number(window.localStorage.getItem(pulseBubbleLastShownKey(userId))) || 0; } catch { /* ignore */ }
-      if (Date.now() - lastShown >= BUBBLE_REPEAT_MS) {
-        loadPulse('daily');
-        setStep(0);
-      }
-    };
-    tryStart();
-    const id = setInterval(tryStart, 5000);
-    return () => clearInterval(id);
-  }, [userId, loadPulse]);
-
-  // Advances label -> names -> label -> label -> hidden(+seen). Waits out
-  // a still-loading fetch before showing the real-names step rather than
-  // racing it (advances once `pulseDailyLoading` actually goes false).
-  // Bug 3 fix — a fresh, full-duration timer only ever starts while
-  // `pageVisible`; backgrounding the tab/app clears whatever's pending
-  // (the cleanup below) and this effect simply doesn't reschedule until
-  // `pageVisible` flips back to true, at which point it restarts the
-  // CURRENT step's own timer from its full duration (an intentionally
-  // simple "pause," not literal remaining-time bookkeeping).
-  useEffect(() => {
-    if (step < 0 || !pageVisible) return undefined;
-    if (step === 0 && pulseDailyLoading) return undefined; // hold on step 0 until data's ready
-    const ms = step === 3 ? BUBBLE_STEP_MS.label : (step === 0 ? BUBBLE_STEP_MS.names : BUBBLE_STEP_MS.label);
-    const id = setTimeout(() => setStep(s => (s < 0 ? s : (s >= 3 ? -2 : s + 1))), ms);
-    return () => clearTimeout(id);
-  }, [step, pulseDailyLoading, pageVisible]);
-
-  // step reaching -2 is the auto-timeout's own "done" signal (distinct
-  // from -1, tap/outside dismiss) — both end up hidden, but only the
-  // -1 paths need not re-trigger a dismiss() that's already happened.
-  useEffect(() => {
-    if (step === -2) dismiss();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
-
-  // Bug 3 (tap-to-advance/dismiss) — tapping the bubble itself advances
-  // to the next step immediately (skipping whatever's left of the
-  // current timer); tapping past the last step dismisses, same as
-  // letting it run out on its own.
-  const advanceOrDismiss = () => {
-    if (step < 0) return;
-    if (step >= 3) dismiss();
-    else setStep(s => s + 1);
-  };
-
-  // Opening Pulse (tapping the avatar this bubble sits above) dismisses it
-  // immediately — never lingers on top of the now-open Pulse viewer.
-  useEffect(() => {
-    if (pulseOpen && step >= 0) dismiss();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pulseOpen]);
-
-  // Tap-outside dismiss — a single document-level listener, only while
-  // actually showing something.
-  useEffect(() => {
-    if (step < 0) return undefined;
-    const onDocPointerDown = (e) => {
-      if (!e.target.closest?.('[data-testid="home-pulse-teaser-bubble"]')) dismiss();
-    };
-    document.addEventListener('pointerdown', onDocPointerDown);
-    return () => document.removeEventListener('pointerdown', onDocPointerDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
-
-  // Measured AFTER render (bubble content changes size per step), so the
-  // comic-bubble placement below can clamp against the real box instead of
-  // guessing a fixed width — the anchor is always the real ring element,
-  // never a hardcoded offset. `measuredForStep` gates real visibility: the
-  // very first paint of any new step necessarily uses a stale/estimated
-  // `bubbleSize` (belonging to the PREVIOUS step's content, or the 0×0
-  // initial value), which briefly positions the bubble at the wrong spot
-  // before this effect corrects it one tick later — kept invisible
-  // (`visibility: hidden`, never removed from the DOM) until a real
-  // measurement for the CURRENT step lands, so nothing ever visibly (or,
-  // for a hit-test, interactively) jumps mid-settle.
-  const bubbleRef = useRef(null);
-  const [bubbleSize, setBubbleSize] = useState({ width: 0, height: 0 });
-  const [measuredForStep, setMeasuredForStep] = useState(-1);
-  useEffect(() => {
-    if (bubbleRef.current) {
-      const r = bubbleRef.current.getBoundingClientRect();
-      setBubbleSize({ width: r.width, height: r.height });
-      setMeasuredForStep(step);
-    }
-  }, [step, ringRect]);
-
-  if (step < 0 || !ringRect) return null;
-
-  let content;
-  if (step === 0) {
-    content = <span>{T('Top sự kiện hôm nay', "Today's top events")}</span>;
-  } else if (step === 1) {
-    // Never invented — an honest, short empty hint when the real ranking
-    // has nothing yet, instead of placeholder names.
-    content = pulseDaily.length === 0
-      ? <span>{T('Chưa có xếp hạng hôm nay', 'Nothing ranked yet today')}</span>
-      : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end' }}>
-          {pulseDaily.slice(0, 3).map((item, i) => (
-            <span key={item.event_id} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180, textAlign: 'right' }}>
-              {i + 1}. {item.event_name}
-            </span>
-          ))}
-        </div>
-      );
-  } else if (step === 2) {
-    content = <span>{T('Top sự kiện tuần này', "This week's top events")}</span>;
-  } else {
-    content = <span>{T('Ảnh nổi bật', 'Featured photos')}</span>;
-  }
-
-  // Upper-right-quadrant overlap placement (positioning pass 2, see the
-  // doc comment above `BUBBLE_SEQUENCE_VERSION`) — the bubble's own
-  // bottom-left corner is anchored at the ring's CENTER point, so it
-  // extends up and to the right from there: horizontally that puts its
-  // left edge at the ring's own horizontal midpoint (never its right
-  // edge), vertically its bottom edge at the ring's own vertical
-  // midpoint (never centered on the ring). That necessarily overlaps the
-  // ring's upper-right quadrant (x in [ringMidX, ringMaxX], y in
-  // [ringMinY, ringMidY]) for any bubble at least as large as the ring's
-  // own radius, which every real piece of copy here is. Still clamped to
-  // the viewport rather than a hardcoded guess about screen size.
-  const ringCenterX = ringRect.left + ringRect.width / 2;
-  const ringCenterY = ringRect.top + ringRect.height / 2;
-  const width = bubbleSize.width || 220;
-  const height = bubbleSize.height || 40;
-  const maxLeft = Math.max(BUBBLE_VIEWPORT_MARGIN, window.innerWidth - BUBBLE_VIEWPORT_MARGIN - width);
-  const left = Math.min(Math.max(BUBBLE_VIEWPORT_MARGIN, ringCenterX), maxLeft);
-  const maxTop = Math.max(BUBBLE_VIEWPORT_MARGIN, window.innerHeight - BUBBLE_VIEWPORT_MARGIN - height);
-  const top = Math.min(Math.max(BUBBLE_VIEWPORT_MARGIN, ringCenterY - height), maxTop);
-
-  // Rendered via a REACT PORTAL straight to `document.body` (positioning
-  // pass 2 — see this component's own top-of-file doc comment for the
-  // full root-cause trace of why the previous "just fix the keyframe"
-  // approach was not durable). `document.body` always exists once this
-  // component can render at all (a plain client-side SPA, no SSR here),
-  // so no existence guard is needed.
-  return createPortal(
-    <div
-      ref={bubbleRef}
-      onClick={(e) => { e.stopPropagation(); advanceOrDismiss(); }}
-      data-testid="home-pulse-teaser-bubble"
-      role="status"
-      aria-live="polite"
-      style={{
-        // `position:fixed` from the ring's own MEASURED rect (never the
-        // tiny avatar column's own layout box or a hardcoded guess).
-        // Rendered outside Home's own DOM subtree entirely (see the
-        // `createPortal` call above), so no ancestor of THIS element can
-        // ever establish a containing block for it — never a z-index
-        // bump, never a keyframe-authoring convention to keep honoring.
-        position: 'fixed',
-        left, top,
-        background: ink, color: paper, fontSize: 12.5, fontWeight: 600, lineHeight: 1.5,
-        textAlign: 'right',
-        padding: '11px 14px', borderRadius: 12, maxWidth: 220, zIndex: 45, cursor: 'pointer',
-        boxShadow: '0 6px 18px rgba(27,25,22,0.28)',
-        animation: reduceMotion ? 'none' : 'banbeFade 0.22s ease both',
-        // See `measuredForStep`'s own comment above — invisible and
-        // non-interactive for the one frame before a real measurement for
-        // THIS step exists, so nothing can ever visibly or interactively
-        // settle/jump mid-position-correction.
-        visibility: measuredForStep === step ? 'visible' : 'hidden',
-        pointerEvents: measuredForStep === step ? 'auto' : 'none',
-      }}
-    >
-      {content}
-      {/* Comic-bubble pointer — LEFT side, near the BOTTOM of that edge
-          (positioning pass 2) so its tip lands close to the anchor point
-          itself (the ring's center) under the new upper-right-quadrant
-          overlap placement — still "pointing back at the ring," just
-          anchored to the new corner instead of the vertical middle. */}
-      <div style={{ position: 'absolute', bottom: 10, left: 0, transform: 'translate(-100%, 0)', width: 0, height: 0, borderTop: '5px solid transparent', borderBottom: '5px solid transparent', borderRight: `6px solid ${ink}` }} />
-    </div>,
-    document.body,
-  );
-}
-
-// Ring tappability under the new overlap (positioning pass 2): the bubble
-// itself only ever occupies its own measured rect — a real DOM element
-// sized to its content, never a full-screen overlay — so it only ever
-// intercepts pointer events over the specific quadrant it visually
-// overlaps. The ring's OTHER three quadrants (its own avatar element,
-// `home-pulse-avatar`) are never covered by the bubble and stay directly
-// tappable the whole time this teaser is showing; tapping the bubble
-// itself advances/dismisses the teaser sequence (the existing, unchanged
-// behavior), which is a deliberate, separate action from opening Pulse.
 
 // Quick chips (note 50): one-tap shortcuts into the same filters the filter sheet edits (src/lib/homeDiscovery.js).
 // The old status chips (Saved / Attending / Not confirmed / Sold out) left Home: they filter YOUR events, which
@@ -391,6 +52,12 @@ const ENDED_AFTER_MS = 12 * 3600000;
 // One heading size for every Home section ("Your events", "Help Shape…", "This weekend"), in the same display
 // face as the screen titles ("Schedule", "Account"…), so the headings read as one family.
 const SECTION_TITLE = 20;
+
+// Plain-text quick controls beside the location pill (note 50): no capsule, icon + label, 44px-tall tap area.
+const quickToggle = {
+  display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 32, padding: 0, border: 'none', background: 'none',
+  color: ink, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', flex: 'none', whiteSpace: 'nowrap',
+};
 
 function homeCapsule(extra, active = false) {
   return {
@@ -416,7 +83,7 @@ export const FILTER_DEFS = [
 export default function Home() {
   const {
     state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, toggleFav,
-    goEvent, openArea, pickFilter, clearFilters, toggleHomeFilter, goMapExplore,
+    goEvent, pickFilter, clearFilters, toggleHomeFilter, goMapExplore, toggleLang, toggleTheme,
     becomeHost, switchToHost,
     canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary, loadHomeLiveEvents,
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
@@ -425,7 +92,7 @@ export default function Home() {
     loadMyAdminInvite, openAccountGroup,
     openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, loadPulse,
     loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openEventPreferences,
-    openSearch, setHomeFilters, located,
+    openSearch, setHomeFilters, located, allowLocation, rewardsEnabled,
   } = useBanBe();
 
   const s = state;
@@ -449,7 +116,6 @@ export default function Home() {
     }
     setVisibleSurveyDiscoveryCount(n => n + 10);
   };
-  const pulseRingRef = useRef(null);
 
   const openSaved = (sv) => (sv.toEvent === 'event' ? goEvent(sv.key) : set({ screen: sv.toEvent, eventKey: sv.key }));
   const heldEv = s.holdDeadline && s.holdDeadline > s.now ? EVENTS.find(e => e.key === s.eventKey) : null;
@@ -486,6 +152,8 @@ export default function Home() {
   // out too, since loadWeekendEvents' own followed-host sort depends on
   // `s.user` and is part of that function's dependency list.
   useEffect(() => { loadWeekendEvents(); }, [loadWeekendEvents]);
+  // Banbe Pulse ticker + the Popular sort both read the daily ranking (public, so guests too).
+  useEffect(() => { loadPulse('daily'); }, [loadPulse]);
   // Task 3.3 (07-notifications.md) — active stories row.
   useEffect(() => { if (s.user?.id) loadHomeStories(); }, [s.user?.id, loadHomeStories]);
   // The admin invite shows in the Things-to-do list below, so Home loads it itself.
@@ -688,7 +356,7 @@ export default function Home() {
     // Ended events leave the feed (they live on the host's profile under "Past events"). A live row
     // 12h+ past its start is already over even if the server cron hasn't flipped it yet.
     .filter(e => e.endedHoursAgo == null && !(e.startsAtRaw && Date.now() - new Date(e.startsAtRaw).getTime() > 12 * 3600000))
-    .filter(e => !e.inviteOnly && (s.filter === 'all' || e.catKey === s.filter || e.cat2Key === s.filter) && curArea.match(e))
+    .filter(e => !e.inviteOnly && curArea.match(e))
     .filter(e => !forYouActive || forYouOrder.has(e.key))
     .sort((a, b) => demoted(a) - demoted(b))
     .sort((a, b) => (forYouActive ? forYouOrder.get(a.key) - forYouOrder.get(b.key) : 0))
@@ -708,7 +376,7 @@ export default function Home() {
         goingLabel: trStatus('Đang tham gia' + ((s.tickets[e.key] || 1) > 1 ? ' ▪︎ ' + s.tickets[e.key] + ' vé' : '')),
         saveLabel: saved ? T('Đã lưu', 'Saved') : T('Lưu', 'Save'),
       };
-    }), [realEventsSorted, s.filter, forYouActive, forYouOrder, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, trStatus, stripKm, T]);
+    }), [realEventsSorted, forYouActive, forYouOrder, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, trStatus, stripKm, T]);
 
   // Popular sort + "Popular this week" label: the same Banbe Pulse score the Pulse viewer ranks by (note 17).
   const pulseScore = useMemo(() => new Map((s.pulseDaily || []).map(p => [p.event_id, Number(p.score) || 0])), [s.pulseDaily]);
@@ -749,7 +417,9 @@ export default function Home() {
   const relaxHints = useMemo(() => (shownItems.length < 3 ? relaxationHints(discoveryItems, homeFilters, nowMs) : []),
   // eslint-disable-next-line react-hooks/exhaustive-deps
     [discoveryItems, homeFilters, shownItems.length]);
-  const filterBadge = activeFilterCount(homeFilters) + (s.homeSort && s.homeSort !== 'soonest' ? 1 : 0);
+  const filterBadge = activeFilterCount(homeFilters);
+  const sortActive = !!s.homeSort && s.homeSort !== 'soonest';
+  const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
   const [layoutMode, setLayoutMode] = useState(readLayout);
   const pickLayout = (m) => { setLayoutMode(m); try { localStorage.setItem(LAYOUT_KEY, m); } catch { /* per-viewer convenience only */ } };
 
@@ -788,7 +458,7 @@ export default function Home() {
   }), [shownItems, forYouRanked, forYouActive, topPulseKey, trStatus, T]);
 
   // Retention roadmap P1 ("Cuối tuần này") — reuses the SAME district
-  // (curArea) and category (s.filter) picks already driving the main feed
+  // (curArea) and category (homeFilters.cats) picks already driving the main feed
   // above, rather than inventing a separate preference of its own; there is
   // no existing price preference anywhere in this app to reuse, so price
   // isn't filtered here, only displayed. `weekendEvents` itself is already
@@ -802,14 +472,14 @@ export default function Home() {
   // never disagree about which events are "in" the selected location.
   const weekendList = useMemo(() => (s.weekendEvents || [])
     .filter(e => curArea.match(e))
-    .filter(e => s.filter === 'all' || e.catKey === s.filter)
+    .filter(e => !(s.homeFilters?.cats || []).length || s.homeFilters.cats.includes(e.catKey))
     .slice(0, 12)
     .map(e => ({
       ...e,
       saved: isSaved(e.key),
       priceDisplay: e.priceLabel || T('Miễn phí', 'Free'),
       seatsDisplay: e.soldOut ? T('Hết chỗ', 'Sold out') : (e.seatsRemaining != null ? T(e.seatsRemaining + ' chỗ trống', e.seatsRemaining + ' left') : ''),
-    })), [s.weekendEvents, curArea, s.filter, isSaved, T]);
+    })), [s.weekendEvents, curArea, s.homeFilters, isSaved, T]);
 
   const heldKey = heldEv ? heldEv.key : null;
   // Note 50: the "Your events" strip is gone (Schedule + Account own your events). What stays is the one part
@@ -907,7 +577,7 @@ export default function Home() {
   // Header row: drop the "Home" title first when the wordmark + shortcuts + search would not fit
   // (same rule as iOS ViewThatFits; every control keeps its 44px touch target).
   const headerRef = useRef(null);
-  const shortcutsOn = s.rewardsSummaryStatus === 'loaded' && !!s.rewardsSummary;
+  const shortcutsOn = rewardsEnabled && s.rewardsSummaryStatus === 'loaded' && !!s.rewardsSummary;
   const streakChars = String(s.rewardsSummary?.streak ?? 0).length;
   const coinChars = compactCoins(s.rewardsSummary?.balance ?? 0).length;
   // MEASURED, not estimated (2026-10-18): the estimate undershot the real control widths, so the title was
@@ -996,6 +666,7 @@ export default function Home() {
         </div>
         {/* Note 50: language + theme live in Settings > Language & Appearance; the area menu is a location pill
             ("Deliver to"-style) and the full-width search bar takes the slot "Your events" used to fill. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
         <button type="button" onClick={(e) => {
           // Anchor in the coordinates of the overlay container: on desktop the app sits inside a phone frame
           // (.bb-screen is the containing block for fixed overlays); elsewhere .bb-screen is display:contents
@@ -1007,13 +678,29 @@ export default function Home() {
             left: r.left - (inFrame ? frame.left : 0), bottom: r.bottom - (inFrame ? frame.top : 0),
             width: inFrame ? frame.width : window.innerWidth } });
         }} aria-haspopup="menu" data-testid="home-area-toggle"
-          style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 32, padding: 0, border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>
-          <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
-          <span style={{ opacity: 0.6, fontWeight: 500 }}>{T('Gần', 'Near')}</span>
-          {curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label}
-          <span aria-hidden="true" style={{ fontSize: 9, marginLeft: 2 }}>▾</span>
+          style={{ ...quickToggle, flex: '0 1 auto', minWidth: 0 }}>
+          <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
+          <span style={{ opacity: 0.6, fontWeight: 500, flex: 'none' }}>{T('Gần', 'Near')}</span>
+          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label}</span>
+          <span aria-hidden="true" style={{ fontSize: 9, marginLeft: 2, flex: 'none' }}>▾</span>
         </button>
+        {/* Quick language + light/dark switch, same plain-text style as the location pill and right beside it.
+            Each shows what a tap switches TO (same convention the old capsules used). */}
+        <button type="button" onClick={toggleLang} data-testid="home-lang-toggle" style={quickToggle}
+          aria-label={T('Chuyển sang English', 'Switch to Vietnamese')}>
+          <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.6 2.8 3.9 5.8 3.9 9s-1.3 6.2-3.9 9c-2.6-2.8-3.9-5.8-3.9-9S9.4 5.8 12 3z" /></svg>
+          {T('EN', 'VN')}
+        </button>
+        <button type="button" onClick={toggleTheme} data-testid="home-theme-toggle" style={quickToggle}
+          aria-label={s.theme === 'dark' ? T('Chuyển sang giao diện sáng', 'Switch to light mode') : T('Chuyển sang giao diện tối', 'Switch to dark mode')}>
+          {s.theme === 'dark'
+            ? <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" /></svg>
+            : <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z" /></svg>}
+          {s.theme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}
+        </button>
+        </div>
         <HomeSearchBar onOpen={openSearch} T={T} />
+        <PulseTicker pulse={s.pulseDaily} onOpen={openPulseViewer} T={T} />
       </div>
 
       {/* TASK A (2026-10-01 UX foundation pass) — replaces the old fixed
@@ -1030,54 +717,11 @@ export default function Home() {
         </>
       ) : <GuestBrowseBanner />}
 
-      {/* Task 3.3 (07-notifications.md) — active-story row, between "Your
-          events" and the main event list, per this ticket's own placement.
-          TASK E (2026-10-01 UX foundation pass) — "Banbe Pulse" is now a
-          PERMANENT first entry (index 0), so the row itself is no longer
-          conditional on real stories existing — it always shows at least
-          Pulse. Never rendered on Map (this row only exists on Home). */}
-      <div data-hscroll="true" style={{ display: 'flex', gap: 14, overflowX: 'auto', padding: '14px 20px', borderBottom: `1px solid ${rule}` }}>
-        <div
-          onClick={openPulseViewer}
-          data-testid="home-pulse-avatar"
-          style={{ flex: 'none', width: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer', position: 'relative' }}
-        >
-          {/* A5 — the teaser-bubble sequence, `position:fixed`-anchored to
-              the ring's own measured rect (`pulseRingRef`) — see that
-              component's own doc comment for why this is no longer a
-              plain `bottom:'100%'` anchored to this column. */}
-          <PulseTeaserBubble
-            T={T}
-            userId={s.user?.id}
-            pulseDaily={s.pulseDaily}
-            pulseDailyLoading={s.pulseDailyLoading}
-            pulseOpen={s.pulseOpen}
-            loadPulse={loadPulse}
-            ringRef={pulseRingRef}
-          />
-          {/* TASK 3 (2026-10-05 fix pass) — a refined multicolor shimmer,
-              built from Banbe's own existing dusty-rose/sage gradient
-              (the same two colors this used before) plus one warm sand
-              stop in the same muted family — never a saturated rainbow.
-              A single `hue-rotate` CSS animation, not a per-frame redraw
-              loop; `prefers-reduced-motion: reduce` (see the <style> tag
-              below) disables it, leaving the gradient's own resting frame
-              — still colorful, just not moving — as the static fallback. */}
-          <div ref={pulseRingRef} className="bb-pulse-ring" style={{
-            width: 60, height: 60, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'linear-gradient(150deg, #E7C9C2, #E3CFA6 50%, #C8CBB2)',
-          }}>
-            <span style={{ fontSize: 20, color: '#fff', textShadow: '0 0 6px rgba(255,255,255,0.55)' }}>✦</span>
-          </div>
-          <style>{`
-            @keyframes bb-pulse-hue { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(360deg); } }
-            .bb-pulse-ring { animation: bb-pulse-hue 7s linear infinite; }
-            @media (prefers-reduced-motion: reduce) { .bb-pulse-ring { animation: none; } }
-          `}</style>
-          <span style={{ fontSize: 9.5, color: ink, textAlign: 'center', whiteSpace: 'nowrap' }}>{T('Banbe Pulse', 'Banbe Pulse')}</span>
-        </div>
-        {s.homeStories.length > 0 && (
-          s.homeStories.map(g => (
+      {/* Host stories (07-notifications.md Task 3.3). Banbe Pulse moved to the ticker under the search bar (note 51),
+          so this row exists ONLY when there are stories: no stories, no row, no empty band. Compact 52px rings. */}
+      {s.homeStories.length > 0 && (
+        <div data-hscroll="true" data-testid="home-story-row" style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '10px 20px 6px', scrollbarWidth: 'none' }}>
+          {s.homeStories.map(g => (
             <div
               key={g.organizerId}
               onClick={(e) => {
@@ -1087,24 +731,24 @@ export default function Home() {
               data-testid="home-story-avatar"
               data-org-id={g.organizerId}
               data-story-state={g.allViewed ? 'viewed' : 'unviewed'}
-              style={{ flex: 'none', width: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer' }}
+              style={{ flex: 'none', width: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer' }}
             >
               <div style={{
-                width: 56, height: 56, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 52, height: 52, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 border: `2.5px solid ${g.allViewed ? 'transparent' : alert}`,
                 boxShadow: g.allViewed ? `inset 0 0 0 2.5px ${rule}` : 'none',
               }}>
-                <div style={{ ...fieldGlass({ width: 48, height: 48, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }), fontSize: 16, fontWeight: 700 }}>
+                <div style={{ ...fieldGlass({ width: 44, height: 44, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }), fontSize: 15, fontWeight: 700 }}>
                   {(g.orgName || '?').charAt(0).toUpperCase()}
                 </div>
               </div>
-              <span style={{ fontSize: 9.5, color: ink, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 60 }}>{g.orgName}</span>
+              <span style={{ fontSize: 9.5, color: ink, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 56 }}>{g.orgName}</span>
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
-      <CategoryRow value={s.filter} onPick={pickFilter} T={T} />
+      <CategoryRow values={homeFilters.cats} onPick={pickFilter} T={T} />
 
       {/* Quick row: Filters + Sort open the sheet; For You stays pinned at the leading edge (notes 34/36); the
           one-tap chips scroll (data-hscroll so the root tab swipe ignores them). */}
@@ -1115,9 +759,16 @@ export default function Home() {
           <svg aria-hidden="true" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
           {filterBadge > 0 && <span data-testid="home-filters-badge" style={{ fontSize: 12, fontWeight: 700 }}>{filterBadge}</span>}
         </button>
-        <button type="button" onClick={() => set({ homeFilterSheetOpen: true })} data-testid="home-sort-button"
+        <button type="button" data-testid="home-sort-button" aria-haspopup="menu"
+          onClick={(e) => {
+            // Same anchoring as the location pill (see its comment): coordinates inside the phone frame.
+            const r = e.currentTarget.getBoundingClientRect();
+            const frame = e.currentTarget.closest('.bb-screen')?.getBoundingClientRect();
+            const inFrame = frame && frame.width > 0;
+            setSortMenuAnchor({ left: r.left - (inFrame ? frame.left : 0), bottom: r.bottom - (inFrame ? frame.top : 0), width: inFrame ? frame.width : window.innerWidth });
+          }}
           aria-label={T(`Sắp xếp: ${SORT_LABELS[s.homeSort || 'soonest'][0]}`, `Sort: ${SORT_LABELS[s.homeSort || 'soonest'][1]}`)}
-          style={{ ...homeCapsule({ padding: '0 12px', border: 'none', fontFamily: 'inherit' }) }}>
+          style={{ ...homeCapsule({ padding: '0 12px', border: 'none', fontFamily: 'inherit' }, sortActive) }}>
           <svg aria-hidden="true" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M7 4v16M3.5 16.5 7 20l3.5-3.5M17 20V4M13.5 7.5 17 4l3.5 3.5" /></svg>
         </button>
         {hasForYou && (
@@ -1409,12 +1060,20 @@ export default function Home() {
       </div>
       <div onClick={homeHostLink} style={{ padding: '4px 20px 44px', fontSize: 14.5, fontWeight: 600, letterSpacing: '-0.01em', color: ink, cursor: 'pointer' }}>{homeHostLinkLabel} ›</div>
     </div>
+    {sortMenuAnchor && (
+      <SortMenu
+        anchor={sortMenuAnchor} value={s.homeSort || 'soonest'} T={T}
+        canSortNearest={!!(located && s.userCoords)}
+        onPick={(m) => { set({ homeSort: m }); setSortMenuAnchor(null); }}
+        onAskLocation={() => { setSortMenuAnchor(null); allowLocation(); }}
+        onClose={() => setSortMenuAnchor(null)}
+      />
+    )}
     {s.homeFilterSheetOpen && (
       <HomeFilterSheet
         items={discoveryItems} filters={homeFilters} sort={s.homeSort} now={nowMs} T={T}
         canSortNearest={!!(located && s.userCoords)}
         areaLabel={curArea.key === 'all' ? '' : curArea.label}
-        onOpenArea={() => { set({ homeFilterSheetOpen: false }); openArea(); }}
         onClose={() => set({ homeFilterSheetOpen: false })}
         onApply={(f, sort) => { setHomeFilters(f); set({ homeFilterSheetOpen: false, homeSort: sort }); }}
       />

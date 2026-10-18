@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
+import GlassSwitch from '../components/ui/GlassSwitch.jsx';
 
 // Admin > Test accounts (migration 159). Pick an existing account by email,
 // store its contact phone in profiles.phone, grant/revoke the server-side
@@ -20,37 +21,6 @@ const ERRORS = {
   INVALID_DOB: ['Ngày sinh không hợp lệ.', 'Invalid date of birth.'],
   DOB_ALREADY_SET: ['Tài khoản đã có ngày sinh khác — không được ghi đè.', 'This account already has a different date of birth — it is never overwritten.'],
 };
-
-// Liquid-glass master switch (migration 181). Frosted track that tints on, a
-// glass knob with a springy slide. Purely presentational: the caller decides
-// what a tap means (here: open the confirmation, never flip directly).
-function GlassSwitch({ on, busy, onPress, testId }) {
-  const w = 64, h = 38, k = 30;
-  return (
-    <div role="switch" aria-checked={on} aria-busy={busy} tabIndex={0} data-testid={testId}
-      onClick={() => !busy && onPress()}
-      onKeyDown={e => { if ((e.key === ' ' || e.key === 'Enter') && !busy) { e.preventDefault(); onPress(); } }}
-      style={{
-        position: 'relative', width: w, height: h, borderRadius: h, flex: 'none', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1,
-        background: on
-          ? 'linear-gradient(165deg, rgba(255,255,255,0.35), rgba(255,255,255,0) 60%), rgba(var(--bb-fg-rgb), 0.82)'
-          : 'linear-gradient(165deg, rgba(255,255,255,0.5), rgba(255,255,255,0.05) 60%), rgba(var(--bb-fg-rgb), 0.10)',
-        backdropFilter: 'blur(14px) saturate(1.6)', WebkitBackdropFilter: 'blur(14px) saturate(1.6)',
-        border: '1px solid rgba(255,255,255,0.35)',
-        boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.5), inset 0 -6px 12px rgba(255,255,255,0.06), 0 6px 18px rgba(27,25,22,0.18)',
-        transition: 'background 0.35s cubic-bezier(.22,.61,.36,1), opacity 0.2s',
-        WebkitMaskImage: '-webkit-radial-gradient(white, black)', maskImage: 'radial-gradient(white, black)',
-      }}>
-      <div style={{
-        position: 'absolute', top: (h - k) / 2 - 1, left: 3, width: k + (busy ? 4 : 0), height: k, borderRadius: k,
-        transform: `translateX(${on ? w - k - 8 - (busy ? 4 : 0) : 0}px)`,
-        background: 'linear-gradient(160deg, rgba(255,255,255,0.98), rgba(255,255,255,0.72))',
-        boxShadow: 'inset 0 1px 1px #fff, 0 3px 10px rgba(27,25,22,0.3)',
-        transition: 'transform 0.45s cubic-bezier(.34,1.45,.64,1), width 0.25s cubic-bezier(.22,.61,.36,1)',
-      }} />
-    </div>
-  );
-}
 
 export default function AdminTestAccounts() {
   const { state: s, T, set } = useBanBe();

@@ -15,6 +15,7 @@ import {
 } from '../../lib/homeDiscovery.js';
 import { formatVndShort } from '../../lib/eventRecipe.js';
 import { CategoryGlyph, CATEGORY_DEFS } from '../../components/home/HomeDiscoveryParts.jsx';
+import AreaSheet from './AreaSheet.jsx';
 
 export const DATE_LABELS = {
   any: ['Mọi lúc', 'Any time'], today: ['Hôm nay', 'Today'], tomorrow: ['Ngày mai', 'Tomorrow'],
@@ -54,17 +55,19 @@ const Section = ({ title, right, children }) => (
   </div>
 );
 
-export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel, onOpenArea }) {
+export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel }) {
   const [draft, setDraft] = useState(() => normalizeFilters(filters));
   const [draftSort, setDraftSort] = useState(sort || 'soonest');
   const [forTwo, setForTwo] = useState(false);
+  // The location picker slides up OVER this sheet; this sheet (and its draft) stays mounted underneath.
+  const [areaOpen, setAreaOpen] = useState(false);
   const patch = (p) => setDraft(d => normalizeFilters({ ...d, ...p }));
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e) => { if (e.key === 'Escape' && !areaOpen) onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, areaOpen]);
 
   const total = items.length;
   const resultCount = useMemo(() => applyDiscoveryFilters(items, draft, now).length, [items, draft, now]);
@@ -196,7 +199,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
           </Section>
 
           <Section title={T('Khu vực', 'Location')}>
-            <button type="button" onClick={onOpenArea} data-testid="home-filter-area"
+            <button type="button" onClick={() => setAreaOpen(true)} data-testid="home-filter-area"
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minHeight: 44, border: `1px solid ${rule}`, borderRadius: RADIUS.tile, background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, padding: '0 14px', cursor: 'pointer' }}>
               <span>{areaLabel || T('Mọi nơi', 'Everywhere')}</span><span aria-hidden="true">›</span>
             </button>
@@ -223,6 +226,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
           <div style={{ fontSize: 11.5, opacity: 0.55, textAlign: 'center', marginTop: 8 }}>{T(`trên tổng ${total} sự kiện`, `out of ${total} events`)}</div>
         </div>
       </div>
+      {areaOpen && <AreaSheet embedded onDone={() => setAreaOpen(false)} />}
     </div>,
     target,
   );
