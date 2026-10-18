@@ -279,16 +279,24 @@ export default function Schedule() {
 
   return (
     <div data-screen-label="Schedule" data-hscroll style={{ minHeight: '100%', background: paper, color: ink, paddingBottom: 140 }}>
-      <div style={{ padding: '58px 20px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <img src="/banbe-wordmark.png" alt="banbe" style={{ width: 64, height: 'auto', display: 'block', flex: 'none' }} />
-        <h1 data-testid="schedule-title" style={display(26, { margin: 0, flex: 1, minWidth: 0 })}>{T('Lịch', 'Schedule')}</h1>
+      {/* iOS parity (2026-10-18): logo + title on their own row; the month button ("📅 October 2026 ⌄") and
+          Today sit on the row below, like ScheduleView's header. */}
+      <div style={{ padding: '58px 20px 0', display: 'flex', alignItems: 'center', gap: 14 }}>
+        <img src="/banbe-wordmark.png" alt="banbe" style={{ width: 80, height: 'auto', display: 'block', flex: 'none' }} />
+        <h1 data-testid="schedule-title" style={display(27, { margin: 0, flex: 1, minWidth: 0 })}>{T('Lịch', 'Schedule')}</h1>
+      </div>
+      <div style={{ padding: '10px 20px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
         <button type="button" onClick={() => setMonthOpen(true)} data-testid="schedule-month-open"
           aria-label={`${SP.monthTitle(selected, vi)}. ${T('Mở lịch cả tháng', 'Opens the whole month')}`}
-          style={{ border: 'none', background: 'var(--bb-field)', color: ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, borderRadius: 999, padding: '9px 12px', minHeight: 40, cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none' }}>
-          {vi ? `Th${selected.getMonth() + 1}` : selected.toLocaleDateString('en-US', { month: 'short' })} ▾
+          style={{ border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, padding: 0, minHeight: 44, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7, opacity: 0.85 }}>
+          <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17M8 3v4M16 3v4" /></svg>
+          {SP.monthTitle(selected, vi)}
+          <svg aria-hidden width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
         </button>
+        <span style={{ flex: 1 }} />
         <button type="button" onClick={() => pickDay(new Date())} data-testid="schedule-today" disabled={SP.sameDay(selected, today)}
-          style={{ border: 'none', background: 'var(--bb-field)', color: ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, borderRadius: 999, padding: '9px 12px', minHeight: 40, cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none', opacity: SP.sameDay(selected, today) ? 0.45 : 1 }}>
+          style={{ border: '1px solid rgba(var(--bb-fg-rgb),0.10)', background: 'linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.15)), var(--bb-bg)', boxShadow: '0 4px 14px rgba(27,25,22,0.10)',
+            color: ink, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, borderRadius: 999, padding: '0 16px', minHeight: 44, cursor: 'pointer', whiteSpace: 'nowrap', opacity: SP.sameDay(selected, today) ? 0.5 : 1 }}>
           {T('Hôm nay', 'Today')}
         </button>
       </div>

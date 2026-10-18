@@ -34,12 +34,41 @@ function organizerAvatarUrl(path, r2Ref, variant = 'thumb') {
 // SAME string get_account_kpis (migration 097) expects — never re-derived
 // inside Reports.jsx itself, so what the user tapped is exactly what gets
 // fetched.
-export function ReportsRow({ label, onClick, testId, icon = 'checklist', badge = 0, badgeLabel }) {
+// iOS parity (2026-10-18): rows inside one grouped card (AccountView `groupedContainer`) — no per-row
+// background or margin; the container draws the card and a hairline divider sits between rows.
+export const groupedRowStyle = { padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' };
+
+/** One card holding several rows with dividers between them (iOS `groupedContainer`). */
+export function GroupedContainer({ children, marginTop = 14, testId }) {
+  const rows = [].concat(children).flat().filter(Boolean);
+  return (
+    <div data-testid={testId} style={{ ...fieldGlass({ margin: `${marginTop}px 20px 0`, padding: 0, overflow: 'hidden' }) }}>
+      {rows.map((row, i) => (
+        <div key={i} style={{ borderTop: i > 0 ? '1px solid rgba(var(--bb-fg-rgb),0.10)' : 'none' }}>{row}</div>
+      ))}
+    </div>
+  );
+}
+
+/** Plain grouped row: icon + label + optional trailing text + chevron. */
+export function GroupedRow({ icon, label, trailing, onClick, testId, badge = 0, badgeLabel }) {
+  return (
+    <div onClick={onClick} data-testid={testId} style={groupedRowStyle}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind={icon} />{label}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {badge > 0 && <span aria-label={badgeLabel} style={{ minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px', boxSizing: 'border-box', background: 'var(--bb-alert)', color: 'var(--bb-on-alert)', fontSize: 11, fontWeight: 700, lineHeight: '20px', textAlign: 'center' }}>{badge > 99 ? '99+' : badge}</span>}
+        <span style={{ fontSize: trailing ? 13 : 15, color: ink, lineHeight: 1 }}>{trailing ? `${trailing} ›` : '›'}</span>
+      </span>
+    </div>
+  );
+}
+
+export function ReportsRow({ label, onClick, testId, icon = 'checklist', badge = 0, badgeLabel, grouped = false }) {
   return (
     <div
       onClick={onClick}
       data-testid={testId}
-      style={{ ...fieldGlass({ margin: '18px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+      style={grouped ? groupedRowStyle : { ...fieldGlass({ margin: '18px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
     >
       <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind={icon} />{label}</span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -93,6 +122,13 @@ export function RowIcon({ kind, size = 22, accent }) {
     logout: <><path d="M9.2 4.3H5v15.4h4.2" /><path d="M12.3 12h8.7M21 12l-3.3-3.3M21 12l-3.3 3.3" /></>,
     login: <><path d="M9.2 4.3H5v15.4h4.2" /><path d="M12.3 12h8.7M17.7 8.7l3.3 3.3-3.3 3.3" /></>,
     heart: <path d="M12 20.2s-7.4-4.4-7.4-10a4.3 4.3 0 0 1 7.4-2.9 4.3 4.3 0 0 1 7.4 2.9c0 5.6-7.4 10-7.4 10z" />,
+    calendar: <><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17M8 3v4M16 3v4M8 13.5h.01M12 13.5h.01M16 13.5h.01M8 17h.01M12 17h.01" /></>,
+    person: <><circle cx="12" cy="12" r="8.6" /><circle cx="12" cy="10" r="2.9" /><path d="M6.6 18.3c1.2-2.1 3.1-3.2 5.4-3.2s4.2 1.1 5.4 3.2" /></>,
+    bookmark: <path d="M7 3.5h10v17l-5-3.6-5 3.6z" />,
+    checkCircle: <><circle cx="12" cy="12" r="8.6" /><path d="M8.3 12.3l2.5 2.5 4.9-5" /></>,
+    lightbulb: <><path d="M9 18.5h6M10 21h4" /><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.4 1.1 2.2v.5h5v-.5c0-.8.4-1.6 1.1-2.2A6 6 0 0 0 12 3z" /></>,
+    hexCoin: <><circle cx="12" cy="12" r="8.6" /><path d="M12 7.2l4.2 2.4v4.8L12 16.8l-4.2-2.4V9.6z" /></>,
+    store: <><path d="M4 9.5l1.5-5h13L20 9.5" /><path d="M4 9.5c0 1.4 1.1 2.5 2.7 2.5s2.6-1.1 2.6-2.5c0 1.4 1.1 2.5 2.7 2.5s2.7-1.1 2.7-2.5c0 1.4 1 2.5 2.6 2.5S20 10.9 20 9.5" /><path d="M5.5 12v8h13v-8M10 20v-4.5h4V20" /></>,
     coin: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5v9M9.6 9.6c.5-.8 1.4-1.2 2.4-1.2 1.4 0 2.4.7 2.4 1.8 0 2.4-4.8 1.2-4.8 3.6 0 1.1 1 1.8 2.4 1.8 1 0 1.9-.4 2.4-1.2" /></>,
     alertShield: <><path d="M12 3.2l6.8 2.8v5.7c0 4.7-3 7.4-6.8 8.7-3.8-1.3-6.8-4-6.8-8.7V6z" /><path d="M12 8.5v4.3M12 15.4v0" /></>,
   };
@@ -101,7 +137,8 @@ export function RowIcon({ kind, size = 22, accent }) {
       aria-hidden
       style={{
         width: size, height: size, flex: 'none', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: accent ? `${accent}55` : 'transparent',
+        // iOS parity (2026-10-18): every section uses the same plain line icon, no coloured backdrop.
+        background: 'transparent',
       }}
     >
       <svg {...common} style={{ opacity: 0.72 }}>{byKind[kind]}</svg>
@@ -116,13 +153,13 @@ export function RowIcon({ kind, size = 22, accent }) {
 // the shared AccountGroup child screen. `groupKey` doubles as the
 // `ROW_ACCENT_COLORS` lookup AND the `data-testid`/route id both platforms
 // share, so iOS/web can't drift on what a given group actually is.
-function GroupCard({ groupKey, iconKind, label, badge, onClick, marginTop = 8 }) {
+function GroupCard({ groupKey, iconKind, label, badge, onClick, marginTop = 8, grouped = false }) {
   const { T } = useBanBe();
   return (
     <div
       onClick={onClick}
       data-testid={`account-group-${groupKey}`}
-      style={{ ...fieldGlass({ margin: `${marginTop}px 20px 0`, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+      style={grouped ? groupedRowStyle : { ...fieldGlass({ margin: `${marginTop}px 20px 0`, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
     >
       <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
         <RowIcon kind={iconKind} accent={ROW_ACCENT_COLORS[groupKey]} />
@@ -173,7 +210,7 @@ export default function Account() {
     loadMyOrgStats, setAccountTab, openPublicProfile, openReports, openAccountGroup, goSurveysHosting,
     loadMyOrganizerMemberships,
     loadMyEventCredits, loadMyConfirmedEventCredits,
-    loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openHostSetup, goNotifications,
+    loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openHostSetup, goNotifications, goSchedule,
   } = useBanBe();
   const s = state;
   const myKeychain = useMyKeychain();
@@ -387,10 +424,10 @@ export default function Account() {
             below (both panes' own scroll containers keep their scrollTop
             whichever is hidden) — never calls toggleOrganizerMode or any
             hosting-mode side effect by itself. */}
-        <div style={{ display: searchOpen ? 'none' : 'flex', gap: 6, padding: '18px 20px 14px' }} data-testid="account-tabs">
+        <div style={{ display: searchOpen ? 'none' : 'flex', gap: 4, margin: '18px 20px 14px', padding: 4, borderRadius: 999, background: 'rgba(var(--bb-fg-rgb),0.06)' }} data-testid="account-tabs" role="tablist">
         {[
           // Same source as the "Tickets & Bookings" group card badge below.
-          { key: 'personal', label: T('Cá Nhân', 'Personal'), badge: computePersonalActionCount(s) },
+          { key: 'personal', icon: 'person', label: T('Cá Nhân', 'Personal'), badge: computePersonalActionCount(s) },
           // Account extension (2026-09-27, Stage 1) — "organizer mode OFF
           // means host UI is OFF": Tổ chức only shows while `organizerMode`
           // (the CURRENT toggle) is actually on, never `canHost`
@@ -399,7 +436,7 @@ export default function Account() {
           // FIX PASS (2026-09-30) — badge propagated from the SAME source
           // as this tab's own group card ("Vận hành & thanh toán tổ chức"
           // below): verifications + refundQueue, never a second count.
-          ...(isOrganizer ? [{ key: 'host', label: T('Tổ Chức', 'Host'), badge: computeHostActionCount(s) + submitted.total }] : []),
+          ...(isOrganizer ? [{ key: 'host', icon: 'store', label: T('Tổ Chức', 'Host'), badge: computeHostActionCount(s) + submitted.total }] : []),
           // Stage 2 — Admin depends only on a server-confirmed role
           // (`accountType`, set exclusively by syncUser()'s own read of
           // `profiles.role`/`set_organizer_mode`'s return value — never
@@ -407,21 +444,25 @@ export default function Account() {
           // Badge propagated from the SAME source as the "Duyệt & kiểm
           // duyệt" group card / "Sự kiện chờ duyệt" row below —
           // pendingEventsCount, never a second, independently-derived count.
-          ...(s.accountType === 'admin' ? [{ key: 'admin', label: T('Quản Trị', 'Admin'), badge: computeAdminModerationCount(s) }] : []),
+          ...(s.accountType === 'admin' ? [{ key: 'admin', icon: 'shield', label: T('Quản Trị', 'Admin'), badge: computeAdminModerationCount(s) }] : []),
         ].map(tab => (
           <span
             key={tab.key}
             onClick={() => setAccountTab(tab.key)}
             data-testid={`account-tab-${tab.key}`}
+            role="tab" aria-selected={accountTab === tab.key}
             style={{
-              fontSize: 13, fontWeight: 600, padding: '9px 16px', borderRadius: 999, cursor: 'pointer',
+              flex: 1, minWidth: 0, minHeight: 44, fontSize: 15, fontWeight: 600, padding: '0 10px', borderRadius: 999, cursor: 'pointer', color: ink,
+              border: '1px solid transparent', transition: 'background .2s, box-shadow .2s',
               ...(accountTab === tab.key
-                ? { background: 'rgba(var(--bb-fg-rgb), 0.92)', color: paper, border: '1px solid transparent', boxShadow: '0 2px 6px rgba(27,25,22,0.18)' }
-                : { ...glassCapsuleInactive, color: ink }),
-              display: 'flex', alignItems: 'center', gap: 6,
+                // The selected segment is a raised glass bubble, like iOS GlassSegmentedControl.
+                ? { background: 'linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.18)), var(--bb-bg)', borderColor: 'rgba(var(--bb-fg-rgb),0.12)', boxShadow: '0 4px 14px rgba(27,25,22,0.14), inset 0 1px 0 rgba(255,255,255,0.6)' }
+                : {}),
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap',
             }}
           >
-            {tab.label}
+            <RowIcon kind={tab.icon} size={20} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
             {!!tab.badge && (
               <span
                 data-testid={`account-tab-${tab.key}-badge`}
@@ -431,8 +472,8 @@ export default function Account() {
                 style={{
                   fontSize: 10, fontWeight: 700, minWidth: 16, height: 16, padding: '0 4px', lineHeight: '16px',
                   textAlign: 'center', borderRadius: 999,
-                  background: accountTab === tab.key ? paper : alert,
-                  color: accountTab === tab.key ? ink : '#fff',
+                  background: alert,
+                  color: '#fff',
                 }}
               >
                 {formatBadgeCount(tab.badge)}
@@ -588,48 +629,39 @@ export default function Account() {
           pending-verification bookings (computeMyTicketsActionCount,
           reading the SAME `paymentBookings` array already loaded above for
           the Action Center — no new query). */}
-      <GroupCard
-        groupKey="activity" iconKind="calendarCheck"
-        label={T('Vé & Đặt Chỗ', 'Tickets & Bookings')}
-        badge={computeMyTicketsActionCount(s)}
-        onClick={() => openAccountGroup('activity')}
-        marginTop={14}
-      />
-
-      <div style={{ display: 'flex', gap: 10, padding: '14px 20px 0' }}>
-        {/* data-attending-raw-count is the unfiltered s.attending.length — not
-            shown to users (goingCount below is what actually renders, and is
-            deliberately narrowed to the static demo catalogue + not-yet-ended
-            events). Exists purely so a test can observe the real client-side
-            "going" state for a booking outside that catalogue, which no
-            visible UI element can ever reflect otherwise. */}
-        <div onClick={goGoingList} data-testid="account-going-card" data-attending-raw-count={s.attending.length} style={{ ...cardGlass({ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }) }}>
-          <RowIcon kind="calendarCheck" size={18} />
-          <span style={{ ...display(24) }}>{goingCount}</span>
-          <span style={{ fontSize: 11, color: ink }}>{T('Đang tham gia', 'Going')}</span>
+      {/* iOS parity (2026-10-18): one grouped card, same order as AccountView — Tickets & Bookings, the
+          Going / Saved counters, My schedule, Notifications, Payments & Documents, Metrics & Reports. */}
+      <GroupedContainer testId="account-activity-group">
+        <GroupCard grouped groupKey="activity" iconKind="calendarCheck"
+          label={T('Vé & Đặt Chỗ', 'Tickets & Bookings')}
+          badge={computeMyTicketsActionCount(s)}
+          onClick={() => openAccountGroup('activity')} />
+        <div style={{ display: 'flex' }}>
+          {/* data-attending-raw-count is the unfiltered s.attending.length — test-only observability (see history). */}
+          <div onClick={goGoingList} data-testid="account-going-card" data-attending-raw-count={s.attending.length}
+            style={{ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }}>
+            <RowIcon kind="checkCircle" size={22} />
+            <span style={{ ...display(24) }}>{goingCount}</span>
+            <span style={{ fontSize: 12, color: ink }}>{T('Đang tham gia', 'Going')}</span>
+          </div>
+          <div aria-hidden style={{ width: 1, background: 'rgba(var(--bb-fg-rgb),0.10)' }} />
+          <div onClick={goSavedList} data-testid="account-saved-card"
+            style={{ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }}>
+            <RowIcon kind="bookmark" size={22} />
+            <span style={{ ...display(24) }}>{(s.favorites || []).length}</span>
+            <span style={{ fontSize: 12, color: ink }}>{T('Sự Kiện Đã Lưu', 'Saved Events')}</span>
+          </div>
         </div>
-        {/* Account IA reorder pass — relabeled "Đã lưu"/"Saved" (generic) ->
-            "Sự Kiện Đã Lưu"/"Saved Events" per this pass's own instruction;
-            destination (goSavedList) and testid unchanged. */}
-        <div onClick={goSavedList} data-testid="account-saved-card" style={{ ...cardGlass({ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }) }}>
-          <RowIcon kind="document" size={18} />
-          <span style={{ ...display(24) }}>{(s.favorites || []).length}</span>
-          <span style={{ fontSize: 11, color: ink }}>{T('Sự Kiện Đã Lưu', 'Saved Events')}</span>
-        </div>
-      </div>
-
-      <GroupCard
-        groupKey="payments" iconKind="banknote"
-        label={T('Thanh Toán & Giấy Tờ', 'Payments & Documents')}
-        badge={computeMyRefundActionCount(s)}
-        onClick={() => openAccountGroup('payments')}
-        marginTop={14}
-      />
-
-      <ReportsRow label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} testId="account-reports-personal" onClick={() => openReports('personal', null, 'profile')} />
-      {/* Note 44 web parity: Notifications left the dock; reachable here, from the Home bell and Action Center. */}
-      <ReportsRow label={T('Thông báo', 'Notifications')} icon="bell" testId="account-notifications" onClick={goNotifications}
-        badge={s.unreadNotifications || 0} badgeLabel={T(`${s.unreadNotifications || 0} chưa đọc`, `${s.unreadNotifications || 0} unread`)} />
+        <GroupedRow icon="calendar" label={T('Lịch của tôi', 'My schedule')} testId="account-schedule" onClick={goSchedule} />
+        {/* Note 44 web parity: Notifications left the dock; reachable here, from the Home bell and Action Center. */}
+        <GroupedRow icon="bell" label={T('Thông báo', 'Notifications')} testId="account-notifications" onClick={goNotifications}
+          badge={s.unreadNotifications || 0} badgeLabel={T(`${s.unreadNotifications || 0} chưa đọc`, `${s.unreadNotifications || 0} unread`)} />
+        <GroupCard grouped groupKey="payments" iconKind="banknote"
+          label={T('Thanh Toán & Giấy Tờ', 'Payments & Documents')}
+          badge={computeMyRefundActionCount(s)}
+          onClick={() => openAccountGroup('payments')} />
+        <ReportsRow grouped label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} icon="document" testId="account-reports-personal" onClick={() => openReports('personal', null, 'profile')} />
+      </GroupedContainer>
 
       {referralLink && (
         <div style={{ ...cardGlass({ margin: '20px 20px 0', padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, cursor: 'pointer' }) }} onClick={shareReferral}>
@@ -670,67 +702,18 @@ export default function Account() {
           visible at once and neither ever double-counts. */}
       <SectionHeader label={T('Tài Khoản & Cài Đặt', 'Account & Settings')} testId="account-section-settings" />
 
-      <div
-        onClick={() => s.user?.handle && openPublicProfile(s.user.handle, 'profile')}
-        data-testid="account-personal-profile"
-        style={{ ...fieldGlass({ margin: '14px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
-          <RowIcon kind="pencil" />{T('Hồ Sơ Cá Nhân', 'Personal Profile')}
-        </span>
-        <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-      </div>
-
-      {/* Following + Rewards & badges: standalone rows, same destination from Home's coin shortcut. */}
-      <div
-        onClick={() => set({ screen: 'following' })}
-        data-testid="account-following"
-        style={{ ...fieldGlass({ margin: '8px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
-          <RowIcon kind="heart" />{T('Đang theo dõi', 'Following')}
-        </span>
-        <span style={{ fontSize: 13, color: ink }}>{s.followedStatus === 'loaded' ? `${s.followedOrgIds.length} ›` : '›'}</span>
-      </div>
-      <div
-        onClick={() => set({ screen: 'rewards', rewardsBack: 'profile' })}
-        data-testid="account-rewards"
-        style={{ ...fieldGlass({ margin: '8px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
-          <RowIcon kind="coin" />{T('Phần Thưởng & Huy Hiệu', 'Rewards & Badges')}
-        </span>
-        <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-      </div>
-
-      {/* Account IA reorg (2026-09-30) — relabeled "Tùy Chỉnh"/"Preferences"
-          -> "Cài Đặt"/"Settings" (reads more accurately for its actual
-          contents, app preferences + security). `groupKey`/testid/route
-          unchanged (still "preferences" — see AccountGroup.jsx's own
-          GROUP_META, only its display string changed). */}
-      <GroupCard
-        groupKey="preferences" iconKind="sliders"
-        label={T('Cài Đặt', 'Settings')}
-        onClick={() => openAccountGroup('preferences')}
-      />
-      {/* Account IA reorg (2026-09-30) — "Help & Legal". No dedicated
-          in-app Help/Support screen exists anywhere in this codebase
-          (searched for one) — only the real, already-wired Policy screen
-          (`openPolicy`/`Policy.jsx`, the same bilingual policy text used at
-          signup consent and reachable read-only here, `backFromPolicy`
-          returning to whichever screen opened it). This row is therefore
-          the Legal half only. It now opens the `helpLegal` group (Terms ->
-          the policy screen, Guides, Q&A) — see AccountGroup.jsx. */}
-      <div
-        onClick={() => openAccountGroup('helpLegal')}
-        data-testid="account-help-legal"
-        style={{ ...fieldGlass({ margin: '8px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
-          <RowIcon kind="shield" />{T('Trợ Giúp & Pháp Lý', 'Help & Legal')}
-        </span>
-        <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-      </div>
+      <GroupedContainer testId="account-settings-group">
+        <GroupedRow icon="person" label={T('Hồ Sơ Cá Nhân', 'Personal Profile')} testId="account-personal-profile"
+          onClick={() => s.user?.handle && openPublicProfile(s.user.handle, 'profile')} />
+        <GroupedRow icon="heart" label={T('Đang theo dõi', 'Following')} testId="account-following"
+          trailing={s.followedStatus === 'loaded' ? String(s.followedOrgIds.length) : null} onClick={() => set({ screen: 'following' })} />
+        <GroupedRow icon="hexCoin" label={T('Phần Thưởng & Huy Hiệu', 'Rewards & Badges')} testId="account-rewards"
+          onClick={() => set({ screen: 'rewards', rewardsBack: 'profile' })} />
+        {/* groupKey/testid/route unchanged ("preferences" — see AccountGroup.jsx's GROUP_META). */}
+        <GroupCard grouped groupKey="preferences" iconKind="sliders" label={T('Cài Đặt', 'Settings')} onClick={() => openAccountGroup('preferences')} />
+        {/* Help & Legal opens the helpLegal group (Terms -> policy screen, Guides, Q&A) — see AccountGroup.jsx. */}
+        <GroupedRow icon="shield" label={T('Trợ Giúp & Pháp Lý', 'Help & Legal')} testId="account-help-legal" onClick={() => openAccountGroup('helpLegal')} />
+      </GroupedContainer>
 
       {/* Account IA reorder pass — the lightweight conditional invite row
           described above. Same badge SOURCE as the Host-tab `team` card
@@ -978,64 +961,33 @@ export default function Account() {
 
       <ActionCenter items={hostActionItems} onSeeAll={() => openVerifications('profile')} T={T} />
 
+      {/* iOS parity (2026-10-18): "Host Management" is one grouped card — Event Operations & Payments,
+          Submitted Events, Organizer Profile & Team, Surveys & Event Ideas, Metrics & Reports. Same routes,
+          testids and badge sources as before; only the layout changed. */}
       {canHost && (
-        <GroupCard
-          groupKey="hostOps" iconKind="checklist"
-          label={T('Vận Hành & Thanh Toán Tổ Chức', 'Event Operations & Payments')}
-          // Stale-badge fix pass — was a raw `refundQueue.length`, bypassing
-          // `computeHostActionCount` entirely (the one place this app
-          // already decides what's actually host-actionable) — the exact
-          // same staleness bug as every other raw-count call site this pass
-          // fixes, just one `badges.js` never caught before.
-          badge={computeHostActionCount(s)}
-          onClick={() => openAccountGroup('hostOps')}
-          marginTop={22}
-        />
-      )}
-
-      {/* Account IA reorder pass (2026-09-30 second) — the Host tab's own
-          entry point into the SAME `groupKey: 'team'` screen the personal
-          tab's conditional invite row also opens (see that row's own
-          comment for the full "two doors, one destination" reasoning —
-          mirrors the Payment Disputes row's existing pattern). Gated
-          `canHost`, matching `hostOps` above (the rest of this tab's own
-          convention) — a genuine co-organizer invite/team membership is
-          eligibility-scoped content, not preference-scoped. */}
-      {canHost && <SubmittedEventsRow submitted={submitted} />}
-
-      {canHost && (
-        <GroupCard
-          groupKey="team" iconKind="users"
-          label={T('Hồ Sơ & Team Tổ Chức', 'Organizer Profile & Team')}
-          badge={s.myOrganizerInvites.length + s.myEventCredits.length}
-          onClick={() => openAccountGroup('team')}
-          marginTop={8}
-        />
-      )}
-
-      {/* Interest surveys (Slice B) — a standalone screen (SurveysHosting),
-          not a case inside the shared AccountGroup switch, since it has
-          its own tabs (Active/Closed/Suggested Drafts) and a create form,
-          not a simple flat list. Badge is honestly 0 for now — the
-          unseen/actionable candidate count this badge is meant to carry
-          (Slice C, candidate generation) is not implemented yet; see
-          .claude/notes/21-invite-only-events-and-surveys.md. */}
-      {canHost && (
-        <GroupCard
-          groupKey="surveys" iconKind="checklist"
-          label={T('Khảo Sát & Ý Tưởng Sự Kiện', 'Surveys & Event Ideas')}
-          badge={0}
-          onClick={goSurveysHosting}
-          marginTop={8}
-        />
-      )}
-
-      {/* Account IA reorder pass — actionable content first: Reports moved
-          AFTER the group cards above (was: identity card, Reports, then
-          the group card) per this ticket's explicit instruction. Same
-          destination/testid, only position changed. */}
-      {s.myOrganizerId && (
-        <ReportsRow label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} testId="account-reports-host" onClick={() => openReports('host', s.myOrganizerId, 'profile')} />
+        <>
+          <SectionHeader label={T('Quản Lý Tổ Chức', 'Host Management')} testId="account-section-host-management" />
+          <GroupedContainer testId="account-host-group">
+            <GroupCard grouped groupKey="hostOps" iconKind="checklist"
+              label={T('Vận Hành & Thanh Toán Tổ Chức', 'Event Operations & Payments')}
+              badge={computeHostActionCount(s)}
+              onClick={() => openAccountGroup('hostOps')} />
+            <SubmittedEventsRow grouped submitted={submitted} />
+            <GroupCard grouped groupKey="team" iconKind="users"
+              label={T('Hồ Sơ & Team Tổ Chức', 'Organizer Profile & Team')}
+              badge={s.myOrganizerInvites.length + s.myEventCredits.length}
+              onClick={() => openAccountGroup('team')} />
+            {/* Interest surveys — standalone screen (own tabs + create form); badge honestly 0 until candidate
+                generation exists (note 21). */}
+            <GroupCard grouped groupKey="surveys" iconKind="lightbulb"
+              label={T('Khảo Sát & Ý Tưởng Sự Kiện', 'Surveys & Event Ideas')}
+              badge={0}
+              onClick={goSurveysHosting} />
+            {s.myOrganizerId && (
+              <ReportsRow grouped label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} icon="document" testId="account-reports-host" onClick={() => openReports('host', s.myOrganizerId, 'profile')} />
+            )}
+          </GroupedContainer>
+        </>
       )}
 
       <div style={{ height: 24 }} />
@@ -1065,40 +1017,22 @@ export default function Account() {
               "Pending events" actions, now one grouped entry card. No
               identity card exists for Admin (there never was one) — this
               tab has nothing else to reorder ahead of. */}
-          <GroupCard
-            groupKey="adminReview" iconKind="alertShield"
-            label={T('Duyệt & Kiểm Duyệt', 'Review & Moderation')}
-            badge={s.pendingEventsCount}
-            onClick={() => openAccountGroup('adminReview')}
-            marginTop={14}
-          />
-          {/* Admin Team pass (2026-10-02) — reachable to every admin (so a
-              permission-less admin can at least see WHO the team is / why
-              they can't manage it — AccountGroup's own gate decides what
-              renders inside), badge only ever counts real, still-pending
-              invites (adminInvites is only populated for a canManageAdmins
-              account in the first place — RLS denies the read otherwise,
-              so a non-manager's badge is honestly 0/undefined, never a
-              guessed number). */}
-          <GroupCard
-            groupKey="adminTeam" iconKind="users"
-            label={T('Đội Ngũ Quản Trị', 'Admin Team')}
-            badge={s.adminInvites.filter(i => i.status === 'pending').length}
-            onClick={() => openAccountGroup('adminTeam')}
-            marginTop={10}
-          />
-          <ReportsRow label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} testId="account-reports-admin" onClick={() => openReports('admin', null, 'profile')} />
-          {/* Concise admin-only guide (Help & Legal holds the user guides). */}
-          <div
-            onClick={() => set({ screen: 'guide', guideKey: 'admin' })}
-            data-testid="account-admin-guide"
-            style={{ ...fieldGlass({ margin: '10px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
-              <RowIcon kind="checklist" />{T('Hướng Dẫn Quản Trị', 'Admin Guide')}
-            </span>
-            <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-          </div>
+          {/* iOS parity (2026-10-18): one grouped card — Review & Moderation, Admin Team, Metrics & Reports,
+              Admin Guide. adminTeam's badge only counts real pending invites (RLS: managers only). */}
+          <GroupedContainer testId="account-admin-group">
+            <GroupCard grouped groupKey="adminReview" iconKind="alertShield"
+              label={T('Duyệt & Kiểm Duyệt', 'Review & Moderation')}
+              badge={s.pendingEventsCount}
+              onClick={() => openAccountGroup('adminReview')} />
+            <GroupCard grouped groupKey="adminTeam" iconKind="users"
+              label={T('Đội Ngũ Quản Trị', 'Admin Team')}
+              badge={s.adminInvites.filter(i => i.status === 'pending').length}
+              onClick={() => openAccountGroup('adminTeam')} />
+            <ReportsRow grouped label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} icon="document" testId="account-reports-admin" onClick={() => openReports('admin', null, 'profile')} />
+            {/* Concise admin-only guide (Help & Legal holds the user guides). */}
+            <GroupedRow icon="checklist" label={T('Hướng Dẫn Quản Trị', 'Admin Guide')} testId="account-admin-guide"
+              onClick={() => set({ screen: 'guide', guideKey: 'admin' })} />
+          </GroupedContainer>
           <div style={{ height: 24 }} />
         </div>
       )}

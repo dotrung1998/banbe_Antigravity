@@ -64,7 +64,7 @@ export function useFormatWhen() {
 }
 
 /** Expandable "Submitted Events" row for the Host tab. */
-export function SubmittedEventsRow({ submitted }) {
+export function SubmittedEventsRow({ submitted, grouped = false }) {
   const { T, goDashboard } = useBanBe();
   const fmt = useFormatWhen();
   const [open, setOpen] = useState(false);
@@ -72,14 +72,19 @@ export function SubmittedEventsRow({ submitted }) {
   const { pending, needsFix, total, refresh } = submitted;
 
   return (
-    <div data-testid="account-submitted-events" style={{ ...fieldGlass({ margin: '8px 20px 0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }) }}>
+    <div data-testid="account-submitted-events" style={grouped ? { display: 'flex', flexDirection: 'column' } : { ...fieldGlass({ margin: '8px 20px 0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }) }}>
       <div
         onClick={() => setOpen(v => !v)}
         data-testid="account-group-submittedEvents"
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', cursor: 'pointer' }}
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
-          <span aria-hidden style={{ width: 22, textAlign: 'center', opacity: 0.72 }}>⏳</span>
+          {/* Same plain line icon as every other Account row (iOS "hourglass"). */}
+          <span aria-hidden style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.72 }}>
+              <path d="M6.5 3.5h11M6.5 20.5h11M7.5 3.5c0 4.2 4.5 5.8 4.5 8.5s-4.5 4.3-4.5 8.5M16.5 3.5c0 4.2-4.5 5.8-4.5 8.5s4.5 4.3 4.5 8.5" />
+            </svg>
+          </span>
           {T('Sự Kiện Đã Gửi Chờ Duyệt', 'Submitted Events')}
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

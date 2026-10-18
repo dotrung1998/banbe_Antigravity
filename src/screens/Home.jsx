@@ -946,7 +946,7 @@ export default function Home() {
         </div>
         <div data-hscroll="true" style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', padding: '2px 0 4px' }}>
           <span onClick={toggleLang} data-testid="home-lang-toggle" style={homeCapsule({ fontWeight: 600 })}>{T('EN', 'VN')}</span>
-          <span onClick={openArea} data-testid="home-area-toggle" style={homeCapsule({ fontWeight: 600 })}>{curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label} <span style={{ fontSize: 9, marginLeft: 5 }}>▾</span></span>
+          <span onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); set({ areaMenuOpen: true, areaMenuAnchor: { left: r.left, bottom: r.bottom } }); }} aria-haspopup="menu" data-testid="home-area-toggle" style={homeCapsule({ fontWeight: 600 })}>{curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label} <span style={{ fontSize: 9, marginLeft: 5 }}>▾</span></span>
           <span onClick={toggleTheme} data-testid="home-theme-toggle" style={homeCapsule({ fontWeight: 600 })}>{s.theme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}</span>
         </div>
       </div>

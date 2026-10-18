@@ -26,6 +26,7 @@ import HostIntro from './screens/HostIntro.jsx';
 import CreateEvent from './screens/CreateEvent.jsx';
 import Attendance from './screens/Attendance.jsx';
 import AreaSheet from './screens/sheets/AreaSheet.jsx';
+import AreaMenu from './screens/sheets/AreaMenu.jsx';
 import LocationSheet from './screens/sheets/LocationSheet.jsx';
 import QrScanSheet from './screens/sheets/QrScanSheet.jsx';
 import ReasonSheet from './screens/sheets/ReasonSheet.jsx';
@@ -708,6 +709,7 @@ function Shell() {
           })}
         </div>
         {state.areaAsking && <AreaSheet />}
+        {state.areaMenuOpen && <AreaMenu />}
         {state.askingLocation && <LocationSheet />}
         {state.scanningQr && <QrScanSheet />}
         {state.photoViewer && <PhotoViewer />}
