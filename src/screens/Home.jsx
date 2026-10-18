@@ -11,7 +11,7 @@ import { useForYouAlert } from '../lib/useForYouAlert.js';
 import ForYouChip from './ForYouChip.jsx';
 import { reminderPhase, REMINDER_CSS, reminderRank } from '../lib/eventReminder.js';
 import { compactCoins, shortcutLabels } from '../lib/rewards.js';
-import { HEADER, headerLayout } from '../lib/homeHeaderLayout.js';
+import { HEADER, headerLayout, hitSlop } from '../lib/homeHeaderLayout.js';
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass, barGlass } from '../theme.js';
 import { BAR_HEIGHT, BAR_BOTTOM_OFFSET, DOCK_MARGIN } from './BottomTabBar.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
@@ -891,20 +891,22 @@ export default function Home() {
             {layout.wordmark > 0 && <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: layout.wordmark, height: 'auto', display: 'block', flex: 'none' }} />}
             {showTitle && <span className="bb-home-title" style={{ ...display(27), lineHeight: 1.1, whiteSpace: 'nowrap' }}>{T('Nhà', 'Home')}</span>}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }} data-testid="home-header-actions">
+          <div style={{ display: 'flex', alignItems: 'center', gap: HEADER.groupGap, flex: 'none' }} data-testid="home-header-actions">
           {shortcutsOn && (() => {
             const sum = s.rewardsSummary;
             const lbl = shortcutLabels(T, sum);
             const open = () => set({ screen: 'rewards', rewardsBack: 'home' });
             const key = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
-            const btn = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: HEADER.iconGap, minHeight: HEADER.minTouch, minWidth: HEADER.minTouch, padding: `0 ${HEADER.btnPad}px`, fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, cursor: 'pointer', flex: 'none' };
+            // 38px visual capsule; each half keeps a 44px tall tap area via vertical hit slop.
+            const slop = hitSlop(HEADER.capsule);
+            const btn = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: HEADER.iconGap, minWidth: HEADER.capsule, padding: `${slop}px ${HEADER.btnPad}px`, margin: `-${slop}px 0`, boxSizing: 'content-box', fontVariantNumeric: 'tabular-nums', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', flex: 'none' };
             return (
-              <div style={{ ...homeCapsule(), height: HEADER.minTouch, padding: 0, gap: 0, alignItems: 'stretch', flex: 'none' }} data-testid="home-reward-shortcuts">
+              <div style={{ ...homeCapsule(), height: HEADER.capsule, padding: 0, gap: 0, alignItems: 'center', flex: 'none' }} data-testid="home-reward-shortcuts">
                 <div onClick={open} onKeyDown={key} role="button" tabIndex={0} aria-label={lbl.streak} data-testid="home-streak" style={btn}>
                   <span aria-hidden="true" style={{ fontSize: HEADER.icon, lineHeight: 1, opacity: sum.streak > 0 ? 1 : 0.45 }}>🔥</span>
                   <span>{sum.streak}</span>
                 </div>
-                <span aria-hidden="true" style={{ width: HEADER.divider, alignSelf: 'stretch', margin: '10px 0', background: 'currentColor', opacity: 0.18 }} />
+                <span aria-hidden="true" style={{ width: HEADER.divider, height: 18, background: 'currentColor', opacity: 0.18 }} />
                 <div onClick={open} onKeyDown={key} role="button" tabIndex={0} aria-label={lbl.coins} data-testid="home-coins" style={btn}>
                   <svg aria-hidden="true" width={HEADER.icon} height={HEADER.icon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5v9M9.6 9.6c.5-.8 1.4-1.2 2.4-1.2 1.4 0 2.4.7 2.4 1.8 0 2.4-4.8 1.2-4.8 3.6 0 1.1 1 1.8 2.4 1.8 1 0 1.9-.4 2.4-1.2" /></svg>
                   <span>{compactCoins(sum.balance)}</span>
@@ -918,14 +920,17 @@ export default function Home() {
             onClick={goNotifications}
             data-testid="home-notifications"
             aria-label={s.unreadNotifications ? T(`Thông báo, ${s.unreadNotifications} chưa đọc`, `Notifications, ${s.unreadNotifications} unread`) : T('Thông báo', 'Notifications')}
-            style={{ ...homeCapsule(), position: 'relative', width: shortcutsOn ? HEADER.bell : 48, height: shortcutsOn ? HEADER.bell : 48, borderRadius: '50%', padding: 0, justifyContent: 'center', flex: 'none', border: 'none', color: ink, cursor: 'pointer', fontFamily: 'inherit' }}
+            // 44px transparent tap target (negative margin: takes only 36px of layout) around a 36px glass circle.
+            style={{ position: 'relative', width: HEADER.minTouch, height: HEADER.minTouch, margin: -hitSlop(HEADER.bell), padding: 0, border: 'none', background: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', color: ink, cursor: 'pointer', fontFamily: 'inherit' }}
           >
-            <svg aria-hidden="true" width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+            <span aria-hidden="true" style={{ ...homeCapsule(), width: HEADER.bell, height: HEADER.bell, borderRadius: '50%', padding: 0, justifyContent: 'center' }}>
+            <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 3.5c-2.8 0-5 2.2-5 5v4.6l-1.6 2.7c-.3.5.1 1.2.7 1.2h11.8c.6 0 1-.7.7-1.2L17 13.1V8.5c0-2.8-2.2-5-5-5z" />
               <path d="M9.6 18.6a2.4 2.4 0 0 0 4.8 0" />
             </svg>
+            </span>
             {s.unreadNotifications > 0 && (
-              <span aria-hidden="true" data-testid="home-notifications-badge" style={{ position: 'absolute', top: 2, right: 0, minWidth: 16, height: 16, borderRadius: 8, padding: '0 4px', boxSizing: 'border-box', background: 'var(--bb-alert)', color: 'var(--bb-on-alert)', fontSize: 10, fontWeight: 700, lineHeight: '16px', textAlign: 'center' }}>
+              <span aria-hidden="true" data-testid="home-notifications-badge" style={{ position: 'absolute', top: 2, right: 2, minWidth: 16, height: 16, borderRadius: 8, padding: '0 4px', boxSizing: 'border-box', background: 'var(--bb-alert)', color: 'var(--bb-on-alert)', fontSize: 10, fontWeight: 700, lineHeight: '16px', textAlign: 'center' }}>
                 {s.unreadNotifications > 9 ? '9+' : s.unreadNotifications}
               </span>
             )}
@@ -935,12 +940,14 @@ export default function Home() {
             data-testid="home-search-fab"
             aria-label={T('Tìm sự kiện', 'Search events')}
             role="button"
-            style={{ ...homeCapsule(), width: shortcutsOn ? HEADER.search : 48, height: shortcutsOn ? HEADER.search : 48, borderRadius: '50%', padding: 0, justifyContent: 'center', flex: 'none' }}
+            style={{ width: HEADER.minTouch, height: HEADER.minTouch, margin: -hitSlop(HEADER.search), display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', cursor: 'pointer', color: ink }}
           >
-            <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+            <span aria-hidden="true" style={{ ...homeCapsule(), width: HEADER.search, height: HEADER.search, borderRadius: '50%', padding: 0, justifyContent: 'center' }}>
+            <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="7" />
               <path d="M21 21l-4.35-4.35" />
             </svg>
+            </span>
           </div>
           </div>
         </div>

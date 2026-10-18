@@ -40,19 +40,22 @@ struct EventPlanTitleRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(event.name)
                     .font(BanbeTheme.display(29))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if available { planMenu }
+                if available {
+                    planMenu
+                        .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] + 5 }
+                }
             }
             if let message {
                 Text(message).font(.footnote).foregroundStyle(app.palette.ink.opacity(0.8))
                     .accessibilityIdentifier("event.plan.message")
             }
         }
-        .padding(.top, 8)
-        .padding(.bottom, 10)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
         .foregroundStyle(app.palette.ink)
         .onAppear { refreshMark() }
         .sheet(item: $exportRequest) { req in
@@ -77,31 +80,26 @@ struct EventPlanTitleRow: View {
     private var statusLabel: String { added ? app.T("Đã thêm", "Added") : app.T("Khám phá", "Discover") }
 
     private var planMenu: some View {
+        // Compact (2026-10-18): one 36pt glass pill — calendar icon(s) + status — so the title row is only as
+        // tall as the title itself (the old icon-over-caption column left a big gap above the location line).
         Menu { menuItems } label: {
-            VStack(spacing: 3) {
-                ZStack {
-                    if appleMarked {
-                        HStack(spacing: 0) {
-                            Image(systemName: source != nil ? "calendar.badge.checkmark" : "calendar.badge.plus")
-                                .frame(width: 44, height: 44)
-                            Rectangle().fill(app.palette.ink.opacity(0.18)).frame(width: 1, height: 20)
-                            Image(systemName: "calendar")
-                                .frame(width: 44, height: 44)
-                        }
-                        .nativeGlass(Capsule(), interactive: true)
-                    } else {
-                        Image(systemName: source != nil ? "calendar.badge.checkmark" : "calendar.badge.plus")
-                            .frame(width: 44, height: 44)
-                            .nativeGlass(Circle(), interactive: true)
-                    }
+            HStack(spacing: 6) {
+                Image(systemName: source != nil ? "calendar.badge.checkmark" : "calendar.badge.plus")
+                if appleMarked {
+                    Rectangle().fill(app.palette.ink.opacity(0.18)).frame(width: 1, height: 16)
+                    Image(systemName: "calendar")
                 }
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(app.palette.ink)
                 Text(statusLabel)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(app.palette.ink)
+                    .font(.footnote.weight(.semibold))
+                    .lineLimit(1)
             }
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .nativeGlass(Capsule(), interactive: true)
             .fixedSize()
+            .frame(minHeight: 44)          // keeps a 44pt tap target without adding visual height
             .contentShape(Rectangle())
         }
         .accessibilityIdentifier("event.plan.button")

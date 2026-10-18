@@ -1,13 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { HEADER, estimateHeaderWidth, headerFits, buttonWidth, titleFits, headerLayout } from '../../src/lib/homeHeaderLayout.js';
+import { HEADER, estimateHeaderWidth, headerFits, buttonWidth, titleFits, headerLayout, hitSlop } from '../../src/lib/homeHeaderLayout.js';
 import { compactCoins } from '../../src/lib/rewards.js';
 
 const WIDTHS = [320, 360, 375, 390, 393, 402, 430, 440];
 
-test('every control keeps a 44pt touch target', () => {
-  assert.ok(HEADER.search >= HEADER.minTouch);
-  for (const chars of [1, 2, 3, 5]) assert.ok(buttonWidth(chars) >= HEADER.minTouch);
+test('every control keeps a 44pt touch target (visual size + invisible hit slop)', () => {
+  for (const size of [HEADER.search, HEADER.bell, HEADER.capsule]) assert.ok(size + 2 * hitSlop(size) >= HEADER.minTouch, `${size}`);
+  for (const chars of [1, 2, 3, 5]) assert.ok(buttonWidth(chars) >= HEADER.capsule);
+});
+
+test('the wordmark matches the other screens (96) on a standard 390px phone', () => {
+  assert.equal(HEADER.wordmark, 96);
+  assert.deepEqual(headerLayout(390, { streakChars: 1, coinChars: 1 }), { wordmark: 96, showTitle: true });
 });
 
 test('the header fits on every iPhone width for realistic and worst-case numbers', () => {
@@ -36,7 +41,7 @@ test('without the shortcuts (feature unavailable) wordmark + title + bell + sear
 });
 
 test('the wordmark steps down before the title is dropped (iOS note 45 order)', () => {
-  const l = headerLayout(400, { streakChars: 2, coinChars: 3 });
+  const l = headerLayout(375, { streakChars: 2, coinChars: 3 });
   assert.equal(l.showTitle, true);
-  assert.ok(l.wordmark < HEADER.wordmark, `400px keeps the title with a smaller wordmark (${l.wordmark})`);
+  assert.ok(l.wordmark < HEADER.wordmark, `375px keeps the title with a smaller wordmark (${l.wordmark})`);
 });

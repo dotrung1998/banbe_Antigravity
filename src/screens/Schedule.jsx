@@ -282,7 +282,7 @@ export default function Schedule() {
       {/* iOS parity (2026-10-18): logo + title on their own row; the month button ("📅 October 2026 ⌄") and
           Today sit on the row below, like ScheduleView's header. */}
       <div style={{ padding: '58px 20px 0', display: 'flex', alignItems: 'center', gap: 14 }}>
-        <img src="/banbe-wordmark.png" alt="banbe" style={{ width: 80, height: 'auto', display: 'block', flex: 'none' }} />
+        <img src="/banbe-wordmark.png" alt="banbe" style={{ width: 96, height: 'auto', display: 'block', flex: 'none' }} />
         <h1 data-testid="schedule-title" style={display(27, { margin: 0, flex: 1, minWidth: 0 })}>{T('Lịch', 'Schedule')}</h1>
       </div>
       <div style={{ padding: '10px 20px 0', display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -6,7 +6,7 @@ import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
 import FollowingBadge from '../components/FollowingBadge.jsx';
-import EventPlanActions from './EventPlanActions.jsx';
+import EventPlanTitle from './EventPlanActions.jsx';
 import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
 
 // Airbnb-style layout (mirrors iOS EventDetailView): the photo is a pinned backdrop that fades out while the
@@ -429,9 +429,9 @@ export default function EventDetail() {
             <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', color: paper, background: ink, padding: '3px 8px' }}>{T('Riêng tư ▪︎ theo lời mời', 'Private ▪︎ invite only')}</span>
           )}
         </div>
-        <h1 style={{ ...display(29, { lineHeight: 1.2, margin: '8px 0 10px' }) }}>{ev.name}</h1>
-        {/* Note 44/45 web parity: banbe Schedule status + Add to calendar, right under the title. */}
-        <EventPlanActions eventKey={ev.key} />
+        {/* Title + compact plan pill on one row (iOS EventPlanTitleRow): no expanded action rows, no gap
+            before the location line. */}
+        <EventPlanTitle eventKey={ev.key} title={ev.name} titleStyle={display(29, { lineHeight: 1.2 })} />
         {evMapsUrl ? (
           <a
             href={evMapsUrl}
