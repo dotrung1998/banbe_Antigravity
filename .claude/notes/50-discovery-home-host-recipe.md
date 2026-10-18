@@ -38,8 +38,11 @@ Designer" (transcript supplied by the owner, 2026-10-18).
    - They filter *your* events, not discovery.
    - Their state fields (`filterSaved`…) still exist in context, but Home no longer reads them.
    - For You stays pinned (notes 34/36).
-3. **Language/theme capsules removed from Home** (already in Settings → Language & Appearance). The area menu is
-   now a location pill ("Near Everywhere ▾", same `home-area-toggle` testid and AreaMenu).
+3. **Location pill + language + light/dark in one plain-text row** (follow-up 2026-10-18; the language/theme
+   capsules had been removed from Home and the owner asked for them back). `Near Everywhere ▾`, then `VN`/`EN` and
+   `Dark`/`Light`, in the same icon + text style, right beside the pill (web testids `home-area-toggle`,
+   `home-lang-toggle`, `home-theme-toggle`; iOS `header.area`, `header.lang`, `header.theme`). Each shows what a tap
+   switches TO. The long area name truncates before the toggles do.
 4. **Search is its own screen** (`/search`, `src/screens/Search.jsx`), not "open Map".
    - It uses the same matcher as Map (`src/lib/search.js`).
    - Results are grouped Events · Hosts · Areas, each with a count.
@@ -53,6 +56,21 @@ Designer" (transcript supplied by the owner, 2026-10-18).
      fill_seats / regular_crowd / try_idea / small_premium.
    - It weights the recipe: premium relaxes the price band, and fill_seats is stricter on seats.
    - It is stored in the host-only `event_host_meta` and never shown to guests.
+
+## Follow-up fixes (2026-10-18, from on-device testing)
+1. **iOS For You chip** was ~8pt shorter than the other chips: it now uses the same 36pt height and 13pt type.
+2. **Sort has its own pop-up** with ONLY the sort options (✓ on the current one): a native `Menu` on iOS, `SortMenu.jsx`
+   (anchored like AreaMenu) on web. The sort button turns "on" while a non-default sort is chosen, and the Filters
+   badge now counts filters only. "Nearest" without location says so and asks for it. The sheet still has a Sort
+   section; both write the same `homeSort`.
+3. **Category is one value.** The main row and the filter sheet both edit `homeFilters.cats`, so a category picked on
+   Home is already ticked in the sheet. The feed is no longer pre-filtered by category (web `s.filter`, iOS
+   `app.filter` are gone), which is what made the sheet show every other category as 0 and disabled. `pickFilter(key)`
+   now sets `cats` (`all` -> `[]`). The weekend rail follows the same cats.
+4. **Location picker over the filter sheet.** It no longer closes the sheet: it slides up over it (iOS nested sheet via
+   `LocationPickerSheet(doneMode: true)`, web `AreaSheet embedded`), a pick only moves the selection (the counts behind
+   update), and **Done** (also backdrop / Esc on web) slides it back down. The draft survives. Outside the filter sheet
+   the picker behaves as before (a pick closes it).
 
 ## Migration 186 (`20261224000186_186_discovery_fill_and_host_benchmarks.sql`, rollback in supabase/rollbacks)
 - **`get_public_event_fill(text[])`** (anon + authenticated)
@@ -119,7 +137,8 @@ Designer" (transcript supplied by the owner, 2026-10-18).
   esbuild harness that bundles the REAL `CreateEvent.jsx` with a stubbed context and Supabase, fed with the exact
   jsonb 186 returned on Postgres. Both the data and cold-start paths rendered with no errors. The cold start
   showed no numbers and the full-house estimate.
-- **NOT run:** the Playwright e2e suite (DOB gate); dark mode screenshots for web; real benchmarks (none until
+- **Playwright `tests/home-quick-controls.spec.js`** (guest, so no DOB gate): 4 tests x chromium/firefox/webkit = 12 pass.
+- **NOT run:** the rest of the Playwright e2e suite (DOB gate); dark mode screenshots for web; real benchmarks (none until
   186 is applied and enough events exist; expect cold-start tips for a while — by design).
 
 ## Known limitations / follow-ups
@@ -131,7 +150,11 @@ Designer" (transcript supplied by the owner, 2026-10-18).
   and k-gated, but restricting it to accounts with an organizer row is a possible hardening.
 
 ## iOS
-NOT DONE. A port was started and then stopped partway (2026-10-18). Its changes were committed as-is (WIP commit,
+STATE: builds, and `BanbeAppTests` HomeDiscovery/EventRecipe (23) + `DiscoveryFixtureUITests` (14, incl. sort menu, category
+preselect, nested location picker, For You chip alignment) pass on an iPhone 17e simulator. Earlier text below describes
+the stop-point and is kept for history; it was committed as WIP and has since been built and tested.
+
+HISTORY: NOT DONE. A port was started and then stopped partway (2026-10-18). Its changes were committed as-is (WIP commit,
 at the owner's request) for the owner to review or finish:
 - New: Lib/HomeDiscovery.swift, Lib/EventRecipe.swift, State/AppState+Discovery.swift, Views/HomeDiscoveryViews.swift,
   Views/HomeFilterSheet.swift, Views/RecipeSheet.swift, Views/SearchView.swift, BanbeAppTests/HomeDiscoveryTests.swift,
