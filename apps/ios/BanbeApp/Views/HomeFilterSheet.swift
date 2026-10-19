@@ -93,6 +93,19 @@ struct HomeFilterSheet: View {
 
     private var header: some View {
         HStack {
+            Button(app.T("Đặt lại", "Reset")) {
+                Haptics.selection()
+                draft = .default
+                draftSort = "soonest"
+            }
+            .font(.system(size: 14))
+            .opacity(0.75)
+            .frame(minWidth: 44, minHeight: 44)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("home.filter.reset")
+            Spacer()
+            Text(app.T("Bộ lọc", "Filters")).font(BanbeTheme.display(17)).accessibilityAddTraits(.isHeader)
+            Spacer()
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
@@ -104,19 +117,6 @@ struct HomeFilterSheet: View {
             .buttonStyle(.plain)
             .accessibilityLabel(app.T("Đóng", "Close"))
             .accessibilityIdentifier("home.filter.close")
-            Spacer()
-            Text(app.T("Bộ lọc", "Filters")).font(BanbeTheme.display(17)).accessibilityAddTraits(.isHeader)
-            Spacer()
-            Button(app.T("Đặt lại", "Reset")) {
-                Haptics.selection()
-                draft = .default
-                draftSort = "soonest"
-            }
-            .font(.system(size: 14))
-            .opacity(0.75)
-            .frame(minWidth: 44, minHeight: 44)
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("home.filter.reset")
         }
         .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 4)
         .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }

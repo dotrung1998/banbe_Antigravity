@@ -1312,6 +1312,20 @@ private struct NotificationKindIcon: View {
 
 struct NotificationsView: View {
     @EnvironmentObject var app: AppState
+    /// Shown over Home (RootView) instead of as its own screen.
+    let isOverlay: Bool
+    init(isOverlay: Bool = false) { self.isOverlay = isOverlay }
+    /// Overlay reveal: 0 = a bell-sized circle on the bell, 1 = the whole screen. Animated on appear and on Back.
+    @State private var reveal: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Bursts out of the bell only when opened from it (and motion is allowed); otherwise it is simply there.
+    private var bursts: Bool { isOverlay && !reduceMotion && app.homeBellFrame.width > 0 }
+
+    private func closeOverlay() {
+        guard bursts else { app.notificationsOverlayOpen = false; return }
+        withAnimation(.easeIn(duration: 0.34)) { reveal = 0 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) { app.notificationsOverlayOpen = false }
+    }
     // Which sections have had their "Xem thêm" tapped — purely a
     // render-time slice of already-loaded data (loadNotifications() fetches
     // up to 50 at once), so a plain local Set is enough; nothing here needs
@@ -1475,10 +1489,14 @@ struct NotificationsView: View {
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             } else if selectionMode {
                 Text(app.T("Đang chọn", "Selecting")).font(BanbeTheme.display(27))
+                    .lineLimit(1).minimumScaleFactor(0.6).layoutPriority(1)
             } else {
+                // One line, shrunk to fit beside the wordmark and the two buttons — never cut off or broken mid-word.
                 Text(app.T("Thông báo", "Notifications")).font(BanbeTheme.display(27))
+                    .lineLimit(1).minimumScaleFactor(0.6).layoutPriority(1)
             }
-            Spacer()
+            // Breathing room so the title never sits against the Search/Select buttons.
+            Spacer(minLength: 20)
             // TASK 2 (2026-09-22 twentieth follow-up) — the two
             // right-side slots persist across selection mode
             // (never removed/reinserted at a different spot in
@@ -1529,6 +1547,35 @@ struct NotificationsView: View {
     }
 
     var body: some View {
+        if isOverlay {
+            content
+                // A circle centred on the bell, growing from the bell's size to the screen's far corner (a droplet
+                // bursting out of the icon) and shrinking back into it on Back.
+                .mask {
+                    GeometryReader { g in
+                        let bell = app.homeBellFrame
+                        let o = g.frame(in: .global).origin
+                        let c = CGPoint(x: bell.midX - o.x, y: bell.midY - o.y)
+                        let far = hypot(max(c.x, g.size.width - c.x), max(c.y, g.size.height - c.y)) + 8
+                        let r = bursts ? bell.width / 2 + (far - bell.width / 2) * reveal : far
+                        Circle().frame(width: r * 2, height: r * 2).position(c)
+                    }
+                    .ignoresSafeArea()
+                }
+                .onAppear {
+                    let fresh = app.notificationsBurstPending
+                    app.notificationsBurstPending = false
+                    guard bursts, fresh else { reveal = 1; return }
+                    DispatchQueue.main.async {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { reveal = 1 }
+                    }
+                }
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         // Opaque-header fix (2026-09-29 follow-up, real-device report:
         // overlapping headers during a swipe-back transition) — see
         // HomeView's own identical fix for the full explanation:
@@ -1539,9 +1586,23 @@ struct NotificationsView: View {
         app.palette.paper.ignoresSafeArea()
         VStack(alignment: .leading, spacing: 0) {
             // Note 44 — no longer a dock tab, so it needs its own way back.
-            BackLink(label: app.backLabel(for: app.notificationsBack)) { app.screen = app.notificationsBack }
+            BackLink(label: app.backLabel(for: app.notificationsBack)) {
+                if isOverlay {
+                    closeOverlay()
+                } else {
+                    app.screen = app.notificationsBack
+                }
+            }
                 .padding(.horizontal, 20).padding(.top, 12)
                 .accessibilityIdentifier("notifications.back")
+                // As an overlay: hide the dock while it is up, and keep the "screen" marker UI tests look for.
+                .background {
+                    if isOverlay {
+                        Color.clear.frame(width: 0, height: 0)
+                            .accessibilityIdentifier("screen.notifications")
+                            .hidesDock("notificationsOverlay")
+                    }
+                }
             notificationsHeader
             ZStack {
             ScreenScaffold(tracksBottomBarScroll: false, refreshIndicatorTopPadding: 16, onRefresh: { await app.loadNotifications() }) {
@@ -1692,7 +1753,9 @@ struct NotificationsView: View {
                                 .font(BanbeTheme.display(15))
                                 .fontWeight(unread ? .bold : .regular)
                                 .foregroundStyle(item.kind == "event_announcement" ? BanbeTheme.alert : app.palette.ink)
-                                .lineLimit(1)
+                                // Whole title (up to two lines) instead of "Admin invitation accep…".
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                             NotificationKindIcon(category: notificationCategory(item.kind))
                             Spacer(minLength: 12)
                             Text(app.trStatus(EventLabels.ago(hoursAgo(item.createdAt))))

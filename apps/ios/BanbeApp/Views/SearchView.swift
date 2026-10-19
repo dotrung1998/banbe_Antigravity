@@ -7,9 +7,15 @@ import SwiftUI
 // Search never counts toward the streak (note 36).
 struct SearchView: View {
     @EnvironmentObject private var app: AppState
+    /// Shown over Home (RootView) instead of as its own screen.
+    let isOverlay: Bool
+    init(isOverlay: Bool = false) { self.isOverlay = isOverlay }
+
     @State private var focused = false
     /// Entrance from Home's search bar: false = the field still sits where Home's bar was, true = in the header.
     @State private var arrived = false
+    /// Exit back to Home: the field glides down onto Home's search bar before the screen switches.
+    @State private var leaving = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var recent: [String] = RecentSearches.load()
 
@@ -60,10 +66,18 @@ struct SearchView: View {
                 .padding(.bottom, 60)
             }
             .scrollDismissesKeyboard(.interactively)
-            .opacity(entering ? 0 : 1)
+            .opacity(atHomeBar ? 0 : 1)
+            // As an overlay the results drop in from the top (and lift away on close).
+            .offset(y: isOverlay && atHomeBar ? -28 : 0)
         }
         .foregroundStyle(app.palette.ink)
-        .background(app.palette.paper.ignoresSafeArea())
+        // As an overlay the paper fades in over the live Home instead of a whole new page appearing (no white flash).
+        .background(app.palette.paper.ignoresSafeArea().opacity(isOverlay && atHomeBar ? 0 : 1))
+        .hidesDock("search")
+        .overlay {
+            // UI tests look for the Search "screen" whether it is an overlay or a screen.
+            if isOverlay { Color.clear.frame(width: 0, height: 0).accessibilityIdentifier("screen.search") }
+        }
         .task {
             if app.discoveryEvents.isEmpty { await app.loadDiscoveryEvents() }
             if app.pulseDaily.isEmpty { await app.loadPulse(period: .daily) }
@@ -83,6 +97,37 @@ struct SearchView: View {
 
     /// True until the glide from Home's search bar has started: the field is drawn where Home's bar was, at its width.
     private var entering: Bool { !arrived && app.searchEntranceFrom != nil && !reduceMotion }
+    /// The field sits over Home's bar: before the entrance glide, and during the exit glide.
+    private var atHomeBar: Bool { entering || leaving }
+
+    /// Back: when Search came from Home, the field glides back down onto Home's bar (the reverse of the entrance),
+    /// then Home simply appears under it.
+    private func close() {
+        if isOverlay {
+            guard !leaving else { return }
+            let frame = app.homeSearchBarFrame
+            guard !reduceMotion, frame.width > 0 else { app.searchOverlayOpen = false; return }
+            app.searchEntranceFrom = frame
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.9)) { leaving = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                app.searchOverlayOpen = false
+                app.searchEntranceFrom = nil
+            }
+            return
+        }
+        let frame = app.homeSearchBarFrame
+        guard !reduceMotion, app.searchBackScreen == .home, frame.width > 0, !leaving else { app.goBack(); return }
+        app.searchEntranceFrom = frame
+        withAnimation(.spring(response: 0.36, dampingFraction: 0.9)) { leaving = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            app.searchClosingToHome = true
+            app.goBack()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                app.searchClosingToHome = false
+                app.searchEntranceFrom = nil
+            }
+        }
+    }
     private var topInset: CGFloat {
         UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.keyWindow?.safeAreaInsets.top ?? 0
     }
@@ -94,10 +139,10 @@ struct SearchView: View {
     }
 
     private var header: some View {
-        HStack(spacing: entering ? 0 : 10) {
+        HStack(spacing: atHomeBar ? 0 : 10) {
             Button {
                 focused = false
-                app.goBack()
+                close()
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 17, weight: .semibold))
@@ -108,8 +153,8 @@ struct SearchView: View {
             }
             .buttonStyle(.plain)
             // While entering, the back button takes no width, so the field starts as wide as Home's bar.
-            .frame(width: entering ? 0 : nil)
-            .opacity(entering ? 0 : 1)
+            .frame(width: atHomeBar ? 0 : nil)
+            .opacity(atHomeBar ? 0 : 1)
             .clipped()
             .accessibilityLabel(app.T("Quay lại", "Back"))
             .accessibilityIdentifier("search.back")
@@ -133,10 +178,10 @@ struct SearchView: View {
             .padding(.horizontal, 14)
             .background { Color.clear.nativeGlassCapsule(interactive: false) }
             // Entrance: starts over Home's search bar and glides up into the header as the back button slides in.
-            .offset(y: entering ? entranceOffsetY : 0)
+            .offset(y: atHomeBar ? entranceOffsetY : 0)
         }
-        .padding(.horizontal, entering ? 20 : 16).padding(.top, 8).padding(.bottom, 10)
-        .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1).opacity(entering ? 0 : 1) }
+        .padding(.horizontal, atHomeBar ? 20 : 16).padding(.top, 8).padding(.bottom, 10)
+        .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1).opacity(atHomeBar ? 0 : 1) }
         .onChange(of: focused) { was, now in if was && !now { commit() } }
     }
 
@@ -307,7 +352,7 @@ struct SearchView: View {
                 Button {
                     commit()
                     focused = false
-                    if let id = h.organizerID { app.openOrganizerProfile(organizerID: id, back: .search) } else { app.searchQuery = h.name }
+                    if let id = h.organizerID { app.openOrganizerProfile(organizerID: id, back: isOverlay ? .home : .search) } else { app.searchQuery = h.name }
                 } label: {
                     resultRow(icon: nil, initial: String(h.name.prefix(1)).uppercased(), title: h.name,
                               subtitle: app.T("\(h.count) sự kiện sắp tới", "\(h.count) upcoming event\(h.count == 1 ? "" : "s")"))

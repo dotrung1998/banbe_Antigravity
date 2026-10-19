@@ -110,12 +110,13 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
       style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(12,12,12,0.45)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
       <div role="dialog" aria-modal="true" aria-label={T('Bộ lọc', 'Filters')} onClick={(e) => e.stopPropagation()} data-testid="home-filter-sheet"
         style={{ background: paper, color: ink, borderRadius: '22px 22px 0 0', maxHeight: '88%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '44px 1fr auto', alignItems: 'center', padding: '10px 14px 8px', borderBottom: `1px solid ${rule}` }}>
-          <button type="button" onClick={onClose} aria-label={T('Đóng', 'Close')} data-testid="home-filter-close"
-            style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(var(--bb-fg-rgb),0.07)', color: ink, fontSize: 18, cursor: 'pointer' }}>×</button>
-          <span style={{ ...display(17), textAlign: 'center' }}>{T('Bộ lọc', 'Filters')}</span>
+        {/* Reset on the left, close (×) on the right; equal side columns keep the title centred. */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '10px 14px 8px', borderBottom: `1px solid ${rule}` }}>
           <button type="button" onClick={() => { setDraft(normalizeFilters(DEFAULT_FILTERS)); setDraftSort('soonest'); }} data-testid="home-filter-reset"
-            style={{ border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, opacity: 0.75, cursor: 'pointer', padding: '8px 6px' }}>{T('Đặt lại', 'Reset')}</button>
+            style={{ justifySelf: 'start', border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, opacity: 0.75, cursor: 'pointer', padding: '8px 6px' }}>{T('Đặt lại', 'Reset')}</button>
+          <span style={{ ...display(17), textAlign: 'center' }}>{T('Bộ lọc', 'Filters')}</span>
+          <button type="button" onClick={onClose} aria-label={T('Đóng', 'Close')} data-testid="home-filter-close"
+            style={{ justifySelf: 'end', width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(var(--bb-fg-rgb),0.07)', color: ink, fontSize: 18, cursor: 'pointer' }}>×</button>
         </div>
 
         <div style={{ overflowY: 'auto', padding: '0 20px', flex: 1 }}>

@@ -211,6 +211,8 @@ private struct GlassPanelModifier: ViewModifier {
 struct LocationPickerList: View {
     @EnvironmentObject var app: AppState
     let onPick: (String) -> Void
+    /// Cap on the list's height (the floating card); nil = take whatever the sheet gives it (filter-sheet mode).
+    var maxListHeight: CGFloat? = 380
     @State private var query = ""
 
     private enum Row: Identifiable {
@@ -311,7 +313,7 @@ struct LocationPickerList: View {
                     }
                 }
             }
-            .frame(maxHeight: 380)
+            .frame(maxHeight: maxListHeight ?? .infinity)
             .padding(.top, 6)
         }
         .onAppear {
@@ -405,6 +407,15 @@ struct LocationPickerSheet: View {
     var doneMode = false
 
     var body: some View {
+        if doneMode { sheetBody } else { cardBody }
+    }
+
+    /// Filter-sheet mode: a standard iOS sheet (see `NativeLocationPicker`).
+    private var sheetBody: some View {
+        NativeLocationPicker(isPresented: $isPresented, startsExpanded: app.area != LocationHierarchy.allID)
+    }
+
+    private var cardBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(app.T("Khu vực", "Location")).font(.system(size: 11.5, weight: .semibold))
@@ -467,6 +478,237 @@ struct LocationPickerSheet: View {
                 .onTapGesture { isPresented = false }
         }
         .foregroundStyle(app.palette.ink)
+    }
+}
+
+/// The location picker as a standard iOS sheet (filter-sheet mode): inline navigation title with the current
+/// selection, "Done" as the confirmation action, the system search field, and an inset-grouped list — selection
+/// checkmarks in the accent, counts as secondary text, rotating disclosure arrows — in banbe's paper/ink colours.
+/// Same data and rules as `LocationPickerList` (expanding never changes the selection; every expanded node offers
+/// "All in X"; search only reveals, never rewrites, the manual expand state).
+struct NativeLocationPicker: View {
+    @EnvironmentObject private var app: AppState
+    @Binding var isPresented: Bool
+    @State private var query = ""
+    /// "All locations" selected: opens at half height with every country collapsed. A location already picked: opens
+    /// at full height with its branch expanded and its row scrolled into view. Expanding anything goes full height.
+    @State private var detent: PresentationDetent
+
+    init(isPresented: Binding<Bool>, startsExpanded: Bool) {
+        _isPresented = isPresented
+        _detent = State(initialValue: startsExpanded ? .large : .medium)
+    }
+
+    private func findNode(_ id: String, in nodes: [LocationNode]) -> LocationNode? {
+        for n in nodes {
+            if n.id == id { return n }
+            if let hit = findNode(id, in: n.children) { return hit }
+        }
+        return nil
+    }
+
+    /// The list row that shows the current selection: a parent is selected through its own "All in X" row.
+    private var selectedRowID: String {
+        if app.area == LocationHierarchy.allID { return "allLocations" }
+        if let n = findNode(app.area, in: app.locationTree), isExpandable(n) { return "all:" + n.id }
+        return "node:" + app.area
+    }
+
+    private enum Row: Identifiable {
+        case node(LocationNode, Int)
+        case allIn(LocationNode, Int)
+        case empty(String, Int)
+        var id: String {
+            switch self {
+            case .node(let n, _): return "node:" + n.id
+            case .allIn(let n, _): return "all:" + n.id
+            case .empty(let parent, _): return "empty:" + parent
+            }
+        }
+    }
+
+    private func isExpandable(_ n: LocationNode) -> Bool { n.kind == .country || !n.children.isEmpty }
+
+    private func rows(_ nodes: [LocationNode], depth: Int, search: (visible: Set<String>, autoExpanded: Set<String>)?) -> [Row] {
+        var out: [Row] = []
+        for n in nodes {
+            if let search, !search.visible.contains(n.id) { continue }
+            out.append(.node(n, depth))
+            guard isExpandable(n) else { continue }
+            guard app.areaExpanded.contains(n.id) || (search?.autoExpanded.contains(n.id) ?? false) else { continue }
+            out.append(.allIn(n, depth + 1))
+            if n.children.isEmpty { out.append(.empty(n.id, depth + 1)) } else { out.append(contentsOf: rows(n.children, depth: depth + 1, search: search)) }
+        }
+        return out
+    }
+
+    private func countLabel(_ n: Int) -> String { app.T("\(n) sự kiện", n == 1 ? "1 event" : "\(n) events") }
+    private func accessibilityID(_ nodeID: String) -> String { "area." + (LocationHierarchy.legacyKey(forNodeID: nodeID) ?? nodeID) }
+    private var currentLabel: String {
+        app.area == LocationHierarchy.allID ? app.T("Mọi nơi", "Everywhere") : app.currentAreaLabel
+    }
+
+    var body: some View {
+        let roots = app.locationTree
+        let search = LocationHierarchy.search(roots, query: query, T: app.T)
+        let list = rows(roots, depth: 0, search: search)
+        NavigationStack {
+            ScrollViewReader { proxy in
+            List {
+                if search == nil {
+                    Section {
+                        selectRow(id: LocationHierarchy.allID, title: app.T("Tất cả khu vực", "All locations"),
+                                  count: roots.reduce(0) { $0 + $1.openCount }, depth: 0)
+                            .id("allLocations")
+                    }
+                }
+                Section {
+                    ForEach(list) { row in
+                        switch row {
+                        case .node(let n, let depth):
+                            if isExpandable(n) { expandRow(n, depth: depth) }
+                            else { selectRow(id: n.id, title: LocationHierarchy.label(n, T: app.T), count: n.openCount, depth: depth, legacy: n.kind == .legacyArea) }
+                        case .allIn(let n, let depth):
+                            selectRow(id: n.id, title: app.T("Tất cả tại \(LocationHierarchy.label(n, T: app.T))", "All in \(LocationHierarchy.label(n, T: app.T))"),
+                                      count: n.openCount, depth: depth)
+                        case .empty(_, let depth):
+                            Text(app.T("Chưa có sự kiện nào ở đây.", "No events here yet."))
+                                .font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.55))
+                                .padding(.leading, CGFloat(depth) * 18)
+                        }
+                    }
+                    if search != nil && list.isEmpty {
+                        Text(app.T("Không tìm thấy khu vực phù hợp.", "No matching location."))
+                            .font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.55))
+                    }
+                }
+                Section {
+                    Button {
+                        Haptics.selection()
+                        if app.located == true { app.denyLocation() } else { app.allowLocation() }
+                    } label: {
+                        Label(app.located == true
+                              ? app.T("Tắt vị trí ▪︎ đang hiển thị khoảng cách", "Turn off location ▪︎ showing distance")
+                              : app.T("Dùng vị trí của tôi để xem khoảng cách", "Use my location to show distance"),
+                              systemImage: app.located == true ? "location.slash" : "location")
+                    }
+                    .accessibilityIdentifier("map.area.locationToggle")
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(app.palette.paper)
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
+                        prompt: app.T("Tìm tỉnh, thành phố, khu vực", "Search state, city, area"))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .onAppear {
+                // A location already picked: bring its row into view once the sheet has settled at full height.
+                guard app.area != LocationHierarchy.allID else { return }
+                let target = selectedRowID
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo(target, anchor: .center) }
+                }
+            }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 1) {
+                        Text(app.T("Khu vực", "Location")).font(.headline)
+                        Text(currentLabel).font(.caption).foregroundStyle(app.palette.ink.opacity(0.6)).lineLimit(1)
+                            .accessibilityIdentifier("home.filter.area.current")
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(app.T("Xong", "Done")) { Haptics.selection(); isPresented = false }
+                        .fontWeight(.semibold)
+                        .accessibilityIdentifier("home.filter.area.done")
+                }
+            }
+        }
+        .tint(app.palette.ink)
+        .foregroundStyle(app.palette.ink)
+        .presentationDetents([.medium, .large], selection: $detent)
+        .presentationDragIndicator(.visible)
+        .presentationBackground(app.palette.paper)
+        .onAppear {
+            if app.area == LocationHierarchy.allID {
+                // "All locations": always the same clean start — every country collapsed.
+                app.areaExpanded.removeAll()
+            } else {
+                // The picked location's branch open (and the node itself, if it is a parent shown via "All in X").
+                app.areaExpanded.formUnion(LocationHierarchy.ancestorIDs(of: app.area))
+                app.areaExpanded.insert(app.area)
+            }
+        }
+    }
+
+    private func expandRow(_ n: LocationNode, depth: Int) -> some View {
+        let expanded = app.areaExpanded.contains(n.id)
+        let containsSelection = app.area != LocationHierarchy.allID && LocationHierarchy.matches(leafID: app.area, selection: n.id)
+        return Button {
+            withAnimation(.easeOut(duration: 0.2)) {
+                if expanded { app.areaExpanded.remove(n.id) } else { app.areaExpanded.insert(n.id) }
+            }
+            // Opening a branch lifts the sheet as high as it goes, to show as many options as possible.
+            if !expanded && detent != .large {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) { detent = .large }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(LocationHierarchy.label(n, T: app.T)).fontWeight(containsSelection ? .semibold : .regular)
+                    if n.kind == .legacyArea { legacyCaption }
+                }
+                if containsSelection { Circle().fill(app.palette.clay).frame(width: 6, height: 6) }
+                Spacer()
+                Text(countLabel(n.openCount)).font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.55))
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(app.palette.ink.opacity(0.35))
+                    .rotationEffect(.degrees(expanded ? 90 : 0))
+            }
+            .padding(.leading, CGFloat(depth) * 18)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(app.palette.field.opacity(0.55))
+        .accessibilityIdentifier("area.toggle.\(n.id)")
+        .accessibilityValue(expanded ? app.T("Đang mở", "Expanded") : app.T("Đang đóng", "Collapsed"))
+    }
+
+    private func selectRow(id: String, title: String, count: Int, depth: Int, legacy: Bool = false) -> some View {
+        let selected = app.area == id
+        return Button {
+            Haptics.selection()
+            app.area = LocationHierarchy.migrateSelection(id)
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).fontWeight(selected ? .semibold : .regular)
+                    if legacy { legacyCaption }
+                }
+                Spacer()
+                Text(countLabel(count)).font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.55))
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(app.palette.clay)
+                    .opacity(selected ? 1 : 0)
+                    .accessibilityHidden(!selected)
+            }
+            .padding(.leading, CGFloat(depth) * 18)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(app.palette.field.opacity(0.55))
+        .accessibilityIdentifier(accessibilityID(id))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private var legacyCaption: some View {
+        Text(app.T("Tên khu vực quen gọi", "Familiar area name"))
+            .font(.caption).foregroundStyle(app.palette.ink.opacity(0.55))
     }
 }
 

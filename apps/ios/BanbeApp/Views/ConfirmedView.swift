@@ -54,8 +54,9 @@ struct ConfirmedView: View {
     /// Booking journey step (note 48); hidden for expired/disputed bookings,
     /// which have left the happy path.
     private var journeyStep: Int? {
-        guard app.booking != nil, !isExpired, !isDisputed else { return nil }
-        if isPaid { return 4 }
+        // Only while the booking is still on its way: once the ticket is issued (paid/confirmed, gifted tickets
+        // included) the journey is over, so the progress bar goes away, like any finished checkout.
+        guard app.booking != nil, !isExpired, !isDisputed, !isPaid else { return nil }
         if isPendingVerification { return 3 }
         return 2
     }

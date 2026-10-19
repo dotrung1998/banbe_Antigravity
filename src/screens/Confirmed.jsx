@@ -233,8 +233,9 @@ export default function Confirmed() {
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px 30px 0' }}>
         {/* Note 48 (iOS parity): Event ✓ → Hold → Pay → Ticket; hidden once the booking left the happy path. */}
-        {s.booking && !isExpired && !isDisputed && (
-          <div style={{ marginBottom: 18 }}><BookingJourneyProgress current={isPaid ? 4 : isPendingVerification ? 3 : 2} T={T} /></div>
+        {/* Only while the booking is still on its way: once the ticket is issued it disappears (finished checkout). */}
+        {s.booking && !isExpired && !isDisputed && !isPaid && (
+          <div style={{ marginBottom: 18 }}><BookingJourneyProgress current={isPendingVerification ? 3 : 2} T={T} /></div>
         )}
         <span style={{ fontSize: 11.5, color: ink }}>{confirmEyebrow}</span>
         <h2 style={{ ...display(27, { lineHeight: 1.35, margin: '12px 0 0' }) }}>{confirmHeading}</h2>

@@ -1701,6 +1701,14 @@ extension AppState {
     /// Notifications is no longer a dock tab (Schedule took its slot, note 44),
     /// so it is a pushed screen that returns where it was opened from.
     func goNotifications(back: Screen? = nil) {
+        // From Home: slide in over the live Home instead of switching screens.
+        if screen == .home {
+            notificationsBack = .home
+            notificationsBurstPending = true
+            notificationsOverlayOpen = true   // NotificationsView animates its own burst out of the bell
+            Task { await loadNotifications() }
+            return
+        }
         if screen != .notifications { notificationsBack = back ?? screen }
         screen = .notifications
         Task { await loadNotifications() }

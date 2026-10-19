@@ -30,6 +30,7 @@ import { CategoryRow, HomeSearchBar, DiscoveryCard, DiscoveryRow, NextUpBanner }
 import HomeFilterSheet, { DATE_LABELS, RELAX_LABELS, SORT_LABELS } from './sheets/HomeFilterSheet.jsx';
 import SortMenu from './sheets/SortMenu.jsx';
 import PulseTicker from '../components/home/PulseTicker.jsx';
+import { setBellOrigin } from '../lib/bellOrigin.js';
 import {
   applyDiscoveryFilters, sortEvents, fillBadge, activeFilterCount, optionCounts, relaxationHints, DEFAULT_FILTERS,
 } from '../lib/homeDiscovery.js';
@@ -644,7 +645,8 @@ export default function Home() {
           {/* Note 44 web parity: Notifications left the dock (Schedule took its slot), so its bell lives here. */}
           <button
             type="button"
-            onClick={goNotifications}
+            // Remembers where the bell is so Notifications can burst out of it (src/lib/bellOrigin.js).
+            onClick={(e) => { setBellOrigin(e.currentTarget.getBoundingClientRect()); goNotifications(); }}
             data-testid="home-notifications"
             aria-label={s.unreadNotifications ? T(`Thông báo, ${s.unreadNotifications} chưa đọc`, `Notifications, ${s.unreadNotifications} unread`) : T('Thông báo', 'Notifications')}
             // 44px transparent tap target (negative margin: takes only 36px of layout) around a 36px glass circle.
@@ -700,7 +702,7 @@ export default function Home() {
         </button>
         </div>
         {/* A little breathing room under the search bar, like Map's own search field (iOS: 12pt). */}
-        <div style={{ marginBottom: 4 }}><HomeSearchBar onOpen={openSearch} T={T} /></div>
+        <div style={{ marginBottom: 4, opacity: s.searchOverlayOpen ? 0 : 1 }}><HomeSearchBar onOpen={openSearch} T={T} /></div>
         <PulseTicker pulse={s.pulseDaily} onOpen={openPulseViewer} T={T} />
       </div>
 

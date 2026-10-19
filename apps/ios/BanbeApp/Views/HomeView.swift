@@ -1295,6 +1295,12 @@ struct HomeNotificationsButton: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        // Where the bell is, so Notifications can burst out of it (and shrink back into it).
+        .background(GeometryReader { g in
+            Color.clear
+                .onAppear { app.homeBellFrame = g.frame(in: .global) }
+                .onChange(of: g.frame(in: .global)) { _, f in app.homeBellFrame = f }
+        })
         .accessibilityIdentifier("home.notifications")
         .accessibilityLabel(app.unreadNotifications > 0
             ? app.T("Thông báo, \(app.unreadNotifications) chưa đọc", "Notifications, \(app.unreadNotifications) unread")

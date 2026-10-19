@@ -160,6 +160,12 @@ extension AppState {
 
     func openSearch(from frame: CGRect? = nil) {
         searchEntranceFrom = (frame?.width ?? 0) > 0 ? frame : nil
+        // From Home: an overlay over the live Home (no screen switch, nothing unmounted or reloaded).
+        if screen == .home {
+            searchBackScreen = .home
+            searchOverlayOpen = true
+            return
+        }
         if screen != .search { searchBackScreen = screen }
         screen = .search
     }

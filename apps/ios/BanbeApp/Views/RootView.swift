@@ -369,6 +369,8 @@ struct RootView: View {
             // Search animates its own field up from Home's search bar (SearchView), so the screen itself only fades.
             return .opacity
         }
+        // Back from Search onto Home: Search has already glided its field down onto Home's bar, so Home just appears.
+        if screen == .home && app.searchClosingToHome { return .identity }
         if screen == .organizerProfile {
             return .asymmetric(insertion: .scale(scale: 0.9).combined(with: .opacity),
                                removal: .scale(scale: 0.88).combined(with: .opacity))
@@ -755,6 +757,18 @@ struct RootView: View {
             Color.clear
                 .frame(width: 0, height: 0)
                 .accessibilityIdentifier("screen.\(app.screen.rawValue)")
+
+            // Search over Home (AppState.searchOverlayOpen): Home stays mounted underneath. SearchView animates its own
+            // entrance/exit (backdrop fade, results dropping in from the top, field gliding to/from Home's bar).
+            if app.searchOverlayOpen && app.screen == .home {
+                SearchView(isOverlay: true).transition(.identity)
+            }
+            // Notifications over Home (AppState.notificationsOverlayOpen): slides in from the right over the live Home.
+            if app.notificationsOverlayOpen && app.screen == .home {
+                NotificationsView(isOverlay: true)
+                    .transition(.identity)   // it animates itself: a circle bursting out of / back into the bell
+                    .zIndex(4)
+            }
 
             // Check-in scanner pop-up (Pulse-style card over a scrim).
             if app.scanningQr { QRScannerView().transition(.identity) }

@@ -250,6 +250,10 @@ struct EventDetailView: View {
                     .background(GeometryReader { g in
                         Color.clear.preference(key: EventScrollOffsetKey.self, value: -g.frame(in: .named("eventScroll")).minY)
                     })
+                    // Remembers the offset per event and, when coming back (not a fresh open), puts it straight back.
+                    .background(ScaffoldScrollProbe(restoreOffsetY: app.eventOpening ? nil : app.eventScrollOffsets[event.key],
+                                                    onOffset: { [key = event.key] y in app.eventScrollOffsets[key] = y },
+                                                    onChange: { _, _ in }))
                 }
                 .coordinateSpace(name: "eventScroll")
                 .onPreferenceChange(EventScrollOffsetKey.self) { if #unavailable(iOS 18.0) { scrollOffset = $0 } }
@@ -283,10 +287,27 @@ struct EventDetailView: View {
             backShareRow.opacity(contentShown ? 1 : 0)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .modifier(dragPose)
+            // Left-edge swipe back: the page follows the finger with the same shrink as pull-down, and closes the same
+            // way as Back (into the card it came from) — never the generic sideways slide (RootView leaves .event alone).
+            Color.clear
+                .frame(width: 22)
+                .contentShape(Rectangle())
+                .gesture(edgeSwipeGesture)
+                .padding(.top, topInset + 64)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .ignoresSafeArea(edges: .bottom)
+                .accessibilityHidden(true)
         }
         // No card to come from (Map): the whole screen grows from / shrinks toward the middle of the screen.
         .scaleEffect(centerPose ? 0.84 + 0.16 * zoomT : 1)
         .onAppear {
+            // Coming BACK (host page, chat, Reserve…), not a fresh open: everything is simply already there, at the
+            // same scroll position — no grow-in, no fade, no pop.
+            guard app.eventOpening else {
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) { presented = true; contentShown = true }
+                return
+            }
             DispatchQueue.main.async {
                 withAnimation(.spring(response: 0.6, dampingFraction: 0.9)) { presented = true }
                 withAnimation(.easeOut(duration: 0.36).delay(zoomOrigin == nil ? 0 : 0.2)) { contentShown = true }
@@ -314,6 +335,39 @@ struct EventDetailView: View {
                 await app.recheckReservationEligibility(eventKey: event.key)
             }
         }
+    }
+
+    private var edgeSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .global)
+            .onChanged { value in
+                guard !isDismissing else { return }
+                let dx = value.translation.width
+                if !isDismissDragging {
+                    guard dx > 0, dx > abs(value.translation.height) else { return }
+                    isDismissDragging = true
+                }
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) {
+                    dismissDrag = max(0, dx)
+                    if !app.eventHasLiveUnderlay { app.eventDismissProgress = max(0.001, dismissProgress) }
+                }
+                let armed = dismissDrag > dismissCloseDistance
+                if armed != dismissArmed {
+                    dismissArmed = armed
+                    if armed { Haptics.light() }
+                }
+            }
+            .onEnded { value in
+                defer { dismissArmed = false }
+                guard isDismissDragging else { return }
+                isDismissDragging = false
+                if dismissDrag > dismissCloseDistance || value.predictedEndTranslation.width > 360 {
+                    closeAnimated()
+                } else {
+                    withAnimation(.spring(response: 0.46, dampingFraction: 0.86)) { dismissDrag = 0 }
+                    if app.eventDismissProgress != 0 { app.eventDismissProgress = 0 }
+                }
+            }
     }
 
     /// Pull down from the very top to close: the screen follows the finger (shrinking), and a long enough pull or a

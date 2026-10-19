@@ -27,11 +27,13 @@ export function pushRecent(list, q) {
 
 const ENDED_AFTER_MS = 12 * 3600000; // note 38: a live row 12h past its start is over
 
-export default function Search() {
+export default function Search({ overlay = false }) {
   const {
     state: s, set, T, goEvent, goHome, loadDiscoveryEvents, loadPulse, openOrganizerProfile, pickArea, locationTree, pickFilter,
   } = useBanBe();
   const [q, setQ] = useState(s.searchQuery || '');
+  // As an overlay, "leaving" just closes it (Home is already there underneath).
+  const leave = overlay ? () => set({ searchOverlayOpen: false }) : goHome;
   const [recent, setRecent] = useState(readRecent);
   const inputRef = useRef(null);
 
@@ -39,6 +41,7 @@ export default function Search() {
   // back button grows in and the rest of the page fades in. No origin (opened from elsewhere) = the usual fade-in.
   const [origin] = useState(() => takeSearchOrigin());
   const rootRef = useRef(null);
+  const headerRef = useRef(null);
   const backRef = useRef(null);
   const formRef = useRef(null);
   useLayoutEffect(() => {
@@ -50,11 +53,45 @@ export default function Search() {
     const dur = 420;
     backRef.current?.animate([{ width: '0px', marginRight: '-10px', opacity: 0 }, { width: '40px', marginRight: '0px', opacity: 1 }], { duration: dur, easing: ease });
     f.animate([{ transform: `translateY(${origin.top + (origin.height - r.height) / 2 - r.top}px)` }, { transform: 'none' }], { duration: dur, easing: ease });
-    rootRef.current?.querySelectorAll(':scope > :not([data-search-header])').forEach(el => {
-      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 180, easing: 'ease-out', fill: 'backwards' });
+    // Overlay: the paper fades in over the live Home, the header's own fill with it, and the results drop in from the top.
+    rootRef.current?.querySelectorAll(':scope > [data-search-backdrop]').forEach(el => {
+      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: 'ease-out' });
+    });
+    const h = headerRef.current;
+    if (overlay && h) {
+      const cs = getComputedStyle(h);
+      h.animate([{ backgroundColor: 'rgba(0,0,0,0)', borderBottomColor: 'rgba(0,0,0,0)' }, { backgroundColor: cs.backgroundColor, borderBottomColor: cs.borderBottomColor }], { duration: 300, easing: 'ease-out' });
+    }
+    rootRef.current?.querySelectorAll(':scope > :not([data-search-header]):not([data-search-backdrop])').forEach(el => {
+      el.animate([{ opacity: 0, transform: overlay ? 'translateY(-24px)' : 'none' }, { opacity: 1, transform: 'none' }], { duration: 300, delay: 140, easing: ease, fill: 'backwards' });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Back: when Search came from Home's bar, the field glides back down onto it (the reverse of the entrance) and the
+  // rest fades, then Home takes over.
+  const closingRef = useRef(false);
+  const close = () => {
+    const f = formRef.current;
+    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!origin || !f?.animate || reduce) { leave(); return; }
+    if (closingRef.current) return;
+    closingRef.current = true;
+    inputRef.current?.blur();
+    const r = f.getBoundingClientRect();
+    const ease = 'cubic-bezier(.4,0,.2,1)';
+    const dur = 320;
+    backRef.current?.animate([{ width: '40px', marginRight: '0px', opacity: 1 }, { width: '0px', marginRight: '-10px', opacity: 0 }], { duration: dur, easing: ease, fill: 'forwards' });
+    f.animate([{ transform: 'none' }, { transform: `translateY(${origin.top + (origin.height - r.height) / 2 - r.top}px)` }], { duration: dur, easing: ease, fill: 'forwards' });
+    rootRef.current?.querySelectorAll(':scope > :not([data-search-header]):not([data-search-backdrop])').forEach(el => {
+      el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: overlay ? 'translateY(-24px)' : 'none' }], { duration: 200, easing: 'ease-in', fill: 'forwards' });
+    });
+    rootRef.current?.querySelectorAll(':scope > [data-search-backdrop]').forEach(el => {
+      el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: dur, easing: ease, fill: 'forwards' });
+    });
+    const h = headerRef.current;
+    if (overlay && h) h.animate([{}, { backgroundColor: 'rgba(0,0,0,0)', borderBottomColor: 'rgba(0,0,0,0)' }], { duration: dur, easing: ease, fill: 'forwards' });
+    setTimeout(leave, dur - 20);
+  };
   // The keyboard comes up once the field has (nearly) landed, not on top of the glide.
   useEffect(() => {
     if (!origin) { inputRef.current?.focus(); return undefined; }
@@ -127,9 +164,13 @@ export default function Search() {
   );
 
   return (
-    <div ref={rootRef} data-screen-label="Search" style={{ minHeight: '100%', background: paper, color: ink, paddingBottom: 120, animation: origin ? undefined : 'banbeIn 0.25s ease both' }}>
-      <div data-search-header style={{ padding: '58px 16px 10px', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: paper, zIndex: 2, borderBottom: `1px solid ${rule}` }}>
-        <button ref={backRef} type="button" onClick={goHome} aria-label={T('Quay lại', 'Back')} data-testid="search-back"
+    <div ref={rootRef} data-screen-label="Search"
+      style={overlay
+        ? { position: 'fixed', inset: 0, zIndex: 45, overflowY: 'auto', color: ink, paddingBottom: 120, animation: origin ? undefined : 'banbeFade 0.2s ease both' }
+        : { minHeight: '100%', background: paper, color: ink, paddingBottom: 120, animation: origin ? undefined : 'banbeIn 0.25s ease both' }}>
+      {overlay && <div data-search-backdrop aria-hidden style={{ position: 'fixed', inset: 0, background: paper, zIndex: -1 }} />}
+      <div ref={headerRef} data-search-header style={{ padding: '58px 16px 10px', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: paper, zIndex: 2, borderBottom: `1px solid ${rule}` }}>
+        <button ref={backRef} type="button" onClick={close} aria-label={T('Quay lại', 'Back')} data-testid="search-back"
           style={{ overflow: 'hidden', width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'rgba(var(--bb-fg-rgb),0.07)', color: ink, fontSize: 20, cursor: 'pointer', flex: 'none' }}>‹</button>
         <form ref={formRef} onSubmit={(e) => { e.preventDefault(); commit(); inputRef.current?.blur(); }} style={{ flex: 1, display: 'flex' }}>
           <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} type="search" enterKeyHint="search" data-testid="search-input"
@@ -199,7 +240,7 @@ export default function Search() {
           {hostHits.length > 0 && groupTitle(T('Host', 'Hosts'), hostHits.length, 'search-group-hosts')}
           {hostHits.map(h => (
             <button key={h.name} type="button" data-testid="search-host"
-              onClick={() => { commit(); if (h.organizerId) openOrganizerProfile(h.organizerId, 'search'); else setQ(h.name); }}
+              onClick={() => { commit(); if (h.organizerId) openOrganizerProfile(h.organizerId, overlay ? 'home' : 'search'); else setQ(h.name); }}
               style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '6px 20px 10px', border: 'none', background: 'none', color: ink, fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
               <span style={{ width: 40, height: 40, borderRadius: '50%', flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, background: 'rgba(var(--bb-fg-rgb),0.08)' }}>{h.name.charAt(0).toUpperCase()}</span>
               <span style={{ flex: 1, minWidth: 0 }}>

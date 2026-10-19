@@ -575,6 +575,8 @@ const initialState = {
   homeFilterSheetOpen: false,
   eventFill: {},
   searchQuery: '',
+  searchOverlayOpen: false,
+  notificationsOverlayOpen: false,
   // Platform feature flags (migration 187, note 51). Platform-level, so NOT reset on sign-out. Seeded from the last
   // answer cached on this device; a missing key means "on" (src/lib/featureFlags.js).
   featureFlags: readCachedFlags(),
@@ -6202,7 +6204,7 @@ export function BanBeProvider({ children }) {
   }, [set, s.user?.id, applyOrganizerMode]);
 
   // ---- navigation ----
-  const goHome = useCallback(() => set({ screen: 'home' }), [set]);
+  const goHome = useCallback(() => set({ screen: 'home', searchOverlayOpen: false, notificationsOverlayOpen: false }), [set]);
 
   // ---- Note 44/45 web parity: banbe Schedule ----
   const scheduleUid = s.user?.id || null;
@@ -6279,7 +6281,9 @@ export function BanBeProvider({ children }) {
   // input immediately.
   const openEventSearch = useCallback(() => set({ screen: 'mapExplore', mapExploreState: { focusSearch: true } }), [set]);
   // Discovery Home (note 50): the Home search bar opens the Search screen (/search), not Map.
-  const openSearch = useCallback(() => set({ screen: 'search' }), [set]);
+  // From Home, Search is an OVERLAY over the live Home (App.jsx): no screen switch, so opening never flashes a blank
+  // page and closing never remounts/reloads Home. From anywhere else it is still its own /search screen.
+  const openSearch = useCallback(() => set(prev => (prev.screen === 'home' ? { searchOverlayOpen: true } : { screen: 'search' })), [set]);
   const setHomeFilters = useCallback((next) => set(prev => ({
     homeFilters: { ...HOME_DEFAULT_FILTERS, ...(typeof next === 'function' ? next(prev.homeFilters) : next) },
   })), [set]);
@@ -7973,10 +7977,15 @@ export function BanBeProvider({ children }) {
   // Note 44 web parity: Notifications left the dock (Schedule took its slot) and is a pushed screen; Back returns to
   // wherever it was opened from (Home bell, Account row, Action Center "See all", a deep link -> Home).
   const goNotifications = useCallback(() => {
-    set(prev => ({ screen: 'notifications', notificationsBack: prev.screen === 'notifications' ? prev.notificationsBack : prev.screen }));
+    // From Home's bell: an overlay over the live Home (App.jsx), like Search — Home is never unmounted or reloaded.
+    set(prev => (prev.screen === 'home'
+      ? { notificationsOverlayOpen: true, notificationsBack: 'home' }
+      : { screen: 'notifications', notificationsBack: prev.screen === 'notifications' ? prev.notificationsBack : prev.screen }));
     loadNotifications();
   }, [set, loadNotifications]);
-  const backFromNotifications = useCallback(() => set(prev => ({ screen: prev.notificationsBack && prev.notificationsBack !== 'notifications' ? prev.notificationsBack : 'home' })), [set]);
+  const backFromNotifications = useCallback(() => set(prev => (prev.notificationsOverlayOpen && prev.screen === 'home'
+    ? { notificationsOverlayOpen: false }
+    : { screen: prev.notificationsBack && prev.notificationsBack !== 'notifications' ? prev.notificationsBack : 'home' })), [set]);
   // Marks one notification read — never all of them at once, and never just
   // from opening the screen. Read status is the visible signal of "have I
   // actually looked at this one", so it has to follow an actual tap on that

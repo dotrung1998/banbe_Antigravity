@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { takeBellOrigin } from '../lib/bellOrigin.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { agoLabel, bg } from '../data/events.js';
 import { avatarSourceFor, notificationAgeBucket, groupNotificationsByDay, collapseDayGroups } from '../lib/notifications.js';
@@ -118,12 +119,43 @@ function classifyAtLoad(n, now) {
   return !n.read_at ? 'new' : notificationAgeBucket(n.created_at, now);
 }
 
-export default function Notifications() {
+export default function Notifications({ overlay = false }) {
   const {
     state, T, trStatus, goHome, backFromNotifications, openNotification, deleteNotification, deleteNotifications,
     markNotificationRead, markNotificationUnread, muteNotificationKind,
   } = useBanBe();
   const s = state;
+  const rootRef = useRef(null);
+  // Opened from Home's bell: the page bursts out of the bell as a growing circle (like a droplet), and shrinks back
+  // into it on Back. No bell (or Reduce Motion): it slides in/out from the right instead.
+  const [bell] = useState(() => (overlay ? takeBellOrigin() : null));
+  const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const burst = !!bell && !reduceMotion;
+  const circle = (r) => {
+    const cx = bell.left + bell.width / 2; const cy = bell.top + bell.height / 2;
+    return `circle(${r}px at ${cx}px ${cy}px)`;
+  };
+  const fullRadius = () => {
+    const cx = bell.left + bell.width / 2; const cy = bell.top + bell.height / 2;
+    return Math.hypot(Math.max(cx, window.innerWidth - cx), Math.max(cy, window.innerHeight - cy)) + 8;
+  };
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!burst || !el?.animate) return;
+    el.animate([{ clipPath: circle(bell.width / 2) }, { clipPath: circle(fullRadius()) }], { duration: 520, easing: 'cubic-bezier(.2,.9,.25,1)' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const leave = () => {
+    const el = rootRef.current;
+    if (!overlay || !el?.animate) { backFromNotifications(); return; }
+    if (burst) {
+      el.animate([{ clipPath: circle(fullRadius()) }, { clipPath: circle(bell.width / 2) }], { duration: 380, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' });
+      setTimeout(backFromNotifications, 360);
+      return;
+    }
+    el.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(100%)' }], { duration: 260, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
+    setTimeout(backFromNotifications, 240);
+  };
   // Which sections have had their "Xem thêm" tapped — purely a render-time
   // slice of already-loaded data (loadNotifications() fetches up to 50 at
   // once), so a plain local Set is enough; nothing here needs a new query.
@@ -231,13 +263,18 @@ export default function Notifications() {
   };
 
   return (
-    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Notifications">
+    <div ref={rootRef} data-screen-label="Notifications"
+      style={overlay
+        // Over the live Home: slides in from the right (and back out on Back), Home untouched underneath.
+        // No bell origin = coming back to it (after opening a notification): simply there, no entrance.
+        ? { position: 'fixed', inset: 0, zIndex: 45, overflowY: 'auto', background: paper }
+        : { animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }}>
       {/* Note 44 web parity: a pushed screen now (Schedule took its dock slot), so it has its own Back. */}
       <div style={{ padding: '58px 24px 0' }}>
-        <button type="button" onClick={backFromNotifications} data-testid="notifications-back"
+        <button type="button" onClick={leave} data-testid="notifications-back"
           style={{ background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</button>
       </div>
-      <div style={{ padding: '10px 24px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+      <div style={{ padding: '10px 24px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 20 }}>
         {/* iOS parity: wordmark BEFORE the title, inline (hidden while the
             search field is showing). Search input replaces the title,
             mirroring Inbox.jsx's own search-open state. */}
@@ -257,7 +294,8 @@ export default function Notifications() {
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
             <HeaderWordmark />
-            <span style={{ ...display(27), lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {/* Always the whole word on one line: the size shrinks with the screen width instead of "Notificati…". */}
+            <span style={{ ...display(27), fontSize: 'clamp(17px, 4.6vw, 27px)', lineHeight: 1.1, whiteSpace: 'nowrap', flex: 'none' }}>
               {selectionMode ? T('Đang Chọn', 'Selecting') : T('Thông Báo', 'Notifications')}
             </span>
           </div>

@@ -490,8 +490,26 @@ final class AppState: ObservableObject {
     /// The Search screen's query, kept while it's open.
     @Published var searchQuery = ""
     @Published var searchBackScreen: Screen = .home
+    /// Search opened from Home is an OVERLAY on top of Home (RootView), not a screen switch: Home stays mounted, so
+    /// opening never flashes a blank page and closing never rebuilds Home (no reload stutter).
+    @Published var searchOverlayOpen = false
+    /// Notifications opened from Home's bell: an overlay over the live Home (RootView), like Search — no screen
+    /// switch, so Home is never unmounted or rebuilt.
+    @Published var notificationsOverlayOpen = false
+    /// Home's bell frame (global), kept current by HomeNotificationsButton: Notifications bursts out of it and shrinks
+    /// back into it. Not @Published: nothing re-renders for it.
+    var homeBellFrame: CGRect = .zero
+    /// Set by a fresh tap on the bell; consumed by NotificationsView's first appearance, so coming BACK to the overlay
+    /// (after opening a notification) shows it in place instead of bursting out of the bell again.
+    var notificationsBurstPending = false
     /// Home's search bar frame (global), kept current by HomeSearchBar. Not @Published: nothing re-renders for it.
     var homeSearchBarFrame: CGRect = .zero
+    /// True for the moment Search closes back onto Home's bar (Search glides its field down first), so RootView brings
+    /// Home back without its usual slide.
+    var searchClosingToHome = false
+    /// Event Detail's last scroll offset per event key, so coming BACK to it (from the host page, chat, Reserve…)
+    /// lands exactly where it was. A fresh open (`goEvent`) forgets it. Not @Published: written while scrolling.
+    var eventScrollOffsets: [String: CGFloat] = [:]
     /// Set by `openSearch(from:)` when Search is opened from Home's bar: Search's own field starts there and glides
     /// up into its header. nil = no entrance motion (opened from anywhere else).
     var searchEntranceFrom: CGRect?
@@ -2910,7 +2928,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    func goHome() { screen = .home }
+    func goHome() { searchOverlayOpen = false; notificationsOverlayOpen = false; screen = .home }
     func goMapExplore() { screen = .mapExplore }
     /// Dock tap on Account starts fresh (search closed); coming BACK from a
     /// search result does not go through here, so its search is kept.
@@ -2971,6 +2989,7 @@ final class AppState: ObservableObject {
         // its last render), so it never slides away to the side; the switch therefore waits one turn.
         // Map: no card to zoom from (the event just opens from the centre of the screen, and Map comes back fresh).
         eventOriginRect = (screen == .mapExplore) ? nil : zoomOrigin(for: key)
+        eventScrollOffsets[key] = nil
         eventOpening = true
         eventOpenTick += 1
         // Only THIS open's timer may end it: an open -> close -> reopen inside 1.4s used to have the first open's
@@ -3592,6 +3611,8 @@ final class AppState: ObservableObject {
         switch screen {
         case .splash, .langPick, .themePick, .home, .login, .welcome: return false
         case .create: return !isCreateReviewOpen
+        // Event Detail runs its own left-edge swipe, which closes with the same shrink as pull-down / Back.
+        case .event: return false
         default: return true
         }
     }

@@ -114,6 +114,9 @@ struct HomeSearchBar: View {
             .background { Color.clear.nativeGlassCapsule(interactive: true) }
             .contentShape(Capsule())
         }
+        // Hidden while the Search overlay is open: its own field IS this bar, lifted into its header (and set back
+        // down here on close), so there is never a second copy showing through.
+        .opacity(app.searchOverlayOpen ? 0 : 1)
         // Where the bar is on screen, so Search can start its own field right here (the glide-up entrance).
         .background(GeometryReader { g in
             Color.clear

@@ -721,6 +721,10 @@ function Shell() {
             );
           })}
         </div>
+        {/* Search over Home (openSearch): Home stays mounted underneath — no blank flash, no reload on close. */}
+        {state.searchOverlayOpen && state.screen === 'home' && <Search overlay />}
+        {/* Notifications over Home (goNotifications from the bell): slides in from the right over the live Home. */}
+        {state.notificationsOverlayOpen && state.screen === 'home' && <Notifications overlay />}
         {state.areaAsking && <AreaSheet />}
         {state.areaMenuOpen && <AreaMenu />}
         {state.askingLocation && <LocationSheet />}

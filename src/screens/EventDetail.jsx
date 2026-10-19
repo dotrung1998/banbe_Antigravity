@@ -61,6 +61,10 @@ const Tile = ({ icon, label, action, testId, children }) => (
 const IconDirections = () => (<svg {...ico} width={15} height={15} strokeWidth={2}><path d="M7 17 17 7M9 7h8v8" /></svg>);
 const pillBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: RADIUS.pill, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' };
 
+// The event this screen last showed and how far it was scrolled, so coming BACK to it (host page, chat, Reserve…) lands
+// exactly where it was, with no re-entrance animation. Cleared when the event is closed (Back / pull-down).
+let lastVisit = null;
+
 export default function EventDetail() {
   const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, setQty, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
   const s = state;
@@ -74,6 +78,9 @@ export default function EventDetail() {
   // Zoom out of the tapped card (and back into it on close), like iOS. `null` when opened from anywhere without one.
   const zoomRef = useRef(undefined);
   if (zoomRef.current === undefined) zoomRef.current = recentZoomOrigin();
+  // A return (not a fresh open from a card): the saved scroll offset; null for a fresh open.
+  const returnRef = useRef(undefined);
+  if (returnRef.current === undefined) returnRef.current = !zoomRef.current && lastVisit?.key === ev.key ? lastVisit.scrollTop : null;
   const zoomPose = (o, R) => {
     const sc = Math.max(0.05, o.width / R.width);
     return {
@@ -98,9 +105,17 @@ export default function EventDetail() {
   }, []);
   // A small physical tap (where the device supports it) as the screen opens and closes, like iOS.
   const buzz = () => { try { navigator.vibrate?.(10); } catch { /* unsupported */ } };
-  useEffect(() => { buzz(); }, []);
+  useEffect(() => { if (returnRef.current == null) buzz(); }, []);
+  // Coming back: put the scroll position straight back (and the title/nav-bar state with it) before the first paint.
+  useLayoutEffect(() => {
+    const sc = scrollerRef.current;
+    if (returnRef.current == null) { lastVisit = { key: ev.key, scrollTop: 0 }; return; }
+    if (sc) { sc.scrollTop = returnRef.current; onSheetScroll({ currentTarget: sc }); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Close with the same shrink-and-fade the pull-down finishes with, then navigate back.
   const closeWithShrink = () => {
+    lastVisit = null;
     const card = cardRef.current;
     const d = dragRef.current;
     if (d.closing) return;
@@ -327,7 +342,7 @@ export default function EventDetail() {
   };
   const onSheetScroll = (e) => {
     const t = Math.max(0, e.currentTarget.scrollTop);
-    // Fades only part-way: the strip left above the pulled-up info stays clearly visible.
+    lastVisit = { key: ev.key, scrollTop: t };
     // Fades only part-way while the strip is visible; gone once the solid nav bar covers it (so the photo never peeks
     // through the sheet's rounded top corners under the bar).
     const p = titleProgress(t);
@@ -425,7 +440,7 @@ export default function EventDetail() {
     // with percentage heights, so the sheet below scrolls INSIDE this screen instead of the page growing.
     <div style={{ position: 'absolute', inset: 0 }} data-screen-label="Event">
       <div ref={dimRef} aria-hidden style={{ position: 'fixed', inset: 0, background: 'rgb(12,12,12)', opacity: 0, pointerEvents: 'none', zIndex: 0 }} />
-    <div ref={cardRef} style={{ animation: zoomRef.current ? undefined : 'banbeEventIn 0.55s cubic-bezier(.34,1.2,.5,1) backwards', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
+    <div ref={cardRef} style={{ animation: (zoomRef.current || returnRef.current != null) ? undefined : 'banbeEventIn 0.55s cubic-bezier(.34,1.2,.5,1) backwards', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
       <div data-fade aria-hidden style={{ position: 'absolute', inset: 0, background: paper, zIndex: -1 }} />
       {/* Task 3 (14-photo-viewer.md follow-up notes / 06-design-tokens.md):
           moved out of the photo header (which scrolls away with the rest
