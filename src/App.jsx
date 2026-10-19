@@ -642,7 +642,10 @@ function Shell() {
         onPointerUp={endGesture}
         onPointerCancel={cancelGesture}
         style={{
-          width: '100%', maxWidth: 480, height: '100%', position: 'relative', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--bb-bg)',
+          width: '100%', maxWidth: 480, height: '100%', position: 'relative', WebkitOverflowScrolling: 'touch', background: 'var(--bb-bg)',
+          // Event Detail scrolls inside itself; the screen it was opened from (kept mounted beneath it) must never
+          // scroll underneath — a drag starting on the Reserve / View-ticket bar used to scroll Home's feed.
+          overflowY: state.screen === 'event' ? 'hidden' : 'auto',
           // Stage 2 — 'pan-y' keeps native vertical scrolling completely
           // untouched while telling the browser NOT to natively claim
           // horizontal drags on this element, leaving those free for our

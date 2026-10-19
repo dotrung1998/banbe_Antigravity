@@ -613,7 +613,8 @@ export default function Home() {
           button, then a row of three equal glass capsules (language, area,
           theme). Search lives here again (same openEventSearch action and
           data-testid as the old floating button). */}
-      <div style={{ padding: '62px 20px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Pinned like iOS (HomeView's `header` sits above its ScrollView): stays put while the feed scrolls under it. */}
+      <div data-testid="home-fixed-header" style={{ padding: '62px 20px 8px', display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
         <div ref={headerRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: shortcutsOn ? HEADER.wordmarkGap : 10, minWidth: 0 }}>
             {layout.wordmark > 0 && <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: layout.wordmark, height: 'auto', display: 'block', flex: 'none' }} />}
@@ -703,8 +704,9 @@ export default function Home() {
         </div>
         {/* A little breathing room under the search bar, like Map's own search field (iOS: 12pt). */}
         <div style={{ marginBottom: 4, opacity: s.searchOverlayOpen ? 0 : 1 }}><HomeSearchBar onOpen={openSearch} T={T} /></div>
-        <PulseTicker pulse={s.pulseDaily} onOpen={openPulseViewer} T={T} />
       </div>
+      {/* First thing in the scrolling feed, like iOS (PulseTickerView at the top of the LazyVStack). */}
+      <div style={{ padding: '0 20px' }}><PulseTicker pulse={s.pulseDaily} onOpen={openPulseViewer} T={T} /></div>
 
       {/* TASK A (2026-10-01 UX foundation pass) — replaces the old fixed
           four-banner block: one unified, priority-sorted, 3-card-capped

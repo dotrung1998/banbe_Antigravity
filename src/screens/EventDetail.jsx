@@ -682,7 +682,7 @@ export default function EventDetail() {
       </div>
       {/* Sticky action area (mockup): seat chips + stepper, the refund promise, and the CTA with the live total —
           always on screen, so the decision can happen wherever the reader is convinced. Reserve opens pre-filled. */}
-      <div data-fade data-testid="event-action-area" style={{ flex: 'none', position: 'relative', zIndex: 2, background: paper, borderRadius: '22px 22px 0 0', boxShadow: '0 -8px 24px rgba(27,25,22,0.10)', padding: '12px 16px calc(12px + env(safe-area-inset-bottom, 0px))' }}>
+      <div data-fade data-testid="event-action-area" style={{ touchAction: 'none', overscrollBehavior: 'contain', flex: 'none', position: 'relative', zIndex: 2, background: paper, borderRadius: '22px 22px 0 0', boxShadow: '0 -8px 24px rgba(27,25,22,0.10)', padding: '12px 16px calc(12px + env(safe-area-inset-bottom, 0px))' }}>
         {barState === 'reserve' && (
           <div data-testid="event-qty" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
             <div role="radiogroup" aria-label={T('Số vé', 'Tickets')} style={{ display: 'flex', gap: 6, minWidth: 0 }}>

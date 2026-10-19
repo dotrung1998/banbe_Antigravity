@@ -281,6 +281,8 @@ export default function Schedule() {
     <div data-screen-label="Schedule" data-hscroll style={{ minHeight: '100%', background: paper, color: ink, paddingBottom: 140 }}>
       {/* iOS parity (2026-10-18): logo + title on their own row; the month button ("📅 October 2026 ⌄") and
           Today sit on the row below, like ScheduleView's header. */}
+      {/* Pinned like iOS ScheduleView: title, month/Today, Mine/Discover and the week strip stay put; the agenda scrolls. */}
+      <div data-testid="schedule-fixed-header" style={{ position: 'sticky', top: 0, zIndex: 6, background: paper, paddingBottom: 8 }}>
       <div style={{ padding: '58px 20px 0', display: 'flex', alignItems: 'center', gap: 14 }}>
         <img src="/banbe-wordmark.png" alt="banbe" style={{ width: 96, height: 'auto', display: 'block', flex: 'none' }} />
         <h1 data-testid="schedule-title" style={display(27, { margin: 0, flex: 1, minWidth: 0 })}>{T('Lịch', 'Schedule')}</h1>
@@ -355,6 +357,7 @@ export default function Schedule() {
             <span aria-hidden style={{ width: 36, height: 4, borderRadius: 2, background: muted(0.22) }} />
           </button>
         </div>
+      </div>
       </div>
 
       <div onPointerDown={onSwipeDown('list')} onPointerMove={onSwipeMove} onPointerUp={onSwipeUp} onPointerCancel={onSwipeCancel}

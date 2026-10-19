@@ -308,7 +308,8 @@ export default function Inbox() {
 
   return (
     <div style={{ position: 'relative', animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Inbox">
-      <div style={{ padding: '62px 24px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+      {/* Pinned like iOS: the title row stays put while the conversations scroll under it. */}
+      <div data-testid="inbox-fixed-header" style={{ padding: '62px 24px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
         {searchOpen ? (
           <input
             autoFocus
