@@ -7,6 +7,7 @@
 import { ink, display, fieldGlass, cardGlass, CHIP_COLORS, photoChip, lightChip, RADIUS } from '../../theme.js';
 import { bg } from '../../data/events.js';
 import { REMINDER_CSS } from '../../lib/eventReminder.js';
+import { setSearchOrigin } from '../../lib/searchOrigin.js';
 
 // ---- category glyphs: one stroke weight, line style, original drawings -------------------
 const GLYPH_PATHS = {
@@ -67,7 +68,8 @@ export function CategoryRow({ values = [], onPick, T }) {
 /** Full-width search entry. The placeholder says what you can actually search for. */
 export function HomeSearchBar({ onOpen, T }) {
   return (
-    <button type="button" onClick={onOpen} data-testid="home-search-bar"
+    // Remembers where the bar is so Search can glide its own field up from here (src/lib/searchOrigin.js).
+    <button type="button" onClick={(e) => { setSearchOrigin(e.currentTarget.getBoundingClientRect()); onOpen(); }} data-testid="home-search-bar"
       aria-label={T('Tìm sự kiện, host, khu vực', 'Search events, hosts, areas')}
       style={{ ...fieldGlass({ borderRadius: RADIUS.pill }), height: 46, width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px', border: 'none', cursor: 'text', color: ink, fontFamily: 'inherit', textAlign: 'left' }}>
       <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7, flex: 'none' }}>

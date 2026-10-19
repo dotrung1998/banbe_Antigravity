@@ -139,10 +139,20 @@ struct PhotoViewerView: View {
         }
     }
 
+    /// Where to shrink back to: the thumbnail of the photo showing NOW (the user may have swiped away from the one they
+    /// tapped), if it is on screen; the open-time rect only when it is still that same photo; otherwise a small rect in
+    /// the middle, so the photo zooms out in place instead of flying onto the wrong thumbnail.
+    private var closeTarget: CGRect {
+        let screen = UIScreen.main.bounds
+        if let r = app.photoThumbFrames[item.current.id], r.width > 0, r.height > 0, screen.intersects(r) { return r }
+        if item.current.id == item.originID, item.originRect.width > 0 { return item.originRect }
+        return CGRect(x: photoRect.midX - 24, y: photoRect.midY - 24, width: 48, height: 48)
+    }
+
     private func dismiss() {
         guard dismissTransform == nil else { return }
         guard photoRect.width > 0, photoRect.height > 0 else { app.closePhoto(); return }
-        let o = item.originRect
+        let o = closeTarget
         let scale = CGSize(width: o.width / photoRect.width, height: o.height / photoRect.height)
         let offset = CGSize(width: o.midX - photoRect.midX, height: o.midY - photoRect.midY)
         withAnimation(dismissAnimation) {

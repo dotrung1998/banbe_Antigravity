@@ -337,7 +337,7 @@ export default function OrganizerProfile() {
         ) : orgPhotos.length ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 14 }}>
             {orgPhotos.map((p, i) => (
-              <div key={p.id} onClick={(e) => openPhoto(orgPhotos, i, org.name, e.currentTarget.getBoundingClientRect())} style={{ position: 'relative', cursor: 'pointer' }}>
+              <div key={p.id} data-photo-thumb={p.id} onClick={(e) => openPhoto(orgPhotos, i, org.name, e.currentTarget.getBoundingClientRect())} style={{ position: 'relative', cursor: 'pointer' }}>
                 <div style={bg(p.url, { width: '100%', height: 158 })} />
                 {s.photoEngagement[p.id]?.likedByMe && (
                   <span style={{ position: 'absolute', top: 8, right: 8, color: '#fff', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.55))', pointerEvents: 'none' }}>

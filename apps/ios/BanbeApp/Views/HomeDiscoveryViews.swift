@@ -96,7 +96,7 @@ struct HomeSearchBar: View {
     var body: some View {
         SwipeSafeButton {
             Haptics.light()
-            app.openSearch()
+            app.openSearch(from: app.homeSearchBarFrame)
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
@@ -114,6 +114,12 @@ struct HomeSearchBar: View {
             .background { Color.clear.nativeGlassCapsule(interactive: true) }
             .contentShape(Capsule())
         }
+        // Where the bar is on screen, so Search can start its own field right here (the glide-up entrance).
+        .background(GeometryReader { g in
+            Color.clear
+                .onAppear { app.homeSearchBarFrame = g.frame(in: .global) }
+                .onChange(of: g.frame(in: .global)) { _, f in app.homeSearchBarFrame = f }
+        })
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(app.T("Tìm sự kiện, host, khu vực", "Search events, hosts, areas"))

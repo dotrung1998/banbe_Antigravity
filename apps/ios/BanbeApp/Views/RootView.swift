@@ -365,6 +365,10 @@ struct RootView: View {
             // Event Detail animates itself (zooming out of / back into the tapped card), so no transition here.
             return .asymmetric(insertion: .identity, removal: .opacity)
         }
+        if screen == .search {
+            // Search animates its own field up from Home's search bar (SearchView), so the screen itself only fades.
+            return .opacity
+        }
         if screen == .organizerProfile {
             return .asymmetric(insertion: .scale(scale: 0.9).combined(with: .opacity),
                                removal: .scale(scale: 0.88).combined(with: .opacity))

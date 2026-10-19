@@ -130,6 +130,11 @@ struct UITestFixtureRoot: View {
         case "create":
             configureCreateDraft()
             app.screen = .create
+        case "event":
+            // Event Detail on a long catalogue event (included items, photos, long description), so scrolling
+            // reaches the collapsing nav bar (note 52).
+            app.screen = .home
+            app.goEvent("bepnho")
         default: app.screen = .home
         }
     }

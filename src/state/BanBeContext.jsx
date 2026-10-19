@@ -3138,7 +3138,9 @@ export function BanBeProvider({ children }) {
     const rect = originRect
       ? { top: originRect.top, left: originRect.left, width: originRect.width, height: originRect.height }
       : null;
-    set({ photoViewer: { gallery, index, organizer, originRect: rect } });
+    // `originId`: which photo `originRect` belongs to — after swiping to another photo, PhotoViewer shrinks back onto
+    // THAT photo's own thumbnail (data-photo-thumb), never onto the one originally tapped.
+    set({ photoViewer: { gallery, index, organizer, originRect: rect, originId: gallery?.[index]?.id ?? null } });
   }, [set]);
   const closePhoto = useCallback(() => set({ photoViewer: null }), [set]);
   const showPhotoAt = useCallback((index) => set(prev => {

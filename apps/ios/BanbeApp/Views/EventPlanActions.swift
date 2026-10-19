@@ -42,7 +42,7 @@ struct EventPlanTitleRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(event.name)
-                    .font(BanbeTheme.display(29))
+                    .font(BanbeTheme.display(28))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if available {
                     planMenu
@@ -77,7 +77,7 @@ struct EventPlanTitleRow: View {
 
     private var added: Bool { source != nil || appleMarked }
 
-    private var statusLabel: String { added ? app.T("Đã thêm", "Added") : app.T("Khám phá", "Discover") }
+    private var statusLabel: String { added ? app.T("Đã thêm", "Added") : app.T("Thêm lịch", "Add to calendar") }
 
     private var planMenu: some View {
         // Compact (2026-10-18): one 36pt glass pill — calendar icon(s) + status — so the title row is only as
@@ -86,7 +86,7 @@ struct EventPlanTitleRow: View {
             HStack(spacing: 6) {
                 Image(systemName: source != nil ? "calendar.badge.checkmark" : "calendar.badge.plus")
                 if appleMarked {
-                    Rectangle().fill(app.palette.ink.opacity(0.18)).frame(width: 1, height: 16)
+                    Rectangle().fill(app.palette.clay.opacity(0.35)).frame(width: 1, height: 16)
                     Image(systemName: "calendar")
                 }
                 Text(statusLabel)
@@ -94,10 +94,11 @@ struct EventPlanTitleRow: View {
                     .lineLimit(1)
             }
             .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(app.palette.ink)
+            // Outlined clay pill (note 52 mockup): a secondary action beside the title, never a second CTA.
+            .foregroundStyle(app.palette.clay)
             .padding(.horizontal, 12)
-            .frame(height: 36)
-            .nativeGlass(Capsule(), interactive: true)
+            .frame(height: 34)
+            .overlay(Capsule().stroke(app.palette.clay, lineWidth: 1))
             .fixedSize()
             .frame(minHeight: 44)          // keeps a 44pt tap target without adding visual height
             .contentShape(Rectangle())
@@ -111,7 +112,7 @@ struct EventPlanTitleRow: View {
         var parts: [String] = []
         if let source { parts.append(app.T("Trong lịch banbe (\(source.label(app.T)))", "In banbe Schedule (\(source.label(app.T)))")) }
         if appleMarked { parts.append(app.T("Đã lưu vào Lịch Apple", "Saved to Apple Calendar")) }
-        return parts.isEmpty ? app.T("Khám phá. Thêm vào lịch", "Discover. Add to calendar") : parts.joined(separator: ", ")
+        return parts.isEmpty ? app.T("Thêm lịch", "Add to calendar") : parts.joined(separator: ", ")
     }
 
     @ViewBuilder

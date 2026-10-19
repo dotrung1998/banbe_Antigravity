@@ -743,3 +743,11 @@ Three real-device bugs reported against 7210059's new Inbox controls, fixed on b
 **Bug 3 — read-row name/preview weight hierarchy**: both platforms previously dropped the READ row's name font-weight (700→600 web, `.bold`→`.semibold` iOS) as its ONLY de-emphasis signal, with no opacity/color change on the name itself — visually it just looked "slightly less bold," not clearly de-emphasized, and gave no headroom to de-emphasize further without risking dropping under the preview text's own weight. Fixed on both platforms: the name's font-weight is now FIXED (`700`/`.semibold`) across both unread and read states — "stays bold" — and de-emphasis is done entirely via opacity/color instead (web: `opacity: unread ? 1 : 0.62` on the name span, `display()`'s existing `ink` color; iOS: `.foregroundStyle(app.palette.ink.opacity(unread ? 1 : 0.6))`). Since the preview line's own weight tops out at `600`/`.semibold` (unread) or `400`/`.regular` (read), and the name is always `700`/`.semibold`-or-heavier, the name can never read as lighter-weight than its own row's preview text at either state — `src/screens/Inbox.jsx` (`InboxRow`), `apps/ios/BanbeApp/Views/MessagingViews.swift` (`InboxRow.body`).
 
 `vite build` clean; iOS `xcodegen generate` + `xcodebuild -destination 'generic/platform=iOS Simulator'` BUILD SUCCEEDED. No schema/migration changes this pass. Verified by code inspection + both platforms' clean builds only — no live device/simulator run to visually confirm the slide animation or safe-area fill, flagging per this ticket's own "confirm" ask.
+
+## 2026-10-19 — clay accent (note 52)
+New accent role **clay**, used for Event Detail's decorative/brand touches: info-tile icons, outlined pills ("Thêm
+lịch", "Nhắn tin", qty stepper), the seats bar, the host track-record line, and the tinted glass over the cover photo.
+- Web: `--bb-clay` #9C5B3B (dark #D8926C), `--bb-clay-rgb`, `--bb-clay-bg` #EFE0D2 (dark #3B2A20); exported as
+  `clay`/`clayBg` from `src/theme.js`.
+- iOS: `Palette.clay` / `Palette.clayBg`, same values.
+- Same rule as honey (one accent per role): clay is never an error (that is `alert`) and never the primary CTA (ink).

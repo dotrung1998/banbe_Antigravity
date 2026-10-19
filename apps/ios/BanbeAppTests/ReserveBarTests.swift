@@ -36,6 +36,7 @@ final class ReserveBarTests: XCTestCase {
         XCTAssertEqual(ReserveBar.clampQty(0), 1)
         XCTAssertEqual(ReserveBar.clampQty(3), 3)
         XCTAssertEqual(ReserveBar.clampQty(9), ReserveBar.maxQty)
+        XCTAssertEqual(ReserveBar.presets, [1, 2, 3])
         XCTAssertTrue(ReserveBar.presets.allSatisfy { (1...ReserveBar.maxQty).contains($0) })
     }
 }

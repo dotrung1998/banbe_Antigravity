@@ -2,14 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { recentZoomOrigin } from '../lib/zoomOrigin.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg, mapsUrl } from '../data/events.js';
-import { paper, ink, rule, display, photoPill, inkButton, barGlass, RADIUS } from '../theme.js';
+import { paper, ink, rule, display, inkButton, clay, clayBg, RADIUS } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
 import FollowingBadge from '../components/FollowingBadge.jsx';
 import EventPlanTitle from './EventPlanActions.jsx';
 import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
-import { reserveBarState, totalPrice, clampQty, QTY_PRESETS, MAX_QTY } from '../lib/reserveBar.js';
-import { CountStepper } from '../components/ui/FormControls.jsx';
+import { reserveBarState, totalPrice, clampQty, parsePrice, QTY_PRESETS, MAX_QTY } from '../lib/reserveBar.js';
+import GlassMenu, { GlassMenuItem, GlassMenuDivider } from '../components/GlassMenu.jsx';
 
 // Airbnb-style layout (mirrors iOS EventDetailView): the photo is a pinned backdrop that fades out while the
 // rounded info sheet scrolls up over it; pulling down from the very top closes the screen with a shrink.
@@ -19,33 +19,47 @@ const SHEET_RADIUS = 46; // the iPhone's own screen-corner curvature
 const PINNED_STRIP = 120; // with the info fully pulled up, this much of the photo stays visible above it
 
 const ico = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true };
-const IconShare = () => (<svg {...ico} width={18} height={18}><path d="M12 15V3M8 7l4-4 4 4" /><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8" /></svg>);
-const IconHeart = ({ filled }) => (<svg {...ico} width={18} height={18} fill={filled ? '#C8372D' : 'none'} stroke={filled ? '#C8372D' : 'currentColor'}><path d="M12 20.5S3.5 15 3.5 9.2A4.7 4.7 0 0 1 12 6.5a4.7 4.7 0 0 1 8.5 2.7c0 5.8-8.5 11.3-8.5 11.3Z" /></svg>);
-const IconHouse = () => (<svg {...ico}><path d="M4 11l8-7 8 7" /><path d="M6 10v10h12V10" /></svg>);
-const IconMap = () => (<svg {...ico}><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z" /><path d="M9 4v14M15 6v14" /></svg>);
-const IconCamera = () => (<svg {...ico}><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.4" /></svg>);
-const IconList = () => (<svg {...ico}><path d="M4 7l1.6 1.6L8 6M4 15l1.6 1.6L8 14" /><path d="M11 7h9M11 15h9" /></svg>);
+const IconShare = () => (<svg {...ico} width={18} height={18} strokeWidth={1.8}><path d="M12 15V3M8 7l4-4 4 4" /><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8" /></svg>);
+const IconHeart = ({ filled }) => (<svg {...ico} width={18} height={18} strokeWidth={1.8} fill={filled ? 'currentColor' : 'none'}><path d="M12 20.5S3.5 15 3.5 9.2A4.7 4.7 0 0 1 12 6.5a4.7 4.7 0 0 1 8.5 2.7c0 5.8-8.5 11.3-8.5 11.3Z" /></svg>);
+const IconMore = () => (<svg {...ico} width={18} height={18}><circle cx="5.5" cy="12" r="1.3" fill="currentColor" /><circle cx="12" cy="12" r="1.3" fill="currentColor" /><circle cx="18.5" cy="12" r="1.3" fill="currentColor" /></svg>);
+const IconBack = () => (<svg {...ico} width={18} height={18} strokeWidth={2}><path d="M14.5 5.5 8 12l6.5 6.5" /></svg>);
+const IconHouse = () => (<svg {...ico} width={18} height={18}><path d="M4 11l8-7 8 7" /><path d="M6 10v10h12V10" /></svg>);
+const IconMap = () => (<svg {...ico} width={18} height={18}><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z" /><path d="M9 4v14M15 6v14" /></svg>);
+const IconCamera = () => (<svg {...ico} width={18} height={18}><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.4" /></svg>);
+const IconLink = () => (<svg {...ico} width={18} height={18}><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1" /><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" /></svg>);
 const IconChat = () => (<svg {...ico}><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-5 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" /></svg>);
-const iconCol = { flex: 'none', width: 22, display: 'inline-flex', justifyContent: 'center', color: ink, opacity: 0.8 };
+const IconCalendar = () => (<svg {...ico} width={18} height={18}><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17M8 3v4M16 3v4" /></svg>);
+const IconClock = () => (<svg {...ico} width={18} height={18}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></svg>);
+const IconPin = () => (<svg {...ico} width={18} height={18}><path d="M12 21s6.5-5.6 6.5-11a6.5 6.5 0 0 0-13 0C5.5 15.4 12 21 12 21Z" /><circle cx="12" cy="10" r="2.3" /></svg>);
+const IconHost = () => (<svg {...ico} width={15} height={15}><circle cx="12" cy="8" r="3.6" /><path d="M5 20c1.3-3.6 3.9-5.3 7-5.3s5.7 1.7 7 5.3" /></svg>);
+const IconShield = () => (<svg {...ico} width={15} height={15}><path d="M12 3l7 3v5.5c0 4.3-3 7.8-7 9.5-4-1.7-7-5.2-7-9.5V6z" /><path d="M9 12l2 2 4-4" /></svg>);
 // One hairline weight for the page's own dividers: softer than `rule`, so sections read as one surface, not blocks.
 const softRule = 'rgba(var(--bb-fg-rgb),0.10)';
-const sectionLabel = { fontSize: 12, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: ink, opacity: 0.7 };
-const listRow = { display: 'flex', alignItems: 'center', gap: 12, padding: '14px 0', borderBottom: `1px solid ${softRule}`, fontSize: 14, color: ink };
+const sectionHeading = display(20, { lineHeight: 1.25 });
 // Top of the floating round controls: the old fixed 66px, but never closer to the notch than inset + 16.
 const OVERLAY_TOP = 'max(66px, calc(env(safe-area-inset-top, 0px) + 16px))';
-const SR_ONLY = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' };
-const IconMore = () => (<svg {...ico} width={18} height={18}><circle cx="5.5" cy="12" r="1.2" fill="currentColor" /><circle cx="12" cy="12" r="1.2" fill="currentColor" /><circle cx="18.5" cy="12" r="1.2" fill="currentColor" /></svg>);
-const IconClock = () => (<svg {...ico}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></svg>);
-const IconPin = () => (<svg {...ico}><path d="M12 21s6.5-5.6 6.5-11a6.5 6.5 0 0 0-13 0C5.5 15.4 12 21 12 21Z" /><circle cx="12" cy="10" r="2.3" /></svg>);
-const IconTag = () => (<svg {...ico}><path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3-8.7 8.7z" /><circle cx="8" cy="8" r="1.3" /></svg>);
-const IconSeat = () => (<svg {...ico}><path d="M6 11V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v5" /><path d="M4 11h16v4H4zM6 15v4M18 15v4" /></svg>);
-// One row for the "key facts" block: icon column, label-free value, optional tap target.
-const FactRow = ({ icon, onClick, testId, children }) => (
-  <div onClick={onClick} data-testid={testId} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '7px 0', fontSize: 14, lineHeight: 1.4, color: ink, cursor: onClick ? 'pointer' : 'default' }}>
-    <span style={{ ...iconCol, height: 20, alignItems: 'center' }}>{icon}</span>
-    <span style={{ flex: 1, minWidth: 0 }}>{children}</span>
+// Scrolled this far, the title has gone under the top edge: the solid nav bar (mockup "02 · Khi cuộn xuống") fades in.
+const COLLAPSE_AT = HERO_H - SHEET_OVERLAP - PINNED_STRIP + 70;
+// Glass over the photo, tinted with the clay accent (white glyph): legible on bright and dark covers alike.
+const clayGlass = {
+  background: 'linear-gradient(165deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 45%, rgba(255,255,255,0) 70%), rgba(var(--bb-clay-rgb),0.72)',
+  backdropFilter: 'blur(16px) saturate(1.5)', WebkitBackdropFilter: 'blur(16px) saturate(1.5)',
+  border: '1px solid rgba(255,255,255,0.32)', boxShadow: '0 6px 16px rgba(0,0,0,0.22)', color: '#fff',
+};
+// The same controls once the nav bar is solid: no fill, clay glyphs.
+const navPlain = { background: 'transparent', backdropFilter: 'none', WebkitBackdropFilter: 'none', border: '1px solid transparent', boxShadow: 'none', color: clay };
+// Ngày / Giờ / Địa điểm tile (mockup): soft fill, clay icon, small label over the value. All three share one width.
+// `action` is an optional icon-only link in the tile's top-right corner (no text, to save space).
+const Tile = ({ icon, label, action, testId, children }) => (
+  <div data-testid={testId} style={{ position: 'relative', flex: '1 1 0', minWidth: 0, padding: '12px 12px 11px', borderRadius: RADIUS.tile, background: 'rgba(var(--bb-fg-rgb),0.045)', border: `1px solid ${softRule}`, color: ink }}>
+    <span style={{ color: clay, display: 'inline-flex' }}>{icon}</span>
+    {action}
+    <div style={{ fontSize: 12.5, opacity: 0.62, marginTop: 8 }}>{label}</div>
+    <div style={{ fontSize: 14.5, lineHeight: 1.35, marginTop: 2, overflowWrap: 'anywhere' }}>{children}</div>
   </div>
 );
+const IconDirections = () => (<svg {...ico} width={15} height={15} strokeWidth={2}><path d="M7 17 17 7M9 7h8v8" /></svg>);
+const pillBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: RADIUS.pill, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' };
 
 export default function EventDetail() {
   const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, setQty, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
@@ -207,11 +221,6 @@ export default function EventDetail() {
   const evOrganizerId = s.realEventsById[ev.key]?.organizerId;
   const evOrgFollowed = !!evOrganizerId && s.followedOrgIds.includes(evOrganizerId);
   const orgStats = s.eventOrgStats[ev.key];
-  const evOrgStats = orgStats && orgStats.count > 0
-    ? (orgStats.sinceYear
-      ? T(`Tổ chức từ ${orgStats.sinceYear} ▪︎ ${orgStats.count} sự kiện`, `Hosting since ${orgStats.sinceYear} ▪︎ ${orgStats.count} events`)
-      : T(`${orgStats.count} sự kiện`, `${orgStats.count} events`))
-    : null;
   useEffect(() => { loadEventOrgStats(ev.key); }, [ev.key, loadEventOrgStats]);
   const showRefund = !ev.cancelled && ev.endedHoursAgo == null && !/Miễn phí|Free/.test(ev.price);
 
@@ -248,7 +257,7 @@ export default function EventDetail() {
   const barState = reserveBarState({ booking: !!myBooking, ticket: myBookingIsTicket, cancelled: !!ev.cancelled, ended, soldOut: !!ev.soldOut, blocked: criteriaBlocked });
   const qty = clampQty(s.qty);
   const totalStr = trStatus(totalPrice(ev.price, qty));
-  const [qtyMore, setQtyMore] = useState(() => !QTY_PRESETS.includes(qty));
+  const isFree = parsePrice(ev.price).free;
   const critRef = useRef(null);
   const reserveBarLabel = {
     ticket: () => T('Xem vé của bạn ▪︎ mã ' + myBooking.code, 'View your ticket ▪︎ code ' + myBooking.code),
@@ -267,26 +276,77 @@ export default function EventDetail() {
   const reserveBarStyle = (barState === 'reserve' || barState === 'ticket' || barState === 'pending')
     ? inkButton({ padding: '15px 12px' })
     : { ...ctaBase, background: 'var(--bb-field)', cursor: reserveBarTap ? 'pointer' : 'default', opacity: barState === 'blocked' ? 0.85 : 1 };
-  // One honest line under the CTA: what happens on tap, and the refund promise (was a floating note mid-page).
+  // One honest line above the CTA: the refund promise for open paid events, else what holding means.
   const trustLine = barState !== 'reserve' ? null
-    : T('Giữ chỗ 30 phút để thanh toán', 'Held 30 min while you pay')
-      + (showRefund ? T(' ▪︎ hoàn 100% nếu huỷ', ' ▪︎ full refund if cancelled') : '');
-  const qtyChip = (n, label) => {
-    const on = qty === n;
-    return (
-      <div key={label || n} role="radio" aria-checked={on} onClick={() => { setQty(n); setQtyMore(false); }} data-testid={`event-qty-${n}`}
-        style={{ minWidth: 40, height: 32, padding: '0 10px', borderRadius: RADIUS.pill, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600, cursor: 'pointer', border: `1px solid ${on ? ink : rule}`, background: on ? ink : 'transparent', color: on ? paper : ink }}>
-        {label || n}
-      </div>
-    );
+    : showRefund
+      ? T('Hoàn tiền tự động 100% nếu sự kiện bị hủy', 'Automatic full refund if the event is cancelled')
+      : T('Chỗ được giữ 30 phút để bạn xác nhận', 'Seats are held for 30 minutes while you confirm');
+
+  // Ngày / Giờ tiles: `when` is "Th 4, 04.11 ▪︎ 20:00" for both catalogue and real events.
+  const [whenDate, whenTime] = (ev.when || '').split(' ▪︎ ');
+  // Seats bar: only when capacity AND what is left are both known (live fill from migration 186 first, else the
+  // row's own seats_remaining). Never an invented capacity — the plain "N left" text stays otherwise.
+  const realRow = s.realEventsById[ev.key];
+  const fill = s.eventFill?.[ev.key];
+  const capacity = fill?.capacity ?? realRow?.capacity ?? null;
+  const remaining = fill ? Math.max(0, fill.capacity - fill.booked) : (realRow?.seatsRemaining ?? null);
+  const fillRatio = capacity > 0 && remaining != null ? Math.min(1, Math.max(0, (capacity - remaining) / capacity)) : null;
+  const seatsText = ev.soldOut ? trStatus('Hết chỗ') : remaining != null ? T(`Còn ${remaining} chỗ`, `${remaining} seats left`) : evSeatsLong;
+  // Track-record line under the description (mockup's rating row, real data only — banbe has no ratings).
+  const trackParts = [ev.orgName, orgStats?.count > 0 ? T(`${orgStats.count} sự kiện`, `${orgStats.count} events`) : null,
+    orgStats?.sinceYear ? T(`từ ${orgStats.sinceYear}`, `since ${orgStats.sinceYear}`) : null].filter(Boolean);
+  // Host card subline (real stats only).
+  const hostSubline = [orgStats?.sinceYear ? T(`Tham gia từ ${orgStats.sinceYear}`, `Joined ${orgStats.sinceYear}`) : null,
+    orgStats?.count > 0 ? T(`Đã tổ chức ${orgStats.count} sự kiện`, `Hosted ${orgStats.count} events`) : null].filter(Boolean).join(' · ');
+  const includedChips = includedItems.length > 0
+    ? includedItems.map(it => it.label)
+    : (ev.included || '').split(/\s*(?:▪︎|,|·)\s*/).map(x => x.trim()).filter(Boolean);
+  const hasAboutSheet = includedItems.length > 0 || introParagraphs.length > 0;
+
+  // Collapsing nav bar: flips once when the title passes under the top edge (state only changes at the threshold).
+  const [collapsed, setCollapsed] = useState(false);
+  const collapsedRef = useRef(false);
+  const titleWrapRef = useRef(null);
+  const navBgRef = useRef(null);
+  const navTitleRef = useRef(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const copyLink = () => {
+    const url = `https://www.banbe.app/api/photo-share?eid=${encodeURIComponent(ev.key)}`;
+    const done = () => { setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1800); };
+    try { navigator.clipboard?.writeText(url).then(done, done); } catch { done(); }
   };
 
   // The photo backdrop fades to the page colour and drifts up slowly as the sheet rises over it.
+  // 0 while the title is comfortably below the bar, 1 once it has fully passed under it.
+  const titleProgress = (t) => {
+    const w = titleWrapRef.current;
+    if (!w) return t > COLLAPSE_AT ? 1 : 0;
+    const top = (HERO_H - SHEET_OVERLAP - PINNED_STRIP) + w.offsetTop; // title top inside the scroller's content
+    const lead = 36; // starts this far before the title reaches the bar
+    return Math.min(1, Math.max(0, (t - (top - lead)) / (w.offsetHeight + lead)));
+  };
   const onSheetScroll = (e) => {
     const t = Math.max(0, e.currentTarget.scrollTop);
     // Fades only part-way: the strip left above the pulled-up info stays clearly visible.
-    if (heroRef.current) heroRef.current.style.opacity = String(1 - 0.4 * Math.min(1, t / (HERO_H * 0.62)));
+    // Fades only part-way while the strip is visible; gone once the solid nav bar covers it (so the photo never peeks
+    // through the sheet's rounded top corners under the bar).
+    const p = titleProgress(t);
+    if (heroRef.current) heroRef.current.style.opacity = p >= 1 ? '0' : String(1 - 0.4 * Math.min(1, t / (HERO_H * 0.62)));
     if (heroImgRef.current) heroImgRef.current.style.transform = `translateY(${-Math.min(t, HERO_H) * 0.3}px)`;
+    // The event name moves up and shrinks into the bar instead of being covered and swapped: as the in-sheet title
+    // reaches the top it rises, shrinks and fades while the bar's own title grows into place from just below it, both
+    // driven by the same scroll progress (inline styles only, no re-render per frame).
+    if (titleWrapRef.current) {
+      titleWrapRef.current.style.opacity = String(1 - p);
+      titleWrapRef.current.style.transform = `translateY(${-p * 12}px) scale(${1 - 0.3 * p})`;
+    }
+    if (navBgRef.current) navBgRef.current.style.opacity = String(p);
+    if (navTitleRef.current) {
+      navTitleRef.current.style.opacity = String(p);
+      navTitleRef.current.style.transform = `translateY(${(1 - p) * 30}px) scale(${1 + 0.6 * (1 - p)})`;
+    }
+    const c = p > 0.6;
+    if (c !== collapsedRef.current) { collapsedRef.current = c; setCollapsed(c); }
   };
 
   // Pull down from the very top to close: the screen follows the finger (shrinking, rounding, dimming); a long
@@ -355,12 +415,10 @@ export default function EventDetail() {
 
   const orgAvatarUrl = orgStats ? organizerAvatarPublicUrl(orgStats.avatarPath, orgStats.avatarR2Ref, 'thumb') : '';
   const orgInitial = (ev.orgName || '').trim().slice(0, 1).toUpperCase();
-  // Round icon buttons, top-right, side by side (Share, then Save) — same glass disc as the back pill.
-  const iconBtn = (extra) => photoPill({ position: 'fixed', top: OVERLAY_TOP, width: 40, height: 40, padding: 0, zIndex: 5, borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', ...extra });
-  // "More" menu (⋯): the secondary text links that used to stack above the title now live here.
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuItem = { display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', fontSize: 13, color: ink, cursor: 'pointer', whiteSpace: 'nowrap' };
-  const hasMenu = !cameFromHome || showOpenInMap || s.myOrgEventKeys.includes(ev.key);
+  // Round controls over the photo; once the nav bar is solid they lose their glass and become plain clay glyphs.
+  const ctl = (extra) => ({ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'background .2s ease, color .2s ease, box-shadow .2s ease, border-color .2s ease', ...(collapsed ? navPlain : clayGlass), ...extra });
+  const disc = (extra) => ctl({ width: 40, borderRadius: 20, ...extra });
 
   return (
     // `absolute, inset 0` (like Chat): fills the app's scroll viewport exactly, whatever the surrounding grid does
@@ -375,42 +433,42 @@ export default function EventDetail() {
           not the shared Shell-level one) into a fixed overlay, so both
           stay visible/tappable the whole time the user scrolls. */}
       {/* Top scrim: keeps the round controls legible on bright photos (they used to rely on one dark sample image). */}
-      <div data-fade aria-hidden style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 140, zIndex: 4, pointerEvents: 'none', background: 'linear-gradient(180deg, rgba(12,12,12,0.34) 0%, rgba(12,12,12,0) 100%)' }} />
-      {/* Icon-only 40pt disc like Share/Save; the destination name stays as visually-hidden text (screen readers, tests). */}
-      <div data-fade onClick={closeWithShrink} role="button" aria-label={backLabel} data-testid="event-detail-back" style={iconBtn({ left: 16 })}>
-        <svg {...ico} width={20} height={20}><path d="M14.5 5.5 8 12l6.5 6.5" /></svg>
-        <span style={SR_ONLY}>{backLabel}</span>
+      <div data-fade aria-hidden style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 140, zIndex: 4, pointerEvents: 'none', background: 'linear-gradient(180deg, rgba(12,12,12,0.34) 0%, rgba(12,12,12,0) 100%)', opacity: collapsed ? 0 : 1, transition: 'opacity .2s ease' }} />
+      {/* Collapsing nav bar (mockup "02 · Khi cuộn xuống"): once the title has scrolled away, a solid paper bar covers
+          the pinned photo strip and repeats the event name, so the reader never loses context. */}
+      <div aria-hidden={!collapsed} data-testid="event-nav-bar" style={{ position: 'fixed', top: 0, left: 0, right: 0, height: PINNED_STRIP, zIndex: 4, pointerEvents: 'none' }}>
+        <div ref={navBgRef} style={{ position: 'absolute', inset: 0, background: paper, borderBottom: `1px solid ${softRule}`, opacity: 0 }} />
+        <div style={{ position: 'absolute', top: OVERLAY_TOP, left: 64, right: 164, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span ref={navTitleRef} style={{ ...display(16), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0, transformOrigin: 'center bottom', willChange: 'transform, opacity' }}>{ev.name}</span>
+        </div>
       </div>
-      <div data-fade onClick={() => shareEvent(ev)} role="button" aria-label={T('Chia sẻ', 'Share')} data-testid="event-detail-share" style={iconBtn({ right: 64 })}><IconShare /></div>
-      {/* Blocker fix (retention roadmap follow-up) — EventDetail had no save
-          affordance at all before this pass. Uses Stage 1's exact same
-          isSaved/toggleFav — already catalogue-agnostic (both key off the
-          real `favorites` table by event id), so this works identically for
-          a static demo event and a real host-created one. */}
-      <div data-fade onClick={() => toggleFav(ev.key)} role="button" aria-label={isSaved(ev.key) ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')} data-testid="event-detail-save" style={iconBtn({ right: 16 })}><IconHeart filled={isSaved(ev.key)} /></div>
-      {hasMenu && (
-        <>
-          <div data-fade onClick={() => setMenuOpen(o => !o)} role="button" aria-label={T('Thêm', 'More')} aria-expanded={menuOpen} data-testid="event-detail-more" style={iconBtn({ right: 112 })}><IconMore /></div>
-          {menuOpen && (
-            <>
-              <div onClick={() => setMenuOpen(false)} aria-hidden style={{ position: 'fixed', inset: 0, zIndex: 5 }} />
-              <div role="menu" style={photoPill({ position: 'fixed', top: `calc(${OVERLAY_TOP} + 48px)`, right: 16, zIndex: 6, borderRadius: 14, padding: '4px 0', background: 'rgba(var(--bb-bg-rgb),0.96)', fontSize: 13 })}>
-                {!cameFromHome && (
-                  <div role="menuitem" onClick={() => { setMenuOpen(false); goHome(); }} style={menuItem}><IconHouse />{T('Về trang chính', 'Back to home')}</div>
-                )}
-                {showOpenInMap && (
-                  <div role="menuitem" data-testid="event-open-in-map" onClick={() => { setMenuOpen(false); openEventOnMap(ev); }} style={menuItem}><IconMap />{T('Xem trên bản đồ', 'Open in map')}</div>
-                )}
-                {s.myOrgEventKeys.includes(ev.key) && (
-                  <div role="menuitem" data-testid="event-share-to-story" onClick={s.storyCreateBusy ? undefined : () => { setMenuOpen(false); setShareConfirmOpen(true); }} style={{ ...menuItem, opacity: s.storyCreateBusy ? 0.5 : 1 }}><IconCamera />{s.storyCreateBusy ? T('Đang đăng…', 'Posting…') : T('Chia sẻ lên Story', 'Share to Story')}</div>
-                )}
-              </div>
-            </>
-          )}
-        </>
-      )}
-      {s.shared && (
-        <div style={{ position: 'fixed', top: `calc(${OVERLAY_TOP} + 48px)`, right: 16, zIndex: 5, fontSize: 11.5, color: ink, background: 'rgba(var(--bb-bg-rgb),0.9)', borderRadius: 999, padding: '5px 10px' }}>{T('Đã sao chép link', 'Link copied')}</div>
+      {/* Back pill "‹ {where you came from}" (mockup); collapses to just the chevron in the nav bar to give the title room. */}
+      <div data-fade onClick={closeWithShrink} role="button" aria-label={backLabel} data-testid="event-detail-back"
+        style={ctl({ position: 'fixed', top: OVERLAY_TOP, left: 16, zIndex: 5, gap: 2, padding: collapsed ? '0 8px' : '0 14px 0 9px', borderRadius: RADIUS.pill, fontSize: 14, fontWeight: 600, maxWidth: 170 })}>
+        <IconBack />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: collapsed ? 0 : 130, transition: 'max-width .2s ease' }}>{backLabel}</span>
+      </div>
+      {/* ⋯ opens the same frosted pop-up as the calendar pill beside the title (GlassMenu), anchored under the disc. */}
+      <GlassMenu open={menuOpen} onOpenChange={setMenuOpen} top={48} label={T('Tuỳ chọn sự kiện', 'Event options')}
+        wrapStyle={{ position: 'fixed', top: OVERLAY_TOP, right: 112, zIndex: 6 }} menuTestId="event-detail-menu"
+        trigger={(
+          <div data-fade onClick={() => setMenuOpen(o => !o)} role="button" aria-haspopup="menu" aria-label={T('Thêm', 'More')} aria-expanded={menuOpen} data-testid="event-detail-more" style={disc()}><IconMore /></div>
+        )}>
+        {showOpenInMap && <GlassMenuItem icon={<IconMap />} onClick={() => openEventOnMap(ev)} testId="event-open-in-map">{T('Xem trên bản đồ', 'Open in map')}</GlassMenuItem>}
+        {!cameFromHome && <GlassMenuItem icon={<IconHouse />} onClick={goHome} testId="event-back-home">{T('Về trang chính', 'Back to home')}</GlassMenuItem>}
+        {s.myOrgEventKeys.includes(ev.key) && (
+          <GlassMenuItem icon={<IconCamera />} disabled={s.storyCreateBusy} onClick={() => setShareConfirmOpen(true)} testId="event-share-to-story">
+            {s.storyCreateBusy ? T('Đang đăng…', 'Posting…') : T('Chia sẻ lên Story', 'Share to Story')}
+          </GlassMenuItem>
+        )}
+        {(showOpenInMap || !cameFromHome || s.myOrgEventKeys.includes(ev.key)) && <GlassMenuDivider />}
+        <GlassMenuItem icon={<IconLink />} onClick={copyLink} testId="event-copy-link">{T('Sao chép link', 'Copy link')}</GlassMenuItem>
+      </GlassMenu>
+      <div data-fade onClick={() => shareEvent(ev)} role="button" aria-label={T('Chia sẻ', 'Share')} data-testid="event-detail-share" style={disc({ position: 'fixed', top: OVERLAY_TOP, right: 64, zIndex: 5 })}><IconShare /></div>
+      {/* Save uses the same isSaved/toggleFav as Home (keys off the real `favorites` table by event id). */}
+      <div data-fade onClick={() => toggleFav(ev.key)} role="button" aria-label={isSaved(ev.key) ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')} aria-pressed={isSaved(ev.key)} data-testid="event-detail-save" style={disc({ position: 'fixed', top: OVERLAY_TOP, right: 16, zIndex: 5 })}><IconHeart filled={isSaved(ev.key)} /></div>
+      {(s.shared || linkCopied) && (
+        <div role="status" style={{ position: 'fixed', top: `calc(${OVERLAY_TOP} + 48px)`, right: 16, zIndex: 5, fontSize: 12, color: ink, background: 'rgba(var(--bb-bg-rgb),0.94)', borderRadius: 999, padding: '6px 12px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}>{T('Đã sao chép link', 'Link copied')}</div>
       )}
       {/* The photo is pinned behind everything; the scrolling sheet starts PINNED_STRIP down the screen (rounded top),
           so a band of the photo stays visible above the info however far it is pulled up. */}
@@ -466,75 +524,130 @@ export default function EventDetail() {
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={sectionLabel}>{evCat}</span>
+          {/* Category as an ink chip (mockup); invite-only beside it in clay. */}
+          {evCat && <span data-testid="event-category" style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: paper, background: ink, padding: '5px 12px', borderRadius: RADIUS.pill }}>{evCat}</span>}
           {ev.inviteOnly && (
-            <span data-testid="event-invite-chip" style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.02em', color: paper, background: ink, padding: '3px 10px', borderRadius: RADIUS.pill }}>{T('Riêng tư ▪︎ theo lời mời', 'Private ▪︎ invite only')}</span>
+            <span data-testid="event-invite-chip" style={{ fontSize: 11.5, fontWeight: 600, color: clay, background: clayBg, padding: '5px 12px', borderRadius: RADIUS.pill }}>{T('Riêng tư ▪︎ theo lời mời', 'Private ▪︎ invite only')}</span>
           )}
         </div>
-        {/* Title + compact plan pill on one row (iOS EventPlanTitleRow). */}
-        <EventPlanTitle eventKey={ev.key} title={ev.name} titleStyle={display(28, { lineHeight: 1.2 })} />
-        {/* Key facts (date/time first: the one fact an event page must never leave out), one icon column, one grid. */}
-        <div data-testid="event-facts" style={{ marginTop: 12, display: 'flex', flexDirection: 'column' }}>
-          {ev.when && <FactRow icon={<IconClock />} testId="event-fact-when">{ev.when}</FactRow>}
-          <FactRow icon={<IconPin />} testId="event-fact-where">
-            {evMapsUrl ? (
-              <a
-                href={evMapsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                // Opening directions is the natural moment to also offer to show the distance, if that hasn't been
-                // decided yet — never blocks the click itself (the maps link still opens via the normal href).
-                onClick={() => { if (s.located === null) askLocation(); }}
-                style={{ color: ink, textDecoration: 'underline', textDecorationColor: 'rgba(var(--bb-fg-rgb),0.35)', textUnderlineOffset: 2 }}
-              >
-                {evWhere} ↗
-              </a>
-            ) : evWhere}
-          </FactRow>
-          <FactRow icon={<IconSeat />} testId="event-fact-seats">{evSeatsLong}</FactRow>
-          {ev.price && <FactRow icon={<IconTag />} testId="event-fact-price"><span style={{ ...display(17) }}>{trStatus(ev.price)}</span></FactRow>}
+        {/* Title + the calendar pill on one row (iOS EventPlanTitleRow). */}
+        <div ref={titleWrapRef} style={{ transformOrigin: 'left bottom', willChange: 'transform, opacity' }}>
+          <EventPlanTitle eventKey={ev.key} title={ev.name} titleStyle={display(28, { lineHeight: 1.2 })} />
         </div>
-        <WhoCanReserve criteria={crit.criteria} style={{ marginTop: 6 }} />
-        {crit.restricted && crit.blocked && !myBooking && !ev.cancelled && !ended && (
-          <div ref={critRef} style={{ marginTop: 12, scrollMarginBottom: 160 }}><CriteriaUnmetCard eligibility={crit.eligibility} returnTo="event" /></div>
-        )}
-        {/* Body copy supports the title instead of competing with it: roomier leading, slightly softer ink. Long
-            descriptions clamp to 4 lines when there is a fuller write-up behind "Read more" (About & Included sheet). */}
-        <p style={{ fontSize: 14.5, lineHeight: 1.6, color: ink, opacity: 0.85, margin: '18px 0 0', ...(canClamp ? { display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : null) }}>{ev.desc}</p>
+        {/* Body copy supports the title instead of competing with it. Long descriptions clamp to 4 lines when the
+            fuller write-up is one tap away (About & Included sheet). */}
+        <p style={{ fontSize: 15, lineHeight: 1.55, color: ink, opacity: 0.85, margin: '4px 0 0', ...(canClamp ? { display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : null) }}>{ev.desc}</p>
         {canClamp && (
           <div onClick={() => setIncludedSheetOpen(true)} data-testid="event-read-more" style={{ marginTop: 6, fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Xem thêm', 'Read more')}</div>
         )}
-        {/* Host card: who runs this, how trusted, and a one-tap way to ask (moved up from the bottom rows). */}
-        <div style={{ marginTop: 22, display: 'flex', alignItems: 'center', gap: 12, padding: '14px 0', borderTop: `1px solid ${softRule}`, borderBottom: `1px solid ${softRule}` }}>
-          <div onClick={() => openOrganizerOfEvent(ev.key, 'event')} data-testid="event-organizer-row" role="button" aria-label={T('Trang tổ chức của ', 'Host page of ') + (ev.orgName || '')} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-            <span style={{ flex: 'none', width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', background: 'var(--bb-field)', border: `0.5px solid ${rule}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 600, color: ink }}>
-              {orgAvatarUrl ? <img src={orgAvatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : orgInitial}
-            </span>
-            <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ fontSize: 12, color: ink, opacity: 0.65 }}>{T('Tổ chức bởi', 'Hosted by')}</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                <span style={{ fontSize: 15, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.orgName}</span>
-                {evOrgFollowed && <FollowingBadge T={T} testId="event-organizer-following" />}
-              </span>
-              {evOrgStats && <span data-testid="event-organizer-stats" style={{ fontSize: 12, color: ink, opacity: 0.65 }}>{evOrgStats}</span>}
-            </span>
+        {/* Host track record in clay — where the mockup puts its rating row. Real data only: banbe has no ratings. */}
+        {trackParts.length > 0 && (
+          <div onClick={() => openOrganizerOfEvent(ev.key, 'event')} role="button" data-testid="event-track-record" style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 14, color: clay, cursor: 'pointer' }}>
+            <IconHost /><span>{trackParts.join(' · ')}</span>
+            {evOrgFollowed && <FollowingBadge T={T} testId="event-organizer-following" />}
           </div>
-          {/* Moved here from the retired Organizer screen (merged into the host profile): message the host from the event. */}
-          <div onClick={goChat} data-testid="organizer-message" role="button" aria-label={T('Nhắn cho ', 'Message ') + (ev.orgName || '')} style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: RADIUS.pill, border: `1px solid ${rule}`, fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer' }}>
-            <IconChat />{T('Nhắn tin', 'Message')}
+        )}
+        {ev.price && (
+          <div data-testid="event-price" style={{ marginTop: 12, display: 'flex', alignItems: 'baseline', gap: 6 }}>
+            <span style={display(26)}>{trStatus(ev.price)}</span>
+            {!isFree && <span style={{ fontSize: 13, color: ink, opacity: 0.6 }}>{T('/ vé', '/ ticket')}</span>}
+          </div>
+        )}
+        {/* Ngày / Giờ / Địa điểm: three equal tiles; directions is an icon-only link in the place tile's corner. */}
+        <div data-testid="event-facts" style={{ marginTop: 14, display: 'flex', gap: 8 }}>
+          {whenDate && <Tile icon={<IconCalendar />} label={T('Ngày', 'Date')} testId="event-fact-when">{whenDate}</Tile>}
+          {whenTime && <Tile icon={<IconClock />} label={T('Giờ', 'Time')} testId="event-fact-time">{whenTime}</Tile>}
+          <Tile icon={<IconPin />} label={T('Địa điểm', 'Place')} testId="event-fact-where"
+            action={evMapsUrl && (
+              <a href={evMapsUrl} target="_blank" rel="noopener noreferrer" data-testid="event-maps-link" aria-label={T('Xem bản đồ', 'Directions')} title={T('Xem bản đồ', 'Directions')}
+                // Opening directions is the natural moment to also offer to show the distance, if undecided — never
+                // blocks the click itself (the maps link still opens via the normal href).
+                onClick={() => { if (s.located === null) askLocation(); }}
+                style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: clay, background: clayBg }}>
+                <IconDirections />
+              </a>
+            )}>
+            {evWhere}
+          </Tile>
+        </div>
+        {/* Seats: a thin clay bar when capacity is known, otherwise just the text. */}
+        <div data-testid="event-fact-seats" style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+          {fillRatio != null && (
+            <div aria-hidden style={{ flex: 1, height: 5, borderRadius: 3, background: 'rgba(var(--bb-fg-rgb),0.08)', overflow: 'hidden' }}>
+              <div style={{ width: `${Math.max(4, fillRatio * 100)}%`, height: '100%', borderRadius: 3, background: `linear-gradient(90deg, rgba(var(--bb-clay-rgb),0.75), ${clay})` }} />
+            </div>
+          )}
+          <span style={{ flex: fillRatio != null ? 'none' : 1, fontSize: 13.5, color: ev.soldOut ? ink : clay, textAlign: fillRatio != null ? 'right' : 'left' }}>{seatsText}</span>
+        </div>
+        <WhoCanReserve criteria={crit.criteria} style={{ marginTop: 10 }} />
+        {crit.restricted && crit.blocked && !myBooking && !ev.cancelled && !ended && (
+          <div ref={critRef} style={{ marginTop: 12, scrollMarginBottom: 160 }}><CriteriaUnmetCard eligibility={crit.eligibility} returnTo="event" /></div>
+        )}
+        {/* Sections below are separated by whitespace only (no rules): 28 between sections, 8–10 from a heading to its
+            content, so related things sit together and the page reads as one calm surface (transcript lessons 3/11/12). */}
+        {/* "Bao gồm": one line of text, items separated by the signature ▪︎; the full intro + item details stay one tap
+            away in the About & Included sheet. */}
+        {(includedChips.length > 0 || hasAboutSheet) && (
+          <div onClick={hasAboutSheet ? () => setIncludedSheetOpen(true) : undefined} data-testid="event-included-section"
+            aria-label={hasAboutSheet ? T('Giới thiệu và bao gồm, xem thêm', 'Introduction and included, view more') : undefined}
+            style={{ marginTop: 20, cursor: hasAboutSheet ? 'pointer' : 'default' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+              <span style={sectionHeading}>{includedChips.length > 0 ? T('Bao gồm', 'Included') : T('Giới thiệu', 'About')}</span>
+              {hasAboutSheet && <span style={{ fontSize: 13, fontWeight: 600, color: clay, whiteSpace: 'nowrap' }}>{T('Xem thêm', 'More')} ›</span>}
+            </div>
+            {includedChips.length > 0 && (
+              <p style={{ margin: '8px 0 0', fontSize: 15, lineHeight: 1.55, color: ink }}>
+                {includedChips.map((label, i) => (
+                  <span key={i}>{i > 0 && <span aria-hidden style={{ color: clay, margin: '0 8px' }}>▪︎</span>}{label}</span>
+                ))}
+              </p>
+            )}
+          </div>
+        )}
+        {/* "Người tổ chức": its own section — heading, then a soft card with the host and two actions (same outlined clay
+            buttons as before). */}
+        <div data-testid="event-host-section" style={{ marginTop: 32 }}>
+          <div style={sectionHeading}>{T('Người tổ chức', 'Host')}</div>
+          <div style={{ marginTop: 10, padding: 14, borderRadius: RADIUS.card, background: 'rgba(var(--bb-fg-rgb),0.045)', border: `1px solid ${softRule}` }}>
+            <div onClick={() => openOrganizerOfEvent(ev.key, 'event')} data-testid="event-organizer-row" role="button" aria-label={T('Trang của ', 'Page of ') + (ev.orgName || T('người tổ chức', 'the host'))} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+              <span style={{ flex: 'none', width: 44, height: 44, borderRadius: '50%', overflow: 'hidden', background: 'var(--bb-field)', border: `0.5px solid ${rule}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 600, color: ink }}>
+                {orgAvatarUrl ? <img src={orgAvatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : orgInitial}
+              </span>
+              <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <span style={{ ...display(16), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.orgName || T('Người tổ chức', 'Host')}</span>
+                  {evOrgFollowed && <FollowingBadge T={T} testId="event-host-following" />}
+                </span>
+                {hostSubline && <span data-testid="event-organizer-stats" style={{ fontSize: 12.5, color: ink, opacity: 0.65 }}>{hostSubline}</span>}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <div onClick={() => openOrganizerOfEvent(ev.key, 'event')} data-testid="event-organizer-profile" role="button"
+                style={{ ...pillBtn, flex: 1, padding: '9px 14px', border: `1px solid ${clay}`, fontSize: 13.5, fontWeight: 600, color: clay }}>
+                <IconHost />{T('Xem hồ sơ', 'View profile')}
+              </div>
+              {/* Moved here from the retired Organizer screen (merged into the host profile): message the host from the event. */}
+              <div onClick={goChat} data-testid="organizer-message" role="button" aria-label={T('Nhắn cho ', 'Message ') + (ev.orgName || '')}
+                style={{ ...pillBtn, flex: 1, padding: '9px 14px', border: `1px solid ${clay}`, fontSize: 13.5, fontWeight: 600, color: clay }}>
+                <IconChat />{T('Nhắn tin', 'Message')}
+              </div>
+            </div>
           </div>
         </div>
-        {/* Photos sit right under the story they illustrate, with a count, instead of after everything else. */}
-        <div style={{ marginTop: 24 }}>
-          <div style={sectionLabel}>{T('Hình ảnh', 'Photos')}{realPhotos.length > 0 ? ` ▪︎ ${realPhotos.length}` : ''}</div>
+        {/* "Hình ảnh": the horizontal photo strip. */}
+        <div style={{ marginTop: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+            <span style={sectionHeading}>{T('Hình ảnh', 'Photos')}</span>
+            {realPhotos.length > 0 && <span style={{ fontSize: 13, color: ink, opacity: 0.6 }}>{realPhotos.length}</span>}
+          </div>
           {/* STAGE D (2026-09-25) — real event_photos rows, not the static demo `ev.gallery`. A genuinely photo-less
               real event shows plain text, never a fake/demo photo standing in for a real one. */}
           {s.eventPhotosLoading ? (
             <p style={{ fontSize: 13, color: ink, opacity: 0.6, margin: '10px 0 0' }}>{T('Đang tải…', 'Loading…')}</p>
           ) : realPhotos.length ? (
-            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 10, paddingBottom: 4 }}>
+            <div data-testid="event-photo-strip" style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 10, paddingBottom: 4 }}>
               {realPhotos.map((p, i) => (
-                <div key={p.id} onClick={(e) => openPhoto(realPhotos, i, ev.orgName, e.currentTarget.getBoundingClientRect())} style={{ position: 'relative', flex: 'none' }}>
+                <div key={p.id} onClick={(e) => openPhoto(realPhotos, i, ev.orgName, e.currentTarget.getBoundingClientRect())} data-testid={`event-photo-${i}`} data-photo-thumb={p.id} style={{ position: 'relative', flex: 'none' }}>
                   <div style={bg(p.url, { width: 132, height: 166, borderRadius: RADIUS.thumb, cursor: 'pointer' })} />
                   {/* A.7 — a liked photo gets a filled heart badge; an unliked one shows none here (the full-screen
                       viewer's own like button is the discoverable way to like it). */}
@@ -550,57 +663,39 @@ export default function EventDetail() {
             <p style={{ fontSize: 13, color: ink, opacity: 0.6, margin: '10px 0 0' }}>{T('Chưa có ảnh nào cho sự kiện này.', 'No photos for this event yet.')}</p>
           )}
         </div>
-        {/* One tappable "About & Included" row + sheet (intro first, included items below) whenever EITHER exists,
-            matching iOS. `ev.included` (legacy flat string) is the fallback for an event with neither. Only tappable
-            rows get a chevron. */}
-        {(includedItems.length > 0 || introParagraphs.length > 0) ? (
-          <div
-            onClick={() => setIncludedSheetOpen(true)}
-            data-testid="event-included-section"
-            aria-label={T('Giới thiệu và bao gồm, xem thêm', 'Introduction and included, view more')}
-            style={{ ...listRow, marginTop: 20, borderTop: `1px solid ${softRule}`, cursor: 'pointer' }}
-          >
-            <span style={iconCol}><IconList /></span>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: 'block', fontWeight: 600 }}>{T('Giới thiệu & bao gồm', 'About & included')}</span>
-              {includedItems.length > 0 && (
-                <span style={{ display: 'block', fontSize: 13, opacity: 0.7, marginTop: 2 }}>{includedItems.map(it => it.label).join(' ▪︎ ')}</span>
-              )}
-            </span>
-            <span aria-hidden style={{ flex: 'none', opacity: 0.5, fontSize: 18, lineHeight: 1 }}>›</span>
-          </div>
-        ) : ev.included ? (
-          <div style={{ ...listRow, marginTop: 20, borderTop: `1px solid ${softRule}` }}>
-            <span style={iconCol}><IconList /></span>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: 'block', fontWeight: 600 }}>{T('Bao gồm', 'Included')}</span>
-              <span style={{ display: 'block', fontSize: 13, opacity: 0.7, marginTop: 2 }}>{ev.included}</span>
-            </span>
-          </div>
-        ) : null}
       </div>
       </div>
-      {/* Sticky action area: always on screen, so the decision can happen wherever the reader is convinced. Seat
-          presets + the live total live next to the CTA instead of a separate step (Reserve opens pre-filled). */}
-      <div data-fade data-testid="event-action-area" style={barGlass({ flex: 'none', position: 'relative', zIndex: 2, borderTop: `1px solid ${softRule}`, padding: '10px 16px calc(12px + env(safe-area-inset-bottom, 0px))' })}>
+      {/* Sticky action area (mockup): seat chips + stepper, the refund promise, and the CTA with the live total —
+          always on screen, so the decision can happen wherever the reader is convinced. Reserve opens pre-filled. */}
+      <div data-fade data-testid="event-action-area" style={{ flex: 'none', position: 'relative', zIndex: 2, background: paper, borderRadius: '22px 22px 0 0', boxShadow: '0 -8px 24px rgba(27,25,22,0.10)', padding: '12px 16px calc(12px + env(safe-area-inset-bottom, 0px))' }}>
         {barState === 'reserve' && (
-          <div data-testid="event-qty" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
-            <span style={{ fontSize: 13, color: ink, opacity: 0.75 }}>{T('Số chỗ', 'Seats')}</span>
-            {qtyMore ? (
-              <CountStepper value={qty} min={1} max={MAX_QTY} unit={T('chỗ', 'seats')} testId="event-qty-stepper" onChange={setQty} />
-            ) : (
-              <div role="radiogroup" aria-label={T('Số chỗ', 'Seats')} style={{ display: 'flex', gap: 6 }}>
-                {QTY_PRESETS.map(n => qtyChip(n))}
-                <div role="button" onClick={() => setQtyMore(true)} data-testid="event-qty-more" aria-label={T('Số khác', 'Other amount')}
-                  style={{ minWidth: 40, height: 32, padding: '0 10px', borderRadius: RADIUS.pill, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, cursor: 'pointer', border: `1px solid ${rule}`, color: ink }}>
-                  {T('Khác', 'More')}
-                </div>
-              </div>
-            )}
+          <div data-testid="event-qty" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+            <div role="radiogroup" aria-label={T('Số vé', 'Tickets')} style={{ display: 'flex', gap: 6, minWidth: 0 }}>
+              {QTY_PRESETS.map(n => {
+                const on = qty === n;
+                return (
+                  <div key={n} role="radio" aria-checked={on} onClick={() => setQty(n)} data-testid={`event-qty-${n}`}
+                    style={{ ...pillBtn, height: 34, padding: '0 13px', fontSize: 14, fontWeight: on ? 600 : 500, background: on ? ink : 'rgba(var(--bb-fg-rgb),0.06)', color: on ? paper : ink, transition: 'background .15s ease, color .15s ease' }}>
+                    {T(`${n} vé`, n === 1 ? '1 ticket' : `${n} tickets`)}
+                  </div>
+                );
+              })}
+            </div>
+            <div data-testid="event-qty-stepper" role="group" aria-label={T('Số vé', 'Tickets')} style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', height: 34, borderRadius: RADIUS.pill, border: `1px solid ${clay}`, color: clay }}>
+              <button type="button" onClick={() => setQty(qty - 1)} disabled={qty <= 1} aria-label={T('Bớt một vé', 'One ticket fewer')} data-testid="event-qty-minus"
+                style={{ width: 34, height: 32, border: 'none', background: 'none', color: 'inherit', fontSize: 18, cursor: qty <= 1 ? 'default' : 'pointer', opacity: qty <= 1 ? 0.35 : 1, fontFamily: 'inherit' }}>−</button>
+              <span aria-live="polite" data-testid="event-qty-value" style={{ minWidth: 18, textAlign: 'center', fontSize: 15, fontWeight: 600, color: ink }}>{qty}</span>
+              <button type="button" onClick={() => setQty(qty + 1)} disabled={qty >= MAX_QTY} aria-label={T('Thêm một vé', 'One more ticket')} data-testid="event-qty-plus"
+                style={{ width: 34, height: 32, border: 'none', background: 'none', color: 'inherit', fontSize: 18, cursor: qty >= MAX_QTY ? 'default' : 'pointer', opacity: qty >= MAX_QTY ? 0.35 : 1, fontFamily: 'inherit' }}>+</button>
+            </div>
+          </div>
+        )}
+        {trustLine && (
+          <div data-testid="event-trust-line" style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10, fontSize: 12.5, lineHeight: 1.35, color: ink, opacity: 0.8 }}>
+            <span style={{ color: clay, display: 'inline-flex', flex: 'none' }}><IconShield /></span>{trustLine}
           </div>
         )}
         <div onClick={reserveBarTap} role="button" style={reserveBarStyle} data-testid="event-reserve-bar" data-state={barState} aria-disabled={!reserveBarTap || undefined}>{reserveBarLabel}</div>
-        {trustLine && <div data-testid="event-trust-line" style={{ marginTop: 6, fontSize: 12, lineHeight: 1.4, color: ink, opacity: 0.7, textAlign: 'center' }}>{trustLine}</div>}
       </div>
       {includedSheetOpen && (
         <div

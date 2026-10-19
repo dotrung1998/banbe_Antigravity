@@ -523,8 +523,9 @@ struct HomeView: View {
                                                         : app.T("Chuyển sang giao diện tối", "Switch to dark mode"))
                 .accessibilityIdentifier("header.theme")
             }
+            // Same breathing room under the search bar as Map's own search field, so the feed never butts against it.
             HomeSearchBar()
-                .padding(.bottom, 2)
+                .padding(.bottom, 12)
         }
         .buttonStyle(.plain)
         .foregroundStyle(app.palette.ink)

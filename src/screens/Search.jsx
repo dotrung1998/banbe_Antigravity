@@ -3,7 +3,8 @@
 // Typing: live results from the ONE shared matcher (src/lib/search.js — the same documents Map searches),
 // grouped Events · Hosts · Areas, each with its count. "See on map" carries the query to Map.
 // iOS twin: Views/SearchView.swift. Search never counts toward the streak (note 36).
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { takeSearchOrigin } from '../lib/searchOrigin.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, bg, catalogStartMs } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, RADIUS } from '../theme.js';
@@ -34,7 +35,33 @@ export default function Search() {
   const [recent, setRecent] = useState(readRecent);
   const inputRef = useRef(null);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  // Entrance from Home's search bar: the field starts where Home's bar was and glides up into the header while the
+  // back button grows in and the rest of the page fades in. No origin (opened from elsewhere) = the usual fade-in.
+  const [origin] = useState(() => takeSearchOrigin());
+  const rootRef = useRef(null);
+  const backRef = useRef(null);
+  const formRef = useRef(null);
+  useLayoutEffect(() => {
+    const f = formRef.current;
+    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!origin || !f?.animate || reduce) return;
+    const r = f.getBoundingClientRect();
+    const ease = 'cubic-bezier(.22,.9,.3,1)';
+    const dur = 420;
+    backRef.current?.animate([{ width: '0px', marginRight: '-10px', opacity: 0 }, { width: '40px', marginRight: '0px', opacity: 1 }], { duration: dur, easing: ease });
+    f.animate([{ transform: `translateY(${origin.top + (origin.height - r.height) / 2 - r.top}px)` }, { transform: 'none' }], { duration: dur, easing: ease });
+    rootRef.current?.querySelectorAll(':scope > :not([data-search-header])').forEach(el => {
+      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 180, easing: 'ease-out', fill: 'backwards' });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // The keyboard comes up once the field has (nearly) landed, not on top of the glide.
+  useEffect(() => {
+    if (!origin) { inputRef.current?.focus(); return undefined; }
+    const t = setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 320);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => { if (!(s.discoveryEvents || []).length) loadDiscoveryEvents(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!(s.pulseDaily || []).length) loadPulse('daily'); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { set({ searchQuery: q }); }, [q, set]);
@@ -100,11 +127,11 @@ export default function Search() {
   );
 
   return (
-    <div data-screen-label="Search" style={{ minHeight: '100%', background: paper, color: ink, paddingBottom: 120, animation: 'banbeIn 0.25s ease both' }}>
-      <div style={{ padding: '58px 16px 10px', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: paper, zIndex: 2, borderBottom: `1px solid ${rule}` }}>
-        <button type="button" onClick={goHome} aria-label={T('Quay lại', 'Back')} data-testid="search-back"
-          style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'rgba(var(--bb-fg-rgb),0.07)', color: ink, fontSize: 20, cursor: 'pointer', flex: 'none' }}>‹</button>
-        <form onSubmit={(e) => { e.preventDefault(); commit(); inputRef.current?.blur(); }} style={{ flex: 1, display: 'flex' }}>
+    <div ref={rootRef} data-screen-label="Search" style={{ minHeight: '100%', background: paper, color: ink, paddingBottom: 120, animation: origin ? undefined : 'banbeIn 0.25s ease both' }}>
+      <div data-search-header style={{ padding: '58px 16px 10px', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: paper, zIndex: 2, borderBottom: `1px solid ${rule}` }}>
+        <button ref={backRef} type="button" onClick={goHome} aria-label={T('Quay lại', 'Back')} data-testid="search-back"
+          style={{ overflow: 'hidden', width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'rgba(var(--bb-fg-rgb),0.07)', color: ink, fontSize: 20, cursor: 'pointer', flex: 'none' }}>‹</button>
+        <form ref={formRef} onSubmit={(e) => { e.preventDefault(); commit(); inputRef.current?.blur(); }} style={{ flex: 1, display: 'flex' }}>
           <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} type="search" enterKeyHint="search" data-testid="search-input"
             placeholder={T('Tìm sự kiện, host, khu vực, vibe…', 'Search events, hosts, areas, vibes…')}
             aria-label={T('Tìm kiếm', 'Search')}

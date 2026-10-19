@@ -141,10 +141,25 @@ export default function PhotoViewer() {
   // way to origin FROM here," continuing smoothly rather than jumping —
   // no special-casing needed for "continue from the current dragged
   // position," it falls out of reading the live rect.
+  // Where to shrink back to: the thumbnail of the photo showing NOW (the user may have swiped away from the one they
+  // tapped) — scrolled into view in its strip, then measured. The open-time rect only when it is still the same photo;
+  // otherwise (thumbnail not on the page) a plain close, never a shrink onto the wrong thumbnail.
+  const targetRect = () => {
+    const el = typeof document !== 'undefined'
+      ? Array.from(document.querySelectorAll('[data-photo-thumb]')).find(n => n.getAttribute('data-photo-thumb') === String(photo.id))
+      : null;
+    if (el) {
+      try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch { /* very old browsers */ }
+      const r = el.getBoundingClientRect();
+      if (r.width && r.height && r.bottom > 0 && r.top < window.innerHeight) return { top: r.top, left: r.left, width: r.width, height: r.height };
+    }
+    return photo.id === s.photoViewer.originId ? originRect : null;
+  };
   const dismiss = () => {
     if (closing) return;
     const el = photoRef.current;
-    if (!el || !originRect) { closePhoto(); return; }
+    const origin = el ? targetRect() : null;
+    if (!el || !origin) { closePhoto(); return; }
     // Measure the photo's RESTING box: a swipe-down has already moved/scaled it with inline styles, and the target
     // transform below is relative to the resting box. (It used to measure the dragged box, so a swipe landed
     // offset, and kept the drag's `transition: none` so it jumped instead of animating — unlike tapping outside.)
@@ -160,10 +175,10 @@ export default function PhotoViewer() {
     // computed against that would be Infinity. Nothing on screen to shrink
     // back yet, so just close.
     if (!current.width || !current.height) { closePhoto(); return; }
-    const scaleX = originRect.width / current.width;
-    const scaleY = originRect.height / current.height;
-    const dx = (originRect.left + originRect.width / 2) - (current.left + current.width / 2);
-    const dy = (originRect.top + originRect.height / 2) - (current.top + current.height / 2);
+    const scaleX = origin.width / current.width;
+    const scaleY = origin.height / current.height;
+    const dx = (origin.left + origin.width / 2) - (current.left + current.width / 2);
+    const dy = (origin.top + origin.height / 2) - (current.top + current.height / 2);
     // Clears the live-drag inline styles (transform/transition) — the
     // element's OWN declared `transform`/`transition` (in the JSX below)
     // take back over on the next render with the real `closing` value, so

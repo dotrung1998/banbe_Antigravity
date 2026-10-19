@@ -46,6 +46,13 @@
      (CHIP_COLORS.hold / BanbeTheme.Chip.hold). */
   --bb-honey: #8C6014;
   --bb-honey-bg: #F0E2BE;
+  /* Clay — the decorative/brand accent of Event Detail (note 52): info-tile icons, outlined pills ("Thêm lịch",
+     "Nhắn tin"), the seats bar, the host track-record line, the tinted glass over the cover photo. Same
+     one-accent-per-role rule as honey: never an error (that is --bb-alert) and never the primary CTA (ink).
+     Mirrored value-for-value by Palette.clay / .clayBg in apps/ios/BanbeApp/Views/BanbeTheme.swift. */
+  --bb-clay: #9C5B3B;
+  --bb-clay-rgb: 156,91,59;
+  --bb-clay-bg: #EFE0D2;
 }
 
 [data-bb-theme="dark"] {
@@ -77,6 +84,10 @@
      dark honey would disappear into --bb-bg. */
   --bb-honey: #F2C46D;
   --bb-honey-bg: #3D3016;
+  /* Clay's dark pair: same hue, lifted so icons and outlines stay legible on the dark paper. */
+  --bb-clay: #D8926C;
+  --bb-clay-rgb: 216,146,108;
+  --bb-clay-bg: #3B2A20;
 }
 
 html, body {

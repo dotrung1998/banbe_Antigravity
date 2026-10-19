@@ -158,7 +158,8 @@ extension AppState {
 
     // MARK: Search screen
 
-    func openSearch() {
+    func openSearch(from frame: CGRect? = nil) {
+        searchEntranceFrom = (frame?.width ?? 0) > 0 ? frame : nil
         if screen != .search { searchBackScreen = screen }
         screen = .search
     }

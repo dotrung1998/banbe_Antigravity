@@ -22,6 +22,10 @@ export const alert = 'var(--bb-alert)';
 // BanbeTheme.swift's `Palette.honey` / `Palette.honeyBg` value-for-value.
 export const honey = 'var(--bb-honey)';
 export const honeyBg = 'var(--bb-honey-bg)';
+// Clay — Event Detail's decorative/brand accent (icons, outlined pills, seats bar, tinted photo glass). A sibling
+// of `alert`/`honey`, never an error colour and never the primary CTA. Mirrors `Palette.clay` / `Palette.clayBg`.
+export const clay = 'var(--bb-clay)';
+export const clayBg = 'var(--bb-clay-bg)';
 
 // Named per-context spacing around BanbeLoadingVisual, mirroring
 // apps/ios/BanbeApp/Views/BanbeTheme.swift's `BanbeTheme.LoadingVisual`.

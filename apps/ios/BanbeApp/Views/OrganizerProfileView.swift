@@ -208,6 +208,9 @@ struct OrganizerProfileView: View {
                                         }
                                     }
                                     .buttonStyle(.plain)
+                                .onAppear { app.photoThumbFrames[photo.id] = geo.frame(in: .global) }
+                                .onChange(of: geo.frame(in: .global)) { _, f in app.photoThumbFrames[photo.id] = f }
+                                .onDisappear { app.photoThumbFrames[photo.id] = nil }
                                 }
                                 .frame(height: 158)
                             }

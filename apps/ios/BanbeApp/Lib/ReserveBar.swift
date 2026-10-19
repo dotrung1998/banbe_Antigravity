@@ -6,7 +6,7 @@ import Foundation
 enum ReserveBar {
     /// Same cap as Reserve's stepper and `qtyPlus`.
     static let maxQty = 6
-    static let presets = [1, 2, 4]
+    static let presets = [1, 2, 3]  // "1 vé · 2 vé · 3 vé" (note 52 mockup); the stepper covers 4–6
 
     enum State: String { case ticket, pending, cancelled, ended, soldOut, blocked, reserve }
 

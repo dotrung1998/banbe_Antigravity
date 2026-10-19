@@ -1,9 +1,9 @@
 // Event Detail's sticky action bar: which state it is in, the seat presets, and the total shown in the CTA.
-// Pure logic so Event Detail and Reserve agree on the total. Mirrored by apps/ios/BanbeApp/Models/ReserveBar.swift
+// Pure logic so Event Detail and Reserve agree on the total. Mirrored by apps/ios/BanbeApp/Lib/ReserveBar.swift
 // (tests: tests/unit/reserveBar.test.mjs and apps/ios/BanbeAppTests/ReserveBarTests.swift) — change both together.
 
 export const MAX_QTY = 6; // same cap as Reserve's stepper and qtyPlus
-export const QTY_PRESETS = [1, 2, 4];
+export const QTY_PRESETS = [1, 2, 3]; // "1 vé · 2 vé · 3 vé" (note 52 mockup); the stepper covers 4–6
 
 // "200.000₫" / "Miễn phí" / "Free" -> { free, unit } (unit in VND, 0 when free or unparseable).
 export function parsePrice(price) {

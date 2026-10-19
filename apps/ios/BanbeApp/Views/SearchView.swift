@@ -8,6 +8,9 @@ import SwiftUI
 struct SearchView: View {
     @EnvironmentObject private var app: AppState
     @State private var focused = false
+    /// Entrance from Home's search bar: false = the field still sits where Home's bar was, true = in the header.
+    @State private var arrived = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var recent: [String] = RecentSearches.load()
 
     private static let endedAfter: TimeInterval = 12 * 3600 // note 38: a live row 12h past its start is over
@@ -57,6 +60,7 @@ struct SearchView: View {
                 .padding(.bottom, 60)
             }
             .scrollDismissesKeyboard(.interactively)
+            .opacity(entering ? 0 : 1)
         }
         .foregroundStyle(app.palette.ink)
         .background(app.palette.paper.ignoresSafeArea())
@@ -64,11 +68,33 @@ struct SearchView: View {
             if app.discoveryEvents.isEmpty { await app.loadDiscoveryEvents() }
             if app.pulseDaily.isEmpty { await app.loadPulse(period: .daily) }
         }
-        .onAppear { focused = app.searchQuery.isEmpty }
+        .onAppear {
+            guard entering else { focused = app.searchQuery.isEmpty; return }
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) { arrived = true }
+            }
+            // The keyboard comes up once the field has (nearly) landed, not on top of the glide.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+                app.searchEntranceFrom = nil
+                focused = app.searchQuery.isEmpty
+            }
+        }
+    }
+
+    /// True until the glide from Home's search bar has started: the field is drawn where Home's bar was, at its width.
+    private var entering: Bool { !arrived && app.searchEntranceFrom != nil && !reduceMotion }
+    private var topInset: CGFloat {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.keyWindow?.safeAreaInsets.top ?? 0
+    }
+    /// How far below its resting place (8pt under the safe-area top, 44pt tall) the field starts: Home's bar's own
+    /// position (46pt tall), so the field begins exactly over it.
+    private var entranceOffsetY: CGFloat {
+        guard let from = app.searchEntranceFrom else { return 0 }
+        return from.minY + 1 - (topInset + 8)
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: entering ? 0 : 10) {
             Button {
                 focused = false
                 app.goBack()
@@ -81,6 +107,10 @@ struct SearchView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // While entering, the back button takes no width, so the field starts as wide as Home's bar.
+            .frame(width: entering ? 0 : nil)
+            .opacity(entering ? 0 : 1)
+            .clipped()
             .accessibilityLabel(app.T("Quay lại", "Back"))
             .accessibilityIdentifier("search.back")
             HStack(spacing: 8) {
@@ -102,9 +132,11 @@ struct SearchView: View {
             }
             .padding(.horizontal, 14)
             .background { Color.clear.nativeGlassCapsule(interactive: false) }
+            // Entrance: starts over Home's search bar and glides up into the header as the back button slides in.
+            .offset(y: entering ? entranceOffsetY : 0)
         }
-        .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 10)
-        .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
+        .padding(.horizontal, entering ? 20 : 16).padding(.top, 8).padding(.bottom, 10)
+        .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1).opacity(entering ? 0 : 1) }
         .onChange(of: focused) { was, now in if was && !now { commit() } }
     }
 

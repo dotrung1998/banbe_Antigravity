@@ -3,9 +3,10 @@
 // the banbe Schedule status, Add / Remove (manual adds only), Add to calendar (.ics) and Google Calendar.
 // Compact, so the title row is only as tall as the title — no gap above the location line.
 // Real events only; adding to the banbe Schedule needs an account.
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { ink } from '../theme.js';
+import { ink, clay } from '../theme.js';
+import GlassMenu, { GlassMenuItem, GlassMenuDivider } from '../components/GlassMenu.jsx';
 import { sourceLabel, canAdd } from '../lib/schedulePresentation.js';
 import { calendarDraft, downloadIcs, googleCalendarUrl } from '../lib/calendarExport.js';
 import { track } from '../lib/analytics.js';
@@ -22,17 +23,8 @@ export default function EventPlanTitle({ eventKey, title, titleStyle }) {
   const { state: s, T, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule } = useBanBe();
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState('');
-  const wrap = useRef(null);
   const real = s.realEventsById?.[eventKey];
   const info = scheduleInfoFor(real);
-  useEffect(() => {
-    if (!open) return undefined;
-    const onDown = (e) => { if (!wrap.current?.contains(e.target)) setOpen(false); };
-    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('pointerdown', onDown);
-    window.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); };
-  }, [open]);
 
   const available = info && info.start && !info.cancelled;
   const item = info ? scheduleSnapshot.mine.items.find(i => i.id === eventKey) : null;
@@ -52,47 +44,34 @@ export default function EventPlanTitle({ eventKey, title, titleStyle }) {
   };
   const google = () => { if (draft) window.open(googleCalendarUrl(draft), '_blank', 'noopener'); };
 
-  const menuItem = (key, label, onClick, { disabled = false, danger = false, testId } = {}) => (
-    <button key={key} type="button" role="menuitem" disabled={disabled} data-testid={testId}
-      onClick={() => { setOpen(false); onClick?.(); }}
-      style={{ display: 'block', width: '100%', textAlign: 'left', minHeight: 46, padding: '10px 18px', border: 'none', background: 'none', fontFamily: 'inherit',
-        fontSize: 15, color: danger ? 'var(--bb-alert)' : ink, opacity: disabled ? 0.6 : 1, cursor: disabled ? 'default' : 'pointer' }}>
-      {label}
-    </button>
-  );
-
   return (
     <div style={{ margin: '8px 0 6px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
         <h1 style={{ ...titleStyle, margin: 0, flex: 1, minWidth: 0 }}>{title}</h1>
         {available && (
-          <div ref={wrap} style={{ position: 'relative', flex: 'none', marginTop: 2 }} data-testid="event-plan">
-            <button type="button" onClick={() => setOpen(v => !v)} aria-haspopup="menu" aria-expanded={open} data-testid="event-plan-button"
-              aria-label={item ? T(`Trong lịch banbe (${sourceLabel(item.source, T)}). Mở menu`, `In banbe Schedule (${sourceLabel(item.source, T)}). Open menu`) : T('Khám phá. Thêm vào lịch', 'Discover. Add to calendar')}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 999, cursor: 'pointer', color: ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
-                border: '1px solid rgba(var(--bb-fg-rgb),0.10)', background: 'linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.15)), var(--bb-bg)', boxShadow: '0 4px 14px rgba(27,25,22,0.10)' }}>
-              <CalIcon added={!!item} />
-              <span data-testid="event-plan-status">{item ? T('Đã thêm', 'Added') : T('Khám phá', 'Discover')}</span>
-            </button>
-            {open && (
-              <div role="menu" data-testid="event-plan-menu"
-                style={{ position: 'absolute', right: 0, top: 42, zIndex: 30, width: 260, padding: '6px 0', borderRadius: 22, color: ink,
-                  background: 'color-mix(in srgb, var(--bb-bg) 80%, transparent)', backdropFilter: 'blur(28px) saturate(1.6)', WebkitBackdropFilter: 'blur(28px) saturate(1.6)',
-                  border: '1px solid rgba(255,255,255,0.45)', boxShadow: '0 18px 50px rgba(27,25,22,0.28)', animation: 'banbeFade .16s ease-out' }}>
-                {item
-                  ? menuItem('in', `✓ ${T('Trong lịch của tôi', 'In My schedule')} · ${sourceLabel(item.source, T)}`, null, { disabled: true, testId: 'event-plan-in-mine' })
-                  : s.user && canAdd(info) && menuItem('add', `＋ ${T('Thêm vào lịch banbe', 'Add to banbe Schedule')}`, add, { testId: 'event-plan-add' })}
-                {item?.source === 'added' && menuItem('remove', `⊖ ${T('Bỏ khỏi lịch banbe', 'Remove from banbe Schedule')}`, () => removeFromBanbeSchedule(eventKey), { danger: true, testId: 'event-plan-remove' })}
-                {!info.ended && (
-                  <>
-                    {(item || (s.user && canAdd(info))) && <div style={{ height: 1, margin: '4px 18px', background: 'rgba(var(--bb-fg-rgb),0.12)' }} />}
-                    {menuItem('ics', `📅 ${T('Thêm vào lịch (.ics)', 'Add to calendar (.ics)')}`, ics, { testId: `calendar-ics-${info.key}` })}
-                    {menuItem('google', `${T('Google Lịch', 'Google Calendar')} ↗`, google, { testId: `calendar-google-${info.key}` })}
-                  </>
-                )}
-              </div>
+          <GlassMenu open={open} onOpenChange={setOpen} wrapStyle={{ flex: 'none', marginTop: 2 }} wrapTestId="event-plan" menuTestId="event-plan-menu"
+            trigger={(
+              // Outlined clay pill (note 52 mockup): reads as a secondary action next to the title, not a second CTA.
+              <button type="button" onClick={() => setOpen(v => !v)} aria-haspopup="menu" aria-expanded={open} data-testid="event-plan-button"
+                aria-label={item ? T(`Trong lịch banbe (${sourceLabel(item.source, T)}). Mở menu`, `In banbe Schedule (${sourceLabel(item.source, T)}). Open menu`) : T('Thêm lịch', 'Add to calendar')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 12px', borderRadius: 999, cursor: 'pointer', color: clay, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
+                  border: `1px solid ${clay}`, background: 'transparent' }}>
+                <CalIcon added={!!item} />
+                <span data-testid="event-plan-status">{item ? T('Đã thêm', 'Added') : T('Thêm lịch', 'Add to calendar')}</span>
+              </button>
+            )}>
+            {item
+              ? <GlassMenuItem disabled testId="event-plan-in-mine">{`✓ ${T('Trong lịch của tôi', 'In My schedule')} · ${sourceLabel(item.source, T)}`}</GlassMenuItem>
+              : s.user && canAdd(info) && <GlassMenuItem onClick={add} testId="event-plan-add">{`＋ ${T('Thêm vào lịch banbe', 'Add to banbe Schedule')}`}</GlassMenuItem>}
+            {item?.source === 'added' && <GlassMenuItem danger onClick={() => removeFromBanbeSchedule(eventKey)} testId="event-plan-remove">{`⊖ ${T('Bỏ khỏi lịch banbe', 'Remove from banbe Schedule')}`}</GlassMenuItem>}
+            {!info.ended && (
+              <>
+                {(item || (s.user && canAdd(info))) && <GlassMenuDivider />}
+                <GlassMenuItem onClick={ics} testId={`calendar-ics-${info.key}`}>{`📅 ${T('Thêm vào lịch (.ics)', 'Add to calendar (.ics)')}`}</GlassMenuItem>
+                <GlassMenuItem onClick={google} testId={`calendar-google-${info.key}`}>{`${T('Google Lịch', 'Google Calendar')} ↗`}</GlassMenuItem>
+              </>
             )}
-          </div>
+          </GlassMenu>
         )}
       </div>
       {msg && <p role="status" style={{ fontSize: 12, opacity: 0.75, margin: '4px 0 0', color: ink }}>{msg}</p>}

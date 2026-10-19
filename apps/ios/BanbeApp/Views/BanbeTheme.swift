@@ -17,6 +17,12 @@ struct Palette {
     /// value-for-value in both themes.
     let honey: Color
     let honeyBg: Color
+    /// Clay — Event Detail's decorative/brand accent (note 52): info-tile icons, outlined pills ("Thêm lịch",
+    /// "Nhắn tin"), the seats bar, the host track-record line, the tinted glass over the cover photo. Same
+    /// one-accent-per-role rule as honey: never an error (`BanbeTheme.alert`) and never the primary CTA (ink).
+    /// Mirrors web's `clay`/`clayBg` (theme.js, index.css `--bb-clay*`) value-for-value in both themes.
+    let clay: Color
+    let clayBg: Color
     /// Wordmark tint — ink on light, bright amber on dark.
     let logo: Color
 
@@ -27,6 +33,8 @@ struct Palette {
         field: Color(hex: 0xEEE8DA),
         honey: Color(hex: 0x8C6014),
         honeyBg: Color(hex: 0xF0E2BE),
+        clay: Color(hex: 0x9C5B3B),
+        clayBg: Color(hex: 0xEFE0D2),
         logo: Color(hex: 0x1B1916)
     )
     static let dark = Palette(
@@ -36,6 +44,8 @@ struct Palette {
         field: Color(hex: 0x3A352B),
         honey: Color(hex: 0xF2C46D),
         honeyBg: Color(hex: 0x3D3016),
+        clay: Color(hex: 0xD8926C),
+        clayBg: Color(hex: 0x3B2A20),
         logo: Color(hex: 0xF6C453)
     )
 }

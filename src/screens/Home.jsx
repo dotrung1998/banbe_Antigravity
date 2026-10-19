@@ -699,7 +699,8 @@ export default function Home() {
           {s.theme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}
         </button>
         </div>
-        <HomeSearchBar onOpen={openSearch} T={T} />
+        {/* A little breathing room under the search bar, like Map's own search field (iOS: 12pt). */}
+        <div style={{ marginBottom: 4 }}><HomeSearchBar onOpen={openSearch} T={T} /></div>
         <PulseTicker pulse={s.pulseDaily} onOpen={openPulseViewer} T={T} />
       </div>
 

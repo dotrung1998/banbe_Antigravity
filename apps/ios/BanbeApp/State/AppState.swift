@@ -111,6 +111,9 @@ struct PhotoViewerItem: Equatable {
     /// the moment it was opened — where the dismiss animation shrinks back
     /// to (14-photo-viewer.md), rather than fading/sliding away generically.
     let originRect: CGRect
+    /// Which photo `originRect` belongs to. After swiping to another photo, the viewer shrinks back onto THAT photo's
+    /// own thumbnail (`AppState.photoThumbFrames`), never onto the one originally tapped.
+    var originID: String? = nil
     var current: PhotoGalleryItem { gallery[index] }
 }
 
@@ -487,6 +490,11 @@ final class AppState: ObservableObject {
     /// The Search screen's query, kept while it's open.
     @Published var searchQuery = ""
     @Published var searchBackScreen: Screen = .home
+    /// Home's search bar frame (global), kept current by HomeSearchBar. Not @Published: nothing re-renders for it.
+    var homeSearchBarFrame: CGRect = .zero
+    /// Set by `openSearch(from:)` when Search is opened from Home's bar: Search's own field starts there and glides
+    /// up into its header. nil = no entrance motion (opened from anywhere else).
+    var searchEntranceFrom: CGRect?
     /// One-shot query Map applies on its next fresh open ("See on map" from Search).
     @Published var mapExploreSeedQuery: String?
 
@@ -1172,6 +1180,10 @@ final class AppState: ObservableObject {
     // comment (AppState+Data.swift).
     var attendanceGuestsSeq = 0
     @Published var photoViewer: PhotoViewerItem?
+    /// Live on-screen frames (global) of the photo thumbnails currently laid out (Event Detail strip, host grid), keyed
+    /// by photo id — where the photo viewer shrinks back to when it closes on a photo other than the one tapped.
+    /// Deliberately not @Published: thumbnails write it while scrolling and nothing should re-render for that.
+    var photoThumbFrames: [String: CGRect] = [:]
     /// Photo-interactions redesign (2026-09-26) — the canonical engagement
     /// map (see `PhotoEngagement`'s own doc comment) + a busy-set guarding a
     /// double-tap/racing toggle on the same photo id. Replaces the old
@@ -3113,7 +3125,8 @@ final class AppState: ObservableObject {
     /// its own doc comment), no separate `eventKey` param — each gallery
     /// entry carries its own `eventId`.
     func openPhoto(gallery: [PhotoGalleryItem], index: Int, organizer: String, originRect: CGRect) {
-        photoViewer = PhotoViewerItem(gallery: gallery, index: index, organizer: organizer, originRect: originRect)
+        photoViewer = PhotoViewerItem(gallery: gallery, index: index, organizer: organizer, originRect: originRect,
+                                      originID: gallery.indices.contains(index) ? gallery[index].id : nil)
     }
     func closePhoto() { photoViewer = nil }
 
