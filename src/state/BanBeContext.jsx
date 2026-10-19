@@ -6330,6 +6330,8 @@ export function BanBeProvider({ children }) {
   const goEvent = useCallback((key) => set(prev => ({
     screen: 'event',
     eventKey: key,
+    // A different event starts from 1 seat again (Event Detail's presets would otherwise carry over).
+    ...(prev.eventKey !== key ? { qty: 1 } : null),
     // A chat opened from this event ("Message host" -> "Details") also passes
     // through: its own back already returns to the event, so recording 'chat'
     // here made event <-> chat ping-pong forever.
@@ -8196,6 +8198,11 @@ export function BanBeProvider({ children }) {
   }), [set]);
   const qtyPlus = useCallback(() => set(prev => {
     const qty = Math.min(6, prev.qty + 1);
+    return { qty, attendeeDrafts: resizeDrafts(prev, qty) };
+  }), [set]);
+  // Event Detail's seat presets (1 · 2 · 4): same 1–6 clamp as the stepper, so Reserve opens pre-filled.
+  const setQty = useCallback((n) => set(prev => {
+    const qty = Math.min(6, Math.max(1, n | 0));
     return { qty, attendeeDrafts: resizeDrafts(prev, qty) };
   }), [set]);
   const setAttendeeField = useCallback((index, field, value) => set(prev => ({
@@ -11001,7 +11008,7 @@ export function BanBeProvider({ children }) {
     loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, rewardsEnabled, loadFeatureFlags, setFeatureFlag, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
-    qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
+    qtyMinus, qtyPlus, setQty, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     setAttendeeField, loadBookingAttendees, loadImportedTickets, openTicketImport, closeTicketImport, setImportCode, openImportedTicket, closeImportedTicket, claimTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
@@ -11040,7 +11047,7 @@ export function BanBeProvider({ children }) {
     loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, rewardsEnabled, loadFeatureFlags, setFeatureFlag, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
-    qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
+    qtyMinus, qtyPlus, setQty, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     setAttendeeField, loadBookingAttendees, loadImportedTickets, openTicketImport, closeTicketImport, setImportCode, openImportedTicket, closeImportedTicket, claimTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,

@@ -2950,6 +2950,8 @@ final class AppState: ObservableObject {
         // eventBackScreen with .chat made event <-> chat ping-pong forever.
         let fromEventChat = screen == .chat && AppState.resolveChatBackTarget(chatBack) == .event
         if screen != .event && !fromEventOrganizer && !fromEventChat { eventBackScreen = screen }
+        // A different event starts from 1 seat again (Event Detail's seat presets would otherwise carry over).
+        if eventKey != key { qty = 1 }
         eventKey = key
         noteEventOpened()
         // Zoom out of the tapped card when it is on screen (nil otherwise: Event Detail then grows from the middle).

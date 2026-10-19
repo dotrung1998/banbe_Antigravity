@@ -2,12 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { recentZoomOrigin } from '../lib/zoomOrigin.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg, mapsUrl } from '../data/events.js';
-import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
+import { paper, ink, rule, display, photoPill, inkButton, barGlass, RADIUS } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
 import FollowingBadge from '../components/FollowingBadge.jsx';
 import EventPlanTitle from './EventPlanActions.jsx';
 import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
+import { reserveBarState, totalPrice, clampQty, QTY_PRESETS, MAX_QTY } from '../lib/reserveBar.js';
+import { CountStepper } from '../components/ui/FormControls.jsx';
 
 // Airbnb-style layout (mirrors iOS EventDetailView): the photo is a pinned backdrop that fades out while the
 // rounded info sheet scrolls up over it; pulling down from the very top closes the screen with a shrink.
@@ -23,12 +25,30 @@ const IconHouse = () => (<svg {...ico}><path d="M4 11l8-7 8 7" /><path d="M6 10v
 const IconMap = () => (<svg {...ico}><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z" /><path d="M9 4v14M15 6v14" /></svg>);
 const IconCamera = () => (<svg {...ico}><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.4" /></svg>);
 const IconList = () => (<svg {...ico}><path d="M4 7l1.6 1.6L8 6M4 15l1.6 1.6L8 14" /><path d="M11 7h9M11 15h9" /></svg>);
-const IconPerson = () => (<svg {...ico}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="10" r="3" /><path d="M6.2 18.2c1.4-2.3 3.4-3.2 5.8-3.2s4.4.9 5.8 3.2" /></svg>);
 const IconChat = () => (<svg {...ico}><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-5 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" /></svg>);
 const iconCol = { flex: 'none', width: 22, display: 'inline-flex', justifyContent: 'center', color: ink, opacity: 0.8 };
+// One hairline weight for the page's own dividers: softer than `rule`, so sections read as one surface, not blocks.
+const softRule = 'rgba(var(--bb-fg-rgb),0.10)';
+const sectionLabel = { fontSize: 12, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: ink, opacity: 0.7 };
+const listRow = { display: 'flex', alignItems: 'center', gap: 12, padding: '14px 0', borderBottom: `1px solid ${softRule}`, fontSize: 14, color: ink };
+// Top of the floating round controls: the old fixed 66px, but never closer to the notch than inset + 16.
+const OVERLAY_TOP = 'max(66px, calc(env(safe-area-inset-top, 0px) + 16px))';
+const SR_ONLY = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' };
+const IconMore = () => (<svg {...ico} width={18} height={18}><circle cx="5.5" cy="12" r="1.2" fill="currentColor" /><circle cx="12" cy="12" r="1.2" fill="currentColor" /><circle cx="18.5" cy="12" r="1.2" fill="currentColor" /></svg>);
+const IconClock = () => (<svg {...ico}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></svg>);
+const IconPin = () => (<svg {...ico}><path d="M12 21s6.5-5.6 6.5-11a6.5 6.5 0 0 0-13 0C5.5 15.4 12 21 12 21Z" /><circle cx="12" cy="10" r="2.3" /></svg>);
+const IconTag = () => (<svg {...ico}><path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3-8.7 8.7z" /><circle cx="8" cy="8" r="1.3" /></svg>);
+const IconSeat = () => (<svg {...ico}><path d="M6 11V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v5" /><path d="M4 11h16v4H4zM6 15v4M18 15v4" /></svg>);
+// One row for the "key facts" block: icon column, label-free value, optional tap target.
+const FactRow = ({ icon, onClick, testId, children }) => (
+  <div onClick={onClick} data-testid={testId} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '7px 0', fontSize: 14, lineHeight: 1.4, color: ink, cursor: onClick ? 'pointer' : 'default' }}>
+    <span style={{ ...iconCol, height: 20, alignItems: 'center' }}>{icon}</span>
+    <span style={{ flex: 1, minWidth: 0 }}>{children}</span>
+  </div>
+);
 
 export default function EventDetail() {
-  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
+  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, setQty, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
   const s = state;
   const scrollerRef = useRef(null);
   const heroRef = useRef(null);
@@ -100,6 +120,7 @@ export default function EventDetail() {
   // to show (no invented inclusions).
   const includedItems = ev.includedItems || [];
   const [includedSheetOpen, setIncludedSheetOpen] = useState(false);
+  const canClamp = (includedItems.length > 0 || (ev.intro || '').trim().length > 0) && (ev.desc || '').length > 180;
   // "Giới thiệu sự kiện" (migration 088) — a separate, longer editorial
   // write-up, never the same field as `ev.desc`/"Mô tả" or the "Bao gồm"
   // block above. Plain text only (paragraphs split on a blank line) —
@@ -174,7 +195,9 @@ export default function EventDetail() {
   const showOpenInMap = (s.eventBackScreen || 'home') === 'home';
 
   const evCat = trStatus(ev.cat);
-  const evWhere = trStatus(stripKm(ev.where, ev));
+  // `where` is "area ▪︎ distance ▪︎ day ▪︎ time" (one line on the old layout); the date now has its own fact row, so
+  // the location row keeps only the place and, once located, the distance.
+  const evWhere = trStatus(stripKm(ev.where, ev).split(' ▪︎ ').filter((seg, i) => i === 0 || / km/.test(seg)).join(' ▪︎ '));
   const evMapsUrl = mapsUrl(ev);
   const evSeatsLong = trStatus(ev.soldOut ? 'Hết chỗ' : ev.seatsLong);
   // Track record is live (get_organizer_profile via loadEventOrgStats), not the
@@ -191,7 +214,6 @@ export default function EventDetail() {
     : null;
   useEffect(() => { loadEventOrgStats(ev.key); }, [ev.key, loadEventOrgStats]);
   const showRefund = !ev.cancelled && ev.endedHoursAgo == null && !/Miễn phí|Free/.test(ev.price);
-  const refundNote = T('Nếu sự kiện bị hủy, bạn được hoàn tiền tự động 100%.', 'If the event is cancelled, you are automatically refunded in full.');
 
   // If the signed-in user already holds a live booking for this exact event,
   // the bar should open their ticket (QR + entry code) instead of running
@@ -219,25 +241,45 @@ export default function EventDetail() {
   // via hold_seats()'s own EVENT_NOT_LIVE check. Checked before `ended`/
   // `soldOut` since a cancelled event's stale `seats_remaining` can still
   // read as available or as "sold out" — neither reads as honest here.
-  const reserveBarLabel = myBookingIsTicket
-    ? T('Xem vé của bạn ▪︎ mã ' + myBooking.code, 'View your ticket ▪︎ code ' + myBooking.code)
-    : myBooking
-    ? T('Xem trạng thái thanh toán', 'View payment status')
-    : ev.cancelled
-    ? T('Sự kiện đã bị huỷ', 'Event has been cancelled')
-    : ended
-    ? T('Sự kiện đã kết thúc', 'Event has ended')
-    : ev.soldOut
-    ? T('Hết chỗ ▪︎ nhắn để vào danh sách chờ', 'Sold out ▪︎ message for waitlist')
-    : (T('Giữ chỗ ▪︎ ', 'Reserve ▪︎ ') + trStatus(ev.price));
   // Blocked only when the server said ineligible and there is no booking/closed state to show.
   const criteriaBlocked = crit.blocked && !myBooking && !ev.cancelled && !ended && !ev.soldOut;
-  const reserveBarTap = myBooking ? openHeld : (ev.cancelled || ended || criteriaBlocked) ? undefined : (ev.soldOut ? goChat : goReserve);
-  const reserveBarStyle = criteriaBlocked
-    ? { flex: 'none', margin: '0 20px 22px', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 0', borderRadius: 18, cursor: 'default', background: 'var(--bb-field)', color: ink, opacity: 0.6 }
-    : (myBooking || (!ev.soldOut && !ended && !ev.cancelled))
-    ? { ...inkButton({ flex: 'none', margin: '0 20px 22px', padding: '15px 0' }) }
-    : { flex: 'none', margin: '0 20px 22px', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 0', borderRadius: 18, cursor: (ended || ev.cancelled) ? 'default' : 'pointer', background: 'var(--bb-field)', color: ink };
+  // One state for the sticky bar (src/lib/reserveBar.js, mirrored on iOS). Cancelled is checked before ended/sold
+  // out because a cancelled event's stale `seats_remaining` can still read as available or as "sold out".
+  const barState = reserveBarState({ booking: !!myBooking, ticket: myBookingIsTicket, cancelled: !!ev.cancelled, ended, soldOut: !!ev.soldOut, blocked: criteriaBlocked });
+  const qty = clampQty(s.qty);
+  const totalStr = trStatus(totalPrice(ev.price, qty));
+  const [qtyMore, setQtyMore] = useState(() => !QTY_PRESETS.includes(qty));
+  const critRef = useRef(null);
+  const reserveBarLabel = {
+    ticket: () => T('Xem vé của bạn ▪︎ mã ' + myBooking.code, 'View your ticket ▪︎ code ' + myBooking.code),
+    pending: () => T('Xem trạng thái thanh toán', 'View payment status'),
+    cancelled: () => T('Sự kiện đã bị huỷ', 'Event has been cancelled'),
+    ended: () => T('Sự kiện đã kết thúc', 'Event has ended'),
+    soldOut: () => T('Hết chỗ ▪︎ nhắn để vào danh sách chờ', 'Sold out ▪︎ message for waitlist'),
+    // The bar says WHY it can't be used, and tapping shows the full explanation card instead of doing nothing.
+    blocked: () => T('Chưa đủ điều kiện ▪︎ xem lý do', 'Not eligible yet ▪︎ see why'),
+    // Outcome + total before the tap (the user knows what they are about to hold and pay).
+    reserve: () => (qty === 1 ? T('Giữ chỗ ▪︎ ', 'Reserve ▪︎ ') : T(`Giữ ${qty} chỗ ▪︎ `, `Reserve ${qty} seats ▪︎ `)) + totalStr,
+  }[barState]();
+  const showCriteriaWhy = () => critRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+  const reserveBarTap = { ticket: openHeld, pending: openHeld, cancelled: undefined, ended: undefined, soldOut: goChat, blocked: showCriteriaWhy, reserve: goReserve }[barState];
+  const ctaBase = { fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 12px', borderRadius: 18, color: ink };
+  const reserveBarStyle = (barState === 'reserve' || barState === 'ticket' || barState === 'pending')
+    ? inkButton({ padding: '15px 12px' })
+    : { ...ctaBase, background: 'var(--bb-field)', cursor: reserveBarTap ? 'pointer' : 'default', opacity: barState === 'blocked' ? 0.85 : 1 };
+  // One honest line under the CTA: what happens on tap, and the refund promise (was a floating note mid-page).
+  const trustLine = barState !== 'reserve' ? null
+    : T('Giữ chỗ 30 phút để thanh toán', 'Held 30 min while you pay')
+      + (showRefund ? T(' ▪︎ hoàn 100% nếu huỷ', ' ▪︎ full refund if cancelled') : '');
+  const qtyChip = (n, label) => {
+    const on = qty === n;
+    return (
+      <div key={label || n} role="radio" aria-checked={on} onClick={() => { setQty(n); setQtyMore(false); }} data-testid={`event-qty-${n}`}
+        style={{ minWidth: 40, height: 32, padding: '0 10px', borderRadius: RADIUS.pill, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600, cursor: 'pointer', border: `1px solid ${on ? ink : rule}`, background: on ? ink : 'transparent', color: on ? paper : ink }}>
+        {label || n}
+      </div>
+    );
+  };
 
   // The photo backdrop fades to the page colour and drifts up slowly as the sheet rises over it.
   const onSheetScroll = (e) => {
@@ -314,7 +356,11 @@ export default function EventDetail() {
   const orgAvatarUrl = orgStats ? organizerAvatarPublicUrl(orgStats.avatarPath, orgStats.avatarR2Ref, 'thumb') : '';
   const orgInitial = (ev.orgName || '').trim().slice(0, 1).toUpperCase();
   // Round icon buttons, top-right, side by side (Share, then Save) — same glass disc as the back pill.
-  const iconBtn = (extra) => photoPill({ position: 'fixed', top: 66, width: 40, height: 40, padding: 0, zIndex: 5, borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', ...extra });
+  const iconBtn = (extra) => photoPill({ position: 'fixed', top: OVERLAY_TOP, width: 40, height: 40, padding: 0, zIndex: 5, borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', ...extra });
+  // "More" menu (⋯): the secondary text links that used to stack above the title now live here.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuItem = { display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', fontSize: 13, color: ink, cursor: 'pointer', whiteSpace: 'nowrap' };
+  const hasMenu = !cameFromHome || showOpenInMap || s.myOrgEventKeys.includes(ev.key);
 
   return (
     // `absolute, inset 0` (like Chat): fills the app's scroll viewport exactly, whatever the surrounding grid does
@@ -328,16 +374,43 @@ export default function EventDetail() {
           of the content, inside this screen's OWN scroll container below —
           not the shared Shell-level one) into a fixed overlay, so both
           stay visible/tappable the whole time the user scrolls. */}
-      <div data-fade onClick={closeWithShrink} data-testid="event-detail-back" style={photoPill({ position: 'fixed', top: 66, left: 16, padding: '8px 14px', zIndex: 5, borderRadius: 999 })}>‹ {backLabel}</div>
-      <div data-fade onClick={() => shareEvent(ev)} role="button" aria-label={T('Chia sẻ', 'Share')} data-testid="event-detail-share" style={iconBtn({ right: 66 })}><IconShare /></div>
+      {/* Top scrim: keeps the round controls legible on bright photos (they used to rely on one dark sample image). */}
+      <div data-fade aria-hidden style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 140, zIndex: 4, pointerEvents: 'none', background: 'linear-gradient(180deg, rgba(12,12,12,0.34) 0%, rgba(12,12,12,0) 100%)' }} />
+      {/* Icon-only 40pt disc like Share/Save; the destination name stays as visually-hidden text (screen readers, tests). */}
+      <div data-fade onClick={closeWithShrink} role="button" aria-label={backLabel} data-testid="event-detail-back" style={iconBtn({ left: 16 })}>
+        <svg {...ico} width={20} height={20}><path d="M14.5 5.5 8 12l6.5 6.5" /></svg>
+        <span style={SR_ONLY}>{backLabel}</span>
+      </div>
+      <div data-fade onClick={() => shareEvent(ev)} role="button" aria-label={T('Chia sẻ', 'Share')} data-testid="event-detail-share" style={iconBtn({ right: 64 })}><IconShare /></div>
       {/* Blocker fix (retention roadmap follow-up) — EventDetail had no save
           affordance at all before this pass. Uses Stage 1's exact same
           isSaved/toggleFav — already catalogue-agnostic (both key off the
           real `favorites` table by event id), so this works identically for
           a static demo event and a real host-created one. */}
       <div data-fade onClick={() => toggleFav(ev.key)} role="button" aria-label={isSaved(ev.key) ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')} data-testid="event-detail-save" style={iconBtn({ right: 16 })}><IconHeart filled={isSaved(ev.key)} /></div>
+      {hasMenu && (
+        <>
+          <div data-fade onClick={() => setMenuOpen(o => !o)} role="button" aria-label={T('Thêm', 'More')} aria-expanded={menuOpen} data-testid="event-detail-more" style={iconBtn({ right: 112 })}><IconMore /></div>
+          {menuOpen && (
+            <>
+              <div onClick={() => setMenuOpen(false)} aria-hidden style={{ position: 'fixed', inset: 0, zIndex: 5 }} />
+              <div role="menu" style={photoPill({ position: 'fixed', top: `calc(${OVERLAY_TOP} + 48px)`, right: 16, zIndex: 6, borderRadius: 14, padding: '4px 0', background: 'rgba(var(--bb-bg-rgb),0.96)', fontSize: 13 })}>
+                {!cameFromHome && (
+                  <div role="menuitem" onClick={() => { setMenuOpen(false); goHome(); }} style={menuItem}><IconHouse />{T('Về trang chính', 'Back to home')}</div>
+                )}
+                {showOpenInMap && (
+                  <div role="menuitem" data-testid="event-open-in-map" onClick={() => { setMenuOpen(false); openEventOnMap(ev); }} style={menuItem}><IconMap />{T('Xem trên bản đồ', 'Open in map')}</div>
+                )}
+                {s.myOrgEventKeys.includes(ev.key) && (
+                  <div role="menuitem" data-testid="event-share-to-story" onClick={s.storyCreateBusy ? undefined : () => { setMenuOpen(false); setShareConfirmOpen(true); }} style={{ ...menuItem, opacity: s.storyCreateBusy ? 0.5 : 1 }}><IconCamera />{s.storyCreateBusy ? T('Đang đăng…', 'Posting…') : T('Chia sẻ lên Story', 'Share to Story')}</div>
+                )}
+              </div>
+            </>
+          )}
+        </>
+      )}
       {s.shared && (
-        <div style={{ position: 'fixed', top: 112, right: 16, zIndex: 5, fontSize: 11.5, color: ink, background: 'rgba(var(--bb-bg-rgb),0.9)', borderRadius: 999, padding: '5px 10px' }}>{T('Đã sao chép link', 'Link copied')}</div>
+        <div style={{ position: 'fixed', top: `calc(${OVERLAY_TOP} + 48px)`, right: 16, zIndex: 5, fontSize: 11.5, color: ink, background: 'rgba(var(--bb-bg-rgb),0.9)', borderRadius: 999, padding: '5px 10px' }}>{T('Đã sao chép link', 'Link copied')}</div>
       )}
       {/* The photo is pinned behind everything; the scrolling sheet starts PINNED_STRIP down the screen (rounded top),
           so a band of the photo stays visible above the info however far it is pulled up. */}
@@ -354,37 +427,6 @@ export default function EventDetail() {
       <div ref={scrollerRef} data-fade onScroll={onSheetScroll} style={{ position: 'relative', zIndex: 1, flex: 1, minHeight: 0, marginTop: PINNED_STRIP, borderRadius: `${SHEET_RADIUS}px ${SHEET_RADIUS}px 0 0`, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
       <div style={{ height: HERO_H - SHEET_OVERLAP - PINNED_STRIP }} aria-hidden />
       <div style={{ position: 'relative', zIndex: 1, background: paper, borderRadius: `${SHEET_RADIUS}px ${SHEET_RADIUS}px 0 0`, boxShadow: '0 -4px 14px rgba(0,0,0,0.10)', padding: '30px 22px 30px', display: 'flex', flexDirection: 'column' }}>
-        {!cameFromHome && (
-          <div onClick={goHome} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: ink, opacity: 0.8, cursor: 'pointer', marginBottom: 10 }}><IconHouse />{T('Về trang chính', 'Back to home')}</div>
-        )}
-        {/* Task 1a: only when this screen was reached from Home, not from
-            tapping the event inside Map's own sheet list — reuses the
-            exact same `cameFromHome`/`eventBackScreen` convention the
-            "Về trang chính" link right above already established, just
-            the opposite condition (that one hides FROM home; this one
-            shows only FROM home). MapExplore's own info card for this
-            pin — the same `selectedEvent` card `MapExplore.jsx` already
-            renders for a pin/list tap — appears automatically once there,
-            since `openEventOnMap` sets `selectedId` the same way. */}
-        {showOpenInMap && (
-          <div data-testid="event-open-in-map" onClick={() => openEventOnMap(ev)} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: ink, opacity: 0.8, cursor: 'pointer', marginBottom: 10 }}><IconMap />{T('Xem trên bản đồ', 'Open in map')}</div>
-        )}
-        {/* Task 4B (2026-09-22 follow-up) — only when the signed-in
-            account actually owns/manages this exact event's organizer
-            (s.myOrgEventKeys, loaded at sign-in from the real
-            event -> organizer -> owner_id/user_id relationship) — never
-            for a goer, no matter how they reached this event. This is a
-            UI nicety only; create_event_share_story() (migration 068)
-            re-checks ownership server-side regardless. */}
-        {s.myOrgEventKeys.includes(ev.key) && (
-          <div
-            data-testid="event-share-to-story"
-            onClick={s.storyCreateBusy ? undefined : () => setShareConfirmOpen(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: ink, opacity: s.storyCreateBusy ? 0.5 : 0.8, cursor: s.storyCreateBusy ? 'default' : 'pointer', marginBottom: 10 }}
-          >
-            <IconCamera />{s.storyCreateBusy ? T('Đang đăng…', 'Posting…') : T('Chia sẻ lên Story', 'Share to Story')}
-          </div>
-        )}
         {shareStoryMsg && (
           <div style={{ fontSize: 11, color: ink, opacity: 0.7, marginBottom: 10 }}>{shareStoryMsg}</div>
         )}
@@ -423,137 +465,79 @@ export default function EventDetail() {
             </div>
           </div>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 11.5, color: ink }}>{evCat}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={sectionLabel}>{evCat}</span>
           {ev.inviteOnly && (
-            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', color: paper, background: ink, padding: '3px 8px' }}>{T('Riêng tư ▪︎ theo lời mời', 'Private ▪︎ invite only')}</span>
+            <span data-testid="event-invite-chip" style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.02em', color: paper, background: ink, padding: '3px 10px', borderRadius: RADIUS.pill }}>{T('Riêng tư ▪︎ theo lời mời', 'Private ▪︎ invite only')}</span>
           )}
         </div>
-        {/* Title + compact plan pill on one row (iOS EventPlanTitleRow): no expanded action rows, no gap
-            before the location line. */}
-        <EventPlanTitle eventKey={ev.key} title={ev.name} titleStyle={display(29, { lineHeight: 1.2 })} />
-        {evMapsUrl ? (
-          <a
-            href={evMapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            // Opening directions is the natural moment to also offer to show
-            // the distance, if that hasn't been decided yet — this never
-            // blocks the click itself, since the maps link still opens via
-            // the normal href navigation regardless of what's clicked here.
-            onClick={() => { if (s.located === null) askLocation(); }}
-            style={{ fontSize: 13, color: ink, textDecoration: 'underline', textDecorationColor: 'rgba(27,25,22,0.35)', textUnderlineOffset: 2 }}
-          >
-            {evWhere} ↗
-          </a>
-        ) : (
-          <div style={{ fontSize: 13, color: ink }}>{evWhere}</div>
-        )}
-        <div style={{ fontSize: 13, color: ink, marginTop: 5 }}>{evSeatsLong}</div>
-        {ev.inviteOnly && (
-          // Strict invite-only events (migration 113) — this used to claim
-          // "you can bring one +1," a leftover from the old static demo
-          // catalogue's own flavor text for its fictional 'banrieng' event
-          // (removed). No "+1" mechanism exists anywhere in the invite
-          // model, and this line now renders for REAL invite-only events
-          // — a truthful statement instead of an invented feature.
-          <div style={{ fontSize: 12.5, color: ink, marginTop: 6 }}>{T('Sự kiện này chỉ dành cho người được mời.', 'This event is invite-only.')}</div>
-        )}
+        {/* Title + compact plan pill on one row (iOS EventPlanTitleRow). */}
+        <EventPlanTitle eventKey={ev.key} title={ev.name} titleStyle={display(28, { lineHeight: 1.2 })} />
+        {/* Key facts (date/time first: the one fact an event page must never leave out), one icon column, one grid. */}
+        <div data-testid="event-facts" style={{ marginTop: 12, display: 'flex', flexDirection: 'column' }}>
+          {ev.when && <FactRow icon={<IconClock />} testId="event-fact-when">{ev.when}</FactRow>}
+          <FactRow icon={<IconPin />} testId="event-fact-where">
+            {evMapsUrl ? (
+              <a
+                href={evMapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                // Opening directions is the natural moment to also offer to show the distance, if that hasn't been
+                // decided yet — never blocks the click itself (the maps link still opens via the normal href).
+                onClick={() => { if (s.located === null) askLocation(); }}
+                style={{ color: ink, textDecoration: 'underline', textDecorationColor: 'rgba(var(--bb-fg-rgb),0.35)', textUnderlineOffset: 2 }}
+              >
+                {evWhere} ↗
+              </a>
+            ) : evWhere}
+          </FactRow>
+          <FactRow icon={<IconSeat />} testId="event-fact-seats">{evSeatsLong}</FactRow>
+          {ev.price && <FactRow icon={<IconTag />} testId="event-fact-price"><span style={{ ...display(17) }}>{trStatus(ev.price)}</span></FactRow>}
+        </div>
         <WhoCanReserve criteria={crit.criteria} style={{ marginTop: 6 }} />
         {crit.restricted && crit.blocked && !myBooking && !ev.cancelled && !ended && (
-          <CriteriaUnmetCard eligibility={crit.eligibility} returnTo="event" style={{ marginTop: 12 }} />
+          <div ref={critRef} style={{ marginTop: 12, scrollMarginBottom: 160 }}><CriteriaUnmetCard eligibility={crit.eligibility} returnTo="event" /></div>
         )}
-        <p style={{ fontSize: 14, lineHeight: 1.55, color: ink, margin: '20px 0 0' }}>{ev.desc}</p>
-        <div style={{ marginTop: 22, borderTop: `1px solid ${rule}` }}>
-          {/* Intro/included-presentation pass (2026-09-28) — was two
-              separate things: an always-visible "Giới thiệu sự kiện"
-              section right here, PLUS a "Bao gồm" row that only became
-              tappable when `includedItems.length > 0` (real events'
-              `included_items` is empty on every row this app currently
-              has — confirmed live — so this never actually triggered for
-              them; only demo events, once they got structured items,
-              would have). Consolidated into ONE tappable row + sheet
-              (intro first, included items below) whenever EITHER exists,
-              matching iOS's own `EventDetailView` exactly — the ticket's
-              own explicit ask: "the SAME tappable... row... Introduction
-              FIRST and... Included... separately below," on both
-              platforms. `ev.included` (legacy flat string) is still the
-              fallback for an event with NEITHER — never a broken empty
-              section. */}
-          {(includedItems.length > 0 || introParagraphs.length > 0) ? (
-            <div
-              onClick={() => setIncludedSheetOpen(true)}
-              data-testid="event-included-section"
-              aria-label={T('Giới thiệu và bao gồm, xem thêm', 'Introduction and included, view more')}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 18, padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13, cursor: 'pointer' }}
-            >
-              <span style={{ color: ink, flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 12 }}><span style={iconCol}><IconList /></span>{T('Bao gồm', 'Included')}</span>
-              <span style={{ color: ink, textAlign: 'right', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '2px 6px' }}>
-                {includedItems.length > 0 ? (
-                  includedItems.map((it, i) => (
-                    <span key={i}>{it.label}{i < includedItems.length - 1 ? ' ▪︎' : ''}</span>
-                  ))
-                ) : (
-                  <span>{T('Xem thêm', 'View more')}</span>
-                )}
-                <span style={{ opacity: 0.55 }}>›</span>
+        {/* Body copy supports the title instead of competing with it: roomier leading, slightly softer ink. Long
+            descriptions clamp to 4 lines when there is a fuller write-up behind "Read more" (About & Included sheet). */}
+        <p style={{ fontSize: 14.5, lineHeight: 1.6, color: ink, opacity: 0.85, margin: '18px 0 0', ...(canClamp ? { display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : null) }}>{ev.desc}</p>
+        {canClamp && (
+          <div onClick={() => setIncludedSheetOpen(true)} data-testid="event-read-more" style={{ marginTop: 6, fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Xem thêm', 'Read more')}</div>
+        )}
+        {/* Host card: who runs this, how trusted, and a one-tap way to ask (moved up from the bottom rows). */}
+        <div style={{ marginTop: 22, display: 'flex', alignItems: 'center', gap: 12, padding: '14px 0', borderTop: `1px solid ${softRule}`, borderBottom: `1px solid ${softRule}` }}>
+          <div onClick={() => openOrganizerOfEvent(ev.key, 'event')} data-testid="event-organizer-row" role="button" aria-label={T('Trang tổ chức của ', 'Host page of ') + (ev.orgName || '')} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <span style={{ flex: 'none', width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', background: 'var(--bb-field)', border: `0.5px solid ${rule}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 600, color: ink }}>
+              {orgAvatarUrl ? <img src={orgAvatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : orgInitial}
+            </span>
+            <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontSize: 12, color: ink, opacity: 0.65 }}>{T('Tổ chức bởi', 'Hosted by')}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <span style={{ fontSize: 15, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.orgName}</span>
+                {evOrgFollowed && <FollowingBadge T={T} testId="event-organizer-following" />}
               </span>
-            </div>
-          ) : ev.included ? (
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13 }}>
-              <span style={{ color: ink, flex: 'none' }}>{T('Bao gồm', 'Included')}</span>
-              <span style={{ color: ink, textAlign: 'right' }}>{ev.included}</span>
-            </div>
-          ) : null}
-          <div onClick={() => openOrganizerOfEvent(ev.key, 'event')} data-testid="event-organizer-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13, cursor: 'pointer' }}>
-            <span style={{ color: ink, display: 'inline-flex', alignItems: 'center', gap: 12 }}><span style={iconCol}><IconPerson /></span>{T('Người tổ chức', 'Organizer')}</span>
-            <span style={{ color: ink, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              {evOrgFollowed && <FollowingBadge T={T} testId="event-organizer-following" />}
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                {T('Ghé', 'Visit')}
-                <span style={{ width: 24, height: 24, borderRadius: '50%', overflow: 'hidden', background: 'var(--bb-field)', border: `0.5px solid ${rule}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600 }}>
-                  {orgAvatarUrl ? <img src={orgAvatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : orgInitial}
-                </span>
-                {ev.orgName} ›
-              </span>
+              {evOrgStats && <span data-testid="event-organizer-stats" style={{ fontSize: 12, color: ink, opacity: 0.65 }}>{evOrgStats}</span>}
             </span>
           </div>
-          {/* Moved here from the retired Organizer screen (merged into the
-              host profile): message the host straight from the event. */}
-          <div onClick={goChat} data-testid="organizer-message" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13, cursor: 'pointer' }}>
-            <span style={{ color: ink, display: 'inline-flex', alignItems: 'center', gap: 12 }}><span style={iconCol}><IconChat /></span>{T('Liên hệ', 'Contact')}</span>
-            <span style={{ color: ink }}>{T('Nhắn cho', 'Message')} {ev.orgName} ›</span>
-          </div>
-          {evOrgStats && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 12 }}>
-              <span style={{ color: ink }}>{T('Uy tín', 'Track record')}</span>
-              <span style={{ color: ink }}>{evOrgStats}</span>
-            </div>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '16px 0 0' }}>
-            <span style={{ fontSize: 13, color: ink }}>{T('Giá', 'Price')}</span>
-            <span style={{ ...display(23) }}>{trStatus(ev.price)}</span>
+          {/* Moved here from the retired Organizer screen (merged into the host profile): message the host from the event. */}
+          <div onClick={goChat} data-testid="organizer-message" role="button" aria-label={T('Nhắn cho ', 'Message ') + (ev.orgName || '')} style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: RADIUS.pill, border: `1px solid ${rule}`, fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer' }}>
+            <IconChat />{T('Nhắn tin', 'Message')}
           </div>
         </div>
-        {showRefund && <p style={{ margin: '14px 0 0', fontSize: 11.5, lineHeight: 1.5, color: ink, textAlign: 'center' }}>{refundNote}</p>}
-        <div style={{ marginTop: 28 }}>
-          <span style={{ fontSize: 11.5, color: ink }}>{T('Hình ảnh', 'Photos')}</span>
-          {/* STAGE D (2026-09-25) — real event_photos rows, not the static
-              demo `ev.gallery`. A genuinely photo-less real event shows
-              plain text, never a fake/demo photo standing in for a real
-              one. */}
+        {/* Photos sit right under the story they illustrate, with a count, instead of after everything else. */}
+        <div style={{ marginTop: 24 }}>
+          <div style={sectionLabel}>{T('Hình ảnh', 'Photos')}{realPhotos.length > 0 ? ` ▪︎ ${realPhotos.length}` : ''}</div>
+          {/* STAGE D (2026-09-25) — real event_photos rows, not the static demo `ev.gallery`. A genuinely photo-less
+              real event shows plain text, never a fake/demo photo standing in for a real one. */}
           {s.eventPhotosLoading ? (
-            <p style={{ fontSize: 12.5, color: ink, opacity: 0.6, marginTop: 12 }}>{T('Đang tải…', 'Loading…')}</p>
+            <p style={{ fontSize: 13, color: ink, opacity: 0.6, margin: '10px 0 0' }}>{T('Đang tải…', 'Loading…')}</p>
           ) : realPhotos.length ? (
-            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 12, paddingBottom: 4 }}>
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 10, paddingBottom: 4 }}>
               {realPhotos.map((p, i) => (
                 <div key={p.id} onClick={(e) => openPhoto(realPhotos, i, ev.orgName, e.currentTarget.getBoundingClientRect())} style={{ position: 'relative', flex: 'none' }}>
-                  <div style={bg(p.url, { width: 148, height: 186, cursor: 'pointer' })} />
-                  {/* A.7 — a liked photo gets a filled heart badge; an
-                      unliked one shows no heart glyph at all here (only the
-                      full-screen viewer's own like button, opened by
-                      tapping the photo, is the discoverable way to like
-                      it). */}
+                  <div style={bg(p.url, { width: 132, height: 166, borderRadius: RADIUS.thumb, cursor: 'pointer' })} />
+                  {/* A.7 — a liked photo gets a filled heart badge; an unliked one shows none here (the full-screen
+                      viewer's own like button is the discoverable way to like it). */}
                   {s.photoEngagement[p.id]?.likedByMe && (
                     <span style={{ position: 'absolute', top: 8, right: 8, color: '#fff', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.55))', pointerEvents: 'none' }}>
                       <svg width={15} height={15} viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.5S3.5 15 3.5 9.2A4.7 4.7 0 0 1 12 6.5a4.7 4.7 0 0 1 8.5 2.7c0 5.8-8.5 11.3-8.5 11.3Z" /></svg>
@@ -563,12 +547,61 @@ export default function EventDetail() {
               ))}
             </div>
           ) : (
-            <p style={{ fontSize: 12.5, color: ink, opacity: 0.6, marginTop: 12 }}>{T('Chưa có ảnh nào cho sự kiện này.', 'No photos for this event yet.')}</p>
+            <p style={{ fontSize: 13, color: ink, opacity: 0.6, margin: '10px 0 0' }}>{T('Chưa có ảnh nào cho sự kiện này.', 'No photos for this event yet.')}</p>
           )}
         </div>
+        {/* One tappable "About & Included" row + sheet (intro first, included items below) whenever EITHER exists,
+            matching iOS. `ev.included` (legacy flat string) is the fallback for an event with neither. Only tappable
+            rows get a chevron. */}
+        {(includedItems.length > 0 || introParagraphs.length > 0) ? (
+          <div
+            onClick={() => setIncludedSheetOpen(true)}
+            data-testid="event-included-section"
+            aria-label={T('Giới thiệu và bao gồm, xem thêm', 'Introduction and included, view more')}
+            style={{ ...listRow, marginTop: 20, borderTop: `1px solid ${softRule}`, cursor: 'pointer' }}
+          >
+            <span style={iconCol}><IconList /></span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontWeight: 600 }}>{T('Giới thiệu & bao gồm', 'About & included')}</span>
+              {includedItems.length > 0 && (
+                <span style={{ display: 'block', fontSize: 13, opacity: 0.7, marginTop: 2 }}>{includedItems.map(it => it.label).join(' ▪︎ ')}</span>
+              )}
+            </span>
+            <span aria-hidden style={{ flex: 'none', opacity: 0.5, fontSize: 18, lineHeight: 1 }}>›</span>
+          </div>
+        ) : ev.included ? (
+          <div style={{ ...listRow, marginTop: 20, borderTop: `1px solid ${softRule}` }}>
+            <span style={iconCol}><IconList /></span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontWeight: 600 }}>{T('Bao gồm', 'Included')}</span>
+              <span style={{ display: 'block', fontSize: 13, opacity: 0.7, marginTop: 2 }}>{ev.included}</span>
+            </span>
+          </div>
+        ) : null}
       </div>
       </div>
-      <div data-fade onClick={reserveBarTap} style={reserveBarStyle} data-testid="event-reserve-bar" aria-disabled={criteriaBlocked || undefined}>{reserveBarLabel}</div>
+      {/* Sticky action area: always on screen, so the decision can happen wherever the reader is convinced. Seat
+          presets + the live total live next to the CTA instead of a separate step (Reserve opens pre-filled). */}
+      <div data-fade data-testid="event-action-area" style={barGlass({ flex: 'none', position: 'relative', zIndex: 2, borderTop: `1px solid ${softRule}`, padding: '10px 16px calc(12px + env(safe-area-inset-bottom, 0px))' })}>
+        {barState === 'reserve' && (
+          <div data-testid="event-qty" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+            <span style={{ fontSize: 13, color: ink, opacity: 0.75 }}>{T('Số chỗ', 'Seats')}</span>
+            {qtyMore ? (
+              <CountStepper value={qty} min={1} max={MAX_QTY} unit={T('chỗ', 'seats')} testId="event-qty-stepper" onChange={setQty} />
+            ) : (
+              <div role="radiogroup" aria-label={T('Số chỗ', 'Seats')} style={{ display: 'flex', gap: 6 }}>
+                {QTY_PRESETS.map(n => qtyChip(n))}
+                <div role="button" onClick={() => setQtyMore(true)} data-testid="event-qty-more" aria-label={T('Số khác', 'Other amount')}
+                  style={{ minWidth: 40, height: 32, padding: '0 10px', borderRadius: RADIUS.pill, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, cursor: 'pointer', border: `1px solid ${rule}`, color: ink }}>
+                  {T('Khác', 'More')}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        <div onClick={reserveBarTap} role="button" style={reserveBarStyle} data-testid="event-reserve-bar" data-state={barState} aria-disabled={!reserveBarTap || undefined}>{reserveBarLabel}</div>
+        {trustLine && <div data-testid="event-trust-line" style={{ marginTop: 6, fontSize: 12, lineHeight: 1.4, color: ink, opacity: 0.7, textAlign: 'center' }}>{trustLine}</div>}
+      </div>
       {includedSheetOpen && (
         <div
           onClick={() => setIncludedSheetOpen(false)}

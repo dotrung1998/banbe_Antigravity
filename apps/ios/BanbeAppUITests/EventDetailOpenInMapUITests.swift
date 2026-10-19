@@ -43,6 +43,9 @@ final class EventDetailOpenInMapUITests: XCTestCase {
         XCTAssertTrue(card.waitForExistence(timeout: 15))
         card.tap()
         XCTAssertTrue(app.otherElements["screen.event"].waitForExistence(timeout: 10))
+        // "Open in map" now lives in the ⋯ menu over the photo.
+        XCTAssertTrue(app.buttons["event.more"].waitForExistence(timeout: 5))
+        app.buttons["event.more"].tap()
         XCTAssertTrue(app.buttons["event.openInMap"].waitForExistence(timeout: 5),
                       "Expected 'Open in map' when Event Detail was reached from Home")
 

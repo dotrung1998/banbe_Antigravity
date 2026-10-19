@@ -246,6 +246,7 @@ final class ScreenshotCatalogTests: XCTestCase {
         XCTAssertTrue(app.otherElements["screen.event"].waitForExistence(timeout: 18))
         capture("02-home-discovery", 6, "event-detail", "Event Detail", "Reached from Home — includes the \"Open in map\" action.", role: "goer", app: app)
 
+        if app.buttons["event.more"].waitForExistence(timeout: 5) { app.buttons["event.more"].tap() }
         if app.buttons["event.openInMap"].waitForExistence(timeout: 5) {
             app.buttons["event.openInMap"].tap()
             XCTAssertTrue(app.otherElements["screen.mapExplore"].waitForExistence(timeout: 18))

@@ -714,6 +714,7 @@ test.describe('Map Explore — Task 7 (Open in Map + category filter regression)
     // via a Home card, not a synthetic navigation call.
     await page.locator('[data-testid^="home-event-"]').first().click();
     await page.waitForSelector('[data-screen-label="Event"]');
+    await page.locator('[data-testid="event-detail-more"]').click();
     await page.locator('[data-testid="event-open-in-map"]').click();
     await page.waitForSelector('[data-screen-label="MapExplore"]');
 

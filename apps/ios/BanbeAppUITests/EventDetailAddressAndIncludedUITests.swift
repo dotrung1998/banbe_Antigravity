@@ -57,6 +57,9 @@ final class EventDetailAddressAndIncludedUITests: XCTestCase {
         app.buttons["card.bepnho"].tap()
         XCTAssertTrue(app.otherElements["screen.event"].waitForExistence(timeout: 10))
 
+        // "Open in map" now lives in the ⋯ menu over the photo.
+        XCTAssertTrue(app.buttons["event.more"].waitForExistence(timeout: 5))
+        app.buttons["event.more"].tap()
         XCTAssertTrue(app.buttons["event.openInMap"].waitForExistence(timeout: 5),
                       "A known event with real curated coordinates must still show 'Xem trên bản đồ' after the lat/lng-optional refactor")
     }
@@ -71,6 +74,9 @@ final class EventDetailAddressAndIncludedUITests: XCTestCase {
         app.buttons["card.bepnho"].tap()
         XCTAssertTrue(app.otherElements["screen.event"].waitForExistence(timeout: 10))
 
+        // "Open in map" now lives in the ⋯ menu over the photo.
+        XCTAssertTrue(app.buttons["event.more"].waitForExistence(timeout: 5))
+        app.buttons["event.more"].tap()
         let openInMap = app.buttons["event.openInMap"]
         XCTAssertTrue(openInMap.waitForExistence(timeout: 5))
         openInMap.tap()

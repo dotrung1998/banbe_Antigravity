@@ -32,6 +32,12 @@ struct EventDetailView: View {
     // surfaced differently there (an always-visible intro section plus
     // its own separate included-only sheet) vs. here (one sheet, both).
     @State private var introIncludedSheetOpen = false
+    /// The ⋯ menu over the photo (Back to home / Open in map / Share to Story).
+    @State private var moreOpen = false
+    /// Seat stepper shown instead of the 1 · 2 · 4 presets.
+    @State private var qtyMore = false
+    /// Bumped by the blocked bar's "see why" tap; the scroll view scrolls the criteria card into view.
+    @State private var criteriaScrollRequest = 0
 
     // Airbnb-style layout: the photo is a fixed backdrop that fades out while the rounded info sheet scrolls up over it.
     private let heroHeight: CGFloat = 400
@@ -210,7 +216,17 @@ struct EventDetailView: View {
             heroBackdrop
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .ignoresSafeArea(edges: .top)
+            // Top scrim: keeps the round controls legible on bright covers (they used to rely on a dark sample photo).
+            LinearGradient(colors: [.black.opacity(0.34), .clear], startPoint: .top, endPoint: .bottom)
+                .frame(height: topInset + 124)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .ignoresSafeArea(edges: .top)
+                .allowsHitTesting(false)
+                .opacity(contentShown ? 1 : 0)
+                .modifier(dragPose)
+                .accessibilityHidden(true)
             VStack(spacing: 0) {
+                ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         // Room for the backdrop photo; the sheet below starts `sheetOverlap` up inside it. This
@@ -232,6 +248,10 @@ struct EventDetailView: View {
                 .trackingScrollOffset($scrollOffset)
                 .scrollDisabled(isDismissDragging)
                 .simultaneousGesture(dismissGesture)
+                .onChange(of: criteriaScrollRequest) { _, _ in
+                    withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("event.criteria", anchor: .center) }
+                }
+                }
                 // The scrolling area starts `pinnedStrip` down the screen, with the sheet's own rounded top corners,
                 // so a band of the photo stays visible above the info however far it is pulled up.
                 .mask { UnevenRoundedRectangle(topLeadingRadius: sheetRadius, topTrailingRadius: sheetRadius, style: .continuous) }
@@ -248,6 +268,11 @@ struct EventDetailView: View {
             // descendant of it — so they float persistently regardless of
             // scroll position, the same floating-pill treatment the map
             // screen's own back/compass buttons already get.
+            if moreOpen {
+                // Tap anywhere outside the ⋯ menu to close it.
+                Color.clear.contentShape(Rectangle()).ignoresSafeArea()
+                    .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { moreOpen = false } }
+            }
             backShareRow.opacity(contentShown ? 1 : 0)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .modifier(dragPose)
@@ -378,58 +403,114 @@ struct EventDetailView: View {
         .presentationDetents([.height(220)])
     }
 
+    /// The secondary links that used to stack above the title now live in the ⋯ menu, so nothing sits above it.
+    private var canOpenInMap: Bool { app.eventBackScreen == .home && event.lat != nil && event.lng != nil }
+    private var hasMoreMenu: Bool { app.eventBackScreen != .home || canOpenInMap || app.myOrgEventKeys.contains(event.key) }
+
+    /// Back, ⋯, Share and Save: four 40pt glass discs on one line (back used to be a long text pill that crowded
+    /// the icons and sat at a different height). The destination stays in the back button's accessibility label.
     private var backShareRow: some View {
-        HStack(alignment: .top) {
-            pill("‹ \(backLabel)") { closeAnimated() }
+        VStack(alignment: .trailing, spacing: 8) {
+            HStack(spacing: 8) {
+                iconButton("chevron.left",
+                           // Follow-up bug 2: an explicit, map-specific label so VoiceOver users get the same
+                           // "this returns to the map, not Home" clarity.
+                           label: app.eventBackScreen == .mapExplore ? app.T("Quay lại bản đồ", "Back to map") : backLabel) {
+                    closeAnimated()
+                }
                 .accessibilityIdentifier("event.back")
-                // Follow-up bug 2: an explicit, map-specific
-                // accessibility label — distinct from the visible pill
-                // text — so VoiceOver users get the same "this returns
-                // to the map, not Home" clarity the sighted fix gives.
-                .accessibilityLabel(
-                    app.eventBackScreen == .mapExplore
-                        ? app.T("Quay lại bản đồ", "Back to map")
-                        : "‹ \(backLabel)"
-                )
-            Spacer()
-            // Share and Save as plain icons side by side. Save uses the same isSaved/toggleFavorite Home's own
-            // EventCard does (catalogue-agnostic: keys off the real `favorites` table by event id).
-            VStack(alignment: .trailing, spacing: 6) {
-                HStack(spacing: 10) {
-                    iconButton("square.and.arrow.up", label: app.T("Chia sẻ", "Share")) { share() }
-                        .accessibilityIdentifier("event.share")
-                    iconButton(app.isSaved(event.key) ? "heart.fill" : "heart",
-                               label: app.isSaved(event.key) ? app.T("Đã lưu", "Saved") : app.T("Lưu", "Save"),
-                               tint: app.isSaved(event.key) ? Color(hex: 0xC8372D) : nil) {
-                        app.toggleFavorite(event.key)
+                Spacer()
+                if hasMoreMenu {
+                    iconButton("ellipsis", label: app.T("Thêm", "More")) {
+                        withAnimation(.easeOut(duration: 0.18)) { moreOpen.toggle() }
                     }
-                    .accessibilityIdentifier("event.save")
+                    .accessibilityIdentifier("event.more")
                 }
-                if app.sharedFlash {
-                    Text(app.T("Đã sao chép link", "Link copied"))
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(app.palette.ink)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(app.palette.paper.opacity(0.9), in: Capsule())
-                        .transition(.opacity)
+                // Save uses the same isSaved/toggleFavorite Home's own EventCard does (keys off `favorites` by id).
+                iconButton("square.and.arrow.up", label: app.T("Chia sẻ", "Share")) { share() }
+                    .accessibilityIdentifier("event.share")
+                iconButton(app.isSaved(event.key) ? "heart.fill" : "heart",
+                           label: app.isSaved(event.key) ? app.T("Đã lưu", "Saved") : app.T("Lưu", "Save"),
+                           tint: app.isSaved(event.key) ? Color(hex: 0xC8372D) : nil) {
+                    app.toggleFavorite(event.key)
                 }
+                .accessibilityIdentifier("event.save")
+            }
+            if moreOpen {
+                moreMenu.transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
+            }
+            if app.sharedFlash {
+                Text(app.T("Đã sao chép link", "Link copied"))
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(app.palette.ink)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(app.palette.paper.opacity(0.9), in: Capsule())
+                    .transition(.opacity)
             }
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
     }
 
-    /// Round glass icon button for the photo's top-right corner (same disc treatment as the back pill).
+    /// Round glass disc for the controls over the photo: native glass (Material before iOS 26), a hairline edge and a
+    /// soft shadow, so it stays legible on bright, busy and dark covers alike (plus the top scrim behind it).
     private func iconButton(_ symbol: String, label: String, tint: Color? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(tint ?? app.palette.ink)
                 .frame(width: 40, height: 40)
-                .background(app.palette.paper.opacity(0.85), in: Circle())
+                .nativeGlass(Circle(), interactive: true, tint: app.palette.paper.opacity(0.5))
+                .overlay(Circle().stroke(Color.white.opacity(0.35), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+    }
+
+    private var moreMenu: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if app.eventBackScreen != .home {
+                menuButton("house", app.T("Về trang chính", "Back to home")) { app.goHome() }
+            }
+            // Only when reached from Home (and the event has confirmed coordinates); `openEventOnMap` reuses Map
+            // Explore's own restored-snapshot mechanism, so its selected-pin card appears automatically.
+            if canOpenInMap {
+                menuButton("map", app.T("Xem trên bản đồ", "Open in map")) { app.openEventOnMap(event) }
+                    .accessibilityIdentifier("event.openInMap")
+            }
+            // Only for the account that owns this event's organizer (re-checked server-side); opens the confirm step.
+            if app.myOrgEventKeys.contains(event.key) {
+                menuButton("camera", app.storyCreateBusy ? app.T("Đang đăng…", "Posting…") : app.T("Chia sẻ lên Story", "Share to Story")) {
+                    shareConfirmOpen = true
+                }
+                .disabled(app.storyCreateBusy)
+                .accessibilityIdentifier("event.shareToStory")
+            }
+        }
+        .padding(.vertical, 4)
+        .background(app.palette.paper.opacity(0.97), in: RoundedRectangle(cornerRadius: BanbeTheme.Radius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: BanbeTheme.Radius.card, style: .continuous).stroke(app.palette.rule, lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.16), radius: 14, y: 6)
+        .fixedSize()
+    }
+
+    private func menuButton(_ symbol: String, _ text: String, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.15)) { moreOpen = false }
+            action()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: symbol).font(.system(size: 14)).frame(width: 18)
+                Text(text).font(.system(size: 14))
+            }
+            .padding(.horizontal, 14).padding(.vertical, 11)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(app.palette.ink)
     }
 
     /// The cover photo, full-bleed to the top and side edges, pinned behind the scrolling sheet. It fades to the
@@ -457,79 +538,27 @@ struct EventDetailView: View {
         DragPoseModifier(radius: min(sheetRadius, dismissProgress * 120), scale: dragScale, offsetY: dismissDrag * 0.35)
     }
 
-    private func pill(_ text: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(text)
-                .font(.system(size: 12))
-                .foregroundStyle(app.palette.ink)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 8)
-                .background(app.palette.paper.opacity(0.85), in: Capsule())
-        }
-        .buttonStyle(.plain)
+    /// One hairline weight for the page's own dividers: softer than `rule`, so sections read as one surface.
+    private var softRule: Color { app.palette.ink.opacity(0.10) }
+    private var hostName: String { event.orgName.isEmpty ? event.hostShort : event.orgName }
+    private var hasAboutSheet: Bool { event.intro != nil || !(event.includedItems?.isEmpty ?? true) }
+    /// Long descriptions clamp to 4 lines when the fuller write-up is one tap away (About & Included sheet).
+    private var canClampDescription: Bool { hasAboutSheet && event.desc.count > 180 }
+    /// `where` is "area ▪︎ distance ▪︎ day ▪︎ time" (one line on the old layout); the date now has its own fact row,
+    /// so the location row keeps only the place and, once located, the distance.
+    private var placeLine: String {
+        let parts = app.stripKm(event.where, event: event).components(separatedBy: " ▪︎ ")
+        return app.trStatus(parts.enumerated().filter { $0.offset == 0 || $0.element.contains(" km") }.map(\.element).joined(separator: " ▪︎ "))
+    }
+    private var organizerStatsLine: String? {
+        guard let stats = app.eventOrganizerID[event.key].flatMap({ app.organizerStats[$0] }), stats.count > 0 else { return nil }
+        return stats.sinceYear.map { year in
+            app.T("Tổ chức từ \(year) ▪︎ \(stats.count) sự kiện", "Hosting since \(year) ▪︎ \(stats.count) events")
+        } ?? app.T("\(stats.count) sự kiện", "\(stats.count) events")
     }
 
     private var details: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if app.eventBackScreen != .home {
-                Button { app.goHome() } label: { linkLabel("house", app.T("Về trang chính", "Back to home")) }
-                    .buttonStyle(.plain)
-                    .padding(.bottom, 10)
-            }
-            criteriaSection
-            // Task 1a: only when this screen was reached from Home, not
-            // from tapping the event inside Map's own sheet list — reuses
-            // the exact same `eventBackScreen` convention the "Về trang
-            // chính" link above already established, just the opposite
-            // condition (that one hides FROM home; this shows only FROM
-            // home). `openEventOnMap` reuses MapExploreView's own restored-
-            // snapshot mechanism, so the same info card that view already
-            // renders for a selected pin/list row appears automatically.
-            //
-            // BUG 3 fix (2026-09-22 fifteenth follow-up) — the extra
-            // `&& !app.eventBackIsStory` used to hide this action entirely
-            // whenever Event Detail was reached from a story, even though
-            // `goEventFromStory()` sets `eventBackScreen` to whichever
-            // screen the story was opened over (Home, in the common case)
-            // — the exact same value a Home-origin open would have. This
-            // was an origin-visibility bug, not an intentional "no map from
-            // story" product decision (nothing about a story origin makes
-            // the event's own coordinates less valid) — removed so a
-            // story-originated Event Detail shows the same Map action a
-            // Home-originated one does, whenever `eventBackScreen == .home`.
-            // Real-event-maps-link fix pass (2026-09-28) — `event.lat != nil`
-            // added: a real event with no confirmed coordinates yet (an
-            // older event, or one whose host explicitly skipped
-            // confirmation at creation) has nothing for this action to
-            // open — honest omission instead of a button that silently
-            // no-ops (`openEventOnMap`'s own guard).
-            if app.eventBackScreen == .home, event.lat != nil, event.lng != nil {
-                Button { app.openEventOnMap(event) } label: { linkLabel("map", app.T("Xem trên bản đồ", "Open in map")) }
-                    .buttonStyle(.plain)
-                    .padding(.bottom, 10)
-                    .accessibilityIdentifier("event.openInMap")
-            }
-            // Task 4B (2026-09-22 follow-up) — only when the signed-in
-            // account actually owns/manages this exact event's organizer
-            // (app.myOrgEventKeys, loaded at sign-in from the real
-            // event -> organizer -> owner_id/user_id relationship) — never
-            // for a goer. UI nicety only; createEventShareStory() re-checks
-            // ownership server-side regardless.
-            if app.myOrgEventKeys.contains(event.key) {
-                // BUG 4 fix (2026-09-22 follow-up) — opens a real confirm
-                // step instead of publishing immediately; Cancel writes
-                // nothing at all.
-                Button {
-                    shareConfirmOpen = true
-                } label: {
-                    linkLabel("camera", app.storyCreateBusy ? app.T("Đang đăng…", "Posting…") : app.T("Chia sẻ lên Story", "Share to Story"))
-                        .opacity(app.storyCreateBusy ? 0.6 : 1)
-                }
-                .buttonStyle(.plain)
-                .disabled(app.storyCreateBusy)
-                .padding(.bottom, 10)
-                .accessibilityIdentifier("event.shareToStory")
-            }
             if let shareStoryMessage {
                 Text(shareStoryMessage)
                     .font(.system(size: 11))
@@ -538,143 +567,104 @@ struct EventDetailView: View {
             }
 
             HStack(spacing: 8) {
-                Text(app.trStatus(event.cat)).font(.system(size: 11.5))
+                Text(app.trStatus(event.cat).uppercased())
+                    .font(.system(size: 12, weight: .semibold)).tracking(0.9)
+                    .opacity(0.7)
                 if event.inviteOnly {
+                    // Strict invite-only events (migration 113): the chip alone says it (the repeated sentence is gone).
                     Text(app.T("Riêng tư ▪︎ theo lời mời", "Private ▪︎ invite only"))
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(app.palette.paper)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(app.palette.ink)
+                        .padding(.horizontal, 10).padding(.vertical, 3)
+                        .background(app.palette.ink, in: Capsule())
+                        .accessibilityIdentifier("event.inviteChip")
                 }
             }
 
             // Note 46 — the title with the compact banbe Schedule / Apple Calendar button.
             EventPlanTitleRow(event: event)
 
-            if let mapsURL = event.mapsURL {
-                Button {
-                    // Opening directions is the natural moment to also offer
-                    // the distance, if that's never been decided.
-                    if app.located == nil { app.askLocation() }
-                    openURL(mapsURL)
-                } label: {
-                    Text(app.trStatus(app.stripKm(event.where, event: event)) + " ↗")
-                        .font(.system(size: 13))
-                        .underline()
-                        .multilineTextAlignment(.leading)
+            // Key facts, date/time first (the one fact an event page must never leave out): one icon column, one grid.
+            VStack(alignment: .leading, spacing: 0) {
+                if !event.when.isEmpty {
+                    factRow("clock") { Text(event.when) }
+                        .accessibilityIdentifier("event.fact.when")
                 }
-                .buttonStyle(.plain)
-            }
-
-            Text(app.trStatus(event.soldOut ? "Hết chỗ" : event.seatsLong))
-                .font(.system(size: 13))
-                .padding(.top, 5)
-
-            if event.inviteOnly {
-                // Strict invite-only events (migration 113) — leftover
-                // "+1" claim from the old static demo catalogue's own
-                // fictional flavor text (removed); no such mechanism
-                // exists, and this now renders for REAL invite-only
-                // events, so it needs to be true, not invented.
-                Text(app.T("Sự kiện này chỉ dành cho người được mời.", "This event is invite-only."))
-                    .font(.system(size: 12.5)).padding(.top, 6)
-            }
-
-            Text(event.desc)
-                .font(.system(size: 14))
-                .lineSpacing(4)
-                .padding(.top, 20)
-
-            VStack(spacing: 0) {
-                Divider().overlay(app.palette.rule)
-                // Intro/included-parity fix pass (2026-09-28) — was plain
-                // text via `detailRow` with no tap target at all. Only
-                // shown when there's actually something to open (an intro
-                // or at least one structured item) — an event with
-                // neither shows nothing here at all, same as before this
-                // pass for an event whose `included` string was empty
-                // (never a broken empty section).
-                if event.intro != nil || !(event.includedItems?.isEmpty ?? true) {
-                    Button { introIncludedSheetOpen = true } label: {
-                        includedRow
+                factRow("mappin.and.ellipse") {
+                    if let mapsURL = event.mapsURL {
+                        Button {
+                            // Opening directions is the natural moment to also offer the distance, if never decided.
+                            if app.located == nil { app.askLocation() }
+                            openURL(mapsURL)
+                        } label: {
+                            Text(placeLine + " ↗").underline().multilineTextAlignment(.leading)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("event.address")
+                    } else {
+                        Text(placeLine)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("event.includedSection")
-                    .accessibilityLabel(app.T("Giới thiệu và bao gồm, xem thêm", "Introduction and included, view more"))
-                } else if !event.included.isEmpty {
-                    detailRow(app.T("Bao gồm", "Included"), value: event.included)
                 }
-                Button { app.openEventOrganizer(eventKey: app.eventKey) } label: { organizerRow }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("event.organizer")
-                // Moved here from the retired standalone organizer page.
-                Button { app.goChat() } label: {
-                    detailRow(app.T("Liên hệ", "Contact"), leading: AnyView(rowIcon("bubble.left")),
-                              value: app.T("Nhắn cho", "Message") + " \(event.orgName.isEmpty ? event.hostShort : event.orgName) ›")
+                factRow("person.2") { Text(app.trStatus(event.soldOut ? "Hết chỗ" : event.seatsLong)) }
+                    .accessibilityIdentifier("event.fact.seats")
+                if !event.price.isEmpty {
+                    factRow("tag") { Text(app.trStatus(event.price)).font(BanbeTheme.display(17)) }
+                        .accessibilityIdentifier("event.fact.price")
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("event.messageHost")
-                if let stats = app.eventOrganizerID[event.key].flatMap({ app.organizerStats[$0] }), stats.count > 0 {
-                    detailRow(app.T("Uy tín", "Track record"), value: stats.sinceYear.map { year in
-                        app.T("Tổ chức từ \(year) ▪︎ \(stats.count) sự kiện", "Hosting since \(year) ▪︎ \(stats.count) events")
-                    } ?? app.T("\(stats.count) sự kiện", "\(stats.count) events"))
-                }
-                HStack(alignment: .firstTextBaseline) {
-                    Text(app.T("Giá", "Price")).font(.system(size: 13))
-                    Spacer()
-                    Text(app.trStatus(event.price)).font(BanbeTheme.display(23))
-                }
-                .padding(.top, 16)
             }
-            .padding(.top, 22)
+            .padding(.top, 12)
 
-            if event.isOpen && !event.isFree {
-                Text(app.T(
-                    "Nếu sự kiện bị hủy, bạn được hoàn tiền tự động 100%.",
-                    "If the event is cancelled, you are automatically refunded in full."
-                ))
-                .font(.system(size: 11.5))
-                .frame(maxWidth: .infinity)
-                .multilineTextAlignment(.center)
-                .padding(.top, 14)
+            criteriaSection
+                .padding(.top, 6)
+                .id("event.criteria")
+
+            // Body copy supports the title instead of competing with it: roomier leading, slightly softer ink.
+            Text(event.desc)
+                .font(.system(size: 15))
+                .lineSpacing(5)
+                .opacity(0.85)
+                .lineLimit(canClampDescription ? 4 : nil)
+                .padding(.top, 12)
+            if canClampDescription {
+                Button { introIncludedSheetOpen = true } label: {
+                    Text(app.T("Xem thêm", "Read more")).font(.system(size: 13, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 6)
+                .accessibilityIdentifier("event.readMore")
             }
 
-            Text(app.T("Hình ảnh", "Photos"))
-                .font(.system(size: 11.5))
-                .padding(.top, 28)
-            // STAGE D (2026-09-25) — real event_photos rows, not the
-            // static demo `event.gallery`. A genuinely photo-less real
-            // event shows plain text, never a fake/demo photo standing in
-            // for a real one.
+            hostCard.padding(.top, 22)
+
+            // Photos sit right under the story they illustrate, with a count, instead of after everything else.
+            Text(app.T("Hình ảnh", "Photos").uppercased() + (realPhotos.isEmpty ? "" : " ▪︎ \(realPhotos.count)"))
+                .font(.system(size: 12, weight: .semibold)).tracking(0.9)
+                .opacity(0.7)
+                .padding(.top, 24)
+            // STAGE D (2026-09-25) — real event_photos rows, not the static demo `event.gallery`. A genuinely
+            // photo-less real event shows plain text, never a fake/demo photo standing in for a real one.
             if app.eventPhotosLoading {
                 Text(app.T("Đang tải…", "Loading…"))
-                    .font(.system(size: 12.5)).opacity(0.6)
-                    .padding(.top, 12)
+                    .font(.system(size: 13)).opacity(0.6)
+                    .padding(.top, 10)
             } else if realPhotos.isEmpty {
                 Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet."))
-                    .font(.system(size: 12.5)).opacity(0.6)
-                    .padding(.top, 12)
+                    .font(.system(size: 13)).opacity(0.6)
+                    .padding(.top, 10)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 8) {
                         ForEach(Array(realPhotos.enumerated()), id: \.element.id) { index, photo in
-                            // GeometryReader wraps each thumbnail so its own
-                            // tap can read `geo.frame(in: .global)` at the
-                            // moment it's tapped — the origin rect the photo
+                            // GeometryReader so the tap can read `geo.frame(in: .global)`: the origin rect the photo
                             // viewer's dismiss animation shrinks back to.
                             GeometryReader { geo in
                                 Button {
                                     app.openPhoto(gallery: realPhotos, index: index, organizer: event.orgName, originRect: geo.frame(in: .global))
                                 } label: {
                                     ZStack(alignment: .topTrailing) {
-                                        CatalogPhoto(path: photo.url, height: 186, width: 148)
-                                        // A liked photo gets a filled heart
-                                        // badge; an unliked one shows no
-                                        // heart glyph at all here — only the
-                                        // full-screen viewer's own like
-                                        // button (opened by tapping the
-                                        // photo) is the discoverable way to
-                                        // like it, matching web's rule.
+                                        CatalogPhoto(path: photo.url, height: 166, width: 132, cornerRadius: BanbeTheme.Radius.thumb)
+                                        // A liked photo gets a filled heart badge; an unliked one shows none here (the
+                                        // full-screen viewer's like button is the discoverable way, matching web).
                                         if app.photoEngagement[photo.id]?.likedByMe == true {
                                             Image(systemName: "heart.fill")
                                                 .font(.system(size: 13))
@@ -687,12 +677,25 @@ struct EventDetailView: View {
                                 }
                                 .buttonStyle(.plain)
                             }
-                            .frame(width: 148, height: 186)
+                            .frame(width: 132, height: 166)
                             .accessibilityIdentifier("event.photo.\(index)")
                         }
                     }
                 }
-                .padding(.top, 12)
+                .padding(.top, 10)
+            }
+
+            // One tappable "About & Included" row + sheet (intro first, then the structured items) whenever either
+            // exists; the legacy flat `included` string is the fallback. Only tappable rows get a chevron.
+            if hasAboutSheet {
+                Button { introIncludedSheetOpen = true } label: { includedRow }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("event.includedSection")
+                    .accessibilityLabel(app.T("Giới thiệu và bao gồm, xem thêm", "Introduction and included, view more"))
+                    .padding(.top, 20)
+            } else if !event.included.isEmpty {
+                listRow(icon: "checklist", title: app.T("Bao gồm", "Included"), subtitle: event.included, chevron: false)
+                    .padding(.top, 20)
             }
         }
         .foregroundStyle(app.palette.ink)
@@ -701,114 +704,110 @@ struct EventDetailView: View {
         .padding(.bottom, 30)
     }
 
-    /// Small icon + text link used for the quick actions above the title.
-    private func linkLabel(_ symbol: String, _ text: String) -> some View {
-        HStack(spacing: 7) {
-            Image(systemName: symbol).font(.system(size: 12.5, weight: .regular))
-            Text(text).font(.system(size: 12))
+    /// One row of the key-facts block: a fixed icon column, then the value (no "Date:"/"Price:" labels).
+    private func factRow<Content: View>(_ symbol: String, @ViewBuilder _ content: () -> Content) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            rowIcon(symbol)
+            content()
+                .font(.system(size: 15))
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .foregroundStyle(app.palette.ink.opacity(0.72))
+        .padding(.vertical, 6)
     }
 
-    /// Leading icon for a detail row (a fixed-width column so labels line up).
+    /// Leading icon for a row (a fixed-width column so values line up).
     private func rowIcon(_ symbol: String) -> some View {
         Image(systemName: symbol)
             .font(.system(size: 15, weight: .regular))
-            .frame(width: 22, height: 22)
+            .frame(width: 22)
             .foregroundStyle(app.palette.ink.opacity(0.8))
     }
 
-    /// The host's small round photo (their initial when there is none), for the Organizer row.
+    /// Who runs this, how trusted, and a one-tap way to ask (moved up from the bottom rows).
+    private var hostCard: some View {
+        HStack(spacing: 12) {
+            Button { app.openEventOrganizer(eventKey: app.eventKey) } label: {
+                HStack(spacing: 12) {
+                    organizerAvatar
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(app.T("Tổ chức bởi", "Hosted by")).font(.system(size: 12)).opacity(0.65)
+                        HStack(spacing: 8) {
+                            Text(hostName).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                            if app.isFollowing(app.eventOrganizerID[event.key]) {
+                                Text("✓ " + app.T("Đang theo dõi", "Following")).font(.system(size: 12))
+                            }
+                        }
+                        if let organizerStatsLine {
+                            Text(organizerStatsLine).font(.system(size: 12)).opacity(0.65)
+                                .accessibilityIdentifier("event.organizerStats")
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("event.organizer")
+            // Moved here from the retired standalone organizer page: message the host straight from the event.
+            Button { app.goChat() } label: {
+                Label(app.T("Nhắn tin", "Message"), systemImage: "bubble.left")
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .overlay(Capsule().stroke(app.palette.rule, lineWidth: 1))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("event.messageHost")
+        }
+        .padding(.vertical, 14)
+        .overlay(alignment: .top) { softRule.frame(height: 1) }
+        .overlay(alignment: .bottom) { softRule.frame(height: 1) }
+    }
+
+    /// The host's round photo (their initial when there is none), for the host card.
     private var organizerAvatar: some View {
         let stats = app.eventOrganizerID[event.key].flatMap { app.organizerStats[$0] }
         let url = MediaURLs.organizerAvatar(path: stats?.avatarPath, r2Ref: stats?.avatarR2Ref, variant: .thumb)
         return ZStack {
             Circle().fill(app.palette.field)
             if let url {
-                RemoteImage(path: url.absoluteString, maxPixel: 96)
+                RemoteImage(path: url.absoluteString, maxPixel: 120)
             } else {
-                Text(String(event.orgName.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
-                    .font(.system(size: 11, weight: .semibold))
+                Text(String(hostName.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
+                    .font(.system(size: 15, weight: .semibold))
             }
         }
-        .frame(width: 24, height: 24)
+        .frame(width: 40, height: 40)
         .clipShape(Circle())
         .overlay(Circle().stroke(app.palette.rule, lineWidth: 0.5))
     }
 
-    /// "Organizer ……… (Following) Visit (round photo) Name ›": an icon leads the row like the others, and the host's
-    /// round photo sits between the word "Visit" and the name.
-    private var organizerRow: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 12) {
-                rowIcon("person.crop.circle")
-                Text(app.T("Người tổ chức", "Organizer")).font(.system(size: 13))
-                Spacer(minLength: 0)
-                if app.isFollowing(app.eventOrganizerID[event.key]) {
-                    Text("✓ " + app.T("Đang theo dõi", "Following")).font(.system(size: 13))
-                }
-                HStack(spacing: 6) {
-                    Text(app.T("Ghé", "Visit")).font(.system(size: 13))
-                    organizerAvatar
-                    Text("\(event.orgName) ›").font(.system(size: 13))
+    private func listRow(icon: String, title: String, subtitle: String?, chevron: Bool) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            rowIcon(icon)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 14, weight: .semibold))
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle).font(.system(size: 13)).opacity(0.7).multilineTextAlignment(.leading)
                 }
             }
-            .padding(.vertical, 12)
-            .foregroundStyle(app.palette.ink)
-            Divider().overlay(app.palette.rule)
+            Spacer(minLength: 0)
+            if chevron {
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .medium)).opacity(0.45)
+            }
         }
+        .padding(.vertical, 14)
+        .foregroundStyle(app.palette.ink)
+        .overlay(alignment: .top) { softRule.frame(height: 1) }
+        .overlay(alignment: .bottom) { softRule.frame(height: 1) }
+        // Without this the gap between title and chevron isn't part of the button at all.
         .contentShape(Rectangle())
     }
 
-    private func detailRow(_ label: String, leading: AnyView? = nil, value: String) -> some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 18) {
-                if let leading { leading.padding(.trailing, -6) }
-                Text(label).font(.system(size: 13))
-                Spacer(minLength: 0)
-                Text(value).font(.system(size: 13)).multilineTextAlignment(.trailing)
-            }
-            .padding(.vertical, 12)
-            .foregroundStyle(app.palette.ink)
-            Divider().overlay(app.palette.rule)
-        }
-        // Without this the gap between the label and the value isn't part
-        // of the button at all — tapping the middle of the row did nothing.
-        .contentShape(Rectangle())
-    }
-
-    // Intro/included-parity fix pass (2026-09-28) — same visual shape as
-    // `detailRow` above (label left, value right, divider below), but with
-    // an explicit "›" chevron so the row reads as navigable at a glance —
-    // `detailRow` itself has no chevron since most of its callers (Price,
-    // Track record) aren't tappable at all.
     private var includedRow: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 18) {
-                rowIcon("checklist").padding(.trailing, -6)
-                Text(app.T("Bao gồm", "Included")).font(.system(size: 13))
-                Spacer(minLength: 0)
-                Text(includedRowSummary)
-                    .font(.system(size: 13))
-                    .multilineTextAlignment(.trailing)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .medium))
-                    .opacity(0.45)
-            }
-            .padding(.vertical, 12)
-            .foregroundStyle(app.palette.ink)
-            Divider().overlay(app.palette.rule)
-        }
-        .contentShape(Rectangle())
-    }
-
-    /// The row's own right-aligned preview text — item labels if there are
-    /// any, else a generic "has an introduction" hint (an event can have
-    /// an intro with zero included items, e.g. a free meetup).
-    private var includedRowSummary: String {
         let items = event.includedItems ?? []
-        if !items.isEmpty { return items.map(\.label).joined(separator: " ▪︎ ") }
-        return app.T("Xem thêm", "View more")
+        return listRow(icon: "checklist", title: app.T("Giới thiệu & bao gồm", "About & included"),
+                       subtitle: items.isEmpty ? nil : items.map(\.label).joined(separator: " ▪︎ "), chevron: true)
     }
 
     private var introIncludedSheetContent: some View {
@@ -856,65 +855,133 @@ struct EventDetailView: View {
     // happened reads as broken, not just unnecessary.
     private var ended: Bool { event.endedHoursAgo != nil }
 
+    /// One state for the sticky bar (Lib/ReserveBar.swift, mirrored on web). Cancelled is checked before ended/sold
+    /// out because a cancelled event's stale `seatsRemaining` can still read as available or sold out; a held booking
+    /// is NOT a ticket until `Booking.isTicket` (TASK B, 2026-10-01).
+    private var barState: ReserveBar.State {
+        ReserveBar.state(booking: myBooking != nil, ticket: myBooking?.isTicket ?? false,
+                         cancelled: event.cancelled, ended: ended, soldOut: event.soldOut,
+                         blocked: app.reserveEligibilityBlock != nil)
+    }
+
+    /// Sticky action area: always on screen, so the decision can happen wherever the reader is convinced. Seat presets
+    /// and the live total sit next to the CTA instead of a separate step (Reserve opens pre-filled via `app.qty`).
     private var actionBar: some View {
-        Group {
-            if let booking = myBooking, booking.isTicket {
-                InkButton(title: app.T("Xem vé của bạn ▪︎ mã \(booking.code ?? "")",
-                                       "View your ticket ▪︎ code \(booking.code ?? "")")) {
-                    app.openHeld()
-                }
-            } else if myBooking != nil {
-                // TASK B (2026-10-01 UX foundation pass) — myBooking.status
-                // (checked below) can be "pending" while payment is still
-                // just holding/awaiting verification — this used to
-                // unconditionally announce "your ticket" + expose the
-                // entry code before there was one. Booking.isTicket is the
-                // one shared rule (Booking.swift).
-                InkButton(title: app.T("Xem trạng thái thanh toán", "View payment status")) {
-                    app.openHeld()
-                }
-            } else if event.cancelled {
-                // Bug 2b (01-hold-payment.md follow-up): `event.cancelled`
-                // already existed and was already used elsewhere on this
-                // view (the refund note) but this bar never checked it —
-                // a cancelled event fell through to the live "Giữ chỗ"
-                // default, which then only ever failed later, server-side,
-                // via hold_seats()'s own EVENT_NOT_LIVE check. Checked
-                // before `ended`/`soldOut` since a cancelled event's stale
-                // `seatsRemaining` can still read as available or sold out.
-                Text(app.T("Sự kiện đã bị huỷ", "Event has been cancelled"))
-                    .font(.system(size: 15, weight: .semibold))
+        let state = barState
+        let qty = ReserveBar.clampQty(app.qty)
+        return VStack(spacing: 0) {
+            if state == .reserve {
+                qtyRow(qty).padding(.bottom, 8)
+            }
+            ctaButton(state, qty: qty)
+            if state == .reserve {
+                Text(app.T("Giữ chỗ 30 phút để thanh toán", "Held 30 min while you pay")
+                     + (event.isOpen && !event.isFree ? app.T(" ▪︎ hoàn 100% nếu huỷ", " ▪︎ full refund if cancelled") : ""))
+                    .font(.system(size: 12))
+                    .foregroundStyle(app.palette.ink.opacity(0.7))
+                    .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 15)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .foregroundStyle(app.palette.ink)
-            } else if ended {
-                Text(app.T("Sự kiện đã kết thúc", "Event has ended"))
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 15)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .foregroundStyle(app.palette.ink)
-            } else if event.soldOut {
-                Button { app.goChat() } label: {
-                    Text(app.T("Hết chỗ ▪︎ nhắn để vào danh sách chờ", "Sold out ▪︎ message for waitlist"))
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .foregroundStyle(app.palette.ink)
+                    .padding(.top, 6)
+                    .accessibilityIdentifier("event.trustLine")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .background {
+            Rectangle().fill(.regularMaterial)
+                .overlay(alignment: .top) { softRule.frame(height: 0.5) }
+                .ignoresSafeArea(edges: .bottom)
+        }
+    }
+
+    private func qtyRow(_ qty: Int) -> some View {
+        HStack(spacing: 10) {
+            Text(app.T("Số chỗ", "Seats")).font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.75))
+            Spacer(minLength: 0)
+            if qtyMore || !ReserveBar.presets.contains(qty) {
+                CountStepper(value: qty, range: 1...ReserveBar.maxQty, unit: app.T("chỗ", "seats"), identifier: "event.qty.stepper") { n in
+                    app.qty = ReserveBar.clampQty(n)
                 }
-                .buttonStyle(.plain)
             } else {
-                InkButton(title: app.T("Giữ chỗ ▪︎ ", "Reserve ▪︎ ") + app.trStatus(event.price),
-                          enabled: app.reserveEligibilityBlock == nil) {
-                    app.goReserve()
+                HStack(spacing: 6) {
+                    ForEach(ReserveBar.presets, id: \.self) { n in
+                        Button {
+                            app.qty = n
+                            Haptics.light()
+                        } label: { qtyChip("\(n)", selected: qty == n) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(app.T("\(n) chỗ", "\(n) seats"))
+                        .accessibilityAddTraits(qty == n ? .isSelected : [])
+                        .accessibilityIdentifier("event.qty.\(n)")
+                    }
+                    Button { qtyMore = true } label: { qtyChip(app.T("Khác", "More"), selected: false) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(app.T("Số khác", "Other amount"))
+                        .accessibilityIdentifier("event.qty.more")
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 8)
-        .accessibilityIdentifier("event.actionBar")
+    }
+
+    private func qtyChip(_ text: String, selected: Bool) -> some View {
+        Text(text)
+            .font(.system(size: 14, weight: selected ? .semibold : .regular))
+            .foregroundStyle(selected ? app.palette.paper : app.palette.ink)
+            .padding(.horizontal, 10)
+            .frame(minWidth: 40, minHeight: 32)
+            .background(selected ? app.palette.ink : Color.clear, in: Capsule())
+            .overlay(Capsule().stroke(selected ? app.palette.ink : app.palette.rule, lineWidth: 1))
+            .contentShape(Capsule())
+    }
+
+    /// The CTA itself carries `event.actionBar` (ReserveButtonRegressionUITests taps the first element with it, so it
+    /// must not sit on a container whose seat chips would inherit it).
+    @ViewBuilder
+    private func ctaButton(_ state: ReserveBar.State, qty: Int) -> some View {
+        switch state {
+        case .ticket:
+            InkButton(title: app.T("Xem vé của bạn ▪︎ mã \(myBooking?.code ?? "")", "View your ticket ▪︎ code \(myBooking?.code ?? "")")) {
+                app.openHeld()
+            }
+            .accessibilityIdentifier("event.actionBar")
+        case .pending:
+            InkButton(title: app.T("Xem trạng thái thanh toán", "View payment status")) { app.openHeld() }
+                .accessibilityIdentifier("event.actionBar")
+        case .reserve:
+            // Outcome + total before the tap: the guest knows what they are about to hold and pay.
+            let total = app.trStatus(ReserveBar.totalPrice(event.price, qty: qty))
+            InkButton(title: qty == 1 ? app.T("Giữ chỗ ▪︎ ", "Reserve ▪︎ ") + total
+                                      : app.T("Giữ \(qty) chỗ ▪︎ ", "Reserve \(qty) seats ▪︎ ") + total) {
+                app.goReserve()
+            }
+            .accessibilityIdentifier("event.actionBar")
+        case .cancelled:
+            fieldLabel(app.T("Sự kiện đã bị huỷ", "Event has been cancelled"))
+                .accessibilityIdentifier("event.actionBar")
+        case .ended:
+            fieldLabel(app.T("Sự kiện đã kết thúc", "Event has ended"))
+                .accessibilityIdentifier("event.actionBar")
+        case .soldOut:
+            Button { app.goChat() } label: { fieldLabel(app.T("Hết chỗ ▪︎ nhắn để vào danh sách chờ", "Sold out ▪︎ message for waitlist")) }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("event.actionBar")
+        case .blocked:
+            // The bar says WHY it can't be used, and tapping scrolls to the full explanation card instead of a dead tap.
+            Button { criteriaScrollRequest += 1 } label: { fieldLabel(app.T("Chưa đủ điều kiện ▪︎ xem lý do", "Not eligible yet ▪︎ see why")) }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("event.actionBar")
+        }
+    }
+
+    private func fieldLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 15, weight: .semibold))
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 15)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .foregroundStyle(app.palette.ink)
     }
 
     /// Shares the event through `/api/photo-share?eid=` (api/photo-share.js), which serves Open Graph tags
