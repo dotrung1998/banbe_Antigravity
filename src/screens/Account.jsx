@@ -390,7 +390,8 @@ export default function Account() {
           div) keeps both stationary while only the content below scrolls —
           no second scroll/tab system, same `accountTab` state and
           `setAccountTab` routing as before. */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 5, background: paper }} data-testid="account-fixed-header">
+      {/* paddingBottom: breathing room under the Personal / Host / Admin tabs, so scrolled content never touches them (iOS). */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 5, background: paper, paddingBottom: 12 }} data-testid="account-fixed-header">
         <div style={{ padding: '66px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {searchOpen ? (
             <input
