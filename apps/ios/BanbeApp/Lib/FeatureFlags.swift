@@ -10,7 +10,10 @@ import Foundation
 ///   everything, which is the behaviour from before flags existed.
 /// - Anything that is not a boolean, and any key this build does not know, is ignored.
 enum FeatureFlags {
-    static let keys = ["rewards"]
+    static let keys = ["rewards", "admin_event_wipe"]
+    /// Flags that are OFF unless the server explicitly says true (a missing key never turns them on). Note 54:
+    /// "admin_event_wipe" is a TESTING-PHASE admin tool that must never switch itself on.
+    static let offUnlessSet: Set<String> = ["admin_event_wipe"]
     static let cacheKey = "banbe.featureFlags.v1"
 
     /// Keep only known keys with real booleans.
@@ -20,8 +23,10 @@ enum FeatureFlags {
         return out
     }
 
-    /// Missing key = on.
-    static func isOn(_ flags: [String: Bool], _ key: String) -> Bool { flags[key] != false }
+    /// Missing key = on, except for `offUnlessSet` keys (missing = off).
+    static func isOn(_ flags: [String: Bool], _ key: String) -> Bool {
+        offUnlessSet.contains(key) ? flags[key] == true : flags[key] != false
+    }
 
     static func read(_ defaults: UserDefaults = .standard) -> [String: Bool] {
         guard let data = defaults.data(forKey: cacheKey),

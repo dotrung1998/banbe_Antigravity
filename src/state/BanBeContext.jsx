@@ -1563,6 +1563,9 @@ const NOTIFICATION_TARGET_FIELD = {
   // the refund_* kinds above are (no known repro, just consistent coverage).
   event_approved: { field: 'event_id', table: 'events' },
   event_rejected: { field: 'event_id', table: 'events' },
+  // Note 54: an admin can now permanently delete a removed, never-booked event, so these can really go dead.
+  event_removed: { field: 'event_id', table: 'events' },
+  event_restored: { field: 'event_id', table: 'events' },
 };
 const NOTIFICATION_TABLE_NAME = { bookings: 'bookings', documents: 'payment_documents', refund_claims: 'refund_claims', events: 'events' };
 
@@ -10621,6 +10624,8 @@ export function BanBeProvider({ children }) {
         break;
       case 'event_approved':
       case 'event_rejected':
+      case 'event_removed':
+      case 'event_restored':
         // Event review queue — Dashboard is the one place the host can
         // already see their own real (non-catalogue) event's status/
         // rejection reason (see Dashboard.jsx's myEvents), same per-event

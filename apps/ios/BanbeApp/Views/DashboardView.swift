@@ -236,6 +236,29 @@ struct DashboardView: View {
                         // "Sửa & gửi lại" opens CreateEventView pre-filled
                         // (goEditEvent), which resubmits the SAME row
                         // (resubmit_event_for_review), never a duplicate.
+                        // Note 54: events banbe took down. Hidden everywhere else; the host keeps seeing them here, and
+                        // the reason came as a notification. Bookings and payments are kept.
+                        if !app.myRemovedEvents.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(app.T("Đã bị banbe gỡ", "Removed by banbe"))
+                                    .font(.system(size: 13, weight: .semibold))
+                                ForEach(app.myRemovedEvents, id: \.id) { e in
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "eye.slash").font(.system(size: 13)).accessibilityHidden(true)
+                                        Text(e.name).font(.system(size: 14, weight: .medium)).lineLimit(1)
+                                    }
+                                    .foregroundStyle(BanbeTheme.alert)
+                                }
+                                Text(app.T("Không còn hiển thị với khách. Lý do có trong Thông báo. Liên hệ banbe nếu bạn nghĩ đây là nhầm lẫn.",
+                                           "No longer visible to guests. The reason is in your Notifications. Contact banbe if you think this is a mistake."))
+                                    .font(.system(size: 12)).opacity(0.7).fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(14)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(BanbeTheme.alert.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .padding(.top, 24)
+                            .accessibilityIdentifier("dashboard.removedEvents")
+                        }
                         if !app.myPendingEvents.isEmpty || !app.myNeedsFixEvents.isEmpty {
                             collapsibleHeader(app.T("Sự kiện đã gửi", "Submitted events"),
                                               count: app.myPendingEvents.count + app.myNeedsFixEvents.count,

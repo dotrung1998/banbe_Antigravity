@@ -11,12 +11,20 @@ struct AdminFeaturesView: View {
 
     private struct Flag: Identifiable {
         let key: String, vi: String, en: String, hintVi: String, hintEn: String
+        var onVi = "Đang hiện cho mọi người", onEn = "Visible to everyone"
+        var offVi = "Đang ẩn với mọi người", offEn = "Hidden from everyone"
         var id: String { key }
     }
     private let flags = [
         Flag(key: "rewards", vi: "Phần thưởng & huy hiệu", en: "Rewards & badges",
              hintVi: "Ẩn xu, chuỗi ngày, huy hiệu và mẫu móc khoá thưởng khỏi toàn bộ ứng dụng. Dữ liệu không bị xoá.",
              hintEn: "Hides coins, streaks, badges and reward keychain designs everywhere in the app. No data is deleted."),
+        // TESTING-PHASE (note 54): remove this row with the wipe tool before public release.
+        Flag(key: "admin_event_wipe", vi: "Xoá sự kiện thử nghiệm (giai đoạn thử)", en: "Test event wipe (testing phase)",
+             hintVi: "Cho admin xoá vĩnh viễn bất kỳ sự kiện nào cùng mọi dữ liệu liên quan, không cần lý do, trong Quản lý sự kiện (chỉ iOS). Chỉ dùng cho dữ liệu thử nghiệm.",
+             hintEn: "Lets admins permanently wipe any event and everything tied to it, no reason needed, from Manage events (iOS only). For test data only.",
+             onVi: "Đang bật — admin có thể xoá vĩnh viễn", onEn: "On — admins can wipe permanently",
+             offVi: "Đang tắt", offEn: "Off"),
     ]
 
     private func message(_ code: String?) -> String {
@@ -59,8 +67,7 @@ struct AdminFeaturesView: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(app.T(f.vi, f.en)).font(.system(size: 15.5, weight: .semibold))
                                 Text(app.T(f.hintVi, f.hintEn)).font(.system(size: 12.5)).opacity(0.7)
-                                Text(on ? app.T("Đang hiện cho mọi người", "Visible to everyone")
-                                        : app.T("Đang ẩn với mọi người", "Hidden from everyone"))
+                                Text(on ? app.T(f.onVi, f.onEn) : app.T(f.offVi, f.offEn))
                                     .font(.system(size: 12, weight: .semibold)).opacity(on ? 1 : 0.7).padding(.top, 3)
                                     .accessibilityIdentifier("adminFeatures.\(f.key).state")
                             }

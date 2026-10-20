@@ -55,6 +55,7 @@ import Disputes from './screens/Disputes.jsx';
 import AdminEvents from './screens/AdminEvents.jsx';
 import AdminTestAccounts from './screens/AdminTestAccounts.jsx';
 import AdminFeatures from './screens/AdminFeatures.jsx';
+import AdminManageEvents from './screens/AdminManageEvents.jsx';
 import AdminDobCorrections from './screens/AdminDobCorrections.jsx';
 import ToastStack from './screens/ToastStack.jsx';
 import Policy from './screens/Policy.jsx';
@@ -123,6 +124,7 @@ const SCREENS = {
   adminEvents: AdminEvents,
   adminTestAccounts: AdminTestAccounts,
   adminFeatures: AdminFeatures,
+  adminManageEvents: AdminManageEvents,
   adminDobCorrections: AdminDobCorrections,
   policy: Policy,
   guide: Guide,

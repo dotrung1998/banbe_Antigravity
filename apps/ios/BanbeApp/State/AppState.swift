@@ -15,7 +15,7 @@ enum Screen: String {
     case security
     case following, rewards
     case paymentDetails, billing, payout, documents, documentView
-    case verifications, disputes, adminEvents, adminTestAccounts, adminDobCorrections, adminFeatures
+    case verifications, disputes, adminEvents, adminTestAccounts, adminDobCorrections, adminFeatures, adminManageEvents
     case policy
     case mapExplore
     case refundAccounts, myRefunds
@@ -3683,7 +3683,7 @@ final class AppState: ObservableObject {
         // "adminReview" (Review & Moderation) rows now, not straight from
         // Account itself — same sub-section-of-a-group class of bug the
         // `.preferences`/`.security`/`.payout` cases above already fixed.
-        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures: screen = accountSubBack
+        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures, .adminManageEvents: screen = accountSubBack
         case .mapExplore: goHome()
         case .search: screen = searchBackScreen
         // TASK A fix — these two cases were simply missing, so the shared
@@ -3813,7 +3813,7 @@ final class AppState: ObservableObject {
         case .documents: return documentsListBack
         case .documentView: return documentBack
         case .verifications: return verificationsBack
-        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures: return accountSubBack
+        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures, .adminManageEvents: return accountSubBack
         case .mapExplore: return .home
         case .search: return searchBackScreen
         // TASK A fix — same missing-case bug as goBack() above: without

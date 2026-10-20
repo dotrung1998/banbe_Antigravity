@@ -2216,7 +2216,7 @@ extension AppState {
             if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key) {
                 openAttendance(key, back: .notifications)
             }
-        case "event_approved", "event_rejected":
+        case "event_approved", "event_rejected", "event_removed", "event_restored":
             // Event review queue — DashboardView is the one place the host
             // can already see their own real event's status/rejection
             // reason, same per-event ownership guard as every other
@@ -3392,7 +3392,7 @@ extension AppState {
     }
 
     /// `organizers.name` for a batch of ids, as a lookup dictionary.
-    private func organizerNames(for organizerIDs: [String]) async -> [String: String] {
+    func organizerNames(for organizerIDs: [String]) async -> [String: String] {
         guard !organizerIDs.isEmpty else { return [:] }
         do {
             let orgs: [OrganizerRow] = try await SupabaseService.client

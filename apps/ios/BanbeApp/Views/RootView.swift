@@ -1375,6 +1375,7 @@ struct RootView: View {
         case .adminEvents: AdminEventsView()
         case .adminTestAccounts: if app.isAdmin { AdminTestAccountsView() }
         case .adminFeatures: if app.isAdmin { AdminFeaturesView() }
+        case .adminManageEvents: if app.isAdmin { AdminManageEventsView() }
         case .adminDobCorrections: if app.isAdmin { AdminDobCorrectionsView() }
         case .refundAccounts: RefundAccountsView()
         case .myRefunds: MyRefundsView()

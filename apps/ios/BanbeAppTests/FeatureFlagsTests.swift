@@ -34,4 +34,12 @@ final class FeatureFlagsTests: XCTestCase {
         FeatureFlags.write(["rewards": true, "unknown": false], d)
         XCTAssertEqual(FeatureFlags.read(d), ["rewards": true], "unknown keys are never stored")
     }
+
+    /// Note 54: the TESTING-PHASE wipe switch must never turn itself on — missing means OFF for it.
+    func testWipeSwitchIsOffUnlessExplicitlyOn() {
+        XCTAssertFalse(FeatureFlags.isOn([:], "admin_event_wipe"))
+        XCTAssertFalse(FeatureFlags.isOn(["admin_event_wipe": false], "admin_event_wipe"))
+        XCTAssertTrue(FeatureFlags.isOn(["admin_event_wipe": true], "admin_event_wipe"))
+        XCTAssertTrue(FeatureFlags.isOn([:], "rewards"), "other flags keep missing = on")
+    }
 }

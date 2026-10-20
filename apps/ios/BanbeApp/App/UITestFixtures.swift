@@ -33,6 +33,67 @@ enum UITestFixture {
     static let rewardsSwitch = UserDefaults.standard.string(forKey: "uiFixtureRewards") ?? "on"
     /// Stable fake account id so the draft store/relaunch tests have a key.
     static let userID = UUID(uuidString: "00000000-0000-4000-8000-00000000F1F0")!
+
+    // MARK: Note 54 — Admin > Manage events (in-memory stand-in for migrations 188/189; same rules as the server).
+    static var adminManagedEvents: [AdminEventRow] = {
+        let now = Date()
+        return [
+            AdminEventRow(id: "fx-ev-live", name: "Supper club tối thứ Bảy", status: "live", startsAt: now.addingTimeInterval(5 * 86400), organizerName: "Bếp Nhỏ"),
+            AdminEventRow(id: "fx-ev-booked", name: "Rooftop acoustic night", status: "live", startsAt: now.addingTimeInterval(3 * 86400), organizerName: "Mây Music"),
+            AdminEventRow(id: "fx-ev-refund", name: "Gallery walk (cancelled)", status: "cancelled", startsAt: now.addingTimeInterval(2 * 86400), organizerName: "Art Hub"),
+            AdminEventRow(id: "fx-ev-ended", name: "Pop-up market October", status: "ended", startsAt: now.addingTimeInterval(-6 * 86400), organizerName: "Chợ Phiên"),
+            AdminEventRow(id: "fx-ev-draft", name: "Spam test event", status: "draft", startsAt: now.addingTimeInterval(9 * 86400), organizerName: "Test Host"),
+            AdminEventRow(id: "fx-ev-removed", name: "Duplicate listing", status: "removed", startsAt: now.addingTimeInterval(8 * 86400),
+                          removalReason: "Duplicate", removedAt: now.addingTimeInterval(-3600), organizerName: "Test Host"),
+        ]
+    }()
+    static var adminEventChecks: [String: AdminEventCheck] = [
+        "fx-ev-booked": AdminEventCheck(eventId: "fx-ev-booked", activeBookings: 3, bookingsEver: 3, removable: false),
+        "fx-ev-refund": AdminEventCheck(eventId: "fx-ev-refund", unsettledRefunds: 1, bookingsEver: 1, removable: false),
+        "fx-ev-ended": AdminEventCheck(eventId: "fx-ev-ended", bookingsEver: 4),
+        "fx-ev-removed": AdminEventCheck(eventId: "fx-ev-removed", removable: false, purgeable: true),
+    ]
+
+    @MainActor
+    static func runAdminEventAction(_ action: AdminEventAction, ids: [String], reason: String, app: AppState) -> AdminEventActionOutcome {
+        if (action == .remove || action == .purge) && reason.trimmingCharacters(in: .whitespaces).count < 3 {
+            return AdminEventActionOutcome(error: "REASON_REQUIRED")
+        }
+        if action == .wipeTesting && !FeatureFlags.isOn(app.featureFlags, "admin_event_wipe") {
+            return AdminEventActionOutcome(error: "NOT_ENABLED")
+        }
+        var out = AdminEventActionOutcome()
+        for id in ids {
+            guard let i = adminManagedEvents.firstIndex(where: { $0.id == id }) else {
+                out.skipped.append(AdminEventActionResult(eventId: id, ok: false, error: "NOT_FOUND")); continue
+            }
+            let row = adminManagedEvents[i]
+            let check = adminEventChecks[id] ?? AdminEventCheck(eventId: id)
+            func skip(_ e: String) { out.skipped.append(AdminEventActionResult(eventId: id, ok: false, error: e)) }
+            switch action {
+            case .remove:
+                if row.status == "removed" { skip("ALREADY_REMOVED"); continue }
+                if check.isBlocked { skip("HAS_OPEN_OBLIGATIONS"); continue }
+                adminManagedEvents[i] = AdminEventRow(id: row.id, name: row.name, status: "removed", startsAt: row.startsAt,
+                                                      removalReason: reason, removedAt: Date(), organizerName: row.organizerName)
+                adminEventChecks[id] = AdminEventCheck(eventId: id, bookingsEver: check.bookingsEver, removable: false,
+                                                       purgeable: check.bookingsEver == 0)
+            case .restore:
+                if row.status != "removed" { skip("NOT_REMOVED"); continue }
+                adminManagedEvents[i] = AdminEventRow(id: row.id, name: row.name, status: "live", startsAt: row.startsAt,
+                                                      organizerName: row.organizerName)
+                adminEventChecks[id] = AdminEventCheck(eventId: id, bookingsEver: check.bookingsEver)
+            case .purge:
+                if row.status != "removed" { skip("NOT_REMOVED"); continue }
+                if check.bookingsEver > 0 { skip("HAS_BOOKING_HISTORY"); continue }
+                adminManagedEvents.remove(at: i)
+            case .wipeTesting:
+                adminManagedEvents.remove(at: i)
+            }
+            out.done += 1
+        }
+        return out
+    }
 }
 
 struct UITestFixtureRoot: View {
@@ -98,7 +159,7 @@ struct UITestFixtureRoot: View {
         configureSchedule()
         let variant = name.split(separator: ".").dropFirst().first.map(String.init) ?? "home"
         app.organizerMode = variant == "account"
-        app.accountType = (variant == "account" || variant == "adminFeatures") ? "admin" : "participant"
+        app.accountType = (variant == "account" || variant == "adminFeatures" || variant == "adminManageEvents") ? "admin" : "participant"
         app.accountTab = "personal"
         // Streak/coins capsule visible: the tightest Home header layout.
         app.rewardsSummary = RewardSummary(balance: 120, streak: 3, activeToday: true)
@@ -125,6 +186,10 @@ struct UITestFixtureRoot: View {
         case "inbox": app.screen = .inbox
         case "account", "accountSolo": app.screen = .profile
         case "adminFeatures": app.screen = .adminFeatures
+        case "adminManageEvents":
+            // Note 54. `-uiFixtureWipe YES` is an admin having turned the TESTING-PHASE wipe switch on.
+            if UserDefaults.standard.bool(forKey: "uiFixtureWipe") { app.featureFlags["admin_event_wipe"] = true }
+            app.screen = .adminManageEvents
         case "search":
             app.searchQuery = UITestFixture.searchQuery
             app.screen = .search

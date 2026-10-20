@@ -694,6 +694,9 @@ struct AccountGroupView: View {
             Divider().overlay(app.palette.rule)
             row(app.T("Sự Kiện Chờ Duyệt", "Pending Events"), identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›", badge: app.pendingEventsCount) { app.openAdminEvents() }
             Divider().overlay(app.palette.rule)
+            // Note 54: remove / restore / delete events (any status), one or many at a time.
+            row(app.T("Quản lý sự kiện", "Manage events"), identifier: "admin.manageEvents", icon: "calendar.badge.minus", trailing: "›") { if app.isAdmin { app.screen = .adminManageEvents } }
+            Divider().overlay(app.palette.rule)
             row(app.T("Tài khoản thử nghiệm", "Test accounts"), identifier: "admin.testAccounts", icon: "person.badge.shield.checkmark", trailing: "›") { if app.isAdmin { app.screen = .adminTestAccounts } }
             Divider().overlay(app.palette.rule)
             row(app.T("Sửa ngày sinh", "Birthday corrections"), identifier: "admin.dobCorrections", icon: "calendar.badge.exclamationmark", trailing: "›") { if app.isAdmin { app.screen = .adminDobCorrections } }

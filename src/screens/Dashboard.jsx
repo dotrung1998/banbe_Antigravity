@@ -294,6 +294,20 @@ export default function Dashboard() {
           to 'draft' by admin_review_event, migration 085) — "Sửa & gửi lại"
           opens CreateEvent pre-filled (goEditEvent), which resubmits the
           SAME event row (resubmit_event_for_review), never a duplicate. */}
+      {/* Note 54: events banbe took down. Hidden everywhere else; the host keeps seeing them here, and the reason
+          came as a notification. Bookings and payments are kept. */}
+      {myRealEvents.some(e => e.status === 'removed') && (
+        <div data-testid="dashboard-removed-events" style={{ margin: '24px 22px 0', padding: 14, borderRadius: 14, background: 'rgba(var(--bb-alert-rgb),0.07)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{T('Đã bị banbe gỡ', 'Removed by banbe')}</span>
+          {myRealEvents.filter(e => e.status === 'removed').map(e => (
+            <span key={e.key} style={{ fontSize: 14, fontWeight: 500, color: alert }}>⊘ {e.name}</span>
+          ))}
+          <span style={{ fontSize: 12, lineHeight: 1.45, opacity: 0.7 }}>
+            {T('Không còn hiển thị với khách. Lý do có trong Thông báo. Liên hệ banbe nếu bạn nghĩ đây là nhầm lẫn.',
+              'No longer visible to guests. The reason is in your Notifications. Contact banbe if you think this is a mistake.')}
+          </span>
+        </div>
+      )}
       {(pendingReal.length > 0 || needsFixReal.length > 0) && (
         <div style={{ margin: '24px 22px 0' }}>
           <CollapseHeader title={T('Sự kiện đã gửi', 'Submitted events')} count={pendingReal.length + needsFixReal.length} open={submittedOpen} onToggle={() => setSubmittedOpen(o => !o)} testId="dashboard-submitted-toggle" />

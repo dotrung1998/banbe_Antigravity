@@ -1,0 +1,196 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useBanBe } from '../state/BanBeContext.jsx';
+import { paper, ink, display, fieldGlass, alert } from '../theme.js';
+import { ChoiceChip, Button } from '../components/ui/FormControls.jsx';
+import { ADMIN_EVENT_FILTERS, STATUS_LABELS, ERRORS, en, isBlocked, blockerLine, summarize } from '../lib/adminEvents.js';
+import { loadAdminManagedEvents, loadAdminEventChecks, runAdminEventAction } from '../lib/adminEventsApi.js';
+
+// Admin > Manage events (migrations 188 + 189, note 54). Every event, any status: search, filter, select one or many,
+// then Remove (reason required; hidden everywhere, records kept, host notified; refused while money is still in play
+// and each row says why), Restore, or Delete permanently (only removed events that never had a booking).
+// The TESTING-PHASE wipe is iOS-only on purpose. iOS twin: AdminManageEventsView.swift.
+const QUICK_REASONS = [['Spam', 'Spam'], ['Trùng lặp', 'Duplicate'], ['Vi phạm quy định cộng đồng', 'Breaks community guidelines'], ['Sự kiện thử nghiệm', 'Test event']];
+
+export default function AdminManageEvents() {
+  const { state: s, T, set } = useBanBe();
+  const [filter, setFilter] = useState(null);
+  const [search, setSearch] = useState('');
+  const [rows, setRows] = useState([]);
+  const [checks, setChecks] = useState({});
+  const [selected, setSelected] = useState(() => new Set());
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [banner, setBanner] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [reasonFor, setReasonFor] = useState(null); // 'remove' | 'purge'
+  const [reason, setReason] = useState('');
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    const { rows: list, error } = await loadAdminManagedEvents({ status: filter, search });
+    setRows(list);
+    setLoadError(error ? T(...(ERRORS[error] || ERRORS.NETWORK)) : '');
+    setSelected(prev => new Set([...prev].filter(id => list.some(r => r.id === id))));
+    setChecks(list.length ? await loadAdminEventChecks(list.map(r => r.id)) : {});
+    setLoading(false);
+  }, [filter, search, T]);
+
+  useEffect(() => {
+    if (s.accountType !== 'admin') return undefined;
+    const t = setTimeout(reload, search ? 300 : 0);  // don't reload on every keystroke
+    return () => clearTimeout(t);
+  }, [reload, search, s.accountType]);
+
+  const sel = useMemo(() => rows.filter(r => selected.has(r.id)), [rows, selected]);
+  const removeIds = sel.filter(r => r.status !== 'removed' && !isBlocked(checks[r.id])).map(r => r.id);
+  const blockedCount = sel.filter(r => r.status !== 'removed' && isBlocked(checks[r.id])).length;
+  const restoreIds = sel.filter(r => r.status === 'removed').map(r => r.id);
+  const purgeIds = sel.filter(r => r.status === 'removed' && checks[r.id]?.purgeable).map(r => r.id);
+
+  if (s.accountType !== 'admin') return null;
+
+  const toggle = (id) => setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const run = async (action, ids, why = '') => {
+    setBusy(true);
+    const outcome = await runAdminEventAction(action, ids, why);
+    setBanner(outcome.error ? T(...(ERRORS[outcome.error] || ERRORS.NETWORK)) : summarize(action, outcome, T));
+    if (!outcome.error) setSelected(new Set());
+    setBusy(false);
+    reload();
+  };
+  const restore = () => {
+    if (window.confirm(T(`Khôi phục ${restoreIds.length} sự kiện về trạng thái trước khi bị gỡ? Người tổ chức sẽ được báo.`,
+      `Restore ${en(restoreIds.length, 'event')} to the status they had before? The host is told.`))) run('restore', restoreIds);
+  };
+  const date = (iso) => (iso ? new Date(iso).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '');
+
+  return (
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper, paddingBottom: selected.size ? 220 : 40 }} data-screen-label="Admin manage events">
+      <div onClick={() => set({ screen: 'accountGroup', accountGroupKey: 'adminReview' })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="admin-manage-back">
+        ‹ {T('Duyệt & Kiểm Duyệt', 'Review & Moderation')}
+      </div>
+      <div style={{ padding: '14px 22px 0' }}>
+        <h1 style={{ ...display(26, { margin: 0 }) }}>{T('Quản lý sự kiện', 'Manage events')}</h1>
+        <p style={{ fontSize: 13.5, lineHeight: 1.5, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
+          {T('Gỡ một hay nhiều sự kiện khỏi ứng dụng. Đặt chỗ, thanh toán, hoàn tiền và lịch sử luôn được giữ lại.',
+            'Take one or more events off the app. Bookings, payments, refunds and history are always kept.')}
+        </p>
+        <input value={search} onChange={(e) => setSearch(e.target.value)} type="search" data-testid="admin-manage-search"
+          placeholder={T('Tìm theo tên sự kiện', 'Search by event name')} aria-label={T('Tìm sự kiện', 'Search events')}
+          style={{ ...fieldGlass({ marginTop: 18, padding: '12px 14px', borderRadius: 14 }), width: '100%', boxSizing: 'border-box', border: 'none', fontSize: 15, color: ink, fontFamily: 'inherit' }} />
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 12, paddingBottom: 2 }}>
+          {ADMIN_EVENT_FILTERS.map(f => (
+            <ChoiceChip key={f.en} compact label={T(f.vi, f.en)} selected={filter === f.key} testId={`admin-manage-filter-${f.key || 'all'}`}
+              onClick={() => { setFilter(f.key); setSelected(new Set()); }} />
+          ))}
+        </div>
+        {banner && (
+          <div role="status" data-testid="admin-manage-banner" style={{ ...fieldGlass({ marginTop: 12, padding: 12 }), fontSize: 13, fontWeight: 600 }}>{banner}</div>
+        )}
+
+        {loading && !rows.length ? (
+          <p style={{ fontSize: 13.5, opacity: 0.7, marginTop: 24 }}>{T('Đang tải…', 'Loading…')}</p>
+        ) : loadError ? (
+          <p role="alert" data-testid="admin-manage-error" style={{ fontSize: 13, color: alert, marginTop: 16 }}>{loadError}</p>
+        ) : !rows.length ? (
+          <p style={{ fontSize: 14, opacity: 0.7, marginTop: 20 }}>{T('Không có sự kiện nào.', 'No events here.')}</p>
+        ) : (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '16px 2px 8px' }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.7 }}>{T(`${rows.length} sự kiện`, en(rows.length, 'event'))}</span>
+              <button type="button" data-testid="admin-manage-select-all" className="bb-press"
+                onClick={() => setSelected(selected.size === rows.length ? new Set() : new Set(rows.map(r => r.id)))}
+                style={{ border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer', minHeight: 36 }}>
+                {selected.size === rows.length ? T('Bỏ chọn tất cả', 'Deselect all') : T('Chọn tất cả', 'Select all')}
+              </button>
+            </div>
+            <div style={{ ...fieldGlass({ borderRadius: 16 }), display: 'flex', flexDirection: 'column' }}>
+              {rows.map((r, i) => {
+                const on = selected.has(r.id);
+                const c = checks[r.id];
+                const removed = r.status === 'removed';
+                return (
+                  <button key={r.id} type="button" onClick={() => toggle(r.id)} aria-pressed={on} data-testid={`admin-manage-row-${r.id}`}
+                    style={{ display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', padding: '12px 14px', border: 'none', borderTop: i ? '1px solid var(--bb-rule)' : 'none', background: 'none', color: ink, fontFamily: 'inherit', cursor: 'pointer' }}>
+                    <span aria-hidden style={{ flex: 'none', width: 20, height: 20, marginTop: 1, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      background: on ? ink : 'transparent', border: `1.5px solid ${on ? ink : 'rgba(var(--bb-fg-rgb),0.3)'}`, color: paper, fontSize: 12 }}>{on ? '✓' : ''}</span>
+                    <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ fontSize: 15, fontWeight: 600 }}>{r.name}</span>
+                      <span style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 999,
+                          background: removed ? 'rgba(var(--bb-alert-rgb),0.14)' : 'rgba(var(--bb-fg-rgb),0.08)', color: removed ? alert : ink }}>
+                          {T(...(STATUS_LABELS[r.status] || [r.status, r.status]))}
+                        </span>
+                        <span style={{ opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[date(r.starts_at), r.organizer_name].filter(Boolean).join(' · ')}</span>
+                      </span>
+                      {removed && <span style={{ fontSize: 12, opacity: 0.75 }}>{T('Lý do: ', 'Reason: ')}{r.removal_reason}</span>}
+                      {removed && c?.purgeable && <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.7 }}>{T('Chưa từng có đặt chỗ — có thể xoá vĩnh viễn.', 'Never booked — can be deleted permanently.')}</span>}
+                      {!removed && isBlocked(c) && (
+                        <span data-testid={`admin-manage-blocked-${r.id}`} style={{ fontSize: 12, fontWeight: 600, color: 'var(--bb-honey)' }}>{blockerLine(c, T)}</span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
+      {selected.size > 0 && (
+        <div style={{ position: 'fixed', left: 12, right: 12, bottom: 12, zIndex: 20, maxWidth: 456, margin: '0 auto', padding: '12px 16px 10px', borderRadius: 24,
+          background: 'var(--bb-bg)', boxShadow: '0 10px 30px rgba(27,25,22,0.18)', border: '1px solid var(--bb-rule)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.75, textAlign: 'center' }}>
+            {T(`Đã chọn ${selected.size}`, `${selected.size} selected`)}
+            {blockedCount > 0 && T(` · ${blockedCount} chưa gỡ được`, ` · ${blockedCount} can't be removed yet`)}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {removeIds.length > 0 && (
+              <Button label={T(`Gỡ (${removeIds.length})`, `Remove (${removeIds.length})`)} testId="admin-manage-remove" disabled={busy}
+                onClick={() => { setReason(''); setReasonFor('remove'); }} style={{ flex: 1, background: alert, color: 'var(--bb-on-alert)' }} />
+            )}
+            {restoreIds.length > 0 && (
+              <Button label={T(`Khôi phục (${restoreIds.length})`, `Restore (${restoreIds.length})`)} testId="admin-manage-restore" disabled={busy} onClick={restore} style={{ flex: 1 }} />
+            )}
+            {purgeIds.length > 0 && (
+              <Button label={T(`Xoá hẳn (${purgeIds.length})`, `Delete (${purgeIds.length})`)} testId="admin-manage-purge" disabled={busy}
+                onClick={() => { setReason(''); setReasonFor('purge'); }} style={{ flex: 1, background: alert, color: 'var(--bb-on-alert)' }} />
+            )}
+          </div>
+          <Button variant="tertiary" label={T('Bỏ chọn', 'Clear selection')} onClick={() => setSelected(new Set())} />
+        </div>
+      )}
+
+      {reasonFor && (
+        <div onClick={() => setReasonFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(12,12,12,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} data-testid="admin-manage-reason-sheet"
+            style={{ background: paper, color: ink, width: '100%', maxWidth: 480, borderRadius: '22px 22px 0 0', padding: 22, display: 'flex', flexDirection: 'column', gap: 14, animation: 'banbeSheetIn 0.3s cubic-bezier(.22,.61,.36,1) both' }}>
+            <div style={display(22)}>
+              {reasonFor === 'purge'
+                ? T(`Xoá vĩnh viễn ${purgeIds.length} sự kiện`, `Permanently delete ${en(purgeIds.length, 'event')}`)
+                : T(`Gỡ ${removeIds.length} sự kiện`, `Remove ${en(removeIds.length, 'event')}`)}
+            </div>
+            <p style={{ fontSize: 13.5, lineHeight: 1.5, opacity: 0.8, margin: 0 }}>
+              {reasonFor === 'purge'
+                ? T('Chỉ áp dụng cho sự kiện đã gỡ và chưa từng có đặt chỗ. Không thể hoàn tác. Hành động được ghi lại.', "Only for removed events that never had a booking. This can't be undone. It's logged.")
+                : T('Sự kiện biến mất khỏi Trang chủ, Bản đồ, Tìm kiếm và trang host. Mọi đặt chỗ, thanh toán và lịch sử được giữ. Người tổ chức nhận lý do bên dưới.',
+                  'They disappear from Home, Map, Search and host pages. All bookings, payments and history are kept. The host is sent the reason below.')}
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {QUICK_REASONS.map(q => <ChoiceChip key={q[1]} compact label={T(...q)} selected={reason === T(...q)} onClick={() => setReason(T(...q))} />)}
+            </div>
+            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500} data-testid="admin-manage-reason"
+              placeholder={T('Lý do (bắt buộc)', 'Reason (required)')}
+              style={{ width: '100%', boxSizing: 'border-box', fontSize: 16, padding: '12px 14px', borderRadius: 14, border: '1px solid var(--bb-rule)', background: paper, color: ink, fontFamily: 'inherit', resize: 'vertical' }} />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <Button variant="secondary" label={T('Huỷ', 'Cancel')} onClick={() => setReasonFor(null)} style={{ flex: 1 }} />
+              <Button label={reasonFor === 'purge' ? T('Xoá vĩnh viễn', 'Delete permanently') : T('Gỡ sự kiện', 'Remove')} testId="admin-manage-reason-confirm"
+                disabled={reason.trim().length < 3 || busy} style={{ flex: 1 }}
+                onClick={() => { const ids = reasonFor === 'purge' ? purgeIds : removeIds; const a = reasonFor; setReasonFor(null); run(a, ids, reason); }} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
