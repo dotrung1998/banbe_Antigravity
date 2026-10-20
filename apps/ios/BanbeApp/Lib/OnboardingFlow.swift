@@ -350,3 +350,31 @@ enum PreferenceImpacts {
         return out
     }
 }
+
+
+// MARK: - Live feedback under a question (note 53)
+
+enum OnboardingFeedback {
+    /// One short line that answers each tap ("🎵 🍽️ · only these kinds get the ★"), so picking feels like it does
+    /// something before the reveal. Never says more than the reveal's impact lines. nil when nothing is picked.
+    /// Web twin: `selectionFeedback` in src/lib/onboardingFlow.js (same strings; tests mirrored).
+    static func line(_ question: OnboardingQuestion, picked: [String], vi: Bool) -> String? {
+        guard !picked.isEmpty else { return nil }
+        if picked.contains(EventPrefTaxonomy.noPreference) { return vi ? "🤷 · Câu này không lọc gì cả" : "🤷 · Nothing filtered here" }
+        let faces = picked.map(PrefEmoji.of).joined(separator: " ")
+        switch question {
+        case .interests: return "\(faces) · " + (vi ? "chỉ những loại này được gắn ★" : "only these kinds get the ★")
+        case .goals: return "\(faces) · " + (vi ? "sự kiện hợp sẽ được xếp lên trước" : "we'll rank events like this higher")
+        case .availability: return "\(faces) · " + (vi ? "giờ khác vẫn hiện, chỉ xếp sau" : "other times still show, just lower")
+        case .budget:
+            let tail: String
+            switch picked[0] {
+            case "flexible": tail = vi ? "không giới hạn giá" : "no price limit"
+            case "free": tail = vi ? "chỉ sự kiện miễn phí" : "free events only"
+            default: tail = vi ? "ẩn sự kiện vượt mức này" : "hides events above this"
+            }
+            return "\(faces) · " + tail
+        case .languages: return "\(faces) · " + (vi ? "đã lưu, chưa dùng để lọc" : "saved, doesn't filter yet")
+        }
+    }
+}

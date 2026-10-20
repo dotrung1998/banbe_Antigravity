@@ -110,9 +110,73 @@ input {
   font-family: inherit;
 }
 
-input::placeholder {
-  color: rgba(27, 25, 22, 0.35);
+/* Follows the theme (the old fixed light-ink value nearly vanished on the dark paper). */
+input::placeholder, textarea::placeholder {
+  color: rgba(var(--bb-fg-rgb), 0.38);
 }
+
+/* Field states (note 53; Kole Jain, "Feedback & states"). Every text field shows where the cursor is:
+   focus = clay border + a soft clay halo; error = alert; warning = honey (e.g. "This email already exists").
+   Clay is the decorative accent, never an error and never the primary CTA, so a focused field can't be
+   mistaken for either. Most fields set their border/outline/shadow inline, hence !important. The ring is drawn
+   INSET as well as outside: theme.js `fieldGlass` masks its element, which would clip an outer-only ring.
+   A bare input that sits inside a styled container ([data-bare], e.g. a search pill with an icon) hands the
+   ring to that container (.bb-focus-ring). :where() keeps all three rules at the same specificity, so source
+   order decides: an invalid field stays red while it's focused. */
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="submit"], [type="button"]), textarea, select):not([data-bare]),
+.bb-focus-ring {
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="submit"], [type="button"]), textarea, select):not([data-bare]):focus,
+.bb-focus-ring:focus-within {
+  outline: none;
+  border-color: var(--bb-clay) !important;
+  box-shadow: inset 0 0 0 1px var(--bb-clay), 0 0 0 4px rgba(var(--bb-clay-rgb), 0.18) !important;
+}
+:where(input, textarea, select)[aria-invalid="true"]:not([data-bare]), .bb-focus-ring[data-state="error"] {
+  border-color: var(--bb-alert) !important;
+  box-shadow: inset 0 0 0 1px var(--bb-alert), 0 0 0 4px rgba(var(--bb-alert-rgb), 0.14) !important;
+}
+:where(input, textarea, select)[data-state="warning"]:not([data-bare]), .bb-focus-ring[data-state="warning"] {
+  border-color: var(--bb-honey) !important;
+  box-shadow: inset 0 0 0 1px var(--bb-honey), 0 0 0 4px rgba(224, 165, 38, 0.18) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(input, textarea, select), .bb-focus-ring { transition: none !important; }
+}
+
+/* Pressed state for buttons (note 53): every action answers the touch. Add className="bb-press". */
+.bb-press { transition: transform .12s ease, opacity .12s ease, background-color .15s ease; -webkit-tap-highlight-color: transparent; }
+.bb-press:not(:disabled):active { transform: scale(0.97); opacity: 0.85; }
+@media (prefers-reduced-motion: reduce) { .bb-press:not(:disabled):active { transform: none; } }
+
+/* "Look here" on a form field (note 53), the For You chip's gold halo + sheen (ForYouChip.jsx) reshaped for a
+   rounded field: drawn by pseudo-elements around the field's wrapper, so nothing in the layout moves. The class is
+   put on by CreateEvent for ~4s after a recipe Fix / Review-with-gaps jump. Reduced motion: a still gold border. */
+@keyframes bb-attn-halo { 0% { box-shadow: 0 0 0 0 rgba(224,165,38,0.6); } 100% { box-shadow: 0 0 0 12px rgba(224,165,38,0); } }
+@keyframes bb-attn-sweep { 0% { background-position: 130% 0; opacity: 1; } 85% { opacity: 1; } 100% { background-position: -40% 0; opacity: 0; } }
+@keyframes bb-attn-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+.bb-attn { position: relative; }
+.bb-attn::before, .bb-attn::after { content: ''; position: absolute; inset: -8px; border-radius: 18px; pointer-events: none; }
+.bb-attn::before { border: 2px solid #E0A526; animation: bb-attn-halo 1.2s ease-out 2, bb-attn-fade 4s ease forwards; }
+.bb-attn::after {
+  background: linear-gradient(100deg, transparent 35%, rgba(255,226,140,0.55) 50%, transparent 65%) no-repeat;
+  background-size: 250% 100%; animation: bb-attn-sweep 2.4s ease-in-out 1 forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bb-attn::before { animation: bb-attn-fade 4s step-end forwards; }
+  .bb-attn::after { display: none; }
+}
+/* Onboarding reveal confetti (note 53, the peak of the flow): each bit flies out to (--dx, --dy), then drops. */
+@keyframes bbConfetti {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+  55% { transform: translate(var(--dx), var(--dy)) rotate(calc(var(--rot) * 0.6)); opacity: 1; }
+  100% { transform: translate(var(--dx), calc(var(--dy) + 110px)) rotate(var(--rot)); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .bb-confetti { display: none; } }
+@keyframes bb-coach-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.bb-coach { animation: bb-coach-in .25s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .bb-coach { animation: none; } }
 
 #root {
   min-height: 100vh;

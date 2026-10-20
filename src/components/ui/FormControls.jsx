@@ -2,13 +2,17 @@
 // Views/FormControls.swift: a selectable chip, a −/+ count stepper, a
 // named-step progress bar (with a head start) and a primary button that is a
 // real <button disabled> and says WHY it is disabled.
+// Note 53: a three-level Button (primary / secondary / tertiary) so the main
+// action never looks like the alternatives, and FieldNote for a field's
+// error / warning line (the field itself gets aria-invalid / data-state, see
+// the field-state rules in src/index.css).
 import { paper, ink, display } from '../../theme.js';
 
 const RULE = 'rgba(27,25,22,0.16)';
 
 export function ChoiceChip({ label, selected, onClick, compact = false, testId }) {
   return (
-    <button type="button" onClick={onClick} aria-pressed={selected} data-testid={testId}
+    <button type="button" onClick={onClick} aria-pressed={selected} data-testid={testId} className="bb-press"
       style={{
         fontSize: compact ? 11.5 : 13, fontWeight: selected ? 600 : 400, fontFamily: 'inherit',
         padding: compact ? '6px 10px' : '9px 14px', borderRadius: 999, cursor: 'pointer',
@@ -118,7 +122,7 @@ export function BookingJourneyProgress({ current, T }) {
 export function InkButton({ label, enabled = true, onClick, reason, style, testId }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <button type="button" disabled={!enabled} onClick={onClick} data-testid={testId}
+      <button type="button" disabled={!enabled} onClick={onClick} data-testid={testId} className="bb-press"
         aria-disabled={!enabled || undefined} aria-describedby={!enabled && reason ? `${testId}-reason` : undefined}
         style={{
           fontSize: 15, fontWeight: 600, fontFamily: 'inherit', textAlign: 'center', padding: 16, borderRadius: 999,
@@ -129,6 +133,54 @@ export function InkButton({ label, enabled = true, onClick, reason, style, testI
         <div id={`${testId}-reason`} data-testid={`${testId}-reason`} style={{ fontSize: 12, textAlign: 'center', color: ink, opacity: 0.7 }}>{reason}</div>
       )}
     </div>
+  );
+}
+
+/**
+ * One button system (note 53). primary = solid ink, the one thing to do next; secondary = field fill with a
+ * hairline, an alternative (optionally led by an emoji/icon); tertiary = text only, for skip/back/"later".
+ * All three get the pressed state (.bb-press) and a 44px+ hit area.
+ */
+export function Button({ variant = 'primary', label, icon, onClick, disabled = false, testId, style, type = 'button', ariaLabel }) {
+  const base = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 52,
+    fontFamily: 'inherit', fontSize: 15, fontWeight: 600, borderRadius: 999, cursor: disabled ? 'default' : 'pointer',
+    padding: '0 22px', textAlign: 'center',
+  };
+  const look = variant === 'primary'
+    ? { border: 'none', background: disabled ? 'rgba(var(--bb-fg-rgb),0.16)' : ink, color: disabled ? ink : paper }
+    : variant === 'secondary'
+      ? { border: '1px solid var(--bb-rule)', background: 'var(--bb-field)', color: ink, opacity: disabled ? 0.5 : 1 }
+      : { border: 'none', background: 'none', color: ink, minHeight: 44, padding: '0 12px', fontWeight: 600, opacity: disabled ? 0.4 : 0.8 };
+  return (
+    <button type={type} onClick={disabled ? undefined : onClick} disabled={disabled} data-testid={testId} aria-label={ariaLabel}
+      data-variant={variant} className="bb-press" style={{ ...base, ...look, ...style }}>
+      {icon && <span aria-hidden="true" style={{ fontSize: 17, lineHeight: 1 }}>{icon}</span>}
+      {label}
+    </button>
+  );
+}
+
+/**
+ * The line under a field that has a problem. tone 'error' (alert) or 'warning' (honey), with an optional inline
+ * action such as "Log in instead?". Give the field aria-invalid / data-state and aria-describedby={id}.
+ */
+export function FieldNote({ id, tone = 'error', children, actionLabel, onAction, testId }) {
+  const color = tone === 'warning' ? 'var(--bb-honey)' : 'var(--bb-alert)';
+  return (
+    <p id={id} data-testid={testId} role={tone === 'error' ? 'alert' : 'status'}
+      style={{ fontSize: 12.5, lineHeight: 1.45, color, margin: '6px 2px 0', fontWeight: 500 }}>
+      {children}
+      {actionLabel && onAction && (
+        <>
+          {' '}
+          <button type="button" onClick={onAction} data-testid={testId ? `${testId}-action` : undefined}
+            style={{ border: 'none', background: 'none', padding: 0, font: 'inherit', fontWeight: 700, color, textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 3, cursor: 'pointer' }}>
+            {actionLabel}
+          </button>
+        </>
+      )}
+    </p>
   );
 }
 

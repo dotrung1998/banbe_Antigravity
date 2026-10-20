@@ -27,17 +27,18 @@ function WelcomeIllustration({ T }) {
   );
 }
 
-const STORY_ICON = [
-  <svg key="star" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 6.8l1.6 3.3 3.6.5-2.6 2.5.6 3.6-3.2-1.7-3.2 1.7.6-3.6-2.6-2.5 3.6-.5z" /></svg>,
-  <svg key="cal" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17M8 3v4M16 3v4" /></svg>,
-];
+// Story pages lead with an emoji tile (note 53: a face for each idea, not another line icon).
+const STORY_EMOJI = ['🌟', '🎟️'];
+const STORY_TILE_BG = ['var(--bb-honey-bg)', 'var(--bb-clay-bg)'];
 
 const STORY_SEEN_KEY = 'banbe.publicStory.seen.v1';
 const readSeen = () => { try { return localStorage.getItem(STORY_SEEN_KEY) === '1'; } catch { return false; } };
 const pill = { border: '1px solid rgba(var(--bb-fg-rgb),0.12)', background: 'var(--bb-field)', color: ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, borderRadius: 999, padding: '0 12px', minHeight: 44, cursor: 'pointer' };
-// iOS InkButton (solid ink, radius 18) and the outlined secondary.
-const primaryBtn = { width: '100%', minHeight: 54, borderRadius: 18, border: 'none', background: ink, color: paper, fontFamily: 'inherit', fontSize: 17, fontWeight: 600, cursor: 'pointer' };
-const secondaryBtn = { width: '100%', minHeight: 54, borderRadius: 18, border: `1.2px solid ${ink}`, background: 'transparent', color: ink, fontFamily: 'inherit', fontSize: 17, fontWeight: 600, cursor: 'pointer' };
+// Note 53, three clearly different levels: the solid primary is the one thing to do; the secondary is a quieter
+// field-filled button with a hairline (it used to be a same-size, same-weight ink outline that read as a twin);
+// "Log in" is text only.
+const primaryBtn = { width: '100%', minHeight: 56, borderRadius: 18, border: 'none', background: ink, color: paper, fontFamily: 'inherit', fontSize: 17, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
+const secondaryBtn = { width: '100%', minHeight: 50, borderRadius: 18, border: '1px solid var(--bb-rule)', background: 'var(--bb-field)', color: ink, fontFamily: 'inherit', fontSize: 15.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
 
 export default function Welcome() {
   const { state: s, T, toggleLang, toggleTheme, browseAsGuest, openAuth } = useBanBe();
@@ -56,15 +57,16 @@ export default function Welcome() {
   };
   const ctas = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <button type="button" onClick={() => { track('public_entry_get_started'); browseAsGuest(); }} data-testid="welcome-explore"
-        style={primaryBtn}>{T('Khám phá sự kiện', 'Explore events')}</button>
-      <button type="button" onClick={() => openAuth('signup', 'welcome')} data-testid="welcome-signup"
+      <button type="button" onClick={() => { track('public_entry_get_started'); browseAsGuest(); }} data-testid="welcome-explore" className="bb-press"
+        style={primaryBtn}>{T('Khám phá sự kiện', 'Explore events')}<span aria-hidden>→</span></button>
+      <button type="button" onClick={() => openAuth('signup', 'welcome')} data-testid="welcome-signup" className="bb-press"
         style={secondaryBtn}>
-        {T('Tạo tài khoản', 'Create an account')}
+        <span aria-hidden>✨</span>{T('Tạo tài khoản', 'Create an account')}
       </button>
-      <button type="button" onClick={() => { track('public_entry_login'); openAuth('login', 'welcome'); }} data-testid="welcome-login"
-        style={{ width: '100%', padding: 12, border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 17, fontWeight: 600, cursor: 'pointer', minHeight: 50 }}>
-        {T('Đã có tài khoản? Đăng nhập', 'Already have an account? Log in')}
+      <button type="button" onClick={() => { track('public_entry_login'); openAuth('login', 'welcome'); }} data-testid="welcome-login" className="bb-press"
+        style={{ width: '100%', padding: 12, border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 15, fontWeight: 500, cursor: 'pointer', minHeight: 48 }}>
+        <span style={{ opacity: 0.7 }}>{T('Đã có tài khoản? ', 'Already have an account? ')}</span>
+        <span style={{ fontWeight: 700, textDecoration: 'underline', textUnderlineOffset: 3 }}>{T('Đăng nhập', 'Log in')}</span>
       </button>
     </div>
   );
@@ -99,12 +101,12 @@ export default function Welcome() {
           </>
         ) : (
           <>
-            <div aria-hidden style={{ marginTop: 40, color: ink }}>{STORY_ICON[page]}</div>
+            <div aria-hidden style={{ marginTop: 40, width: 84, height: 84, borderRadius: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 42, background: STORY_TILE_BG[page] }}>{STORY_EMOJI[page]}</div>
             <h1 style={display(32, { margin: '14px 0 0', lineHeight: 1.15 })}>{pages[page].title}</h1>
             <p style={{ fontSize: 17, lineHeight: 1.6, margin: '14px 0 0', opacity: 0.8 }}>{pages[page].body}</p>
             <div style={{ marginTop: 24 }}>
               {page < pages.length - 1 ? (
-                <button type="button" onClick={() => setPage(page + 1)} data-testid="welcome-story-next" style={primaryBtn}>{T('Tiếp', 'Next')}</button>
+                <button type="button" onClick={() => setPage(page + 1)} data-testid="welcome-story-next" className="bb-press" style={primaryBtn}>{T('Tiếp', 'Next')}<span aria-hidden>→</span></button>
               ) : (
                 ctas
               )}

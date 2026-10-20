@@ -235,7 +235,10 @@ final class DiscoveryFixtureUITests: XCTestCase {
         let app = launch("create", theme: theme, extra: ["-uiFixtureBench", "YES"])
         let meter = el(app, "create.recipeMeter")
         XCTAssertTrue(meter.waitForExistence(timeout: 20), "the recipe meter sits under the step bar")
-        XCTAssertTrue(el(app, "create.goal.fill_seats").exists, "goal pills on Basics")
+        // Note 53: Create opens on step 1 (Host, already ticked); one tap to Basics.
+        XCTAssertTrue(el(app, "create.hostPrefilled").exists)
+        el(app, "create.step.next").tap()
+        XCTAssertTrue(el(app, "create.goal.fill_seats").waitForExistence(timeout: 5), "goal pills on Basics")
         Thread.sleep(forTimeInterval: 1.0)
         shot("create-basics-\(theme)")
         meter.tap()

@@ -55,13 +55,14 @@ private struct ScheduleScreen: View {
                 // under the finger and its swipe zone stays put. At accessibility text
                 // sizes it scrolls with the content instead, so it can grow.
                 if !largeText {
+                    // Note 53: top 16 (was 12) puts the logo + title on the same line as Home/Messages/Account.
                     headerBlock
-                        .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 8)
+                        .padding(.horizontal, DockHeaderTitle.horizontalPadding).padding(.top, 16).padding(.bottom, 8)
                         .background(app.palette.paper)
                 }
                 ScreenScaffold(tracksBottomBarScroll: true, refreshIndicatorTopPadding: 16, onRefresh: { await reload(force: true) }) {
                     VStack(alignment: .leading, spacing: 14) {
-                        if largeText { headerBlock.padding(.top, 12) }
+                        if largeText { headerBlock.padding(.top, 16) }
                         Text(SchedulePresentation.dayTitle(selected, calendar: calendar, vi: vi))
                             .font(.system(.headline, design: .rounded))
                             .accessibilityAddTraits(.isHeader)
@@ -158,14 +159,10 @@ private struct ScheduleScreen: View {
     /// banbe wordmark + "Schedule", identical to Account/Messages (width, font, spacing).
     private var titleRow: some View {
         HStack(alignment: .center) {
-            BanbeLogo(kind: .wordmark, width: BanbeLogo.headerWordmarkWidth)
-            Text(app.T("Lịch", "Schedule"))
-                .font(BanbeTheme.display(27))
-                .lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("schedule.title")
+            DockHeaderTitle(title: app.T("Lịch", "Schedule"), identifier: "schedule.title")
             Spacer(minLength: 0)
         }
+        .frame(height: DockHeaderTitle.rowHeight)  // note 53: same row height as the other dock headers
     }
 
     private var monthButton: some View {

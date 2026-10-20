@@ -126,99 +126,134 @@ private struct OnboardingTopBar: View {
     let onBack: () -> Void
     let onSkip: () -> Void
 
+    /// Goal gradient (note 48): creating the account (or, for a guest, opening banbe) counts as the first slice,
+    /// so question 1 never opens on an empty bar.
+    private var fraction: CGFloat { CGFloat(step) / CGFloat(OnboardingQuestion.count + 1) }
+
+    // Note 53: one compact line — back, a thin bar with "2/5", skip — instead of a counter, a numbered stepper
+    // and an encouragement line all at once.
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left")
-                        .font(.body.weight(.semibold))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel(app.T("Quay lại", "Back"))
-                .accessibilityIdentifier("onboarding.back")
-                Spacer()
-                Text(app.T("Câu \(step)/\(OnboardingQuestion.count)", "\(step) of \(OnboardingQuestion.count)"))
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(app.palette.ink.opacity(0.7))
-                    .accessibilityIdentifier("onboarding.progress")
-                Spacer()
-                Button(action: onSkip) {
-                    Text(app.T("Bỏ qua", "Skip"))
-                        .font(.subheadline.weight(.semibold))
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityHint(app.T("Bỏ qua câu này", "Skips this question"))
-                .accessibilityIdentifier("onboarding.skipQuestion")
+        HStack(spacing: 10) {
+            Button(action: onBack) {
+                Image(systemName: "chevron.left")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            // Goal gradient (note 48): creating the account (or, for a guest,
-            // opening banbe) is step 1 and already done, so question 1 never
-            // opens at 0%.
-            StepProgress(steps: stepTitles,
-                         current: step,
-                         message: ProgressEncouragement.line(remaining: stepTitles.count - step, T: app.T),
-                         identifier: "onboarding.stepProgress")
+            .accessibilityLabel(app.T("Quay lại", "Back"))
+            .accessibilityIdentifier("onboarding.back")
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(app.palette.ink.opacity(0.12))
+                    Capsule().fill(app.palette.ink).frame(width: geo.size.width * fraction)
+                }
+            }
+            .frame(height: 6)
+            .animation(.easeOut(duration: 0.35), value: step)
+            .accessibilityHidden(true)
+            Text("\(step)/\(OnboardingQuestion.count)")
+                .font(.footnote.weight(.bold)).monospacedDigit()
+                .foregroundStyle(app.palette.ink.opacity(0.7))
+                .accessibilityLabel(app.T("Câu \(step)/\(OnboardingQuestion.count)", "\(step) of \(OnboardingQuestion.count)"))
+                .accessibilityIdentifier("onboarding.progress")
+            Button(action: onSkip) {
+                Text(app.T("Bỏ qua", "Skip"))
+                    .font(.subheadline.weight(.semibold))
+                    .opacity(0.8)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityHint(app.T("Bỏ qua câu này", "Skips this question"))
+            .accessibilityIdentifier("onboarding.skipQuestion")
         }
-    }
-
-    private var stepTitles: [String] {
-        [app.isSignedIn ? app.T("Tài khoản", "Account") : app.T("Bắt đầu", "Start")]
-            + OnboardingQuestion.allCases.map(stepTitle)
-    }
-
-    private func stepTitle(_ q: OnboardingQuestion) -> String {
-        switch q {
-        case .goals: return app.T("Mục tiêu", "Goals")
-        case .interests: return app.T("Sở thích", "Interests")
-        case .availability: return app.T("Thời gian", "Time")
-        case .budget: return app.T("Ngân sách", "Budget")
-        case .languages: return app.T("Ngôn ngữ", "Language")
-        }
+        .buttonStyle(PressableButtonStyle(haptic: false))
     }
 }
 
-/// A full-width choice with an explicit selected state (fill + checkmark +
-/// trait), never colour alone.
+/// An answer, with an explicit selected state (tint + ink outline + check + trait), never colour alone.
+/// Note 53: selected is a light tint, NOT solid ink, so a picked answer can't be mistaken for the Continue button
+/// under it; each answer leads with its emoji, which grows a little when picked. `tile` = the 2-column grid look.
 private struct OnboardingChoiceRow: View {
     @EnvironmentObject var app: AppState
     let title: String
     var detail: String? = nil
+    var emoji: String? = nil
+    var tile = false
     let selected: Bool
     let identifier: String
     let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 18, style: .continuous) }
 
     var body: some View {
         Button {
             Haptics.selection()
             action()
         } label: {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.body.weight(selected ? .semibold : .regular))
-                    if let detail {
-                        Text(detail).font(.footnote).opacity(0.75)
-                    }
-                }
-                .multilineTextAlignment(.leading)
-                Spacer(minLength: 8)
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .accessibilityHidden(true)
+            Group {
+                if tile { tileLabel } else { rowLabel }
             }
-            .foregroundStyle(selected ? app.palette.paper : app.palette.ink)
-            .padding(.horizontal, 16)
-            .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-            .background(selected ? app.palette.ink : app.palette.field,
-                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(app.palette.rule, lineWidth: selected ? 0 : 1))
-            .contentShape(Rectangle())
+            .foregroundStyle(app.palette.ink)
+            .background(selected ? app.palette.ink.opacity(0.06) : app.palette.field, in: shape)
+            .overlay(shape.stroke(selected ? app.palette.ink : .clear, lineWidth: 1.5))
+            .contentShape(shape)
+            .animation(.easeOut(duration: 0.15), value: selected)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle(haptic: false))
         .accessibilityAddTraits(selected ? [.isSelected] : [])
         .accessibilityIdentifier(identifier)
+    }
+
+    private var check: some View {
+        Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+            .font(.title3)
+            .foregroundStyle(selected ? app.palette.ink : app.palette.ink.opacity(0.3))
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var face: some View {
+        if let emoji {
+            Text(emoji)
+                .font(.system(size: tile ? 32 : 22))
+                .scaleEffect(selected && !reduceMotion ? 1.15 : 1)
+                .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.5), value: selected)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var rowLabel: some View {
+        HStack(spacing: 14) {
+            face
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.body.weight(selected ? .bold : .medium))
+                if let detail {
+                    Text(detail).font(.footnote).opacity(0.75)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            Spacer(minLength: 8)
+            check
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+    }
+
+    private var tileLabel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                face
+                Spacer(minLength: 4)
+                check
+            }
+            Spacer(minLength: 0)
+            Text(title).font(.body.weight(selected ? .bold : .medium))
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
     }
 }
 
@@ -231,35 +266,39 @@ private struct OnboardingWelcomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Image(systemName: "star.circle.fill")
-                    .font(.system(size: 44))
-                    .foregroundStyle(Color(red: 0.80, green: 0.62, blue: 0.16))
+                Text("🌟")
+                    .font(.system(size: 42))
+                    .frame(width: 84, height: 84)
+                    .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
                     .accessibilityHidden(true)
                 Text(app.T("Tìm những buổi bạn thật sự muốn đi", "Find events you'll actually want to go to"))
                     .font(.system(.largeTitle, design: .rounded).weight(.semibold))
                     .padding(.top, 18)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("onboarding.welcome")
-                Text(app.T("Trả lời 5 câu ngắn, banbe sẽ gắn sao ★ Dành cho bạn lên những sự kiện hợp với bạn.",
-                           "Answer 5 quick questions and banbe stars ★ For You on the events that fit."))
-                    .font(.body).lineSpacing(3).padding(.top, 12)
+                Text(app.T("5 câu ngắn, rồi banbe gắn ★ Dành cho bạn lên sự kiện hợp với bạn.",
+                           "5 quick taps, then banbe stars ★ For You on the events that fit."))
+                    .font(.body).lineSpacing(3).padding(.top, 10)
+                    .foregroundStyle(app.palette.ink.opacity(0.8))
 
-                VStack(alignment: .leading, spacing: 14) {
-                    point("clock", app.T("Khoảng 1 phút. Câu nào cũng bỏ qua được.", "About a minute. Every question is optional."))
-                    point("lock", app.T("Chỉ bạn thấy câu trả lời, host không bao giờ thấy.", "Only you see your answers. Hosts never do."))
-                    point("slider.horizontal.3", app.T("Đổi lại bất cứ lúc nào trong Tài khoản.", "Change them any time in Account."))
+                // Note 53: three glanceable tiles instead of three sentences.
+                HStack(spacing: 8) {
+                    point("⏱️", app.T("~1 phút", "~1 minute"), app.T("Câu nào cũng bỏ qua được", "Skip any question"))
+                    point("🔒", app.T("Chỉ bạn thấy", "Only you see it"), app.T("Host không bao giờ thấy", "Hosts never do"))
+                    point("⚙️", app.T("Đổi bất cứ lúc nào", "Change anytime"), app.T("Trong Tài khoản", "In Account"))
                 }
-                .padding(.top, 28)
+                .padding(.top, 24)
 
                 InkButton(title: app.T("Bắt đầu", "Get started")) { flow.send(.start) }
                     .accessibilityIdentifier("onboarding.start")
                     .padding(.top, 36)
                 Button { flow.send(.skipAll) } label: {
                     Text(app.T("Bỏ qua, xem tất cả sự kiện", "Skip, show me everything"))
-                        .font(.subheadline.weight(.semibold)).underline()
+                        .font(.subheadline.weight(.semibold)).opacity(0.8)
                         .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PressableButtonStyle(haptic: false))
                 .padding(.top, 8)
                 .accessibilityIdentifier("onboarding.skipAll")
             }
@@ -267,12 +306,16 @@ private struct OnboardingWelcomeView: View {
         }
     }
 
-    private func point(_ symbol: String, _ text: String) -> some View {
-        Label {
-            Text(text).font(.subheadline)
-        } icon: {
-            Image(systemName: symbol).frame(width: 24)
+    private func point(_ emoji: String, _ title: String, _ sub: String) -> some View {
+        VStack(spacing: 6) {
+            Text(emoji).font(.system(size: 26)).accessibilityHidden(true)
+            Text(title).font(.footnote.weight(.bold)).multilineTextAlignment(.center)
+            Text(sub).font(.caption).foregroundStyle(app.palette.ink.opacity(0.7)).multilineTextAlignment(.center)
         }
+        .frame(maxWidth: .infinity, minHeight: 112, alignment: .top)
+        .padding(.vertical, 14).padding(.horizontal, 8)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -297,13 +340,23 @@ private struct OnboardingQuestionView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
+                    Text(hero).font(.system(size: 52)).accessibilityHidden(true)
                     Text(title)
                         .font(.system(.title, design: .rounded).weight(.semibold))
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityIdentifier("onboarding.question.\(question.rawValue)")
-                    Text(subtitle).font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.75))
+                    Text(subtitle).font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.7))
                         .padding(.bottom, 12)
                     if question == .budget { budgetOptions } else { multiOptions }
+                    // Note 53: each tap answers with what it will do. Reserved height, so nothing jumps.
+                    Text(feedback ?? " ")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(app.palette.ink.opacity(0.75))
+                        .frame(minHeight: 20, alignment: .leading)
+                        .padding(.top, 6)
+                        .animation(nil, value: feedback)
+                        .accessibilityHidden(feedback == nil)
+                        .accessibilityIdentifier("onboarding.feedback")
                 }
                 .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 24)
                 .id(question)
@@ -319,7 +372,36 @@ private struct OnboardingQuestionView: View {
         }
     }
 
-    private var title: String {
+    /// Note 53: one emoji per question, above its title.
+    private var hero: String {
+        switch question {
+        case .goals: return "👋"
+        case .interests: return "🎟️"
+        case .availability: return "🗓️"
+        case .budget: return "💸"
+        case .languages: return "💬"
+        }
+    }
+
+    /// Note 53: the first question greets by the given name (last word of a Vietnamese name, first in English).
+    private var greetingPrefix: String {
+        guard question == .goals else { return "" }
+        // Only a real display name; never the email prefix or "Guest" fallback of `app.displayName`.
+        let parts = (app.user?.displayName ?? "").split(whereSeparator: \.isWhitespace).map(String.init)
+        guard let name = vi ? parts.last : parts.first, !name.isEmpty else { return "" }
+        return app.T("Chào \(name)! ", "Hi \(name)! ")
+    }
+
+    private var feedback: String? {
+        if question == .budget {
+            return OnboardingFeedback.line(.budget, picked: flow.state.draft.budget.map { [$0.tier] } ?? [], vi: vi)
+        }
+        return OnboardingFeedback.line(question, picked: selection ?? [], vi: vi)
+    }
+
+    private var title: String { greetingPrefix + baseTitle }
+
+    private var baseTitle: String {
         switch question {
         case .goals: return app.T("Bạn muốn gì từ một buổi đi chơi?", "What do you want from a night out?")
         case .interests: return app.T("Loại sự kiện nào hợp với bạn?", "Which kinds of events are you into?")
@@ -331,12 +413,11 @@ private struct OnboardingQuestionView: View {
 
     private var subtitle: String {
         switch question {
-        case .goals: return app.T("Chọn bao nhiêu cũng được. Dùng để xếp gợi ý lên trước.", "Pick any. We rank matching events higher.")
-        case .interests: return app.T("Chọn bao nhiêu cũng được. Gợi ý chỉ gồm những loại bạn chọn.", "Pick any. Your picks only include these kinds.")
-        case .availability: return app.T("Chọn bao nhiêu cũng được. Giờ khác vẫn hiện, chỉ xếp sau.", "Pick any. Other times still show, just lower.")
+        case .goals: return app.T("Chọn bao nhiêu cũng được.", "Pick as many as you like.")
+        case .interests: return app.T("Chỉ những loại bạn chọn được gắn ★.", "Only the kinds you pick get the ★.")
+        case .availability: return app.T("Giờ khác vẫn hiện, chỉ xếp sau.", "Other times still show, just lower.")
         case .budget: return app.T("Chọn một mức.", "Pick one.")
-        case .languages: return app.T("Không bắt buộc. Sự kiện chưa ghi ngôn ngữ nên câu này chưa dùng để lọc.",
-                                      "Optional. Events don't list a language yet, so this won't filter anything for now.")
+        case .languages: return app.T("Không bắt buộc, chưa dùng để lọc.", "Optional, doesn't filter yet.")
         }
     }
 
@@ -350,20 +431,39 @@ private struct OnboardingQuestionView: View {
         }
     }
 
+    /// Short labels (goals, interests, times) sit in a 2-column grid of emoji tiles; languages stay as rows.
+    private var usesTiles: Bool { question != .languages }
+
+    @ViewBuilder
     private var multiOptions: some View {
-        VStack(spacing: 10) {
-            ForEach(question.options()) { o in
-                OnboardingChoiceRow(title: vi ? o.vi : o.en, selected: selection?.contains(o.id) == true,
-                                    identifier: "onboarding.\(question.rawValue).\(o.id)") {
-                    flow.send(.toggle(question, o.id))
+        let noPref = OnboardingChoiceRow(title: app.T("Không ưu tiên", "No preference"), emoji: PrefEmoji.of(EventPrefTaxonomy.noPreference),
+                                         selected: selection == [EventPrefTaxonomy.noPreference],
+                                         identifier: "onboarding.\(question.rawValue).no_preference") {
+            flow.send(.toggle(question, EventPrefTaxonomy.noPreference))
+        }
+        if usesTiles {
+            VStack(spacing: 10) {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    ForEach(question.options()) { o in
+                        OnboardingChoiceRow(title: vi ? o.vi : o.en, emoji: PrefEmoji.of(o.id), tile: true,
+                                            selected: selection?.contains(o.id) == true,
+                                            identifier: "onboarding.\(question.rawValue).\(o.id)") {
+                            flow.send(.toggle(question, o.id))
+                        }
+                    }
                 }
+                noPref
             }
-            OnboardingChoiceRow(title: app.T("Không ưu tiên", "No preference"),
-                                selected: selection == [EventPrefTaxonomy.noPreference],
-                                identifier: "onboarding.\(question.rawValue).no_preference") {
-                flow.send(.toggle(question, EventPrefTaxonomy.noPreference))
+        } else {
+            VStack(spacing: 10) {
+                ForEach(question.options()) { o in
+                    OnboardingChoiceRow(title: vi ? o.vi : o.en, emoji: PrefEmoji.of(o.id), selected: selection?.contains(o.id) == true,
+                                        identifier: "onboarding.\(question.rawValue).\(o.id)") {
+                        flow.send(.toggle(question, o.id))
+                    }
+                }
+                noPref.padding(.top, 6)
             }
-            .padding(.top, 6)
         }
     }
 
@@ -379,7 +479,7 @@ private struct OnboardingQuestionView: View {
             .accessibilityIdentifier("onboarding.budget.region")
             .padding(.bottom, 4)
             ForEach(EventPrefTaxonomy.budgetTiers + [EventPrefTaxonomy.noPreference], id: \.self) { tier in
-                OnboardingChoiceRow(title: region.label(tier: tier, vi: vi),
+                OnboardingChoiceRow(title: region.label(tier: tier, vi: vi), emoji: PrefEmoji.of(tier),
                                     selected: flow.state.draft.budget?.tier == tier,
                                     identifier: "onboarding.budget.\(tier)") {
                     flow.send(.pickBudget(tier))
@@ -421,19 +521,18 @@ private struct OnboardingSaveFailedView: View {
             InkButton(title: app.T("Thử lại", "Retry")) { flow.send(.retrySave) }
                 .accessibilityIdentifier("onboarding.retry")
                 .padding(.top, 8)
-            HStack {
-                Button(app.T("Sửa câu trả lời", "Edit answers")) { flow.send(.back) }
-                    .accessibilityIdentifier("onboarding.failed.back")
-                Spacer()
-                Button(app.T("Bỏ qua lúc này", "Skip for now")) {
-                    // Session-only, as before: the server marker stays unset.
-                    app.needsPreferencesOnboarding = false
-                    flow.send(.skipForNow)
-                }
-                .accessibilityIdentifier("onboarding.failed.skip")
+            // Note 53: the alternative is a secondary button, "later" is text only.
+            SecondaryButton(title: app.T("Sửa câu trả lời", "Edit answers"), emoji: "✏️") { flow.send(.back) }
+                .accessibilityIdentifier("onboarding.failed.back")
+            Button(app.T("Bỏ qua lúc này", "Skip for now")) {
+                // Session-only, as before: the server marker stays unset.
+                app.needsPreferencesOnboarding = false
+                flow.send(.skipForNow)
             }
             .font(.subheadline.weight(.semibold))
-            .frame(minHeight: 44)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .buttonStyle(PressableButtonStyle(haptic: false))
+            .accessibilityIdentifier("onboarding.failed.skip")
         }
         .padding(24)
         .frame(maxHeight: .infinity)
@@ -459,6 +558,12 @@ struct PersonalizedRevealView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    // Note 53, the peak of onboarding (peak-end rule): a moment of celebration when real matches
+                    // land, and the next ask (♡ Save) right on the cards below.
+                    Text(celebrating ? "🎉" : "✨")
+                        .font(.system(size: 44))
+                        .overlay { if celebrating { ConfettiBurst() } }
+                        .accessibilityHidden(true)
                     Text(app.T("Đây là những gì hợp với bạn", "Here's what fits you"))
                         .font(.system(.largeTitle, design: .rounded).weight(.semibold))
                         .accessibilityAddTraits(.isHeader)
@@ -476,7 +581,10 @@ struct PersonalizedRevealView: View {
             if app.discoveryEvents.isEmpty && !app.discoveryEventsLoading { await reload() }
             trackOnce()
         }
+        .onChange(of: celebrating, initial: true) { _, on in if on { Haptics.success() } }
     }
+
+    private var celebrating: Bool { !isLoading && !failed && !matches.isEmpty }
 
     private var ctaTitle: String {
         if flow.state.needsSettings { return app.T("Tiếp tục", "Continue") }
@@ -509,8 +617,7 @@ struct PersonalizedRevealView: View {
                 Label {
                     Text(line.text).font(.subheadline).fixedSize(horizontal: false, vertical: true)
                 } icon: {
-                    Image(systemName: line.kind == .filter ? "line.3.horizontal.decrease.circle"
-                                    : line.kind == .ranking ? "arrow.up.circle" : "bookmark.circle")
+                    Text(line.kind == .filter ? "🎯" : line.kind == .ranking ? "⬆️" : "🔖")
                 }
             }
         }
@@ -587,30 +694,47 @@ private struct RevealEventCard: View {
     let onOpen: () -> Void
 
     var body: some View {
-        Button(action: onOpen) {
-            HStack(spacing: 12) {
-                CatalogPhoto(path: event.img, height: 72, width: 72, cornerRadius: 12)
-                    .frame(width: 72)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(event.name).font(.subheadline.weight(.semibold)).lineLimit(2)
-                    Text(app.trStatus(event.when)).font(.footnote).opacity(0.75).lineLimit(1)
-                    Text(app.trStatus(event.price)).font(.footnote).opacity(0.75).lineLimit(1)
+        let saved = app.isSaved(event.key)
+        HStack(spacing: 4) {
+            Button(action: onOpen) {
+                HStack(spacing: 12) {
+                    CatalogPhoto(path: event.img, height: 72, width: 72, cornerRadius: 12)
+                        .frame(width: 72)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        (Text("★ ").foregroundColor(Color(red: 0.80, green: 0.62, blue: 0.16)) + Text(event.name))
+                            .font(.subheadline.weight(.semibold)).lineLimit(2)
+                        Text(app.trStatus(event.when)).font(.footnote).opacity(0.75).lineLimit(1)
+                        Text(app.trStatus(event.price)).font(.footnote).opacity(0.75).lineLimit(1)
+                    }
+                    .multilineTextAlignment(.leading)
+                    Spacer(minLength: 4)
                 }
-                .multilineTextAlignment(.leading)
-                Spacer(minLength: 4)
-                Image(systemName: "star.fill")
-                    .foregroundStyle(Color(red: 0.80, green: 0.62, blue: 0.16))
-                    .accessibilityHidden(true)
+                .foregroundStyle(app.palette.ink)
+                .padding(10)
+                .contentShape(Rectangle())
             }
-            .foregroundStyle(app.palette.ink)
-            .padding(10)
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .contentShape(Rectangle())
+            .buttonStyle(PressableButtonStyle(haptic: false))
+            .accessibilityElement(children: .combine)
+            .accessibilityHint(app.T("Mở sự kiện", "Opens the event"))
+            .accessibilityIdentifier("onboarding.reveal.event")
+            // Note 53: the ask inside the peak — keep the ones you like, one tap.
+            Button {
+                app.toggleFavorite(event.key)  // plays its own selection haptic
+            } label: {
+                Image(systemName: saved ? "heart.fill" : "heart")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(saved ? app.palette.clay : app.palette.ink)
+                    .frame(width: 44, height: 44)
+                    .background(saved ? app.palette.clayBg : .clear, in: Circle())
+                    .contentShape(Circle())
+            }
+            .buttonStyle(PressableButtonStyle(haptic: false))
+            .accessibilityLabel(saved ? app.T("Bỏ lưu \(event.name)", "Unsave \(event.name)") : app.T("Lưu \(event.name)", "Save \(event.name)"))
+            .accessibilityAddTraits(saved ? [.isSelected] : [])
+            .accessibilityIdentifier("onboarding.reveal.save")
+            .padding(.trailing, 6)
         }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityHint(app.T("Mở sự kiện", "Opens the event"))
-        .accessibilityIdentifier("onboarding.reveal.event")
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }

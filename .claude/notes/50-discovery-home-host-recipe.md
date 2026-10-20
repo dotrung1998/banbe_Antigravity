@@ -163,3 +163,6 @@ at the owner's request) for the owner to review or finish:
   FormControls, Search, SmartDefaults, Analytics, UITestFixtures, and two UI test files.
 - Never built and no tests run. RootView is touched: the note-47 Home mount-count test must pass before it ships.
 - The web files above are the spec. Mirror the unit tests 1:1 (same fixtures, Vietnam UTC+7 fixed offset).
+
+## Update 2026-10-20 (note 53)
+Create event no longer skips Host: it always opens on step 1 (Host ✓ and the head start still show). The recipe meter shows on every step, and a recipe Fix now lands on the exact field (`fix.field` is used). See note 53.

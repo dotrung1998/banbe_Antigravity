@@ -122,6 +122,7 @@ struct UITestFixtureRoot: View {
         }
         switch variant {
         case "schedule": app.screen = .schedule
+        case "inbox": app.screen = .inbox
         case "account", "accountSolo": app.screen = .profile
         case "adminFeatures": app.screen = .adminFeatures
         case "search":
@@ -130,6 +131,11 @@ struct UITestFixtureRoot: View {
         case "create":
             configureCreateDraft()
             app.screen = .create
+        case "createNew":
+            // The real entry: Home's create button → goCreate() (fresh draft + smart defaults).
+            app.organizerMode = true
+            app.screen = .home
+            app.goCreate()
         case "event":
             // Event Detail on a long catalogue event (included items, photos, long description), so scrolling
             // reaches the collapsing nav bar (note 52).

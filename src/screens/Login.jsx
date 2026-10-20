@@ -1,5 +1,6 @@
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
+import { FieldNote } from '../components/ui/FormControls.jsx';
 
 export default function Login() {
   const {
@@ -43,7 +44,9 @@ export default function Login() {
   // button verifies the code instead, so the email check doesn't apply.
   const showSubmit = awaitingCode || emailFormatOk;
 
-  const changeAuthMode = (authMode) => set({ authMode, reserveError: '', loginSent: false, loginSentVia: null, loginEmailCode: '', resetRequested: false });
+  // The email stays typed in when switching tabs, so "Log in instead?" is one tap (note 53).
+  const changeAuthMode = (authMode) => set({ authMode, reserveError: '', authEmailIssue: null, loginSent: false, loginSentVia: null, loginEmailCode: '', resetRequested: false });
+  const emailIssue = !awaitingCode ? s.authEmailIssue : null;
 
   const submitLabel = awaitingCode
     ? T('Xác nhận', 'Verify')
@@ -103,12 +106,29 @@ export default function Login() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
             {isSignup && <input value={s.loginNickname} onChange={loginNicknameType} placeholder={T('Tên hiển thị của bạn', 'Your display name')} style={fieldStyle()} />}
-            <input value={s.loginEmail} onChange={loginEmailType} onKeyDown={loginEmailKey} placeholder="ban@email.com" data-testid="login-email" style={fieldStyle()} />
-            {showEmailFormatError && (
-              <p data-testid="login-email-error" style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: 0 }}>
-                {T('Email chưa đúng định dạng (ví dụ: ban@email.com)', "That doesn't look like an email address (e.g. ban@email.com)")}
-              </p>
-            )}
+            <div>
+              <input value={s.loginEmail} onChange={loginEmailType} onKeyDown={loginEmailKey} placeholder="ban@email.com" data-testid="login-email" style={fieldStyle()}
+                type="email" autoComplete="email" inputMode="email"
+                aria-invalid={showEmailFormatError ? true : undefined}
+                data-state={!showEmailFormatError && emailIssue ? 'warning' : undefined}
+                aria-describedby={showEmailFormatError ? 'login-email-error' : emailIssue ? 'login-email-issue' : undefined} />
+              {/* Error = red border + message; warning = honey border + message + the way out (Kole Jain's states). */}
+              {showEmailFormatError ? (
+                <FieldNote id="login-email-error" testId="login-email-error" tone="error">
+                  {T('Email chưa đúng định dạng (ví dụ: ban@email.com)', "That doesn't look like an email address (e.g. ban@email.com)")}
+                </FieldNote>
+              ) : emailIssue === 'exists' ? (
+                <FieldNote id="login-email-issue" testId="login-email-exists" tone="warning"
+                  actionLabel={T('Đăng nhập?', 'Log in instead?')} onAction={() => changeAuthMode('login')}>
+                  {T('Email này đã có tài khoản.', 'This email already has an account.')}
+                </FieldNote>
+              ) : emailIssue === 'notFound' ? (
+                <FieldNote id="login-email-issue" testId="login-email-not-found" tone="warning"
+                  actionLabel={T('Đăng ký?', 'Sign up instead?')} onAction={() => changeAuthMode('signup')}>
+                  {T('Chưa có tài khoản với email này.', 'No account uses this email yet.')}
+                </FieldNote>
+              ) : null}
+            </div>
             {isPassword && <input value={s.loginPassword} onChange={loginPasswordType} onKeyDown={loginEmailKey} type="password" placeholder={T('Mật khẩu', 'Password')} style={fieldStyle()} />}
             {isPassword && isSignup && <input value={s.loginPasswordConfirm} onChange={loginPasswordConfirmType} onKeyDown={loginEmailKey} type="password" placeholder={T('Nhập lại mật khẩu', 'Confirm password')} style={fieldStyle()} />}
           </div>
@@ -134,12 +154,12 @@ export default function Login() {
         </div>
       )}
 
-      {showSubmit && <div onClick={submitCurrentForm} data-testid="login-submit" style={submitStyle}>{submitLabel}</div>}
+      {showSubmit && <div onClick={submitCurrentForm} data-testid="login-submit" role="button" className="bb-press" style={submitStyle}>{submitLabel}</div>}
 
       {s.resetRequested && !s.reserveError && <p style={note()}>{T('Nếu email này có tài khoản, một email đặt lại mật khẩu vừa được gửi.', 'If that email has an account, a password reset email was just sent.')}</p>}
       {awaitingCode && <p style={note()}>{T('Đã gửi mã tới email của bạn. Nhập mã để tiếp tục.', 'A code was sent to your email. Enter it to continue.')}</p>}
       {s.loginSentVia === 'phone' && <p style={note()}>{T('Đã gửi mã OTP. Hãy nhập mã để tiếp tục.', 'OTP sent. Enter the code to continue.')}</p>}
-      {s.reserveError && <p style={note({ color: alert })}>{s.reserveError}</p>}
+      {s.reserveError && !emailIssue && <p style={note({ color: alert })}>{s.reserveError}</p>}
 
     </div>
   );

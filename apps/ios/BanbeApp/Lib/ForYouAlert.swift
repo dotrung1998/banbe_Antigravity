@@ -164,6 +164,9 @@ struct ForYouAttentionEffect: ViewModifier {
     var animating: Bool
     var reduceMotion: Bool
     var token: Int = 0
+    /// nil = the For You chip's capsule; a value = a rounded rectangle with that corner radius (note 53: the same
+    /// effect points at a form field after a recipe Fix).
+    var cornerRadius: CGFloat? = nil
     /// Start of the current run; nil = idle (timeline paused, nothing drawn).
     @State private var startedAt: Date?
     @State private var stopTask: Task<Void, Never>?
@@ -195,7 +198,7 @@ struct ForYouAttentionEffect: ViewModifier {
                             .offset(x: (-1.2 + 3.4 * sp) * w)
                             .opacity(op)
                     }
-                    .clipShape(Capsule())
+                    .clipShape(shape(inflatedBy: 0))
                     .allowsHitTesting(false)
                 }
             }
@@ -206,8 +209,8 @@ struct ForYouAttentionEffect: ViewModifier {
                     let cycle = t < total ? Self.easeOut.solve((t.truncatingRemainder(dividingBy: Self.haloDuration)) / Self.haloDuration) : 1
                     let spread = 12 * cycle
                     let alpha = t < total ? 0.6 * (1 - cycle) : 0
-                    // Outer-only shadow ring: stroke centred on a capsule inflated by spread/2.
-                    Capsule()
+                    // Outer-only shadow ring: stroke centred on the shape inflated by spread/2.
+                    shape(inflatedBy: spread / 2)
                         .stroke(Color(red: 224 / 255, green: 165 / 255, blue: 38 / 255).opacity(alpha), lineWidth: max(spread, 0.001))
                         .padding(-spread / 2)
                         .allowsHitTesting(false)
@@ -219,6 +222,11 @@ struct ForYouAttentionEffect: ViewModifier {
             // Every time the chip appears (Home re-entry, or matches finishing loading) — not
             // gated on the model's 3 s window, which may already have expired by then.
             .onAppear { run() }
+    }
+
+    private func shape(inflatedBy inset: CGFloat) -> AnyShape {
+        if let cornerRadius { return AnyShape(RoundedRectangle(cornerRadius: cornerRadius + inset, style: .continuous)) }
+        return AnyShape(Capsule())
     }
 
     private func elapsed(_ date: Date) -> Double {
@@ -265,5 +273,36 @@ struct UnitBezier {
             }
         }
         return ((ay * t + by) * t + cy) * t
+    }
+}
+
+
+/// Note 53: "look here" on a form field. A gold border around the field plus the For You halo + sheen, drawn 8pt
+/// outside it so nothing in the layout moves. Shown while `active`; replays whenever `token` changes. Reduce
+/// Motion: the still gold border only. Web twin: `.bb-attn` in src/index.css.
+struct FieldAttentionHalo: ViewModifier {
+    let active: Bool
+    var token: Int = 0
+    var cornerRadius: CGFloat = 14
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            if active {
+                RoundedRectangle(cornerRadius: cornerRadius + 8, style: .continuous)
+                    .stroke(Color(red: 224 / 255, green: 165 / 255, blue: 38 / 255), lineWidth: 2)
+                    .modifier(ForYouAttentionEffect(animating: true, reduceMotion: reduceMotion, token: token, cornerRadius: cornerRadius + 8))
+                    .padding(-8)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .transition(.opacity)
+            }
+        }
+    }
+}
+
+extension View {
+    func attentionHalo(active: Bool, token: Int = 0, cornerRadius: CGFloat = 14) -> some View {
+        modifier(FieldAttentionHalo(active: active, token: token, cornerRadius: cornerRadius))
     }
 }

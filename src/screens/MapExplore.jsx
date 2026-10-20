@@ -1256,7 +1256,7 @@ export default function MapExplore() {
             arrival from Home's search button (see the mount effect
             above). */}
         <div style={{ padding: 'max(6px, env(safe-area-inset-top, 0px)) 16px 10px' }}>
-          <div style={{ ...fieldGlass({ borderRadius: 12 }), display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px' }}>
+          <div className="bb-focus-ring" style={{ ...fieldGlass({ borderRadius: 12 }), display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px' }}>
             <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.55, flex: 'none' }}>
               <circle cx="11" cy="11" r="7" />
               <path d="M21 21l-4.35-4.35" />
@@ -1266,7 +1266,7 @@ export default function MapExplore() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={T('Tìm sự kiện theo tên…', 'Search events by name…')}
-              data-testid="map-search-input"
+              data-testid="map-search-input" data-bare
               style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 13.5, color: ink, fontFamily: "'Be Vietnam Pro', sans-serif" }}
             />
             {searchQuery && (

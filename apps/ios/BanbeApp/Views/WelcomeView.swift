@@ -141,34 +141,30 @@ struct WelcomeView: View {
     /// any ask — then Create account and Log in, both still one tap.
     private var ctas: some View {
         VStack(spacing: 10) {
+            // Note 53, three clearly different levels: the solid primary is the one thing to do; Create account is
+            // the quieter field-filled secondary (it used to be a same-size ink outline that read as a twin);
+            // Log in is text only.
             InkButton(title: app.T("Khám phá sự kiện", "Explore events"), font: .headline) {
                 app.browseAsGuest()
             }
             .accessibilityIdentifier("welcome.explore")
-            Button {
+            SecondaryButton(title: app.T("Tạo tài khoản", "Create an account"), emoji: "✨") {
                 Analytics.track(.publicEntryGetStarted)
                 app.openAuth(.signup)
-            } label: {
-                Text(app.T("Tạo tài khoản", "Create an account"))
-                    .font(.headline)
-                    .padding(.vertical, 12)
-                    .frame(maxWidth: .infinity, minHeight: 50)
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.ink, lineWidth: 1.2))
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
             .accessibilityIdentifier("welcome.getStarted")
             Button {
                 Analytics.track(.publicEntryLogin)
                 app.openAuth(.login)
             } label: {
-                Text(app.T("Đã có tài khoản? Đăng nhập", "Already have an account? Log in"))
-                    .font(.subheadline.weight(.semibold))
+                (Text(app.T("Đã có tài khoản? ", "Already have an account? ")).foregroundColor(app.palette.ink.opacity(0.7))
+                 + Text(app.T("Đăng nhập", "Log in")).bold().underline())
+                    .font(.subheadline)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableButtonStyle(haptic: false))
             .accessibilityIdentifier("welcome.login")
         }
     }
@@ -177,18 +173,22 @@ struct WelcomeView: View {
 
     private func storyPage(_ page: Int) -> some View {
         let content: (String, String, String) = page == 0
-            ? ("star.circle",
+            ? ("🌟",
                app.T("Gợi ý hợp với bạn", "Picks that fit you"),
                app.T("Sau khi đăng ký, trả lời tối đa 5 câu hỏi (không bắt buộc). banbe gắn sao ★ Dành cho bạn cho những sự kiện phù hợp. Câu trả lời chỉ bạn thấy.",
                      "After you sign up, answer up to five optional questions. banbe stars ★ For You on events that match. Only you see your answers."))
-            : ("calendar",
+            : ("🎟️",
                app.T("Giữ chỗ và theo dõi kế hoạch", "Hold a seat, keep your plans"),
                app.T("Giữ chỗ, thanh toán trực tiếp cho host và nhận vé QR khi host xác nhận. Kế hoạch của bạn hiện trong Lịch.",
                      "Hold a seat, pay the host directly, and get a QR ticket once they confirm. Your plans show up in Schedule."))
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Image(systemName: content.0)
-                    .font(.system(size: 44))
+                // Note 53: an emoji tile per idea instead of another outline icon.
+                Text(content.0)
+                    .font(.system(size: 42))
+                    .frame(width: 84, height: 84)
+                    .background(page == 0 ? app.palette.honeyBg : app.palette.clayBg,
+                                in: RoundedRectangle(cornerRadius: 26, style: .continuous))
                     .padding(.top, 40)
                     .accessibilityHidden(true)
                 Text(content.1)

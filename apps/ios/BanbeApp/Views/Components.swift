@@ -386,9 +386,145 @@ struct InkButton: View {
                     in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 )
                 .foregroundStyle(enabled ? app.palette.paper : app.palette.ink)
+                .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         }
-        .buttonStyle(.plain)
+        // Note 53: every button answers the touch (pressed state + a light haptic).
+        .buttonStyle(PressableButtonStyle())
         .disabled(!enabled)
+    }
+}
+
+/// Note 53: the pressed state shared by every button style here — a slight shrink + dim while held, and a light
+/// haptic on release. No movement under Reduce Motion (the dim stays). Web twin: `.bb-press` in src/index.css.
+struct PressableButtonStyle: ButtonStyle {
+    var haptic = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, pressed in
+                if !pressed && haptic { Haptics.light() }
+            }
+    }
+}
+
+/// Note 53: the quieter alternative next to an `InkButton` — field fill + hairline, optional leading emoji/symbol.
+/// Never solid ink, so it can't be mistaken for the primary action. Web twin: FormControls.jsx `Button variant="secondary"`.
+struct SecondaryButton: View {
+    let title: String
+    var emoji: String? = nil
+    var systemImage: String? = nil
+    var cornerRadius: CGFloat = 18
+    let action: () -> Void
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if let emoji { Text(emoji).accessibilityHidden(true) }
+                if let systemImage { Image(systemName: systemImage).accessibilityHidden(true) }
+                Text(title)
+            }
+            .font(.system(size: 15, weight: .semibold))
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .foregroundStyle(app.palette.ink)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        }
+        .buttonStyle(PressableButtonStyle())
+    }
+}
+
+/// Note 53: what a field is telling you. `.error` = alert border + message; `.warning` = honey border + message
+/// (optionally with a one-tap way out, e.g. "Log in instead?"). Focus itself is shown by `fieldChrome(focused:)`.
+enum FieldState: Equatable {
+    case normal
+    case error(String)
+    case warning(String)
+
+    var message: String? {
+        switch self { case .normal: return nil; case .error(let m), .warning(let m): return m }
+    }
+}
+
+/// Note 53 field chrome (Kole Jain, "Feedback & states"): a focused field gets a clay border and a soft clay halo,
+/// an error an alert border, a warning a honey border. Clay is the decorative accent — never an error, never the
+/// primary CTA — so focus can't be mistaken for either. Web twin: the field-state rules in src/index.css.
+struct FieldChrome: ViewModifier {
+    var focused: Bool
+    var state: FieldState = .normal
+    var cornerRadius: CGFloat = 14
+    /// false = no border at rest (the flat `field`-filled style); the focus/state border still shows.
+    var bordered = true
+    @EnvironmentObject private var app: AppState
+
+    private var tint: Color? {
+        switch state {
+        case .error: return BanbeTheme.alert
+        case .warning: return app.palette.honey
+        case .normal: return focused ? app.palette.clay : nil
+        }
+    }
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        content
+            .overlay {
+                if let tint {
+                    shape.stroke(tint, lineWidth: 1.5)
+                } else if bordered {
+                    shape.stroke(app.palette.rule, lineWidth: 1)
+                }
+            }
+            .background {
+                if let tint {
+                    RoundedRectangle(cornerRadius: cornerRadius + 3, style: .continuous)
+                        .stroke(tint.opacity(0.2), lineWidth: 4)
+                        .padding(-3)
+                }
+            }
+            .animation(.easeOut(duration: 0.15), value: focused)
+            .animation(.easeOut(duration: 0.15), value: state)
+    }
+}
+
+extension View {
+    func fieldChrome(focused: Bool, state: FieldState = .normal, cornerRadius: CGFloat = 14, bordered: Bool = true) -> some View {
+        modifier(FieldChrome(focused: focused, state: state, cornerRadius: cornerRadius, bordered: bordered))
+    }
+}
+
+/// The line under a field in `.error` / `.warning` (note 53), with an optional inline action.
+struct FieldNote: View {
+    let state: FieldState
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
+    var identifier: String? = nil
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        if let message = state.message, !message.isEmpty {
+            let color: Color = { if case .warning = state { return app.palette.honey }; return BanbeTheme.alert }()
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(message)
+                if let actionTitle, let action {
+                    Button(actionTitle, action: action)
+                        .fontWeight(.bold)
+                        .underline(pattern: .dot)
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier((identifier ?? "field.note") + ".action")
+                }
+            }
+            .font(.system(size: 12.5, weight: .medium))
+            .foregroundStyle(color)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(identifier ?? "field.note")
+        }
     }
 }
 
@@ -408,19 +544,45 @@ struct BanbeField: View {
     /// Note 48 form style: an SF Symbol before an uppercase label, and a
     /// larger, bordered input (used by Create event). nil = original look.
     var icon: String? = nil
+    /// Note 53: error / warning state (border + message under the field).
+    var state: FieldState = .normal
+    /// Note 53: lets a screen drive focus (Create event's "take me to this field"). Without it the field
+    /// tracks its own focus, which is all the focus border needs.
+    var focus: FocusState<String?>.Binding? = nil
+    var focusID: String? = nil
+    /// Note 53: an optional one-tap way out shown in the note under the field ("Log in instead?").
+    var noteActionTitle: String? = nil
+    var noteAction: (() -> Void)? = nil
+    var noteIdentifier: String? = nil
 
     @EnvironmentObject private var app: AppState
+    @FocusState private var ownFocus: Bool
+
+    private var isFocused: Bool {
+        if let focus, let focusID { return focus.wrappedValue == focusID }
+        return ownFocus
+    }
 
     var body: some View {
         if let icon { iconStyle(icon) } else { plainStyle }
     }
 
+    @ViewBuilder
+    private var input: some View {
+        let field = Group {
+            if secure { SecureField(placeholder, text: $text) } else { TextField(placeholder, text: $text) }
+        }
+        if let focus, let focusID {
+            field.focused(focus, equals: focusID)
+        } else {
+            field.focused($ownFocus)
+        }
+    }
+
     private func iconStyle(_ icon: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if let label { FormFieldLabel(icon: icon, text: label, required: required) }
-            Group {
-                if secure { SecureField(placeholder, text: $text) } else { TextField(placeholder, text: $text) }
-            }
+            input
             .font(.system(size: 16))
             .keyboardType(keyboard)
             .autocorrectionDisabled()
@@ -428,9 +590,11 @@ struct BanbeField: View {
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 16).padding(.vertical, 15)
             .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+            .fieldChrome(focused: isFocused, state: state, cornerRadius: 14)
+            FieldNote(state: state, actionTitle: noteActionTitle, action: noteAction, identifier: noteIdentifier)
         }
     }
+
 
     private var plainStyle: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -442,13 +606,7 @@ struct BanbeField: View {
                     }
                 }
             }
-            Group {
-                if secure {
-                    SecureField(placeholder, text: $text)
-                } else {
-                    TextField(placeholder, text: $text)
-                }
-            }
+            input
             .font(.system(size: 14))
             .keyboardType(keyboard)
             .autocorrectionDisabled()
@@ -456,6 +614,38 @@ struct BanbeField: View {
             .foregroundStyle(app.palette.ink)
             .padding(13)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .fieldChrome(focused: isFocused, state: state, cornerRadius: 12, bordered: false)
+            FieldNote(state: state, actionTitle: noteActionTitle, action: noteAction, identifier: noteIdentifier)
+        }
+    }
+}
+
+/// Note 53 (owner report): the banbe logo + section title at the top of every dock tab (Home, Schedule, Messages,
+/// Account; Map has its own search header). One component, one size, one gap, one row height and one side padding,
+/// so switching tabs never makes the logo or the title jump. Guarded by DockHeaderUITests (same title frame on
+/// every tab, EN + VI).
+struct DockHeaderTitle: View {
+    let title: String
+    let identifier: String
+    var logoWidth: CGFloat = BanbeLogo.headerWordmarkWidth
+    var titleSize: CGFloat = 27
+
+    static let spacing: CGFloat = 10
+    /// Every dock header row is this tall, whatever controls sit on its right.
+    static let rowHeight: CGFloat = 52
+    static let horizontalPadding: CGFloat = 20
+
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        HStack(alignment: .center, spacing: Self.spacing) {
+            BanbeLogo(kind: .wordmark, width: logoWidth)
+            Text(title)
+                .font(BanbeTheme.display(titleSize))
+                .foregroundStyle(app.palette.ink)
+                .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier(identifier)
         }
     }
 }

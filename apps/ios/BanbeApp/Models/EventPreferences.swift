@@ -49,6 +49,22 @@ enum EventPrefTaxonomy {
     }
 }
 
+/// One emoji per answer (note 53), keyed by the server's fixed option ids (migration 162 — never rename an id).
+/// Client-side only: each answer gets a face so the questions read at a glance instead of as a list of text.
+/// Categories share one map with Create event. Web twin: `OPTION_EMOJI` / `CATEGORY_EMOJI` in src/lib/eventPrefs.js.
+enum PrefEmoji {
+    static let categories: [String: String] = ["supper": "🍽️", "fashion": "👗", "gallery": "🖼️", "music": "🎵", "popup": "🛍️"]
+    static let all: [String: String] = categories.merging([
+        "meet_people": "👋", "learn": "💡", "experiences": "✨", "networking": "🤝",
+        "weekdays": "📅", "weekends": "🎉", "daytime": "☀️", "evening": "🌙",
+        "vi": "🇻🇳", "en": "🇬🇧", "other": "🌐",
+        "free": "🆓", "low": "🪙", "medium": "💵", "flexible": "💎",
+        EventPrefTaxonomy.noPreference: "🤷",
+    ]) { a, _ in a }
+
+    static func of(_ id: String) -> String { all[id] ?? "•" }
+}
+
 // MARK: - Budget (explicit local-currency ranges)
 
 enum BudgetRegion: String, CaseIterable {

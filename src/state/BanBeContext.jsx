@@ -8473,7 +8473,8 @@ export function BanBeProvider({ children }) {
   }, [set, T]);
 
   // ---- login ----
-  const loginEmailType = useCallback((e) => set({ loginEmail: e.target.value }), [set]);
+  // Editing the address clears an "already has an account" / "no account" note on it (note 53).
+  const loginEmailType = useCallback((e) => set({ loginEmail: e.target.value, authEmailIssue: null }), [set]);
   const loginNicknameType = useCallback((e) => set({ loginNickname: e.target.value }), [set]);
   const loginPhoneType = useCallback((e) => set({ loginPhoneNumber: e.target.value }), [set]);
   const loginCodeType = useCallback((e) => set({ loginCode: e.target.value }), [set]);
@@ -8493,6 +8494,14 @@ export function BanBeProvider({ children }) {
   const setAuthMethod = useCallback((authMethod) => set({
     authMethod, reserveError: '', loginSent: false, loginSentVia: null, loginEmailCode: '', resetRequested: false,
   }), [set]);
+  // Note 53: the two answers that are about the ADDRESS itself become a warning on the email field with a one-tap
+  // way out ("Log in instead?" / "Sign up instead?") instead of a line at the bottom of the form.
+  const authEmailIssueOf = (error, mode) => {
+    const code = error?.code || error?.message;
+    if (code === 'AUTH_ACCOUNT_EXISTS' && mode === 'signup') return 'exists';
+    if (code === 'AUTH_ACCOUNT_NOT_FOUND' && mode !== 'signup') return 'notFound';
+    return null;
+  };
   const authEmailErrorMessage = useCallback((error, mode) => {
     const code = error?.code || error?.message;
     if (code === 'AUTH_ACCOUNT_NOT_FOUND' && mode !== 'signup') {
@@ -8548,7 +8557,7 @@ export function BanBeProvider({ children }) {
       await requestAuthEmail({ email, mode: s.authMode, locale: s.lang, ...(s.authMode === 'signup' ? { displayName } : {}) });
       set({ loginSent: true, loginSentVia: 'email', pendingEmailMode: s.authMode, reserveError: '' });
     } catch (e) {
-      set({ loginSent: false, loginSentVia: null, reserveError: authEmailErrorMessage(e, s.authMode) });
+      set({ loginSent: false, loginSentVia: null, reserveError: authEmailErrorMessage(e, s.authMode), authEmailIssue: authEmailIssueOf(e, s.authMode) });
     }
   }, [set, s.loginEmail, s.loginNickname, s.authMode, s.policyConsent, authEmailErrorMessage]);
   // "Password" method, Signup: creates the account with the password
@@ -8568,7 +8577,7 @@ export function BanBeProvider({ children }) {
       await requestPasswordSignup({ email, password: s.loginPassword, displayName, locale: s.lang });
       set({ loginSent: true, loginSentVia: 'email', pendingEmailMode: 'signup', reserveError: '' });
     } catch (e) {
-      set({ loginSent: false, loginSentVia: null, reserveError: authEmailErrorMessage(e, 'signup') });
+      set({ loginSent: false, loginSentVia: null, reserveError: authEmailErrorMessage(e, 'signup'), authEmailIssue: authEmailIssueOf(e, 'signup') });
     }
   }, [set, s.loginEmail, s.loginNickname, s.loginPassword, s.loginPasswordConfirm, s.policyConsent, authEmailErrorMessage, T]);
   // "Password" method, Login: straight to Supabase, no code step — the

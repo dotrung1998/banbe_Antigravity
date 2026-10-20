@@ -3,6 +3,7 @@ import { ImportSheet, ImportedTicketSheet } from './screens/sheets/TicketImportS
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { BanBeProvider, useBanBe } from './state/BanBeContext.jsx';
 import useUrlSync from './lib/useUrlSync.js';
+import useKeepFocusedVisible from './lib/useKeepFocusedVisible.js';
 import BottomTabBar, { showsBottomBar, DOCK_ORDER, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET } from './screens/BottomTabBar.jsx';
 import { paper, ink, rule } from './theme.js';
 
@@ -210,6 +211,8 @@ function DockRow({ collapsed, showCreate }) {
 function Shell() {
   const goc = useBanBe();
   useUrlSync(goc);
+  // Note 53: the field being typed in never sits under the on-screen keyboard (Create event's intro, Login, …).
+  useKeepFocusedVisible();
   const {
     state, T,
     goHome, goMapExplore, goNotifications, goSchedule, goInbox, goProfile,

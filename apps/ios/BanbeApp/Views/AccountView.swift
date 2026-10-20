@@ -293,8 +293,8 @@ struct AccountView: View {
                     .accessibilityIdentifier("account.searchInput")
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             } else {
-                BanbeLogo(kind: .wordmark, width: BanbeLogo.headerWordmarkWidth)
-                Text(app.T("Tài khoản", "Account")).font(BanbeTheme.display(27))
+                // Note 53: the shared dock header (same logo, gap and title as Home/Schedule/Messages).
+                DockHeaderTitle(title: app.T("Tài khoản", "Account"), identifier: "account.title")
                 Spacer()
             }
             // Search (replaces "Done") — same icon-over-label button as
@@ -317,7 +317,8 @@ struct AccountView: View {
             .accessibilityIdentifier("account.searchToggle")
         }
         .foregroundStyle(app.palette.ink)
-        .padding(.horizontal, 20)
+        .frame(height: DockHeaderTitle.rowHeight)  // note 53: same row height on every dock tab
+        .padding(.horizontal, DockHeaderTitle.horizontalPadding)
         .padding(.top, 16)
     }
 

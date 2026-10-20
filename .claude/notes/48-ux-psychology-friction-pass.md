@@ -88,3 +88,6 @@ Also part of this pass:
 
 ## Update 2026-10-18 (note 50)
 Seats are NOT pre-filled for a first event (the "14 seats" default described above was never wired; the unused web `FIRST_EVENT_SEATS` constant is removed). The Tickets step now shows how many guests similar events welcome instead (k-anonymous benchmarks, migration 186).
+
+## Update 2026-10-20 (note 53)
+Create event no longer skips Host: it always opens on step 1 (Host ✓ and the head start still show). The recipe meter shows on every step, and a recipe Fix now lands on the exact field (`fix.field` is used). See note 53.

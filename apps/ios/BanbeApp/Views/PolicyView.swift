@@ -117,26 +117,29 @@ struct PolicyView: View {
                         app.policyGateActive = false
                         Task { await app.signOut() }
                     } label: {
+                        // Note 53: the shared button levels, rounded — Decline is the quieter secondary.
                         Text("Từ chối / Decline")
                             .font(.system(size: 14, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 15)
-                            .overlay(Rectangle().stroke(app.palette.ink, lineWidth: 1))
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .background(app.palette.field, in: Capsule())
+                            .overlay(Capsule().stroke(app.palette.rule, lineWidth: 1))
                             .foregroundStyle(app.palette.ink)
+                            .contentShape(Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle())
                     .accessibilityIdentifier("policy.gate.decline")
                     Button {
                         app.acceptPolicyGate()
                     } label: {
                         Text("Tôi đồng ý ▪︎ Tiếp tục / I agree ▪︎ Continue")
-                            .font(.system(size: 15, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 15)
-                            .background(app.palette.ink)
+                            .font(.system(size: 15, weight: .bold))
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .padding(.horizontal, 8)
+                            .background(app.palette.ink, in: Capsule())
                             .foregroundStyle(app.palette.paper)
+                            .contentShape(Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle())
                     .layoutPriority(1)
                     .accessibilityIdentifier("policy.gate.accept")
                 }

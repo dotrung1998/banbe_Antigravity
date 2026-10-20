@@ -13,13 +13,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { useAccountGate, getHostPromoConsent, setHostPromoConsent } from '../lib/accountGate.js';
-import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
-import { StepProgress, encouragement } from '../components/ui/FormControls.jsx';
-import { NO_PREFERENCE, BUDGET_TIERS, BUDGET_REGIONS, budgetTierLabel, budgetRegionDefault, normalizeForSave, prefLabel } from '../lib/eventPrefs.js';
-import { QUESTIONS, questionOptions, reduce, draftStore, impactLines, revealMatches, payload as flowPayload } from '../lib/onboardingFlow.js';
+import { paper, ink, display, fieldGlass, alert } from '../theme.js';
+import { StepProgress, encouragement, Button } from '../components/ui/FormControls.jsx';
+import { NO_PREFERENCE, BUDGET_TIERS, BUDGET_REGIONS, budgetTierLabel, budgetRegionDefault, normalizeForSave, prefLabel, optionEmoji } from '../lib/eventPrefs.js';
+import { QUESTIONS, questionOptions, reduce, draftStore, impactLines, revealMatches, selectionFeedback, payload as flowPayload } from '../lib/onboardingFlow.js';
 import { LOCATION_ALL } from '../lib/locationTree.js';
 import { track, matchBucket } from '../lib/analytics.js';
 import { EventPrefsPrivacyNote } from './EventPreferences.jsx';
+import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
 
 const NOT_ONBOARDING_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy']);
 const muted = (a) => `rgba(var(--bb-fg-rgb), ${a})`;
@@ -61,16 +62,19 @@ function SwitchRow({ title, detail, on, onClick, testId, disabled }) {
   );
 }
 
+// Note 53: one button system. The next step is always the solid primary; an alternative is a secondary (field
+// fill + hairline); "skip / later" is text only. Selected answers are tinted, never solid ink, so they can't be
+// mistaken for the Continue button.
 function InkBtn({ label, enabled = true, onClick, testId }) {
-  return (
-    <button type="button" onClick={enabled ? onClick : undefined} disabled={!enabled} data-testid={testId}
-      style={{ ...inkButton({ borderRadius: 18, padding: 15, fontSize: 15, width: '100%', fontFamily: 'inherit' }), opacity: enabled ? 1 : 0.45, cursor: enabled ? 'pointer' : 'default' }}>{label}</button>
-  );
+  return <Button variant="primary" testId={testId} label={label} disabled={!enabled} onClick={onClick} style={{ width: '100%' }} />;
 }
 
+const SecondaryBtn = ({ label, icon, onClick, testId, disabled }) => (
+  <Button variant="secondary" testId={testId} label={label} icon={icon} disabled={disabled} onClick={onClick} style={{ width: '100%', marginTop: 10 }} />
+);
+
 const LinkBtn = ({ label, onClick, testId, disabled }) => (
-  <button type="button" onClick={disabled ? undefined : onClick} disabled={disabled} data-testid={testId}
-    style={{ display: 'block', width: '100%', background: 'none', border: 'none', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, textDecoration: 'underline', textAlign: 'center', marginTop: 14, minHeight: 36, cursor: disabled ? 'default' : 'pointer', color: ink, opacity: disabled ? 0.5 : 1 }}>{label}</button>
+  <Button variant="tertiary" testId={testId} label={label} disabled={disabled} onClick={onClick} style={{ width: '100%', marginTop: 8, fontSize: 14 }} />
 );
 
 function SettingsStep({ onDone, stepIndex, stepTotal }) {
@@ -149,22 +153,25 @@ function SettingsStep({ onDone, stepIndex, stepTotal }) {
 
 function WelcomeStep({ send }) {
   const { T } = useBanBe();
-  const point = (icon, text) => (
-    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', fontSize: 14, lineHeight: 1.5 }}>
-      <span aria-hidden style={{ width: 22, textAlign: 'center', opacity: 0.7 }}>{icon}</span><span>{text}</span>
+  // Three glanceable tiles instead of three sentences (note 53).
+  const tile = (emoji, title, sub) => (
+    <div style={{ flex: 1, minWidth: 0, background: 'var(--bb-field)', borderRadius: 16, padding: '14px 10px', textAlign: 'center' }}>
+      <div aria-hidden style={{ fontSize: 26, lineHeight: 1 }}>{emoji}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, marginTop: 8 }}>{title}</div>
+      <div style={{ fontSize: 11.5, lineHeight: 1.35, color: muted(0.7), marginTop: 2 }}>{sub}</div>
     </div>
   );
   return (
-    <div data-testid="onboarding-welcome">
-      <div aria-hidden style={{ fontSize: 40, color: '#CC9E29' }}>★</div>
-      <h1 style={display(30, { margin: '18px 0 0', lineHeight: 1.15 })}>{T('Tìm những buổi bạn thật sự muốn đi', "Find events you'll actually want to go to")}</h1>
-      <p style={{ fontSize: 15, lineHeight: 1.6, margin: '12px 0 0' }}>
-        {T('Trả lời 5 câu ngắn, banbe sẽ gắn sao ★ Dành cho bạn lên những sự kiện hợp với bạn.', 'Answer 5 quick questions and banbe stars ★ For You on the events that fit.')}
+    <div data-testid="onboarding-welcome" className="bb-slide" style={{ animation: 'bbSlideFromRight .3s ease-out both' }}>
+      <div aria-hidden style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 84, height: 84, borderRadius: 26, background: 'var(--bb-honey-bg)', fontSize: 42 }}>🌟</div>
+      <h1 style={display(30, { margin: '20px 0 0', lineHeight: 1.15 })}>{T('Tìm những buổi bạn thật sự muốn đi', "Find events you'll actually want to go to")}</h1>
+      <p style={{ fontSize: 15, lineHeight: 1.55, margin: '10px 0 0', color: muted(0.8) }}>
+        {T('5 câu ngắn, rồi banbe gắn ★ Dành cho bạn lên sự kiện hợp với bạn.', '5 quick taps, then banbe stars ★ For You on the events that fit.')}
       </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '26px 0 30px' }}>
-        {point('◷', T('Khoảng 1 phút. Câu nào cũng bỏ qua được.', 'About a minute. Every question is optional.'))}
-        {point('🔒', T('Chỉ bạn thấy câu trả lời, host không bao giờ thấy.', 'Only you see your answers. Hosts never do.'))}
-        {point('⚙', T('Đổi lại bất cứ lúc nào trong Tài khoản.', 'Change them any time in Account.'))}
+      <div style={{ display: 'flex', gap: 8, margin: '24px 0 28px' }}>
+        {tile('⏱️', T('~1 phút', '~1 minute'), T('Câu nào cũng bỏ qua được', 'Skip any question'))}
+        {tile('🔒', T('Chỉ bạn thấy', 'Only you see it'), T('Host không bao giờ thấy', 'Hosts never do'))}
+        {tile('⚙️', T('Đổi bất cứ lúc nào', 'Change anytime'), T('Trong Tài khoản', 'In Account'))}
       </div>
       <InkBtn testId="onboarding-start" label={T('Bắt đầu', 'Get started')} onClick={() => send('start')} />
       <LinkBtn testId="onboarding-skip-all" label={T('Bỏ qua, xem tất cả sự kiện', 'Skip, show me everything')} onClick={() => send('skipAll')} />
@@ -174,27 +181,52 @@ function WelcomeStep({ send }) {
 
 // ---- one question per screen ----
 
+// [title, subtitle (one line), step name, hero emoji]. The first question greets by name (note 53: personal,
+// conversational, one short line under the title instead of a paragraph).
 const QUESTION_COPY = {
-  goals: [['Bạn muốn gì từ một buổi đi chơi?', 'What do you want from a night out?'], ['Chọn bao nhiêu cũng được. Dùng để xếp gợi ý lên trước.', 'Pick any. We rank matching events higher.'], ['Mục tiêu', 'Goals']],
-  interests: [['Loại sự kiện nào hợp với bạn?', 'Which kinds of events are you into?'], ['Chọn bao nhiêu cũng được. Gợi ý chỉ gồm những loại bạn chọn.', 'Pick any. Your picks only include these kinds.'], ['Sở thích', 'Interests']],
-  availability: [['Bạn thường rảnh khi nào?', 'When are you usually free?'], ['Chọn bao nhiêu cũng được. Giờ khác vẫn hiện, chỉ xếp sau.', 'Pick any. Other times still show, just lower.'], ['Thời gian', 'Time']],
-  budget: [['Mỗi buổi bạn muốn chi khoảng bao nhiêu?', 'How much do you like to spend per event?'], ['Chọn một mức.', 'Pick one.'], ['Ngân sách', 'Budget']],
-  languages: [['Bạn thoải mái với ngôn ngữ nào?', 'Which languages are you comfortable with?'], ["Không bắt buộc. Sự kiện chưa ghi ngôn ngữ nên câu này chưa dùng để lọc.", "Optional. Events don't list a language yet, so this won't filter anything for now."], ['Ngôn ngữ', 'Language']],
+  goals: [['Bạn muốn gì từ một buổi đi chơi?', 'What do you want from a night out?'], ['Chọn bao nhiêu cũng được.', 'Pick as many as you like.'], ['Mục tiêu', 'Goals'], '👋'],
+  interests: [['Loại sự kiện nào hợp với bạn?', 'Which kinds of events are you into?'], ['Chỉ những loại bạn chọn được gắn ★.', 'Only the kinds you pick get the ★.'], ['Sở thích', 'Interests'], '🎟️'],
+  availability: [['Bạn thường rảnh khi nào?', 'When are you usually free?'], ['Giờ khác vẫn hiện, chỉ xếp sau.', 'Other times still show, just lower.'], ['Thời gian', 'Time'], '🗓️'],
+  budget: [['Mỗi buổi bạn muốn chi khoảng bao nhiêu?', 'How much do you like to spend per event?'], ['Chọn một mức.', 'Pick one.'], ['Ngân sách', 'Budget'], '💸'],
+  languages: [['Bạn thoải mái với ngôn ngữ nào?', 'Which languages are you comfortable with?'], ['Không bắt buộc, chưa dùng để lọc.', "Optional, doesn't filter yet."], ['Ngôn ngữ', 'Language'], '💬'],
 };
+// Short labels sit in a 2-column grid of emoji tiles; long ones (budget amounts, languages) stay as rows.
+const TILE_QUESTIONS = new Set(['goals', 'interests', 'availability']);
 
-function ChoiceRow({ title, selected, onClick, testId, multi = true }) {
+/** An answer. Selected = tinted fill + ink outline + check badge + a bigger emoji; never solid ink (that's the CTA). */
+function ChoiceRow({ title, emoji, selected, onClick, testId, multi = true, tile = false }) {
+  const check = (
+    <span aria-hidden style={{
+      width: 22, height: 22, borderRadius: multi ? 7 : 11, flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      border: `1.5px solid ${selected ? ink : muted(0.3)}`, background: selected ? ink : 'transparent', color: paper, fontSize: 13,
+      transition: 'background .15s, border-color .15s',
+    }}>{selected ? '✓' : ''}</span>
+  );
+  const face = (
+    <span aria-hidden style={{ fontSize: tile ? 32 : 22, lineHeight: 1, display: 'inline-block',
+      transform: selected ? 'scale(1.15)' : 'none', transition: 'transform .25s cubic-bezier(.34,1.56,.64,1)' }}>{emoji}</span>
+  );
+  const base = {
+    position: 'relative', width: '100%', fontFamily: 'inherit', fontSize: 15, cursor: 'pointer', color: ink, borderRadius: 18,
+    background: selected ? muted(0.06) : 'var(--bb-field)', border: `1.5px solid ${selected ? ink : 'transparent'}`,
+    transition: 'background .15s, border-color .15s',
+  };
+  if (tile) {
+    return (
+      <button type="button" onClick={onClick} aria-pressed={selected} data-testid={testId} className="bb-press"
+        style={{ ...base, minHeight: 108, padding: '16px 12px 14px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, textAlign: 'left' }}>
+        <span style={{ position: 'absolute', top: 10, right: 10 }}>{check}</span>
+        {face}
+        <span style={{ fontWeight: selected ? 700 : 500, lineHeight: 1.25 }}>{title}</span>
+      </button>
+    );
+  }
   return (
-    <button type="button" onClick={onClick} aria-pressed={selected} data-testid={testId}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', fontFamily: 'inherit', fontSize: 15,
-        padding: '14px 16px', borderRadius: 16, cursor: 'pointer', color: ink, minHeight: 50,
-        background: selected ? muted(0.08) : 'var(--bb-field)', border: `1.5px solid ${selected ? ink : 'transparent'}`,
-      }}>
-      <span style={{ flex: 1, fontWeight: selected ? 600 : 400 }}>{title}</span>
-      <span aria-hidden style={{
-        width: 22, height: 22, borderRadius: multi ? 6 : 11, flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        border: `1.5px solid ${selected ? ink : muted(0.35)}`, background: selected ? ink : 'transparent', color: paper, fontSize: 13,
-      }}>{selected ? '✓' : ''}</span>
+    <button type="button" onClick={onClick} aria-pressed={selected} data-testid={testId} className="bb-press"
+      style={{ ...base, display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', padding: '13px 16px', minHeight: 56 }}>
+      {face}
+      <span style={{ flex: 1, fontWeight: selected ? 700 : 500 }}>{title}</span>
+      {check}
     </button>
   );
 }
@@ -203,27 +235,46 @@ function QuestionStep({ flow, send }) {
   const { state: s, T } = useBanBe();
   const vi = s.lang !== 'en';
   const q = QUESTIONS[flow.index];
-  const [[titleVi, titleEn], [subVi, subEn]] = QUESTION_COPY[q];
+  const [[titleVi, titleEn], [subVi, subEn], , hero] = QUESTION_COPY[q];
   const last = flow.index + 1 === QUESTIONS.length;
-  const steps = [T('Tài khoản', 'Account'), ...QUESTIONS.map(x => T(...QUESTION_COPY[x][2]))];
   const picked = flow.draft[q];
+  const tiles = TILE_QUESTIONS.has(q);
+  // Slide in from the side we're moving towards (iOS parity: questions slide).
+  const prevIndex = useRef(flow.index);
+  const forward = flow.index >= prevIndex.current;
+  useEffect(() => { prevIndex.current = flow.index; }, [flow.index]);
+  // Given name: last word of a Vietnamese name ("Nguyễn Văn An" -> An), first word in English.
+  const nameParts = flow.index === 0 ? String(s.user?.name || '').trim().split(/\s+/).filter(Boolean) : [];
+  const firstName = nameParts.length ? (vi ? nameParts[nameParts.length - 1] : nameParts[0]) : '';
+  const title = firstName
+    ? T(`Chào ${firstName}! ${titleVi}`, `Hi ${firstName}! ${titleEn}`)
+    : T(titleVi, titleEn);
+  // Head start (note 48): the account counts as done, so question 1 opens at 1/6 of the bar, not empty.
+  const pct = Math.round(((flow.index + 1) / (QUESTIONS.length + 1)) * 100);
+  const feedback = selectionFeedback(q, picked, vi);
   return (
     <div data-testid={`onboarding-question-${q}`}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
-        <button type="button" onClick={() => send('back')} aria-label={T('Quay lại', 'Back')} data-testid="onboarding-back"
-          style={{ background: 'none', border: 'none', color: ink, fontSize: 24, width: 44, height: 44, marginLeft: -12, cursor: 'pointer' }}>‹</button>
-        <span style={{ flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 600, color: muted(0.7) }} data-testid="onboarding-counter">
-          {T(`Câu ${flow.index + 1}/${QUESTIONS.length}`, `${flow.index + 1} of ${QUESTIONS.length}`)}
+      {/* One compact progress line (note 53): back, the bar with "2/5", skip. Was three indicators. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <button type="button" onClick={() => send('back')} aria-label={T('Quay lại', 'Back')} data-testid="onboarding-back" className="bb-press"
+          style={{ background: 'none', border: 'none', color: ink, fontSize: 24, width: 44, height: 44, marginLeft: -12, cursor: 'pointer', flex: 'none' }}>‹</button>
+        <div data-testid="onboarding-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
+          aria-valuetext={T(`Câu ${flow.index + 1} trên ${QUESTIONS.length}`, `Question ${flow.index + 1} of ${QUESTIONS.length}`)}
+          style={{ flex: 1, height: 6, borderRadius: 999, background: muted(0.12), overflow: 'hidden' }}>
+          <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: ink, transition: 'width .35s cubic-bezier(.22,.61,.36,1)' }} />
+        </div>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: muted(0.7), fontVariantNumeric: 'tabular-nums', flex: 'none' }} data-testid="onboarding-counter">
+          {flow.index + 1}/{QUESTIONS.length}
         </span>
-        <button type="button" onClick={() => send('skipQuestion')} data-testid="onboarding-skip"
-          style={{ background: 'none', border: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, minHeight: 44, cursor: 'pointer' }}>{T('Bỏ qua', 'Skip')}</button>
+        <Button variant="tertiary" testId="onboarding-skip" label={T('Bỏ qua', 'Skip')} onClick={() => send('skipQuestion')} style={{ marginRight: -12, flex: 'none' }} />
       </div>
-      {/* Head start (note 48): the account counts as done, so question 1 opens at 17%, not 0%. */}
-      <StepProgress steps={steps} current={flow.index + 1} message={encouragement(steps.length - flow.index - 1, T)} testId="onboarding-progress" />
-      <h1 style={display(26, { margin: '24px 0 0', lineHeight: 1.2 })}>{T(titleVi, titleEn)}</h1>
-      <p style={{ fontSize: 13.5, lineHeight: 1.55, color: muted(0.75), margin: '8px 0 0' }}>{T(subVi, subEn)}</p>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 22 }}>
+      <div key={q} className="bb-slide" style={{ animation: `${forward ? 'bbSlideFromRight' : 'bbSlideFromLeft'} .3s cubic-bezier(.22,.61,.36,1) both` }}>
+      <div aria-hidden style={{ fontSize: 52, lineHeight: 1, marginTop: 18 }}>{hero}</div>
+      <h1 style={display(26, { margin: '14px 0 0', lineHeight: 1.2 })}>{title}</h1>
+      <p style={{ fontSize: 14, lineHeight: 1.5, color: muted(0.7), margin: '6px 0 0' }}>{T(subVi, subEn)}</p>
+
+      <div style={tiles ? { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 22 } : { display: 'flex', flexDirection: 'column', gap: 10, marginTop: 22 }}>
         {q === 'budget' ? (
           <>
             <div role="group" aria-label={T('Loại tiền', 'Currency')} style={{ display: 'inline-flex', alignSelf: 'flex-start', gap: 4, padding: 4, borderRadius: 999, background: 'var(--bb-field)', marginBottom: 4 }}>
@@ -235,25 +286,32 @@ function QuestionStep({ flow, send }) {
               ))}
             </div>
             {BUDGET_TIERS.map(t => (
-              <ChoiceRow key={t} multi={false} testId={`onboarding-option-${t}`} title={budgetTierLabel(flow.region, t, vi)}
+              <ChoiceRow key={t} multi={false} testId={`onboarding-option-${t}`} title={budgetTierLabel(flow.region, t, vi)} emoji={optionEmoji(t)}
                 selected={flow.draft.budget?.tier === t} onClick={() => send({ type: 'pickBudget', tier: t })} />
             ))}
-            <ChoiceRow multi={false} testId={`onboarding-option-${NO_PREFERENCE}`} title={T('Không ưu tiên', 'No preference')}
+            <ChoiceRow multi={false} testId={`onboarding-option-${NO_PREFERENCE}`} title={T('Không ưu tiên', 'No preference')} emoji={optionEmoji(NO_PREFERENCE)}
               selected={flow.draft.budget?.tier === NO_PREFERENCE} onClick={() => send({ type: 'pickBudget', tier: NO_PREFERENCE })} />
           </>
         ) : (
           <>
             {questionOptions(q).map(o => (
-              <ChoiceRow key={o.id} testId={`onboarding-option-${o.id}`} title={prefLabel(o.id, questionOptions(q), vi)}
+              <ChoiceRow key={o.id} tile={tiles} testId={`onboarding-option-${o.id}`} title={prefLabel(o.id, questionOptions(q), vi)} emoji={optionEmoji(o.id)}
                 selected={!!picked?.includes(o.id)} onClick={() => send({ type: 'toggle', question: q, id: o.id })} />
             ))}
-            <ChoiceRow testId={`onboarding-option-${NO_PREFERENCE}`} title={T('Không ưu tiên', 'No preference')}
-              selected={!!picked?.includes(NO_PREFERENCE)} onClick={() => send({ type: 'toggle', question: q, id: NO_PREFERENCE })} />
+            <div style={tiles ? { gridColumn: '1 / -1' } : undefined}>
+              <ChoiceRow testId={`onboarding-option-${NO_PREFERENCE}`} title={T('Không ưu tiên', 'No preference')} emoji={optionEmoji(NO_PREFERENCE)}
+                selected={!!picked?.includes(NO_PREFERENCE)} onClick={() => send({ type: 'toggle', question: q, id: NO_PREFERENCE })} />
+            </div>
           </>
         )}
       </div>
-      {last && <div style={{ marginTop: 18 }}><EventPrefsPrivacyNote /></div>}
-      <div style={{ marginTop: 24 }}>
+      {/* Live feedback (note 53): each tap answers with what it will do. Reserved height, so nothing jumps. */}
+      <p data-testid="onboarding-feedback" aria-live="polite" style={{ minHeight: 20, fontSize: 13, fontWeight: 600, lineHeight: 1.5, color: muted(0.75), margin: '14px 2px 0' }}>
+        {feedback || ''}
+      </p>
+      {last && <div style={{ marginTop: 10 }}><EventPrefsPrivacyNote /></div>}
+      </div>
+      <div style={{ marginTop: 18 }}>
         <InkBtn testId="onboarding-next" label={last ? T('Xem gợi ý của tôi', 'See my picks') : T('Tiếp tục', 'Continue')} onClick={() => send('next')} />
       </div>
     </div>
@@ -281,7 +339,7 @@ function SaveFailedStep({ send }) {
           'Your answers are still on this device. Retry, or skip for now (this step may come back next time).')}
       </p>
       <InkBtn testId="onboarding-retry" label={T('Thử lại', 'Retry')} onClick={() => send('retrySave')} />
-      <LinkBtn testId="onboarding-edit-answers" label={T('Sửa câu trả lời', 'Edit answers')} onClick={() => send('back')} />
+      <SecondaryBtn testId="onboarding-edit-answers" icon="✏️" label={T('Sửa câu trả lời', 'Edit answers')} onClick={() => send('back')} />
       <LinkBtn testId="onboarding-skip-for-now" label={T('Bỏ qua lúc này', 'Skip for now')} onClick={() => send('skipForNow')} />
     </div>
   );
@@ -294,8 +352,10 @@ function revealWhen(startsAt, lang) {
   return new Date(startsAt).toLocaleString(lang === 'en' ? 'en-GB' : 'vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
+// The reveal is the peak of onboarding (note 53, peak-end rule): a short confetti burst when it lands, and the
+// natural next ask (♡ Save) right on the cards.
 function RevealStep({ flow, reveal, onContinue, onOpenEvent }) {
-  const { state: s, T, curArea, loadDiscoveryEvents, pickArea } = useBanBe();
+  const { state: s, T, curArea, loadDiscoveryEvents, pickArea, isSaved, toggleFav } = useBanBe();
   const vi = s.lang !== 'en';
   const prefs = s.eventPrefs || normalizeForSave(flow.draft);
   const lines = impactLines(prefs, vi);
@@ -320,8 +380,10 @@ function RevealStep({ flow, reveal, onContinue, onOpenEvent }) {
   const areaSuffix = (viTxt) => (areaLimited ? (viTxt ? ` ở ${curArea.label}` : ` in ${curArea.label}`) : '');
 
   return (
-    <div data-testid="onboarding-reveal">
-      <h1 style={display(30, { margin: 0, lineHeight: 1.15 })}>{T('Đây là những gì hợp với bạn', "Here's what fits you")}</h1>
+    <div data-testid="onboarding-reveal" style={{ position: 'relative' }}>
+      {!loading && !failed && matches.length > 0 && <ConfettiBurst />}
+      <div aria-hidden style={{ fontSize: 44, lineHeight: 1 }}>{!loading && !failed && matches.length > 0 ? '🎉' : '✨'}</div>
+      <h1 style={display(30, { margin: '12px 0 0', lineHeight: 1.15 })}>{T('Đây là những gì hợp với bạn', "Here's what fits you")}</h1>
       <div data-testid="onboarding-reveal-impacts" style={{ background: 'var(--bb-field)', borderRadius: 20, padding: 16, marginTop: 18 }}>
         <div style={{ fontSize: 14, fontWeight: 600 }}>{T('Câu trả lời của bạn thay đổi gì', 'What your answers change')}</div>
         {lines.length === 0 && (
@@ -329,7 +391,7 @@ function RevealStep({ flow, reveal, onContinue, onOpenEvent }) {
         )}
         {lines.map((l, i) => (
           <div key={i} style={{ display: 'flex', gap: 10, marginTop: 10, fontSize: 13.5, lineHeight: 1.45 }}>
-            <span aria-hidden style={{ width: 18, opacity: 0.7 }}>{l.kind === 'filter' ? '⏷' : l.kind === 'ranking' ? '↑' : '🔖'}</span>
+            <span aria-hidden style={{ width: 20, textAlign: 'center' }}>{l.kind === 'filter' ? '🎯' : l.kind === 'ranking' ? '⬆️' : '🔖'}</span>
             <span>{l.text}</span>
           </div>
         ))}
@@ -365,17 +427,25 @@ function RevealStep({ flow, reveal, onContinue, onOpenEvent }) {
               {matches.slice(0, 3).map(m => {
                 const e = byKey.get(m.key);
                 if (!e) return null;
+                const saved = isSaved(e.key);
                 return (
-                  <button key={m.key} type="button" onClick={() => onOpenEvent(e.key)} data-testid="onboarding-reveal-event"
-                    style={{ display: 'flex', gap: 12, alignItems: 'center', width: '100%', textAlign: 'left', fontFamily: 'inherit', color: ink, padding: 10, borderRadius: 16, border: 'none', background: 'var(--bb-field)', cursor: 'pointer' }}>
-                    <span aria-hidden style={{ width: 72, height: 72, borderRadius: 12, flex: '0 0 auto', background: e.photoUrl ? `center/cover no-repeat url("${e.photoUrl}")` : muted(0.08) }} />
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}>{e.name}</span>
-                      <span style={{ display: 'block', fontSize: 12.5, opacity: 0.75, marginTop: 3 }}>{revealWhen(e.startsAt, s.lang)}</span>
-                      <span style={{ display: 'block', fontSize: 12.5, opacity: 0.75 }}>{e.priceVnd ? `${String(e.priceVnd).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}₫` : T('Miễn phí', 'Free')}</span>
-                    </span>
-                    <span aria-hidden style={{ color: '#CC9E29' }}>★</span>
-                  </button>
+                  <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 4, borderRadius: 16, background: 'var(--bb-field)', paddingRight: 4 }}>
+                    <button type="button" onClick={() => onOpenEvent(e.key)} data-testid="onboarding-reveal-event" className="bb-press"
+                      style={{ flex: 1, minWidth: 0, display: 'flex', gap: 12, alignItems: 'center', textAlign: 'left', fontFamily: 'inherit', color: ink, padding: 10, borderRadius: 16, border: 'none', background: 'none', cursor: 'pointer' }}>
+                      <span aria-hidden style={{ width: 72, height: 72, borderRadius: 12, flex: '0 0 auto', background: e.photoUrl ? `center/cover no-repeat url("${e.photoUrl}")` : muted(0.08) }} />
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}><span aria-hidden style={{ color: '#CC9E29' }}>★ </span>{e.name}</span>
+                        <span style={{ display: 'block', fontSize: 12.5, opacity: 0.75, marginTop: 3 }}>{revealWhen(e.startsAt, s.lang)}</span>
+                        <span style={{ display: 'block', fontSize: 12.5, opacity: 0.75 }}>{e.priceVnd ? `${String(e.priceVnd).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}₫` : T('Miễn phí', 'Free')}</span>
+                      </span>
+                    </button>
+                    {/* The ask inside the peak: keep the ones you like, one tap. */}
+                    <button type="button" onClick={() => toggleFav(e.key)} aria-pressed={saved} data-testid="onboarding-reveal-save" className="bb-press"
+                      aria-label={saved ? T(`Bỏ lưu ${e.name}`, `Unsave ${e.name}`) : T(`Lưu ${e.name}`, `Save ${e.name}`)}
+                      style={{ flex: 'none', width: 44, height: 44, borderRadius: 999, border: 'none', background: saved ? 'var(--bb-clay-bg)' : 'transparent', color: saved ? 'var(--bb-clay)' : ink, fontSize: 20, cursor: 'pointer' }}>
+                      {saved ? '♥' : '♡'}
+                    </button>
+                  </div>
                 );
               })}
             </div>

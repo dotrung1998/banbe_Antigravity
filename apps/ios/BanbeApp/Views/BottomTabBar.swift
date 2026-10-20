@@ -319,7 +319,11 @@ struct BottomTabBar: View {
                 finishTouch()
                 if let id, let item = items.first(where: { $0.id == id }) {
                     // No haptic on switching tabs (note 47).
+                    // Note 53: a dock tap is a quick cross-fade (RootView reads this), not the push/pop slide that
+                    // moved two full screens at once and read as jerky. Edge/tab swipes keep their own motion.
+                    app.dockTabSwitch = true
                     item.action()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { app.dockTabSwitch = false }
                 }
             }
     }

@@ -26,6 +26,27 @@ struct LoginView: View {
     // "Get started"), and typed email/name live in AppState so Back to the
     // welcome screen or a Log in ↔ Sign up switch never loses them.
     private var mode: AuthMode { app.authIntent.mode }
+
+    /// Note 53: "exists" (signing up with a taken address) / "notFound" (logging in with an unknown one), else nil.
+    private var emailIssue: String? {
+        guard !auth.codeSent, let code = auth.errorCode else { return nil }
+        if code == "AUTH_ACCOUNT_EXISTS" && mode == .signup { return "exists" }
+        if code == "AUTH_ACCOUNT_NOT_FOUND" && mode == .login { return "notFound" }
+        return nil
+    }
+    private var emailFieldState: FieldState {
+        if showEmailFormatError { return .error("") }  // the message itself stays in login.emailError below
+        switch emailIssue {
+        case "exists": return .warning(app.T("Email này đã có tài khoản.", "This email already has an account."))
+        case "notFound": return .warning(app.T("Chưa có tài khoản với email này.", "No account uses this email yet."))
+        default: return .normal
+        }
+    }
+    private func switchModeForEmailIssue() {
+        let target: AuthEntryIntent = emailIssue == "exists" ? .login : .signup
+        auth.errorMessage = nil
+        app.authIntent = target
+    }
     private var email: String { app.authDraftEmail }
     private var displayName: String { app.authDraftName }
     private var emailBinding: Binding<String> { $app.authDraftEmail }
@@ -174,7 +195,14 @@ struct LoginView: View {
                                        text: nameBinding)
                                 .accessibilityIdentifier("login.displayName")
                         }
-                        BanbeField(label: nil, placeholder: "ban@email.com", text: emailBinding, keyboard: .emailAddress)
+                        // Note 53: error = alert border + message; "already has an account" / "no account" =
+                        // honey border + message + the one-tap way out (the typed email is kept across tabs).
+                        BanbeField(label: nil, placeholder: "ban@email.com", text: emailBinding, keyboard: .emailAddress,
+                                   state: emailFieldState,
+                                   noteActionTitle: emailIssue == "exists" ? app.T("Đăng nhập?", "Log in instead?")
+                                       : emailIssue == "notFound" ? app.T("Đăng ký?", "Sign up instead?") : nil,
+                                   noteAction: emailIssue == nil ? nil : { switchModeForEmailIssue() },
+                                   noteIdentifier: "login.emailIssue")
                             .accessibilityIdentifier("login.email")
                         if showEmailFormatError {
                             Text(app.T("Email chưa đúng định dạng (ví dụ: ban@email.com)",
@@ -276,7 +304,7 @@ struct LoginView: View {
                     .buttonStyle(.plain)
                 }
 
-                if let error = localError.isEmpty ? auth.errorMessage : localError {
+                if let error = localError.isEmpty ? (emailIssue == nil ? auth.errorMessage : nil) : localError {
                     Text(error)
                         .font(.system(size: 12))
                         .foregroundStyle(BanbeTheme.alert)

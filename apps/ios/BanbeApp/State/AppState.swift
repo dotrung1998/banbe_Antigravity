@@ -322,6 +322,10 @@ final class AppState: ObservableObject {
     /// Which Login tab the next Login screen opens on (note 44) — an explicit
     /// route intent instead of LoginView's own default.
     @Published var authIntent: AuthEntryIntent = .login
+    /// Note 53: true for ~0.4s after a dock tap, so RootView swaps tabs with a short fade instead of the push/pop
+    /// slide. Deliberately NOT @Published: it's read during the render the screen change itself triggers, and
+    /// publishing it would re-render the whole app twice per tap.
+    var dockTabSwitch = false
     /// Typed email / display name survive Back to the welcome screen and a
     /// Login ↔ Sign up switch. Never passwords or codes. Cleared on sign-in.
     @Published var authDraftEmail = ""

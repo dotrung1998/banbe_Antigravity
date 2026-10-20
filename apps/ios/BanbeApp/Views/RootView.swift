@@ -361,6 +361,9 @@ struct RootView: View {
         if screen == .welcome || screen == .login {
             return AuthMotion.transition(forward: app.authNavForward, reduceMotion: reduceMotion)
         }
+        // Note 53: switching tabs from the dock: the new tab just fades in (the old one leaves at once), like a
+        // native tab bar, instead of two full screens sliding past each other.
+        if app.dockTabSwitch && BottomTabBar.visibleScreens.contains(screen) { return .opacity }
         if screen == .event {
             // Event Detail animates itself (zooming out of / back into the tapped card), so no transition here.
             return .asymmetric(insertion: .identity, removal: .opacity)
@@ -695,6 +698,7 @@ struct RootView: View {
                         ? nil
                         : ((app.screen == .event || app.screen == .organizerProfile || app.eventClosing) ? .spring(response: 0.55, dampingFraction: 0.88)
                            : (app.screen == .welcome || app.screen == .login) ? AuthMotion.animation(reduceMotion: reduceMotion)
+                           : app.dockTabSwitch ? .easeOut(duration: 0.16)
                            : .easeInOut(duration: 0.28)),
                         value: app.screen)
             .scrollDisabled(isScreenLevelSwipeActive)

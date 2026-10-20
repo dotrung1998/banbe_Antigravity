@@ -337,9 +337,22 @@ struct CreateEventView: View {
     @State private var attemptedReview = false
     @State private var discardConfirmOpen = false
     @State private var scrollProxy: ScrollViewProxy?
-    /// Note 48: Create event is a 5-step flow, one section per page.
+    /// Note 48: Create event is a 5-step flow, one section per page. Note 53: it always opens on step 1 (Host),
+    /// even when Host is already ticked from the organizer profile, so the host can check it.
     @State private var currentStep: Section = .host
-    @State private var stepSeeded = false
+    /// Note 53: which Create field has the keyboard (ids from Lib/CreateFieldGuide.swift). Drives the focus border,
+    /// keeps the field above the keyboard, and lets a recipe Fix focus a field directly.
+    @FocusState private var focusedField: String?
+    /// Note 53: the field a Fix / Review-with-gaps pointed at (halo + "👇" tip for ~4.5s).
+    @State private var attnField: String?
+    @State private var attnHint: String?
+    @State private var attnToken = 0
+    @State private var attnClearTask: Task<Void, Never>?
+    /// Note 53: steps slide in from the side you're moving towards, instead of a lone cross-fade.
+    @State private var stepForward = true
+    private var stepTransition: AnyTransition {
+        .asymmetric(insertion: .offset(x: stepForward ? 28 : -28).combined(with: .opacity), removal: .opacity)
+    }
     /// Note 50 — "recipe for success": get_host_benchmarks for the primary category + city (nil = tips only,
     /// never numbers) and the platform-wide audience count for the category.
     @State private var benchmarks: HostBenchmarks?
@@ -455,8 +468,88 @@ struct CreateEventView: View {
     }
     private func fixIngredient(_ c: EventRecipe.Check) {
         Analytics.track(.recipeFixTapped(ingredient: c.id))
+        if CreateFieldGuide.step(of: c.fix.field) != nil {
+            guideTo(c.fix.field, hint: EventRecipe.copy(c, app.T).title)
+        } else {
+            withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = false }
+            goTo(Section(rawValue: c.fix.step) ?? .basics)
+        }
+    }
+
+    /// Note 53: take the host to the exact field — open its step, centre it, point at it with the For You halo and
+    /// a "👇" tip, and (for a typing field) focus it so the keyboard opens. Used by a recipe Fix and by Review with
+    /// gaps. Waits for the sheet/overlay to finish closing first: focus can't move while a sheet is still up.
+    private func guideTo(_ field: String, hint: String?) {
+        guard let index = CreateFieldGuide.step(of: field), let section = Section(rawValue: index) else { return }
+        focusedField = nil
+        recipeOpen = false
         withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = false }
-        goTo(Section(rawValue: c.fix.step) ?? .basics)
+        if currentStep != section {
+            stepForward = section.rawValue >= currentStep.rawValue
+            withAnimation(.easeInOut(duration: 0.22)) { currentStep = section }
+        }
+        attnClearTask?.cancel()
+        withAnimation(.easeOut(duration: 0.2)) {
+            attnHint = hint
+            attnField = field
+        }
+        attnToken += 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            withAnimation(.easeInOut(duration: 0.3)) { scrollProxy?.scrollTo(CreateFieldGuide.anchor(field), anchor: .center) }
+            if CreateFieldGuide.isTextField(field) { focusedField = field }
+        }
+        attnClearTask = Task {
+            try? await Task.sleep(nanoseconds: 4_500_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.3)) { attnField = nil; attnHint = nil }
+        }
+    }
+
+    /// Note 53: wraps a Create field as a "take me there" target — its scroll anchor, the halo while it's the
+    /// target, and the "👇" tip floating above it (out of the layout, so nothing moves while the host types).
+    /// Type-erased on purpose (see `hostStepView`): keeps each field's view value small on the stack.
+    private func guided<Content: View>(_ field: String, cornerRadius: CGFloat = 14, @ViewBuilder _ content: () -> Content) -> AnyView {
+        AnyView(content()
+            .id(CreateFieldGuide.anchor(field))
+            .attentionHalo(active: attnField == field, token: attnToken, cornerRadius: cornerRadius)
+            .overlay(alignment: .topLeading) {
+                if attnField == field, let attnHint {
+                    Text("👇 " + attnHint)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(app.palette.paper)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .shadow(color: .black.opacity(0.18), radius: 9, y: 4)
+                        .fixedSize(horizontal: false, vertical: true)
+                        // A zero-height frame at the wrapper's top edge, bottom-aligned: the tip grows UPWARD from
+                        // 12pt above the field instead of covering its label.
+                        .frame(height: 0, alignment: .bottomLeading)
+                        .offset(y: -12)
+                        .allowsHitTesting(false)
+                        .transition(.opacity.combined(with: .offset(y: 4)))
+                        .accessibilityIdentifier("create.coach")
+                }
+            })
+    }
+
+    /// Every required field still missing, keyed by its CreateFieldGuide id.
+    private var missingFields: [String: Bool] {
+        ["hostName": app.orgRegName.trimmingCharacters(in: .whitespaces).isEmpty, "name": !nameValid, "description": !descValid,
+         "categories": !catsValid, "included": !includedValid, "location": !app.createLocConfirmed, "date": !dateTimeValid,
+         "seats": !seatsValid, "photos": !photosValid]
+    }
+    private func missingLabel(_ field: String) -> String {
+        switch field {
+        case "hostName": return app.T("tên host", "host name")
+        case "name": return app.T("tên sự kiện", "event name")
+        case "description": return app.T("mô tả", "description")
+        case "categories": return app.T("danh mục", "a category")
+        case "included": return app.T("mục bao gồm", "an included item")
+        case "location": return app.T("địa chỉ gợi ý", "a suggested address")
+        case "date": return app.T("ngày & giờ", "date & time")
+        case "seats": return app.T("số chỗ", "seats")
+        default: return app.T("ít nhất \(minPhotos) ảnh", "at least \(minPhotos) photos")
+        }
     }
     /// Fill rate of the benchmark cell a date quick pick would land in (with the current time, else 19:00).
     private func slotFill(day: Date, time: Date?) -> Double? {
@@ -671,22 +764,25 @@ struct CreateEventView: View {
             Text(app.T("Hiện ở đầu cuộc trò chuyện khi khách nhấn \"Nhắn cho bạn\". Để trống để dùng lời chào mặc định. Chỉ để hiển thị, không lưu như tin nhắn.",
                         "Shown at the top of the chat when a guest taps \"Message\" you. Leave blank for a default greeting. Display only — not stored as a message."))
                 .font(.system(size: 12.5)).opacity(0.7)
-            greetingField(label: app.T("Tiếng Việt", "Vietnamese"), text: $app.createChatGreeting, id: "create.chatGreeting")
-            greetingField(label: app.T("Tiếng Anh", "English"), text: $app.createChatGreetingEn, id: "create.chatGreetingEn")
+            greetingField(label: app.T("Tiếng Việt", "Vietnamese"), text: $app.createChatGreeting, id: "create.chatGreeting", focusID: "greeting")
+            greetingField(label: app.T("Tiếng Anh", "English"), text: $app.createChatGreetingEn, id: "create.chatGreetingEn", focusID: "greetingEn")
+                .id(CreateFieldGuide.anchor("greetingEn"))
         }
         .foregroundStyle(app.palette.ink)
     }
 
     @ViewBuilder
-    private func greetingField(label: String, text: Binding<String>, id: String) -> some View {
+    private func greetingField(label: String, text: Binding<String>, id: String, focusID: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(label).font(.system(size: 13, weight: .medium))
                 Spacer()
                 Text("\(text.wrappedValue.count)/500").font(.system(size: 11)).monospacedDigit().opacity(0.6)
             }
-            TextEditor(text: text)
-                .roundedFormEditor(app: app, minHeight: 80)
+            TextField("", text: text, axis: .vertical)
+                .lineLimit(3...8)
+                .focused($focusedField, equals: focusID)
+                .roundedFormEditor(app: app, minHeight: 80, focused: focusedField == focusID)
                 .accessibilityIdentifier(id)
                 .onChange(of: text.wrappedValue) { _, newValue in
                     if newValue.count > 500 { text.wrappedValue = String(newValue.prefix(500)) }
@@ -700,12 +796,23 @@ struct CreateEventView: View {
             HStack {
                 FormFieldLabel(icon: "doc.text", text: app.T("Giới thiệu sự kiện", "Event introduction"),
                                trailing: "\(app.createIntro.count)/4000")
+                    // Note 53: the counter warms up near the limit (honey) and turns alert at it.
+                    .foregroundStyle(app.createIntro.count >= 4000 ? BanbeTheme.alert
+                                     : app.createIntro.count >= 3800 ? app.palette.honey : app.palette.ink.opacity(0.8))
             }
             Text(app.T("Một đoạn giới thiệu dài hơn, hấp dẫn. Tách dòng trống giữa các đoạn. Không phải quảng cáo giả, không phải \"Bao gồm\".",
                         "A longer, attractive write-up. Leave a blank line between paragraphs. Not fabricated marketing copy, not the same as \"Included\"."))
                 .font(.system(size: 12.5)).opacity(0.7)
-            TextEditor(text: $app.createIntro)
-                .roundedFormEditor(app: app, minHeight: 130)
+            // Note 53: a growing TextField instead of a TextEditor. A TextEditor scrolls inside itself, so the
+            // screen's own scroll view (which is what moves things above the keyboard) only ever saw its top
+            // edge and left the lines being typed under the keyboard. This one grows with the text (up to 12
+            // lines, then scrolls inside), and the focus handler centres it above the keyboard.
+            TextField(app.T("Một buổi tối ấm cúng cho mười bốn người lạ…", "A cozy evening for fourteen strangers…"),
+                      text: $app.createIntro, axis: .vertical)
+                .lineLimit(5...12)
+                .focused($focusedField, equals: "intro")
+                .roundedFormEditor(app: app, minHeight: 130, focused: focusedField == "intro")
+                .accessibilityIdentifier("create.intro")
                 .onChange(of: app.createIntro) { _, newValue in
                     if newValue.count > 4000 { app.createIntro = String(newValue.prefix(4000)) }
                 }
@@ -736,6 +843,7 @@ struct CreateEventView: View {
                             app.T("Tên (vd. 5 món)", "Label (e.g. 5 courses)"),
                             text: Binding(get: { item.label }, set: { app.setCreateIncludedItemLabel(index, $0) })
                         )
+                        .focused($focusedField, equals: "included.\(index).label")
                         .font(.system(size: 16, weight: .semibold))
                         .accessibilityIdentifier("create.included.\(index).label")
                         Divider()
@@ -743,6 +851,7 @@ struct CreateEventView: View {
                             app.T("Mô tả (không bắt buộc)", "Detail (optional)"),
                             text: Binding(get: { item.detail }, set: { app.setCreateIncludedItemDetail(index, $0) })
                         )
+                        .focused($focusedField, equals: "included.\(index).detail")
                         .font(.system(size: 15))
                         .opacity(0.85)
                         .accessibilityIdentifier("create.included.\(index).detail")
@@ -997,7 +1106,7 @@ struct CreateEventView: View {
         // the hood), this ticket's own "supported platform API" instruction
         // — not an imitation of Apple's password-provider UI.
         .confirmationDialog(
-            app.T("Đã gửi sự kiện!", "Event submitted!"),
+            app.T("🎉 Đã gửi sự kiện!", "🎉 Event submitted!"),
             isPresented: $successChooserOpen,
             titleVisibility: .visible
         ) {
@@ -1029,12 +1138,21 @@ struct CreateEventView: View {
                 successChoiceMade = true
                 app.goDashboard()
             }
+        } message: {
+            // Note 53: what happens next, honestly — it's pending review, so there's no link to share yet.
+            Text(app.T("✓ Đã gửi → banbe duyệt → lên sóng, bạn sẽ nhận thông báo. Bạn muốn làm gì tiếp theo?",
+                       "✓ Sent → banbe reviews it → it goes live and we'll notify you. What would you like to do next?"))
         }
         // Swipe-to-dismiss/backdrop-tap on the sheet flips this binding to
         // false WITHOUT any button firing — same "unambiguous success"
         // pending-events default as the explicit Cancel row above.
         .onChange(of: successChooserOpen) { _, open in
+            if open { Haptics.success() }
             if !open && !successChoiceMade { app.goDashboard() }
+        }
+        // Note 53: submitting is the peak of creating an event (peak-end rule) — confetti behind the chooser.
+        .overlay(alignment: .top) {
+            if successChooserOpen { ConfettiBurst().padding(.top, 220) }
         }
     }
 
@@ -1055,21 +1173,24 @@ struct CreateEventView: View {
                                              if let section = Section(rawValue: index) { goTo(section) }
                                          })
                             // Note 50: "Recipe 7/10 · See tips" — informational, never blocks a step or submit.
-                            if currentStep != .host { RecipeMeter(checks: recipe, onOpen: openRecipe) }
+                            // Note 53: on every step, so the bar never changes height and arrives with the page.
+                            RecipeMeter(checks: recipe, onOpen: openRecipe)
                         }
                         .padding(.horizontal, 22).padding(.top, 6).padding(.bottom, 10)
                         .background(app.palette.paper)
                     }
                 }
-                .onAppear {
-                    scrollProxy = proxy
-                    // Start where there's work: skip Host when the organizer
-                    // profile is already filled (or when editing an event).
-                    if !stepSeeded {
-                        stepSeeded = true
-                        if app.createEditEventId != nil || sectionDone(.host) { currentStep = .basics }
+                .onAppear { scrollProxy = proxy }
+                // Note 53: the field being typed in never sits under the keyboard. Once the keyboard has come up,
+                // centre the focused field in what's left of the screen.
+                .onChange(of: focusedField) { _, field in
+                    guard let field else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        guard focusedField == field else { return }
+                        withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(CreateFieldGuide.anchor(field), anchor: .center) }
                     }
                 }
+                .scrollDismissesKeyboard(.interactively)
         }
         .sheet(isPresented: $recipeOpen) {
             RecipeSheet(checks: recipe, hasData: bench != nil, n: bench?.n, onFix: fixIngredient,
@@ -1100,6 +1221,221 @@ struct CreateEventView: View {
             ? app.T("Thông tin bạn đã nhập sẽ mất.", "The details you've entered will be lost.")
             : app.T("\(galleryItems.count) ảnh và thông tin bạn đã nhập sẽ mất.",
                     "Your \(galleryItems.count) photos and details will be lost.")
+    }
+
+    /// Note 53: one step per function, type-erased. Inlined, all five steps (plus every guided field) were ONE view
+    /// value of ~20 KB; in a Debug build SwiftUI's unspecialised generic inits (VStack/TupleView/Group...) each keep
+    /// copies of it on the stack, which overflowed the iPhone's 1 MB main-thread stack (EXC_BAD_ACCESS in the stack
+    /// guard, device crash logs 2026-10-20; the simulator's larger stack hid it). Measured after erasure: each step
+    /// is 0.6-2 KB and the form itself holds only AnyView boxes.
+    private var hostStepView: AnyView {
+        AnyView(Group {
+                group(app.T("Hồ sơ người tổ chức", "Organizer profile")) {
+                    // Note 53: Host opens first even when it's already filled in; say so, so it reads as "check
+                    // this" rather than "do this again".
+                    if sectionDone(.host) {
+                        Label(app.T("Đã điền từ hồ sơ người tổ chức của bạn — kiểm tra lại rồi tiếp tục.",
+                                    "Filled from your organizer profile — check it and continue."),
+                              systemImage: "checkmark.circle.fill")
+                            .font(.system(size: 12.5)).opacity(0.85)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("create.hostPrefilled")
+                    }
+                    guided("hostName") {
+                        BanbeField(label: app.T("Tên", "Name"), placeholder: "Bếp Nhỏ", text: $app.orgRegName, icon: "person.crop.circle",
+                                   focus: $focusedField, focusID: "hostName")
+                    }
+                    BanbeField(label: "Instagram", placeholder: "@bepnho.saigon", text: $app.orgRegIg, icon: "at",
+                               focus: $focusedField, focusID: "hostIg")
+                        .id(CreateFieldGuide.anchor("hostIg"))
+                    BanbeField(label: app.T("Giới thiệu", "About"),
+                               placeholder: app.T("Mình nấu cho người lạ từ 2021…", "I cook for strangers since 2021…"),
+                               text: $app.orgRegDesc, icon: "text.quote", focus: $focusedField, focusID: "hostAbout")
+                        .id(CreateFieldGuide.anchor("hostAbout"))
+                }
+        })
+    }
+    /// Type-erased step (see `hostStepView`).
+    private var basicsStepView: AnyView {
+        AnyView(Group {
+                group(app.T("Cơ bản", "Basics")) {
+                    guided("name") {
+                        BanbeField(label: app.T("Tên sự kiện", "Event name"),
+                                   placeholder: app.T("Tên sự kiện của bạn", "Your event name"), text: $app.createName,
+                                   required: true, icon: "sparkles",
+                                   state: !nameValid && !app.createSent && attemptedReview ? .error(app.T("Hãy đặt tên cho sự kiện.", "Please give your event a name.")) : .normal,
+                                   focus: $focusedField, focusID: "name")
+                    }
+                    goalPicker()
+                    guided("description") {
+                        BanbeField(label: app.T("Mô tả", "Description"),
+                                   placeholder: app.T("Buổi này có gì?", "What happens?"), text: $app.createDesc,
+                                   required: true, icon: "text.alignleft",
+                                   state: !descValid && !app.createSent && attemptedReview ? .error(app.T("Hãy nhập mô tả.", "Please enter a description.")) : .normal,
+                                   focus: $focusedField, focusID: "description")
+                    }
+                    guided("intro") { introEditor() }
+                    guided("greeting") { greetingEditor() }
+                    guided("categories") { VStack(alignment: .leading, spacing: 16) {
+                    FormFieldLabel(icon: "square.grid.2x2", text: app.T("Hạng mục", "Categories"), required: true,
+                                   trailing: app.T("Tối đa 2", "Up to 2"))
+                        .padding(.top, 8)
+                    FlowRow(spacing: 8) {
+                        ForEach(categories, id: \.key) { category in
+                            let active = app.createCats.contains(category.key)
+                            Button { app.pickCreateCategory(category.key) } label: {
+                                Label(app.T(category.vi, category.en), systemImage: categoryIcon(category.key))
+                                    .font(.system(size: 15, weight: active ? .semibold : .regular))
+                                    .foregroundStyle(active ? app.palette.paper : app.palette.ink)
+                                    .padding(.horizontal, 16).padding(.vertical, 12)
+                                    .background(active ? app.palette.ink : app.palette.paper, in: Capsule())
+                                    .overlay(Capsule().stroke(active ? .clear : app.palette.rule, lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    if !catsValid && !app.createSent && attemptedReview {
+                        Text(app.T("Hãy chọn ít nhất một danh mục.", "Please pick at least one category."))
+                            .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                    }
+                    } }
+                    // Note 50: only when the server answered with a real (floored, ≥10) count.
+                    if let demand = audienceDemand, let cat = categories.first(where: { $0.key == primaryCat }) {
+                        Text(app.T("\(demand)+ người trên banbe thích \(cat.vi).", "\(demand)+ people on banbe are into \(cat.en)."))
+                            .font(.system(size: 12, weight: .semibold)).opacity(0.85)
+                            .accessibilityIdentifier("create.audienceDemand")
+                    }
+
+                    // Keyword-search fix (migration 108) — so this event
+                    // actually surfaces in Map's search box for terms
+                    // beyond its literal name/district. Left blank,
+                    // submission defaults it to the category label(s)
+                    // picked just above (never silently empty).
+                    guided("keywords") { VStack(alignment: .leading, spacing: 5) {
+                        FormFieldLabel(icon: "magnifyingglass", text: app.T("Từ khoá tìm kiếm", "Search keywords"))
+                            .padding(.top, 8)
+                        TextField(
+                            app.T("vd. tiệc tối, rượu vang, ẩm thực Việt", "e.g. supper club, wine, Vietnamese food"),
+                            text: $app.createKeywords
+                        )
+                        .focused($focusedField, equals: "keywords")
+                        .roundedFormField(app: app, focused: focusedField == "keywords")
+                        Text(app.T(
+                            "Cách nhau bằng dấu phẩy — để trống sẽ tự dùng danh mục đã chọn ở trên.",
+                            "Comma-separated — left blank, the category picked above is used instead."
+                        ))
+                        .font(.system(size: 11)).opacity(0.75)
+                        keywordSuggestions()
+                    }
+                    .foregroundStyle(app.palette.ink) }
+
+                    guided("included") { includedItemsEditor() }
+                }
+        })
+    }
+    /// Type-erased step (see `hostStepView`).
+    private var whenWhereStepView: AnyView {
+        AnyView(Group {
+                group(app.T("Thời gian & địa điểm", "When & where")) {
+                    guided("location") { BanbeField(
+                        label: app.T("Địa điểm", "Location"),
+                        placeholder: app.T("12 Nguyễn Văn Đậu, hoặc tên địa điểm…", "12 Nguyễn Văn Đậu, or a venue name…"),
+                        text: $app.createLoc,
+                        required: true,
+                        icon: "mappin.and.ellipse",
+                        state: !app.createLocConfirmed && !app.createSent && attemptedReview
+                            ? .error(app.T("Hãy chọn một địa chỉ gợi ý.", "Pick one of the suggested addresses.")) : .normal,
+                        focus: $focusedField, focusID: "location"
+                    ) }
+                    .onChange(of: app.createLoc) { _, newValue in
+                        createAddressSearchTask?.cancel()
+                        // A stale confirmation/point for a since-edited
+                        // address is worse than none — see
+                        // createLocConfirmed's own doc comment.
+                        app.createLat = nil
+                        app.createLng = nil
+                        app.createLocLabel = ""
+                        app.createAddressLine = ""
+                        app.createDistrict = ""
+                        app.createCity = ""
+                        app.createPostalCode = ""
+                        app.createCountryCode = nil
+                        app.createStateProvince = nil
+                        app.createNeighborhood = nil
+                        app.createLocConfirmed = false
+                        app.createAddressSuggestions = []
+                        app.createAddressSearchError = ""
+                        let query = newValue.trimmingCharacters(in: .whitespaces)
+                        guard query.count >= 4 else { app.createAddressSearching = false; return }
+                        createAddressSearchTask = Task {
+                            try? await Task.sleep(nanoseconds: 500_000_000)
+                            guard !Task.isCancelled else { return }
+                            await app.searchCreateAddress(query)
+                        }
+                    }
+                    Text(app.T(
+                        "Gõ số nhà + tên đường (hoặc tên địa điểm nếu không có số nhà) rồi chọn một gợi ý — cần thiết để đăng sự kiện.",
+                        "Type a house number + street (or a venue name if there is no house number), then pick a suggestion — required to publish."
+                    ))
+                    .font(.system(size: 11)).opacity(0.75).foregroundStyle(app.palette.ink)
+                    locationConfirmSection()
+                    guided("date") { dateTimeRow() }
+                    timingInsights()
+                }
+        })
+    }
+    /// Type-erased step (see `hostStepView`).
+    private var ticketsStepView: AnyView {
+        AnyView(Group {
+                group(app.T("Vé & ai được đặt", "Tickets & who can book")) {
+                    ticketsSection()
+                    if !seatsValid && !app.createSent && attemptedReview {
+                        Text(app.T("Hãy nhập số chỗ lớn hơn 0.", "Please enter a number of seats greater than 0."))
+                            .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                    }
+
+                    // Strict invite-only events (migration 113) — a peer of
+                    // every other field here, not a separate "advanced"
+                    // section: it changes who can even discover the event.
+                    // Deliberately separate from approval mode (not exposed
+                    // in this form) and admin review — private is not
+                    // auto-approved, per set_event_visibility's own comment.
+                    VStack(alignment: .leading, spacing: 6) {
+                        FormFieldLabel(icon: "lock", text: app.T("Quyền riêng tư", "Privacy")).padding(.top, 12)
+                        HStack(spacing: 8) {
+                            ForEach([("public", "Công khai", "Public"), ("invite", "Chỉ mời", "Invite-only")], id: \.0) { key, vi, en in
+                                let active = app.createVisibility == key
+                                Button { app.createVisibility = key } label: {
+                                    VStack(spacing: 6) {
+                                        Image(systemName: key == "public" ? "globe.asia.australia" : "envelope.badge").font(.system(size: 20))
+                                        Text(app.T(vi, en)).font(.system(size: 15, weight: active ? .semibold : .regular))
+                                    }
+                                    .frame(maxWidth: .infinity, minHeight: 76)
+                                    .background(active ? app.palette.ink : app.palette.paper, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                    .foregroundStyle(active ? app.palette.paper : app.palette.ink)
+                                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(active ? .clear : app.palette.rule))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("create-visibility-\(key)")
+                            }
+                        }
+                        Text(app.createVisibility == "invite"
+                             ? app.T("Chỉ người được mời mới thấy và đặt được sự kiện này. Bạn vẫn cần được banbe duyệt.", "Only invited people can see or book this event. It still needs banbe approval.")
+                             : app.T("Ai cũng có thể tìm thấy và đặt sự kiện này.", "Anyone can discover and book this event."))
+                            .font(.system(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
+                    }
+
+                    ReservationCriteriaPicker()
+                }
+        })
+    }
+    /// Type-erased step (see `hostStepView`).
+    private var photosStepView: AnyView {
+        AnyView(Group {
+                guided("photos") { gallerySection() }
+                    .padding(.top, 22)
+                    .transition(stepTransition)
+        })
     }
 
     private var createFormScroll: some View {
@@ -1138,180 +1474,11 @@ struct CreateEventView: View {
 
                 stepNavHeader()
 
-                if currentStep == .host {
-                    group(app.T("Hồ sơ người tổ chức", "Organizer profile")) {
-                        BanbeField(label: app.T("Tên", "Name"), placeholder: "Bếp Nhỏ", text: $app.orgRegName, icon: "person.crop.circle")
-                            .id(Section.host.anchor)
-                        BanbeField(label: "Instagram", placeholder: "@bepnho.saigon", text: $app.orgRegIg, icon: "at")
-                        BanbeField(label: app.T("Giới thiệu", "About"),
-                                   placeholder: app.T("Mình nấu cho người lạ từ 2021…", "I cook for strangers since 2021…"),
-                                   text: $app.orgRegDesc, icon: "text.quote")
-                    }
-                }
-                if currentStep == .basics {
-                    group(app.T("Cơ bản", "Basics")) {
-                        BanbeField(label: app.T("Tên sự kiện", "Event name"),
-                                   placeholder: app.T("Tên sự kiện của bạn", "Your event name"), text: $app.createName,
-                                   required: true, icon: "sparkles")
-                            .id(Section.basics.anchor)
-                        goalPicker()
-                        BanbeField(label: app.T("Mô tả", "Description"),
-                                   placeholder: app.T("Buổi này có gì?", "What happens?"), text: $app.createDesc,
-                                   required: true, icon: "text.alignleft")
-                        if !descValid && !app.createSent && attemptedReview {
-                            Text(app.T("Hãy nhập mô tả.", "Please enter a description."))
-                                .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
-                        }
-                        introEditor()
-                        greetingEditor()
-                        FormFieldLabel(icon: "square.grid.2x2", text: app.T("Hạng mục", "Categories"), required: true,
-                                       trailing: app.T("Tối đa 2", "Up to 2"))
-                            .padding(.top, 8)
-                        FlowRow(spacing: 8) {
-                            ForEach(categories, id: \.key) { category in
-                                let active = app.createCats.contains(category.key)
-                                Button { app.pickCreateCategory(category.key) } label: {
-                                    Label(app.T(category.vi, category.en), systemImage: categoryIcon(category.key))
-                                        .font(.system(size: 15, weight: active ? .semibold : .regular))
-                                        .foregroundStyle(active ? app.palette.paper : app.palette.ink)
-                                        .padding(.horizontal, 16).padding(.vertical, 12)
-                                        .background(active ? app.palette.ink : app.palette.paper, in: Capsule())
-                                        .overlay(Capsule().stroke(active ? .clear : app.palette.rule, lineWidth: 1))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        if !catsValid && !app.createSent && attemptedReview {
-                            Text(app.T("Hãy chọn ít nhất một danh mục.", "Please pick at least one category."))
-                                .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
-                        }
-                        // Note 50: only when the server answered with a real (floored, ≥10) count.
-                        if let demand = audienceDemand, let cat = categories.first(where: { $0.key == primaryCat }) {
-                            Text(app.T("\(demand)+ người trên banbe thích \(cat.vi).", "\(demand)+ people on banbe are into \(cat.en)."))
-                                .font(.system(size: 12, weight: .semibold)).opacity(0.85)
-                                .accessibilityIdentifier("create.audienceDemand")
-                        }
-
-                        // Keyword-search fix (migration 108) — so this event
-                        // actually surfaces in Map's search box for terms
-                        // beyond its literal name/district. Left blank,
-                        // submission defaults it to the category label(s)
-                        // picked just above (never silently empty).
-                        VStack(alignment: .leading, spacing: 5) {
-                            FormFieldLabel(icon: "magnifyingglass", text: app.T("Từ khoá tìm kiếm", "Search keywords"))
-                                .padding(.top, 8)
-                            TextField(
-                                app.T("vd. tiệc tối, rượu vang, ẩm thực Việt", "e.g. supper club, wine, Vietnamese food"),
-                                text: $app.createKeywords
-                            )
-                            .font(.system(size: 16))
-                            .padding(.horizontal, 16).padding(.vertical, 15)
-                            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
-                            Text(app.T(
-                                "Cách nhau bằng dấu phẩy — để trống sẽ tự dùng danh mục đã chọn ở trên.",
-                                "Comma-separated — left blank, the category picked above is used instead."
-                            ))
-                            .font(.system(size: 11)).opacity(0.75)
-                            keywordSuggestions()
-                        }
-                        .foregroundStyle(app.palette.ink)
-
-                        includedItemsEditor()
-                    }
-                }
-                if currentStep == .whenWhere {
-                    group(app.T("Thời gian & địa điểm", "When & where")) {
-                        BanbeField(
-                            label: app.T("Địa điểm", "Location"),
-                            placeholder: app.T("12 Nguyễn Văn Đậu, hoặc tên địa điểm…", "12 Nguyễn Văn Đậu, or a venue name…"),
-                            text: $app.createLoc,
-                            required: true,
-                            icon: "mappin.and.ellipse"
-                        )
-                        .id(Section.whenWhere.anchor)
-                        .onChange(of: app.createLoc) { _, newValue in
-                            createAddressSearchTask?.cancel()
-                            // A stale confirmation/point for a since-edited
-                            // address is worse than none — see
-                            // createLocConfirmed's own doc comment.
-                            app.createLat = nil
-                            app.createLng = nil
-                            app.createLocLabel = ""
-                            app.createAddressLine = ""
-                            app.createDistrict = ""
-                            app.createCity = ""
-                            app.createPostalCode = ""
-                            app.createCountryCode = nil
-                            app.createStateProvince = nil
-                            app.createNeighborhood = nil
-                            app.createLocConfirmed = false
-                            app.createAddressSuggestions = []
-                            app.createAddressSearchError = ""
-                            let query = newValue.trimmingCharacters(in: .whitespaces)
-                            guard query.count >= 4 else { app.createAddressSearching = false; return }
-                            createAddressSearchTask = Task {
-                                try? await Task.sleep(nanoseconds: 500_000_000)
-                                guard !Task.isCancelled else { return }
-                                await app.searchCreateAddress(query)
-                            }
-                        }
-                        Text(app.T(
-                            "Gõ số nhà + tên đường (hoặc tên địa điểm nếu không có số nhà) rồi chọn một gợi ý — cần thiết để đăng sự kiện.",
-                            "Type a house number + street (or a venue name if there is no house number), then pick a suggestion — required to publish."
-                        ))
-                        .font(.system(size: 11)).opacity(0.75).foregroundStyle(app.palette.ink)
-                        locationConfirmSection()
-                        dateTimeRow()
-                        timingInsights()
-                    }
-                }
-                if currentStep == .tickets {
-                    group(app.T("Vé & ai được đặt", "Tickets & who can book")) {
-                        ticketsSection()
-                        if !seatsValid && !app.createSent && attemptedReview {
-                            Text(app.T("Hãy nhập số chỗ lớn hơn 0.", "Please enter a number of seats greater than 0."))
-                                .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
-                        }
-
-                        // Strict invite-only events (migration 113) — a peer of
-                        // every other field here, not a separate "advanced"
-                        // section: it changes who can even discover the event.
-                        // Deliberately separate from approval mode (not exposed
-                        // in this form) and admin review — private is not
-                        // auto-approved, per set_event_visibility's own comment.
-                        VStack(alignment: .leading, spacing: 6) {
-                            FormFieldLabel(icon: "lock", text: app.T("Quyền riêng tư", "Privacy")).padding(.top, 12)
-                            HStack(spacing: 8) {
-                                ForEach([("public", "Công khai", "Public"), ("invite", "Chỉ mời", "Invite-only")], id: \.0) { key, vi, en in
-                                    let active = app.createVisibility == key
-                                    Button { app.createVisibility = key } label: {
-                                        VStack(spacing: 6) {
-                                            Image(systemName: key == "public" ? "globe.asia.australia" : "envelope.badge").font(.system(size: 20))
-                                            Text(app.T(vi, en)).font(.system(size: 15, weight: active ? .semibold : .regular))
-                                        }
-                                        .frame(maxWidth: .infinity, minHeight: 76)
-                                        .background(active ? app.palette.ink : app.palette.paper, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                        .foregroundStyle(active ? app.palette.paper : app.palette.ink)
-                                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(active ? .clear : app.palette.rule))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityIdentifier("create-visibility-\(key)")
-                                }
-                            }
-                            Text(app.createVisibility == "invite"
-                                 ? app.T("Chỉ người được mời mới thấy và đặt được sự kiện này. Bạn vẫn cần được banbe duyệt.", "Only invited people can see or book this event. It still needs banbe approval.")
-                                 : app.T("Ai cũng có thể tìm thấy và đặt sự kiện này.", "Anyone can discover and book this event."))
-                                .font(.system(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
-                        }
-
-                        ReservationCriteriaPicker()
-                    }
-                }
-                if currentStep == .photos {
-                    gallerySection()
-                        .padding(.top, 22)
-                }
+                if currentStep == .host { hostStepView.transition(stepTransition) }
+                if currentStep == .basics { basicsStepView.transition(stepTransition) }
+                if currentStep == .whenWhere { whenWhereStepView.transition(stepTransition) }
+                if currentStep == .tickets { ticketsStepView.transition(stepTransition) }
+                if currentStep == .photos { photosStepView.transition(stepTransition) }
 
                 if currentStep != .photos {
                     stepNavFooter()
@@ -1355,7 +1522,10 @@ struct CreateEventView: View {
                     // scrolls to it, instead of a silent disabled button.
                     guard canOpenReview else {
                         attemptedReview = true
-                        if let first = firstIncompleteSection { goTo(first) }
+                        // Note 53: land on the first missing FIELD (glowing, focused), not just its step.
+                        if let field = CreateFieldGuide.firstMissing(missingFields) {
+                            guideTo(field, hint: app.T("Còn thiếu: ", "Still needed: ") + missingLabel(field))
+                        } else if let first = firstIncompleteSection { goTo(first) }
                         return
                     }
                     // Keyboard-stays-up fix (2026-09-29) — opening the review
@@ -1437,7 +1607,8 @@ struct CreateEventView: View {
 
     private func goTo(_ section: Section) {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        withAnimation(.easeInOut(duration: 0.2)) { currentStep = section }
+        stepForward = section.rawValue >= currentStep.rawValue
+        withAnimation(.easeInOut(duration: 0.22)) { currentStep = section }
         DispatchQueue.main.async { scrollProxy?.scrollTo("create.top", anchor: .top) }
     }
 
@@ -1491,7 +1662,9 @@ struct CreateEventView: View {
                     .accessibilityIdentifier("create.step.back")
                 }
                 if let next {
-                    InkButton(title: app.T("Tiếp: ", "Next: ") + sectionTitles[next.rawValue], cornerRadius: 999) {
+                    InkButton(title: currentStep == .host && sectionDone(.host)
+                              ? app.T("Ổn rồi · Tiếp: ", "Looks good · Next: ") + sectionTitles[next.rawValue]
+                              : app.T("Tiếp: ", "Next: ") + sectionTitles[next.rawValue], cornerRadius: 999) {
                         goTo(next)
                     }
                     .accessibilityIdentifier("create.step.next")
@@ -1699,16 +1872,18 @@ struct CreateEventView: View {
                              id: "create.price.\(value)") { app.createPrice = String(value) }
                 }
             }
-            BanbeField(label: nil, placeholder: app.T("Giá khác, vd. 450.000", "Other price, e.g. 450,000"),
-                       text: $app.createPrice, keyboard: .numberPad, icon: "tag")
-                .accessibilityLabel(app.T("Giá vé", "Price"))
+            guided("price") {
+                BanbeField(label: nil, placeholder: app.T("Giá khác, vd. 450.000", "Other price, e.g. 450,000"),
+                           text: $app.createPrice, keyboard: .numberPad, icon: "tag", focus: $focusedField, focusID: "price")
+                    .accessibilityLabel(app.T("Giá vé", "Price"))
+            }
             Text(priceHint)
                 .font(.system(size: 12)).opacity(0.7)
                 .accessibilityIdentifier("create.priceHint")
 
             FormFieldLabel(icon: "person.2", text: app.T("Số chỗ", "Seats"), required: true)
                 .padding(.top, 12)
-            HStack {
+            guided("seats") { HStack {
                 CountStepper(value: max(seatsBinding, 0), range: 0...SmartDefaults.seatRange.upperBound,
                              unit: app.T("chỗ", "seats"), identifier: "create.seatsStepper") { newValue in
                     app.createSeats = newValue == 0 ? "" : String(newValue)
@@ -1717,7 +1892,7 @@ struct CreateEventView: View {
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
             .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1)) }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                 ForEach([10, 20, 30, 50], id: \.self) { n in
                     pickTile("\(n)", selected: seatsBinding == n, id: "create.seats.\(n)") { app.createSeats = String(n) }
@@ -1741,6 +1916,7 @@ struct CreateEventView: View {
         .padding(18)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.top, 22)
+        .transition(stepTransition)
     }
 }
 
@@ -2663,13 +2839,22 @@ struct FlowRow: Layout {
 /// Note 48 form style for multi-line text: large, rounded, outlined, and no
 /// stray system-white background behind the TextEditor.
 extension View {
-    func roundedFormEditor(app: AppState, minHeight: CGFloat) -> some View {
+    func roundedFormEditor(app: AppState, minHeight: CGFloat, focused: Bool = false, state: FieldState = .normal) -> some View {
         self
             .font(.system(size: 16))
             .scrollContentBackground(.hidden)
-            .frame(minHeight: minHeight)
+            .frame(minHeight: minHeight, alignment: .topLeading)
             .padding(.horizontal, 12).padding(.vertical, 10)
             .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+            .fieldChrome(focused: focused, state: state, cornerRadius: 14)  // note 53: focus/error border
+    }
+
+    /// Note 53: the large rounded field look (Create event) for a raw TextField — same box as `BanbeField(icon:)`.
+    func roundedFormField(app: AppState, focused: Bool, state: FieldState = .normal) -> some View {
+        self
+            .font(.system(size: 16))
+            .padding(.horizontal, 16).padding(.vertical, 15)
+            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .fieldChrome(focused: focused, state: state, cornerRadius: 14)
     }
 }

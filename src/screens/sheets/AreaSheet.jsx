@@ -146,13 +146,13 @@ export default function AreaSheet({ embedded = false, onDone }) {
         <span data-testid="area-sheet-current" style={{ fontSize: 12, color: ink, opacity: 0.65, marginTop: 4 }}>
           {T('Đang xem: ', 'Showing: ')}{curArea.key === LOCATION_ALL ? T('Tất cả khu vực', 'All areas') : curArea.label}
         </span>
-        <div style={{ background: 'var(--bb-field)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', marginTop: 12 }}>
+        <div className="bb-focus-ring" style={{ background: 'var(--bb-field)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', marginTop: 12 }}>
           <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.55, flex: 'none' }}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></svg>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={T('Tìm khu vực, tỉnh/thành, bang…', 'Search area, province, state…')}
-            data-testid="area-sheet-search"
+            data-testid="area-sheet-search" data-bare
             style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, color: ink, fontFamily: "'Be Vietnam Pro', sans-serif" }}
           />
           {query && <span onClick={() => setQuery('')} data-testid="area-sheet-search-clear" style={{ cursor: 'pointer', color: ink, opacity: 0.5, fontSize: 16, lineHeight: 1 }}>×</span>}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { ReservationCriteriaPicker } from './ReservationCriteria.jsx';
-import { criteriaSummary, normalizeCriteria } from '../lib/eventPrefs.js';
+import { criteriaSummary, normalizeCriteria, CATEGORY_EMOJI } from '../lib/eventPrefs.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, CREATE_PALETTES, bg, mapsUrl } from '../data/events.js';
 import { liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
@@ -15,7 +16,9 @@ import { PRICE_QUICK_PICKS, SEAT_QUICK_PICKS, TIME_QUICK_PICKS, dateQuickPicks, 
 import { recipeChecks, recipeCopy, estimateOutcome, pricePosition, formatVndShort, slotLabel, hasBenchmarks, HOST_GOALS } from '../lib/eventRecipe.js';
 import { useHostBenchmarks } from '../lib/useHostBenchmarks.js';
 import { track } from '../lib/analytics.js';
+import { stepOfField, isTextField, firstMissingField } from '../lib/createFieldGuide.js';
 import RecipeSheet, { RecipeMeter, RecipeList } from './sheets/RecipeSheet.jsx';
+import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
 
 // Optional per-event goal (note 50). Weights the recipe; stored host-only (migration 186), never shown to guests.
 const GOAL_LABELS = {
@@ -287,15 +290,38 @@ export default function CreateEvent() {
     { id: 'create-section-tickets', title: T('Vé', 'Tickets'), done: !fieldErrors.seats },
     { id: 'create-section-photos', title: T('Ảnh', 'Photos'), done: !fieldErrors.photos },
   ];
-  const firstIncomplete = sections.findIndex(x => !x.done);
-  // Start where there's work: skip Host when the organizer profile is filled (or when editing).
-  const [step, setStep] = useState(() => (s.createEditEventId || (s.orgRegName || '').trim() ? 1 : 0));
+  // Note 53: always open on step 1 (Host), even when it's already ticked from the organizer profile, so the
+  // host can check it; the head start (Host ✓, 20%) still shows. This replaces note 48's "skip Host".
+  const [step, setStep] = useState(0);
   const topRef = useRef(null);
   const goTo = (i) => {
     if (i < 0 || i >= sections.length) return;
     document.activeElement?.blur?.();
     setStep(i);
     requestAnimationFrame(() => topRef.current?.scrollIntoView({ block: 'start' }));
+  };
+  // Note 53: take the host to the exact field (a recipe Fix, or Review with gaps): open its step, focus it when it
+  // takes typing, centre it, and point at it with the For You halo + a "👇" tip for ~4s. The step is rendered
+  // synchronously (flushSync) so the focus happens inside the tap itself: iOS Safari only opens the keyboard for a
+  // focus() made during the user's gesture.
+  const [attn, setAttn] = useState(null); // { field, hint }
+  const attnTimer = useRef(null);
+  useEffect(() => () => clearTimeout(attnTimer.current), []);
+  const guideTo = (field, hint) => {
+    const target = stepOfField(field);
+    if (target == null) return;
+    document.activeElement?.blur?.();
+    flushSync(() => { setRecipeOpen(false); setReviewOpen(false); setAttn(null); });
+    void document.body.offsetHeight; // a fresh style pass, so the halo replays when the same field is picked again
+    flushSync(() => { setStep(target); setAttn({ field, hint }); });
+    const el = document.querySelector(`[data-field="${field}"]`);
+    if (el) {
+      if (isTextField(field)) el.querySelector('input:not([type="date"]):not([type="time"]):not([type="file"]), textarea')?.focus({ preventScroll: true });
+      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    }
+    clearTimeout(attnTimer.current);
+    attnTimer.current = setTimeout(() => setAttn(null), 4200);
   };
   const doneCount = sections.filter(x => x.done).length;
   const left = sections.length - doneCount;
@@ -321,6 +347,16 @@ export default function CreateEvent() {
     fieldErrors.included && T('mục bao gồm', 'an included item'),
     fieldErrors.photos && T(`ít nhất ${MIN_PHOTOS} ảnh`, `at least ${MIN_PHOTOS} photos`),
   ].filter(Boolean);
+  // Same gaps, keyed by field id (note 53), so Review-with-gaps can land on the first one.
+  const missingFields = {
+    hostName: !(s.orgRegName || '').trim(), name: !nameOk, description: fieldErrors.desc, categories: fieldErrors.cats,
+    included: fieldErrors.included, location: !s.createLocConfirmed, date: fieldErrors.dateTime, seats: fieldErrors.seats, photos: fieldErrors.photos,
+  };
+  const MISSING_LABEL = {
+    hostName: T('tên host', 'host name'), name: T('tên sự kiện', 'event name'), description: T('mô tả', 'description'),
+    categories: T('danh mục', 'a category'), included: T('mục bao gồm', 'an included item'), location: T('địa chỉ gợi ý', 'a suggested address'),
+    date: T('ngày & giờ', 'date & time'), seats: T('số chỗ', 'seats'), photos: T(`ít nhất ${MIN_PHOTOS} ảnh`, `at least ${MIN_PHOTOS} photos`),
+  };
   // ---- Recipe for success (note 50) ----------------------------------------------------------------
   const primaryCat = s.createCats[0] || '';
   const { benchmarks, demand } = useHostBenchmarks(primaryCat, s.createCity, !!s.user && !s.createSent);
@@ -342,7 +378,11 @@ export default function CreateEvent() {
   const recipeById = Object.fromEntries(recipe.map(c => [c.id, c]));
   const [recipeOpen, setRecipeOpen] = useState(false);
   const openRecipe = () => { setRecipeOpen(true); track('recipe_opened'); };
-  const fixIngredient = (c) => { track('recipe_fix_tapped', { ingredient: c.id }); setReviewOpen(false); goTo(c.fix.step); };
+  const fixIngredient = (c) => {
+    track('recipe_fix_tapped', { ingredient: c.id });
+    if (stepOfField(c.fix.field) != null) guideTo(c.fix.field, recipeCopy(c, T).title);
+    else { setReviewOpen(false); goTo(c.fix.step); }
+  };
   // Editing: show the goal the host picked last time (host-only read).
   useEffect(() => {
     if (!s.createEditEventId || !s.user) return;
@@ -401,7 +441,8 @@ export default function CreateEvent() {
         <div style={{ position: 'sticky', top: 0, zIndex: 5, background: paper, padding: '10px 22px 12px' }}>
           <StepProgress testId="create-progress" steps={sections.map(x => x.title)} completed={sections.map(x => x.done)}
             current={step} message={progressMessage} onSelect={goTo} />
-          {step > 0 && <RecipeMeter checks={recipe} onOpen={openRecipe} T={T} />}
+          {/* On every step (note 53), so the header never changes height and appears with the rest of the page. */}
+          <RecipeMeter checks={recipe} onOpen={openRecipe} T={T} />
         </div>
       )}
       <div style={{ padding: '14px 22px 40px', display: 'flex', flexDirection: 'column' }}>
@@ -428,7 +469,14 @@ export default function CreateEvent() {
 
         {step === 0 && (
           <StepCard title={T('Hồ sơ người tổ chức', 'Organizer profile')} id="create-section-host">
-            <BigField icon="person" label={T('Tên', 'Name')} value={s.orgRegName} onChange={orgRegNameType} placeholder="Bếp Nhỏ" />
+            {sections[0].done && (
+              <p data-testid="create-host-prefilled" style={{ ...hintText, opacity: 0.85, marginTop: -8 }}>
+                ✓ {T('Đã điền từ hồ sơ người tổ chức của bạn — kiểm tra lại rồi tiếp tục.', 'Filled from your organizer profile — check it and continue.')}
+              </p>
+            )}
+            <Guided field="hostName" attn={attn}>
+              <BigField icon="person" label={T('Tên', 'Name')} value={s.orgRegName} onChange={orgRegNameType} placeholder="Bếp Nhỏ" />
+            </Guided>
             <BigField icon="at" label="Instagram" value={s.orgRegIg} onChange={orgRegIgType} placeholder="@bepnho.saigon" />
             <BigField icon="quote" label={T('Giới thiệu', 'About')} value={s.orgRegDesc} onChange={orgRegDescType} placeholder={T('Minh nấu cho người lạ từ 2021…', 'Minh has cooked for strangers since 2021…')} />
           </StepCard>
@@ -436,7 +484,10 @@ export default function CreateEvent() {
 
         {step === 1 && (
           <StepCard title={T('Cơ bản', 'Basics')} id="create-section-basics">
-            <BigField icon="sparkles" label={T('Tên sự kiện', 'Event name')} required value={s.createName} onChange={createNameType} placeholder="Bếp Nhỏ №13" testId="create-name" />
+            <Guided field="name" attn={attn}>
+              <BigField icon="sparkles" label={T('Tên sự kiện', 'Event name')} required value={s.createName} onChange={createNameType} placeholder="Bếp Nhỏ №13" testId="create-name"
+                invalid={attemptedReview && !nameOk} />
+            </Guided>
             <div style={fieldCol} data-testid="create-goal">
               <FormLabel icon="target" text={T('Điều quan trọng nhất với sự kiện này?', 'What matters most for this event?')} tag={T('Tuỳ chọn', 'Optional')} />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -453,18 +504,20 @@ export default function CreateEvent() {
               </div>
               <p style={hintText}>{T('Chỉ bạn thấy. Giúp banbe đưa gợi ý phù hợp hơn.', 'Only you see this. It tunes the tips below to what you want.')}</p>
             </div>
-            <div>
-              <BigField icon="text" label={T('Mô tả', 'Description')} required value={s.createDesc} onChange={createDescType} placeholder={T('Mười bốn chỗ. Một ga-ra cải tạo…', 'Fourteen seats. A converted garage…')} />
-              {attemptedReview && fieldErrors.desc && <p style={errText}>{T('Hãy nhập mô tả.', 'Please enter a description.')}</p>}
-            </div>
-            <div style={fieldCol}>
-              <FormLabel icon="doc" text={T('Giới thiệu sự kiện', 'Event introduction')} tag={`${s.createIntro.length}/4000`} />
+            <Guided field="description" attn={attn}>
+              <BigField icon="text" label={T('Mô tả', 'Description')} required value={s.createDesc} onChange={createDescType} placeholder={T('Mười bốn chỗ. Một ga-ra cải tạo…', 'Fourteen seats. A converted garage…')}
+                invalid={attemptedReview && fieldErrors.desc} describedBy="create-desc-error" />
+              {attemptedReview && fieldErrors.desc && <p id="create-desc-error" style={errText}>{T('Hãy nhập mô tả.', 'Please enter a description.')}</p>}
+            </Guided>
+            <Guided field="intro" attn={attn} style={fieldCol}>
+              <FormLabel icon="doc" text={T('Giới thiệu sự kiện', 'Event introduction')} tag={`${s.createIntro.length}/4000`}
+                tagTone={s.createIntro.length >= 4000 ? 'error' : s.createIntro.length >= 3800 ? 'warning' : null} />
               <p style={hintText}>{T('Một đoạn giới thiệu dài hơn, hấp dẫn. Tách dòng trống giữa các đoạn. Không phải quảng cáo giả, không phải "Bao gồm".', 'A longer, attractive write-up. Leave a blank line between paragraphs. Not fabricated marketing copy, not the same as "Included".')}</p>
               <textarea value={s.createIntro} onChange={createIntroType} maxLength={4000} rows={6}
                 placeholder={T('Một buổi tối ấm cúng cho mười bốn người lạ…\n\nMón chính là…', 'A cozy evening for fourteen strangers…\n\nThe main course is…')}
-                style={{ ...bigInput, resize: 'vertical', lineHeight: 1.5 }} />
-            </div>
-            <div style={fieldCol}>
+                data-testid="create-intro" style={{ ...bigInput, resize: 'vertical', lineHeight: 1.5 }} />
+            </Guided>
+            <Guided field="greeting" attn={attn} style={fieldCol}>
               <FormLabel icon="bubble" text={T('Lời nhắn mở đầu', 'Opening message')} tag={T('Tuỳ chọn', 'Optional')} />
               <p style={hintText}>{T('Hiện như tin nhắn đầu tiên từ bạn khi khách bấm "Nhắn cho người tổ chức", theo ngôn ngữ của khách. Để trống cả hai sẽ dùng lời chào mặc định.', 'Shown as the first message from you when a guest taps "Message host", in the guest\'s language. Leave both blank for a default greeting.')}</p>
               <div style={subLabel}><span>{T('Tiếng Việt', 'Vietnamese')}</span><span style={{ opacity: 0.6 }}>{s.createChatGreeting.length}/500</span></div>
@@ -473,8 +526,8 @@ export default function CreateEvent() {
               <div style={subLabel}><span>{T('Tiếng Anh', 'English')}</span><span style={{ opacity: 0.6 }}>{s.createChatGreetingEn.length}/500</span></div>
               <textarea value={s.createChatGreetingEn} onChange={createChatGreetingEnType} maxLength={500} rows={3} data-testid="create-chat-greeting-en"
                 placeholder="Hi! Happy to answer any questions, I'll reply as soon as I can." style={{ ...bigInput, resize: 'vertical', lineHeight: 1.5 }} />
-            </div>
-            <div style={fieldCol}>
+            </Guided>
+            <Guided field="categories" attn={attn} style={fieldCol}>
               <FormLabel icon="grid" text={T('Danh mục', 'Categories')} required tag={T('Tối đa 2', 'Up to 2')} />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {CAT_DEFS.map(c => {
@@ -494,8 +547,8 @@ export default function CreateEvent() {
                   {T(`${demand}+ người trên banbe thích ${(CAT_DEFS.find(c => c.key === primaryCat) || {}).vi || primaryCat}.`, `${demand}+ people on banbe are into ${(CAT_DEFS.find(c => c.key === primaryCat) || {}).en || primaryCat}.`)}
                 </p>
               )}
-            </div>
-            <div style={fieldCol}>
+            </Guided>
+            <Guided field="keywords" attn={attn} style={fieldCol}>
               <BigField icon="search" label={T('Từ khoá tìm kiếm', 'Search keywords')} value={s.createKeywords} onChange={createKeywordsType}
                 placeholder={T('vd. tiệc tối, rượu vang, ẩm thực Việt', 'e.g. supper club, wine, Vietnamese food')} />
               <p style={hintText}>{T('Cách nhau bằng dấu phẩy. Để trống sẽ tự dùng danh mục đã chọn ở trên.', 'Comma-separated. Left blank, the category picked above is used instead.')}</p>
@@ -509,19 +562,19 @@ export default function CreateEvent() {
                   ))}
                 </div>
               )}
-            </div>
-            <div style={fieldCol}>
+            </Guided>
+            <Guided field="included" attn={attn} style={fieldCol}>
               <FormLabel icon="checklist" text={T('Bao gồm', 'Included')} required tag={`${s.createIncludedItems.length}/3`} />
               {s.createIncludedItems.map((it, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 8px 14px 16px', borderRadius: 14, background: paper, border: `1px solid ${rule}` }}>
+                <div key={i} className="bb-focus-ring" style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 8px 14px 16px', borderRadius: 14, background: paper, border: `1px solid ${rule}` }}>
                   <span aria-hidden style={{ fontSize: 18, lineHeight: '24px' }}>✅</span>
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <input value={it.label} maxLength={60} onChange={(e) => setCreateIncludedItem(i, 'label', e.target.value)}
-                      placeholder={T('Tên mục (vd. 5 món)', 'Label (e.g. 5 courses)')} data-testid={`create-included-${i}-label`}
+                      placeholder={T('Tên mục (vd. 5 món)', 'Label (e.g. 5 courses)')} data-testid={`create-included-${i}-label`} data-bare
                       style={{ border: 'none', background: 'none', outline: 'none', fontFamily: FACE, fontSize: 16, fontWeight: 600, color: ink, padding: 0 }} />
                     <div style={{ height: 1, background: rule }} />
                     <input value={it.detail} maxLength={300} onChange={(e) => setCreateIncludedItem(i, 'detail', e.target.value)}
-                      placeholder={T('Mô tả (không bắt buộc)', 'Detail (optional)')} data-testid={`create-included-${i}-detail`}
+                      placeholder={T('Mô tả (không bắt buộc)', 'Detail (optional)')} data-testid={`create-included-${i}-detail`} data-bare
                       style={{ border: 'none', background: 'none', outline: 'none', fontFamily: FACE, fontSize: 15, color: ink, opacity: 0.85, padding: 0 }} />
                   </div>
                   <button type="button" onClick={() => removeCreateIncludedItem(i)} aria-label={T('Xoá mục', 'Remove item')}
@@ -535,13 +588,13 @@ export default function CreateEvent() {
                 </button>
               )}
               {attemptedReview && fieldErrors.included && <p style={errText}>{T('Hãy thêm ít nhất một mục Bao gồm.', 'Please add at least one Included item.')}</p>}
-            </div>
+            </Guided>
           </StepCard>
         )}
 
         {step === 2 && (
           <StepCard title={T('Thời gian & địa điểm', 'When & where')} id="create-section-when">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
+        <Guided field="location" attn={attn} style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
           <FormLabel icon="pin" text={T('Địa điểm', 'Location')} required />
           <p style={hintText}>
             {T(
@@ -559,7 +612,7 @@ export default function CreateEvent() {
           <input
             value={s.createLoc} onChange={createLocType}
             placeholder={T('12 Nguyễn Văn Đậu, hoặc tên địa điểm…', '12 Nguyễn Văn Đậu, or a venue name…')}
-            style={bigInput} data-testid="create-location-input"
+            style={bigInput} data-testid="create-location-input" aria-invalid={attemptedReview && !s.createLocConfirmed ? true : undefined}
             autoComplete="off"
           />
           {s.createAddressSearching && (
@@ -613,9 +666,9 @@ export default function CreateEvent() {
               </div>
             </div>
           )}
-        </div>
+        </Guided>
 
-            <div style={fieldCol}>
+            <Guided field="date" attn={attn} style={fieldCol}>
               <FormLabel icon="calendar" text={T('Ngày & giờ', 'Date & time')} required tag={T('Giờ Việt Nam', 'Vietnam time')} />
               <div style={{ display: 'flex', gap: 10 }}>
                 <input type="date" value={s.createEventDate} onChange={createEventDateType} min={new Date().toISOString().slice(0, 10)}
@@ -648,13 +701,13 @@ export default function CreateEvent() {
                 <Insight testId="create-lead-insight" check={recipeById.lead} T={T}
                   line={T(`Còn ${Math.max(recipeById.lead.days, 0)} ngày — sự kiện kín chỗ thường đăng trước ~${recipeById.lead.target} ngày.`, `${Math.max(recipeById.lead.days, 0)} days to go — events that fill are usually posted ~${recipeById.lead.target} days ahead.`)} />
               )}
-            </div>
+            </Guided>
           </StepCard>
         )}
 
         {step === 3 && (
           <StepCard title={T('Vé & ai được đặt', 'Tickets & who can book')} id="create-section-tickets">
-            <div style={fieldCol}>
+            <Guided field="price" attn={attn} style={fieldCol}>
               <FormLabel icon="tag" text={T('Giá vé', 'Price')} tag={similar ? T('Gợi ý', 'Suggested') : null} />
               {bench?.price && <PriceMarket price={bench.price} mine={draftPriceVnd} T={T} catLabel={createCatLabel} />}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
@@ -675,8 +728,8 @@ export default function CreateEvent() {
                     ? T(`Sự kiện tương tự: ${formatVnd(similar[0])}–${formatVnd(similar[1])}`, `Similar events: ${formatVnd(similar[0])}–${formatVnd(similar[1])}`)
                     : T('Để trống là miễn phí.', 'Leave empty for a free event.')}
               </span>
-            </div>
-            <div style={fieldCol}>
+            </Guided>
+            <Guided field="seats" attn={attn} style={fieldCol}>
               <FormLabel icon="people" text={T('Số chỗ', 'Seats')} required />
               <div style={{ padding: '10px 14px', borderRadius: 14, background: paper, border: `1px solid ${rule}` }}>
                 <CountStepper testId="create-seats-stepper" value={seatsNum} min={0} max={500} unit={T('chỗ', 'seats')}
@@ -700,7 +753,7 @@ export default function CreateEvent() {
                     : T('nếu bán hết chỗ', 'if every seat sells')}{draftPriceVnd > 0 ? T(', trước mọi khoản phí.', ', before any fees.') : '.'}</span>
                 </div>
               )}
-            </div>
+            </Guided>
             <div style={fieldCol}>
               <FormLabel icon="lock" text={T('Quyền riêng tư', 'Privacy')} />
               <div style={{ display: 'flex', gap: 8 }}>
@@ -726,7 +779,7 @@ export default function CreateEvent() {
         )}
 
         {step === 4 && (
-        <div id="create-section-photos" style={{ marginTop: 22, scrollMarginTop: 90 }}>
+        <Guided field="photos" attn={attn} id="create-section-photos" style={{ marginTop: 22, scrollMarginTop: 90 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <FormLabel icon="photo" text={T('Hình ảnh', 'Photos')} required />
             <span style={{ fontSize: 10.5, color: ink }}>{photos.length}/{MAX_PHOTOS} ({T(`tối thiểu ${MIN_PHOTOS}`, `min ${MIN_PHOTOS}`)})</span>
@@ -806,7 +859,7 @@ export default function CreateEvent() {
               {T(`Cần tối thiểu ${MIN_PHOTOS} và tối đa ${MAX_PHOTOS} ảnh khả dụng.`, `Minimum ${MIN_PHOTOS}, maximum ${MAX_PHOTOS} available photos.`)}
             </p>
           )}
-        </div>
+        </Guided>
 
         )}
 
@@ -819,12 +872,14 @@ export default function CreateEvent() {
             )}
             <div style={{ display: 'flex', gap: 10 }}>
               {step > 0 && (
-                <button type="button" onClick={() => goTo(step - 1)} data-testid="create-step-back" aria-label={T('Quay lại: ', 'Back: ') + sections[step - 1].title}
+                <button type="button" onClick={() => goTo(step - 1)} data-testid="create-step-back" aria-label={T('Quay lại: ', 'Back: ') + sections[step - 1].title} className="bb-press"
                   style={{ width: 54, height: 52, flex: 'none', borderRadius: 999, border: `1px solid ${rule}`, background: 'transparent', color: ink, fontSize: 18, cursor: 'pointer' }}>‹</button>
               )}
-              <button type="button" onClick={() => goTo(step + 1)} data-testid="create-step-next"
+              <button type="button" onClick={() => goTo(step + 1)} data-testid="create-step-next" className="bb-press"
                 style={{ flex: 1, minHeight: 52, borderRadius: 999, border: 'none', background: ink, color: paper, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
-                {T('Tiếp: ', 'Next: ') + sections[step + 1].title}
+                {step === 0 && sections[0].done
+                  ? T('Ổn rồi · Tiếp: ', 'Looks good · Next: ') + sections[1].title
+                  : T('Tiếp: ', 'Next: ') + sections[step + 1].title}
               </button>
             </div>
           </div>
@@ -840,7 +895,12 @@ export default function CreateEvent() {
             )}
             <div
               onClick={s.createSent ? undefined : () => {
-                if (!canReview) { setAttemptedReview(true); if (firstIncomplete !== -1) goTo(firstIncomplete); return; }
+                if (!canReview) {
+                  setAttemptedReview(true);
+                  const field = firstMissingField(missingFields);
+                  if (field) guideTo(field, T('Còn thiếu: ', 'Still needed: ') + MISSING_LABEL[field]);
+                  return;
+                }
                 setReviewOpen(true);
               }}
               data-testid="create-open-review"
@@ -1174,10 +1234,14 @@ function SubmitSuccessChooser({ T, onCreateAnother, onGoHome, onViewPending, onG
       onClick={(e) => { if (e.target === dialogRef.current) onViewPending(); }}
       style={{ border: 'none', borderRadius: 18, padding: 0, maxWidth: 320, width: '88%', background: paper, color: ink }}
     >
-      <div style={{ padding: 22 }}>
-        <p style={{ ...display(18, { margin: '0 0 4px' }) }}>{T('Đã gửi sự kiện!', 'Event submitted!')}</p>
-        <p style={{ fontSize: 12.5, color: ink, opacity: 0.75, margin: '0 0 18px' }}>
-          {T('Đang chờ Banbe duyệt. Bạn muốn làm gì tiếp theo?', 'Waiting for Banbe to review. What would you like to do next?')}
+      {/* The end of creating an event is its peak (note 53, peak-end rule): a moment of celebration, then what
+          happens next, honestly. The event is still pending review, so there's no link to share yet. */}
+      <div style={{ padding: 22, position: 'relative' }}>
+        <ConfettiBurst top={30} />
+        <div aria-hidden style={{ fontSize: 40, lineHeight: 1, textAlign: 'center' }}>🎉</div>
+        <p style={{ ...display(20, { margin: '10px 0 4px', textAlign: 'center' }) }}>{T('Đã gửi sự kiện!', 'Event submitted!')}</p>
+        <p data-testid="submit-next-steps" style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, opacity: 0.8, margin: '0 0 18px', textAlign: 'center' }}>
+          {T('✓ Đã gửi  →  banbe duyệt  →  lên sóng, bạn sẽ nhận thông báo. Bạn muốn làm gì tiếp theo?', "✓ Sent  →  banbe reviews it  →  it goes live and we'll notify you. What would you like to do next?")}
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button onClick={onCreateAnother} data-testid="submit-chooser-create-another" style={rowBtnStyle}>{T('Tạo sự kiện khác', 'Create another event')}</button>
@@ -1208,7 +1272,8 @@ const fieldCol = { display: 'flex', flexDirection: 'column', gap: 8 };
 const hintText = { fontSize: 12.5, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.7 };
 const errText = { fontSize: 11.5, color: alert, margin: '6px 0 0' };
 const subLabel = { display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 500, color: ink, marginTop: 4 };
-const CAT_EMOJI = { supper: '🍽', fashion: '👕', gallery: '🖼', music: '🎵', popup: '🏪' };
+// One emoji per category everywhere (note 53): shared with the onboarding answers.
+const CAT_EMOJI = CATEGORY_EMOJI;
 
 const ICON_PATHS = {
   person: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0',
@@ -1238,24 +1303,48 @@ function Icon({ name }) {
   );
 }
 
-function FormLabel({ icon, text, required, tag }) {
+function FormLabel({ icon, text, required, tag, tagTone }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: ink, opacity: 0.85 }}>
       <Icon name={icon} />
       <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{text}</span>
       {required && <span style={{ color: alert, fontSize: 12, fontWeight: 600 }}>*</span>}
       <span style={{ flex: 1 }} />
-      {tag && <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, background: 'rgba(var(--bb-fg-rgb),0.08)' }}>{tag}</span>}
+      {tag && (
+        <span data-tone={tagTone || undefined} style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, fontVariantNumeric: 'tabular-nums',
+          background: tagTone === 'error' ? 'rgba(var(--bb-alert-rgb),0.14)' : tagTone === 'warning' ? 'var(--bb-honey-bg)' : 'rgba(var(--bb-fg-rgb),0.08)',
+          color: tagTone === 'error' ? 'var(--bb-alert)' : tagTone === 'warning' ? 'var(--bb-honey)' : undefined }}>{tag}</span>
+      )}
     </div>
   );
 }
 
-function BigField({ icon, label, required, value, onChange, placeholder, testId }) {
+function BigField({ icon, label, required, value, onChange, placeholder, testId, invalid, describedBy }) {
   return (
     <label style={fieldCol}>
       <FormLabel icon={icon} text={label} required={required} />
-      <input value={value} onChange={onChange} placeholder={placeholder} data-testid={testId} style={bigInput} />
+      <input value={value} onChange={onChange} placeholder={placeholder} data-testid={testId} style={bigInput}
+        aria-invalid={invalid ? true : undefined} aria-describedby={invalid && describedBy ? describedBy : undefined} />
     </label>
+  );
+}
+
+// Note 53: an anchor for "take me to this field" (recipe Fix, Review with gaps). While it's the target it carries
+// the For You halo (.bb-attn in index.css) and a small "👇" tip floating ABOVE it, out of the layout, so nothing
+// moves while the host types.
+function Guided({ field, attn, id, style, children }) {
+  const on = attn?.field === field;
+  return (
+    <div data-field={field} id={id} className={on ? 'bb-attn' : undefined} style={{ ...style, ...(on ? { position: 'relative' } : null) }}>
+      {on && attn.hint && (
+        <div className="bb-coach" data-testid="create-coach" role="status"
+          style={{ position: 'absolute', left: 0, bottom: 'calc(100% + 12px)', zIndex: 3, maxWidth: '100%', padding: '7px 12px', borderRadius: 12,
+            background: ink, color: paper, fontSize: 12.5, fontWeight: 600, lineHeight: 1.35, boxShadow: '0 6px 18px rgba(27,25,22,0.18)', pointerEvents: 'none' }}>
+          👇 {attn.hint}
+        </div>
+      )}
+      {children}
+    </div>
   );
 }
 

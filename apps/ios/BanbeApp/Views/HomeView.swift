@@ -404,15 +404,20 @@ struct HomeView: View {
 
     private func headerTopRow(wordmark: CGFloat?, titleSize: CGFloat, control: CGFloat, compact: Bool = false, spacing: CGFloat = 6) -> some View {
         HStack(alignment: .center, spacing: spacing) {
-            HStack(spacing: wordmark.map { $0 > 90 ? 10 : (spacing < 5 ? 4 : 6) } ?? 0) {
-                if let wordmark { BanbeLogo(kind: .wordmark, width: wordmark) }
-                // Home-specific label, same font/color as the other sections' titles.
-                Text(app.T("Nhà", "Home"))
-                    .font(BanbeTheme.display(titleSize))
-                    .foregroundStyle(app.palette.ink)
-                    .lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("home.title")
+            if let wordmark, wordmark >= BanbeLogo.headerWordmarkWidth {
+                // Note 53: the shared dock header (same logo, gap and title as Schedule/Messages/Account).
+                DockHeaderTitle(title: app.T("Nhà", "Home"), identifier: "home.title", titleSize: titleSize)
+            } else {
+                // Last-resort variants for very narrow phones only.
+                HStack(spacing: wordmark.map { $0 > 90 ? 10 : (spacing < 5 ? 4 : 6) } ?? 0) {
+                    if let wordmark { BanbeLogo(kind: .wordmark, width: wordmark) }
+                    Text(app.T("Nhà", "Home"))
+                        .font(BanbeTheme.display(titleSize))
+                        .foregroundStyle(app.palette.ink)
+                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("home.title")
+                }
             }
             Spacer(minLength: 0)
             if rewardShortcutsVisible { rewardShortcuts(compact: compact, height: control) }
@@ -467,7 +472,8 @@ struct HomeView: View {
     /// beside it (plain text, same style), then the full-width search bar that opens the Search screen.
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            headerTopRow
+            // Note 53: a fixed row height, so the logo + title sit at the same height whichever variant fits.
+            headerTopRow.frame(height: DockHeaderTitle.rowHeight)
             // Area menu parity pass — a native `Menu`, the same mechanism the chat composer's "+" uses, so
             // presentation, glass, anchoring and dismissal are the system's. The label holds everything.
             // The quick language + light/dark switches sit right beside it in the SAME plain style (icon + text,

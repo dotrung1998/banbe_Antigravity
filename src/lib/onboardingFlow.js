@@ -9,7 +9,7 @@
 import {
   GOALS, INTERESTS, AVAILABILITY, LANGUAGES, NO_PREFERENCE, normalizeForSave, prefsIsEmpty, toggleMulti,
   pickBudgetTier, budgetRegionCurrency, budgetRegionForCurrency, budgetCap, formatBudgetMoney, prefLabel,
-  declaredInterests, declaredGoals, declaredAvailability,
+  declaredInterests, declaredGoals, declaredAvailability, optionEmoji,
 } from './eventPrefs.js';
 import { forYouRankEvents } from './forYou.js';
 
@@ -170,6 +170,27 @@ export const draftStore = {
     return out;
   },
 };
+
+// MARK: live feedback under a question (note 53)
+
+/**
+ * One short line that answers each tap ("🎵 🍽️ · only these kinds get the ★"), so picking feels like it does
+ * something before the reveal. Says no more than impactLines() will at the end. null when nothing is picked.
+ */
+export function selectionFeedback(question, picked, vi) {
+  const ids = question === 'budget' ? (picked?.tier ? [picked.tier] : []) : (picked || []);
+  if (!ids.length) return null;
+  if (ids.includes(NO_PREFERENCE)) return vi ? '🤷 · Câu này không lọc gì cả' : '🤷 · Nothing filtered here';
+  const faces = ids.map(optionEmoji).join(' ');
+  switch (question) {
+    case 'interests': return `${faces} · ${vi ? 'chỉ những loại này được gắn ★' : 'only these kinds get the ★'}`;
+    case 'goals': return `${faces} · ${vi ? 'sự kiện hợp sẽ được xếp lên trước' : "we'll rank events like this higher"}`;
+    case 'availability': return `${faces} · ${vi ? 'giờ khác vẫn hiện, chỉ xếp sau' : 'other times still show, just lower'}`;
+    case 'budget': return `${faces} · ${ids[0] === 'flexible' ? (vi ? 'không giới hạn giá' : 'no price limit') : ids[0] === 'free' ? (vi ? 'chỉ sự kiện miễn phí' : 'free events only') : (vi ? 'ẩn sự kiện vượt mức này' : 'hides events above this')}`;
+    case 'languages': return `${faces} · ${vi ? 'đã lưu, chưa dùng để lọc' : "saved, doesn't filter yet"}`;
+    default: return faces;
+  }
+}
 
 // MARK: what the answers change (reveal copy, derived from forYou.js's own rules)
 

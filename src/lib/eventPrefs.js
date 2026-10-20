@@ -33,6 +33,25 @@ export const LANGUAGES = [
 ];
 export const BUDGET_TIERS = ['free', 'low', 'medium', 'flexible'];
 
+/**
+ * One emoji per answer (note 53), keyed by the server's fixed option ids (migration 162 — never rename an id).
+ * Client-side only: it gives each answer a face so the questions read at a glance instead of as a text list.
+ * The category ids share CATEGORY_EMOJI with Create event, so a kind of event looks the same everywhere.
+ * Mirrored by apps/ios/BanbeApp/Models/EventPreferences.swift `PrefEmoji`.
+ */
+export const CATEGORY_EMOJI = { supper: '🍽️', fashion: '👗', gallery: '🖼️', music: '🎵', popup: '🛍️' };
+export const OPTION_EMOJI = {
+  ...CATEGORY_EMOJI,
+  meet_people: '👋', learn: '💡', experiences: '✨', networking: '🤝',
+  weekdays: '📅', weekends: '🎉', daytime: '☀️', evening: '🌙',
+  vi: '🇻🇳', en: '🇬🇧', other: '🌐',
+  free: '🆓', low: '🪙', medium: '💵', flexible: '💎',
+  [NO_PREFERENCE]: '🤷',
+};
+export function optionEmoji(id) {
+  return OPTION_EMOJI[id] || '•';
+}
+
 /** Localized label for an id within an option list (falls back to the id). */
 export function prefLabel(id, options, vi) {
   const o = options.find(x => x.id === id);

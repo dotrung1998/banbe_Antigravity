@@ -214,9 +214,6 @@ struct InboxView: View {
             // BEFORE the title, inline in the same row — not as its own
             // row above it) — matches Home's own header wordmark
             // (HomeView.swift). Hidden while the search field is showing.
-            if !searchOpen {
-                BanbeLogo(kind: .wordmark, width: BanbeLogo.headerWordmarkWidth)
-            }
             if searchOpen {
                 TextField(app.T("Tìm cuộc trò chuyện…", "Search conversations…"), text: $query)
                     .font(.system(size: 13.5))
@@ -226,8 +223,9 @@ struct InboxView: View {
                     .focused($searchFieldFocused)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             } else {
-                Text(effectiveInboxView == .archived ? app.T("Đã lưu trữ", "Archived") : app.T("Tin nhắn", "Messages"))
-                    .font(BanbeTheme.display(27))
+                // Note 53: the shared dock header (same logo, gap and title as Home/Schedule/Account).
+                DockHeaderTitle(title: effectiveInboxView == .archived ? app.T("Đã lưu trữ", "Archived") : app.T("Tin nhắn", "Messages"),
+                                identifier: "inbox.title")
             }
             Spacer()
             HStack(spacing: 14) {
@@ -277,7 +275,8 @@ struct InboxView: View {
             }
         }
         .foregroundStyle(app.palette.ink)
-        .padding(.horizontal, 24)
+        .frame(height: DockHeaderTitle.rowHeight)  // note 53: same row height on every dock tab
+        .padding(.horizontal, DockHeaderTitle.horizontalPadding)  // note 53: was 24; every dock header uses 20
         .padding(.top, 16)
         .padding(.bottom, 10)
     }

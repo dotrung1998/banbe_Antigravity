@@ -390,20 +390,21 @@ function PolicyView({ state, backFromPolicy, acceptPolicyGate, declinePolicyGate
           style={{ position: 'fixed', left: 0, right: 0, bottom: 0, padding: '16px 22px 22px', background: paper, borderTop: `1px solid ${rule}`, display: 'flex', gap: 10 }}
           data-testid="policy-gate-bar"
         >
-          <div
-            onClick={declinePolicyGate}
-            style={{ flex: 1, fontSize: 14, fontWeight: 600, textAlign: 'center', padding: 15, border: `1px solid ${ink}`, color: ink, cursor: 'pointer' }}
+          {/* Note 53: the shared button levels, rounded: Decline is the quieter secondary, Agree the solid primary. */}
+          <button type="button"
+            onClick={declinePolicyGate} className="bb-press"
+            style={{ flex: 1, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, textAlign: 'center', padding: '15px 10px', minHeight: 52, borderRadius: 999, border: `1px solid ${rule}`, background: 'var(--bb-field)', color: ink, cursor: 'pointer' }}
             data-testid="policy-gate-decline"
           >
             Từ chối / Decline
-          </div>
-          <div
-            onClick={acceptPolicyGate}
-            style={{ flex: 2, fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 15, background: ink, color: paper, cursor: 'pointer' }}
+          </button>
+          <button type="button"
+            onClick={acceptPolicyGate} className="bb-press"
+            style={{ flex: 2, fontFamily: 'inherit', fontSize: 15, fontWeight: 700, textAlign: 'center', padding: '15px 10px', minHeight: 52, borderRadius: 999, border: 'none', background: ink, color: paper, cursor: 'pointer' }}
             data-testid="policy-gate-accept"
           >
             Tôi đồng ý ▪︎ Tiếp tục / I agree ▪︎ Continue
-          </div>
+          </button>
         </div>
       )}
     </div>

@@ -10,7 +10,12 @@ final class AuthViewModel: ObservableObject {
     @Published var profile: Profile?
     @Published var isSendingCode = false
     @Published var codeSent = false
-    @Published var errorMessage: String?
+    @Published var errorMessage: String? {
+        didSet { if errorMessage == nil { errorCode = nil } }
+    }
+    /// Note 53: the server's error code behind `errorMessage` (e.g. AUTH_ACCOUNT_EXISTS), so Login can turn the
+    /// two answers that are about the ADDRESS into a warning on the email field, in the app's language.
+    @Published var errorCode: String?
     /// Server-owned account gate (migration 123): required enrollment (verified
     /// phone + date of birth for NEW registrations) and the per-session
     /// "Confirm date of birth" step. RootView blocks the app while this isn't
@@ -128,6 +133,7 @@ final class AuthViewModel: ObservableObject {
             codeSent = true
         } catch {
             errorMessage = error.localizedDescription
+            errorCode = (error as? AuthAPIError)?.code
         }
     }
 
@@ -183,6 +189,7 @@ final class AuthViewModel: ObservableObject {
             codeSent = true
         } catch {
             errorMessage = error.localizedDescription
+            errorCode = (error as? AuthAPIError)?.code
         }
     }
 
