@@ -133,3 +133,16 @@ Also in this pass:
      - Schedule's top padding is 16.
    - Result: every tab is at x 142, y 104.0, height 32.3, in EN and VI. Guarded by `DockHeaderUITests`.
    - Home's narrow-phone fallback variants (smaller wordmark) still apply only when the full row can't fit.
+4. **Same dock-header fix on web (2026-10-20).**
+   - Before, in code:
+
+     | Tab | Top | Side | Gap | Other |
+     |---|---|---|---|---|
+     | Home | 62 | 20 | 8 with rewards shortcuts, else 10 | |
+     | Schedule | 58 | 20 | 14 | `h1` |
+     | Messages | 62 | 24 | 10 | "Tin Nhắn" |
+     | Account | 66 | 20 | 10 | |
+
+   - Now all four use `src/components/ui/DockHeaderTitle.jsx` (`DOCK_HEADER`: top 62, side 20, row 52, wordmark 96, gap 10, title 27). `homeHeaderLayout.js` `wordmarkGap` is now 10.
+   - Measured in Chromium (390×844, EN + VI, via the dev-only `window.__banbeDevSet` hook in BanBeContext; it is stripped from production builds): every tab has its logo at x 20 / y 66.3 / 96×43.3 and its title at x 126 / midY 88.0.
+   - Unit tests 321/321, `vite build` OK.

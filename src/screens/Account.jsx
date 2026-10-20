@@ -1,5 +1,6 @@
 import { glassCapsuleInactive } from '../lib/glassOpacity.js';
 import { useEffect, useRef, useState } from 'react';
+import DockHeaderTitle, { DOCK_HEADER } from '../components/ui/DockHeaderTitle.jsx';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { supabase } from '../lib/supabase.js';
@@ -392,7 +393,8 @@ export default function Account() {
           `setAccountTab` routing as before. */}
       {/* paddingBottom: breathing room under the Personal / Host / Admin tabs, so scrolled content never touches them (iOS). */}
       <div style={{ position: 'sticky', top: 0, zIndex: 5, background: paper, paddingBottom: 12 }} data-testid="account-fixed-header">
-        <div style={{ padding: '66px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        {/* Note 53: same padding and row height as every dock header (top was 66). */}
+        <div style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 0`, height: DOCK_HEADER.rowHeight, boxSizing: 'content-box', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {searchOpen ? (
             <input
               ref={searchInputRef}
@@ -404,10 +406,7 @@ export default function Account() {
               style={{ ...fieldGlass({ flex: 1, minWidth: 0, padding: '10px 14px', borderRadius: 999, fontSize: 13.5, color: ink, border: 'none', outline: 'none' }) }}
             />
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-              <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 96, height: 'auto', display: 'block' }} />
-              <span style={{ ...display(27), lineHeight: 1.1 }}>{T('Tài khoản', 'Account')}</span>
-            </div>
+            <DockHeaderTitle title={T('Tài khoản', 'Account')} testId="account-title" />
           )}
           <span style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 'none', marginLeft: searchOpen ? 12 : 0 }}>
             <span onClick={toggleSearch} data-testid="account-search-toggle" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', color: ink }}>

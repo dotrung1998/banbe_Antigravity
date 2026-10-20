@@ -1816,6 +1816,9 @@ export function BanBeProvider({ children }) {
   const set = useCallback((partial) => {
     setStateRaw(prev => ({ ...prev, ...(typeof partial === 'function' ? partial(prev) : partial) }));
   }, []);
+  // Dev server only (stripped from production builds): lets a local browser script put the app on a given screen
+  // to measure layout, e.g. the dock headers (note 53). Never reachable in a deployed build.
+  useEffect(() => { if (import.meta.env.DEV) window.__banbeDevSet = set; }, [set]);
 
   useEffect(() => {
     localStorage.setItem('banbe.preferences', JSON.stringify({ lang: state.lang, theme: state.theme, located: state.located }));

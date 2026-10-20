@@ -11,6 +11,7 @@ import ForYouChip from './ForYouChip.jsx';
 import { reminderPhase, reminderRank } from '../lib/eventReminder.js';
 import { compactCoins, shortcutLabels } from '../lib/rewards.js';
 import { HEADER, hitSlop } from '../lib/homeHeaderLayout.js';
+import DockHeaderTitle, { DOCK_HEADER } from '../components/ui/DockHeaderTitle.jsx';
 
 // Header fit order (iOS note 45): wordmark steps down before the title goes; 96 matches every other screen.
 const HEADER_FIT_STEPS = [
@@ -614,12 +615,10 @@ export default function Home() {
           theme). Search lives here again (same openEventSearch action and
           data-testid as the old floating button). */}
       {/* Pinned like iOS (HomeView's `header` sits above its ScrollView): stays put while the feed scrolls under it. */}
-      <div data-testid="home-fixed-header" style={{ padding: '62px 20px 8px', display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
-        <div ref={headerRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: shortcutsOn ? HEADER.wordmarkGap : 10, minWidth: 0 }}>
-            {layout.wordmark > 0 && <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: layout.wordmark, height: 'auto', display: 'block', flex: 'none' }} />}
-            {showTitle && <span className="bb-home-title" style={{ ...display(27), lineHeight: 1.1, whiteSpace: 'nowrap' }}>{T('Nhà', 'Home')}</span>}
-          </div>
+      <div data-testid="home-fixed-header" style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 8px`, display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
+        <div ref={headerRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: DOCK_HEADER.rowHeight }}>
+          {/* Note 53: the shared dock header — same logo, gap, title and row height as Schedule/Messages/Account. */}
+          <DockHeaderTitle title={T('Nhà', 'Home')} testId="home-title" wordmark={layout.wordmark} showTitle={showTitle} />
           <div style={{ display: 'flex', alignItems: 'center', gap: HEADER.groupGap, flex: 'none' }} data-testid="home-header-actions">
           {shortcutsOn && (() => {
             const sum = s.rewardsSummary;

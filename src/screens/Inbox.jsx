@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg } from '../data/events.js';
 import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass } from '../theme.js';
-import { HeaderIconButton, HeaderWordmark } from './Notifications.jsx';
+import { HeaderIconButton } from './Notifications.jsx';
+import DockHeaderTitle, { DOCK_HEADER } from '../components/ui/DockHeaderTitle.jsx';
 import { isActiveDisputeChat } from './ConversationDispute.jsx';
 
 // Same 6s poll interval the ordinary conversation list uses, for the same
@@ -309,7 +310,8 @@ export default function Inbox() {
   return (
     <div style={{ position: 'relative', animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Inbox">
       {/* Pinned like iOS: the title row stays put while the conversations scroll under it. */}
-      <div data-testid="inbox-fixed-header" style={{ padding: '62px 24px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
+      {/* Note 53: same padding and row height as every dock header (was a 24px gutter). */}
+      <div data-testid="inbox-fixed-header" style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 12px`, height: DOCK_HEADER.rowHeight, boxSizing: 'content-box', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
         {searchOpen ? (
           <input
             autoFocus
@@ -325,9 +327,8 @@ export default function Inbox() {
           />
         ) : (
           // iOS parity: wordmark BEFORE the title, inline in the same row.
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
-            <HeaderWordmark />
-            <span style={{ ...display(27), lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.inboxView === 'archived' ? T('Đã Lưu Trữ', 'Archived') : T('Tin Nhắn', 'Messages')}</span>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <DockHeaderTitle title={s.inboxView === 'archived' ? T('Đã lưu trữ', 'Archived') : T('Tin nhắn', 'Messages')} testId="inbox-title" />
           </div>
         )}
         {/* Task 1 — "Done" replaced with search + settings icons. Task 5 —

@@ -4,6 +4,7 @@
 // All rules live in lib/schedulePresentation.js (unit-tested). Manual adds are kept in this browser only.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import DockHeaderTitle, { DOCK_HEADER } from '../components/ui/DockHeaderTitle.jsx';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, display } from '../theme.js';
 import * as SP from '../lib/schedulePresentation.js';
@@ -283,9 +284,9 @@ export default function Schedule() {
           Today sit on the row below, like ScheduleView's header. */}
       {/* Pinned like iOS ScheduleView: title, month/Today, Mine/Discover and the week strip stay put; the agenda scrolls. */}
       <div data-testid="schedule-fixed-header" style={{ position: 'sticky', top: 0, zIndex: 6, background: paper, paddingBottom: 8 }}>
-      <div style={{ padding: '58px 20px 0', display: 'flex', alignItems: 'center', gap: 14 }}>
-        <img src="/banbe-wordmark.png" alt="banbe" style={{ width: 96, height: 'auto', display: 'block', flex: 'none' }} />
-        <h1 data-testid="schedule-title" style={display(27, { margin: 0, flex: 1, minWidth: 0 })}>{T('Lịch', 'Schedule')}</h1>
+      {/* Note 53: the shared dock header — same logo, gap, title, row height and padding as Home/Messages/Account. */}
+      <div style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 0`, display: 'flex', alignItems: 'center', height: DOCK_HEADER.rowHeight, boxSizing: 'content-box' }}>
+        <DockHeaderTitle as="h1" title={T('Lịch', 'Schedule')} testId="schedule-title" />
       </div>
       <div style={{ padding: '10px 20px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
         <button type="button" onClick={() => setMonthOpen(true)} data-testid="schedule-month-open"

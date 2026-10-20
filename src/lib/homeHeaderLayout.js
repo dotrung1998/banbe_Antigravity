@@ -9,7 +9,7 @@
 export const HEADER = {
   sidePad: 20,         // page gutter, each side
   wordmark: 96,        // same as the other screens; steps down only on narrow phones
-  wordmarkGap: 8,
+  wordmarkGap: 10,     // DOCK_HEADER.gap (note 53): the same on every dock tab
   title: 72,           // "Home"/"Nhà" at 27px
   btnPad: 6,           // horizontal padding inside each capsule button
   icon: 14,
