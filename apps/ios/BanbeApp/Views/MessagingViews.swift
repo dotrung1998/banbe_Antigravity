@@ -219,6 +219,8 @@ struct InboxView: View {
                     .font(.system(size: 13.5))
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(app.palette.field, in: Capsule())
+                    // Note 53: same focus ring as every other field (clay border + soft halo) while typing.
+                    .fieldChrome(focused: searchFieldFocused, cornerRadius: 20, bordered: false)
                     .foregroundStyle(app.palette.ink)
                     .focused($searchFieldFocused)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
@@ -1480,6 +1482,8 @@ struct NotificationsView: View {
                     .font(.system(size: 13.5))
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(app.palette.field, in: Capsule())
+                    // Note 53: same focus ring as every other field (clay border + soft halo) while typing.
+                    .fieldChrome(focused: searchFieldFocused, cornerRadius: 20, bordered: false)
                     .foregroundStyle(app.palette.ink)
                     .focused($searchFieldFocused)
                     // TASK 1 (2026-09-22 twentieth follow-up) —

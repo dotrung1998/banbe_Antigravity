@@ -285,6 +285,8 @@ struct AccountView: View {
                     .font(.system(size: 13.5))
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(app.palette.field, in: Capsule())
+                    // Note 53: same focus ring as every other field (clay border + soft halo) while typing.
+                    .fieldChrome(focused: searchFocused, cornerRadius: 20, bordered: false)
                     .foregroundStyle(app.palette.ink)
                     .focused($searchFocused)
                     .submitLabel(.search)

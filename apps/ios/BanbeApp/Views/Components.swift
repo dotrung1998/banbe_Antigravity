@@ -620,6 +620,61 @@ struct BanbeField: View {
     }
 }
 
+/// Note 53 (owner report): a small anchored menu shown as a popover. Used where SwiftUI's `Menu` left a white
+/// platter behind its label for a moment after closing (iOS 26 lifts the label's bounding box into the menu and
+/// puts it back): the dock "+" and Event Detail's calendar button. A popover zooms out of its source without
+/// lifting it. Rows: icon + title, 50pt tall, hairline dividers; destructive rows in the alert colour.
+struct PopoverMenuItem: Identifiable {
+    let id: String
+    let title: String
+    let systemImage: String
+    var destructive = false
+    var disabled = false
+    let action: () -> Void
+}
+
+struct PopoverMenuList: View {
+    let items: [PopoverMenuItem]
+    let dismiss: () -> Void
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                if index > 0 { Divider().overlay(app.palette.rule) }
+                Button {
+                    dismiss()
+                    // Let the popover finish closing before the action presents anything (a sheet, a picker…).
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { item.action() }
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: item.systemImage)
+                            .font(.system(size: 17, weight: .medium))
+                            .frame(width: 24)
+                            .accessibilityHidden(true)
+                        Text(item.title)
+                            .font(.body)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(item.destructive ? BanbeTheme.alert : app.palette.ink)
+                    .padding(.horizontal, 18)
+                    .frame(minHeight: 50)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(item.disabled)
+                .opacity(item.disabled ? 0.55 : 1)
+                .accessibilityIdentifier(item.id)
+            }
+        }
+        .padding(.vertical, 4)
+        .frame(width: 280)
+        .presentationCompactAdaptation(.popover)
+    }
+}
+
 /// Note 53 (owner report): the banbe logo + section title at the top of every dock tab (Home, Schedule, Messages,
 /// Account; Map has its own search header). One component, one size, one gap, one row height and one side padding,
 /// so switching tabs never makes the logo or the title jump. Guarded by DockHeaderUITests (same title frame on

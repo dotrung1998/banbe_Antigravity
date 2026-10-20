@@ -32,6 +32,7 @@ struct EventPlanTitleRow: View {
     @State private var message: String?
     @State private var appleMarked = false
     @State private var messageTask: Task<Void, Never>?
+    @State private var planOpen = false
 
     private var info: ScheduleEventInfo { app.scheduleInfo(for: app.withLive(event)) }
     private var source: ScheduleSource? { app.scheduleSource(for: event.key) }
@@ -77,31 +78,24 @@ struct EventPlanTitleRow: View {
 
     private var added: Bool { source != nil || appleMarked }
 
-    private var statusLabel: String { added ? app.T("Đã thêm", "Added") : app.T("Thêm lịch", "Add to calendar") }
-
     private var planMenu: some View {
-        // Compact (2026-10-18): one 36pt glass pill — calendar icon(s) + status — so the title row is only as
-        // tall as the title itself (the old icon-over-caption column left a big gap above the location line).
-        Menu { menuItems } label: {
-            HStack(spacing: 6) {
-                Image(systemName: source != nil ? "calendar.badge.checkmark" : "calendar.badge.plus")
-                if appleMarked {
-                    Rectangle().fill(app.palette.clay.opacity(0.35)).frame(width: 1, height: 16)
-                    Image(systemName: "calendar")
-                }
-                Text(statusLabel)
-                    .font(.footnote.weight(.semibold))
-                    .lineLimit(1)
-            }
-            .font(.system(size: 15, weight: .semibold))
-            // Outlined clay pill (note 52 mockup): a secondary action beside the title, never a second CTA.
-            .foregroundStyle(app.palette.clay)
-            .padding(.horizontal, 12)
-            .frame(height: 34)
-            .overlay(Capsule().stroke(app.palette.clay, lineWidth: 1))
-            .fixedSize()
-            .frame(minHeight: 44)          // keeps a 44pt tap target without adding visual height
-            .contentShape(Rectangle())
+        // Note 53 (owner report): a compact 40pt clay circle instead of the long "Add to calendar" pill. The icon says
+        // it (calendar +); once added it fills clay with a check. It opens a popover (not a `Menu`): on iOS 26 a
+        // Menu lifted this button's bounding box as a white platter that lingered after the menu closed.
+        Button { planOpen = true } label: {
+            Image(systemName: added ? "calendar.badge.checkmark" : "calendar.badge.plus")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(added ? app.palette.paper : app.palette.clay)
+                .frame(width: 40, height: 40)
+                .background(added ? app.palette.clay : app.palette.paper, in: Circle())
+                .overlay(Circle().stroke(app.palette.clay, lineWidth: 1))
+                .frame(width: 44, height: 44)          // 44pt tap target around the 40pt circle
+                .contentShape(Circle())
+        }
+        .buttonStyle(PressableButtonStyle())
+        .popover(isPresented: $planOpen, arrowEdge: .top) {
+            PopoverMenuList(items: planItems) { planOpen = false }
+                .environmentObject(app)
         }
         .accessibilityIdentifier("event.plan.button")
         .accessibilityLabel(planSpokenLabel)
@@ -115,51 +109,42 @@ struct EventPlanTitleRow: View {
         return parts.isEmpty ? app.T("Thêm lịch", "Add to calendar") : parts.joined(separator: ", ")
     }
 
-    @ViewBuilder
-    private var menuItems: some View {
+    /// What makes sense in this state (same actions and identifiers as the old menu).
+    private var planItems: [PopoverMenuItem] {
+        var items: [PopoverMenuItem] = []
         if let source {
-            Button {} label: {
-                Label(app.T("Đã có trong lịch của tôi · \(source.label(app.T))", "In My schedule · \(source.label(app.T))"),
-                      systemImage: "checkmark.circle.fill")
-            }
-            .disabled(true)
-            .accessibilityIdentifier("event.schedule.inMine")
+            items.append(PopoverMenuItem(id: "event.schedule.inMine",
+                                         title: app.T("Đã có trong lịch của tôi · \(source.label(app.T))", "In My schedule · \(source.label(app.T))"),
+                                         systemImage: "checkmark.circle.fill", disabled: true) {})
             if source == .added {
-                Button(role: .destructive) {
+                items.append(PopoverMenuItem(id: "event.schedule.remove", title: app.T("Bỏ khỏi lịch banbe", "Remove from banbe Schedule"),
+                                             systemImage: "calendar.badge.minus", destructive: true) {
                     app.removeFromBanbeSchedule(event.key)
                     message = nil
-                } label: {
-                    Label(app.T("Bỏ khỏi lịch banbe", "Remove from banbe Schedule"), systemImage: "calendar.badge.minus")
-                }
-                .accessibilityIdentifier("event.schedule.remove")
+                })
             }
         } else if canAdd {
-            Button {
+            items.append(PopoverMenuItem(id: "event.schedule.add", title: app.T("Thêm vào lịch banbe", "Add to banbe Schedule"),
+                                         systemImage: "calendar.badge.plus") {
                 switch app.addToBanbeSchedule(event) {
                 case .added: show(app.T("Đã thêm vào lịch banbe. Đây chưa phải đặt chỗ.", "Added to your banbe Schedule. This isn't a reservation."))
                 case .ineligible: show(app.T("Sự kiện này không thể thêm vào lịch.", "This event can't be added to your schedule."))
                 case .alreadyThere, .needsSignIn: message = nil
                 }
-            } label: {
-                Label(app.T("Thêm vào lịch banbe", "Add to banbe Schedule"), systemImage: "calendar.badge.plus")
-            }
-            .accessibilityIdentifier("event.schedule.add")
+            })
         }
-        Button { open() } label: {
-            Label(appleMarked ? app.T("Thêm lại vào Lịch Apple", "Add to Apple Calendar again")
-                              : app.T("Thêm vào Lịch Apple", "Add to Apple Calendar"),
-                  systemImage: "calendar")
-        }
-        .accessibilityIdentifier("event.appleCalendar")
+        items.append(PopoverMenuItem(id: "event.appleCalendar",
+                                     title: appleMarked ? app.T("Thêm lại vào Lịch Apple", "Add to Apple Calendar again")
+                                                        : app.T("Thêm vào Lịch Apple", "Add to Apple Calendar"),
+                                     systemImage: "calendar") { open() })
         if appleMarked {
-            Button(role: .destructive) {
+            items.append(PopoverMenuItem(id: "event.appleCalendar.clear", title: app.T("Bỏ dấu Lịch Apple", "Clear Apple Calendar mark"),
+                                         systemImage: "xmark.circle", destructive: true) {
                 if let uid = app.userID { AppleCalendarMarkStore().remove(event.key, uid: uid) }
                 refreshMark()
-            } label: {
-                Label(app.T("Bỏ dấu Lịch Apple", "Clear Apple Calendar mark"), systemImage: "xmark.circle")
-            }
-            .accessibilityIdentifier("event.appleCalendar.clear")
+            })
         }
+        return items
     }
 
     // MARK: helpers

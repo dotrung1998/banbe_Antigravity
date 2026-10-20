@@ -60,6 +60,7 @@ import SwiftUI
 /// way every dock tab icon already is.
 struct DockCreateButtonView: View {
     @EnvironmentObject private var app: AppState
+    @State private var menuOpen = false
 
     var body: some View {
         // Visible only in organizer mode (current UI preference — see
@@ -80,46 +81,31 @@ struct DockCreateButtonView: View {
             // rows. (The old tray existed because this window used to be a
             // small band that clipped a Menu; DockOverlayWindow is now
             // permanently full-screen, so that no longer applies.)
-            Menu {
-                Button {
-                    app.goCreate()
-                } label: {
-                    Label(app.T("Tạo Sự Kiện", "Create Event"), systemImage: "calendar.badge.plus")
-                }
-                .accessibilityIdentifier("dock.createMenu.event")
-
-                // Same pipeline AccountView's "Đăng story" uses
-                // (storyLibraryPickerOpen / storyCameraOpen -> publishStory()).
-                // A nested submenu with the expand/collapse chevron, exactly
-                // like Home's Area menu. It works here because
-                // DockOverlayWindow.hitTest now lets a hosted menu receive taps.
-                Menu {
-                    Button {
-                        app.storyLibraryPickerOpen = true
-                    } label: {
-                        Label(app.T("Thư Viện Ảnh", "Photo Library"), systemImage: "photo.on.rectangle")
-                    }
-                    .accessibilityIdentifier("dock.createMenu.story.library")
-                    Button {
-                        app.storyCameraOpen = true
-                    } label: {
-                        Label(app.T("Camera", "Camera"), systemImage: "camera")
-                    }
-                    .accessibilityIdentifier("dock.createMenu.story.camera")
-                } label: {
-                    Label(app.T("Đăng Story", "Post A Story"), systemImage: "photo.badge.plus")
-                }
-                .accessibilityIdentifier("dock.createMenu.story")
-            } label: {
+            // Note 53 (owner report): a popover, not a `Menu`. On iOS 26 the Menu lifted this disc's bounding box
+            // into the menu and put a white square back for a moment after it closed. Same three actions; the story
+            // submenu is flattened into two rows.
+            Button { menuOpen = true } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(app.palette.ink)
                     .frame(width: BottomTabBar.createButtonSize, height: BottomTabBar.createButtonSize)
-                    // Native glass like the dock beside it (note 45) — it used to be a
-                    // plain material, which read as a different surface next to the glass.
+                    // Native glass like the dock beside it (note 45).
                     .nativeGlass(Circle(), interactive: true)
                     // The whole disc opens the menu, not just the plus glyph in its middle.
                     .contentShape(Circle())
+            }
+            .buttonStyle(PressableButtonStyle(haptic: false))
+            .popover(isPresented: $menuOpen, arrowEdge: .bottom) {
+                PopoverMenuList(items: [
+                    PopoverMenuItem(id: "dock.createMenu.event", title: app.T("Tạo Sự Kiện", "Create Event"),
+                                    systemImage: "calendar.badge.plus") { app.goCreate() },
+                    // Same pipeline AccountView's "Đăng story" uses (storyLibraryPickerOpen / storyCameraOpen -> publishStory()).
+                    PopoverMenuItem(id: "dock.createMenu.story.library", title: app.T("Đăng story từ Thư viện ảnh", "Post a story from Photos"),
+                                    systemImage: "photo.on.rectangle") { app.storyLibraryPickerOpen = true },
+                    PopoverMenuItem(id: "dock.createMenu.story.camera", title: app.T("Đăng story bằng Camera", "Post a story with Camera"),
+                                    systemImage: "camera") { app.storyCameraOpen = true },
+                ]) { menuOpen = false }
+                .environmentObject(app)
             }
             .accessibilityIdentifier("dock.createButton")
             .accessibilityLabel(app.T("Tạo mới", "Create"))

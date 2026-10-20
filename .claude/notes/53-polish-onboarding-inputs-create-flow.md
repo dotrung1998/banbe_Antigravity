@@ -146,3 +146,10 @@ Also in this pass:
    - Now all four use `src/components/ui/DockHeaderTitle.jsx` (`DOCK_HEADER`: top 62, side 20, row 52, wordmark 96, gap 10, title 27). `homeHeaderLayout.js` `wordmarkGap` is now 10.
    - Measured in Chromium (390×844, EN + VI, via the dev-only `window.__banbeDevSet` hook in BanBeContext; it is stripped from production builds): every tab has its logo at x 20 / y 66.3 / 96×43.3 and its title at x 126 / midY 88.0.
    - Unit tests 321/321, `vite build` OK.
+5. **White overlay after closing the dock "+" / Event Detail calendar menus; long calendar pill; search fields without focus (iOS, 2026-10-20): FIXED.**
+   - Cause of the overlay: on iOS 26 a SwiftUI `Menu` lifts its label's bounding box into the menu and puts a white platter back over it on close. A circular `contentShape(.contextMenuPreview)` did NOT avoid it; the frame-by-frame probe in `MenuDismissProbeUITests` still showed it.
+   - Fix: both use a `Button` + anchored `.popover` (`PopoverMenuList` / `PopoverMenuItem` in Components.swift). Same actions and accessibility ids. The dock story submenu is flattened into two rows. Rows that present something run 0.3s after the popover closes.
+   - Probe after the fix: the first frame after closing is clean for both buttons.
+   - The calendar button is now a compact 40pt clay circle: `calendar.badge.plus`, filled clay with a check once added. The spoken label still says the state.
+   - Messages, Notifications and Account search fields use `fieldChrome(focused:)` (clay ring while typing). Screenshots verified.
+   - `testAddToBanbeScheduleThenNoDuplicate` now checks the button's spoken label, because there's no visible "Added"/"Discover" text any more. It passes. It used to fail.

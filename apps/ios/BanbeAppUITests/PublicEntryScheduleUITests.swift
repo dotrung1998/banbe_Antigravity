@@ -175,13 +175,18 @@ final class PublicEntryScheduleUITests: XCTestCase {
         el(app, "event.plan.button").tap()
         XCTAssertTrue(el(app, "event.schedule.add").waitForExistence(timeout: 5))
         el(app, "event.schedule.add").tap()
-        // Menu closed; the button now reads "Added" and the menu offers Remove instead of Add.
-        XCTAssertTrue(app.staticTexts["Added"].waitForExistence(timeout: 5))
+        // Menu closed; the compact button (note 53: icon only) now SAYS it's in the schedule, and the menu offers
+        // Remove instead of Add.
+        let added = NSPredicate(format: "label CONTAINS 'banbe Schedule'")
+        expectation(for: added, evaluatedWith: el(app, "event.plan.button"))
+        waitForExpectations(timeout: 5)
         el(app, "event.plan.button").tap()
         XCTAssertTrue(el(app, "event.schedule.remove").waitForExistence(timeout: 5))
         XCTAssertFalse(el(app, "event.schedule.add").exists, "no second add once it's there")
         el(app, "event.schedule.remove").tap()
-        XCTAssertTrue(app.staticTexts["Discover"].waitForExistence(timeout: 5))
+        let cleared = NSPredicate(format: "label == 'Add to calendar'")
+        expectation(for: cleared, evaluatedWith: el(app, "event.plan.button"))
+        waitForExpectations(timeout: 5)
     }
 
     func testAppleCalendarEditorPresentsAndCancelIsHonest() {
