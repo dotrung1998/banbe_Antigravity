@@ -75,7 +75,7 @@ export default function AccountGroup() {
     respondToOrganizerInvite, setOrganizerMemberVisibility,
     openPreferences, openSecurity, openEventPreferences, openPolicy, openDocuments, openRefundAccounts, openMyRefunds,
     openVerifications, openVerificationsRefunds, openPayout, openDisputes, openAdminEvents,
-    loadPaymentBookings, loadMyRefunds, openBookingConfirmed, openDeleteAccount,
+    loadPaymentBookings, loadMyRefunds, openBookingConfirmed, openDeleteAccountStay,
     respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft,
     requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite,
     requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite,
@@ -466,7 +466,7 @@ export default function AccountGroup() {
           <div style={{ marginTop: 24 }} data-testid="account-management-section">
             <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản Lý Tài Khoản', 'Account Management')}</span>
             <div
-              onClick={openDeleteAccount}
+              onClick={openDeleteAccountStay}
               data-testid="account-delete-row"
               style={{
                 marginTop: 8, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',

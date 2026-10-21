@@ -132,11 +132,9 @@ struct StepProgress: View {
     /// Per-step done flags for forms filled in any order (overrides the
     /// "everything before `current` is done" rule when set).
     var completed: [Bool]? = nil
-    /// Optional encouraging line shown under the bar.
+    /// Optional encouraging line shown beside the percentage ring.
     var message: String? = nil
     var showsPercent = true
-    /// The thin fill bar above the steps; off for a pure numbered stepper.
-    var showsBar = true
     var identifier: String? = nil
     /// When set, step labels become buttons (e.g. scroll to a form section).
     var onSelect: ((Int) -> Void)? = nil
@@ -153,31 +151,19 @@ struct StepProgress: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if showsPercent || message != nil {
-                HStack(alignment: .firstTextBaseline) {
+                // One line, one type size (owner, 2026-10-21): the old linear
+                // bar is gone; the percentage sits inside a small ring instead.
+                HStack(alignment: .center, spacing: 10) {
                     if let message {
                         Text(message)
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(app.palette.ink)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 8)
-                    if showsPercent {
-                        Text("\(percent)%")
-                            .font(.footnote.weight(.semibold))
-                            .monospacedDigit()
-                            .foregroundStyle(app.palette.ink.opacity(0.7))
-                    }
+                    if showsPercent { percentRing }
                 }
-            }
-            if showsBar {
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(app.palette.ink.opacity(0.12))
-                    Capsule().fill(app.palette.ink)
-                        .frame(width: geo.size.width * StepProgressModel.fraction(current: doneCount, total: steps.count))
-                }
-            }
-            .frame(height: 5)
-            .animation(.easeOut(duration: 0.25), value: doneCount)
             }
             HStack(alignment: .top, spacing: 0) {
                 ForEach(Array(steps.enumerated()), id: \.offset) { index, title in
@@ -189,6 +175,27 @@ struct StepProgress: View {
         .accessibilityElement(children: onSelect == nil ? .ignore : .contain)
         .accessibilityLabel(accessibilitySummary)
         .modifier(OptionalIdentifier(identifier: identifier))
+    }
+
+    /// The percentage inside a thin ring that fills as steps get done.
+    private var percentRing: some View {
+        let fraction = StepProgressModel.fraction(current: doneCount, total: steps.count)
+        return ZStack {
+            Circle().stroke(app.palette.ink.opacity(0.12), lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(app.palette.ink, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Text("\(percent)%")
+                .font(.footnote.weight(.semibold))
+                .monospacedDigit()
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+                .foregroundStyle(app.palette.ink)
+                .padding(4)
+        }
+        .frame(width: 44, height: 44)
+        .animation(.easeOut(duration: 0.25), value: doneCount)
     }
 
     private var accessibilitySummary: String {

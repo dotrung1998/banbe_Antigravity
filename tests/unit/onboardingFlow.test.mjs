@@ -210,9 +210,12 @@ test('checklist visibility', () => {
   assert.equal(checklistVisible(c, false), false);
   c = { ...c, enabled: true };
   assert.equal(checklistVisible(c, false), true);
-  assert.equal(checklistVisible({ ...c, openedEvent: true }, true), false, 'hides once everything is done');
+  assert.equal(checklistVisible({ ...c, openedEvent: true }, true), true, 'stays up once done, for the one-time celebration');
+  assert.equal(checklistVisible({ ...c, openedEvent: true, celebrated: true }, true), false, 'hides after the celebration');
   assert.equal(checklistVisible({ ...c, dismissed: true }, false), false);
   saveChecklist({ ...c, openedEvent: true }, 'u1', st);
-  assert.deepEqual(loadChecklist('u1', st), { enabled: true, dismissed: false, openedEvent: true });
+  assert.deepEqual(loadChecklist('u1', st), { enabled: true, dismissed: false, openedEvent: true, celebrated: false });
+  st.setItem('banbe.activation.v1.u3', JSON.stringify({ enabled: true, dismissed: false, openedEvent: true }));
+  assert.equal(loadChecklist('u3', st).celebrated, false, 'states saved before `celebrated` still load');
   assert.equal(loadChecklist('u2', st).enabled, false, 'per account');
 });

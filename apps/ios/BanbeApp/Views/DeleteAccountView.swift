@@ -13,14 +13,8 @@ import SwiftUI
 /// session — verified by reading, not by running it.
 private let deleteAccountPhrase = "DELETE banbe"
 
-private let deleteAccountReasons: [(code: String, vi: String, en: String)] = [
-    ("not_using", "Tôi không còn dùng banbe nữa", "I don't use banbe anymore"),
-    ("privacy", "Lo ngại về quyền riêng tư", "Privacy concerns"),
-    ("found_alternative", "Tôi dùng ứng dụng khác", "I use a different app"),
-    ("too_many_notifications", "Quá nhiều thông báo/email", "Too many notifications/emails"),
-    ("other", "Khác", "Other"),
-    ("prefer_not_say", "Không muốn cung cấp", "Prefer not to say"),
-]
+/// Shared with the "Before you go" pop-up (Lib/AccountRetention.swift).
+private let deleteAccountReasons = AccountRetention.reasons
 
 private enum DeleteAccountStep {
     case intro, reason, confirm, submitting, done
@@ -45,6 +39,9 @@ struct DeleteAccountView: View {
     @State private var reauthBusy = false
     @State private var reauthError = ""
     @State private var submitError = ""
+    /// Opened from the "Before you go" pop-up: the reason is already chosen, so the wizard starts at
+    /// confirm, with the identity card and the "permanent" note carried up there.
+    @State private var cameFromStay = false
 
     private var oauthProvider: String? {
         auth.session?.user.identities?.first(where: { $0.provider != "email" })?.provider
@@ -68,6 +65,13 @@ struct DeleteAccountView: View {
             }
             .background(app.palette.paper)
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                guard let preset = app.deleteAccountPresetReason else { return }
+                app.deleteAccountPresetReason = nil
+                reasonCode = preset
+                cameFromStay = true
+                step = .confirm
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     if step != .done {
@@ -82,21 +86,28 @@ struct DeleteAccountView: View {
     @ViewBuilder
     private var introSection: some View {
         Text(app.T("Xóa tài khoản", "Delete account")).font(BanbeTheme.display(24))
+        identityCard
+        permanenceNote
+        primaryButton(app.T("Tiếp tục", "Continue"), identifier: "deleteAccount.continue") { step = .reason }
+    }
+
+    private var identityCard: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(app.T("Tài khoản đang đăng nhập", "Currently signed in as")).font(.system(size: 11)).opacity(0.65)
             Text(app.user?.displayName ?? auth.session?.user.email ?? app.T("tài khoản của bạn", "your account")).font(.system(size: 15, weight: .semibold))
             if let email = auth.session?.user.email { Text(email).font(.system(size: 12)).opacity(0.7) }
         }
         .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityIdentifier("deleteAccount.identity")
+    }
 
+    private var permanenceNote: some View {
         Text(app.T(
             "Đây là hành động vĩnh viễn. Sau khi xóa: các đặt chỗ/tin nhắn của bạn sẽ được tách khỏi danh tính thay vì bị xóa hoàn toàn khi cần giữ hồ sơ giao dịch; các dữ liệu cá nhân khác sẽ bị xóa hẳn. Nếu bạn đang sở hữu một sự kiện còn đang mở, bạn sẽ cần hủy/kết thúc sự kiện đó trước.",
             "This is permanent. After deletion: your bookings/messages are detached from your identity rather than fully erased where a transaction record needs to stay; other personal data is erased outright. If you currently own an open event, you’ll need to cancel/end it first."
         )).font(.system(size: 13)).lineSpacing(4)
-
-        primaryButton(app.T("Tiếp tục", "Continue"), identifier: "deleteAccount.continue") { step = .reason }
     }
 
     @ViewBuilder
@@ -174,6 +185,10 @@ struct DeleteAccountView: View {
     @ViewBuilder
     private var confirmSection: some View {
         Text(app.T("Xác nhận xóa", "Confirm deletion")).font(BanbeTheme.display(20))
+        if cameFromStay {
+            identityCard
+            permanenceNote
+        }
 
         // Reauthentication — reuses the SAME emailed login-code flow
         // Login/AuthViewModel already establish (`auth.sendEmailCode` /

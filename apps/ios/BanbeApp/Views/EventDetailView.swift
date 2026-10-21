@@ -23,12 +23,39 @@ private struct EventScrollOffsetKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
+/// Create-event "Public preview" (owner, 2026-10-21): the real Event Detail rendered from an unsaved draft, so the
+/// host sees exactly what guests will. Nothing here is fetched or saved; every guest control (save, share, ⋯, the
+/// calendar pill, host actions, seat chips, Reserve) is shown but inert. Web twin: `EventDetail({ preview })`.
+struct EventDetailPreview {
+    enum Photo: Identifiable {
+        case local(id: String, image: UIImage)
+        case remote(id: String, url: String)
+        var id: String { switch self { case .local(let id, _), .remote(let id, _): return id } }
+    }
+    let event: CatalogEvent
+    /// Cover first.
+    let photos: [Photo]
+    /// Seats the host offered; nothing is booked in a draft, so the bar reads "all free".
+    let capacity: Int?
+    let backLabel: String
+    let onBack: () -> Void
+    /// Sits under the (inert) reserve bar: the review sheet's Confirm & submit.
+    let footer: AnyView
+}
+
 /// Port of src/screens/EventDetail.jsx — hero photo with back/share pills,
 /// the address as a Maps link, details, organizer row, photo strip, and the
 /// bottom action bar (which shows your ticket if you already hold one).
 struct EventDetailView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.openURL) private var openURL
+    /// Non-nil = the create-event Public preview (see `EventDetailPreview`).
+    let preview: EventDetailPreview?
+    private var isPreview: Bool { preview != nil }
+
+    init(preview: EventDetailPreview? = nil) {
+        self.preview = preview
+    }
     @State private var shareStoryMessage: String?
     @State private var shareConfirmOpen = false
     // Intro/included-parity fix pass (2026-09-28) — "Bao gồm"/Included was
@@ -82,7 +109,7 @@ struct EventDetailView: View {
     /// same rect if the card has scrolled away). At rest, and for opens that did not start from a card, it is nil.
     private var zoomOrigin: CGRect? {
         // Opened from Map: no card to zoom from; the screen opens from, and closes toward, the centre of the screen.
-        guard app.eventBackScreen != .mapExplore else { return nil }
+        guard !isPreview, app.eventBackScreen != .mapExplore else { return nil }
         // Closing wins over a still-flagged open (closed within 1.4s of opening): shrink into the card's live frame.
         if isDismissing { return app.zoomOrigin(for: event.key) ?? app.eventOriginRect }
         if app.eventOpening { return app.eventOriginRect }
@@ -144,7 +171,7 @@ struct EventDetailView: View {
     /// Letting go past this pull closes the screen.
     private let dismissCloseDistance: CGFloat = 140
 
-    private var event: CatalogEvent { app.currentEvent }
+    private var event: CatalogEvent { preview?.event ?? app.currentEvent }
     // STAGE D (2026-09-25) — real event_photos URLs, replacing the static
     // demo `event.gallery` below.
     // Photo-interactions redesign (2026-09-26) — each entry now carries the
@@ -198,7 +225,7 @@ struct EventDetailView: View {
     /// A live booking for this exact event opens the ticket instead of
     /// running the guest through Reserve again.
     private var myBooking: Booking? {
-        guard let booking = app.booking,
+        guard !isPreview, let booking = app.booking,
               booking.eventId == event.key,
               ["pending", "confirmed", "attended"].contains(booking.status)
         else { return nil }
@@ -251,15 +278,15 @@ struct EventDetailView: View {
                         Color.clear.preference(key: EventScrollOffsetKey.self, value: -g.frame(in: .named("eventScroll")).minY)
                     })
                     // Remembers the offset per event and, when coming back (not a fresh open), puts it straight back.
-                    .background(ScaffoldScrollProbe(restoreOffsetY: app.eventOpening ? nil : app.eventScrollOffsets[event.key],
-                                                    onOffset: { [key = event.key] y in app.eventScrollOffsets[key] = y },
+                    .background(ScaffoldScrollProbe(restoreOffsetY: app.eventOpening || isPreview ? nil : app.eventScrollOffsets[event.key],
+                                                    onOffset: { [key = event.key, isPreview] y in if !isPreview { app.eventScrollOffsets[key] = y } },
                                                     onChange: { _, _ in }))
                 }
                 .coordinateSpace(name: "eventScroll")
                 .onPreferenceChange(EventScrollOffsetKey.self) { if #unavailable(iOS 18.0) { scrollOffset = $0 } }
                 .trackingScrollOffset($scrollOffset)
                 .scrollDisabled(isDismissDragging)
-                .simultaneousGesture(dismissGesture)
+                .simultaneousGesture(dismissGesture, including: isPreview ? .subviews : .all)
                 .onChange(of: criteriaScrollRequest) { _, _ in
                     withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("event.criteria", anchor: .center) }
                 }
@@ -268,7 +295,15 @@ struct EventDetailView: View {
                 // so a band of the photo stays visible above the info however far it is pulled up.
                 .mask { UnevenRoundedRectangle(topLeadingRadius: sheetRadius, topTrailingRadius: sheetRadius, style: .continuous) }
                 .padding(.top, max(0, pinnedStrip - topInset))
-                actionBar
+                if let preview {
+                    // What guests will see, shown but inert; then the host's own Confirm & submit.
+                    VStack(spacing: 0) {
+                        actionBar.allowsHitTesting(false).accessibilityHidden(true)
+                        preview.footer
+                    }
+                } else {
+                    actionBar
+                }
             }
             .opacity(contentShown ? 1 : 0)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -290,9 +325,9 @@ struct EventDetailView: View {
             // Left-edge swipe back: the page follows the finger with the same shrink as pull-down, and closes the same
             // way as Back (into the card it came from) — never the generic sideways slide (RootView leaves .event alone).
             Color.clear
-                .frame(width: 22)
+                .frame(width: isPreview ? 0 : 22)
                 .contentShape(Rectangle())
-                .gesture(edgeSwipeGesture)
+                .gesture(edgeSwipeGesture, including: isPreview ? .none : .all)
                 .padding(.top, topInset + 64)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .ignoresSafeArea(edges: .bottom)
@@ -303,7 +338,7 @@ struct EventDetailView: View {
         .onAppear {
             // Coming BACK (host page, chat, Reserve…), not a fresh open: everything is simply already there, at the
             // same scroll position — no grow-in, no fade, no pop.
-            guard app.eventOpening else {
+            guard app.eventOpening, !isPreview else {
                 var t = Transaction(); t.disablesAnimations = true
                 withTransaction(t) { presented = true; contentShown = true }
                 return
@@ -323,12 +358,13 @@ struct EventDetailView: View {
         // STAGE D (2026-09-25) — re-fetched whenever the viewed event
         // changes (this view can be reached repeatedly for different
         // events without ever being torn down, e.g. via `goEvent`).
-        .task(id: event.key) { await app.loadEventPhotos(eventID: event.key) }
-        .task(id: event.key) { await app.loadEventOrgStats(forEventKey: event.key) }
+        .task(id: event.key) { if !isPreview { await app.loadEventPhotos(eventID: event.key) } }
+        .task(id: event.key) { if !isPreview { await app.loadEventOrgStats(forEventKey: event.key) } }
         // Reservation criteria (migration 162): small per-event read; only a
         // restricted event triggers the eligibility pre-check (Everyone = no
         // extra calls/UI). Re-runs when the guest saves new preferences.
         .task(id: "\(event.key)|\(app.eventPrefsVersion)|\(app.isSignedIn)") {
+            guard !isPreview else { return }
             app.reserveEligibilityBlock = nil
             await app.loadEventCriteria(eventKey: event.key)
             if app.isSignedIn, let c = app.eventCriteriaByKey[event.key], !c.isEveryone {
@@ -484,11 +520,11 @@ struct EventDetailView: View {
     /// pill shrinks to its chevron to give the event name room.
     private var backShareRow: some View {
         HStack(spacing: 8) {
-            Button { closeAnimated() } label: {
+            Button { if let preview { preview.onBack() } else { closeAnimated() } } label: {
                 HStack(spacing: 3) {
                     Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold))
                     if !collapsed {
-                        Text(backLabel).font(.system(size: 15, weight: .semibold)).lineLimit(1).frame(maxWidth: 124, alignment: .leading)
+                        Text(preview?.backLabel ?? backLabel).font(.system(size: 15, weight: .semibold)).lineLimit(1).frame(maxWidth: 124, alignment: .leading)
                             .fixedSize(horizontal: true, vertical: false)
                     }
                 }
@@ -500,9 +536,10 @@ struct EventDetailView: View {
             .buttonStyle(.plain)
             // Follow-up bug 2: an explicit, map-specific label so VoiceOver users get the same "this returns to the map,
             // not Home" clarity.
-            .accessibilityLabel(app.eventBackScreen == .mapExplore ? app.T("Quay lại bản đồ", "Back to map") : backLabel)
+            .accessibilityLabel(preview?.backLabel ?? (app.eventBackScreen == .mapExplore ? app.T("Quay lại bản đồ", "Back to map") : backLabel))
             .accessibilityIdentifier("event.back")
             Spacer(minLength: 0)
+            Group {
             // ⋯ is a native pop-up menu, exactly like the calendar pill beside the title (EventPlanTitleRow).
             Menu { moreMenuItems } label: { discLabel("ellipsis") }
                 .accessibilityIdentifier("event.more")
@@ -517,6 +554,9 @@ struct EventDetailView: View {
                 .accessibilityLabel(app.isSaved(event.key) ? app.T("Đã lưu", "Saved") : app.T("Lưu", "Save"))
                 .accessibilityAddTraits(app.isSaved(event.key) ? .isSelected : [])
                 .accessibilityIdentifier("event.save")
+            }
+            // Preview: the guest's controls are shown as they will look, but do nothing for a draft.
+            .allowsHitTesting(!isPreview)
         }
         .overlay(alignment: .topTrailing) {
             if app.sharedFlash || linkCopied {
@@ -610,13 +650,41 @@ struct EventDetailView: View {
         // Card corners while zoomed in; while dragged, the posed page's own rounding (the page mask no longer covers
         // the photo, see `dragPose`).
         let radius = max(14 * (1 - zoomT), closeStart == nil ? min(sheetRadius, dismissProgress * 120) * dragScale : 0)
-        return ZStack { RemoteImage(path: event.img, maxPixel: 1100) }   // no placeholder fill: the card shows through until the photo is ready
+        return ZStack { heroImage }   // no placeholder fill: the card shows through until the photo is ready
             .frame(width: f.width, height: f.height)
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
             // Gone once the solid nav bar covers the strip, so it never peeks through the sheet's rounded corners.
             .opacity((1 - 0.4 * fade) * (centerPose ? (contentShown ? 1 : 0) : 1) * (titleProgress >= 1 && closeStart == nil ? 0 : 1))
             .offset(x: f.minX, y: f.minY)
             .accessibilityHidden(true)
+    }
+
+    @ViewBuilder private var heroImage: some View {
+        if case .local(_, let image)? = preview?.photos.first {
+            Image(uiImage: image).resizable().scaledToFill()
+        } else if case .remote(_, let url)? = preview?.photos.first {
+            RemoteImage(path: url, maxPixel: 1100)
+        } else {
+            RemoteImage(path: event.img, maxPixel: 1100)
+        }
+    }
+
+    /// The preview's photo strip: same tiles as `photoStrip`, from the draft's local/uploaded photos (no viewer).
+    private func previewPhotoStrip(_ photos: [EventDetailPreview.Photo]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(photos) { photo in
+                    Group {
+                        switch photo {
+                        case .local(_, let image): Image(uiImage: image).resizable().scaledToFill()
+                        case .remote(_, let url): CatalogPhoto(path: url, height: 166, width: 132, cornerRadius: 0)
+                        }
+                    }
+                    .frame(width: 132, height: 166)
+                    .clipShape(RoundedRectangle(cornerRadius: BanbeTheme.Radius.thumb, style: .continuous))
+                }
+            }
+        }
     }
 
     /// Drag-down-to-close for the page layers (background, info sheet, buttons): shrink toward the middle, round off
@@ -654,6 +722,10 @@ struct EventDetailView: View {
     }
     /// Seats bar only when the live fill (booked + capacity) is known; never an invented capacity.
     private var seatFill: (ratio: Double, remaining: Int)? {
+        if let preview {
+            guard let capacity = preview.capacity, capacity > 0 else { return nil }
+            return (0, capacity)
+        }
         guard let fill = app.eventFill[event.key], fill.capacity > 0 else { return nil }
         let remaining = max(0, fill.capacity - fill.booked)
         return (min(1, max(0, Double(fill.capacity - remaining) / Double(fill.capacity))), remaining)
@@ -699,6 +771,7 @@ struct EventDetailView: View {
 
             // Note 46 — the title with the calendar pill (banbe Schedule / Apple Calendar).
             EventPlanTitleRow(event: event)
+                .allowsHitTesting(!isPreview)
                 .opacity(1 - titleProgress)
                 .scaleEffect(1 - 0.3 * titleProgress, anchor: .bottomLeading)
                 .offset(y: -12 * titleProgress)
@@ -734,6 +807,7 @@ struct EventDetailView: View {
                     .foregroundStyle(app.palette.clay)
                 }
                 .buttonStyle(.plain)
+                .allowsHitTesting(!isPreview)
                 .padding(.top, 10)
                 .accessibilityIdentifier("event.trackRecord")
             }
@@ -790,18 +864,27 @@ struct EventDetailView: View {
                     .padding(.top, 20)
             }
 
-            hostSection.padding(.top, 32)
+            hostSection.allowsHitTesting(!isPreview).padding(.top, 32)
 
             // "Hình ảnh": the horizontal photo strip.
             HStack(alignment: .firstTextBaseline) {
                 Text(app.T("Hình ảnh", "Photos")).font(BanbeTheme.display(20))
                 Spacer()
-                if !realPhotos.isEmpty { Text("\(realPhotos.count)").font(.system(size: 13)).opacity(0.6) }
+                let photoCount = preview?.photos.count ?? realPhotos.count
+                if photoCount > 0 { Text("\(photoCount)").font(.system(size: 13)).opacity(0.6) }
             }
             .padding(.top, 28)
             // STAGE D (2026-09-25) — real event_photos rows, not the static demo `event.gallery`. A genuinely
             // photo-less real event shows plain text, never a fake/demo photo standing in for a real one.
-            if app.eventPhotosLoading {
+            if let preview {
+                if preview.photos.isEmpty {
+                    Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet."))
+                        .font(.system(size: 13)).opacity(0.6)
+                        .padding(.top, 10)
+                } else {
+                    previewPhotoStrip(preview.photos).padding(.top, 10)
+                }
+            } else if app.eventPhotosLoading {
                 Text(app.T("Đang tải…", "Loading…"))
                     .font(.system(size: 13)).opacity(0.6)
                     .padding(.top, 10)
@@ -1073,14 +1156,15 @@ struct EventDetailView: View {
     private var barState: ReserveBar.State {
         ReserveBar.state(booking: myBooking != nil, ticket: myBooking?.isTicket ?? false,
                          cancelled: event.cancelled, ended: ended, soldOut: event.soldOut,
-                         blocked: app.reserveEligibilityBlock != nil)
+                         blocked: !isPreview && app.reserveEligibilityBlock != nil)
     }
 
     /// Sticky action area (mockup): seat chips + stepper, the refund promise, and the CTA with the live total — always
     /// on screen, so the decision can happen wherever the reader is convinced. Reserve opens pre-filled via `app.qty`.
     private var actionBar: some View {
         let state = barState
-        let qty = ReserveBar.clampQty(app.qty)
+        // Preview: what a guest sees on arrival (1 ticket), not whatever the host last picked elsewhere.
+        let qty = isPreview ? 1 : ReserveBar.clampQty(app.qty)
         return VStack(alignment: .leading, spacing: 10) {
             if state == .reserve {
                 HStack(spacing: 8) {

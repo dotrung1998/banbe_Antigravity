@@ -37,6 +37,7 @@ import StoryViewer from './screens/sheets/StoryViewer.jsx';
 import PulseViewer from './screens/sheets/PulseViewer.jsx';
 import SurveyResponseModal from './screens/sheets/SurveyResponseModal.jsx';
 import DeleteAccountSheet from './screens/sheets/DeleteAccountSheet.jsx';
+import DeleteAccountStaySheet from './screens/sheets/DeleteAccountStaySheet.jsx';
 import HostSetupSheet from './screens/sheets/HostSetupSheet.jsx';
 import Preferences from './screens/Preferences.jsx';
 import EditName from './screens/EditName.jsx';
@@ -585,6 +586,20 @@ function Shell() {
     return () => { ro.disconnect(); clearTimeout(settleTimeout); el.removeEventListener('scroll', onScroll); };
   }, [state.screen]);
 
+  // Owner, 2026-10-21: a new account (or one that just finished onboarding) starts Home at the very top, so the
+  // "Get started" checklist is the first thing seen — a guest's pre-signup scroll must not carry over.
+  const userId = state.user?.id || null;
+  const prevUserId = useRef(userId);
+  useEffect(() => {
+    const userChanged = prevUserId.current !== userId;
+    prevUserId.current = userId;
+    if (!userChanged && !state.homeScrollTopToken) return;
+    scrollPositions.current.home = 0;
+    if (state.screen === 'home' && scrollRef.current) scrollRef.current.scrollTop = 0;
+    // `state.screen` is read, not a dependency: only the account/token change may trigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, state.homeScrollTopToken]);
+
   // Mirrors iOS 26's onScrollDown minimize behavior: scrolling down shrinks
   // the floating pill a bit, scrolling up (or being at the very top) puts
   // it straight back to full size.
@@ -753,6 +768,7 @@ function Shell() {
           entry point can still open it even on a screen without the dock. */}
       <StoryCreateOverlay />
       {state.deleteAccountOpen && <DeleteAccountSheet />}
+      {state.deleteAccountStayOpen && <DeleteAccountStaySheet />}
       {state.hostSetupOpen && state.user && <HostSetupSheet />}
       <ToastStack />
       {/* account gate (web parity) — blocking overlay above every screen until the server gate clears */}

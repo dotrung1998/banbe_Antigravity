@@ -1142,6 +1142,12 @@ final class AppState: ObservableObject {
     /// piece of state another screen (AccountGroupView's `preferences`
     /// case) needs to reach in to flip.
     @Published var deleteAccountOpen = false
+    /// The "Before you go" retention pop-up in front of the wizard (DeleteAccountStayView).
+    @Published var deleteAccountStayOpen = false
+    /// Set by the pop-up's "Continue deleting": the wizard opens once the pop-up has dismissed.
+    var deleteAccountContinue = false
+    /// The reason picked in the pop-up, handed to the wizard (nil = opened without the pop-up).
+    var deleteAccountPresetReason: String?
 
     /// Shows a small toast and fires a light (not the heavier .success/
     /// .warning system) haptic alongside it, so it feels gentle — see
@@ -2021,6 +2027,17 @@ final class AppState: ObservableObject {
     /// Home's raw scroll offset, remembered across tab switches (see ScreenScaffold.restoreOffsetY).
     /// Deliberately NOT @Published — it changes every frame while scrolling.
     var homeScrollOffsetY: CGFloat?
+    /// Bumped to put Home back at the very top (a new account, or right after
+    /// onboarding — so the "Get started" checklist is the first thing seen).
+    @Published var homeScrollToTopToken = 0
+
+    /// Forgets Home's remembered scroll and pins it to the top. A guest's
+    /// pre-signup scroll position must not carry into the new account.
+    func resetHomeScrollToTop() {
+        homeScrollAnchorID = nil
+        homeScrollOffsetY = nil
+        homeScrollToTopToken &+= 1
+    }
     /// TASK C — same mechanism, for AccountView (see its own doc comment):
     /// the id of whichever section was at the top of Account's own scroll
     /// view; survives AccountView being torn down/recreated on navigating

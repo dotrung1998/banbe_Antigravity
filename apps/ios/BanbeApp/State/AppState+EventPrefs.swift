@@ -130,7 +130,17 @@ extension AppState {
             filterForYou = true
             screen = .home
         }
+        // Owner, 2026-10-21: Home opens at the very top after onboarding, so the
+        // "Get started" checklist is visible instead of the feed.
+        resetHomeScrollToTop()
         if let key = openEventKey { goEvent(key) }
+    }
+
+    /// The checklist's one-time "all set" celebration has played; it now stays hidden.
+    func markActivationCelebrated() {
+        guard !activation.celebrated else { return }
+        activation.celebrated = true
+        if let uid = userID { ActivationChecklist.save(activation, uid: uid) }
     }
 
     func dismissActivationChecklist() {

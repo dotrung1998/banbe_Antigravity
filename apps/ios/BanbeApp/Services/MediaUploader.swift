@@ -153,3 +153,14 @@ enum MediaUploader {
         return Response(status: status, json: (try? JSONSerialization.jsonObject(with: data)) as? [String: Any])
     }
 }
+
+extension UIImage {
+    /// This image with its EXIF orientation baked into the pixels (`.up`), the same result `makeVariants`'s redraw
+    /// gives on upload. Returns `self` when it is already upright.
+    func normalizedUp() -> UIImage {
+        guard imageOrientation != .up, size.width > 0, size.height > 0 else { return self }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = scale
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in draw(in: CGRect(origin: .zero, size: size)) }
+    }
+}

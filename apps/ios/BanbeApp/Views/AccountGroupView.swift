@@ -598,7 +598,7 @@ struct AccountGroupView: View {
                 .foregroundStyle(app.palette.ink)
                 .padding(.top, 24)
 
-            Button { app.deleteAccountOpen = true } label: {
+            Button { app.deleteAccountStayOpen = true } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "exclamationmark.shield").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22)
                     Text(app.T("Xóa Tài Khoản", "Delete Account")).font(.system(size: 14, weight: .semibold))

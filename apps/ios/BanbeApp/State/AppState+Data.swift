@@ -444,6 +444,7 @@ extension AppState {
         // restored session that arrives a moment later).
         defer { appliedSessionUID = session?.user.id }
         guard let session else {
+            if userID != nil { resetHomeScrollToTop() }
             userID = nil
             userEmail = nil
             user = nil
@@ -518,6 +519,7 @@ extension AppState {
             eventPhotoURLs = [:]
             return
         }
+        if userID != session.user.id { resetHomeScrollToTop() }
         userID = session.user.id
         userEmail = session.user.email
         refreshScheduleAdded()
@@ -526,7 +528,11 @@ extension AppState {
         syncRewardsOwner()
         // Once per session: the flag is reset on sign-out, so token refreshes
         // don't re-read (and re-open a step the user skipped locally).
-        if !eventPrefsLoaded { Task { await loadEventPreferences() } }
+        // Started in parallel, but awaited before this function returns (and so
+        // before `appliedSessionUID` lifts the account gate): otherwise the gate
+        // could clear a beat before `needsPreferencesOnboarding` turns true and
+        // Home flashed between "Complete sign-up" and the For You intro.
+        let prefsLoad: Task<Void, Never>? = eventPrefsLoaded ? nil : Task { await loadEventPreferences() }
 
         // Stage 1 (retention roadmap P0) — real `favorites` rows, not the
         // local-only array this used to be. See favoritesLoadedForUID's own
@@ -649,6 +655,7 @@ extension AppState {
         startNotificationPolling()
         requestPushAuthorizationIfNeeded()
         await loadBookingForCurrentEvent()
+        await prefsLoad?.value
     }
 
     func signOut() async {

@@ -380,6 +380,49 @@ extension CatalogEvent {
         )
     }
 
+    /// Create-event "Public preview" (2026-10-21): an unsaved draft shaped like `fromReal` so the REAL Event Detail
+    /// renders it. Differences from a published event: the key is `draftPreviewKey`, nothing is booked yet (all seats
+    /// free), and `where` has no distance segment (a draft has no "km from you" worth showing).
+    static func fromDraft(_ d: EventDraft) -> CatalogEvent {
+        let priceLabel = d.priceVnd > 0 ? EventLabels.vnd(d.priceVnd) : "Miễn phí"
+        let items = d.includedItems.filter { !$0.label.isEmpty }
+        let includedSummary = items.map(\.label).joined(separator: " ▪︎ ")
+        let introOrNil: String? = d.intro.isEmpty ? nil : d.intro
+        let itemsOrNil: [IncludedItem]? = items.isEmpty ? nil : items
+        let metaLabel = [d.catLabel, d.area].filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
+        let whereLabel: String = {
+            let date = d.startsAt.map(Countdown.formatVnEventDate)
+            return [d.area, date?.dayLong, date?.time].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
+        }()
+        let whenLabel = d.startsAt.map(Countdown.whenLabel) ?? ""
+        let seatsLabel = d.seats.map(String.init) ?? ""
+        let seatsLongLabel = d.seats.map { "\($0) chỗ trống" } ?? ""
+        return CatalogEvent(
+            key: draftPreviewKey, catKey: d.catKey ?? "all", cat: d.catLabel, cat2Key: nil, catDisplay: d.catLabel,
+            name: d.name, img: d.coverPath, lat: d.lat, lng: d.lng,
+            meta: metaLabel,
+            where: whereLabel,
+            when: whenLabel,
+            price: priceLabel,
+            seats: seatsLabel,
+            seatsLong: seatsLongLabel,
+            urgent: false,
+            desc: d.description, included: includedSummary,
+            host: d.organizerName, hostShort: d.organizerName, greeting: "",
+            gallery: [], orgGallery: [], orgName: d.organizerName, orgIg: "", orgDesc: "",
+            orgSince: 0, orgCount: 0, orgTrusted: false,
+            cancelled: false, cancelledHoursAgo: nil, endedHoursAgo: nil,
+            soldOut: false, inviteOnly: d.inviteOnly,
+            until: nil, untilLabel: "", startDate: d.startsAt,
+            locationLabel: d.area.isEmpty ? nil : d.area,
+            intro: introOrNil,
+            includedItems: itemsOrNil
+        )
+    }
+
+    /// Key of the draft shown in the create-event Public preview; never a real event id.
+    static let draftPreviewKey = "draft-preview"
+
     /// An honest "unavailable" placeholder — the id/key is real (so
     /// isSaved/toggleFavorite still key off the right row) but the row
     /// itself is gone or RLS no longer lets this account see it. Never a
@@ -489,4 +532,25 @@ func haversineKm(from coords: Coordinates?, toCoords other: Coordinates?) -> Dou
 struct Coordinates: Equatable {
     let lat: Double
     let lng: Double
+}
+
+/// The create-event form's values, as `CatalogEvent.fromDraft` needs them (plain values, so it is unit-testable).
+struct EventDraft {
+    var name: String
+    var catKey: String?
+    /// Vietnamese label, like a real row's `cat_label` (`trStatus` translates it on screen).
+    var catLabel: String
+    var area: String
+    var lat: Double?
+    var lng: Double?
+    var startsAt: Date?
+    var priceVnd: Int
+    var seats: Int?
+    var description: String
+    var intro: String
+    var includedItems: [IncludedItem]
+    var inviteOnly: Bool
+    var organizerName: String
+    /// An already-uploaded cover's URL (editing an event); "" when the cover is a local, not-yet-uploaded photo.
+    var coverPath: String = ""
 }

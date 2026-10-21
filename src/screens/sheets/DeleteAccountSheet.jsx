@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useBanBe } from '../../state/BanBeContext.jsx';
 import { digitsOnly, validateDob, dobProblemText } from '../../lib/dob.js';
 import { paper, ink, rule, cardGlass, fieldGlass, inkButton, alert, display } from '../../theme.js';
+import { DELETE_REASONS } from '../../lib/accountRetention.js';
 
 // Account deletion (Task 2, Account/Settings pass) — a full-screen sheet
 // opened from AccountGroup.jsx's `preferences` case, a new "Account
@@ -14,14 +15,8 @@ import { paper, ink, rule, cardGlass, fieldGlass, inkButton, alert, display } fr
 // this session (no isolated test account to safely destroy). Verified by
 // reading, not by running it.
 
-const REASONS = [
-  { code: 'not_using', vi: 'Tôi không còn dùng banbe nữa', en: "I don't use banbe anymore" },
-  { code: 'privacy', vi: 'Lo ngại về quyền riêng tư', en: 'Privacy concerns' },
-  { code: 'found_alternative', vi: 'Tôi dùng ứng dụng khác', en: 'I use a different app' },
-  { code: 'too_many_notifications', vi: 'Quá nhiều thông báo/email', en: 'Too many notifications/emails' },
-  { code: 'other', vi: 'Khác', en: 'Other' },
-  { code: 'prefer_not_say', vi: 'Không muốn cung cấp', en: 'Prefer not to say' },
-];
+// Shared with the "Before you go" pop-up (DeleteAccountStaySheet).
+const REASONS = DELETE_REASONS;
 
 const DELETE_PHRASE = 'DELETE banbe';
 
@@ -70,12 +65,8 @@ export default function DeleteAccountSheet() {
 
   const step = s.deleteAccountStep;
   const identityLabel = s.user?.name || s.user?.email || T('tài khoản của bạn', 'your account');
-
-  if (step === 'intro') {
-    return (
-      <SheetShell>
-        <div onClick={closeDeleteAccount} data-testid="delete-account-cancel" style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Huỷ', 'Cancel')}</div>
-        <h1 style={{ ...display(24, { margin: '18px 0 0' }) }}>{T('Xóa tài khoản', 'Delete account')}</h1>
+  const identityAndPermanence = (
+    <>
         <div style={{ ...cardGlass({ marginTop: 18, padding: '14px 16px' }) }} data-testid="delete-account-identity">
           <span style={{ fontSize: 11, opacity: 0.65, color: ink }}>{T('Tài khoản đang đăng nhập', 'Currently signed in as')}</span>
           <div style={{ fontSize: 15, fontWeight: 600, color: ink, marginTop: 2 }}>{identityLabel}</div>
@@ -87,6 +78,15 @@ export default function DeleteAccountSheet() {
             'This is permanent. After deletion: your bookings/messages are detached from your identity (your name no longer shows) rather than fully erased where a transaction record needs to stay; other personal data (profile, avatar, favorites) is erased outright. If you currently own an open event, you’ll need to cancel/end it first.'
           )}
         </p>
+    </>
+  );
+
+  if (step === 'intro') {
+    return (
+      <SheetShell>
+        <div onClick={closeDeleteAccount} data-testid="delete-account-cancel" style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Huỷ', 'Cancel')}</div>
+        <h1 style={{ ...display(24, { margin: '18px 0 0' }) }}>{T('Xóa tài khoản', 'Delete account')}</h1>
+        {identityAndPermanence}
         <div onClick={() => setDeleteAccountStep('reason')} data-testid="delete-account-continue" style={{ ...inkButton({ marginTop: 20, borderRadius: 16, padding: 14, fontSize: 14, background: alert }) }}>
           {T('Tiếp tục', 'Continue')}
         </div>
@@ -134,6 +134,9 @@ export default function DeleteAccountSheet() {
       <SheetShell>
         <div onClick={() => !submitting && setDeleteAccountStep('reason')} data-testid="delete-account-back-confirm" style={{ fontSize: 12, color: ink, cursor: submitting ? 'default' : 'pointer', opacity: submitting ? 0.4 : 1 }}>‹ {T('Quay lại', 'Back')}</div>
         <h1 style={{ ...display(22, { margin: '18px 0 4px' }) }}>{T('Xác nhận xóa', 'Confirm deletion')}</h1>
+        {/* Opened from the "Before you go" pop-up: the intro step was skipped, so its identity card and
+            "permanent" note are shown here instead. */}
+        {s.deleteAccountFromStay && identityAndPermanence}
 
         {/* Reauthentication — reuses the SAME emailed login-code flow
             Login.jsx uses (Login.jsx's own verifyEmailCode), not a parallel

@@ -262,6 +262,10 @@ private struct OnboardingChoiceRow: View {
 private struct OnboardingWelcomeView: View {
     @EnvironmentObject var app: AppState
     @ObservedObject var flow: OnboardingCoordinator
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Drives the entrance: the content rises in, then the three tiles land
+    /// one after another, left to right (owner, 2026-10-21).
+    @State private var appeared = false
 
     var body: some View {
         ScrollView {
@@ -271,51 +275,82 @@ private struct OnboardingWelcomeView: View {
                     .frame(width: 84, height: 84)
                     .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
                     .accessibilityHidden(true)
-                Text(app.T("Tìm những buổi bạn thật sự muốn đi", "Find events you'll actually want to go to"))
-                    .font(.system(.largeTitle, design: .rounded).weight(.semibold))
-                    .padding(.top, 18)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("onboarding.welcome")
-                Text(app.T("5 câu ngắn, rồi banbe gắn ★ Dành cho bạn lên sự kiện hợp với bạn.",
-                           "5 quick taps, then banbe stars ★ For You on the events that fit."))
-                    .font(.body).lineSpacing(3).padding(.top, 10)
-                    .foregroundStyle(app.palette.ink.opacity(0.8))
+                    .modifier(RiseIn(shown: appeared, delay: 0))
+                Group {
+                    Text(app.T("Tìm những buổi bạn thật sự muốn đi", "Find events you'll actually want to go to"))
+                        .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                        .padding(.top, 18)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("onboarding.welcome")
+                    Text(app.T("5 câu ngắn, rồi banbe gắn ★ Dành cho bạn lên sự kiện hợp với bạn.",
+                               "5 quick taps, then banbe stars ★ For You on the events that fit."))
+                        .font(.body).lineSpacing(3).padding(.top, 10)
+                        .foregroundStyle(app.palette.ink.opacity(0.8))
+                }
+                .modifier(RiseIn(shown: appeared, delay: 0.04))
 
                 // Note 53: three glanceable tiles instead of three sentences.
-                HStack(spacing: 8) {
-                    point("⏱️", app.T("~1 phút", "~1 minute"), app.T("Câu nào cũng bỏ qua được", "Skip any question"))
-                    point("🔒", app.T("Chỉ bạn thấy", "Only you see it"), app.T("Host không bao giờ thấy", "Hosts never do"))
-                    point("⚙️", app.T("Đổi bất cứ lúc nào", "Change anytime"), app.T("Trong Tài khoản", "In Account"))
+                // All three share the tallest tile's height (the 3rd title wraps
+                // to two lines and used to make that tile alone taller).
+                HStack(alignment: .top, spacing: 8) {
+                    point(0, "⏱️", app.T("~1 phút", "~1 minute"), app.T("Câu nào cũng bỏ qua được", "Skip any question"))
+                    point(1, "🔒", app.T("Chỉ bạn thấy", "Only you see it"), app.T("Host không bao giờ thấy", "Hosts never do"))
+                    point(2, "⚙️", app.T("Đổi lúc nào", "Change anytime"), app.T("Trong Tài khoản", "In Account"))
                 }
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 24)
 
-                InkButton(title: app.T("Bắt đầu", "Get started")) { flow.send(.start) }
-                    .accessibilityIdentifier("onboarding.start")
-                    .padding(.top, 36)
-                Button { flow.send(.skipAll) } label: {
-                    Text(app.T("Bỏ qua, xem tất cả sự kiện", "Skip, show me everything"))
-                        .font(.subheadline.weight(.semibold)).opacity(0.8)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .contentShape(Rectangle())
+                Group {
+                    InkButton(title: app.T("Bắt đầu", "Get started")) { flow.send(.start) }
+                        .accessibilityIdentifier("onboarding.start")
+                        .padding(.top, 36)
+                    Button { flow.send(.skipAll) } label: {
+                        Text(app.T("Bỏ qua, xem tất cả sự kiện", "Skip, show me everything"))
+                            .font(.subheadline.weight(.semibold)).opacity(0.8)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PressableButtonStyle(haptic: false))
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("onboarding.skipAll")
                 }
-                .buttonStyle(PressableButtonStyle(haptic: false))
-                .padding(.top, 8)
-                .accessibilityIdentifier("onboarding.skipAll")
+                .modifier(RiseIn(shown: appeared, delay: reduceMotion ? 0 : 0.3))
             }
             .padding(.horizontal, 24).padding(.top, 56).padding(.bottom, 40)
         }
+        .onAppear { appeared = true }
     }
 
-    private func point(_ emoji: String, _ title: String, _ sub: String) -> some View {
+    private func point(_ index: Int, _ emoji: String, _ title: String, _ sub: String) -> some View {
         VStack(spacing: 6) {
-            Text(emoji).font(.system(size: 26)).accessibilityHidden(true)
+            Text(emoji).font(.system(size: 26)).frame(height: 32).accessibilityHidden(true)
             Text(title).font(.footnote.weight(.bold)).multilineTextAlignment(.center)
+                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             Text(sub).font(.caption).foregroundStyle(app.palette.ink.opacity(0.7)).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity, minHeight: 112, alignment: .top)
+        .frame(maxWidth: .infinity, minHeight: 112, maxHeight: .infinity, alignment: .top)
         .padding(.vertical, 14).padding(.horizontal, 8)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .accessibilityElement(children: .combine)
+        .modifier(RiseIn(shown: appeared, delay: reduceMotion ? 0 : 0.12 + Double(index) * 0.07))
+    }
+}
+
+/// Entrance for the welcome screen: fade in while rising 24pt, on a quick
+/// spring. Reduce Motion keeps only the fade (no travel, no stagger).
+private struct RiseIn: ViewModifier {
+    let shown: Bool
+    let delay: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown || reduceMotion ? 0 : 24)
+            .animation(reduceMotion ? .easeOut(duration: 0.2)
+                       : .spring(response: 0.42, dampingFraction: 0.86).delay(delay),
+                       value: shown)
     }
 }
 

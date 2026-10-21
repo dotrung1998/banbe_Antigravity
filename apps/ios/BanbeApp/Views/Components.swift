@@ -831,6 +831,8 @@ struct ScreenScaffold<Content: View>: View {
     /// which only restores when the target id is already materialized.
     var restoreOffsetY: CGFloat? = nil
     var onScrollOffset: ((CGFloat) -> Void)? = nil
+    /// Bumping this pins the scroll view to the very top (overrides any restore in flight).
+    var scrollToTopToken: Int = 0
     // Refresh-indicator fix pass (2026-09-27, follow-up A) — replaces each
     // root screen's own plain `.refreshable { await ... }` (whose system
     // spinner can't be reskinned, see RootRefreshIndicator's own doc
@@ -878,6 +880,7 @@ struct ScreenScaffold<Content: View>: View {
                         (tracksBottomBarScroll || onRefresh != nil)
                             ? AnyView(ScaffoldScrollProbe(
                                 restoreOffsetY: restoreOffsetY, onOffset: onScrollOffset,
+                                scrollToTopToken: scrollToTopToken,
                                 onChange: { offsetY, userDriven in
                                     if tracksBottomBarScroll { app.noteScaffoldScroll(offsetY, userDriven: userDriven) }
                                 },
@@ -966,6 +969,7 @@ enum ScaffoldPullPhase { case began, changed, ended, cancelled }
 struct ScaffoldScrollProbe: UIViewRepresentable {
     var restoreOffsetY: CGFloat? = nil
     var onOffset: ((CGFloat) -> Void)? = nil
+    var scrollToTopToken: Int = 0
     let onChange: (CGFloat, Bool) -> Void
     var onPullPhase: ((ScaffoldPullPhase, CGFloat) -> Void)? = nil
 
@@ -975,6 +979,7 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
         view.onOffset = onOffset
         view.onChange = onChange
         view.onPullPhase = onPullPhase
+        view.scrollToTopToken = scrollToTopToken
         return view
     }
 
@@ -982,6 +987,10 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
         uiView.onOffset = onOffset
         uiView.onChange = onChange
         uiView.onPullPhase = onPullPhase
+        if uiView.scrollToTopToken != scrollToTopToken {
+            uiView.scrollToTopToken = scrollToTopToken
+            uiView.pinToTop()
+        }
     }
 
     final class ProbeView: UIView {
@@ -992,6 +1001,8 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
         /// True while the saved offset is still being re-applied; live offsets are not reported
         /// then, so the initial layout's offset 0 never overwrites the value being restored.
         private var restoring = false
+        var scrollToTopToken = 0
+        private var pinGeneration = 0
         private weak var observedScrollView: UIScrollView?
         private var observation: NSKeyValueObservation?
         private weak var attachedGesture: UIPanGestureRecognizer?
@@ -1033,6 +1044,28 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
             }
         }
 
+        /// Holds the scroll view at the top for ~0.5s (content inserted above an id-anchored
+        /// card — e.g. Home's checklist after onboarding — would otherwise push it back down),
+        /// and stops the moment the user touches it.
+        func pinToTop() {
+            pinGeneration += 1
+            restoring = false
+            guard let sv = observedScrollView else { return }
+            pinStep(sv, generation: pinGeneration, tick: 0)
+        }
+
+        private func pinStep(_ sv: UIScrollView, generation: Int, tick: Int) {
+            guard generation == pinGeneration, tick < 10, !(sv.isTracking || sv.isDragging) else { return }
+            let topY = -sv.adjustedContentInset.top
+            if abs(sv.contentOffset.y - topY) > 1 {
+                sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: topY), animated: false)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak sv] in
+                guard let self, let sv else { return }
+                self.pinStep(sv, generation: generation, tick: tick + 1)
+            }
+        }
+
         private func beginRestoreIfNeeded(_ sv: UIScrollView) {
             guard let target = restoreOffsetY else { return }
             restoring = true
@@ -1044,7 +1077,7 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
         // touches the scroll view. A target at (or above) the top is a no-op.
         private func restoreStep(_ sv: UIScrollView, target: CGFloat, tick: Int) {
             let topY = -sv.adjustedContentInset.top
-            if sv.isTracking || sv.isDragging || tick >= 20 || target <= topY + 1 {
+            if !restoring || sv.isTracking || sv.isDragging || tick >= 20 || target <= topY + 1 {
                 restoring = false
                 return
             }

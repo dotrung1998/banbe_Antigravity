@@ -27,6 +27,8 @@ enum UITestFixture {
     /// `-uiFixtureForYou YES` gives the fixture account event preferences that match its events, so Home shows the
     /// pinned For You chip (used to check it is the same height as Filters / Sort / the quick chips).
     static let seedsForYou = UserDefaults.standard.bool(forKey: "uiFixtureForYou")
+    /// `-uiFixtureReview YES` (with `shell.create`) opens Review before submitting with synthetic photos (2026-10-21).
+    static let opensReview = UserDefaults.standard.bool(forKey: "uiFixtureReview")
     /// Note 51 — `-uiFixturePulse YES` seeds the daily Banbe Pulse ranking (the Home ticker's content);
     /// `-uiFixtureRewards off` is an admin having hidden Rewards & badges (migration 187).
     static let seedsPulse = UserDefaults.standard.bool(forKey: "uiFixturePulse")

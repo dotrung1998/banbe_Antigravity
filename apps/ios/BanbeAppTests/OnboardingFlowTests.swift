@@ -323,10 +323,22 @@ final class OnboardingFlowTests: XCTestCase {
         s.enabled = true
         XCTAssertTrue(ActivationChecklist.isVisible(state: s, items: items, hasSavedEvent: false, faceIDEnabled: false))
         s.openedEvent = true
+        XCTAssertTrue(ActivationChecklist.isVisible(state: s, items: items, hasSavedEvent: true, faceIDEnabled: false),
+                      "stays up once everything is done, for the one-time celebration")
+        s.celebrated = true
         XCTAssertFalse(ActivationChecklist.isVisible(state: s, items: items, hasSavedEvent: true, faceIDEnabled: false),
-                       "hides once everything is done")
+                       "hides after the celebration played")
+        XCTAssertTrue(ActivationChecklist.isVisible(state: s, items: items, hasSavedEvent: false, faceIDEnabled: false),
+                      "un-saving the only event brings an unfinished checklist back")
+        s.celebrated = false
         s.openedEvent = false
         s.dismissed = true
         XCTAssertFalse(ActivationChecklist.isVisible(state: s, items: items, hasSavedEvent: false, faceIDEnabled: false))
+    }
+
+    func testChecklistStateDecodesWithoutCelebratedKey() throws {
+        let old = Data(#"{"enabled":true,"dismissed":false,"openedEvent":true}"#.utf8)
+        let s = try JSONDecoder().decode(ActivationChecklistState.self, from: old)
+        XCTAssertEqual(s, ActivationChecklistState(enabled: true, dismissed: false, openedEvent: true, celebrated: false))
     }
 }

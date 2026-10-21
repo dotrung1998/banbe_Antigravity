@@ -65,9 +65,16 @@ const pillBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 
 // exactly where it was, with no re-entrance animation. Cleared when the event is closed (Back / pull-down).
 let lastVisit = null;
 
-export default function EventDetail() {
-  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, setQty, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
+// `preview` (create-event "Public preview", owner 2026-10-21): render an unsaved draft through this exact page so the
+// host sees what guests will. { ev, photos: [{ id, url }], capacity, backLabel, onBack, footer }. Nothing is fetched or
+// saved; every guest control (save, share, ⋯, calendar pill, host actions, seat chips, Reserve) is shown but inert.
+// iOS twin: EventDetailView(preview:).
+export default function EventDetail({ preview = null } = {}) {
+  const { state, T, trStatus, stripKm, curEvent, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, setQty, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
   const s = state;
+  const ev = preview?.ev ?? curEvent;
+  // Spread into a guest control's style in preview: visible exactly as guests see it, but does nothing.
+  const inert = preview ? { pointerEvents: 'none' } : null;
   const scrollerRef = useRef(null);
   const heroRef = useRef(null);
   const heroImgRef = useRef(null);
@@ -77,10 +84,10 @@ export default function EventDetail() {
   const dragRef = useRef({ active: false, startY: 0, startX: 0, dy: 0, closing: false });
   // Zoom out of the tapped card (and back into it on close), like iOS. `null` when opened from anywhere without one.
   const zoomRef = useRef(undefined);
-  if (zoomRef.current === undefined) zoomRef.current = recentZoomOrigin();
+  if (zoomRef.current === undefined) zoomRef.current = preview ? null : recentZoomOrigin();
   // A return (not a fresh open from a card): the saved scroll offset; null for a fresh open.
   const returnRef = useRef(undefined);
-  if (returnRef.current === undefined) returnRef.current = !zoomRef.current && lastVisit?.key === ev.key ? lastVisit.scrollTop : null;
+  if (returnRef.current === undefined) returnRef.current = !preview && !zoomRef.current && lastVisit?.key === ev.key ? lastVisit.scrollTop : null;
   const zoomPose = (o, R) => {
     const sc = Math.max(0.05, o.width / R.width);
     return {
@@ -105,16 +112,18 @@ export default function EventDetail() {
   }, []);
   // A small physical tap (where the device supports it) as the screen opens and closes, like iOS.
   const buzz = () => { try { navigator.vibrate?.(10); } catch { /* unsupported */ } };
-  useEffect(() => { if (returnRef.current == null) buzz(); }, []);
+  useEffect(() => { if (returnRef.current == null && !preview) buzz(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Coming back: put the scroll position straight back (and the title/nav-bar state with it) before the first paint.
   useLayoutEffect(() => {
     const sc = scrollerRef.current;
+    if (preview) return;
     if (returnRef.current == null) { lastVisit = { key: ev.key, scrollTop: 0 }; return; }
     if (sc) { sc.scrollTop = returnRef.current; onSheetScroll({ currentTarget: sc }); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Close with the same shrink-and-fade the pull-down finishes with, then navigate back.
   const closeWithShrink = () => {
+    if (preview) { preview.onBack(); return; }
     lastVisit = null;
     const card = cardRef.current;
     const d = dragRef.current;
@@ -141,7 +150,7 @@ export default function EventDetail() {
   };
   // Host reservation criteria (migration 162). Not gated on "real" events: a demo-catalogue key
   // (e.g. 'bepnho') can also be a real DB row with criteria; a key with no row resolves to Everyone.
-  const crit = useReservationCriteria(ev.key);
+  const crit = useReservationCriteria(preview ? null : ev.key);
   // Structured "Bao gồm" (migration 087) — up to 3 { label, detail } items.
   // Legacy `ev.included` (plain text) stays readable as before when no
   // structured items exist yet (an event created before this pass); never
@@ -157,13 +166,15 @@ export default function EventDetail() {
   const introParagraphs = (ev.intro || '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
   // STAGE D (2026-09-25) — real event_photos rows, replacing the static
   // demo `ev.gallery` below.
-  useEffect(() => { loadEventPhotos(ev.key); }, [ev.key, loadEventPhotos]);
+  useEffect(() => { if (!preview) loadEventPhotos(ev.key); }, [ev.key, loadEventPhotos, preview]);
   // Photo identity fix — each gallery entry now carries its own real
   // event_photos.id + owning event id, not just a URL (see openPhoto's own
   // comment in BanBeContext.jsx). Every photo here belongs to THIS event, so
   // eventId is just ev.key, but it travels per-photo like Organizer.jsx's
   // gallery does, for the same shape both screens hand to openPhoto.
-  const realPhotos = (s.eventPhotos || []).filter(p => p.url).map(p => ({ id: p.id, url: p.url, eventId: ev.key }));
+  const realPhotos = preview
+    ? (preview.photos || []).filter(p => p.url).map(p => ({ id: p.id, url: p.url, eventId: ev.key }))
+    : (s.eventPhotos || []).filter(p => p.url).map(p => ({ id: p.id, url: p.url, eventId: ev.key }));
   const [shareStoryMsg, setShareStoryMsg] = useState('');
   // BUG 4 fix (2026-09-22 follow-up) — "Chia sẻ lên Story" used to publish
   // immediately on tap; per this ticket's own instruction, a real
@@ -205,7 +216,7 @@ export default function EventDetail() {
   // explicitly instead of falling through to BACK_LABELS[eventBackScreen]
   // (which used to read "banbe"/"Home" while the tap actually reopened the
   // story — this ticket's own bug report).
-  const backLabel = s.eventBackIsStory
+  const backLabel = preview ? preview.backLabel : s.eventBackIsStory
     ? (s.storyReturnHostName ? T('Tin của ' + s.storyReturnHostName, s.storyReturnHostName + '’s story') : T('Story', 'Story'))
     : (BACK_LABELS[s.eventBackScreen] || 'banbe');
   const cameFromHome = !s.eventBackIsStory && (s.eventBackScreen || 'home') === 'home';
@@ -235,14 +246,14 @@ export default function EventDetail() {
   // Real events carry their organizer id; the demo catalogue has none (never marked followed).
   const evOrganizerId = s.realEventsById[ev.key]?.organizerId;
   const evOrgFollowed = !!evOrganizerId && s.followedOrgIds.includes(evOrganizerId);
-  const orgStats = s.eventOrgStats[ev.key];
-  useEffect(() => { loadEventOrgStats(ev.key); }, [ev.key, loadEventOrgStats]);
+  const orgStats = preview ? null : s.eventOrgStats[ev.key];
+  useEffect(() => { if (!preview) loadEventOrgStats(ev.key); }, [ev.key, loadEventOrgStats, preview]);
   const showRefund = !ev.cancelled && ev.endedHoursAgo == null && !/Miễn phí|Free/.test(ev.price);
 
   // If the signed-in user already holds a live booking for this exact event,
   // the bar should open their ticket (QR + entry code) instead of running
   // them through Reserve again — this used to show "Reserve" regardless.
-  const myBooking = s.booking && s.booking.event_id === ev.key && ['pending', 'confirmed', 'attended'].includes(s.booking.status)
+  const myBooking = !preview && s.booking && s.booking.event_id === ev.key && ['pending', 'confirmed', 'attended'].includes(s.booking.status)
     ? s.booking
     : null;
   // TASK B (2026-10-01 UX foundation pass) — a held/pending booking is NOT
@@ -270,7 +281,8 @@ export default function EventDetail() {
   // One state for the sticky bar (src/lib/reserveBar.js, mirrored on iOS). Cancelled is checked before ended/sold
   // out because a cancelled event's stale `seats_remaining` can still read as available or as "sold out".
   const barState = reserveBarState({ booking: !!myBooking, ticket: myBookingIsTicket, cancelled: !!ev.cancelled, ended, soldOut: !!ev.soldOut, blocked: criteriaBlocked });
-  const qty = clampQty(s.qty);
+  // Preview: what a guest sees on arrival (1 ticket), not whatever the host last picked elsewhere.
+  const qty = preview ? 1 : clampQty(s.qty);
   const totalStr = trStatus(totalPrice(ev.price, qty));
   const isFree = parsePrice(ev.price).free;
   const critRef = useRef(null);
@@ -301,10 +313,11 @@ export default function EventDetail() {
   const [whenDate, whenTime] = (ev.when || '').split(' ▪︎ ');
   // Seats bar: only when capacity AND what is left are both known (live fill from migration 186 first, else the
   // row's own seats_remaining). Never an invented capacity — the plain "N left" text stays otherwise.
-  const realRow = s.realEventsById[ev.key];
-  const fill = s.eventFill?.[ev.key];
-  const capacity = fill?.capacity ?? realRow?.capacity ?? null;
-  const remaining = fill ? Math.max(0, fill.capacity - fill.booked) : (realRow?.seatsRemaining ?? null);
+  const realRow = preview ? null : s.realEventsById[ev.key];
+  const fill = preview ? null : s.eventFill?.[ev.key];
+  // A draft has nothing booked yet: every offered seat is free.
+  const capacity = preview ? (preview.capacity || null) : (fill?.capacity ?? realRow?.capacity ?? null);
+  const remaining = preview ? (preview.capacity || null) : fill ? Math.max(0, fill.capacity - fill.booked) : (realRow?.seatsRemaining ?? null);
   const fillRatio = capacity > 0 && remaining != null ? Math.min(1, Math.max(0, (capacity - remaining) / capacity)) : null;
   const seatsText = ev.soldOut ? trStatus('Hết chỗ') : remaining != null ? T(`Còn ${remaining} chỗ`, `${remaining} seats left`) : evSeatsLong;
   // Track-record line under the description (mockup's rating row, real data only — banbe has no ratings).
@@ -342,7 +355,7 @@ export default function EventDetail() {
   };
   const onSheetScroll = (e) => {
     const t = Math.max(0, e.currentTarget.scrollTop);
-    lastVisit = { key: ev.key, scrollTop: t };
+    if (!preview) lastVisit = { key: ev.key, scrollTop: t };
     // Fades only part-way while the strip is visible; gone once the solid nav bar covers it (so the photo never peeks
     // through the sheet's rounded top corners under the bar).
     const p = titleProgress(t);
@@ -370,7 +383,7 @@ export default function EventDetail() {
   useEffect(() => {
     const scroller = scrollerRef.current;
     const card = cardRef.current;
-    if (!scroller || !card) return undefined;
+    if (!scroller || !card || preview) return undefined;
     const d = dragRef.current;
     const apply = (dy, animate) => {
       const p = Math.min(1, Math.max(0, dy / 320));
@@ -465,7 +478,7 @@ export default function EventDetail() {
       </div>
       {/* ⋯ opens the same frosted pop-up as the calendar pill beside the title (GlassMenu), anchored under the disc. */}
       <GlassMenu open={menuOpen} onOpenChange={setMenuOpen} top={48} label={T('Tuỳ chọn sự kiện', 'Event options')}
-        wrapStyle={{ position: 'fixed', top: OVERLAY_TOP, right: 112, zIndex: 6 }} menuTestId="event-detail-menu"
+        wrapStyle={{ position: 'fixed', top: OVERLAY_TOP, right: 112, zIndex: 6, ...inert }} menuTestId="event-detail-menu"
         trigger={(
           <div data-fade onClick={() => setMenuOpen(o => !o)} role="button" aria-haspopup="menu" aria-label={T('Thêm', 'More')} aria-expanded={menuOpen} data-testid="event-detail-more" style={disc()}><IconMore /></div>
         )}>
@@ -479,9 +492,9 @@ export default function EventDetail() {
         {(showOpenInMap || !cameFromHome || s.myOrgEventKeys.includes(ev.key)) && <GlassMenuDivider />}
         <GlassMenuItem icon={<IconLink />} onClick={copyLink} testId="event-copy-link">{T('Sao chép link', 'Copy link')}</GlassMenuItem>
       </GlassMenu>
-      <div data-fade onClick={() => shareEvent(ev)} role="button" aria-label={T('Chia sẻ', 'Share')} data-testid="event-detail-share" style={disc({ position: 'fixed', top: OVERLAY_TOP, right: 64, zIndex: 5 })}><IconShare /></div>
+      <div data-fade onClick={() => shareEvent(ev)} role="button" aria-label={T('Chia sẻ', 'Share')} data-testid="event-detail-share" style={disc({ position: 'fixed', top: OVERLAY_TOP, right: 64, zIndex: 5, ...inert })}><IconShare /></div>
       {/* Save uses the same isSaved/toggleFav as Home (keys off the real `favorites` table by event id). */}
-      <div data-fade onClick={() => toggleFav(ev.key)} role="button" aria-label={isSaved(ev.key) ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')} aria-pressed={isSaved(ev.key)} data-testid="event-detail-save" style={disc({ position: 'fixed', top: OVERLAY_TOP, right: 16, zIndex: 5 })}><IconHeart filled={isSaved(ev.key)} /></div>
+      <div data-fade onClick={() => toggleFav(ev.key)} role="button" aria-label={isSaved(ev.key) ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')} aria-pressed={isSaved(ev.key)} data-testid="event-detail-save" style={disc({ position: 'fixed', top: OVERLAY_TOP, right: 16, zIndex: 5, ...inert })}><IconHeart filled={isSaved(ev.key)} /></div>
       {(s.shared || linkCopied) && (
         <div role="status" style={{ position: 'fixed', top: `calc(${OVERLAY_TOP} + 48px)`, right: 16, zIndex: 5, fontSize: 12, color: ink, background: 'rgba(var(--bb-bg-rgb),0.94)', borderRadius: 999, padding: '6px 12px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}>{T('Đã sao chép link', 'Link copied')}</div>
       )}
@@ -546,7 +559,7 @@ export default function EventDetail() {
           )}
         </div>
         {/* Title + the calendar pill on one row (iOS EventPlanTitleRow). */}
-        <div ref={titleWrapRef} style={{ transformOrigin: 'left bottom', willChange: 'transform, opacity' }}>
+        <div ref={titleWrapRef} style={{ transformOrigin: 'left bottom', willChange: 'transform, opacity', ...inert }}>
           <EventPlanTitle eventKey={ev.key} title={ev.name} titleStyle={display(28, { lineHeight: 1.2 })} />
         </div>
         {/* Body copy supports the title instead of competing with it. Long descriptions clamp to 4 lines when the
@@ -557,7 +570,7 @@ export default function EventDetail() {
         )}
         {/* Host track record in clay — where the mockup puts its rating row. Real data only: banbe has no ratings. */}
         {trackParts.length > 0 && (
-          <div onClick={() => openOrganizerOfEvent(ev.key, 'event')} role="button" data-testid="event-track-record" style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 14, color: clay, cursor: 'pointer' }}>
+          <div onClick={() => openOrganizerOfEvent(ev.key, 'event')} role="button" data-testid="event-track-record" style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 14, color: clay, cursor: 'pointer', ...inert }}>
             <IconHost /><span>{trackParts.join(' · ')}</span>
             {evOrgFollowed && <FollowingBadge T={T} testId="event-organizer-following" />}
           </div>
@@ -621,7 +634,7 @@ export default function EventDetail() {
         )}
         {/* "Người tổ chức": its own section — heading, then a soft card with the host and two actions (same outlined clay
             buttons as before). */}
-        <div data-testid="event-host-section" style={{ marginTop: 32 }}>
+        <div data-testid="event-host-section" style={{ marginTop: 32, ...inert }}>
           <div style={sectionHeading}>{T('Người tổ chức', 'Host')}</div>
           <div style={{ marginTop: 10, padding: 14, borderRadius: RADIUS.card, background: 'rgba(var(--bb-fg-rgb),0.045)', border: `1px solid ${softRule}` }}>
             <div onClick={() => openOrganizerOfEvent(ev.key, 'event')} data-testid="event-organizer-row" role="button" aria-label={T('Trang của ', 'Page of ') + (ev.orgName || T('người tổ chức', 'the host'))} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
@@ -657,12 +670,12 @@ export default function EventDetail() {
           </div>
           {/* STAGE D (2026-09-25) — real event_photos rows, not the static demo `ev.gallery`. A genuinely photo-less
               real event shows plain text, never a fake/demo photo standing in for a real one. */}
-          {s.eventPhotosLoading ? (
+          {s.eventPhotosLoading && !preview ? (
             <p style={{ fontSize: 13, color: ink, opacity: 0.6, margin: '10px 0 0' }}>{T('Đang tải…', 'Loading…')}</p>
           ) : realPhotos.length ? (
-            <div data-testid="event-photo-strip" style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 10, paddingBottom: 4 }}>
+            <div data-testid="event-photo-strip" style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 10, paddingBottom: 4, ...(preview ? { cursor: 'default' } : null) }}>
               {realPhotos.map((p, i) => (
-                <div key={p.id} onClick={(e) => openPhoto(realPhotos, i, ev.orgName, e.currentTarget.getBoundingClientRect())} data-testid={`event-photo-${i}`} data-photo-thumb={p.id} style={{ position: 'relative', flex: 'none' }}>
+                <div key={p.id} onClick={preview ? undefined : (e) => openPhoto(realPhotos, i, ev.orgName, e.currentTarget.getBoundingClientRect())} data-testid={`event-photo-${i}`} data-photo-thumb={p.id} style={{ position: 'relative', flex: 'none' }}>
                   <div style={bg(p.url, { width: 132, height: 166, borderRadius: RADIUS.thumb, cursor: 'pointer' })} />
                   {/* A.7 — a liked photo gets a filled heart badge; an unliked one shows none here (the full-screen
                       viewer's own like button is the discoverable way to like it). */}
@@ -682,7 +695,7 @@ export default function EventDetail() {
       </div>
       {/* Sticky action area (mockup): seat chips + stepper, the refund promise, and the CTA with the live total —
           always on screen, so the decision can happen wherever the reader is convinced. Reserve opens pre-filled. */}
-      <div data-fade data-testid="event-action-area" style={{ touchAction: 'none', overscrollBehavior: 'contain', flex: 'none', position: 'relative', zIndex: 2, background: paper, borderRadius: '22px 22px 0 0', boxShadow: '0 -8px 24px rgba(27,25,22,0.10)', padding: '12px 16px calc(12px + env(safe-area-inset-bottom, 0px))' }}>
+      <div data-fade data-testid="event-action-area" aria-hidden={preview ? true : undefined} style={{ touchAction: 'none', overscrollBehavior: 'contain', flex: 'none', position: 'relative', zIndex: 2, background: paper, borderRadius: '22px 22px 0 0', boxShadow: '0 -8px 24px rgba(27,25,22,0.10)', padding: preview ? '12px 16px 10px' : '12px 16px calc(12px + env(safe-area-inset-bottom, 0px))', ...inert }}>
         {barState === 'reserve' && (
           <div data-testid="event-qty" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
             <div role="radiogroup" aria-label={T('Số vé', 'Tickets')} style={{ display: 'flex', gap: 6, minWidth: 0 }}>
@@ -712,6 +725,10 @@ export default function EventDetail() {
         )}
         <div onClick={reserveBarTap} role="button" style={reserveBarStyle} data-testid="event-reserve-bar" data-state={barState} aria-disabled={!reserveBarTap || undefined}>{reserveBarLabel}</div>
       </div>
+      {/* Preview: what guests see stops above; the host's own Confirm & submit sits under it. */}
+      {preview?.footer && (
+        <div data-testid="event-preview-footer" style={{ flex: 'none', position: 'relative', zIndex: 2, background: paper, padding: '0 16px calc(12px + env(safe-area-inset-bottom, 0px))' }}>{preview.footer}</div>
+      )}
       {includedSheetOpen && (
         <div
           onClick={() => setIncludedSheetOpen(false)}

@@ -3,8 +3,8 @@ import { flushSync } from 'react-dom';
 import { ReservationCriteriaPicker } from './ReservationCriteria.jsx';
 import { criteriaSummary, normalizeCriteria, CATEGORY_EMOJI } from '../lib/eventPrefs.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { EVENTS, CREATE_PALETTES, bg, mapsUrl } from '../data/events.js';
-import { liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
+import { EVENTS, CREATE_PALETTES, bg } from '../data/events.js';
+import { liveEventOverrides } from '../lib/countdown.js';
 import { supabase } from '../lib/supabase.js';
 import { parseExcelOrZipPackage } from '../lib/excelEventImport.js';
 import { formatVnd } from '../lib/paymentDocument.js';
@@ -19,6 +19,8 @@ import { track } from '../lib/analytics.js';
 import { stepOfField, isTextField, firstMissingField } from '../lib/createFieldGuide.js';
 import RecipeSheet, { RecipeMeter, RecipeList } from './sheets/RecipeSheet.jsx';
 import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
+import EventDetail from './EventDetail.jsx';
+import { shapeDraftAsCurEvent, draftPriceVnd as parseDraftPriceVnd } from '../lib/draftPreview.js';
 
 // Optional per-event goal (note 50). Weights the recipe; stored host-only (migration 186), never shown to guests.
 const GOAL_LABELS = {
@@ -55,7 +57,7 @@ const CAT_DEFS = [
 
 export default function CreateEvent() {
   const {
-    state, T, trStatus, stripKm, curEvent: ev, createBack,
+    state, T, curEvent: ev, createBack,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createIntroType, createKeywordsType, createChatGreetingType, createChatGreetingEnType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
@@ -924,8 +926,6 @@ export default function CreateEvent() {
       {reviewOpen && (
         <ReviewStep
           T={T}
-          trStatus={trStatus}
-          stripKm={stripKm}
           s={s}
           items={items}
           coverKey={coverKey}
@@ -987,7 +987,7 @@ export default function CreateEvent() {
  * own scroll container rather than a separate route, so there is no
  * navigation/back-stack state to reconcile.
  */
-function ReviewStep({ T, trStatus, stripKm, s, items, coverKey, createCatLabel, recipe, onFixRecipe, onBack, onConfirm }) {
+function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe, onBack, onConfirm }) {
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [tab, setTab] = useState('private');
   const dateLabel = [s.createEventDate, s.createEventTime].filter(Boolean).join(' ▪︎ ') || T('Chưa chọn', 'Not set');
@@ -996,24 +996,43 @@ function ReviewStep({ T, trStatus, stripKm, s, items, coverKey, createCatLabel, 
   const addressLabel = s.createLocLabel || [s.createAddressLine, s.createDistrict, s.createCity].filter(Boolean).join(', ') || T('Chưa xác nhận địa chỉ', 'Address not confirmed');
   const includedItems = (s.createIncludedItems || []).filter(it => (it.label || '').trim());
 
-  // Same parsing createSubmit itself uses (BanBeContext.jsx) — the public
-  // preview's price must match exactly what gets persisted and later
-  // rendered on the real Event Detail page, not a re-guess of the raw
-  // free-text field.
-  const priceVndDraft = parseInt((s.createPrice.match(/[\d.]+/) || ['0'])[0].replace(/\./g, ''), 10) || 0;
-  const publicPriceLabel = priceVndDraft > 0 ? formatVnd(priceVndDraft) : T('Miễn phí', 'Free');
+  // Public preview (owner, 2026-10-21): the REAL Event Detail, rendered from this draft (src/lib/draftPreview.js).
   const draftDateObj = (s.createEventDate && s.createEventTime) ? new Date(`${s.createEventDate}T${s.createEventTime}`) : null;
-  const { dayLong, time: draftTimeLabel } = draftDateObj && !Number.isNaN(draftDateObj.getTime()) ? formatVnEventDate(draftDateObj) : {};
-  // Same shape shapeRealEventAsCurEvent builds for a real event's `where`
-  // (district ▪︎ live-km placeholder ▪︎ long date ▪︎ time) — stripKm below
-  // replaces the placeholder with a real computed distance once location
-  // is available, or strips it entirely, same contract as everywhere else.
-  const publicWhereRaw = [s.createDistrict || '', draftDateObj ? '0,0 km từ bạn' : null, dayLong, draftTimeLabel].filter(Boolean).join(' ▪︎ ');
-  const publicWhere = trStatus(stripKm(publicWhereRaw, { lat: s.createLat, lng: s.createLng }));
-  const publicMapsUrl = (s.createLat != null && s.createLng != null) ? mapsUrl({ lat: s.createLat, lng: s.createLng }) : null;
-  const publicSeatsLabel = s.createSeats.trim() ? T(`Còn ${s.createSeats.trim()} chỗ`, `${s.createSeats.trim()} seats left`) : '';
+  const firstCat = CAT_DEFS.find(c => c.key === (s.createCats[0] || 'supper'));
   const coverItem = items.find(p => p.url === coverKey) || items[0];
-  const galleryRest = items.filter(p => p !== coverItem);
+  const previewPhotos = (coverItem ? [coverItem, ...items.filter(p => p !== coverItem)] : items).map(p => ({ id: p.url, url: p.url }));
+  const draftEv = shapeDraftAsCurEvent({
+    name: s.createName.trim() || T('(Chưa đặt tên)', '(Untitled)'),
+    catKey: firstCat?.key, catLabel: firstCat?.vi || '',
+    area: s.createDistrict || '', lat: s.createLat, lng: s.createLng, startsAt: draftDateObj,
+    priceVnd: parseDraftPriceVnd(s.createPrice), seats: parseInt(s.createSeats, 10) || null,
+    description: s.createDesc.trim(), intro: s.createIntro.trim(), includedItems,
+    inviteOnly: s.createVisibility === 'invite', organizerName: (s.orgRegName || '').trim(),
+    coverUrl: coverItem?.url || '',
+  });
+
+  // Confirm — the ONLY call site that actually submits, available from either tab (the Public preview shows the same
+  // block under the page). A local `confirmBusy` disables the button for the duration of this ONE click (on top of
+  // BanBeContext's own synchronous createSubmitInFlightRef guard).
+  const confirmBlock = (
+    <>
+      <div
+        onClick={confirmBusy || s.createSent ? undefined : async () => { setConfirmBusy(true); await onConfirm(); setConfirmBusy(false); }}
+        data-testid="create-review-confirm"
+        style={{
+          fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 16, borderRadius: 999,
+          background: confirmBusy || s.createSent ? 'rgba(27,25,22,0.16)' : ink,
+          color: confirmBusy || s.createSent ? ink : paper,
+          cursor: confirmBusy || s.createSent ? 'default' : 'pointer',
+        }}
+      >
+        {s.createSent
+          ? T('Đã gửi, đang chờ Banbe duyệt', 'Submitted, waiting for Banbe to review')
+          : T('Xác nhận và gửi', 'Confirm & submit')}
+      </div>
+      {s.createError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createError}</p>}
+    </>
+  );
 
   const row = (label, value) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '12px 0', borderBottom: `1px solid ${rule}` }}>
@@ -1113,90 +1132,30 @@ function ReviewStep({ T, trStatus, stripKm, s, items, coverKey, createCatLabel, 
               </div>
             )}
           </>
-        ) : (
-          <>
-            {coverItem && (
-              <div style={{ position: 'relative', width: '100%', aspectRatio: '1 / 1', borderRadius: 16, overflow: 'hidden', marginTop: 4 }}>
-                <div style={bg(coverItem.url, { width: '100%', height: '100%' })} />
-              </div>
-            )}
-            <span style={{ fontSize: 12, color: ink, opacity: 0.7, marginTop: 14, display: 'block' }}>{createCatLabel}</span>
-            <h1 style={{ ...display(26, { margin: '4px 0 0' }) }}>{s.createName.trim() || T('(Chưa đặt tên)', '(Untitled)')}</h1>
-            {publicMapsUrl ? (
-              <a href={publicMapsUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: ink, textDecoration: 'underline', marginTop: 6, display: 'block' }}>
-                {publicWhere} ↗
-              </a>
-            ) : (
-              <div style={{ fontSize: 13, color: ink, marginTop: 6 }}>{publicWhere || T('Chưa xác nhận địa chỉ', 'Address not confirmed')}</div>
-            )}
-            {publicSeatsLabel && <div style={{ fontSize: 13, color: ink, marginTop: 4 }}>{publicSeatsLabel}</div>}
-
-            {s.createIntro.trim() && (
-              <p style={{ fontSize: 13.5, lineHeight: 1.6, color: ink, marginTop: 18, whiteSpace: 'pre-wrap' }}>{s.createIntro.trim()}</p>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 22, paddingTop: 14, borderTop: `1px solid ${rule}` }}>
-              <span style={{ fontSize: 13, color: ink }}>{T('Giá vé', 'Price')}</span>
-              <span style={{ ...display(19) }}>{publicPriceLabel}</span>
-            </div>
-
-            {includedItems.length > 0 && (
-              <div style={{ marginTop: 18 }}>
-                <span style={{ fontSize: 11.5, color: ink }}>{T('Bao gồm', 'Included')}</span>
-                <div style={{ ...cardGlass({ marginTop: 10, padding: '4px 16px', display: 'flex', flexDirection: 'column' }) }}>
-                  {includedItems.map((it, i) => (
-                    <div key={i} style={{ padding: '10px 0', borderBottom: i < includedItems.length - 1 ? `1px solid ${rule}` : 'none' }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{it.label.trim()}</span>
-                      {it.detail?.trim() && <p style={{ fontSize: 12.5, color: ink, margin: '2px 0 0' }}>{it.detail.trim()}</p>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {s.createDesc.trim() && (
-              <p style={{ fontSize: 13, lineHeight: 1.6, color: ink, marginTop: 18, whiteSpace: 'pre-wrap' }}>{s.createDesc.trim()}</p>
-            )}
-
-            {galleryRest.length > 0 && (
-              <div style={{ marginTop: 18 }}>
-                <span style={{ fontSize: 11.5, color: ink }}>{T('Ảnh', 'Photos')}</span>
-                <div style={{ display: 'flex', gap: 8, marginTop: 10, overflowX: 'auto' }}>
-                  {galleryRest.map(p => (
-                    <div key={p.url} style={{ position: 'relative', flex: 'none', width: 96, height: 96, borderRadius: 12, overflow: 'hidden' }}>
-                      <div style={bg(p.url, { width: '100%', height: '100%' })} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        )}
+        ) : null}
       </div>
 
-      {/* Confirm — the ONLY call site that actually submits, available from
-          either tab. A local `confirmBusy` disables the button for the
-          duration of this ONE click (on top of BanBeContext's own synchronous
-          createSubmitInFlightRef guard), matching this screen's own
-          "createSent" style-dimming convention rather than inventing a
-          new one. */}
-      <div style={{ flex: 'none', padding: '10px 22px 40px' }}>
-        <div
-          onClick={confirmBusy || s.createSent ? undefined : async () => { setConfirmBusy(true); await onConfirm(); setConfirmBusy(false); }}
-          data-testid="create-review-confirm"
-          style={{
-            fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 16, borderRadius: 999,
-            background: confirmBusy || s.createSent ? 'rgba(27,25,22,0.16)' : ink,
-            color: confirmBusy || s.createSent ? ink : paper,
-            cursor: confirmBusy || s.createSent ? 'default' : 'pointer',
-          }}
-        >
-          {s.createSent
-            ? T('Đã gửi, đang chờ Banbe duyệt', 'Submitted, waiting for Banbe to review')
-            : T('Xác nhận và gửi', 'Confirm & submit')}
+      <div style={{ flex: 'none', padding: '10px 22px 40px' }}>{confirmBlock}</div>
+
+      {tab === 'public' && (
+        <div data-testid="create-review-public" style={{ position: 'fixed', inset: 0, zIndex: 41, background: paper }}>
+          <EventDetail preview={{
+            ev: draftEv,
+            photos: previewPhotos,
+            capacity: parseInt(s.createSeats, 10) || null,
+            backLabel: T('Nội bộ (Host)', 'Private (Host)'),
+            onBack: () => setTab('private'),
+            footer: (
+              <>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.6, textAlign: 'center', margin: '0 0 8px' }}>
+                  {T('Xem trước: khách sẽ thấy đúng trang này', 'Preview: this is exactly what guests will see')}
+                </div>
+                {confirmBlock}
+              </>
+            ),
+          }} />
         </div>
-        {s.createError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createError}</p>}
-      </div>
+      )}
     </div>
   );
 }

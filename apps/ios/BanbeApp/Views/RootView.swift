@@ -535,6 +535,17 @@ struct RootView: View {
         return Double(1 - dragProgress) * 0.1
     }
 
+    private var showsAccountGate: Bool {
+        auth.session != nil && (auth.gate != .ready || app.appliedSessionUID != auth.session?.user.id)
+            && app.screen != .splash
+    }
+
+    private var showsEventOnboarding: Bool {
+        auth.session != nil && auth.gate == .ready && app.appliedSessionUID == auth.session?.user.id
+            && app.screen != .splash && !auth.isLocked
+            && (app.needsSettingsOnboarding || app.needsPreferencesOnboarding || app.onboardingFlowActive)
+    }
+
     var body: some View {
         ZStack {
             // BUG 2 fix (2026-09-22 fourteenth follow-up) — real root cause
@@ -931,16 +942,12 @@ struct RootView: View {
             // Stays up (showing the loading GIF) until this session's account data
             // has also finished loading — otherwise the login form reappears for
             // about a second between the gate clearing and Home appearing.
-            if auth.session != nil && (auth.gate != .ready || app.appliedSessionUID != auth.session?.user.id) && app.screen != .splash { AccountGateOverlay() }
+            if showsAccountGate { AccountGateOverlay().transition(.opacity) }
             // Post-signup personalization (five optional questions → reveal →
             // short settings review). Server markers make it one-time;
             // `onboardingFlowActive` keeps it up for the reveal after they clear.
             // Below the Face ID lock.
-            if auth.session != nil && auth.gate == .ready && app.appliedSessionUID == auth.session?.user.id
-                && app.screen != .splash && !auth.isLocked
-                && (app.needsSettingsOnboarding || app.needsPreferencesOnboarding || app.onboardingFlowActive) {
-                EventOnboardingOverlay()
-            }
+            if showsEventOnboarding { EventOnboardingOverlay() }
             // Mounted during the splash too (invisible), so the Face ID prompt starts
             // right away at launch instead of waiting for the splash animation to end.
             if auth.isLocked {
@@ -951,6 +958,10 @@ struct RootView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: app.askingLocation)
         .animation(.easeInOut(duration: 0.2), value: app.photoViewer)
+        // Gate → For You intro used to swap with no animation at all (a hard
+        // cut). Both overlays fade, so "Complete sign-up" dissolves into the intro.
+        .animation(.easeInOut(duration: 0.3), value: showsAccountGate)
+        .animation(.easeInOut(duration: 0.3), value: showsEventOnboarding)
         // The screen switch above is a plain ZStack, not a NavigationStack,
         // so it never got the system's edge-swipe-to-go-back for free — the
         // `edgeSwipeZone` strip above reproduces it, tracking the finger
@@ -1014,6 +1025,18 @@ struct RootView: View {
         // Account deletion (Task 2, Account/Settings pass) — opened from
         // AccountGroupView's `preferences` case (`app.deleteAccountOpen`).
         .fullScreenCover(isPresented: $app.deleteAccountOpen) { DeleteAccountView() }
+        // "Before you go" pop-up (2026-10-21) in front of the wizard; its "Continue deleting"
+        // opens the wizard only after this sheet is gone (two presentations can't overlap).
+        .sheet(isPresented: $app.deleteAccountStayOpen, onDismiss: {
+            guard app.deleteAccountContinue else { return }
+            app.deleteAccountContinue = false
+            app.deleteAccountOpen = true
+        }) {
+            DeleteAccountStayView()
+                .environmentObject(app)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
         // Ticket gifting (migration 132) — the recipient form/review/hand-over
         // sheet, driven by `app.giftTicketContext` (non-nil == presented), and
         // the recipient's separate claim-code import. Both are `.fullScreenCover`

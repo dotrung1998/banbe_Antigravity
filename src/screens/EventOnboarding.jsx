@@ -153,28 +153,36 @@ function SettingsStep({ onDone, stepIndex, stepTotal }) {
 
 function WelcomeStep({ send }) {
   const { T } = useBanBe();
-  // Three glanceable tiles instead of three sentences (note 53).
-  const tile = (emoji, title, sub) => (
-    <div style={{ flex: 1, minWidth: 0, background: 'var(--bb-field)', borderRadius: 16, padding: '14px 10px', textAlign: 'center' }}>
-      <div aria-hidden style={{ fontSize: 26, lineHeight: 1 }}>{emoji}</div>
-      <div style={{ fontSize: 13, fontWeight: 700, marginTop: 8 }}>{title}</div>
+  // Entrance (owner, 2026-10-21): the content rises in from below, then the three tiles land one after
+  // another, left to right. `.bb-rise` turns all of it off under prefers-reduced-motion.
+  const rise = (delayMs) => ({ animation: `bbRiseIn .4s cubic-bezier(.2,.8,.2,1) ${delayMs}ms backwards` });
+  // Three glanceable tiles instead of three sentences (note 53). Flex stretches them to one shared height;
+  // the title keeps two lines' room so every tile's text starts and sits at the same place.
+  const tile = (i, emoji, title, sub) => (
+    <div className="bb-rise" style={{ flex: 1, minWidth: 0, background: 'var(--bb-field)', borderRadius: 16, padding: '14px 10px', textAlign: 'center', ...rise(120 + i * 70) }}>
+      <div aria-hidden style={{ fontSize: 26, lineHeight: '32px', height: 32 }}>{emoji}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3, marginTop: 6 }}>{title}</div>
       <div style={{ fontSize: 11.5, lineHeight: 1.35, color: muted(0.7), marginTop: 2 }}>{sub}</div>
     </div>
   );
   return (
-    <div data-testid="onboarding-welcome" className="bb-slide" style={{ animation: 'bbSlideFromRight .3s ease-out both' }}>
-      <div aria-hidden style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 84, height: 84, borderRadius: 26, background: 'var(--bb-honey-bg)', fontSize: 42 }}>🌟</div>
-      <h1 style={display(30, { margin: '20px 0 0', lineHeight: 1.15 })}>{T('Tìm những buổi bạn thật sự muốn đi', "Find events you'll actually want to go to")}</h1>
-      <p style={{ fontSize: 15, lineHeight: 1.55, margin: '10px 0 0', color: muted(0.8) }}>
-        {T('5 câu ngắn, rồi banbe gắn ★ Dành cho bạn lên sự kiện hợp với bạn.', '5 quick taps, then banbe stars ★ For You on the events that fit.')}
-      </p>
-      <div style={{ display: 'flex', gap: 8, margin: '24px 0 28px' }}>
-        {tile('⏱️', T('~1 phút', '~1 minute'), T('Câu nào cũng bỏ qua được', 'Skip any question'))}
-        {tile('🔒', T('Chỉ bạn thấy', 'Only you see it'), T('Host không bao giờ thấy', 'Hosts never do'))}
-        {tile('⚙️', T('Đổi bất cứ lúc nào', 'Change anytime'), T('Trong Tài khoản', 'In Account'))}
+    <div data-testid="onboarding-welcome">
+      <div className="bb-rise" style={rise(0)}>
+        <div aria-hidden style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 84, height: 84, borderRadius: 26, background: 'var(--bb-honey-bg)', fontSize: 42 }}>🌟</div>
+        <h1 style={display(30, { margin: '20px 0 0', lineHeight: 1.15 })}>{T('Tìm những buổi bạn thật sự muốn đi', "Find events you'll actually want to go to")}</h1>
+        <p style={{ fontSize: 15, lineHeight: 1.55, margin: '10px 0 0', color: muted(0.8) }}>
+          {T('5 câu ngắn, rồi banbe gắn ★ Dành cho bạn lên sự kiện hợp với bạn.', '5 quick taps, then banbe stars ★ For You on the events that fit.')}
+        </p>
       </div>
-      <InkBtn testId="onboarding-start" label={T('Bắt đầu', 'Get started')} onClick={() => send('start')} />
-      <LinkBtn testId="onboarding-skip-all" label={T('Bỏ qua, xem tất cả sự kiện', 'Skip, show me everything')} onClick={() => send('skipAll')} />
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 8, margin: '24px 0 28px' }}>
+        {tile(0, '⏱️', T('~1 phút', '~1 minute'), T('Câu nào cũng bỏ qua được', 'Skip any question'))}
+        {tile(1, '🔒', T('Chỉ bạn thấy', 'Only you see it'), T('Host không bao giờ thấy', 'Hosts never do'))}
+        {tile(2, '⚙️', T('Đổi lúc nào', 'Change anytime'), T('Trong Tài khoản', 'In Account'))}
+      </div>
+      <div className="bb-rise" style={rise(300)}>
+        <InkBtn testId="onboarding-start" label={T('Bắt đầu', 'Get started')} onClick={() => send('start')} />
+        <LinkBtn testId="onboarding-skip-all" label={T('Bỏ qua, xem tất cả sự kiện', 'Skip, show me everything')} onClick={() => send('skipAll')} />
+      </div>
     </div>
   );
 }

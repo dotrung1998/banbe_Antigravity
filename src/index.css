@@ -444,8 +444,10 @@ input::placeholder, textarea::placeholder {
 @keyframes bbSlideFromRight { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
 @keyframes bbSlideFromLeft { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
 @keyframes bbRowReveal { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+/* For You intro entrance (2026-10-21): rise from below, staggered per tile via animation-delay. */
+@keyframes bbRiseIn { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .bb-charm, .bb-slide, .bb-row-reveal { animation: none !important; }
+  .bb-charm, .bb-slide, .bb-row-reveal, .bb-rise { animation: none !important; }
 }
 
 /* Dual-handle price range (HomeFilterSheet, note 50): two stacked native range inputs. Only the thumbs take

@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Home's small "get started" card after personalization. Dismissible; hides
-/// itself once every item is done. Face ID is offered HERE, in context, rather
+/// Home's small "get started" card after personalization. Dismissible. Once
+/// every item is done it celebrates once ("You're all set!" + confetti +
+/// haptic), then folds away. Face ID is offered HERE, in context, rather
 /// than during onboarding — still the same device-local setting as
 /// Account > Security.
 struct ActivationChecklistCard: View {
@@ -9,6 +10,7 @@ struct ActivationChecklistCard: View {
     @EnvironmentObject private var auth: AuthViewModel
     @State private var faceIDMessage = ""
     @State private var faceIDBusy = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var biometricsAvailable: Bool { BiometricAuthService.cachedAvailability.available }
     private var items: [ActivationChecklistItem] { ActivationChecklist.items(biometricsAvailable: biometricsAvailable) }
@@ -26,9 +28,11 @@ struct ActivationChecklistCard: View {
            ActivationChecklist.isVisible(state: app.activation, items: items,
                                          hasSavedEvent: !app.favorites.isEmpty, faceIDEnabled: auth.faceIDEnabled) {
             let doneCount = items.filter(done).count
+            let allDone = doneCount == items.count
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(app.T("Bắt đầu với banbe", "Get started with banbe"))
+                    Text(allDone ? app.T("Bạn đã sẵn sàng! 🎉", "You're all set! 🎉")
+                                 : app.T("Bắt đầu với banbe", "Get started with banbe"))
                         .font(.system(.headline, design: .rounded))
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityIdentifier("activation.card")
@@ -54,7 +58,20 @@ struct ActivationChecklistCard: View {
             .foregroundStyle(app.palette.ink)
             .padding(.leading, 16).padding(.trailing, 4).padding(.vertical, 6)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(alignment: .top) { if allDone { ConfettiBurst().padding(.top, 28) } }
             .padding(.horizontal, 20).padding(.top, 10)
+            .transition(.asymmetric(insertion: .identity, removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .top))))
+            // Keyed on allDone so it fires once the last item is ticked, whether
+            // that happened here (Face ID) or elsewhere (saved on Event Detail).
+            .task(id: allDone) {
+                guard allDone else { return }
+                Haptics.success()
+                try? await Task.sleep(nanoseconds: 2_400_000_000)
+                guard !Task.isCancelled else { return }
+                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .easeInOut(duration: 0.35)) {
+                    app.markActivationCelebrated()
+                }
+            }
         }
     }
 

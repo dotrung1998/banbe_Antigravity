@@ -742,7 +742,9 @@ struct CreateEventView: View {
                         await MainActor.run { photoError = app.T("Mỗi ảnh tối đa 50MB.", "Each photo must be under 50MB.") }
                         continue
                     }
-                    accepted.append(StagedGalleryItem(id: UUID().uuidString, kind: .new(image: image), url: nil))
+                    // Baked upright once here, so every preview (Private tab, the Event Detail
+                    // preview's hero and strip) shows it the way the uploaded copy will look.
+                    accepted.append(StagedGalleryItem(id: UUID().uuidString, kind: .new(image: image.normalizedUp()), url: nil))
                 }
                 await MainActor.run {
                     if !accepted.isEmpty {
@@ -1030,6 +1032,32 @@ struct CreateEventView: View {
         }
     }
 
+    #if DEBUG
+    /// `-uiFixtureReview YES` (with `shell.create`): two synthetic photos — the cover stored sideways with EXIF
+    /// orientation `.right`, like a portrait phone shot — and a confirmed place, then straight into Review.
+    private func openFixtureReviewIfAsked() {
+        guard UITestFixture.opensReview, galleryItems.isEmpty else { return }
+        func swatch(_ color: UIColor, _ size: CGSize) -> UIImage {
+            UIGraphicsImageRenderer(size: size).image { ctx in
+                color.setFill(); ctx.fill(CGRect(origin: .zero, size: size))
+                UIColor.white.setFill(); ctx.fill(CGRect(x: 0, y: 0, width: size.width, height: size.height * 0.18))
+            }
+        }
+        let raw = swatch(UIColor(red: 0.61, green: 0.36, blue: 0.23, alpha: 1), CGSize(width: 800, height: 600))
+        let sideways = UIImage(cgImage: raw.cgImage!, scale: 1, orientation: .right)
+        galleryItems = [
+            StagedGalleryItem(id: "fx-1", kind: .new(image: sideways.normalizedUp()), url: nil),
+            StagedGalleryItem(id: "fx-2", kind: .new(image: swatch(UIColor(red: 0.28, green: 0.35, blue: 0.2, alpha: 1), CGSize(width: 600, height: 800))), url: nil),
+        ]
+        coverItemID = "fx-1"
+        app.createDistrict = "Quận 3"
+        app.createLocLabel = "Quận 3, Hồ Chí Minh"
+        app.createLat = 10.78; app.createLng = 106.69
+        app.createLocConfirmed = true
+        reviewOpen = true
+    }
+    #endif
+
     var body: some View {
         // Swipe-to-back "blank white space" fix (2026-09-29) — this used
         // to present CreateEventReviewSheet via `.fullScreenCover`, which
@@ -1180,7 +1208,12 @@ struct CreateEventView: View {
                         .background(app.palette.paper)
                     }
                 }
-                .onAppear { scrollProxy = proxy }
+                .onAppear {
+                    scrollProxy = proxy
+                    #if DEBUG
+                    openFixtureReviewIfAsked()
+                    #endif
+                }
                 // Note 53: the field being typed in never sits under the keyboard. Once the keyboard has come up,
                 // centre the focused field in what's left of the screen.
                 .onChange(of: focusedField) { _, field in
@@ -1937,7 +1970,6 @@ struct CreateEventView: View {
 /// reconcile.
 private struct CreateEventReviewSheet: View {
     @EnvironmentObject var app: AppState
-    @Environment(\.openURL) private var openURL
     let categories: [(key: String, vi: String, en: String)]
     let galleryItems: [StagedGalleryItem]
     let coverItemID: String?
@@ -1968,26 +2000,6 @@ private struct CreateEventReviewSheet: View {
     // also scroll the content underneath at the same time (the two
     // gestures fighting each other was the reported "issues").
     @State private var scrollLockedForSwipe = false
-    // Real-device follow-up — this preview used to have exactly ONE
-    // tappable thing (the Google Maps link); Included/Organizer/photos
-    // were static. None of these can navigate to the REAL Included/
-    // organizer-profile/photo-viewer screens (this is an unsaved draft —
-    // no real event id/organizer id exists in the database yet), so each
-    // opens its own small, self-contained sheet/full-screen cover showing
-    // the same draft data, instead of a dead tap.
-    @State private var includedSheetOpen = false
-    @State private var organizerSheetOpen = false
-    @State private var viewerIndex: Int?
-
-    // Same "cover first, then the rest" order the public tab already
-    // displays photos in (coverItem, then restPhotos) — the pager below
-    // must match exactly, or a tapped thumbnail would open on the wrong
-    // photo.
-    private func orderedGalleryForViewer() -> [StagedGalleryItem] {
-        let coverItem = galleryItems.first(where: { $0.id == coverItemID }) ?? galleryItems.first
-        guard let coverItem else { return galleryItems }
-        return [coverItem] + galleryItems.filter { $0.id != coverItem.id }
-    }
 
     private var categoryLabel: String {
         let picked = app.createCats.isEmpty ? ["supper"] : app.createCats
@@ -2009,11 +2021,6 @@ private struct CreateEventReviewSheet: View {
     }
 
     private var publicPriceVnd: Int { Int(app.createPrice.filter { $0.isNumber }) ?? 0 }
-    private var publicPriceLabel: String { publicPriceVnd > 0 ? EventLabels.vnd(publicPriceVnd) : app.T("Miễn phí", "Free") }
-    private var publicSeatsLabel: String {
-        let seats = app.createSeats.trimmingCharacters(in: .whitespaces)
-        return seats.isEmpty ? "" : app.T("Còn \(seats) chỗ", "\(seats) seats left")
-    }
     // Merges the two VN-timezone-picked Date/time values into ONE Date
     // whose components read back correctly under the DEVICE's own local
     // calendar, so `Countdown.formatVnEventDate` (which reads `.current`)
@@ -2029,25 +2036,6 @@ private struct CreateEventReviewSheet: View {
         comps.hour = tc.hour; comps.minute = tc.minute
         return Calendar(identifier: .gregorian).date(from: comps)
     }
-    // Same shape `CatalogEvent.fromReal`'s `whereLabel` builds for a real
-    // event — district ▪︎ live-km placeholder ▪︎ long date ▪︎ time — so the
-    // preview matches the actual Event Detail page exactly.
-    private var publicWhereLabel: String {
-        let startsAt = mergedStartsAt
-        let d = startsAt.map(Countdown.formatVnEventDate)
-        let kmSegment = startsAt != nil ? "0,0 km từ bạn" : nil
-        let raw = [app.createDistrict, kmSegment, d?.dayLong, d?.time].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
-        let previewCoords: Coordinates? = (app.createLat != nil && app.createLng != nil) ? Coordinates(lat: app.createLat!, lng: app.createLng!) : nil
-        let stripped = raw.replacingOccurrences(of: #" ▪︎ \d+[.,]\d+ km(?: từ bạn| away)?"#, with: "", options: .regularExpression)
-        guard app.located == true, let previewCoords, let km = haversineKm(from: app.userCoords, toCoords: previewCoords) else { return app.trStatus(stripped) }
-        let kmStr = String(format: "%.1f", km).replacingOccurrences(of: ".", with: ",")
-        return app.trStatus(raw.replacingOccurrences(of: #"\d+[.,]\d+(?= km)"#, with: kmStr, options: .regularExpression))
-    }
-    private var publicMapsURL: URL? {
-        guard let lat = app.createLat, let lng = app.createLng else { return nil }
-        return URL(string: "https://www.google.com/maps/search/?api=1&query=\(lat),\(lng)")
-    }
-
     @ViewBuilder
     private func row(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -2059,23 +2047,55 @@ private struct CreateEventReviewSheet: View {
         .overlay(alignment: .bottom) { Divider().overlay(app.palette.rule) }
     }
 
-    // Same visual shape as `EventDetailView`'s own `detailRow`/`includedRow`
-    // (label left, value right, divider below, optional chevron) — the
-    // public preview tab must look like the real page, not invent its own.
-    @ViewBuilder
-    private func previewDetailRow(_ label: String, _ value: String, chevron: Bool) -> some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 18) {
-                Text(label).font(.system(size: 13))
-                Spacer(minLength: 0)
-                Text(value).font(.system(size: 13)).multilineTextAlignment(.trailing)
-                if chevron {
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .medium)).opacity(0.45)
-                }
+    /// The draft as the real Event Detail renders it (Public preview).
+    private var draftEvent: CatalogEvent {
+        let catKey = app.createCats.first ?? "supper"
+        let name = app.createName.trimmingCharacters(in: .whitespaces)
+        return CatalogEvent.fromDraft(EventDraft(
+            name: name.isEmpty ? app.T("(Chưa đặt tên)", "(Untitled)") : name,
+            catKey: catKey,
+            catLabel: categories.first(where: { $0.key == catKey })?.vi ?? "",
+            area: app.createDistrict,
+            lat: app.createLat, lng: app.createLng,
+            startsAt: mergedStartsAt,
+            priceVnd: publicPriceVnd,
+            seats: Int(app.createSeats.filter(\.isNumber)),
+            description: app.createDesc.trimmingCharacters(in: .whitespacesAndNewlines),
+            intro: app.createIntro.trimmingCharacters(in: .whitespacesAndNewlines),
+            includedItems: reviewIncludedItems,
+            inviteOnly: app.createVisibility == "invite",
+            organizerName: app.orgRegName.trimmingCharacters(in: .whitespaces)
+        ))
+    }
+
+    /// Cover first, then the rest — the hero, then the photo strip.
+    private var previewPhotos: [EventDetailPreview.Photo] {
+        let cover = galleryItems.first(where: { $0.id == coverItemID }) ?? galleryItems.first
+        let ordered = (cover.map { [$0] } ?? []) + galleryItems.filter { $0.id != cover?.id }
+        return ordered.compactMap { item in
+            if let image = item.image { return .local(id: item.id, image: image) }
+            if let url = item.url { return .remote(id: item.id, url: url.absoluteString) }
+            return nil
+        }
+    }
+
+    /// Confirm & submit (+ any submit error). Local `confirmBusy` disables the button for this ONE tap on top of
+    /// `AppState.submitCreateEventInFlight`'s own synchronous guard.
+    private var confirmBlock: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            InkButton(
+                title: app.createSent
+                    ? app.T("Đã gửi, đang chờ Banbe duyệt", "Submitted, waiting for Banbe to review")
+                    : (confirmBusy ? app.T("Đang gửi…", "Submitting…") : app.T("Xác nhận và gửi", "Confirm & submit")),
+                enabled: !confirmBusy && !app.createSent,
+                cornerRadius: 999
+            ) {
+                Task { confirmBusy = true; await onConfirm(); confirmBusy = false }
             }
-            .padding(.vertical, 12)
-            .foregroundStyle(app.palette.ink)
-            Divider().overlay(app.palette.rule)
+
+            if !app.createError.isEmpty {
+                Text(app.createError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert).padding(.top, 12)
+            }
         }
     }
 
@@ -2212,158 +2232,6 @@ private struct CreateEventReviewSheet: View {
                             }
                             .padding(.top, 10)
                         }
-                    } else {
-                        let coverItem = galleryItems.first(where: { $0.id == coverItemID }) ?? galleryItems.first
-                        if let coverItem {
-                            // Real-device follow-up — TWO problems in one:
-                            // (1) `.aspectRatio(1, contentMode: .fill)`
-                            // with no explicit height, inside a
-                            // `ScrollView` (an unconstrained vertical
-                            // axis), is a known SwiftUI trap — it resolves
-                            // against an effectively-infinite proposed
-                            // height and blows up to a huge, uncontrolled
-                            // size instead of a real square (the "giant
-                            // photo with all the text overlaid on top of
-                            // it" report). (2) even fixed, a rounded,
-                            // padded square never matched the REAL
-                            // EventDetailView's own cover photo anyway —
-                            // that's `CatalogPhoto(path: event.img, height:
-                            // 400, cornerRadius: 0)`, i.e. full-BLEED
-                            // (edge to edge, no rounding), not an inset
-                            // card. Matches that exactly now, including
-                            // breaking out of this content's own 22pt
-                            // horizontal padding (applied once, at the
-                            // bottom of this whole VStack) via a negating
-                            // `.padding(.horizontal, -22)`.
-                            Button { viewerIndex = 0 } label: {
-                                Group {
-                                    if let image = coverItem.image {
-                                        Image(uiImage: image).resizable().scaledToFill()
-                                    } else {
-                                        AsyncImage(url: coverItem.url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
-                                    }
-                                }
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 400)
-                                .clipped()
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, -22)
-                            .accessibilityIdentifier("createEvent.preview.coverPhoto")
-                        }
-
-                        Text(categoryLabel).font(.system(size: 12)).opacity(0.7).padding(.top, 14)
-                        Text(app.createName.trimmingCharacters(in: .whitespaces).isEmpty ? app.T("(Chưa đặt tên)", "(Untitled)") : app.createName)
-                            .font(BanbeTheme.display(26))
-                            .padding(.top, 4)
-
-                        if let publicMapsURL {
-                            Button { openURL(publicMapsURL) } label: {
-                                Text(publicWhereLabel + " ↗").font(.system(size: 13)).underline()
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.top, 6)
-                        } else {
-                            Text(publicWhereLabel.isEmpty ? app.T("Chưa xác nhận địa chỉ", "Address not confirmed") : publicWhereLabel)
-                                .font(.system(size: 13))
-                                .padding(.top, 6)
-                        }
-                        if !publicSeatsLabel.isEmpty {
-                            Text(publicSeatsLabel).font(.system(size: 13)).padding(.top, 4)
-                        }
-
-                        // Standard-layout fix (2026-09-29) — matches the
-                        // REAL `EventDetailView`'s exact field order
-                        // (category/name/where/seats/description, THEN a
-                        // divider-topped block of Included → Organizer →
-                        // Track record → Price), which this preview had
-                        // drifted from (price/Included were both above the
-                        // description, and there was no Organizer row at
-                        // all). Description here is `createDesc` ("Mô tả"),
-                        // the same field the real event's own `ev.desc`
-                        // comes from — never `createIntro` ("Giới thiệu sự
-                        // kiện"), a separate field the real page doesn't
-                        // show on the main body either.
-                        if !app.createDesc.trimmingCharacters(in: .whitespaces).isEmpty {
-                            Text(app.createDesc.trimmingCharacters(in: .whitespaces))
-                                .font(.system(size: 14)).lineSpacing(4).padding(.top, 20)
-                        }
-
-                        VStack(spacing: 0) {
-                            Divider().overlay(app.palette.rule)
-                            // Real-device follow-up — "Bao gồm"/"Người tổ
-                            // chức" used to be static text (the ONLY
-                            // tappable thing on this tab was the Google
-                            // Maps link) — now real Buttons opening a
-                            // self-contained detail sheet, same "click on
-                            // it like a real event" ask this preview
-                            // exists for. Neither can navigate to the
-                            // REAL Included/organizer-profile screens
-                            // (this is an unsaved draft — no real event id/
-                            // organizer id exists yet), so each opens its
-                            // own small sheet showing the same draft data.
-                            if !reviewIncludedItems.isEmpty {
-                                Button { includedSheetOpen = true } label: {
-                                    previewDetailRow(
-                                        app.T("Bao gồm", "Included"),
-                                        reviewIncludedItems.map(\.label).joined(separator: " ▪︎ "),
-                                        chevron: true
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityIdentifier("createEvent.preview.included")
-                            }
-                            Button { organizerSheetOpen = true } label: {
-                                previewDetailRow(
-                                    app.T("Người tổ chức", "Organizer"),
-                                    // Real-device follow-up — `chevron:
-                                    // true` already draws a real chevron
-                                    // glyph; this string had its OWN " ›"
-                                    // appended too, so the row showed two
-                                    // (circled in the real-device report).
-                                    app.T("Ghé", "Visit") + " " + (app.orgRegName.trimmingCharacters(in: .whitespaces).isEmpty ? "Organizer" : app.orgRegName.trimmingCharacters(in: .whitespaces)),
-                                    chevron: true
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("createEvent.preview.organizer")
-                            // No "Track record" row: that only ever shows
-                            // for an ALREADY-established organizer (20+ past
-                            // events, `orgTrusted`) — a brand-new draft
-                            // never has one yet, same as the real page.
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(app.T("Giá", "Price")).font(.system(size: 13))
-                                Spacer()
-                                Text(publicPriceLabel).font(BanbeTheme.display(23))
-                            }
-                            .padding(.top, 16)
-                        }
-                        .padding(.top, 22)
-
-                        let restPhotos = galleryItems.filter { $0.id != coverItem?.id }
-                        if !restPhotos.isEmpty {
-                            Text(app.T("Hình ảnh", "Photos")).font(.system(size: 11.5)).padding(.top, 18)
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
-                                    ForEach(Array(restPhotos.enumerated()), id: \.element.id) { offset, item in
-                                        Button { viewerIndex = offset + 1 } label: {
-                                            Group {
-                                                if let image = item.image {
-                                                    Image(uiImage: image).resizable().scaledToFill()
-                                                } else {
-                                                    AsyncImage(url: item.url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
-                                                }
-                                            }
-                                            .frame(width: 96, height: 96)
-                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                        }
-                                        .buttonStyle(.plain)
-                                        .accessibilityIdentifier("createEvent.preview.photo.\(offset + 1)")
-                                    }
-                                }
-                            }
-                            .padding(.top, 10)
-                        }
                     }
                 }
                 .foregroundStyle(app.palette.ink)
@@ -2373,27 +2241,11 @@ private struct CreateEventReviewSheet: View {
             .scrollDisabled(scrollLockedForSwipe)
 
             // Confirm — the ONLY call site that actually submits, available
-            // from either tab. Local `confirmBusy` disables the button for
-            // this ONE tap on top of `AppState.submitCreateEventInFlight`'s
-            // own synchronous guard.
-            VStack(alignment: .leading, spacing: 0) {
-                InkButton(
-                    title: app.createSent
-                        ? app.T("Đã gửi, đang chờ Banbe duyệt", "Submitted, waiting for Banbe to review")
-                        : (confirmBusy ? app.T("Đang gửi…", "Submitting…") : app.T("Xác nhận và gửi", "Confirm & submit")),
-                    enabled: !confirmBusy && !app.createSent,
-                    cornerRadius: 999
-                ) {
-                    Task { confirmBusy = true; await onConfirm(); confirmBusy = false }
-                }
-
-                if !app.createError.isEmpty {
-                    Text(app.createError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert).padding(.top, 12)
-                }
-            }
-            .padding(.horizontal, 22)
-            .padding(.bottom, 40)
-            .padding(.top, 10)
+            // from either tab (the Public preview shows the same block).
+            confirmBlock
+                .padding(.horizontal, 22)
+                .padding(.bottom, 40)
+                .padding(.top, 10)
         }
         .background(app.palette.paper.ignoresSafeArea())
         .offset(x: swipeBackOffset)
@@ -2432,237 +2284,34 @@ private struct CreateEventReviewSheet: View {
                 }
         )
 
-        // Real-device follow-up — a plain `.sheet` (system card, sparse
-        // content) didn't match "click on it like a real event": the REAL
-        // EventDetailView opens Included in a `BottomSheet` (this exact
-        // component, Sheets.swift — a dimmed backdrop + bottom panel in
-        // the SAME view hierarchy, not a system modal) showing "Giới
-        // thiệu & Bao gồm"/"About & Included" TOGETHER (intro paragraphs
-        // AND every included item's label+detail), never just Included
-        // alone. Reused verbatim, not reinvented.
-
-        // Real-device follow-up — the REAL EventDetailView doesn't open a
-        // small popup for Organizer at all: it navigates to a full,
-        // dedicated OrganizerView screen. This can't literally navigate
-        // there (no real organizer id exists until the event is actually
-        // submitted), so it's a full-screen panel styled the same way —
-        // "Người tổ chức" label, large name, Instagram, About paragraph —
-        // not a follow button/track record/other-events grid, since none
-        // of those exist yet for a brand-new draft either (matching the
-        // real page's own `orgTrusted`-gated behavior for a new host).
-        if organizerSheetOpen {
-            organizerPreviewScreen
+        // Public preview (owner, 2026-10-21): the REAL Event Detail, rendered from this draft in preview mode, so the
+        // host sees the page guests will see (not a hand-built look-alike). Its back pill returns to the Private tab;
+        // Confirm & submit sits under its inert reserve bar.
+        if tab == .publicTab {
+            EventDetailView(preview: EventDetailPreview(
+                event: draftEvent,
+                photos: previewPhotos,
+                capacity: Int(app.createSeats.filter(\.isNumber)),
+                backLabel: app.T("Nội bộ (Host)", "Private (Host)"),
+                onBack: { withAnimation(.easeInOut(duration: 0.2)) { tab = .privateTab } },
+                footer: AnyView(
+                    VStack(spacing: 8) {
+                        Text(app.T("Xem trước: khách sẽ thấy đúng trang này", "Preview: this is exactly what guests will see"))
+                            .font(.system(size: 11.5, weight: .semibold)).opacity(0.6)
+                            .accessibilityIdentifier("createEvent.preview.public")
+                        confirmBlock
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(.horizontal, 22).padding(.top, 8).padding(.bottom, 8)
+                    .background(app.palette.paper)
+                )
+            ))
+            .transition(.opacity)
         }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .fullScreenCover(isPresented: Binding(get: { viewerIndex != nil }, set: { if !$0 { viewerIndex = nil } })) {
-            photoViewer
-        }
-        .sheet(isPresented: $includedSheetOpen) {
-            CardSheet(title: app.T("Giới thiệu & Bao gồm", "About & Included"),
-                      closeID: "createEvent.preview.includedSheet.close",
-                      onClose: { includedSheetOpen = false }) { includedSheetContent }
-        }
     }
 
-    // Real-device follow-up — matches the REAL EventDetailView's own
-    // `introIncludedSheetContent` (About + Included combined), not just a
-    // bare list of included items.
-    private var includedSheetContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    let intro = app.createIntro.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !intro.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(app.T("Giới thiệu sự kiện", "About this event"))
-                                .font(.system(size: 11.5, weight: .semibold))
-                            ForEach(Array(intro.components(separatedBy: "\n\n").enumerated()), id: \.offset) { _, paragraph in
-                                Text(paragraph.trimmingCharacters(in: .whitespacesAndNewlines))
-                                    .font(.system(size: 13.5))
-                                    .lineSpacing(5)
-                            }
-                        }
-                    }
-                    if !reviewIncludedItems.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(app.T("Bao gồm", "Included"))
-                                .font(.system(size: 11.5, weight: .semibold))
-                            ForEach(Array(reviewIncludedItems.enumerated()), id: \.offset) { _, item in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.label).font(.system(size: 13.5, weight: .medium))
-                                    if !item.detail.isEmpty {
-                                        Text(item.detail).font(.system(size: 12.5)).opacity(0.7)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .foregroundStyle(app.palette.ink)
-        .accessibilityIdentifier("createEvent.preview.includedSheet")
-    }
-
-    // Real-device follow-up — styled like OrganizerView's own header
-    // (name, Instagram, about), full screen, not a small system sheet —
-    // no follow button/track record/other-events grid, since none of
-    // those exist yet for a brand-new draft (same as the real page's own
-    // behavior for a first-time host).
-    private var organizerPreviewScreen: some View {
-        ZStack(alignment: .top) {
-            app.palette.paper.ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.createName.trimmingCharacters(in: .whitespaces).isEmpty ? app.T("(Chưa đặt tên)", "(Untitled)") : app.createName) {
-                    organizerSheetOpen = false
-                }
-                .padding(.top, 16)
-
-                Text(app.T("Người tổ chức", "Organizer")).font(.system(size: 11.5)).padding(.top, 22)
-
-                Text(app.orgRegName.trimmingCharacters(in: .whitespaces).isEmpty ? "Organizer" : app.orgRegName.trimmingCharacters(in: .whitespaces))
-                    .font(BanbeTheme.display(29))
-                    .padding(.top, 8)
-
-                if !app.orgRegIg.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Text(app.orgRegIg.trimmingCharacters(in: .whitespaces))
-                        .font(.system(size: 13))
-                        .padding(.top, 10)
-                }
-
-                if !app.orgRegDesc.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Text(app.orgRegDesc.trimmingCharacters(in: .whitespaces))
-                        .font(.system(size: 14))
-                        .lineSpacing(4)
-                        .padding(.top, 18)
-                }
-
-                Text(app.T("Xem trước: chưa đăng công khai", "Preview: not published yet"))
-                    .font(.system(size: 11)).opacity(0.6)
-                    .padding(.top, 22)
-
-                Spacer()
-            }
-            // Real-device follow-up — the actual "shifting right" bug:
-            // this VStack(alignment: .leading) only ever asks for its
-            // CONTENT's own natural width (`.leading` only controls how
-            // children align WITHIN it, it doesn't make the VStack itself
-            // full-width) — so the surrounding `ZStack(alignment: .top)`
-            // (defaulting to horizontally CENTERED) centered this whole
-            // narrower-than-screen block instead of pinning it to the
-            // left edge, reading as randomly shifted depending on the
-            // widest line's own natural width. An explicit full-width
-            // frame fixes it the same way the main content already does.
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .foregroundStyle(app.palette.ink)
-            .padding(.horizontal, 22)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityIdentifier("createEvent.preview.organizerScreen")
-    }
-
-    @ViewBuilder
-    private func viewerImage(_ item: StagedGalleryItem, contentMode: ContentMode) -> some View {
-        if let image = item.image {
-            Image(uiImage: image).resizable().aspectRatio(contentMode: contentMode)
-        } else {
-            AsyncImage(url: item.url) { $0.resizable().aspectRatio(contentMode: contentMode) } placeholder: { Color.black }
-        }
-    }
-
-    // Real-device follow-up — this used to be a plain edge-to-edge
-    // `TabView` pager, which read as generic/inconsistent with the rest of
-    // the app ("not like a real event does"). Now visually matches the
-    // REAL, already-published-event photo viewer (`PhotoViewerView.swift`)
-    // as closely as a LOCAL, not-yet-uploaded draft photo can: same
-    // blurred-backdrop-of-itself + centered framed photo (14pt corner,
-    // middle third of the screen) + credit line layout. Can't literally
-    // reuse `PhotoViewerView` itself — that view is keyed to a real,
-    // persisted `event_photos.id` for like/share/save engagement, which
-    // has no meaning for a draft that hasn't been submitted (no id exists
-    // yet) — so this is a preview-only sibling with no engagement row,
-    // captioned as a preview rather than silently showing fake zeros.
-    private var photoViewer: some View {
-        let photos = orderedGalleryForViewer()
-        let index = min(max(viewerIndex ?? 0, 0), max(photos.count - 1, 0))
-        let organizerName = app.orgRegName.trimmingCharacters(in: .whitespaces).isEmpty ? "Organizer" : app.orgRegName.trimmingCharacters(in: .whitespaces)
-        return GeometryReader { proxy in
-            let photoWidth = proxy.size.width - 40
-            ZStack {
-                if let current = photos[safe: index] {
-                    viewerImage(current, contentMode: .fill)
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .scaleEffect(1.24)
-                        .blur(radius: 34)
-                        .overlay(Color.black.opacity(0.38))
-                        .allowsHitTesting(false)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(app.T("Ảnh của", "Photo by") + " " + organizerName)
-                        .font(.system(size: 10.5)).kerning(0.4)
-                        .foregroundStyle(.white.opacity(0.72))
-                        .shadow(color: .black.opacity(0.55), radius: 3, y: 1)
-
-                    if let current = photos[safe: index] {
-                        viewerImage(current, contentMode: .fit)
-                            .frame(width: photoWidth, height: proxy.size.height / 3)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .shadow(color: .black.opacity(0.4), radius: 22, y: 10)
-                            .id(index)
-                            .contentShape(Rectangle())
-                            .highPriorityGesture(
-                                DragGesture(minimumDistance: 0)
-                                    .onEnded { value in
-                                        let dx = value.translation.width
-                                        if abs(dx) > 44 {
-                                            viewerIndex = dx < 0 ? min(index + 1, photos.count - 1) : max(index - 1, 0)
-                                        } else if value.location.x >= photoWidth / 2 {
-                                            viewerIndex = min(index + 1, photos.count - 1)
-                                        } else if photoWidth > 0 {
-                                            viewerIndex = max(index - 1, 0)
-                                        }
-                                    }
-                            )
-                            .accessibilityIdentifier("createEvent.preview.photoViewer.photo")
-                    }
-
-                    // No like/share/save row — this photo isn't real yet
-                    // (no `event_photos.id` exists until submission), so
-                    // this stays an honest "preview" caption instead of
-                    // faking engagement the real viewer would show.
-                    Text(app.T("Xem trước: chưa đăng công khai", "Preview: not published yet"))
-                        .font(.system(size: 10.5)).kerning(0.4)
-                        .foregroundStyle(.white.opacity(0.6))
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                VStack {
-                    HStack {
-                        Spacer()
-                        Button { viewerIndex = nil } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 36, height: 36)
-                                .background(.black.opacity(0.4), in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("createEvent.preview.photoViewer.close")
-                    }
-                    Spacer()
-                }
-                .padding(.top, 50)
-                .padding(.trailing, 20)
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .contentShape(Rectangle())
-            .onTapGesture { viewerIndex = nil }
-        }
-        .background(Color.black.ignoresSafeArea())
-        .ignoresSafeArea()
-    }
 }
 
 private extension Array {

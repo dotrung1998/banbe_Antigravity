@@ -53,7 +53,23 @@ export function encouragement(remaining, T) {
   return T(`Tốt lắm, còn ${remaining} bước`, `Nice, ${remaining} steps to go`);
 }
 
-export function StepProgress({ steps, current, completed, message, showPercent = true, showBar = true, onSelect, testId }) {
+/** The step percentage inside a thin ring that fills as steps get done. */
+function PercentRing({ pct }) {
+  const r = 19;
+  const c = 2 * Math.PI * r;
+  return (
+    <span aria-hidden style={{ position: 'relative', width: 44, height: 44, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+      <svg width="44" height="44" viewBox="0 0 44 44" style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
+        <circle cx="22" cy="22" r={r} fill="none" stroke="rgba(var(--bb-fg-rgb),0.12)" strokeWidth="3" />
+        <circle cx="22" cy="22" r={r} fill="none" stroke={ink} strokeWidth="3" strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} style={{ transition: 'stroke-dashoffset .25s ease-out' }} />
+      </svg>
+      <span style={{ position: 'relative', fontSize: pct >= 100 ? 11.5 : 13, fontVariantNumeric: 'tabular-nums' }}>{pct}%</span>
+    </span>
+  );
+}
+
+export function StepProgress({ steps, current, completed, message, showPercent = true, onSelect, testId }) {
   const isDone = (i) => (completed ? !!completed[i] : i < current);
   const doneCount = completed ? completed.filter(Boolean).length : current;
   const pct = stepPercent(doneCount, steps.length);
@@ -62,14 +78,11 @@ export function StepProgress({ steps, current, completed, message, showPercent =
     <div data-testid={testId} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
       aria-valuetext={`${pct}%`} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {(showPercent || message) && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, fontWeight: 600, color: ink }}>
-          <span>{message || ''}</span>
-          {showPercent && <span style={{ opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>{pct}%</span>}
-        </div>
-      )}
-      {showBar && (
-        <div style={{ height: 5, borderRadius: 999, background: 'rgba(var(--bb-fg-rgb),0.12)', overflow: 'hidden' }}>
-          <div style={{ width: `${pct}%`, height: '100%', background: ink, borderRadius: 999, transition: 'width .25s ease-out' }} />
+        // One line, one type size (owner, 2026-10-21): the linear bar is gone;
+        // the percentage sits inside a small ring instead.
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontSize: 13, fontWeight: 600, color: ink }}>
+          <span style={{ lineHeight: 1.3 }}>{message || ''}</span>
+          {showPercent && <PercentRing pct={pct} />}
         </div>
       )}
       <div style={{ display: 'flex' }}>

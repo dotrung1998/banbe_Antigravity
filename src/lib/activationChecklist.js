@@ -6,7 +6,7 @@ export const CHECKLIST_ITEMS = ['openEvent', 'saveEvent'];
 
 const key = (uid) => `banbe.activation.v1.${uid}`;
 const storageOrNull = () => (typeof localStorage !== 'undefined' ? localStorage : null);
-const EMPTY = Object.freeze({ enabled: false, dismissed: false, openedEvent: false });
+const EMPTY = Object.freeze({ enabled: false, dismissed: false, openedEvent: false, celebrated: false });
 
 export function loadChecklist(uid, storage = storageOrNull()) {
   if (!uid || !storage) return { ...EMPTY };
@@ -18,15 +18,20 @@ export function loadChecklist(uid, storage = storageOrNull()) {
 
 export function saveChecklist(state, uid, storage = storageOrNull()) {
   if (!uid || !storage) return;
-  try { storage.setItem(key(uid), JSON.stringify({ enabled: !!state.enabled, dismissed: !!state.dismissed, openedEvent: !!state.openedEvent })); } catch { /* ignore */ }
+  try { storage.setItem(key(uid), JSON.stringify({ enabled: !!state.enabled, dismissed: !!state.dismissed, openedEvent: !!state.openedEvent, celebrated: !!state.celebrated })); } catch { /* ignore */ }
 }
 
 export function itemDone(item, state, hasSavedEvent) {
   return item === 'openEvent' ? !!state.openedEvent : item === 'saveEvent' ? !!hasSavedEvent : false;
 }
 
-/** Visible while switched on, not dismissed, and something is left to do. */
+export function checklistAllDone(state, hasSavedEvent) {
+  return CHECKLIST_ITEMS.every(i => itemDone(i, state, hasSavedEvent));
+}
+
+/** Visible while switched on and not dismissed, and either something is left to do or the one-time
+ *  "all set" celebration hasn't played yet. */
 export function checklistVisible(state, hasSavedEvent) {
   if (!state?.enabled || state.dismissed) return false;
-  return CHECKLIST_ITEMS.some(i => !itemDone(i, state, hasSavedEvent));
+  return !state.celebrated || !checklistAllDone(state, hasSavedEvent);
 }
