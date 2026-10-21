@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, display, fieldGlass, alert } from '../theme.js';
 import { ChoiceChip, Button } from '../components/ui/FormControls.jsx';
-import { ADMIN_EVENT_FILTERS, STATUS_LABELS, ERRORS, en, isBlocked, blockerLine, summarize } from '../lib/adminEvents.js';
+import { ADMIN_EVENT_FILTERS, ORPHAN_FILTER, STATUS_LABELS, ERRORS, en, isBlocked, blockerLine, summarize, isOrphanEvent } from '../lib/adminEvents.js';
+import { formatVnd } from '../lib/paymentDocument.js';
 import { loadAdminManagedEvents, loadAdminEventChecks, runAdminEventAction } from '../lib/adminEventsApi.js';
 
 // Admin > Manage events (migrations 188 + 189, note 54). Every event, any status: search, filter, select one or many,
@@ -12,7 +13,7 @@ import { loadAdminManagedEvents, loadAdminEventChecks, runAdminEventAction } fro
 const QUICK_REASONS = [['Spam', 'Spam'], ['Trùng lặp', 'Duplicate'], ['Vi phạm quy định cộng đồng', 'Breaks community guidelines'], ['Sự kiện thử nghiệm', 'Test event']];
 
 export default function AdminManageEvents() {
-  const { state: s, T, set } = useBanBe();
+  const { state: s, T, set, goEvent, openAdminEvents } = useBanBe();
   const [filter, setFilter] = useState(null);
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState([]);
@@ -24,10 +25,14 @@ export default function AdminManageEvents() {
   const [busy, setBusy] = useState(false);
   const [reasonFor, setReasonFor] = useState(null); // 'remove' | 'purge'
   const [reason, setReason] = useState('');
+  // Rows start collapsed (owner, 2026-10-21): summary first, the details one tap away.
+  const [expanded, setExpanded] = useState(() => new Set());
 
   const reload = useCallback(async () => {
     setLoading(true);
-    const { rows: list, error } = await loadAdminManagedEvents({ status: filter, search });
+    const { rows: loaded, error } = await loadAdminManagedEvents({ status: filter === ORPHAN_FILTER ? null : filter, search });
+    // "Host deleted" isn't a status: load everything and keep the orphans.
+    const list = filter === ORPHAN_FILTER ? loaded.filter(isOrphanEvent) : loaded;
     setRows(list);
     setLoadError(error ? T(...(ERRORS[error] || ERRORS.NETWORK)) : '');
     setSelected(prev => new Set([...prev].filter(id => list.some(r => r.id === id))));
@@ -48,6 +53,10 @@ export default function AdminManageEvents() {
   const purgeIds = sel.filter(r => r.status === 'removed' && checks[r.id]?.purgeable).map(r => r.id);
 
   if (s.accountType !== 'admin') return null;
+
+  const toggleExpanded = (id) => setExpanded(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const allExpanded = rows.length > 0 && rows.every(r => expanded.has(r.id));
+  const dateTime = (iso) => (iso ? new Date(iso).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short' }) : '—');
 
   const toggle = (id) => setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const run = async (action, ids, why = '') => {
@@ -98,38 +107,89 @@ export default function AdminManageEvents() {
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '16px 2px 8px' }}>
               <span style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.7 }}>{T(`${rows.length} sự kiện`, en(rows.length, 'event'))}</span>
-              <button type="button" data-testid="admin-manage-select-all" className="bb-press"
-                onClick={() => setSelected(selected.size === rows.length ? new Set() : new Set(rows.map(r => r.id)))}
-                style={{ border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer', minHeight: 36 }}>
-                {selected.size === rows.length ? T('Bỏ chọn tất cả', 'Deselect all') : T('Chọn tất cả', 'Select all')}
-              </button>
+              <span style={{ display: 'flex', gap: 4 }}>
+                <button type="button" data-testid="admin-manage-expand-all" className="bb-press"
+                  onClick={() => setExpanded(allExpanded ? new Set() : new Set(rows.map(r => r.id)))}
+                  style={{ border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer', minHeight: 36, opacity: 0.75 }}>
+                  {allExpanded ? T('Thu gọn tất cả', 'Collapse all') : T('Mở rộng tất cả', 'Expand all')}
+                </button>
+                <button type="button" data-testid="admin-manage-select-all" className="bb-press"
+                  onClick={() => setSelected(selected.size === rows.length ? new Set() : new Set(rows.map(r => r.id)))}
+                  style={{ border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer', minHeight: 36 }}>
+                  {selected.size === rows.length ? T('Bỏ chọn tất cả', 'Deselect all') : T('Chọn tất cả', 'Select all')}
+                </button>
+              </span>
             </div>
             <div style={{ ...fieldGlass({ borderRadius: 16 }), display: 'flex', flexDirection: 'column' }}>
               {rows.map((r, i) => {
                 const on = selected.has(r.id);
                 const c = checks[r.id];
                 const removed = r.status === 'removed';
+                const orphan = isOrphanEvent(r);
+                const open = expanded.has(r.id);
+                const fact = (label, value) => (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12.5, padding: '5px 0', borderTop: '1px solid var(--bb-rule)' }}>
+                    <span style={{ opacity: 0.65 }}>{label}</span><span style={{ fontWeight: 600, textAlign: 'right', overflowWrap: 'anywhere' }}>{value}</span>
+                  </div>
+                );
+                const link = (label, testId, onClick) => (
+                  <button type="button" onClick={onClick} data-testid={testId} className="bb-press"
+                    style={{ flex: 1, minHeight: 38, borderRadius: 999, border: '1px solid var(--bb-clay)', background: 'none', color: 'var(--bb-clay)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{label}</button>
+                );
                 return (
-                  <button key={r.id} type="button" onClick={() => toggle(r.id)} aria-pressed={on} data-testid={`admin-manage-row-${r.id}`}
-                    style={{ display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', padding: '12px 14px', border: 'none', borderTop: i ? '1px solid var(--bb-rule)' : 'none', background: 'none', color: ink, fontFamily: 'inherit', cursor: 'pointer' }}>
-                    <span aria-hidden style={{ flex: 'none', width: 20, height: 20, marginTop: 1, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      background: on ? ink : 'transparent', border: `1.5px solid ${on ? ink : 'rgba(var(--bb-fg-rgb),0.3)'}`, color: paper, fontSize: 12 }}>{on ? '✓' : ''}</span>
+                  <div key={r.id} data-testid={`admin-manage-row-${r.id}`} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 14px', borderTop: i ? '1px solid var(--bb-rule)' : 'none', color: ink }}>
+                    <button type="button" onClick={() => toggle(r.id)} aria-pressed={on} aria-label={on ? T('Bỏ chọn', 'Deselect') : T('Chọn', 'Select')} data-testid={`admin-manage-select-${r.id}`}
+                      style={{ flex: 'none', width: 32, height: 32, margin: '-6px 0 0 -6px', border: 'none', background: 'none', padding: 6, cursor: 'pointer' }}>
+                      <span aria-hidden style={{ width: 20, height: 20, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        background: on ? ink : 'transparent', border: `1.5px solid ${on ? ink : 'rgba(var(--bb-fg-rgb),0.3)'}`, color: paper, fontSize: 12, boxSizing: 'border-box' }}>{on ? '✓' : ''}</span>
+                    </button>
                     <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <span style={{ fontSize: 15, fontWeight: 600 }}>{r.name}</span>
-                      <span style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 999,
-                          background: removed ? 'rgba(var(--bb-alert-rgb),0.14)' : 'rgba(var(--bb-fg-rgb),0.08)', color: removed ? alert : ink }}>
-                          {T(...(STATUS_LABELS[r.status] || [r.status, r.status]))}
+                      <button type="button" onClick={() => toggleExpanded(r.id)} aria-expanded={open} data-testid={`admin-manage-expand-${r.id}`}
+                        style={{ display: 'flex', flexDirection: 'column', gap: 4, textAlign: 'left', border: 'none', background: 'none', padding: 0, color: ink, fontFamily: 'inherit', cursor: 'pointer' }}>
+                        <span style={{ display: 'flex', gap: 8, alignItems: 'baseline', width: '100%' }}>
+                          <span style={{ flex: 1, fontSize: 15, fontWeight: 600 }}>{r.name}</span>
+                          <span aria-hidden style={{ fontSize: 13, opacity: 0.5, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s ease' }}>›</span>
                         </span>
-                        <span style={{ opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[date(r.starts_at), r.organizer_name].filter(Boolean).join(' · ')}</span>
-                      </span>
+                        <span style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 999,
+                            background: removed ? 'rgba(var(--bb-alert-rgb),0.14)' : 'rgba(var(--bb-fg-rgb),0.08)', color: removed ? alert : ink }}>
+                            {T(...(STATUS_LABELS[r.status] || [r.status, r.status]))}
+                          </span>
+                          {orphan && (
+                            <span data-testid={`admin-manage-orphan-${r.id}`} style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: 'rgba(var(--bb-alert-rgb),0.12)', color: alert }}>
+                              {T('Host đã xoá tài khoản', 'Host account deleted')}
+                            </span>
+                          )}
+                          <span style={{ opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[date(r.starts_at), orphan ? '' : r.organizer_name].filter(Boolean).join(' · ')}</span>
+                        </span>
+                      </button>
                       {removed && <span style={{ fontSize: 12, opacity: 0.75 }}>{T('Lý do: ', 'Reason: ')}{r.removal_reason}</span>}
                       {removed && c?.purgeable && <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.7 }}>{T('Chưa từng có đặt chỗ — có thể xoá vĩnh viễn.', 'Never booked — can be deleted permanently.')}</span>}
                       {!removed && isBlocked(c) && (
-                        <span data-testid={`admin-manage-blocked-${r.id}`} style={{ fontSize: 12, fontWeight: 600, color: 'var(--bb-honey)' }}>{blockerLine(c, T)}</span>
+                        <span data-testid={`admin-manage-blocked-${r.id}`} style={{ fontSize: 12, fontWeight: 600, color: 'var(--bb-honey)' }}>{blockerLine(c, T, orphan)}</span>
+                      )}
+                      {open && (
+                        <div data-testid={`admin-manage-details-${r.id}`} style={{ marginTop: 6, display: 'flex', flexDirection: 'column' }}>
+                          {fact(T('Người tổ chức', 'Host'), orphan ? T('Đã xoá tài khoản', 'Account deleted') + (r.organizer_name && r.organizer_name !== 'Deleted organizer' ? ` (${r.organizer_name})` : '') : (r.organizer_name || '—'))}
+                          {fact(T('Bắt đầu', 'Starts'), dateTime(r.starts_at))}
+                          {fact(T('Giá vé', 'Price'), r.price_vnd > 0 ? formatVnd(r.price_vnd) : T('Miễn phí', 'Free'))}
+                          {fact(T('Chỗ', 'Seats'), r.capacity > 0 ? T(`${r.seats_remaining ?? '—'} còn / ${r.capacity}`, `${r.seats_remaining ?? '—'} left of ${r.capacity}`) : '—')}
+                          {r.area && fact(T('Khu vực', 'Area'), r.area)}
+                          {fact(T('Tạo lúc', 'Created'), dateTime(r.created_at))}
+                          {r.submitted_at && fact(T('Gửi duyệt lúc', 'Submitted'), dateTime(r.submitted_at))}
+                          {c && fact(T('Đặt chỗ', 'Bookings'), T(`${c.active_bookings} đang hiệu lực · ${c.bookings_ever} tổng`, `${c.active_bookings} active · ${c.bookings_ever} ever`))}
+                          {c && (c.unsettled_refunds > 0 || c.open_disputes > 0) && fact(T('Hoàn tiền / tranh chấp', 'Refunds / disputes'), `${c.unsettled_refunds} / ${c.open_disputes}`)}
+                          {removed && r.removed_at && fact(T('Gỡ lúc', 'Removed'), dateTime(r.removed_at))}
+                          {fact('ID', r.id)}
+                          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                            {r.status === 'review' && link(T('Duyệt ngay', 'Review now'), `admin-manage-review-${r.id}`, () => openAdminEvents(r.id))}
+                            {['live', 'ended', 'cancelled'].includes(r.status) && link(T('Xem trang sự kiện', 'View event page'), `admin-manage-open-${r.id}`, () => goEvent(r.id))}
+                            {link(T('Sao chép ID', 'Copy ID'), `admin-manage-copy-${r.id}`, () => { try { navigator.clipboard?.writeText(r.id); setBanner(T('Đã sao chép ID.', 'ID copied.')); } catch { /* no clipboard */ } })}
+                          </div>
+                        </div>
                       )}
                     </span>
-                  </button>
+                  </div>
                 );
               })}
             </div>

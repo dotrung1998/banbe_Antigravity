@@ -26,12 +26,17 @@ struct AdminManageEventsView: View {
     @State private var confirmRestore = false
     @State private var confirmWipe = false     // TESTING-PHASE
     @FocusState private var searchFocused: Bool
+    /// Rows start collapsed (owner, 2026-10-21): summary first, the details one tap away.
+    @State private var expanded: Set<String> = []
 
     private static let filters: [(key: String?, vi: String, en: String)] = [
         (nil, "Tất cả", "All"), ("live", "Đang mở", "Live"), ("review", "Chờ duyệt", "In review"),
         ("draft", "Nháp", "Draft"), ("ended", "Đã kết thúc", "Ended"), ("cancelled", "Đã huỷ", "Cancelled"),
         ("removed", "Đã gỡ", "Removed"),
+        // Not a status: events whose host deleted their account (filtered here, see AdminEventRow.isOrphan).
+        (Self.orphanFilter, "Host đã xoá", "Host deleted"),
     ]
+    static let orphanFilter = "orphan"
 
     /// TESTING-PHASE: shown only while the admin switch is explicitly on.
     private var wipeEnabled: Bool { FeatureFlags.isOn(app.featureFlags, "admin_event_wipe") }
@@ -152,9 +157,16 @@ struct AdminManageEventsView: View {
             Text(app.T("Không có sự kiện nào.", "No events here."))
                 .font(.system(size: 14)).opacity(0.7).padding(.top, 20)
         } else {
-            HStack {
+            HStack(spacing: 14) {
                 Text(app.T("\(rows.count) sự kiện", Self.en(rows.count, "event"))).font(.system(size: 12.5, weight: .semibold)).opacity(0.7)
                 Spacer()
+                let allOpen = rows.allSatisfy { expanded.contains($0.id) }
+                Button(allOpen ? app.T("Thu gọn tất cả", "Collapse all") : app.T("Mở rộng tất cả", "Expand all")) {
+                    withAnimation(.easeInOut(duration: 0.2)) { expanded = allOpen ? [] : Set(rows.map(\.id)) }
+                }
+                .font(.system(size: 13, weight: .semibold)).opacity(0.75)
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("adminManage.expandAll")
                 Button(selected.count == rows.count ? app.T("Bỏ chọn tất cả", "Deselect all") : app.T("Chọn tất cả", "Select all")) {
                     selected = selected.count == rows.count ? [] : Set(rows.map(\.id))
                 }
@@ -175,50 +187,148 @@ struct AdminManageEventsView: View {
 
     private func eventRow(_ row: AdminEventRow) -> some View {
         let isOn = selected.contains(row.id)
+        let isOpen = expanded.contains(row.id)
         let check = checks[row.id]
-        return Button {
-            if isOn { selected.remove(row.id) } else { selected.insert(row.id) }
-        } label: {
-            HStack(alignment: .top, spacing: 12) {
+        let orphan = row.isOrphan
+        return HStack(alignment: .top, spacing: 12) {
+            // Selecting and expanding are separate taps: the circle selects, the rest of the row opens the details.
+            Button {
+                if isOn { selected.remove(row.id) } else { selected.insert(row.id) }
+            } label: {
                 Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 20))
                     .foregroundStyle(isOn ? app.palette.ink : app.palette.ink.opacity(0.3))
-                    .padding(.top, 1)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(row.name).font(.system(size: 15, weight: .semibold)).multilineTextAlignment(.leading)
-                    HStack(spacing: 6) {
-                        Text(statusLabel(row.status))
-                            .font(.system(size: 11, weight: .bold))
-                            .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(row.status == "removed" ? BanbeTheme.alert.opacity(0.14) : app.palette.ink.opacity(0.08), in: Capsule())
-                            .foregroundStyle(row.status == "removed" ? BanbeTheme.alert : app.palette.ink)
-                        Text([row.startsAt.map(Self.dateLabel), row.organizerName].compactMap { $0 }.joined(separator: " · "))
-                            .font(.system(size: 12)).opacity(0.7).lineLimit(1)
-                    }
-                    if row.status == "removed" {
-                        Text(app.T("Lý do: ", "Reason: ") + (row.removalReason ?? ""))
-                            .font(.system(size: 12)).opacity(0.75).lineLimit(2)
-                        if check?.purgeable == true {
-                            Text(app.T("Chưa từng có đặt chỗ — có thể xoá vĩnh viễn.", "Never booked — can be deleted permanently."))
-                                .font(.system(size: 11.5, weight: .semibold)).opacity(0.7)
-                        }
-                    } else if let check, check.isBlocked {
-                        Text(blockerLine(check))
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(app.palette.honey)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("adminManage.blocked.\(row.id)")
-                    }
-                }
-                Spacer(minLength: 0)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
             }
-            .padding(.horizontal, 14).padding(.vertical, 12)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .padding(.top, -5).padding(.leading, -6)
+            .accessibilityLabel(isOn ? app.T("Bỏ chọn \(row.name)", "Deselect \(row.name)") : app.T("Chọn \(row.name)", "Select \(row.name)"))
+            .accessibilityAddTraits(isOn ? [.isSelected] : [])
+            .accessibilityIdentifier("adminManage.row.\(row.id)")
+            VStack(alignment: .leading, spacing: 4) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        if isOpen { expanded.remove(row.id) } else { expanded.insert(row.id) }
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(row.name).font(.system(size: 15, weight: .semibold)).multilineTextAlignment(.leading)
+                            Spacer(minLength: 6)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .semibold)).opacity(0.45)
+                                .rotationEffect(.degrees(isOpen ? 90 : 0))
+                        }
+                        FlowRow(spacing: 6) {
+                            Text(statusLabel(row.status))
+                                .font(.system(size: 11, weight: .bold))
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(row.status == "removed" ? BanbeTheme.alert.opacity(0.14) : app.palette.ink.opacity(0.08), in: Capsule())
+                                .foregroundStyle(row.status == "removed" ? BanbeTheme.alert : app.palette.ink)
+                            if orphan {
+                                Text(app.T("Host đã xoá tài khoản", "Host account deleted"))
+                                    .font(.system(size: 11, weight: .bold))
+                                    .padding(.horizontal, 7).padding(.vertical, 2)
+                                    .background(BanbeTheme.alert.opacity(0.12), in: Capsule())
+                                    .foregroundStyle(BanbeTheme.alert)
+                                    .accessibilityIdentifier("adminManage.orphan.\(row.id)")
+                            }
+                            Text([row.startsAt.map(Self.dateLabel), orphan ? nil : row.organizerName].compactMap { $0 }.joined(separator: " · "))
+                                .font(.system(size: 12)).opacity(0.7).lineLimit(1)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(isOpen ? app.T("Đang mở", "Expanded") : app.T("Đang thu gọn", "Collapsed"))
+                .accessibilityHint(app.T("Chạm để xem chi tiết", "Tap for details"))
+                .accessibilityIdentifier("adminManage.expand.\(row.id)")
+                if row.status == "removed" {
+                    Text(app.T("Lý do: ", "Reason: ") + (row.removalReason ?? ""))
+                        .font(.system(size: 12)).opacity(0.75).lineLimit(2)
+                    if check?.purgeable == true {
+                        Text(app.T("Chưa từng có đặt chỗ — có thể xoá vĩnh viễn.", "Never booked — can be deleted permanently."))
+                            .font(.system(size: 11.5, weight: .semibold)).opacity(0.7)
+                    }
+                } else if let check, check.isBlocked {
+                    Text(blockerLine(check, orphan: orphan))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(app.palette.honey)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("adminManage.blocked.\(row.id)")
+                }
+                if isOpen { details(row, check: check, orphan: orphan) }
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isOn ? [.isSelected] : [])
-        .accessibilityIdentifier("adminManage.row.\(row.id)")
+        .padding(.horizontal, 14).padding(.vertical, 12)
+    }
+
+    private func details(_ row: AdminEventRow, check: AdminEventCheck?, orphan: Bool) -> some View {
+        func fact(_ label: String, _ value: String) -> some View {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(label).opacity(0.65)
+                Spacer(minLength: 8)
+                Text(value).fontWeight(.semibold).multilineTextAlignment(.trailing)
+            }
+            .font(.system(size: 12.5))
+            .padding(.vertical, 5)
+            .overlay(alignment: .top) { Divider().overlay(app.palette.rule) }
+        }
+        let host: String = orphan
+            ? app.T("Đã xoá tài khoản", "Account deleted")
+                + ((row.organizerName ?? "").isEmpty || row.organizerName == AdminManagedEvents.deletedOrganizerName ? "" : " (\(row.organizerName ?? ""))")
+            : (row.organizerName ?? "—")
+        return VStack(alignment: .leading, spacing: 0) {
+            fact(app.T("Người tổ chức", "Host"), host)
+            fact(app.T("Bắt đầu", "Starts"), row.startsAt.map(Self.dateTimeLabel) ?? "—")
+            fact(app.T("Giá vé", "Price"), (row.priceVnd ?? 0) > 0 ? EventLabels.vnd(row.priceVnd ?? 0) : app.T("Miễn phí", "Free"))
+            if let cap = row.capacity, cap > 0 {
+                fact(app.T("Chỗ", "Seats"), app.T("\(row.seatsRemaining.map(String.init) ?? "—") còn / \(cap)", "\(row.seatsRemaining.map(String.init) ?? "—") left of \(cap)"))
+            }
+            if let area = row.area, !area.isEmpty { fact(app.T("Khu vực", "Area"), area) }
+            fact(app.T("Tạo lúc", "Created"), row.createdAt.map(Self.dateTimeLabel) ?? "—")
+            if let sub = row.submittedAt { fact(app.T("Gửi duyệt lúc", "Submitted"), Self.dateTimeLabel(sub)) }
+            if let check {
+                fact(app.T("Đặt chỗ", "Bookings"), app.T("\(check.activeBookings) đang hiệu lực · \(check.bookingsEver) tổng",
+                                                          "\(check.activeBookings) active · \(check.bookingsEver) ever"))
+                if check.unsettledRefunds > 0 || check.openDisputes > 0 {
+                    fact(app.T("Hoàn tiền / tranh chấp", "Refunds / disputes"), "\(check.unsettledRefunds) / \(check.openDisputes)")
+                }
+            }
+            if row.status == "removed", let at = row.removedAt { fact(app.T("Gỡ lúc", "Removed"), Self.dateTimeLabel(at)) }
+            fact("ID", row.id)
+            HStack(spacing: 8) {
+                if row.status == "review" {
+                    detailAction(app.T("Duyệt ngay", "Review now"), id: "review.\(row.id)") { app.openAdminEvents(focusID: row.id) }
+                }
+                if ["live", "ended", "cancelled"].contains(row.status) {
+                    detailAction(app.T("Xem trang sự kiện", "View event page"), id: "open.\(row.id)") { app.goEvent(row.id) }
+                }
+                detailAction(app.T("Sao chép ID", "Copy ID"), id: "copy.\(row.id)") {
+                    UIPasteboard.general.string = row.id
+                    Haptics.light()
+                    banner = app.T("Đã sao chép ID.", "ID copied.")
+                }
+            }
+            .padding(.top, 8)
+        }
+        .padding(.top, 6)
+        .foregroundStyle(app.palette.ink)
+        .transition(.opacity)
+    }
+
+    private func detailAction(_ title: String, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(app.palette.clay)
+                .frame(maxWidth: .infinity, minHeight: 38)
+                .overlay(Capsule().stroke(app.palette.clay, lineWidth: 1))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityIdentifier("adminManage.detail.\(id)")
     }
 
     private var actionBar: some View {
@@ -329,7 +439,9 @@ struct AdminManageEventsView: View {
         loading = true
         defer { loading = false }
         do {
-            let list = try await app.loadAdminManagedEvents(status: filter, search: search)
+            let loaded = try await app.loadAdminManagedEvents(status: filter == Self.orphanFilter ? nil : filter, search: search)
+            // "Host deleted" isn't a status: load everything and keep the orphans.
+            let list = filter == Self.orphanFilter ? loaded.filter(\.isOrphan) : loaded
             rows = list
             loadError = ""
             selected = selected.intersection(Set(list.map(\.id)))
@@ -392,12 +504,16 @@ struct AdminManageEventsView: View {
         }
     }
 
-    private func blockerLine(_ c: AdminEventCheck) -> String {
+    /// With `orphan`, says who has to act now that the host account is gone (banbe, not the host).
+    private func blockerLine(_ c: AdminEventCheck, orphan: Bool = false) -> String {
         var parts: [String] = []
         if c.activeBookings > 0 { parts.append(app.T("\(c.activeBookings) đặt chỗ đang hiệu lực", Self.en(c.activeBookings, "active booking"))) }
         if c.unsettledRefunds > 0 { parts.append(app.T("\(c.unsettledRefunds) khoản hoàn tiền chưa xong", Self.en(c.unsettledRefunds, "refund") + " not settled")) }
         if c.openDisputes > 0 { parts.append(app.T("\(c.openDisputes) tranh chấp đang mở", Self.en(c.openDisputes, "open dispute"))) }
-        return parts.joined(separator: " · ") + app.T(" — người tổ chức cần huỷ và hoàn tiền trước.", " — the host must cancel and refund first.")
+        return parts.joined(separator: " · ") + (orphan
+            ? app.T(" — host đã xoá tài khoản, banbe cần liên hệ khách để hoàn tiền trước.",
+                    " — the host account was deleted; banbe must contact the guests to settle refunds first.")
+            : app.T(" — người tổ chức cần huỷ và hoàn tiền trước.", " — the host must cancel and refund first."))
     }
 
     private func statusLabel(_ s: String) -> String {
@@ -422,4 +538,11 @@ struct AdminManageEventsView: View {
         return f
     }()
     private static func dateLabel(_ d: Date) -> String { dateFormatter.string(from: d) }
+    private static let dateTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "dd/MM/yyyy HH:mm"
+        f.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
+        return f
+    }()
+    private static func dateTimeLabel(_ d: Date) -> String { dateTimeFormatter.string(from: d) }
 }

@@ -446,8 +446,12 @@ input::placeholder, textarea::placeholder {
 @keyframes bbRowReveal { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 /* For You intro entrance (2026-10-21): rise from below, staggered per tile via animation-delay. */
 @keyframes bbRiseIn { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+/* "How banbe works" story (2026-10-21): the emoji tile pops in, then each point rises in turn. */
+@keyframes bbStoryPop { from { opacity: 0; transform: scale(0.6) rotate(-8deg); } to { opacity: 1; transform: none; } }
+.bb-story-pop { animation: bbStoryPop .42s cubic-bezier(.3,1.4,.5,1) both; }
+.bb-story-rise { animation: bbRiseIn .4s cubic-bezier(.2,.8,.2,1) backwards; }
 @media (prefers-reduced-motion: reduce) {
-  .bb-charm, .bb-slide, .bb-row-reveal, .bb-rise { animation: none !important; }
+  .bb-charm, .bb-slide, .bb-row-reveal, .bb-rise, .bb-story-pop, .bb-story-rise { animation: none !important; }
 }
 
 /* Dual-handle price range (HomeFilterSheet, note 50): two stacked native range inputs. Only the thumbs take
@@ -460,6 +464,20 @@ input::placeholder, textarea::placeholder {
 .bb-range::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 26px; height: 26px; margin-top: -11.5px; border-radius: 50%; background: var(--bb-bg); border: 1px solid rgba(var(--bb-fg-rgb), 0.25); box-shadow: 0 2px 6px rgba(27,25,22,0.22); cursor: grab; }
 .bb-range::-moz-range-thumb { pointer-events: auto; width: 24px; height: 24px; border-radius: 50%; background: var(--bb-bg); border: 1px solid rgba(var(--bb-fg-rgb), 0.25); box-shadow: 0 2px 6px rgba(27,25,22,0.22); cursor: grab; }
 .bb-range:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--bb-fg); outline-offset: 2px; }
+/* Create-event price slider (2026-10-21): a single .bb-range whose clay knob carries a ‹ › grip so it reads as
+   draggable. Dimmed until the host picks a price. */
+.bb-price { pointer-events: auto; cursor: pointer; touch-action: pan-y; }
+.bb-price::-webkit-slider-thumb {
+  background: var(--bb-clay) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='10' viewBox='0 0 14 10' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 1 1 5l3 4M10 1l3 4-3 4'/%3E%3C/svg%3E") center / 14px 10px no-repeat;
+  border: 2px solid var(--bb-bg); box-shadow: 0 2px 8px rgba(27,25,22,0.28);
+}
+.bb-price::-moz-range-thumb {
+  background: var(--bb-clay) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='10' viewBox='0 0 14 10' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 1 1 5l3 4M10 1l3 4-3 4'/%3E%3C/svg%3E") center / 14px 10px no-repeat;
+  border: 2px solid var(--bb-bg); box-shadow: 0 2px 8px rgba(27,25,22,0.28);
+}
+.bb-price:active::-webkit-slider-thumb { cursor: grabbing; transform: scale(1.12); }
+.bb-price-unset::-webkit-slider-thumb { opacity: 0.55; }
+.bb-price-unset::-moz-range-thumb { opacity: 0.55; }
 
 /* Home Pulse ticker (note 51): a seamless marquee over two identical copies. Pauses on hover/focus; no motion when
    the user asks for reduced motion (the component also swaps to a static ellipsised line). */

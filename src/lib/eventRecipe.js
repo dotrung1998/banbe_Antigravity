@@ -214,6 +214,27 @@ export function slotLabel(dow, slot, T) {
   return T(`${DOW_VI[dow]} ${SLOT_VI[slot]}`, `${DOW_EN[dow]} ${SLOT_EN[slot]}`);
 }
 const pct = (x) => `${Math.round((x || 0) * 100)}%`;
+// Draggable price slider over the market histogram (owner, 2026-10-21). The track spans the market's min…max;
+// a price outside it pins to the nearer edge. iOS twin: EventRecipe.priceToFraction / fractionToPrice.
+export const PRICE_SLIDER_STEP = 10000;
+
+/** Where `v` sits on the market track, 0…1 (null without a usable range). */
+export function priceToFraction(v, p) {
+  if (!p || p.min == null || p.max == null) return null;
+  const span = p.max - p.min;
+  if (!(span > 0)) return 0.5;
+  return Math.max(0, Math.min(1, (v - p.min) / span));
+}
+
+/** The price at track position `f` (0…1), snapped to `step`, kept inside min…max. */
+export function fractionToPrice(f, p, step = PRICE_SLIDER_STEP) {
+  const lo = p.min; const hi = p.max;
+  const raw = lo + Math.max(0, Math.min(1, f)) * (hi - lo);
+  const lowest = Math.ceil(lo / step) * step; const highest = Math.floor(hi / step) * step;
+  if (lowest > highest) return Math.round(raw); // a market narrower than one step
+  return Math.max(lowest, Math.min(highest, Math.round(raw / step) * step));
+}
+
 export function formatVndShort(v) {
   if (v == null) return '';
   if (v >= 1e6) return `${(v / 1e6).toFixed(v % 1e6 === 0 ? 0 : 1).replace('.', ',')}M₫`;

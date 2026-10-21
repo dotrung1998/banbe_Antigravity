@@ -412,6 +412,29 @@ enum EventRecipe {
     static func pct(_ x: Double?) -> String { "\(jsRound((x ?? 0) * 100))%" }
 
     /// "3,3M₫" / "3M₫" / "250k₫" — the same short money the web recipe prints.
+    // Draggable price slider over the market histogram (owner, 2026-10-21). Web twin: priceToFraction /
+    // fractionToPrice in src/lib/eventRecipe.js.
+    static let priceSliderStep = 10_000
+
+    /// Where `v` sits on the market track, 0…1 (nil without a usable range).
+    static func priceToFraction(_ v: Int, _ p: HostBenchmarks.Price) -> Double? {
+        guard let lo = p.min, let hi = p.max else { return nil }
+        let span = hi - lo
+        guard span > 0 else { return 0.5 }
+        return min(max((Double(v) - lo) / span, 0), 1)
+    }
+
+    /// The price at track position `f` (0…1), snapped to `step`, kept inside min…max.
+    static func fractionToPrice(_ f: Double, _ p: HostBenchmarks.Price, step: Int = priceSliderStep) -> Int {
+        let lo = p.min ?? 0, hi = p.max ?? lo
+        let raw = lo + min(max(f, 0), 1) * (hi - lo)
+        let s = Double(step)
+        let snapped = (raw / s).rounded() * s
+        let lowest = (lo / s).rounded(.up) * s, highest = (hi / s).rounded(.down) * s
+        guard lowest <= highest else { return Int(raw.rounded()) }   // a market narrower than one step
+        return Int(max(lowest, min(highest, snapped)))
+    }
+
     static func formatVndShort(_ v: Double?) -> String {
         guard let v else { return "" }
         if v >= 1_000_000 {

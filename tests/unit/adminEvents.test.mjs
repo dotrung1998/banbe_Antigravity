@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { en, isBlocked, blockerLine, summarize, ADMIN_EVENT_FILTERS, STATUS_LABELS } from '../../src/lib/adminEvents.js';
+import { en, isBlocked, blockerLine, summarize, ADMIN_EVENT_FILTERS, STATUS_LABELS, isOrphanEvent, needsAnotherPage, ORPHAN_FILTER } from '../../src/lib/adminEvents.js';
 
 // Note 54: Admin > Manage events wording. The rules themselves are the server's (migration 189), verified on
 // Postgres by supabase/_localtest/13_event_removal_assert.sql.
@@ -37,6 +37,31 @@ test('summary groups skipped events by reason', () => {
 });
 
 test('every filter has a label, and Removed is one of them', () => {
-  for (const f of ADMIN_EVENT_FILTERS) if (f.key) assert.ok(STATUS_LABELS[f.key], f.key);
+  for (const f of ADMIN_EVENT_FILTERS) if (f.key && !f.client) assert.ok(STATUS_LABELS[f.key], f.key);
   assert.ok(ADMIN_EVENT_FILTERS.some(f => f.key === 'removed'));
+});
+
+test('orphaned events: host account gone', () => {
+  const live = { organizer_id: 'o1', organizer_owner_id: 'u1', organizer_user_id: null, organizer_name: 'Bếp Nhỏ' };
+  assert.equal(isOrphanEvent(live), false);
+  assert.equal(isOrphanEvent({ ...live, organizer_owner_id: null, organizer_user_id: 'u2' }), false, 'user_id alone still counts as a host');
+  assert.equal(isOrphanEvent({ ...live, organizer_owner_id: null }), true, 'no owner and no user (profile cascade SET NULL)');
+  assert.equal(isOrphanEvent({ ...live, organizer_name: 'Deleted organizer' }), true, 'anonymized by the account-deletion cleanup');
+  assert.equal(isOrphanEvent({ ...live, organizer_id: null }), true, 'organizer row deleted');
+  assert.equal(isOrphanEvent({ ...live, organizer_missing: true }), true, 'organizer not readable/missing');
+  assert.ok(ADMIN_EVENT_FILTERS.some(f => f.key === ORPHAN_FILTER && f.client));
+});
+
+test('orphan blocker says banbe has to act, not the host', () => {
+  const c = { active_bookings: 0, unsettled_refunds: 1, open_disputes: 0 };
+  assert.match(blockerLine(c, T), /the host must cancel and refund first/);
+  assert.match(blockerLine(c, T, true), /host account was deleted; banbe must contact the guests/);
+  assert.equal(blockerLine({ active_bookings: 0, unsettled_refunds: 0, open_disputes: 0 }, T, true), '');
+});
+
+test('paging keeps going only while pages come back full, up to the cap', () => {
+  assert.equal(needsAnotherPage(500, 500), true);
+  assert.equal(needsAnotherPage(499, 999), false);
+  assert.equal(needsAnotherPage(500, 5000), false, 'hard cap');
+  assert.equal(needsAnotherPage(0, 0), false);
 });

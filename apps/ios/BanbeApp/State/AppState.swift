@@ -1144,6 +1144,8 @@ final class AppState: ObservableObject {
     @Published var deleteAccountOpen = false
     /// The "Before you go" retention pop-up in front of the wizard (DeleteAccountStayView).
     @Published var deleteAccountStayOpen = false
+    /// Admin > Pending events opens with this event expanded (set by Manage events' "Review now").
+    var adminEventsFocusID: String?
     /// Set by the pop-up's "Continue deleting": the wizard opens once the pop-up has dismissed.
     var deleteAccountContinue = false
     /// The reason picked in the pop-up, handed to the wizard (nil = opened without the pop-up).

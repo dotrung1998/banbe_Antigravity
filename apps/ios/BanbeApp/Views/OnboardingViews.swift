@@ -1893,7 +1893,7 @@ struct CreateEventView: View {
             FormFieldLabel(icon: "tag", text: app.T("Giá vé", "Price"),
                            trailing: similarPriceHint == nil ? nil : app.T("Gợi ý", "Suggested"))
             if let market = bench?.price {
-                PriceMarketView(price: market, mine: draftPriceVnd, catLabel: createCatLabel)
+                PriceMarketView(price: market, mine: draftPriceVnd, catLabel: createCatLabel) { app.createPrice = String($0) }
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                 ForEach(SmartDefaults.priceQuickPicks, id: \.self) { value in
@@ -2099,6 +2099,15 @@ private struct CreateEventReviewSheet: View {
         }
     }
 
+    /// Small section heading for the Private tab (event name / recipe / details / included / photos).
+    private func reviewHeading(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 11.5, weight: .semibold))
+            .tracking(0.6)
+            .opacity(0.6)
+            .accessibilityAddTraits(.isHeader)
+    }
+
     @ViewBuilder
     private func tabButton(_ target: Tab, _ label: String) -> some View {
         Button { tab = target } label: {
@@ -2140,34 +2149,43 @@ private struct CreateEventReviewSheet: View {
                 .padding(3)
                 .background(app.palette.ink.opacity(0.06), in: RoundedRectangle(cornerRadius: 999, style: .continuous))
                 .padding(.top, 14)
+                .padding(.bottom, 12)
             }
             .padding(.horizontal, 22)
             .foregroundStyle(app.palette.ink)
+            // The scrolling content starts below this line, never right against the tabs (owner, 2026-10-21).
+            Rectangle().fill(app.palette.rule).frame(height: 0.5)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     if tab == .privateTab {
+                        // Each block gets its own small heading, so the event name, the recipe and the details
+                        // read as separate sections instead of one run of text.
+                        reviewHeading(app.T("Tên sự kiện", "Event name"))
                         Text(app.createName.trimmingCharacters(in: .whitespaces).isEmpty ? app.T("(Chưa đặt tên)", "(Untitled)") : app.createName)
                             .font(BanbeTheme.display(24))
-                            .padding(.top, 4)
+                            .padding(.top, 6)
+                            .accessibilityIdentifier("create.reviewName")
 
                         if !recipe.isEmpty {
                             let score = EventRecipe.score(recipe)
+                            reviewHeading(app.T("Công thức thành công", "Recipe for success")).padding(.top, 26)
                             VStack(alignment: .leading, spacing: 0) {
-                                (Text(app.T("Công thức thành công: \(score.good)/\(score.total)", "Recipe for success: \(score.good)/\(score.total)")).bold()
+                                (Text("\(score.good)/\(score.total)").bold()
                                  + Text(" · " + app.T("không bắt buộc để gửi", "never required to submit")).foregroundColor(app.palette.ink.opacity(0.65)))
                                     .font(.system(size: 12.5))
-                                    .padding(.top, 10)
+                                    .padding(.top, 12)
                                 RecipeList(checks: recipe, compact: true, onFix: onFixRecipe)
                             }
                             .padding(.horizontal, 16)
-                            .padding(.bottom, 4)
+                            .padding(.bottom, 6)
                             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .padding(.top, 18)
+                            .padding(.top, 8)
                             .accessibilityElement(children: .contain)
                             .accessibilityIdentifier("create.reviewRecipe")
                         }
 
+                        reviewHeading(app.T("Chi tiết sự kiện", "Event details")).padding(.top, 26)
                         VStack(alignment: .leading, spacing: 0) {
                             row(app.T("Danh mục", "Category"), categoryLabel)
                             row(app.T("Ngày & giờ", "Date & time"), dateLabel)
@@ -2183,11 +2201,14 @@ private struct CreateEventReviewSheet: View {
                             }
                         }
                         .padding(.horizontal, 16)
-                        .padding(.top, 18)
+                        .padding(.top, 4)
+                        .padding(.bottom, 6)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .padding(.top, 8)
+                        .accessibilityIdentifier("create.reviewDetails")
 
                         if !reviewIncludedItems.isEmpty {
-                            Text(app.T("Bao gồm", "Included")).font(.system(size: 11.5)).padding(.top, 22)
+                            reviewHeading(app.T("Bao gồm", "Included")).padding(.top, 26)
                             VStack(alignment: .leading, spacing: 0) {
                                 ForEach(Array(reviewIncludedItems.enumerated()), id: \.offset) { index, item in
                                     VStack(alignment: .leading, spacing: 2) {
@@ -2204,12 +2225,13 @@ private struct CreateEventReviewSheet: View {
                                 }
                             }
                             .padding(.horizontal, 16)
-                            .padding(.top, 10)
+                            .padding(.vertical, 2)
                             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .padding(.top, 8)
                         }
 
                         if !galleryItems.isEmpty {
-                            Text(app.T("Thứ tự ảnh", "Photo order")).font(.system(size: 11.5)).padding(.top, 22)
+                            reviewHeading(app.T("Thứ tự ảnh", "Photo order")).padding(.top, 26)
                             VStack(spacing: 8) {
                                 ForEach(Array(galleryItems.enumerated()), id: \.element.id) { index, item in
                                     HStack(spacing: 10) {
@@ -2236,6 +2258,7 @@ private struct CreateEventReviewSheet: View {
                 }
                 .foregroundStyle(app.palette.ink)
                 .padding(.horizontal, 22)
+                .padding(.top, 18)
                 .padding(.bottom, 16)
             }
             .scrollDisabled(scrollLockedForSwipe)

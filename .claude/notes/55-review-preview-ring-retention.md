@@ -1,6 +1,6 @@
 # 55 — Real-detail Public preview, progress ring, For You intro motion, delete-account retention, post-signup Home
 
-Status: IMPLEMENTED LOCALLY (web + iOS), NOT committed. iOS checked in the simulator through new UI tests and their
+Status: IMPLEMENTED (web + iOS), committed in 746ec01. iOS checked in the simulator through new UI tests and their
 screenshots (`ReviewRetentionUITests`). Web: unit tests and the build pass, but it has NOT been checked visually, because
 these screens need a signed-in host or new account and the signed-in Playwright suite is blocked by the DOB gate (note 49).
 

@@ -28,8 +28,9 @@ function WelcomeIllustration({ T }) {
 }
 
 // Story pages lead with an emoji tile (note 53: a face for each idea, not another line icon).
-const STORY_EMOJI = ['🌟', '🎟️'];
-const STORY_TILE_BG = ['var(--bb-honey-bg)', 'var(--bb-clay-bg)'];
+// Pages 3–4 (2026-10-21) introduce hosting and how creating an event works. iOS twin: WelcomeView.storyPages.
+const STORY_EMOJI = ['🌟', '🎟️', '🎤', '🛠️'];
+const STORY_TILE_BG = ['var(--bb-honey-bg)', 'var(--bb-clay-bg)', 'var(--bb-field)', 'var(--bb-honey-bg)'];
 
 const STORY_SEEN_KEY = 'banbe.publicStory.seen.v1';
 const readSeen = () => { try { return localStorage.getItem(STORY_SEEN_KEY) === '1'; } catch { return false; } };
@@ -44,9 +45,29 @@ export default function Welcome() {
   const { state: s, T, toggleLang, toggleTheme, browseAsGuest, openAuth } = useBanBe();
   const [page, setPage] = useState(null); // null = welcome; 0/1 = story page
   const [seen, setSeen] = useState(readSeen);
+  // A short title and three emoji points per page instead of a paragraph (owner, 2026-10-21: "too much text").
+  // iOS twin: WelcomeView.storyPages.
   const pages = [
-    { title: T('Gợi ý hợp với bạn', 'Picks that fit you'), body: T('Sau khi đăng ký, trả lời tối đa 5 câu hỏi (không bắt buộc). banbe gắn sao ★ Dành cho bạn cho những sự kiện phù hợp. Câu trả lời chỉ bạn thấy.', 'After you sign up, answer up to 5 optional questions. banbe stars ★ For You on the events that fit. Only you see your answers.') },
-    { title: T('Giữ chỗ và theo dõi kế hoạch', 'Hold a seat, keep your plans'), body: T('Giữ chỗ, thanh toán trực tiếp cho host và nhận vé QR khi host xác nhận. Kế hoạch của bạn hiện trong Lịch.', 'Hold a seat, pay the host directly and get a QR ticket once they confirm. Your plans show up in Schedule.') },
+    { title: T('Gợi ý hợp với bạn', 'Picks that fit you'), points: [
+      ['✍️', T('Trả lời 5 câu ngắn, không bắt buộc', 'Answer 5 quick, optional questions')],
+      ['⭐', T('banbe gắn ★ Dành cho bạn lên sự kiện hợp', 'banbe stars ★ For You on events that fit')],
+      ['🔒', T('Chỉ mình bạn thấy câu trả lời', 'Only you see your answers')],
+    ] },
+    { title: T('Giữ chỗ trong vài chạm', 'Hold a seat in a few taps'), points: [
+      ['⏱️', T('Giữ chỗ 30 phút để bạn thanh toán', 'Your seat is held 30 minutes while you pay')],
+      ['💸', T('Chuyển khoản thẳng cho host', 'Pay the host directly')],
+      ['📲', T('Nhận vé QR, kế hoạch hiện trong Lịch', 'Get a QR ticket; plans land in Schedule')],
+    ] },
+    { title: T('Tự tổ chức sự kiện', 'Host your own events'), points: [
+      ['⚙️', T('Bật Chế độ tổ chức trong Tài khoản', 'Turn on Organizer mode in Account')],
+      ['🆓', T('Miễn phí: không phí đăng, không phí giao dịch', 'Free: no listing or transaction fees')],
+      ['🤝', T('Khách trả thẳng cho bạn, banbe không giữ tiền', 'Guests pay you; banbe never holds money')],
+    ] },
+    { title: T('Tạo sự kiện trong 5 bước', 'Create an event in 5 steps'), points: [
+      ['📝', T('Host → Cơ bản → Thời gian & nơi → Vé → Ảnh', 'Host → Basics → When & where → Tickets → Photos')],
+      ['🧑‍🍳', T('Công thức thành công gợi ý cách lấp đầy chỗ', 'The Recipe for success helps fill seats')],
+      ['✅', T('banbe duyệt rồi đưa lên sóng, báo cho bạn', 'banbe reviews it, then it goes live')],
+    ] },
   ];
   useEffect(() => { if (page === pages.length - 1) track('public_story_completed'); }, [page, pages.length]);
   const openStory = () => {
@@ -101,9 +122,20 @@ export default function Welcome() {
           </>
         ) : (
           <>
-            <div aria-hidden style={{ marginTop: 40, width: 84, height: 84, borderRadius: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 42, background: STORY_TILE_BG[page] }}>{STORY_EMOJI[page]}</div>
-            <h1 style={display(32, { margin: '14px 0 0', lineHeight: 1.15 })}>{pages[page].title}</h1>
-            <p style={{ fontSize: 17, lineHeight: 1.6, margin: '14px 0 0', opacity: 0.8 }}>{pages[page].body}</p>
+            {/* Keyed by page, so the entrance plays once per page: the tile pops, then the points rise in turn.
+                .bb-story-* animations are off under prefers-reduced-motion. */}
+            <div key={page}>
+              <div aria-hidden className="bb-story-pop" style={{ marginTop: 40, width: 84, height: 84, borderRadius: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 42, background: STORY_TILE_BG[page] }}>{STORY_EMOJI[page]}</div>
+              <h1 style={display(32, { margin: '14px 0 0', lineHeight: 1.15 })}>{pages[page].title}</h1>
+              <ul data-testid="welcome-story-points" style={{ listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {pages[page].points.map(([emoji, text], i) => (
+                  <li key={i} className="bb-story-rise" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 10, borderRadius: 18, background: 'var(--bb-field)', animationDelay: `${120 + i * 80}ms` }}>
+                    <span aria-hidden style={{ flex: 'none', width: 46, height: 46, borderRadius: 14, background: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>{emoji}</span>
+                    <span style={{ fontSize: 16.5, fontWeight: 500, lineHeight: 1.4 }}>{text}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
             <div style={{ marginTop: 24 }}>
               {page < pages.length - 1 ? (
                 <button type="button" onClick={() => setPage(page + 1)} data-testid="welcome-story-next" className="bb-press" style={primaryBtn}>{T('Tiếp', 'Next')}<span aria-hidden>→</span></button>

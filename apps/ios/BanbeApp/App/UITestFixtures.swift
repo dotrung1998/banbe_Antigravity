@@ -47,6 +47,15 @@ enum UITestFixture {
             AdminEventRow(id: "fx-ev-draft", name: "Spam test event", status: "draft", startsAt: now.addingTimeInterval(9 * 86400), organizerName: "Test Host"),
             AdminEventRow(id: "fx-ev-removed", name: "Duplicate listing", status: "removed", startsAt: now.addingTimeInterval(8 * 86400),
                           removalReason: "Duplicate", removedAt: now.addingTimeInterval(-3600), organizerName: "Test Host"),
+            // 2026-10-21: an event waiting for review, and two whose host deleted their account.
+            AdminEventRow(id: "fx-ev-review", name: "Wine & vinyl evening", status: "review", startsAt: now.addingTimeInterval(12 * 86400),
+                          organizerName: "Mây Music", createdAt: now.addingTimeInterval(-2 * 86400), submittedAt: now.addingTimeInterval(-86400),
+                          priceVnd: 350_000, capacity: 20, seatsRemaining: 20, area: "Quận 1"),
+            AdminEventRow(id: "fx-ev-orphan-refund", name: "Bàn dài (host left)", status: "cancelled", startsAt: now.addingTimeInterval(4 * 86400),
+                          organizerName: AdminManagedEvents.deletedOrganizerName, organizerHasAccount: false,
+                          priceVnd: 200_000, capacity: 12, seatsRemaining: 11),
+            AdminEventRow(id: "fx-ev-orphan-draft", name: "Untitled draft (host left)", status: "draft", startsAt: nil,
+                          organizerName: "Old Host", organizerHasAccount: false),
         ]
     }()
     static var adminEventChecks: [String: AdminEventCheck] = [
@@ -54,6 +63,7 @@ enum UITestFixture {
         "fx-ev-refund": AdminEventCheck(eventId: "fx-ev-refund", unsettledRefunds: 1, bookingsEver: 1, removable: false),
         "fx-ev-ended": AdminEventCheck(eventId: "fx-ev-ended", bookingsEver: 4),
         "fx-ev-removed": AdminEventCheck(eventId: "fx-ev-removed", removable: false, purgeable: true),
+        "fx-ev-orphan-refund": AdminEventCheck(eventId: "fx-ev-orphan-refund", unsettledRefunds: 1, bookingsEver: 1, removable: false),
     ]
 
     @MainActor
@@ -77,13 +87,16 @@ enum UITestFixture {
                 if row.status == "removed" { skip("ALREADY_REMOVED"); continue }
                 if check.isBlocked { skip("HAS_OPEN_OBLIGATIONS"); continue }
                 adminManagedEvents[i] = AdminEventRow(id: row.id, name: row.name, status: "removed", startsAt: row.startsAt,
-                                                      removalReason: reason, removedAt: Date(), organizerName: row.organizerName)
+                                                      removalReason: reason, removedAt: Date(), organizerId: row.organizerId,
+                                                      organizerName: row.organizerName, organizerFound: row.organizerFound,
+                                                      organizerHasAccount: row.organizerHasAccount)
                 adminEventChecks[id] = AdminEventCheck(eventId: id, bookingsEver: check.bookingsEver, removable: false,
                                                        purgeable: check.bookingsEver == 0)
             case .restore:
                 if row.status != "removed" { skip("NOT_REMOVED"); continue }
                 adminManagedEvents[i] = AdminEventRow(id: row.id, name: row.name, status: "live", startsAt: row.startsAt,
-                                                      organizerName: row.organizerName)
+                                                      organizerId: row.organizerId, organizerName: row.organizerName,
+                                                      organizerFound: row.organizerFound, organizerHasAccount: row.organizerHasAccount)
                 adminEventChecks[id] = AdminEventCheck(eventId: id, bookingsEver: check.bookingsEver)
             case .purge:
                 if row.status != "removed" { skip("NOT_REMOVED"); continue }

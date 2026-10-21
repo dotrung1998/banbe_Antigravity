@@ -5426,8 +5426,10 @@ try await SupabaseService.client
 
     // ---- admin event review queue (event submission -> review -> publish) ----
 
-    func openAdminEvents() {
+    /// `focusID` (Manage events' "Review now", 2026-10-21): that event opens already expanded.
+    func openAdminEvents(focusID: String? = nil) {
         guard isAdmin else { return }
+        adminEventsFocusID = focusID
         screen = .adminEvents
         Task { await loadPendingEvents() }
     }

@@ -1,6 +1,6 @@
 # 54 — Admin event removal: remove / restore / purge (public) + testing-phase wipe (iOS only)
 
-**Status:** IMPLEMENTED LOCALLY (web + iOS + migrations 188/189), NOT committed. **188/189 NOT applied anywhere
+**Status:** IMPLEMENTED (web + iOS + migrations 188/189), committed in 3249d6d. Rows became expandable and orphaned events got a filter in note 56. **188/189 NOT applied anywhere
 remote.** They need 187 (feature flags) applied first. The owner applies them with `supabase db push`.
 
 **Owner decisions (2026-10-20):**

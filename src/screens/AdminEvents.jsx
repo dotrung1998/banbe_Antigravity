@@ -25,7 +25,7 @@ import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
 // never silently expands/collapses a DIFFERENT row that happened to land
 // on the same index.
 export default function AdminEvents() {
-  const { state, T, loadPendingEvents, reviewEvent, backFromDocuments } = useBanBe();
+  const { state, T, set, loadPendingEvents, reviewEvent, backFromDocuments } = useBanBe();
   const s = state;
   const [reasonByEvent, setReasonByEvent] = useState({});
   const [expanded, setExpanded] = useState(() => new Set());
@@ -65,6 +65,17 @@ export default function AdminEvents() {
       return next;
     });
   };
+  // Opened from Manage events' "Review now": that event starts expanded (photos loaded) and scrolled into view.
+  useEffect(() => {
+    const id = s.adminEventsFocusId;
+    if (!id || !s.adminEvents.some(e => e.key === id)) return;
+    setExpanded(prev => new Set([...prev, id]));
+    loadGallery(id);
+    set({ adminEventsFocusId: null });
+    requestAnimationFrame(() => document.querySelector(`[data-event-id="${id}"]`)?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.adminEventsFocusId, pendingKeys]);
+
   const expandAll = () => {
     setExpanded(new Set(s.adminEvents.map(e => e.key)));
     s.adminEvents.forEach(e => loadGallery(e.key));
@@ -104,7 +115,7 @@ export default function AdminEvents() {
           const submittedLabel = e.submittedAt ? new Date(e.submittedAt).toLocaleString() : T('Không rõ', 'Unknown');
           const addressLabel = [e.addressLine, e.area, e.city].filter(Boolean).join(', ') || e.area || T('Không Có Thông Tin', 'Not Provided');
           return (
-            <div key={e.key} style={{ ...cardGlass({ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }) }} data-testid="admin-event-row">
+            <div key={e.key} style={{ ...cardGlass({ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }) }} data-testid="admin-event-row" data-event-id={e.key}>
               {/* Compact identifying summary — always visible. */}
               <div
                 onClick={() => toggleExpanded(e.key)}

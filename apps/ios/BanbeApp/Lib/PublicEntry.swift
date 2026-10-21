@@ -23,7 +23,8 @@ enum AuthEntryIntent: Equatable {
 /// The optional "See how banbe works" story — never required, never replayed
 /// automatically. Page 0 is the single welcome screen.
 struct PublicStoryState: Equatable {
-    static let pageCount = 2
+    /// For You, Hold a seat, Host your own events, Create an event in 5 steps (pages 3–4 added 2026-10-21).
+    static let pageCount = 4
     /// nil = the welcome screen; 0..<pageCount = an optional story page.
     var page: Int?
     /// Last move direction, for the transition.

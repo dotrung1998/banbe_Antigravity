@@ -171,33 +171,44 @@ struct WelcomeView: View {
 
     // MARK: optional story
 
+    /// The optional story's pages: a short title and three emoji points each, instead of a paragraph (owner,
+    /// 2026-10-21: "too much text"). Pages 3–4 introduce hosting and creating an event.
+    /// Web twin: the `pages` array in src/screens/Welcome.jsx.
+    private var storyPages: [StoryPageContent] {
+        [
+            StoryPageContent(emoji: "🌟", title: app.T("Gợi ý hợp với bạn", "Picks that fit you"), points: [
+                ("✍️", app.T("Trả lời 5 câu ngắn, không bắt buộc", "Answer 5 quick, optional questions")),
+                ("⭐", app.T("banbe gắn ★ Dành cho bạn lên sự kiện hợp", "banbe stars ★ For You on events that fit")),
+                ("🔒", app.T("Chỉ mình bạn thấy câu trả lời", "Only you see your answers")),
+            ]),
+            StoryPageContent(emoji: "🎟️", title: app.T("Giữ chỗ trong vài chạm", "Hold a seat in a few taps"), points: [
+                ("⏱️", app.T("Giữ chỗ 30 phút để bạn thanh toán", "Your seat is held 30 minutes while you pay")),
+                ("💸", app.T("Chuyển khoản thẳng cho host", "Pay the host directly")),
+                ("📲", app.T("Nhận vé QR, kế hoạch hiện trong Lịch", "Get a QR ticket; plans land in Schedule")),
+            ]),
+            StoryPageContent(emoji: "🎤", title: app.T("Tự tổ chức sự kiện", "Host your own events"), points: [
+                ("⚙️", app.T("Bật Chế độ tổ chức trong Tài khoản", "Turn on Organizer mode in Account")),
+                ("🆓", app.T("Miễn phí: không phí đăng, không phí giao dịch", "Free: no listing or transaction fees")),
+                ("🤝", app.T("Khách trả thẳng cho bạn, banbe không giữ tiền", "Guests pay you; banbe never holds money")),
+            ]),
+            StoryPageContent(emoji: "🛠️", title: app.T("Tạo sự kiện trong 5 bước", "Create an event in 5 steps"), points: [
+                ("📝", app.T("Host → Cơ bản → Thời gian & nơi → Vé → Ảnh", "Host → Basics → When & where → Tickets → Photos")),
+                ("🧑‍🍳", app.T("Công thức thành công gợi ý cách lấp đầy chỗ", "The Recipe for success helps fill seats")),
+                ("✅", app.T("banbe duyệt rồi đưa lên sóng, báo cho bạn", "banbe reviews it, then it goes live")),
+            ]),
+        ]
+    }
+
+    private func storyTileBackground(_ page: Int) -> Color {
+        [app.palette.honeyBg, app.palette.clayBg, app.palette.field, app.palette.honeyBg][page % 4]
+    }
+
     private func storyPage(_ page: Int) -> some View {
-        let content: (String, String, String) = page == 0
-            ? ("🌟",
-               app.T("Gợi ý hợp với bạn", "Picks that fit you"),
-               app.T("Sau khi đăng ký, trả lời tối đa 5 câu hỏi (không bắt buộc). banbe gắn sao ★ Dành cho bạn cho những sự kiện phù hợp. Câu trả lời chỉ bạn thấy.",
-                     "After you sign up, answer up to five optional questions. banbe stars ★ For You on events that match. Only you see your answers."))
-            : ("🎟️",
-               app.T("Giữ chỗ và theo dõi kế hoạch", "Hold a seat, keep your plans"),
-               app.T("Giữ chỗ, thanh toán trực tiếp cho host và nhận vé QR khi host xác nhận. Kế hoạch của bạn hiện trong Lịch.",
-                     "Hold a seat, pay the host directly, and get a QR ticket once they confirm. Your plans show up in Schedule."))
+        let content = storyPages[min(max(page, 0), storyPages.count - 1)]
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                // Note 53: an emoji tile per idea instead of another outline icon.
-                Text(content.0)
-                    .font(.system(size: 42))
-                    .frame(width: 84, height: 84)
-                    .background(page == 0 ? app.palette.honeyBg : app.palette.clayBg,
-                                in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                    .padding(.top, 40)
-                    .accessibilityHidden(true)
-                Text(content.1)
-                    .font(.system(.largeTitle, design: .rounded).weight(.semibold))
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityFocused($headingFocused)
-                    .accessibilityIdentifier("welcome.story.heading.\(page)")
-                Text(content.2).font(.body).lineSpacing(3)
-                    .foregroundStyle(app.palette.ink.opacity(0.8))
+                StoryPointsView(page: page, content: content, tile: storyTileBackground(page),
+                                headingFocused: $headingFocused)
 
                 if story.isLastPage {
                     ctas.padding(.top, 24)
@@ -210,6 +221,75 @@ struct WelcomeView: View {
             }
             .padding(.horizontal, 24).padding(.bottom, 32)
         }
+    }
+}
+
+struct StoryPageContent {
+    let emoji: String
+    let title: String
+    let points: [(emoji: String, text: String)]
+}
+
+/// One story page's top: the emoji tile, the title and three emoji points. Each page is a fresh view (`.id`), so the
+/// entrance plays once per page: the tile pops, then the points rise in one after another. Quick and played only
+/// on arrival; Reduce Motion gets a plain fade.
+private struct StoryPointsView: View {
+    @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let page: Int
+    let content: StoryPageContent
+    let tile: Color
+    var headingFocused: AccessibilityFocusState<Bool>.Binding
+    @State private var shown = false
+
+    private func motion(_ delay: Double) -> Animation {
+        reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.42, dampingFraction: 0.82).delay(delay)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(content.emoji)
+                .font(.system(size: 42))
+                .frame(width: 84, height: 84)
+                .background(tile, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .scaleEffect(shown || reduceMotion ? 1 : 0.6)
+                .rotationEffect(.degrees(shown || reduceMotion ? 0 : -8))
+                .opacity(shown ? 1 : 0)
+                .animation(motion(0), value: shown)
+                .padding(.top, 40)
+                .accessibilityHidden(true)
+            Text(content.title)
+                .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityFocused(headingFocused)
+                .accessibilityIdentifier("welcome.story.heading.\(page)")
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(content.points.enumerated()), id: \.offset) { i, point in
+                    HStack(spacing: 14) {
+                        Text(point.emoji)
+                            .font(.system(size: 24))
+                            .frame(width: 46, height: 46)
+                            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .accessibilityHidden(true)
+                        Text(point.text)
+                            .font(.system(.body, design: .rounded).weight(.medium))
+                            .foregroundStyle(app.palette.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(10)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .opacity(shown ? 1 : 0)
+                    .offset(y: shown || reduceMotion ? 0 : 18)
+                    .animation(motion(0.12 + Double(i) * 0.08), value: shown)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("welcome.story.point.\(page).\(i)")
+                }
+            }
+            .padding(.top, 4)
+        }
+        .onAppear { shown = true }
     }
 }
 

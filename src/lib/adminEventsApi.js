@@ -1,5 +1,6 @@
 // Admin > Manage events — the network calls (note 54). Pure wording helpers live in adminEvents.js.
 import { supabase } from './supabase.js';
+import { ADMIN_EVENTS_PAGE, needsAnotherPage } from './adminEvents.js';
 
 const isMissingFunction = (error) => {
   const m = `${error?.message || ''} ${error?.code || ''}`;
@@ -7,13 +8,26 @@ const isMissingFunction = (error) => {
 };
 
 export async function loadAdminManagedEvents({ status, search }) {
-  let q = supabase.from('events').select('id, name, status, starts_at, removal_reason, removed_at, organizer_id, organizers(name)');
-  if (status) q = q.eq('status', status);
   const term = (search || '').trim().replace(/[%_,()]/g, ' ').trim();
-  if (term) q = q.ilike('name', `%${term}%`);
-  const { data, error } = await q.order('starts_at', { ascending: false, nullsFirst: false }).limit(200);
-  if (error) return { rows: [], error: isMissingFunction(error) ? 'NOT_DEPLOYED' : 'NETWORK' };
-  return { rows: (data || []).map(r => ({ ...r, organizer_name: r.organizers?.name || '' })), error: null };
+  const rows = [];
+  // Paged (2026-10-21): a single .limit(200) cut off older events, which is where orphaned drafts/ended events sit.
+  for (let page = 0; ; page += 1) {
+    let q = supabase.from('events').select('id, name, status, starts_at, created_at, submitted_at, price_vnd, capacity, seats_remaining, area, removal_reason, removed_at, organizer_id, organizers(name, owner_id, user_id)');
+    if (status) q = q.eq('status', status);
+    if (term) q = q.ilike('name', `%${term}%`);
+    const from = page * ADMIN_EVENTS_PAGE;
+    const { data, error } = await q.order('starts_at', { ascending: false, nullsFirst: false }).order('id').range(from, from + ADMIN_EVENTS_PAGE - 1);
+    if (error) return { rows: [], error: isMissingFunction(error) ? 'NOT_DEPLOYED' : 'NETWORK' };
+    (data || []).forEach(r => rows.push({
+      ...r,
+      organizer_name: r.organizers?.name || '',
+      organizer_owner_id: r.organizers?.owner_id || null,
+      organizer_user_id: r.organizers?.user_id || null,
+      organizer_missing: !!r.organizer_id && !r.organizers,
+    }));
+    if (!needsAnotherPage((data || []).length, rows.length)) break;
+  }
+  return { rows, error: null };
 }
 
 export async function loadAdminEventChecks(ids) {

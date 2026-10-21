@@ -145,3 +145,20 @@ test('copy names its evidence and never shows a number from a tip', () => {
   assert.equal(formatVndShort(3000000), '3M₫');
   assert.equal(formatVndShort(250000), '250k₫');
 });
+
+// Draggable price slider (2026-10-21).
+import { priceToFraction, fractionToPrice } from '../../src/lib/eventRecipe.js';
+test('price slider maps the market range both ways, snapped to 10k', () => {
+  const p = { min: 250000, max: 600000 };
+  assert.equal(priceToFraction(250000, p), 0);
+  assert.equal(priceToFraction(600000, p), 1);
+  assert.equal(priceToFraction(100000, p), 0, 'below the market pins to the left edge');
+  assert.equal(priceToFraction(900000, p), 1);
+  assert.equal(fractionToPrice(0.5, p), 430000);
+  assert.equal(fractionToPrice(0, p), 250000);
+  assert.equal(fractionToPrice(1, p), 600000);
+  assert.equal(fractionToPrice(0.123, p) % 10000, 0);
+  assert.equal(priceToFraction(5, { min: 100000, max: 100000 }), 0.5, 'flat market sits in the middle');
+  assert.equal(priceToFraction(5, null), null);
+  assert.equal(fractionToPrice(0.5, { min: 251000, max: 259000 }), 255000, 'market narrower than a step');
+});

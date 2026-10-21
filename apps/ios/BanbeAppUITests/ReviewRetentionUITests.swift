@@ -81,4 +81,70 @@ final class ReviewRetentionUITests: XCTestCase {
         XCTAssertTrue(el(app, "deleteAccount.identity").exists, "with the identity card carried up")
         shot("delete-confirm")
     }
+
+    // MARK: 2026-10-21 second pass
+
+    func testPriceSliderDrags() {
+        let app = launch("shell.create", extra: ["-uiFixtureBench", "YES"])
+        XCTAssertTrue(el(app, "create.step.next").waitForExistence(timeout: 10))
+        for _ in 0..<3 { el(app, "create.step.next").tap(); sleep(1) }
+        let slider = el(app, "create.priceSlider")
+        for _ in 0..<6 where !slider.isHittable { app.swipeUp() }
+        XCTAssertTrue(slider.waitForExistence(timeout: 5))
+        let field = app.textFields.matching(NSPredicate(format: "value CONTAINS '000'")).firstMatch
+        let before = field.value as? String
+        // Drag along the knob's row (the bottom of the slider) from left to near the right edge.
+        let start = slider.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.85))
+        let end = slider.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.85))
+        start.press(forDuration: 0.1, thenDragTo: end)
+        sleep(1)
+        shot("create-price-slider")
+        XCTAssertNotEqual(field.value as? String, before, "dragging the knob changes the price field")
+    }
+
+    func testManageEventsOrphansAndExpand() {
+        let app = launch("shell.adminManageEvents")
+        XCTAssertTrue(el(app, "adminManage.row.fx-ev-live").waitForExistence(timeout: 15))
+        el(app, "adminManage.filter.orphan").tap()
+        XCTAssertTrue(el(app, "adminManage.orphan.fx-ev-orphan-refund").waitForExistence(timeout: 5))
+        XCTAssertFalse(el(app, "adminManage.row.fx-ev-live").exists, "only orphans under Host deleted")
+        XCTAssertTrue(el(app, "adminManage.blocked.fx-ev-orphan-refund").label.contains("banbe must contact the guests"))
+        el(app, "adminManage.expand.fx-ev-orphan-refund").tap()
+        XCTAssertTrue(el(app, "adminManage.detail.copy.fx-ev-orphan-refund").waitForExistence(timeout: 3), "details open")
+        el(app, "adminManage.row.fx-ev-orphan-draft").tap()
+        XCTAssertTrue(el(app, "adminManage.action.remove").waitForExistence(timeout: 3), "an orphan is selectable and removable")
+        shot("manage-orphans")
+        el(app, "adminManage.filter.review").tap()
+        el(app, "adminManage.expand.fx-ev-review").tap()
+        XCTAssertTrue(el(app, "adminManage.detail.review.fx-ev-review").waitForExistence(timeout: 3))
+        shot("manage-review-expanded")
+    }
+
+    func testReviewPrivateTabHasSections() {
+        let app = launch("shell.create", extra: ["-uiFixtureReview", "YES"])
+        XCTAssertTrue(app.staticTexts["Review before submitting"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["EVENT NAME"].exists)
+        XCTAssertTrue(app.staticTexts["EVENT DETAILS"].exists)
+        let tabs = app.buttons["Public preview"].frame
+        XCTAssertGreaterThan(el(app, "create.reviewName").frame.minY, tabs.maxY + 20, "a clear gap under the tabs")
+        app.swipeUp()
+        sleep(1)
+        shot("review-private-scrolled")
+    }
+
+    func testHowBanbeWorksHasHostPages() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-uiFixture", "auth", "-banbe.lang", "en", "-uiTesting", "1", "-banbe.publicStory.seen.v1", "NO"]
+        app.launch()
+        XCTAssertTrue(el(app, "welcome.story.open").waitForExistence(timeout: 10))
+        el(app, "welcome.story.open").tap()
+        XCTAssertEqual(el(app, "welcome.story.progress").label, "1 of 4")
+        for _ in 0..<2 { el(app, "welcome.story.next").tap(); sleep(1) }
+        XCTAssertTrue(el(app, "welcome.story.heading.2").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Host your own events"].exists)
+        shot("welcome-host-page")
+        el(app, "welcome.story.next").tap()
+        XCTAssertTrue(app.staticTexts["Create an event in 5 steps"].waitForExistence(timeout: 5))
+        shot("welcome-create-page")
+    }
 }

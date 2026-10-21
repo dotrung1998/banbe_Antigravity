@@ -199,52 +199,143 @@ struct RecipeInsight: View {
 }
 
 /// Price histogram of similar events (get_host_benchmarks) with this event's own price marked — the market
-/// behind the decision, same idea as the Home filter's histogram.
+/// behind the decision, same idea as the Home filter's histogram. It is also the price slider (owner, 2026-10-21):
+/// drag the clay knob (or tap the track) to set the price; quick picks and the typed field stay in sync through
+/// `app.createPrice`. Web twin: `PriceMarket` in src/screens/CreateEvent.jsx.
 struct PriceMarketView: View {
     @EnvironmentObject private var app: AppState
     let price: HostBenchmarks.Price
     let mine: Int
     let catLabel: String
+    var onChange: ((Int) -> Void)? = nil
+    @State private var dragging = false
+
+    private static let knob: CGFloat = 26
+    private var unset: Bool { mine <= 0 }
+    /// Without a price the knob rests (dimmed) on the median.
+    private var value: Int {
+        unset ? EventRecipe.fractionToPrice(EventRecipe.priceToFraction(Int(price.median ?? price.min ?? 0), price) ?? 0.5, price) : mine
+    }
+    private var fraction: Double { EventRecipe.priceToFraction(value, price) ?? 0.5 }
+
+    /// Which side of p25 / median / p75 a price falls on; a light tick each time a drag crosses one.
+    private func band(_ v: Int) -> Int {
+        [price.p25, price.median, price.p75].compactMap { $0 }.filter { Double(v) >= $0 }.count
+    }
+
+    private func set(_ v: Int) {
+        guard v != mine else { return }
+        if !unset, band(v) != band(mine) { Haptics.selection() }
+        onChange?(v)
+    }
 
     var body: some View {
         let counts = price.histogram ?? []
         let peak = max(counts.max() ?? 1, 1)
-        let lo = price.min ?? 0
-        let span = max((price.max ?? lo) - lo, 1)
-        let marker: Double? = mine > 0 ? min(max((Double(mine) - lo) / span, 0), 1) : nil
+        let k = Self.knob
         VStack(alignment: .leading, spacing: 6) {
             Text(app.T("\(catLabel) · trung vị \(EventRecipe.formatVndShort(price.median)) · \(price.n ?? 0) sự kiện",
                        "\(catLabel) · median \(EventRecipe.formatVndShort(price.median)) · \(price.n ?? 0) events"))
                 .font(.system(size: 12)).opacity(0.8)
-            HStack(alignment: .bottom, spacing: 3) {
-                ForEach(Array(counts.enumerated()), id: \.offset) { _, c in
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(app.palette.ink.opacity(0.2))
-                        .frame(height: max(44 * 0.06, 44 * CGFloat(c) / CGFloat(peak)))
-                }
-            }
-            .frame(height: 44, alignment: .bottom)
-            .overlay(alignment: .leading) {
-                if let marker {
-                    GeometryReader { geo in
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(app.palette.ink)
-                            .frame(width: 2, height: 52)
-                            .offset(x: geo.size.width * marker - 1, y: -4)
+            GeometryReader { geo in
+                let track = max(geo.size.width - k, 1)
+                let x = k / 2 + track * fraction
+                ZStack(alignment: .topLeading) {
+                    // Bars up to the chosen price are filled in: the part of the market you are priced against.
+                    HStack(alignment: .bottom, spacing: 3) {
+                        ForEach(Array(counts.enumerated()), id: \.offset) { i, c in
+                            let reached = !unset && (Double(i) + 0.5) / Double(max(counts.count, 1)) <= fraction
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(reached ? app.palette.clay.opacity(0.55) : app.palette.ink.opacity(0.2))
+                                .frame(height: max(44 * 0.06, 44 * CGFloat(c) / CGFloat(peak)))
+                        }
                     }
-                    .accessibilityIdentifier("create.priceMarker")
+                    .frame(height: 44, alignment: .bottom)
+                    .padding(.horizontal, k / 2)
+                    .padding(.top, 8)
+                    // Track under the bars, then the marker line from the bars down into the knob.
+                    Capsule().fill(app.palette.ink.opacity(0.18))
+                        .frame(width: track, height: 3)
+                        .offset(x: k / 2, y: 8 + 44 + 14)
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(unset ? app.palette.ink.opacity(0.3) : app.palette.clay)
+                        .frame(width: 2, height: 58)
+                        .offset(x: x - 1, y: 4)
+                        .accessibilityIdentifier("create.priceMarker")
+                    ZStack {
+                        Circle().fill(app.palette.clay)
+                        Circle().stroke(app.palette.paper, lineWidth: 2)
+                        HStack(spacing: 3) {
+                            Image(systemName: "chevron.left")
+                            Image(systemName: "chevron.right")
+                        }
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundStyle(.white)
+                    }
+                    .frame(width: k, height: k)
+                    .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+                    .scaleEffect(dragging ? 1.12 : 1)
+                    .opacity(unset && !dragging ? 0.55 : 1)
+                    .offset(x: x - k / 2, y: 8 + 44 + 14 - k / 2 + 1.5)
+                    if dragging {
+                        Text(EventRecipe.formatVndShort(value))
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(app.palette.paper)
+                            .padding(.horizontal, 9).padding(.vertical, 3)
+                            .background(app.palette.ink, in: Capsule())
+                            .fixedSize()
+                            .alignmentGuide(.leading) { $0.width / 2 }
+                            .offset(x: x, y: -18)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .frame(width: geo.size.width, height: 8 + 44 + 14 + k / 2 + 4, alignment: .topLeading)
+                // Tapping the bars jumps the price there; a vertical swipe over them still scrolls the page.
+                .contentShape(Rectangle())
+                .onTapGesture(coordinateSpace: .local) { loc in
+                    set(EventRecipe.fractionToPrice(Double((loc.x - k / 2) / track), price))
+                }
+                // Dragging happens on the knob's row only, so the page keeps scrolling when a finger lands on the bars.
+                .overlay(alignment: .bottomLeading) {
+                    Color.clear
+                        .frame(width: geo.size.width, height: k + 14)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                                .onChanged { g in
+                                    if !dragging { withAnimation(.easeOut(duration: 0.12)) { dragging = true } }
+                                    set(EventRecipe.fractionToPrice(Double((g.location.x - k / 2) / track), price))
+                                }
+                                .onEnded { _ in withAnimation(.easeOut(duration: 0.15)) { dragging = false } }
+                        )
                 }
             }
-            .accessibilityHidden(true)
+            .frame(height: 8 + 44 + 14 + Self.knob / 2 + 4)
+            .accessibilityElement()
+            .accessibilityLabel(app.T("Giá vé", "Ticket price"))
+            .accessibilityValue(unset ? app.T("Chưa chọn", "Not set") : EventRecipe.formatVndShort(value))
+            .accessibilityHint(app.T("Vuốt lên hoặc xuống để đổi giá", "Swipe up or down to change the price"))
+            .accessibilityAdjustableAction { direction in
+                let s = EventRecipe.priceSliderStep
+                switch direction {
+                case .increment: set(min(value + s, Int(price.max ?? Double(value + s))))
+                case .decrement: set(max(value - s, Int(price.min ?? 0)))
+                @unknown default: break
+                }
+            }
+            .accessibilityIdentifier("create.priceSlider")
             HStack {
                 Text(EventRecipe.formatVndShort(price.min))
+                Spacer()
+                Text(app.T("‹ Kéo để chọn giá ›", "‹ Drag to set your price ›")).fontWeight(.semibold)
                 Spacer()
                 Text(EventRecipe.formatVndShort(price.max))
             }
             .font(.system(size: 11)).opacity(0.6)
+            .accessibilityHidden(true)
         }
         .foregroundStyle(app.palette.ink)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("create.priceMarket")
     }
 }

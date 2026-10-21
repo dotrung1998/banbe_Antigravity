@@ -5,6 +5,27 @@
 // iOS twin: apps/ios/BanbeApp/State/AppState+AdminManageEvents.swift. The TESTING-PHASE wipe is iOS-only, so it
 // has no web call here. Network calls: src/lib/adminEventsApi.js (kept apart so this file stays testable in Node).
 
+export const ORPHAN_FILTER = 'orphan';
+/** What api/_lib/organizerCleanup.js renames an organizer to when its owner deletes their account. */
+export const DELETED_ORGANIZER_NAME = 'Deleted organizer';
+
+/** True when the event's host account is gone (2026-10-21): no organizer, an organizer row that no longer exists, an
+ *  organizer with neither owner nor user (profiles cascade SET NULL on account deletion), or one anonymized by the
+ *  account-deletion cleanup. Such events can't be cancelled or refunded by anyone but banbe. */
+export function isOrphanEvent(row) {
+  if (!row) return false;
+  if (!row.organizer_id || row.organizer_missing) return true;
+  if (!row.organizer_owner_id && !row.organizer_user_id) return true;
+  return row.organizer_name === DELETED_ORGANIZER_NAME;
+}
+
+/** Paging for the Manage events list: keep going while a page comes back full, up to `cap` rows in total. */
+export const ADMIN_EVENTS_PAGE = 500;
+export const ADMIN_EVENTS_CAP = 5000;
+export function needsAnotherPage(lastPageCount, totalSoFar, pageSize = ADMIN_EVENTS_PAGE, cap = ADMIN_EVENTS_CAP) {
+  return lastPageCount === pageSize && totalSoFar < cap;
+}
+
 export const ADMIN_EVENT_FILTERS = [
   { key: null, vi: 'Tất cả', en: 'All' },
   { key: 'live', vi: 'Đang mở', en: 'Live' },
@@ -13,6 +34,8 @@ export const ADMIN_EVENT_FILTERS = [
   { key: 'ended', vi: 'Đã kết thúc', en: 'Ended' },
   { key: 'cancelled', vi: 'Đã huỷ', en: 'Cancelled' },
   { key: 'removed', vi: 'Đã gỡ', en: 'Removed' },
+  // Not a status: events whose host account was deleted (filtered on the client, see isOrphanEvent).
+  { key: ORPHAN_FILTER, vi: 'Host đã xoá', en: 'Host deleted', client: true },
 ];
 
 export const STATUS_LABELS = {
@@ -27,14 +50,17 @@ export function isBlocked(check) {
   return !!check && (check.active_bookings > 0 || check.unsettled_refunds > 0 || check.open_disputes > 0);
 }
 
-/** Why an event can't be removed yet, or '' when nothing is in play. */
-export function blockerLine(check, T) {
+/** Why an event can't be removed yet, or '' when nothing is in play. With `orphan`, says who has to act now that the
+ *  host is gone (banbe, not the host). */
+export function blockerLine(check, T, orphan = false) {
   if (!isBlocked(check)) return '';
   const parts = [];
   if (check.active_bookings > 0) parts.push(T(`${check.active_bookings} đặt chỗ đang hiệu lực`, en(check.active_bookings, 'active booking')));
   if (check.unsettled_refunds > 0) parts.push(T(`${check.unsettled_refunds} khoản hoàn tiền chưa xong`, `${en(check.unsettled_refunds, 'refund')} not settled`));
   if (check.open_disputes > 0) parts.push(T(`${check.open_disputes} tranh chấp đang mở`, en(check.open_disputes, 'open dispute')));
-  return parts.join(' · ') + T(' — người tổ chức cần huỷ và hoàn tiền trước.', ' — the host must cancel and refund first.');
+  return parts.join(' · ') + (orphan
+    ? T(' — host đã xoá tài khoản, banbe cần liên hệ khách để hoàn tiền trước.', ' — the host account was deleted; banbe must contact the guests to settle refunds first.')
+    : T(' — người tổ chức cần huỷ và hoàn tiền trước.', ' — the host must cancel and refund first.'));
 }
 
 const SKIP = {

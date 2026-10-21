@@ -53,7 +53,7 @@ final class PublicEntryScheduleUITests: XCTestCase {
         XCTAssertTrue(el(app, "welcome.story.open").waitForExistence(timeout: 10))
         el(app, "welcome.story.open").tap()
         XCTAssertTrue(el(app, "welcome.story.heading.0").waitForExistence(timeout: 5))
-        XCTAssertEqual(el(app, "welcome.story.progress").label, "1 of 2")
+        XCTAssertEqual(el(app, "welcome.story.progress").label, "1 of 4")
         el(app, "welcome.story.next").tap()
         XCTAssertTrue(el(app, "welcome.story.heading.1").waitForExistence(timeout: 5))
         el(app, "welcome.story.back").tap()
@@ -62,7 +62,7 @@ final class PublicEntryScheduleUITests: XCTestCase {
         XCTAssertTrue(el(app, "welcome.heading").waitForExistence(timeout: 5))
         // Last page offers both routes too.
         el(app, "welcome.story.open").tap()
-        el(app, "welcome.story.next").tap()
+        for _ in 0..<3 { el(app, "welcome.story.next").tap() }   // 4 pages since 2026-10-21 (host pages)
         XCTAssertTrue(el(app, "welcome.login").waitForExistence(timeout: 5))
         el(app, "welcome.login").tap()
         XCTAssertTrue(el(app, "login.mode.login").waitForExistence(timeout: 5))

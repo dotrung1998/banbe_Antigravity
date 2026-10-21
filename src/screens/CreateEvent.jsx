@@ -8,12 +8,12 @@ import { liveEventOverrides } from '../lib/countdown.js';
 import { supabase } from '../lib/supabase.js';
 import { parseExcelOrZipPackage } from '../lib/excelEventImport.js';
 import { formatVnd } from '../lib/paymentDocument.js';
-import { paper, ink, rule, FACE, display, alert } from '../theme.js';
+import { paper, ink, rule, FACE, display, alert, clay } from '../theme.js';
 import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
 import { loadMapKit } from '../lib/mapkit.js';
 import { CountStepper, StepProgress } from '../components/ui/FormControls.jsx';
 import { PRICE_QUICK_PICKS, SEAT_QUICK_PICKS, TIME_QUICK_PICKS, dateQuickPicks, similarPriceRange, createDraftMatchesDefaults } from '../lib/smartDefaults.js';
-import { recipeChecks, recipeCopy, estimateOutcome, pricePosition, formatVndShort, slotLabel, hasBenchmarks, HOST_GOALS } from '../lib/eventRecipe.js';
+import { recipeChecks, recipeCopy, estimateOutcome, pricePosition, formatVndShort, slotLabel, hasBenchmarks, HOST_GOALS, priceToFraction, fractionToPrice, PRICE_SLIDER_STEP } from '../lib/eventRecipe.js';
 import { useHostBenchmarks } from '../lib/useHostBenchmarks.js';
 import { track } from '../lib/analytics.js';
 import { stepOfField, isTextField, firstMissingField } from '../lib/createFieldGuide.js';
@@ -711,7 +711,7 @@ export default function CreateEvent() {
           <StepCard title={T('Vé & ai được đặt', 'Tickets & who can book')} id="create-section-tickets">
             <Guided field="price" attn={attn} style={fieldCol}>
               <FormLabel icon="tag" text={T('Giá vé', 'Price')} tag={similar ? T('Gợi ý', 'Suggested') : null} />
-              {bench?.price && <PriceMarket price={bench.price} mine={draftPriceVnd} T={T} catLabel={createCatLabel} />}
+              {bench?.price && <PriceMarket price={bench.price} mine={draftPriceVnd} T={T} catLabel={createCatLabel} onChange={(v) => set({ createPrice: String(v) })} />}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                 {PRICE_QUICK_PICKS.map(v => {
                   const pos = bench?.price ? pricePosition(v, bench.price) : null;
@@ -987,6 +987,9 @@ export default function CreateEvent() {
  * own scroll container rather than a separate route, so there is no
  * navigation/back-stack state to reconcile.
  */
+/** Small section heading in the Review step's Private tab (event name / recipe / details / included / photos). */
+const reviewHeading = { fontSize: 11.5, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: ink, opacity: 0.6 };
+
 function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe, onBack, onConfirm }) {
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [tab, setTab] = useState('private');
@@ -1064,7 +1067,8 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
       <div onClick={onBack} data-testid="create-review-back" style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer', flex: 'none' }}>
         ‹ {T('Quay lại chỉnh sửa', 'Back to edit')}
       </div>
-      <div style={{ padding: '14px 22px 0', flex: 'none' }}>
+      {/* The scrolling content starts below a hairline, never right against the tabs (owner, 2026-10-21). */}
+      <div style={{ padding: '14px 22px 12px', flex: 'none', borderBottom: `1px solid ${rule}` }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Xem lại trước khi gửi', 'Review before submitting')}</span>
         <div style={{ display: 'flex', gap: 6, marginTop: 14, padding: 3, background: 'rgba(27,25,22,0.06)', borderRadius: 999 }}>
           {tabBtn('private', T('Nội bộ (Host)', 'Private (Host)'))}
@@ -1072,22 +1076,28 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 22px 24px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px 24px' }}>
         {tab === 'private' ? (
           <>
-            <h1 style={{ ...display(24, { margin: '4px 0 0' }) }}>{s.createName.trim() || T('(Chưa đặt tên)', '(Untitled)')}</h1>
+            {/* Each block gets its own small heading, so the name, the recipe and the details read as sections. */}
+            <div style={reviewHeading}>{T('Tên sự kiện', 'Event name')}</div>
+            <h1 style={{ ...display(24, { margin: '6px 0 0' }) }}>{s.createName.trim() || T('(Chưa đặt tên)', '(Untitled)')}</h1>
 
             {recipe && (
-              <div data-testid="create-review-recipe" style={{ ...cardGlass({ marginTop: 18, padding: '10px 16px 4px' }) }}>
+              <>
+              <div style={{ ...reviewHeading, marginTop: 26 }}>{T('Công thức thành công', 'Recipe for success')}</div>
+              <div data-testid="create-review-recipe" style={{ ...cardGlass({ marginTop: 8, padding: '12px 16px 6px' }) }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700 }}>
-                  {T(`Công thức thành công: ${recipe.filter(c => c.status === 'good').length}/${recipe.length}`, `Recipe for success: ${recipe.filter(c => c.status === 'good').length}/${recipe.length}`)}
+                  {`${recipe.filter(c => c.status === 'good').length}/${recipe.length}`}
                   <span style={{ fontWeight: 400, opacity: 0.65 }}>{' · '}{T('không bắt buộc để gửi', 'never required to submit')}</span>
                 </div>
                 <RecipeList checks={recipe} onFix={onFixRecipe} T={T} compact />
               </div>
+              </>
             )}
 
-            <div style={{ ...cardGlass({ marginTop: 18, padding: '4px 16px', display: 'flex', flexDirection: 'column' }) }}>
+            <div style={{ ...reviewHeading, marginTop: 26 }}>{T('Chi tiết sự kiện', 'Event details')}</div>
+            <div data-testid="create-review-details" style={{ ...cardGlass({ marginTop: 8, padding: '4px 16px 6px', display: 'flex', flexDirection: 'column' }) }}>
               {row(T('Danh mục', 'Category'), createCatLabel)}
               {row(T('Từ khoá tìm kiếm', 'Search keywords'), s.createKeywords.trim() || T(`(Tự dùng danh mục) ${createCatLabel}`, `(Defaults to category) ${createCatLabel}`))}
               {row(T('Ngày & giờ', 'Date & time'), dateLabel)}
@@ -1101,9 +1111,9 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
             </div>
 
             {includedItems.length > 0 && (
-              <div style={{ marginTop: 22 }}>
-                <span style={{ fontSize: 11.5, color: ink }}>{T('Bao gồm', 'Included')}</span>
-                <div style={{ ...cardGlass({ marginTop: 10, padding: '4px 16px', display: 'flex', flexDirection: 'column' }) }}>
+              <div style={{ marginTop: 26 }}>
+                <div style={reviewHeading}>{T('Bao gồm', 'Included')}</div>
+                <div style={{ ...cardGlass({ marginTop: 8, padding: '4px 16px', display: 'flex', flexDirection: 'column' }) }}>
                   {includedItems.map((it, i) => (
                     <div key={i} style={{ padding: '10px 0', borderBottom: i < includedItems.length - 1 ? `1px solid ${rule}` : 'none' }}>
                       <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{it.label.trim()}</span>
@@ -1115,9 +1125,9 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
             )}
 
             {items.length > 0 && (
-              <div style={{ marginTop: 22 }}>
-                <span style={{ fontSize: 11.5, color: ink }}>{T('Thứ tự ảnh', 'Photo order')}</span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+              <div style={{ marginTop: 26 }}>
+                <div style={reviewHeading}>{T('Thứ tự ảnh', 'Photo order')}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
                   {items.map((p, i) => (
                     <div key={p.url} style={{ ...insetField({ padding: 8, display: 'flex', alignItems: 'center', gap: 10 }) }}>
                       <div style={{ position: 'relative', flex: 'none', width: 56, height: 56, borderRadius: 10, overflow: 'hidden' }}>
@@ -1345,22 +1355,54 @@ function Insight({ check, line, T, testId }) {
 
 // Price histogram of similar events (get_host_benchmarks) with this event's own price marked — the market
 // behind the decision, same idea as the Home filter's histogram.
-function PriceMarket({ price, mine, T, catLabel }) {
+// The market histogram is also the price slider (owner, 2026-10-21): drag the clay knob (or tap the track, or use the
+// arrow keys) to set the price; quick picks and the typed field stay in sync through createPrice. Bars and marker are
+// inset by half a knob so the marker sits exactly under the native thumb's centre.
+const KNOB = 26;
+function PriceMarket({ price, mine, T, catLabel, onChange }) {
+  const [dragging, setDragging] = useState(false);
   const counts = price.histogram || [];
   const peak = Math.max(1, ...counts);
-  const span = Math.max(1, price.max - price.min);
-  const markerPct = mine > 0 ? Math.max(0, Math.min(100, ((mine - price.min) / span) * 100)) : null;
+  const step = PRICE_SLIDER_STEP;
+  const lowest = Math.ceil(price.min / step) * step;
+  const highest = Math.floor(price.max / step) * step;
+  const narrow = !(highest > lowest);
+  const unset = !(mine > 0);
+  const value = unset ? fractionToPrice(priceToFraction(price.median ?? price.min, price) ?? 0.5, price) : mine;
+  const f = priceToFraction(value, price) ?? 0.5;
+  const at = `calc(${KNOB / 2}px + ${f} * (100% - ${KNOB}px))`;
   return (
     <div data-testid="create-price-market" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <span style={{ ...hintText, opacity: 0.8 }}>
         {T(`${catLabel} · trung vị ${formatVndShort(price.median)} · ${price.n} sự kiện`, `${catLabel} · median ${formatVndShort(price.median)} · ${price.n} events`)}
       </span>
-      <div aria-hidden="true" style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', gap: 3, height: 44 }}>
-        {counts.map((c, i) => <div key={i} style={{ flex: 1, height: `${Math.max(6, (c / peak) * 100)}%`, borderRadius: 3, background: 'rgba(var(--bb-fg-rgb),0.2)' }} />)}
-        {markerPct != null && <div data-testid="create-price-marker" style={{ position: 'absolute', top: -4, bottom: -4, left: `calc(${markerPct}% - 1px)`, width: 2, borderRadius: 1, background: ink }} />}
+      <div style={{ position: 'relative', paddingTop: 6 }}>
+        <div aria-hidden="true" style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', gap: 3, height: 44, padding: `0 ${KNOB / 2}px` }}>
+          {counts.map((c, i) => {
+            // Bars up to the chosen price are filled in: the part of the market you are priced against.
+            const reached = !unset && (i + 0.5) / Math.max(1, counts.length) <= f;
+            return <div key={i} style={{ flex: 1, height: `${Math.max(6, (c / peak) * 100)}%`, borderRadius: 3, background: reached ? 'rgba(var(--bb-clay-rgb),0.55)' : 'rgba(var(--bb-fg-rgb),0.2)', transition: 'background .15s ease' }} />;
+          })}
+          <div data-testid="create-price-marker" style={{ position: 'absolute', top: -4, bottom: -14, left: `calc(${at} - 1px)`, width: 2, borderRadius: 1, background: unset ? 'rgba(var(--bb-fg-rgb),0.3)' : clay }} />
+        </div>
+        {dragging && (
+          <div aria-hidden="true" style={{ position: 'absolute', top: -22, left: at, transform: 'translateX(-50%)', fontSize: 12, fontWeight: 700, color: paper, background: ink, borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap', pointerEvents: 'none' }}>
+            {formatVndShort(value)}
+          </div>
+        )}
+        <input
+          type="range" className={`bb-range bb-price${unset ? ' bb-price-unset' : ''}`} data-testid="create-price-slider"
+          min={narrow ? price.min : lowest} max={narrow ? price.max : highest} step={narrow ? 1 : step} value={value}
+          aria-label={T('Kéo để chọn giá vé', 'Drag to set the ticket price')} aria-valuetext={formatVndShort(value)}
+          onChange={(e) => onChange?.(Number(e.target.value))}
+          onPointerDown={() => setDragging(true)} onPointerUp={() => setDragging(false)} onPointerCancel={() => setDragging(false)} onBlur={() => setDragging(false)}
+          style={{ display: 'block', width: '100%', marginTop: 2 }}
+        />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, opacity: 0.6 }}>
-        <span>{formatVndShort(price.min)}</span><span>{formatVndShort(price.max)}</span>
+        <span>{formatVndShort(price.min)}</span>
+        <span style={{ fontWeight: 600 }}>{T('‹ Kéo để chọn giá ›', '‹ Drag to set your price ›')}</span>
+        <span>{formatVndShort(price.max)}</span>
       </div>
     </div>
   );

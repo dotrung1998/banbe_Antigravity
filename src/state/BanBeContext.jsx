@@ -4474,8 +4474,11 @@ export function BanBeProvider({ children }) {
   // NEW EVENT SUBMISSION is not the same job as one verifying a payment or
   // ruling on a dispute, even though both are gated the same way
   // (is_platform_admin(), migration 026/085).
-  const openAdminEvents = useCallback(() => {
-    set({ screen: 'adminEvents', adminEvents: [], adminEventsLoading: true, adminEventError: '' });
+  // `focusId` (Manage events' "Review now", 2026-10-21): that event opens already expanded. An onClick event passed
+  // straight through is ignored.
+  const openAdminEvents = useCallback((focusId) => {
+    set({ screen: 'adminEvents', adminEvents: [], adminEventsLoading: true, adminEventError: '',
+      adminEventsFocusId: typeof focusId === 'string' ? focusId : null });
   }, [set]);
 
   /**

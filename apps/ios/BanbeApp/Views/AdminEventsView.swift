@@ -105,6 +105,13 @@ struct AdminEventsView: View {
             .padding(.bottom, 40)
         }
         .task { await app.loadPendingEvents() }
+        // Opened from Manage events' "Review now": that event starts expanded with its photos.
+        .onChange(of: app.adminEvents.map(\.id)) { _, ids in
+            guard let id = app.adminEventsFocusID, ids.contains(id) else { return }
+            app.adminEventsFocusID = nil
+            expanded.insert(id)
+            loadGallery(id)
+        }
     }
 
     @ViewBuilder
