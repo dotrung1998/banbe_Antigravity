@@ -60,6 +60,10 @@ enum AnalyticsEvent: Equatable {
     case systemCalendarEditorOpened
     /// `result` ∈ saved | cancelled | deleted | unavailable.
     case systemCalendarEditorResult(result: String)
+    // Rewards v2 (migration 192). Badge codes are fixed names; goal ∈ 0 | 1 | 2 | 4; weeks ∈ the milestone list.
+    case rewardsBadgeCelebrated(code: String)
+    case rewardsWeekMilestone(weeks: Int)
+    case rewardsGoalSet(goal: Int)
 
     var name: String {
         switch self {
@@ -96,6 +100,9 @@ enum AnalyticsEvent: Equatable {
         case .banbeScheduleResult: return "banbe_schedule_result"
         case .systemCalendarEditorOpened: return "system_calendar_editor_opened"
         case .systemCalendarEditorResult: return "system_calendar_editor_result"
+        case .rewardsBadgeCelebrated: return "rewards_badge_celebrated"
+        case .rewardsWeekMilestone: return "rewards_week_milestone"
+        case .rewardsGoalSet: return "rewards_goal_set"
         }
     }
 
@@ -130,6 +137,12 @@ enum AnalyticsEvent: Equatable {
             return ["count_bucket": bucket]
         case .banbeScheduleResult(let r), .systemCalendarEditorResult(let r):
             return ["result": r]
+        case .rewardsBadgeCelebrated(let code):
+            return ["code": code]
+        case .rewardsWeekMilestone(let weeks):
+            return ["weeks": String(weeks)]
+        case .rewardsGoalSet(let goal):
+            return ["goal": String(goal)]
         default:
             return [:]
         }

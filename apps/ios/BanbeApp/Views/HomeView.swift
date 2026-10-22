@@ -434,19 +434,22 @@ struct HomeView: View {
     /// One glass capsule, two separate buttons (streak, coins), both opening Account > Rewards & badges.
     private func rewardShortcuts(compact: Bool, height: CGFloat) -> some View {
         let sum = app.rewardsSummary ?? RewardSummary(balance: 0, streak: 0, activeToday: false)
+        let streak = RewardsLogic.capsuleStreak(sum, weekly: app.rewardsV2Enabled) // weeks under Rewards v2 (migration 192)
         return HStack(spacing: 0) {
             Button {
                 Haptics.light()
                 app.openRewards(from: .home)
             } label: {
                 HStack(spacing: 4) {
-                    Text("🔥").font(.system(size: compact ? 14 : 16)).opacity(sum.streak > 0 ? 1 : 0.45).accessibilityHidden(true)
-                    Text("\(sum.streak)").font(.system(size: compact ? 12 : 13, weight: .semibold)).monospacedDigit()
+                    Text("🔥").font(.system(size: compact ? 14 : 16)).opacity(streak.value > 0 ? 1 : 0.45).accessibilityHidden(true)
+                    Text("\(streak.value)").font(.system(size: compact ? 12 : 13, weight: .semibold)).monospacedDigit()
                 }
                 .padding(.horizontal, compact ? 5 : 8).frame(minWidth: compact ? 36 : 44, minHeight: compact ? max(height, 34) : 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(app.T("Chuỗi \(sum.streak) ngày. Mở phần thưởng", "\(sum.streak)-day streak. Open rewards"))
+            .accessibilityLabel(streak.weekly
+                                ? app.T("Chuỗi \(streak.value) tuần. Mở phần thưởng", "\(streak.value)-week streak. Open rewards")
+                                : app.T("Chuỗi \(streak.value) ngày. Mở phần thưởng", "\(streak.value)-day streak. Open rewards"))
             .accessibilityIdentifier("home.streak")
             Rectangle().fill(app.palette.ink.opacity(0.18)).frame(width: 1, height: 22).accessibilityHidden(true)
             Button {

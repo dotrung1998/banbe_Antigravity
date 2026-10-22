@@ -14,6 +14,8 @@ private struct LenientBool: Decodable {
 extension AppState {
     /// Rewards & badges visibility (an admin can hide it everywhere). Missing flag = shown.
     var rewardsEnabled: Bool { FeatureFlags.isOn(featureFlags, "rewards") }
+    /// Rewards v2 (migration 192): weekly streak, tiers, next badge, monthly goal. Off unless an admin turns it on.
+    var rewardsV2Enabled: Bool { rewardsEnabled && FeatureFlags.isOn(featureFlags, "rewards_v2") }
 
     /// Called when the flags changed: turning Rewards off clears its numbers; turning it on loads them.
     func featureFlagsDidChange(from old: [String: Bool]) {

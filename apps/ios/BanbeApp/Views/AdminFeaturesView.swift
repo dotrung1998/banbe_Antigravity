@@ -19,6 +19,10 @@ struct AdminFeaturesView: View {
         Flag(key: "rewards", vi: "Phần thưởng & huy hiệu", en: "Rewards & badges",
              hintVi: "Ẩn xu, chuỗi ngày, huy hiệu và mẫu móc khoá thưởng khỏi toàn bộ ứng dụng. Dữ liệu không bị xoá.",
              hintEn: "Hides coins, streaks, badges and reward keychain designs everywhere in the app. No data is deleted."),
+        Flag(key: "rewards_v2", vi: "Phần thưởng v2: chuỗi tuần, cấp huy hiệu, mục tiêu", en: "Rewards v2: week streak, badge tiers, goals",
+             hintVi: "Chuỗi theo tuần với tuần nghỉ và khôi phục, huy hiệu nhiều cấp, huy hiệu tiếp theo và mục tiêu tháng (migration 192). Mặc định tắt; cần bật Phần thưởng.",
+             hintEn: "Weekly streak with grace weeks and repair, tiered badges, next badge and a monthly goal (migration 192). Off by default; needs Rewards on.",
+             onVi: "Đang hiện cho mọi người", onEn: "Visible to everyone", offVi: "Đang tắt", offEn: "Off"),
         // TESTING-PHASE (note 54): remove this row with the wipe tool before public release.
         Flag(key: "admin_event_wipe", vi: "Xoá sự kiện thử nghiệm (giai đoạn thử)", en: "Test event wipe (testing phase)",
              hintVi: "Cho admin xoá vĩnh viễn bất kỳ sự kiện nào cùng mọi dữ liệu liên quan, không cần lý do, trong Quản lý sự kiện (chỉ iOS). Chỉ dùng cho dữ liệu thử nghiệm.",

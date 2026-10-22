@@ -5,6 +5,11 @@ import SwiftUI
 struct RewardsView: View {
     @EnvironmentObject var app: AppState
     @State private var confirmItem: RewardsPayload.Item?
+    /// One celebration at a time (badge earned, week milestone, redeem). `n` re-triggers the confetti.
+    @State private var celebration: (title: String, sub: String, n: Int)?
+    @State private var celebrationTask: Task<Void, Never>?
+    @State private var goalBusy = false
+    @State private var goalError = ""
 
     private var manifest: KeychainManifest? { KeychainManifest.bundled }
     private func name(_ designID: String) -> String {
@@ -49,6 +54,13 @@ struct RewardsView: View {
             .padding(.horizontal, 22).padding(.top, 16).padding(.bottom, 42)
         }
         .task { await app.loadRewards() }
+        .overlay(alignment: .top) { celebrationCard }
+        .onChange(of: app.rewards) { _, r in if let r { celebrateIfNew(r) } }
+        .onChange(of: app.rewardsRedeemResult) { _, res in
+            if let res, res.ok, !res.already {
+                celebrate(app.T("Đã mở khoá!", "Unlocked!"), app.T("Mẫu móc khoá mới đã sẵn sàng.", "Your new keychain design is ready."))
+            }
+        }
         .alert(app.T("Đổi phần thưởng?", "Redeem this reward?"), isPresented: Binding(get: { confirmItem != nil }, set: { if !$0 { confirmItem = nil } })) {
             Button(app.T("Huỷ", "Cancel"), role: .cancel) { confirmItem = nil }
             Button(app.T("Đổi", "Redeem")) {
@@ -61,6 +73,58 @@ struct RewardsView: View {
                 Text(app.T("Dùng \(item.price) xu để mở khoá \"\(name(item.designId))\". Việc này không thể hoàn tác và không đổi lại thành tiền.",
                            "Spend \(item.price) coins to unlock \"\(name(item.designId))\". This can't be undone and isn't refundable as cash."))
             }
+        }
+    }
+
+    // MARK: Celebrations (Phase 0, peak moment): once per account per device; the first visit on a device only
+    // remembers what is already earned. Reduced motion: ConfettiBurst renders nothing, the card still says it.
+    @ViewBuilder private var celebrationCard: some View {
+        if let c = celebration {
+            VStack(spacing: 2) {
+                Text(c.title).font(BanbeTheme.display(18))
+                if !c.sub.isEmpty { Text(c.sub).font(.system(size: 12.5)).opacity(0.8) }
+            }
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 18).padding(.vertical, 14).frame(maxWidth: 340)
+            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(app.palette.rule))
+            .shadow(color: .black.opacity(0.18), radius: 15, y: 10)
+            .overlay(alignment: .top) { ConfettiBurst().id(c.n).padding(.top, 10) }
+            .foregroundStyle(app.palette.ink)
+            .padding(.top, 84).padding(.horizontal, 16)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+            .onTapGesture { celebration = nil }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.updatesFrequently)
+            .accessibilityIdentifier("rewards.celebration")
+        }
+    }
+
+    private func celebrate(_ title: String, _ sub: String) {
+        Haptics.success()
+        withAnimation(.easeOut(duration: 0.3)) { celebration = (title, sub, (celebration?.n ?? 0) + 1) }
+        UIAccessibility.post(notification: .announcement, argument: "\(title) \(sub)")
+        celebrationTask?.cancel()
+        celebrationTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_600_000_000)
+            if !Task.isCancelled { withAnimation(.easeIn(duration: 0.25)) { celebration = nil } }
+        }
+    }
+
+    private func celebrateIfNew(_ r: RewardsPayload) {
+        guard let uid = app.userID?.uuidString, app.rewardsStatus == .loaded else { return }
+        let week = app.rewardsV2Enabled ? r.weekStreak : nil
+        let diff = RewardsLogic.celebrationDiff(badges: r.badges, week: week, celebrated: RewardsLogic.readCelebrated(uid))
+        RewardsLogic.writeCelebrated(uid, diff.keys)
+        guard let first = diff.show.first else { return }
+        switch first {
+        case .badge(let code):
+            let b = r.badges.first { $0.code == code }
+            celebrate(app.T("Huy hiệu mới!", "New badge!"), b.map { app.isEN ? $0.titleEn : $0.titleVi } ?? "")
+            Analytics.track(.rewardsBadgeCelebrated(code: code))
+        case .weeks(let n):
+            celebrate(app.T("Chuỗi \(n) tuần!", "\(n)-week streak!"), app.T("Bạn đã ra ngoài đều đặn. Tuyệt!", "You've kept showing up. Nice!"))
+            Analytics.track(.rewardsWeekMilestone(weeks: n))
         }
     }
 
@@ -87,6 +151,9 @@ struct RewardsView: View {
             .accessibilityLabel(app.T("Số dư \(r.balance) xu", "Balance \(r.balance) coins"))
             .accessibilityIdentifier("rewards.balance")
 
+            if app.rewardsV2Enabled, let ws = r.weekStreak {
+                weekStreakCard(ws)
+            } else {
             VStack(alignment: .leading, spacing: 4) {
                 Text(app.T("Chuỗi ngày", "Streak")).font(.system(size: 11.5)).opacity(0.7)
                 HStack(spacing: 6) { Text("🔥").accessibilityHidden(true); Text("\(r.streak.current)") }.font(BanbeTheme.display(30))
@@ -105,12 +172,20 @@ struct RewardsView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel(app.T("Chuỗi \(r.streak.current) ngày, dài nhất \(r.streak.longest)", "\(r.streak.current)-day streak, longest \(r.streak.longest)"))
             .accessibilityIdentifier("rewards.streak")
+            }
         }
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 16)
 
+        if app.rewardsV2Enabled, let nb = r.nextBadge { nextBadgeCard(nb).padding(.top, 12) }
+        if app.rewardsV2Enabled, let g = r.goal { goalCard(g).padding(.top, 12) }
+
         section(app.T("Huy hiệu", "Badges")) {
-            VStack(spacing: 8) { ForEach(r.badges) { badge($0) } }
+            if app.rewardsV2Enabled {
+                VStack(spacing: 8) { ForEach(RewardsLogic.groupBadgesByFamily(r.badges)) { familyCard($0) } }
+            } else {
+                VStack(spacing: 8) { ForEach(r.badges) { badge($0) } }
+            }
         }
 
         section(app.T("Trang trí (móc khoá)", "Decorations (keychain designs)")) {
@@ -154,9 +229,11 @@ struct RewardsView: View {
         if let tz = r.timezoneSettings { timezoneSection(tz) }
 
         section(app.T("Cách kiếm xu", "How earning works")) {
-            bullets(RewardsLogic.ruleLines(r.rules, T: app.T) + RewardsLogic.noCoinLines(T: app.T) + RewardsLogic.streakLines(tz: r.streak.timezone, T: app.T))
+            let weekly = app.rewardsV2Enabled && r.weekStreak != nil
+            bullets(RewardsLogic.ruleLines(r.rules, T: app.T) + RewardsLogic.noCoinLines(T: app.T)
+                    + (weekly ? RewardsLogic.weekStreakLines(r.weekStreak, T: app.T) : RewardsLogic.streakLines(tz: r.streak.timezone, T: app.T)))
             Text(app.T("Điều kiện đổi thưởng", "Redemption terms")).font(.system(size: 13, weight: .semibold)).padding(.top, 12)
-            bullets(RewardsLogic.termsLines(T: app.T))
+            bullets(RewardsLogic.termsLines(weekly: weekly, T: app.T))
             Text(app.T("Phiên bản quy tắc \(r.rules.version ?? 1). Các con số là đề xuất MVP và có thể thay đổi; mọi thay đổi có số phiên bản mới.",
                        "Rules version \(r.rules.version ?? 1). Numbers are an MVP proposal and may change; any change gets a new version."))
                 .font(.system(size: 11)).opacity(0.6).padding(.top, 10)
@@ -216,6 +293,132 @@ struct RewardsView: View {
                 }
             }
         }
+    }
+
+    // MARK: Rewards v2 (migration 192)
+
+    private func weekStreakCard(_ ws: RewardsPayload.WeekStreak) -> some View {
+        let h = RewardsLogic.weekStreakHint(ws, en: app.isEN, T: app.T)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(app.T("Chuỗi tuần", "Week streak")).font(.system(size: 11.5)).opacity(0.7)
+            HStack(spacing: 6) { Text("🔥").accessibilityHidden(true); Text("\(ws.current)") }.font(BanbeTheme.display(30))
+            Text(app.T("Dài nhất: \(ws.longest) tuần", "Longest: \(ws.longest) \(ws.longest == 1 ? "week" : "weeks")")).font(.system(size: 11)).opacity(0.7)
+            Text(h.status).font(.system(size: 11.5, weight: .semibold)).padding(.top, 6).accessibilityIdentifier("rewards.streak.status")
+            Text(h.how).font(.system(size: 11)).lineSpacing(2).opacity(0.75).accessibilityIdentifier("rewards.streak.how")
+            if ws.graceMax > 0 {
+                HStack(spacing: 4) {
+                    Text(String(repeating: "🛡", count: ws.graceHeld) + String(repeating: "·", count: max(0, ws.graceMax - ws.graceHeld))).accessibilityHidden(true)
+                    Text(RewardsLogic.graceLine(ws, T: app.T))
+                }
+                .font(.system(size: 11)).opacity(0.75).padding(.top, 4)
+                .accessibilityIdentifier("rewards.grace")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(16)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("rewards.weekStreak")
+    }
+
+    private func nextBadgeCard(_ nb: RewardsPayload.NextBadge) -> some View {
+        let shown = min(nb.progress, nb.target)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(app.T("Huy hiệu tiếp theo", "Next badge")).font(.system(size: 11.5)).opacity(0.7)
+            Text(RewardsLogic.nextBadgeLine(nb, en: app.isEN, T: app.T)).font(.system(size: 14, weight: .semibold))
+            ProgressView(value: Double(shown), total: Double(max(nb.target, 1))).tint(app.palette.ink)
+            Text("\(shown) / \(nb.target)").font(.system(size: 11)).opacity(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 14)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("rewards.nextBadge")
+    }
+
+    private func goalCard(_ g: RewardsPayload.Goal) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                if let t = g.target {
+                    ZStack {
+                        Circle().stroke(app.palette.rule, lineWidth: 4)
+                        Circle().trim(from: 0, to: CGFloat(min(g.progress, t)) / CGFloat(t))
+                            .stroke(app.palette.ink, style: StrokeStyle(lineWidth: 4, lineCap: .round)).rotationEffect(.degrees(-90))
+                    }
+                    .frame(width: 34, height: 34).accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.T("Mục tiêu tháng này", "My goal this month")).font(.system(size: 13.5, weight: .semibold))
+                    Text(RewardsLogic.goalLine(g, T: app.T)).font(.system(size: 12)).opacity(0.8).accessibilityIdentifier("rewards.goal.line")
+                }
+            }
+            HStack(spacing: 8) {
+                ForEach([0] + RewardsLogic.goalChoices, id: \.self) { choice in
+                    let on = (g.target ?? 0) == choice
+                    Button {
+                        guard !on, !goalBusy else { return }
+                        Haptics.selection()
+                        goalBusy = true; goalError = ""
+                        Task {
+                            let err = await app.setOutingGoal(choice)
+                            goalBusy = false
+                            if let err { goalError = RewardsLogic.goalErrorMessage(err, T: app.T) }
+                        }
+                    } label: {
+                        Text(choice == 0 ? app.T("Không đặt", "None") : app.T("\(choice) / tháng", "\(choice) / month"))
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .padding(.horizontal, 14).padding(.vertical, 9)
+                            .background(on ? app.palette.ink : .clear, in: Capsule())
+                            .foregroundStyle(on ? app.palette.paper : app.palette.ink)
+                            .overlay(Capsule().stroke(on ? app.palette.ink : app.palette.rule))
+                            .opacity(goalBusy ? 0.6 : 1)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                    .accessibilityIdentifier("rewards.goal.\(choice)")
+                }
+            }
+            if !goalError.isEmpty { Text(goalError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 14)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityIdentifier("rewards.goal")
+    }
+
+    private func familyCard(_ g: RewardsLogic.BadgeGroup) -> some View {
+        let head = g.next ?? g.top ?? g.badges[0]
+        let title = RewardsLogic.familyTitle(g.family, T: app.T) ?? (app.isEN ? head.titleEn : head.titleVi)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title).font(.system(size: 13.5, weight: .semibold))
+                Spacer()
+                HStack(spacing: 4) {
+                    ForEach(g.badges) { b in
+                        Circle().strokeBorder(app.palette.ink, lineWidth: 1.5)
+                            .background(Circle().fill(b.earned ? app.palette.ink : .clear))
+                            .frame(width: 10, height: 10)
+                            .accessibilityIdentifier("rewards.badge.\(b.code)")
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(app.T("Đã đạt \(g.earnedCount)/\(g.badges.count) cấp", "\(g.earnedCount) of \(g.badges.count) tiers earned"))
+            }
+            if let top = g.top {
+                Text("✓ " + (app.isEN ? top.titleEn : top.titleVi) + (top.earnedAt.map { " ▪︎ " + RewardsView.dateText($0, en: app.isEN) } ?? ""))
+                    .font(.system(size: 12))
+            }
+            if let next = g.next {
+                let shown = min(next.progress, next.target)
+                Text(app.T("Tiếp theo", "Next") + ": " + (app.isEN ? next.titleEn : next.titleVi) + " ▪︎ " + (app.isEN ? next.descEn : next.descVi))
+                    .font(.system(size: 12)).opacity(0.75)
+                ProgressView(value: Double(shown), total: Double(max(next.target, 1))).tint(app.palette.ink)
+                Text("\(shown) / \(next.target)").font(.system(size: 11)).opacity(0.7)
+            } else {
+                Text(app.T("Đã đạt mọi cấp ✓", "Every tier earned ✓")).font(.system(size: 12)).opacity(0.75)
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("rewards.family.\(g.family)")
     }
 
     private func badge(_ b: RewardsPayload.Badge) -> some View {
