@@ -82,4 +82,6 @@ dist-ssr
 !/supabase/_localtest/18_rewards_events_run.sh
 !/supabase/_localtest/18a_events_before.sql
 !/supabase/_localtest/18b_events_after.sql
+# Rewards v2 suites (191+): same rules, fake @test.dev data only.
+!/supabase/_localtest/2[0-9]*_rewards_*
 .migration-state/
