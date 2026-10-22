@@ -41,7 +41,7 @@ export const FAQ_SECTIONS = [
   { id: 'messages', vi: 'Tin nhắn & thông báo', en: 'Messages & notifications', blocks: [
     ['q', 'Tại sao cuộc trò chuyện chưa hiện trong Messages?', 'Why isn\'t my chat in Messages yet?', 'Cuộc trò chuyện chỉ xuất hiện sau khi bạn gửi tin đầu tiên.', 'A chat only appears after you send your first message.'],
     ['q', 'Xóa cuộc trò chuyện có ảnh hưởng người kia không?', 'Does deleting a chat affect the other person?', 'Không; chỉ ẩn với bạn. Nó hiện lại nếu họ nhắn tiếp.', 'No; it is hidden for you only and returns if they message you again.'],
-    ['q', 'Tôi không nhận thông báo đẩy.', 'I get no push notifications.', 'Thông báo đẩy chưa bật. Hãy xem tab Notifications và email.', 'Push notifications are not enabled yet. Check the Notifications tab and your email.'],
+    ['q', 'Tôi không nhận thông báo đẩy.', 'I get no push notifications.', 'Thông báo đẩy chưa bật. Hãy xem chuông ở đầu Trang chính (hoặc Tài khoản > Thông báo) và email.', 'Push notifications are not enabled yet. Check the bell at the top of Home (or Account > Notifications) and your email.'],
   ]},
   { id: 'hosting', vi: 'Dành cho host', en: 'For hosts', blocks: [
     ['q', 'Làm sao trở thành host?', 'How do I become a host?', 'Bật "Organizer mode" trong Account rồi tạo sự kiện đầu tiên. Host phải từ 18 tuổi.', 'Switch on "Organizer mode" in Account and create your first event. Hosts must be 18+.'],

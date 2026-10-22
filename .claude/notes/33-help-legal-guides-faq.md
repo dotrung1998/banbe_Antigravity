@@ -22,3 +22,14 @@ text worked. Fix (`HelpReaderView.swift` `toc(_:)`): label is `.frame(maxWidth: 
 + `.contentShape(Rectangle())`, so the whole row is the target (the Contents header already had a
 contentShape). Verified the same empty-space tap now scrolls the section to the top. Web unaffected (reported
 iOS only). Not re-verified on a physical device.
+
+## 2026-10-22: all three guides brought up to date (notes 34–56)
+- Rewritten from code-verified findings (exact EN/VI labels grepped in `src/` and the iOS app):
+  - **Personal:** guest browsing + Welcome + "How banbe works", Facebook greyed out, new `onboarding`, rebuilt `browse` (search bar, Pulse ticker, filters/sort/quick chips, Next up, Search screen, For You on Map), new `event` page layout + "Who can reserve", new `schedule`, sticky reserve bar, "can't find it" 2-day chat, host announcements, notifications via bell/Account, following, `rewards` (worded "when banbe turns it on"), `reports`, Delete account "Before you go" + date-of-birth check.
+  - **Host:** 5-step create flow, smart defaults, recipe, criteria, review tabs, Dashboard sections + "Removed by banbe", "Past events" excludes cancelled (refunds → Refund Center), new `announce`, reports redesign.
+  - **Admin:** new `manage` (incl. the iOS testing-phase wipe), `features`, "Bypass SMS for everyone", the per-blocker wording from the note 54 follow-up, and the admin reports view.
+- Remote check (2026-10-22, read-only via the REST OpenAPI): migrations 162/165/166/181/186/187/188/189 ARE applied, despite those notes saying "not applied". `rewards` flag is OFF; `phone_bypass_all` is ON.
+- Section id `refund` is kept: `tests/help-legal.spec.js` clicks `guide-personal-toc-refund`.
+- Q&A: one line fixed (Notifications tab → bell/Account). The rest of the Q&A was not reviewed.
+- Verified: structure check, `npm run test:unit` 338/338, `vite build`, iOS build. `tests/help-legal.spec.js` still fails at `setupToHome` (test account DOB gate), before any guide opens.
+- When the TESTING-PHASE wipe is removed (note 54 checklist), also delete the admin guide's "Test event wipe" subsection and its Feature switches bullet, then regenerate.

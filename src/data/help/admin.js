@@ -7,27 +7,58 @@ export const ADMIN_GUIDE = {
   sections: [
     { id: 'overview', vi: 'Tổng quan', en: 'Overview', blocks: [
       ['ul', [
-        ['Tab "Admin" > "Administration" gồm: Review & Moderation, Admin Team, Metrics & Reports.', 'The "Admin" tab > "Administration" has: Review & Moderation, Admin Team, Metrics & Reports.'],
+        ['Tab "Admin" trong Tài khoản gồm: Review & Moderation, Admin Team, Metrics & Reports.', 'The "Admin" tab in Account has: Review & Moderation, Admin Team, Metrics & Reports.'],
+        ['Review & Moderation gồm: Tranh Chấp Thanh Toán, Sự Kiện Chờ Duyệt, Quản lý sự kiện, Tài khoản thử nghiệm, Sửa ngày sinh, Công tắc tính năng.', 'Review & Moderation has: Payment Disputes, Pending Events, Manage events, Test accounts, Birthday corrections, Feature switches.'],
         ['Quyền do máy chủ kiểm soát; ứng dụng không thể tự cấp quyền admin.', 'Permissions are enforced by the server; the app cannot grant itself admin.'],
-        ['Mọi thao tác quản trị được ghi lại.', 'Admin actions are logged.'],
+        ['Mọi thao tác quản trị được ghi lại (gồm gỡ, khôi phục, xoá sự kiện và bật/tắt tính năng).', 'Admin actions are logged (including removing, restoring and deleting events, and feature switches).'],
       ]],
     ]},
     { id: 'events', vi: 'Duyệt sự kiện', en: 'Approving events', blocks: [
       ['ol', [
-        ['Review & Moderation > "Pending Events" (có huy hiệu số lượng).', 'Review & Moderation > "Pending Events" (with a count badge).'],
-        ['Mở thẻ sự kiện, kiểm tra mô tả, "Included", địa chỉ, riêng tư, loại tổ chức tự khai và thông tin đăng ký kinh doanh (chưa được banbe xác minh).', 'Open the event card and check the description, "Included", address, visibility, the self-declared organizer type and business details (not verified by banbe).'],
+        ['Review & Moderation > "Pending Events" (có huy hiệu số lượng), hoặc "Duyệt ngay" từ một dòng trong Quản lý sự kiện (mở sẵn đúng sự kiện đó).', 'Review & Moderation > "Pending Events" (with a count badge), or "Review now" on a row in Manage events (opens with that event expanded).'],
+        ['Mở thẻ sự kiện, kiểm tra mô tả, "Included", địa chỉ, riêng tư, điều kiện đặt chỗ, loại tổ chức tự khai và thông tin đăng ký kinh doanh (chưa được banbe xác minh).', 'Open the event card and check the description, "Included", address, visibility, reservation criteria, the self-declared organizer type and business details (not verified by banbe).'],
         ['"Approve ▪︎ publish" để đăng, hoặc "Reject" kèm lý do bắt buộc.', '"Approve ▪︎ publish" to go live, or "Reject" with a required reason.'],
       ]],
       ['tip', 'Host có thể nhắc tối đa 2 lần mỗi sự kiện; không có hạn chót tự động, nên xử lý theo thứ tự cũ nhất trước.', 'Hosts can remind up to 2 times per event; there is no automatic deadline, so work oldest first.'],
     ]},
+    { id: 'manage', vi: 'Quản lý sự kiện', en: 'Manage events', blocks: [
+      ['p', 'Review & Moderation > "Quản lý sự kiện": gỡ một hoặc nhiều sự kiện khỏi ứng dụng. Đặt chỗ, thanh toán, hoàn tiền và lịch sử luôn được giữ.', 'Review & Moderation > "Manage events": take one or more events off the app. Bookings, payments, refunds and history are always kept.'],
+      ['ul', [
+        ['Tìm theo tên; lọc Tất cả, Đang mở, Chờ duyệt, Nháp, Đã kết thúc, Đã huỷ, Đã gỡ, "Host đã xoá" (sự kiện mà host đã xoá tài khoản; có nhãn "Host đã xoá tài khoản").', 'Search by name; filter All, Live, In review, Draft, Ended, Cancelled, Removed, "Host deleted" (events whose host deleted their account; badged "Host account deleted").'],
+        ['Chạm vòng tròn để chọn, chạm phần còn lại để mở chi tiết: host, giờ bắt đầu, giá, chỗ, khu vực, ngày tạo/gửi, đặt chỗ (đang hiệu lực · từng có), hoàn tiền/tranh chấp, ID. "Mở rộng tất cả" / "Chọn tất cả".', 'Tap the circle to select; tap the rest of the row for details: host, start, price, seats, area, created/submitted, bookings (active · ever), refunds/disputes, ID. "Expand all" / "Select all".'],
+        ['Nút trong chi tiết: "Duyệt ngay" (sự kiện chờ duyệt), "Xem trang sự kiện" (đang mở, đã kết thúc, đã huỷ), "Sao chép ID".', 'Row actions: "Review now" (in-review events), "View event page" (live, ended, cancelled), "Copy ID".'],
+      ]],
+      ['h', 'Gỡ, khôi phục, xoá hẳn', 'Remove, restore, delete'],
+      ['ul', [
+        ['"Gỡ (N)": cần lý do (ít nhất 3 ký tự; có gợi ý Spam, Trùng lặp, Vi phạm quy định cộng đồng, Sự kiện thử nghiệm). Sự kiện biến mất khỏi Trang chính, Bản đồ, Tìm kiếm và trang host; host nhận thông báo kèm lý do. Tối đa 100 sự kiện mỗi lần.', '"Remove (N)": needs a reason (at least 3 characters; suggestions Spam, Duplicate, Breaks community guidelines, Test event). The events disappear from Home, Map, Search and host pages; the host is notified with the reason. Up to 100 events at a time.'],
+        ['"Khôi phục (N)": đưa sự kiện về trạng thái trước đó; sự kiện đang mở mà đã qua giờ sẽ về "Đã kết thúc". Host được báo.', '"Restore (N)": returns events to their previous status; a live event whose time has passed comes back as Ended. The host is notified.'],
+        ['"Xoá hẳn (N)": xoá vĩnh viễn, chỉ cho sự kiện đã gỡ và chưa từng có đặt chỗ ("Chưa từng có đặt chỗ — có thể xoá vĩnh viễn"). Sự kiện từng có đặt chỗ thì chỉ gỡ, không xoá được.', '"Delete (N)": permanent, only for removed events that were never booked ("Never booked — can be deleted permanently"). An event that ever had bookings can only be removed, never deleted.'],
+      ]],
+      ['h', 'Khi nào không gỡ được', 'When an event can\'t be removed'],
+      ['p', 'Việc gỡ bị chặn khi tiền còn đang xử lý, và dòng sự kiện ghi rõ ai phải làm gì:', 'Removal is blocked while money is still in play, and the row says who has to do what:'],
+      ['ul', [
+        ['"N đặt chỗ đang hiệu lực — người tổ chức cần huỷ sự kiện".', '"N active bookings — the host must cancel the event".'],
+        ['"N khoản hoàn tiền chưa xong — người tổ chức cần hoàn tất hoàn tiền".', '"N refunds not settled — the host must finish refunding".'],
+        ['"N tranh chấp đang mở — xử lý trong Tranh Chấp Thanh Toán".', '"N open disputes — resolve it in Payment Disputes".'],
+        ['Nếu host đã xoá tài khoản, banbe là bên phải huỷ sự kiện và liên hệ khách để hoàn tiền.', 'If the host deleted their account, banbe has to cancel the event and contact the guests to settle refunds.'],
+      ]],
+      ['h', 'Xoá sự kiện thử nghiệm (chỉ iOS, giai đoạn thử)', 'Test event wipe (iOS only, testing phase)'],
+      ['ol', [
+        ['Bật "Xoá sự kiện thử nghiệm (giai đoạn thử)" trong Công tắc tính năng.', 'Turn on "Test event wipe (testing phase)" in Feature switches.'],
+        ['Trong Quản lý sự kiện, chọn sự kiện rồi nhấn "Xoá vĩnh viễn — thử nghiệm (N)" và xác nhận. Cách này xoá mọi sự kiện, kể cả sự kiện có đặt chỗ, cùng mọi dữ liệu liên quan, không cần lý do.', 'In Manage events, select the events, tap "Wipe permanently — testing (N)" and confirm. This erases any event, even booked ones, with everything tied to it, no reason needed.'],
+        ['Tắt công tắc ngay sau khi dùng.', 'Turn the switch off again straight after.'],
+      ]],
+      ['tip', 'Không thể hoàn tác và chỉ dành cho dữ liệu thử nghiệm. Tính năng này sẽ bị gỡ trước khi phát hành chính thức.', 'This cannot be undone and is for test data only. It will be removed before public release.'],
+    ]},
     { id: 'disputes', vi: 'Xử lý tranh chấp', en: 'Resolving disputes', blocks: [
       ['ol', [
-        ['Review & Moderation > "Payment disputes".', 'Review & Moderation > "Payment disputes".'],
+        ['Review & Moderation > "Tranh Chấp Thanh Toán".', 'Review & Moderation > "Payment Disputes".'],
         ['Xem khách, Reference, Transaction ID, ảnh biên lai, lý do host từ chối và chat tranh chấp.', 'Review the guest, Reference, Transaction ID, receipt image, the host\'s rejection reason and the dispute chat.'],
         ['Tranh chấp thanh toán: "Buyer is right ▪︎ issue ticket" hoặc "Release seat"; thêm "Resolution note".', 'Payment dispute: "Buyer is right ▪︎ issue ticket" or "Release seat"; add a "Resolution note".'],
         ['Tranh chấp hoàn tiền cũng nằm trong hàng đợi này.', 'Refund disputes are in the same queue.'],
       ]],
       ['p', 'Sau quyết định, hai bên nhận thông báo và email. Nếu email lỗi, lỗi chỉ hiện trên màn hình của bạn lúc đó.', 'After a decision both parties get a notification and email. If the email fails the error shows only on your screen at that moment.'],
+      ['p', 'Chat "không thấy tiền" chưa chuyển lên banbe tự đóng khi host xác nhận đã nhận tiền, khi đặt chỗ bị huỷ, hoặc sau 2 ngày. Chỉ tranh chấp đã chuyển lên banbe mới cần bạn quyết định.', 'A "can\'t find it" chat that was not escalated closes by itself when the host confirms the money, when the booking is cancelled, or after 2 days. Only disputes escalated to banbe need your decision.'],
     ]},
     { id: 'dobfix', vi: 'Sửa ngày sinh', en: 'Birthday corrections', blocks: [
       ['ol', [
@@ -63,10 +94,23 @@ export const ADMIN_GUIDE = {
         ['Nhập số điện thoại quốc tế (+84…), bật "Waive SMS OTP (test account)" và "Save".', 'Enter an international phone (+84…), switch on "Waive SMS OTP (test account)" and "Save".'],
         ['Có thể đặt ngày sinh nếu tài khoản chưa có; ngày sinh sẵn có không bao giờ bị ghi đè.', 'You can set a date of birth if none exists; an existing one is never overwritten.'],
       ]],
-      ['tip', 'Số điện thoại vẫn KHÔNG được xác minh và không có SMS nào được gửi. Bạn không thể áp dụng cho chính mình.', 'The phone stays NOT verified and no SMS is sent. You cannot apply this to your own account.'],
+      ['h', 'Bỏ qua SMS cho tất cả', 'Bypass SMS for everyone'],
+      ['p', 'Công tắc "Bỏ qua SMS cho tất cả" ở đầu màn hình bỏ bước SMS cho mọi tài khoản trong giai đoạn thử. Bật hoặc tắt đều hỏi xác nhận trước. Chỉ bước điện thoại được bỏ qua: ngày sinh vẫn bắt buộc và số điện thoại vẫn là chưa xác minh.', 'The "Bypass SMS for everyone" switch at the top skips the SMS step for every account during testing. Turning it on or off always asks first. Only the phone step is skipped: date of birth is still required and phones stay unverified.'],
+      ['tip', 'Số điện thoại vẫn KHÔNG được xác minh và không có SMS nào được gửi. Bạn không thể áp dụng cho chính mình. Nhớ tắt "Bỏ qua SMS cho tất cả" trước khi phát hành chính thức.', 'The phone stays NOT verified and no SMS is sent. You cannot apply this to your own account. Remember to turn "Bypass SMS for everyone" off before public release.'],
+    ]},
+    { id: 'features', vi: 'Công tắc tính năng', en: 'Feature switches', blocks: [
+      ['p', 'Review & Moderation > "Công tắc tính năng" bật/tắt một tính năng cho mọi người dùng cùng lúc. Công tắc chỉ đổi sau khi máy chủ chấp nhận, và mọi thay đổi đều được ghi lại.', 'Review & Moderation > "Feature switches" turns a feature on or off for every user at once. A switch only moves after the server accepts the change, and every change is logged.'],
+      ['ul', [
+        ['"Phần thưởng & huy hiệu": ẩn xu, chuỗi ngày, huy hiệu và mẫu móc khoá thưởng ở mọi nơi; không xoá dữ liệu. Dòng trạng thái: "Đang hiện cho mọi người" hoặc "Đang ẩn với mọi người". Mặc định tắt.', '"Rewards & badges": hides coins, streaks, badges and reward keychain designs everywhere; no data is deleted. Status line: "Visible to everyone" or "Hidden from everyone". Off by default.'],
+        ['"Xoá sự kiện thử nghiệm (giai đoạn thử)" (chỉ iOS): cho phép xoá vĩnh viễn trong Quản lý sự kiện. Mặc định tắt; xem mục Quản lý sự kiện.', '"Test event wipe (testing phase)" (iOS only): allows permanent wipes in Manage events. Off by default; see Manage events.'],
+      ]],
     ]},
     { id: 'reports', vi: 'Số liệu & báo cáo', en: 'Metrics & reports', blocks: [
-      ['p', 'Ngoài số liệu thường, admin thấy: sự kiện chờ duyệt, tranh chấp chưa giải quyết, tuổi trung bình tồn đọng, sự kiện và đặt chỗ mới toàn nền tảng. Xuất CSV/JSON/PDF.', 'Besides the usual metrics, admins see: events pending review, unresolved disputes, average backlog age, new events and bookings platform-wide. Export CSV/JSON/PDF.'],
+      ['p', 'Với admin, Số liệu & Báo cáo đặt "Cần chú ý" lên đầu: sự kiện chờ duyệt ("Xem hàng chờ duyệt") và tranh chấp chưa giải quyết ("See open disputes"). Thẻ chính là số đặt chỗ mới toàn nền tảng.', 'For admins, Metrics & Reports puts "Needs attention" first: events pending review ("See the review queue") and unresolved disputes ("See open disputes"). The main card is new bookings platform-wide.'],
+      ['ul', [
+        ['"Phân tích" cho thấy hàng chờ đang mở (duyệt sự kiện / tranh chấp) và "Thời gian chờ của hàng chờ": dưới 1 ngày, 1–3 ngày, 3–7 ngày, trên 7 ngày.', '"Breakdown" shows the open backlog (event reviews / disputes) and "How long items have waited": under 1 day, 1–3 days, 3–7 days, 7+ days.'],
+        ['Xuất như host: menu "⋯" cho PDF/JSON; mở một số liệu để xuất CSV hoặc lưu ảnh biểu đồ.', 'Exports work as for hosts: the "⋯" menu for PDF/JSON; open a metric to export CSV or save a chart image.'],
+      ]],
     ]},
   ],
 };

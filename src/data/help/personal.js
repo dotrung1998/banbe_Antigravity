@@ -1,16 +1,23 @@
 // Guide for goers (everyone with an account). Blocks: see HelpReader.jsx.
 export const PERSONAL_GUIDE = {
   vi: 'Hướng dẫn cho Người tham gia', en: 'Guide for Personal Users',
-  introVi: 'Mọi việc bạn có thể làm với tư cách người tham gia: từ đăng ký, tìm sự kiện, giữ chỗ, thanh toán, nhận vé đến hoàn tiền và khiếu nại.',
-  introEn: 'Everything you can do as a guest: from signing up and finding events to holding a seat, paying, getting tickets, refunds and disputes.',
+  introVi: 'Mọi việc bạn có thể làm với tư cách người tham gia: từ xem thử, đăng ký, tìm sự kiện, giữ chỗ, thanh toán, nhận vé đến hoàn tiền và khiếu nại.',
+  introEn: 'Everything you can do as a guest: from looking around and signing up to finding events, holding a seat, paying, getting tickets, refunds and disputes.',
   sections: [
-    { id: 'start', vi: 'Bắt đầu: đăng ký & đăng nhập', en: 'Getting started: sign up & log in', blocks: [
-      ['p', 'banbe cần đăng nhập để sử dụng; bạn không thể xem sự kiện khi chưa có tài khoản.', 'banbe needs you to be signed in; you cannot browse events without an account.'],
+    { id: 'start', vi: 'Bắt đầu: xem thử, đăng ký & đăng nhập', en: 'Getting started: look around, sign up & log in', blocks: [
+      ['p', 'Bạn có thể xem banbe mà chưa cần tài khoản. Màn hình chào có ba lựa chọn: "Khám phá sự kiện", "Tạo tài khoản" và "Đã có tài khoản? Đăng nhập". Bạn cũng đổi được ngôn ngữ (EN/VN) và giao diện Sáng/Tối ngay tại đó.', 'You can look around banbe without an account. The welcome screen has three choices: "Explore events", "Create an account" and "Already have an account? Log in". You can switch language (EN/VN) and Light/Dark right there too.'],
+      ['p', '"Xem banbe hoạt động thế nào" mở 4 trang ngắn: Gợi ý hợp với bạn, Giữ chỗ trong vài chạm, Tự tổ chức sự kiện và Tạo sự kiện trong 5 bước. Dùng "Tiếp" và "Bỏ qua"; trang không tự chuyển.', '"See how banbe works" opens 4 short pages: Picks that fit you, Hold a seat in a few taps, Host your own events and Create an event in 5 steps. Use "Next" and "Skip"; pages never advance on their own.'],
+      ['h', 'Xem với tư cách khách', 'Browsing as a guest'],
+      ['ul', [
+        ['Khi chưa đăng nhập, bạn xem được Trang chính, Bản đồ, Tìm kiếm, trang sự kiện và trang host. Trang chính hiện dòng "Bạn đang xem với tư cách khách" kèm nút Đăng nhập.', 'Signed out, you can open Home, Map, Search, event pages and host pages. Home shows "You\'re browsing as a guest" with a Log in button.'],
+        ['Lưu, Theo dõi, Giữ chỗ, Nhắn tin hoặc Thích ảnh sẽ mở một lời nhắc: "Tiếp tục" (tạo tài khoản), "Đăng nhập" hoặc "Để sau". Sau khi đăng nhập, bạn quay lại đúng việc đang làm (ví dụ giữ chỗ hay nhắn tin).', 'Save, Follow, Reserve, Message or Like a photo opens a prompt: "Continue" (create an account), "Log in" or "Not now". After you sign in you land back on what you were doing (for example reserving or messaging).'],
+        ['Lịch, Tin nhắn và Tài khoản cần đăng nhập. Màn hình đăng nhập có nút "Quay lại" về chỗ bạn vừa xem. Đăng xuất cũng đưa bạn về màn hình chào.', 'Schedule, Messages and Account need you to sign in. The log-in screen has "Back" to return where you were. Signing out also takes you to the welcome screen.'],
+      ]],
       ['h', 'Các cách đăng ký / đăng nhập', 'Ways to sign up / log in'],
       ['ul', [
         ['Email + mật khẩu (tối thiểu 8 ký tự): chọn "Đăng ký" rồi nhập tên hiển thị, email, mật khẩu.', 'Email + password (at least 8 characters): choose "Sign up", then enter a display name, email and password.'],
         ['Mã gửi qua email: chọn "Send sign-in code" và nhập mã 8 chữ số.', 'Emailed code: choose "Send sign-in code" and enter the 8-digit code.'],
-        ['"Continue with Google" hoặc "Continue with Facebook".', '"Continue with Google" or "Continue with Facebook".'],
+        ['"Tiếp tục với Google". Đăng nhập Facebook đang được phát triển nên nút này tạm mờ.', '"Continue with Google". Facebook login is under development, so that button is greyed out for now.'],
         ['Quên mật khẩu: nhấn "Forgot password?" để nhận email đặt lại.', 'Forgot your password: tap "Forgot password?" to get a reset email.'],
       ]],
       ['p', 'Khi đăng ký bạn phải tích đồng ý Điều khoản và Thông báo quyền riêng tư (xem mục Điều khoản). Zalo và Instagram hiện chưa dùng được.', 'When signing up you must tick agreement to the Terms and Privacy Notice (see Terms). Zalo and Instagram sign-in are not available yet.'],
@@ -20,44 +27,86 @@ export const PERSONAL_GUIDE = {
         ['Nhập mã 6 chữ số nhận qua tin nhắn. Gửi lại được sau 60 giây.', 'Enter the 6-digit code you receive by text. You can resend after 60 seconds.'],
         ['Nhập ngày sinh thật (ngày hợp lệ, không ở tương lai). Mỗi phiên đăng nhập có thể yêu cầu xác nhận lại ngày sinh.', 'Enter your real date of birth (a valid date, not in the future). A new sign-in session may ask you to confirm it again.'],
       ]],
-      ['tip', 'Mỗi vé cần tên và ngày sinh của người tham dự, nên hãy nhập chính xác.', 'Each ticket needs the attendee\'s name and date of birth, so enter them accurately.'],
+      ['p', 'Trong giai đoạn thử nghiệm, banbe có thể tạm bỏ qua bước SMS; khi đó số điện thoại vẫn ghi là chưa xác minh, nhưng ngày sinh vẫn bắt buộc.', 'During testing banbe may skip the SMS step; your phone then stays marked as not verified, but the date of birth is still required.'],
+      ['tip', 'Mỗi vé cần tên và ngày sinh của người tham dự, nên hãy nhập chính xác. Nếu máy chủ tạm không truy cập được, bạn sẽ thấy "Dịch vụ tạm thời không khả dụng" với nút "Thử lại".', 'Each ticket needs the attendee\'s name and date of birth, so enter them accurately. If the servers can\'t be reached you\'ll see "Service temporarily unavailable" with a "Try again" button.'],
     ]},
-    { id: 'browse', vi: 'Tìm sự kiện: Trang chủ, Bản đồ, Tìm kiếm', en: 'Finding events: Home, Map, Search', blocks: [
-      ['p', 'Thanh dưới cùng gồm: Home, Map, Notifications, Messages, Account.', 'The bottom bar has: Home, Map, Notifications, Messages, Account.'],
-      ['h', 'Trang chủ', 'Home'],
-      ['ul', [
-        ['Lọc theo danh mục (All, Supper club, Fashion, Gallery, Music) và trạng thái (Upcoming, Saved, Attending, Not confirmed, Sold out, Ended).', 'Filter by category (All, Supper club, Fashion, Gallery, Music) and status (Upcoming, Saved, Attending, Not confirmed, Sold out, Ended).'],
-        ['Nhấn chip địa điểm để chọn khu vực; mặc định là "Everywhere".', 'Tap the location capsule to choose an area; the default is "Everywhere".'],
-        ['"Your events" hiển thị các sự kiện bạn đang giữ chỗ / đã thanh toán.', '"Your events" shows events you are holding or have paid for.'],
-        ['"Things to do" (Action Center) liệt kê việc cần làm: giữ chỗ sắp hết hạn, hoàn tiền cần xác nhận…', '"Things to do" (Action Center) lists what needs you: a hold about to expire, a refund to confirm…'],
-        ['"Help Shape Upcoming Events" là các khảo sát công khai bạn có thể trả lời.', '"Help Shape Upcoming Events" lists public surveys you can answer.'],
-        ['Hàng bộ lọc thứ hai có chip ngôi sao vàng "For You" (Dành cho bạn), luôn đứng cố định ở đầu hàng; các chip còn lại vuốt ngang riêng. Chip chỉ hiện khi có sự kiện khớp câu trả lời sở thích của bạn.', 'The second filter row has a gold-star "For You" chip pinned at the start of the row; the other chips swipe sideways on their own. It only shows when events match your preference answers.'],
-        ['Khi có sự kiện mới khớp sở thích, chip "For You" lấp lánh vài giây rồi giữ nhãn "New" nhỏ cho đến khi bạn mở nó. Sự kiện cũ, sự kiện không khớp hoặc bản nháp không bao giờ gây báo. Nếu bật "Giảm chuyển động", chip chỉ hiện nhãn tĩnh.', 'When a new event matches your preferences, the "For You" chip shimmers for a few seconds, then keeps a small "New" label until you open it. Older events, non-matching events and drafts never trigger it. With Reduce Motion on, the chip just shows a static label.'],
+    { id: 'onboarding', vi: 'Thiết lập ban đầu & "Dành cho bạn"', en: 'First-run setup & "For You"', blocks: [
+      ['p', 'Tài khoản mới được hỏi 5 câu ngắn, mỗi màn hình một câu, để gợi ý sự kiện hợp với bạn. Màn hình đầu có "Bắt đầu" hoặc "Bỏ qua, xem tất cả sự kiện".', 'New accounts get 5 short questions, one per screen, to suggest events that fit you. The first screen offers "Get started" or "Skip, show me everything".'],
+      ['ol', [
+        ['Lần lượt: mục tiêu, sở thích, thời gian rảnh, ngân sách, ngôn ngữ. Câu nào cũng có "Không ưu tiên", nút Quay lại và Bỏ qua. Ngôn ngữ hiện chưa dùng để lọc.', 'In order: goals, interests, availability, budget, languages. Each has "No preference", Back and Skip. Language does not filter events yet.'],
+        ['Màn hình "Câu trả lời của bạn thay đổi gì" cho thấy gợi ý thật; chọn "Xem gợi ý cho tôi" hoặc "Xem tất cả sự kiện".', 'The "What your answers change" screen shows your real picks; choose "Show my picks" or "See all events".'],
+        ['"Xem nhanh cài đặt": "Gửi hoá đơn qua email" và "Tin nhắn quảng bá từ host". Tin quảng bá mặc định TẮT; chỉ bật khi bạn tự bật.', '"Quick settings review": "Email me payment documents" and "Host promotional texts". Promotional texts are OFF unless you switch them on.'],
       ]],
+      ['ul', [
+        ['Câu trả lời là riêng tư: host không bao giờ thấy. Sửa bất cứ lúc nào ở Tài khoản > Cài đặt > "Sở thích sự kiện".', 'Your answers are private: hosts never see them. Change them any time in Account > Settings > "Event preferences".'],
+        ['Sau đó Trang chính có thẻ "Bắt đầu với banbe": "Mở một sự kiện hợp với bạn" và "Lưu một sự kiện bạn thích". Xong hết sẽ hiện "Bạn đã sẵn sàng! 🎉" rồi thẻ tự ẩn; "Ẩn danh sách" để ẩn sớm.', 'Home then shows a "Get started with banbe" card: "Open an event that fits you" and "Save an event you like". When both are done it shows "You\'re all set! 🎉" and folds away; "Hide checklist" hides it early.'],
+        ['Một số sự kiện chỉ nhận người đã khai báo sở thích/mục tiêu phù hợp; xem mục Trang sự kiện.', 'Some events only accept people who declared matching interests/goals; see The event page.'],
+      ]],
+    ]},
+    { id: 'browse', vi: 'Tìm sự kiện: Trang chính, Tìm kiếm, Bản đồ', en: 'Finding events: Home, Search, Map', blocks: [
+      ['p', 'Thanh dưới cùng gồm: Trang chính, Bản đồ, Lịch, Tin nhắn, Tài khoản. Thông báo mở từ chuông ở đầu Trang chính.', 'The bottom bar has: Home, Map, Schedule, Messages, Account. Notifications open from the bell at the top of Home.'],
+      ['h', 'Trang chính', 'Home'],
+      ['ul', [
+        ['Ô tìm kiếm "Tìm sự kiện, host, khu vực, vibe…" ở trên cùng; dưới đó là dòng Banbe Pulse chạy ngang (5 sự kiện nổi bật hôm nay, chạm để xem bảng xếp hạng).', 'The "Search events, hosts, areas, vibes…" bar sits at the top; below it, the Banbe Pulse ticker scrolls today\'s top 5 events (tap it for the full ranking).'],
+        ['"Gần · Mọi nơi" để chọn khu vực. Hàng biểu tượng danh mục: Tất cả, Supper club, Thời trang, Phòng tranh, Nhạc, Pop-up.', '"Near · Everywhere" picks an area. The category icon row: All, Supper club, Fashion, Gallery, Music, Pop-up.'],
+        ['Hàng lọc: "Bộ lọc", "Sắp xếp" (Sớm nhất, Gần nhất, Nổi bật, Giá thấp → cao), chip ngôi sao "Dành cho bạn" luôn đứng đầu, rồi các chip nhanh Hôm nay, Cuối tuần này, Miễn phí, Sắp hết chỗ. Chip nào sẽ cho 0 kết quả thì bị ẩn.', 'The filter row: "Filters", "Sort by" (Soonest, Nearest, Popular, Price: low to high), the gold-star "For You" chip pinned first, then quick chips Today, This weekend, Free, Almost full. A chip that would show 0 events is hidden.'],
+        ['Bảng "Bộ lọc" cho thấy số sự kiện cạnh từng lựa chọn trước khi bạn chạm: Khi nào (gồm "Chọn ngày"), Giá (biểu đồ giá, thanh kéo hai đầu, "Giá cho 2 người", "Chỉ miễn phí"), Danh mục, Chỗ ngồi, Khu vực, Sắp xếp. Nhấn "Xem N sự kiện"; "Đặt lại" để xoá lọc.', 'The "Filters" sheet shows how many events each option gives before you tap it: When (including "Pick a date"), Price (price chart, two-handle slider, "Price for 2", "Free only"), Category, Seats, Location, Sort by. Tap "Show N events"; "Reset" clears it.'],
+        ['Chuyển giữa "Thẻ" và "Danh sách"; lựa chọn được nhớ. Ít kết quả thì có gợi ý mở rộng một chạm.', 'Switch between "Cards" and "List"; your choice is remembered. With few results you get one-tap hints to widen the search.'],
+        ['"Tiếp theo": từ 24 giờ trước đến 12 giờ sau giờ bắt đầu của sự kiện bạn có vé xác nhận, một thẻ "★ Sắp diễn ra" / "Đang diễn ra" hiện lên với lối tắt "Xem vé".', '"Next up": from 24 hours before to 12 hours after an event you have a confirmed ticket for starts, a "★ Starting soon" / "Happening now" banner appears with a "Your ticket" shortcut.'],
+        ['"Việc cần làm" (Action Center) liệt kê việc cần bạn: giữ chỗ sắp hết hạn, hoàn tiền cần xác nhận…; "Xem tất cả" mở Thông báo.', '"Things to do" (Action Center) lists what needs you: a hold about to expire, a refund to confirm…; "See all" opens Notifications.'],
+        ['"Help Shape Upcoming Events" là các khảo sát công khai bạn có thể trả lời.', '"Help Shape Upcoming Events" lists public surveys you can answer.'],
+        ['Sự kiện đã kết thúc không còn hiện ở Trang chính; xem chúng ở mục "Sự kiện đã qua" trên trang host.', 'Ended events no longer appear on Home; find them under "Past events" on the host\'s page.'],
+      ]],
+      ['h', '"Dành cho bạn"', '"For You"'],
+      ['ul', [
+        ['Chip chỉ hiện khi có sự kiện khớp câu trả lời sở thích của bạn, và có ở cả Trang chính lẫn Bản đồ. Trên Bản đồ, bật chip không di chuyển bản đồ, và có lối "Chỉnh sở thích của bạn".', 'The chip only shows when events match your preference answers, on both Home and Map. On Map, turning it on does not move the map, and it offers "Edit preferences".'],
+        ['Khi có sự kiện mới khớp sở thích, chip lấp lánh vài giây rồi giữ nhãn "Mới" nhỏ cho đến khi bạn mở nó. Sự kiện cũ, không khớp hoặc bản nháp không bao giờ gây báo. Nếu bật "Giảm chuyển động", chip chỉ hiện nhãn tĩnh.', 'When a new event matches your preferences, the chip shimmers for a few seconds, then keeps a small "New" label until you open it. Older events, non-matching events and drafts never trigger it. With Reduce Motion on, it just shows a static label.'],
+      ]],
+      ['h', 'Tìm kiếm', 'Search'],
+      ['p', 'Chạm ô tìm kiếm để mở màn hình Tìm kiếm: "Tìm gần đây" (lưu trên máy này, "Xoá" để xoá), "Danh mục", "Đang được quan tâm". Kết quả chia nhóm Sự kiện, Host, Khu vực; "Xem trên bản đồ" mang từ khoá sang Bản đồ.', 'Tap the search bar to open Search: "Recent" (kept on this device; "Clear" removes it), "Categories" and "Trending today". Results are grouped into Events, Hosts and Areas; "See on map" carries the search over to Map.'],
       ['h', 'Bản đồ', 'Map'],
-      ['p', 'Tìm theo tên, khu vực, từ khóa hoặc danh mục. Dùng "Open now", "Nearby", "Search here"; chuyển giữa "Big list" và "Big map"; nhấn ghim rồi "View details".', 'Search by name, area, keyword or category. Use "Open now", "Nearby" and "Search here"; switch between "Big list" and "Big map"; tap a pin then "View details".'],
-      ['h', 'Story & Pulse', 'Stories & Pulse'],
-      ['p', 'Hàng vòng tròn ở Trang chủ: "Banbe Pulse" xếp hạng sự kiện công khai theo ngày/tuần; các story của host tự hết hạn sau 24 giờ.', 'The ring row on Home: "Banbe Pulse" ranks public events daily/weekly; host stories expire after 24 hours.'],
+      ['p', 'Tìm theo tên, khu vực, từ khóa, danh mục hoặc host. Dùng "Còn chỗ", "Gần bạn", "Search here"; chọn khu vực ở "Tất cả khu vực"; chuyển giữa "Big list" và "Big map"; nhấn ghim rồi "View details".', 'Search by name, area, keyword, category or host. Use "Open now", "Nearby" and "Search here"; pick an area under "All areas"; switch between "Big list" and "Big map"; tap a pin then "View details".'],
+      ['h', 'Story', 'Stories'],
+      ['p', 'Hàng vòng tròn story chỉ hiện khi có story; story của host tự hết hạn sau 24 giờ.', 'The story ring row only appears when there are stories; host stories expire after 24 hours.'],
     ]},
     { id: 'event', vi: 'Trang sự kiện', en: 'The event page', blocks: [
       ['ul', [
-        ['"Save" lưu sự kiện (hiện chỉ lưu trên thiết bị này); "Share" chia sẻ link; "Open in map" mở bản đồ.', '"Save" bookmarks an event (currently stored on this device only); "Share" shares the link; "Open in map" opens the map.'],
-        ['"Message" nhắn trực tiếp cho host; "Visit" mở trang host (lịch sử, ảnh, người theo dõi).', '"Message" chats with the host; "Visit" opens the host page (track record, photos, followers).'],
-        ['Phần "Included" cho biết giá vé đã bao gồm gì; "Track record" là số liệu thật của host.', '"Included" says what the ticket covers; "Track record" shows the host\'s real numbers.'],
-        ['Trạng thái: Sold out, Event has been cancelled, Event has ended, hoặc "View payment status" nếu bạn đã giữ chỗ.', 'States: Sold out, Event has been cancelled, Event has ended, or "View payment status" if you already hold a seat.'],
+        ['Trên ảnh: nút quay lại, "⋯", Chia sẻ và Lưu (trái tim). Sự kiện đã lưu được giữ trong tài khoản của bạn và hiện nhãn "Đã lưu".', 'Over the photo: back, "⋯", Share and Save (heart). Saved events are kept in your account and show a "Saved" tag.'],
+        ['Menu "⋯": "Xem trên bản đồ" (hoặc "Về trang chính"), "Sao chép link"; host có thêm "Chia sẻ lên Story".', 'The "⋯" menu: "Open in map" (or "Back to home") and "Copy link"; hosts also get "Share to Story".'],
+        ['Nút "Thêm lịch" cạnh tên sự kiện; xem mục Lịch & lịch hẹn.', 'The "Add to calendar" pill next to the title; see Schedule & calendars.'],
+        ['Ô "Ngày", "Giờ", "Địa điểm" (chạm "Xem bản đồ" để chỉ đường), thanh "Còn N chỗ", và mô tả có "Xem thêm".', '"Date", "Time" and "Place" tiles (tap "Directions" for the map), a "N seats left" bar, and the description with "Read more".'],
+        ['"Bao gồm" cho biết giá vé gồm những gì; "Xem thêm" mở "Giới thiệu & Bao gồm".', '"Included" says what the ticket covers; "More" opens "About & Included".'],
+        ['Mục "Người tổ chức": "Xem hồ sơ" mở trang host (lịch sử, ảnh, người theo dõi, sự kiện đã qua); "Nhắn tin" nhắn trực tiếp cho host. Host bạn theo dõi có dấu "✓ Đang theo dõi".', 'The "Host" section: "View profile" opens the host page (track record, photos, followers, past events); "Message" chats with the host. Hosts you follow show "✓ Following".'],
+        ['Trạng thái: Hết chỗ, sự kiện đã bị hủy, sự kiện đã kết thúc, hoặc xem trạng thái thanh toán nếu bạn đã giữ chỗ.', 'States: Sold out, Event has been cancelled, Event has ended, or your payment status if you already hold a seat.'],
       ]],
+      ['h', 'Ai có thể đặt', 'Who can reserve'],
+      ['p', 'Một số sự kiện ghi "Ai có thể đặt: …" và chỉ nhận người đã khai báo sở thích/mục tiêu phù hợp. Nếu bạn chưa đủ điều kiện, nút đặt hiện "Chưa đủ điều kiện ▪︎ xem lý do"; chọn "Cập nhật sở thích", sửa rồi "Lưu và quay lại". Đây là thông tin tự khai, không bao giờ dựa trên tuổi, ngân sách, lịch hay ngôn ngữ.', 'Some events say "Who can reserve: …" and only accept people who declared matching interests/goals. If you don\'t qualify, the button reads "Not eligible yet ▪︎ see why"; choose "Update my preferences", change them, then "Save and go back". It is self-declared and never based on age, budget, schedule or language.'],
       ['h', 'Sự kiện chỉ dành cho người được mời', 'Invite-only events'],
       ['p', 'Sự kiện "Private ▪︎ invite only" chỉ người được host mời mới xem và đặt được.', 'A "Private ▪︎ invite only" event can only be seen and booked by people the host invited.'],
     ]},
+    { id: 'schedule', vi: 'Lịch & lịch hẹn', en: 'Schedule & calendars', blocks: [
+      ['p', 'Tab "Lịch" (hoặc Tài khoản > "Lịch của tôi") có hai phần: "Lịch của tôi" và "Khám phá", cùng nút "Hôm nay", dải tuần và chế độ xem tháng.', 'The "Schedule" tab (or Account > "My schedule") has two parts, "My schedule" and "Discover", plus "Today", a week strip and a month view.'],
+      ['ul', [
+        ['Mỗi mục ghi rõ nguồn: "Đã đặt chỗ", "Chờ host xác nhận", "Đang giữ chỗ", "Bạn tổ chức" hoặc "Bạn đã thêm". Sự kiện chỉ lưu (trái tim) không tự vào lịch.', 'Each plan says where it comes from: "Booked", "Awaiting host confirmation", "Seat on hold", "You\'re hosting" or "Added by you". Events you only saved (heart) are not added.'],
+        ['"＋ Thêm vào lịch banbe" ghi sự kiện vào lịch để nhớ, KHÔNG phải giữ chỗ. Chỉ mục bạn tự thêm mới có "Bỏ khỏi lịch". Mục tự thêm chỉ nằm trên máy/trình duyệt này, không đồng bộ.', '"＋ Add to banbe Schedule" puts an event in your plans as a reminder; it is NOT a reservation. Only plans you added yourself have "Remove". They stay on this device/browser and do not sync.'],
+        ['Nếu hai kế hoạch cách nhau dưới 2 giờ, bạn được nhắc, nhưng vẫn thêm được.', 'If two plans start within 2 hours of each other you get a note, but adding is never blocked.'],
+      ]],
+      ['h', 'Thêm vào lịch điện thoại', 'Adding to your phone\'s calendar'],
+      ['ul', [
+        ['Trên web: nút "Thêm lịch" ở trang sự kiện có "Thêm vào lịch (.ics)" và "Google Lịch"; trang vé có "Google Calendar" và "Lịch Apple ▪︎ Ứng dụng khác".', 'On the web: the event page\'s "Add to calendar" pill offers "Add to calendar (.ics)" and "Google Calendar"; the ticket screen offers "Google Calendar" and "Apple Calendar ▪︎ Other apps".'],
+        ['Trên iPhone: "Thêm vào Lịch Apple" mở trình sửa sự kiện của hệ thống, không cần cấp quyền lịch.', 'On iPhone: "Add to Apple Calendar" opens the system event editor; no calendar permission is needed.'],
+        ['Sự kiện không ghi giờ kết thúc được đặt mặc định 2 giờ.', 'Events without an end time default to 2 hours.'],
+      ]],
+    ]},
     { id: 'book', vi: 'Giữ chỗ & đặt vé', en: 'Holding a seat & booking', blocks: [
       ['ol', [
-        ['Mở sự kiện và nhấn nút đặt chỗ ("Reserve" / "Hold ▪︎ 30 minutes").', 'Open the event and tap the reserve button ("Reserve" / "Hold ▪︎ 30 minutes").'],
-        ['Chọn số vé (tối đa 6 mỗi lần đặt; mỗi sự kiện chỉ một đặt chỗ đang hiệu lực).', 'Choose the number of tickets (up to 6 per booking; one live booking per event).'],
-        ['Nhập "Full name" cho từng người tham dự. Vé 1 là của bạn: ngày sinh được lấy tự động từ hồ sơ và hiển thị để bạn kiểm tra. Với các vé còn lại, nhập "Date of birth" và có thể điền thêm "Email (optional)" của người đó.', 'Enter "Full name" for each attendee. Ticket 1 is yours: the date of birth is taken from your profile automatically and shown so you can check it. For the other tickets, enter "Date of birth" and optionally "Email (optional)" for that person.'],
-        ['Sự kiện miễn phí: vé được cấp ngay. Sự kiện có phí: ghế được giữ 30 phút để bạn chuyển tiền.', 'Free event: the ticket is issued immediately. Paid event: the seat is held for 30 minutes while you pay.'],
+        ['Ở thanh dưới trang sự kiện, chọn số vé ("1 vé · 2 vé · 3 vé" hoặc nút − / +, tối đa 6), rồi nhấn "Giữ chỗ ▪︎ <tổng tiền>". Dòng giữa cho biết chính sách: hoàn tiền 100% nếu sự kiện bị hủy, hoặc chỗ được giữ 30 phút.', 'In the event page\'s bottom bar, pick the number of tickets ("1 ticket · 2 tickets · 3 tickets" or − / +, up to 6), then tap "Reserve ▪︎ <total>". The middle line shows the policy: full refund if the event is cancelled, or seats held for 30 minutes.'],
+        ['Mỗi sự kiện chỉ một đặt chỗ đang hiệu lực. Thanh tiến trình cho thấy các bước Sự kiện → Giữ chỗ → Thanh toán → Vé.', 'One live booking per event. A progress bar shows Event → Hold → Pay → Ticket.'],
+        ['Nhập "Full name" cho từng người tham dự. Vé 1 là của bạn: ngày sinh được lấy tự động từ hồ sơ. Với các vé còn lại, nhập "Date of birth" và có thể điền "Email (optional)". Nút xác nhận ghi rõ còn thiếu gì nếu chưa bấm được.', 'Enter "Full name" for each attendee. Ticket 1 is yours: the date of birth comes from your profile. For the other tickets, enter "Date of birth" and optionally "Email (optional)". If the confirm button is disabled it says what is missing.'],
+        ['Nhấn "Giữ 1 chỗ ▪︎ 30 phút" (hoặc "Giữ N chỗ"). Sự kiện miễn phí: vé được cấp ngay. Sự kiện có phí: ghế được giữ 30 phút để bạn chuyển tiền.', 'Tap "Hold 1 seat ▪︎ 30 min" (or "Hold N seats"). Free event: the ticket is issued immediately. Paid event: the seat is held for 30 minutes while you pay.'],
       ]],
-      ['p', 'Nếu ngày sinh lấy từ hồ sơ bị sai, nhấn "Wrong? Request a correction" dưới ngày sinh ở Vé 1, nhập ngày đúng và lý do. Quản trị viên sẽ xem xét; ngày sinh chỉ đổi khi yêu cầu được duyệt, và bạn thấy trạng thái yêu cầu ngay tại đó. Email của người tham dự chỉ được lưu cùng vé, chưa gửi thư nào đến địa chỉ đó.', 'If the date of birth taken from your profile is wrong, tap "Wrong? Request a correction" under the date of birth on Ticket 1, then enter the right date and a reason. An admin reviews it; your birthday only changes if the request is approved, and you see the request status right there. An attendee\'s email is only saved with the ticket; nothing is sent to that address yet.'],
-      ['p', 'Một số sự kiện cần host chấp nhận yêu cầu của bạn trước khi thanh toán.', 'Some events need the host to accept your request before you pay.'],
+      ['p', 'Nếu ngày sinh lấy từ hồ sơ bị sai, nhấn "Wrong? Request a correction" dưới ngày sinh ở Vé 1, nhập ngày đúng và lý do. Quản trị viên sẽ xem xét; ngày sinh chỉ đổi khi yêu cầu được duyệt. Email của người tham dự chỉ được lưu cùng vé, chưa gửi thư nào đến địa chỉ đó.', 'If the date of birth taken from your profile is wrong, tap "Wrong? Request a correction" under it on Ticket 1, then enter the right date and a reason. An admin reviews it; your birthday only changes if approved. An attendee\'s email is only saved with the ticket; nothing is sent to that address yet.'],
+      ['p', 'Một số sự kiện cần host chấp nhận yêu cầu của bạn trước khi thanh toán. Hết chỗ: nút hiện "Hết chỗ ▪︎ nhắn để vào danh sách chờ".', 'Some events need the host to accept your request before you pay. When sold out, the button reads "Sold out ▪︎ message for waitlist".'],
       ['tip', 'Hết 30 phút mà chưa thanh toán, ghế được nhả ra. Nhấn "Reserve again" nếu còn chỗ.', 'If 30 minutes pass without payment, the seat is released. Tap "Reserve again" if there is still room.'],
     ]},
     { id: 'pay', vi: 'Thanh toán', en: 'Paying', blocks: [
@@ -78,15 +127,15 @@ export const PERSONAL_GUIDE = {
       ['p', 'Host chưa xác nhận? Dùng "Remind the organizer to confirm" (tối đa 2 lần), rồi "Message host" hoặc "Raise a dispute".', 'Host has not confirmed? Use "Remind the organizer to confirm" (max 2 times), then "Message host" or "Raise a dispute".'],
       ['p', 'Thông tin xuất hóa đơn của bạn nằm ở Account > Payments & Documents > Billing Details.', 'Your invoice details are under Account > Payments & Documents > Billing Details.'],
     ]},
-    { id: 'tickets', vi: 'Vé, mã QR, PDF & lịch', en: 'Tickets, QR, PDF & calendar', blocks: [
+    { id: 'tickets', vi: 'Vé, mã QR & PDF', en: 'Tickets, QR & PDF', blocks: [
       ['ul', [
         ['Mỗi người tham dự có mã QR và mã vào cửa riêng; mỗi người xuất trình mã của chính mình ở cửa.', 'Each attendee has their own QR and entry code; each person shows their own code at the door.'],
         ['"Download PDF" tải từng vé; có thể tick nhiều vé để tải ZIP hoặc "Download all".', '"Download PDF" saves one ticket; tick several for a ZIP, or "Download all".'],
-        ['"Add to calendar" tải tệp .ics cho Apple Calendar hoặc ứng dụng khác.', '"Add to calendar" downloads an .ics file for Apple Calendar or other apps.'],
+        ['Thêm vào lịch điện thoại: xem mục Lịch & lịch hẹn.', 'Adding to your phone\'s calendar: see Schedule & calendars.'],
         ['"View Receipt" xem biên lai/hóa đơn do host tải lên; "Request Receipt" nhờ host gửi nếu chưa có.', '"View Receipt" opens the receipt/invoice the host uploaded; "Request Receipt" asks the host if there is none yet.'],
         ['Vé hiển thị "Checked in" sau khi được quét.', 'A ticket shows "Checked in" once scanned.'],
       ]],
-      ['tip', 'Mã QR chỉ xuất hiện sau khi host xác nhận thanh toán. Tính năng Apple Wallet chưa được bật.', 'The QR appears only after the host confirms payment. Apple Wallet is not switched on yet.'],
+      ['tip', 'Mã QR chỉ xuất hiện sau khi host xác nhận thanh toán. Nút "Thêm vào Apple Wallet" có thể hiện trên thiết bị Apple nhưng chưa hoạt động.', 'The QR appears only after the host confirms payment. An "Add to Apple Wallet" button may appear on Apple devices but does not work yet.'],
     ]},
     { id: 'gift', vi: 'Tặng & nhập vé', en: 'Gifting & importing tickets', blocks: [
       ['ul', [
@@ -111,24 +160,31 @@ export const PERSONAL_GUIDE = {
     ]},
     { id: 'dispute', vi: 'Khiếu nại & chat khiếu nại', en: 'Disputes & dispute chat', blocks: [
       ['p', 'Có hai loại: tranh chấp thanh toán (host báo không thấy tiền) và tranh chấp hoàn tiền (bạn báo chưa nhận được tiền).', 'There are two kinds: payment disputes (the host says they cannot find your payment) and refund disputes (you say you did not receive a refund).'],
+      ['h', 'Host báo "không thấy tiền"', 'The host says "can\'t find it"'],
       ['ul', [
-        ['Khi một tranh chấp được chuyển lên banbe, một khung chat tạm thời mở ra giữa bạn, host và quản trị viên đọc được.', 'When a dispute is escalated to banbe, a temporary chat opens between you and the host; admins can read it.'],
-        ['Có thể đính kèm ảnh JPG/PNG/WebP hoặc PDF (tối đa 20 MB). Tin nhắn không sửa hoặc xóa được.', 'You can attach JPG/PNG/WebP or PDF files (max 20 MB). Messages cannot be edited or deleted.'],
-        ['"Close dispute" kết thúc tranh chấp. Sau đó có thể "Download transcript" và "Close and delete my copy" (chỉ ẩn bản của bạn).', '"Close dispute" ends it. Afterwards you can "Download transcript" and "Close and delete my copy" (hides only your copy).'],
+        ['Một khung chat tạm thời mở ra giữa bạn và host, kèm đồng hồ "Đóng sau ~N giờ". Hai bên có 2 ngày để làm rõ; hãy gửi thêm bằng chứng chuyển khoản.', 'A temporary chat opens between you and the host, with a "Closes in ~Nh" timer. You both have 2 days to sort it out; send more proof of your transfer.'],
+        ['Khi host xác nhận đã nhận tiền, vé được cấp và chat tự đóng. Nếu đặt chỗ bị hủy, chat cũng tự đóng.', 'When the host confirms the money arrived, your ticket is issued and the chat closes by itself. If the booking is cancelled, the chat also closes.'],
+        ['Hết 2 ngày mà không thống nhất và không ai chuyển lên banbe: vé được trả lại kho và chat đóng.', 'If 2 days pass with no agreement and nobody escalated to banbe, the ticket goes back on sale and the chat closes.'],
+        ['Nếu được chuyển lên banbe ("Raise a dispute" / host "Escalate to banbe"), quản trị viên đọc chat và quyết định; ghế vẫn được giữ trong lúc chờ.', 'If it is escalated to banbe ("Raise a dispute" / the host\'s "Escalate to banbe"), admins read the chat and decide; your seat stays held meanwhile.'],
+      ]],
+      ['h', 'Trong khung chat khiếu nại', 'In the dispute chat'],
+      ['ul', [
+        ['Quản trị viên đọc được chat. Có thể đính kèm ảnh JPG/PNG/WebP hoặc PDF (tối đa 20 MB). Tin nhắn không sửa hoặc xóa được.', 'Admins can read the chat. You can attach JPG/PNG/WebP or PDF files (max 20 MB). Messages cannot be edited or deleted.'],
+        ['"Đóng tranh chấp" kết thúc tranh chấp. Sau đó có thể "Download transcript" và "Đóng và xoá bản của tôi" (chỉ ẩn bản của bạn).', '"Close dispute" ends it. Afterwards you can "Download transcript" and "Close and delete my copy" (hides only your copy).'],
         ['Dữ liệu tranh chấp hoàn tiền được xóa 7 ngày sau khi đóng.', 'Refund-dispute data is purged 7 days after it closes.'],
       ]],
-      ['p', 'Nếu host chỉ bấm "Can\'t find it" mà chưa nâng lên banbe, bạn chỉ nhận tin trong chat thường; hãy phản hồi hoặc gửi thêm bằng chứng.', 'If the host only tapped "Can\'t find it" without escalating, you just get a message in your normal chat; reply or send more proof.'],
     ]},
     { id: 'chat', vi: 'Tin nhắn & thông báo', en: 'Messages & notifications', blocks: [
       ['ul', [
-        ['Tab "Messages": các cuộc trò chuyện với host. Cuộc trò chuyện chỉ xuất hiện sau tin nhắn đầu tiên bạn gửi. Menu "..." cho phép Star, Archive, Delete (xóa chỉ với bạn).', 'The "Messages" tab holds your chats with hosts. A chat appears only after you send the first message. The "..." menu offers Star, Archive, Delete (removes it for you only).'],
+        ['Tab "Tin nhắn": các cuộc trò chuyện với host. Cuộc trò chuyện chỉ xuất hiện sau tin nhắn đầu tiên bạn gửi. Menu "..." cho phép Star, Archive, Delete (xóa chỉ với bạn).', 'The "Messages" tab holds your chats with hosts. A chat appears only after you send the first message. The "..." menu offers Star, Archive, Delete (removes it for you only).'],
         ['Gửi ảnh hoặc tài liệu bằng "Add photo or document" / "Camera".', 'Send photos or documents with "Add photo or document" / "Camera".'],
-        ['Tab "Notifications": nhóm New / Today / Last 7 days / Older; đánh dấu đã đọc, tắt loại thông báo, xóa, chọn nhiều.', 'The "Notifications" tab groups New / Today / Last 7 days / Older; mark read, mute a kind, delete, multi-select.'],
+        ['Thông báo từ host: gần giờ sự kiện, host có thể gửi một tin "📣 Thông báo từ host" (bong bóng đỏ trong chat) kèm một thông báo.', 'Host announcements: close to the event, the host may send a "📣 Host announcement" (a red bubble in the chat) plus a notification.'],
+        ['Thông báo: chạm chuông ở đầu Trang chính (có số chưa đọc), hoặc Tài khoản > "Thông báo", hoặc "Xem tất cả" trong Việc cần làm. Nhóm Mới / Hôm nay / 7 ngày qua / Cũ hơn; đánh dấu đã đọc, tắt loại thông báo, xóa, chọn nhiều.', 'Notifications: tap the bell at the top of Home (it shows the unread count), or Account > "Notifications", or "See all" in Things to do. Grouped New / Today / Last 7 days / Older; mark read, mute a kind, delete, multi-select.'],
         ['Thông báo trong ứng dụng và email đang hoạt động; thông báo đẩy (push) chưa bật.', 'In-app and email notifications work; push notifications are not enabled yet.'],
       ]],
     ]},
     { id: 'survey', vi: 'Khảo sát', en: 'Surveys', blocks: [
-      ['p', 'Host dùng khảo sát để đo nhu cầu. Mở một khảo sát từ Trang chủ hoặc story, điền mức quan tâm, thời gian/địa điểm ưa thích, quy mô nhóm, ngân sách…, tick đồng ý để host liên hệ về sự kiện đó, rồi "Submit response".', 'Hosts use surveys to gauge demand. Open one from Home or a story, fill in interest, preferred time/place, group size, budget…, tick consent for the host to contact you about that event, then "Submit response".'],
+      ['p', 'Host dùng khảo sát để đo nhu cầu. Mở một khảo sát từ Trang chính hoặc story, điền mức quan tâm, thời gian/địa điểm ưa thích, quy mô nhóm, ngân sách…, tick đồng ý để host liên hệ về sự kiện đó, rồi "Submit response".', 'Hosts use surveys to gauge demand. Open one from Home or a story, fill in interest, preferred time/place, group size, budget…, tick consent for the host to contact you about that event, then "Submit response".'],
       ['ul', [
         ['Trả lời khảo sát không giữ chỗ cho bạn.', 'Answering a survey does not reserve a place.'],
         ['Có thể chỉnh sửa câu trả lời đến khi khảo sát đóng ("Edit Response").', 'You can edit your answer until the survey closes ("Edit Response").'],
@@ -144,15 +200,21 @@ export const PERSONAL_GUIDE = {
         ['Trang hồ sơ của bạn có một hàng ba nút nhỏ: "QR code" (hiện mã QR), "Edit profile" (sửa hồ sơ) và "Edit charm" (sửa móc khoá). Người khác xem hồ sơ của bạn chỉ thấy nút QR.', 'Your own profile page has one row of three small buttons: "QR code" (show the QR), "Edit profile" and "Edit charm" (edit your keychain). Visitors only see the QR button.'],
         ['"Post a story": ảnh + văn bản + link, tự hết hạn sau 24 giờ.', '"Post a story": photo + text + link, expires after 24 hours.'],
       ]],
+      ['h', 'Theo dõi host', 'Following hosts'],
+      ['ul', [
+        ['Nhấn "Theo dõi" trên trang host; nút đổi thành "✓ Đang theo dõi".', 'Tap "Follow" on a host\'s page; it changes to "✓ Following".'],
+        ['Tài khoản > "Đang theo dõi" liệt kê các host bạn theo dõi (có ô tìm kiếm). Danh sách này chỉ mình bạn thấy. "Bỏ theo dõi" sẽ hỏi xác nhận.', 'Account > "Following" lists the hosts you follow (with a search box). Only you can see this list. "Unfollow" asks you to confirm.'],
+      ]],
     ]},
     { id: 'keychain', vi: 'Móc khoá trang trí hồ sơ', en: 'Profile keychain charm', blocks: [
       ['p', 'Móc khoá là một món trang trí nhỏ treo ở góc thẻ hồ sơ. Mặc định tắt; khi bật, người xem hồ sơ của bạn cũng thấy nó.', 'The keychain is a small decoration hanging from a corner of your profile card. It is off by default; when on, people who view your profile see it too.'],
       ['h', 'Bật và chỉnh móc khoá', 'Turn it on and customise it'],
       ['ol', [
         ['Mở hồ sơ của bạn rồi nhấn "Edit charm", hoặc vào Edit profile > Keychain.', 'Open your profile and tap "Edit charm", or go to Edit profile > Keychain.'],
-        ['Bật công tắc, chọn một trong 24 mẫu (nhóm sao/trăng/mây, tim/nơ, hoa/trái cây, cà phê/âm nhạc, mèo/gấu, du lịch/vé, họa tiết banbe).', 'Switch it on and pick one of 24 designs (stars/moon/clouds, hearts/ribbons, flowers/fruits, coffee/music, cats/bears, travel/tickets, banbe motifs).'],
+        ['Bật công tắc, chọn một trong 24 mẫu miễn phí (nhóm sao/trăng/mây, tim/nơ, hoa/trái cây, cà phê/âm nhạc, mèo/gấu, du lịch/vé, họa tiết banbe).', 'Switch it on and pick one of 24 free designs (stars/moon/clouds, hearts/ribbons, flowers/fruits, coffee/music, cats/bears, travel/tickets, banbe motifs).'],
         ['Chọn một trong bốn góc, kích cỡ S/M/L và bật/tắt chuyển động. Xem trước ngay trong màn hình rồi nhấn Save; Cancel sẽ bỏ thay đổi.', 'Choose one of four corners, size S/M/L and motion on/off. Preview it on the screen, then tap Save; Cancel discards changes.'],
       ]],
+      ['p', 'Khi banbe bật Phần thưởng, có thêm vài mẫu có khoá đổi bằng xu (xem mục Phần thưởng & huy hiệu).', 'When banbe turns Rewards on, a few extra locked designs can be unlocked with coins (see Rewards & badges).'],
       ['h', 'Tải ảnh mẫu & dùng ảnh riêng', 'Export artwork & use your own'],
       ['ul', [
         ['"Download artwork" / nút chia sẻ lưu ảnh PNG của mẫu đang chọn.', '"Download artwork" / the share button saves the PNG of the selected design.'],
@@ -166,17 +228,30 @@ export const PERSONAL_GUIDE = {
         ['Không muốn kéo? Dùng nút "Swing" hoặc, trên web, chọn móc khoá rồi nhấn Enter/Space. Khi bật "Giảm chuyển động" hoặc tắt chuyển động, móc khoá đứng yên.', 'Prefer not to drag? Use the "Swing" button or, on the web, focus the charm and press Enter/Space. With Reduce Motion on or motion off, the charm stays still.'],
       ]],
     ]},
+    { id: 'rewards', vi: 'Phần thưởng & huy hiệu', en: 'Rewards & badges', blocks: [
+      ['p', 'Phần thưởng chỉ hiện khi banbe bật tính năng này; khi tắt, xu, chuỗi ngày, huy hiệu và mẫu móc khoá thưởng bị ẩn ở mọi nơi (dữ liệu của bạn không bị xoá).', 'Rewards only appear when banbe has turned the feature on; while it is off, coins, streaks, badges and reward keychain designs are hidden everywhere (your data is not deleted).'],
+      ['ul', [
+        ['Mở từ Tài khoản > "Phần Thưởng & Huy Hiệu" hoặc nút 🔥/xu ở đầu Trang chính: số dư xu, chuỗi ngày, huy hiệu, đổi thưởng (móc khoá), lịch sử và "Cách kiếm xu".', 'Open it from Account > "Rewards & Badges" or the 🔥/coin buttons at the top of Home: coin balance, streak, badges, redeem (keychain designs), recent history and "How earning works".'],
+        ['Xu đến từ việc hoàn tất thiết lập ban đầu có câu trả lời và từ việc được host check-in thật tại sự kiện (có giới hạn mỗi tháng). Huy hiệu là riêng tư.', 'Coins come from finishing first-run setup with answers and from being genuinely checked in by a host at an event (capped per month). Badges are private.'],
+        ['Ba mẫu móc khoá thưởng đổi bằng xu; 24 mẫu thường luôn miễn phí.', 'Three reward keychain designs are unlocked with coins; the 24 regular designs stay free.'],
+      ]],
+    ]},
+    { id: 'reports', vi: 'Số liệu của bạn', en: 'Your metrics', blocks: [
+      ['p', 'Tài khoản > "Số Liệu & Báo Cáo" cho thấy số chỗ đã xác nhận của bạn theo 7/30/90 ngày hoặc khoảng tùy chọn. "Cần chú ý" chỉ hiện khi bạn còn khoản hoàn tiền đang chờ. Xuất PDF/JSON từ menu "⋯", CSV hoặc ảnh biểu đồ từ từng số liệu.', 'Account > "Metrics & Reports" shows your confirmed bookings for 7/30/90 days or a custom range. "Needs attention" only appears while you have refunds outstanding. Export PDF/JSON from the "⋯" menu, and CSV or a chart image from each metric.'],
+    ]},
     { id: 'settings', vi: 'Cài đặt, bảo mật & xóa tài khoản', en: 'Settings, security & deleting your account', blocks: [
       ['ul', [
         ['Account > Settings: ngôn ngữ (Tiếng Việt / English) và giao diện (Light / Dark). Ngôn ngữ cũng áp dụng cho tin nhắn tự động.', 'Account > Settings: language (Vietnamese / English) and appearance (Light / Dark). Language also applies to automated messages.'],
+        ['"Sở thích sự kiện": sửa câu trả lời dùng cho "Dành cho bạn" và điều kiện đặt chỗ.', '"Event preferences": change the answers used for "For You" and reservation criteria.'],
         ['"Security": đổi mật khẩu (8+ ký tự) và xem trạng thái xác minh điện thoại.', '"Security": change your password (8+ characters) and see your phone-verification status.'],
-        ['Có tùy chọn tự động email bản sao hóa đơn/biên lai cho bạn.', 'There is an option to automatically email you copies of invoices/receipts.'],
+        ['"Gửi hoá đơn qua email" tự động email bản sao hóa đơn/biên lai cho bạn; "Tin nhắn quảng bá từ host" mặc định tắt.', '"Email me payment documents" automatically emails you copies of invoices/receipts; "Host promotional texts" is off unless you turn it on.'],
         ['Đăng xuất bằng "Sign out" trong Account.', 'Log out with "Sign out" in Account.'],
       ]],
       ['h', 'Xóa tài khoản', 'Deleting your account'],
       ['ol', [
-        ['Account > Settings > "Delete Account" > Continue.', 'Account > Settings > "Delete Account" > Continue.'],
-        ['Xác minh bằng mã 8 chữ số gửi qua email.', 'Verify with the 8-digit code emailed to you.'],
+        ['Account > Settings > Account Management > "Delete Account".', 'Account > Settings > Account Management > "Delete Account".'],
+        ['Màn hình "Trước khi bạn đi…" cho thấy những gì bạn sẽ mất, hỏi lý do và có thể gợi ý một cách khắc phục (ví dụ tắt bớt thông báo hoặc chỉnh lại gợi ý). Chọn "Giữ tài khoản của tôi" hoặc "Tiếp tục xoá tài khoản".', 'A "Before you go…" screen shows what you\'d lose, asks why you\'re leaving and may offer one fix (for example quieter notifications or retuned suggestions). Choose "Keep my account" or "Continue deleting my account".'],
+        ['"Bước 1 — Xác minh danh tính": nhập ngày sinh, hoặc "Dùng mã gửi qua email thay thế" (mã 8 chữ số).', '"Step 1 — Verify it\'s you": enter your date of birth, or "Use an emailed code instead" (8-digit code).'],
         ['Gõ đúng cụm từ xác nhận và nhấn "Permanently delete account".', 'Type the exact confirmation phrase and tap "Permanently delete account".'],
       ]],
       ['tip', 'Không thể hoàn tác. Bạn không xóa được khi còn sở hữu sự kiện đang mở; hãy hủy hoặc kết thúc sự kiện trước. Yêu cầu bản sao dữ liệu: liên hệ email nêu trong Điều khoản.', 'This cannot be undone. You cannot delete while you still own an open event; cancel or end it first. To request a copy of your data, use the contact email in the Terms.'],
