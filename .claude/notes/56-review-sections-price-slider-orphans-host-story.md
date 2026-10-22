@@ -98,3 +98,7 @@ Source: the owner's 3 screenshots and 4 requests (2026-10-21). Plan: `~/.claude/
   - Reduce Motion gets a plain fade (iOS) or no animation (web).
 - Page 2's title is now "Giữ chỗ trong vài chạm" / "Hold a seat in a few taps". Its "30 minutes" point matches note 01.
 - Checked in the simulator (`testHowBanbeWorksHasHostPages` screenshots). Not checked on a device.
+- 2026-10-22 retime (owner: "too quick, jerky"). No spring or overshoot now: easeOutQuint (0.22, 1, 0.36, 1) on both
+  platforms.
+  - Tile: 0.8s from scale 0.85 / -4°, starting after 0.15s.
+  - Rows: 0.75s, rising 14pt, starting at 0.45s and then 0.18s apart, so they begin after the page slide.

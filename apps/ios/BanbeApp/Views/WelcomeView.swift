@@ -231,8 +231,9 @@ struct StoryPageContent {
 }
 
 /// One story page's top: the emoji tile, the title and three emoji points. Each page is a fresh view (`.id`), so the
-/// entrance plays once per page: the tile pops, then the points rise in one after another. Quick and played only
-/// on arrival; Reduce Motion gets a plain fade.
+/// entrance plays once per page: the tile grows in, then the points drift up one after another. Unhurried,
+/// no-overshoot ease-out (owner, 2026-10-22: the first version felt too quick and jerky), and the points wait for
+/// the page's own slide to finish. Played only on arrival; Reduce Motion gets a plain fade.
 private struct StoryPointsView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -242,8 +243,9 @@ private struct StoryPointsView: View {
     var headingFocused: AccessibilityFocusState<Bool>.Binding
     @State private var shown = false
 
-    private func motion(_ delay: Double) -> Animation {
-        reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.42, dampingFraction: 0.82).delay(delay)
+    /// easeOutQuint: starts gently moving and settles softly, with no bounce.
+    private func motion(_ delay: Double, duration: Double = 0.7) -> Animation {
+        reduceMotion ? .easeOut(duration: 0.3) : .timingCurve(0.22, 1, 0.36, 1, duration: duration).delay(delay)
     }
 
     var body: some View {
@@ -252,10 +254,10 @@ private struct StoryPointsView: View {
                 .font(.system(size: 42))
                 .frame(width: 84, height: 84)
                 .background(tile, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                .scaleEffect(shown || reduceMotion ? 1 : 0.6)
-                .rotationEffect(.degrees(shown || reduceMotion ? 0 : -8))
+                .scaleEffect(shown || reduceMotion ? 1 : 0.85)
+                .rotationEffect(.degrees(shown || reduceMotion ? 0 : -4))
                 .opacity(shown ? 1 : 0)
-                .animation(motion(0), value: shown)
+                .animation(motion(0.15, duration: 0.8), value: shown)
                 .padding(.top, 40)
                 .accessibilityHidden(true)
             Text(content.title)
@@ -281,8 +283,8 @@ private struct StoryPointsView: View {
                     .padding(10)
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .opacity(shown ? 1 : 0)
-                    .offset(y: shown || reduceMotion ? 0 : 18)
-                    .animation(motion(0.12 + Double(i) * 0.08), value: shown)
+                    .offset(y: shown || reduceMotion ? 0 : 14)
+                    .animation(motion(reduceMotion ? 0 : 0.45 + Double(i) * 0.18, duration: 0.75), value: shown)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("welcome.story.point.\(page).\(i)")
                 }

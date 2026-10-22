@@ -129,7 +129,7 @@ export default function Welcome() {
               <h1 style={display(32, { margin: '14px 0 0', lineHeight: 1.15 })}>{pages[page].title}</h1>
               <ul data-testid="welcome-story-points" style={{ listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {pages[page].points.map(([emoji, text], i) => (
-                  <li key={i} className="bb-story-rise" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 10, borderRadius: 18, background: 'var(--bb-field)', animationDelay: `${120 + i * 80}ms` }}>
+                  <li key={i} className="bb-story-rise" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 10, borderRadius: 18, background: 'var(--bb-field)', animationDelay: `${450 + i * 180}ms` }}>
                     <span aria-hidden style={{ flex: 'none', width: 46, height: 46, borderRadius: 14, background: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>{emoji}</span>
                     <span style={{ fontSize: 16.5, fontWeight: 500, lineHeight: 1.4 }}>{text}</span>
                   </li>
