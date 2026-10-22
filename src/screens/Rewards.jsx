@@ -130,7 +130,7 @@ export default function Rewards() {
               <div data-testid="rewards-balance" style={{ ...fieldGlass({ flex: 1, padding: '16px 16px', borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 4 }) }}>
                 <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{T('Số dư xu', 'Coin balance')}</span>
                 <span style={{ ...display(30) }} aria-label={T(`${r.balance} xu`, `${r.balance} coins`)}>{r.balance}</span>
-                {r.balance < 0 && <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T('Số dư âm do điểm danh bị huỷ; kiếm thêm để về 0.', 'Negative because a check-in was undone; earn coins to get back to 0.')}</span>}
+                {r.balance < 0 && <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T('Số dư âm do điểm danh bị huỷ. Kiếm thêm để về 0.', 'Negative because a check-in was undone. Earn coins to get back to 0.')}</span>}
               </div>
               {ws ? (
                 <div data-testid="rewards-week-streak" style={{ ...fieldGlass({ flex: 1, padding: '16px 16px', borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 4 }) }}>
@@ -397,7 +397,7 @@ export default function Rewards() {
               <ul style={{ margin: 0, paddingInlineStart: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {redemptionTermsLines(T, !!ws).map((l, i) => <li key={i} style={{ fontSize: 12.5, lineHeight: 1.5, color: ink }}>{l}</li>)}
               </ul>
-              <p style={{ fontSize: 11, color: ink, opacity: 0.6, margin: '12px 0 0' }}>{T(`Phiên bản quy tắc ${r.rules?.version ?? 1}. Các con số là đề xuất MVP và có thể thay đổi; mọi thay đổi có số phiên bản mới.`, `Rules version ${r.rules?.version ?? 1}. Numbers are an MVP proposal and may change; any change gets a new version.`)}</p>
+              <p style={{ fontSize: 11, color: ink, opacity: 0.6, margin: '12px 0 0' }}>{T(`Phiên bản quy tắc ${r.rules?.version ?? 1}. Các con số là đề xuất MVP và có thể thay đổi. Mọi thay đổi có số phiên bản mới.`, `Rules version ${r.rules?.version ?? 1}. Numbers are an MVP proposal and may change. Any change gets a new version.`)}</p>
             </section>
           </>
         )}

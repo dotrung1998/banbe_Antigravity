@@ -254,7 +254,7 @@ enum GiftTicketPDFGenerator {
                         ? "No import link on this ticket. Enter the claim code from your message in banbe, or send it to us and we will reissue the PDF."
                         : "Vé này không có liên kết nhận vé. Hãy nhập mã nhận vé trong tin nhắn vào banbe, hoặc gửi lại cho banbe để cấp lại PDF.")
                     : (isEN
-                        ? "Opens the installed banbe app. You can attend with just this QR — no account needed."
+                        ? "Opens the installed banbe app. You can attend with just this QR. No account needed."
                         : "Mở ứng dụng banbe đã cài. Bạn vẫn có thể vào cửa chỉ với mã QR này, không cần tài khoản.")
                 drawCentered(importNote,
                              in: CGRect(x: margin, y: importRect.maxY + 6, width: contentWidth, height: 24),

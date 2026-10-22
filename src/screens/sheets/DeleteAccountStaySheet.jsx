@@ -52,8 +52,8 @@ export default function DeleteAccountStaySheet() {
     },
     takeABreak: {
       title: T('Cần nghỉ một chút?', 'Need a break?'),
-      body: T('Đăng xuất thay vì xoá — vé, lịch sử và sự kiện đã lưu vẫn còn khi bạn quay lại.',
-        "Sign out instead of deleting — your tickets, history and saved events are here when you're back."),
+      body: T('Đăng xuất thay vì xoá. Vé, lịch sử và sự kiện đã lưu vẫn còn khi bạn quay lại.',
+        "Sign out instead of deleting. Your tickets, history and saved events are here when you're back."),
       button: T('Đăng xuất', 'Sign out'),
     },
   };
@@ -103,7 +103,7 @@ export default function DeleteAccountStaySheet() {
 
         <div style={{ marginTop: 18 }}>
           <div style={{ fontSize: 16, fontWeight: 600 }}>{T('Vì sao bạn muốn rời đi?', 'Why are you leaving?')}</div>
-          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>{T('Không bắt buộc — giúp chúng tôi gợi ý cách khắc phục.', 'Optional — helps us suggest a fix.')}</div>
+          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>{T('Không bắt buộc, giúp chúng tôi gợi ý cách khắc phục.', 'Optional, helps us suggest a fix.')}</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
             {DELETE_REASONS.map(r => {
               const on = r.code === reason;

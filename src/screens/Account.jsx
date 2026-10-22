@@ -931,7 +931,7 @@ export default function Account() {
             <span aria-hidden style={{ flex: 'none', width: 24, height: 24, borderRadius: '50%', background: ink, color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, lineHeight: 1 }}>+</span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
               <span style={{ fontSize: 15, fontWeight: 600, color: ink }}>{T('Đăng story', 'Post a story')}</span>
-              <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{T('Thêm chữ và liên kết, sửa hoặc xóa sau khi đăng', 'Add text and a link; edit or delete after posting')}</span>
+              <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{T('Thêm chữ và liên kết, sửa hoặc xóa sau khi đăng', 'Add text and a link, edit or delete after posting')}</span>
             </div>
             <span aria-hidden style={{ fontSize: 12, color: ink, opacity: 0.5 }}>⌃⌄</span>
           </div>

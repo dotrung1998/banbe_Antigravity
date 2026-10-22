@@ -277,7 +277,7 @@ struct DisputeChatPanel: View {
                          "This conversation is temporary: once the dispute is settled it deletes itself after 7 days.")
         }
         return app.T("Cuộc trò chuyện này là tạm thời: sẽ bị xoá sau khi banbe đưa ra quyết định, và bản ghi được gửi qua email cho cả hai bên.",
-                     "This conversation is temporary — it is deleted once banbe rules on the dispute, and a copy is emailed to both of you.")
+                     "This conversation is temporary. It is deleted once banbe rules on the dispute, and a copy is emailed to both of you.")
     }
 
     @ViewBuilder

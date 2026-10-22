@@ -129,7 +129,7 @@ export function SubmittedEventsRow({ submitted, grouped = false }) {
               style={{ borderTop: `1px solid ${rule}`, padding: '13px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
             >
               <span style={{ fontSize: 12.5, fontWeight: 600, color: alert, textDecoration: 'underline' }}>
-                {T(`${needsFix.length} sự kiện cần chỉnh sửa — sửa & gửi lại`, `${needsFix.length} event(s) need fixing — fix & resubmit`)}
+                {T(`${needsFix.length} sự kiện cần chỉnh sửa, sửa & gửi lại`, `${needsFix.length} event(s) need fixing, fix & resubmit`)}
               </span>
               <span style={{ fontSize: 13, color: ink, opacity: 0.5 }}>›</span>
             </div>

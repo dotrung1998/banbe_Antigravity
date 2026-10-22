@@ -71,6 +71,9 @@ struct AdminTestAccountsView: View {
     @State private var busy = false
     @State private var message = ""
     @State private var messageIsError = false
+    // TESTING PHASE: delete the found account (server: /api/auth admin_delete_account).
+    @State private var confirmDelete = false
+    @State private var deleting = false
 
     private func errorText(_ code: String?) -> String {
         switch code {
@@ -81,7 +84,9 @@ struct AdminTestAccountsView: View {
         case "INVALID_PHONE": return app.T("Số điện thoại phải theo định dạng quốc tế, ví dụ +4917656035288.", "Phone must be international format, e.g. +4917656035288.")
         case "PHONE_IN_USE": return app.T("Số này đã gắn với tài khoản khác.", "That number already belongs to another account.")
         case "INVALID_DOB": return app.T("Ngày sinh không hợp lệ.", "Invalid date of birth.")
-        case "DOB_ALREADY_SET": return app.T("Tài khoản đã có ngày sinh khác — không được ghi đè.", "This account already has a different date of birth — it is never overwritten.")
+        case "TARGET_IS_ADMIN": return app.T("Không thể xoá tài khoản quản trị viên ở đây.", "Admin accounts can't be deleted here.")
+        case "ACCOUNT_DELETION_BLOCKED_OPEN_EVENT": return app.T("Tài khoản này còn sự kiện đang mở. Huỷ hoặc gỡ sự kiện trước.", "This account still owns an open event. Cancel or remove it first.")
+        case "DOB_ALREADY_SET": return app.T("Tài khoản đã có ngày sinh khác. Ngày sinh không bao giờ bị ghi đè.", "This account already has a different date of birth. It is never overwritten.")
         default: return app.T("Không thực hiện được. Thử lại.", "Couldn't do that. Try again.")
         }
     }
@@ -164,6 +169,35 @@ struct AdminTestAccountsView: View {
         } catch { show(errorText(nil), error: true) }
     }
 
+    /// TESTING PHASE (owner, 2026-10-22): frees a test email without going through that account's own deletion flow.
+    /// The server checks the caller is an admin, refuses admins and accounts that still own an open event, writes
+    /// the admin action log, then runs the same deletion workflow as Delete Account.
+    private func deleteFound() async {
+        guard let f = found, let id = f.userId else { return }
+        deleting = true; message = ""
+        defer { deleting = false }
+        guard let url = URL(string: AppConfig.apiBaseURL + "/api/auth"),
+              let token = try? await SupabaseService.client.auth.session.accessToken else { show(errorText(nil), error: true); return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["type": "admin_delete_account", "userId": id.uuidString.lowercased()])
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode), json["deleted"] as? Bool == true else {
+                let code = json["error"] as? String
+                let names = ((json["openEvents"] as? [[String: Any]]) ?? []).compactMap { $0["name"] as? String }.joined(separator: ", ")
+                show(errorText(code) + (names.isEmpty ? "" : " (\(names))"), error: true)
+                return
+            }
+            let gone = f.email ?? ""
+            found = nil; email = ""; phone = ""
+            show(app.T("Đã xoá \(gone). Email này có thể dùng để đăng ký lại.", "Deleted \(gone). This email can be used to sign up again."), error: false)
+        } catch { show(errorText(nil), error: true) }
+    }
+
     private func search() async {
         let q = nameQuery.trimmingCharacters(in: .whitespaces)
         guard q.count >= 2 else { matches = []; return }
@@ -185,7 +219,7 @@ struct AdminTestAccountsView: View {
                     .padding(.top, 8)
                     .accessibilityIdentifier("adminTest.back")
 
-                Text(app.T("Tài khoản thử nghiệm", "Test accounts"))
+                Text(app.T("Tài Khoản Thử Nghiệm", "Test Accounts"))
                     .font(BanbeTheme.display(24)).padding(.top, 14)
                     .accessibilityIdentifier("adminTest.title")
                 Text(app.T("Miễn bước SMS cho tài khoản thử nghiệm. Số điện thoại KHÔNG được đánh dấu đã xác minh, không gửi SMS, và vẫn phải nhập/xác nhận ngày sinh.",
@@ -197,8 +231,8 @@ struct AdminTestAccountsView: View {
                         Text(app.T("Bỏ qua SMS cho tất cả", "Bypass SMS for everyone"))
                             .font(.system(size: 14, weight: .semibold))
                         Text(bypassAll == nil ? app.T("Đang tải…", "Loading…")
-                             : bypassAll == true ? app.T("ĐANG BẬT — không ai phải xác minh SMS.", "ON — nobody has to verify by SMS.")
-                             : app.T("Đang tắt — người dùng phải xác minh SMS.", "Off — users must verify by SMS."))
+                             : bypassAll == true ? app.T("ĐANG BẬT. Không ai phải xác minh SMS.", "ON. Nobody has to verify by SMS.")
+                             : app.T("Đang tắt. Người dùng phải xác minh SMS.", "Off. Users must verify by SMS."))
                             .font(.system(size: 11.5)).opacity(0.7)
                     }
                     Spacer(minLength: 0)
@@ -209,11 +243,10 @@ struct AdminTestAccountsView: View {
                 .padding(.top, 14)
                 .accessibilityIdentifier("adminTest.bypassCard")
 
-                field("email@example.com", text: $email, id: "adminTest.email", keyboard: .emailAddress).padding(.top, 10)
-                InkButton(title: app.T("Tìm tài khoản", "Find account")) { Task { await lookup() } }
-                    .disabled(busy || email.trimmingCharacters(in: .whitespaces).isEmpty)
-                    .padding(.top, 12)
-                    .accessibilityIdentifier("adminTest.find")
+                field("email@example.com", text: $email, id: "adminTest.email", keyboard: .emailAddress)
+                    .submitLabel(.search)
+                    .onSubmit { if !email.trimmingCharacters(in: .whitespaces).isEmpty { Task { await lookup() } } }
+                    .padding(.top, 10)
 
                 field(app.T("Hoặc tìm theo tên hiển thị", "Or search by display name"), text: $nameQuery, id: "adminTest.name")
                     .padding(.top, 10)
@@ -263,6 +296,27 @@ struct AdminTestAccountsView: View {
                         Text(app.T("Số chỉ lưu trong hồ sơ, không có trong Auth nên không dùng được cho tin nhắn quảng bá.",
                                    "The number is stored on the profile only (not in Auth), so it does not enable promo texting."))
                             .font(.system(size: 11.5)).opacity(0.65)
+                        if f.role != "admin" {
+                            Button { confirmDelete = true } label: {
+                                Text(deleting ? app.T("Đang xoá…", "Deleting…") : app.T("Xoá tài khoản", "Delete account"))
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(BanbeTheme.alert)
+                                    .frame(maxWidth: .infinity, minHeight: 46)
+                                    .overlay(Capsule().stroke(BanbeTheme.alert, lineWidth: 1.2))
+                                    .contentShape(Capsule())
+                            }
+                            .buttonStyle(PressableButtonStyle())
+                            .disabled(deleting || busy)
+                            .padding(.top, 6)
+                            .accessibilityIdentifier("adminTest.delete")
+                        }
+                    }
+                    .alert(app.T("Xoá tài khoản này?", "Delete this account?"), isPresented: $confirmDelete) {
+                        Button(app.T("Huỷ", "Cancel"), role: .cancel) {}
+                        Button(app.T("Xoá vĩnh viễn", "Delete permanently"), role: .destructive) { Task { await deleteFound() } }
+                    } message: {
+                        Text(app.T("\(f.email ?? "") và mọi dữ liệu gắn với tài khoản sẽ bị xoá vĩnh viễn. Không thể hoàn tác. Email này có thể đăng ký lại sau đó.",
+                                   "\(f.email ?? "") and everything tied to the account are deleted permanently. This can't be undone. The email can sign up again afterwards."))
                     }
                     .padding(16)
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -277,6 +331,14 @@ struct AdminTestAccountsView: View {
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 30).padding(.bottom, 42)
+        }
+        // The main action always sits at the very bottom (owner, 2026-10-22).
+        .safeAreaInset(edge: .bottom) {
+            InkButton(title: busy && found == nil ? app.T("Đang tìm…", "Finding…") : app.T("Tìm tài khoản", "Find account")) { Task { await lookup() } }
+                .disabled(busy || email.trimmingCharacters(in: .whitespaces).isEmpty)
+                .padding(.horizontal, 30).padding(.top, 10).padding(.bottom, 8)
+                .background(app.palette.paper.ignoresSafeArea(edges: .bottom))
+                .accessibilityIdentifier("adminTest.find")
         }
         .task { await loadBypass() }
         .alert(confirmTo == true ? app.T("Bật bỏ qua SMS cho tất cả?", "Bypass SMS for everyone?")

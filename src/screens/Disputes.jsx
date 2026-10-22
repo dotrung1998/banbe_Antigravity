@@ -57,7 +57,7 @@ export default function Disputes() {
         <h1 style={{ ...display(24, { margin: 0, display: 'flex', alignItems: 'center', gap: 10 }) }} data-testid="disputes-title"><HostTitleIcon kind="alertShield" group="adminReview" />{T('Tranh Chấp Thanh Toán', 'Payment Disputes')}</h1>
         <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
           {T('Khách khẳng định đã chuyển, người tổ chức không tìm thấy. Chỗ vẫn đang bị khoá cho tới khi có quyết định.',
-             "The guest says they paid; the organizer can't find it. The seat stays locked until this is decided.")}
+             "The guest says they paid, the organizer can't find it. The seat stays locked until this is decided.")}
         </p>
       </div>
 

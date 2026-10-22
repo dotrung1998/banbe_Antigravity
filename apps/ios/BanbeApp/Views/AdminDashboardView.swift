@@ -42,7 +42,7 @@ struct AdminDashboardView: View {
                 }
                 .padding(.top, 14)
                 Text(app.T("Khách khẳng định đã chuyển, người tổ chức không tìm thấy. Chỗ vẫn đang bị khoá cho tới khi có quyết định.",
-                           "The guest says they paid; the organizer can't find it. The seat stays locked until this is decided."))
+                           "The guest says they paid. The organizer can't find it. The seat stays locked until this is decided."))
                     .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                     .padding(.top, 8)
 

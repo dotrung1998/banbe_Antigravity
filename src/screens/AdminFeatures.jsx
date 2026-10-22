@@ -20,8 +20,8 @@ const FLAGS = [
     key: 'rewards_v2',
     vi: 'Phần thưởng v2: chuỗi tuần, cấp huy hiệu, mục tiêu',
     en: 'Rewards v2: week streak, badge tiers, goals',
-    hintVi: 'Chuỗi theo tuần với tuần nghỉ và khôi phục, huy hiệu nhiều cấp, huy hiệu tiếp theo và mục tiêu tháng (migration 192). Mặc định tắt; cần bật Phần thưởng.',
-    hintEn: 'Weekly streak with grace weeks and repair, tiered badges, next badge and a monthly goal (migration 192). Off by default; needs Rewards on.',
+    hintVi: 'Chuỗi theo tuần với tuần nghỉ và khôi phục, huy hiệu nhiều cấp, huy hiệu tiếp theo và mục tiêu tháng (migration 192). Mặc định tắt. Cần bật Phần thưởng.',
+    hintEn: 'Weekly streak with grace weeks and repair, tiered badges, next badge and a monthly goal (migration 192). Off by default. Needs Rewards on.',
   },
 ];
 

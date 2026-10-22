@@ -382,43 +382,55 @@ async function handleDeleteAccount(req, res, admin, body) {
     return res.status(403).json({ error: 'REAUTH_REQUIRED' });
   }
 
-  // Open-event refusal — matches Policy's own "refused while you still own
-  // an open event" claim. "Open" = a currently live or pending-review
-  // event on any organizer this user owns (owner_id OR user_id — both are
-  // real ownership links per the schema, migration 001). A draft/cancelled/
-  // ended event never blocks.
+  const check = await checkDeletionAllowed(admin, userId);
+  if (check.status) return res.status(check.status).json(check.json);
+  const done = await performAccountDeletion(admin, userId, check.ownedOrgs, {
+    code: getText(body.reasonCode), text: getText(body.reasonText),
+  });
+  return res.status(done.status).json(done.json);
+}
+
+// Open-event refusal — matches Policy's own "refused while you still own an open event" claim. "Open" = a
+// currently live or pending-review event on any organizer this user owns (owner_id OR user_id — both are real
+// ownership links per the schema, migration 001). A draft/cancelled/ended event never blocks. Shared by the
+// self-service deletion and the admin one. Returns { ownedOrgs } or { status, json } to send back.
+async function checkDeletionAllowed(admin, userId) {
   const { data: ownedOrgs, error: orgError } = await admin
     .from('organizers')
     .select('id, name')
     .or(`owner_id.eq.${userId},user_id.eq.${userId}`);
   if (orgError) {
     console.error('Account deletion: organizer ownership lookup failed:', orgError);
-    return res.status(502).json({ error: 'ACCOUNT_DELETION_LOOKUP_FAILED' });
+    return { status: 502, json: { error: 'ACCOUNT_DELETION_LOOKUP_FAILED' } };
   }
   const orgIds = (ownedOrgs || []).map(o => o.id);
   if (orgIds.length) {
-    // Fetch every non-terminal-status candidate and let the pure function
-    // decide what actually blocks — see api/_lib/accountDeletion.js
-    // (unit-tested in tests/unit/account-deletion-open-event.test.mjs),
-    // rather than re-encoding the "which statuses count as open" rule
-    // twice (once in this query's own `.in(...)`, once conceptually).
+    // Fetch every candidate and let the pure function decide what actually blocks — see
+    // api/_lib/accountDeletion.js (unit-tested in tests/unit/account-deletion-open-event.test.mjs).
     const { data: candidateEvents, error: eventsError } = await admin
       .from('events')
       .select('id, name, status, starts_at')
       .in('organizer_id', orgIds);
     if (eventsError) {
       console.error('Account deletion: open-event lookup failed:', eventsError);
-      return res.status(502).json({ error: 'ACCOUNT_DELETION_LOOKUP_FAILED' });
+      return { status: 502, json: { error: 'ACCOUNT_DELETION_LOOKUP_FAILED' } };
     }
     const openEvents = findOpenEventsBlockingDeletion(candidateEvents);
     if (openEvents.length) {
-      return res.status(409).json({
-        error: 'ACCOUNT_DELETION_BLOCKED_OPEN_EVENT',
-        openEvents: openEvents.map(e => ({ id: e.id, name: e.name, status: e.status })),
-      });
+      return {
+        status: 409,
+        json: {
+          error: 'ACCOUNT_DELETION_BLOCKED_OPEN_EVENT',
+          openEvents: openEvents.map(e => ({ id: e.id, name: e.name, status: e.status })),
+        },
+      };
     }
   }
+  return { ownedOrgs: ownedOrgs || [] };
+}
 
+// The deletion workflow shared by self-service and admin deletion. `reason` = { code, text } for the tracking row.
+async function performAccountDeletion(admin, userId, ownedOrgs, reason) {
   // Record the attempt BEFORE doing anything destructive — a row always
   // exists even if the very next step throws.
   const { data: reqRow, error: insertError } = await admin
@@ -426,14 +438,14 @@ async function handleDeleteAccount(req, res, admin, body) {
     .insert({
       user_id: userId,
       status: 'processing',
-      reason_code: getText(body.reasonCode) || null,
-      reason_text: getText(body.reasonText).slice(0, 500) || null,
+      reason_code: reason.code || null,
+      reason_text: (reason.text || '').slice(0, 500) || null,
     })
     .select('id')
     .single();
   if (insertError || !reqRow) {
     console.error('Account deletion: could not create tracking row:', insertError);
-    return res.status(502).json({ error: 'ACCOUNT_DELETION_INIT_FAILED' });
+    return { status: 502, json: { error: 'ACCOUNT_DELETION_INIT_FAILED' } };
   }
   const requestId = reqRow.id;
 
@@ -472,7 +484,7 @@ async function handleDeleteAccount(req, res, admin, body) {
   // can be retried; file-removal problems are recorded, not fatal.
   try {
     const summary = [];
-    for (const org of ownedOrgs || []) {
+    for (const org of ownedOrgs) {
       const facts = await gatherOrganizerFacts(admin, org.id, userId);
       const action = planOrganizerCleanup(facts);
       const result = await applyOrganizerCleanup(admin, org.id, action);
@@ -483,7 +495,7 @@ async function handleDeleteAccount(req, res, admin, body) {
     await markStep(admin, requestId, 'organizer_cleanup', `failed: ${error?.message || error}`);
     await admin.from('account_deletion_requests').update({ status: 'failed', error_detail: `organizer_cleanup: ${error?.message || error}` }).eq('id', requestId);
     console.error('Account deletion: organizer cleanup failed:', error);
-    return res.status(502).json({ error: 'ACCOUNT_DELETION_ORGANIZER_CLEANUP_FAILED' });
+    return { status: 502, json: { error: 'ACCOUNT_DELETION_ORGANIZER_CLEANUP_FAILED' } };
   }
 
   // Step 2 — the actual account deletion. `profiles.id REFERENCES
@@ -499,7 +511,7 @@ async function handleDeleteAccount(req, res, admin, body) {
       error_detail: deleteError.message || String(deleteError),
     }).eq('id', requestId);
     console.error('Account deletion: auth.admin.deleteUser failed:', deleteError);
-    return res.status(502).json({ error: 'ACCOUNT_DELETION_FAILED', requestId });
+    return { status: 502, json: { error: 'ACCOUNT_DELETION_FAILED', requestId } };
   }
   await markStep(admin, requestId, 'auth_delete', 'ok');
 
@@ -508,7 +520,53 @@ async function handleDeleteAccount(req, res, admin, body) {
     completed_at: new Date().toISOString(),
   }).eq('id', requestId);
 
-  return res.status(200).json({ deleted: true, requestId });
+  return { status: 200, json: { deleted: true, requestId } };
+}
+
+// TESTING PHASE (owner, 2026-10-22): an admin deletes another user's account from Admin > Test Accounts, so test
+// emails can be reused without going through each account's own deletion flow. Same workflow and the same
+// open-event refusal as self-service deletion. The caller must be an admin. Admins (and the caller) can't be
+// deleted this way. The admin action log row is written BEFORE anything is deleted, so every deletion is audited.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function handleAdminDeleteAccount(req, res, admin, body) {
+  const token = getText((req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
+  if (!token) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const { data: userData, error: userError } = await admin.auth.getUser(token);
+  if (userError || !userData?.user) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const callerId = userData.user.id;
+
+  const { data: caller } = await admin.from('profiles').select('role').eq('id', callerId).maybeSingle();
+  if (caller?.role !== 'admin') return res.status(403).json({ error: 'NOT_AUTHORIZED' });
+
+  const targetId = getText(body.userId);
+  if (!UUID_PATTERN.test(targetId)) return res.status(400).json({ error: 'INVALID_VALUE' });
+  if (targetId === callerId) return res.status(400).json({ error: 'INVALID_TARGET' });
+
+  const { data: targetAuth, error: targetError } = await admin.auth.admin.getUserById(targetId);
+  if (targetError || !targetAuth?.user) return res.status(404).json({ error: 'USER_NOT_FOUND' });
+  const { data: target } = await admin.from('profiles').select('role, display_name').eq('id', targetId).maybeSingle();
+  if (target?.role === 'admin') return res.status(400).json({ error: 'TARGET_IS_ADMIN' });
+
+  const check = await checkDeletionAllowed(admin, targetId);
+  if (check.status) return res.status(check.status).json(check.json);
+
+  const { error: logError } = await admin.from('admin_action_log').insert({
+    actor_id: callerId,
+    action: 'user_deleted',
+    target_user_id: targetId,
+    target_email: targetAuth.user.email || null,
+    meta: { display_name: target?.display_name || null, via: 'admin_test_accounts' },
+  });
+  if (logError) {
+    console.error('Admin account deletion: audit log write failed:', logError);
+    return res.status(502).json({ error: 'ACCOUNT_DELETION_INIT_FAILED' });
+  }
+
+  const done = await performAccountDeletion(admin, targetId, check.ownedOrgs, {
+    code: 'admin_deleted', text: `Deleted by admin ${callerId} (testing phase)`,
+  });
+  return res.status(done.status).json(done.json);
 }
 
 export default async function handler(req, res) {
@@ -527,6 +585,10 @@ export default async function handler(req, res) {
   if (type === 'delete_account') {
     if (!admin) return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED', missing: ['SUPABASE_SERVICE_ROLE_KEY'] });
     return handleDeleteAccount(req, res, admin, body);
+  }
+  if (type === 'admin_delete_account') {
+    if (!admin) return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED', missing: ['SUPABASE_SERVICE_ROLE_KEY'] });
+    return handleAdminDeleteAccount(req, res, admin, body);
   }
   if (type === 'verify_reauth') {
     if (!admin) return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED', missing: ['SUPABASE_SERVICE_ROLE_KEY'] });

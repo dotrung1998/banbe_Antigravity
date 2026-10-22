@@ -74,8 +74,8 @@ export default function DeleteAccountSheet() {
         </div>
         <p style={{ fontSize: 13, lineHeight: 1.6, color: ink, marginTop: 18 }}>
           {T(
-            'Đây là hành động vĩnh viễn. Sau khi xóa: các đặt chỗ/tin nhắn của bạn sẽ được tách khỏi danh tính (không hiển thị tên bạn nữa) thay vì bị xóa hoàn toàn khi cần giữ hồ sơ giao dịch; các dữ liệu cá nhân khác (hồ sơ, ảnh đại diện, mục yêu thích) sẽ bị xóa hẳn. Nếu bạn đang sở hữu một sự kiện còn đang mở, bạn sẽ cần hủy/kết thúc sự kiện đó trước.',
-            'This is permanent. After deletion: your bookings/messages are detached from your identity (your name no longer shows) rather than fully erased where a transaction record needs to stay; other personal data (profile, avatar, favorites) is erased outright. If you currently own an open event, you’ll need to cancel/end it first.'
+            'Đây là hành động vĩnh viễn. Sau khi xóa: các đặt chỗ/tin nhắn của bạn sẽ được tách khỏi danh tính (không hiển thị tên bạn nữa) thay vì bị xóa hoàn toàn khi cần giữ hồ sơ giao dịch. Các dữ liệu cá nhân khác (hồ sơ, ảnh đại diện, mục yêu thích) sẽ bị xóa hẳn. Nếu bạn đang sở hữu một sự kiện còn đang mở, bạn sẽ cần hủy/kết thúc sự kiện đó trước.',
+            'This is permanent. After deletion: your bookings/messages are detached from your identity (your name no longer shows) rather than fully erased where a transaction record needs to stay. Other personal data (profile, avatar, favorites) is erased outright. If you currently own an open event, you’ll need to cancel/end it first.'
           )}
         </p>
     </>
@@ -99,7 +99,7 @@ export default function DeleteAccountSheet() {
       <SheetShell>
         <div onClick={() => setDeleteAccountStep('intro')} data-testid="delete-account-back-reason" style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</div>
         <h1 style={{ ...display(22, { margin: '18px 0 4px' }) }}>{T('Vì sao bạn muốn rời đi?', 'Why are you leaving?')}</h1>
-        <p style={{ fontSize: 12.5, color: ink, opacity: 0.7, margin: '0 0 14px' }}>{T('Không bắt buộc — chỉ để chúng tôi cải thiện.', 'Optional — just helps us improve.')}</p>
+        <p style={{ fontSize: 12.5, color: ink, opacity: 0.7, margin: '0 0 14px' }}>{T('Không bắt buộc, chỉ để chúng tôi cải thiện.', 'Optional, just helps us improve.')}</p>
         {REASONS.map(r => (
           <div
             key={r.code}
@@ -149,7 +149,7 @@ export default function DeleteAccountSheet() {
             never treated as proof here — see FaceIDLockView's own scope,
             nothing server-side ever reads it. */}
         <div style={{ ...cardGlass({ marginTop: 14, padding: '14px 16px' }) }} data-testid="delete-account-reauth">
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: ink }}>{T('Bước 1 — Xác minh danh tính', 'Step 1 — Verify it’s you')}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: ink }}>{T('Bước 1. Xác minh danh tính', 'Step 1. Verify it’s you')}</span>
           {(reauthMode === 'dob' || s.deleteAccountReauthVerified) ? (
             s.deleteAccountReauthVerified ? (
               <p style={{ fontSize: 12.5, color: ink, marginTop: 8 }} data-testid="delete-account-reauth-done">✓ {T('Đã xác minh', 'Verified')}</p>
@@ -203,7 +203,7 @@ export default function DeleteAccountSheet() {
 
         {/* Exact-phrase gate */}
         <div style={{ ...cardGlass({ marginTop: 14, padding: '14px 16px' }) }} data-testid="delete-account-phrase-block">
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: ink }}>{T('Bước 2 — Gõ để xác nhận', 'Step 2 — Type to confirm')}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: ink }}>{T('Bước 2. Gõ để xác nhận', 'Step 2. Type to confirm')}</span>
           <p style={{ fontSize: 12, color: ink, opacity: 0.75, marginTop: 6 }}>
             {T('Gõ chính xác cụm sau:', 'Type the exact phrase:')} <b style={{ userSelect: 'all' }} data-testid="delete-account-phrase-target">{DELETE_PHRASE}</b>
           </p>

@@ -447,11 +447,11 @@ input::placeholder, textarea::placeholder {
 /* For You intro entrance (2026-10-21): rise from below, staggered per tile via animation-delay. */
 @keyframes bbRiseIn { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
 /* "How banbe works" story: the emoji tile grows in, then each point drifts up in turn. Unhurried, no-overshoot
-   easeOutQuint (owner, 2026-10-22: the first version felt too quick and jerky); per-row delays set inline. */
+   easeOutQuint (owner, 2026-10-22: slowed twice so it reads calmly); per-row delays set inline. */
 @keyframes bbStoryPop { from { opacity: 0; transform: scale(0.85) rotate(-4deg); } to { opacity: 1; transform: none; } }
 @keyframes bbStoryRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
-.bb-story-pop { animation: bbStoryPop .8s cubic-bezier(.22,1,.36,1) .15s both; }
-.bb-story-rise { animation: bbStoryRise .75s cubic-bezier(.22,1,.36,1) backwards; }
+.bb-story-pop { animation: bbStoryPop 1.1s cubic-bezier(.22,1,.36,1) .2s both; }
+.bb-story-rise { animation: bbStoryRise 1s cubic-bezier(.22,1,.36,1) backwards; }
 @media (prefers-reduced-motion: reduce) {
   .bb-charm, .bb-slide, .bb-row-reveal, .bb-rise, .bb-story-pop, .bb-story-rise { animation: none !important; }
 }

@@ -11,7 +11,7 @@ export function calendarDraft({ title, start, end, location, eventKey, origin },
   const realEnd = end != null && end > start ? end : null;
   const url = eventKey ? `${origin}/api/photo-share?eid=${encodeURIComponent(eventKey)}` : null;
   const notes = [T('Sự kiện trên banbe.', 'A banbe event.')];
-  if (realEnd == null) notes.push(T('Host chưa ghi giờ kết thúc; banbe tạm đặt 2 giờ, bạn có thể sửa.', "The host didn't list an end time; banbe filled in 2 hours, edit it if needed."));
+  if (realEnd == null) notes.push(T('Host chưa ghi giờ kết thúc. banbe tạm đặt 2 giờ, bạn có thể sửa.', "The host didn't list an end time. banbe filled in 2 hours, edit it if needed."));
   if (url) notes.push(url);
   const loc = (location || '').trim();
   return { title, start, end: realEnd ?? start + DEFAULT_DURATION_MS, location: loc || null, url, notes: notes.join('\n'), endIsEstimated: realEnd == null };

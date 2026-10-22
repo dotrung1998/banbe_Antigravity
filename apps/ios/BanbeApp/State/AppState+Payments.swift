@@ -787,7 +787,7 @@ extension AppState {
                     switch result.error ?? "" {
                     case "HOLD_EXPIRED_AND_SOLD_OUT":
                         return T("Rất tiếc, chỗ đã hết trong lúc chờ thanh toán. Hãy liên hệ người tổ chức để được hoàn tiền.",
-                                 "Sorry — the seat sold out while this was pending. Contact the organizer for a refund.")
+                                 "Sorry, the seat sold out while this was pending. Contact the organizer for a refund.")
                     default:
                         // Not one of the friendly-copy cases above — still
                         // surface the RPC's own error code (BOOKING_NOT_FOUND,

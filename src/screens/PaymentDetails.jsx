@@ -412,8 +412,8 @@ export default function PaymentDetails() {
                 {refundClaim.refund_due_at && new Date(refundClaim.refund_due_at).getTime() < Date.now() && (
                   <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="refund-overdue-help">
                     <p style={{ fontSize: 12.5, lineHeight: 1.5, color: alert, margin: 0 }}>
-                      {T('Đã quá hạn hoàn tiền. Nếu bạn chưa nhận được tiền, hãy nhắn cho host qua banbe trước; nếu vẫn chưa được, bạn có thể báo tranh chấp để admin banbe (mục “Tranh chấp thanh toán”) xử lý.',
-                         'The refund deadline has passed. If you haven\'t received the money, message the host through banbe first; if that doesn\'t work, raise a dispute and the banbe admin will handle it under “Payment disputes”.')}
+                      {T('Đã quá hạn hoàn tiền. Nếu bạn chưa nhận được tiền, hãy nhắn cho host qua banbe trước. Nếu vẫn chưa được, bạn có thể báo tranh chấp để admin banbe (mục “Tranh chấp thanh toán”) xử lý.',
+                         'The refund deadline has passed. If you haven\'t received the money, message the host through banbe first. If that doesn\'t work, raise a dispute and the banbe admin will handle it under “Payment disputes”.')}
                     </p>
                     <div style={{ display: 'flex', gap: 10 }}>
                       <div
@@ -784,8 +784,8 @@ export default function PaymentDetails() {
       </div>
 
       <p style={{ fontSize: 11.5, lineHeight: 1.6, color: ink, opacity: 0.65, margin: '20px 22px 40px' }}>
-        {T('banbe không thu tiền và không giữ tiền. Bạn chuyển trực tiếp cho người tổ chức; nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.',
-           'banbe does not collect or hold money. You pay the organizer directly; if they cancel, they are responsible for refunding you.')}
+        {T('banbe không thu tiền và không giữ tiền. Bạn chuyển trực tiếp cho người tổ chức. Nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.',
+           'banbe does not collect or hold money. You pay the organizer directly. If they cancel, they are responsible for refunding you.')}
       </p>
     </Frame>
   );

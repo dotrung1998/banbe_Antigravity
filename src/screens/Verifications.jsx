@@ -400,8 +400,8 @@ export default function Verifications() {
             {(hasRows || showEmpty) && (
               <span style={{ fontSize: 11, color: ink, opacity: 0.6 }} data-testid="refund-queue-explainer">
                 {T(
-                  'Khách đã chọn tài khoản nhận hoàn tiền của họ. Bạn chuyển khoản trực tiếp cho khách rồi đánh dấu đã hoàn tiền — không cần tạo phương thức nhận tiền riêng.',
-                  'The guest has already chosen their own refund destination. You transfer to them directly, then mark it sent — no receiving payment method of your own is needed here.'
+                  'Khách đã chọn tài khoản nhận hoàn tiền của họ. Bạn chuyển khoản trực tiếp cho khách rồi đánh dấu đã hoàn tiền. Không cần tạo phương thức nhận tiền riêng.',
+                  'The guest has already chosen their own refund destination. You transfer to them directly, then mark it sent. No receiving payment method of your own is needed here.'
                 )}
               </span>
             )}

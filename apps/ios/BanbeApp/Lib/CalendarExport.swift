@@ -38,8 +38,8 @@ enum CalendarExport {
             .flatMap { URL(string: "\(origin)/api/photo-share?eid=\($0)") }
         var notes = [T("Sự kiện trên banbe.", "A banbe event.")]
         if realEnd == nil {
-            notes.append(T("Host chưa ghi giờ kết thúc; banbe tạm đặt 2 giờ, bạn có thể sửa.",
-                           "The host didn't list an end time; banbe filled in 2 hours, edit it if needed."))
+            notes.append(T("Host chưa ghi giờ kết thúc. banbe tạm đặt 2 giờ, bạn có thể sửa.",
+                           "The host didn't list an end time. banbe filled in 2 hours, edit it if needed."))
         }
         if let link { notes.append(link.absoluteString) }
         let loc = location.trimmingCharacters(in: .whitespacesAndNewlines)

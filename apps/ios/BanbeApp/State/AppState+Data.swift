@@ -5207,8 +5207,8 @@ try await SupabaseService.client
                         if case .double(let d)? = result["count"] { count = Int(d) } else { count = 0 }
                         loading = false
                         createError = T(
-                            "Sự kiện cần 3-8 ảnh khả dụng (hiện có \(count)). Sự kiện đã được chuyển về bản nháp — hãy thêm/bớt ảnh rồi gửi lại.",
-                            "This event needs 3-8 available photos (it has \(count)). It's been moved back to draft — add or remove photos, then resubmit."
+                            "Sự kiện cần 3-8 ảnh khả dụng (hiện có \(count)). Sự kiện đã được chuyển về bản nháp. Hãy thêm/bớt ảnh rồi gửi lại.",
+                            "This event needs 3-8 available photos (it has \(count)). It's been moved back to draft. Add or remove photos, then resubmit."
                         )
                         return false
                     }

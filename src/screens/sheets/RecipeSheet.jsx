@@ -77,7 +77,7 @@ export default function RecipeSheet({ checks, hasData, n, onFix, onClose, T }) {
             {T(`${good}/${total} thành phần đã ổn.`, `${good} of ${total} ingredients in place.`)}{' '}
             {hasData
               ? T(`Số liệu từ ${n} sự kiện tương tự trên banbe.`, `Numbers come from ${n} similar events on banbe.`)
-              : T('Chưa đủ sự kiện tương tự để so sánh — đây là mẹo chung.', 'Not enough similar events to compare yet — these are general tips.')}
+              : T('Chưa đủ sự kiện tương tự để so sánh. Đây là mẹo chung.', 'Not enough similar events to compare yet. These are general tips.')}
             {' '}{T('Không bắt buộc để gửi.', 'Never required to submit.')}
           </div>
         </div>

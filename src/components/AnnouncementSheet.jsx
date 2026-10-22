@@ -58,7 +58,7 @@ export default function AnnouncementSheet({ eventKey, eventName, lang, T, send, 
           <div style={{ padding: '40px 22px', textAlign: 'center' }} data-testid="announcement-sent">
             <div style={{ fontSize: 34, color: alert }}>✓</div>
             <p style={{ fontSize: 15, fontWeight: 600, margin: '10px 0 4px' }}>{sent === 0 ? T('Chưa có khách nào khác để gửi', 'No other ticket holders to notify') : T(`Đã gửi cho ${sent} khách`, `Sent to ${sent} guest${sent === 1 ? '' : 's'}`)}</p>
-            <p style={{ fontSize: 12.5, opacity: 0.7, margin: 0 }}>{sent === 0 ? T('Thông báo chỉ gửi cho người giữ vé khác bạn (bạn không tự nhận thông báo của mình).', "Announcements go to ticket holders other than you; you don't receive your own.") : T('Khách nhận thông báo và tin nhắn nổi bật màu đỏ trong chat.', 'Guests get a notification and a red-highlighted chat message.')}</p>
+            <p style={{ fontSize: 12.5, opacity: 0.7, margin: 0 }}>{sent === 0 ? T('Thông báo chỉ gửi cho người giữ vé khác bạn (bạn không tự nhận thông báo của mình).', "Announcements go to ticket holders other than you. You don't receive your own.") : T('Khách nhận thông báo và tin nhắn nổi bật màu đỏ trong chat.', 'Guests get a notification and a red-highlighted chat message.')}</p>
           </div>
         ) : (
           <>
@@ -70,7 +70,7 @@ export default function AnnouncementSheet({ eventKey, eventName, lang, T, send, 
                 style={{ ...fieldGlass({ padding: '12px 14px', width: '100%', boxSizing: 'border-box', fontSize: 14, lineHeight: 1.45, resize: 'none', fontFamily: 'inherit', color: ink, border: `1px solid ${alert}` }) }}
               />
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, opacity: 0.65, margin: '4px 2px 0' }}>
-                <span>{templateId ? T('Từ mẫu — bạn có thể sửa', 'From a template — you can edit it') : T('Tin nhắn tuỳ chỉnh', 'Custom message')}</span>
+                <span>{templateId ? T('Từ mẫu, bạn có thể sửa', 'From a template, you can edit it') : T('Tin nhắn tuỳ chỉnh', 'Custom message')}</span>
                 <span style={{ color: tooLong ? alert : ink }}>{trimmed.length}/{ANNOUNCEMENT_MAX}</span>
               </div>
 

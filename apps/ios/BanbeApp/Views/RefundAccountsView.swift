@@ -270,7 +270,7 @@ struct RefundAccountsView: View {
                        "Add this account's or wallet's QR so the host can refund you faster: they just press and hold the code to open their payment app."))
                 .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
             if pendingQR != nil {
-                Label(app.T("Đã chọn mã QR — sẽ lưu cùng tài khoản.", "QR chosen — it will be saved with the account."),
+                Label(app.T("Đã chọn mã QR. Sẽ lưu cùng tài khoản.", "QR chosen. It will be saved with the account."),
                       systemImage: "checkmark.circle")
                     .font(.system(size: 12))
             } else if let existing, !existing.isEmpty {

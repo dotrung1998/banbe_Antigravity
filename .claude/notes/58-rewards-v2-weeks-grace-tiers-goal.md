@@ -1,4 +1,4 @@
-# 57 — Rewards v2: Phase 0 fixes + weekly streak, grace/repair, tiers, next badge, goal (2026-10-22)
+# 58 — Rewards v2: Phase 0 fixes + weekly streak, grace/repair, tiers, next badge, goal (2026-10-22)
 
 Branch `feat/rewards-v2` (worktree `../banbe-rewards-v2`), built from the approved plan
 (`~/.claude/plans/logical-spinning-iverson.md`). **Nothing applied to any Supabase project; not deployed.**

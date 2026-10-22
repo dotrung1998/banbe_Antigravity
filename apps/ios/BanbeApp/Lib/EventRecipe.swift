@@ -463,7 +463,7 @@ enum EventRecipe {
         case "title":
             let detail: String
             if c.status == .missing { detail = T("Thêm tên sự kiện.", "Add an event name.") }
-            else if c.shouting { detail = T("Tránh viết HOA toàn bộ — khó đọc hơn.", "Avoid ALL CAPS — it reads harder.") }
+            else if c.shouting { detail = T("Tránh viết HOA toàn bộ. Khó đọc hơn.", "Avoid ALL CAPS. It reads harder.") }
             else {
                 detail = T("3–10 từ, nói rõ khách sẽ làm gì (vd. \"Supper club 6 món, Quận 3\").",
                            "3–10 words that say what guests will do (e.g. \"6-course supper club, District 3\").") + " " + evidence
@@ -493,15 +493,15 @@ enum EventRecipe {
             let band = c.p25 != nil ? "\(formatVndShort(c.p25))–\(formatVndShort(c.p75))" : ""
             let title = T("Giá phù hợp", "A price that fits")
             guard c.source == .data else {
-                return (title, T("Sự kiện giá thấp thường được đặt sát ngày — hãy chia sẻ sớm và nhắc lại tuần cuối.",
-                                 "Low-priced events tend to book late — share early and again in the final week.") + " " + evidence)
+                return (title, T("Sự kiện giá thấp thường được đặt sát ngày. Hãy chia sẻ sớm và nhắc lại tuần cuối.",
+                                 "Low-priced events tend to book late. Share early and again in the final week.") + " " + evidence)
             }
             let pos: String
             switch c.position {
-            case "free": pos = T("Miễn phí — khách đặt dễ, nhưng tỉ lệ vắng cao hơn.", "Free — easy to book, but more no-shows.")
-            case "below": pos = T("Thấp hơn mức thường gặp (\(band)) — dễ kín chỗ.", "Below the typical \(band) — easier to fill.")
+            case "free": pos = T("Miễn phí. Khách đặt dễ, nhưng tỉ lệ vắng cao hơn.", "Free. Easy to book, but more no-shows.")
+            case "below": pos = T("Thấp hơn mức thường gặp (\(band)). Dễ kín chỗ.", "Below the typical \(band). Easier to fill.")
             case "typical": pos = T("Trong mức thường gặp \(band).", "Within the typical \(band).")
-            case "premium": pos = T("Cao hơn mức thường gặp \(band) — nói rõ vì sao đáng giá.", "Above the typical \(band) — say clearly why it's worth it.")
+            case "premium": pos = T("Cao hơn mức thường gặp \(band). Nói rõ vì sao đáng giá.", "Above the typical \(band). Say clearly why it's worth it.")
             default: pos = T("Mức thường gặp: \(band).", "Typical: \(band).")
             }
             return (title, pos + " " + evidence)
@@ -532,8 +532,8 @@ enum EventRecipe {
             return (T("Đăng trước \(target)+ ngày", "Post \(target)+ days ahead"), body + left + " " + evidence)
         case "greeting":
             return (T("Lời chào khi khách nhắn", "An opening message"),
-                    T("Khách nhắn tin hỏi trước khi đặt — một lời chào sẵn giúp họ yên tâm.",
-                      "Guests often message before booking — a ready greeting reassures them."))
+                    T("Khách nhắn tin hỏi trước khi đặt. Một lời chào sẵn giúp họ yên tâm.",
+                      "Guests often message before booking. A ready greeting reassures them."))
         default:
             return (c.id, "")
         }

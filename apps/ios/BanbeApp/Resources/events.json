@@ -18,7 +18,7 @@
     "urgent": true,
     "desc": "Mười bốn chỗ. Một ga-ra cải tạo ở Bình Thạnh. Minh nấu món gì chợ sáng có.",
     "included": "5 món ▪︎ rượu gạo ▪︎ cà phê",
-    "intro": "Một ga-ra cải tạo ở Bình Thạnh, mười bốn chỗ quanh một cái bàn dài. Minh nấu theo những gì chợ sáng hôm đó có — không thực đơn cố định, không lặp lại tuần trước.\n\nVé bao gồm 5 món, rượu gạo và cà phê.",
+    "intro": "Một ga-ra cải tạo ở Bình Thạnh, mười bốn chỗ quanh một cái bàn dài. Minh nấu theo những gì chợ sáng hôm đó có. Không thực đơn cố định, không lặp lại tuần trước.\n\nVé bao gồm 5 món, rượu gạo và cà phê.",
     "includedItems": [
       {
         "label": "5 món",
@@ -192,7 +192,7 @@
     "urgent": true,
     "desc": "Một bàn, mười sáu người lạ, sáu món. Không ai rời bàn trước món cuối.",
     "included": "6 món ▪︎ rượu vang ▪︎ nước lọc đầy bình",
-    "intro": "Một bàn dài, mười sáu người lạ, sáu món — không ai rời bàn trước món cuối cùng.\n\nBao gồm rượu vang và nước lọc rót đầy suốt bữa.",
+    "intro": "Một bàn dài, mười sáu người lạ, sáu món. Không ai rời bàn trước món cuối cùng.\n\nBao gồm rượu vang và nước lọc rót đầy suốt bữa.",
     "includedItems": [
       {
         "label": "6 món",
@@ -366,7 +366,7 @@
     "urgent": false,
     "desc": "Bữa tối trong vườn sau nhà, đèn dây và mưa thì dời vô hiên.",
     "included": "5 món ▪︎ cocktail mở màn",
-    "intro": "Bữa tối ngoài trời trong vườn sau nhà — đèn dây giăng ngang, trời mưa thì cả bàn dời vào hiên.\n\nBao gồm 5 món và một ly cocktail mở màn.",
+    "intro": "Bữa tối ngoài trời trong vườn sau nhà. Đèn dây giăng ngang, trời mưa thì cả bàn dời vào hiên.\n\nBao gồm 5 món và một ly cocktail mở màn.",
     "includedItems": [
       {
         "label": "5 món",
@@ -532,7 +532,7 @@
     "urgent": false,
     "desc": "Xưởng may mở cửa một buổi chiều. Xem rập, vải, và những mẫu chưa bao giờ bán.",
     "included": "Trà ▪︎ tour xưởng 30 phút",
-    "intro": "Một buổi chiều xưởng may mở cửa — rập, vải, và những mẫu chưa từng được bán ra ngoài, xem tận nơi.\n\nBao gồm trà và một vòng tham quan xưởng 30 phút.",
+    "intro": "Một buổi chiều xưởng may mở cửa. Rập, vải, và những mẫu chưa từng được bán ra ngoài, xem tận nơi.\n\nBao gồm trà và một vòng tham quan xưởng 30 phút.",
     "includedItems": [
       {
         "label": "Trà",
@@ -702,7 +702,7 @@
     "urgent": false,
     "desc": "Drop mới trên sân thượng, mặc thử dưới trời chiều. Bán hết là thôi.",
     "included": "Vào cửa ▪︎ sticker pack",
-    "intro": "Drop mới ra mắt trên sân thượng, mặc thử ngay dưới nắng chiều — số lượng giới hạn, bán hết là thôi.\n\nBao gồm vé vào cửa và một sticker pack.",
+    "intro": "Drop mới ra mắt trên sân thượng, mặc thử ngay dưới nắng chiều. Số lượng giới hạn, bán hết là thôi.\n\nBao gồm vé vào cửa và một sticker pack.",
     "includedItems": [
       {
         "label": "Vào cửa",
@@ -785,7 +785,7 @@
     "urgent": false,
     "desc": "Một đêm về vải: bốn nhà thiết kế, một chất liệu, bốn cách cắt.",
     "included": "Talk 40 phút ▪︎ đồ uống",
-    "intro": "Bốn nhà thiết kế, một chất liệu, bốn cách cắt khác nhau — một buổi tối nói về vải, bằng tiếng Việt có phụ đề Anh.\n\nBao gồm phần trò chuyện 40 phút và đồ uống.",
+    "intro": "Bốn nhà thiết kế, một chất liệu, bốn cách cắt khác nhau. Một buổi tối nói về vải, bằng tiếng Việt có phụ đề Anh.\n\nBao gồm phần trò chuyện 40 phút và đồ uống.",
     "includedItems": [
       {
         "label": "Talk 40 phút",
@@ -951,7 +951,7 @@
     "urgent": false,
     "desc": "Hai thế hệ sơn mài treo đối diện nhau. Người xem đứng giữa.",
     "included": "Vào cửa ▪︎ tài liệu triển lãm",
-    "intro": "Hai thế hệ làm sơn mài, tranh treo đối diện nhau — người xem đứng giữa, tự so sánh.\n\nBao gồm vé vào cửa và tài liệu triển lãm.",
+    "intro": "Hai thế hệ làm sơn mài, tranh treo đối diện nhau. Người xem đứng giữa, tự so sánh.\n\nBao gồm vé vào cửa và tài liệu triển lãm.",
     "includedItems": [
       {
         "label": "Vào cửa",
@@ -1034,7 +1034,7 @@
     "urgent": false,
     "desc": "Ba mươi tấm ảnh thành phố, không một bóng người. Chụp trong sáu năm.",
     "included": "Vào cửa ▪︎ print khổ nhỏ",
-    "intro": "Ba mươi tấm ảnh chụp thành phố trong sáu năm — không một bóng người trong bất kỳ khung hình nào.\n\nBao gồm vé vào cửa và một bản in khổ nhỏ.",
+    "intro": "Ba mươi tấm ảnh chụp thành phố trong sáu năm. Không một bóng người trong bất kỳ khung hình nào.\n\nBao gồm vé vào cửa và một bản in khổ nhỏ.",
     "includedItems": [
       {
         "label": "Vào cửa",
@@ -1117,7 +1117,7 @@
     "urgent": false,
     "desc": "Một giờ về giấy dó với người làm giấy đời thứ ba. Có mẫu để sờ.",
     "included": "Talk ▪︎ trà ▪︎ mẫu giấy mang về",
-    "intro": "Một giờ nói về giấy dó, cùng người làm giấy đời thứ ba trong gia đình — có mẫu giấy để cầm, để sờ.\n\nBao gồm buổi trò chuyện, trà, và một mẫu giấy mang về.",
+    "intro": "Một giờ nói về giấy dó, cùng người làm giấy đời thứ ba trong gia đình. Có mẫu giấy để cầm, để sờ.\n\nBao gồm buổi trò chuyện, trà, và một mẫu giấy mang về.",
     "includedItems": [
       {
         "label": "Talk",
@@ -1204,7 +1204,7 @@
     "urgent": false,
     "desc": "Triển lãm trong căn hộ tập thể cũ. Mỗi phòng một tác giả, giữ nguyên đồ đạc.",
     "included": "Vào cửa theo khung giờ",
-    "intro": "Triển lãm bên trong một căn hộ tập thể cũ, đồ đạc giữ nguyên như vốn có — mỗi phòng là một tác giả riêng.\n\nVé vào cửa theo khung giờ.",
+    "intro": "Triển lãm bên trong một căn hộ tập thể cũ, đồ đạc giữ nguyên như vốn có. Mỗi phòng là một tác giả riêng.\n\nVé vào cửa theo khung giờ.",
     "includedItems": [
       {
         "label": "Vào cửa theo khung giờ",
@@ -1283,7 +1283,7 @@
     "urgent": false,
     "desc": "Ba DJ, một buổi chiều, không danh sách nhạc định trước. Đến sớm có chỗ ngồi.",
     "included": "Vào cửa tự do ▪︎ cà phê tính riêng",
-    "intro": "Ba DJ thay nhau chơi suốt một buổi chiều, không playlist định sẵn — đến sớm để có chỗ ngồi.\n\nVào cửa tự do; cà phê tính riêng.",
+    "intro": "Ba DJ thay nhau chơi suốt một buổi chiều, không playlist định sẵn. Đến sớm để có chỗ ngồi.\n\nVào cửa tự do, cà phê tính riêng.",
     "includedItems": [
       {
         "label": "Vào cửa tự do",
@@ -1449,7 +1449,7 @@
     "urgent": false,
     "desc": "Nghe nhạc từ băng cối qua dàn loa cũ. Không điện thoại trong phòng nghe.",
     "included": "Vào cửa ▪︎ trà nóng",
-    "intro": "Nghe lại nhạc từ băng cối, qua một dàn loa cũ — không điện thoại trong phòng nghe.\n\nBao gồm vé vào cửa và một tách trà nóng.",
+    "intro": "Nghe lại nhạc từ băng cối, qua một dàn loa cũ. Không điện thoại trong phòng nghe.\n\nBao gồm vé vào cửa và một tách trà nóng.",
     "includedItems": [
       {
         "label": "Vào cửa",
@@ -1532,7 +1532,7 @@
     "urgent": false,
     "desc": "Bốn nghệ sĩ, bốn dàn máy, nối dây trực tiếp. Không có bài nào lặp lại.",
     "included": "Vào cửa ▪︎ earplugs miễn phí",
-    "intro": "Bốn nghệ sĩ, bốn dàn máy modular, nối dây và chơi trực tiếp — không bài nào lặp lại đêm đó.\n\nBao gồm vé vào cửa và earplugs miễn phí.",
+    "intro": "Bốn nghệ sĩ, bốn dàn máy modular, nối dây và chơi trực tiếp. Không bài nào lặp lại đêm đó.\n\nBao gồm vé vào cửa và earplugs miễn phí.",
     "includedItems": [
       {
         "label": "Vào cửa",
@@ -1615,7 +1615,7 @@
     "urgent": false,
     "desc": "Một cây đàn, một người chơi, đèn tắt gần hết. Bốn mươi lăm phút.",
     "included": "1 set ▪︎ một ly vang",
-    "intro": "Một cây đàn, một người chơi, đèn tắt gần hết — bốn mươi lăm phút, không micro, không giới thiệu dài dòng.\n\nBao gồm một set và một ly vang.",
+    "intro": "Một cây đàn, một người chơi, đèn tắt gần hết. Bốn mươi lăm phút, không micro, không giới thiệu dài dòng.\n\nBao gồm một set và một ly vang.",
     "includedItems": [
       {
         "label": "1 set",

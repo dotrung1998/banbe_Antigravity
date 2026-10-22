@@ -141,7 +141,7 @@ struct RewardsView: View {
                 Text(app.T("Số dư xu", "Coin balance")).font(.system(size: 11.5)).opacity(0.7)
                 Text("\(r.balance)").font(BanbeTheme.display(30))
                 if r.balance < 0 {
-                    Text(app.T("Số dư âm do điểm danh bị huỷ; kiếm thêm để về 0.", "Negative because a check-in was undone; earn coins to get back to 0."))
+                    Text(app.T("Số dư âm do điểm danh bị huỷ. Kiếm thêm để về 0.", "Negative because a check-in was undone. Earn coins to get back to 0."))
                         .font(.system(size: 11)).opacity(0.7)
                 }
             }
@@ -234,8 +234,8 @@ struct RewardsView: View {
                     + (weekly ? RewardsLogic.weekStreakLines(r.weekStreak, T: app.T) : RewardsLogic.streakLines(tz: r.streak.timezone, T: app.T)))
             Text(app.T("Điều kiện đổi thưởng", "Redemption terms")).font(.system(size: 13, weight: .semibold)).padding(.top, 12)
             bullets(RewardsLogic.termsLines(weekly: weekly, T: app.T))
-            Text(app.T("Phiên bản quy tắc \(r.rules.version ?? 1). Các con số là đề xuất MVP và có thể thay đổi; mọi thay đổi có số phiên bản mới.",
-                       "Rules version \(r.rules.version ?? 1). Numbers are an MVP proposal and may change; any change gets a new version."))
+            Text(app.T("Phiên bản quy tắc \(r.rules.version ?? 1). Các con số là đề xuất MVP và có thể thay đổi. Mọi thay đổi có số phiên bản mới.",
+                       "Rules version \(r.rules.version ?? 1). Numbers are an MVP proposal and may change. Any change gets a new version."))
                 .font(.system(size: 11)).opacity(0.6).padding(.top, 10)
         }
     }

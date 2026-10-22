@@ -133,8 +133,8 @@ struct ConfirmedView: View {
                             ? app.T("Bạn chưa chuyển khoản trước khi hết giờ giữ chỗ, nên chỗ đã được mở lại cho người khác. Bạn có thể giữ chỗ lại nếu vẫn còn chỗ trống.",
                                     "You didn't complete payment before the hold ran out, so the seat was released back. You can reserve again if there's still room.")
                             : app.T(
-                                "banbe không thu tiền. Hãy chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn; nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.",
-                                "banbe does not collect money. Pay the organizer directly using the instructions in chat; if they cancel, they are responsible for your refund."
+                                "banbe không thu tiền. Hãy chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn. Nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.",
+                                "banbe does not collect money. Pay the organizer directly using the instructions in chat. If they cancel, they are responsible for your refund."
                             ))
                         .font(.system(size: 13.5))
                         .lineSpacing(3)
@@ -579,8 +579,8 @@ struct ConfirmedView: View {
                     .font(.system(size: 11.5, weight: .semibold)).opacity(0.65)
             }
             Text(app.trStatus(app.stripKm(event.where, event: event))).font(.system(size: 12))
-            Text(app.T("Mỗi người có mã QR riêng — đưa mã của chính họ ở cửa.",
-                       "Each person has their own QR — show their own code at the door."))
+            Text(app.T("Mỗi người có mã QR riêng. Đưa mã của chính họ ở cửa.",
+                       "Each person has their own QR. Show their own code at the door."))
                 .font(.system(size: 11)).opacity(0.65)
 
             ForEach(attendees) { att in

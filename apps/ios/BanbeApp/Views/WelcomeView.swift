@@ -184,12 +184,12 @@ struct WelcomeView: View {
             StoryPageContent(emoji: "🎟️", title: app.T("Giữ chỗ trong vài chạm", "Hold a seat in a few taps"), points: [
                 ("⏱️", app.T("Giữ chỗ 30 phút để bạn thanh toán", "Your seat is held 30 minutes while you pay")),
                 ("💸", app.T("Chuyển khoản thẳng cho host", "Pay the host directly")),
-                ("📲", app.T("Nhận vé QR, kế hoạch hiện trong Lịch", "Get a QR ticket; plans land in Schedule")),
+                ("📲", app.T("Nhận vé QR, kế hoạch hiện trong Lịch", "Get a QR ticket, plans land in Schedule")),
             ]),
             StoryPageContent(emoji: "🎤", title: app.T("Tự tổ chức sự kiện", "Host your own events"), points: [
                 ("⚙️", app.T("Bật Chế độ tổ chức trong Tài khoản", "Turn on Organizer mode in Account")),
                 ("🆓", app.T("Miễn phí: không phí đăng, không phí giao dịch", "Free: no listing or transaction fees")),
-                ("🤝", app.T("Khách trả thẳng cho bạn, banbe không giữ tiền", "Guests pay you; banbe never holds money")),
+                ("🤝", app.T("Khách trả thẳng cho bạn, banbe không giữ tiền", "Guests pay you, banbe never holds money")),
             ]),
             StoryPageContent(emoji: "🛠️", title: app.T("Tạo sự kiện trong 5 bước", "Create an event in 5 steps"), points: [
                 ("📝", app.T("Host → Cơ bản → Thời gian & nơi → Vé → Ảnh", "Host → Basics → When & where → Tickets → Photos")),
@@ -231,9 +231,9 @@ struct StoryPageContent {
 }
 
 /// One story page's top: the emoji tile, the title and three emoji points. Each page is a fresh view (`.id`), so the
-/// entrance plays once per page: the tile grows in, then the points drift up one after another. Unhurried,
-/// no-overshoot ease-out (owner, 2026-10-22: the first version felt too quick and jerky), and the points wait for
-/// the page's own slide to finish. Played only on arrival; Reduce Motion gets a plain fade.
+/// entrance plays once per page: the tile grows in, then the points drift up one after another. Slow, no-overshoot
+/// ease-out (owner, 2026-10-22, twice: first "too quick and jerky", then "slower, so it reads"). The points wait
+/// for the page's own slide, then come in 0.35s apart. Played only on arrival; Reduce Motion gets a plain fade.
 private struct StoryPointsView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -244,7 +244,7 @@ private struct StoryPointsView: View {
     @State private var shown = false
 
     /// easeOutQuint: starts gently moving and settles softly, with no bounce.
-    private func motion(_ delay: Double, duration: Double = 0.7) -> Animation {
+    private func motion(_ delay: Double, duration: Double = 1.0) -> Animation {
         reduceMotion ? .easeOut(duration: 0.3) : .timingCurve(0.22, 1, 0.36, 1, duration: duration).delay(delay)
     }
 
@@ -257,7 +257,7 @@ private struct StoryPointsView: View {
                 .scaleEffect(shown || reduceMotion ? 1 : 0.85)
                 .rotationEffect(.degrees(shown || reduceMotion ? 0 : -4))
                 .opacity(shown ? 1 : 0)
-                .animation(motion(0.15, duration: 0.8), value: shown)
+                .animation(motion(0.2, duration: 1.1), value: shown)
                 .padding(.top, 40)
                 .accessibilityHidden(true)
             Text(content.title)
@@ -284,7 +284,7 @@ private struct StoryPointsView: View {
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .opacity(shown ? 1 : 0)
                     .offset(y: shown || reduceMotion ? 0 : 14)
-                    .animation(motion(reduceMotion ? 0 : 0.45 + Double(i) * 0.18, duration: 0.75), value: shown)
+                    .animation(motion(reduceMotion ? 0 : 0.7 + Double(i) * 0.35, duration: 1.0), value: shown)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("welcome.story.point.\(page).\(i)")
                 }

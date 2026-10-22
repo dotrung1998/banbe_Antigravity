@@ -105,15 +105,15 @@ struct DeleteAccountView: View {
 
     private var permanenceNote: some View {
         Text(app.T(
-            "Đây là hành động vĩnh viễn. Sau khi xóa: các đặt chỗ/tin nhắn của bạn sẽ được tách khỏi danh tính thay vì bị xóa hoàn toàn khi cần giữ hồ sơ giao dịch; các dữ liệu cá nhân khác sẽ bị xóa hẳn. Nếu bạn đang sở hữu một sự kiện còn đang mở, bạn sẽ cần hủy/kết thúc sự kiện đó trước.",
-            "This is permanent. After deletion: your bookings/messages are detached from your identity rather than fully erased where a transaction record needs to stay; other personal data is erased outright. If you currently own an open event, you’ll need to cancel/end it first."
+            "Đây là hành động vĩnh viễn. Sau khi xóa: các đặt chỗ/tin nhắn của bạn sẽ được tách khỏi danh tính thay vì bị xóa hoàn toàn khi cần giữ hồ sơ giao dịch. Các dữ liệu cá nhân khác sẽ bị xóa hẳn. Nếu bạn đang sở hữu một sự kiện còn đang mở, bạn sẽ cần hủy/kết thúc sự kiện đó trước.",
+            "This is permanent. After deletion: your bookings/messages are detached from your identity rather than fully erased where a transaction record needs to stay. Other personal data is erased outright. If you currently own an open event, you’ll need to cancel/end it first."
         )).font(.system(size: 13)).lineSpacing(4)
     }
 
     @ViewBuilder
     private var reasonSection: some View {
         Text(app.T("Vì sao bạn muốn rời đi?", "Why are you leaving?")).font(BanbeTheme.display(20))
-        Text(app.T("Không bắt buộc — chỉ để chúng tôi cải thiện.", "Optional — just helps us improve.")).font(.system(size: 12)).opacity(0.7)
+        Text(app.T("Không bắt buộc. Chỉ để chúng tôi cải thiện.", "Optional. Just helps us improve.")).font(.system(size: 12)).opacity(0.7)
         ForEach(deleteAccountReasons, id: \.code) { r in
             Button { reasonCode = r.code } label: {
                 HStack {
@@ -200,7 +200,7 @@ struct DeleteAccountView: View {
         // ID (BiometricAuthService/FaceIDLockView) is a LOCAL convenience
         // only and is never read here as server-side proof.
         VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("Bước 1 — Xác minh danh tính", "Step 1 — Verify it’s you")).font(.system(size: 12.5, weight: .semibold))
+            Text(app.T("Bước 1. Xác minh danh tính", "Step 1. Verify it’s you")).font(.system(size: 12.5, weight: .semibold))
             if reauthMode == "dob" || reauthVerified {
                 if reauthVerified {
                     Label(app.T("Đã xác minh", "Verified"), systemImage: "checkmark.circle.fill")
@@ -292,7 +292,7 @@ struct DeleteAccountView: View {
 
         // Exact-phrase gate.
         VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("Bước 2 — Gõ để xác nhận", "Step 2 — Type to confirm")).font(.system(size: 12.5, weight: .semibold))
+            Text(app.T("Bước 2. Gõ để xác nhận", "Step 2. Type to confirm")).font(.system(size: 12.5, weight: .semibold))
             HStack(spacing: 4) {
                 Text(app.T("Gõ chính xác cụm sau:", "Type the exact phrase:")).font(.system(size: 12)).opacity(0.75)
                 Text(deleteAccountPhrase).font(.system(size: 12, weight: .bold))

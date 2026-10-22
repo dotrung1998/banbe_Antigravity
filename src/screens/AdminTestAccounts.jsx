@@ -19,7 +19,9 @@ const ERRORS = {
   INVALID_PHONE: ['Số điện thoại phải theo định dạng quốc tế, ví dụ +4917656035288.', 'Phone must be international format, e.g. +4917656035288.'],
   PHONE_IN_USE: ['Số này đã gắn với tài khoản khác.', 'That number already belongs to another account.'],
   INVALID_DOB: ['Ngày sinh không hợp lệ.', 'Invalid date of birth.'],
-  DOB_ALREADY_SET: ['Tài khoản đã có ngày sinh khác — không được ghi đè.', 'This account already has a different date of birth — it is never overwritten.'],
+  DOB_ALREADY_SET: ['Tài khoản đã có ngày sinh khác. Ngày sinh không bao giờ bị ghi đè.', 'This account already has a different date of birth. It is never overwritten.'],
+  TARGET_IS_ADMIN: ['Không thể xoá tài khoản quản trị viên ở đây.', "Admin accounts can't be deleted here."],
+  ACCOUNT_DELETION_BLOCKED_OPEN_EVENT: ['Tài khoản này còn sự kiện đang mở. Huỷ hoặc gỡ sự kiện trước.', 'This account still owns an open event. Cancel or remove it first.'],
 };
 
 export default function AdminTestAccounts() {
@@ -37,6 +39,9 @@ export default function AdminTestAccounts() {
   const [bypassAll, setBypassAll] = useState(null);
   const [bypassBusy, setBypassBusy] = useState(false);
   const [confirmTo, setConfirmTo] = useState(null); // the value being confirmed, or null
+  // TESTING PHASE: delete the found account (server: /api/auth admin_delete_account).
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (s.accountType !== 'admin') return undefined;
@@ -96,13 +101,44 @@ export default function AdminTestAccounts() {
     say(T('Đã lưu. Số điện thoại vẫn CHƯA được xác minh.', 'Saved. The phone number is still NOT verified.'));
   };
 
+  // TESTING PHASE (owner, 2026-10-22): frees a test email without going through that account's own deletion flow.
+  // The server checks the caller is an admin, refuses admins and accounts that still own an open event, writes the
+  // admin action log, then runs the same deletion workflow as Delete Account.
+  const deleteFound = async () => {
+    setDeleting(true); say('');
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) throw new Error('NO_SESSION');
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type: 'admin_delete_account', userId: found.user_id }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      setDeleting(false); setConfirmDelete(false);
+      if (!response.ok || !payload.deleted) {
+        const names = (payload.openEvents || []).map(e => e.name).filter(Boolean).join(', ');
+        const e = ERRORS[payload.error];
+        say((e ? T(e[0], e[1]) : T('Không thực hiện được. Thử lại.', "Couldn't do that. Try again.")) + (names ? ` (${names})` : ''), true);
+        return;
+      }
+      const gone = found.email;
+      setFound(null); setEmail(''); setPhone('');
+      say(T(`Đã xoá ${gone}. Email này có thể dùng để đăng ký lại.`, `Deleted ${gone}. This email can be used to sign up again.`));
+    } catch {
+      setDeleting(false); setConfirmDelete(false);
+      fail();
+    }
+  };
+
   return (
-    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Admin test accounts">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Admin test accounts">
       <div onClick={() => set({ screen: 'accountGroup', accountGroupKey: 'adminReview' })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="admin-test-accounts-back">
         ‹ {T('Duyệt & Kiểm Duyệt', 'Review & Moderation')}
       </div>
-      <div style={{ padding: '14px 30px 42px' }}>
-        <h1 style={{ ...display(24, { margin: 0 }) }} data-testid="admin-test-accounts-title">{T('Tài khoản thử nghiệm', 'Test accounts')}</h1>
+      <div style={{ padding: '14px 30px 24px', flex: 1 }}>
+        <h1 style={{ ...display(24, { margin: 0 }) }} data-testid="admin-test-accounts-title">{T('Tài Khoản Thử Nghiệm', 'Test Accounts')}</h1>
         <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
           {T('Miễn bước SMS cho tài khoản thử nghiệm. Số điện thoại KHÔNG được đánh dấu đã xác minh, không gửi SMS, và vẫn phải nhập/xác nhận ngày sinh.',
              'Waive the SMS step for a test account. The phone is NOT marked verified, no SMS is sent, and the date-of-birth steps still apply.')}
@@ -112,16 +148,13 @@ export default function AdminTestAccounts() {
             <div style={{ fontSize: 14, fontWeight: 600 }}>{T('Bỏ qua SMS cho tất cả', 'Bypass SMS for everyone')}</div>
             <div style={{ fontSize: 11.5, lineHeight: 1.5, opacity: 0.7, marginTop: 2 }}>
               {bypassAll === null ? T('Đang tải…', 'Loading…')
-                : bypassAll ? T('ĐANG BẬT — không ai phải xác minh SMS.', 'ON — nobody has to verify by SMS.')
-                : T('Đang tắt — người dùng phải xác minh SMS.', 'Off — users must verify by SMS.')}
+                : bypassAll ? T('ĐANG BẬT. Không ai phải xác minh SMS.', 'ON. Nobody has to verify by SMS.')
+                : T('Đang tắt. Người dùng phải xác minh SMS.', 'Off. Users must verify by SMS.')}
             </div>
           </div>
           <GlassSwitch on={!!bypassAll} busy={bypassBusy || bypassAll === null} testId="admin-bypass-switch" onPress={() => setConfirmTo(!bypassAll)} />
         </div>
-        <input value={email} onChange={e => setEmail(e.target.value)} placeholder="email@example.com" autoCapitalize="none" inputMode="email" data-testid="admin-test-email" style={fieldStyle} />
-        <div onClick={() => !busy && email.trim() && lookup()} style={{ ...inkButton({ marginTop: 12, borderRadius: 18, padding: 14, fontSize: 14 }), opacity: !busy && email.trim() ? 1 : 0.45, cursor: 'pointer' }} data-testid="admin-test-find">
-          {T('Tìm tài khoản', 'Find account')}
-        </div>
+        <input value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !busy && email.trim()) lookup(); }} placeholder="email@example.com" autoCapitalize="none" inputMode="email" enterKeyHint="search" data-testid="admin-test-email" style={fieldStyle} />
 
         <input value={nameQuery} onChange={e => setNameQuery(e.target.value)} placeholder={T('Hoặc tìm theo tên hiển thị', 'Or search by display name')} data-testid="admin-test-name" style={fieldStyle} />
         {matches.length > 0 && (
@@ -164,6 +197,12 @@ export default function AdminTestAccounts() {
             <p style={{ fontSize: 11.5, lineHeight: 1.5, opacity: 0.65, margin: '10px 0 0' }}>
               {T('Số chỉ lưu trong hồ sơ, không có trong Auth nên không dùng được cho tin nhắn quảng bá.', 'The number is stored on the profile only (not in Auth), so it does not enable promo texting.')}
             </p>
+            {found.role !== 'admin' && (
+              <div role="button" onClick={() => !deleting && !busy && setConfirmDelete(true)} data-testid="admin-test-delete"
+                style={{ marginTop: 14, padding: 13, borderRadius: 999, border: `1.2px solid ${alert}`, color: alert, textAlign: 'center', fontSize: 14, fontWeight: 600, cursor: 'pointer', opacity: deleting || busy ? 0.5 : 1 }}>
+                {deleting ? T('Đang xoá…', 'Deleting…') : T('Xoá tài khoản', 'Delete account')}
+              </div>
+            )}
           </div>
         )}
         {confirmTo !== null && (
@@ -187,7 +226,31 @@ export default function AdminTestAccounts() {
             </div>
           </div>
         )}
+        {confirmDelete && found && (
+          <div onClick={() => !deleting && setConfirmDelete(false)} data-testid="admin-delete-confirm"
+            style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(27,25,22,0.32)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', animation: 'banbeIn 0.25s cubic-bezier(.22,.61,.36,1) both' }}>
+            <div onClick={e => e.stopPropagation()} role="alertdialog" style={{ ...fieldGlass({ padding: 22, borderRadius: 26, maxWidth: 340, width: '100%', background: 'linear-gradient(168deg, rgba(255,255,255,0.7), rgba(255,255,255,0.25)), var(--bb-card)', backdropFilter: 'blur(28px) saturate(1.7)', WebkitBackdropFilter: 'blur(28px) saturate(1.7)', boxShadow: 'inset 0 1px 1px #fff, 0 24px 60px rgba(27,25,22,0.35)' }), animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+              <div style={{ ...display(19, { margin: 0 }) }}>{T('Xoá tài khoản này?', 'Delete this account?')}</div>
+              <p style={{ fontSize: 12.5, lineHeight: 1.55, opacity: 0.8, margin: '8px 0 0' }}>
+                {T(`${found.email} và mọi dữ liệu gắn với tài khoản sẽ bị xoá vĩnh viễn. Không thể hoàn tác. Email này có thể đăng ký lại sau đó.`,
+                   `${found.email} and everything tied to the account are deleted permanently. This can't be undone. The email can sign up again afterwards.`)}
+              </p>
+              <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+                <div onClick={() => !deleting && setConfirmDelete(false)} style={{ ...fieldGlass({ flex: 1, padding: 13, borderRadius: 16, textAlign: 'center', fontSize: 14, cursor: 'pointer' }) }} data-testid="admin-delete-cancel">{T('Huỷ', 'Cancel')}</div>
+                <div onClick={() => !deleting && deleteFound()} style={{ flex: 1, padding: 13, borderRadius: 16, textAlign: 'center', fontSize: 14, fontWeight: 600, cursor: 'pointer', background: alert, color: '#fff', opacity: deleting ? 0.5 : 1 }} data-testid="admin-delete-ok">
+                  {deleting ? T('Đang xoá…', 'Deleting…') : T('Xoá vĩnh viễn', 'Delete permanently')}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         {msg.text && <p style={{ fontSize: 12.5, lineHeight: 1.55, color: msg.bad ? alert : ink, margin: '14px 0 0' }} data-testid="admin-test-msg">{msg.text}</p>}
+      </div>
+      {/* The main action always sits at the very bottom (owner, 2026-10-22). */}
+      <div style={{ position: 'sticky', bottom: 0, padding: '10px 30px calc(12px + env(safe-area-inset-bottom))', background: paper }}>
+        <div onClick={() => !busy && email.trim() && lookup()} style={{ ...inkButton({ borderRadius: 18, padding: 14, fontSize: 14 }), opacity: !busy && email.trim() ? 1 : 0.45, cursor: 'pointer' }} data-testid="admin-test-find">
+          {busy && !found ? T('Đang tìm…', 'Finding…') : T('Tìm tài khoản', 'Find account')}
+        </div>
       </div>
     </div>
   );

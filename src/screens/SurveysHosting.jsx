@@ -438,7 +438,7 @@ export default function SurveysHosting() {
             {!mySurveysLoading && !mySurveyCandidatesLoading && candidatesBySurvey.length === 0 && (
               <div style={{ padding: 16, fontSize: 13, opacity: 0.7, textAlign: 'center' }}>
                 {closedSurveys.length === 0
-                  ? T('Chưa có gợi ý — gợi ý sự kiện được tạo tự động khi một khảo sát đóng và có người trả lời.', 'No suggestions yet — event drafts are generated automatically when a survey closes with responses.')
+                  ? T('Chưa có gợi ý. Gợi ý sự kiện được tạo tự động khi một khảo sát đóng và có người trả lời.', 'No suggestions yet. Event drafts are generated automatically when a survey closes with responses.')
                   : T('Không còn gợi ý nào cần xử lý. Có thể làm mới bên dưới để tạo lại.', 'No suggestions left to review. You can refresh below to generate them again.')}
               </div>
             )}

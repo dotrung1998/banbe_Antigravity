@@ -32,8 +32,8 @@ struct HostPromoSheet: View {
                 Spacer()
                 Button(app.T("Đóng", "Close")) { dismiss() }.font(.system(size: 13)).buttonStyle(.plain)
             }
-            Text(app.T("Chỉ những người đã bật “Tin nhắn quảng bá từ host” và từng đặt chỗ, theo dõi hoặc lưu sự kiện của bạn. Tin mở trong ứng dụng Tin nhắn — bạn tự bấm gửi hoặc huỷ. banbe không gửi hộ và không xác nhận tin đã được nhận.",
-                       "Only people who turned on “Host promotional messages” and have booked, followed or saved one of your events. The text opens in Messages — you send or cancel it yourself. banbe doesn't send for you and can't confirm delivery."))
+            Text(app.T("Chỉ những người đã bật “Tin nhắn quảng bá từ host” và từng đặt chỗ, theo dõi hoặc lưu sự kiện của bạn. Tin mở trong ứng dụng Tin nhắn. Bạn tự bấm gửi hoặc huỷ. banbe không gửi hộ và không xác nhận tin đã được nhận.",
+                       "Only people who turned on “Host promotional messages” and have booked, followed or saved one of your events. The text opens in Messages. You send or cancel it yourself. banbe doesn't send for you and can't confirm delivery."))
                 .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
 
             switch phase {
@@ -99,7 +99,7 @@ struct HostPromoSheet: View {
     private func finishText(_ outcome: String) -> String {
         switch outcome {
         case "sent": return app.T("Tin nhắn đã được chuyển cho ứng dụng Tin nhắn để gửi. banbe không xác nhận được người nhận đã nhận.", "The text was handed to Messages to send. banbe can't confirm the recipient received it.")
-        case "cancelled": return app.T("Bạn đã huỷ — không có tin nào được gửi.", "You cancelled — nothing was sent.")
+        case "cancelled": return app.T("Bạn đã huỷ. Không có tin nào được gửi.", "You cancelled. Nothing was sent.")
         default: return app.T("Ứng dụng Tin nhắn không gửi được tin này.", "Messages couldn't send this text.")
         }
     }

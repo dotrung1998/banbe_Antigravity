@@ -57,7 +57,7 @@ export function PromoConsentSection() {
         </span>
       </div>
       <p style={{ ...small, margin: '10px 0 0' }}>
-        {T('Host tự soạn và tự bấm gửi từng tin trong ứng dụng nhắn tin của chính host; banbe không gửi hàng loạt hay tự động, và không đảm bảo tin được nhận. Tắt mục này sẽ chặn các tin quảng bá do banbe hỗ trợ trong tương lai, nhưng không ảnh hưởng tới tin nhắn mà host gửi độc lập sau khi đã có số của bạn.',
+        {T('Host tự soạn và tự bấm gửi từng tin trong ứng dụng nhắn tin của chính host. banbe không gửi hàng loạt hay tự động, và không đảm bảo tin được nhận. Tắt mục này sẽ chặn các tin quảng bá do banbe hỗ trợ trong tương lai, nhưng không ảnh hưởng tới tin nhắn mà host gửi độc lập sau khi đã có số của bạn.',
           "Hosts write and send each text themselves from the host's own messaging app. Banbe never sends in bulk or automatically and can't guarantee delivery. Turning this off blocks future banbe-assisted promos, but doesn't affect messages a host sends independently after already having your number.")}
       </p>
       {error && <p style={{ fontSize: 12, color: alert, margin: '8px 0 0' }}>{error}</p>}
@@ -66,8 +66,8 @@ export function PromoConsentSection() {
           <div onClick={(e) => e.stopPropagation()} data-testid="promo-consent-confirm" style={{ background: paper, width: '100%', maxWidth: 480, borderRadius: '22px 22px 0 0', padding: '24px 26px 34px', boxSizing: 'border-box' }}>
             <h3 style={display(20, { margin: 0 })}>{T('Cho phép tin nhắn quảng bá từ host?', 'Allow promotional texts from hosts?')}</h3>
             <p style={{ fontSize: 13, lineHeight: 1.55, color: ink, margin: '10px 0 0' }}>
-              {T('Host mà bạn đã tương tác có thể soạn tin quảng bá sự kiện trong ứng dụng nhắn tin của host, gửi tới số điện thoại đã xác minh của bạn. Host tự bấm gửi; banbe không gửi hộ. Bạn có thể tắt bất cứ lúc nào.',
-                "Hosts you've interacted with may compose an event promo text in the host's own messaging app, addressed to your verified phone number. The host sends it themselves; banbe doesn't send for them. You can turn this off any time.")}
+              {T('Host mà bạn đã tương tác có thể soạn tin quảng bá sự kiện trong ứng dụng nhắn tin của host, gửi tới số điện thoại đã xác minh của bạn. Host tự bấm gửi. banbe không gửi hộ. Bạn có thể tắt bất cứ lúc nào.',
+                "Hosts you've interacted with may compose an event promo text in the host's own messaging app, addressed to your verified phone number. The host sends it themselves. banbe doesn't send for them. You can turn this off any time.")}
             </p>
             <div onClick={busy ? undefined : () => save(true)} data-testid="promo-consent-agree" style={{ ...inkButton({ marginTop: 18, borderRadius: 18, padding: 14, fontSize: 14 }), cursor: 'pointer' }}>{T('Đồng ý', 'I agree')}</div>
             <div onClick={() => setConfirming(false)} style={{ textAlign: 'center', fontSize: 13, marginTop: 14, cursor: 'pointer', color: ink }}>{T('Huỷ', 'Cancel')}</div>
@@ -141,7 +141,7 @@ export function HostPromoSheet({ eventKey, onClose }) {
     setRetry(outcome === 'sent' ? null : { id: compose.recipient_id, display_name: compose.display_name });
     setText(outcome === 'sent'
       ? T('Bạn đã xác nhận đã gửi tin. banbe không xác nhận được người nhận đã nhận.', "You said you sent the text. banbe can't confirm the recipient received it.")
-      : outcome === 'cancelled' ? T('Bạn đã huỷ — không có tin nào được gửi.', 'You cancelled — nothing was sent.')
+      : outcome === 'cancelled' ? T('Bạn đã huỷ, không có tin nào được gửi.', 'You cancelled, nothing was sent.')
         : T('Không gửi được tin này.', "This text couldn't be sent."));
     setCompose(null); setPhase('finished');
   };
@@ -158,8 +158,8 @@ export function HostPromoSheet({ eventKey, onClose }) {
           <span onClick={onClose} style={{ fontSize: 13, cursor: 'pointer' }}>{T('Đóng', 'Close')}</span>
         </div>
         <p style={{ ...small, margin: 0, fontSize: 12 }}>
-          {T('Chỉ những người đã bật “Tin nhắn quảng bá từ host” và từng đặt chỗ, theo dõi hoặc lưu sự kiện của bạn. Tin mở trong ứng dụng nhắn tin của bạn — bạn tự bấm gửi hoặc huỷ. banbe không gửi hộ và không xác nhận tin đã được nhận.',
-            'Only people who turned on “Host promotional messages” and have booked, followed or saved one of your events. The text opens in your messaging app — you send or cancel it yourself. banbe doesn\'t send for you and can\'t confirm delivery.')}
+          {T('Chỉ những người đã bật “Tin nhắn quảng bá từ host” và từng đặt chỗ, theo dõi hoặc lưu sự kiện của bạn. Tin mở trong ứng dụng nhắn tin của bạn. Bạn tự bấm gửi hoặc huỷ. banbe không gửi hộ và không xác nhận tin đã được nhận.',
+            'Only people who turned on “Host promotional messages” and have booked, followed or saved one of your events. The text opens in your messaging app. You send or cancel it yourself. banbe doesn\'t send for you and can\'t confirm delivery.')}
         </p>
         {phase === 'loading' && <p style={{ fontSize: 13, textAlign: 'center' }}>{T('Đang tải…', 'Loading…')}</p>}
         {phase === 'recipient' && recipient && (

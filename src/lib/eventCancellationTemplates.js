@@ -48,7 +48,7 @@ Kind regards,
 
 Rất tiếc, địa điểm của sự kiện "{{event_name}}" ({{event_place}}) không còn khả dụng vào {{event_date}} và chúng tôi chưa tìm được địa điểm thay thế phù hợp, nên buổi gặp mặt buộc phải huỷ.
 
-Chúng tôi thành thật xin lỗi vì đã làm thay đổi kế hoạch của bạn. Số tiền vé bạn đã thanh toán sẽ được hoàn lại đầy đủ; vui lòng mở ứng dụng banbe và thêm tài khoản nhận hoàn tiền.
+Chúng tôi thành thật xin lỗi vì đã làm thay đổi kế hoạch của bạn. Số tiền vé bạn đã thanh toán sẽ được hoàn lại đầy đủ. Vui lòng mở ứng dụng banbe và thêm tài khoản nhận hoàn tiền.
 
 Nếu sau này có địa điểm mới, chúng tôi sẽ báo cho bạn đầu tiên.
 
@@ -58,7 +58,7 @@ Trân trọng,
 
 Unfortunately the venue for "{{event_name}}" ({{event_place}}) is no longer available on {{event_date}}, and we have not been able to secure a suitable alternative, so we have to cancel the event.
 
-We are sincerely sorry for upsetting your plans. Every ticket you paid for will be refunded in full; please open the banbe app and add the account you'd like your refund sent to.
+We are sincerely sorry for upsetting your plans. Every ticket you paid for will be refunded in full. Please open the banbe app and add the account you'd like your refund sent to.
 
 If we find a new venue, you will be the first to hear about it.
 
@@ -76,7 +76,7 @@ Kind regards,
 
 Cảm ơn bạn đã đăng ký tham gia "{{event_name}}" vào {{event_date}}. Rất tiếc, số lượng đăng ký chưa đủ để chúng tôi tổ chức sự kiện với chất lượng như đã hứa, nên chúng tôi quyết định huỷ.
 
-Chúng tôi xin lỗi vì quyết định này đến muộn hơn mong muốn và vì sự bất tiện bạn gặp phải. Toàn bộ số tiền vé sẽ được hoàn lại; vui lòng mở ứng dụng banbe và thêm tài khoản nhận hoàn tiền.
+Chúng tôi xin lỗi vì quyết định này đến muộn hơn mong muốn và vì sự bất tiện bạn gặp phải. Toàn bộ số tiền vé sẽ được hoàn lại. Vui lòng mở ứng dụng banbe và thêm tài khoản nhận hoàn tiền.
 
 Chúng tôi rất trân trọng sự ủng hộ của bạn và hy vọng sẽ sớm tổ chức lại.
 
@@ -86,7 +86,7 @@ Trân trọng,
 
 Thank you for signing up for "{{event_name}}" on {{event_date}}. Unfortunately, not enough people have registered for us to run the event to the standard we promised, so we have decided to cancel it.
 
-We apologise that this decision comes later than we would have liked, and for the inconvenience. All ticket payments will be refunded in full; please open the banbe app and add the account you'd like your refund sent to.
+We apologise that this decision comes later than we would have liked, and for the inconvenience. All ticket payments will be refunded in full. Please open the banbe app and add the account you'd like your refund sent to.
 
 We truly appreciate your support and hope to run this again soon.
 

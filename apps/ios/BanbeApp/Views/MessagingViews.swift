@@ -181,8 +181,8 @@ struct InboxView: View {
             }
             Button(app.T("Huỷ", "Cancel"), role: .cancel) { app.inboxDeleteCandidate = nil }
         } message: {
-            Text(app.T("Cuộc trò chuyện chỉ bị xoá với bạn; người kia vẫn giữ nó. Nó sẽ hiện lại nếu họ nhắn cho bạn lần nữa.",
-                       "It is removed for you only; the other person keeps it. It comes back if they message you again."))
+            Text(app.T("Cuộc trò chuyện chỉ bị xoá với bạn. Người kia vẫn giữ nó. Nó sẽ hiện lại nếu họ nhắn cho bạn lần nữa.",
+                       "It is removed for you only. The other person keeps it. It comes back if they message you again."))
         }
         // Bug 2a (2026-09-21 follow-up) — `FeedbackFlowView` is a hand-
         // rolled `.fullScreenCover` INSIDE the main window, but

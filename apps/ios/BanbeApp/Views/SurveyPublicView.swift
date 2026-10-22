@@ -229,7 +229,7 @@ struct SurveyPublicView: View {
                 .font(.system(size: 12, weight: .semibold))
 
             if survey.status == "draft" {
-                Text(app.T("Đây là bản xem trước — khảo sát chưa được xuất bản.", "This is a preview — the survey hasn't been published yet."))
+                Text(app.T("Đây là bản xem trước. Khảo sát chưa được xuất bản.", "This is a preview. The survey hasn't been published yet."))
                     .font(.system(size: 13.5)).padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
@@ -462,8 +462,8 @@ private struct RespondVerifyInlineView: View {
         if app.surveyRespondStep == "codeSent" {
             VStack(alignment: .leading, spacing: 10) {
                 Text(app.surveyRespondIsNewAccount
-                     ? app.T("Email này chưa có tài khoản banbe — chúng tôi sẽ tạo một tài khoản tối giản gắn với email này để lưu câu trả lời của bạn.", "This email doesn't have a banbe account yet — we'll create a minimal one tied to this email so your response can be saved.")
-                     : app.T("Email này đã có tài khoản banbe — nhập mã để xác nhận đó là bạn.", "This email already has a banbe account — enter the code to confirm it's you."))
+                     ? app.T("Email này chưa có tài khoản banbe. Chúng tôi sẽ tạo một tài khoản tối giản gắn với email này để lưu câu trả lời của bạn.", "This email doesn't have a banbe account yet. We'll create a minimal one tied to this email so your response can be saved.")
+                     : app.T("Email này đã có tài khoản banbe. Nhập mã để xác nhận đó là bạn.", "This email already has a banbe account. Enter the code to confirm it's you."))
                     .font(.system(size: 12.5))
                 TextField(app.T("Mã 8 chữ số", "8-digit code"), text: $app.surveyRespondCode)
                     .keyboardType(.numberPad)

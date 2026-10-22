@@ -76,8 +76,8 @@ export function renderDisputeTranscript(meta, messages) {
   ${meta.resolutionNote ? `<p style="font-size:13px;line-height:1.5;margin:0 0 18px;"><strong>Note / Ghi chú:</strong> ${escapeHtml(meta.resolutionNote)}</p>` : ''}
   <table>${rows || '<tr><td style="font-size:12px;color:#6B6558;">No messages were exchanged. / Không có tin nhắn nào.</td></tr>'}</table>
   <p style="font-size:10.5px;color:#8A8474;margin-top:24px;">
-    This is the only record of the conversation above — the temporary dispute chat is deleted shortly after this document is sent.
-    Đây là bản ghi duy nhất của cuộc trò chuyện trên — cuộc trò chuyện tạm thời này sẽ bị xoá ngay sau khi tài liệu này được gửi.
+    This is the only record of the conversation above. The temporary dispute chat is deleted shortly after this document is sent.
+    Đây là bản ghi duy nhất của cuộc trò chuyện trên. Cuộc trò chuyện tạm thời này sẽ bị xoá ngay sau khi tài liệu này được gửi.
   </p>
 </body>
 </html>`;

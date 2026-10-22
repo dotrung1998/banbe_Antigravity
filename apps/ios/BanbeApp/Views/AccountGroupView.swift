@@ -328,8 +328,8 @@ struct AccountGroupView: View {
                     .font(.system(size: 12.5, weight: .semibold))
                     .padding(.top, 10)
                 }
-                Text(app.T("Các mục này tự động bị xóa sau 30 ngày. Xóa chỉ ẩn khỏi danh sách của bạn; hồ sơ hoàn tiền vẫn được giữ.",
-                           "These are removed automatically after 30 days. Deleting only clears them from your list; any refund record is kept."))
+                Text(app.T("Các mục này tự động bị xóa sau 30 ngày. Xóa chỉ ẩn khỏi danh sách của bạn. Hồ sơ hoàn tiền vẫn được giữ.",
+                           "These are removed automatically after 30 days. Deleting only clears them from your list. Any refund record is kept."))
                     .font(.system(size: 10.5)).opacity(0.6).padding(.top, 8)
             }
         }
@@ -697,7 +697,7 @@ struct AccountGroupView: View {
             // Note 54: remove / restore / delete events (any status), one or many at a time.
             row(app.T("Quản lý sự kiện", "Manage events"), identifier: "admin.manageEvents", icon: "calendar.badge.minus", trailing: "›") { if app.isAdmin { app.screen = .adminManageEvents } }
             Divider().overlay(app.palette.rule)
-            row(app.T("Tài khoản thử nghiệm", "Test accounts"), identifier: "admin.testAccounts", icon: "person.badge.shield.checkmark", trailing: "›") { if app.isAdmin { app.screen = .adminTestAccounts } }
+            row(app.T("Tài Khoản Thử Nghiệm", "Test Accounts"), identifier: "admin.testAccounts", icon: "person.badge.shield.checkmark", trailing: "›") { if app.isAdmin { app.screen = .adminTestAccounts } }
             Divider().overlay(app.palette.rule)
             row(app.T("Sửa ngày sinh", "Birthday corrections"), identifier: "admin.dobCorrections", icon: "calendar.badge.exclamationmark", trailing: "›") { if app.isAdmin { app.screen = .adminDobCorrections } }
             Divider().overlay(app.palette.rule)

@@ -248,7 +248,7 @@ struct AdminManageEventsView: View {
                     Text(app.T("Lý do: ", "Reason: ") + (row.removalReason ?? ""))
                         .font(.system(size: 12)).opacity(0.75).lineLimit(2)
                     if check?.purgeable == true {
-                        Text(app.T("Chưa từng có đặt chỗ — có thể xoá vĩnh viễn.", "Never booked — can be deleted permanently."))
+                        Text(app.T("Chưa từng có đặt chỗ, có thể xoá vĩnh viễn.", "Never booked, can be deleted permanently."))
                             .font(.system(size: 11.5, weight: .semibold)).opacity(0.7)
                     }
                 } else if let check, check.isBlocked {
@@ -354,7 +354,7 @@ struct AdminManageEventsView: View {
             // TESTING-PHASE (remove before public release): iOS only, only while the admin switch is on.
             if wipeEnabled {
                 Button { confirmWipe = true } label: {
-                    Label(app.T("Xoá vĩnh viễn — thử nghiệm (\(selected.count))", "Wipe permanently — testing (\(selected.count))"),
+                    Label(app.T("Xoá vĩnh viễn, thử nghiệm (\(selected.count))", "Wipe permanently, testing (\(selected.count))"),
                           systemImage: "exclamationmark.triangle.fill")
                         .font(.system(size: 13.5, weight: .bold))
                         .frame(maxWidth: .infinity, minHeight: 44)
@@ -511,18 +511,18 @@ struct AdminManageEventsView: View {
         let b = c.activeBookings, r = c.unsettledRefunds, d = c.openDisputes
         if b > 0 {
             parts.append(orphan
-                ? app.T("\(b) đặt chỗ đang hiệu lực — banbe cần huỷ sự kiện", Self.en(b, "active booking") + " — banbe must cancel the event")
-                : app.T("\(b) đặt chỗ đang hiệu lực — người tổ chức cần huỷ sự kiện", Self.en(b, "active booking") + " — the host must cancel the event"))
+                ? app.T("\(b) đặt chỗ đang hiệu lực, banbe cần huỷ sự kiện", Self.en(b, "active booking") + ", banbe must cancel the event")
+                : app.T("\(b) đặt chỗ đang hiệu lực, người tổ chức cần huỷ sự kiện", Self.en(b, "active booking") + ", the host must cancel the event"))
         }
         if r > 0 {
             parts.append(orphan
-                ? app.T("\(r) khoản hoàn tiền chưa xong — host đã xoá tài khoản, banbe cần liên hệ khách để hoàn tiền",
-                        Self.en(r, "refund") + " not settled — the host account was deleted; banbe must contact the guests to settle refunds")
-                : app.T("\(r) khoản hoàn tiền chưa xong — người tổ chức cần hoàn tất hoàn tiền", Self.en(r, "refund") + " not settled — the host must finish refunding"))
+                ? app.T("\(r) khoản hoàn tiền chưa xong, host đã xoá tài khoản, banbe cần liên hệ khách để hoàn tiền",
+                        Self.en(r, "refund") + " not settled, the host account was deleted, banbe must contact the guests to settle refunds")
+                : app.T("\(r) khoản hoàn tiền chưa xong, người tổ chức cần hoàn tất hoàn tiền", Self.en(r, "refund") + " not settled, the host must finish refunding"))
         }
         if d > 0 {
-            parts.append(app.T("\(d) tranh chấp đang mở — xử lý trong Tranh Chấp Thanh Toán",
-                               Self.en(d, "open dispute") + " — resolve \(d == 1 ? "it" : "them") in Payment Disputes"))
+            parts.append(app.T("\(d) tranh chấp đang mở, xử lý trong Tranh Chấp Thanh Toán",
+                               Self.en(d, "open dispute") + ", resolve \(d == 1 ? "it" : "them") in Payment Disputes"))
         }
         return parts.joined(separator: " · ") + "."
     }

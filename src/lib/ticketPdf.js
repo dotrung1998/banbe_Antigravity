@@ -166,7 +166,7 @@ export async function renderTicketPdf(t) {
     links.push({ rect: r, url: t.importUrl });
     y += 76 + 18;
     ctx.fillStyle = MUTED; ctx.font = `400 20px ${FONT}`; ctx.textAlign = 'center';
-    ctx.fillText(L('Bạn vẫn có thể vào cửa chỉ với mã QR này, không cần tài khoản.', 'You can attend with just this QR — no account needed.'), W / 2, y + 8);
+    ctx.fillText(L('Bạn vẫn có thể vào cửa chỉ với mã QR này, không cần tài khoản.', 'You can attend with just this QR, no account needed.'), W / 2, y + 8);
     ctx.textAlign = 'left';
   }
 
