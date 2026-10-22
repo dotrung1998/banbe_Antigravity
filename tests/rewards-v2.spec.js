@@ -5,6 +5,9 @@ import { test, expect } from '@playwright/test';
 // Same approach as rewards-switch.spec.js: the signed-in shared test account (global-setup) and the real app code,
 // with every rewards RPC answered at the network edge, so nothing is written to a real account.
 test.use({ viewport: { width: 390, height: 844 } });
+// Opt-in only: it needs the signed-in shared test account from global-setup, and that account must not be used for
+// this spec unless someone asks for it explicitly (note 58). Run with BANBE_E2E_REWARDS_V2=1.
+test.skip(!process.env.BANBE_E2E_REWARDS_V2, 'opt-in: set BANBE_E2E_REWARDS_V2=1 (uses the shared signed-in test account)');
 
 const json = (body) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
