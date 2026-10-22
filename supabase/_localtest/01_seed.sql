@@ -100,3 +100,17 @@ DO $$ BEGIN
     UPDATE app_feature_flags SET enabled = true WHERE key = 'rewards';
   END IF;
 END $$;
+
+-- ---------------------------------------------------------------- gate (deterministic)
+-- The phone/DOB gate (migrations 123+) grandfathers accounts that already existed when its migration ran. auth.users
+-- survives the harness's `DROP SCHEMA public`, so on a REUSED container these fake accounts were grandfathered by
+-- the migration itself, but on a BRAND-NEW container they were not, and every RPC gated by account_gate_ok() failed
+-- for them (seen as a "flaky" first run of suite 13, T15a). Grandfather them explicitly, like the suites' mkuser().
+DO $$ BEGIN
+  IF to_regclass('public.account_phone_grandfathered') IS NOT NULL THEN
+    INSERT INTO account_phone_grandfathered (user_id, cohort)
+    SELECT id, 't' FROM profiles WHERE id IN ('7a000001-0000-4000-8000-000000000001', '7a000002-0000-4000-8000-000000000002',
+      '7a000003-0000-4000-8000-000000000003', '7a000004-0000-4000-8000-000000000004', '7a000005-0000-4000-8000-000000000005')
+    ON CONFLICT DO NOTHING;
+  END IF;
+END $$;
