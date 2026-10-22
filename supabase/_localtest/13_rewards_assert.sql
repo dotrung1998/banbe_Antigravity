@@ -19,7 +19,7 @@ BEGIN
 END $$;
 CREATE FUNCTION pg_temp.mkevent(id text, cat text, st text DEFAULT 'live') RETURNS void LANGUAGE sql AS $$
   INSERT INTO events (id,key,name,organizer_id,status,price_vnd,capacity,starts_at,seats_remaining,cat_key)
-  VALUES (id,id,'Event '||id,'test_org_a',st::event_status,0,50,now()+interval '2 days',50,cat) ON CONFLICT (id) DO NOTHING $$;
+  VALUES (id,id,'Event '||id,'test_org_a',st::event_status,0,50,now(),50,cat) ON CONFLICT (id) DO NOTHING $$;
 CREATE FUNCTION pg_temp.mkbook(ev text, u uuid) RETURNS uuid LANGUAGE plpgsql AS $$
 DECLARE b uuid := gen_random_uuid();
 BEGIN

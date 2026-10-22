@@ -91,3 +91,12 @@ VALUES ('f0000001-0000-4000-8000-000000000001', 'b0000002-0000-4000-8000-0000000
 ON CONFLICT (id) DO NOTHING;
 
 COMMIT;
+
+-- ---------------------------------------------------------------- feature switches
+-- 187 seeds Rewards OFF; since 191 the client-callable rewards writes refuse while it is off, so the rewards
+-- suites run with the switch on (the off case is asserted explicitly in 20_rewards_fixes_assert.sql).
+DO $$ BEGIN
+  IF to_regclass('public.app_feature_flags') IS NOT NULL THEN
+    UPDATE app_feature_flags SET enabled = true WHERE key = 'rewards';
+  END IF;
+END $$;
