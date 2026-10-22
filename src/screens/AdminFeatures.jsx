@@ -16,12 +16,19 @@ const FLAGS = [
     hintVi: 'Ẩn xu, chuỗi ngày, huy hiệu và mẫu móc khoá thưởng khỏi toàn bộ ứng dụng. Dữ liệu không bị xoá.',
     hintEn: 'Hides coins, streaks, badges and reward keychain designs everywhere in the app. No data is deleted.',
   },
+  {
+    key: 'rewards_v2',
+    vi: 'Phần thưởng v2: chuỗi tuần, cấp huy hiệu, mục tiêu',
+    en: 'Rewards v2: week streak, badge tiers, goals',
+    hintVi: 'Chuỗi theo tuần với tuần nghỉ và khôi phục, huy hiệu nhiều cấp, huy hiệu tiếp theo và mục tiêu tháng (migration 192). Mặc định tắt; cần bật Phần thưởng.',
+    hintEn: 'Weekly streak with grace weeks and repair, tiered badges, next badge and a monthly goal (migration 192). Off by default; needs Rewards on.',
+  },
 ];
 
 const ERRORS = {
   NOT_AUTHORIZED: ['Bạn không có quyền.', 'You are not allowed to do this.'],
   INVALID_VALUE: ['Giá trị không hợp lệ.', 'Invalid value.'],
-  NOT_DEPLOYED: ['Máy chủ chưa có công tắc này (chạy migration 187).', 'The server does not have this switch yet (apply migration 187).'],
+  NOT_DEPLOYED: ['Máy chủ chưa có công tắc này (chạy migration 187/192).', 'The server does not have this switch yet (apply migration 187/192).'],
   NETWORK: ['Không kết nối được. Thử lại nhé.', "Couldn't reach the server. Try again."],
   BUSY: ['Đang xử lý…', 'Working…'],
 };

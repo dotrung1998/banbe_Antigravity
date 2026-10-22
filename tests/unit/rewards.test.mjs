@@ -27,7 +27,7 @@ test('a missing RPC hides the feature instead of faking numbers', () => {
   assert.equal(isRewardsUnavailable({ code: '500', message: 'boom' }), false);
   assert.equal(normalizeSummary(null), null);
   assert.equal(normalizeSummary({ success: false }), null);
-  assert.deepEqual(normalizeSummary({ success: true, balance: 20, streak: 2, active_today: true }), { balance: 20, streak: 2, activeToday: true });
+  assert.deepEqual(normalizeSummary({ success: true, balance: 20, streak: 2, active_today: true }), { balance: 20, streak: 2, activeToday: true, weekStreak: null, weekActive: false });
 });
 
 test('history labels are readable and never expose raw codes', () => {

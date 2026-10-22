@@ -34,3 +34,11 @@ test('the cache round-trips and survives garbage or a missing store', () => {
   assert.doesNotThrow(() => writeCachedFlags({ rewards: true }, null));
   assert.doesNotThrow(() => writeCachedFlags({ rewards: true }, { setItem() { throw new Error('quota'); } }));
 });
+
+test('rewards_v2 stays off unless the server says true (a new feature must not appear by accident)', () => {
+  assert.equal(flagOn({}, 'rewards_v2'), false);
+  assert.equal(flagOn(null, 'rewards_v2'), false);
+  assert.equal(flagOn({ rewards_v2: false }, 'rewards_v2'), false);
+  assert.equal(flagOn({ rewards_v2: true }, 'rewards_v2'), true);
+  assert.deepEqual(normalizeFlags({ rewards: true, rewards_v2: true }), { rewards: true, rewards_v2: true });
+});

@@ -9,7 +9,7 @@ import { forYouEventVersion } from '../lib/forYouAlert.js';
 import { useForYouAlert } from '../lib/useForYouAlert.js';
 import ForYouChip from './ForYouChip.jsx';
 import { reminderPhase, reminderRank } from '../lib/eventReminder.js';
-import { compactCoins, shortcutLabels } from '../lib/rewards.js';
+import { compactCoins, shortcutLabels, capsuleStreak } from '../lib/rewards.js';
 import { HEADER, hitSlop } from '../lib/homeHeaderLayout.js';
 import DockHeaderTitle, { DOCK_HEADER } from '../components/ui/DockHeaderTitle.jsx';
 
@@ -94,7 +94,7 @@ export default function Home() {
     loadMyAdminInvite, openAccountGroup,
     openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, loadPulse,
     loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openEventPreferences,
-    openSearch, setHomeFilters, located, allowLocation, rewardsEnabled,
+    openSearch, setHomeFilters, located, allowLocation, rewardsEnabled, rewardsV2Enabled,
   } = useBanBe();
 
   const s = state;
@@ -580,7 +580,8 @@ export default function Home() {
   // (same rule as iOS ViewThatFits; every control keeps its 44px touch target).
   const headerRef = useRef(null);
   const shortcutsOn = rewardsEnabled && s.rewardsSummaryStatus === 'loaded' && !!s.rewardsSummary;
-  const streakChars = String(s.rewardsSummary?.streak ?? 0).length;
+  const capStreak = capsuleStreak(s.rewardsSummary, rewardsV2Enabled);
+  const streakChars = String(capStreak.value).length;
   const coinChars = compactCoins(s.rewardsSummary?.balance ?? 0).length;
   // MEASURED, not estimated (2026-10-18): the estimate undershot the real control widths, so the title was
   // overlapped by the capsule. Start from the full layout (96px wordmark + title) and step down while the left
@@ -622,7 +623,7 @@ export default function Home() {
           <div style={{ display: 'flex', alignItems: 'center', gap: HEADER.groupGap, flex: 'none' }} data-testid="home-header-actions">
           {shortcutsOn && (() => {
             const sum = s.rewardsSummary;
-            const lbl = shortcutLabels(T, sum);
+            const lbl = shortcutLabels(T, sum, rewardsV2Enabled);
             const open = () => set({ screen: 'rewards', rewardsBack: 'home' });
             const key = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
             // 38px visual capsule; each half keeps a 44px tall tap area via vertical hit slop.
@@ -631,8 +632,8 @@ export default function Home() {
             return (
               <div style={{ ...homeCapsule(), height: HEADER.capsule, padding: 0, gap: 0, alignItems: 'center', flex: 'none' }} data-testid="home-reward-shortcuts">
                 <div onClick={open} onKeyDown={key} role="button" tabIndex={0} aria-label={lbl.streak} data-testid="home-streak" style={btn}>
-                  <span aria-hidden="true" style={{ fontSize: HEADER.icon, lineHeight: 1, opacity: sum.streak > 0 ? 1 : 0.45 }}>🔥</span>
-                  <span>{sum.streak}</span>
+                  <span aria-hidden="true" style={{ fontSize: HEADER.icon, lineHeight: 1, opacity: capStreak.value > 0 ? 1 : 0.45 }}>🔥</span>
+                  <span>{capStreak.value}</span>
                 </div>
                 <span aria-hidden="true" style={{ width: HEADER.divider, height: 18, background: 'currentColor', opacity: 0.18 }} />
                 <div onClick={open} onKeyDown={key} role="button" tabIndex={0} aria-label={lbl.coins} data-testid="home-coins" style={btn}>
