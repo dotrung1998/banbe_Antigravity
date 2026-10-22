@@ -195,7 +195,9 @@ BEGIN
   -- ===== C: compatibility of the four client RPCs
   PERFORM pg_temp.as_user(uvn);
   r := public.get_my_reward_summary();
-  PERFORM pg_temp.ok(ARRAY(SELECT jsonb_object_keys(r) ORDER BY 1) = ARRAY['active_today','balance','streak','success'], 'C1 get_my_reward_summary keys unchanged');
+  PERFORM pg_temp.ok(r ?& ARRAY['active_today','balance','streak','success']
+                     AND ARRAY(SELECT jsonb_object_keys(r) ORDER BY 1) <@ ARRAY['active_today','balance','streak','success','week_active','week_streak'],
+                     'C1 get_my_reward_summary: old keys unchanged, only 192''s additive keys besides');
   r := public.get_my_rewards();
   FOREACH k IN ARRAY ARRAY['success','balance','rules','streak','badges','history','catalog','attendance_paid_this_month'] LOOP
     PERFORM pg_temp.ok(r ? k, 'C2 get_my_rewards still has '||k);

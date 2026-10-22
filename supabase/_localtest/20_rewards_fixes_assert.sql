@@ -53,8 +53,8 @@ BEGIN
 
   -- ===== F0 rules / privileges
   PERFORM pg_temp.ok((SELECT count(*) FROM reward_rule_versions WHERE is_active) = 1, 'F0a exactly one active rules version');
-  PERFORM pg_temp.ok((SELECT version = 2 AND rules ? 'attendance_window_before_hours' AND rules ? 'attendance_window_after_hours'
-                        FROM reward_rule_versions WHERE is_active), 'F0b rules v2 carries the attendance window');
+  PERFORM pg_temp.ok((SELECT version >= 2 AND rules ? 'attendance_window_before_hours' AND rules ? 'attendance_window_after_hours'
+                        FROM reward_rule_versions WHERE is_active), 'F0b the active rules (v2+) carry the attendance window');
   PERFORM pg_temp.ok((SELECT rules - 'attendance_window_before_hours' - 'attendance_window_after_hours' FROM reward_rule_versions WHERE version = 2)
                      = (SELECT rules FROM reward_rule_versions WHERE version = 1), 'F0c v2 = v1 + window, nothing else changed');
   PERFORM pg_temp.ok(NOT has_function_privilege('authenticated', 'public.check_in(text, boolean)', 'EXECUTE'), 'F0d legacy check_in is no longer callable by clients');
