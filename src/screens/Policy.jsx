@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display } from '../theme.js';
 import { POLICY_VERSION } from '../lib/policy.js';
+import { contentOn, filterPolicyRows } from '../lib/contentFlags.js';
+import { normalizeFlags, readCachedFlags, writeCachedFlags } from '../lib/featureFlags.js';
+import { supabase } from '../lib/supabase.js';
 
 // banbe_User_Policy.md v1.1, rendered in full (bilingual, Vietnamese
 // paragraph followed by its English counterpart, matching the source
@@ -9,16 +12,32 @@ import { POLICY_VERSION } from '../lib/policy.js';
 // Where the source and English differ, the Vietnamese text prevails (A1).
 export default function Policy() {
   const { state, backFromPolicy, acceptPolicyGate, declinePolicyGate } = useBanBe();
-  return <PolicyView state={state} backFromPolicy={backFromPolicy} acceptPolicyGate={acceptPolicyGate} declinePolicyGate={declinePolicyGate} />;
+  return <PolicyView state={state} flags={state.featureFlags || {}} backFromPolicy={backFromPolicy} acceptPolicyGate={acceptPolicyGate} declinePolicyGate={declinePolicyGate} />;
 }
 
 // Public, signed-out, context-free rendering for /privacy (Meta/Google app
 // review need a privacy-policy URL that loads without the SPA's login wall).
 export function PublicPolicy() {
-  return <PolicyView state={{}} standalone />;
+  // No app context here: read the platform switches directly (get_feature_flags is open to anon). Switched content
+  // stays hidden until the first answer (or the device cache) so a visitor never sees a flash of hidden sections.
+  const [flags, setFlags] = useState(() => { const c = readCachedFlags(); return Object.keys(c).length ? c : null; });
+  useEffect(() => {
+    let live = true;
+    supabase.rpc('get_feature_flags').then(({ data, error }) => {
+      if (!live) return;
+      if (error || !data) { setFlags(f => f || {}); return; }
+      const next = normalizeFlags(data);
+      writeCachedFlags(next);
+      setFlags(next);
+    }, () => { if (live) setFlags(f => f || {}); });
+    return () => { live = false; };
+  }, []);
+  return <PolicyView state={{}} flags={flags} standalone />;
 }
 
-function PolicyView({ state, backFromPolicy, acceptPolicyGate, declinePolicyGate, standalone }) {
+function PolicyView({ state, flags, backFromPolicy, acceptPolicyGate, declinePolicyGate, standalone }) {
+  // Feature-switched passages (note 59): `on('rewards')` is false while Rewards is off, so nothing about rewards shows.
+  const on = (key) => flags != null && contentOn(flags, key);
   // Set only for a brand-new OAuth (Google/Facebook) profile that reached a
   // session with no policy_accepted_at yet (syncUser(), note 10's OAuth
   // consent fix) — no back-out (there's nowhere legitimate to go; the
@@ -195,6 +214,39 @@ function PolicyView({ state, backFromPolicy, acceptPolicyGate, declinePolicyGate
           />
         </Section>
 
+        {on('rewards') && (
+          <Section id="A9" titleVi="A9. Phần thưởng: xu, huy hiệu và chuỗi" titleEn="A9. Rewards: coins, badges and streaks">
+            <Bi
+              vi="Phần thưởng ghi nhận việc bạn tham dự sự kiện. Xu và huy hiệu là điểm ghi nhận trong ứng dụng. Xu không có giá trị tiền, không thể mua, bán, chuyển cho người khác hay đổi ra tiền. Hiện nay xu không hết hạn. Nếu điều này thay đổi, chúng tôi báo trước trong ứng dụng. Xu và huy hiệu không ảnh hưởng đến việc đặt chỗ, thứ tự ưu tiên hay điều kiện tham gia."
+              en="Rewards recognise you attending events. Coins and badges are points that record activity in the app. Coins have no cash value and cannot be bought, sold, transferred to anyone or cashed out. Coins do not expire today. If that changes, we tell you in the app in advance. Coins and badges never affect booking, priority or eligibility."
+            />
+            <Bi
+              vi="Máy chủ của banbe quyết định mọi khoản xu từ lần điểm danh do host xác nhận. Hiện nay bạn nhận 20 xu cho mỗi sự kiện khác nhau và 10 xu một lần khi hoàn tất câu hỏi sở thích. Xu chỉ được tính khi host điểm danh bạn trong khoảng 3 giờ trước đến 24 giờ sau giờ bắt đầu. Ngoài khoảng đó, lần tham dự vẫn được tính cho huy hiệu và chuỗi nhưng không có xu và không bị tính vào giới hạn tháng. Mỗi tháng tối đa 10 sự kiện được tính xu. Chủ sự kiện, thành viên nhóm của host và việc tự điểm danh không được tính. Các con số có thể thay đổi, mỗi lần thay đổi có số phiên bản quy tắc mới hiển thị trong trang Phần thưởng."
+              en="banbe's server decides every coin from check-ins confirmed by a host. Today you receive 20 coins for each different event and 10 coins once for finishing the preference questions. Coins are paid only when the host checks you in between 3 hours before and 24 hours after the start. Outside that window the attendance still counts for badges and your streak, but pays no coins and does not use up the monthly limit. At most 10 events earn coins each month. Event owners, a host's team members and self check-ins do not earn. The numbers may change, and each change gets a new rules version shown on the Rewards page."
+            />
+            <Bi
+              vi="Nếu sự kiện bị huỷ hoặc bị banbe gỡ bỏ, hay lần điểm danh bị huỷ, xu từ sự kiện đó được trừ lại bằng một dòng điều chỉnh mới. Nếu bạn đã dùng số xu đó, số dư có thể âm cho tới khi bạn kiếm lại. Mẫu móc khoá đã mở không bị thu hồi. Nếu sự kiện được khôi phục, xu được trả lại. Huy hiệu có thể bị thu lại khi lần tham dự tạo ra nó không còn hợp lệ."
+              en="If an event is cancelled or removed by banbe, or a check-in is undone, the coins from it are reversed with a new adjustment entry. If you already spent them, your balance can go negative until you earn it back. Keychain designs you unlocked are never taken away. If the event is restored, the coins come back. A badge can be withdrawn when the attendance behind it is no longer valid."
+            />
+            {on('rewards_daily') && (
+              <Bi
+                vi="Chuỗi đếm số ngày liên tiếp bạn lưu một sự kiện (máy chủ xác minh) hoặc được host xác nhận tham dự. Bỏ lỡ một ngày, chuỗi bắt đầu lại từ 0 mà không bị trừ xu hay khoá gì cả."
+                en="The streak counts consecutive days on which you save an event (verified by the server) or a host confirms you attended. Miss a day and it starts again from 0, with nothing taken away or blocked."
+              />
+            )}
+            {on('rewards_v2') && (
+              <Bi
+                vi="Chuỗi đếm theo tuần, từ thứ Hai đến Chủ nhật theo múi giờ của bạn: một lần lưu sự kiện hoặc một lần được xác nhận tham dự là đủ cho cả tuần. Cứ 4 tuần hoạt động bạn nhận một tuần nghỉ, giữ tối đa 2, tự che một tuần bạn bỏ lỡ. Tuần nghỉ không thể mua và không có giá trị. Nếu chuỗi từ 4 tuần trở lên bị ngắt, việc được xác nhận tham dự một sự kiện trong 14 ngày sau đó sẽ khôi phục chuỗi. Huy hiệu có nhiều cấp, và huy hiệu theo mùa tính các sự kiện diễn ra trong khoảng thời gian ghi rõ. Bạn có thể tự đặt mục tiêu tháng (1, 2 hoặc 4 sự kiện) và xoá bất kỳ lúc nào. Chuỗi, tuần nghỉ và mục tiêu không bao giờ tạo ra xu."
+                en="The streak counts weeks, Monday to Sunday in your own time zone: one saved event or one confirmed attendance keeps the whole week. Every 4 active weeks earn a grace week, and you can hold up to 2, which automatically covers a week you miss. Grace weeks cannot be bought and have no value. If a streak of 4 weeks or more breaks, being confirmed at an event within the following 14 days restores it. Badges have tiers, and seasonal badges count events taking place in a stated window. You can set a monthly goal (1, 2 or 4 events) and clear it any time. Streaks, grace weeks and goals never pay coins."
+              />
+            )}
+            <Bi
+              vi="Ngày và tháng được tính theo giờ Việt Nam cho tới khi bạn chọn múi giờ khác trong trang Phần thưởng. Thay đổi có hiệu lực từ ngày kế tiếp, tối đa 2 lần trong 30 ngày. Trang Phần thưởng, xu, huy hiệu và lịch sử chỉ mình bạn thấy."
+              en="Days and months follow Vietnam time until you choose another time zone on the Rewards page. A change applies from the next day, at most twice in 30 days. The Rewards page, your coins, badges and history are visible only to you."
+            />
+          </Section>
+        )}
+
         <PartHeading vi="Phần B. Thông báo quyền riêng tư" en="Part B. Privacy Notice" />
 
         <Section id="B1" titleVi="B1. Bên kiểm soát dữ liệu" titleEn="B1. Who controls your data">
@@ -207,6 +259,7 @@ function PolicyView({ state, backFromPolicy, acceptPolicyGate, declinePolicyGate
         <Section id="B2" titleVi="B2. Dữ liệu chúng tôi thu thập" titleEn="B2. What we collect">
           <PolicyTable
             columns={['Nhóm · Group', 'Gồm · Includes', 'Dùng để · Used for']}
+            on={on}
             rows={[
               ['Tài khoản\nAccount', 'Số điện thoại, email, tên hiển thị, ảnh đại diện, ngôn ngữ\nPhone number, email, display name, avatar, language', 'Đăng nhập, gửi vé, hiển thị tên cho host\nSign-in, sending tickets, showing your name to hosts'],
               ['Xác minh\nVerification', 'Mã OTP, trạng thái xác minh số điện thoại\nOTP codes, phone-verified status', 'Ngăn tài khoản giả và đặt chỗ ảo\nStopping fake accounts and bogus bookings'],
@@ -231,6 +284,8 @@ function PolicyView({ state, backFromPolicy, acceptPolicyGate, declinePolicyGate
               ['Đăng nhập qua Google/Facebook\nGoogle/Facebook sign-in', 'Email, tên hiển thị và ảnh đại diện do Google/Facebook cung cấp khi bạn chọn đăng nhập bằng dịch vụ đó\nEmail, display name and avatar that Google/Facebook provide when you choose to sign in that way', 'Tạo và đăng nhập tài khoản\nCreating and signing in to your account'],
               ['Thông báo trong ứng dụng\nIn-app notifications', 'Thông báo về đặt chỗ, thanh toán, tranh chấp, sự kiện\nNotices about your bookings, payments, disputes, events', 'Báo cho bạn biết diễn biến. Bạn xoá được từng thông báo bất kỳ lúc nào\nKeeping you informed. You can delete each one at any time'],
               ['Kỹ thuật\nTechnical', 'Địa chỉ IP, loại thiết bị và trình duyệt, nhật ký truy cập và lỗi\nIP address, device and browser type, access and error logs', 'Bảo mật, giới hạn tần suất, sửa lỗi\nSecurity, rate limiting, fixing bugs'],
+              { flag: 'rewards', cells: ['Phần thưởng\nRewards', 'Sổ xu (cộng, trừ lại, đổi thưởng), ngày hoạt động, huy hiệu, lựa chọn múi giờ\nCoin ledger (awards, reversals, redemptions), active days, badges, time-zone choice', 'Vận hành Phần thưởng cho bạn\nRunning Rewards for you'] },
+              { flag: 'rewards_v2', cells: ['Mục tiêu tháng\nMonthly goal', 'Số sự kiện bạn chọn mỗi tháng và thời điểm đặt\nThe number of events you chose per month and when you set it', 'Hiển thị tiến độ cho riêng bạn\nShowing your own progress'] },
             ]}
           />
           <Bi
@@ -244,6 +299,12 @@ function PolicyView({ state, backFromPolicy, acceptPolicyGate, declinePolicyGate
             vi="Chúng tôi xử lý dữ liệu để: (1) cung cấp dịch vụ đặt chỗ và trò chuyện bạn yêu cầu, gồm gửi vé, tức thực hiện hợp đồng với bạn, (2) giữ nền tảng an toàn và chống gian lận, gồm xác minh số điện thoại và thống kê vắng mặt, trên cơ sở sự đồng ý bạn đưa ra khi đăng ký, (3) tuân thủ nghĩa vụ pháp luật, gồm lưu trữ và cung cấp thông tin khi cơ quan có thẩm quyền yêu cầu đúng luật, (4) gửi thông báo về đặt chỗ và sự kiện của bạn."
             en="We process data to: (1) provide the reservation and chat service you asked for, including sending tickets, that is, perform our contract with you, (2) keep the platform safe and prevent fraud, including phone verification and no-show counts, on the basis of the consent you give at sign-up, (3) meet legal obligations, including retaining and disclosing information when a competent authority lawfully requires it, (4) send you notices about your bookings and events."
           />
+          {on('rewards') && (
+            <Bi
+              vi="Khi Phần thưởng được bật, chúng tôi còn xử lý sổ xu, ngày hoạt động, huy hiệu và lựa chọn múi giờ của bạn để: (5) vận hành Phần thưởng mà bạn sử dụng, tức thực hiện hợp đồng với bạn, và (6) cải thiện dịch vụ từ các số đếm tổng hợp ẩn danh, ví dụ bao nhiêu người quay lại sự kiện vào tháng sau. Số liệu tổng hợp chỉ là số đếm theo nhóm, không chứa tên, số điện thoại, email hay mã tài khoản, và nhóm nào có ít hơn 20 người thì bị ẩn. Host không bao giờ thấy câu trả lời hay mã tài khoản của từng người qua các số liệu này. Chúng tôi không dùng dữ liệu phần thưởng cho quảng cáo và không chia sẻ nó với bên thứ ba."
+              en="While Rewards is switched on, we also process your coin ledger, active days, badges and time-zone choice to: (5) run the Rewards you use, that is, perform our contract with you, and (6) improve the service from anonymous aggregate counts, for example how many people come back to an event the following month. Aggregates are counts per group only, with no names, phone numbers, emails or account ids, and any group smaller than 20 people is hidden. Hosts never see any individual's answers or account id through these figures. We do not use rewards data for advertising and do not share it with third parties."
+            />
+          )}
           <Bi
             vi="Chúng tôi không dùng dữ liệu cho quảng cáo của banbe (host chỉ nhắn quảng bá cho khách đã bật đồng ý riêng, mỗi lần một người nhận và có ghi nhật ký), không phân tích nội dung trò chuyện, và không ra quyết định tự động ảnh hưởng đến bạn ngoài việc đếm số lần vắng mặt như nêu tại Điều A5."
             en="We do not use data for banbe's own advertising (hosts may send promotions only to guests who opted in separately, one recipient at a time, with a log), analyze chat content, or make automated decisions about you other than counting no-shows as described in Section A5."
@@ -294,6 +355,7 @@ function PolicyView({ state, backFromPolicy, acceptPolicyGate, declinePolicyGate
         <Section id="B7" titleVi="B7. Lưu bao lâu, và khi bạn xoá tài khoản" titleEn="B7. How long we keep it, and what deletion does">
           <PolicyTable
             columns={['Dữ liệu · Data', 'Lưu đến khi · Kept until']}
+            on={on}
             rows={[
               ['Tài khoản, hồ sơ, yêu thích, theo dõi\nAccount, profile, favorites, follows', 'Khi bạn tự xoá tài khoản trong Tuỳ chọn, xoá ngay lập tức. (Xoá tự động sau một thời gian không hoạt động là kế hoạch, chưa triển khai, xem Điều A3.)\nWhen you delete your account yourself in Preferences, removed immediately. (Automatic deletion after a period of inactivity is planned, not yet built, see Section A3.)'],
               ['Mã OTP\nOTP codes', 'Một ngày sau khi hết hạn.\nOne day after expiry.'],
@@ -308,6 +370,9 @@ function PolicyView({ state, backFromPolicy, acceptPolicyGate, declinePolicyGate
               ['Thanh toán và hoàn tiền\nPayments and refunds', 'Cùng với đặt chỗ. Dữ liệu gốc của thông báo chuyển khoản hiện chưa có thời hạn xoá tự động.\nWith the booking. The raw transfer-notification data currently has no automatic deletion deadline.'],
               ['Yêu cầu xoá tài khoản\nAccount-deletion requests', 'Giữ lại sau khi xoá để chứng minh yêu cầu đã được xử lý.\nKept after deletion to show the request was handled.'],
               ['Hồ sơ sự cố dữ liệu\nData-breach records', '5 năm theo quy định pháp luật.\n5 years, as the law requires.'],
+              { flag: 'rewards', cells: ['Sổ xu, huy hiệu, ngày hoạt động, múi giờ\nCoin ledger, badges, active days, time zone', 'Cùng với tài khoản và bị xoá khi bạn xoá tài khoản. Sổ xu chỉ được ghi thêm, không bị sửa.\nWith your account, deleted when you delete it. The coin ledger is only ever added to, never edited.'] },
+              { flag: 'rewards_v2', cells: ['Mục tiêu tháng\nMonthly goal', 'Đến khi bạn xoá mục tiêu hoặc xoá tài khoản.\nUntil you clear the goal or delete your account.'] },
+              { flag: 'rewards', cells: ['Số đếm tổng hợp ẩn danh\nAnonymous aggregate counts', 'Không gắn với tài khoản nào nên không bị xoá theo tài khoản.\nNot tied to any account, so not deleted with one.'] },
             ]}
           />
           <Bi
@@ -354,6 +419,12 @@ function PolicyView({ state, backFromPolicy, acceptPolicyGate, declinePolicyGate
             vi="banbe lưu phiên đăng nhập và tuỳ chọn ngôn ngữ trên thiết bị của bạn để bạn không phải đăng nhập lại mỗi lần. Chúng tôi không dùng cookie quảng cáo hay công cụ theo dõi của bên thứ ba (ngoài các dịch vụ bản đồ và phông chữ nêu ở Điều B5)."
             en="banbe stores your sign-in session and language preference on your device so you do not have to sign in every time. We use no advertising cookies or third-party trackers (beyond the map and font services in Section B5)."
           />
+          {on('rewards') && (
+            <Bi
+              vi="Với Phần thưởng, thiết bị cũng ghi nhớ những huy hiệu và cột mốc đã được chúc mừng để không hiện lại lần nữa. Thông tin này chỉ ở trên thiết bị của bạn và không được gửi cho ai."
+              en="For Rewards, your device also remembers which badges and milestones have already been celebrated so they are not shown again. This stays on your device and is not sent to anyone."
+            />
+          )}
         </Section>
 
         <Section id="B12" titleVi="B12. Thay đổi thông báo này" titleEn="B12. Changes to this notice">
@@ -450,7 +521,9 @@ function Section({ id, titleVi, titleEn, children }) {
 
 // Each cell packs "Vietnamese\nEnglish" (matching the source markdown
 // table's own bilingual cells) — split and stacked rather than shortened.
-function PolicyTable({ columns, rows }) {
+function PolicyTable({ columns, rows: allRows, on }) {
+  // A row is an array of cells, or { flag, cells } for a feature-switched row (note 59).
+  const rows = filterPolicyRows(allRows, null, on);
   return (
     <div style={{ overflowX: 'auto', margin: '4px 0 14px' }}>
       <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>

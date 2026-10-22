@@ -37,6 +37,7 @@ struct HelpReaderView: View {
         case .p(let vi, let en), .h(let vi, let en), .tip(let vi, let en): return pick(vi, en)
         case .ul(let items), .ol(let items): return items.map { pick($0[0], $0[1]) }.joined(separator: " ")
         case .q(let qv, let qe, let av, let ae): return pick(qv, qe) + " " + pick(av, ae)
+        case .flagged: return "" // removed by ContentFlags.filter before the reader sees the document
         }
     }
 
@@ -209,6 +210,8 @@ struct HelpReaderView: View {
                 Divider().overlay(app.palette.rule).padding(.top, 8)
             }
             .padding(.top, 12)
+        case .flagged:
+            EmptyView() // removed by ContentFlags.filter before the reader sees the document
         }
     }
 
@@ -231,7 +234,7 @@ struct HelpGuideView: View {
     @EnvironmentObject var app: AppState
     private var doc: HelpDoc? {
         guard let d = HelpContent.guide(app.helpGuideKey), !d.adminOnly || app.isAdmin else { return nil }
-        return d
+        return ContentFlags.filter(d, app.featureFlags) // feature-switched sections (note 59)
     }
     var body: some View {
         Group {
@@ -248,6 +251,6 @@ struct HelpGuideView: View {
 struct HelpFaqView: View {
     @EnvironmentObject var app: AppState
     var body: some View {
-        HelpReaderView(doc: HelpContent.faq, idPrefix: "help.faq") { app.goBack() }
+        HelpReaderView(doc: ContentFlags.filter(HelpContent.faq, app.featureFlags), idPrefix: "help.faq") { app.goBack() }
     }
 }

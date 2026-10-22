@@ -214,7 +214,7 @@ export const PERSONAL_GUIDE = {
         ['Bật công tắc, chọn một trong 24 mẫu miễn phí (nhóm sao/trăng/mây, tim/nơ, hoa/trái cây, cà phê/âm nhạc, mèo/gấu, du lịch/vé, họa tiết banbe).', 'Switch it on and pick one of 24 free designs (stars/moon/clouds, hearts/ribbons, flowers/fruits, coffee/music, cats/bears, travel/tickets, banbe motifs).'],
         ['Chọn một trong bốn góc, kích cỡ S/M/L và bật/tắt chuyển động. Xem trước ngay trong màn hình rồi nhấn Save. Cancel sẽ bỏ thay đổi.', 'Choose one of four corners, size S/M/L and motion on/off. Preview it on the screen, then tap Save. Cancel discards changes.'],
       ]],
-      ['p', 'Khi banbe bật Phần thưởng, có thêm vài mẫu có khoá đổi bằng xu (xem mục Phần thưởng & huy hiệu).', 'When banbe turns Rewards on, a few extra locked designs can be unlocked with coins (see Rewards & badges).'],
+      ['flag', 'rewards', ['p', 'Có thêm vài mẫu có khoá, mở bằng xu (xem mục Phần thưởng & huy hiệu).', 'A few extra locked designs can be unlocked with coins (see Rewards & badges).']],
       ['h', 'Tải ảnh mẫu & dùng ảnh riêng', 'Export artwork & use your own'],
       ['ul', [
         ['"Download artwork" / nút chia sẻ lưu ảnh PNG của mẫu đang chọn.', '"Download artwork" / the share button saves the PNG of the selected design.'],
@@ -228,13 +228,42 @@ export const PERSONAL_GUIDE = {
         ['Không muốn kéo? Dùng nút "Swing" hoặc, trên web, chọn móc khoá rồi nhấn Enter/Space. Khi bật "Giảm chuyển động" hoặc tắt chuyển động, móc khoá đứng yên.', 'Prefer not to drag? Use the "Swing" button or, on the web, focus the charm and press Enter/Space. With Reduce Motion on or motion off, the charm stays still.'],
       ]],
     ]},
-    { id: 'rewards', vi: 'Phần thưởng & huy hiệu', en: 'Rewards & badges', blocks: [
-      ['p', 'Phần thưởng chỉ hiện khi banbe bật tính năng này. Khi tắt, xu, chuỗi ngày, huy hiệu và mẫu móc khoá thưởng bị ẩn ở mọi nơi (dữ liệu của bạn không bị xoá).', 'Rewards only appear when banbe has turned the feature on. While it is off, coins, streaks, badges and reward keychain designs are hidden everywhere (your data is not deleted).'],
+    // Shown only while the Rewards switch is on (src/lib/contentFlags.js). Weekly-streak details need Rewards v2 too.
+    { id: 'rewards', flag: 'rewards', vi: 'Phần thưởng & huy hiệu', en: 'Rewards & badges', blocks: [
+      ['p', 'Phần thưởng ghi nhận việc bạn thật sự đi sự kiện. Mở từ Tài khoản > "Phần Thưởng & Huy Hiệu" hoặc nút 🔥/xu ở đầu Trang chính. Trang này chỉ mình bạn thấy.', 'Rewards recognise you actually going out to events. Open them from Account > "Rewards & Badges" or the 🔥/coin buttons at the top of Home. Only you can see this page.'],
+      ['h', 'Xu', 'Coins'],
       ['ul', [
-        ['Mở từ Tài khoản > "Phần Thưởng & Huy Hiệu" hoặc nút 🔥/xu ở đầu Trang chính: số dư xu, chuỗi ngày, huy hiệu, đổi thưởng (móc khoá), lịch sử và "Cách kiếm xu".', 'Open it from Account > "Rewards & Badges" or the 🔥/coin buttons at the top of Home: coin balance, streak, badges, redeem (keychain designs), recent history and "How earning works".'],
-        ['Xu đến từ việc hoàn tất thiết lập ban đầu có câu trả lời và từ việc được host check-in thật tại sự kiện (có giới hạn mỗi tháng). Huy hiệu là riêng tư.', 'Coins come from finishing first-run setup with answers and from being genuinely checked in by a host at an event (capped per month). Badges are private.'],
-        ['Ba mẫu móc khoá thưởng đổi bằng xu. 24 mẫu thường luôn miễn phí.', 'Three reward keychain designs are unlocked with coins. The 24 regular designs stay free.'],
+        ['Xu không có giá trị tiền. Không thể mua, bán, chuyển cho người khác hay đổi ra tiền.', 'Coins have no cash value. They cannot be bought, sold, transferred to anyone or cashed out.'],
+        ['Hiện nay xu không hết hạn. Nếu điều này thay đổi, banbe sẽ báo trước trong ứng dụng.', 'Coins do not expire today. If that ever changes, banbe will tell you in the app in advance.'],
+        ['Máy chủ quyết định mọi khoản xu từ lần điểm danh do host xác nhận. Ứng dụng không tự cộng xu.', 'The server decides every coin from check-ins confirmed by a host. The app never adds coins by itself.'],
+        ['+20 xu cho mỗi sự kiện khác nhau bạn được host điểm danh, và +10 xu một lần khi hoàn tất câu hỏi sở thích.', '+20 coins for each different event a host checks you in at, and +10 coins once for finishing the preference questions.'],
+        ['Xu chỉ được tính khi host điểm danh bạn trong khoảng 3 giờ trước đến 24 giờ sau giờ bắt đầu. Ngoài khoảng đó vẫn được tính cho huy hiệu và chuỗi, nhưng không có xu và không bị tính vào giới hạn tháng.', 'Coins are paid only when the host checks you in between 3 hours before and 24 hours after the start. Outside that window it still counts for badges and your streak, but pays no coins and does not use up the monthly limit.'],
+        ['Mỗi tháng tối đa 10 sự kiện được tính xu. Sau đó bạn vẫn tiến tới huy hiệu và chuỗi.', 'At most 10 events earn coins each month. After that you still progress toward badges and your streak.'],
+        ['Nếu sự kiện bị huỷ hoặc bị banbe gỡ, hay lần điểm danh bị huỷ, xu từ sự kiện đó được trừ lại. Nếu bạn đã dùng số xu đó, số dư có thể âm cho tới khi bạn kiếm lại. Nếu sự kiện được khôi phục, xu được trả lại.', 'If an event is cancelled or removed by banbe, or a check-in is undone, the coins from it are reversed. If you already spent them, your balance can go negative until you earn it back. If the event is restored, the coins come back.'],
+        ['Xu dùng để mở khoá mẫu móc khoá trang trí. Mẫu đã mở không bị thu hồi. 24 mẫu thường luôn miễn phí.', 'Coins unlock decorative keychain designs. Unlocked designs are never taken away. The 24 regular designs stay free.'],
       ]],
+      ['h', 'Chuỗi', 'Streak'],
+      ['flag', 'rewards_daily', ['ul', [
+        ['Một ngày được tính khi bạn lưu một sự kiện (máy chủ xác minh) hoặc được host xác nhận tham dự. Chỉ mở ứng dụng thì không tính.', 'A day counts when you save an event (verified by the server) or a host confirms you attended. Just opening the app does not count.'],
+        ['Bỏ lỡ một ngày, chuỗi bắt đầu lại từ 0. Không bị trừ xu hay khoá gì cả.', 'Miss a day and the streak starts again from 0. Nothing is taken away or blocked.'],
+      ]]],
+      ['flag', 'rewards_v2', ['ul', [
+        ['Chuỗi được tính theo tuần, từ thứ Hai đến Chủ nhật theo múi giờ của bạn. Một lần lưu sự kiện hoặc một lần được xác nhận tham dự là đủ cho cả tuần.', 'The streak counts weeks, Monday to Sunday in your own time zone. One saved event or one confirmed attendance keeps the whole week.'],
+        ['Cứ 4 tuần hoạt động bạn nhận 1 tuần nghỉ, giữ tối đa 2. Tuần nghỉ tự che một tuần bạn bỏ lỡ. Không thể mua tuần nghỉ.', 'Every 4 active weeks earn 1 grace week, and you can hold up to 2. A grace week covers a week you miss, automatically. Grace weeks cannot be bought.'],
+        ['Nếu chuỗi từ 4 tuần trở lên bị ngắt, tham dự một sự kiện trong 14 ngày sau đó sẽ khôi phục chuỗi.', 'If a streak of 4 weeks or more breaks, attending an event within 14 days brings it back.'],
+        ['Chuỗi không bao giờ tạo ra xu, và bỏ lỡ không bị phạt.', 'Streaks never pay coins, and missing one carries no penalty.'],
+      ]]],
+      ['h', 'Huy hiệu', 'Badges'],
+      ['ul', [
+        ['Huy hiệu đến từ việc tham dự thật, ví dụ số sự kiện hoặc số danh mục khác nhau. Chúng riêng tư và không hiện công khai.', 'Badges come from real attendance, for example how many events or how many different categories. They are private and never shown publicly.'],
+        ['Nếu một lần tham dự bị huỷ, huy hiệu có thể bị thu lại cho tới khi bạn đạt lại.', 'If an attendance is undone, a badge can be withdrawn until you reach it again.'],
+        ['Huy hiệu có nhiều cấp. Huy hiệu theo mùa tính các sự kiện diễn ra trong khoảng thời gian ghi rõ. "Huy hiệu tiếp theo" cho thấy bạn còn cách bao xa.', 'Badges have tiers. Seasonal badges count events taking place in a stated window. "Next badge" shows how close you are.', 'rewards_v2'],
+      ]],
+      ['flag', 'rewards_v2', ['h', 'Mục tiêu tháng', 'Monthly goal']],
+      ['flag', 'rewards_v2', ['p', 'Bạn có thể tự đặt 1, 2 hoặc 4 sự kiện mỗi tháng và xoá bất kỳ lúc nào. Mục tiêu chỉ để bạn theo dõi: không có xu và không có huy hiệu.', 'You can set 1, 2 or 4 events a month and clear it any time. The goal is just for you to follow: it pays no coins and no badge.']],
+      ['h', 'Múi giờ', 'Time zone'],
+      ['p', 'Mặc định là giờ Việt Nam. Bạn đổi được trong trang Phần thưởng. Thay đổi có hiệu lực từ ngày kế tiếp, tối đa 2 lần trong 30 ngày.', 'It defaults to Vietnam time. You can change it on the Rewards page. A change applies from the next day, at most twice in 30 days.'],
+      ['tip', 'Xu và huy hiệu không ảnh hưởng đến việc đặt chỗ, thứ tự ưu tiên hay điều kiện tham gia sự kiện.', 'Coins and badges never affect booking, priority or whether you can join an event.'],
     ]},
     { id: 'reports', vi: 'Số liệu của bạn', en: 'Your metrics', blocks: [
       ['p', 'Tài khoản > "Số Liệu & Báo Cáo" cho thấy số chỗ đã xác nhận của bạn theo 7/30/90 ngày hoặc khoảng tùy chọn. "Cần chú ý" chỉ hiện khi bạn còn khoản hoàn tiền đang chờ. Xuất PDF/JSON từ menu "⋯", CSV hoặc ảnh biểu đồ từ từng số liệu.', 'Account > "Metrics & Reports" shows your confirmed bookings for 7/30/90 days or a custom range. "Needs attention" only appears while you have refunds outstanding. Export PDF/JSON from the "⋯" menu, and CSV or a chart image from each metric.'],

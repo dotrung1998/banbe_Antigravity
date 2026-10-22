@@ -125,6 +125,39 @@ Thay đổi ảnh hưởng đến quyền của bạn được báo trong ứng 
 
 Changes affecting your rights are announced in the app 7 days ahead and need your renewed agreement. Vietnamese law applies. For a dispute with banbe, contact [contact email] first (reply within 7 working days), then the competent courts of Vietnam. Disputes with a host are between you and the host; we assist with booking and chat history on a lawful request.
 
+### A9. Phần thưởng: xu, huy hiệu và chuỗi
+
+### A9. Rewards: coins, badges and streaks
+
+> [chỉ hiển thị khi Phần thưởng được bật · shown only while Rewards is switched on] Đoạn này và các dòng/đoạn đánh dấu "Phần thưởng" ở B2, B3, B7, B11 chỉ hiện trong ứng dụng khi công tắc Phần thưởng đang bật. · This section and the rows/paragraphs marked "Rewards" in B2, B3, B7 and B11 appear in the app only while the Rewards switch is on.
+
+Phần thưởng ghi nhận việc bạn tham dự sự kiện. Xu và huy hiệu là điểm ghi nhận trong ứng dụng. Xu không có giá trị tiền, không thể mua, bán, chuyển cho người khác hay đổi ra tiền. Hiện nay xu không hết hạn. Nếu điều này thay đổi, chúng tôi báo trước trong ứng dụng. Xu và huy hiệu không ảnh hưởng đến việc đặt chỗ, thứ tự ưu tiên hay điều kiện tham gia.
+
+Rewards recognise you attending events. Coins and badges are points that record activity in the app. Coins have no cash value and cannot be bought, sold, transferred to anyone or cashed out. Coins do not expire today. If that changes, we tell you in the app in advance. Coins and badges never affect booking, priority or eligibility.
+
+Máy chủ của banbe quyết định mọi khoản xu từ lần điểm danh do host xác nhận. Hiện nay bạn nhận 20 xu cho mỗi sự kiện khác nhau và 10 xu một lần khi hoàn tất câu hỏi sở thích. Xu chỉ được tính khi host điểm danh bạn trong khoảng 3 giờ trước đến 24 giờ sau giờ bắt đầu. Ngoài khoảng đó, lần tham dự vẫn được tính cho huy hiệu và chuỗi nhưng không có xu và không bị tính vào giới hạn tháng. Mỗi tháng tối đa 10 sự kiện được tính xu. Chủ sự kiện, thành viên nhóm của host và việc tự điểm danh không được tính. Các con số có thể thay đổi, mỗi lần thay đổi có số phiên bản quy tắc mới hiển thị trong trang Phần thưởng.
+
+banbe's server decides every coin from check-ins confirmed by a host. Today you receive 20 coins for each different event and 10 coins once for finishing the preference questions. Coins are paid only when the host checks you in between 3 hours before and 24 hours after the start. Outside that window the attendance still counts for badges and your streak, but pays no coins and does not use up the monthly limit. At most 10 events earn coins each month. Event owners, a host's team members and self check-ins do not earn. The numbers may change, and each change gets a new rules version shown on the Rewards page.
+
+Nếu sự kiện bị huỷ hoặc bị banbe gỡ bỏ, hay lần điểm danh bị huỷ, xu từ sự kiện đó được trừ lại bằng một dòng điều chỉnh mới. Nếu bạn đã dùng số xu đó, số dư có thể âm cho tới khi bạn kiếm lại. Mẫu móc khoá đã mở không bị thu hồi. Nếu sự kiện được khôi phục, xu được trả lại. Huy hiệu có thể bị thu lại khi lần tham dự tạo ra nó không còn hợp lệ.
+
+If an event is cancelled or removed by banbe, or a check-in is undone, the coins from it are reversed with a new adjustment entry. If you already spent them, your balance can go negative until you earn it back. Keychain designs you unlocked are never taken away. If the event is restored, the coins come back. A badge can be withdrawn when the attendance behind it is no longer valid.
+
+> [chỉ khi Phần thưởng bật và Phần thưởng v2 tắt · only while Rewards is on and Rewards v2 is off]
+
+Chuỗi đếm số ngày liên tiếp bạn lưu một sự kiện (máy chủ xác minh) hoặc được host xác nhận tham dự. Bỏ lỡ một ngày, chuỗi bắt đầu lại từ 0 mà không bị trừ xu hay khoá gì cả.
+
+The streak counts consecutive days on which you save an event (verified by the server) or a host confirms you attended. Miss a day and it starts again from 0, with nothing taken away or blocked.
+
+> [chỉ khi Phần thưởng và Phần thưởng v2 đều bật · only while Rewards and Rewards v2 are both on]
+
+Chuỗi đếm theo tuần, từ thứ Hai đến Chủ nhật theo múi giờ của bạn: một lần lưu sự kiện hoặc một lần được xác nhận tham dự là đủ cho cả tuần. Cứ 4 tuần hoạt động bạn nhận một tuần nghỉ, giữ tối đa 2, tự che một tuần bạn bỏ lỡ. Tuần nghỉ không thể mua và không có giá trị. Nếu chuỗi từ 4 tuần trở lên bị ngắt, việc được xác nhận tham dự một sự kiện trong 14 ngày sau đó sẽ khôi phục chuỗi. Huy hiệu có nhiều cấp, và huy hiệu theo mùa tính các sự kiện diễn ra trong khoảng thời gian ghi rõ. Bạn có thể tự đặt mục tiêu tháng (1, 2 hoặc 4 sự kiện) và xoá bất kỳ lúc nào. Chuỗi, tuần nghỉ và mục tiêu không bao giờ tạo ra xu.
+
+The streak counts weeks, Monday to Sunday in your own time zone: one saved event or one confirmed attendance keeps the whole week. Every 4 active weeks earn a grace week, and you can hold up to 2, which automatically covers a week you miss. Grace weeks cannot be bought and have no value. If a streak of 4 weeks or more breaks, being confirmed at an event within the following 14 days restores it. Badges have tiers, and seasonal badges count events taking place in a stated window. You can set a monthly goal (1, 2 or 4 events) and clear it any time. Streaks, grace weeks and goals never pay coins.
+
+Ngày và tháng được tính theo giờ Việt Nam cho tới khi bạn chọn múi giờ khác trong trang Phần thưởng. Thay đổi có hiệu lực từ ngày kế tiếp, tối đa 2 lần trong 30 ngày. Trang Phần thưởng, xu, huy hiệu và lịch sử chỉ mình bạn thấy.
+
+Days and months follow Vietnam time until you choose another time zone on the Rewards page. A change applies from the next day, at most twice in 30 days. The Rewards page, your coins, badges and history are visible only to you.
 ## Phần B. Thông báo quyền riêng tư
 
 ## Part B. Privacy Notice
@@ -166,6 +199,8 @@ CÓMPANY CO., LTD controls and processes your personal data on banbe under the L
 | Đăng nhập qua Google/Facebook<br>Google/Facebook sign-in | Email, tên hiển thị và ảnh đại diện do Google/Facebook cung cấp khi bạn chọn đăng nhập bằng dịch vụ đó<br>Email, display name and avatar that Google/Facebook provide when you choose to sign in that way | Tạo và đăng nhập tài khoản<br>Creating and signing in to your account |
 | Thông báo trong ứng dụng<br>In-app notifications | Thông báo về đặt chỗ, thanh toán, tranh chấp, sự kiện<br>Notices about your bookings, payments, disputes, events | Báo cho bạn biết diễn biến; bạn xoá được từng thông báo bất kỳ lúc nào<br>Keeping you informed; you can delete each one at any time |
 | Kỹ thuật<br>Technical | Địa chỉ IP, loại thiết bị và trình duyệt, nhật ký truy cập và lỗi<br>IP address, device and browser type, access and error logs | Bảo mật, giới hạn tần suất, sửa lỗi<br>Security, rate limiting, fixing bugs |
+| Phần thưởng<br>Rewards | Sổ xu (cộng, trừ lại, đổi thưởng), ngày hoạt động, huy hiệu, lựa chọn múi giờ<br>Coin ledger (awards, reversals, redemptions), active days, badges, time-zone choice | Vận hành Phần thưởng cho bạn<br>Running Rewards for you  *[chỉ hiển thị khi Phần thưởng được bật · shown only while Rewards is switched on]* |
+| Mục tiêu tháng<br>Monthly goal | Số sự kiện bạn chọn mỗi tháng và thời điểm đặt<br>The number of events you chose per month and when you set it | Hiển thị tiến độ cho riêng bạn<br>Showing your own progress  *[chỉ khi Phần thưởng và Phần thưởng v2 đều bật · only while Rewards and Rewards v2 are both on]* |
 
 Chúng tôi không thu thập: danh bạ, giấy tờ tuỳ thân, số thẻ thanh toán hay thông tin đăng nhập ngân hàng của bạn (số tài khoản nhận hoàn tiền bạn nhập và tài khoản nhận tiền của host được lưu như nêu ở bảng trên). Với vị trí thiết bị: nếu bạn cho phép, ứng dụng đọc vị trí hiện tại để tính khoảng cách tới sự kiện và định vị bản đồ gần bạn; toạ độ này xử lý ngay trên thiết bị của bạn và không được gửi về máy chủ hay lưu trữ. Giao dịch diễn ra trong ứng dụng ngân hàng hoặc ví của bạn; phần chúng tôi nhận được là thông báo chuyển khoản từ tài khoản host đã kết nối, gồm số tiền, nội dung và dữ liệu gốc do nhà cung cấp thông báo gửi (có thể gồm tên và số tài khoản người chuyển), như nêu ở bảng trên.
 
@@ -178,6 +213,12 @@ We do not collect: contacts, identity documents, payment card numbers or your ba
 Chúng tôi xử lý dữ liệu để: (1) cung cấp dịch vụ đặt chỗ và trò chuyện bạn yêu cầu, gồm gửi vé, tức thực hiện hợp đồng với bạn; (2) giữ nền tảng an toàn và chống gian lận, gồm xác minh số điện thoại và thống kê vắng mặt, trên cơ sở sự đồng ý bạn đưa ra khi đăng ký; (3) tuân thủ nghĩa vụ pháp luật, gồm lưu trữ và cung cấp thông tin khi cơ quan có thẩm quyền yêu cầu đúng luật; (4) gửi thông báo về đặt chỗ và sự kiện của bạn.
 
 We process data to: (1) provide the reservation and chat service you asked for, including sending tickets, that is, perform our contract with you; (2) keep the platform safe and prevent fraud, including phone verification and no-show counts, on the basis of the consent you give at sign-up; (3) meet legal obligations, including retaining and disclosing information when a competent authority lawfully requires it; (4) send you notices about your bookings and events.
+
+> [chỉ hiển thị khi Phần thưởng được bật · shown only while Rewards is switched on]
+
+Khi Phần thưởng được bật, chúng tôi còn xử lý sổ xu, ngày hoạt động, huy hiệu và lựa chọn múi giờ của bạn để: (5) vận hành Phần thưởng mà bạn sử dụng, tức thực hiện hợp đồng với bạn, và (6) cải thiện dịch vụ từ các số đếm tổng hợp ẩn danh, ví dụ bao nhiêu người quay lại sự kiện vào tháng sau. Số liệu tổng hợp chỉ là số đếm theo nhóm, không chứa tên, số điện thoại, email hay mã tài khoản, và nhóm nào có ít hơn 20 người thì bị ẩn. Host không bao giờ thấy câu trả lời hay mã tài khoản của từng người qua các số liệu này. Chúng tôi không dùng dữ liệu phần thưởng cho quảng cáo và không chia sẻ nó với bên thứ ba.
+
+While Rewards is switched on, we also process your coin ledger, active days, badges and time-zone choice to: (5) run the Rewards you use, that is, perform our contract with you, and (6) improve the service from anonymous aggregate counts, for example how many people come back to an event the following month. Aggregates are counts per group only, with no names, phone numbers, emails or account ids, and any group smaller than 20 people is hidden. Hosts never see any individual's answers or account id through these figures. We do not use rewards data for advertising and do not share it with third parties.
 
 Chúng tôi không dùng dữ liệu cho quảng cáo của banbe (host chỉ nhắn quảng bá cho khách đã bật đồng ý riêng, mỗi lần một người nhận và có ghi nhật ký), không phân tích nội dung trò chuyện, và không ra quyết định tự động ảnh hưởng đến bạn ngoài việc đếm số lần vắng mặt như nêu tại Điều A5.
 
@@ -244,6 +285,9 @@ banbe data is stored on Supabase servers outside Vietnam, and Vercel may process
 | Thanh toán và hoàn tiền<br>Payments and refunds | Cùng với đặt chỗ; dữ liệu gốc của thông báo chuyển khoản hiện chưa có thời hạn xoá tự động.<br>With the booking; the raw transfer-notification data currently has no automatic deletion deadline. |
 | Yêu cầu xoá tài khoản<br>Account-deletion requests | Giữ lại sau khi xoá để chứng minh yêu cầu đã được xử lý.<br>Kept after deletion to show the request was handled. |
 | Hồ sơ sự cố dữ liệu<br>Data-breach records | 5 năm theo quy định pháp luật.<br>5 years, as the law requires. |
+| Sổ xu, huy hiệu, ngày hoạt động, múi giờ<br>Coin ledger, badges, active days, time zone | Cùng với tài khoản và bị xoá khi bạn xoá tài khoản. Sổ xu chỉ được ghi thêm, không bị sửa.<br>With your account, deleted when you delete it. The coin ledger is only ever added to, never edited.  *[chỉ hiển thị khi Phần thưởng được bật · shown only while Rewards is switched on]* |
+| Mục tiêu tháng<br>Monthly goal | Đến khi bạn xoá mục tiêu hoặc xoá tài khoản.<br>Until you clear the goal or delete your account.  *[chỉ khi Phần thưởng và Phần thưởng v2 đều bật · only while Rewards and Rewards v2 are both on]* |
+| Số đếm tổng hợp ẩn danh<br>Anonymous aggregate counts | Không gắn với tài khoản nào nên không bị xoá theo tài khoản.<br>Not tied to any account, so not deleted with one.  *[chỉ hiển thị khi Phần thưởng được bật · shown only while Rewards is switched on]* |
 
 Xoá tài khoản là tự phục vụ trong Tuỳ chọn — không cần gửi yêu cầu hỗ trợ, chỉ cần xác nhận vài bước ngay trong ứng dụng. Việc xoá bị từ chối trong khi bạn còn sở hữu sự kiện đang mở; hãy huỷ hoặc kết thúc sự kiện trước. Sau khi xoá, chúng tôi không thể khôi phục tài khoản. Một số tệp (như chứng từ thanh toán) bị xoá theo thời hạn riêng nêu trong bảng trên chứ không phải ngay khi xoá tài khoản.
 
@@ -292,6 +336,12 @@ If a data incident occurs that could harm you, we notify the Ministry of Public 
 banbe lưu phiên đăng nhập và tuỳ chọn ngôn ngữ trên thiết bị của bạn để bạn không phải đăng nhập lại mỗi lần. Chúng tôi không dùng cookie quảng cáo hay công cụ theo dõi của bên thứ ba (ngoài các dịch vụ bản đồ và phông chữ nêu ở Điều B5).
 
 banbe stores your sign-in session and language preference on your device so you do not have to sign in every time. We use no advertising cookies or third-party trackers (beyond the map and font services in Section B5).
+
+> [chỉ hiển thị khi Phần thưởng được bật · shown only while Rewards is switched on]
+
+Với Phần thưởng, thiết bị cũng ghi nhớ những huy hiệu và cột mốc đã được chúc mừng để không hiện lại lần nữa. Thông tin này chỉ ở trên thiết bị của bạn và không được gửi cho ai.
+
+For Rewards, your device also remembers which badges and milestones have already been celebrated so they are not shown again. This stays on your device and is not sent to anyone.
 
 ### B12. Thay đổi thông báo này
 

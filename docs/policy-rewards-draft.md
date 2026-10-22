@@ -6,6 +6,14 @@
 > **CẦN LUẬT SƯ DUYỆT · LAWYER REVIEW REQUIRED.** Đây là bản nháp nội bộ do kỹ thuật soạn từ những gì hệ thống thực sự làm (migration 165–180) và từ `docs/rewards-research.md`. Không phải tư vấn pháp lý hay thuế. Không điều khoản nào dưới đây có hiệu lực cho tới khi luật sư duyệt, `banbe_User_Policy.md` được sửa, và người dùng được thông báo (mục 6).
 > **LAWYER REVIEW REQUIRED.** This is an internal engineering draft written from what the system actually does (migrations 165–180) and from `docs/rewards-research.md`. It is not legal or tax advice. Nothing below takes effect until a lawyer approves it, `banbe_User_Policy.md` is amended, and users are notified (section 6).
 
+> **Quyết định của chủ sản phẩm / Owner decisions (2026-10-22), thay thế các mục "CẦN QUYẾT ĐỊNH" tương ứng / supersede the matching DECISION items:**
+> 1. **Không có hạn dùng xu / No coin expiry.** Hiện nay xu không hết hạn; mọi thay đổi sẽ được báo trước trong ứng dụng. Không thêm loại dòng sổ cái "hết hạn". (Mục 2 bên dưới chỉ còn là tham khảo.) · Coins do not expire today; any change will be announced in advance in the app. No expiry ledger entry type. (Section 2 below is reference only.)
+> 2. **Phương án A được xác nhận / Option A confirmed:** ưu đãi do host/địa điểm đăng, mở bằng huy hiệu hoặc việc tham dự, không bao giờ định giá bằng xu · offers posted by hosts/venues, unlocked by badge or attendance, never priced in coins. `TODO(lawyer)`: chưa có tên luật sư · lawyer not named yet.
+> 3. **Giai đoạn 2 vẫn tắt / Phase 2 stays dark** trên production: `partner_offers`, `reward_events`, huy hiệu công khai, nhắc nhở · badge showcase, nudges.
+> 4. **Số đếm tổng hợp ẩn danh, của chính banbe / Anonymous first-party aggregate counts: allowed.** Chỉ tổng hợp, ngưỡng tối thiểu 20, không công cụ theo dõi bên thứ ba · aggregates only, minimum group 20, no third-party trackers.
+> 5. **Không xin đồng ý lại, không đổi phiên bản chính sách / No re-consent, no policy version bump** (ứng dụng đang thử nghiệm). Nội dung Phần thưởng trong Điều khoản/Hướng dẫn/Hỏi & Đáp được bật/tắt theo công tắc `rewards` (note 59). · Rewards content in the Terms/Guides/Q&A follows the `rewards` switch (note 59).
+> `TODO(lawyer)`: xem lại mục 1.3b, 1.3c, 4.2–4.6 và các câu hỏi ở mục 8 khi có luật sư · review 1.3b, 1.3c, 4.2–4.6 and the questions in section 8 once a lawyer is named.
+
 > **Quyết định hiện tại / Current decision (2026-10-11): Phương án A được chọn tạm thời; Phương án B chỉ khi có đối tác thật và luật sư duyệt.**
 > **Option A is chosen provisionally; Option B only once there is a real partner and the lawyer has approved it.**
 

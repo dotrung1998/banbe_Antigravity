@@ -108,7 +108,9 @@ export const ADMIN_GUIDE = {
     { id: 'features', vi: 'Công tắc tính năng', en: 'Feature switches', blocks: [
       ['p', 'Review & Moderation > "Công tắc tính năng" bật/tắt một tính năng cho mọi người dùng cùng lúc. Công tắc chỉ đổi sau khi máy chủ chấp nhận, và mọi thay đổi đều được ghi lại.', 'Review & Moderation > "Feature switches" turns a feature on or off for every user at once. A switch only moves after the server accepts the change, and every change is logged.'],
       ['ul', [
-        ['"Phần thưởng & huy hiệu": ẩn xu, chuỗi ngày, huy hiệu và mẫu móc khoá thưởng ở mọi nơi. Không xoá dữ liệu. Dòng trạng thái: "Đang hiện cho mọi người" hoặc "Đang ẩn với mọi người". Mặc định tắt.', '"Rewards & badges": hides coins, streaks, badges and reward keychain designs everywhere. No data is deleted. Status line: "Visible to everyone" or "Hidden from everyone". Off by default.'],
+        ['Mỗi dòng có một dòng trạng thái: "Đang hiện cho mọi người" hoặc "Đang ẩn với mọi người". Tắt một tính năng không xoá dữ liệu.', 'Each row has a status line: "Visible to everyone" or "Hidden from everyone". Switching a feature off deletes no data.'],
+        ['"Phần thưởng & huy hiệu": ẩn xu, chuỗi, huy hiệu và mẫu móc khoá thưởng ở mọi nơi, kể cả các mục về phần thưởng trong Điều khoản, Hướng dẫn và Hỏi & Đáp. Mặc định tắt.', '"Rewards & badges": hides coins, streaks, badges and reward keychain designs everywhere, including the rewards parts of the Terms, the Guides and the Q&A. Off by default.', 'rewards'],
+        ['"Phần thưởng v2": chuỗi theo tuần, tuần nghỉ, khôi phục, huy hiệu nhiều cấp và mục tiêu tháng. Cần bật Phần thưởng. Mặc định tắt.', '"Rewards v2": weekly streak, grace weeks, repair, tiered badges and a monthly goal. Needs Rewards on. Off by default.', 'rewards'],
         ['"Xoá sự kiện thử nghiệm (giai đoạn thử)" (chỉ iOS): cho phép xoá vĩnh viễn trong Quản lý sự kiện. Mặc định tắt. Xem mục Quản lý sự kiện.', '"Test event wipe (testing phase)" (iOS only): allows permanent wipes in Manage events. Off by default. See Manage events.'],
       ]],
     ]},
