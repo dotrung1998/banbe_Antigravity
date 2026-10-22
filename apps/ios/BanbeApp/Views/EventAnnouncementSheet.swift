@@ -47,7 +47,7 @@ struct EventAnnouncementSheet: View {
                 VStack(spacing: 8) {
                     Text("✓").font(.system(size: 34)).foregroundStyle(BanbeTheme.alert)
                     Text(sent == 0 ? app.T("Chưa có khách nào khác để gửi", "No other ticket holders to notify") : app.T("Đã gửi cho \(sent) khách", "Sent to \(sent) guest\(sent == 1 ? "" : "s")")).font(.system(size: 15, weight: .semibold))
-                    Text(sent == 0 ? app.T("Thông báo chỉ gửi cho người giữ vé khác bạn (bạn không tự nhận thông báo của mình).", "Announcements go to ticket holders other than you; you don't receive your own.") : app.T("Khách nhận thông báo và tin nhắn nổi bật màu đỏ trong chat.", "Guests get a notification and a red-highlighted chat message."))
+                    Text(sent == 0 ? app.T("Thông báo chỉ gửi cho người giữ vé khác bạn (bạn không tự nhận thông báo của mình).", "Announcements go to ticket holders other than you. You don't receive your own.") : app.T("Khách nhận thông báo và tin nhắn nổi bật màu đỏ trong chat.", "Guests get a notification and a red-highlighted chat message."))
                         .font(.system(size: 12.5)).opacity(0.7).multilineTextAlignment(.center)
                 }
                 .padding(.vertical, 40).padding(.horizontal, 22)
@@ -65,7 +65,7 @@ struct EventAnnouncementSheet: View {
                             .onChange(of: text) { _, _ in confirming = false }
                             .accessibilityIdentifier("announcement.text")
                         HStack {
-                            Text(templateID != nil ? app.T("Từ mẫu — bạn có thể sửa", "From a template — you can edit it") : app.T("Tin nhắn tuỳ chỉnh", "Custom message"))
+                            Text(templateID != nil ? app.T("Từ mẫu, bạn có thể sửa", "From a template, you can edit it") : app.T("Tin nhắn tuỳ chỉnh", "Custom message"))
                             Spacer()
                             Text("\(trimmed.count)/\(EventAnnouncements.maxLength)").foregroundStyle(tooLong ? BanbeTheme.alert : app.palette.ink)
                         }

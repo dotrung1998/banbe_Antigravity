@@ -136,7 +136,7 @@ struct RecipeSheet: View {
                 Text(app.T("\(score.good)/\(score.total) thành phần đã ổn.", "\(score.good) of \(score.total) ingredients in place.")
                      + " " + (hasData
                               ? app.T("Số liệu từ \(n ?? 0) sự kiện tương tự trên banbe.", "Numbers come from \(n ?? 0) similar events on banbe.")
-                              : app.T("Chưa đủ sự kiện tương tự để so sánh — đây là mẹo chung.", "Not enough similar events to compare yet — these are general tips."))
+                              : app.T("Chưa đủ sự kiện tương tự để so sánh. Đây là mẹo chung.", "Not enough similar events to compare yet. These are general tips."))
                      + " " + app.T("Không bắt buộc để gửi.", "Never required to submit."))
                     .font(.system(size: 12.5)).opacity(0.7)
                     .fixedSize(horizontal: false, vertical: true)
@@ -277,6 +277,12 @@ struct PriceMarketView: View {
                     .scaleEffect(dragging ? 1.12 : 1)
                     .opacity(unset && !dragging ? 0.55 : 1)
                     .offset(x: x - k / 2, y: 8 + 44 + 14 - k / 2 + 1.5)
+                }
+                .frame(width: geo.size.width, height: 8 + 44 + 14 + k / 2 + 4, alignment: .topLeading)
+                // The value bubble floats in an overlay, so showing it never changes the slider's size. (Inside the
+                // ZStack, its half-width leading guide widened the stack and pushed the whole slider right while
+                // dragging.) Its centre is kept inside the slider at both ends.
+                .overlay(alignment: .topLeading) {
                     if dragging {
                         Text(EventRecipe.formatVndShort(value))
                             .font(.system(size: 12, weight: .bold))
@@ -284,12 +290,10 @@ struct PriceMarketView: View {
                             .padding(.horizontal, 9).padding(.vertical, 3)
                             .background(app.palette.ink, in: Capsule())
                             .fixedSize()
-                            .alignmentGuide(.leading) { $0.width / 2 }
-                            .offset(x: x, y: -18)
+                            .position(x: min(max(x, 30), geo.size.width - 30), y: -8)
                             .allowsHitTesting(false)
                     }
                 }
-                .frame(width: geo.size.width, height: 8 + 44 + 14 + k / 2 + 4, alignment: .topLeading)
                 // Tapping the bars jumps the price there; a vertical swipe over them still scrolls the page.
                 .contentShape(Rectangle())
                 .onTapGesture(coordinateSpace: .local) { loc in

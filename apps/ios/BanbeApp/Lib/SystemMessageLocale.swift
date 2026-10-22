@@ -34,7 +34,7 @@ enum SystemMessageLocale {
         (#"^Người tổ chức chưa tìm thấy khoản chuyển khoản này(?:: (.*?))?\. Chỗ của bạn vẫn được giữ trong lúc banbe xem xét\.$"#,
          { "The organizer couldn't find this transfer\(opt($0, 1, prefix: ": ")). Your spot is still held while banbe reviews it." }),
         (#"^Người tổ chức chưa tìm thấy khoản chuyển khoản này(?:: (.*?))?\. Vui lòng kiểm tra lại thông tin chuyển khoản hoặc gửi thêm bằng chứng — chỗ của bạn vẫn được giữ\.$"#,
-         { "The organizer couldn't find this transfer\(opt($0, 1, prefix: ": ")). Please re-check the transfer details or send more proof — your spot is still held." }),
+         { "The organizer couldn't find this transfer\(opt($0, 1, prefix: ": ")). Please re-check the transfer details or send more proof. Your spot is still held." }),
         (#"^Người tổ chức và bạn chưa thống nhất được về khoản chuyển khoản này, nên đã chuyển cho banbe xem xét\. Chỗ của bạn vẫn được giữ trong lúc chờ\.$"#,
          { _ in "The organizer and you couldn't agree on this transfer, so it was passed to banbe for review. Your spot is still held meanwhile." }),
         (#"^Đã xác nhận thanh toán ▪︎ (tự động đối soát qua ngân hàng|người tổ chức xác nhận)(?:\. Biên nhận (.*))?\.$"#,

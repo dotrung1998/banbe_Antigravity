@@ -164,7 +164,7 @@ export default function AdminManageEvents() {
                         </span>
                       </button>
                       {removed && <span style={{ fontSize: 12, opacity: 0.75 }}>{T('Lý do: ', 'Reason: ')}{r.removal_reason}</span>}
-                      {removed && c?.purgeable && <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.7 }}>{T('Chưa từng có đặt chỗ — có thể xoá vĩnh viễn.', 'Never booked — can be deleted permanently.')}</span>}
+                      {removed && c?.purgeable && <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.7 }}>{T('Chưa từng có đặt chỗ, có thể xoá vĩnh viễn.', 'Never booked, can be deleted permanently.')}</span>}
                       {!removed && isBlocked(c) && (
                         <span data-testid={`admin-manage-blocked-${r.id}`} style={{ fontSize: 12, fontWeight: 600, color: 'var(--bb-honey)' }}>{blockerLine(c, T, orphan)}</span>
                       )}

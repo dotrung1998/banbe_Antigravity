@@ -340,7 +340,7 @@ enum PreferenceImpacts {
             let n = names(avail, EventPrefTaxonomy.availability)
             out.append(.init(kind: .ranking, text: vi
                 ? "Ưu tiên giờ \(n), giờ khác vẫn hiện nhưng xếp sau"
-                : "Prefers \(n); other times still show, just lower"))
+                : "Prefers \(n). Other times still show, just lower"))
         }
         if !EventPreferences.concrete(p.languages).isEmpty {
             out.append(.init(kind: .savedOnly, text: vi

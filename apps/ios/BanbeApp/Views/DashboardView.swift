@@ -812,7 +812,7 @@ struct PendingEventDetailSheet: View {
                 .scrollTargetBehavior(.viewAligned)
                 .frame(height: 220)
                 if urls.count > 1 {
-                    Text(app.T("\(urls.count) ảnh — vuốt để xem", "\(urls.count) photos — swipe to see"))
+                    Text(app.T("\(urls.count) ảnh, vuốt để xem", "\(urls.count) photos, swipe to see"))
                         .font(.system(size: 11)).opacity(0.6)
                 }
             }

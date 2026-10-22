@@ -201,7 +201,7 @@ export default function KeychainSettings() {
           <input ref={fileRef} type="file" accept={KEYCHAIN_INPUT_ACCEPT} style={{ display: 'none' }} onChange={onPick} data-testid="keychain-upload-input" />
         </div>
         <span style={{ fontSize: 10.5, color: ink, opacity: 0.55 }}>
-          {T('PNG/WebP, tối đa 512 px, 256 KB, tối đa 3 ảnh. Ảnh được nén lại và xoá metadata trên thiết bị của bạn.', 'PNG/WebP, up to 512 px and 256 KB, max 3 images. Re-encoded on your device; metadata removed.')}
+          {T('PNG/WebP, tối đa 512 px, 256 KB, tối đa 3 ảnh. Ảnh được nén lại và xoá metadata trên thiết bị của bạn.', 'PNG/WebP, up to 512 px and 256 KB, max 3 images. Re-encoded on your device, metadata removed.')}
         </span>
       </>)}
 

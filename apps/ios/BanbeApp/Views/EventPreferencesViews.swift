@@ -263,8 +263,8 @@ struct OnboardingSettingsStep: View {
                     .accessibilityAddTraits(.isHeader)
                     .padding(.top, 26)
                 switchRow(app.T("Tin nhắn quảng bá từ host", "Host promotional texts"),
-                          app.T("Tắt trừ khi bạn bật. Nếu bật, host bạn đã tương tác có thể soạn tin quảng bá SMS và tự gửi; banbe không gửi hộ. Đổi lại bất cứ lúc nào tại Tài khoản > Bảo mật.",
-                                "Off unless you switch it on. If on, hosts you've interacted with may compose a promo text that they send themselves; banbe doesn't send for them. Change it any time in Account > Security."),
+                          app.T("Tắt trừ khi bạn bật. Nếu bật, host bạn đã tương tác có thể soạn tin quảng bá SMS và tự gửi. banbe không gửi hộ. Đổi lại bất cứ lúc nào tại Tài khoản > Bảo mật.",
+                                "Off unless you switch it on. If on, hosts you've interacted with may compose a promo text that they send themselves. banbe doesn't send for them. Change it any time in Account > Security."),
                           on: promo, id: "onboarding.settings.promo") { promo.toggle() }
                     .disabled(app.hostPromoConsent == nil)
                     .padding(.top, 10)

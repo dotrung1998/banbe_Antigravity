@@ -46,8 +46,8 @@ function RespondVerifyInline({ T }) {
       <div style={{ padding: 14, border: `1px solid ${rule}`, borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="survey-respond-code-step">
         <div style={{ fontSize: 12.5 }}>
           {s.surveyRespondIsNewAccount
-            ? T('Email này chưa có tài khoản banbe — chúng tôi sẽ tạo một tài khoản tối giản gắn với email này để lưu câu trả lời của bạn.', "This email doesn't have a banbe account yet — we'll create a minimal one tied to this email so your response can be saved.")
-            : T('Email này đã có tài khoản banbe — nhập mã để xác nhận đó là bạn.', 'This email already has a banbe account — enter the code to confirm it’s you.')}
+            ? T('Email này chưa có tài khoản banbe. Chúng tôi sẽ tạo một tài khoản tối giản gắn với email này để lưu câu trả lời của bạn.', "This email doesn't have a banbe account yet. We'll create a minimal one tied to this email so your response can be saved.")
+            : T('Email này đã có tài khoản banbe. Nhập mã để xác nhận đó là bạn.', 'This email already has a banbe account. Enter the code to confirm it’s you.')}
         </div>
         <input
           value={s.surveyRespondCode}
@@ -209,7 +209,7 @@ export default function SurveyPublic() {
 
         {isDraft && (
           <div style={{ padding: 14, background: 'rgba(0,0,0,0.04)', borderRadius: 10, fontSize: 13.5 }}>
-            {T('Đây là bản xem trước — khảo sát chưa được xuất bản.', "This is a preview — the survey hasn't been published yet.")}
+            {T('Đây là bản xem trước. Khảo sát chưa được xuất bản.', "This is a preview. The survey hasn't been published yet.")}
           </div>
         )}
         {isClosed && (

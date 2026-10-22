@@ -59,7 +59,7 @@ function planFiles(tr) {
 
 export function transcriptText(tr, files, L) {
   const lines = [];
-  lines.push(L('BẢN GHI TRANH CHẤP HOÀN TIỀN — banbe', 'REFUND DISPUTE TRANSCRIPT — banbe'));
+  lines.push(L('BẢN GHI TRANH CHẤP HOÀN TIỀN ▪︎ banbe', 'REFUND DISPUTE TRANSCRIPT ▪︎ banbe'));
   lines.push(`${L('Sự kiện', 'Event')}: ${tr.event_name || '-'}`);
   lines.push(`${L('Người tổ chức', 'Organizer')}: ${tr.organizer_label || tr.organizer_name || '-'}`);
   lines.push(`${L('Khách', 'Guest')}: ${tr.guest_label || '-'}`);

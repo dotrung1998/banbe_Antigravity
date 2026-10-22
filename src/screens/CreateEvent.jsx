@@ -211,8 +211,8 @@ export default function CreateEvent() {
       setImportFieldErrors(result.errors || {});
       if (!result.isValid) {
         setImportError(T(
-          'Đã điền vào biểu mẫu bên dưới — kiểm tra các mục còn thiếu trước khi gửi.',
-          'Filled in the form below — check the flagged fields before submitting.'
+          'Đã điền vào biểu mẫu bên dưới. Kiểm tra các mục còn thiếu trước khi gửi.',
+          'Filled in the form below. Check the flagged fields before submitting.'
         ));
       }
     } catch (err) {
@@ -473,7 +473,7 @@ export default function CreateEvent() {
           <StepCard title={T('Hồ sơ người tổ chức', 'Organizer profile')} id="create-section-host">
             {sections[0].done && (
               <p data-testid="create-host-prefilled" style={{ ...hintText, opacity: 0.85, marginTop: -8 }}>
-                ✓ {T('Đã điền từ hồ sơ người tổ chức của bạn — kiểm tra lại rồi tiếp tục.', 'Filled from your organizer profile — check it and continue.')}
+                ✓ {T('Đã điền từ hồ sơ người tổ chức của bạn. Kiểm tra lại rồi tiếp tục.', 'Filled from your organizer profile. Check it and continue.')}
               </p>
             )}
             <Guided field="hostName" attn={attn}>
@@ -600,8 +600,8 @@ export default function CreateEvent() {
           <FormLabel icon="pin" text={T('Địa điểm', 'Location')} required />
           <p style={hintText}>
             {T(
-              'Gõ số nhà + tên đường (hoặc tên địa điểm nếu không có số nhà) rồi chọn một gợi ý — cần thiết để đăng sự kiện.',
-              'Type a house number + street (or a venue name if there is no house number), then pick a suggestion — required to publish.'
+              'Gõ số nhà + tên đường (hoặc tên địa điểm nếu không có số nhà) rồi chọn một gợi ý. Cần thiết để đăng sự kiện.',
+              'Type a house number + street (or a venue name if there is no house number), then pick a suggestion. Required to publish.'
             )}
           </p>
           {/* Address-autocomplete fix pass (2026-09-28) — replaces the old
@@ -701,7 +701,7 @@ export default function CreateEvent() {
               )}
               {recipeById.lead?.status === 'improve' && (
                 <Insight testId="create-lead-insight" check={recipeById.lead} T={T}
-                  line={T(`Còn ${Math.max(recipeById.lead.days, 0)} ngày — sự kiện kín chỗ thường đăng trước ~${recipeById.lead.target} ngày.`, `${Math.max(recipeById.lead.days, 0)} days to go — events that fill are usually posted ~${recipeById.lead.target} days ahead.`)} />
+                  line={T(`Còn ${Math.max(recipeById.lead.days, 0)} ngày. Sự kiện kín chỗ thường đăng trước ~${recipeById.lead.target} ngày.`, `${Math.max(recipeById.lead.days, 0)} days to go. Events that fill are usually posted ~${recipeById.lead.target} days ahead.`)} />
               )}
             </Guided>
           </StepCard>

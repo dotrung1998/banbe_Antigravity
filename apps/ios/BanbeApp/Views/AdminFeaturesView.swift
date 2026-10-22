@@ -23,7 +23,7 @@ struct AdminFeaturesView: View {
         Flag(key: "admin_event_wipe", vi: "Xoá sự kiện thử nghiệm (giai đoạn thử)", en: "Test event wipe (testing phase)",
              hintVi: "Cho admin xoá vĩnh viễn bất kỳ sự kiện nào cùng mọi dữ liệu liên quan, không cần lý do, trong Quản lý sự kiện (chỉ iOS). Chỉ dùng cho dữ liệu thử nghiệm.",
              hintEn: "Lets admins permanently wipe any event and everything tied to it, no reason needed, from Manage events (iOS only). For test data only.",
-             onVi: "Đang bật — admin có thể xoá vĩnh viễn", onEn: "On — admins can wipe permanently",
+             onVi: "Đang bật. Admin có thể xoá vĩnh viễn", onEn: "On. Admins can wipe permanently",
              offVi: "Đang tắt", offEn: "Off"),
     ]
 

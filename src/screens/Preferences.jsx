@@ -41,7 +41,7 @@ export default function Preferences() {
           <Choice
             active={state.autoEmailDocuments}
             title={T('Tự động gửi email hoá đơn/biên nhận', 'Automatically email me a copy of invoices/receipts')}
-            subtitle={T('Dùng làm bằng chứng thanh toán. Áp dụng cho mọi lượt đặt chỗ, không hỏi lại mỗi lần.', 'As proof of payment. Applies to every booking; you will not be asked again per booking.')}
+            subtitle={T('Dùng làm bằng chứng thanh toán. Áp dụng cho mọi lượt đặt chỗ, không hỏi lại mỗi lần.', 'As proof of payment. Applies to every booking. You will not be asked again per booking.')}
             onClick={toggleAutoEmailDocuments}
             testId="preferences-auto-email-documents"
           />
@@ -73,7 +73,7 @@ function GlassCard({ T }) {
         style={{ width: '100%', accentColor: 'var(--bb-fg)' }}
       />
       <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.68, margin: 0 }}>
-        {T('Trong suốt hơn giúp nền hiển thị rõ hơn; đậm hơn tăng độ tương phản cho nội dung và nút.', 'Clear is more transparent; tinted increases opacity and contrast for content and controls.')}
+        {T('Trong suốt hơn giúp nền hiển thị rõ hơn, đậm hơn tăng độ tương phản cho nội dung và nút.', 'Clear is more transparent, tinted increases opacity and contrast for content and controls.')}
       </p>
     </div>
   );

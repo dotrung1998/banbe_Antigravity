@@ -217,7 +217,7 @@ export default function Confirmed() {
           : name + T(', hoàn tất thanh toán để nhận vé.', ', complete payment to get your ticket.');
   const confirmNote = isExpired
     ? T('Bạn chưa chuyển khoản trước khi hết giờ giữ chỗ, nên chỗ đã được mở lại cho người khác. Bạn có thể giữ chỗ lại nếu vẫn còn chỗ trống.', "You didn't complete payment before the hold ran out, so the seat was released back. You can reserve again if there's still room.")
-    : T('banbe không thu tiền. Hãy chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn; nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.', 'banbe does not collect money. Pay the organizer directly using the instructions in chat; if they cancel, they are responsible for your refund.');
+    : T('banbe không thu tiền. Hãy chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn. Nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.', 'banbe does not collect money. Pay the organizer directly using the instructions in chat. If they cancel, they are responsible for your refund.');
 
   const showQr = isPaid;
   const calendarLabel = s.calAdded ? T('Đã thêm vào lịch', 'Added to calendar') : T('Thêm vào lịch', 'Add to calendar');
@@ -321,7 +321,7 @@ export default function Confirmed() {
               <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.65, flex: 'none' }}>{attendees.length} {T('vé', attendees.length === 1 ? 'ticket' : 'tickets')}</span>
             </div>
             <span style={{ fontSize: 12, color: ink }}>{trStatus(stripKm(ev.where, ev))}</span>
-            <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{T('Mỗi người có mã QR riêng — đưa mã của chính họ ở cửa.', 'Each person has their own QR — show their own code at the door.')}</span>
+            <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{T('Mỗi người có mã QR riêng. Đưa mã của chính họ ở cửa.', 'Each person has their own QR. Show their own code at the door.')}</span>
             {attendees.map(a => {
               const on = selected.has(a.id);
               const age = ageOf(a.date_of_birth);

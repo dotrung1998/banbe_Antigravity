@@ -569,7 +569,7 @@ export function ShareCardRow({ host = false, onClick, testId, marginTop = 14 }) 
         <span style={{ fontSize: 15, fontWeight: 600 }}>
           {host ? T('Chia sẻ thẻ tổ chức của bạn', 'Share your host card') : T('Chia sẻ thẻ hồ sơ của bạn', 'Share your profile card')}
         </span>
-        <span style={{ fontSize: 11.5, opacity: 0.8 }}>{T('Thẻ có mã QR, tuỳ chỉnh màu và ảnh nền', 'A card with a QR code — pick your colours and background')}</span>
+        <span style={{ fontSize: 11.5, opacity: 0.8 }}>{T('Thẻ có mã QR, tuỳ chỉnh màu và ảnh nền', 'A card with a QR code, pick your colours and background')}</span>
       </div>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--bb-honey)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flex: 'none' }}>
         <path d="M12 3v12M7 8l5-5 5 5M5 14v6h14v-6" />

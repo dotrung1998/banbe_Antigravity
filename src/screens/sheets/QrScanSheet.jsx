@@ -76,7 +76,7 @@ export default function QrScanSheet() {
   };
   const checkInError = (raw) => {
     const e = String(raw || '');
-    if (e === "Scan each attendee's own QR") return T('Vé có nhiều người: hãy quét mã QR riêng của từng khách.', "This booking has named attendees — scan each attendee's own QR.");
+    if (e === "Scan each attendee's own QR") return T('Vé có nhiều người: hãy quét mã QR riêng của từng khách.', "This booking has named attendees. Scan each attendee's own QR.");
     if (e === 'Guest already checked in') return T('Khách này đã được điểm danh rồi.', 'This guest is already checked in.');
     if (e === 'Credential invalidated') return T('Mã QR này đã bị thay thế (vé đã được tặng). Hãy quét mã mới.', 'This QR was replaced (the ticket was gifted). Scan the new one.');
     if (e === 'Not authorized') return T('Bạn không có quyền điểm danh cho sự kiện này.', "You aren't allowed to check guests in for this event.");

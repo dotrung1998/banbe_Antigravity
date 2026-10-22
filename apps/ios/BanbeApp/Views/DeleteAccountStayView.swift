@@ -106,7 +106,7 @@ struct DeleteAccountStayView: View {
     private var reasonSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(app.T("Vì sao bạn muốn rời đi?", "Why are you leaving?")).font(.headline)
-            Text(app.T("Không bắt buộc — giúp chúng tôi gợi ý cách khắc phục.", "Optional — helps us suggest a fix."))
+            Text(app.T("Không bắt buộc. Giúp chúng tôi gợi ý cách khắc phục.", "Optional. Helps us suggest a fix."))
                 .font(.caption).foregroundStyle(app.palette.ink.opacity(0.7))
             FlowChips(items: AccountRetention.reasons.map { ($0.code, app.T($0.vi, $0.en)) },
                       selected: reasonCode) { code in
@@ -207,8 +207,8 @@ struct DeleteAccountStayView: View {
             return app.T("Sở thích của bạn chỉ mình bạn thấy. Xem và chỉnh cài đặt bảo mật, khoá Face ID và tin quảng bá.",
                          "Your preferences are only visible to you. Review security, Face ID lock and promo settings.")
         case .takeABreak:
-            return app.T("Đăng xuất thay vì xoá — vé, lịch sử và sự kiện đã lưu vẫn còn khi bạn quay lại.",
-                         "Sign out instead of deleting — your tickets, history and saved events are here when you're back.")
+            return app.T("Đăng xuất thay vì xoá. Vé, lịch sử và sự kiện đã lưu vẫn còn khi bạn quay lại.",
+                         "Sign out instead of deleting. Your tickets, history and saved events are here when you're back.")
         }
     }
 

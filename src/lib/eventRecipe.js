@@ -252,7 +252,7 @@ export function recipeCopy(c, T) {
       return {
         title: T('Tên nói rõ đây là gì', 'A title that says what it is'),
         detail: c.status === 'missing' ? T('Thêm tên sự kiện.', 'Add an event name.')
-          : c.shouting ? T('Tránh viết HOA toàn bộ — khó đọc hơn.', 'Avoid ALL CAPS — it reads harder.')
+          : c.shouting ? T('Tránh viết HOA toàn bộ. Khó đọc hơn.', 'Avoid ALL CAPS. It reads harder.')
             : T('3–10 từ, nói rõ khách sẽ làm gì (vd. "Supper club 6 món, Quận 3").', '3–10 words that say what guests will do (e.g. "6-course supper club, District 3").') + ' ' + evidence,
       };
     case 'photos':
@@ -283,12 +283,12 @@ export function recipeCopy(c, T) {
     case 'price': {
       const band = c.p25 != null ? `${formatVndShort(c.p25)}–${formatVndShort(c.p75)}` : '';
       const title = T('Giá phù hợp', 'A price that fits');
-      if (c.source !== 'data') return { title, detail: T('Sự kiện giá thấp thường được đặt sát ngày — hãy chia sẻ sớm và nhắc lại tuần cuối.', 'Low-priced events tend to book late — share early and again in the final week.') + ' ' + evidence };
+      if (c.source !== 'data') return { title, detail: T('Sự kiện giá thấp thường được đặt sát ngày. Hãy chia sẻ sớm và nhắc lại tuần cuối.', 'Low-priced events tend to book late. Share early and again in the final week.') + ' ' + evidence };
       const pos = {
-        free: T('Miễn phí — khách đặt dễ, nhưng tỉ lệ vắng cao hơn.', 'Free — easy to book, but more no-shows.'),
-        below: T(`Thấp hơn mức thường gặp (${band}) — dễ kín chỗ.`, `Below the typical ${band} — easier to fill.`),
+        free: T('Miễn phí, khách đặt dễ, nhưng tỉ lệ vắng cao hơn.', 'Free, easy to book, but more no-shows.'),
+        below: T(`Thấp hơn mức thường gặp (${band}), dễ kín chỗ.`, `Below the typical ${band}, easier to fill.`),
         typical: T(`Trong mức thường gặp ${band}.`, `Within the typical ${band}.`),
-        premium: T(`Cao hơn mức thường gặp ${band} — nói rõ vì sao đáng giá.`, `Above the typical ${band} — say clearly why it's worth it.`),
+        premium: T(`Cao hơn mức thường gặp ${band}. Nói rõ vì sao đáng giá.`, `Above the typical ${band}. Say clearly why it's worth it.`),
       }[c.position] || T(`Mức thường gặp: ${band}.`, `Typical: ${band}.`);
       return { title, detail: pos + ' ' + evidence };
     }
@@ -320,7 +320,7 @@ export function recipeCopy(c, T) {
     case 'greeting':
       return {
         title: T('Lời chào khi khách nhắn', 'An opening message'),
-        detail: T('Khách nhắn tin hỏi trước khi đặt — một lời chào sẵn giúp họ yên tâm.', 'Guests often message before booking — a ready greeting reassures them.'),
+        detail: T('Khách nhắn tin hỏi trước khi đặt. Một lời chào sẵn giúp họ yên tâm.', 'Guests often message before booking. A ready greeting reassures them.'),
       };
     default:
       return { title: c.id, detail: '' };

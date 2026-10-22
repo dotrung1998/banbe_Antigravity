@@ -259,8 +259,8 @@ struct PaymentDetailsView: View {
             .buttonStyle(.plain).padding(.top, 20)
             .accessibilityIdentifier("payment.billingLink")
 
-            Text(app.T("banbe không thu tiền và không giữ tiền. Bạn chuyển trực tiếp cho người tổ chức; nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.",
-                       "banbe does not collect or hold money. You pay the organizer directly; if they cancel, they are responsible for refunding you."))
+            Text(app.T("banbe không thu tiền và không giữ tiền. Bạn chuyển trực tiếp cho người tổ chức. Nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.",
+                       "banbe does not collect or hold money. You pay the organizer directly. If they cancel, they are responsible for refunding you."))
                 .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.65))
                 .padding(.top, 20)
         }
@@ -597,8 +597,8 @@ struct PaymentDetailsView: View {
     @ViewBuilder
     private func overdueRefundHelp(_ booking: PayableBooking, _ claim: RefundClaim) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("Đã quá hạn hoàn tiền. Nếu bạn chưa nhận được tiền, hãy nhắn cho host qua banbe trước; nếu vẫn chưa được, bạn có thể báo tranh chấp để admin banbe (mục “Tranh chấp thanh toán”) xử lý.",
-                       "The refund deadline has passed. If you haven't received the money, message the host through banbe first; if that doesn't work, raise a dispute and the banbe admin will handle it under “Payment disputes”."))
+            Text(app.T("Đã quá hạn hoàn tiền. Nếu bạn chưa nhận được tiền, hãy nhắn cho host qua banbe trước. Nếu vẫn chưa được, bạn có thể báo tranh chấp để admin banbe (mục “Tranh chấp thanh toán”) xử lý.",
+                       "The refund deadline has passed. If you haven't received the money, message the host through banbe first. If that doesn't work, raise a dispute and the banbe admin will handle it under “Payment disputes”."))
                 .font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
                 .accessibilityIdentifier("refund.overdueHelp")
             HStack(spacing: 10) {

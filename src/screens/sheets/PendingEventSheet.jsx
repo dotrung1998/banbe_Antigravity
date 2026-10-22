@@ -111,7 +111,7 @@ export default function PendingEventSheet({ eventId, name, onClose, onChanged })
         {stillPending ? (
           <span style={{ fontSize: 12, fontWeight: 600, color: ink, opacity: 0.75 }}>⏳ {T('Đang chờ Banbe duyệt', 'Waiting for Banbe to review')}</span>
         ) : (
-          <span style={{ fontSize: 12, fontWeight: 600, color: alert }}>{T('Sự kiện không còn chờ duyệt — làm mới danh sách.', 'This event is no longer waiting for review — refresh the list.')}</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: alert }}>{T('Sự kiện không còn chờ duyệt. Làm mới danh sách.', 'This event is no longer waiting for review. Refresh the list.')}</span>
         )}
 
         {stillPending && (

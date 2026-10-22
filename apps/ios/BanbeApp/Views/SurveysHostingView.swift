@@ -374,8 +374,8 @@ struct SurveysHostingView: View {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, 20)
             } else if groups.isEmpty {
                 Text(closedSurveys.isEmpty
-                     ? app.T("Chưa có gợi ý — gợi ý sự kiện được tạo tự động khi một khảo sát đóng và có người trả lời.",
-                             "No suggestions yet — event drafts are generated automatically when a survey closes with responses.")
+                     ? app.T("Chưa có gợi ý. Gợi ý sự kiện được tạo tự động khi một khảo sát đóng và có người trả lời.",
+                             "No suggestions yet. Event drafts are generated automatically when a survey closes with responses.")
                      : app.T("Không còn gợi ý nào cần xử lý. Có thể làm mới bên dưới để tạo lại.",
                              "No suggestions left to review. You can refresh below to generate them again."))
                     .font(.system(size: 13)).opacity(0.7)

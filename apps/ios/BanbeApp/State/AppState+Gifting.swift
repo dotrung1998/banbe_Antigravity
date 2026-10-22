@@ -245,8 +245,8 @@ extension AppState {
 
             pendingGiftClaimCode = nil
             giftImportNotice = (res.alreadyClaimed ?? false)
-                ? T("Vé này đã nằm trong tài khoản của bạn — không có vé nào khác được tạo thêm.",
-                     "This ticket is already in your account — no extra ticket was created.")
+                ? T("Vé này đã nằm trong tài khoản của bạn. Không có vé nào khác được tạo thêm.",
+                     "This ticket is already in your account. No extra ticket was created.")
                 : T("Vé đã được thêm vào tài khoản của bạn. Không có vé nào khác được tạo thêm.",
                      "The ticket was added to your account. No extra ticket was created.")
             await loadPaymentBookings()

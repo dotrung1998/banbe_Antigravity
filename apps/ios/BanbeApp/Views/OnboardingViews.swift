@@ -764,7 +764,7 @@ struct CreateEventView: View {
             FormFieldLabel(icon: "bubble.left", text: app.T("Lời nhắn mở đầu", "Opening message"),
                            trailing: app.T("Tuỳ chọn", "Optional"))
             Text(app.T("Hiện ở đầu cuộc trò chuyện khi khách nhấn \"Nhắn cho bạn\". Để trống để dùng lời chào mặc định. Chỉ để hiển thị, không lưu như tin nhắn.",
-                        "Shown at the top of the chat when a guest taps \"Message\" you. Leave blank for a default greeting. Display only — not stored as a message."))
+                        "Shown at the top of the chat when a guest taps \"Message\" you. Leave blank for a default greeting. Display only, not stored as a message."))
                 .font(.system(size: 12.5)).opacity(0.7)
             greetingField(label: app.T("Tiếng Việt", "Vietnamese"), text: $app.createChatGreeting, id: "create.chatGreeting", focusID: "greeting")
             greetingField(label: app.T("Tiếng Anh", "English"), text: $app.createChatGreetingEn, id: "create.chatGreetingEn", focusID: "greetingEn")
@@ -1267,8 +1267,8 @@ struct CreateEventView: View {
                     // Note 53: Host opens first even when it's already filled in; say so, so it reads as "check
                     // this" rather than "do this again".
                     if sectionDone(.host) {
-                        Label(app.T("Đã điền từ hồ sơ người tổ chức của bạn — kiểm tra lại rồi tiếp tục.",
-                                    "Filled from your organizer profile — check it and continue."),
+                        Label(app.T("Đã điền từ hồ sơ người tổ chức của bạn. Kiểm tra lại rồi tiếp tục.",
+                                    "Filled from your organizer profile. Check it and continue."),
                               systemImage: "checkmark.circle.fill")
                             .font(.system(size: 12.5)).opacity(0.85)
                             .fixedSize(horizontal: false, vertical: true)
@@ -1354,8 +1354,8 @@ struct CreateEventView: View {
                         .focused($focusedField, equals: "keywords")
                         .roundedFormField(app: app, focused: focusedField == "keywords")
                         Text(app.T(
-                            "Cách nhau bằng dấu phẩy — để trống sẽ tự dùng danh mục đã chọn ở trên.",
-                            "Comma-separated — left blank, the category picked above is used instead."
+                            "Cách nhau bằng dấu phẩy. Để trống sẽ tự dùng danh mục đã chọn ở trên.",
+                            "Comma-separated. Left blank, the category picked above is used instead."
                         ))
                         .font(.system(size: 11)).opacity(0.75)
                         keywordSuggestions()
@@ -1407,8 +1407,8 @@ struct CreateEventView: View {
                         }
                     }
                     Text(app.T(
-                        "Gõ số nhà + tên đường (hoặc tên địa điểm nếu không có số nhà) rồi chọn một gợi ý — cần thiết để đăng sự kiện.",
-                        "Type a house number + street (or a venue name if there is no house number), then pick a suggestion — required to publish."
+                        "Gõ số nhà + tên đường (hoặc tên địa điểm nếu không có số nhà) rồi chọn một gợi ý. Cần thiết để đăng sự kiện.",
+                        "Type a house number + street (or a venue name if there is no house number), then pick a suggestion. Required to publish."
                     ))
                     .font(.system(size: 11)).opacity(0.75).foregroundStyle(app.palette.ink)
                     locationConfirmSection()
@@ -1855,8 +1855,8 @@ struct CreateEventView: View {
         }
         if let lead = recipeCheck("lead"), lead.status == .improve {
             let days = max(lead.days ?? 0, 0)
-            RecipeInsight(check: lead, line: app.T("Còn \(days) ngày — sự kiện kín chỗ thường đăng trước ~\(lead.target ?? 0) ngày.",
-                                                   "\(days) days to go — events that fill are usually posted ~\(lead.target ?? 0) days ahead."),
+            RecipeInsight(check: lead, line: app.T("Còn \(days) ngày. Sự kiện kín chỗ thường đăng trước ~\(lead.target ?? 0) ngày.",
+                                                   "\(days) days to go. Events that fill are usually posted ~\(lead.target ?? 0) days ahead."),
                           identifier: "create.leadInsight")
         }
     }

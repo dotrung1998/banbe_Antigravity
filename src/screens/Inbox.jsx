@@ -411,7 +411,7 @@ export default function Inbox() {
           <div onClick={(e) => e.stopPropagation()} style={{ ...cardGlass({ borderRadius: '18px 18px 0 0' }), padding: '22px 22px 34px', display: 'flex', flexDirection: 'column', gap: 14, animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
             <span style={{ ...display(18) }}>{T('Xoá cuộc trò chuyện này?', 'Delete this conversation?')}</span>
             <span style={{ fontSize: 13.5, lineHeight: 1.5, color: ink, opacity: 0.8 }}>
-              {T('Chỉ xoá với bạn; người kia vẫn giữ cuộc trò chuyện. Nếu họ nhắn lại cho bạn, cuộc trò chuyện sẽ hiện lại.', 'It is removed for you only; the other person keeps it. It comes back if they message you again.')}
+              {T('Chỉ xoá với bạn. Người kia vẫn giữ cuộc trò chuyện. Nếu họ nhắn lại cho bạn, cuộc trò chuyện sẽ hiện lại.', 'It is removed for you only. The other person keeps it. It comes back if they message you again.')}
             </span>
             <div style={{ display: 'flex', gap: 10 }}>
               <div onClick={() => setDeleteTarget(null)} data-testid="inbox-delete-cancel" style={{ ...fieldGlass({ flex: 1, padding: '13px 0', borderRadius: 999, textAlign: 'center' }), fontSize: 13.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Huỷ', 'Cancel')}</div>

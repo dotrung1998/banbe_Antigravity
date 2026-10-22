@@ -3384,7 +3384,7 @@ export function BanBeProvider({ children }) {
       if (data?.success === false) {
         const message = {
           HOLD_EXPIRED_AND_SOLD_OUT: T('Rất tiếc, chỗ đã hết trong lúc chờ thanh toán. Hãy liên hệ người tổ chức để được hoàn tiền.',
-                                       'Sorry — the seat sold out while this was pending. Contact the organizer for a refund.'),
+                                       'Sorry, the seat sold out while this was pending. Contact the organizer for a refund.'),
           TRANSACTION_ID_REQUIRED: T('Cần mã giao dịch.', 'A transaction ID is required.'),
           PROOF_REQUIRED: T('Cần ảnh biên lai.', 'A receipt image is required.'),
         }[data.error] || T('Chưa gửi được. Thử lại nhé.', "Couldn't submit. Please try again.");
@@ -8199,8 +8199,8 @@ export function BanBeProvider({ children }) {
     if (!referralLink) return;
     const title = T('Tham gia banbe cùng mình', 'Join me on banbe');
     const text = T(
-      'Mỗi tuần một vài buổi hay ho — supper club, phòng tranh, gig nhạc nhỏ. Tham gia qua link của mình nhé:',
-      "A few good things happening every week — supper clubs, small galleries, tucked-away gigs. Join through my link:"
+      'Mỗi tuần một vài buổi hay ho. Supper club, phòng tranh, gig nhạc nhỏ. Tham gia qua link của mình nhé:',
+      "A few good things happening every week. Supper clubs, small galleries, tucked-away gigs. Join through my link:"
     );
     const done = () => {
       set({ referralShared: true });
@@ -8390,7 +8390,7 @@ export function BanBeProvider({ children }) {
     set({
       importBusy: false, importCode: '',
       importNotice: data.already_claimed
-        ? T('Vé này đã nằm trong tài khoản của bạn — không có vé nào khác được tạo thêm.', 'This ticket is already in your account — no extra ticket was created.')
+        ? T('Vé này đã nằm trong tài khoản của bạn. Không có vé nào khác được tạo thêm.', 'This ticket is already in your account. No extra ticket was created.')
         : T('Vé đã được thêm vào tài khoản của bạn. Không có vé nào khác được tạo thêm.', 'The ticket was added to your account. No extra ticket was created.'),
     });
     loadImportedTickets();
@@ -10187,8 +10187,8 @@ export function BanBeProvider({ children }) {
           set({
             loading: false,
             createError: T(
-              `Sự kiện cần 3-8 ảnh khả dụng (hiện có ${finalizeData.count}). Sự kiện đã được chuyển về bản nháp — hãy thêm/bớt ảnh rồi gửi lại.`,
-              `This event needs 3-8 available photos (it has ${finalizeData.count}). It's been moved back to draft — add or remove photos, then resubmit.`
+              `Sự kiện cần 3-8 ảnh khả dụng (hiện có ${finalizeData.count}). Sự kiện đã được chuyển về bản nháp. Hãy thêm/bớt ảnh rồi gửi lại.`,
+              `This event needs 3-8 available photos (it has ${finalizeData.count}). It's been moved back to draft. Add or remove photos, then resubmit.`
             ),
             createCriteriaRetryEventId: null,
           });

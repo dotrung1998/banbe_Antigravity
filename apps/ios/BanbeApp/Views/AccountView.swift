@@ -1432,8 +1432,8 @@ struct AccountView: View {
                 Text(app.T("Tổ chức sự kiện đầu tiên", "Host your first event"))
                     .font(BanbeTheme.display(19))
                 Text(app.T(
-                    "Miễn phí hoàn toàn khi banbe còn mới — không phí đăng, không phí giao dịch. Tạo sự kiện đầu tiên để mở trang tổ chức.",
-                    "Completely free while banbe is new — no listing or transaction fees. Create your first event to unlock your host page."
+                    "Miễn phí hoàn toàn khi banbe còn mới. Không phí đăng, không phí giao dịch. Tạo sự kiện đầu tiên để mở trang tổ chức.",
+                    "Completely free while banbe is new. No listing or transaction fees. Create your first event to unlock your host page."
                 ))
                 .font(.system(size: 12.5))
                 .lineSpacing(3)
@@ -1606,7 +1606,7 @@ struct AccountView: View {
                     Text(host ? app.T("Chia sẻ thẻ tổ chức của bạn", "Share your host card")
                               : app.T("Chia sẻ thẻ hồ sơ của bạn", "Share your profile card"))
                         .font(.system(size: 15, weight: .semibold))
-                    Text(app.T("Thẻ có mã QR, tuỳ chỉnh màu và ảnh nền", "A card with a QR code — pick your colours and background"))
+                    Text(app.T("Thẻ có mã QR, tuỳ chỉnh màu và ảnh nền", "A card with a QR code, pick your colours and background"))
                         .font(.system(size: 11.5)).opacity(0.8)
                 }
                 Spacer(minLength: 0)
@@ -1676,7 +1676,7 @@ struct AccountView: View {
                     Divider().overlay(app.palette.rule)
                     Button { app.goDashboard(back: .profile) } label: {
                         HStack {
-                            Text(app.T("\(app.myNeedsFixEvents.count) sự kiện cần chỉnh sửa — sửa & gửi lại", "\(app.myNeedsFixEvents.count) event(s) need fixing — fix & resubmit"))
+                            Text(app.T("\(app.myNeedsFixEvents.count) sự kiện cần chỉnh sửa, sửa & gửi lại", "\(app.myNeedsFixEvents.count) event(s) need fixing, fix & resubmit"))
                                 .font(.system(size: 12.5, weight: .semibold)).underline().foregroundStyle(BanbeTheme.alert)
                             Spacer()
                             Image(systemName: "chevron.right").font(.system(size: 11)).opacity(0.5)
@@ -1706,7 +1706,7 @@ struct AccountView: View {
                 Image(systemName: "plus.circle.fill").font(.system(size: 22))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(app.T("Đăng story", "Post a story")).font(.system(size: 15, weight: .semibold))
-                    Text(app.T("Thêm chữ và liên kết, sửa hoặc xóa sau khi đăng", "Add text and a link; edit or delete after posting"))
+                    Text(app.T("Thêm chữ và liên kết, sửa hoặc xóa sau khi đăng", "Add text and a link, edit or delete after posting"))
                         .font(.system(size: 11.5)).opacity(0.65)
                 }
                 Spacer(minLength: 0)

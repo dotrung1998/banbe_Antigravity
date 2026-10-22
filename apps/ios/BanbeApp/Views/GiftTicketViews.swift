@@ -266,8 +266,8 @@ struct GiftImportView: View {
                         .accessibilityIdentifier("giftImport.code")
 
                     if app.isSignedIn, let email = app.userEmail, !email.isEmpty {
-                        Text(app.T("Đang đăng nhập với \(email). Vé được tặng chỉ nhập được bằng đúng email người nhận; vé nhóm (mã ATT-) chỉ cần mã và email đã xác minh.",
-                                   "Signed in as \(email). A gifted ticket needs the recipient's email; a group ticket (ATT- code) needs only the code and a verified email."))
+                        Text(app.T("Đang đăng nhập với \(email). Vé được tặng chỉ nhập được bằng đúng email người nhận. Vé nhóm (mã ATT-) chỉ cần mã và email đã xác minh.",
+                                   "Signed in as \(email). A gifted ticket needs the recipient's email. A group ticket (ATT- code) needs only the code and a verified email."))
                             .font(.system(size: 11.5)).lineSpacing(2.5).opacity(0.7)
                     } else {
                         Text(app.T("Bạn sẽ được yêu cầu đăng nhập bằng email nhận vé trước khi nhập.",

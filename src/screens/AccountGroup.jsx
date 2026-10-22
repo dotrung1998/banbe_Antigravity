@@ -380,7 +380,7 @@ export default function AccountGroup() {
                         </div>
                       )}
                       <p style={{ fontSize: 10.5, color: ink, opacity: 0.6, marginTop: 8 }}>
-                        {T('Các mục này tự động bị xóa sau 30 ngày. Xóa chỉ ẩn khỏi danh sách của bạn; hồ sơ hoàn tiền vẫn được giữ.', 'These are removed automatically after 30 days. Deleting only clears them from your list; any refund record is kept.')}
+                        {T('Các mục này tự động bị xóa sau 30 ngày. Xóa chỉ ẩn khỏi danh sách của bạn. Hồ sơ hoàn tiền vẫn được giữ.', 'These are removed automatically after 30 days. Deleting only clears them from your list. Any refund record is kept.')}
                       </p>
                     </div>
                   )}
@@ -511,7 +511,7 @@ export default function AccountGroup() {
             <Row icon="alertShield" label={T('Sự Kiện Chờ Duyệt', 'Pending Events')} trailing="›" testId="admin-events" onClick={openAdminEvents} badge={s.pendingEventsCount} />
             {/* Note 54: remove / restore / delete events (any status), one or many at a time. */}
             <Row icon="alertShield" label={T('Quản lý sự kiện', 'Manage events')} trailing="›" testId="admin-manage-events" onClick={() => set({ screen: 'adminManageEvents' })} />
-            <Row icon="alertShield" label={T('Tài khoản thử nghiệm', 'Test accounts')} trailing="›" testId="admin-test-accounts" onClick={() => set({ screen: 'adminTestAccounts' })} />
+            <Row icon="alertShield" label={T('Tài Khoản Thử Nghiệm', 'Test Accounts')} trailing="›" testId="admin-test-accounts" onClick={() => set({ screen: 'adminTestAccounts' })} />
             <Row icon="alertShield" label={T('Sửa ngày sinh', 'Birthday corrections')} trailing="›" testId="admin-dob-corrections" onClick={() => set({ screen: 'adminDobCorrections' })} />
             <Row icon="sliders" label={T('Công tắc tính năng', 'Feature switches')} trailing="›" testId="admin-features" onClick={() => set({ screen: 'adminFeatures' })} border={false} />
           </div>

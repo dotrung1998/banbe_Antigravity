@@ -130,8 +130,8 @@ function SettingsStep({ onDone, stepIndex, stepTotal }) {
           detail={T('Tự gửi hoá đơn/biên nhận tới email của bạn. Đổi lại tại Tài khoản > Cài đặt > Tùy chỉnh ứng dụng.', 'Automatically email invoices and receipts to you. Change it in Account > Settings > App Preferences.')} />
         <SwitchRow testId="onboarding-settings-promo" on={promo} disabled={promoCurrent === null} onClick={() => setPromo(v => !v)}
           title={T('Tin nhắn quảng bá từ host', 'Host promotional texts')}
-          detail={T('Tắt trừ khi bạn bật. Nếu bật, host bạn đã tương tác có thể soạn tin quảng bá SMS và tự gửi; banbe không gửi hộ. Đổi lại bất cứ lúc nào tại Tài khoản > Cài đặt > Bảo mật.',
-            "Off unless you switch it on. If on, hosts you've interacted with may compose a promo text that they send themselves; banbe doesn't send for them. Change it any time in Account > Settings > Security.")} />
+          detail={T('Tắt trừ khi bạn bật. Nếu bật, host bạn đã tương tác có thể soạn tin quảng bá SMS và tự gửi. banbe không gửi hộ. Đổi lại bất cứ lúc nào tại Tài khoản > Cài đặt > Bảo mật.',
+            "Off unless you switch it on. If on, hosts you've interacted with may compose a promo text that they send themselves. banbe doesn't send for them. Change it any time in Account > Settings > Security.")} />
       </div>
       {failed && (
         <p data-testid="onboarding-settings-error" style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '16px 0 0' }}>

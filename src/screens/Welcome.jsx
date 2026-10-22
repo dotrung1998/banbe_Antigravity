@@ -56,12 +56,12 @@ export default function Welcome() {
     { title: T('Giữ chỗ trong vài chạm', 'Hold a seat in a few taps'), points: [
       ['⏱️', T('Giữ chỗ 30 phút để bạn thanh toán', 'Your seat is held 30 minutes while you pay')],
       ['💸', T('Chuyển khoản thẳng cho host', 'Pay the host directly')],
-      ['📲', T('Nhận vé QR, kế hoạch hiện trong Lịch', 'Get a QR ticket; plans land in Schedule')],
+      ['📲', T('Nhận vé QR, kế hoạch hiện trong Lịch', 'Get a QR ticket, plans land in Schedule')],
     ] },
     { title: T('Tự tổ chức sự kiện', 'Host your own events'), points: [
       ['⚙️', T('Bật Chế độ tổ chức trong Tài khoản', 'Turn on Organizer mode in Account')],
       ['🆓', T('Miễn phí: không phí đăng, không phí giao dịch', 'Free: no listing or transaction fees')],
-      ['🤝', T('Khách trả thẳng cho bạn, banbe không giữ tiền', 'Guests pay you; banbe never holds money')],
+      ['🤝', T('Khách trả thẳng cho bạn, banbe không giữ tiền', 'Guests pay you, banbe never holds money')],
     ] },
     { title: T('Tạo sự kiện trong 5 bước', 'Create an event in 5 steps'), points: [
       ['📝', T('Host → Cơ bản → Thời gian & nơi → Vé → Ảnh', 'Host → Basics → When & where → Tickets → Photos')],
@@ -129,7 +129,7 @@ export default function Welcome() {
               <h1 style={display(32, { margin: '14px 0 0', lineHeight: 1.15 })}>{pages[page].title}</h1>
               <ul data-testid="welcome-story-points" style={{ listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {pages[page].points.map(([emoji, text], i) => (
-                  <li key={i} className="bb-story-rise" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 10, borderRadius: 18, background: 'var(--bb-field)', animationDelay: `${450 + i * 180}ms` }}>
+                  <li key={i} className="bb-story-rise" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 10, borderRadius: 18, background: 'var(--bb-field)', animationDelay: `${700 + i * 350}ms` }}>
                     <span aria-hidden style={{ flex: 'none', width: 46, height: 46, borderRadius: 14, background: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>{emoji}</span>
                     <span style={{ fontSize: 16.5, fontWeight: 500, lineHeight: 1.4 }}>{text}</span>
                   </li>

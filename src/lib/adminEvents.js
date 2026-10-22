@@ -58,14 +58,14 @@ export function blockerLine(check, T, orphan = false) {
   const parts = [];
   const b = check.active_bookings, r = check.unsettled_refunds, d = check.open_disputes;
   if (b > 0) parts.push(orphan
-    ? T(`${b} đặt chỗ đang hiệu lực — banbe cần huỷ sự kiện`, `${en(b, 'active booking')} — banbe must cancel the event`)
-    : T(`${b} đặt chỗ đang hiệu lực — người tổ chức cần huỷ sự kiện`, `${en(b, 'active booking')} — the host must cancel the event`));
+    ? T(`${b} đặt chỗ đang hiệu lực, banbe cần huỷ sự kiện`, `${en(b, 'active booking')}, banbe must cancel the event`)
+    : T(`${b} đặt chỗ đang hiệu lực, người tổ chức cần huỷ sự kiện`, `${en(b, 'active booking')}, the host must cancel the event`));
   if (r > 0) parts.push(orphan
-    ? T(`${r} khoản hoàn tiền chưa xong — host đã xoá tài khoản, banbe cần liên hệ khách để hoàn tiền`,
-        `${en(r, 'refund')} not settled — the host account was deleted; banbe must contact the guests to settle refunds`)
-    : T(`${r} khoản hoàn tiền chưa xong — người tổ chức cần hoàn tất hoàn tiền`, `${en(r, 'refund')} not settled — the host must finish refunding`));
-  if (d > 0) parts.push(T(`${d} tranh chấp đang mở — xử lý trong Tranh Chấp Thanh Toán`,
-    `${en(d, 'open dispute')} — resolve ${d === 1 ? 'it' : 'them'} in Payment Disputes`));
+    ? T(`${r} khoản hoàn tiền chưa xong, host đã xoá tài khoản, banbe cần liên hệ khách để hoàn tiền`,
+        `${en(r, 'refund')} not settled, the host account was deleted, banbe must contact the guests to settle refunds`)
+    : T(`${r} khoản hoàn tiền chưa xong, người tổ chức cần hoàn tất hoàn tiền`, `${en(r, 'refund')} not settled, the host must finish refunding`));
+  if (d > 0) parts.push(T(`${d} tranh chấp đang mở, xử lý trong Tranh Chấp Thanh Toán`,
+    `${en(d, 'open dispute')}, resolve ${d === 1 ? 'it' : 'them'} in Payment Disputes`));
   return parts.join(' · ') + '.';
 }
 

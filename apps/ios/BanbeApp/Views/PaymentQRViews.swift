@@ -50,7 +50,7 @@ struct PaymentQRPressable<Content: View>: View {
                     ? app.T("Đang mở app thanh toán · đã sao chép số tài khoản", "Opening your payment app · account number copied")
                     : app.T("Đang mở app thanh toán…", "Opening your payment app…")
             case .copiedText:
-                note = app.T("Chưa nhận ra app thanh toán — đã sao chép nội dung mã.", "Couldn't tell which app to open — QR content copied.")
+                note = app.T("Chưa nhận ra app thanh toán. Đã sao chép nội dung mã.", "Couldn't tell which app to open. QR content copied.")
             case .failed:
                 note = app.T("Không mở được app thanh toán.", "Couldn't open a payment app.")
             }

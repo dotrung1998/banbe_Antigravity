@@ -186,7 +186,7 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
       return true;
     } catch (err) {
       console.warn('dispute export failed:', err);
-      setFlash({ kind: 'err', text: T('Không xuất được bản ghi đầy đủ — chưa có gì bị xoá. Thử lại nhé.', "Couldn't build the full transcript — nothing was deleted. Please try again.") });
+      setFlash({ kind: 'err', text: T('Không xuất được bản ghi đầy đủ. Chưa có gì bị xoá. Thử lại nhé.', "Couldn't build the full transcript. Nothing was deleted. Please try again.") });
       setBusy('');
       return false;
     }
@@ -280,7 +280,7 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
       </p>
       {readOnly && (
         <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.55 }} data-testid="dispute-chat-closed">
-          {T('Tranh chấp đã kết thúc — chỉ còn để đọc.', 'This dispute has ended — read only.')}
+          {T('Tranh chấp đã kết thúc, chỉ còn để đọc.', 'This dispute has ended, read only.')}
         </span>
       )}
       {retention && (
@@ -410,8 +410,8 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
                 {confirm === 'close'
                   ? T('Đóng tranh chấp không chuyển tiền và không đổi trạng thái khoản hoàn. Đoạn chat chỉ còn để đọc và tự xoá sau 7 ngày. Bạn nên tải bản ghi trước.',
                        'Closing does not move any money or change the refund status. The chat becomes read-only and deletes itself after 7 days. Download the transcript first.')
-                  : T('Bản của bạn (tin nhắn và tệp) sẽ bị ẩn khỏi bạn vĩnh viễn; tranh chấp được đóng nếu còn mở. Người tổ chức vẫn giữ bản ghi chung. Hãy tải bản ghi trước khi xoá.',
-                       'Your copy (messages and files) will be hidden from you permanently; the dispute is closed if still open. The organizer keeps the shared record. Download the transcript before deleting.')}
+                  : T('Bản của bạn (tin nhắn và tệp) sẽ bị ẩn khỏi bạn vĩnh viễn. Tranh chấp được đóng nếu còn mở. Người tổ chức vẫn giữ bản ghi chung. Hãy tải bản ghi trước khi xoá.',
+                       'Your copy (messages and files) will be hidden from you permanently. The dispute is closed if still open. The organizer keeps the shared record. Download the transcript before deleting.')}
               </span>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <div onClick={() => busy === '' && doExport()} data-testid="dispute-chat-confirm-export" style={{ ...fieldGlass({ padding: '8px 12px', borderRadius: 999 }), fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>

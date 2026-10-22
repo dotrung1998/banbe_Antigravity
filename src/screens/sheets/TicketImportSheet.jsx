@@ -56,8 +56,8 @@ export function ImportSheet() {
       />
       <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '12px 0 0' }}>
         {s.user?.email
-          ? T(`Đang đăng nhập với ${s.user.email}. Vé được tặng chỉ nhập được bằng đúng email người nhận; vé nhóm (mã ATT-) chỉ cần mã và email đã xác minh.`,
-              `Signed in as ${s.user.email}. A gifted ticket needs the recipient's email; a group ticket (ATT- code) needs only the code and a verified email.`)
+          ? T(`Đang đăng nhập với ${s.user.email}. Vé được tặng chỉ nhập được bằng đúng email người nhận. Vé nhóm (mã ATT-) chỉ cần mã và email đã xác minh.`,
+              `Signed in as ${s.user.email}. A gifted ticket needs the recipient's email. A group ticket (ATT- code) needs only the code and a verified email.`)
           : T('Bạn sẽ được yêu cầu đăng nhập trước khi nhập.', "You'll be asked to sign in first.")}
       </p>
       {s.importError && <p style={{ fontSize: 12, color: alert, margin: '12px 0 0' }} data-testid="ticket-import-error">{s.importError}</p>}
