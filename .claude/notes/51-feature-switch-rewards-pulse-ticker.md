@@ -1,6 +1,8 @@
 # 51 — Admin feature switch (Rewards & badges) + compact Banbe Pulse ticker
 
 Status: IMPLEMENTED LOCALLY (web + iOS), NOT committed. Migration 187 NOT applied anywhere remote (tested on a
+
+**Production check 2026-10-22 (`supabase migration list --linked`, note 58): 187, 188, 189 and 190 ARE applied on production. Statements below saying otherwise are outdated. Local-only (not on production): 182, 183, 184, 185.**
 throwaway Postgres 16). Rewards stays hidden until 187 is applied AND an admin enables it (see "Seed" below).
 
 ## 1. Admin switch: hide Rewards & badges everywhere

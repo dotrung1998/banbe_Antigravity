@@ -1,6 +1,8 @@
 # 54 — Admin event removal: remove / restore / purge (public) + testing-phase wipe (iOS only)
 
 **Status:** IMPLEMENTED (web + iOS + migrations 188/189), committed in 3249d6d. Rows became expandable and orphaned events got a filter in note 56. **188/189 NOT applied anywhere
+
+**Production check 2026-10-22 (`supabase migration list --linked`, note 58): 187, 188, 189 and 190 ARE applied on production. Statements below saying otherwise are outdated. Local-only (not on production): 182, 183, 184, 185.**
 remote.** They need 187 (feature flags) applied first. The owner applies them with `supabase db push`.
 
 **Owner decisions (2026-10-20):**

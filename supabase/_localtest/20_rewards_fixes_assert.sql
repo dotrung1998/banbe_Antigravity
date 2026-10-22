@@ -61,6 +61,8 @@ BEGIN
   PERFORM pg_temp.ok(NOT has_function_privilege('anon', 'public.check_in(text, boolean)', 'EXECUTE'), 'F0e … nor by anon');
   PERFORM pg_temp.ok(has_function_privilege('authenticated', 'public.check_in_guest(uuid, text)', 'EXECUTE'), 'F0f check_in_guest still callable');
   PERFORM pg_temp.ok(NOT has_function_privilege('authenticated', 'public.rewards_flag(text, boolean)', 'EXECUTE'), 'F0g flag helper is internal');
+  PERFORM pg_temp.ok(NOT has_function_privilege('authenticated', 'public.rewards_tz_valid(text)', 'EXECUTE')
+                     AND NOT has_function_privilege('anon', 'public.rewards_tz_valid(text)', 'EXECUTE'), 'F0h timezone validator is internal (193)');
 
   -- ===== F1 attendance window
   PERFORM pg_temp.mkev('rf_now', 'rf_org', now());
