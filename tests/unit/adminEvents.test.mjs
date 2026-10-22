@@ -23,9 +23,17 @@ test('blocked only while money or a conversation is still in play', () => {
 
 test('blocker line says exactly why, in both languages', () => {
   const c = { active_bookings: 3, unsettled_refunds: 1, open_disputes: 0 };
-  assert.equal(blockerLine(c, T), '3 active bookings · 1 refund not settled — the host must cancel and refund first.');
-  assert.equal(blockerLine(c, V), '3 đặt chỗ đang hiệu lực · 1 khoản hoàn tiền chưa xong — người tổ chức cần huỷ và hoàn tiền trước.');
+  assert.equal(blockerLine(c, T), '3 active bookings — the host must cancel the event · 1 refund not settled — the host must finish refunding.');
+  assert.equal(blockerLine(c, V), '3 đặt chỗ đang hiệu lực — người tổ chức cần huỷ sự kiện · 1 khoản hoàn tiền chưa xong — người tổ chức cần hoàn tất hoàn tiền.');
   assert.equal(blockerLine({ active_bookings: 0, unsettled_refunds: 0, open_disputes: 0 }, T), '');
+});
+
+test('an open dispute on a cancelled, refunded event points at Payment Disputes, not "cancel and refund"', () => {
+  const c = { active_bookings: 0, unsettled_refunds: 0, open_disputes: 1 };
+  assert.equal(blockerLine(c, T), '1 open dispute — resolve it in Payment Disputes.');
+  assert.equal(blockerLine({ ...c, open_disputes: 2 }, T), '2 open disputes — resolve them in Payment Disputes.');
+  assert.equal(blockerLine(c, V), '1 tranh chấp đang mở — xử lý trong Tranh Chấp Thanh Toán.');
+  assert.doesNotMatch(blockerLine(c, T), /cancel|refund/);
 });
 
 test('summary groups skipped events by reason', () => {
@@ -54,8 +62,9 @@ test('orphaned events: host account gone', () => {
 
 test('orphan blocker says banbe has to act, not the host', () => {
   const c = { active_bookings: 0, unsettled_refunds: 1, open_disputes: 0 };
-  assert.match(blockerLine(c, T), /the host must cancel and refund first/);
+  assert.match(blockerLine(c, T), /the host must finish refunding/);
   assert.match(blockerLine(c, T, true), /host account was deleted; banbe must contact the guests/);
+  assert.match(blockerLine({ active_bookings: 2, unsettled_refunds: 0, open_disputes: 0 }, T, true), /banbe must cancel the event/);
   assert.equal(blockerLine({ active_bookings: 0, unsettled_refunds: 0, open_disputes: 0 }, T, true), '');
 });
 

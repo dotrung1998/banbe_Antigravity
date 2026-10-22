@@ -83,7 +83,9 @@ The host keeps read access through `is_event_host`, and admins through `events_s
    - the `admin_event_wipe` row in `AdminFeaturesView`
    - `admin_event_wipe` in `FeatureFlags.keys` / `offUnlessSet`
    - the fixture `-uiFixtureWipe` and `testTestingWipeOnlyWithSwitchOn`
-3. Keep everything else (remove / restore / purge are the public version).
+3. Remove the "Test event wipe" subsection (section `manage`) and its Feature switches bullet from `src/data/help/admin.js`,
+   then run `node scripts/gen-help-content-ios.mjs`.
+4. Keep everything else (remove / restore / purge are the public version).
 
 The full revert of 189 is `supabase/rollbacks/20261226000189_189_revert_admin_event_removal.sql`. It moves removed
 events back and keeps the `auto_withdraw_photo_count` fix. The 188 enum value can't be dropped.
@@ -120,3 +122,26 @@ events back and keeps the `auto_withdraw_photo_count` fix. The 188 enum value ca
   - A real device.
   - Web actions end to end (no admin session plus remote migrations).
   - Dark mode / VI screenshots.
+
+## Follow-up (2026-10-22): stranded payment dispute chats + blocker wording — migration 190
+**Status:** IMPLEMENTED LOCALLY, not committed. **190 NOT applied remotely.** 188/189 ARE live on the remote (checked
+2026-10-22: Reminder tests were removed on 2026-10-20 and restored on 2026-10-22 11:02 UTC).
+
+- **Symptom:** Manage events refused to remove *Test v2.2* (`test-v2-2-85895a`), saying "1 open dispute — the host must
+  cancel and refund first", although the event was cancelled and its only refund was `guest_confirmed`.
+- **Root cause:** a `kind='payment'` dispute thread ("transfer not found", 05/10 14:33) was never closed after the host
+  confirmed the payment at 15:07. The auto-close trigger and backfill were added to migration **149 after it had been
+  applied** (commit b14d5ad). `db push` never re-runs an applied version, so the remote never got them. The 2-day sweep
+  only sees `pending_verification`/`holding` bookings, so it never closed the chat either. A second chat was stranded on
+  *Test sự kiện* (`test-s-ki-n-8444c8`).
+- **Lesson:** never edit an applied migration. Add a new one.
+- **Migration 190** restates 149's committed `expire_not_found_bookings()`, trigger and backfill. It also adds
+  `bookings_close_payment_dispute_thread_on_cancel` (booking `status` → cancelled/expired), because `cancel_event` never
+  touches `payment_state`. Escalated (`payment_state='disputed'`) chats are never auto-closed, in either the triggers or
+  the backfill. Tested on local Postgres: `supabase/_localtest/14_stranded_payment_dispute_assert.sql` (all pass) plus
+  `10_not_found_window_assert.sql` re-run on top of 190 (all pass).
+- **Wording:** `blockerLine` (web `src/lib/adminEvents.js`, iOS `AdminManageEventsView`) now gives one clause per
+  blocker: bookings → host (or banbe for orphans) must cancel the event; refunds → host must finish refunding (orphan:
+  banbe contacts guests); disputes → "resolve it in Payment Disputes". Web unit tests: 338/338. iOS
+  `AdminManageEventsUITests` 3/3 + `testManageEventsOrphansAndExpand` pass.
+- **Past events** on the host Dashboard deliberately excludes cancelled events (`DashboardView.past`). Not changed.

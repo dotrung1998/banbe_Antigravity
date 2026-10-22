@@ -504,16 +504,27 @@ struct AdminManageEventsView: View {
         }
     }
 
-    /// With `orphan`, says who has to act now that the host account is gone (banbe, not the host).
+    /// Each blocker says who has to do what (same wording as web `blockerLine`), so an event that is already cancelled
+    /// and refunded isn't told to "cancel and refund". With `orphan`, banbe acts instead of the host, who is gone.
     private func blockerLine(_ c: AdminEventCheck, orphan: Bool = false) -> String {
         var parts: [String] = []
-        if c.activeBookings > 0 { parts.append(app.T("\(c.activeBookings) đặt chỗ đang hiệu lực", Self.en(c.activeBookings, "active booking"))) }
-        if c.unsettledRefunds > 0 { parts.append(app.T("\(c.unsettledRefunds) khoản hoàn tiền chưa xong", Self.en(c.unsettledRefunds, "refund") + " not settled")) }
-        if c.openDisputes > 0 { parts.append(app.T("\(c.openDisputes) tranh chấp đang mở", Self.en(c.openDisputes, "open dispute"))) }
-        return parts.joined(separator: " · ") + (orphan
-            ? app.T(" — host đã xoá tài khoản, banbe cần liên hệ khách để hoàn tiền trước.",
-                    " — the host account was deleted; banbe must contact the guests to settle refunds first.")
-            : app.T(" — người tổ chức cần huỷ và hoàn tiền trước.", " — the host must cancel and refund first."))
+        let b = c.activeBookings, r = c.unsettledRefunds, d = c.openDisputes
+        if b > 0 {
+            parts.append(orphan
+                ? app.T("\(b) đặt chỗ đang hiệu lực — banbe cần huỷ sự kiện", Self.en(b, "active booking") + " — banbe must cancel the event")
+                : app.T("\(b) đặt chỗ đang hiệu lực — người tổ chức cần huỷ sự kiện", Self.en(b, "active booking") + " — the host must cancel the event"))
+        }
+        if r > 0 {
+            parts.append(orphan
+                ? app.T("\(r) khoản hoàn tiền chưa xong — host đã xoá tài khoản, banbe cần liên hệ khách để hoàn tiền",
+                        Self.en(r, "refund") + " not settled — the host account was deleted; banbe must contact the guests to settle refunds")
+                : app.T("\(r) khoản hoàn tiền chưa xong — người tổ chức cần hoàn tất hoàn tiền", Self.en(r, "refund") + " not settled — the host must finish refunding"))
+        }
+        if d > 0 {
+            parts.append(app.T("\(d) tranh chấp đang mở — xử lý trong Tranh Chấp Thanh Toán",
+                               Self.en(d, "open dispute") + " — resolve \(d == 1 ? "it" : "them") in Payment Disputes"))
+        }
+        return parts.joined(separator: " · ") + "."
     }
 
     private func statusLabel(_ s: String) -> String {
