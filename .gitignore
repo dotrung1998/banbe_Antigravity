@@ -61,5 +61,25 @@ dist-ssr
 # on purpose: it recreates the storage/auth scaffolding a bare Postgres lacks,
 # which is worthless (and misleading) anywhere but a throwaway container.
 # Run it with ./supabase/_localtest/run.sh
-/supabase/_localtest/
+/supabase/_localtest/*
+# ...except the rewards harness (audited 2026-10-10: only fake @test.dev users/phones and the public local-docker
+# defaults from the README; no secrets). 13_rewards_run.sh needs 00_bootstrap_storage.sql + 01_seed.sql too (re-read: schema scaffolding + fake users/events only).
+!/supabase/_localtest/README.md
+!/supabase/_localtest/00_bootstrap_storage.sql
+!/supabase/_localtest/01_seed.sql
+!/supabase/_localtest/13_rewards_run.sh
+!/supabase/_localtest/13_rewards_assert.sql
+!/supabase/_localtest/13b_concurrent_redeem.sh
+!/supabase/_localtest/14_rewards_timezone_run.sh
+!/supabase/_localtest/14_rewards_timezone_assert.sql
+!/supabase/_localtest/15_rewards_risk_run.sh
+!/supabase/_localtest/15_rewards_risk_assert.sql
+!/supabase/_localtest/16_rewards_kinds_run.sh
+!/supabase/_localtest/16a_kinds_before.sql
+!/supabase/_localtest/16b_kinds_after.sql
+!/supabase/_localtest/17_rewards_partner_draft_run.sh
+!/supabase/_localtest/17_rewards_partner_draft_assert.sql
+!/supabase/_localtest/18_rewards_events_run.sh
+!/supabase/_localtest/18a_events_before.sql
+!/supabase/_localtest/18b_events_after.sql
 .migration-state/

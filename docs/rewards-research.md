@@ -49,7 +49,7 @@ Huy hiệu suy ra từ dữ kiện và tự thu hồi nếu điểm danh bị hu
 - `reward_catalog`: 3 món, đều `kind='keychain_design'`: `rwd-comet` 40, `rwd-lantern` 80, `rwd-crown` 120 coin (165:169-181). 24 mẫu có sẵn vẫn miễn phí.
 - `redeem_reward(code)` (165:631-653): khoá theo user, đọc lại số dư trong khoá, khoá `redeem:<code>` nên thử lại không bị trừ hai lần, `INSUFFICIENT_BALANCE` không trừ gì. Ghi `reward_unlocks` (PK `user_id, item_code`).
 - Hoàn lại sau khi đã đổi: số dư **có thể âm**, phần thưởng không bị thu hồi (note 36 mục 3; `src/lib/rewards.js:77-87`).
-- Ghi chú 36 nêu đã chạy 12 lệnh đổi đồng thời → 1 lần trừ; test local `13_rewards_run.sh` ALL PASS. **Chưa** áp dụng lên project Supabase thật, chưa chạy E2E/thiết bị thật (note 36, mục "Verification").
+- Ghi chú 36 nêu đã chạy 12 lệnh đổi đồng thời → 1 lần trừ; test local `13_rewards_run.sh` ALL PASS. Migration 165 **đã áp dụng lên production (xác nhận 2026-10-10**, 169/169 migration khớp repo; dữ liệu thật rất ít). Chưa chạy E2E/thiết bị thật (note 36, mục "Verification").
 
 ### 2.4 Streak
 - "Ngày hoạt động" = **lưu sự kiện** được máy chủ xác minh (`favorites.created_at` do trigger đóng dấu lúc INSERT, và còn trong 36 giờ) hoặc điểm danh hợp lệ (165:206-214, 658-673). Mở app/tìm kiếm không tính. Mỗi ngày một dòng (PK `user_id, local_date`, 165:125-131).
@@ -237,7 +237,7 @@ Công sức tính theo người-ngày của một dev; [Ước tính].
 | **2** | Chương trình đối tác chính thức: hợp đồng, báo cáo tổng hợp, đối soát, consent cá nhân hoá | **CHỜ** | 20–40 ngày + pháp lý | Số liệu Giai đoạn 1 cho thấy hiệu quả, có ≥2–3 đối tác | Pháp lý, phụ thuộc đối tác, mâu thuẫn policy | Kết thúc chiến dịch, giữ dữ liệu theo hạn lưu trữ, tắt nhánh `partner_offer` |
 
 ### Rủi ro chính
-Gian lận khi coin có giá trị; mâu thuẫn policy "không quảng cáo"; số liệu retention của Payback/WeWard đều là marketing, không dùng làm căn cứ cho kỳ vọng; ghi chú 36 nói rõ các con số coin/streak hiện là đề xuất sản phẩm, không dựa thị trường; migration 165 và các migration trước chưa áp dụng lên production nên mọi kết luận về hành vi thật còn là suy ra từ code/test local.
+Gian lận khi coin có giá trị; mâu thuẫn policy "không quảng cáo"; số liệu retention của Payback/WeWard đều là marketing, không dùng làm căn cứ cho kỳ vọng; ghi chú 36 nói rõ các con số coin/streak hiện là đề xuất sản phẩm, không dựa thị trường; migration 165 và các migration trước đã áp dụng lên production (xác nhận 2026-10-10), nhưng dữ liệu thật rất ít (2 dòng sổ cái, 0 điểm danh) nên kết luận về hành vi thật vẫn chủ yếu suy ra từ code/test local.
 
 ### Câu hỏi còn mở
 1. `check_in_guest` có ràng buộc khung giờ/vị trí không?

@@ -70,8 +70,33 @@ struct RewardsPayload: Decodable, Equatable {
         var designId: String
         var price: Int
         var unlocked: Bool
+        // Added by migration 179; nil from an older server.
+        var kind: String?
+        var status: String?
         var id: String { code }
-        enum CodingKeys: String, CodingKey { case code, price, unlocked, designId = "design_id" }
+        enum CodingKeys: String, CodingKey { case code, price, unlocked, designId = "design_id", kind, status }
+    }
+    /// A partner offer (migration 179). Display only: there is no redemption path yet.
+    struct Offer: Decodable, Equatable, Identifiable {
+        var code: String
+        var price: Int?
+        var titleVi: String?, titleEn: String?, descVi: String?, descEn: String?
+        var status: String?
+        var id: String { code }
+        enum CodingKeys: String, CodingKey {
+            case code, price, status, titleVi = "title_vi", titleEn = "title_en", descVi = "desc_vi", descEn = "desc_en"
+        }
+    }
+    /// Added by migration 177; absent from an older server (decodes to nil).
+    struct TimezoneSettings: Decodable, Equatable {
+        var effectiveTz: String
+        var chosen: Bool?
+        var pendingTz: String?
+        var changesLeft: Int?
+        var nextChangeAt: String?
+        enum CodingKeys: String, CodingKey {
+            case effectiveTz = "effective_tz", chosen, pendingTz = "pending_tz", changesLeft = "changes_left", nextChangeAt = "next_change_at"
+        }
     }
     var success: Bool
     var balance: Int
@@ -80,6 +105,43 @@ struct RewardsPayload: Decodable, Equatable {
     var badges: [Badge]
     var history: [Entry]
     var catalog: [Item]
+    var timezoneSettings: TimezoneSettings?
+    /// Partner offers (migration 179). [] from an older server and while the partner_offers flag is off.
+    var offers: [Offer] = []
+    enum CodingKeys: String, CodingKey {
+        case success, balance, rules, streak, badges, history, catalog, offers, timezoneSettings = "timezone_settings"
+    }
+}
+
+/// Decodes an array one element at a time and drops the ones that fail, so a single row this build cannot read
+/// never makes the whole Rewards screen fail.
+private struct LossyArray<T: Decodable>: Decodable {
+    var elements: [T]
+    private struct Skip: Decodable {}
+    init(from decoder: Decoder) throws {
+        var c = try decoder.unkeyedContainer()
+        var out: [T] = []
+        while !c.isAtEnd {
+            if let e = try? c.decode(T.self) { out.append(e) } else { _ = try? c.decode(Skip.self) }
+        }
+        elements = out
+    }
+}
+
+extension RewardsPayload {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        success = try c.decode(Bool.self, forKey: .success)
+        balance = try c.decode(Int.self, forKey: .balance)
+        rules = try c.decode(Rules.self, forKey: .rules)
+        streak = try c.decode(Streak.self, forKey: .streak)
+        badges = try c.decode([Badge].self, forKey: .badges)
+        history = try c.decode([Entry].self, forKey: .history)
+        // Keychain designs only: a row without a design_id (an offer) is skipped, never a decode failure.
+        catalog = (try c.decode(LossyArray<Item>.self, forKey: .catalog)).elements.filter { $0.kind == nil || $0.kind == "keychain_design" }
+        timezoneSettings = try c.decodeIfPresent(TimezoneSettings.self, forKey: .timezoneSettings)
+        offers = (try c.decodeIfPresent(LossyArray<Offer>.self, forKey: .offers))?.elements ?? []
+    }
 }
 
 /// Pure helpers (no AppState): unit-tested, mirrors src/lib/rewards.js.
@@ -92,6 +154,9 @@ enum RewardsLogic {
         let body = k.rounded() == k ? String(Int(k)) : String(format: "%.1f", k)
         return (n < 0 ? "-" : "") + body + "k"
     }
+
+    /// The Offers section is shown only when the server sent at least one offer (old server / flag off => hidden).
+    static func showsOffersSection(_ p: RewardsPayload) -> Bool { !p.offers.isEmpty }
 
     static func shortfall(balance: Int, price: Int) -> Int { max(0, price - balance) }
 
@@ -146,8 +211,30 @@ enum RewardsLogic {
         return [
             T("Một ngày được tính khi bạn lưu một sự kiện (đã được máy chủ xác minh) hoặc được xác nhận tham dự. Mở ứng dụng hay tìm kiếm không được tính.",
               "A day counts when you save an event (verified by the server) or are confirmed as attending. Opening the app or searching does not count."),
-            T("Ngày được tính theo giờ cố định \(zone), mỗi ngày tối đa một lần.", "Days follow the fixed \(zone) time zone, at most once per day."),
+            T("Ngày và tháng được tính theo múi giờ \(zone), mỗi ngày tối đa một lần.", "Days and months follow the \(zone) time zone, at most once per day."),
         ]
+    }
+
+    /// Zones offered in the picker (suggestions only; nothing is assigned automatically — a user who never chooses
+    /// keeps Asia/Ho_Chi_Minh, the original behaviour).
+    static let suggestedTimezones: [(id: String, vi: String, en: String)] = [
+        ("Asia/Ho_Chi_Minh", "Việt Nam (UTC+7)", "Vietnam (UTC+7)"),
+        ("America/Los_Angeles", "Mỹ – Thái Bình Dương", "US – Pacific"),
+        ("America/Denver", "Mỹ – Miền núi", "US – Mountain"),
+        ("America/Chicago", "Mỹ – Trung tâm", "US – Central"),
+        ("America/New_York", "Mỹ – Miền Đông", "US – Eastern"),
+    ]
+
+    static func deviceTimezoneHint(_ id: String = TimeZone.current.identifier) -> String? {
+        suggestedTimezones.contains { $0.id == id } ? id : nil
+    }
+
+    static func timezoneErrorMessage(_ code: String?, T: (String, String) -> String) -> String {
+        switch code ?? "" {
+        case "INVALID_TIMEZONE": return T("Múi giờ không hợp lệ.", "That time zone is not valid.")
+        case "TZ_CHANGE_LIMIT": return T("Bạn đã đổi múi giờ 2 lần trong 30 ngày. Vui lòng thử lại sau.", "You changed your time zone twice in the last 30 days. Please try again later.")
+        default: return T("Lỗi mạng. Chưa thay đổi gì.", "Network error. Nothing was changed.")
+        }
     }
 
     static func termsLines(T: (String, String) -> String) -> [String] {
@@ -245,6 +332,21 @@ extension AppState {
            userID == uid, let ids = env.designIds {
             rewardsUnlocked = ids
         }
+    }
+
+    /// Chooses the zone for streak days and the monthly cap. Effective from the next local day (server rule).
+    /// Returns nil on success, otherwise the server error code.
+    func setRewardTimezone(_ tz: String) async -> String? {
+        guard let uid = userID else { return "AUTH_REQUIRED" }
+        struct Env: Decodable { var success: Bool?; var error: String? }
+        var failure: String?
+        do {
+            let env: Env = try await SupabaseService.client.rpc("set_my_reward_timezone", params: ["p_tz": tz]).execute().value
+            if env.success != true { failure = env.error ?? "ERROR" }
+        } catch { failure = "NETWORK" }
+        guard userID == uid else { return failure }
+        await loadRewards()
+        return failure
     }
 
     /// Redeems one catalog item. The server re-checks the balance inside a per-account lock; a retry is never double-charged.

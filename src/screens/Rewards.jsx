@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { useKeychainManifest } from '../components/KeychainCharm.jsx';
 import { designUrl, keychainFocus } from '../lib/keychain.js';
-import { historyLabel, ruleLines, noCoinLines, redemptionTermsLines, streakLines, streakHint, shortfall } from '../lib/rewards.js';
+import { historyLabel, ruleLines, noCoinLines, redemptionTermsLines, streakLines, streakHint, shortfall, SUGGESTED_TIMEZONES, deviceTimezoneHint, normalizeTzSettings, TZ_ERRORS, splitRewardCatalog } from '../lib/rewards.js';
 import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 import { RowIcon } from './Account.jsx';
 
@@ -16,9 +16,11 @@ const REDEEM_ERRORS = {
 // Account > Rewards & badges. Private to the signed-in account. Every number is server-computed
 // (migration 165); coins are cosmetic only and never affect booking, priority or eligibility.
 export default function Rewards() {
-  const { state: s, T, set, loadRewards, redeemReward, openEditProfile, rewardsEnabled } = useBanBe();
+  const { state: s, T, set, loadRewards, redeemReward, setRewardTimezone, openEditProfile, rewardsEnabled } = useBanBe();
   const manifest = useKeychainManifest();
   const [confirmCode, setConfirmCode] = useState(null);
+  const [tzBusy, setTzBusy] = useState(false);
+  const [tzError, setTzError] = useState('');
 
   useEffect(() => { if (s.user?.id) loadRewards(); }, [s.user?.id, loadRewards]);
   // Hidden by an admin (migration 187): leave through Back's own target, whether this was a deep link or the flag
@@ -31,6 +33,9 @@ export default function Rewards() {
   const nameOf = (id) => { const d = manifest.designs.find(x => x.id === id); return d ? (lang === 'en' ? d.en : d.vi) : id; };
   const confirmItem = r?.catalog?.find(c => c.code === confirmCode) || null;
   const res = s.rewardsRedeemResult;
+  const tz = normalizeTzSettings(r?.timezone_settings);
+  const { designs, offers, showOffers } = splitRewardCatalog(r);
+  const deviceHint = deviceTimezoneHint();
 
   const doRedeem = async () => {
     const code = confirmCode;
@@ -118,7 +123,7 @@ export default function Rewards() {
 
             {/* Redemption catalog */}
             <section data-testid="rewards-catalog">
-              <h2 style={{ fontSize: 13, fontWeight: 600, margin: '0 0 4px', color: ink }}>{T('Đổi thưởng (móc khoá)', 'Redeem (keychain designs)')}</h2>
+              <h2 style={{ fontSize: 13, fontWeight: 600, margin: '0 0 4px', color: ink }}>{T('Trang trí (móc khoá)', 'Decorations (keychain designs)')}</h2>
               <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.75, margin: '0 0 10px' }}>
                 {T('Tuỳ chọn, chỉ để trang trí. 24 mẫu miễn phí vẫn luôn dùng được.', 'Optional and cosmetic only. The 24 free charms always stay available.')}
               </p>
@@ -129,7 +134,7 @@ export default function Rewards() {
               )}
               {res && res.ok && !res.already && <div role="status" data-testid="rewards-redeem-ok" style={{ fontSize: 12.5, color: ink, margin: '0 0 8px' }}>{T('Đã mở khoá!', 'Unlocked!')}</div>}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {r.catalog.map(c => {
+                {designs.map(c => {
                   const need = shortfall(r.balance, c.price);
                   const busy = s.rewardsRedeemBusy === c.code;
                   return (
@@ -156,6 +161,25 @@ export default function Rewards() {
               </div>
             </section>
 
+            {/* Partner offers (migration 179): hidden unless the server sends any. Display only; there is no redemption yet. */}
+            {showOffers && (
+              <section data-testid="rewards-offers">
+                <h2 style={{ fontSize: 13, fontWeight: 600, margin: '0 0 4px', color: ink }}>{T('Ưu đãi', 'Offers')}</h2>
+                <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.75, margin: '0 0 10px' }}>
+                  {T('Ưu đãi do đối tác cung cấp. Hiện chưa thể đổi.', 'Offers come from partners. They cannot be redeemed yet.')}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {offers.map(o => (
+                    <div key={o.code} data-testid={`offer-${o.code}`} style={{ ...fieldGlass({ padding: '12px 14px', borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 4 }) }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{lang === 'en' ? o.title_en : o.title_vi}</span>
+                      {(lang === 'en' ? o.desc_en : o.desc_vi) && <span style={{ fontSize: 12, color: ink, opacity: 0.75 }}>{lang === 'en' ? o.desc_en : o.desc_vi}</span>}
+                      <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{T('Chưa khả dụng', 'Not available yet')}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
             {/* Recent history */}
             <section data-testid="rewards-history">
               <h2 style={{ fontSize: 13, fontWeight: 600, margin: '0 0 8px', color: ink }}>{T('Lịch sử gần đây', 'Recent history')}</h2>
@@ -177,6 +201,34 @@ export default function Rewards() {
                 </div>
               )}
             </section>
+
+            {/* Time zone (suggestion only; nothing is assigned automatically) */}
+            {tz && (
+              <section data-testid="rewards-timezone">
+                <h2 style={{ fontSize: 13, fontWeight: 600, margin: '0 0 8px', color: ink }}>{T('Múi giờ cho chuỗi ngày', 'Time zone for streak days')}</h2>
+                <div style={{ ...fieldGlass({ padding: '12px 14px', borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 8 }) }}>
+                  <select value={tz.pending || tz.effective} disabled={tzBusy || (tz.changesLeft === 0 && !tz.pending)} data-testid="rewards-timezone-select" aria-label={T('Múi giờ', 'Time zone')}
+                    onChange={async (e) => {
+                      setTzBusy(true); setTzError('');
+                      const out = await setRewardTimezone(e.target.value);
+                      setTzBusy(false);
+                      if (out && !out.ok) { const m = TZ_ERRORS[out.error] || TZ_ERRORS.NETWORK; setTzError(T(m[0], m[1])); }
+                    }}
+                    style={{ fontSize: 13, color: ink, background: 'transparent', border: `1px solid ${rule}`, borderRadius: 10, padding: '9px 10px' }}>
+                    {[...SUGGESTED_TIMEZONES, ...(SUGGESTED_TIMEZONES.some(z => z[0] === tz.effective) ? [] : [[tz.effective, tz.effective, tz.effective]])].map(([id, vi, en]) => (
+                      <option key={id} value={id}>{T(vi, en)}{id === deviceHint ? T(' (gợi ý theo thiết bị)', ' (suggested from your device)') : ''}</option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.75 }}>
+                    {tz.pending
+                      ? T(`Đổi sang ${tz.pending} có hiệu lực từ ngày kế tiếp.`, `The change to ${tz.pending} takes effect from the next day.`)
+                      : tz.chosen ? T('Đổi múi giờ có hiệu lực từ ngày kế tiếp, tối đa 2 lần mỗi 30 ngày.', 'A change takes effect from the next day, at most twice per 30 days.')
+                                  : T('Mặc định là giờ Việt Nam. Chọn múi giờ của bạn nếu khác.', 'Defaults to Vietnam time. Pick yours if different.')}
+                  </span>
+                  {tzError && <span role="alert" style={{ fontSize: 12, color: alert }}>{tzError}</span>}
+                </div>
+              </section>
+            )}
 
             {/* Rules */}
             <section data-testid="rewards-rules">
