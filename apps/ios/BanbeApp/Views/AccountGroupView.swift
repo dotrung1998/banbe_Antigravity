@@ -590,6 +590,11 @@ struct AccountGroupView: View {
         // L5 (migration 200): the weekly digest opt-in; renders nothing while the weekly_digest switch is off.
         NotificationPrefsSection()
 
+        #if DEBUG
+        // Simulator notification test (Debug builds only, never shipped): docs/apple-setup-checklist.md.
+        DebugPushTestSection()
+        #endif
+
         // Account deletion (Task 2, Account/Settings pass) — a visually
         // separated "Account Management" subsection, per this ticket's own
         // placement instruction (distinct from the rows above and from

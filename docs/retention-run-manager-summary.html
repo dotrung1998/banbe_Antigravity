@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>banbe Retention Work: What Was Done</title>
+<style>
+:root{--ink:#1d1b19;--clay:#b8734a;--clayBg:#f6e9e0;--alert:#c0392b;--honey:#d99a1f;--ok:#2e8b57;--okBg:#e3f3e9;--bg:#faf7f4;--rule:#e4ddd5;--mut:#6b645d;--off:#9a938c}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}
+.wrap{max-width:1080px;margin:0 auto;padding:24px 16px 70px}
+header{background:var(--ink);color:#fff;border-radius:22px;padding:34px 30px;margin-bottom:18px}
+header h1{margin:0 0 8px;font-size:30px;line-height:1.2}header p{margin:0;opacity:.88;font-size:16.5px;max-width:780px}
+.pill{display:inline-block;background:var(--clay);color:#fff;border-radius:99px;padding:3px 12px;font-size:13px;margin-bottom:12px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;position:sticky;top:0;background:var(--bg);padding:10px 0;z-index:5;border-bottom:1px solid var(--rule)}
+.tabs button{border:1px solid var(--rule);background:#fff;border-radius:99px;padding:8px 14px;font-size:14px;cursor:pointer;color:var(--ink)}
+.tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.panel{display:none;padding-top:8px}.panel.on{display:block}
+h2{font-size:23px;margin:26px 0 4px}.sub{color:var(--mut);margin:0 0 16px;max-width:800px}
+.card{background:#fff;border:1px solid var(--rule);border-radius:18px;padding:18px}
+.grid{display:grid;gap:14px}.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}.g3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.g4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.big{font-size:42px;font-weight:800;line-height:1;color:var(--clay)}.big.g{color:var(--ok)}.big.r{color:var(--alert)}.big.h{color:#a0720f}
+.cap{font-size:14px;color:#4a443f;margin-top:6px}
+.tag{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.svgbox{background:#fff;border:1px solid var(--rule);border-radius:18px;padding:12px;overflow-x:auto}
+.svgbox svg{width:100%;min-width:680px;height:auto;display:block}
+text{font-family:-apple-system,Segoe UI,Roboto,sans-serif}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--mut);margin:10px 4px 0}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.status{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.st{background:#fff;border:1px solid var(--rule);border-radius:14px;padding:12px 14px;border-left:6px solid var(--ok)}
+.st.off{border-left-color:var(--off)}.st.wait{border-left-color:var(--honey)}.st.block{border-left-color:var(--alert)}
+.st b{display:block;font-size:14.5px}.st span{font-size:12.5px;color:var(--mut)}
+.badge{display:inline-block;font-size:11px;font-weight:700;border-radius:99px;padding:2px 9px;margin-top:6px}
+.b-live{background:var(--okBg);color:var(--ok)}.b-off{background:#eee;color:#555}.b-wait{background:#fbf0d6;color:#8a6210}.b-block{background:#fbe5e1;color:var(--alert)}
+.sw{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
+.swi{background:#fff;border:1px solid var(--rule);border-radius:14px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start}
+.tog{flex:none;width:44px;height:26px;border-radius:99px;position:relative;background:#cfc9c2;margin-top:2px}
+.tog:after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff}
+.tog.on{background:var(--ok)}.tog.on:after{left:21px}
+.swi b{font-size:14px}.swi p{margin:2px 0 0;font-size:12.5px;color:var(--mut)}
+.clock{display:flex;gap:22px;align-items:center;justify-content:center;flex-wrap:wrap}
+.clk{text-align:center}.clk .t{font-size:40px;font-weight:800}.clk .l{font-size:13px;color:var(--mut)}
+.steps .s{display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--rule)}.steps .s:last-child{border:0}
+.steps .n{flex:none;width:32px;height:32px;border-radius:50%;background:var(--clay);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+.steps b{font-size:15.5px}.steps p{margin:2px 0 0;font-size:14px;color:#4a443f}
+.bars{display:flex;gap:26px;align-items:flex-end;justify-content:center;height:190px;margin-top:6px;flex-wrap:wrap}
+.bar{width:92px;border-radius:12px 12px 0 0;display:flex;align-items:flex-start;justify-content:center;color:#fff;font-weight:800;font-size:18px;padding-top:8px}
+.barlab{text-align:center;font-size:12.5px;color:var(--mut);margin-top:6px;max-width:100px}
+.time{position:relative;margin-left:14px;border-left:3px solid var(--rule);padding-left:22px}
+.time .e{position:relative;margin:0 0 16px}.time .e:before{content:"";position:absolute;left:-31px;top:4px;width:14px;height:14px;border-radius:50%;background:var(--ok);border:3px solid #fff;box-shadow:0 0 0 1px var(--rule)}
+.time .e.w:before{background:var(--honey)}.time .e b{font-size:14.5px}.time .e p{margin:2px 0 0;font-size:13.5px;color:#4a443f}
+.time .h{font-size:12px;color:var(--mut);font-weight:700}
+.nogo{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.nogo div{background:#fff;border:2px solid #efc9c3;border-radius:16px;padding:14px;text-align:center}
+.nogo .x{font-size:30px}.nogo b{display:block;margin-top:4px;font-size:14px}.nogo span{font-size:12.5px;color:var(--mut)}
+.act{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.ac{background:#fff;border:1px solid var(--rule);border-radius:18px;padding:16px 16px 16px 60px;position:relative}
+.ac .n{position:absolute;left:14px;top:14px;width:32px;height:32px;border-radius:50%;background:var(--alert);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+.ac h3{margin:0 0 4px;font-size:15.5px}.ac p{margin:0;font-size:13.5px;color:#4a443f}
+.who{display:inline-block;font-size:11.5px;font-weight:700;border-radius:99px;padding:2px 9px;margin-top:8px;background:var(--clayBg);color:#8a4f2c}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--rule);border-radius:14px;overflow:hidden;font-size:14px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--rule);vertical-align:top}th{background:var(--clayBg)}
+.lock{background:#eef6f0;border:1px solid #cfe5d6;border-radius:16px;padding:16px}
+.warn{background:#fbf6e8;border:1px solid #ecd9a3;border-radius:16px;padding:16px}
+.donut{display:flex;gap:24px;align-items:center;flex-wrap:wrap;justify-content:center}
+footer{margin-top:44px;color:var(--mut);font-size:13px;text-align:center}
+</style></head><body><div class="wrap">
+
+<header><span class="pill">Work report · 22–23 October 2026 · Vietnam + US · Web + iPhone</span>
+<h1>What we built to keep guests and hosts coming back</h1>
+<p>The plan said banbe goes quiet after the ticket. That gap is now filled: reminders, a proper ending after each event, a recap for hosts, a fixed US clock, and private measurement. Anything that needs a lawyer or a paid Apple account is built but switched off, waiting for you.</p></header>
+
+<nav class="tabs" role="tablist">
+<button class="on" data-t="overview">Overview</button>
+<button data-t="guests">For guests</button>
+<button data-t="hosts">For hosts</button>
+<button data-t="us">US readiness</button>
+<button data-t="switches">On/off switches</button>
+<button data-t="privacy">Privacy &amp; policy</button>
+<button data-t="apple">Apple &amp; push setup</button>
+<button data-t="data">What the data says</button>
+<button data-t="quality">Quality &amp; safety</button>
+<button data-t="todo">Your to-do list</button>
+</nav>
+
+<!-- OVERVIEW -->
+<section class="panel on" id="overview">
+<h2>The work at a glance</h2>
+<div class="grid g4">
+<div class="card"><div class="big g">19 of 21</div><div class="cap">plan items built. Rewards switch-on is prepared, and the interviews need a person</div></div>
+<div class="card"><div class="big">8</div><div class="cap">database updates applied to the live system, one at a time, each checked</div></div>
+<div class="card"><div class="big g">5</div><div class="cap">website releases, each confirmed live within about a minute</div></div>
+<div class="card"><div class="big h">9</div><div class="cap">new features waiting behind an "off" switch for your decision</div></div>
+</div>
+
+<h2>Status of every plan item</h2>
+<p class="sub">Green is live for users today. Grey is built and switched off on purpose. Yellow waits for you. Red is blocked on something only you can provide.</p>
+<div class="status">
+<div class="st"><b>F2 · US times &amp; dollars</b><span>Correct venue time and USD prices</span><br><span class="badge b-live">Live</span></div>
+<div class="st"><b>F3 · Trust fixes</b><span>Bank-detail leak closed, age 16+</span><br><span class="badge b-live">Live</span></div>
+<div class="st off"><b>F1 · Private measurement</b><span>Own database, no outside trackers</span><br><span class="badge b-off">Built · off</span></div>
+<div class="st wait"><b>F4 · Interviews</b><span>Guide ready in Vietnamese and English</span><br><span class="badge b-wait">Needs you</span></div>
+<div class="st"><b>Q1 · "Your ticket is ready"</b><span>A small celebration, once</span><br><span class="badge b-live">Live</span></div>
+<div class="st"><b>Q2 · Honest waiting</b><span>"What happens next" + host's usual time</span><br><span class="badge b-live">Live</span></div>
+<div class="st"><b>Q3 · Page after an event</b><span>"You went ✓", photos, next events</span><br><span class="badge b-live">Live</span></div>
+<div class="st"><b>Q4 · "You're in" at the door</b><span>Once per ticket</span><br><span class="badge b-live">Live</span></div>
+<div class="st"><b>Q5 · Host "You're live"</b><span>Share prompt when approved</span><br><span class="badge b-live">Live</span></div>
+<div class="st block"><b>Q6 · Ask for push permission</b><span>Built; push needs Apple account</span><br><span class="badge b-block">Blocked: Apple</span></div>
+<div class="st"><b>Q7 · iPhone invite friends</b><span>Same as web now</span><br><span class="badge b-live">Built (iPhone)</span></div>
+<div class="st"><b>Q8 · "Saved, coming up"</b><span>Saved events with real seat counts</span><br><span class="badge b-live">Live</span></div>
+<div class="st"><b>L1 · Event reminders</b><span>Day before + 3 hours before</span><br><span class="badge b-live">Live (in-app)</span></div>
+<div class="st off"><b>L2 · Guest recap + feedback</b><span>Private to the host</span><br><span class="badge b-off">Built · off</span></div>
+<div class="st off"><b>L3 · Host recap + "Run it again"</b><span>Turnout, followers, repeat guests</span><br><span class="badge b-off">Built · off</span></div>
+<div class="st off"><b>L4 · Alerts from followed hosts</b><span>Max one a day</span><br><span class="badge b-off">Built · off</span></div>
+<div class="st off"><b>L5 · Weekend digest</b><span>Opt-in, Thursday evening</span><br><span class="badge b-off">Built · off</span></div>
+<div class="st off"><b>L6 · "For You" by goal</b><span>Uses the answers people gave</span><br><span class="badge b-off">Built · off</span></div>
+<div class="st off"><b>L7 · Event-day card</b><span>Web ticket button, iPhone Lock Screen</span><br><span class="badge b-off">Built · off</span></div>
+<div class="st off"><b>L8 · Zalo / text sharing</b><span>Market-specific share buttons</span><br><span class="badge b-off">Built · off</span></div>
+<div class="st wait"><b>L9 · Rewards switch-on</b><span>Checklist ready, not switched</span><br><span class="badge b-wait">Needs you</span></div>
+</div>
+</section>
+
+<!-- GUESTS -->
+<section class="panel" id="guests">
+<h2>The guest journey: before and after</h2>
+<p class="sub">Before, the experience stopped at the ticket. Now every step has a clear moment, and the journey has an ending.</p>
+<div class="svgbox"><svg viewBox="0 0 980 300" role="img" aria-label="Guest journey after the work">
+<line x1="40" y1="150" x2="940" y2="150" stroke="#e4ddd5" stroke-width="4"/>
+<g font-size="13" text-anchor="middle">
+<circle cx="90" cy="150" r="18" fill="#2e8b57"/><text x="90" y="155" fill="#fff" font-weight="700">✓</text><text x="90" y="195" font-weight="700">Discover</text><text x="90" y="212" fill="#6b645d">+ "Saved, coming up"</text>
+<circle cx="240" cy="150" r="18" fill="#2e8b57"/><text x="240" y="155" fill="#fff" font-weight="700">✓</text><text x="240" y="195" font-weight="700">Wait for host</text><text x="240" y="212" fill="#6b645d">what happens next</text>
+<circle cx="390" cy="150" r="18" fill="#2e8b57"/><text x="390" y="155" fill="#fff" font-weight="700">✓</text><text x="390" y="195" font-weight="700">Ticket ready</text><text x="390" y="212" fill="#6b645d">celebration, once</text>
+<circle cx="540" cy="150" r="18" fill="#2e8b57"/><text x="540" y="155" fill="#fff" font-weight="700">✓</text><text x="540" y="195" font-weight="700">Day before / day of</text><text x="540" y="212" fill="#6b645d">reminders (live)</text>
+<circle cx="690" cy="150" r="18" fill="#2e8b57"/><text x="690" y="155" fill="#fff" font-weight="700">✓</text><text x="690" y="195" font-weight="700">At the door</text><text x="690" y="212" fill="#6b645d">"You're in. Enjoy!"</text>
+<circle cx="840" cy="150" r="18" fill="#2e8b57"/><text x="840" y="155" fill="#fff" font-weight="700">✓</text><text x="840" y="195" font-weight="700">After the event</text><text x="840" y="212" fill="#6b645d">"You went ✓" + next</text>
+<circle cx="930" cy="150" r="12" fill="#9a938c"/><text x="930" y="244" fill="#6b645d">recap +</text><text x="930" y="260" fill="#6b645d">feedback (off)</text>
+</g>
+<text x="490" y="60" font-size="15" text-anchor="middle" font-weight="700" fill="#2e8b57">Every step now has a moment. The ending exists.</text>
+<text x="490" y="84" font-size="13" text-anchor="middle" fill="#6b645d">Celebrations happen once, respect "reduce motion", and are read out by screen readers.</text>
+</svg>
+<div class="legend"><span><i style="background:#2e8b57"></i>Live for users</span><span><i style="background:#9a938c"></i>Built, switched off</span></div></div>
+
+<h2>What a guest now sees</h2>
+<div class="grid g3">
+<div class="card"><div class="tag" style="color:var(--ok)">Reminders · live</div><p class="cap"><b>"Your event is tomorrow"</b> and <b>"Starting soon"</b> with the venue time and place. Shown in the app; also sent to the phone once push is on. People can turn each kind off.</p></div>
+<div class="card"><div class="tag" style="color:var(--ok)">Honest waiting · live</div><p class="cap">"The host checks the transfer and confirms. We'll notify you." Plus "This host usually confirms within about 30 minutes", only when the host has 5+ past confirmations.</p></div>
+<div class="card"><div class="tag" style="color:var(--ok)">After the event · live</div><p class="cap">"You went ✓" or "This event has ended", the event photos, a Follow button and up to 3 upcoming events by the same host.</p></div>
+<div class="card"><div class="tag" style="color:var(--mut)">Recap + private feedback · off</div><p class="cap">Thumbs up or down plus an optional note, sent privately to the host. The host only sees counts and unnamed notes, and only after 3 guests answered.</p></div>
+<div class="card"><div class="tag" style="color:var(--mut)">Weekend digest · off</div><p class="cap">"4 events this weekend, including Jazz Night." Only for people who opt in, Thursday about 18:00 their time, never when there is nothing to show.</p></div>
+<div class="card"><div class="tag" style="color:var(--mut)">Lock Screen card · off</div><p class="cap">On the iPhone, on event day: event name, start time and place on the Lock Screen. Created on the phone itself, no countdown.</p></div>
+</div>
+</section>
+
+<!-- HOSTS -->
+<section class="panel" id="hosts">
+<h2>The host journey: before and after</h2>
+<div class="svgbox"><svg viewBox="0 0 980 200" role="img" aria-label="Host journey after the work">
+<line x1="60" y1="100" x2="920" y2="100" stroke="#e4ddd5" stroke-width="4"/>
+<g font-size="13" text-anchor="middle">
+<circle cx="110" cy="100" r="16" fill="#2e8b57"/><text x="110" y="138" font-weight="700">Create</text><text x="110" y="154" fill="#6b645d">US times now correct</text>
+<circle cx="290" cy="100" r="16" fill="#2e8b57"/><text x="290" y="138" font-weight="700">Submit</text><text x="290" y="154" fill="#6b645d">"sharing opens on approval"</text>
+<circle cx="470" cy="100" r="16" fill="#2e8b57"/><text x="470" y="138" font-weight="700">Approved / live</text><text x="470" y="154" fill="#6b645d">"You're live" + share (live)</text>
+<circle cx="650" cy="100" r="16" fill="#2e8b57"/><text x="650" y="138" font-weight="700">Event runs</text><text x="650" y="154" fill="#6b645d">guests get reminders</text>
+<circle cx="850" cy="100" r="16" fill="#9a938c"/><text x="850" y="138" font-weight="700">Event ends</text><text x="850" y="154" fill="#6b645d">recap + Run it again (off)</text>
+</g>
+<text x="490" y="40" font-size="15" text-anchor="middle" font-weight="700" fill="#2e8b57">The host's real high point (going live) now gets the celebration.</text>
+</svg></div>
+<div class="grid g2" style="margin-top:14px">
+<div class="card"><div class="tag" style="color:var(--mut)">Host recap (off)</div>
+<div class="bars" style="height:150px">
+<div><div class="bar" style="height:120px;background:var(--clay)">18/20</div><div class="barlab">seats confirmed</div></div>
+<div><div class="bar" style="height:96px;background:var(--ok)">15</div><div class="barlab">checked in</div></div>
+<div><div class="bar" style="height:50px;background:#5b6b7a">4</div><div class="barlab">new followers</div></div>
+<div><div class="bar" style="height:40px;background:#8a5a8a">3</div><div class="barlab">returning guests</div></div>
+</div><p class="cap" style="text-align:center">Example only. Counts, never names. Feedback appears from 3 answers.</p></div>
+<div class="card"><div class="tag" style="color:var(--mut)">"Run it again" (off)</div><p class="cap">One tap opens the event form already filled in: same name, place, price and capacity, dated the same weekday next week (never in the past). The host reviews and submits. Nothing is published automatically.</p>
+<div class="tag" style="color:var(--mut);margin-top:14px">Alerts to followers (off)</div><p class="cap">When a host publishes, followers get at most one bundled notice a day, between 09:00 and 20:00 their time.</p></div>
+</div>
+</section>
+
+<!-- US -->
+<section class="panel" id="us">
+<h2>The US clock is fixed</h2>
+<p class="sub">Before, every event time was stored as Vietnam time, so a US event showed the wrong hour. This is fixed, live, and was checked on the real system with a test event that was then removed.</p>
+<div class="card"><div class="clock">
+<div class="clk"><div class="t">19:00</div><div class="l">Host enters (Los Angeles)</div></div>
+<div style="font-size:30px;color:var(--alert)">→</div>
+<div class="clk"><div class="t" style="color:var(--alert);text-decoration:line-through">05:00</div><div class="l">What guests used to see</div></div>
+<div style="font-size:30px;color:var(--ok)">→</div>
+<div class="clk"><div class="t" style="color:var(--ok)">19:00</div><div class="l">What guests see now, at the venue</div></div>
+</div></div>
+<div class="grid g3" style="margin-top:14px">
+<div class="card"><div class="big g">$12.50</div><div class="cap">US events are priced in dollars. Vietnam events stay in đồng.</div></div>
+<div class="card"><div class="big g">Free ✓</div><div class="cap">Free US events can be booked today.</div></div>
+<div class="card"><div class="big h">Paid ✕</div><div class="cap">Paid US bookings are switched off by your decision; the button explains "opens soon".</div></div>
+</div>
+<div class="lock" style="margin-top:14px"><b>Bonus fix found on the way.</b> An earlier update had silently removed three safety checks on event submission (a limit of 2 resubmissions a day, a guard against duplicate pending events, and the submission history). They are restored.</div>
+</section>
+
+<!-- SWITCHES -->
+<section class="panel" id="switches">
+<h2>Feature switches (Account › Admin › Feature switches)</h2>
+<p class="sub">Each new feature has its own switch, so it can be turned on or off for everyone without an app update. This is the state today.</p>
+<div class="sw">
+<div class="swi"><span class="tog on"></span><div><b>Event reminders</b><p>Day before + 3 hours before, in the app</p></div></div>
+<div class="swi"><span class="tog"></span><div><b>Push notifications (iPhone)</b><p>Needs the Apple key first</p></div></div>
+<div class="swi"><span class="tog"></span><div><b>Product measurement</b><p>Needs the consent decision first</p></div></div>
+<div class="swi"><span class="tog"></span><div><b>Guest recap + private feedback</b><p>Needs the consent decision first</p></div></div>
+<div class="swi"><span class="tog"></span><div><b>Host recap</b><p>Ready when you are</p></div></div>
+<div class="swi"><span class="tog"></span><div><b>Alerts from followed hosts</b><p>Check with lawyer (marketing or service?)</p></div></div>
+<div class="swi"><span class="tog"></span><div><b>Weekend digest</b><p>Lawyer review first (promotional)</p></div></div>
+<div class="swi"><span class="tog"></span><div><b>For You by goal</b><p>Ready when you are</p></div></div>
+<div class="swi"><span class="tog"></span><div><b>Lock Screen card (iPhone)</b><p>Test on a real iPhone first</p></div></div>
+<div class="swi"><span class="tog"></span><div><b>Zalo / text sharing</b><p>Ready when you are</p></div></div>
+<div class="swi"><span class="tog"></span><div><b>Rewards &amp; Rewards v2</b><p>Unchanged; checklist ready</p></div></div>
+<div class="swi"><span class="tog on"></span><div><b>Test event wipe (admin)</b><p>Unchanged; remove before public launch</p></div></div>
+</div>
+<div class="donut" style="margin-top:18px">
+<svg width="170" height="170" viewBox="0 0 42 42" role="img" aria-label="2 of 13 switches on">
+<circle cx="21" cy="21" r="15.9" fill="none" stroke="#cfc9c2" stroke-width="6"/>
+<circle cx="21" cy="21" r="15.9" fill="none" stroke="#2e8b57" stroke-width="6" stroke-dasharray="15.4 84.6" stroke-dashoffset="25"/>
+<text x="21" y="22" text-anchor="middle" font-size="7" font-weight="800">2 / 13</text><text x="21" y="28" text-anchor="middle" font-size="3.2" fill="#6b645d">switches on</text></svg>
+<p class="cap" style="max-width:420px">Only the reminders (new) and an existing admin test tool are on. Everything that collects new data, sends promotions or needs Apple is off until you decide.</p></div>
+</section>
+
+<!-- PRIVACY -->
+<section class="panel" id="privacy">
+<h2>Privacy and the user policy</h2>
+<p class="sub">Each feature that touches data or messages has matching policy text in Vietnamese and English. That text appears in the app's policy only when its switch is turned on, so the policy never describes something users don't have.</p>
+<div class="grid g3">
+<div class="card"><div class="tag" style="color:var(--ok)">Done</div><p class="cap"><b>Policy date filled:</b> "Effective 6 October 2026", on web, iPhone and the master document. The policy version did not change, so nobody is asked to accept it again.</p></div>
+<div class="card"><div class="tag" style="color:var(--ok)">Done</div><p class="cap"><b>Text ready for 10 features:</b> push, measurement, reminders, recap and feedback, host recap, follow alerts, digest (with a 1-year consent record), Lock Screen card.</p></div>
+<div class="card"><div class="tag" style="color:var(--ok)">Done</div><p class="cap"><b>Age 16+</b> now enforced at sign-up. Existing accounts were not re-checked and nobody was locked out.</p></div>
+</div>
+<div class="warn" style="margin-top:14px"><b>Important rule we found.</b> Section B12 of the policy promises: before we collect a new kind of data or use it for a new purpose, we ask users to agree again. Measurement and private feedback are new kinds of data, so they stay off until you and a lawyer decide on a new policy version and a "please agree again" screen. We did not trigger that screen.</div>
+<table style="margin-top:14px">
+<tr><th>Feature</th><th>New data?</th><th>Can it be turned on now?</th></tr>
+<tr><td>Event reminders</td><td>No</td><td>✅ Already on</td></tr>
+<tr><td>Push notifications</td><td>Phone time zone + Apple as a service</td><td>🟡 After the Apple setup; lawyer to confirm</td></tr>
+<tr><td>Measurement</td><td>Yes: usage events</td><td>🔴 After the re-consent decision</td></tr>
+<tr><td>Guest feedback</td><td>Yes: feedback and notes</td><td>🔴 After the re-consent decision</td></tr>
+<tr><td>Follow alerts</td><td>New use of follows</td><td>🟡 Lawyer: service or marketing?</td></tr>
+<tr><td>Weekend digest</td><td>Promotional</td><td>🔴 Lawyer review (Vietnam anti-spam rules, US CAN-SPAM)</td></tr>
+</table>
+<h2>Lines we did not cross</h2>
+<div class="nogo">
+<div><div class="x">⏳</div><b>No countdown pressure</b><span>no fake urgency, no "hurry"</span></div>
+<div><div class="x">👀</div><b>No "X people viewing"</b><span>only real seat counts</span></div>
+<div><div class="x">🚫</div><b>No "% match"</b><span>no fake precision</span></div>
+<div><div class="x">⭐</div><b>No public ratings</b><span>feedback stays private</span></div>
+<div><div class="x">🧠</div><b>No mood guessing</b><span>only answers people gave</span></div>
+<div><div class="x">🕙</div><b>Quiet hours</b><span>no pushes 22:00–07:00</span></div>
+<div><div class="x">📣</div><b>Promotions opt-in</b><span>off by default</span></div>
+<div><div class="x">🕵️</div><b>No outside trackers</b><span>our own database only</span></div>
+</div>
+</section>
+
+<!-- APPLE -->
+<section class="panel" id="apple">
+<h2>Apple account and push: everything is ready except the key</h2>
+<p class="sub">Push notifications, the iPhone Lock Screen card and Apple Wallet all wait on the paid Apple Developer account. All the banbe-side work is done; these are the steps once you have the account. Full detail: <b>docs/apple-setup-checklist.md</b>.</p>
+<div class="card steps">
+<div class="s"><span class="n">1</span><div><b>Join the Apple Developer Program</b><p>USD 99 per year. Choose "Organization" to show "banbe" as the seller. Note the 10-character Team ID.</p></div></div>
+<div class="s"><span class="n">2</span><div><b>Turn on Push for the app</b><p>Developer website › Identifiers › com.banbe.ios › tick Push Notifications and Associated Domains.</p></div></div>
+<div class="s"><span class="n">3</span><div><b>Create a push key</b><p>Keys › + › Apple Push Notifications service › download the .p8 file (only once) and note the Key ID.</p></div></div>
+<div class="s"><span class="n">4</span><div><b>Hand the values to the systems</b><p>One command adds the Team ID to the app. Five settings go into Vercel (APNS_KEY_ID, APNS_TEAM_ID, APNS_BUNDLE_ID, APNS_PRIVATE_KEY, CRON_SECRET), and two lines are run once in Supabase.</p></div></div>
+<div class="s"><span class="n">5</span><div><b>Switch push on</b><p>In the app: Account › Admin › Feature switches › Push notifications.</p></div></div>
+<div class="s"><span class="n">6</span><div><b>Test on an iPhone</b><p>Sign in, open a confirmed ticket, allow notifications when banbe asks, then send yourself a message from another account.</p></div></div>
+</div>
+<div class="grid g3" style="margin-top:14px">
+<div class="card"><div class="tag" style="color:var(--ok)">Safe before the key</div><p class="cap">With the switch on but no key, the system only does a "dry run": it counts what it would send and sends nothing.</p></div>
+<div class="card"><div class="tag" style="color:var(--ok)">No flood later</div><p class="cap">Messages older than 15 minutes are dropped, so switching on later never sends a pile of old alerts.</p></div>
+<div class="card"><div class="tag" style="color:var(--ok)">Polite asking</div><p class="cap">banbe asks for permission only after someone has a confirmed ticket, with its own explanation first.</p></div>
+</div>
+</section>
+
+<!-- DATA -->
+<section class="panel" id="data">
+<h2>What the data says today</h2>
+<p class="sub">You allowed one read-only count of real users. Test accounts were excluded, and any group under 20 people is hidden to protect privacy.</p>
+<div class="grid g3">
+<div class="card"><div class="big r">&lt;20</div><div class="cap">real (non-test) users in total, so no group can be shown yet</div></div>
+<div class="card"><div class="big">🇻🇳</div><div class="cap">Users so far are in Vietnam or have no known market. No US users yet.</div></div>
+<div class="card"><div class="big">07 · 08 · 18</div><div class="cap">Hours (Vietnam time) when people open the app, Tuesday to Thursday</div></div>
+</div>
+<div class="lock" style="margin-top:14px"><b>What this means.</b> There is not enough real usage to measure retention yet. The tools to measure it are built: an admin "Retention report" that splits by market, hides small groups and leaves test accounts out. It fills up as real users arrive (and fully once measurement is switched on).</div>
+<h2>The number we are chasing</h2>
+<div class="card" style="text-align:center"><div class="tag" style="color:var(--clay)">North-star</div><div class="big" style="font-size:30px;margin-top:6px">A second event within 60 days</div>
+<div class="svgbox" style="border:0;margin-top:10px"><svg viewBox="0 0 900 90" role="img" aria-label="Loop">
+<g font-size="14" text-anchor="middle" font-weight="700">
+<rect x="10" y="20" width="150" height="46" rx="12" fill="#e3f3e9"/><text x="85" y="48" fill="#2e8b57">Ticket ready</text>
+<rect x="190" y="20" width="150" height="46" rx="12" fill="#e3f3e9"/><text x="265" y="48" fill="#2e8b57">Reminder</text>
+<rect x="370" y="20" width="150" height="46" rx="12" fill="#e3f3e9"/><text x="445" y="48" fill="#2e8b57">Attended</text>
+<rect x="550" y="20" width="150" height="46" rx="12" fill="#eee"/><text x="625" y="48" fill="#6b645d">Recap + follow</text>
+<rect x="730" y="20" width="160" height="46" rx="12" fill="#e3f3e9"/><text x="810" y="48" fill="#2e8b57">Next event</text>
+<g fill="#b8734a"><text x="175" y="49">→</text><text x="355" y="49">→</text><text x="535" y="49">→</text><text x="715" y="49">→</text></g>
+</g></svg></div><p class="cap">Grey step is built and waiting on the consent decision.</p></div>
+</section>
+
+<!-- QUALITY -->
+<section class="panel" id="quality">
+<h2>How we kept it safe</h2>
+<div class="grid g4">
+<div class="card"><div class="big g">440 / 440</div><div class="cap">website checks pass</div></div>
+<div class="card"><div class="big g">402 / 404</div><div class="cap">iPhone checks pass. The 2 failures are in one old PDF test that failed before this work.</div></div>
+<div class="card"><div class="big g">9 / 9</div><div class="cap">database test suites pass (5 new, 4 existing)</div></div>
+<div class="card"><div class="big">3</div><div class="cap">full backups of the live database taken before changes, stored privately</div></div>
+</div>
+<h2>Timeline of live changes (23 October, UTC)</h2>
+<div class="card"><div class="time">
+<div class="e"><span class="h">09:50</span><b>Bank-detail leak closed</b><p>Signed-out visitors can no longer read organizers' bank fields.</p></div>
+<div class="e"><span class="h">09:51</span><b>Push foundation + US time zones and dollars</b><p>Then checked with a test US event, fully undone afterwards.</p></div>
+<div class="e"><span class="h">09:53</span><b>Website release 1</b><p>US times and push foundation live.</p></div>
+<div class="e w"><span class="h">10:54</span><b>Measurement, age 16+, quick-win server parts</b><p>Applied in one batch and checked together, rather than one by one. The combined check was clean; this is recorded honestly.</p></div>
+<div class="e"><span class="h">late morning</span><b>Website releases 2 and 3</b><p>Measurement tools, age check, quick wins.</p></div>
+<div class="e"><span class="h">12:31</span><b>Reminders, recaps, alerts, digest</b><p>Applied one at a time, each checked, with test runs undone.</p></div>
+<div class="e"><span class="h">afternoon</span><b>Website releases 4 and 5</b><p>Recaps, digest settings, For You by goal, event-day card, sharing.</p></div>
+</div></div>
+<div class="grid g3" style="margin-top:14px">
+<div class="card"><div class="tag">Every change</div><p class="cap">Tried first on a copy of the live system's structure (no user data copied), then applied, then checked for who can access what.</p></div>
+<div class="card"><div class="tag">Every change</div><p class="cap">Has a written undo script, tested.</p></div>
+<div class="card"><div class="tag">Not yet done</div><p class="cap">Nothing was checked by eye in a browser or on a real iPhone. The iPhone app was not sent to TestFlight or the App Store.</p></div>
+</div>
+</section>
+
+<!-- TODO -->
+<section class="panel" id="todo">
+<h2>What only you can do</h2>
+<p class="sub">Nothing below blocks the features already live. Each item unlocks something that is built and waiting.</p>
+<div class="act">
+<div class="ac"><span class="n">1</span><h3>Buy the Apple Developer account and create the push key</h3><p>Follow docs/apple-setup-checklist.md, then switch push on.</p><span class="who">Unlocks: push, Lock Screen card updates, Wallet</span></div>
+<div class="ac"><span class="n">2</span><h3>Send the missing company facts</h3><p>Legal company name, registered address, enterprise code, contact email and the Vietnamese SMS provider, for the policy.</p><span class="who">Unlocks: complete policy</span></div>
+<div class="ac"><span class="n">3</span><h3>Decide on asking users to agree again</h3><p>With a lawyer: a new policy version and a "please agree again" screen (policy rule B12).</p><span class="who">Unlocks: measurement, guest feedback</span></div>
+<div class="ac"><span class="n">4</span><h3>Lawyer review of promotions and Rewards</h3><p>Vietnam anti-spam rules, US CAN-SPAM, the Rewards wording. List in docs/policy-retention-draft.md.</p><span class="who">Unlocks: weekend digest, Rewards</span></div>
+<div class="ac"><span class="n">5</span><h3>Run 10 short interviews</h3><p>Guide, invite message and consent script in docs/interview-guide.md.</p><span class="who">Unlocks: real insight while numbers are small</span></div>
+<div class="ac"><span class="n">6</span><h3>Try the Lock Screen card on a real iPhone</h3><p>Then switch it on if it looks right.</p><span class="who">Unlocks: event-day card</span></div>
+<div class="ac"><span class="n">7</span><h3>Optional: register a Zalo app</h3><p>Today the Zalo button copies an invite to paste. A direct Zalo share needs a registered Zalo account.</p><span class="who">Unlocks: one-tap Zalo sharing</span></div>
+</div>
+<div class="card" style="margin-top:14px"><div class="tag">Where everything is written down</div><p class="cap"><b>docs/retention-delight-plan.md</b>: status table for every item · <b>.claude/notes/61</b>: log of every live change · <b>.claude/notes/62</b>: what was built · <b>docs/impl/</b>: how each phase works · <b>docs/apple-setup-checklist.md</b> · <b>docs/interview-guide.md</b> · <b>docs/policy-retention-draft.md</b>: lawyer list (internal).</p></div>
+</section>
+
+<footer>Visual summary for non-technical readers · banbe retention work, 22–23 October 2026 · Example numbers in the host recap are illustrative</footer>
+</div>
+<script>
+document.querySelectorAll('.tabs button').forEach(function(b){
+  b.addEventListener('click',function(){
+    document.querySelectorAll('.tabs button').forEach(function(x){x.classList.remove('on')});
+    document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on')});
+    b.classList.add('on');document.getElementById(b.dataset.t).classList.add('on');
+    window.scrollTo({top:0,behavior:'smooth'});
+  });
+});
+</script>
+</body></html>

@@ -29,6 +29,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     /// now so the toast, list and badge don't wait for the next poll tick.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                             withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        #if DEBUG
+        // The Debug-only sample (Views/DebugPushTestSection.swift) shows its banner even with the app open.
+        if notification.request.content.userInfo["debug_test"] as? Bool == true {
+            completionHandler([.banner, .list, .sound])
+            return
+        }
+        #endif
         Task { @MainActor in AppDelegate.appState?.pushArrivedInForeground() }
         completionHandler([])
     }
