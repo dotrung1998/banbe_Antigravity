@@ -199,8 +199,17 @@ function ShareGlyph({ size = 15 }) {
 const TABS = [
   { key: 'daily', vi: 'Hôm nay', en: 'Today' },
   { key: 'weekly', vi: 'Tuần này', en: 'This week' },
-  { key: 'photos', vi: 'Ảnh nổi bật', en: 'Featured photos' },
+  // "Top photos" (was "Featured photos", which was cut off in a third of the tab bar on iPhone).
+  { key: 'photos', vi: 'Top ảnh', en: 'Top photos' },
 ];
+
+/** Small line icons for the Pulse tabs (sun / calendar / photos), sized like Account's tab icons. */
+function PulseTabIcon({ kind }) {
+  const common = { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true, style: { flex: 'none' } };
+  if (kind === 'daily') return <svg {...common}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>;
+  if (kind === 'weekly') return <svg {...common}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></svg>;
+  return <svg {...common}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-5-5L5 21" /></svg>;
+}
 
 export default function PulseViewer() {
   const {
@@ -331,23 +340,35 @@ export default function PulseViewer() {
         </span>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, padding: '16px 20px 0' }}>
-        {TABS.map(tab => (
-          <span
-            key={tab.key}
-            onClick={() => setPulseTab(tab.key)}
-            data-testid={`pulse-tab-${tab.key}`}
-            style={{
-              fontSize: 12.5, fontWeight: 600, padding: '9px 16px', borderRadius: 999, cursor: 'pointer',
-              background: s.pulseTab === tab.key ? ink : 'transparent',
-              color: s.pulseTab === tab.key ? paper : ink,
-              border: s.pulseTab === tab.key ? 'none' : `1px solid ${rule}`,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {T(tab.vi, tab.en)}
-          </span>
-        ))}
+      {/* Same segmented control as Account's tabs (iOS GlassSegmentedControl). The 12px bottom
+          padding is a fixed gap: the list below scrolls inside its own box, so cards never
+          butt up against the tabs. */}
+      <div style={{ flex: 'none', padding: '16px 20px 12px' }}>
+        <div role="tablist" data-testid="pulse-tabs" style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 999, background: 'rgba(var(--bb-fg-rgb),0.06)' }}>
+          {TABS.map(tab => {
+            const selected = s.pulseTab === tab.key;
+            return (
+              <span
+                key={tab.key}
+                onClick={() => setPulseTab(tab.key)}
+                data-testid={`pulse-tab-${tab.key}`}
+                role="tab" aria-selected={selected}
+                style={{
+                  // Sized to its label (not equal thirds) so every label fits at phone width.
+                  flex: '1 1 auto', minWidth: 0, minHeight: 44, fontSize: 13, fontWeight: selected ? 700 : 600, padding: '0 6px', borderRadius: 999, cursor: 'pointer', color: ink,
+                  transition: 'background .2s, box-shadow .2s', outline: 'none', WebkitTapHighlightColor: 'transparent',
+                  ...(selected
+                    ? { border: '1px solid rgba(var(--bb-fg-rgb),0.12)', background: 'linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.18)), var(--bb-bg)', boxShadow: '0 4px 14px rgba(27,25,22,0.14), inset 0 1px 0 rgba(255,255,255,0.6)' }
+                    : { border: '1px solid transparent', background: 'transparent', boxShadow: 'none' }),
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, whiteSpace: 'nowrap',
+                }}
+              >
+                <PulseTabIcon kind={tab.key} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{T(tab.vi, tab.en)}</span>
+              </span>
+            );
+          })}
+        </div>
       </div>
 
       {/* White-flash fix (2026-09-28 pass) — the loading GIF is now shown
@@ -358,7 +379,7 @@ export default function PulseViewer() {
           `!loading`, so any background refresh of an already-loaded tab
           blanked its real content back to the spinner, which is exactly
           the "flash" this pass fixes, not merely a cosmetic tweak. */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 40px', display: 'flex', flexDirection: 'column', gap: 10, position: 'relative' }} data-testid="pulse-list" data-loading={loading ? 'true' : 'false'} data-images-loading={sectionImagesLoading ? 'true' : 'false'}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 20px 40px', display: 'flex', flexDirection: 'column', gap: 10, position: 'relative' }} data-testid="pulse-list" data-loading={loading ? 'true' : 'false'} data-images-loading={sectionImagesLoading ? 'true' : 'false'}>
         {items.length === 0 && (
           loading ? (
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: 60 }} data-testid="pulse-loading">

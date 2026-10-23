@@ -60,9 +60,10 @@ extension AppState {
         guard controller.activitiesAllowed else { return }
         if !force, let last = controller.lastSync, Date().timeIntervalSince(last) < 20 { return }
         controller.lastSync = Date()
-        Task {
-            guard let tickets = await loadEventDayTickets(userID: uid), self.userID == uid, self.liveActivityEnabled else { return }
-            await controller.sync(tickets: tickets, lang: lang) { [weak self] in self?.syncLiveActivities(force: true) }
+        Task { [weak self] in
+            guard let self, let tickets = await self.loadEventDayTickets(userID: uid),
+                  self.userID == uid, self.liveActivityEnabled else { return }
+            await controller.sync(tickets: tickets, lang: self.lang) { [weak self] in self?.syncLiveActivities(force: true) }
         }
     }
 

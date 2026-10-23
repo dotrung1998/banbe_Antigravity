@@ -154,8 +154,13 @@ targets:
         # `supportedInterfaceOrientations`), this key alone is authoritative.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # iPad must allow every orientation unless the app requires full screen (Xcode warning); iPhone stays
+        # portrait-only above.
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         # L7 day-of card: the app may start Live Activities (only ever locally, only while the `live_activity`
         # switch is on; see BanbeApp/Lib/LiveActivityController.swift).
         NSSupportsLiveActivities: true

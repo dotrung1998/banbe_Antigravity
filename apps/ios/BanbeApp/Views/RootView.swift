@@ -874,7 +874,19 @@ struct RootView: View {
             // ONE dismiss animation entirely itself (see that file's
             // `commitDismiss()`) — this conditional must never layer a
             // second SwiftUI transition on top of it.
-            if app.loading { loadingOverlay }
+            // Not while an event is being submitted: the Confirm & submit button shows its own
+            // loading GIF next to "Submitting…" instead of a full-screen "Holding your seat…" cover.
+            if app.loading && !app.submitCreateEventInFlight { loadingOverlay }
+
+            // Undo after leaving a new-event draft (AppState.createBack), above the dock when it shows.
+            if let offer = app.createUndoOffer, app.screen != .create {
+                CreateUndoToast(offer: offer)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, app.dockVisible && BottomTabBar.visibleScreens.contains(app.screen)
+                             ? BottomTabBar.barHeight + 16 : 16)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(35)
+            }
 
             // First-time host setup (cover / name / intro + reveal). Full-screen, above everything in
             // this window; the dock is hidden via the onboarding flag below.

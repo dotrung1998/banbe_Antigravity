@@ -505,6 +505,14 @@ final class AppState: ObservableObject {
     @Published var homeWeekendScrollRequest: UUID?
     /// L3 "Run it again": the original event's cover, staged by CreateEventView as the new draft's first photo (once).
     @Published var createSeedCoverImage: UIImage?
+    /// Leaving a NEW event draft that has input (Back or edge swipe) offers Undo for a few seconds
+    /// (RootView's CreateUndoToast) instead of asking "Discard this event?" first.
+    @Published var createUndoOffer: CreateUndoOffer?
+    /// What only CreateEventView holds in its own @State (photos, cover, step) plus whether the draft
+    /// has input, mirrored as it changes so Undo can bring the draft back exactly as it was.
+    var createDraftStash = CreateDraftStash()
+    /// Set by Undo; the next CreateEventView to appear restores `createDraftStash` once.
+    var createRestorePending = false
     /// The Search screen's query, kept while it's open.
     @Published var searchQuery = ""
     @Published var searchBackScreen: Screen = .home
@@ -3463,6 +3471,10 @@ final class AppState: ObservableObject {
         createSent = false
         createError = ""
         createOriginScreen = screen
+        // A fresh draft replaces whatever an Undo could still have brought back.
+        createUndoOffer = nil
+        createRestorePending = false
+        createDraftStash = CreateDraftStash()
         // TASK 3 (event creation validation pass) — "Create another event"
         // (the post-submission chooser, CreateEventView) reuses this SAME
         // function, and unlike every previous caller (always arriving here
@@ -3590,7 +3602,33 @@ final class AppState: ObservableObject {
         screen = .hostIntro
     }
 
-    func createBack() { screen = createOriginScreen }
+    func createBack() {
+        let offerUndo = createDraftStash.hasUnsavedInput && createEditEventId == nil && !createSent
+        screen = createOriginScreen
+        guard offerUndo else { return }
+        // Next run loop, so the toast rises in after the screen change rather than with it.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.screen != .create else { return }
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.8)) {
+                self.createUndoOffer = CreateUndoOffer(duration: 6)
+            }
+        }
+    }
+
+    /// Undo on the toast: back into Create with the draft untouched (goCreate would reset it).
+    func undoLeaveCreate() {
+        guard createUndoOffer != nil else { return }
+        createUndoOffer = nil
+        createRestorePending = true
+        screen = .create
+    }
+
+    /// The toast ran out: the draft is gone for good (its photos are released).
+    func expireCreateUndo(_ id: UUID) {
+        guard createUndoOffer?.id == id else { return }
+        withAnimation(.easeOut(duration: 0.2)) { createUndoOffer = nil }
+        createDraftStash = CreateDraftStash()
+    }
 
     func switchToHost(back: Screen = .home) {
         guard isSignedIn else { return requireAuth(returnTo: .dashboard, backTo: .home) }

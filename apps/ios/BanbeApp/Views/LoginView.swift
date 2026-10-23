@@ -12,7 +12,10 @@ struct LoginView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var auth: AuthViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var method: Method = .code
+    // Password is the default way in (owner request); the emailed code is the second tab.
+    @State private var method: Method = .password
+    /// The submit request is in flight: the loading GIF shows next to the button's text.
+    @State private var submitting = false
     @State private var code = ""
     @State private var password = ""
     @State private var passwordConfirm = ""
@@ -202,7 +205,8 @@ struct LoginView: View {
                                    noteActionTitle: emailIssue == "exists" ? app.T("Đăng nhập?", "Log in instead?")
                                        : emailIssue == "notFound" ? app.T("Đăng ký?", "Sign up instead?") : nil,
                                    noteAction: emailIssue == nil ? nil : { switchModeForEmailIssue() },
-                                   noteIdentifier: "login.emailIssue")
+                                   noteIdentifier: "login.emailIssue",
+                                   contentType: .username)
                             .accessibilityIdentifier("login.email")
                         if showEmailFormatError {
                             Text(app.T("Email chưa đúng định dạng (ví dụ: ban@email.com)",
@@ -214,11 +218,24 @@ struct LoginView: View {
                         }
                         if method == .password {
                             BanbeField(label: nil, placeholder: app.T("Mật khẩu", "Password"),
-                                       text: $password, secure: true)
+                                       text: $password, secure: true,
+                                       contentType: mode == .signup ? .newPassword : .password)
                                 .accessibilityIdentifier("login.password")
+                                // Autofill (Passwords / a password manager) fills email + password in one go
+                                // and iOS then leaves the keyboard up on the email field: a password that
+                                // arrives in one step (not typed key by key) means the form is complete, so
+                                // close the keyboard. Repeated once because iOS may refocus after the fill.
+                                .onChange(of: password) { old, new in
+                                    guard mode == .login, old.isEmpty, new.count > 1, emailFormatOk else { return }
+                                    for delay in [0.15, 0.45] {
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                                        }
+                                    }
+                                }
                             if mode == .signup {
                                 BanbeField(label: nil, placeholder: app.T("Nhập lại mật khẩu", "Re-enter password"),
-                                           text: $passwordConfirm, secure: true)
+                                           text: $passwordConfirm, secure: true, contentType: .newPassword)
                                     .accessibilityIdentifier("login.passwordConfirm")
                             }
                         }
@@ -270,8 +287,9 @@ struct LoginView: View {
                 }
 
                 if showSubmit {
-                    InkButton(title: submitLabel, enabled: !auth.isSendingCode && (auth.codeSent ? !code.isEmpty : canRequest)) {
-                        Task { await submit() }
+                    InkButton(title: submitLabel, enabled: !busy && (auth.codeSent ? !code.isEmpty : canRequest),
+                              busy: busy) {
+                        Task { submitting = true; await submit(); submitting = false }
                     }
                     .padding(.top, 14)
                     .accessibilityIdentifier("login.submit")
@@ -322,8 +340,8 @@ struct LoginView: View {
 
     private var methodTabs: some View {
         HStack(spacing: 0) {
-            methodTab(.code, label: app.T("Mã qua email", "Email code"))
             methodTab(.password, label: app.T("Mật khẩu", "Password"))
+            methodTab(.code, label: app.T("Mã qua email", "Email code"))
         }
         .padding(3)
         .background(app.palette.field, in: Capsule())
@@ -435,8 +453,17 @@ struct LoginView: View {
         passwordConfirm = ""
     }
 
+    private var busy: Bool { submitting || auth.isSendingCode }
+
     private var submitLabel: String {
-        if auth.isSendingCode { return app.T("Đang gửi…", "Sending…") }
+        if busy {
+            if auth.codeSent { return app.T("Đang xác nhận…", "Verifying…") }
+            if method == .password {
+                return mode == .signup ? app.T("Đang tạo tài khoản…", "Creating account…")
+                                       : app.T("Đang đăng nhập…", "Logging in…")
+            }
+            return app.T("Đang gửi…", "Sending…")
+        }
         if auth.codeSent { return app.T("Xác nhận", "Verify") }
         if method == .password {
             return mode == .signup ? app.T("Tạo tài khoản", "Create account")

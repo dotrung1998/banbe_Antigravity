@@ -8,7 +8,7 @@ import { liveEventOverrides } from '../lib/countdown.js';
 import { supabase } from '../lib/supabase.js';
 import { parseExcelOrZipPackage } from '../lib/excelEventImport.js';
 import { formatMoney, formatMoneyShort, parsePriceInput, priceInputText, priceQuickPicks, todayInZone, wallClockToMs, VN_TIME_ZONE } from '../lib/eventMarket.js';
-import { paper, ink, rule, FACE, display, alert, clay } from '../theme.js';
+import { paper, ink, rule, FACE, display, alert, clay, fieldSolid } from '../theme.js';
 import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
 import { loadMapKit } from '../lib/mapkit.js';
 import { CountStepper, StepProgress } from '../components/ui/FormControls.jsx';
@@ -19,6 +19,8 @@ import { track } from '../lib/analytics.js';
 import { stepOfField, isTextField, firstMissingField } from '../lib/createFieldGuide.js';
 import RecipeSheet, { RecipeMeter, RecipeList } from './sheets/RecipeSheet.jsx';
 import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
+import BanbeLoadingVisual from './BanbeLoadingVisual.jsx';
+import { mirrorCreateDraft, releaseCreateDraft, peekCreateDraftRestore, clearCreateDraftRestore } from '../lib/createDraftUndo.js';
 import EventDetail from './EventDetail.jsx';
 import { shapeDraftAsCurEvent, draftPriceVnd as parseDraftPriceVnd } from '../lib/draftPreview.js';
 
@@ -83,8 +85,12 @@ export default function CreateEvent() {
   // BanBeContext.jsx's own comment on `createIncludedItems`) — only the
   // final File[]/removed-id list/cover reference are handed to createSubmit
   // on actual submit.
-  const [items, setItems] = useState([]); // { kind, id?, file?, url, storagePath? }[]
-  const [coverKey, setCoverKey] = useState(null); // items[i]'s own url, used as a stable key
+  // Undo after leaving (lib/createDraftUndo.js): a draft handed back by the toast's Undo seeds the
+  // photos, cover and step this screen keeps locally (its text fields never left BanBeContext).
+  const [restored] = useState(() => peekCreateDraftRestore());
+  useEffect(() => { clearCreateDraftRestore(); }, []);
+  const [items, setItems] = useState(() => restored?.items || []); // { kind, id?, file?, url, storagePath? }[]
+  const [coverKey, setCoverKey] = useState(() => restored?.coverKey ?? null); // items[i]'s own url, used as a stable key
   const [photoError, setPhotoError] = useState('');
   // "Review before submitting" step (task 1) — a plain local bool, not a
   // second screen/route: every field it shows already lives in the global
@@ -154,9 +160,10 @@ export default function CreateEvent() {
     return undefined;
   }, [s.createSeedCoverUrl, s.createEditEventId, set]);
 
-  useEffect(() => () => {
-    items.forEach(it => { if (it.kind === 'new') URL.revokeObjectURL(it.url); });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Photo object URLs are freed on unmount unless the draft is held for Undo (createDraftUndo decides).
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  useEffect(() => () => releaseCreateDraft(itemsRef.current), []);
 
   const onPickPhotos = (e) => {
     const picked = Array.from(e.target.files || []);
@@ -332,7 +339,7 @@ export default function CreateEvent() {
   ];
   // Note 53: always open on step 1 (Host), even when it's already ticked from the organizer profile, so the
   // host can check it; the head start (Host ✓, 20%) still shows. This replaces note 48's "skip Host".
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(() => restored?.step ?? 0);
   const topRef = useRef(null);
   const goTo = (i) => {
     if (i < 0 || i >= sections.length) return;
@@ -447,15 +454,10 @@ export default function CreateEvent() {
   const hasUnsavedInput = !s.createEditEventId && !s.createSent && (
     [s.createName, s.createDesc, s.createLoc, s.createIntro, s.createKeywords].some(v => (v || '').trim())
     || photos.length > 0 || (s.createAppliedDefaults && !createDraftMatchesDefaults(s)));
-  const leaveCreate = () => {
-    if (hasUnsavedInput) {
-      const msg = photos.length
-        ? T(`Bỏ sự kiện này? ${photos.length} ảnh và thông tin bạn đã nhập sẽ mất.`, `Discard this event? Your ${photos.length} photos and details will be lost.`)
-        : T('Bỏ sự kiện này? Thông tin bạn đã nhập sẽ mất.', "Discard this event? The details you've entered will be lost.");
-      if (!window.confirm(msg)) return;
-    }
-    createBack();
-  };
+  // Mirrored for the Undo toast: BanBeContext holds this draft when the screen leaves Create.
+  useEffect(() => { mirrorCreateDraft({ items, coverKey, step, hasUnsavedInput }); }, [items, coverKey, step, hasUnsavedInput]);
+  // Leaves straight away; with input, an Undo toast follows (it replaced the "Discard this event?" question).
+  const leaveCreate = () => createBack();
   // Price chosen by a pick/slider, written the way the field shows it ("450000" for VND as before, "12.50" for USD).
   const priceText = (v) => (market.currency === 'USD' ? priceInputText(v, 'USD') : String(v));
   const seatsNum = parseInt(String(s.createSeats || '').replace(/\D/g, ''), 10) || 0;
@@ -1071,16 +1073,20 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
       <div
         onClick={confirmBusy || s.createSent ? undefined : async () => { setConfirmBusy(true); await onConfirm(); setConfirmBusy(false); }}
         data-testid="create-review-confirm"
+        aria-busy={confirmBusy || undefined}
         style={{
           fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 16, borderRadius: 999,
           background: confirmBusy || s.createSent ? 'rgba(27,25,22,0.16)' : ink,
           color: confirmBusy || s.createSent ? ink : paper,
           cursor: confirmBusy || s.createSent ? 'default' : 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         }}
       >
+        {/* The loading GIF sits beside "Submitting…" on the button (no full-screen cover: App.jsx skips it on Create). */}
+        {confirmBusy && !s.createSent && <span style={{ display: 'inline-flex', width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }}><BanbeLoadingVisual size={22} /></span>}
         {s.createSent
           ? T('Đã gửi, đang chờ Banbe duyệt', 'Submitted, waiting for Banbe to review')
-          : T('Xác nhận và gửi', 'Confirm & submit')}
+          : confirmBusy ? T('Đang gửi…', 'Submitting…') : T('Xác nhận và gửi', 'Confirm & submit')}
       </div>
       {s.createError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createError}</p>}
     </>
@@ -1233,13 +1239,23 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
 function SubmitSuccessChooser({ T, onCreateAnother, onGoHome, onViewPending, onGoAccount }) {
   const dialogRef = useRef(null);
   useEffect(() => { dialogRef.current?.showModal(); }, []);
-  const rowBtnStyle = {
-    fontSize: 14, fontWeight: 600, textAlign: 'left', padding: '13px 14px', borderRadius: 12,
-    background: 'transparent', border: `1px solid ${rule}`, color: ink, cursor: 'pointer', width: '100%',
+  // 2026-10-23 (owner, iOS SubmittedChooserCard parity): wide card, next steps as a list, one icon per
+  // choice, a bouncy entrance (.bb-bounce-in; a plain fade under Reduce Motion).
+  const btnBase = {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', minHeight: 50,
+    fontSize: 15, fontWeight: 600, fontFamily: 'inherit', borderRadius: 18, cursor: 'pointer',
   };
+  const secondary = { ...btnBase, background: fieldSolid, border: `1px solid ${rule}`, color: ink };
+  const steps = [
+    ['✈️', T('Đã gửi cho banbe', 'Sent to banbe')],
+    ['🔎', T('banbe duyệt sự kiện', 'banbe reviews it')],
+    ['🔔', T('Lên sóng, bạn sẽ nhận thông báo', 'It goes live and we notify you')],
+    ['🔗', T('Chia sẻ được ngay khi được duyệt', "Sharing opens once it's approved")],
+  ];
   return (
     <dialog
       ref={dialogRef}
+      className="bb-bounce-in"
       data-testid="submit-success-chooser"
       // Native Escape-to-cancel — this ticket's own instruction: "On
       // cancellation of the chooser, default to the pending-events
@@ -1250,22 +1266,37 @@ function SubmitSuccessChooser({ T, onCreateAnother, onGoHome, onViewPending, onG
       // inner content, which is a normal-flow child that fully occupies
       // its own box) the same as Escape — same destination, same reasoning.
       onClick={(e) => { if (e.target === dialogRef.current) onViewPending(); }}
-      style={{ border: 'none', borderRadius: 18, padding: 0, maxWidth: 320, width: '88%', background: paper, color: ink }}
+      style={{ border: `1px solid ${rule}`, borderRadius: 28, padding: 0, maxWidth: 520, width: 'calc(100% - 40px)', background: paper, color: ink, boxShadow: '0 10px 40px rgba(0,0,0,0.18)' }}
     >
       {/* The end of creating an event is its peak (note 53, peak-end rule): a moment of celebration, then what
           happens next, honestly. The event is still pending review, so there's no link to share yet: the copy says sharing opens at approval (Phase 1 Q5). */}
       <div style={{ padding: 22, position: 'relative' }}>
         <ConfettiBurst top={30} />
-        <div aria-hidden style={{ fontSize: 40, lineHeight: 1, textAlign: 'center' }}>🎉</div>
-        <p style={{ ...display(20, { margin: '10px 0 4px', textAlign: 'center' }) }}>{T('Đã gửi sự kiện!', 'Event submitted!')}</p>
-        <p data-testid="submit-next-steps" style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, opacity: 0.8, margin: '0 0 18px', textAlign: 'center' }}>
-          {T('✓ Đã gửi  →  banbe duyệt  →  lên sóng, bạn sẽ nhận thông báo. Bạn có thể chia sẻ sự kiện ngay khi banbe duyệt. Bạn muốn làm gì tiếp theo?', "✓ Sent  →  banbe reviews it  →  it goes live and we'll notify you. Sharing opens once banbe approves it. What would you like to do next?")}
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <button onClick={onCreateAnother} data-testid="submit-chooser-create-another" style={rowBtnStyle}>{T('Tạo sự kiện khác', 'Create another event')}</button>
-          <button onClick={onViewPending} data-testid="submit-chooser-pending" style={rowBtnStyle}>{T('Xem sự kiện đang chờ duyệt', 'View pending events')}</button>
-          <button onClick={onGoHome} data-testid="submit-chooser-home" style={rowBtnStyle}>{T('Về Trang chủ', 'Go to Home')}</button>
-          <button onClick={onGoAccount} data-testid="submit-chooser-account" style={rowBtnStyle}>{T('Về Tài khoản', 'Go to Account')}</button>
+        <p style={{ ...display(22, { margin: '0 0 16px' }) }}>🎉 {T('Đã gửi sự kiện!', 'Event submitted!')}</p>
+        <ul data-testid="submit-next-steps" style={{ listStyle: 'none', margin: '0 0 16px', padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {steps.map(([icon, text]) => (
+            <li key={text} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14.5, lineHeight: 1.35 }}>
+              <span aria-hidden style={{ flex: 'none', width: 28, height: 28, borderRadius: '50%', background: fieldSolid, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>{icon}</span>
+              {text}
+            </li>
+          ))}
+        </ul>
+        <p style={{ fontSize: 13.5, fontWeight: 600, opacity: 0.75, margin: '0 0 12px' }}>{T('Bạn muốn làm gì tiếp theo?', 'What would you like to do next?')}</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button onClick={onViewPending} data-testid="submit-chooser-pending" className="bb-press" style={{ ...btnBase, background: ink, color: paper, border: 'none' }}>
+            <span aria-hidden>⏳</span>{T('Xem sự kiện đang chờ duyệt', 'View pending events')}
+          </button>
+          <button onClick={onCreateAnother} data-testid="submit-chooser-create-another" className="bb-press" style={secondary}>
+            <span aria-hidden>➕</span>{T('Tạo sự kiện khác', 'Create another event')}
+          </button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={onGoHome} data-testid="submit-chooser-home" className="bb-press" style={secondary}>
+              <span aria-hidden>🏠</span>{T('Trang chủ', 'Home')}
+            </button>
+            <button onClick={onGoAccount} data-testid="submit-chooser-account" className="bb-press" style={secondary}>
+              <span aria-hidden>👤</span>{T('Tài khoản', 'Account')}
+            </button>
+          </div>
         </div>
       </div>
     </dialog>

@@ -1324,6 +1324,8 @@ struct NotificationsView: View {
     /// Overlay reveal: 0 = a bell-sized circle on the bell, 1 = the whole screen. Animated on appear and on Back.
     @State private var reveal: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Overlay edge-swipe-back offset (0 = resting).
+    @State private var swipeX: CGFloat = 0
     /// Bursts out of the bell only when opened from it (and motion is allowed); otherwise it is simply there.
     private var bursts: Bool { isOverlay && !reduceMotion && app.homeBellFrame.width > 0 }
 
@@ -1577,6 +1579,41 @@ struct NotificationsView: View {
                     DispatchQueue.main.async {
                         withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { reveal = 1 }
                     }
+                }
+                // The overlay sits over Home (screen stays .home), so RootView's edge swipe never
+                // runs for it: it carries its own. Opened from the bell, the drag shrinks the page back
+                // into the bell as the finger moves (the same circle Back closes with); far or fast enough
+                // finishes the shrink, otherwise it grows back. Without the bell burst (Reduce Motion) the
+                // page simply slides off to the right.
+                .offset(x: swipeX)
+                .overlay(alignment: .leading) {
+                    GeometryReader { g in
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .frame(width: 22)
+                            .highPriorityGesture(
+                                DragGesture(minimumDistance: 4, coordinateSpace: .global)
+                                    .onChanged { v in
+                                        let dx = max(0, v.translation.width)
+                                        if bursts { reveal = max(0, 1 - dx / max(g.size.width, 1)) } else { swipeX = dx }
+                                    }
+                                    .onEnded { v in
+                                        let w = g.size.width
+                                        let closes = v.translation.width > w * 0.33 || v.predictedEndTranslation.width > w * 0.6
+                                        if closes {
+                                            if bursts { closeOverlay(); return }
+                                            withAnimation(.easeOut(duration: 0.22)) { swipeX = w }
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { app.notificationsOverlayOpen = false }
+                                        } else {
+                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                                if bursts { reveal = 1 } else { swipeX = 0 }
+                                            }
+                                        }
+                                    }
+                            )
+                    }
+                    .ignoresSafeArea()
+                    .accessibilityHidden(true)
                 }
         } else {
             content

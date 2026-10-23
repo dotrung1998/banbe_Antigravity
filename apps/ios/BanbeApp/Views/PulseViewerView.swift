@@ -192,19 +192,15 @@ struct PulseViewerView: View {
                 }
                 .padding(.horizontal, 20).padding(.top, 20)
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        tabButton(.daily, app.T("Hôm nay", "Today"))
-                        tabButton(.weekly, app.T("Tuần này", "This week"))
-                        // TASK 4 (2026-09-25 fix pass) — third tab: ranked
-                        // individual event photos, a separate list from
-                        // the two event-level tabs above.
-                        tabButton(.photos, app.T("Ảnh nổi bật", "Featured photos"))
-                    }
+                // Same glass segmented control as Account's tabs; the paper band with its 12pt
+                // bottom gap keeps the fixed header visually apart from the list scrolling under it.
+                pulseTabsBar
                     .padding(.horizontal, 20)
-                }
-                .padding(.top, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 12)
             }
+            .background(app.palette.paper)
+            .zIndex(1)
             ScrollView {
                 VStack(spacing: 10) {
                         // White-flash fix (2026-09-28 pass) — root cause
@@ -297,23 +293,20 @@ struct PulseViewerView: View {
         .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: app.pulsePhotoSheet)
     }
 
-    @ViewBuilder
-    private func tabButton(_ tab: PulseTab, _ label: String) -> some View {
-        Button(label) { app.pulseTab = tab }
-            .font(.system(size: 12.5, weight: .semibold))
-            .padding(.horizontal, 16).padding(.vertical, 9)
-            .background(app.pulseTab == tab ? app.palette.ink : Color.clear, in: Capsule())
-            .foregroundStyle(app.pulseTab == tab ? app.palette.paper : app.palette.ink)
-            .overlay(Capsule().stroke(app.pulseTab == tab ? .clear : app.palette.rule))
-            .buttonStyle(.plain)
-            .fixedSize()
-            // Teaser "Ảnh nổi bật: Bấm xem thêm" deep-link pass — lets a UI
-            // test (and any future caller) confirm which tab is actually
-            // selected after jumping straight into this destination, since
-            // the visual selected-state above (ink background) isn't itself
-            // queryable.
-            .accessibilityIdentifier("pulse.tab.\(tab.rawValue)")
-            .accessibilityAddTraits(app.pulseTab == tab ? .isSelected : [])
+    private var pulseTabsBar: some View {
+        GlassSegmentedControl(
+            segments: [
+                GlassSegment(id: PulseTab.daily.rawValue, label: app.T("Hôm nay", "Today"), icon: "sun.max", identifier: "pulse.tab.daily"),
+                GlassSegment(id: PulseTab.weekly.rawValue, label: app.T("Tuần này", "This week"), icon: "calendar", identifier: "pulse.tab.weekly"),
+                // TASK 4 (2026-09-25 fix pass) — ranked individual event photos, a separate list
+                // from the two event-level tabs. "Top photos" (was "Featured photos", cut off in a third of the bar).
+                GlassSegment(id: PulseTab.photos.rawValue, label: app.T("Top ảnh", "Top photos"), icon: "photo.on.rectangle", identifier: "pulse.tab.photos"),
+            ],
+            selection: app.pulseTab.rawValue, height: 52,
+            onSelect: { id in if let t = PulseTab(rawValue: id) { app.pulseTab = t } })
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("pulse.tabs")
     }
 
     // 2026-09-25 fix pass — shares a ranked photo via the real native share

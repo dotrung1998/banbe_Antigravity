@@ -20,9 +20,14 @@ enum SupabaseService {
         guard let url = URL(string: AppConfig.supabaseURL) else {
             fatalError("Invalid Supabase URL: \(AppConfig.supabaseURL)")
         }
+        // emitLocalSessionAsInitialSession: the stored session is emitted as the initial one straight away (the
+        // SDK's upcoming default; silences its runtime warning). It may be expired: that's fine here, every
+        // request fetches its token through `auth.session`, which refreshes first, and the refreshed session
+        // then arrives as `.tokenRefreshed` (or `.signedOut` if it can't be), which AuthViewModel handles.
         return SupabaseClient(
             supabaseURL: url,
-            supabaseKey: AppConfig.supabaseAnonKey
+            supabaseKey: AppConfig.supabaseAnonKey,
+            options: SupabaseClientOptions(auth: .init(emitLocalSessionAsInitialSession: true))
         )
     }()
 }

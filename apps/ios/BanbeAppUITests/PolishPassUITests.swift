@@ -93,12 +93,15 @@ final class PolishPassUITests: XCTestCase {
         intro.tap()
         intro.typeText("Hello")
         app.buttons["‹ Back"].firstMatch.tap()
-        let discard = app.buttons["Discard"].firstMatch
-        XCTAssertTrue(discard.waitForExistence(timeout: 5))
-        discard.tap()
-        sleep(2)
+        // Leaving no longer asks "Discard?": it leaves and offers Undo at the bottom.
+        let undo = el(app, "create.undo.button")
+        XCTAssertTrue(undo.waitForExistence(timeout: 5), "Undo toast after leaving a draft with input")
+        sleep(1)
         XCTAssertEqual(app.state, .runningForeground, "still running after leaving Create")
         XCTAssertFalse(el(app, "create.recipeMeter").exists, "left Create")
+        undo.tap()
+        XCTAssertTrue(el(app, "create.recipeMeter").waitForExistence(timeout: 5), "Undo reopens Create")
+        XCTAssertEqual(el(app, "create.intro").value as? String, "Hello", "Undo keeps what was typed")
     }
 
     func testLeavingCreateWhileFieldFocusedDoesNotCrash() {
@@ -111,8 +114,7 @@ final class PolishPassUITests: XCTestCase {
         intro.typeText("Hi")
         // Back while the keyboard is still up (no Done first).
         app.buttons["‹ Back"].firstMatch.tap()
-        let discard = app.buttons["Discard"].firstMatch
-        if discard.waitForExistence(timeout: 5) { discard.tap() }
+        XCTAssertTrue(el(app, "create.undo.button").waitForExistence(timeout: 5), "Undo toast after leaving")
         sleep(2)
         XCTAssertEqual(app.state, .runningForeground)
     }
@@ -139,8 +141,7 @@ final class PolishPassUITests: XCTestCase {
         sleep(1)
         XCTAssertEqual(app.state, .runningForeground)
         app.buttons["‹ Back"].firstMatch.tap()
-        let discard = app.buttons["Discard"].firstMatch
-        if discard.waitForExistence(timeout: 5) { discard.tap() }
+        XCTAssertTrue(el(app, "create.undo.button").waitForExistence(timeout: 5), "Undo toast after leaving")
         sleep(2)
         XCTAssertEqual(app.state, .runningForeground, "still running after leaving Create")
         shot("after-leaving-create")

@@ -32,6 +32,7 @@ import { eventDraftDefaults, createDefaultsPatch, createDraftMatchesDefaults } f
 import { notificationRoute, runItAgainDate } from '../lib/coreLoops.js';
 import { DEFAULT_FILTERS as HOME_DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
 import { flagOn, normalizeFlags, readCachedFlags, writeCachedFlags } from '../lib/featureFlags.js';
+import { holdLeftCreateDraft, beginCreateDraftRestore, discardLeftCreateDraft } from '../lib/createDraftUndo.js';
 
 /** Media-API upload with the current session token. Resolves `{provider:'supabase'}`
  * when the caller must use the legacy path; throws MediaUploadError only after bytes were PUT. */
@@ -470,7 +471,7 @@ const PRIVATE_STATE_KEYS = [
   'myOrganizerIdsStatus', 'myOrganizerAvatarPath', 'myOrganizerAvatarR2Ref', 'orgRegName', 'orgRegDesc', 'orgRegIntroLong',
   'orgRegLinks', 'myOrgEventKeys', 'myOrgEventOrganizerId', 'myOrgPublishedEventCount', 'myOrgHostingSinceYear',
   'ensureOrganizerStatus', 'ensureOrganizerError', 'hostSetupOpen', 'organizerProfile', 'scheduleAddedKeys', 'guestPrompt',
-  'eventRecapId', 'hostRecapId', 'createSeedCoverUrl',
+  'eventRecapId', 'hostRecapId', 'createSeedCoverUrl', 'createUndoOffer',
 ];
 const isPublicEventRow = (e) => !!e && e.visibility === 'public' && ['live', 'ended', 'cancelled'].includes(e.status);
 /** The signed-out state patch. Cached events keep only public rows (a private/invite/draft event fetched while
@@ -1122,7 +1123,8 @@ const initialState = {
   // 'code' (email a one-time code) or 'password' — a per-tab choice, not
   // persisted; every account can use either, regardless of which one it was
   // created with (password sign-up still confirms via an emailed code).
-  authMethod: 'code',
+  // Password is the default way in (owner, 2026-10-23, iOS parity); the emailed code is the second tab.
+  authMethod: 'password',
   loginEmail: '',
   loginNickname: '',
   loginPhoneNumber: '',
@@ -1220,6 +1222,8 @@ const initialState = {
   createAppliedDefaults: null,
   // L3 "Run it again": the original event's cover, staged by CreateEvent as the new draft's first photo (once).
   createSeedCoverUrl: null,
+  // Leaving a NEW event draft with input offers Undo for a few seconds (App.jsx CreateUndoToast; iOS parity).
+  createUndoOffer: null,
   createEventTime: '',
   createPrice: '',
   createSeats: '',
@@ -6574,8 +6578,11 @@ export function BanBeProvider({ children }) {
     // here, not just the address/edit-id fields this already cleared, so
     // "Create another" truly starts blank rather than pre-filled with the
     // event that was just submitted.
+    // A fresh draft replaces whatever an Undo could still have brought back.
+    discardLeftCreateDraft();
     set(prev => ({
       screen: 'create', mode: 'host', createEditEventId: null, createSent: false, createError: '', createOriginScreen: prev.screen,
+      createUndoOffer: null,
       createName: '', createCats: [], createDesc: '',
       createLoc: '', createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false,
       createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
@@ -6662,6 +6669,27 @@ export function BanBeProvider({ children }) {
   // hasHosted-based guess only remains as a fallback for any entry point
   // that predates this field.
   const createBack = useCallback(() => set(prev => ({ screen: prev.createOriginScreen || (prev.hasHosted ? 'dashboard' : 'hostIntro') })), [set]);
+
+  // Undo after leaving a new-event draft (iOS AppState.createBack parity). Watches the screen rather
+  // than createBack alone, so the browser's own back (iOS Safari's edge swipe) offers it too. Leaving
+  // goes straight out (no "Discard this event?" question); the toast's Undo reopens Create as it was.
+  const prevScreenRef = useRef(s.screen);
+  useEffect(() => {
+    const was = prevScreenRef.current;
+    prevScreenRef.current = s.screen;
+    if (was !== 'create' || s.screen === 'create') return;
+    if (!s.user || s.createEditEventId || s.createSent) return;
+    if (holdLeftCreateDraft()) set({ createUndoOffer: { id: Date.now() } });
+  }, [s.screen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const undoLeaveCreate = useCallback(() => {
+    beginCreateDraftRestore();
+    set({ screen: 'create', createUndoOffer: null });
+  }, [set]);
+  const expireCreateUndo = useCallback((id) => {
+    if (s.createUndoOffer?.id !== id) return;
+    discardLeftCreateDraft();
+    set({ createUndoOffer: null });
+  }, [set, s.createUndoOffer]);
 
   // The "Going"/"Saved" cards on Account — always opened from (and closed
   // back to) Account, so unlike Inbox/Dashboard there's no other entry point
@@ -8853,13 +8881,13 @@ export function BanBeProvider({ children }) {
   }, [set, s.loginEmail, authEmailErrorMessage, T]);
   // Single Enter-key / submit dispatcher for the Login screen — routes to
   // whichever action the currently-visible form actually needs.
+  // Returns the request's promise so Login can show its busy state until it settles.
   const submitCurrentForm = useCallback(() => {
-    if (s.loginSentVia === 'email') { verifyEmailCode(); return; }
+    if (s.loginSentVia === 'email') return verifyEmailCode();
     if (s.authMethod === 'password') {
-      if (s.authMode === 'signup') passwordSignupSubmit(); else passwordLoginSubmit();
-      return;
+      return s.authMode === 'signup' ? passwordSignupSubmit() : passwordLoginSubmit();
     }
-    codeRequestSubmit();
+    return codeRequestSubmit();
   }, [s.loginSentVia, s.authMethod, s.authMode, verifyEmailCode, passwordSignupSubmit, passwordLoginSubmit, codeRequestSubmit]);
   const loginEmailKey = useCallback((e) => { if (e.key === 'Enter') submitCurrentForm(); }, [submitCurrentForm]);
   const loginZalo = useCallback(() => set({ reserveError: T('Zalo chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Zalo is not available yet. Use email or phone OTP.') }), [set, T]);
@@ -11272,7 +11300,7 @@ export function BanBeProvider({ children }) {
     isSaved, isGoing, isAwaitingConfirmation, sendEventAnnouncement, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch, openSearch, setHomeFilters,
     loadNotifications, loadInboxThreads,
-    goChat, goLogin, goDashboard, goCreate, clearCreateDefaults, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
+    goChat, goLogin, goDashboard, goCreate, clearCreateDefaults, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack, undoLeaveCreate, expireCreateUndo,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
     loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof, openBookingConfirmed, backFromConfirmed,
     openBilling, billingNameType, billingAddressType, billingPhoneType, billingTaxCodeType, saveBillingDetails,
@@ -11311,7 +11339,7 @@ export function BanBeProvider({ children }) {
     isSaved, isGoing, isAwaitingConfirmation, sendEventAnnouncement, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch, openSearch, setHomeFilters,
     loadNotifications, loadInboxThreads,
-    goChat, goLogin, goDashboard, goCreate, clearCreateDefaults, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
+    goChat, goLogin, goDashboard, goCreate, clearCreateDefaults, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack, undoLeaveCreate, expireCreateUndo,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
     loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof, openBookingConfirmed, backFromConfirmed,
     openBilling, billingNameType, billingAddressType, billingPhoneType, billingTaxCodeType, saveBillingDetails,

@@ -23,8 +23,12 @@ test.describe('Login & Signup Notification Messages', () => {
     await page.getByText('Tiếng Việt', { exact: true }).click();
     await page.locator('[data-screen-label="Appearance"]').getByText('Sáng', { exact: true }).click();
     await page.getByText('Tiếp tục', { exact: true }).click();
+    // Guest browsing (note 49): signed out, the app lands on Welcome rather than Login.
+    await page.getByText('Đã có tài khoản? Đăng nhập', { exact: true }).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 5000 });
+    // Password is the default tab now; these cases cover the emailed-code flow.
+    await page.getByTestId('login-method-code').click();
   }
 
   // Task 1's consent checkbox only renders/gates on the Signup tab (an
@@ -82,7 +86,8 @@ test.describe('Login & Signup Notification Messages', () => {
     await page.locator('input[placeholder="ban@email.com"]').fill('nonexistent@example.com');
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng nhập/).click();
 
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Không tìm thấy tài khoản với email này/);
+    // Note 53 copy: a honey warning on the field with the one-tap way out.
+    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Chưa có tài khoản với email này/);
   });
 
   test('shows AUTH_ACCOUNT_NOT_FOUND for non-existent email on signup (falls through to generic)', async ({ page }) => {

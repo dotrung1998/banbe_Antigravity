@@ -67,7 +67,11 @@ private struct ScheduleScreen: View {
                             .font(.system(.headline, design: .rounded))
                             .accessibilityAddTraits(.isHeader)
                             .accessibilityIdentifier("schedule.dayTitle")
-                        content
+                        // One composited block: without it the fade applies to every leaf separately,
+                        // so a card's solid ink buttons showed up well before its light text and
+                        // dashed outline. Now the whole card (buttons included) appears together.
+                        VStack(alignment: .leading, spacing: 14) { content }
+                            .compositingGroup()
                             .id("\(app.scheduleMode.rawValue).\(calendar.startOfDay(for: selected).timeIntervalSince1970)")
                             .transition(reduceMotion ? .opacity
                                         : .asymmetric(insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),

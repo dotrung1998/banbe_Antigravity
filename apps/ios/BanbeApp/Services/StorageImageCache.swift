@@ -19,11 +19,11 @@ final class StorageImageCache: URLProtocol {
     private static let maxBytes: Int64 = 300 * 1024 * 1024
     private static let maxFileBytes = 8 * 1024 * 1024
 
+    /// Just the location: no file I/O here, since the first access can be on the main thread (Xcode flagged the
+    /// folder creation as main-thread I/O). The folder is created by the first write that needs it (`store`).
     private static let directory: URL = {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        let dir = base.appendingPathComponent("banbe.storage-images", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+        return base.appendingPathComponent("banbe.storage-images", isDirectory: true)
     }()
 
     private static let upstream: URLSession = {
@@ -35,9 +35,19 @@ final class StorageImageCache: URLProtocol {
     static func install() { URLProtocol.registerClass(StorageImageCache.self) }
 
     /// Sign-out / "Clear Image Cache".
+    /// Runs off the main thread (sign-out calls it from there); the next write recreates the folder.
     static func clear() {
-        try? FileManager.default.removeItem(at: directory)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let dir = directory
+        DispatchQueue.global(qos: .utility).async { try? FileManager.default.removeItem(at: dir) }
+    }
+
+    /// Writes one cached image (+ its MIME type), creating the folder on first use or after a clear.
+    private static func store(_ data: Data, mime: String, at file: URL) {
+        if (try? data.write(to: file, options: .atomic)) == nil {
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            guard (try? data.write(to: file, options: .atomic)) != nil else { return }
+        }
+        try? mime.write(to: file.appendingPathExtension("mime"), atomically: true, encoding: .utf8)
     }
 
     // MARK: URLProtocol
@@ -95,8 +105,7 @@ final class StorageImageCache: URLProtocol {
             }
             let mime = http.value(forHTTPHeaderField: "Content-Type") ?? ""
             if http.statusCode == 200, mime.hasPrefix("image/"), data.count <= Self.maxFileBytes {
-                try? data.write(to: file, options: .atomic)
-                try? mime.write(to: file.appendingPathExtension("mime"), atomically: true, encoding: .utf8)
+                Self.store(data, mime: mime, at: file)
                 Self.trimIfNeeded()
             }
             self.client?.urlProtocol(self, didReceive: http, cacheStoragePolicy: .notAllowed)

@@ -1,16 +1,38 @@
+import { useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
+import BanbeLoadingVisual from './BanbeLoadingVisual.jsx';
 import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { FieldNote } from '../components/ui/FormControls.jsx';
 
 export default function Login() {
   const {
     state, T, set,
-    loginEmailType, loginNicknameType, loginEmailKey, loginEmailCodeType,
+    loginEmailType, loginNicknameType, loginEmailCodeType,
     loginPasswordType, loginPasswordConfirmType, toggleLang, pickTheme, loginGoogle,
     emailValid, passwordValid, setAuthMethod, requestPasswordResetSubmit, submitCurrentForm,
     togglePolicyConsent, openPolicy,
   } = useBanBe();
   const s = state;
+  // The request is in flight: the loading GIF shows next to the button's text (iOS parity).
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const submit = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true; setBusy(true);
+    try { await submitCurrentForm(); } finally { busyRef.current = false; setBusy(false); }
+  };
+  const onEnter = (e) => { if (e.key === 'Enter') submit(); };
+  // Autofill (Passwords / a password manager) fills email + password in one step and leaves the
+  // keyboard up on the email field: a password that arrives whole (not typed key by key) means the
+  // form is complete, so close the keyboard. Repeated once because iOS may refocus after the fill.
+  const onPasswordChange = (e) => {
+    const prev = s.loginPassword;
+    loginPasswordType(e);
+    const next = e.target.value;
+    if (!isSignup && !prev && next.length > 1 && emailValid(s.loginEmail)) {
+      [150, 450].forEach(ms => setTimeout(() => document.activeElement?.blur?.(), ms));
+    }
+  };
   const isSignup = s.authMode === 'signup';
   const isPassword = s.authMethod === 'password';
   const awaitingCode = s.loginSentVia === 'email';
@@ -48,7 +70,11 @@ export default function Login() {
   const changeAuthMode = (authMode) => set({ authMode, reserveError: '', authEmailIssue: null, loginSent: false, loginSentVia: null, loginEmailCode: '', resetRequested: false });
   const emailIssue = !awaitingCode ? s.authEmailIssue : null;
 
-  const submitLabel = awaitingCode
+  const submitLabel = busy
+    ? (awaitingCode ? T('Đang xác nhận…', 'Verifying…')
+      : isPassword ? (isSignup ? T('Đang tạo tài khoản…', 'Creating account…') : T('Đang đăng nhập…', 'Logging in…'))
+      : T('Đang gửi…', 'Sending…'))
+    : awaitingCode
     ? T('Xác nhận', 'Verify')
     : isPassword
       ? (isSignup ? T('Tạo tài khoản', 'Create account') : T('Đăng nhập', 'Log in'))
@@ -97,18 +123,18 @@ export default function Login() {
       </div>
 
       {awaitingCode ? (
-        <input value={s.loginEmailCode} onChange={loginEmailCodeType} onKeyDown={loginEmailKey} placeholder={T('Mã 8 số', '8-digit code')} inputMode="numeric" autoFocus style={{ ...fieldStyle({ marginTop: 22 }), letterSpacing: '0.2em', textAlign: 'center', fontSize: 20 }} />
+        <input value={s.loginEmailCode} onChange={loginEmailCodeType} onKeyDown={onEnter} placeholder={T('Mã 8 số', '8-digit code')} inputMode="numeric" autoFocus style={{ ...fieldStyle({ marginTop: 22 }), letterSpacing: '0.2em', textAlign: 'center', fontSize: 20 }} />
       ) : (
         <>
           <div style={{ display: 'flex', padding: 3, marginTop: 20, borderRadius: 999, background: 'var(--bb-field)' }}>
-            <div onClick={() => setAuthMethod('code')} style={methodTabStyle('code')}>{T('Mã qua email', 'Email code')}</div>
-            <div onClick={() => setAuthMethod('password')} style={methodTabStyle('password')}>{T('Mật khẩu', 'Password')}</div>
+            <div onClick={() => setAuthMethod('password')} data-testid="login-method-password" style={methodTabStyle('password')}>{T('Mật khẩu', 'Password')}</div>
+            <div onClick={() => setAuthMethod('code')} data-testid="login-method-code" style={methodTabStyle('code')}>{T('Mã qua email', 'Email code')}</div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
             {isSignup && <input value={s.loginNickname} onChange={loginNicknameType} placeholder={T('Tên hiển thị của bạn', 'Your display name')} style={fieldStyle()} />}
             <div>
-              <input value={s.loginEmail} onChange={loginEmailType} onKeyDown={loginEmailKey} placeholder="ban@email.com" data-testid="login-email" style={fieldStyle()}
-                type="email" autoComplete="email" inputMode="email"
+              <input value={s.loginEmail} onChange={loginEmailType} onKeyDown={onEnter} placeholder="ban@email.com" data-testid="login-email" style={fieldStyle()}
+                type="email" autoComplete={isPassword ? 'username' : 'email'} inputMode="email"
                 aria-invalid={showEmailFormatError ? true : undefined}
                 data-state={!showEmailFormatError && emailIssue ? 'warning' : undefined}
                 aria-describedby={showEmailFormatError ? 'login-email-error' : emailIssue ? 'login-email-issue' : undefined} />
@@ -129,8 +155,10 @@ export default function Login() {
                 </FieldNote>
               ) : null}
             </div>
-            {isPassword && <input value={s.loginPassword} onChange={loginPasswordType} onKeyDown={loginEmailKey} type="password" placeholder={T('Mật khẩu', 'Password')} style={fieldStyle()} />}
-            {isPassword && isSignup && <input value={s.loginPasswordConfirm} onChange={loginPasswordConfirmType} onKeyDown={loginEmailKey} type="password" placeholder={T('Nhập lại mật khẩu', 'Confirm password')} style={fieldStyle()} />}
+            {isPassword && <input value={s.loginPassword} onChange={onPasswordChange} onKeyDown={onEnter} type="password" placeholder={T('Mật khẩu', 'Password')} data-testid="login-password"
+              autoComplete={isSignup ? 'new-password' : 'current-password'} style={fieldStyle()} />}
+            {isPassword && isSignup && <input value={s.loginPasswordConfirm} onChange={loginPasswordConfirmType} onKeyDown={onEnter} type="password" placeholder={T('Nhập lại mật khẩu', 'Confirm password')}
+              autoComplete="new-password" style={fieldStyle()} />}
           </div>
           {isPassword && !isSignup && (
             <div onClick={requestPasswordResetSubmit} style={{ fontSize: 12, color: ink, opacity: 0.75, textAlign: 'right', marginTop: 8, cursor: 'pointer' }}>{T('Quên mật khẩu?', 'Forgot password?')}</div>
@@ -154,7 +182,13 @@ export default function Login() {
         </div>
       )}
 
-      {showSubmit && <div onClick={submitCurrentForm} data-testid="login-submit" role="button" className="bb-press" style={submitStyle}>{submitLabel}</div>}
+      {showSubmit && (
+        <div onClick={submit} data-testid="login-submit" role="button" aria-busy={busy || undefined} className="bb-press"
+          style={{ ...submitStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, ...(busy ? { cursor: 'default', opacity: 0.85 } : {}) }}>
+          {busy && <span style={{ display: 'inline-flex', width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }}><BanbeLoadingVisual size={22} /></span>}
+          {submitLabel}
+        </div>
+      )}
 
       {s.resetRequested && !s.reserveError && <p style={note()}>{T('Nếu email này có tài khoản, một email đặt lại mật khẩu vừa được gửi.', 'If that email has an account, a password reset email was just sent.')}</p>}
       {awaitingCode && <p style={note()}>{T('Đã gửi mã tới email của bạn. Nhập mã để tiếp tục.', 'A code was sent to your email. Enter it to continue.')}</p>}

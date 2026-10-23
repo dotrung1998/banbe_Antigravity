@@ -269,7 +269,7 @@ struct ThemePickView: View {
 /// uploaded `event_photos` rows (when editing an owned event) or a
 /// freshly-picked local image, unified so remove/reorder/cover-pick work
 /// the same way on both (mirrors web's CreateEvent.jsx `items` list).
-private struct StagedGalleryItem: Identifiable, Equatable {
+struct StagedGalleryItem: Identifiable, Equatable {
     enum Kind: Equatable {
         case existing(photoID: UUID, storagePath: String)
         case new(image: UIImage)
@@ -335,7 +335,6 @@ struct CreateEventView: View {
     /// Note 48: field errors stay quiet until the host asks to review (or
     /// taps "what's missing"), instead of shouting from the first render.
     @State private var attemptedReview = false
-    @State private var discardConfirmOpen = false
     @State private var scrollProxy: ScrollViewProxy?
     /// Note 48: Create event is a 5-step flow, one section per page. Note 53: it always opens on step 1 (Host),
     /// even when Host is already ticked from the organizer profile, so the host can check it.
@@ -1132,48 +1131,46 @@ struct CreateEventView: View {
         }
         .onChange(of: reviewOpen) { _, open in app.isCreateReviewOpen = open }
         .onDisappear { app.isCreateReviewOpen = false }
-        // TASK 3 (event creation validation pass) — a native
-        // `.confirmationDialog` (UIAlertController style .actionSheet under
-        // the hood), this ticket's own "supported platform API" instruction
-        // — not an imitation of Apple's password-provider UI.
-        .confirmationDialog(
-            app.T("🎉 Đã gửi sự kiện!", "🎉 Event submitted!"),
-            isPresented: $successChooserOpen,
-            titleVisibility: .visible
-        ) {
-            Button(app.T("Tạo sự kiện khác", "Create another event")) {
-                successChoiceMade = true
-                galleryItems = []
-                coverItemID = nil
-                photoError = ""
-                seededForEventID = nil
-                seededExistingIDs = []
-                app.goCreate()
+        // Undo after leaving (AppState.createBack): keep AppState's copy of this view's own draft
+        // state current, and restore it once when Undo brings the person back.
+        .onAppear {
+            guard app.createRestorePending else { return }
+            app.createRestorePending = false
+            let stash = app.createDraftStash
+            galleryItems = stash.items
+            coverItemID = stash.coverItemID
+            currentStep = Section(rawValue: stash.step) ?? .host
+        }
+        .onChange(of: hasUnsavedInput, initial: true) { _, has in app.createDraftStash.hasUnsavedInput = has }
+        .onChange(of: galleryItems) { _, items in app.createDraftStash.items = items }
+        .onChange(of: coverItemID) { _, id in app.createDraftStash.coverItemID = id }
+        .onChange(of: currentStep) { _, step in app.createDraftStash.step = step.rawValue }
+        // TASK 3 (event creation validation pass) — the post-submission chooser. Was a native
+        // `.confirmationDialog`, which iOS 26 draws as a narrow popover that wrapped the explanation
+        // awkwardly; now a full-width card (SubmittedChooserCard below): what happens next as a short
+        // list, one icon per choice, springing in with a bounce.
+        .overlay {
+            if successChooserOpen {
+                SubmittedChooserCard(
+                    onCreateAnother: {
+                        successChoiceMade = true
+                        successChooserOpen = false
+                        galleryItems = []
+                        coverItemID = nil
+                        photoError = ""
+                        seededForEventID = nil
+                        seededExistingIDs = []
+                        app.goCreate()
+                    },
+                    onPending: { successChoiceMade = true; successChooserOpen = false; app.goDashboard() },
+                    onHome: { successChoiceMade = true; successChooserOpen = false; app.goHome() },
+                    onAccount: { successChoiceMade = true; successChooserOpen = false; app.goProfile() },
+                    // Backdrop tap: same "unambiguous success" pending-events default as before.
+                    onDismiss: { successChooserOpen = false }
+                )
+                .transition(.identity)
+                .zIndex(30)
             }
-            Button(app.T("Xem sự kiện đang chờ duyệt", "View pending events")) {
-                successChoiceMade = true
-                app.goDashboard()
-            }
-            Button(app.T("Về Trang chủ", "Go to Home")) {
-                successChoiceMade = true
-                app.goHome()
-            }
-            Button(app.T("Về Tài khoản", "Go to Account")) {
-                successChoiceMade = true
-                app.goProfile()
-            }
-            // Explicit Cancel row — SwiftUI would otherwise supply its own
-            // no-op Cancel, which doesn't match this ticket's own "default
-            // to the pending-events destination" instruction.
-            Button(app.T("Đóng", "Dismiss"), role: .cancel) {
-                successChoiceMade = true
-                app.goDashboard()
-            }
-        } message: {
-            // Note 53: what happens next, honestly — it's pending review, so there's no link to share yet.
-            // Phase 1 Q5: sharing opens at approval, where the "Your event is live" card offers it.
-            Text(app.T("✓ Đã gửi → banbe duyệt → lên sóng, bạn sẽ nhận thông báo. Bạn có thể chia sẻ sự kiện ngay khi banbe duyệt. Bạn muốn làm gì tiếp theo?",
-                       "✓ Sent → banbe reviews it → it goes live and we'll notify you. Sharing opens once banbe approves it. What would you like to do next?"))
         }
         // Swipe-to-dismiss/backdrop-tap on the sheet flips this binding to
         // false WITHOUT any button firing — same "unambiguous success"
@@ -1244,20 +1241,6 @@ struct CreateEventView: View {
             benchmarks = await app.hostBenchmarks(cat: cat, city: app.createCity, currency: app.createCurrency)
             audienceDemand = cat.isEmpty ? nil : await app.audienceDemand(cat: cat)
         }
-        .confirmationDialog(app.T("Bỏ sự kiện này?", "Discard this event?"),
-                            isPresented: $discardConfirmOpen, titleVisibility: .visible) {
-            Button(app.T("Bỏ", "Discard"), role: .destructive) { app.createBack() }
-            Button(app.T("Tiếp tục chỉnh sửa", "Keep editing"), role: .cancel) {}
-        } message: {
-            Text(discardMessage)
-        }
-    }
-
-    private var discardMessage: String {
-        galleryItems.isEmpty
-            ? app.T("Thông tin bạn đã nhập sẽ mất.", "The details you've entered will be lost.")
-            : app.T("\(galleryItems.count) ảnh và thông tin bạn đã nhập sẽ mất.",
-                    "Your \(galleryItems.count) photos and details will be lost.")
     }
 
     /// Note 53: one step per function, type-erased. Inlined, all five steps (plus every guided field) were ONE view
@@ -1485,8 +1468,9 @@ struct CreateEventView: View {
                 // createOriginScreen's own comment) instead of always
                 // landing on Dashboard/HostIntro.
                 BackLink(label: app.T("Quay lại", "Back")) {
-                    // Note 48 (honest loss framing): say what leaving loses.
-                    if hasUnsavedInput { discardConfirmOpen = true } else { app.createBack() }
+                    // Leaves straight away; with input, Home shows an Undo toast (AppState.createBack),
+                    // which replaced the "Discard this event?" question.
+                    app.createBack()
                 }
 
                 Text(app.T("Dành cho người tổ chức", "For organizers"))
@@ -2107,7 +2091,8 @@ private struct CreateEventReviewSheet: View {
                     ? app.T("Đã gửi, đang chờ Banbe duyệt", "Submitted, waiting for Banbe to review")
                     : (confirmBusy ? app.T("Đang gửi…", "Submitting…") : app.T("Xác nhận và gửi", "Confirm & submit")),
                 enabled: !confirmBusy && !app.createSent,
-                cornerRadius: 999
+                cornerRadius: 999,
+                busy: confirmBusy
             ) {
                 Task { confirmBusy = true; await onConfirm(); confirmBusy = false }
             }
@@ -2549,5 +2534,170 @@ extension View {
             .padding(.horizontal, 16).padding(.vertical, 15)
             .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .fieldChrome(focused: focused, state: state, cornerRadius: 14)
+    }
+}
+
+
+/// The "Event submitted!" chooser (replaces the native confirmation dialog): a wide card over a dim
+/// scrim, what happens next as three short steps, then one icon per destination. Springs in with a
+/// bounce (just a fade under Reduce Motion). "View pending events" is the primary choice, as it is
+/// also where a backdrop tap leads.
+struct SubmittedChooserCard: View {
+    let onCreateAnother: () -> Void
+    let onPending: () -> Void
+    let onHome: () -> Void
+    let onAccount: () -> Void
+    let onDismiss: () -> Void
+
+    @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(shown ? 0.32 : 0)
+                .ignoresSafeArea()
+                .onTapGesture { onDismiss() }
+                .accessibilityHidden(true)
+            card
+                .padding(.horizontal, 20)
+                .scaleEffect(reduceMotion ? 1 : (shown ? 1 : 0.72))
+                .offset(y: reduceMotion ? 0 : (shown ? 0 : 40))
+                .opacity(shown ? 1 : 0)
+        }
+        .onAppear {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.48, dampingFraction: 0.62)) { shown = true }
+        }
+    }
+
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(app.T("🎉 Đã gửi sự kiện!", "🎉 Event submitted!"))
+                .font(.system(.title2, design: .rounded).weight(.bold))
+                .foregroundStyle(app.palette.ink)
+                .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 10) {
+                step("paperplane.fill", app.T("Đã gửi cho banbe", "Sent to banbe"))
+                step("checkmark.seal", app.T("banbe duyệt sự kiện", "banbe reviews it"))
+                step("bell.badge", app.T("Lên sóng, bạn sẽ nhận thông báo", "It goes live and we notify you"))
+                step("square.and.arrow.up", app.T("Chia sẻ được ngay khi được duyệt", "Sharing opens once it's approved"))
+            }
+            Text(app.T("Bạn muốn làm gì tiếp theo?", "What would you like to do next?"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(app.palette.ink.opacity(0.75))
+            VStack(spacing: 10) {
+                Button(action: onPending) {
+                    Label(app.T("Xem sự kiện đang chờ duyệt", "View pending events"), systemImage: "hourglass")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                        .foregroundStyle(app.palette.paper)
+                        .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityIdentifier("create.submitted.pending")
+                SecondaryButton(title: app.T("Tạo sự kiện khác", "Create another event"), systemImage: "plus.circle", action: onCreateAnother)
+                    .accessibilityIdentifier("create.submitted.another")
+                HStack(spacing: 10) {
+                    SecondaryButton(title: app.T("Trang chủ", "Home"), systemImage: "house", action: onHome)
+                        .accessibilityIdentifier("create.submitted.home")
+                    SecondaryButton(title: app.T("Tài khoản", "Account"), systemImage: "person.crop.circle", action: onAccount)
+                        .accessibilityIdentifier("create.submitted.account")
+                }
+            }
+        }
+        .padding(22)
+        .frame(maxWidth: 520)
+        .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+        .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("create.submitted")
+        .accessibilityAddTraits(.isModal)
+    }
+
+    private func step(_ icon: String, _ text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(app.palette.ink)
+                .frame(width: 28, height: 28)
+                .background(app.palette.field, in: Circle())
+                .accessibilityHidden(true)
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(app.palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+
+/// CreateEventView's own draft state, kept by AppState for the Undo toast (see `AppState.createBack`).
+struct CreateDraftStash {
+    var items: [StagedGalleryItem] = []
+    var coverItemID: String?
+    var step = 0
+    var hasUnsavedInput = false
+}
+
+struct CreateUndoOffer: Identifiable, Equatable {
+    let id = UUID()
+    let duration: Double
+}
+
+/// Bottom toast after leaving a new-event draft: "Draft discarded", Undo, and a bar showing the
+/// time left before it goes (and the draft with it).
+struct CreateUndoToast: View {
+    let offer: CreateUndoOffer
+    @EnvironmentObject private var app: AppState
+    @State private var remaining: CGFloat = 1
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: "doc.badge.ellipsis")
+                    .font(.system(size: 16, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text(app.T("Đã đóng bản nháp sự kiện", "Event draft closed"))
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2)
+                Spacer(minLength: 8)
+                Button { app.undoLeaveCreate() } label: {
+                    Label(app.T("Hoàn tác", "Undo"), systemImage: "arrow.uturn.backward")
+                        .font(.subheadline.weight(.bold))
+                        .padding(.horizontal, 14).frame(minHeight: 40)
+                        .foregroundStyle(app.palette.paper)
+                        .background(app.palette.ink, in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityHint(app.T("Mở lại bản nháp với thông tin bạn đã nhập", "Reopens the draft with everything you entered"))
+                .accessibilityIdentifier("create.undo.button")
+            }
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(app.palette.ink.opacity(0.12))
+                    Capsule().fill(app.palette.ink.opacity(0.7)).frame(width: g.size.width * remaining)
+                }
+            }
+            .frame(height: 4)
+            .accessibilityHidden(true)
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 12)
+        .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+        .shadow(color: .black.opacity(0.16), radius: 18, y: 6)
+        .padding(.horizontal, 16)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("create.undo")
+        .task(id: offer.id) {
+            remaining = 1
+            withAnimation(.linear(duration: offer.duration)) { remaining = 0 }
+            try? await Task.sleep(nanoseconds: UInt64(offer.duration * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            app.expireCreateUndo(offer.id)
+        }
     }
 }

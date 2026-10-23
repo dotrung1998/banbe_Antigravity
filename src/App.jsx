@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { BanBeProvider, useBanBe } from './state/BanBeContext.jsx';
 import useUrlSync from './lib/useUrlSync.js';
 import useKeepFocusedVisible from './lib/useKeepFocusedVisible.js';
+import { CREATE_UNDO_MS } from './lib/createDraftUndo.js';
 import BottomTabBar, { showsBottomBar, DOCK_ORDER, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET } from './screens/BottomTabBar.jsx';
 import { paper, ink, rule } from './theme.js';
 
@@ -157,6 +158,40 @@ const SCREENS = {
 // BottomTabBar.jsx), so this row's own `calc(100% - margin*2)` cap is what
 // actually makes the bar shrink first on a narrow screen instead of
 // overflowing past the "+" button.
+/** "Event draft closed" + Undo, with a bar emptying over the toast's lifetime (iOS CreateUndoToast). */
+function CreateUndoToast({ offer, aboveDock }) {
+  const { T, undoLeaveCreate, expireCreateUndo } = useBanBe();
+  useEffect(() => {
+    const t = setTimeout(() => expireCreateUndo(offer.id), CREATE_UNDO_MS);
+    return () => clearTimeout(t);
+  }, [offer.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div
+      role="status" data-testid="create-undo"
+      style={{
+        position: 'fixed', left: 0, right: 0, margin: '0 auto', zIndex: 60,
+        bottom: `calc(env(safe-area-inset-bottom, 0px) + ${aboveDock ? BAR_BOTTOM_OFFSET + 64 + 16 : 16}px)`,
+        width: 'calc(100% - 32px)', maxWidth: 520, boxSizing: 'border-box',
+        padding: '12px 16px', borderRadius: 20, background: 'var(--bb-bg)', color: 'var(--bb-fg)',
+        border: '1px solid rgba(var(--bb-fg-rgb),0.14)', boxShadow: '0 6px 24px rgba(0,0,0,0.16)',
+        animation: 'bbRiseIn .35s cubic-bezier(.2,.9,.25,1) both',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span aria-hidden style={{ fontSize: 18 }}>📝</span>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600 }}>{T('Đã đóng bản nháp sự kiện', 'Event draft closed')}</span>
+        <button type="button" onClick={undoLeaveCreate} data-testid="create-undo-button" className="bb-press"
+          style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 40, padding: '0 14px', borderRadius: 999, border: 'none', background: 'var(--bb-fg)', color: 'var(--bb-bg)', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+          <span aria-hidden>↩︎</span>{T('Hoàn tác', 'Undo')}
+        </button>
+      </div>
+      <div aria-hidden style={{ marginTop: 10, height: 4, borderRadius: 2, background: 'rgba(var(--bb-fg-rgb),0.12)', overflow: 'hidden' }}>
+        <div className="bb-undo-bar" style={{ height: '100%', borderRadius: 2, background: 'rgba(var(--bb-fg-rgb),0.7)', '--bb-undo-ms': `${CREATE_UNDO_MS}ms` }} />
+      </div>
+    </div>
+  );
+}
+
 function DockRow({ collapsed, showCreate }) {
   return (
     <div
@@ -766,9 +801,14 @@ function Shell() {
         {state.reasonPrompt && <ReasonSheet />}
         {state.importOpen && <ImportSheet />}
         {state.importedTicketOpen && <ImportedTicketSheet />}
-        {state.loading && <Loading label={T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
+        {/* Not on Create: submitting an event shows the loading GIF on its Confirm button instead (iOS parity). */}
+        {state.loading && state.screen !== 'create' && <Loading label={T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
       {showBar && <DockRow collapsed={barCollapsed} showCreate={state.organizerMode} />}
+      {/* Undo after leaving a new-event draft (BanBeContext createUndoOffer), above the dock when it shows. */}
+      {state.createUndoOffer && state.screen !== 'create' && (
+        <CreateUndoToast key={state.createUndoOffer.id} offer={state.createUndoOffer} aboveDock={showBar} />
+      )}
       {/* TASK 1 (dock "+" menu pass) — mounted unconditionally (not gated
           on showBar/organizerMode) since Account.jsx's own "Đăng story"
           entry point can still open it even on a screen without the dock. */}

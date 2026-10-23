@@ -34,8 +34,9 @@ extension AppState {
         #if ENABLE_PUSH
         guard let uid = userID?.uuidString.lowercased(), hasConfirmedTicket, !pushAskPresented else { return }
         let offered = UserDefaults.standard.bool(forKey: Self.pushAskOfferedKey(uid))
+        let pushOn = pushEnabled  // read here on the main actor, not inside the Sendable settings callback
         UNUserNotificationCenter.current().getNotificationSettings { settings in
-            let ask = PushAsk.shouldOffer(pushEnabled: self.pushEnabled, hasConfirmedTicket: hasConfirmedTicket,
+            let ask = PushAsk.shouldOffer(pushEnabled: pushOn, hasConfirmedTicket: hasConfirmedTicket,
                                           alreadyOffered: offered, systemNotDetermined: settings.authorizationStatus == .notDetermined)
             guard ask else { return }
             DispatchQueue.main.async {

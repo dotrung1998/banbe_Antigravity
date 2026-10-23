@@ -161,6 +161,61 @@ export default function Notifications({ overlay = false }) {
     el.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(100%)' }], { duration: 260, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
     setTimeout(backFromNotifications, 240);
   };
+  // Over Home the page carries its own edge swipe back (iOS parity). Opened from the bell, the drag
+  // shrinks the page back into the bell as the finger moves (the same circle Back closes with); far or
+  // fast enough finishes the shrink, otherwise it grows back. Without the burst it slides off instead.
+  const edgeRef = useRef({ active: false, startX: 0, lastX: 0, lastT: 0, v: 0, pointerId: null });
+  const dragRadius = (dx) => {
+    const small = bell.width / 2;
+    return small + (fullRadius() - small) * Math.max(0, 1 - dx / window.innerWidth);
+  };
+  const onEdgeDown = (e) => {
+    edgeRef.current = { active: true, startX: e.clientX, lastX: e.clientX, lastT: performance.now(), v: 0, pointerId: e.pointerId };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const el = rootRef.current;
+    if (el) { el.getAnimations?.().forEach(a => a.cancel()); el.style.transition = 'none'; }
+  };
+  const onEdgeMove = (e) => {
+    const g = edgeRef.current;
+    if (!g.active || e.pointerId !== g.pointerId) return;
+    const now = performance.now();
+    g.v = (e.clientX - g.lastX) / Math.max(now - g.lastT, 1);
+    g.lastX = e.clientX; g.lastT = now;
+    const el = rootRef.current;
+    if (!el) return;
+    const dx = Math.max(0, e.clientX - g.startX);
+    if (burst) el.style.clipPath = circle(dragRadius(dx));
+    else el.style.transform = `translateX(${dx}px)`;
+  };
+  const onEdgeUp = (e) => {
+    const g = edgeRef.current;
+    if (!g.active) return;
+    g.active = false;
+    const el = rootRef.current;
+    if (!el) return;
+    const dx = Math.max(0, (e.clientX ?? g.lastX) - g.startX);
+    const w = window.innerWidth;
+    const closes = dx > w * 0.33 || (dx > 24 && g.v > 0.5);
+    if (burst) {
+      const from = circle(dragRadius(dx));
+      const to = closes ? circle(bell.width / 2) : circle(fullRadius());
+      const anim = el.animate([{ clipPath: from }, { clipPath: to }], closes
+        ? { duration: 300, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' }
+        : { duration: 280, easing: 'cubic-bezier(.2,.9,.25,1)' });
+      el.style.clipPath = '';
+      if (closes) setTimeout(backFromNotifications, 280);
+      else anim.onfinish = () => { el.style.clipPath = ''; };
+      return;
+    }
+    if (closes) {
+      el.style.transition = 'transform .22s ease-out';
+      el.style.transform = `translateX(${w}px)`;
+      setTimeout(backFromNotifications, 220);
+    } else {
+      el.style.transition = 'transform .28s cubic-bezier(.2,.9,.25,1)';
+      el.style.transform = 'translateX(0)';
+    }
+  };
   // Which sections have had their "Xem thêm" tapped — purely a render-time
   // slice of already-loaded data (loadNotifications() fetches up to 50 at
   // once), so a plain local Set is enough; nothing here needs a new query.
@@ -268,6 +323,7 @@ export default function Notifications({ overlay = false }) {
   };
 
   return (
+    <>
     <div ref={rootRef} data-screen-label="Notifications"
       style={overlay
         // Over the live Home: slides in from the right (and back out on Back), Home untouched underneath.
@@ -436,6 +492,18 @@ export default function Notifications({ overlay = false }) {
         />
       )}
     </div>
+    {overlay && (
+      <div
+        aria-hidden="true"
+        data-testid="notifications-edge-swipe"
+        onPointerDown={onEdgeDown}
+        onPointerMove={onEdgeMove}
+        onPointerUp={onEdgeUp}
+        onPointerCancel={onEdgeUp}
+        style={{ position: 'fixed', top: 0, bottom: 0, left: 0, width: 22, zIndex: 46, touchAction: 'none' }}
+      />
+    )}
+    </>
   );
 }
 

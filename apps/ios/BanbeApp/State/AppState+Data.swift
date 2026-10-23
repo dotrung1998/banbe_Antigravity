@@ -407,7 +407,8 @@ extension AppState {
     /// in this SAME timezone regardless of the device's own setting, so a
     /// host traveling outside Vietnam still enters (and sees confirmed
     /// back) the actual Vietnam wall-clock time their guests will read.
-    static let vietnamTimeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
+    // nonisolated: an immutable, Sendable constant, read from nonisolated helpers (SmartDefaults).
+    nonisolated static let vietnamTimeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
     static let vnDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")

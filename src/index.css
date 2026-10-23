@@ -487,3 +487,20 @@ input::placeholder, textarea::placeholder {
 .bb-ticker-run { display: inline-flex; flex: none; white-space: nowrap; will-change: transform; animation: bbTicker var(--bb-ticker-dur, 24s) linear infinite; }
 .bb-ticker:hover .bb-ticker-run, .bb-ticker:focus-visible .bb-ticker-run { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .bb-ticker-run { animation: none; } }
+
+/* "Event submitted!" card (iOS SubmittedChooserCard parity): springs in with a little overshoot. */
+@keyframes bbBounceIn {
+  0% { opacity: 0; transform: translateY(40px) scale(0.72); }
+  55% { opacity: 1; transform: translateY(-6px) scale(1.04); }
+  75% { transform: translateY(2px) scale(0.985); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes bbBackdropIn { from { background: rgba(0,0,0,0); } to { background: rgba(0,0,0,0.32); } }
+.bb-bounce-in { animation: bbBounceIn .6s cubic-bezier(.2,.8,.3,1) both; }
+.bb-bounce-in::backdrop { animation: bbBackdropIn .25s ease-out both; background: rgba(0,0,0,0.32); }
+/* Undo toast after leaving a draft: rises in; its bar empties over the toast's lifetime (--bb-undo-ms). */
+@keyframes bbUndoBar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.bb-undo-bar { transform-origin: left center; animation: bbUndoBar var(--bb-undo-ms, 6000ms) linear forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .bb-bounce-in { animation: banbeFade .2s ease-out both; }
+}
