@@ -75,6 +75,11 @@ Our own evidence is stronger on one point. Measured across more than 1,070 event
   - `story_views`, `photo_likes` after the event ends.
 - **Market split, in order of preference:** `events.country_code` of the events a user booked or saved → phone prefix (+84 / +1) → `reward_user_settings.tz` → budget currency.
 - **Attempted:** a counts-only, read-only query covering these proxies, split by market, returning aggregate counts only. The session's permission rules **blocked the production read**, so no numbers are reported here (Open question 3).
+- **Baseline result (run once, 2026-10-23, `docs/sql/retention-baseline.sql`, test accounts excluded, groups < 20 hidden):**
+  every group is `<20`: there are fewer than 20 real (non-test) users, so no rate can be reported yet, by market or
+  overall. Shape only: markets VN and unknown (no US yet); app opens seen at 07, 08 and 18 Vietnam time, Tue–Thu;
+  bookings confirmed, cancelled and expired; notifications people read: booking requested, hold created/expired, new
+  message, organizer invite. Next measurement: F1's `admin_retention_report()` once real users arrive.
 - **Hypotheses to test, with how to measure each:**
   - H1, the day-of ticket lookup: opens within 3h of `starts_at`.
   - H2, payment confirmed: `payment_confirmed` read latency.
