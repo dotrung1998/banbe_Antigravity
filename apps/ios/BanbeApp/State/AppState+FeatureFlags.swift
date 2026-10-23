@@ -24,6 +24,7 @@ extension AppState {
     /// on re-registers a device iOS already allows (never prompts).
     func featureFlagsDidChange(from old: [String: Bool]) {
         if !FeatureFlags.isOn(old, "push_enabled"), pushEnabled { resumePushRegistrationIfAllowed() }
+        if FeatureFlags.isOn(old, "app_events") != appEventsEnabled { syncAppEventsSink() }
         let was = FeatureFlags.isOn(old, "rewards"), now = rewardsEnabled
         guard was != now else { return }
         if !now { resetRewardsState() }

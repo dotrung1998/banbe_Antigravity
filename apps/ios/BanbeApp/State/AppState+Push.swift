@@ -191,6 +191,6 @@ extension AppState {
         var n = pending
         n.recipientId = uid
         if let loaded = notifications.first(where: { $0.id == n.id }) { n = loaded }
-        openNotification(n)
+        openNotification(n, source: "push")
     }
 }

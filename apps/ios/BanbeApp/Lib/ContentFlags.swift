@@ -8,6 +8,9 @@ import Foundation
 ///   rewards        Rewards is on
 ///   rewards_daily  Rewards on, Rewards v2 off (the daily streak the app shows)
 ///   rewards_v2     Rewards on, Rewards v2 on (weekly streak, grace weeks, repair, tiers, goal)
+///   push_enabled   real push notifications on (migration 194)
+///   app_events     first-party measurement on (migration 196)
+///   event_reminders, event_recap, host_recap, follow_alerts (199); weekly_digest, live_activity (200)
 enum ContentFlags {
     static func isOn(_ flags: [String: Bool], _ key: String?) -> Bool {
         guard let key else { return true }
@@ -16,6 +19,11 @@ enum ContentFlags {
         case "rewards": return rewards
         case "rewards_daily": return rewards && !FeatureFlags.isOn(flags, "rewards_v2")
         case "rewards_v2": return rewards && FeatureFlags.isOn(flags, "rewards_v2")
+        // Dark until set: only an explicit true shows their text (same rule as the web).
+        case "push_enabled", "app_events", "event_recap", "host_recap", "follow_alerts", "weekly_digest", "live_activity":
+            return flags[key] == true
+        // On unless an admin turned it off (migration 199 seeds it ON).
+        case "event_reminders": return FeatureFlags.isOn(flags, "event_reminders")
         default: return false
         }
     }

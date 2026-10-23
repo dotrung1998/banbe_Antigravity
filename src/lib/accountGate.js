@@ -107,11 +107,18 @@ export function phoneFailureText(f, T) {
 }
 
 // ---- Date of birth ----
+/** -> { ok: true } or { ok: false, error } (error = the server's code, e.g. 'AGE_TOO_YOUNG' from migration 197). */
 export async function submitEnrollmentDob(iso) {
   const { data, error } = await supabase.rpc('set_date_of_birth', { p_dob: iso });
-  if (error || data?.success !== true) return false;
+  if (error || data?.success !== true) return { ok: false, error: data?.error || 'FAILED' };
   await refreshGate();
-  return true;
+  return { ok: true };
+}
+
+/** The message for a failed date-of-birth save. */
+export function dobSaveErrorText(code, T) {
+  if (code === 'AGE_TOO_YOUNG') return T('banbe dành cho người từ 16 tuổi trở lên.', 'banbe is for people aged 16 and over.');
+  return T('Chưa lưu được. Thử lại sau.', "Couldn't save. Please try again.");
 }
 
 /** -> { result: 'success'|'incorrect'|'locked'|'failed', attemptsLeft?, retryAfter? } */

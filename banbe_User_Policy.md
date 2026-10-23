@@ -6,9 +6,9 @@
 
 banbe Terms of Use and Privacy Notice
 
-Bản tóm tắt bên dưới là màn hình bạn thấy khi đăng ký. Mọi điều trong đó được nêu đầy đủ ở Phần A (Điều khoản) và Phần B (Quyền riêng tư). Tài liệu được lập bằng tiếng Việt và tiếng Anh; nếu có khác biệt, bản tiếng Việt được ưu tiên áp dụng. Hiệu lực từ [effective date].
+Bản tóm tắt bên dưới là màn hình bạn thấy khi đăng ký. Mọi điều trong đó được nêu đầy đủ ở Phần A (Điều khoản) và Phần B (Quyền riêng tư). Tài liệu được lập bằng tiếng Việt và tiếng Anh; nếu có khác biệt, bản tiếng Việt được ưu tiên áp dụng. Hiệu lực từ 06/10/2026.
 
-The summary below is the screen you see at sign-up. Everything in it is set out in full in Part A (Terms) and Part B (Privacy). This document is written in Vietnamese and English; where they differ, the Vietnamese text prevails. Effective [effective date].
+The summary below is the screen you see at sign-up. Everything in it is set out in full in Part A (Terms) and Part B (Privacy). This document is written in Vietnamese and English; where they differ, the Vietnamese text prevails. Effective 6 October 2026.
 
 Tóm tắt: bạn đang đồng ý điều gì
 
@@ -351,6 +351,6 @@ Khi thay đổi mục đích xử lý hoặc loại dữ liệu thu thập, chú
 
 If we change the purposes of processing or the kinds of data collected, we ask for your consent again in the app before the change applies. Other changes are posted with their effective date.
 
-Liên hệ. CÔNG TY TNHH CÓMPANY · [registered address] · Mã số doanh nghiệp [enterprise code] · [contact email]. Bản này có hiệu lực từ [effective date]; các bản trước được lưu và cung cấp khi bạn yêu cầu.
+Liên hệ. CÔNG TY TNHH CÓMPANY · [registered address] · Mã số doanh nghiệp [enterprise code] · [contact email]. Bản này có hiệu lực từ 06/10/2026; các bản trước được lưu và cung cấp khi bạn yêu cầu.
 
-Contact. CÓMPANY CO., LTD · [registered address] · Enterprise code [enterprise code] · [contact email]. This version is effective from [effective date]; earlier versions are kept and provided on request.
+Contact. CÓMPANY CO., LTD · [registered address] · Enterprise code [enterprise code] · [contact email]. This version is effective from 6 October 2026; earlier versions are kept and provided on request.

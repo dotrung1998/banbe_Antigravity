@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { screenToPath, pathToRoute, TRANSIENT_SCREENS } from './routes.js';
 import { GUEST_BROWSE_SCREENS } from './guestAccess.js';
+import { track } from './analytics.js';
 
 // Deep link the visitor opened the app on (read once, before React mounts).
 // Paths already handled by BanBeContext's own shared-link boot code (/u/<handle>,
@@ -60,6 +61,10 @@ export default function useUrlSync(goc) {
           const route = pending.current;
           pending.current = null;
           applyRoute(route);
+          // A deep link to an event counts as event_opened from 'link'. Deferred one tick: this effect runs
+          // before the provider's own effects, which install the measurement sink on sign-in.
+          const eventKey = route.screen === 'event' ? route.params?.eventKey : null;
+          if (eventKey) setTimeout(() => track('event_opened', { event_id: eventKey, source: 'link' }), 0);
         }
         return;
       }

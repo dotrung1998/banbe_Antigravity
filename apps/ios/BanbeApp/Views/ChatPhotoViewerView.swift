@@ -365,6 +365,10 @@ struct ChatPhotoViewerView: View {
             guard let (data, _) = try? await URLSession.shared.data(from: item.url), let image = UIImage(data: data) else { return }
             await MainActor.run {
                 let activity = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+                activity.completionWithItemsHandler = { type, completed, _, _ in
+                    guard completed else { return }
+                    Analytics.track(.shareCompleted(channel: AppEventRules.shareChannel(type), context: "chat_photo"))
+                }
                 UIApplication.shared.connectedScenes
                     .compactMap { $0 as? UIWindowScene }
                     .first?.keyWindow?.rootViewController?

@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, useCallback, u
 import { loadChecklist, saveChecklist } from '../lib/activationChecklist.js';
 import { calendarDraft, googleCalendarUrl, downloadIcs } from '../lib/calendarExport.js';
 import { mySchedule as scheduleMySchedule, discover as scheduleDiscover, canAdd as scheduleCanAdd, scheduleStore } from '../lib/schedulePresentation.js';
-import { track } from '../lib/analytics.js';
+import { track, installAppEventsSink, claimAppOpenedToday, eventOpenSource } from '../lib/analytics.js';
 import { GUEST_BROWSE_SCREENS, makePrompt, loginBackTarget } from '../lib/guestAccess.js';
 import { forYouTimeZone } from '../lib/forYou.js';
 import { EVENTS, findEvent, isCosmeticCatalogMatch, haversineKm } from '../data/events.js';
@@ -3271,7 +3271,11 @@ export function BanBeProvider({ children }) {
       }));
     };
     if (navigator.share) {
-      try { await navigator.share({ title, text, url }); await logShare('native'); } catch { /* cancelled — not a completed share, nothing to log */ }
+      try {
+        await navigator.share({ title, text, url });
+        track('share_completed', { channel: 'native', context: 'photo' });
+        await logShare('native');
+      } catch { /* cancelled — not a completed share, nothing to log */ }
       done();
     } else if (navigator.clipboard) {
       try { await navigator.clipboard.writeText(url); await logShare('copy'); } catch { /* clipboard write denied */ }
@@ -5483,6 +5487,26 @@ export function BanBeProvider({ children }) {
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [loadFeatureFlags]);
+  // ============ First-party measurement (migration 196) ============
+  // Only while the admin switch `app_events` is on AND someone is signed in: the sink (src/lib/analytics.js)
+  // batches events to log_app_events; signing out or the switch going off uninstalls it and drops the queue.
+  const appEventsOn = flagOn(s.featureFlags, 'app_events');
+  const appEventsGateRef = useRef({ on: false, uid: null });
+  appEventsGateRef.current = { on: appEventsOn, uid: s.user?.id || null };
+  useEffect(() => {
+    const uid = s.user?.id;
+    if (!uid || !appEventsOn) return undefined;
+    const uninstall = installAppEventsSink({
+      rpc: (fn, args) => supabase.rpc(fn, args),
+      isEnabled: () => appEventsGateRef.current.on,
+      isSignedIn: () => appEventsGateRef.current.uid === uid,
+    });
+    // app_opened: once per local day per device, on load and whenever the tab comes back.
+    const opened = () => { if (document.visibilityState === 'visible' && claimAppOpenedToday()) track('app_opened'); };
+    opened();
+    document.addEventListener('visibilitychange', opened);
+    return () => { document.removeEventListener('visibilitychange', opened); uninstall(); };
+  }, [s.user?.id, appEventsOn]);
   const prevRewardsEnabledRef = useRef(rewardsEnabled);
   useEffect(() => {
     if (prevRewardsEnabledRef.current === rewardsEnabled) return; // only react to a change, never double-load on mount
@@ -5882,6 +5906,7 @@ export function BanBeProvider({ children }) {
   const followPulseOrganizer = useCallback(async (organizerId) => {
     if (!s.user?.id) return promptSignIn('follow');
     if (!organizerId) return;
+    if (!s.followedOrgIds.includes(organizerId)) track('follow_tapped', { context: 'pulse' });
     await setFollowing(organizerId, !s.followedOrgIds.includes(organizerId));
   }, [s.user?.id, s.followedOrgIds, setFollowing, promptSignIn]);
 
@@ -6402,7 +6427,11 @@ export function BanBeProvider({ children }) {
   // same event, forever, with no way to reach Home. A profile reached from
   // anywhere else (Home, Pulse, a /org/<id> link, Dashboard) has its own real
   // back target, so there the event's back may safely point at the profile.
-  const goEvent = useCallback((key) => set(prev => ({
+  // event_opened's `source` is the screen being left (src/lib/analytics.js eventOpenSource); deep links say 'link'
+  // themselves (useUrlSync.js).
+  const eventNavRef = useRef(null);
+  eventNavRef.current = { screen: s.screen, searchOverlayOpen: s.searchOverlayOpen };
+  const goEventNav = useCallback((key) => set(prev => ({
     screen: 'event',
     eventKey: key,
     // A different event starts from 1 seat again (Event Detail's presets would otherwise carry over).
@@ -6426,6 +6455,10 @@ export function BanBeProvider({ children }) {
     storyReturnSnapshot: null,
     storyReturnHostName: null,
   })), [set]);
+  const goEvent = useCallback((key) => {
+    if (key) track('event_opened', { event_id: key, source: eventOpenSource(eventNavRef.current) });
+    goEventNav(key);
+  }, [goEventNav]);
   goEventRef.current = goEvent;
   // "Open an event that fits you" (Home checklist, note 43) — every goEvent open counts.
   useEffect(() => {
@@ -6459,7 +6492,7 @@ export function BanBeProvider({ children }) {
   // reopen it exactly where it was, not restarted; `storyReturnHostName`
   // is read by EventDetail.jsx's own back-label override so it can say
   // "Story"/the host's name instead of "banbe"/"Home".
-  const goEventFromStory = useCallback((key) => set(prev => {
+  const goEventFromStoryNav = useCallback((key) => set(prev => {
     const currentGroup = prev.storyViewer?.groups?.[prev.storyViewer.groupIndex];
     return {
       screen: 'event',
@@ -6471,6 +6504,10 @@ export function BanBeProvider({ children }) {
       storyViewer: null,
     };
   }), [set]);
+  const goEventFromStory = useCallback((key) => {
+    if (key) track('event_opened', { event_id: key, source: 'other' });
+    goEventFromStoryNav(key);
+  }, [goEventFromStoryNav]);
   // Note 49: a guest is asked first; sign-in resumes through goReserve itself so attendee drafts are rebuilt.
   const goReserve = useCallback(() => (s.user ? set({ screen: 'reserve', attendeeDrafts: makeAttendeeDrafts(s.qty, s.user.name) }) : promptSignIn('reserve')), [set, s.user, s.qty, promptSignIn]);
   const backToEvent = useCallback(() => set({ screen: 'event' }), [set]);
@@ -7312,7 +7349,7 @@ export function BanBeProvider({ children }) {
   const shareSurveyLinkAction = useCallback(async (survey) => {
     const url = surveyPublicUrl(survey.public_id);
     try {
-      if (navigator.share) { await navigator.share({ title: survey.title, url }); return; }
+      if (navigator.share) { await navigator.share({ title: survey.title, url }); track('share_completed', { channel: 'native', context: 'survey' }); return; }
     } catch { /* user cancelled the native sheet — not an error */ }
     try {
       await navigator.clipboard.writeText(url);
@@ -7375,6 +7412,7 @@ export function BanBeProvider({ children }) {
     try {
       if (navigator.share) {
         await navigator.share({ title, url });
+        track('share_completed', { channel: 'native', context: 'host_profile' });
         return;
       }
     } catch { /* user cancelled the native sheet — not an error */ }
@@ -7393,6 +7431,7 @@ export function BanBeProvider({ children }) {
     const fresh = s.publicProfile?.organizer?.id === organizerId ? s.publicProfile.organizer.following
       : s.organizerProfile?.id === organizerId ? s.organizerProfile.following : undefined;
     const wasFollowing = fresh !== undefined ? !!fresh : s.followedOrgIds.includes(organizerId);
+    if (!wasFollowing) track('follow_tapped', { context: 'host_profile' });
     await setFollowing(organizerId, !wasFollowing);
   }, [s.user?.id, s.publicProfile, s.organizerProfile, s.followedOrgIds, setFollowing, promptSignIn]);
 
@@ -7926,6 +7965,7 @@ export function BanBeProvider({ children }) {
     try {
       if (navigator.share) {
         await navigator.share({ title, url });
+        track('share_completed', { channel: 'native', context: 'profile' });
         return;
       }
     } catch { /* user cancelled the native sheet — not an error */ }
@@ -8242,7 +8282,9 @@ export function BanBeProvider({ children }) {
       setTimeout(() => set({ shared: false }), 1800);
     };
     if (navigator.share) {
-      navigator.share({ title: 'banbe ▪︎ ' + ev.name, text: ev.name + ' ▪︎ ' + ev.where, url }).catch(done);
+      // share_completed only when the sheet really finished (it rejects on cancel).
+      navigator.share({ title: 'banbe ▪︎ ' + ev.name, text: ev.name + ' ▪︎ ' + ev.where, url })
+        .then(() => track('share_completed', { channel: 'native', context: 'event' }), done);
     } else if (navigator.clipboard) {
       navigator.clipboard.writeText(url).then(done, done);
     } else { done(); }
@@ -8265,7 +8307,8 @@ export function BanBeProvider({ children }) {
       setTimeout(() => set({ referralShared: false }), 1800);
     };
     if (navigator.share) {
-      navigator.share({ title, text, url: referralLink }).catch(done);
+      navigator.share({ title, text, url: referralLink })
+        .then(() => track('share_completed', { channel: 'native', context: 'referral' }), done);
     } else if (navigator.clipboard) {
       navigator.clipboard.writeText(referralLink).then(done, done);
     } else { done(); }
@@ -9387,6 +9430,7 @@ export function BanBeProvider({ children }) {
       const file = new File([blob], `banbe-photo.${ext}`, { type: blob.type || 'image/jpeg' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file] });
+        track('share_completed', { channel: 'native', context: 'chat_photo' });
         return { success: true };
       }
     } catch (e) {
@@ -10672,6 +10716,8 @@ export function BanBeProvider({ children }) {
   // actual thread it's about instead of just sitting there read.
   const openNotification = useCallback(async (n) => {
     markNotificationRead(n.id);
+    // The web has no push: every open is from the bell list or its in-app toast.
+    track('notification_opened', { kind: n.kind, source: 'bell' });
     // 01-hold-payment.md follow-up (bug 1): both organizer-only
     // destinations below used to navigate unconditionally — relying on
     // `openVerifications()`'s own ACCOUNT-level gate (organizerMode ||

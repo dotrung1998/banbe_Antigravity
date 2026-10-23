@@ -334,8 +334,9 @@ struct PulseViewerView: View {
         guard let url = URL(string: "https://www.banbe.app/api/photo-share?pid=\(item.photoId)") else { return }
         let title = app.T("Ảnh từ \(item.organizerName) trên banbe", "A photo from \(item.organizerName) on banbe")
         let activity = UIActivityViewController(activityItems: [title, url], applicationActivities: nil)
-        activity.completionWithItemsHandler = { _, completed, _, _ in
+        activity.completionWithItemsHandler = { type, completed, _, _ in
             guard completed else { return }
+            Analytics.track(.shareCompleted(channel: AppEventRules.shareChannel(type), context: "photo"))
             Task { await app.logPhotoShare(item.photoId) }
         }
         UIApplication.shared.topViewController?.present(activity, animated: true)

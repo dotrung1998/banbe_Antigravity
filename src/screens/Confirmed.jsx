@@ -10,6 +10,8 @@ import { downloadTicketPdfs, googleCalendarUrl } from '../lib/ticketPdf.js';
 import GiftTicketSheet from './sheets/GiftTicketSheet.jsx';
 import { giftPdfData, isAppleWalletBrowser, addToAppleWallet, walletErrorMessage } from '../lib/giftTicket.js';
 import { BookingJourneyProgress } from '../components/ui/FormControls.jsx';
+import { track, ticketDayBucket } from '../lib/analytics.js';
+import { rowTimeZone } from '../lib/eventMarket.js';
 
 export default function Confirmed() {
   const {
@@ -58,6 +60,15 @@ export default function Confirmed() {
       forfeitExpiredHold(s.booking);
     }
   }, [isHolding, holdDeadlineIso, now, s.booking, forfeitExpiredHold]);
+
+  // ticket_opened (migration 196): once per confirmed ticket shown, with the event's day vs today (venue zone).
+  useEffect(() => {
+    if (!isPaid || !s.booking?.id) return;
+    const start = ev?.startDate instanceof Date ? ev.startDate.getTime() : NaN;
+    const bucket = ticketDayBucket(start, Date.now(), rowTimeZone(s.realEventsById?.[ev?.key]));
+    if (bucket) track('ticket_opened', { day_bucket: bucket });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPaid, s.booking?.id]);
 
   // "Xem Receipt" needs to know, per booking, whether a live
   // payment_documents row already exists — reset on every booking change

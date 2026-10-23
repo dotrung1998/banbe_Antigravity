@@ -382,7 +382,7 @@ function RevealStep({ flow, reveal, onContinue, onOpenEvent }) {
   useEffect(() => {
     if (trackedRef.current || loading || failed) return;
     trackedRef.current = true;
-    track('personalized_results_viewed', { matchBucket: matchBucket(matches.length) });
+    track('personalized_results_viewed', { match_bucket: matchBucket(matches.length) });
   }, [loading, failed, matches.length]);
 
   const byKey = new Map((s.discoveryEvents || []).map(e => [e.key, e]));

@@ -50,7 +50,7 @@ test('skip question clears only that answer', () => {
     { type: 'toggle', question: 'interests', id: 'music' }, 'skipQuestion');
   assert.equal(s.draft.interests, undefined);
   assert.deepEqual(s.draft.goals, ['learn']);
-  assert.deepEqual(tracked(effects)[0], { type: 'track', name: 'onboarding_question_skipped', props: { question: 'interests' } });
+  assert.deepEqual(tracked(effects)[0], { type: 'track', name: 'onboarding_question_skipped', props: { question_id: 'interests' } });
 });
 
 test('"no preference" is exclusive and multi-select works', () => {
@@ -82,7 +82,7 @@ test('finishing saves normalized answers, then reveals', () => {
   ({ state: s, effects } = reduce(s, 'saveSucceeded'));
   assert.equal(s.stage, 'reveal');
   assert.equal(s.needsPreferences, false);
-  assert.deepEqual(tracked(effects), [{ type: 'track', name: 'onboarding_completed', props: { answeredQuestions: 1, skippedAll: false } }]);
+  assert.deepEqual(tracked(effects), [{ type: 'track', name: 'onboarding_completed', props: { answered_questions: 1, skipped_all: false } }]);
 });
 
 test('all questions skipped saves the marker only and skips the reveal', () => {
@@ -139,7 +139,7 @@ test('reveal, then settings, then finished', () => {
 test('analytics carries ids and counts, never values', () => {
   const { effects } = run(fresh(), 'start', { type: 'toggle', question: 'goals', id: 'learn' }, 'next');
   const answered = tracked(effects)[0];
-  assert.deepEqual(answered.props, { question: 'goals', answerCount: 1 });
+  assert.deepEqual(answered.props, { question_id: 'goals', answer_count: 1 });
   assert.ok(!JSON.stringify(effects).includes('learn'));
 });
 

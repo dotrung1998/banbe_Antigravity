@@ -363,6 +363,7 @@ extension AppState {
         let fresh: Bool? = publicProfile?.organizer?.id == organizerID ? publicProfile?.organizer?.following
             : (organizerProfile?.id == organizerID ? organizerProfile?.following : nil)
         let wasFollowing = fresh ?? followedOrgIDs.contains(organizerID)
+        if !wasFollowing { Analytics.track(.followTapped(context: "host_profile")) }
         await setFollowing(organizerID, !wasFollowing)
     }
 

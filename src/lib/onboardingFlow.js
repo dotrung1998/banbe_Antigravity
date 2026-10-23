@@ -57,7 +57,7 @@ export function initialState({ needsPreferences, needsSettings, region = 'VN' })
 }
 
 const afterPreferences = (s) => (s.needsSettings ? 'settings' : 'finished');
-const viewed = (i) => ({ type: 'track', name: 'onboarding_question_viewed', props: { question: QUESTIONS[i] } });
+const viewed = (i) => ({ type: 'track', name: 'onboarding_question_viewed', props: { question_id: QUESTIONS[i] } });
 
 /**
  * Applies `action`; returns { state, effects } (effects in order: { type: 'save', payload } | { type: 'track', ... }).
@@ -83,8 +83,8 @@ export function reduce(s, action) {
         let next = a.type === 'skipQuestion' ? { ...s, draft: clearAnswer(q, s.draft) } : { ...s };
         const n = answerCount(q, next.draft);
         const effects = [n > 0
-          ? { type: 'track', name: 'onboarding_question_answered', props: { question: q, answerCount: n } }
-          : { type: 'track', name: 'onboarding_question_skipped', props: { question: q } }];
+          ? { type: 'track', name: 'onboarding_question_answered', props: { question_id: q, answer_count: n } }
+          : { type: 'track', name: 'onboarding_question_skipped', props: { question_id: q } }];
         if (i + 1 < QUESTIONS.length) {
           next = { ...next, index: i + 1 };
           effects.push(viewed(i + 1));
@@ -106,7 +106,7 @@ export function reduce(s, action) {
         const p = payload(s);
         return {
           state: { ...s, needsPreferences: false, stage: p == null ? afterPreferences(s) : 'reveal' },
-          effects: [{ type: 'track', name: 'onboarding_completed', props: { answeredQuestions: s.skippedAll ? 0 : answeredQuestionCount(s), skippedAll: p == null } }],
+          effects: [{ type: 'track', name: 'onboarding_completed', props: { answered_questions: s.skippedAll ? 0 : answeredQuestionCount(s), skipped_all: p == null } }],
         };
       }
       if (a.type === 'saveFailed') return { state: { ...s, stage: 'saveFailed' }, effects: [] };

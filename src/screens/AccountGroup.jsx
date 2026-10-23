@@ -513,7 +513,9 @@ export default function AccountGroup() {
             <Row icon="alertShield" label={T('Quản lý sự kiện', 'Manage events')} trailing="›" testId="admin-manage-events" onClick={() => set({ screen: 'adminManageEvents' })} />
             <Row icon="alertShield" label={T('Tài Khoản Thử Nghiệm', 'Test Accounts')} trailing="›" testId="admin-test-accounts" onClick={() => set({ screen: 'adminTestAccounts' })} />
             <Row icon="alertShield" label={T('Sửa ngày sinh', 'Birthday corrections')} trailing="›" testId="admin-dob-corrections" onClick={() => set({ screen: 'adminDobCorrections' })} />
-            <Row icon="sliders" label={T('Công tắc tính năng', 'Feature switches')} trailing="›" testId="admin-features" onClick={() => set({ screen: 'adminFeatures' })} border={false} />
+            <Row icon="sliders" label={T('Công tắc tính năng', 'Feature switches')} trailing="›" testId="admin-features" onClick={() => set({ screen: 'adminFeatures' })} />
+            {/* Migration 196: aggregate retention by market, admins only (the server checks too). */}
+            <Row icon="users" label={T('Báo cáo quay lại', 'Retention report')} trailing="›" testId="admin-retention" onClick={() => set({ screen: 'adminRetention' })} border={false} />
           </div>
         )}
 

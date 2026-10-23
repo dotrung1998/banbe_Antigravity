@@ -155,6 +155,7 @@ private func dobProblemText(_ p: DateOfBirthInput.Problem, T: (String, String) -
     case .invalidDate: return T("Ngày này không có trong lịch.", "That date doesn't exist.")
     case .future: return T("Ngày sinh không thể ở tương lai.", "Date of birth can't be in the future.")
     case .tooOld: return T("Hãy nhập năm sinh từ 1900 trở đi.", "Enter a year from 1900 onward.")
+    case .tooYoung: return T("banbe dành cho người từ 16 tuổi trở lên.", "banbe is for people aged 16 and over.")
     }
 }
 
@@ -440,16 +441,15 @@ struct DOBEnrollmentView: View {
 
     private func submit() {
         message = nil
-        switch input.validate() {
+        switch input.validate(minAge: DateOfBirthInput.minAge) {
         case .failure(let p):
             message = dobProblemText(p, T: app.T)
         case .success(let iso):
             busy = true
             Task {
                 defer { busy = false }
-                if await !auth.submitEnrollmentDOB(iso: iso) {
-                    message = app.T("Chưa lưu được. Thử lại sau.", "Couldn't save. Please try again.")
-                }
+                let r = await auth.submitEnrollmentDOB(iso: iso)
+                if !r.ok { message = AuthViewModel.dobSaveErrorText(r.error, T: app.T) }
             }
         }
     }

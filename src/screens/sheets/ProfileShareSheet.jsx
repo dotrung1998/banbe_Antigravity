@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { useBanBe } from '../../state/BanBeContext.jsx';
 import { supabase } from '../../lib/supabase.js';
+import { track } from '../../lib/analytics.js';
 import { paper, ink, rule, display, alert, inkButton } from '../../theme.js';
 
 // Web port of apps/ios/BanbeApp/Views/ProfileShareCardView.swift. The card is
@@ -397,6 +398,7 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
       const file = blob ? new File([blob], 'banbe-card.png', { type: 'image/png' }) : null;
       if (file && navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: name, url: link });
       else await navigator.share({ title: name, text: name, url: link });
+      track('share_completed', { channel: 'native', context: 'profile_card' });
     } catch (e) {
       if (e?.name !== 'AbortError') say(T('Không thể chia sẻ', 'Could not share'));
     } finally { setBusy(false); }

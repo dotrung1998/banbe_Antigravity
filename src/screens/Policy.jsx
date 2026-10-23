@@ -79,8 +79,8 @@ function PolicyView({ state, flags, backFromPolicy, acceptPolicyGate, declinePol
         <h1 style={{ ...display(18, { margin: '0 0 16px', opacity: 0.75 }) }}>banbe Terms of Use and Privacy Notice</h1>
 
         <Bi
-          vi="Bản tóm tắt bên dưới là màn hình bạn thấy khi đăng ký. Mọi điều trong đó được nêu đầy đủ ở Phần A (Điều khoản) và Phần B (Quyền riêng tư). Tài liệu được lập bằng tiếng Việt và tiếng Anh. Nếu có khác biệt, bản tiếng Việt được ưu tiên áp dụng. Hiệu lực từ [effective date]."
-          en="The summary below is the screen you see at sign-up. Everything in it is set out in full in Part A (Terms) and Part B (Privacy). This document is written in Vietnamese and English. Where they differ, the Vietnamese text prevails. Effective [effective date]."
+          vi="Bản tóm tắt bên dưới là màn hình bạn thấy khi đăng ký. Mọi điều trong đó được nêu đầy đủ ở Phần A (Điều khoản) và Phần B (Quyền riêng tư). Tài liệu được lập bằng tiếng Việt và tiếng Anh. Nếu có khác biệt, bản tiếng Việt được ưu tiên áp dụng. Hiệu lực từ 06/10/2026."
+          en="The summary below is the screen you see at sign-up. Everything in it is set out in full in Part A (Terms) and Part B (Privacy). This document is written in Vietnamese and English. Where they differ, the Vietnamese text prevails. Effective 6 October 2026."
         />
 
         <h2 style={{ fontSize: 15, fontWeight: 600, color: ink, margin: '22px 0 4px' }}>Tóm tắt: bạn đang đồng ý điều gì</h2>
@@ -286,6 +286,10 @@ function PolicyView({ state, flags, backFromPolicy, acceptPolicyGate, declinePol
               ['Kỹ thuật\nTechnical', 'Địa chỉ IP, loại thiết bị và trình duyệt, nhật ký truy cập và lỗi\nIP address, device and browser type, access and error logs', 'Bảo mật, giới hạn tần suất, sửa lỗi\nSecurity, rate limiting, fixing bugs'],
               { flag: 'rewards', cells: ['Phần thưởng\nRewards', 'Sổ xu (cộng, trừ lại, đổi thưởng), ngày hoạt động, huy hiệu, lựa chọn múi giờ\nCoin ledger (awards, reversals, redemptions), active days, badges, time-zone choice', 'Vận hành Phần thưởng cho bạn\nRunning Rewards for you'] },
               { flag: 'rewards_v2', cells: ['Mục tiêu tháng\nMonthly goal', 'Số sự kiện bạn chọn mỗi tháng và thời điểm đặt\nThe number of events you chose per month and when you set it', 'Hiển thị tiến độ cho riêng bạn\nShowing your own progress'] },
+              { flag: 'app_events', cells: ['Đo lường sử dụng\nUsage measurement', 'Thao tác chính trong ứng dụng banbe (mở ứng dụng, sự kiện, vé, thông báo, chia sẻ, theo dõi), mã sự kiện hoặc nhóm số đếm, nền tảng, thị trường\nKey actions in the banbe apps (opening the app, events, tickets, notifications, sharing, following), event id or count bucket, platform, market', 'Biết người dùng có quay lại không\nLearning whether people come back'] },
+              { flag: 'event_recap', cells: ['Cảm nhận sau sự kiện\nAfter-event feedback', 'Thích hoặc không thích, và ghi chú tuỳ chọn bạn gửi riêng cho host\nUp or down, and an optional note you send privately to the host', 'Giúp host làm sự kiện tốt hơn\nHelping hosts improve'] },
+              { flag: 'host_recap', cells: ['Theo dõi host\nFollowing a host', 'Ngày bạn bắt đầu theo dõi\nThe date you started following', 'Cho host biết số người theo dõi mới (chỉ số đếm)\nTelling the host how many new followers (counts only)'] },
+              { flag: 'weekly_digest', cells: ['Đồng ý nhận bản tin\nDigest opt-in', 'Lựa chọn bật hoặc tắt và thời điểm thay đổi\nYour on or off choice and when you changed it', 'Chỉ gửi bản tin khi bạn đồng ý, và chứng minh sự đồng ý\nSending the digest only with your consent, and proving it'] },
             ]}
           />
           <Bi
@@ -305,6 +309,42 @@ function PolicyView({ state, flags, backFromPolicy, acceptPolicyGate, declinePol
               en="While Rewards is switched on, we also process your coin ledger, active days, badges and time-zone choice to: (5) run the Rewards you use, that is, perform our contract with you, and (6) improve the service from anonymous aggregate counts, for example how many people come back to an event the following month. Aggregates are counts per group only, with no names, phone numbers, emails or account ids, and any group smaller than 20 people is hidden. Hosts never see any individual's answers or account id through these figures. We do not use rewards data for advertising and do not share it with third parties."
             />
           )}
+          {on('push_enabled') && (
+            <Bi
+              vi="Khi thông báo đẩy được bật, chúng tôi gửi thông báo đẩy qua dịch vụ của Apple (APNs) tới thiết bị bạn đã cho phép, với cùng tiêu đề và nội dung như thông báo trong ứng dụng. Cùng mã thiết bị, chúng tôi lưu môi trường gửi và múi giờ của thiết bị để không gửi trong khoảng 22:00–07:00 giờ địa phương (thông báo đến hạn trong khoảng đó được gửi lúc 07:00). Thông báo về đặt chỗ và sự kiện của bạn là thông báo dịch vụ: bạn tắt từng loại trong ứng dụng, hoặc tắt hết trong Cài đặt của iPhone. Thông báo quảng bá chỉ được gửi khi bạn bật một lựa chọn đồng ý riêng, mặc định tắt. Khi bạn đăng xuất trên một thiết bị hoặc xoá tài khoản, mã của thiết bị đó bị xoá."
+              en="While push notifications are switched on, we send push notifications through Apple's service (APNs) to devices you allowed, with the same title and text as the in-app notice. With the device token we keep the delivery environment and the device's time zone, so nothing is sent between 22:00 and 07:00 local time (anything due then is sent at 07:00). Notices about your bookings and events are service messages: turn off each kind in the app, or all of them in iPhone Settings. Promotional notifications are sent only if you turn on a separate opt-in, which is off by default. When you sign out on a device or delete your account, that device's token is deleted."
+            />
+          )}
+          {on('app_events') && (
+            <Bi
+              vi="Khi tính năng Đo lường được bật, chúng tôi ghi nhận các thao tác chính trong ứng dụng của chính banbe (như mở ứng dụng, mở sự kiện, mở vé, mở thông báo, chia sẻ, theo dõi host), kèm mã sự kiện hoặc nhóm số đếm, nền tảng và thị trường (Việt Nam hoặc Mỹ), để (7) biết người dùng có quay lại không và tính năng nào hữu ích. Chúng tôi không dùng công cụ hay bên theo dõi thứ ba, và không ghi nội dung trò chuyện, thông tin ngân hàng hay câu trả lời của bạn. Báo cáo nội bộ chỉ là số đếm theo nhóm: nhóm dưới 20 người bị ẩn và tài khoản thử nghiệm không được tính."
+              en="While Measurement is switched on, we record key actions in banbe's own apps (such as opening the app, an event, a ticket or a notification, sharing, following a host), with an event id or a count bucket, the platform and the market (Vietnam or the US), to (7) learn whether people come back and which features help. We use no third-party tools or trackers, and we never record chat content, bank details or your answers. Internal reports are counts per group only: any group under 20 people is hidden and test accounts are left out."
+            />
+          )}
+          {on('event_reminders') && (
+            <Bi
+              vi="Nhắc lịch: chúng tôi nhắc bạn một ngày trước và khoảng 3 giờ trước sự kiện bạn có vé, bằng thông báo trong ứng dụng (và thông báo đẩy nếu bạn đã cho phép). Lời nhắc ghi tên sự kiện, giờ bắt đầu theo giờ nơi tổ chức và địa điểm. Đây là thông báo dịch vụ: bạn tắt được từng loại trong ứng dụng."
+              en="Reminders: we remind you the day before and about 3 hours before an event you have a ticket for, with an in-app notice (and a push notification if you allowed them). The reminder names the event, its start time at the venue and the place. These are service messages: you can turn off each kind in the app."
+            />
+          )}
+          {on('event_recap') && (
+            <Bi
+              vi="Khi tính năng Tổng kết sự kiện được bật, sau khi sự kiện kết thúc chúng tôi gửi bạn một thông báo tổng kết, và trong 14 ngày bạn có thể gửi cảm nhận riêng cho host: thích hoặc không thích, kèm ghi chú tuỳ chọn. Cảm nhận không bao giờ công khai. Host chỉ thấy số đếm và các ghi chú không kèm tên, và chỉ khi có từ 3 người trả lời trở lên."
+              en="While Event recap is switched on, after an event ends we send you a recap, and for 14 days you can send the host private feedback: up or down, with an optional note. Feedback is never public. The host sees only counts and notes without names, and only once 3 or more guests have answered."
+            />
+          )}
+          {on('follow_alerts') && (
+            <Bi
+              vi="Khi tính năng Báo sự kiện mới được bật, khi host bạn theo dõi đăng sự kiện mới, chúng tôi gửi bạn tối đa một thông báo gộp mỗi ngày, trong khoảng 09:00–20:00 giờ của bạn. Bạn tắt loại thông báo này hoặc bỏ theo dõi host bất cứ lúc nào."
+              en="While Alerts from followed hosts is switched on, when hosts you follow publish new events we send you at most one bundled notice a day, between 09:00 and 20:00 on your clock. You can turn this kind off or unfollow a host at any time."
+            />
+          )}
+          {on('weekly_digest') && (
+            <Bi
+              vi="Bản tin cuối tuần: chỉ khi bạn tự bật đồng ý riêng (mặc định tắt), mỗi thứ Năm khoảng 18:00 giờ của bạn chúng tôi gửi một thông báo về các sự kiện cuối tuần ở thị trường của bạn, ưu tiên host bạn theo dõi và sở thích bạn đã chọn. Không gửi khi không có sự kiện nào. Bạn tắt bất cứ lúc nào. Chúng tôi lưu lịch sử bật và tắt đồng ý này ít nhất 1 năm theo quy định."
+              en="Weekly digest: only if you turn on a separate opt-in (off by default), every Thursday around 18:00 on your clock we send one notice about this weekend's events in your market, putting hosts you follow and interests you chose first. Nothing is sent when there are no events. You can turn it off any time. We keep the history of turning this consent on and off for at least 1 year, as the law requires."
+            />
+          )}
           <Bi
             vi="Chúng tôi không dùng dữ liệu cho quảng cáo của banbe (host chỉ nhắn quảng bá cho khách đã bật đồng ý riêng, mỗi lần một người nhận và có ghi nhật ký), không phân tích nội dung trò chuyện, và không ra quyết định tự động ảnh hưởng đến bạn ngoài việc đếm số lần vắng mặt như nêu tại Điều A5."
             en="We do not use data for banbe's own advertising (hosts may send promotions only to guests who opted in separately, one recipient at a time, with a log), analyze chat content, or make automated decisions about you other than counting no-shows as described in Section A5."
@@ -318,6 +358,7 @@ function PolicyView({ state, flags, backFromPolicy, acceptPolicyGate, declinePol
         <Section id="B4" titleVi="B4. Ai nhìn thấy gì" titleEn="B4. Who sees what">
           <PolicyTable
             columns={['Dữ liệu · Data', 'Ai thấy · Who sees it']}
+            on={on}
             rows={[
               ['Số điện thoại, email\nPhone number, email', 'Bạn, banbe, và host của sự kiện bạn đặt. Email: bạn và banbe. Host chỉ thấy email của người giữ chỗ khi soạn email huỷ sự kiện gửi khách.\nYou, banbe, and the host of an event you book. Email: you and banbe. A host sees ticket-holders\' emails only when drafting an event-cancellation email to guests.'],
               ['Tên, ảnh, số lần tham dự và vắng mặt\nName, avatar, attended and no-show counts', 'Host và đồng tổ chức của sự kiện bạn đặt, người bạn trò chuyện.\nHosts and co-hosts of events you book, people you chat with.'],
@@ -330,6 +371,8 @@ function PolicyView({ state, flags, backFromPolicy, acceptPolicyGate, declinePol
               ['Thanh toán, hoàn tiền\nPayments, refunds', 'Bạn, host và đồng tổ chức của sự kiện đó. Admin banbe khi có tranh chấp. Dữ liệu gốc của thông báo chuyển khoản chỉ máy chủ banbe đọc được.\nYou, and the host and co-hosts of that event. banbe admins in a dispute. The raw transfer-notification data is readable only by banbe\'s servers.'],
               ['Tranh chấp, tệp đính kèm\nDisputes, attachments', 'Bạn, host và admin banbe.\nYou, the host and banbe admins.'],
               ['Stories, hồ sơ cá nhân, câu trả lời khảo sát\nStories, personal profile, survey answers', 'Người dùng banbe. Hồ sơ bạn chia sẻ qua liên kết xem được bởi người có liên kết. Câu trả lời khảo sát: host của khảo sát và banbe.\nbanbe users. A profile you share by link can be viewed by anyone with the link. Survey answers: the survey\'s host and banbe.'],
+              { flag: 'event_recap', cells: ['Cảm nhận sau sự kiện\nAfter-event feedback', 'Chỉ host của sự kiện, dưới dạng số đếm và ghi chú không kèm tên, khi có từ 3 người trả lời.\nOnly the event\'s host, as counts and notes without names, once 3 or more guests answered.'] },
+              { flag: 'host_recap', cells: ['Tổng kết cho host\nHost recap', 'Host của sự kiện thấy số chỗ đã xác nhận, số người vào cửa, số người theo dõi mới và số khách quay lại, chỉ là số đếm.\nThe event\'s host sees confirmed seats, check-ins, new followers and returning guests, as counts only.'] },
             ]}
           />
         </Section>
@@ -339,6 +382,12 @@ function PolicyView({ state, flags, backFromPolicy, acceptPolicyGate, declinePol
             vi="Chúng tôi dùng: Supabase (cơ sở dữ liệu, xác thực, lưu trữ tệp), Vercel (lưu trữ ứng dụng web), [Vietnamese SMS provider] để gửi mã OTP, Google để gửi email đăng nhập, email vé và email thông báo, và (cùng với Meta/Facebook) để xác thực nếu bạn chọn đăng nhập bằng Google hoặc Facebook. Chúng tôi cũng dùng nhà cung cấp thông báo chuyển khoản ngân hàng mà host chọn kết nối (như Casso, PayOS), OpenFreeMap (bản đồ), OpenStreetMap Nominatim (tìm địa chỉ) và Google Fonts (phông chữ trên web). Các bên này có thể thấy địa chỉ IP của bạn. Các bên xử lý thay chúng tôi chỉ xử lý theo chỉ dẫn của chúng tôi và không được dùng dữ liệu cho mục đích riêng. Riêng Google và Meta khi bạn chọn đăng nhập bằng họ là bên cung cấp danh tính độc lập, theo chính sách riêng của họ."
             en="We use: Supabase (database, authentication, file storage), Vercel (web app hosting), [Vietnamese SMS provider] to deliver OTP codes, Google to deliver sign-in, ticket and notice emails, and (together with Meta/Facebook) to authenticate you if you choose to sign in with Google or Facebook. We also use the bank transfer-notification providers a host chooses to connect (such as Casso, PayOS), OpenFreeMap (maps), OpenStreetMap Nominatim (address search) and Google Fonts (web fonts). These may see your IP address. Those who process data for us do so only on our instructions and may not use the data for their own purposes. Google and Meta, when you choose to sign in with them, are independent identity providers under their own policies."
           />
+          {on('push_enabled') && (
+            <Bi
+              vi="Khi thông báo đẩy được bật, Apple (dịch vụ APNs) chuyển thông báo đẩy tới iPhone của bạn: Apple nhận mã thiết bị và nội dung thông báo."
+              en="While push notifications are switched on, Apple (APNs) delivers push notifications to your iPhone: Apple receives the device token and the notification text."
+            />
+          )}
           <Bi
             vi="Chúng tôi không bán, cho thuê hay trao đổi dữ liệu cá nhân. Chúng tôi cung cấp dữ liệu cho cơ quan nhà nước khi có yêu cầu hợp pháp bằng văn bản, và thông báo cho bạn khi pháp luật cho phép."
             en="We do not sell, rent or trade personal data. We disclose data to state agencies on a lawful written request, and tell you when the law allows."
@@ -373,6 +422,10 @@ function PolicyView({ state, flags, backFromPolicy, acceptPolicyGate, declinePol
               { flag: 'rewards', cells: ['Sổ xu, huy hiệu, ngày hoạt động, múi giờ\nCoin ledger, badges, active days, time zone', 'Cùng với tài khoản và bị xoá khi bạn xoá tài khoản. Sổ xu chỉ được ghi thêm, không bị sửa.\nWith your account, deleted when you delete it. The coin ledger is only ever added to, never edited.'] },
               { flag: 'rewards_v2', cells: ['Mục tiêu tháng\nMonthly goal', 'Đến khi bạn xoá mục tiêu hoặc xoá tài khoản.\nUntil you clear the goal or delete your account.'] },
               { flag: 'rewards', cells: ['Số đếm tổng hợp ẩn danh\nAnonymous aggregate counts', 'Không gắn với tài khoản nào nên không bị xoá theo tài khoản.\nNot tied to any account, so not deleted with one.'] },
+              { flag: 'push_enabled', cells: ['Mã thiết bị nhận thông báo đẩy\nPush device tokens', 'Đến khi bạn đăng xuất trên thiết bị đó, Apple báo mã không còn dùng, hoặc bạn xoá tài khoản. Hàng đợi gửi: 7 ngày.\nUntil you sign out on that device, Apple reports the token is no longer valid, or you delete your account. Send queue: 7 days.'] },
+              { flag: 'app_events', cells: ['Đo lường sử dụng\nUsage measurement', 'Tối đa 13 tháng rồi bị xoá. Bị xoá cùng tài khoản khi bạn xoá tài khoản.\nUp to 13 months, then deleted. Deleted with your account.'] },
+              { flag: 'event_recap', cells: ['Cảm nhận sau sự kiện\nAfter-event feedback', 'Cùng với sự kiện. Bị xoá khi bạn xoá tài khoản.\nWith the event. Deleted when you delete your account.'] },
+              { flag: 'weekly_digest', cells: ['Lịch sử đồng ý nhận bản tin\nDigest consent history', 'Ít nhất 1 năm theo quy định, rồi theo tài khoản.\nAt least 1 year as the law requires, then with your account.'] },
             ]}
           />
           <Bi
@@ -425,6 +478,12 @@ function PolicyView({ state, flags, backFromPolicy, acceptPolicyGate, declinePol
               en="For Rewards, your device also remembers which badges and milestones have already been celebrated so they are not shown again. This stays on your device and is not sent to anyone."
             />
           )}
+          {on('live_activity') && (
+            <Bi
+              vi="Khi thẻ ngày sự kiện được bật, vào ngày diễn ra sự kiện bạn có vé, iPhone có thể hiện tên sự kiện, giờ bắt đầu và địa điểm trên Màn hình khoá. Thẻ được tạo ngay trên thiết bị, không gửi qua máy chủ, và tự biến mất sau sự kiện. Bạn tắt được trong Cài đặt của iPhone."
+              en="While the event-day card is switched on, on the day of an event you have a ticket for, your iPhone may show the event name, start time and place on the Lock Screen. The card is created on your device, not sent through our servers, and disappears after the event. You can turn it off in iPhone Settings."
+            />
+          )}
         </Section>
 
         <Section id="B12" titleVi="B12. Thay đổi thông báo này" titleEn="B12. Changes to this notice">
@@ -436,10 +495,10 @@ function PolicyView({ state, flags, backFromPolicy, acceptPolicyGate, declinePol
 
         <div style={{ marginTop: 20, paddingTop: 14, borderTop: `1px solid ${rule}`, fontSize: 12, lineHeight: 1.6, color: ink, opacity: 0.7 }}>
           <p style={{ margin: 0 }}>
-            Liên hệ. CÔNG TY TNHH CÓMPANY · [registered address] · Mã số doanh nghiệp [enterprise code] · [contact email]. Bản này có hiệu lực từ [effective date]. Các bản trước được lưu và cung cấp khi bạn yêu cầu.
+            Liên hệ. CÔNG TY TNHH CÓMPANY · [registered address] · Mã số doanh nghiệp [enterprise code] · [contact email]. Bản này có hiệu lực từ 06/10/2026. Các bản trước được lưu và cung cấp khi bạn yêu cầu.
           </p>
           <p style={{ margin: '8px 0 0' }}>
-            Contact. CÓMPANY CO., LTD · [registered address] · Enterprise code [enterprise code] · [contact email]. This version is effective from [effective date]. Earlier versions are kept and provided on request.
+            Contact. CÓMPANY CO., LTD · [registered address] · Enterprise code [enterprise code] · [contact email]. This version is effective from 6 October 2026. Earlier versions are kept and provided on request.
           </p>
         </div>
       </div>

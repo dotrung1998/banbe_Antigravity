@@ -11,10 +11,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { PHONE_COUNTRIES, DEFAULT_PHONE_COUNTRY, flagOf, toE164 } from '../lib/phone.js';
-import { digitsOnly, validateDob, dobProblemText } from '../lib/dob.js';
+import { digitsOnly, validateDob, dobProblemText, MIN_AGE } from '../lib/dob.js';
 import {
   useAccountGate, refreshGate, sendPhoneCode, resendPhoneCode, verifyPhoneCode, phoneFailureText,
-  submitEnrollmentDob, confirmDob,
+  submitEnrollmentDob, dobSaveErrorText, confirmDob,
 } from '../lib/accountGate.js';
 
 const FONT = "'Be Vietnam Pro', sans-serif";
@@ -174,12 +174,12 @@ function DobEnrollment() {
   const [message, setMessage] = useState('');
   const submit = async () => {
     setMessage('');
-    const v = validateDob(input);
+    const v = validateDob(input, new Date(), { minAge: MIN_AGE });
     if (!v.iso) { setMessage(dobProblemText(v.problem, T)); return; }
     setBusy(true);
-    const ok = await submitEnrollmentDob(v.iso);
+    const r = await submitEnrollmentDob(v.iso);
     setBusy(false);
-    if (!ok) setMessage(T('Chưa lưu được. Thử lại sau.', "Couldn't save. Please try again."));
+    if (!r.ok) setMessage(dobSaveErrorText(r.error, T));
   };
   return (
     <Scaffold title={T('Ngày sinh', 'Date of birth')} subtitle={T('Nhập ngày sinh của bạn để hoàn tất đăng ký.', 'Enter your date of birth to complete registration.')}>

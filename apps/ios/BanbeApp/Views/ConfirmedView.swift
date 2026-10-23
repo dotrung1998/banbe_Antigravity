@@ -23,6 +23,8 @@ struct ConfirmedView: View {
     @State private var walletDesignOpen = false
     /// Attendee tickets ticked for download (migration 151).
     @State private var selectedAttendeeIDs: Set<UUID> = []
+    /// ticket_opened is counted once per confirmed ticket shown (migration 196).
+    @State private var ticketOpenedFor: UUID?
 
     private var event: CatalogEvent { app.currentEvent }
     /// This booking's named tickets, once loaded. Empty for a booking made
@@ -416,9 +418,9 @@ struct ConfirmedView: View {
         }
         // Q6: a confirmed ticket on screen is the moment a reminder is useful (once per account per device, switch on).
         .sheet(isPresented: $app.pushAskPresented) { PushAskSheet().environmentObject(app) }
-        .onAppear { startPollingIfNeeded(); refreshReceiptStatusIfNeeded(); loadAttendeesIfNeeded(); app.offerPushAskIfAppropriate(hasConfirmedTicket: isPaid) }
-        .onChange(of: app.booking?.id) { _, _ in startPollingIfNeeded(); refreshReceiptStatusIfNeeded(); loadAttendeesIfNeeded() }
-        .onChange(of: isPaid) { _, paid in refreshReceiptStatusIfNeeded(); app.offerPushAskIfAppropriate(hasConfirmedTicket: paid) }
+        .onAppear { startPollingIfNeeded(); refreshReceiptStatusIfNeeded(); loadAttendeesIfNeeded(); app.offerPushAskIfAppropriate(hasConfirmedTicket: isPaid); trackTicketOpened() }
+        .onChange(of: app.booking?.id) { _, _ in startPollingIfNeeded(); refreshReceiptStatusIfNeeded(); loadAttendeesIfNeeded(); trackTicketOpened() }
+        .onChange(of: isPaid) { _, paid in refreshReceiptStatusIfNeeded(); app.offerPushAskIfAppropriate(hasConfirmedTicket: paid); trackTicketOpened() }
         .onChange(of: phase) { _, newPhase in
             if newPhase == .confirmed { pollTask?.cancel() } else { startPollingIfNeeded() }
         }
@@ -500,6 +502,14 @@ struct ConfirmedView: View {
         } else if !app.receiptRequestSent, let bookingID = app.booking?.id {
             Task { await app.requestReceipt(bookingID: bookingID) }
         }
+    }
+
+    /// ticket_opened: the event's day vs today in the venue's zone (same rule as web Confirmed.jsx).
+    private func trackTicketOpened() {
+        guard isPaid, let bookingID = app.booking?.id, ticketOpenedFor != bookingID, let start = event.startDate else { return }
+        ticketOpenedFor = bookingID
+        let bucket = AppEventRules.ticketDayBucket(start: start, now: Date(), timeZone: EventMarket.timeZone(event.timeZoneID))
+        Analytics.track(.ticketOpened(dayBucket: bucket))
     }
 
     private func refreshReceiptStatusIfNeeded() {

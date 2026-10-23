@@ -239,6 +239,7 @@ extension AppState {
             try? await Task.sleep(nanoseconds: 400_000_000)
             return promptSignIn(.follow)
         }
+        if !followedOrgIDs.contains(organizerID) { Analytics.track(.followTapped(context: "pulse")) }
         await setFollowing(organizerID, !followedOrgIDs.contains(organizerID))
     }
 

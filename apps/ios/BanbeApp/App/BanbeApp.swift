@@ -49,7 +49,10 @@ struct BanbeApp: App {
                 // (throttled inside), so an admin's switch reaches a running app within seconds.
                 .task { await appState.loadFeatureFlags() }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { Task { await appState.loadFeatureFlags() } }
+                    if phase == .active {
+                        Task { await appState.loadFeatureFlags() }
+                        appState.noteAppActiveForMeasurement() // app_opened, once per local day (migration 196)
+                    }
                 }
                 // TASK D (2026-10-01 UX foundation pass) — universal links
                 // (https://banbe.app/...) arrive as an NSUserActivity, not

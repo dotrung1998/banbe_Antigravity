@@ -4,15 +4,31 @@ import os
 // Product-funnel analytics boundary. There is NO analytics vendor in this app
 // and none is added here: events go to `Analytics.sink`, a no-op by default
 // (DEBUG builds also log them to the unified log under the "analytics"
-// category). Wiring a provider = one type conforming to `AnalyticsSink`,
-// assigned to `Analytics.sink` at launch, after a privacy review.
+// category). The only real sink is first-party: `AppEventsSink`
+// (Lib/AppEventsSink.swift, migration 196), installed by AppState for a
+// signed-in account while the admin switch `app_events` is on.
 //
 // Privacy contract — enforced by the TYPE, not by convention: an event can
-// only carry the fields its case declares. Never add a case or property that
-// carries raw preference values, DOB, precise location, message content,
-// names, emails, phone numbers, event ids or user ids. Counts are bucketed.
+// only carry the fields its case declares, and AppEventsContract drops any
+// key tests/fixtures/app-events.json does not list. Never add a case or
+// property that carries raw preference values, DOB, precise location, message
+// content, names, emails, phone numbers or user ids. The one id allowed is a
+// public event id on event_opened. Counts are bucketed.
 
 enum AnalyticsEvent: Equatable {
+    // Retention measurement (migration 196).
+    /// Once per local day per device, on launch / foreground, signed in.
+    case appOpened
+    /// `source` ∈ home | search | map | schedule | link | other.
+    case eventOpened(eventID: String, source: String)
+    /// `dayBucket` ∈ day_of | before | after (the event's day vs today, venue zone).
+    case ticketOpened(dayBucket: String)
+    /// `kind` = the notification's fixed kind name; `source` ∈ bell | push.
+    case notificationOpened(kind: String, source: String)
+    /// Only when the share sheet reports `completed == true`. `channel` is a fixed short name (AppEventRules.shareChannel).
+    case shareCompleted(channel: String, context: String)
+    /// A tap that FOLLOWS a host (unfollowing is not counted). `context` ∈ host_profile | pulse.
+    case followTapped(context: String)
     case onboardingStarted
     case onboardingQuestionViewed(question: String)
     /// Answer COUNT only, never which options.
@@ -67,6 +83,12 @@ enum AnalyticsEvent: Equatable {
 
     var name: String {
         switch self {
+        case .appOpened: return "app_opened"
+        case .eventOpened: return "event_opened"
+        case .ticketOpened: return "ticket_opened"
+        case .notificationOpened: return "notification_opened"
+        case .shareCompleted: return "share_completed"
+        case .followTapped: return "follow_tapped"
         case .onboardingStarted: return "onboarding_started"
         case .onboardingQuestionViewed: return "onboarding_question_viewed"
         case .onboardingQuestionAnswered: return "onboarding_question_answered"
@@ -109,6 +131,16 @@ enum AnalyticsEvent: Equatable {
     /// Flat, non-sensitive properties for a provider.
     var properties: [String: String] {
         switch self {
+        case .eventOpened(let id, let source):
+            return ["event_id": id, "source": source]
+        case .ticketOpened(let bucket):
+            return ["day_bucket": bucket]
+        case .notificationOpened(let kind, let source):
+            return ["kind": kind, "source": source]
+        case .shareCompleted(let channel, let context):
+            return ["channel": channel, "context": context]
+        case .followTapped(let context):
+            return ["context": context]
         case .onboardingQuestionViewed(let q), .onboardingQuestionSkipped(let q):
             return ["question_id": q]
         case .onboardingQuestionAnswered(let q, let n):

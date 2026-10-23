@@ -574,8 +574,9 @@ struct PhotoViewerView: View {
             let items: [Any] = [text, PhotoShareSource(image: image, title: text, url: url)]
             await MainActor.run {
                 let activity = UIActivityViewController(activityItems: items, applicationActivities: nil)
-                activity.completionWithItemsHandler = { _, completed, _, _ in
+                activity.completionWithItemsHandler = { type, completed, _, _ in
                     guard completed else { return }
+                    Analytics.track(.shareCompleted(channel: AppEventRules.shareChannel(type), context: "photo"))
                     Task { await app.logPhotoShare(photoId) }
                 }
                 UIApplication.shared.connectedScenes

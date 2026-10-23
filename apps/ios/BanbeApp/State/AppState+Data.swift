@@ -446,6 +446,7 @@ extension AppState {
         guard let session else {
             if userID != nil { resetHomeScrollToTop() }
             userID = nil
+            syncAppEventsSink() // measurement stops and drops its queue with the account
             userEmail = nil
             user = nil
             resetEventPrefsState()
@@ -521,6 +522,7 @@ extension AppState {
         }
         if userID != session.user.id { resetHomeScrollToTop() }
         userID = session.user.id
+        syncAppEventsSink()
         userEmail = session.user.email
         refreshScheduleAdded()
         clearAuthDraft()
@@ -2192,8 +2194,10 @@ extension AppState {
 
     /// Tapping a notification marks it read and, for the kinds that point
     /// somewhere real, takes you there.
-    func openNotification(_ notification: AppNotification) {
+    /// `source` (notification_opened, migration 196): "bell" for the list and the in-app toast, "push" for a push tap.
+    func openNotification(_ notification: AppNotification, source: String = "bell") {
         Task { await markNotificationRead(notification) }
+        Analytics.track(.notificationOpened(kind: notification.kind, source: source))
         // Every branch below passes .notifications as its destination's own
         // back-target (attendanceBack/verificationsBack/paymentBack/
         // confirmedBack/documentBack/chatBack — same field/default-param

@@ -1335,6 +1335,10 @@ struct EventDetailView: View {
             await MainActor.run {
                 let items: [Any] = [text, PhotoShareSource(image: image, title: event.name, url: url)]
                 let activity = UIActivityViewController(activityItems: items, applicationActivities: nil)
+                activity.completionWithItemsHandler = { type, completed, _, _ in
+                    guard completed else { return } // share_completed only for a share that really went out
+                    Analytics.track(.shareCompleted(channel: AppEventRules.shareChannel(type), context: "event"))
+                }
                 UIApplication.shared.topViewController?.present(activity, animated: true)
             }
         }

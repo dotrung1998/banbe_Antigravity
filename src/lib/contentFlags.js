@@ -9,6 +9,9 @@
 //   rewards        Rewards is on                                   (anything about coins, badges, streaks…)
 //   rewards_daily  Rewards is on and Rewards v2 is off             (the daily streak the app shows today)
 //   rewards_v2     Rewards is on and Rewards v2 is on              (weekly streak, grace weeks, repair, tiers, goal)
+//   push_enabled   real push notifications are on (migration 194)  (APNs, quiet hours, device tokens)
+//   app_events     first-party measurement is on (migration 196)   (usage events, 13-month retention)
+//   event_reminders, event_recap, host_recap, follow_alerts (199); weekly_digest, live_activity (200): one key per switch
 //
 // Markers in the help data (src/data/help/*.js):
 //   section   { id, vi, en, blocks, flag: 'rewards' }
@@ -16,7 +19,8 @@
 //   list item [vi, en, 'rewards']
 import { flagOn } from './featureFlags.js';
 
-export const CONTENT_KEYS = ['rewards', 'rewards_daily', 'rewards_v2'];
+export const CONTENT_KEYS = ['rewards', 'rewards_daily', 'rewards_v2', 'push_enabled', 'app_events', 'event_reminders',
+  'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'live_activity'];
 
 /** Is content tagged `key` shown under these platform flags? An unknown key is never shown. */
 export function contentOn(flags, key) {
@@ -26,6 +30,16 @@ export function contentOn(flags, key) {
     case 'rewards': return rewards;
     case 'rewards_daily': return rewards && !flagOn(flags, 'rewards_v2');
     case 'rewards_v2': return rewards && flagOn(flags, 'rewards_v2');
+    // Switches that are dark until set (featureFlags.js OFF_UNLESS_SET): only an explicit true shows their text.
+    case 'push_enabled':
+    case 'app_events':
+    case 'event_recap':
+    case 'host_recap':
+    case 'follow_alerts':
+    case 'weekly_digest':
+    case 'live_activity': return !!(flags && flags[key] === true);
+    // On unless an admin turned it off (migration 199 seeds it ON).
+    case 'event_reminders': return flagOn(flags, 'event_reminders');
     default: return false;
   }
 }

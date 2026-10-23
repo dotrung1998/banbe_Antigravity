@@ -142,15 +142,22 @@ extension AuthViewModel {
     }
 
     /// New registration: store the DOB once (the server refuses an overwrite and
-    /// refuses it before the phone is verified). `iso` is "YYYY-MM-DD".
-    func submitEnrollmentDOB(iso: String) async -> Bool {
+    /// refuses it before the phone is verified). `iso` is "YYYY-MM-DD". `error` is
+    /// the server's code, e.g. "AGE_TOO_YOUNG" (migration 197).
+    func submitEnrollmentDOB(iso: String) async -> (ok: Bool, error: String?) {
         do {
             let result: DOBRpcResult = try await SupabaseService.client
                 .rpc("set_date_of_birth", params: ["p_dob": iso]).execute().value
-            guard result.success == true else { return false }
+            guard result.success == true else { return (false, result.error ?? "FAILED") }
             await refreshGate()
-            return true
-        } catch { return false }
+            return (true, nil)
+        } catch { return (false, "FAILED") }
+    }
+
+    /// The message for a failed date-of-birth save (web: accountGate.js `dobSaveErrorText`).
+    static func dobSaveErrorText(_ code: String?, T: (String, String) -> String) -> String {
+        if code == "AGE_TOO_YOUNG" { return T("banbe dành cho người từ 16 tuổi trở lên.", "banbe is for people aged 16 and over.") }
+        return T("Chưa lưu được. Thử lại sau.", "Couldn't save. Please try again.")
     }
 
     /// Confirm date of birth for this session. Never logs the value.

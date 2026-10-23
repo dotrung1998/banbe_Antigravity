@@ -382,6 +382,10 @@ struct ProfileShareSheet: View {
         renderer.scale = 3
         guard let image = renderer.uiImage else { return }
         let vc = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+        vc.completionWithItemsHandler = { type, completed, _, _ in
+            guard completed else { return }
+            Analytics.track(.shareCompleted(channel: AppEventRules.shareChannel(type), context: "profile_card"))
+        }
         UIApplication.shared.topViewController?.present(vc, animated: true)
     }
 }

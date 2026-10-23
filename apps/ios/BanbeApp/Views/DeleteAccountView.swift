@@ -167,6 +167,7 @@ struct DeleteAccountView: View {
                 case .invalidDate: return app.T("Ngày này không có trong lịch.", "That date doesn't exist.")
                 case .future: return app.T("Ngày sinh không thể ở tương lai.", "Date of birth can't be in the future.")
                 case .tooOld: return app.T("Hãy nhập năm sinh từ 1900 trở đi.", "Enter a year from 1900 onward.")
+                case .tooYoung: return app.T("banbe dành cho người từ 16 tuổi trở lên.", "banbe is for people aged 16 and over.") // not asked here
                 }
             }()
         case .success(let iso):

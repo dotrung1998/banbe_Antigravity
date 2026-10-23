@@ -153,7 +153,7 @@ export default function Schedule() {
     const day = SP.startOfDay(d);
     setSlideDir(day.getTime() >= selected.getTime() ? 'r' : 'l');
     setSelected(day);
-    track('schedule_day_selected', { bucket: SP.dayBucket(d) });
+    track('schedule_day_selected', { day_bucket: SP.dayBucket(d) });
   };
   const stepWeek = (n) => { setSlideDir(n > 0 ? 'r' : 'l'); setSelected(d => SP.addDays(d, n)); };
   const stepMonth = (n) => {

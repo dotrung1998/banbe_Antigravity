@@ -3,13 +3,24 @@ import Foundation
 /// Three separate Day / Month / Year fields -> a validated ISO DATE
 /// ("YYYY-MM-DD"). Real calendar dates only (no Feb 30, Feb 29 only in leap
 /// years), no future dates. The value is never logged or persisted by the
-/// app; it is sent once to the server.
+/// app; it is sent once to the server. `minAge` (migration 197: 16) is passed
+/// only where a NEW date of birth is saved (web twin: src/lib/dob.js); confirming
+/// or deleting an existing account never re-checks age.
 struct DateOfBirthInput: Equatable {
     var day = ""
     var month = ""
     var year = ""
 
-    enum Problem: Error, Equatable { case incomplete, invalidDate, future, tooOld }
+    enum Problem: Error, Equatable { case incomplete, invalidDate, future, tooOld, tooYoung }
+
+    static let minAge = 16
+
+    /// The latest date of birth that is at least `minAge` years old on `today` (29 February -> 28 February when
+    /// that earlier year has no 29th). Same rule as src/lib/dob.js `latestDobFor`.
+    static func latestDate(minAge: Int, today: (y: Int, m: Int, d: Int)) -> (y: Int, m: Int, d: Int) {
+        let y = today.y - minAge
+        return (y, today.m, isRealDate(year: y, month: today.m, day: today.d) ? today.d : 28)
+    }
 
     static func digits(_ s: String, max: Int) -> String {
         String(s.filter(\.isASCII).filter(\.isNumber).prefix(max))
@@ -18,7 +29,7 @@ struct DateOfBirthInput: Equatable {
     var isComplete: Bool { !day.isEmpty && !month.isEmpty && year.count == 4 }
 
     /// - Parameter today: injectable for tests (year, month, day of "today").
-    func validate(today: (y: Int, m: Int, d: Int)? = nil) -> Result<String, Problem> {
+    func validate(today: (y: Int, m: Int, d: Int)? = nil, minAge: Int? = nil) -> Result<String, Problem> {
         guard isComplete, let d = Int(day), let m = Int(month), let y = Int(year) else {
             return .failure(.incomplete)
         }
@@ -29,6 +40,10 @@ struct DateOfBirthInput: Equatable {
             return (c.year ?? 0, c.month ?? 0, c.day ?? 0)
         }()
         if (y, m, d) > (now.y, now.m, now.d) { return .failure(.future) }
+        if let minAge {
+            let latest = Self.latestDate(minAge: minAge, today: now)
+            if (y, m, d) > (latest.y, latest.m, latest.d) { return .failure(.tooYoung) }
+        }
         return .success(String(format: "%04d-%02d-%02d", y, m, d))
     }
 

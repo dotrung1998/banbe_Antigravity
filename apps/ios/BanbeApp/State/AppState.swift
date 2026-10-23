@@ -16,6 +16,7 @@ enum Screen: String {
     case following, rewards
     case paymentDetails, billing, payout, documents, documentView
     case verifications, disputes, adminEvents, adminTestAccounts, adminDobCorrections, adminFeatures, adminManageEvents
+    case adminRetention
     case policy
     case mapExplore
     case refundAccounts, myRefunds
@@ -2989,7 +2990,10 @@ final class AppState: ObservableObject {
     // the same event, forever, with no way to reach Home. That's true
     // whichever row of its "Current events" list is tapped, including the
     // event you arrived from (that list contains it too).
-    func goEvent(_ key: String) {
+    /// `source` (event_opened, migration 196): nil = derived from the screen being left (AppEventRules).
+    func goEvent(_ key: String, source: String? = nil) {
+        Analytics.track(.eventOpened(eventID: key, source: source
+            ?? AppEventRules.eventOpenSource(screen: screen, searchOverlayOpen: searchOverlayOpen)))
         // Fixtures (App/UITestFixtures.swift) never touch the network, but still run the real navigation and zoom
         // bookkeeping below so the open/close animation can be tested.
         #if DEBUG
@@ -3074,6 +3078,7 @@ final class AppState: ObservableObject {
     /// reveal, not a throwaway reconstruction. `storyReturnSnapshot` is
     /// gone entirely — nothing to snapshot when the original is retained.
     func goEventFromStory(_ key: String) {
+        Analytics.track(.eventOpened(eventID: key, source: "other"))
         if screen != .event { eventBackScreen = screen }
         eventBackIsStory = true
         if let v = storyViewer, v.groups.indices.contains(v.groupIndex) {
@@ -3320,9 +3325,11 @@ final class AppState: ObservableObject {
         // banbe://event/<event id> — what an event story's link opens.
         if url.host == "event" {
             guard let key = url.pathComponents.filter({ $0 != "/" }).first, !key.isEmpty else { return }
+            // A story's own link is an in-app tap; anything else arrived from outside the app.
+            let source = storyViewer != nil || pulseOpen ? "other" : "link"
             photoViewer = nil
             pulseOpen = false
-            goEvent(key)
+            goEvent(key, source: source)
             return
         }
         // banbe://survey/<public id> — what an edited survey story's link opens.
@@ -3720,7 +3727,7 @@ final class AppState: ObservableObject {
         // "adminReview" (Review & Moderation) rows now, not straight from
         // Account itself — same sub-section-of-a-group class of bug the
         // `.preferences`/`.security`/`.payout` cases above already fixed.
-        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures, .adminManageEvents: screen = accountSubBack
+        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures, .adminManageEvents, .adminRetention: screen = accountSubBack
         case .mapExplore: goHome()
         case .search: screen = searchBackScreen
         // TASK A fix — these two cases were simply missing, so the shared
@@ -3850,7 +3857,7 @@ final class AppState: ObservableObject {
         case .documents: return documentsListBack
         case .documentView: return documentBack
         case .verifications: return verificationsBack
-        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures, .adminManageEvents: return accountSubBack
+        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures, .adminManageEvents, .adminRetention: return accountSubBack
         case .mapExplore: return .home
         case .search: return searchBackScreen
         // TASK A fix — same missing-case bug as goBack() above: without

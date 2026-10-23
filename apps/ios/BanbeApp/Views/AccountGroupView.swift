@@ -702,6 +702,9 @@ struct AccountGroupView: View {
             row(app.T("Sửa ngày sinh", "Birthday corrections"), identifier: "admin.dobCorrections", icon: "calendar.badge.exclamationmark", trailing: "›") { if app.isAdmin { app.screen = .adminDobCorrections } }
             Divider().overlay(app.palette.rule)
             row(app.T("Công tắc tính năng", "Feature switches"), identifier: "admin.features", icon: "switch.2", trailing: "›") { if app.isAdmin { app.screen = .adminFeatures } }
+            Divider().overlay(app.palette.rule)
+            // Migration 196: aggregate retention by market, admins only (the server checks too).
+            row(app.T("Báo cáo quay lại", "Retention report"), identifier: "admin.retention", icon: "chart.bar.xaxis", trailing: "›") { if app.isAdmin { app.screen = .adminRetention } }
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
