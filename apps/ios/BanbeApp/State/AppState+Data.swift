@@ -685,6 +685,10 @@ extension AppState {
         favoritesLoadedForUID = nil
         favorites = []
         homeSurveyDiscoveryExpanded = false
+        // Phase 2 recaps belong to the account that just left.
+        eventRecapID = nil
+        hostRecapID = nil
+        createSeedCoverImage = nil
         await applySession(nil)
         // Note 44 — lands on the single public welcome screen (one tap to Log
         // in from there), not straight into Login. Still no guest browsing.
@@ -2527,6 +2531,10 @@ extension AppState {
             // Account screen.
             screen = .profile
             accountTab = "personal"
+        // Phase 2-3 core loops (migrations 199/200): one pure table, Lib/CoreLoops.swift `route(kind:data:)`, shared
+        // with web through tests/fixtures/core-loops.json — see openCoreLoopNotification (AppState+CoreLoops.swift).
+        case "event_reminder_day", "event_reminder_soon", "event_recap", "host_event_recap", "follow_alert", "weekly_digest":
+            openCoreLoopNotification(notification)
         // "guest_renamed": category B, informational only, no destination
         // by design — falls to default. markNotificationRead() above is
         // the whole "action."

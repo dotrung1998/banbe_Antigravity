@@ -1617,7 +1617,19 @@ struct CreateEventView: View {
             await app.loadEventPhotos(eventID: editID)
         }
         .onChange(of: app.eventPhotos) { _, _ in seedGalleryIfNeeded() }
-        .onAppear { seedGalleryIfNeeded() }
+        .onAppear { seedGalleryIfNeeded(); stageSeedCoverIfNeeded() }
+        .onChange(of: app.createSeedCoverImage) { _, _ in stageSeedCoverIfNeeded() }
+    }
+
+    /// L3 "Run it again" (AppState.runItAgain): the original event's cover becomes this new draft's first photo, as an
+    /// ordinary staged photo the host can remove or replace. Used once, and only on an empty new draft.
+    private func stageSeedCoverIfNeeded() {
+        guard let image = app.createSeedCoverImage else { return }
+        app.createSeedCoverImage = nil
+        guard app.createEditEventId == nil, galleryItems.isEmpty else { return }
+        let item = StagedGalleryItem(id: UUID().uuidString, kind: .new(image: image.normalizedUp()), url: nil)
+        galleryItems = [item]
+        coverItemID = item.id
     }
 
     private func categoryIcon(_ key: String) -> String {

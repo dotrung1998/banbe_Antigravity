@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { loadHiddenTickets, reconcileTickets, removeTickets, syncHiddenTickets } from '../lib/ticketRetention.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
+import DigestOptIn from './DigestOptIn.jsx';
 import { EVENTS } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
@@ -455,6 +456,9 @@ export default function AccountGroup() {
             <Row icon="shield" label={T('Bảo mật', 'Security')} trailing="›" testId="account-security" onClick={openSecurity} border={false} />
           </div>
         )}
+
+        {/* L5 (migration 200): the weekly digest opt-in; renders nothing while the weekly_digest switch is off. */}
+        {key === 'preferences' && <DigestOptIn />}
 
         {/* Account deletion (Task 2, Account/Settings pass) — a visually
             separated "Account Management" subsection inside this same

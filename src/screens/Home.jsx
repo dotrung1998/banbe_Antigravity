@@ -493,6 +493,23 @@ export default function Home() {
       seatsDisplay: e.soldOut ? T('Hết chỗ', 'Sold out') : (e.seatsRemaining != null ? T(e.seatsRemaining + ' chỗ trống', e.seatsRemaining + ' left') : ''),
     })), [s.weekendEvents, curArea, s.homeFilters, isSaved, T]);
 
+  // L5 weekly digest (src/lib/coreLoops.js): its notification opens Home at "This weekend". Waits for the rail to
+  // exist (it is hidden on the very first load) and runs after the shell's own scroll restore, once per token.
+  const weekendRef = useRef(null);
+  const weekendScrolledFor = useRef(0);
+  const weekendRailReady = !(s.weekendEventsLoading && weekendList.length === 0);
+  useEffect(() => {
+    const token = s.homeWeekendScrollToken;
+    if (!token || weekendScrolledFor.current === token || !weekendRailReady) return undefined;
+    const t = setTimeout(() => {
+      const el = weekendRef.current;
+      if (!el) return;
+      weekendScrolledFor.current = token;
+      el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [s.homeWeekendScrollToken, weekendRailReady]);
+
   const heldKey = heldEv ? heldEv.key : null;
   // Note 50: the "Your events" strip is gone (Schedule + Account own your events). What stays is the one part
   // with real value: the note-37 reminder, as a "Next up" banner. Only a confirmed ticket can carry a reminder,
@@ -949,7 +966,7 @@ export default function Home() {
           instant before real data arrives — same "no false state on
           initial load" bar Stage 1's favorites work already holds to. */}
       {homeFilters.date !== 'weekend' && !(s.weekendEventsLoading && weekendList.length === 0) && (
-        <div data-testid="home-weekend-section" style={{ padding: '16px 20px 4px', borderTop: `1px solid ${rule}` }}>
+        <div ref={weekendRef} data-testid="home-weekend-section" style={{ scrollMarginTop: 72, padding: '16px 20px 4px', borderTop: `1px solid ${rule}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
             <span style={{ ...display(SECTION_TITLE) }}>{T('Cuối tuần này', 'This weekend')}</span>
           </div>

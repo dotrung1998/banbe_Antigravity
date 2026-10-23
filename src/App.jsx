@@ -57,6 +57,8 @@ import AdminEvents from './screens/AdminEvents.jsx';
 import AdminTestAccounts from './screens/AdminTestAccounts.jsx';
 import AdminFeatures from './screens/AdminFeatures.jsx';
 import AdminRetention from './screens/AdminRetention.jsx';
+import EventRecap from './screens/EventRecap.jsx';
+import HostRecap from './screens/HostRecap.jsx';
 import AdminManageEvents from './screens/AdminManageEvents.jsx';
 import AdminDobCorrections from './screens/AdminDobCorrections.jsx';
 import ToastStack from './screens/ToastStack.jsx';
@@ -127,6 +129,8 @@ const SCREENS = {
   adminTestAccounts: AdminTestAccounts,
   adminFeatures: AdminFeatures,
   adminRetention: AdminRetention,
+  eventRecap: EventRecap,
+  hostRecap: HostRecap,
   adminManageEvents: AdminManageEvents,
   adminDobCorrections: AdminDobCorrections,
   policy: Policy,

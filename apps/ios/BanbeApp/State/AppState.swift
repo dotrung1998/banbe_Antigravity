@@ -17,6 +17,7 @@ enum Screen: String {
     case paymentDetails, billing, payout, documents, documentView
     case verifications, disputes, adminEvents, adminTestAccounts, adminDobCorrections, adminFeatures, adminManageEvents
     case adminRetention
+    case eventRecap, hostRecap
     case policy
     case mapExplore
     case refundAccounts, myRefunds
@@ -494,6 +495,16 @@ final class AppState: ObservableObject {
     @Published var eventFill: [String: (booked: Int, capacity: Int)] = [:]
     /// Phase 1 Q5: the event whose approval notification the host just opened (Dashboard shows its "live" card once).
     @Published var liveCelebrationEventID: String?
+    /// Phase 2 core loops (Lib/CoreLoops.swift): the guest recap card (L2) and the host recap (L3), each with the
+    /// screen its back link returns to.
+    @Published var eventRecapID: String?
+    @Published var eventRecapBack: Screen = .home
+    @Published var hostRecapID: String?
+    @Published var hostRecapBack: Screen = .dashboard
+    /// L5 weekly digest: set when its notification opens Home; HomeView scrolls to "This weekend" once and clears it.
+    @Published var homeWeekendScrollRequest: UUID?
+    /// L3 "Run it again": the original event's cover, staged by CreateEventView as the new draft's first photo (once).
+    @Published var createSeedCoverImage: UIImage?
     /// The Search screen's query, kept while it's open.
     @Published var searchQuery = ""
     @Published var searchBackScreen: Screen = .home
@@ -3777,6 +3788,8 @@ final class AppState: ObservableObject {
         // Help & Legal guides / Q&A go back to the Help & Legal group.
         case .helpGuide where helpGuideKey == "admin": screen = .profile
         case .helpGuide, .helpFaq: accountGroupKey = "helpLegal"; screen = .accountGroup
+        case .eventRecap: screen = eventRecapBack
+        case .hostRecap: screen = hostRecapBack
         default: break
         }
     }
@@ -3894,6 +3907,8 @@ final class AppState: ObservableObject {
         case .policy: return policyBackScreen
         case .helpGuide where helpGuideKey == "admin": return .profile
         case .helpGuide, .helpFaq: return .accountGroup
+        case .eventRecap: return eventRecapBack
+        case .hostRecap: return hostRecapBack
         default: return .home
         }
     }

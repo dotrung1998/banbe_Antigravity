@@ -133,6 +133,27 @@ export default function CreateEvent() {
     setCoverKey((coverRow || seeded[0])?.url || null);
   }, [s.createEditEventId, s.eventPhotos, s.eventPhotosLoading, s.realEventsById]);
 
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+  // L3 "Run it again" (BanBeContext runItAgain): the original event's cover becomes this new draft's first photo, as
+  // an ordinary staged file the host can remove or replace. Fetched once; a failure just leaves the gallery empty.
+  useEffect(() => {
+    const url = s.createSeedCoverUrl;
+    if (!url || s.createEditEventId) return undefined;
+    // Cleared at once so it is used once; the fetch below is not tied to this effect's cleanup (clearing the url
+    // re-runs it), only to the screen still being mounted.
+    set({ createSeedCoverUrl: null });
+    fetch(url).then(r => (r.ok ? r.blob() : null)).then((blob) => {
+      if (!mountedRef.current || !blob || !ALLOWED_PHOTO_TYPES.has(blob.type) || blob.size > MAX_PHOTO_BYTES) return;
+      const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg';
+      const file = new File([blob], `cover.${ext}`, { type: blob.type });
+      const item = { kind: 'new', file, url: URL.createObjectURL(file) };
+      setItems(prev => (prev.length ? prev : [item]));
+      setCoverKey(prev => prev ?? item.url);
+    }, () => {});
+    return undefined;
+  }, [s.createSeedCoverUrl, s.createEditEventId, set]);
+
   useEffect(() => () => {
     items.forEach(it => { if (it.kind === 'new') URL.revokeObjectURL(it.url); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

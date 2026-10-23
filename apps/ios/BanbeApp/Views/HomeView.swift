@@ -100,6 +100,8 @@ struct HomeView: View {
             app.palette.paper.ignoresSafeArea()
         VStack(alignment: .leading, spacing: 0) {
             header
+            // L5 weekly digest: its notification asks for the "This weekend" rail (AppState.goHomeThisWeekend).
+            ScrollViewReader { weekendProxy in
             ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: homeScrollAnchorBinding, restoreOffsetY: app.homeScrollOffsetY, onScrollOffset: { app.homeScrollOffsetY = $0 }, scrollToTopToken: app.homeScrollToTopToken, refreshIndicatorTopPadding: 16, onRefresh: {
                 await app.loadHomeLiveEvents()
                 await app.loadWeekendEvents()
@@ -142,7 +144,7 @@ struct HomeView: View {
                     // Requirements are soft: when filters leave almost nothing, offer the one change that adds the most.
                     if !snap.relaxHints.isEmpty && !snap.items.isEmpty { relaxHintsRow(snap.relaxHints) }
                     if snap.cards.isEmpty { emptyState } else { footer }
-                    if app.homeFilters.date != "weekend" { weekendSection }
+                    if app.homeFilters.date != "weekend" { weekendSection.id("home.weekend") }
                     // Survey discovery is authenticated-only server-side
                     // (get_public_survey_discovery); hide it for guests.
                     if app.isSignedIn { surveyDiscoveryRow }
@@ -150,6 +152,8 @@ struct HomeView: View {
                     hostLink
                 }
                 .padding(.bottom, 100)
+            }
+            .task(id: app.homeWeekendScrollRequest) { await scrollToWeekendIfAsked(weekendProxy) }
             }
         }
         }
@@ -325,6 +329,22 @@ struct HomeView: View {
                 }
             }
         }
+    }
+
+    /// Once per request: waits for the rail (hidden while the first load is still empty) and for the scaffold's own
+    /// restore window, then brings "This weekend" to the top.
+    private func scrollToWeekendIfAsked(_ proxy: ScrollViewProxy) async {
+        guard app.homeWeekendScrollRequest != nil else { return }
+        for _ in 0..<20 {
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            if Task.isCancelled { return }
+            if !app.weekendEventsLoading || !app.weekendEvents.isEmpty { break }
+        }
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        guard !Task.isCancelled, app.homeWeekendScrollRequest != nil else { return }
+        app.homeWeekendScrollRequest = nil
+        guard app.homeFilters.date != "weekend" else { return } // the whole feed is already this weekend
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.4)) { proxy.scrollTo("home.weekend", anchor: .top) }
     }
 
     private func startTickingIfNeeded() {

@@ -27,8 +27,9 @@ import { loadMapKit } from '../lib/mapkit.js';
 import { mapKitSearch } from '../lib/mapkitAdapter.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
 import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, marketColumnList, isMissingColumnError } from '../lib/mediaUrls.js';
-import { rowTimeZone, rowCurrency, formatMoney, resolveEventTimeZone, eventCurrency, VN_TIME_ZONE, parsePriceInput, priceInputText, wallClockToMs } from '../lib/eventMarket.js';
+import { rowTimeZone, rowCurrency, formatMoney, resolveEventTimeZone, eventCurrency, VN_TIME_ZONE, parsePriceInput, priceInputText, wallClockToMs, todayInZone } from '../lib/eventMarket.js';
 import { eventDraftDefaults, createDefaultsPatch, createDraftMatchesDefaults } from '../lib/smartDefaults.js';
+import { notificationRoute, runItAgainDate } from '../lib/coreLoops.js';
 import { DEFAULT_FILTERS as HOME_DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
 import { flagOn, normalizeFlags, readCachedFlags, writeCachedFlags } from '../lib/featureFlags.js';
 
@@ -469,6 +470,7 @@ const PRIVATE_STATE_KEYS = [
   'myOrganizerIdsStatus', 'myOrganizerAvatarPath', 'myOrganizerAvatarR2Ref', 'orgRegName', 'orgRegDesc', 'orgRegIntroLong',
   'orgRegLinks', 'myOrgEventKeys', 'myOrgEventOrganizerId', 'myOrgPublishedEventCount', 'myOrgHostingSinceYear',
   'ensureOrganizerStatus', 'ensureOrganizerError', 'hostSetupOpen', 'organizerProfile', 'scheduleAddedKeys', 'guestPrompt',
+  'eventRecapId', 'hostRecapId', 'createSeedCoverUrl',
 ];
 const isPublicEventRow = (e) => !!e && e.visibility === 'public' && ['live', 'ended', 'cancelled'].includes(e.status);
 /** The signed-out state patch. Cached events keep only public rows (a private/invite/draft event fetched while
@@ -600,6 +602,13 @@ const initialState = {
   eventFill: {},
   // Phase 1 Q5: the event whose approval notification the host just opened (Dashboard shows its "live" card once).
   liveCelebrationFor: null,
+  // Phase 2 core loops (src/lib/coreLoops.js): the guest recap card (L2) and the host recap (L3), each with the
+  // screen its back link returns to; Home scrolls to "This weekend" when this token changes (L5 digest).
+  eventRecapId: null,
+  eventRecapBack: 'home',
+  hostRecapId: null,
+  hostRecapBack: 'dashboard',
+  homeWeekendScrollToken: 0,
   searchQuery: '',
   searchOverlayOpen: false,
   notificationsOverlayOpen: false,
@@ -1209,6 +1218,8 @@ const initialState = {
   // = first-event defaults or none) and the applied values themselves.
   createDefaultsSource: null,
   createAppliedDefaults: null,
+  // L3 "Run it again": the original event's cover, staged by CreateEvent as the new draft's first photo (once).
+  createSeedCoverUrl: null,
   createEventTime: '',
   createPrice: '',
   createSeats: '',
@@ -6518,7 +6529,26 @@ export function BanBeProvider({ children }) {
   // sites (ActionCenter's onOpenDashboard) wire this straight to an
   // onClick, which would otherwise hand it the click event instead.
   const goDashboard = useCallback((back) => set({ screen: 'dashboard', ...(typeof back === 'string' ? { dashboardBack: back } : {}) }), [set]);
-  const goCreate = useCallback(() => {
+  // Phase 2 core loops (src/lib/coreLoops.js). L2: the guest's recap card for an ended event (photos, follow host,
+  // next from this host, private feedback). L3: the host's recap (turnout, followers, returning guests, feedback,
+  // Run it again). Both read the event from the shared realEventsById cache.
+  const openEventRecap = useCallback((eventId, back) => {
+    if (!eventId) return;
+    set(prev => ({ screen: 'eventRecap', eventRecapId: eventId, eventRecapBack: typeof back === 'string' ? back : prev.screen }));
+    loadRealEventsById([eventId]);
+  }, [set, loadRealEventsById]);
+  const backFromEventRecap = useCallback(() => set(prev => ({ screen: prev.eventRecapBack || 'home' })), [set]);
+  const openHostRecap = useCallback((eventId, back) => {
+    if (!eventId) return;
+    set(prev => ({ screen: 'hostRecap', hostRecapId: eventId, hostRecapBack: typeof back === 'string' ? back : prev.screen }));
+    loadRealEventsById([eventId]);
+  }, [set, loadRealEventsById]);
+  const backFromHostRecap = useCallback(() => set(prev => ({ screen: prev.hostRecapBack || 'dashboard' })), [set]);
+  // L5 weekly digest: Home, scrolled to the "This weekend" rail (Home.jsx watches the token).
+  const goHomeThisWeekend = useCallback(() => set({ screen: 'home', notificationsOverlayOpen: false, homeWeekendScrollToken: Date.now() }), [set]);
+  // `seed` (L3 "Run it again", runItAgain below): a state patch laid over the blank draft. A seeded draft is already
+  // a copy of a real event, so the "copy my last event" upgrade below never runs over it.
+  const startCreate = useCallback((seed = null) => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'create', authBackScreen: 'hostIntro' });
     if (!canHost) enableOrganizerMode();
     // A fresh "create a new event" entry, distinct from goEditEvent's own
@@ -6554,11 +6584,13 @@ export function BanBeProvider({ children }) {
       ...createDefaultsPatch(eventDraftDefaults(null)),
       createIncludedItems: [], createIntro: '', createKeywords: '', createChatGreeting: '', createChatGreetingEn: '', createVisibility: 'public', createHostGoal: null,
       createCriteria: everyoneCriteria(), createCriteriaLoaded: everyoneCriteria(), createCriteriaLoad: 'ready', createCriteriaRetryEventId: null,
+      createSeedCoverUrl: null,
+      ...(seed || {}),
     }));
     // Smart defaults (note 48): upgrade the first-event defaults to "copy my
     // last event" once it loads — only while the draft is still untouched.
     const orgIds = s.myOrganizerIds || [];
-    if (orgIds.length) {
+    if (!seed && orgIds.length) {
       // `currency` (migration 195) rides the shared missing-column fallback; without it the row is VND.
       withR2Columns(() => supabase.from('events').select(['name, event_date, event_time, price_vnd, capacity, cat_key', ...marketColumnList()].join(', '))
         .in('organizer_id', orgIds).not('event_date', 'is', null)
@@ -6574,6 +6606,43 @@ export function BanBeProvider({ children }) {
         }, () => {});
     }
   }, [set, s.user, s.myOrganizerIds, canHost, enableOrganizerMode]);
+  // Wired straight to onClick in places: never pass the click event on as a seed.
+  const goCreate = useCallback(() => startCreate(null), [startCreate]);
+  /**
+   * L3 "Run it again" (docs/impl/phase2-core-loops.md): Create Event filled from one of the host's own events, the
+   * same fields an edit pre-fills (name, category, description, intro, included items, the confirmed address,
+   * capacity, price in its currency) plus its cover as the first photo, on the next date coreLoops.runItAgainDate
+   * picks (one week later, never in the past, at least 2 days out, same time). The draft shows note 48's
+   * "pre-filled from …" notice with Start blank, and nothing is created until the host submits it.
+   */
+  const runItAgain = useCallback((eventId) => {
+    const real = s.realEventsById[eventId];
+    if (!real) return;
+    const { date, time } = runItAgainDate({ eventDate: real.eventDate, eventTime: real.eventTime, today: todayInZone(rowTimeZone(real)) });
+    const currency = rowCurrency(real);
+    const price = real.priceVnd && currency === createFormMarket({ createCountryCode: real.countryCode }).currency
+      ? priceInputText(real.priceVnd, currency) : '';
+    const applied = {
+      date: date || '', time: time || '', price, seats: real.capacity ? String(real.capacity) : '',
+      cats: real.catKey && real.catKey !== 'all' ? [real.catKey] : [], sourceName: real.name || null,
+    };
+    startCreate({
+      createName: real.name || '', createDesc: real.description || '', createIntro: real.intro || '',
+      createIncludedItems: Array.isArray(real.includedItems) ? real.includedItems.map(it => ({ label: it.label || '', detail: it.detail || '' })) : [],
+      // Same address handling as goEditEvent: a verified address arrives confirmed, an older one seeds the search.
+      createLoc: real.addressVerified ? '' : (real.area || ''),
+      createLat: real.lat ?? null, createLng: real.lng ?? null,
+      createLocLabel: real.addressVerified ? [real.addressLine, real.area, real.city].filter(Boolean).join(', ') : '',
+      createAddressLine: real.addressLine || '', createDistrict: real.area || '',
+      createCity: real.city || '', createPostalCode: real.postalCode || '',
+      createCountryCode: real.countryCode || '', createStateProvince: real.stateProvince || '',
+      createNeighborhood: real.neighborhood || '', createTz: real.tz || '',
+      createLocConfirmed: !!real.addressVerified,
+      createPriceCurrency: currency,
+      ...createDefaultsPatch(applied),
+      createSeedCoverUrl: real.photoUrl || null,
+    });
+  }, [s.realEventsById, startCreate]);
   // "Start blank": drop every smart default (note 48).
   const clearCreateDefaults = useCallback(() => set({
     createEventDate: '', createEventTime: '', createPrice: '', createSeats: '', createCats: [],
@@ -10987,13 +11056,42 @@ export function BanBeProvider({ children }) {
         // already-personal-tab Account screen.
         set({ screen: 'profile', accountTab: 'personal' });
         break;
+      // Phase 2-3 core loops (migrations 199/200): one pure table, src/lib/coreLoops.js notificationRoute(), shared
+      // with iOS through tests/fixtures/core-loops.json. A reminder opens the ticket; a recap opens its card only
+      // while that switch is on (otherwise the event / the dashboard); a bundled follow alert opens Following; the
+      // weekly digest opens Home at "This weekend".
+      case 'event_reminder_day':
+      case 'event_reminder_soon':
+      case 'event_recap':
+      case 'host_event_recap':
+      case 'follow_alert':
+      case 'weekly_digest': {
+        const r = notificationRoute(n.kind, n.data);
+        if (!r) break;
+        if (r.route === 'ticket') {
+          const result = await openBookingConfirmed(r.id, n.data?.event_id, 'notifications');
+          if (result?.notFound) reportStaleNotification(n);
+        } else if (r.route === 'eventRecap') {
+          if (flagOn(s.featureFlags, 'event_recap')) openEventRecap(r.id, 'notifications'); else goEvent(r.id);
+        } else if (r.route === 'hostRecap') {
+          if (!iOrganize(r.id)) break;
+          if (flagOn(s.featureFlags, 'host_recap')) openHostRecap(r.id, 'notifications'); else goDashboard('notifications');
+        } else if (r.route === 'event') {
+          goEvent(r.id);
+        } else if (r.route === 'following') {
+          set({ screen: 'following' });
+        } else if (r.route === 'thisWeekend') {
+          goHomeThisWeekend();
+        }
+        break;
+      }
       // 'guest_renamed': category B, informational only, no destination by
       // design — falls to default. markNotificationRead() above is the
       // whole "action."
       default:
         break;
     }
-  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, s.myOrganizerIds, s.canManageAdmins, openVerifications, openPaymentDetails, openDocumentFromNotification, reportStaleNotification, goEvent, goDashboard, openAccountGroup]);
+  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, s.myOrganizerIds, s.canManageAdmins, s.featureFlags, openVerifications, openPaymentDetails, openDocumentFromNotification, reportStaleNotification, goEvent, goDashboard, openAccountGroup, openEventRecap, openHostRecap, goHomeThisWeekend]);
   /**
    * The organizer's "mark as paid". confirm_payment issues the receipt in
    * the same transaction (migration 024) and notifies the guest, which is
@@ -11191,7 +11289,7 @@ export function BanBeProvider({ children }) {
     loadDisputeChats, toggleDisputeChat, openDisputeChatInInbox, loadRefundDisputeChat, sendRefundDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
     loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
@@ -11230,7 +11328,7 @@ export function BanBeProvider({ children }) {
     loadDisputeChats, toggleDisputeChat, openDisputeChatInInbox, loadRefundDisputeChat, sendRefundDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
     loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,

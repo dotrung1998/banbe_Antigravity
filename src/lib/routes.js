@@ -84,6 +84,8 @@ export function screenToPath(st) {
     case 'documentView': return st.documentId ? `/documents/${enc(st.documentId)}` : '/documents';
     case 'attendance': return st.attendanceEventKey ? `/host/attendance/${enc(st.attendanceEventKey)}` : '/host/dashboard';
     case 'paymentDetails': return st.paymentBookingId ? `/payment/${enc(st.paymentBookingId)}` : '/payment';
+    case 'eventRecap': return st.eventRecapId ? `/event/${enc(st.eventRecapId)}/recap` : '/';
+    case 'hostRecap': return st.hostRecapId ? `/host/recap/${enc(st.hostRecapId)}` : '/host/dashboard';
     default: return '/';
   }
 }
@@ -111,6 +113,9 @@ export function pathToRoute(pathname) {
     const key = dec(m[1]);
     return { screen: 'reserve', params: {}, parent: `/event/${enc(key)}`, needs: (st) => st.eventKey === key && (st.attendeeDrafts || []).length > 0 };
   }
+  // Phase 2 recaps (L2 guest card, L3 host recap): the screens fetch their own data, so a pasted link just opens them.
+  if ((m = path.match(/^\/event\/([^/]+)\/recap$/))) return { screen: 'eventRecap', params: {}, open: 'openEventRecap', openArgs: [dec(m[1]), 'home'] };
+  if ((m = path.match(/^\/host\/recap\/([^/]+)$/))) return { screen: 'hostRecap', params: {}, open: 'openHostRecap', openArgs: [dec(m[1]), 'dashboard'] };
   if ((m = path.match(/^\/event\/([^/]+)\/chat$/))) {
     const key = dec(m[1]);
     return { screen: 'chat', params: {}, parent: `/event/${enc(key)}`, needs: (st) => st.eventKey === key && !!st.chatBack };

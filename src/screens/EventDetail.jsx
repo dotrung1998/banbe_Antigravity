@@ -15,6 +15,7 @@ import { supabase } from '../lib/supabase.js';
 import { withR2Columns, marketColumnList } from '../lib/mediaUrls.js';
 import { rowTimeZone } from '../lib/eventMarket.js';
 import { nextFromHost, whenLabel } from '../lib/quickWins.js';
+import { flagOn } from '../lib/featureFlags.js';
 
 // Airbnb-style layout (mirrors iOS EventDetailView): the photo is a pinned backdrop that fades out while the
 // rounded info sheet scrolls up over it; pulling down from the very top closes the screen with a shrink.
@@ -75,7 +76,7 @@ let lastVisit = null;
 // saved; every guest control (save, share, ⋯, calendar pill, host actions, seat chips, Reserve) is shown but inert.
 // iOS twin: EventDetailView(preview:).
 export default function EventDetail({ preview = null } = {}) {
-  const { state, T, trStatus, stripKm, curEvent, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, setQty, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav, toggleFollowOrganizer, goEvent } = useBanBe();
+  const { state, T, trStatus, stripKm, curEvent, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, setQty, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav, toggleFollowOrganizer, goEvent, openEventRecap } = useBanBe();
   const s = state;
   const ev = preview?.ev ?? curEvent;
   // Spread into a guest control's style in preview: visible exactly as guests see it, but does nothing.
@@ -664,6 +665,13 @@ export default function EventDetail({ preview = null } = {}) {
               </p>
             )}
           </div>
+        )}
+        {/* L2 (switch event_recap): a guest who went opens their recap card, where the private feedback lives. */}
+        {barState === 'endedAttended' && !preview && s.realEventsById[ev.key] && flagOn(s.featureFlags, 'event_recap') && (
+          <button type="button" onClick={() => openEventRecap(ev.key, 'event')} data-testid="event-open-recap"
+            style={{ ...pillBtn, width: '100%', marginTop: 28, padding: '12px 14px', border: 'none', ...inkButton(), fontSize: 14, fontWeight: 600 }}>
+            {T('Xem tổng kết và gửi cảm nhận', 'See the recap and share feedback')}
+          </button>
         )}
         {isOver && !preview && evOrganizerId && (
           <div data-testid="event-ended-next" style={{ marginTop: 28 }}>

@@ -24,6 +24,13 @@ enum PushRouting {
                                data: data, readAt: nil, createdAt: now)
     }
 
+    /// Phase 2-3 kinds (event reminders, recaps, follow alerts, the weekly digest): where a tapped push lands, the same
+    /// table a bell tap uses (`openNotification(_:)` → `CoreLoops.route`, shared with web via
+    /// tests/fixtures/core-loops.json). nil for every other kind.
+    static func coreLoopDestination(_ notification: AppNotification) -> CoreLoops.Destination? {
+        CoreLoops.route(kind: notification.kind, data: notification.data)
+    }
+
     /// One JSON value the way `AnyCodableValue`'s decoder would read it (nested objects/arrays → `.null`, same as
     /// decoding the jsonb column). APNs hands over Foundation types: NSString, NSNumber (incl. booleans), NSNull.
     static func value(_ any: Any) -> AnyCodableValue {

@@ -1271,6 +1271,10 @@ private let notificationKindCategory: [String: String] = [
     // generic bell) before; mirrors web's own new 'team' KIND_CATEGORY
     // entry (Notifications.jsx) exactly.
     "organizer_invite": "team", "organizer_invite_response": "team", "event_credit_invite": "team",
+    // Phase 2-3 core loops (migrations 199/200), same as web: reminders get a calendar-with-clock glyph; recaps,
+    // follow alerts and the weekend digest are about an event.
+    "event_reminder_day": "reminder", "event_reminder_soon": "reminder",
+    "event_recap": "event", "host_event_recap": "event", "follow_alert": "event", "weekly_digest": "event",
 ]
 private func notificationCategory(_ kind: String) -> String { notificationKindCategory[kind] ?? "system" }
 
@@ -1282,7 +1286,7 @@ private func notificationCategory(_ kind: String) -> String { notificationKindCa
 // `CATEGORY_ACCENT` (Notifications.jsx) value-for-value.
 private let notificationCategoryAccent: [String: Color] = [
     "refund": ROW_ACCENT_COLORS["payments"]!, "payment": ROW_ACCENT_COLORS["payments"]!, "dispute": ROW_ACCENT_COLORS["payments"]!,
-    "booking": ROW_ACCENT_COLORS["activity"]!, "event": ROW_ACCENT_COLORS["activity"]!,
+    "booking": ROW_ACCENT_COLORS["activity"]!, "event": ROW_ACCENT_COLORS["activity"]!, "reminder": ROW_ACCENT_COLORS["activity"]!,
     "team": ROW_ACCENT_COLORS["team"]!,
     "message": ROW_ACCENT_COLORS["preferences"]!, "system": ROW_ACCENT_COLORS["preferences"]!,
 ]
@@ -1296,6 +1300,7 @@ private struct NotificationKindIcon: View {
         case "payment": return "creditcard"
         case "booking": return "calendar.badge.checkmark"
         case "event": return "calendar"
+        case "reminder": return "calendar.badge.clock"
         case "message": return "bubble.left"
         case "team": return "person.2"
         default: return "bell"

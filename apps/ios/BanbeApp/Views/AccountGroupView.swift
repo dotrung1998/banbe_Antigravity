@@ -587,6 +587,9 @@ struct AccountGroupView: View {
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
+        // L5 (migration 200): the weekly digest opt-in; renders nothing while the weekly_digest switch is off.
+        NotificationPrefsSection()
+
         // Account deletion (Task 2, Account/Settings pass) — a visually
         // separated "Account Management" subsection, per this ticket's own
         // placement instruction (distinct from the rows above and from

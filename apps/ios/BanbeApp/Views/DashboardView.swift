@@ -528,6 +528,18 @@ struct DashboardView: View {
                                         .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
+                                    // L3 host recap (migration 199): only for real events, only while the switch is on.
+                                    if app.hostRecapEnabled, app.myOrgEventSummaries.contains(where: { $0.id == item.key }) {
+                                        Button { app.openHostRecap(item.key, back: .dashboard) } label: {
+                                            Text(app.T("Tổng kết", "Recap"))
+                                                .font(.system(size: 11, weight: .semibold))
+                                                .padding(.horizontal, 10).padding(.vertical, 6)
+                                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule, lineWidth: 1))
+                                                .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityIdentifier("dashboard.recap.\(item.key)")
+                                    }
                                     // STAGE C — Task 1's own "ended must stay
                                     // in the library" rule implies a host
                                     // should be able to add a recap photo

@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase.js';
 import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
 import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
 import { claimOnce, isNewlyLive } from '../lib/quickWins.js';
+import { flagOn } from '../lib/featureFlags.js';
 
 // THIRD STALE-AVATAR SITE (2026-09-28) — this header's round avatar next to
 // the org name / "Bởi <org> Team" line used to always be `bg(ev.img, ...)`,
@@ -47,9 +48,11 @@ export default function Dashboard() {
     loadRealEventsById, goEditEvent, openOrganizerProfile,
     loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember,
     assignEventCredit, withdrawEventSubmission, loadResubmissionStatus,
-    loadMyOrgStats, set, shareEvent, addToBanbeSchedule,
+    loadMyOrgStats, set, shareEvent, addToBanbeSchedule, openHostRecap,
   } = useBanBe();
   const s = state;
+  // L3 host recap (migration 199): a Recap pill on each real past event, only while the switch is on.
+  const hostRecapOn = flagOn(s.featureFlags, 'host_recap');
   const [creditEventKey, setCreditEventKey] = useState('');
   const [creditUserId, setCreditUserId] = useState('');
   // Withdrawal (migration 107) — a plain inline reason prompt, one at a
@@ -533,6 +536,12 @@ export default function Dashboard() {
                 <span style={{ ...display(15, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</span>
                 <span style={{ fontSize: 11.5, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{trStatus(stripKm(e.meta, e))} ▪︎ {e.agoLabel(e.endedHoursAgo)}</span>
               </div>
+              {hostRecapOn && e.isReal && (
+                <span onClick={() => openHostRecap(e.key, 'dashboard')} role="button" data-testid={`dashboard-recap-${e.key}`}
+                  style={{ fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', flex: 'none', cursor: 'pointer' }}>
+                  {T('Tổng kết', 'Recap')}
+                </span>
+              )}
               {/* STAGE C — Task 1's own "ended must stay in the library"
                   rule implies a host should be able to add a recap photo
                   to an event after it's over, not just while it's live. */}

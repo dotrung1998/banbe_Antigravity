@@ -866,6 +866,14 @@ struct EventDetailView: View {
                     .padding(.top, 20)
             }
 
+            // L2 (switch event_recap): a guest who went opens their recap card, where the private feedback lives.
+            if barState == .endedAttended, !isPreview, app.eventRecapEnabled, (app.realEventsByID[event.key] ?? nil) != nil {
+                InkButton(title: app.T("Xem tổng kết và gửi cảm nhận", "See the recap and share feedback")) {
+                    app.openEventRecap(event.key, back: .event)
+                }
+                .padding(.top, 28)
+                .accessibilityIdentifier("event.openRecap")
+            }
             if isOver, !isPreview, let orgID = endedOrganizerID {
                 endedNextSection(orgID).padding(.top, 28)
             }

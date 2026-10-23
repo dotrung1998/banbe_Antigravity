@@ -33,6 +33,10 @@ const KIND_CATEGORY = {
   // generic bell/circle glyph) before; a distinct people icon reads as "a
   // Team thing" instead.
   organizer_invite: 'team', organizer_invite_response: 'team', event_credit_invite: 'team',
+  // Phase 2-3 core loops (migrations 199/200): reminders get their own calendar-with-clock glyph; recaps, follow
+  // alerts and the weekend digest are about an event.
+  event_reminder_day: 'reminder', event_reminder_soon: 'reminder',
+  event_recap: 'event', host_event_recap: 'event', follow_alert: 'event', weekly_digest: 'event',
 };
 function notificationCategory(kind) { return KIND_CATEGORY[kind] || 'system'; }
 
@@ -49,7 +53,7 @@ function notificationCategory(kind) { return KIND_CATEGORY[kind] || 'system'; }
 // contrast is inherited for free and color is never the only signal.
 const CATEGORY_ACCENT = {
   refund: '#E3D3B4', payment: '#E3D3B4', dispute: '#E3D3B4',
-  booking: '#E7C9C2', event: '#E7C9C2',
+  booking: '#E7C9C2', event: '#E7C9C2', reminder: '#E7C9C2',
   team: '#C8CBB2',
   message: '#3A3630', system: '#3A3630',
 };
@@ -62,6 +66,7 @@ function KindIcon({ category }) {
     payment: <><rect x="3.5" y="5.5" width="17" height="13" rx="1.8" /><path d="M3.5 9.7h17" /></>,
     booking: <><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17" /><path d="M8 3v4M16 3v4" /></>,
     event: <><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17" /><circle cx="12" cy="14.5" r="2.1" /></>,
+    reminder: <><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17" /><path d="M8 3v4M16 3v4" /><path d="M12 12.6v2.6l1.8 1.1" /></>,
     message: <path d="M4 5.5h16v10.6H9.6L5 20V16.1H4z" />,
     team: <><circle cx="8.5" cy="8.5" r="3" /><circle cx="16" cy="9.5" r="2.4" /><path d="M3.2 19c.5-3.1 2.7-5 5.3-5s4.8 1.9 5.3 5" /><path d="M14.5 14.3c2.1.2 3.8 1.9 4.2 4.7" /></>,
     system: <><circle cx="12" cy="12" r="8.4" /><path d="M12 8.3v4.5M12 15.7v0" /></>,
