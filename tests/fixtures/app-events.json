@@ -1,0 +1,103 @@
+{
+  "_comment": "Shared contract for first-party measurement (migration 196). Every event name the web (src/lib/analytics.js) or iOS (Lib/Analytics.swift) can send, with the ONLY property keys the server keeps. Values must be short scalars: ids, counts, buckets. Tested by tests/unit/appEvents.test.mjs, apps/ios/BanbeAppTests/AppEventsTests.swift and supabase/_localtest/25 (server whitelist == this file).",
+  "events": {
+    "app_opened": [],
+    "event_opened": [
+      "event_id",
+      "source"
+    ],
+    "ticket_opened": [
+      "day_bucket"
+    ],
+    "notification_opened": [
+      "kind",
+      "source"
+    ],
+    "share_completed": [
+      "channel",
+      "context"
+    ],
+    "follow_tapped": [
+      "context"
+    ],
+    "onboarding_started": [],
+    "onboarding_question_viewed": [
+      "question_id"
+    ],
+    "onboarding_question_answered": [
+      "question_id",
+      "answer_count"
+    ],
+    "onboarding_question_skipped": [
+      "question_id"
+    ],
+    "onboarding_completed": [
+      "answered_questions",
+      "skipped_all"
+    ],
+    "personalized_results_viewed": [
+      "match_bucket"
+    ],
+    "first_event_opened": [],
+    "first_event_saved": [],
+    "first_reservation_started": [],
+    "permission_prompted": [
+      "permission"
+    ],
+    "permission_result": [
+      "permission",
+      "result"
+    ],
+    "public_entry_viewed": [],
+    "public_entry_get_started": [],
+    "public_entry_login": [],
+    "public_story_opened": [],
+    "public_story_completed": [],
+    "public_story_skipped": [
+      "step"
+    ],
+    "guest_browse_started": [],
+    "guest_signin_prompt_shown": [
+      "context"
+    ],
+    "guest_signin_prompt_accepted": [
+      "context"
+    ],
+    "create_event_started_blank": [],
+    "recipe_opened": [],
+    "recipe_fix_tapped": [
+      "ingredient"
+    ],
+    "submit_recipe_score": [
+      "bucket"
+    ],
+    "schedule_opened": [],
+    "schedule_mode_selected": [
+      "mode"
+    ],
+    "schedule_day_selected": [
+      "day_bucket"
+    ],
+    "schedule_conflict_shown": [
+      "count_bucket"
+    ],
+    "banbe_schedule_add": [],
+    "banbe_schedule_remove": [],
+    "banbe_schedule_result": [
+      "result"
+    ],
+    "system_calendar_editor_opened": [],
+    "system_calendar_editor_result": [
+      "result"
+    ],
+    "rewards_badge_celebrated": [
+      "code"
+    ],
+    "rewards_week_milestone": [
+      "weeks"
+    ],
+    "rewards_goal_set": [
+      "goal"
+    ]
+  }
+}

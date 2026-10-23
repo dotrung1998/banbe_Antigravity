@@ -1,0 +1,49 @@
+{
+  "_comment": "Shared parity vectors for Phase 1 quick wins (docs/impl/phase1-quick-wins.md). Read by tests/unit/quickWins.test.mjs (web) and apps/ios/BanbeAppTests/QuickWinsTests.swift (iOS). Times are ISO instants; 'now' is given per case.",
+  "endedPrecedence": [
+    { "case": "ended event with a ticket: You went", "booking": true, "ticket": true, "cancelled": false, "ended": true, "soldOut": false, "expect": "endedAttended" },
+    { "case": "ended event, no booking: Missed it", "booking": false, "ticket": false, "cancelled": false, "ended": true, "soldOut": false, "expect": "ended" },
+    { "case": "ended event, booking never confirmed", "booking": true, "ticket": false, "cancelled": false, "ended": true, "soldOut": false, "expect": "ended" },
+    { "case": "upcoming with ticket", "booking": true, "ticket": true, "cancelled": false, "ended": false, "soldOut": false, "expect": "ticket" },
+    { "case": "cancelled event beats everything", "booking": true, "ticket": true, "cancelled": true, "ended": true, "soldOut": false, "expect": "cancelled" }
+  ],
+  "onceKeys": {
+    "ticketReveal": "banbe.moment.ticketReveal.v1.<bookingId>",
+    "checkIn": "banbe.moment.checkIn.v1.<bookingId>",
+    "eventLive": "banbe.moment.eventLive.v1.<eventId>"
+  },
+  "typicalWait": [
+    { "minutes": null, "vi": null, "en": null },
+    { "minutes": 7, "vi": "Host này thường xác nhận trong khoảng 5 phút.", "en": "This host usually confirms within about 5 minutes." },
+    { "minutes": 31, "vi": "Host này thường xác nhận trong khoảng 30 phút.", "en": "This host usually confirms within about 30 minutes." },
+    { "minutes": 95, "vi": "Host này thường xác nhận trong khoảng 2 giờ.", "en": "This host usually confirms within about 2 hours." },
+    { "minutes": 60, "vi": "Host này thường xác nhận trong khoảng 1 giờ.", "en": "This host usually confirms within about 1 hour." },
+    { "minutes": 2000, "vi": "Host này thường xác nhận trong khoảng 1 ngày.", "en": "This host usually confirms within about 1 day." },
+    { "minutes": 4400, "vi": "Host này thường xác nhận trong khoảng 3 ngày.", "en": "This host usually confirms within about 3 days." }
+  ],
+  "fillText": [
+    { "capacity": 20, "booked": 12, "vi": "Đã có 12/20 chỗ", "en": "12 of 20 taken" },
+    { "capacity": 20, "booked": 0, "vi": null, "en": null },
+    { "capacity": null, "booked": 5, "vi": null, "en": null },
+    { "capacity": 20, "booked": 25, "vi": "Đã có 20/20 chỗ", "en": "20 of 20 taken" }
+  ],
+  "savedRow": {
+    "now": "2027-03-01T03:00:00Z",
+    "maxItems": 5,
+    "withinDays": 30,
+    "events": [
+      { "key": "a", "status": "live", "startsAt": "2027-03-05T12:00:00Z" },
+      { "key": "b", "status": "live", "startsAt": "2027-03-02T12:00:00Z" },
+      { "key": "past", "status": "live", "startsAt": "2027-02-28T12:00:00Z" },
+      { "key": "ended", "status": "ended", "startsAt": "2027-03-03T12:00:00Z" },
+      { "key": "cancelled", "status": "cancelled", "startsAt": "2027-03-03T12:00:00Z" },
+      { "key": "far", "status": "live", "startsAt": "2027-04-15T12:00:00Z" },
+      { "key": "c", "status": "live", "startsAt": "2027-03-10T12:00:00Z" },
+      { "key": "d", "status": "live", "startsAt": "2027-03-11T12:00:00Z" },
+      { "key": "e", "status": "live", "startsAt": "2027-03-12T12:00:00Z" },
+      { "key": "f", "status": "live", "startsAt": "2027-03-13T12:00:00Z" },
+      { "key": "nodate", "status": "live", "startsAt": null }
+    ],
+    "expect": ["b", "a", "c", "d", "e"]
+  }
+}

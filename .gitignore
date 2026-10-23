@@ -84,4 +84,8 @@ dist-ssr
 !/supabase/_localtest/18b_events_after.sql
 # Rewards v2 suites (191+): same rules, fake @test.dev data only.
 !/supabase/_localtest/2[0-9]*_rewards_*
+# Retention-plan run (2026-10-23): push, US tz/currency, measurement/age, quick wins/core loops, digest
+!/supabase/_localtest/2[3-9]_*_assert.sql
+!/supabase/_localtest/24_event_tz_currency_run.sh
+!/supabase/_localtest/retention_suites_run.sh
 .migration-state/

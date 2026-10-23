@@ -1,8 +1,13 @@
-# Push notifications: turning them on after buying the Apple Developer Program
+# Push notifications: how it works and troubleshooting
 
-Everything is already built (migration 194, `api/_lib/apnsAlerts.js`, `/api/cron?job=push-drain`, the iOS
-`Team.xcconfig` switch). Until the steps below are done it stays inert: nothing is sent, and queued pushes
-expire after 15 minutes, so turning it on later never sends a pile of old alerts.
+**The step-by-step owner checklist is `docs/apple-setup-checklist.md`.** This file explains the pieces.
+
+Everything is built (migration 194, `api/_lib/apnsAlerts.js`, `/api/cron?job=push-drain`, iOS registration and the
+Q6 ask). Three things gate it: the `push_enabled` switch (off = nothing queued), the Supabase Vault secrets (nothing
+wakes the sender without them) and the APNs credentials on Vercel (without them the sender runs dry and marks rows
+`skipped_no_credentials`). Pushes due more than 15 minutes ago expire, so turning it on later never sends a pile of
+old alerts. Quiet hours: 22:00–07:00 on the phone's clock; those wait until 07:00. Promotional kinds (the weekly
+digest) are pushed only to people who opted in.
 
 Time needed: about 30 minutes once the membership is approved.
 
@@ -26,8 +31,8 @@ in the bell. iOS asks for permission after sign-in; people can turn it off in iO
 node scripts/apple-team-setup.mjs --team ABCDE12345     # your Team ID
 cd apps/ios && xcodegen generate
 ```
-This sets `DEVELOPMENT_TEAM` and `BANBE_PAID_ACCOUNT = YES` in `apps/ios/Config/Team.xcconfig` (Debug builds
-then include Push) and puts the Team ID into `public/.well-known/apple-app-site-association` (universal
+This sets `DEVELOPMENT_TEAM` in `apps/ios/Config/Team.xcconfig` (Debug and Release already carry the Push
+entitlement) and puts the Team ID into `public/.well-known/apple-app-site-association` (universal
 links for `/u/*`). Commit both files. `PersonalTeamDebug` is unaffected and still has no Push.
 
 Open the project in Xcode, check Signing & Capabilities shows your team, run the **Debug** build on a real
@@ -50,7 +55,8 @@ iPhone, sign in, and allow notifications. The device token is stored with `envir
 | `APNS_TEAM_ID` | Team ID from step 1.2 |
 | `APNS_KEY_ID` | Key ID from step 1.4 |
 | `APNS_PRIVATE_KEY` | full contents of the `.p8` file (pasting with line breaks or literal `\n` both work) |
-| `APNS_TOPIC` | optional; defaults to `com.banbe.ios` |
+| `APNS_BUNDLE_ID` | `com.banbe.ios` (`APNS_TOPIC` also accepted) |
+| `APNS_ENV` | optional: `sandbox` or `production` forces one gateway; empty = each device's own |
 | `CRON_SECRET` | a long random string, if not set already (other cron jobs use it too) |
 
 Redeploy so the function sees the new variables.
@@ -69,7 +75,8 @@ Redeploy so the function sees the new variables.
 
 | Symptom | Cause / fix |
 |---|---|
-| `{"skipped":"APNS_NOT_CONFIGURED"}` | one of `APNS_TEAM_ID` / `APNS_KEY_ID` / `APNS_PRIVATE_KEY` missing, or no redeploy |
+| rows end as `skipped_no_credentials` (`dry_run: true` from the drain) | one of `APNS_TEAM_ID` / `APNS_KEY_ID` / `APNS_PRIVATE_KEY` missing, or no redeploy |
+| nothing queued at all | `push_enabled` is off (Account → Admin → Feature switches) |
 | `401 UNAUTHORIZED` from the drain | Vault `push_drain_secret` ≠ Vercel `CRON_SECRET` |
 | rows stay `pending`, then `expired` | Vault secrets missing (nothing wakes the drain) or `pg_net` blocked; the per-minute `bb_push_drain_tick` job retries |
 | `last_error` 403 `InvalidProviderToken` | wrong Key ID / Team ID, or the key doesn't have APNs ticked |
