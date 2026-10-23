@@ -2,14 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setTeamInXcconfig, setTeamInAasa } from '../../scripts/apple-team-setup.mjs';
 
-test('xcconfig: sets the team and turns the paid-account switch on, keeping comments', () => {
-  const before = '// set after buying\nDEVELOPMENT_TEAM =\nBANBE_PAID_ACCOUNT = NO\n';
+test('xcconfig: sets the team, keeping comments', () => {
+  const before = '// set after buying\nDEVELOPMENT_TEAM =\n';
   const after = setTeamInXcconfig(before, 'ABCDE12345');
   assert.match(after, /^\/\/ set after buying$/m);
   assert.match(after, /^DEVELOPMENT_TEAM = ABCDE12345$/m);
-  assert.match(after, /^BANBE_PAID_ACCOUNT = YES$/m);
   assert.equal(setTeamInXcconfig(after, 'ABCDE12345'), after, 'idempotent');
-  assert.match(setTeamInXcconfig('', 'ABCDE12345'), /DEVELOPMENT_TEAM = ABCDE12345\nBANBE_PAID_ACCOUNT = YES/);
+  assert.equal(setTeamInXcconfig('', 'ABCDE12345'), 'DEVELOPMENT_TEAM = ABCDE12345\n');
 });
 
 test('AASA: replaces the placeholder (or an old team) for com.banbe.ios only', () => {

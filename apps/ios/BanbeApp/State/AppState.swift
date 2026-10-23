@@ -1026,6 +1026,8 @@ final class AppState: ObservableObject {
     var appBadgeCount = -1
     /// A tapped push waiting for the account to finish loading (cold launch / not signed in yet).
     var pendingPushNotification: AppNotification?
+    /// Q6 (AppState+Push.swift): banbe's own "get reminded on the day?" sheet, shown before any system prompt.
+    @Published var pushAskPresented = false
     // Batch-fetched by loadNotifications() alongside `notifications` itself
     // — avatarSource(for:maps:accountType:) (Lib/NotificationPresentation.swift)
     // reads this instead of a join per row.

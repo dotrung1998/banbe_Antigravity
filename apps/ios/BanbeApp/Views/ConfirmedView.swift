@@ -414,9 +414,11 @@ struct ConfirmedView: View {
                     .environmentObject(app)
             }
         }
-        .onAppear { startPollingIfNeeded(); refreshReceiptStatusIfNeeded(); loadAttendeesIfNeeded() }
+        // Q6: a confirmed ticket on screen is the moment a reminder is useful (once per account per device, switch on).
+        .sheet(isPresented: $app.pushAskPresented) { PushAskSheet().environmentObject(app) }
+        .onAppear { startPollingIfNeeded(); refreshReceiptStatusIfNeeded(); loadAttendeesIfNeeded(); app.offerPushAskIfAppropriate(hasConfirmedTicket: isPaid) }
         .onChange(of: app.booking?.id) { _, _ in startPollingIfNeeded(); refreshReceiptStatusIfNeeded(); loadAttendeesIfNeeded() }
-        .onChange(of: isPaid) { _, _ in refreshReceiptStatusIfNeeded() }
+        .onChange(of: isPaid) { _, paid in refreshReceiptStatusIfNeeded(); app.offerPushAskIfAppropriate(hasConfirmedTicket: paid) }
         .onChange(of: phase) { _, newPhase in
             if newPhase == .confirmed { pollTask?.cancel() } else { startPollingIfNeeded() }
         }

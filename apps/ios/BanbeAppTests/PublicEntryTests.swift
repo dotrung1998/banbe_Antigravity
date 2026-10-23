@@ -144,10 +144,13 @@ final class PublicEntryTests: XCTestCase {
 
     func testNotificationsReturnsToWhereItWasOpened() {
         let app = AppState()
+        // From Home, Notifications slides in as an overlay over the live Home (the screen itself stays Home).
         app.screen = .home
         app.goNotifications(back: .home)
-        XCTAssertEqual(app.screen, .notifications)
-        XCTAssertEqual(app.backTargetScreen, .home)
+        XCTAssertEqual(app.screen, .home)
+        XCTAssertTrue(app.notificationsOverlayOpen)
+        XCTAssertEqual(app.notificationsBack, .home)
+        app.notificationsOverlayOpen = false
 
         app.screen = .profile
         app.goNotifications(back: .profile)

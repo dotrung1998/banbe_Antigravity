@@ -1,25 +1,10 @@
-// Local development builds — see .claude/notes/07-notifications.md
-// for the paid-team switch. Push Notifications requires a paid Apple
-// Developer Program membership to provision; with a free/personal team,
-// Xcode fails to sign a real-device build if the entitlements file
-// declares aps-environment at all, regardless of its value — so with
-// BANBE_PAID_ACCOUNT = NO (Config/Team.xcconfig, the default) this config
-// points at the entitlements file that omits the key entirely, not just
-// at a "development" value. With BANBE_PAID_ACCOUNT = YES (a real Team ID
-// set there too) Debug gets push exactly like Release: the push
-// entitlements file and the ENABLE_PUSH Swift condition switch on together.
+// Debug: Push capability ON (aps-environment = development) so the build is ready for the paid Apple Developer
+// account (docs/apple-setup-checklist.md). Whether the app actually REGISTERS for push is decided at runtime by the
+// `push_enabled` switch (migration 194), so this changes nothing for users while that switch is off.
+// A FREE / personal Apple ID cannot sign Push: for real-device testing without the paid account use the
+// PersonalTeamDebug configuration (.claude/notes/18-ios-personal-team-signing.md). Simulator builds work either way.
 #include "Team.xcconfig"
 
-ENABLE_PUSH = $(BANBE_PAID_ACCOUNT)
-
-// Picked by name: BANBE_ENTITLEMENTS_$(BANBE_PAID_ACCOUNT) is BANBE_ENTITLEMENTS_YES or _NO.
-BANBE_ENTITLEMENTS_YES = BanbeApp/BanbeAppPush.entitlements
-BANBE_ENTITLEMENTS_NO = BanbeApp/BanbeApp.entitlements
-CODE_SIGN_ENTITLEMENTS = $(BANBE_ENTITLEMENTS_$(BANBE_PAID_ACCOUNT))
-
-// Same trick for the Swift condition that gates AppState+Push.swift / AppDelegate.swift's push code.
-// DEBUG is spelled out so `#if DEBUG` (UITestFixtures etc.) keeps working: once this setting is assigned here,
-// $(inherited) alone resolves without it (checked with `xcodebuild -showBuildSettings`).
-BANBE_PUSH_CONDITION_YES = ENABLE_PUSH
-BANBE_PUSH_CONDITION_NO =
-SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) DEBUG $(BANBE_PUSH_CONDITION_$(BANBE_PAID_ACCOUNT))
+ENABLE_PUSH = YES
+CODE_SIGN_ENTITLEMENTS = BanbeApp/BanbeAppPush.entitlements
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) DEBUG ENABLE_PUSH

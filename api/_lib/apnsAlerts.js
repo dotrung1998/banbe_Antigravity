@@ -6,19 +6,42 @@ import { createSign } from 'node:crypto';
 // different thing — certificate-based, see apns.js.)
 //
 // Env (Vercel): APNS_TEAM_ID, APNS_KEY_ID, APNS_PRIVATE_KEY (.p8 contents; literal "\n" accepted),
-// optional APNS_TOPIC (default com.banbe.ios — a token's own app_id wins when present).
+// APNS_BUNDLE_ID (default com.banbe.ios; APNS_TOPIC is an accepted alias; a token's own app_id wins when present),
+// optional APNS_ENV = sandbox | production to force one gateway (unset: each token's own environment).
 
 export const APNS_HOSTS = {
   production: 'https://api.push.apple.com',
   sandbox: 'https://api.sandbox.push.apple.com',
 };
 
+/** The credentials, or null when any is missing (the drain then runs dry). */
 export function readApnsConfig(env = process.env) {
   const teamId = (env.APNS_TEAM_ID || '').trim();
   const keyId = (env.APNS_KEY_ID || '').trim();
   const privateKey = (env.APNS_PRIVATE_KEY || '').replace(/\\n/g, '\n').trim();
   if (!teamId || !keyId || !privateKey) return null;
-  return { teamId, keyId, privateKey, topic: (env.APNS_TOPIC || 'com.banbe.ios').trim() };
+  const forced = (env.APNS_ENV || '').trim().toLowerCase();
+  return {
+    teamId, keyId, privateKey,
+    topic: (env.APNS_BUNDLE_ID || env.APNS_TOPIC || 'com.banbe.ios').trim(),
+    forceEnvironment: forced === 'sandbox' || forced === 'production' ? forced : null,
+  };
+}
+
+/** Names of the credentials that are missing (never their values), for the dry-run log. */
+export function missingApnsSettings(env = process.env) {
+  return ['APNS_TEAM_ID', 'APNS_KEY_ID', 'APNS_PRIVATE_KEY'].filter((k) => !String(env[k] || '').trim());
+}
+
+/** Dry run: what WOULD be sent, as counts only (kind, environment, device count). No titles, bodies, tokens or ids. */
+export function dryRunSummary(items) {
+  const byKind = {};
+  let devices = 0;
+  for (const it of items) {
+    byKind[it.kind || 'unknown'] = (byKind[it.kind || 'unknown'] || 0) + 1;
+    devices += Array.isArray(it.tokens) ? it.tokens.length : 0;
+  }
+  return { pushes: items.length, devices, byKind };
 }
 
 const b64u = (v) => Buffer.from(typeof v === 'string' ? v : JSON.stringify(v)).toString('base64url');
@@ -115,17 +138,19 @@ export async function sendAlertBatch(items, cfg, { connect = (host) => http2.con
       const errors = [];
       if (!item.tokens?.length) { out.status = 'sent'; out.error = 'no_tokens'; results.push(out); continue; }
       for (const t of item.tokens) {
-        const env = t.environment === 'sandbox' ? 'sandbox' : 'production';
+        const env = cfg.forceEnvironment || (t.environment === 'sandbox' ? 'sandbox' : 'production');
         const topic = t.app_id || cfg.topic;
         let r = await sendOne(sessionFor(env), { token: t.token, topic, jwt, body, collapseId: item.notification_id });
         let verdict = classifyApnsResponse(r.status, r.reason);
-        if (verdict === 'wrong_environment_or_gone') {
+        if (verdict === 'wrong_environment_or_gone' && !cfg.forceEnvironment) {
           // A token is only valid in the environment that issued it: try the other one once.
           const other = env === 'sandbox' ? 'production' : 'sandbox';
           r = await sendOne(sessionFor(other), { token: t.token, topic, jwt, body, collapseId: item.notification_id });
           verdict = classifyApnsResponse(r.status, r.reason);
           if (verdict === 'sent') out.moved_tokens.push({ token: t.token, environment: other });
           else if (verdict === 'wrong_environment_or_gone') verdict = 'gone';
+        } else if (verdict === 'wrong_environment_or_gone') {
+          verdict = 'failed';   // forced gateway: never delete a token that may belong to the other one
         }
         if (verdict === 'sent') out.status = 'sent';
         else if (verdict === 'gone') out.gone_tokens.push(t.token);

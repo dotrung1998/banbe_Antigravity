@@ -9,44 +9,58 @@ import UserNotifications
 // repo doesn't have yet; see this session's final report for exactly what
 // credential unblocks it.
 extension AppState {
-    /// Asks once per install (UNUserNotificationCenter itself no-ops a
-    /// second prompt if the person already answered) — called right after
-    /// sign-in, alongside the rest of applySession()'s post-login setup.
-    ///
-    /// Silently does nothing when ENABLE_PUSH isn't defined (Config/
-    /// Debug.xcconfig — the default, free/personal-team build): there's no
-    /// aps-environment entitlement in that build at all, so asking for
-    /// notification permission would show a real system prompt for a
-    /// capability that can never actually deliver anything — confusing,
-    /// not just harmless. ENABLE_PUSH flips on with Config/Release.xcconfig,
-    /// once a paid Apple Developer account is set up (see
-    /// .claude/notes/07-notifications.md). Config/PersonalTeamDebug.xcconfig
-    /// (.claude/notes/18-ios-personal-team-signing.md) sets ENABLE_PUSH=NO
-    /// too, so this same guard covers that configuration for free — no
-    /// separate PERSONAL_TEAM_BUILD check needed here.
-    func requestPushAuthorizationIfNeeded() {
-        #if !ENABLE_PUSH
-        return
-        #else
+    /// Called after sign-in (applySession) and whenever the `push_enabled` switch arrives ON. NEVER shows the system
+    /// prompt: the prompt only follows the person's own tap in the pre-permission sheet (Q6, `PushAskSheet`). When
+    /// iOS already allows notifications for banbe and the switch is on, it (re)registers so the server has a fresh
+    /// token. Nothing happens while the switch is off, in an ENABLE_PUSH=NO build (PersonalTeamDebug), or signed out.
+    func resumePushRegistrationIfAllowed() {
+        #if ENABLE_PUSH
+        guard userID != nil, pushEnabled else { return }
         UNUserNotificationCenter.current().getNotificationSettings { settings in
-            guard settings.authorizationStatus == .notDetermined else {
-                // Already decided (allowed or denied) in a previous
-                // session — .registerForRemoteNotifications() below is
-                // still safe to call either way; UIKit just won't
-                // actually deliver anything if the person said no.
-                if settings.authorizationStatus == .authorized {
-                    DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
-                }
-                return
-            }
-            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-                if let error { print("Push authorization request failed:", error) }
-                guard granted else { return }
-                DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+            guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+            DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+        }
+        #endif
+    }
+
+    // MARK: Q6 contextual ask
+
+    static func pushAskOfferedKey(_ uid: String) -> String { "banbe.pushAsk.offered.v1.\(uid)" }
+
+    /// The first time a confirmed ticket is on screen: offer reminders, once per account per device, only while the
+    /// switch is on and iOS has never asked. Shows banbe's own explanation sheet; the system prompt comes only from
+    /// its Continue button.
+    func offerPushAskIfAppropriate(hasConfirmedTicket: Bool) {
+        #if ENABLE_PUSH
+        guard let uid = userID?.uuidString.lowercased(), hasConfirmedTicket, !pushAskPresented else { return }
+        let offered = UserDefaults.standard.bool(forKey: Self.pushAskOfferedKey(uid))
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let ask = PushAsk.shouldOffer(pushEnabled: self.pushEnabled, hasConfirmedTicket: hasConfirmedTicket,
+                                          alreadyOffered: offered, systemNotDetermined: settings.authorizationStatus == .notDetermined)
+            guard ask else { return }
+            DispatchQueue.main.async {
+                UserDefaults.standard.set(true, forKey: Self.pushAskOfferedKey(uid))
+                self.pushAskPresented = true
             }
         }
         #endif
     }
+
+    /// Continue in the sheet: the real system prompt, then registration if allowed.
+    func acceptPushAsk() {
+        pushAskPresented = false
+        #if ENABLE_PUSH
+        guard pushEnabled else { return }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error { print("Push authorization request failed:", error) }
+            guard granted else { return }
+            DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+        }
+        #endif
+    }
+
+    /// Not now: nothing is asked again automatically (the person can allow it later in iOS Settings).
+    func declinePushAsk() { pushAskPresented = false }
 
     /// The last token this device registered (UserDefaults), so sign-out can unregister exactly that one.
     static let lastPushTokenKey = "banbe.push.lastToken.v1"
@@ -65,20 +79,24 @@ extension AppState {
         #if !ENABLE_PUSH
         return
         #else
-        guard userID != nil else { return }
+        // The switch can be turned off after iOS already handed out a token: then nothing is stored.
+        guard userID != nil, pushEnabled else { return }
         struct Params: Encodable {
             let token: String
             let platform: String
             let environment: String
             let appID: String?
+            let timezone: String
             enum CodingKeys: String, CodingKey {
-                case token = "p_token", platform = "p_platform", environment = "p_environment", appID = "p_app_id"
+                case token = "p_token", platform = "p_platform", environment = "p_environment", appID = "p_app_id",
+                     timezone = "p_timezone"
             }
         }
         do {
             _ = try await SupabaseService.client
                 .rpc("register_push_token", params: Params(token: token, platform: "ios", environment: PushEnvironment.current,
-                                                           appID: Bundle.main.bundleIdentifier))
+                                                           appID: Bundle.main.bundleIdentifier,
+                                                           timezone: TimeZone.current.identifier))
                 .execute()
             UserDefaults.standard.set(token, forKey: Self.lastPushTokenKey)
         } catch {

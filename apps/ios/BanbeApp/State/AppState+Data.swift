@@ -653,7 +653,7 @@ extension AppState {
         await loadMyEvents()
         await loadNotifications()
         startNotificationPolling()
-        requestPushAuthorizationIfNeeded()
+        resumePushRegistrationIfAllowed()
         // A push tapped before the account was ready (cold launch) opens now, like a bell tap.
         routePendingPushIfReady()
         await loadBookingForCurrentEvent()

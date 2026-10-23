@@ -9,8 +9,9 @@
 //   everything, which is the behaviour from before flags existed.
 // - Anything that is not a boolean is ignored.
 
-export const FLAG_KEYS = ['rewards', 'rewards_v2'];
-export const OFF_UNLESS_SET = ['rewards_v2'];
+export const FLAG_KEYS = ['rewards', 'rewards_v2', 'push_enabled'];
+// push_enabled (migration 194): real push notifications (iPhone), dark until an admin turns it on.
+export const OFF_UNLESS_SET = ['rewards_v2', 'push_enabled'];
 const CACHE_KEY = 'banbe_feature_flags_v1';
 
 /** Keep only known keys with real booleans. Unknown keys from a newer server are ignored, never trusted. */

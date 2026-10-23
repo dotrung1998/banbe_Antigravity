@@ -1,14 +1,4 @@
-// Apple Developer team switch — the ONE file to edit once a paid Apple Developer Program membership exists
-// (see .claude/notes/07-notifications.md and docs/push-setup.md). Included by Debug.xcconfig and Release.xcconfig;
-// deliberately NOT by PersonalTeamDebug.xcconfig (.claude/notes/18-ios-personal-team-signing.md), which stays a
-// free/personal-team build with no paid capability at all.
-//
-// After buying the Apple Developer Program: set your Team ID below and BANBE_PAID_ACCOUNT = YES
-// (or run `node scripts/apple-team-setup.mjs`), then `xcodegen generate` in apps/ios.
-//   - Debug then signs with BanbeAppPush.entitlements (aps-environment) and compiles the ENABLE_PUSH code
-//     (permission prompt, token registration, push taps, app badge).
-//   - Release always has push on; it only needs the Team ID.
-// Leave it as it is (empty team, NO) for a free/personal Apple ID: Debug then omits aps-environment entirely,
-// exactly as before.
+// Your Apple Developer Team ID (10 characters) goes here once you have the PAID Apple Developer Program:
+//   node scripts/apple-team-setup.mjs --team <TEAMID>     (docs/apple-setup-checklist.md)
+// Debug and Release include this file. PersonalTeamDebug does not (it stays capability-free for free Apple IDs).
 DEVELOPMENT_TEAM =
-BANBE_PAID_ACCOUNT = NO

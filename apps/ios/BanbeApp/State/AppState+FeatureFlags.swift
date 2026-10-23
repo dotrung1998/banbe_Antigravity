@@ -17,8 +17,13 @@ extension AppState {
     /// Rewards v2 (migration 192): weekly streak, tiers, next badge, monthly goal. Off unless an admin turns it on.
     var rewardsV2Enabled: Bool { rewardsEnabled && FeatureFlags.isOn(featureFlags, "rewards_v2") }
 
-    /// Called when the flags changed: turning Rewards off clears its numbers; turning it on loads them.
+    /// Real push notifications (migration 194). Off unless an admin turns them on; registration and the Q6 ask wait for it.
+    var pushEnabled: Bool { FeatureFlags.isOn(featureFlags, "push_enabled") }
+
+    /// Called when the flags changed: turning Rewards off clears its numbers; turning it on loads them. Push turning
+    /// on re-registers a device iOS already allows (never prompts).
     func featureFlagsDidChange(from old: [String: Bool]) {
+        if !FeatureFlags.isOn(old, "push_enabled"), pushEnabled { resumePushRegistrationIfAllowed() }
         let was = FeatureFlags.isOn(old, "rewards"), now = rewardsEnabled
         guard was != now else { return }
         if !now { resetRewardsState() }
