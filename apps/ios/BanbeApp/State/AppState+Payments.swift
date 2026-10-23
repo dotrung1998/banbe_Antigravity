@@ -37,6 +37,7 @@ extension AppState {
             guard seq == paymentBookingsSeq else { return }
             paymentBookings = rows.map(\.asPayable)
             paymentBookingsLoadFailed = false
+            syncLiveActivities() // tickets loaded: L7 event-day card check (switch live_activity)
             // The reserve flow's own countdown (Home's held-event banner) must
             // stop as soon as the booking it belongs to is cancelled.
             if let current = booking?.id, paymentBookings.contains(where: { $0.id == current && $0.status == "cancelled" }) {

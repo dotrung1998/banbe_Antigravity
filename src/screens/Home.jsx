@@ -3,7 +3,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, bg, agoLabel, haversineKm, catalogStartMs } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
-import { prefsIsEmpty } from '../lib/eventPrefs.js';
+import { prefsIsEmpty, declaredGoals } from '../lib/eventPrefs.js';
+import { intentTitle, isEventLocalDay } from '../lib/coreLoops.js';
+import { flagOn } from '../lib/featureFlags.js';
+import { isBookingTicket } from '../lib/bookingTicket.js';
 import { forYouRankEvents } from '../lib/forYou.js';
 import { forYouEventVersion } from '../lib/forYouAlert.js';
 import { useForYouAlert } from '../lib/useForYouAlert.js';
@@ -97,7 +100,7 @@ export default function Home() {
     loadMyAdminInvite, openAccountGroup,
     openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, loadPulse,
     loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openEventPreferences,
-    openSearch, setHomeFilters, located, allowLocation, rewardsEnabled, rewardsV2Enabled,
+    openSearch, setHomeFilters, located, allowLocation, rewardsEnabled, rewardsV2Enabled, openBookingConfirmed,
   } = useBanBe();
 
   const s = state;
@@ -313,6 +316,10 @@ export default function Home() {
     if (s.filterForYou && !hasForYou && !s.discoveryEventsLoading) set({ filterForYou: false });
   }, [s.filterForYou, hasForYou, s.discoveryEventsLoading, set]);
   const forYouActive = s.filterForYou && hasForYou;
+  // L6 (switch intent_foryou): title + one "because you said…" line from the FIRST goal the person stated in
+  // onboarding. Stated answers only; ranking unchanged. Off = the plain "For You", no line.
+  const forYouIntent = flagOn(s.featureFlags, 'intent_foryou') ? intentTitle(declaredGoals(s.eventPrefs)) : null;
+  const forYouWhy = forYouIntent?.whyVi ? T(forYouIntent.whyVi, forYouIntent.whyEn) : null;
   // New-match attention state (src/lib/forYouAlert.js). Version = publication
   // moment + status + visibility of the raw discovery row (no updated_at today).
   const forYouAlertMatches = useMemo(() => {
@@ -556,6 +563,7 @@ export default function Home() {
         if (reminder) { tag = reminder === 'live' ? 'Đang diễn ra' : 'Sắp diễn ra'; chip = CHIP_COLORS.reminder; }
         return {
           key: e.key, name: e.name, photoUrl: e.img, endedHoursAgo: e.endedHoursAgo, reminder,
+          startMs: e.startDate instanceof Date ? e.startDate.getTime() : NaN, tz: null,
           status: trStatus(status), tag: trStatus(tag), chip,
           canRemove: !isGoing(e.key) && e.key !== heldKey && !invited,
           toEvent: e.cancelled ? 'refunded' : 'event',
@@ -588,6 +596,7 @@ export default function Home() {
       if (reminder) { tag = reminder === 'live' ? T('Đang diễn ra', 'Happening now') : T('Sắp diễn ra', 'Starting soon'); chip = CHIP_COLORS.reminder; }
       return {
         key: k, name: real.name, photoUrl: real.photoUrl, endedHoursAgo, reminder,
+        startMs: startsAt ? startsAt.getTime() : NaN, tz: rowTimeZone(real),
         status, tag, chip,
         canRemove: !isGoing(k) && k !== heldKey && !invited,
         toEvent: cancelled ? 'refunded' : 'event',
@@ -599,6 +608,12 @@ export default function Home() {
     // Array.sort is stable so everything else keeps its existing order.
     .sort((a, b) => reminderRank(a.reminder) - reminderRank(b.reminder));
   const nextUp = savedList.find(x => x.reminder) || null;
+  // L7 day-of card (switch live_activity): on the event's own day in the VENUE's zone, a confirmed ticket of the
+  // person's own (not one gifted away) is one tap away from the Next-up banner. No countdown, no urgency words.
+  const nextUpTicket = flagOn(s.featureFlags, 'live_activity') && nextUp && isEventLocalDay(nextUp.startMs, Date.now(), nextUp.tz)
+    ? (s.paymentBookings || []).find(b => isBookingTicket(b) && !b.recipient_name
+      && (b.event_id === nextUp.key || b.events?.key === nextUp.key || b.events?.id === nextUp.key)) || null
+    : null;
 
   // Phase 1 Q8 "Saved, coming up": the person's saved events that are live and start within 30 days, soonest first,
   // at most 5 (src/lib/quickWins.js), each with its real date and, when known, its real fill ("12 of 20 taken" from
@@ -769,7 +784,8 @@ export default function Home() {
           four-banner block: one unified, priority-sorted, 3-card-capped
           Action Center covering both roles this account can hold. See
           src/lib/actionCenter.js for the source list and ordering rule. */}
-      <NextUpBanner item={nextUp && { ...nextUp, when: nextUp.status }} onOpen={() => openSaved(nextUp)} T={T} />
+      <NextUpBanner item={nextUp && { ...nextUp, when: nextUp.status }} onOpen={() => openSaved(nextUp)} T={T}
+        onShowTicket={nextUpTicket ? () => openBookingConfirmed(nextUpTicket.id, nextUpTicket.event_id, 'home') : null} />
 
       {savedUpcoming.length > 0 && (
         <section data-testid="home-saved-upcoming" aria-labelledby="home-saved-upcoming-title" style={{ padding: '6px 20px 10px' }}>
@@ -863,6 +879,7 @@ export default function Home() {
             pending={forYouAlert.pending}
             animate={forYouAlert.animate}
             capsuleStyle={homeCapsule({ fontWeight: s.filterForYou ? 600 : 400 }, !!s.filterForYou)}
+            title={forYouIntent?.goal ? forYouIntent : null}
             onClick={() => {
               if (!s.filterForYou) forYouAlert.acknowledge(forYouRanked.map(m => m.key));
               toggleHomeFilter('forYou');
@@ -887,6 +904,7 @@ export default function Home() {
       </div>
       {forYouActive && (
         <div style={{ padding: '0 20px 4px' }}>
+          {forYouWhy && <div data-testid="home-foryou-why" style={{ fontSize: 13, opacity: 0.75, marginBottom: 4 }}>{forYouWhy}</div>}
           <span
             onClick={() => openEventPreferences('home')}
             data-testid="home-foryou-edit-answers"
@@ -902,7 +920,7 @@ export default function Home() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
           <span style={{ ...display(SECTION_TITLE), whiteSpace: 'nowrap' }}>
-            {homeFilters.date !== 'any' && DATE_LABELS[homeFilters.date] ? T(...DATE_LABELS[homeFilters.date]) : forYouActive ? T('Dành cho bạn', 'For you') : T('Sắp diễn ra', 'Upcoming')}
+            {homeFilters.date !== 'any' && DATE_LABELS[homeFilters.date] ? T(...DATE_LABELS[homeFilters.date]) : forYouActive ? (forYouIntent?.goal ? T(forYouIntent.vi, forYouIntent.en) : T('Dành cho bạn', 'For you')) : T('Sắp diễn ra', 'Upcoming')}
           </span>
           <span data-testid="home-result-count" data-count={shownItems.length} style={{ fontSize: 13, opacity: 0.6, whiteSpace: 'nowrap' }}>
             {T(`${shownItems.length} sự kiện`, `${shownItems.length} event${shownItems.length === 1 ? '' : 's'}`)}

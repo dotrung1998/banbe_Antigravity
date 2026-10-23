@@ -13,7 +13,9 @@ import GlassMenu, { GlassMenuItem, GlassMenuDivider } from '../components/GlassM
 import { viewerTimeNote } from '../lib/schedulePresentation.js';
 import { supabase } from '../lib/supabase.js';
 import { withR2Columns, marketColumnList } from '../lib/mediaUrls.js';
-import { rowTimeZone } from '../lib/eventMarket.js';
+import { rowTimeZone, rowCurrency, VN_TIME_ZONE } from '../lib/eventMarket.js';
+import { shareMarket, shareWhen, shareInviteText, smsInviteHref, ZALO_COPIED } from '../lib/coreLoops.js';
+import { track } from '../lib/analytics.js';
 import { nextFromHost, whenLabel } from '../lib/quickWins.js';
 import { flagOn } from '../lib/featureFlags.js';
 
@@ -33,6 +35,7 @@ const IconHouse = () => (<svg {...ico} width={18} height={18}><path d="M4 11l8-7
 const IconMap = () => (<svg {...ico} width={18} height={18}><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z" /><path d="M9 4v14M15 6v14" /></svg>);
 const IconCamera = () => (<svg {...ico} width={18} height={18}><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.4" /></svg>);
 const IconLink = () => (<svg {...ico} width={18} height={18}><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1" /><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" /></svg>);
+const IconCopy = () => (<svg {...ico} width={18} height={18}><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></svg>);
 const IconChat = () => (<svg {...ico}><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-5 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" /></svg>);
 const IconCalendar = () => (<svg {...ico} width={18} height={18}><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17M8 3v4M16 3v4" /></svg>);
 const IconClock = () => (<svg {...ico} width={18} height={18}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></svg>);
@@ -376,6 +379,30 @@ export default function EventDetail({ preview = null } = {}) {
     const done = () => { setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1800); };
     try { navigator.clipboard?.writeText(url).then(done, done); } catch { done(); }
   };
+  // L8 market sharing (switch market_share): beside Copy link, a Vietnam event gets "Copy invite for Zalo" (there is
+  // no verified Zalo share URL, so the invite is copied for pasting) and a US event "Text a friend" (sms: link). The
+  // demo catalogue is Saigon; a real row without a country reads from its currency.
+  const marketRow = preview ? null : s.realEventsById[ev.key];
+  const inviteMarket = !preview && flagOn(s.featureFlags, 'market_share')
+    ? shareMarket(marketRow ? (marketRow.countryCode || (rowCurrency(marketRow) === 'USD' ? 'US' : 'VN')) : 'VN')
+    : null;
+  const inviteText = () => {
+    const startMs = ev.startDate instanceof Date ? ev.startDate.getTime() : NaN;
+    const when = Number.isFinite(startMs) ? shareWhen(startMs, ev.tz || VN_TIME_ZONE, inviteMarket) : (inviteMarket === 'VN' ? ev.when : '');
+    return shareInviteText({ name: ev.name, when, url: `https://www.banbe.app/api/photo-share?eid=${encodeURIComponent(ev.key)}` });
+  };
+  const [zaloCopied, setZaloCopied] = useState(false);
+  const copyZaloInvite = () => {
+    const ok = () => {
+      track('share_completed', { channel: 'zalo_copy', context: 'event' });
+      setZaloCopied(true); setTimeout(() => setZaloCopied(false), 2200);
+    };
+    try { navigator.clipboard.writeText(inviteText()).then(ok, () => {}); } catch { /* no clipboard: nothing was copied */ }
+  };
+  const textAFriend = () => {
+    track('share_completed', { channel: 'sms', context: 'event' });
+    window.location.href = smsInviteHref(inviteText());
+  };
 
   // The photo backdrop fades to the page colour and drifts up slowly as the sheet rises over it.
   // 0 while the title is comfortably below the bar, 1 once it has fully passed under it.
@@ -524,12 +551,14 @@ export default function EventDetail({ preview = null } = {}) {
         )}
         {(showOpenInMap || !cameFromHome || s.myOrgEventKeys.includes(ev.key)) && <GlassMenuDivider />}
         <GlassMenuItem icon={<IconLink />} onClick={copyLink} testId="event-copy-link">{T('Sao chép link', 'Copy link')}</GlassMenuItem>
+        {inviteMarket === 'VN' && <GlassMenuItem icon={<IconCopy />} onClick={copyZaloInvite} testId="event-copy-zalo">{T('Chép lời mời cho Zalo', 'Copy invite for Zalo')}</GlassMenuItem>}
+        {inviteMarket === 'US' && <GlassMenuItem icon={<IconChat />} onClick={textAFriend} testId="event-text-friend">{T('Nhắn tin cho bạn bè', 'Text a friend')}</GlassMenuItem>}
       </GlassMenu>
       <div data-fade onClick={() => shareEvent(ev)} role="button" aria-label={T('Chia sẻ', 'Share')} data-testid="event-detail-share" style={disc({ position: 'fixed', top: OVERLAY_TOP, right: 64, zIndex: 5, ...inert })}><IconShare /></div>
       {/* Save uses the same isSaved/toggleFav as Home (keys off the real `favorites` table by event id). */}
       <div data-fade onClick={() => toggleFav(ev.key)} role="button" aria-label={isSaved(ev.key) ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')} aria-pressed={isSaved(ev.key)} data-testid="event-detail-save" style={disc({ position: 'fixed', top: OVERLAY_TOP, right: 16, zIndex: 5, ...inert })}><IconHeart filled={isSaved(ev.key)} /></div>
-      {(s.shared || linkCopied) && (
-        <div role="status" style={{ position: 'fixed', top: `calc(${OVERLAY_TOP} + 48px)`, right: 16, zIndex: 5, fontSize: 12, color: ink, background: 'rgba(var(--bb-bg-rgb),0.94)', borderRadius: 999, padding: '6px 12px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}>{T('Đã sao chép link', 'Link copied')}</div>
+      {(s.shared || linkCopied || zaloCopied) && (
+        <div role="status" data-testid={zaloCopied ? 'event-zalo-copied' : undefined} style={{ position: 'fixed', top: `calc(${OVERLAY_TOP} + 48px)`, right: 16, zIndex: 5, fontSize: 12, color: ink, background: 'rgba(var(--bb-bg-rgb),0.94)', borderRadius: 999, padding: '6px 12px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}>{zaloCopied ? T(ZALO_COPIED.vi, ZALO_COPIED.en) : T('Đã sao chép link', 'Link copied')}</div>
       )}
       {/* The photo is pinned behind everything; the scrolling sheet starts PINNED_STRIP down the screen (rounded top),
           so a band of the photo stays visible above the info however far it is pulled up. */}

@@ -1081,7 +1081,10 @@ struct HomeView: View {
         let date = app.homeFilters.date
         let title: String = {
             if date != "any", let l = HomeDiscovery.dateLabels[date] { return app.T(l.vi, l.en) }
-            if app.filterForYou && app.hasForYouMatches { return app.T("Dành cho bạn", "For you") }
+            if app.filterForYou && app.hasForYouMatches {
+                if let t = forYouIntent, t.goal != nil { return app.T(t.vi, t.en) }
+                return app.T("Dành cho bạn", "For you")
+            }
             return app.T("Sắp diễn ra", "Upcoming")
         }()
         let n = snap.shown.count
@@ -1151,29 +1154,51 @@ struct HomeView: View {
                             prefsVersion: app.eventPrefsVersion,
                             loading: app.discoveryEventsLoading || app.eventPrefs == nil)
     }
+    /// L6 intent For You (switch intent_foryou): title + one "because you said…" line from the FIRST goal the person
+    /// stated in onboarding (CoreLoops.intentTitle). Stated answers only; ranking unchanged. nil while the switch is off.
+    private var forYouIntent: CoreLoops.IntentTitle? {
+        guard FeatureFlags.isOn(app.featureFlags, "intent_foryou") else { return nil }
+        return CoreLoops.intentTitle(goals: app.eventPrefs?.declaredGoals ?? [])
+    }
+
     /// Quick shortcut while For You is active: edit the answers, and Back /
     /// swipe-back returns here with For You still on (`eventPrefsReturnScreen`).
     private var forYouEditRow: some View {
-        Button {
-            Haptics.selection()
-            app.openEventPreferences(returnTo: .home)
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "slider.horizontal.3").font(.system(size: 12, weight: .semibold))
-                Text(app.T("Chỉnh câu trả lời của bạn", "Edit my answers"))
-                    .font(.system(size: 12.5, weight: .semibold)).underline()
+        VStack(alignment: .leading, spacing: 0) {
+            if let t = forYouIntent, let whyVi = t.whyVi, let whyEn = t.whyEn {
+                Text(app.T(whyVi, whyEn))
+                    .font(.system(size: 13))
+                    .foregroundStyle(app.palette.ink.opacity(0.75))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 4)
+                    .accessibilityIdentifier("foryou.why")
             }
-            .foregroundStyle(app.palette.ink)
-            .padding(.horizontal, 20)
+            Button {
+                Haptics.selection()
+                app.openEventPreferences(returnTo: .home)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "slider.horizontal.3").font(.system(size: 12, weight: .semibold))
+                    Text(app.T("Chỉnh câu trả lời của bạn", "Edit my answers"))
+                        .font(.system(size: 12.5, weight: .semibold)).underline()
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(.horizontal, 20)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("foryou.editAnswers")
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("foryou.editAnswers")
     }
 
     /// Gold-star "For You" chip — only rendered when `hasForYouMatches`.
     private var forYouChip: some View {
         let gold = Color(red: 0.80, green: 0.62, blue: 0.16)
         let active = app.filterForYou
+        let chipTitle: String = {
+            if let t = forYouIntent, t.goal != nil { return app.T(t.vi, t.en) }
+            return app.T("Dành cho bạn", "For You")
+        }()
         return SwipeSafeButton {
             Haptics.selection()
             if !app.filterForYou { forYouAlert.acknowledge(loadedIDs: app.forYouMatches.map(\.key)) }
@@ -1182,7 +1207,7 @@ struct HomeView: View {
             HStack(spacing: 4) {
                 Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
                     .foregroundStyle(active ? app.palette.paper : gold)
-                Text(app.T("Dành cho bạn", "For You"))
+                Text(chipTitle)
                     .font(.system(size: 13, weight: active ? .bold : .regular))
                     .lineLimit(1)
                 if forYouAlert.hasPending {
@@ -1204,8 +1229,8 @@ struct HomeView: View {
         .modifier(ForYouAttentionEffect(animating: forYouAlert.animating, reduceMotion: reduceMotion, token: reminderHaloTrigger &+ forYouAlert.replayToken))
         .accessibilityIdentifier("filter.foryou")
         .accessibilityLabel(forYouAlert.hasPending && !active
-            ? app.T("Dành cho bạn, có gợi ý mới", "For You, new recommendations")
-            : app.T("Dành cho bạn", "For You"))
+            ? chipTitle + app.T(", có gợi ý mới", ", new recommendations")
+            : chipTitle)
     }
 
     /// Never leave a stale empty "For You" list: once data has settled, a

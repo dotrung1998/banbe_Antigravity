@@ -5,7 +5,24 @@ The owner shared a summary of three design videos (peak-end rule, Undertone's "s
 
 It builds on what already exists: notes 17, 34–59, `docs/retention-monetization-roadmap.md` (the Sept roadmap, with real saves and a "This weekend" rail done; its weekly digest and P2 "after the event" items not built) and `docs/policy-rewards-draft.md`.
 
-Status: PLAN, approved 2026-10-22. Progress: F2 (US time zone + currency, free + USD display, paid USD booking off) and the push pre-setup for open question 5 are IMPLEMENTED LOCALLY, not applied/deployed (`.claude/notes/60-…md`, `docs/push-setup.md`). US market: not live yet (owner, 2026-10-22). Each phase gets its own implementation plan. Baseline query (counts only, not yet run): `docs/sql/retention-baseline.sql`.
+Status (2026-10-23 run; details: notes 60–62, production log note 61, how-to `docs/impl/`):
+
+| Item | State |
+|---|---|
+| F1 measurement | built + migration 196 applied + web deployed; switch `app_events` OFF (needs the B12 re-consent decision) |
+| F2 US tz/currency | applied (195) + verified in production + deployed; paid USD booking off by decision |
+| F3 trust | 185 applied; age 16 applied (197) + deployed; effective date filled; company name/address/enterprise code/contact email/SMS provider BLOCKED (owner facts) |
+| F4 interviews | guide written (`docs/interview-guide.md`); NEEDS OWNER |
+| Push prep | built, 194 applied, `push_enabled` OFF; BLOCKED on the Apple account + APNs key (`docs/apple-setup-checklist.md`) |
+| Q1–Q5, Q7, Q8 | built + deployed (web); iOS built and unit-tested, not shipped to TestFlight |
+| Q6 | push ask built (iOS, waits for push_enabled); translations applied (198) |
+| L1 reminders | applied (199) + deployed; switch `event_reminders` ON (in-app); email not built (mail setup unverified) |
+| L2 / L3 / L4 | applied (199) + clients deployed; switches OFF (L2 needs B12 re-consent; L3/L4 product/legal check) |
+| L5 digest | applied (200) + opt-in UI deployed; switch OFF (legal review: Decree 91/2020, CAN-SPAM) |
+| L6 / L7 / L8 | see the last status update below this table (Phase 3 clients) |
+| L9 Rewards | prepared only (`docs/impl/rewards-switch-on.md`); `rewards` / `rewards_v2` unchanged (OFF) |
+
+Each phase has its own implementation plan in `docs/impl/`. Baseline query (counts only): `docs/sql/retention-baseline.sql`.
 
 ---
 

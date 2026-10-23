@@ -6,6 +6,8 @@
 // The server (migrations 199/200) owns every decision that matters: who may answer, for how long, when the host may
 // see anything. These helpers only shape what the screen says, never a public rating, never a countdown.
 
+import { zonedParts, VN_TIME_ZONE } from './eventMarket.js';
+
 /**
  * Where a tapped notification goes: { route, id } or null for a kind this file doesn't own.
  * route: 'ticket' (booking id) | 'eventRecap' | 'hostRecap' | 'event' (event id) | 'following' | 'thisWeekend'.
@@ -135,3 +137,75 @@ export function hostRecapStats(r) {
     newFollowers: n(r?.new_followers), repeatGuests: n(r?.repeat_guests), photos: n(r?.photos),
   };
 }
+
+// ---------------------------------------------------------------- L6 intent For You (switch intent_foryou)
+
+/**
+ * Home's For You title and its one "because you said…" line, from the goals the person STATED in onboarding (their
+ * own answers in the owner-only preferences, never inferred from behaviour, never a match score). Ranking is not
+ * touched. Shared vectors: core-loops.json `intentTitles`.
+ */
+export const INTENT_TITLES = {
+  meet_people: { vi: 'Gặp gỡ mọi người', en: 'Meet new people', whyVi: 'Vì bạn muốn gặp gỡ mọi người', whyEn: 'Because you said you want to meet people' },
+  learn: { vi: 'Học điều mới', en: 'Learn something new', whyVi: 'Vì bạn muốn học hỏi', whyEn: 'Because you said you want to learn something' },
+  experiences: { vi: 'Trải nghiệm đáng nhớ', en: 'Experiences to enjoy', whyVi: 'Vì bạn muốn tận hưởng trải nghiệm', whyEn: 'Because you said you want to enjoy experiences' },
+  networking: { vi: 'Kết nối nghề nghiệp', en: 'Grow your network', whyVi: 'Vì bạn muốn kết nối nghề nghiệp', whyEn: 'Because you said you want professional networking' },
+};
+export const DEFAULT_FOR_YOU_TITLE = { vi: 'Dành cho bạn', en: 'For You', whyVi: null, whyEn: null };
+
+/** `goals` = declaredGoals(prefs) (stored order). The first goal this table knows wins; none -> plain "For You". */
+export function intentTitle(goals) {
+  const goal = (Array.isArray(goals) ? goals : []).find(g => typeof g === 'string' && Object.hasOwn(INTENT_TITLES, g));
+  return goal ? { goal, ...INTENT_TITLES[goal] } : { goal: null, ...DEFAULT_FOR_YOU_TITLE };
+}
+
+// ---------------------------------------------------------------- L7 day-of card (switch live_activity)
+
+/** True on the event's own calendar day in the VENUE's zone (not the viewer's), the day the ticket is one tap away. */
+export function isEventLocalDay(startMs, nowMs, timeZone) {
+  if (!Number.isFinite(startMs) || !Number.isFinite(nowMs)) return false;
+  const tz = timeZone || VN_TIME_ZONE;
+  const a = zonedParts(startMs, tz), b = zonedParts(nowMs, tz);
+  return a.year === b.year && a.month === b.month && a.day === b.day;
+}
+
+// ---------------------------------------------------------------- L8 market sharing (switch market_share)
+
+/** Which extra share action an event gets: 'VN' (copy for Zalo), 'US' (Text a friend) or null (system share only). */
+export function shareMarket(countryCode) {
+  const c = String(countryCode || '').trim().toUpperCase();
+  return c === 'VN' || c === 'US' ? c : null;
+}
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const VN_WD = ['CN', 'Th 2', 'Th 3', 'Th 4', 'Th 5', 'Th 6', 'Th 7'];
+const EN_WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const EN_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * The `when` of an invite, in the venue's zone. VN: the event card's own "Th 7, 06.03 ▪︎ 19:00"; US: "Sat, Mar 6 ▪︎
+ * 7:00 PM" (the card has no US format, so this is the US reading of the same two parts).
+ */
+export function shareWhen(startMs, timeZone, market) {
+  if (!Number.isFinite(startMs)) return '';
+  const p = zonedParts(startMs, timeZone || VN_TIME_ZONE);
+  if (market === 'US') {
+    const h = p.hour % 12 || 12;
+    return `${EN_WD[p.weekday]}, ${EN_MON[p.month - 1]} ${p.day} ▪︎ ${h}:${pad2(p.minute)} ${p.hour < 12 ? 'AM' : 'PM'}`;
+  }
+  return `${VN_WD[p.weekday]}, ${pad2(p.day)}.${pad2(p.month)} ▪︎ ${pad2(p.hour)}:${pad2(p.minute)}`;
+}
+
+/** "name ▪︎ when" + newline + url (core-loops.json `shareText`). An unknown `when` leaves just the name. */
+export function shareInviteText({ name, when, url }) {
+  const head = [String(name || '').trim(), String(when || '').trim()].filter(Boolean).join(' ▪︎ ');
+  return `${head}\n${url || ''}`;
+}
+
+/** `sms:` link with the invite as its body (no recipient, so the person picks who). */
+export function smsInviteHref(text) {
+  return `sms:&body=${encodeURIComponent(String(text || ''))}`;
+}
+
+/** Toast after "Copy invite for Zalo". There is no verified Zalo share URL, so the person pastes it. */
+export const ZALO_COPIED = { vi: 'Đã chép. Dán vào Zalo nhé.', en: 'Copied. Paste it in Zalo.' };

@@ -12,9 +12,11 @@ const CSS = `
 @media (prefers-reduced-motion: reduce) { .bb-fy-animate, .bb-fy-animate .bb-fy-sheen { animation: none !important; } }
 `;
 
-export default function ForYouChip({ T, active, pending, animate, onClick, capsuleStyle }) {
-  const label = T('Dành cho bạn', 'For You');
-  const aria = pending && !active ? T('Dành cho bạn, có gợi ý mới', 'For You, new recommendations') : label;
+// `title` (optional): L6 intent title {vi, en} from the person's stated goal (coreLoops.intentTitle), only while the
+// intent_foryou switch is on; otherwise the plain "For You".
+export default function ForYouChip({ T, active, pending, animate, onClick, capsuleStyle, title }) {
+  const label = title ? T(title.vi, title.en) : T('Dành cho bạn', 'For You');
+  const aria = pending && !active ? `${label}${T(', có gợi ý mới', ', new recommendations')}` : label;
   return (
     <span
       onClick={onClick}

@@ -169,7 +169,9 @@ export function DiscoveryRow({ ev, onOpen, T }) {
 }
 
 /** Shown only while the note-37 reminder rule fires (24h before → 12h after start) for a confirmed ticket. */
-export function NextUpBanner({ item, onOpen, T }) {
+// onShowTicket (L7, switch live_activity): set only on the event's own day for a confirmed ticket; the banner then
+// carries a "Show ticket" button that opens the ticket QR in one tap (the rest of the card still opens the event).
+export function NextUpBanner({ item, onOpen, onShowTicket, T }) {
   if (!item) return null;
   const live = item.reminder === 'live';
   return (
@@ -188,7 +190,16 @@ export function NextUpBanner({ item, onOpen, T }) {
           <div style={{ ...display(15.5, { marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{item.name}</div>
           {item.when && <div style={{ fontSize: 12, opacity: 0.7, marginTop: 1 }}>{item.when}</div>}
         </div>
-        <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap' }}>{T('Xem vé', 'Your ticket')} ›</span>
+        {onShowTicket ? (
+          <button type="button" data-testid="home-event-reminder-ticket"
+            onClick={(e) => { e.stopPropagation(); onShowTicket(); }} onKeyDown={(e) => e.stopPropagation()}
+            style={{ flex: 'none', minHeight: 36, padding: '0 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+              fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', color: 'var(--bb-bg)', background: 'rgba(var(--bb-fg-rgb),0.92)' }}>
+            {T('Hiện vé', 'Show ticket')}
+          </button>
+        ) : (
+          <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap' }}>{T('Xem vé', 'Your ticket')} ›</span>
+        )}
       </div>
     </div>
   );

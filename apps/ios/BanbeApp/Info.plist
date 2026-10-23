@@ -43,6 +43,8 @@
 	<string>banbe uses your location to show how far events are and to filter the area picker.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>banbe saves a chat photo or a report chart image to your library when you tap Save.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

@@ -685,6 +685,8 @@ extension AppState {
         favoritesLoadedForUID = nil
         favorites = []
         homeSurveyDiscoveryExpanded = false
+        // L7: the event-day Lock Screen card shows the leaving account's ticket.
+        await LiveActivityController.shared.endAll()
         // Phase 2 recaps belong to the account that just left.
         eventRecapID = nil
         hostRecapID = nil

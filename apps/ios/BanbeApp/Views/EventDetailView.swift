@@ -67,6 +67,8 @@ struct EventDetailView: View {
     @State private var introIncludedSheetOpen = false
     /// "Link copied" flash after the ⋯ menu's Copy link.
     @State private var linkCopied = false
+    /// L8 "Copied. Paste it in Zalo." flash after the ⋯ menu's Copy invite for Zalo.
+    @State private var zaloCopied = false
     /// Phase 1 Q3: "Next from this host" on an ended page (up to 3 live events still ahead).
     @State private var hostNext: [AppState.HostUpcomingEvent] = []
     /// Where the in-sheet title is right now (global), measured from its layout frame (its own fade/shrink transforms
@@ -561,8 +563,8 @@ struct EventDetailView: View {
             .allowsHitTesting(!isPreview)
         }
         .overlay(alignment: .topTrailing) {
-            if app.sharedFlash || linkCopied {
-                Text(app.T("Đã sao chép link", "Link copied"))
+            if app.sharedFlash || linkCopied || zaloCopied {
+                Text(zaloCopied ? app.T(CoreLoops.zaloCopied.vi, CoreLoops.zaloCopied.en) : app.T("Đã sao chép link", "Link copied"))
                     .font(.system(size: 12))
                     .foregroundStyle(app.palette.ink)
                     .padding(.horizontal, 12).padding(.vertical, 6)
@@ -608,6 +610,52 @@ struct EventDetailView: View {
         Divider()
         Button { copyLink() } label: { Label(app.T("Sao chép link", "Copy link"), systemImage: "link") }
             .accessibilityIdentifier("event.copyLink")
+        // L8 market sharing (switch market_share), beside Copy link: Vietnam events copy an invite for Zalo (there is
+        // no verified Zalo share URL, so it is pasted), US events open Messages with it.
+        switch inviteMarket {
+        case "VN":
+            Button { copyZaloInvite() } label: { Label(app.T("Chép lời mời cho Zalo", "Copy invite for Zalo"), systemImage: "doc.on.doc") }
+                .accessibilityIdentifier("event.copyZalo")
+        case "US":
+            Button { textAFriend() } label: { Label(app.T("Nhắn tin cho bạn bè", "Text a friend"), systemImage: "message") }
+                .accessibilityIdentifier("event.textFriend")
+        default:
+            EmptyView()
+        }
+    }
+
+    /// "VN" | "US" while the market_share switch is on, else nil. The demo catalogue is Saigon; a real event without a
+    /// country reads from its currency (same rule as web EventDetail.jsx).
+    private var inviteMarket: String? {
+        guard !isPreview, FeatureFlags.isOn(app.featureFlags, "market_share") else { return nil }
+        guard let loc = event.location else { return "VN" }
+        let country = (loc.countryCode ?? "").isEmpty ? (event.currency == "USD" ? "US" : "VN") : loc.countryCode
+        return CoreLoops.shareMarket(country)
+    }
+
+    /// "name ▪︎ when" + newline + the same link the system share sends (core-loops.json `shareText`).
+    private func inviteText(market: String) -> String? {
+        guard let id = event.key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return nil }
+        let zone = event.timeZoneID.flatMap { TimeZone(identifier: $0) } ?? EventMarket.vnTimeZone
+        let when = event.startDate.map { CoreLoops.shareWhen(startsAt: $0, timeZone: zone, market: market) }
+            ?? (market == "VN" ? event.when : "")
+        return CoreLoops.shareInviteText(name: event.name, when: when, url: "\(AppConfig.publicWebOrigin)/api/photo-share?eid=\(id)")
+    }
+
+    private func copyZaloInvite() {
+        guard let text = inviteText(market: "VN") else { return }
+        UIPasteboard.general.string = text
+        Analytics.track(.shareCompleted(channel: "zalo_copy", context: "event"))
+        Haptics.light()
+        withAnimation { zaloCopied = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { withAnimation { zaloCopied = false } }
+    }
+
+    private func textAFriend() {
+        guard let text = inviteText(market: "US"), let url = URL(string: CoreLoops.smsInviteLink(text)) else { return }
+        UIApplication.shared.open(url) { opened in
+            if opened { Analytics.track(.shareCompleted(channel: "sms", context: "event")) }
+        }
     }
 
     private func copyLink() {

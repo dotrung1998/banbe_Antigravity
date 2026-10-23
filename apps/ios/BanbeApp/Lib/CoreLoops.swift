@@ -185,4 +185,99 @@ enum CoreLoops {
             case confirmedSeats = "confirmed_seats", checkedIn = "checked_in", newFollowers = "new_followers", repeatGuests = "repeat_guests"
         }
     }
+
+    // MARK: L6 intent For You (switch intent_foryou)
+
+    /// Home's For You title and its one "because you said…" line, from the goals the person STATED in onboarding
+    /// (owner-only preferences; never inferred from behaviour, never a match score). Ranking is not touched.
+    /// Shared vectors: core-loops.json `intentTitles`.
+    struct IntentTitle: Equatable {
+        let goal: String?
+        let vi: String, en: String
+        let whyVi: String?, whyEn: String?
+    }
+
+    static let intentTitles: [String: IntentTitle] = [
+        "meet_people": .init(goal: "meet_people", vi: "Gặp gỡ mọi người", en: "Meet new people",
+                             whyVi: "Vì bạn muốn gặp gỡ mọi người", whyEn: "Because you said you want to meet people"),
+        "learn": .init(goal: "learn", vi: "Học điều mới", en: "Learn something new",
+                       whyVi: "Vì bạn muốn học hỏi", whyEn: "Because you said you want to learn something"),
+        "experiences": .init(goal: "experiences", vi: "Trải nghiệm đáng nhớ", en: "Experiences to enjoy",
+                             whyVi: "Vì bạn muốn tận hưởng trải nghiệm", whyEn: "Because you said you want to enjoy experiences"),
+        "networking": .init(goal: "networking", vi: "Kết nối nghề nghiệp", en: "Grow your network",
+                            whyVi: "Vì bạn muốn kết nối nghề nghiệp", whyEn: "Because you said you want professional networking"),
+    ]
+    static let defaultForYouTitle = IntentTitle(goal: nil, vi: "Dành cho bạn", en: "For You", whyVi: nil, whyEn: nil)
+
+    /// `goals` = `EventPreferences.declaredGoals` (stored order). The first goal this table knows wins; none -> plain
+    /// "For You" with no line.
+    static func intentTitle(goals: [String]) -> IntentTitle {
+        goals.lazy.compactMap { intentTitles[$0] }.first ?? defaultForYouTitle
+    }
+
+    // MARK: L7 day-of Live Activity (switch live_activity)
+
+    /// core-loops.json `liveActivity`: started on the device from this many hours before the start, ended this many
+    /// hours after it. No countdown is ever shown.
+    static let liveActivityStartHoursBefore = 6
+    static let liveActivityEndHoursAfterStart = 12
+
+    /// The activity's phase at `now`, or nil outside [start - 6 h, start + 12 h).
+    static func liveActivityPhase(startsAt: Date, now: Date) -> EventDayAttributes.Phase? {
+        let opens = startsAt.addingTimeInterval(-Double(liveActivityStartHoursBefore) * 3600)
+        if now < opens || now >= liveActivityEnd(startsAt: startsAt) { return nil }
+        return now < startsAt ? .upcoming : .started
+    }
+
+    static func liveActivityEnd(startsAt: Date) -> Date {
+        startsAt.addingTimeInterval(Double(liveActivityEndHoursAfterStart) * 3600)
+    }
+
+    /// The next instant the phase changes (open, start, end) after `now`, so a running app can re-check right then.
+    static func liveActivityNextChange(startsAt: Date, now: Date) -> Date? {
+        let opens = startsAt.addingTimeInterval(-Double(liveActivityStartHoursBefore) * 3600)
+        return [opens, startsAt, liveActivityEnd(startsAt: startsAt)].first { $0 > now }
+    }
+
+    // MARK: L8 market sharing (switch market_share)
+
+    /// Which extra share action an event gets: "VN" (copy for Zalo), "US" (Text a friend) or nil (system share only).
+    static func shareMarket(_ countryCode: String?) -> String? {
+        let c = (countryCode ?? "").trimmingCharacters(in: .whitespaces).uppercased()
+        return c == "VN" || c == "US" ? c : nil
+    }
+
+    private static let enWeekdayShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    private static let enMonthShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    /// The `when` of an invite, in the venue's zone. VN: the event card's own "Th 7, 06.03 ▪︎ 19:00"
+    /// (Countdown.formatVnEventDate); US: "Sat, Mar 6 ▪︎ 7:00 PM" (the card has no US format).
+    static func shareWhen(startsAt: Date, timeZone: TimeZone, market: String?) -> String {
+        if market == "US" {
+            let p = EventMarket.zonedParts(startsAt, timeZone: timeZone)
+            let h = p.hour % 12 == 0 ? 12 : p.hour % 12
+            return "\(enWeekdayShort[p.weekday]), \(enMonthShort[p.month - 1]) \(p.day) ▪︎ \(h):\(String(format: "%02d", p.minute)) \(p.hour < 12 ? "AM" : "PM")"
+        }
+        let d = Countdown.formatVnEventDate(startsAt, timeZone: timeZone)
+        return "\(d.weekdayShort), \(d.dayMonth) ▪︎ \(d.time)"
+    }
+
+    /// "name ▪︎ when" + newline + url (core-loops.json `shareText`). An unknown `when` leaves just the name.
+    static func shareInviteText(name: String, when: String, url: String) -> String {
+        let head = [name.trimmingCharacters(in: .whitespacesAndNewlines), when.trimmingCharacters(in: .whitespacesAndNewlines)]
+            .filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
+        return "\(head)\n\(url)"
+    }
+
+    /// JavaScript's encodeURIComponent set, so the web and iOS links are byte-identical.
+    private static let uriComponentAllowed = CharacterSet(charactersIn:
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()")
+
+    /// `sms:` link with the invite as its body (no recipient, so the person picks who).
+    static func smsInviteLink(_ text: String) -> String {
+        "sms:&body=" + (text.addingPercentEncoding(withAllowedCharacters: uriComponentAllowed) ?? "")
+    }
+
+    /// Toast after "Copy invite for Zalo". There is no verified Zalo share URL, so the person pastes it.
+    static let zaloCopied = (vi: "Đã chép. Dán vào Zalo nhé.", en: "Copied. Paste it in Zalo.")
 }

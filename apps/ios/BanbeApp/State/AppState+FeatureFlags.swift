@@ -25,6 +25,7 @@ extension AppState {
     func featureFlagsDidChange(from old: [String: Bool]) {
         if !FeatureFlags.isOn(old, "push_enabled"), pushEnabled { resumePushRegistrationIfAllowed() }
         if FeatureFlags.isOn(old, "app_events") != appEventsEnabled { syncAppEventsSink() }
+        if FeatureFlags.isOn(old, "live_activity") != liveActivityEnabled { syncLiveActivities(force: true) }
         let was = FeatureFlags.isOn(old, "rewards"), now = rewardsEnabled
         guard was != now else { return }
         if !now { resetRewardsState() }

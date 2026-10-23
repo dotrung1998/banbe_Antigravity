@@ -47,10 +47,16 @@ struct BanbeApp: App {
                 .onOpenURL { url in appState.handleDeepLink(url) }
                 // Platform feature flags (migration 187): read on start and on every return to the foreground
                 // (throttled inside), so an admin's switch reaches a running app within seconds.
-                .task { await appState.loadFeatureFlags() }
+                .task {
+                    await appState.loadFeatureFlags()
+                    appState.syncLiveActivities() // L7 event-day card (switch live_activity), local only
+                }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
-                        Task { await appState.loadFeatureFlags() }
+                        Task {
+                            await appState.loadFeatureFlags()
+                            appState.syncLiveActivities()
+                        }
                         appState.noteAppActiveForMeasurement() // app_opened, once per local day (migration 196)
                     }
                 }

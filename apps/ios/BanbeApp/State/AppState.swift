@@ -3337,6 +3337,15 @@ final class AppState: ObservableObject {
             openOrganizerProfile(organizerID: id, back: screen == .organizerProfile ? organizerProfileBackScreen : (screen == .login ? .home : screen))
             return
         }
+        // banbe://ticket/<booking id> — what the event-day Live Activity opens (L7). Own bookings only (RLS).
+        if url.host == "ticket" {
+            guard userID != nil, let raw = url.pathComponents.filter({ $0 != "/" }).first, let id = UUID(uuidString: raw) else { return }
+            photoViewer = nil
+            pulseOpen = false
+            storyViewer = nil
+            Task { await openBookingConfirmed(bookingID: id, eventKey: nil, back: screen == .login ? .home : screen) }
+            return
+        }
         // banbe://event/<event id> — what an event story's link opens.
         if url.host == "event" {
             guard let key = url.pathComponents.filter({ $0 != "/" }).first, !key.isEmpty else { return }
