@@ -35,5 +35,18 @@ Groups present: markets VN and unknown only (no US); app-open hours 07, 08, 18 (
 confirmed / cancelled / expired; notification kinds read: booking_requested, hold_created, hold_expired, new_message,
 organizer_invite.
 
+### Wave 2 (196 measurement, 197 age 16, 198 quick-win server)
+**Backup:** `~/banbe-backups/2026-10-23-pre-196-198/` (schema 166e203405e6deb1, data b6e9ab1dbd941ca6).
+**Dry run:** current production SCHEMA restored into a container; 196 → 197 → 198 applied cleanly; suite 25 ALL PASS
+there; full chain on a fresh container: suites 23–27 ALL PASS, older suites run.sh / 13 / 20 / 21 ALL PASS.
+**Applied:** 196 at 10:54:32, 197 at 10:54:36, 198 at 10:54:41 (each its own one-file workdir and dry-run listing exactly
+one file). **Deviation:** the three ran in one loop, so the catalog snapshot and audit were taken once after 198
+instead of after each; the combined diff contains only the intended objects (below), nothing removed.
+**Verified:** recorded as applied (not applied now: 182–184 on purpose, 199, 200); new functions: client RPCs
+(`admin_retention_report`, `get_host_confirmation_time`, `log_app_events`) authenticated only, helpers service-role
+only; new tables `app_events`, `app_event_names`, `report_excluded_users` no anon/authenticated grant; switch
+app_events=false; app_events rows 0; profiles.market backfilled for 5 profiles; report_excluded_users 2 (the two test
+logins); `set_date_of_birth` contains the AGE_TOO_YOUNG check.
+
 ## Flags (final values are reported at the end of the run)
 admin_event_wipe=true (untouched), rewards=false (untouched), rewards_v2=false (untouched), push_enabled=false (new).
