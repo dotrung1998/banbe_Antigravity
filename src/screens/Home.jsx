@@ -22,7 +22,7 @@ const HEADER_FIT_STEPS = [
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass, barGlass } from '../theme.js';
 import { BAR_HEIGHT, BAR_BOTTOM_OFFSET, DOCK_MARGIN } from './BottomTabBar.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
-import { formatVnd } from '../lib/paymentDocument.js';
+import { formatMoney, zonedParts } from '../lib/eventMarket.js';
 import ActionCenter from './ActionCenter.jsx';
 import ActivationChecklistCard from './ActivationChecklistCard.jsx';
 import { GuestBrowseBanner } from './GuestPromptSheet.jsx';
@@ -237,8 +237,9 @@ export default function Home() {
   const discoveryShaped = useMemo(() => (s.discoveryEvents || [])
     .filter(e => !EVENTS.some(se => se.key === e.key))
     .map(e => {
+      // `tz`: dates read in the venue's zone (migration 195).
       const overrides = liveEventOverrides(
-        { starts_at: e.startsAt, status: e.status, cancelled_at: e.cancelledAt }, null
+        { starts_at: e.startsAt, status: e.status, cancelled_at: e.cancelledAt, tz: e.tz }, null
       ) || {};
       const seatsText = e.seatsRemaining != null ? `${e.seatsRemaining} chỗ trống` : '';
       return {
@@ -263,7 +264,7 @@ export default function Home() {
         neighborhood: e.neighborhood, city: e.city,
         meta: `${e.area}${e.area && overrides.when ? ' ▪︎ ' : ''}${overrides.when || ''}`,
         catDisplay: e.catLabel || e.catKey,
-        price: e.priceVnd ? formatVnd(e.priceVnd) : 'Miễn phí',
+        price: e.priceVnd ? formatMoney(e.priceVnd, e.currency) : 'Miễn phí',
         seats: seatsText,
         soldOut: e.soldOut,
         cancelled: overrides.cancelled ?? false,
@@ -277,8 +278,8 @@ export default function Home() {
         // THEMSELVES chronologically before merging into the feed, never
         // read past that point.
         startsAtRaw: e.startsAt || null,
-        // For You candidates (src/lib/forYou.js) need the raw price.
-        priceVnd: e.priceVnd || 0,
+        // For You candidates (src/lib/forYou.js) need the raw price: minor units of `currency` (migration 195).
+        priceVnd: e.priceVnd || 0, currency: e.currency, tz: e.tz,
         status: e.status,
         // Note 50: Search, the fill badge and the Nearest sort need these; they used to be dropped here.
         keywords: e.keywords || [], organizerName: e.organizerName || '', organizerId: e.organizerId,
@@ -397,7 +398,7 @@ export default function Home() {
       : /miễn phí|free/i.test(e.price || '') ? 0 : (parseInt(String(e.price || '').replace(/[^\d]/g, ''), 10) || null);
     const distanceKm = located && s.userCoords && e.lat != null && e.lng != null ? haversineKm(s.userCoords, e) : null;
     return {
-      key: e.key, startsAt, priceVnd, catKeys: [e.catKey, e.cat2Key].filter(Boolean),
+      key: e.key, startsAt, priceVnd, currency: e.isReal ? e.currency : 'VND', catKeys: [e.catKey, e.cat2Key].filter(Boolean),
       booked: fillRow ? fillRow.booked : null, capacity: fillRow ? fillRow.capacity : null,
       soldOut: !!e.soldOut, distanceKm, popularity: pulseScore.get(e.key) ?? null, ev: e,
     };
@@ -425,14 +426,20 @@ export default function Home() {
   const [layoutMode, setLayoutMode] = useState(readLayout);
   const pickLayout = (m) => { setLayoutMode(m); try { localStorage.setItem(LAYOUT_KEY, m); } catch { /* per-viewer convenience only */ } };
 
-  const badgeDate = (ms) => {
+  // Real events read in their venue's zone (migration 195); demo events (no tz) in the browser's, as before.
+  const badgeDate = (ms, tz) => {
     if (ms == null) return '';
-    const d = new Date(ms);
-    const wd = T(['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][d.getDay()], ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][d.getDay()]);
-    const hh = String(d.getHours()).padStart(2, '0'), mm = String(d.getMinutes()).padStart(2, '0');
-    const sameDay = (a, b) => a.toDateString() === b.toDateString();
-    const today = new Date(); const tomorrow = new Date(Date.now() + 86400000);
-    const day = sameDay(d, today) ? T('HÔM NAY', 'TODAY') : sameDay(d, tomorrow) ? T('MAI', 'TMRW') : `${wd} ${d.getDate()}/${d.getMonth() + 1}`;
+    const partsOf = (t) => {
+      if (tz) return zonedParts(t, tz);
+      const d = new Date(t);
+      return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(), hour: d.getHours(), minute: d.getMinutes(), weekday: d.getDay() };
+    };
+    const p = partsOf(ms);
+    const wd = T(['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][p.weekday], ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][p.weekday]);
+    const hh = String(p.hour).padStart(2, '0'), mm = String(p.minute).padStart(2, '0');
+    const sameDay = (a, b) => a.year === b.year && a.month === b.month && a.day === b.day;
+    const today = partsOf(Date.now()); const tomorrow = partsOf(Date.now() + 86400000);
+    const day = sameDay(p, today) ? T('HÔM NAY', 'TODAY') : sameDay(p, tomorrow) ? T('MAI', 'TMRW') : `${wd} ${p.day}/${p.month}`;
     return `${day} · ${hh}:${mm}`;
   };
   // Best-match label: the top For You match, only when the user has answers. Without answers the first card
@@ -452,7 +459,7 @@ export default function Home() {
     if (i === 0 && forYouRanked.length && forYouRanked[0].key === e.key) label = 'best';
     else if (i === 0 && !forYouActive && topPulseKey === e.key) label = 'popular';
     return {
-      key: e.key, name: e.name, img: e.img, dateBadge: badgeDate(it.startsAt),
+      key: e.key, name: e.name, img: e.img, dateBadge: badgeDate(it.startsAt, e.isReal ? e.tz : null),
       priceLabel: it.priceVnd === 0 ? T('Miễn phí', 'Free') : trStatus(e.price), isFree: it.priceVnd === 0,
       metaLine: meta, fill, cancelled: !!e.cancelled, saved: e.saved, going: e.going, label,
     };
@@ -546,7 +553,7 @@ export default function Home() {
         };
       }
       const startsAt = real.startsAt ? new Date(real.startsAt) : null;
-      const untilLabel = startsAt ? (() => { const { weekdayShort, dayMonth, time } = formatVnEventDate(startsAt); return `${weekdayShort}, ${dayMonth} ▪︎ ${time}`; })() : '';
+      const untilLabel = startsAt ? (() => { const { weekdayShort, dayMonth, time } = formatVnEventDate(startsAt, real.tz); return `${weekdayShort}, ${dayMonth} ▪︎ ${time}`; })() : '';
       const endedHoursAgo = real.status === 'ended' && startsAt ? Math.max(0, Math.round((Date.now() - startsAt.getTime()) / 3600000)) : null;
       const cancelled = real.status === 'cancelled';
       const invited = real.visibility === 'invite' && s.invited.includes(k);

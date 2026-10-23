@@ -24,6 +24,9 @@ struct HostBenchmarks: Decodable, Equatable {
     var wellFilled: Group?
     var others: Group?
     var keywords: [String]?
+    /// Migration 195: the pool's currency ("VND" | "USD"); every price below is in its MINOR unit. nil = an older
+    /// server (VND only).
+    var currency: String?
 
     struct Price: Decodable, Equatable {
         var n: Int?
@@ -66,7 +69,7 @@ struct HostBenchmarks: Decodable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case success, level, n, freeShare = "free_share", price, fill, slots
-        case wellFilled = "well_filled", others, keywords
+        case wellFilled = "well_filled", others, keywords, currency
     }
 }
 
@@ -163,6 +166,8 @@ enum EventRecipe {
         var startsAt: Date?
         var photos = 0
         var chatGreeting = ""
+        /// UTC offset (minutes) of the event's zone at `startsAt`; Vietnam unless the venue is elsewhere.
+        var offsetMin = 420
     }
 
     enum Status: String { case good, improve, missing }
@@ -223,8 +228,9 @@ enum EventRecipe {
         s.trimmingCharacters(in: .whitespacesAndNewlines).split(whereSeparator: \.isWhitespace)
     }
 
-    /// ISO weekday (1 = Monday) and the benchmark slot, in Vietnam time.
-    static func localParts(_ date: Date) -> (dow: Int, slot: String) {
+    /// ISO weekday (1 = Monday) and the benchmark slot, in the event's own zone (`offsetMin` east of UTC; Vietnam
+    /// by default — migration 195's benchmarks bucket every event in its own zone).
+    static func localParts(_ date: Date, offsetMin: Int = 420) -> (dow: Int, slot: String) {
         let ms = date.timeIntervalSince1970 * 1000 + Double(offsetMin) * 60_000
         let days = Int((ms / dayMs).rounded(.down))
         let sundayBased = ((days + 4) % 7 + 7) % 7
@@ -332,7 +338,7 @@ enum EventRecipe {
 
         // 8. Day & time — this slot's fill vs the best slot, only where both cells cleared the k-threshold.
         if let startsAt = d.startsAt {
-            let (dow, slot) = localParts(startsAt)
+            let (dow, slot) = localParts(startsAt, offsetMin: d.offsetMin)
             let ownIndex = slotIndex(b, dow: dow, slot: slot)
             let bestIndex = bestSlotIndex(b)
             let own = ownIndex.flatMap { b?.slots?[$0] }
@@ -415,6 +421,8 @@ enum EventRecipe {
     // Draggable price slider over the market histogram (owner, 2026-10-21). Web twin: priceToFraction /
     // fractionToPrice in src/lib/eventRecipe.js.
     static let priceSliderStep = 10_000
+    /// The slider's snap in a currency's minor unit: 10.000₫, or $1 (100 cents).
+    static func priceSliderStep(currency: String?) -> Int { currency == "USD" ? 100 : priceSliderStep }
 
     /// Where `v` sits on the market track, 0…1 (nil without a usable range).
     static func priceToFraction(_ v: Int, _ p: HostBenchmarks.Price) -> Double? {
@@ -447,13 +455,22 @@ enum EventRecipe {
     }
     static func formatVndShort(_ v: Int) -> String { formatVndShort(Double(v)) }
 
+    /// Short money in the benchmark pool's currency: VND as `formatVndShort`, USD cents as "$12.50".
+    static func formatMoneyShort(_ v: Double?, currency: String?) -> String {
+        guard currency == "USD" else { return formatVndShort(v) }
+        guard let v else { return "" }
+        return EventMarket.formatMoney(Int(v.rounded()), currency: "USD")
+    }
+    static func formatMoneyShort(_ v: Int, currency: String?) -> String { formatMoneyShort(Double(v), currency: currency) }
+
     /// A number the way JS template strings print it (12, not 12.0).
     static func num(_ v: Double) -> String {
         v == v.rounded() && abs(v) < 1e15 ? String(Int(v)) : String(v)
     }
 
     /// Title + the "Why?" text for one ingredient. `detail` names its evidence.
-    static func copy(_ c: Check, _ T: Translate) -> (title: String, detail: String) {
+    /// `currency`: the benchmark pool's (`HostBenchmarks.currency`), so a USD band prints "$15–$25".
+    static func copy(_ c: Check, _ T: Translate, currency: String? = nil) -> (title: String, detail: String) {
         let evidence = c.source == .data && (c.n ?? 0) > 0
             ? T("Dựa trên \(c.n!) sự kiện tương tự.", "Based on \(c.n!) similar events.")
             : T("Mẹo chung của banbe.", "General banbe tip.")
@@ -490,7 +507,7 @@ enum EventRecipe {
             return (T("3+ từ khoá tìm kiếm", "3+ search keywords"),
                     T("Từ khoá giúp khách tìm thấy bạn trên Bản đồ và Tìm kiếm.", "Keywords help guests find you in Map and Search.") + more)
         case "price":
-            let band = c.p25 != nil ? "\(formatVndShort(c.p25))–\(formatVndShort(c.p75))" : ""
+            let band = c.p25 != nil ? "\(formatMoneyShort(c.p25, currency: currency))–\(formatMoneyShort(c.p75, currency: currency))" : ""
             let title = T("Giá phù hợp", "A price that fits")
             guard c.source == .data else {
                 return (title, T("Sự kiện giá thấp thường được đặt sát ngày. Hãy chia sẻ sớm và nhắc lại tuần cuối.",

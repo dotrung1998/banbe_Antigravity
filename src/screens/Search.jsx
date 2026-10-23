@@ -11,7 +11,7 @@ import { paper, ink, rule, display, fieldGlass, RADIUS } from '../theme.js';
 import { buildEventSearchDoc, matchesSearchQuery, normalizeSearchText } from '../lib/search.js';
 import { buildLocationSearchIndex, searchLocationTree } from '../lib/locationTree.js';
 import { formatVnEventDate } from '../lib/countdown.js';
-import { formatVnd } from '../lib/paymentDocument.js';
+import { formatMoney } from '../lib/eventMarket.js';
 import { CategoryGlyph, CATEGORY_DEFS } from '../components/home/HomeDiscoveryParts.jsx';
 
 const RECENT_KEY = 'banbe_recent_searches_v1';
@@ -109,7 +109,7 @@ export default function Search({ overlay = false }) {
     const real = (s.discoveryEvents || [])
       .filter(e => e.status === 'live' && e.visibility === 'public' && !(e.startsAt && now - new Date(e.startsAt).getTime() > ENDED_AFTER_MS))
       .map(e => ({ key: e.key, name: e.name, img: e.photoUrl, organizerId: e.organizerId, organizerName: e.organizerName, area: e.area,
-        startsAt: e.startsAt, priceVnd: e.priceVnd, doc: buildEventSearchDoc(e) }));
+        startsAt: e.startsAt, priceVnd: e.priceVnd, currency: e.currency, tz: e.tz, doc: buildEventSearchDoc(e) }));
     const realKeys = new Set(real.map(e => e.key));
     const demo = EVENTS.filter(e => !realKeys.has(e.key) && !e.inviteOnly).map(e => ({
       key: e.key, name: e.name, img: e.img, organizerId: null, organizerName: e.hostShort, area: e.locationLabel,
@@ -145,10 +145,10 @@ export default function Search({ overlay = false }) {
   const openEv = (key) => { commit(); goEvent(key); };
   const whenOf = (d) => {
     if (!d.startsAt) return '';
-    const { weekdayShort, dayMonth, time } = formatVnEventDate(new Date(d.startsAt));
+    const { weekdayShort, dayMonth, time } = formatVnEventDate(new Date(d.startsAt), d.tz || undefined); // venue zone (migration 195)
     return `${weekdayShort}, ${dayMonth} · ${time}`;
   };
-  const priceOf = (d) => (d.price != null ? d.price : d.priceVnd ? formatVnd(d.priceVnd) : T('Miễn phí', 'Free'));
+  const priceOf = (d) => (d.price != null ? d.price : d.priceVnd ? formatMoney(d.priceVnd, d.currency) : T('Miễn phí', 'Free'));
   const total = eventHits.length + hostHits.length + areaHits.length;
 
   const groupTitle = (label, n, testId) => (

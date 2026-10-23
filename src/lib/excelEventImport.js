@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { VN_TIME_ZONE, wallClockToMs } from './eventMarket.js';
 
 // Canonical categories definition matching project standards
 export const CANONICAL_CATEGORIES = [
@@ -285,11 +286,11 @@ export async function parseExcelOrZipPackage(fileBuffer, fileName = '') {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(parsedDate)) {
     errors.event_date = 'Ngày phải có định dạng YYYY-MM-DD (ví dụ: 2026-11-20).';
   } else {
-    // Validate not in past
-    const [y, m, d] = parsedDate.split('-').map(Number);
+    // Validate not in past. The template is for Vietnam venues (prices in VND), so the wall clock is
+    // read in Vietnam's zone like the server does (migration 195), not the browser's.
     const [hh, mm] = (parsedTime || '19:00').split(':').map(Number);
-    const eventTimeMs = new Date(y, m - 1, d, hh || 0, mm || 0).getTime();
-    if (eventTimeMs < Date.now() - 5 * 60 * 1000) {
+    const eventTimeMs = wallClockToMs(parsedDate, `${hh || 0}:${mm || 0}`, VN_TIME_ZONE);
+    if (eventTimeMs != null && eventTimeMs < Date.now() - 5 * 60 * 1000) {
       errors.event_date = 'Ngày giờ sự kiện không thể ở trong quá khứ.';
     }
   }

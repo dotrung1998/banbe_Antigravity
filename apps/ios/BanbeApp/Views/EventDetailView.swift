@@ -926,9 +926,24 @@ struct EventDetailView: View {
 
     @ViewBuilder private var timeTile: some View {
         if let time = whenParts.time {
-            tile("clock", app.T("Giờ", "Time")) { Text(time).minimumScaleFactor(0.85) }
-                .accessibilityIdentifier("event.fact.time")
+            tile("clock", app.T("Giờ", "Time")) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(time).minimumScaleFactor(0.85)
+                    // Real events show the VENUE's wall clock (migration 195); when this device is in another zone,
+                    // say so, in the Schedule's own wording ("19:00 at the venue").
+                    if let note = venueTimeNote {
+                        Text(note).font(.system(size: 11)).opacity(0.6).minimumScaleFactor(0.8)
+                            .accessibilityIdentifier("event.fact.venueTime")
+                    }
+                }
+            }
+            .accessibilityIdentifier("event.fact.time")
         }
+    }
+
+    private var venueTimeNote: String? {
+        guard event.eventTimeZone != nil else { return nil }
+        return SchedulePresentation.venueTimeNote(app.scheduleInfo(for: event), agendaZone: .current, vi: !app.isEN)
     }
 
     private var placeTile: some View {
@@ -1156,6 +1171,7 @@ struct EventDetailView: View {
     private var barState: ReserveBar.State {
         ReserveBar.state(booking: myBooking != nil, ticket: myBooking?.isTicket ?? false,
                          cancelled: event.cancelled, ended: ended, soldOut: event.soldOut,
+                         currencyUnavailable: !event.paidBookingAvailable,
                          blocked: !isPreview && app.reserveEligibilityBlock != nil)
     }
 
@@ -1266,7 +1282,7 @@ struct EventDetailView: View {
                 .accessibilityIdentifier("event.actionBar")
         case .reserve:
             // Outcome + total before the tap: the guest knows what they are about to hold and pay.
-            let total = app.trStatus(ReserveBar.totalPrice(event.price, qty: qty))
+            let total = app.trStatus(ReserveBar.totalPrice(amount: event.isFree ? 0 : event.priceVnd, currency: event.currency, qty: qty))
             InkButton(title: qty == 1 ? app.T("Giữ chỗ ▪︎ ", "Reserve ▪︎ ") + total
                                       : app.T("Giữ \(qty) chỗ ▪︎ ", "Reserve \(qty) seats ▪︎ ") + total) {
                 app.goReserve()
@@ -1281,6 +1297,12 @@ struct EventDetailView: View {
         case .soldOut:
             Button { app.goChat() } label: { fieldLabel(app.T("Hết chỗ ▪︎ nhắn để vào danh sách chờ", "Sold out ▪︎ message for waitlist")) }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("event.actionBar")
+        case .currencyUnavailable:
+            // Paid USD events (migration 195): shown with their price, but booking isn't open yet. Disabled with the
+            // reason in place (note 48's disabledReason pattern), never an error after a tap.
+            InkButton(title: app.T("Giữ chỗ ▪︎ ", "Reserve ▪︎ ") + app.trStatus(event.price), enabled: false,
+                      disabledReason: app.T("Đặt vé trả phí cho sự kiện tại Mỹ sẽ sớm mở", "Paid booking for US events opens soon")) {}
                 .accessibilityIdentifier("event.actionBar")
         case .blocked:
             // The bar says WHY it can't be used, and tapping scrolls to the full explanation card instead of a dead tap.

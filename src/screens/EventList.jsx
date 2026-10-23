@@ -60,7 +60,7 @@ export default function EventList() {
     }
     const startsAt = real.startsAt ? new Date(real.startsAt) : null;
     const endedHoursAgo = real.status === 'ended' && startsAt ? Math.max(0, Math.round((Date.now() - startsAt.getTime()) / 3600000)) : null;
-    const when = startsAt ? (() => { const { weekdayShort, dayMonth, time } = formatVnEventDate(startsAt); return `${weekdayShort}, ${dayMonth} ▪︎ ${time}`; })() : '';
+    const when = startsAt ? (() => { const { weekdayShort, dayMonth, time } = formatVnEventDate(startsAt, real.tz); return `${weekdayShort}, ${dayMonth} ▪︎ ${time}`; })() : '';
     return { key: k, name: real.name, photoUrl: real.photoUrl, meta: [when, real.area].filter(Boolean).join(' ▪︎ '), endedHoursAgo };
   }).filter(Boolean);
   // "Completed" means it already happened — anything still upcoming (or

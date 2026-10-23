@@ -191,6 +191,18 @@ export function venueTimeNote(e, vi, agendaZone = Intl.DateTimeFormat().resolved
   return vi ? `${venue} giờ tại nơi tổ chức` : `${venue} at the venue`;
 }
 
+/** Event Detail shows an event's date/time in the venue's zone (migration 195); when the viewer's zone reads it
+ * differently, the same note style gives the viewer's own clock — e.g. "Venue time · 10:00, Sun 7/3 your time". */
+export function viewerTimeNote(start, venueZone, vi, viewerZone = Intl.DateTimeFormat().resolvedOptions().timeZone) {
+  if (start == null || !venueZone || venueZone === viewerZone) return null;
+  const venue = timeText(start, vi, venueZone), local = timeText(start, vi, viewerZone);
+  const dayOf = (timeZone) => new Date(start).toLocaleDateString(vi ? 'vi-VN' : 'en-US', { weekday: 'short', day: 'numeric', month: 'numeric', timeZone });
+  const sameDay = dayOf(venueZone) === dayOf(viewerZone);
+  if (venue === local && sameDay) return null;
+  const localText = sameDay ? local : `${local}, ${dayOf(viewerZone)}`;
+  return vi ? `Giờ tại nơi tổ chức · ${localText} giờ của bạn` : `Venue time · ${localText} your time`;
+}
+
 export function monthTitle(d, vi) {
   return vi ? `Tháng ${d.getMonth() + 1}, ${d.getFullYear()}` : d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }

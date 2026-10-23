@@ -11,14 +11,18 @@
 //
 // Draft shape (normalized by the caller):
 //   { name, description, intro, includedCount, keywords: string[], priceVnd: number|null (null/0 = free),
-//     seats: number|null, startsAt: number|null (ms), photos: number, chatGreeting }
+//     seats: number|null, startsAt: number|null (ms), photos: number, chatGreeting,
+//     timeZone?: IANA (the venue's, default Asia/Ho_Chi_Minh), currency?: 'VND'|'USD' (default VND) }
+// Migration 195: `priceVnd` is in the minor unit of `currency` (cents for USD) and the benchmarks are
+// fetched for that same currency, so prices are only ever compared like with like.
 // Benchmarks: the raw get_host_benchmarks jsonb (or null while loading / offline / cold start).
 // Goal: null | 'fill_seats' | 'regular_crowd' | 'try_idea' | 'small_premium'.
+
+import { VN_TIME_ZONE, zonedParts, formatMoneyShort } from './eventMarket.js';
 
 export const HOST_GOALS = ['fill_seats', 'regular_crowd', 'try_idea', 'small_premium'];
 export const RECIPE_STEPS = { basics: 1, when: 2, tickets: 3, photos: 4 };
 const DAY = 86400000;
-const OFFSET_MIN = 420; // Vietnam, same convention as homeDiscovery.js
 const MIN_PHOTOS = 3;
 const TIP_PHOTOS = 5;
 const TIP_LEAD_DAYS = 14;
@@ -26,10 +30,11 @@ const DESC_GOOD_CHARS = 120;
 
 const words = (s) => (s || '').trim().split(/\s+/).filter(Boolean);
 
-function localParts(ms) {
-  const d = new Date(ms + OFFSET_MIN * 60000);
-  const dow = ((d.getUTCDay() + 6) % 7) + 1; // ISO: 1 = Monday ... 7 = Sunday (matches extract(isodow))
-  const h = d.getUTCHours();
+/** ISO weekday + benchmark slot of an instant in the event's zone (same cells as SQL benchmark_slot, migration 195). */
+export function localParts(ms, timeZone = VN_TIME_ZONE) {
+  const p = zonedParts(ms, timeZone);
+  const dow = ((p.weekday + 6) % 7) + 1; // ISO: 1 = Monday ... 7 = Sunday (matches extract(isodow))
+  const h = p.hour;
   return { dow, slot: h < 17 ? 'afternoon' : h < 21 ? 'evening' : 'late' };
 }
 
@@ -118,6 +123,7 @@ export function recipeChecks(draft, benchmarks, goal, now) {
     out.push({
       id: 'price', status, source: p ? 'data' : 'tip', n: p ? p.n : null,
       fix: { step: RECIPE_STEPS.tickets, field: 'price' }, position, median: p?.median ?? null, p25: p?.p25 ?? null, p75: p?.p75 ?? null,
+      currency: d.currency === 'USD' ? 'USD' : 'VND',
     });
   }
 
@@ -142,7 +148,7 @@ export function recipeChecks(draft, benchmarks, goal, now) {
     if (d.startsAt == null) {
       out.push({ id: 'timing', status: 'missing', source: 'tip', fix: { step: RECIPE_STEPS.when, field: 'date' } });
     } else {
-      const { dow, slot } = localParts(d.startsAt);
+      const { dow, slot } = localParts(d.startsAt, d.timeZone || VN_TIME_ZONE);
       const own = slotCell(b, dow, slot);
       const best = bestSlot(b);
       let status = 'good';
@@ -217,6 +223,8 @@ const pct = (x) => `${Math.round((x || 0) * 100)}%`;
 // Draggable price slider over the market histogram (owner, 2026-10-21). The track spans the market's min…max;
 // a price outside it pins to the nearer edge. iOS twin: EventRecipe.priceToFraction / fractionToPrice.
 export const PRICE_SLIDER_STEP = 10000;
+/** Slider step in the currency's minor unit: 10.000₫, or $1 (100 cents). */
+export const priceSliderStep = (currency) => (currency === 'USD' ? 100 : PRICE_SLIDER_STEP);
 
 /** Where `v` sits on the market track, 0…1 (null without a usable range). */
 export function priceToFraction(v, p) {
@@ -237,9 +245,7 @@ export function fractionToPrice(f, p, step = PRICE_SLIDER_STEP) {
 
 export function formatVndShort(v) {
   if (v == null) return '';
-  if (v >= 1e6) return `${(v / 1e6).toFixed(v % 1e6 === 0 ? 0 : 1).replace('.', ',')}M₫`;
-  if (v >= 1000) return `${Math.round(v / 1000)}k₫`;
-  return `${v}₫`;
+  return formatMoneyShort(v, 'VND');
 }
 
 /** { title, detail } for one ingredient. `detail` is the "Why?" text; it names its evidence. */
@@ -281,7 +287,7 @@ export function recipeCopy(c, T) {
           + (c.suggestions?.length ? ' ' + T(`Host khác hay dùng: ${c.suggestions.join(', ')}.`, `Other hosts use: ${c.suggestions.join(', ')}.`) : ''),
       };
     case 'price': {
-      const band = c.p25 != null ? `${formatVndShort(c.p25)}–${formatVndShort(c.p75)}` : '';
+      const band = c.p25 != null ? `${formatMoneyShort(c.p25, c.currency)}–${formatMoneyShort(c.p75, c.currency)}` : '';
       const title = T('Giá phù hợp', 'A price that fits');
       if (c.source !== 'data') return { title, detail: T('Sự kiện giá thấp thường được đặt sát ngày. Hãy chia sẻ sớm và nhắc lại tuần cuối.', 'Low-priced events tend to book late. Share early and again in the final week.') + ' ' + evidence };
       const pos = {

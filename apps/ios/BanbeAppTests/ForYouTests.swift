@@ -156,8 +156,29 @@ final class ForYouTests: XCTestCase {
         XCTAssertNil(ForYou.timeZone(countryCode: "US", stateProvince: nil))
         XCTAssertNil(ForYou.timeZone(countryCode: "FR", stateProvince: nil))
         XCTAssertEqual(ForYou.timeZone(countryCode: nil, stateProvince: nil)?.identifier, "Asia/Ho_Chi_Minh")
-        XCTAssertEqual(ForYou.priceCurrency(countryCode: "VN"), "VND")
-        XCTAssertNil(ForYou.priceCurrency(countryCode: "US"))
+    }
+
+    func testCandidateUsesTheEventsOwnCurrencyInWholeUnits() {
+        // Rows before migration 195 have no currency column: VND.
+        let legacy = ForYou.candidate(key: "v", catKey: "music", cat2Key: nil, priceVnd: 150_000, isFree: false,
+                                      countryCode: "VN", stateProvince: nil, startsAt: nil, isBookable: true)
+        XCTAssertEqual(legacy.priceCurrency, "VND")
+        XCTAssertEqual(legacy.priceAmount, 150_000)
+        // USD prices are cents; budgets are whole dollars, so a cent price rounds UP ($25.50 is over a $25 cap).
+        let usd = ForYou.candidate(key: "u", catKey: "music", cat2Key: nil, priceVnd: 2550, isFree: false,
+                                   countryCode: "US", stateProvince: "CA", startsAt: nil, isBookable: true, currency: "USD")
+        XCTAssertEqual(usd.priceCurrency, "USD")
+        XCTAssertEqual(usd.priceAmount, 26)
+        let p = EventPreferences(interests: ["music"], budget: BudgetPref(tier: "low", currency: "USD"))
+        XCTAssertNil(ForYou.match(usd, prefs: p, now: now))
+        let cheap = ForYou.candidate(key: "c", catKey: "music", cat2Key: nil, priceVnd: 2500, isFree: false,
+                                     countryCode: "US", stateProvince: "CA", startsAt: nil, isBookable: true, currency: "USD")
+        XCTAssertEqual(ForYou.match(cheap, prefs: p, now: now)?.reasons, ["interest", "budget"])
+        // The row's stored zone wins over the state map (multi-zone states).
+        let boise = ForYou.candidate(key: "b", catKey: nil, cat2Key: nil, priceVnd: 0, isFree: true,
+                                     countryCode: "US", stateProvince: "Idaho", startsAt: nil, isBookable: true,
+                                     currency: "USD", timeZoneID: "America/Boise")
+        XCTAssertEqual(boise.timeZone?.identifier, "America/Boise")
     }
 
     // MARK: eligibility of events

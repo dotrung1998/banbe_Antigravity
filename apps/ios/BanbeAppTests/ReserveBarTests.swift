@@ -32,6 +32,32 @@ final class ReserveBarTests: XCTestCase {
         XCTAssertEqual(s(blocked: true), .blocked)
     }
 
+    func testTotalFollowsTheEventsCurrency() {
+        XCTAssertEqual(ReserveBar.totalPrice(amount: 200_000, currency: "VND", qty: 2), "400.000₫")
+        XCTAssertEqual(ReserveBar.totalPrice(amount: 1250, currency: "USD", qty: 2), "$25")
+        XCTAssertEqual(ReserveBar.totalPrice(amount: 1250, currency: "USD", qty: 1), "$12.50")
+        XCTAssertEqual(ReserveBar.totalPrice(amount: 0, currency: "USD", qty: 3), "Miễn phí")
+        XCTAssertEqual(ReserveBar.totalPrice(amount: 90_000, currency: "VND", qty: 0), "90.000₫")
+    }
+
+    func testPaidUSDIsADisabledStateNotAnError() {
+        func s(booking: Bool = false, cancelled: Bool = false, soldOut: Bool = false, currencyUnavailable: Bool = false, blocked: Bool = false) -> ReserveBar.State {
+            ReserveBar.state(booking: booking, ticket: false, cancelled: cancelled, ended: false, soldOut: soldOut,
+                             currencyUnavailable: currencyUnavailable, blocked: blocked)
+        }
+        XCTAssertEqual(s(currencyUnavailable: true), .currencyUnavailable)
+        // Meeting the criteria wouldn't make it bookable, so the currency reason wins over the criteria block…
+        XCTAssertEqual(s(currencyUnavailable: true, blocked: true), .currencyUnavailable)
+        // …but a booking, a cancellation or sold out still say what they always said.
+        XCTAssertEqual(s(booking: true, currencyUnavailable: true), .pending)
+        XCTAssertEqual(s(cancelled: true, currencyUnavailable: true), .cancelled)
+        XCTAssertEqual(s(soldOut: true, currencyUnavailable: true), .soldOut)
+        // Free USD events and every VND event book normally.
+        XCTAssertTrue(EventMarket.paidBookingAvailable(currency: "USD", amount: 0))
+        XCTAssertFalse(EventMarket.paidBookingAvailable(currency: "USD", amount: 1250))
+        XCTAssertTrue(EventMarket.paidBookingAvailable(currency: "VND", amount: 150_000))
+    }
+
     func testQuantityStaysWithinCap() {
         XCTAssertEqual(ReserveBar.clampQty(0), 1)
         XCTAssertEqual(ReserveBar.clampQty(3), 3)

@@ -4,20 +4,23 @@
 // has no "km from you" worth showing — the screenshot that prompted this read "9665,7 km away").
 // iOS twin: CatalogEvent.fromDraft (apps/ios/BanbeApp/Models/CatalogEvent.swift).
 import { formatVnEventDate } from './countdown.js';
-import { formatVnd } from './paymentDocument.js';
+import { formatMoney, parsePriceInput } from './eventMarket.js';
 
 export const DRAFT_PREVIEW_KEY = 'draft-preview';
 
-/** Same parsing createSubmit uses, so the preview price matches what gets saved. */
-export function draftPriceVnd(raw) {
+/** Same parsing createSubmit uses, so the preview price matches what gets saved (minor units of `currency`). */
+export function draftPriceVnd(raw, currency = 'VND') {
+  if (currency === 'USD') return parsePriceInput(raw, 'USD') ?? 0;
   return parseInt(((raw || '').match(/[\d.]+/) || ['0'])[0].replace(/\./g, ''), 10) || 0;
 }
 
 /** { name, catKey, catLabel, area, lat, lng, startsAt (Date|null), priceVnd, seats (number|null), description,
- *  intro, includedItems, inviteOnly, organizerName, coverUrl } → a curEvent-shaped object. */
+ *  intro, includedItems, inviteOnly, organizerName, coverUrl, timeZone?, currency? } → a curEvent-shaped object.
+ *  `timeZone`/`currency` are the form's venue market (migration 195); without them the browser zone and VND. */
 export function shapeDraftAsCurEvent(d) {
   const startsAt = d.startsAt && !Number.isNaN(d.startsAt.getTime()) ? d.startsAt : null;
-  const { weekdayShort, dayMonth, dayLong, time } = startsAt ? formatVnEventDate(startsAt) : {};
+  const currency = d.currency === 'USD' ? 'USD' : 'VND';
+  const { weekdayShort, dayMonth, dayLong, time } = startsAt ? formatVnEventDate(startsAt, d.timeZone || undefined) : {};
   const items = (d.includedItems || [])
     .map(it => ({ label: (it.label || '').trim(), detail: (it.detail || '').trim() }))
     .filter(it => it.label);
@@ -28,7 +31,8 @@ export function shapeDraftAsCurEvent(d) {
     meta: [d.catLabel, d.area].filter(Boolean).join(' ▪︎ '),
     where: [d.area, dayLong, time].filter(Boolean).join(' ▪︎ '),
     when: startsAt ? `${weekdayShort}, ${dayMonth} ▪︎ ${time}` : '',
-    price: d.priceVnd > 0 ? formatVnd(d.priceVnd) : 'Miễn phí',
+    price: d.priceVnd > 0 ? formatMoney(d.priceVnd, currency) : 'Miễn phí',
+    priceAmount: d.priceVnd > 0 ? d.priceVnd : 0, currency, tz: d.timeZone || null,
     seats: seats != null ? String(seats) : '',
     seatsLong: seats != null ? `${seats} chỗ trống` : '',
     urgent: false,

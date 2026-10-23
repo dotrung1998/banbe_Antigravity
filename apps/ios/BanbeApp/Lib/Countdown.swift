@@ -51,9 +51,10 @@ enum Countdown {
     // static catalogue and `liveDateOverrides` below already build with it.
     struct VnEventDate { let weekdayShort: String, dayMonth: String, dayLong: String, time: String }
 
-    static func formatVnEventDate(_ date: Date) -> VnEventDate {
+    /// `timeZone`: the venue's zone for a real event (migration 195); nil keeps the device zone (demo catalogue).
+    static func formatVnEventDate(_ date: Date, timeZone: TimeZone? = nil) -> VnEventDate {
         var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = .current
+        cal.timeZone = timeZone ?? .current
         let c = cal.dateComponents([.weekday, .day, .month, .hour, .minute], from: date)
         // Foundation's `.weekday` is 1-based starting Sunday — matches this
         // array's own indexing (index 0 = Sunday) directly, no offset math.
@@ -99,7 +100,8 @@ enum Countdown {
 
     private static func liveDateOverrides(_ live: LiveEventStatus?, staticEvent: CatalogEvent, now: Date) -> DateOverrides {
         guard let startsAt = live?.startsAt else { return DateOverrides() }
-        let d = formatVnEventDate(startsAt)
+        // A real event keeps its venue zone (migration 195); the demo catalogue has none (device zone, as before).
+        let d = formatVnEventDate(startsAt, timeZone: staticEvent.eventTimeZone)
         let until = relDaysFromNow(startsAt, now: now)
         return DateOverrides(
             startDate: startsAt,
@@ -140,8 +142,8 @@ enum Countdown {
     /// catalogue) event's own `when` string can be built the exact same way
     /// a catalogue event's is, without a static event to merge onto (see
     /// CatalogEvent.fromReal).
-    static func whenLabel(for date: Date) -> String {
-        let d = formatVnEventDate(date)
+    static func whenLabel(for date: Date, timeZone: TimeZone? = nil) -> String {
+        let d = formatVnEventDate(date, timeZone: timeZone)
         return "\(d.weekdayShort), \(d.dayMonth) ▪︎ \(d.time)"
     }
 

@@ -8,8 +8,9 @@ import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './Rese
 import FollowingBadge from '../components/FollowingBadge.jsx';
 import EventPlanTitle from './EventPlanActions.jsx';
 import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
-import { reserveBarState, totalPrice, clampQty, parsePrice, QTY_PRESETS, MAX_QTY } from '../lib/reserveBar.js';
+import { reserveBarState, eventTotal, eventPrice, currencyUnavailable, clampQty, QTY_PRESETS, MAX_QTY, CURRENCY_UNAVAILABLE_REASON } from '../lib/reserveBar.js';
 import GlassMenu, { GlassMenuItem, GlassMenuDivider } from '../components/GlassMenu.jsx';
+import { viewerTimeNote } from '../lib/schedulePresentation.js';
 
 // Airbnb-style layout (mirrors iOS EventDetailView): the photo is a pinned backdrop that fades out while the
 // rounded info sheet scrolls up over it; pulling down from the very top closes the screen with a shrink.
@@ -280,11 +281,13 @@ export default function EventDetail({ preview = null } = {}) {
   const criteriaBlocked = crit.blocked && !myBooking && !ev.cancelled && !ended && !ev.soldOut;
   // One state for the sticky bar (src/lib/reserveBar.js, mirrored on iOS). Cancelled is checked before ended/sold
   // out because a cancelled event's stale `seats_remaining` can still read as available or as "sold out".
-  const barState = reserveBarState({ booking: !!myBooking, ticket: myBookingIsTicket, cancelled: !!ev.cancelled, ended, soldOut: !!ev.soldOut, blocked: criteriaBlocked });
+  // A paid event in a currency that cannot be booked yet (paid USD, migration 195) shows a disabled bar with the
+  // reason, never a booking attempt that fails server-side.
+  const barState = reserveBarState({ booking: !!myBooking, ticket: myBookingIsTicket, cancelled: !!ev.cancelled, ended, soldOut: !!ev.soldOut, currencyUnavailable: currencyUnavailable(ev), blocked: criteriaBlocked });
   // Preview: what a guest sees on arrival (1 ticket), not whatever the host last picked elsewhere.
   const qty = preview ? 1 : clampQty(s.qty);
-  const totalStr = trStatus(totalPrice(ev.price, qty));
-  const isFree = parsePrice(ev.price).free;
+  const totalStr = trStatus(eventTotal(ev, qty));
+  const isFree = eventPrice(ev).free;
   const critRef = useRef(null);
   const reserveBarLabel = {
     ticket: () => T('Xem vé của bạn ▪︎ mã ' + myBooking.code, 'View your ticket ▪︎ code ' + myBooking.code),
@@ -294,15 +297,16 @@ export default function EventDetail({ preview = null } = {}) {
     soldOut: () => T('Hết chỗ ▪︎ nhắn để vào danh sách chờ', 'Sold out ▪︎ message for waitlist'),
     // The bar says WHY it can't be used, and tapping shows the full explanation card instead of doing nothing.
     blocked: () => T('Chưa đủ điều kiện ▪︎ xem lý do', 'Not eligible yet ▪︎ see why'),
+    currencyUnavailable: () => T(...CURRENCY_UNAVAILABLE_REASON),
     // Outcome + total before the tap (the user knows what they are about to hold and pay).
     reserve: () => (qty === 1 ? T('Giữ chỗ ▪︎ ', 'Reserve ▪︎ ') : T(`Giữ ${qty} chỗ ▪︎ `, `Reserve ${qty} seats ▪︎ `)) + totalStr,
   }[barState]();
   const showCriteriaWhy = () => critRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-  const reserveBarTap = { ticket: openHeld, pending: openHeld, cancelled: undefined, ended: undefined, soldOut: goChat, blocked: showCriteriaWhy, reserve: goReserve }[barState];
+  const reserveBarTap = { ticket: openHeld, pending: openHeld, cancelled: undefined, ended: undefined, soldOut: goChat, currencyUnavailable: undefined, blocked: showCriteriaWhy, reserve: goReserve }[barState];
   const ctaBase = { fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 12px', borderRadius: 18, color: ink };
   const reserveBarStyle = (barState === 'reserve' || barState === 'ticket' || barState === 'pending')
     ? inkButton({ padding: '15px 12px' })
-    : { ...ctaBase, background: 'var(--bb-field)', cursor: reserveBarTap ? 'pointer' : 'default', opacity: barState === 'blocked' ? 0.85 : 1 };
+    : { ...ctaBase, background: 'var(--bb-field)', cursor: reserveBarTap ? 'pointer' : 'default', opacity: (barState === 'blocked' || barState === 'currencyUnavailable') ? 0.85 : 1 };
   // One honest line above the CTA: the refund promise for open paid events, else what holding means.
   const trustLine = barState !== 'reserve' ? null
     : showRefund
@@ -311,6 +315,8 @@ export default function EventDetail({ preview = null } = {}) {
 
   // Ngày / Giờ tiles: `when` is "Th 4, 04.11 ▪︎ 20:00" for both catalogue and real events.
   const [whenDate, whenTime] = (ev.when || '').split(' ▪︎ ');
+  // Real events show those in the VENUE's zone (migration 195); a viewer elsewhere also gets their own clock.
+  const timeNote = ev.tz && ev.startDate ? viewerTimeNote(ev.startDate.getTime(), ev.tz, T(true, false)) : null;
   // Seats bar: only when capacity AND what is left are both known (live fill from migration 186 first, else the
   // row's own seats_remaining). Never an invented capacity — the plain "N left" text stays otherwise.
   const realRow = preview ? null : s.realEventsById[ev.key];
@@ -598,6 +604,7 @@ export default function EventDetail({ preview = null } = {}) {
             {evWhere}
           </Tile>
         </div>
+        {timeNote && <div data-testid="event-venue-time-note" style={{ marginTop: 6, fontSize: 12, opacity: 0.7, color: ink }}>{timeNote}</div>}
         {/* Seats: a thin clay bar when capacity is known, otherwise just the text. */}
         <div data-testid="event-fact-seats" style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
           {fillRatio != null && (

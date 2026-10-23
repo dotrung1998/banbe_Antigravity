@@ -66,9 +66,9 @@ final class FollowingTests: XCTestCase {
         XCTAssertEqual(c.timeZone?.identifier, "Asia/Ho_Chi_Minh")
         XCTAssertEqual(c.categories, ["music"])
         let free = ForYou.candidate(key: "f", catKey: nil, cat2Key: nil, priceVnd: 5, isFree: true,
-                                    countryCode: "US", stateProvince: "CA", startsAt: nil, isBookable: false)
+                                    countryCode: "US", stateProvince: "CA", startsAt: nil, isBookable: false, currency: "USD")
         XCTAssertEqual(free.priceAmount, 0)
-        XCTAssertNil(free.priceCurrency)
+        XCTAssertEqual(free.priceCurrency, "USD")
         XCTAssertEqual(free.timeZone?.identifier, "America/Los_Angeles")
         XCTAssertFalse(free.isBookable)
     }

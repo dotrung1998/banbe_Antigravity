@@ -20,6 +20,7 @@ import { QUESTIONS, questionOptions, reduce, draftStore, impactLines, revealMatc
 import { LOCATION_ALL } from '../lib/locationTree.js';
 import { track, matchBucket } from '../lib/analytics.js';
 import { EventPrefsPrivacyNote } from './EventPreferences.jsx';
+import { formatMoney, rowCurrency, rowTimeZone } from '../lib/eventMarket.js';
 import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
 
 const NOT_ONBOARDING_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy']);
@@ -355,9 +356,10 @@ function SaveFailedStep({ send }) {
 
 // ---- personalized reveal (real matches, real ranking) ----
 
-function revealWhen(startsAt, lang) {
+// In the event's own zone (migration 195): a US event's 19:00 reads 19:00 here too.
+function revealWhen(startsAt, lang, timeZone) {
   if (!startsAt) return '';
-  return new Date(startsAt).toLocaleString(lang === 'en' ? 'en-GB' : 'vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return new Date(startsAt).toLocaleString(lang === 'en' ? 'en-GB' : 'vi-VN', { timeZone, weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 // The reveal is the peak of onboarding (note 53, peak-end rule): a short confetti burst when it lands, and the
@@ -443,8 +445,8 @@ function RevealStep({ flow, reveal, onContinue, onOpenEvent }) {
                       <span aria-hidden style={{ width: 72, height: 72, borderRadius: 12, flex: '0 0 auto', background: e.photoUrl ? `center/cover no-repeat url("${e.photoUrl}")` : muted(0.08) }} />
                       <span style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}><span aria-hidden style={{ color: '#CC9E29' }}>★ </span>{e.name}</span>
-                        <span style={{ display: 'block', fontSize: 12.5, opacity: 0.75, marginTop: 3 }}>{revealWhen(e.startsAt, s.lang)}</span>
-                        <span style={{ display: 'block', fontSize: 12.5, opacity: 0.75 }}>{e.priceVnd ? `${String(e.priceVnd).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}₫` : T('Miễn phí', 'Free')}</span>
+                        <span style={{ display: 'block', fontSize: 12.5, opacity: 0.75, marginTop: 3 }}>{revealWhen(e.startsAt, s.lang, rowTimeZone(e))}</span>
+                        <span style={{ display: 'block', fontSize: 12.5, opacity: 0.75 }}>{e.priceVnd ? formatMoney(e.priceVnd, rowCurrency(e)) : T('Miễn phí', 'Free')}</span>
                       </span>
                     </button>
                     {/* The ask inside the peak: keep the ones you like, one tap. */}

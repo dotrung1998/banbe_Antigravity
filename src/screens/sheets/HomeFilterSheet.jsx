@@ -11,9 +11,9 @@ import { createPortal } from 'react-dom';
 import { paper, ink, rule, display, inkButton, RADIUS } from '../../theme.js';
 import {
   applyDiscoveryFilters, optionCounts, relaxationHints, priceHistogram, median, bucketIndex,
-  normalizeFilters, DEFAULT_FILTERS, DATE_OPTIONS,
+  normalizeFilters, DEFAULT_FILTERS, DATE_OPTIONS, dominantCurrency, pricesIn,
 } from '../../lib/homeDiscovery.js';
-import { formatVndShort } from '../../lib/eventRecipe.js';
+import { formatMoneyShort } from '../../lib/eventMarket.js';
 import { CategoryGlyph, CATEGORY_DEFS } from '../../components/home/HomeDiscoveryParts.jsx';
 import AreaSheet from './AreaSheet.jsx';
 
@@ -28,7 +28,8 @@ export const RELAX_LABELS = {
   date: ['bỏ ngày', 'any date'], price: ['bỏ khoảng giá', 'any price'], free: ['bỏ "Miễn phí"', 'not only free'],
   cats: ['mọi danh mục', 'every category'], seatsLeft: ['cả sự kiện hết chỗ', 'include sold out'], almostFull: ['bỏ "Sắp hết"', 'not only almost full'],
 };
-const PRICE_STEP = 50000;
+// Slider step in the price control's currency's minor unit: 50.000₫ / $5.
+const PRICE_STEP = { VND: 50000, USD: 500 };
 
 function Pill({ active, onClick, children, count, testId, disabled }) {
   return (
@@ -79,17 +80,22 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
   const almostCount = useMemo(() => optionCounts(items, draft, 'almostFull', null, now).true, [items, draft, now]);
   const hints = useMemo(() => (resultCount === 0 ? relaxationHints(items, draft, now, undefined, 1) : []), [items, draft, now, resultCount]);
 
-  // Market behind the price control: everything that passes the OTHER filters.
-  const priceMarket = useMemo(() => applyDiscoveryFilters(items, { ...draft, priceMin: null, priceMax: null, free: false }, now)
-    .map(i => i.priceVnd).filter(p => p != null), [items, draft, now]);
+  // One currency for the whole price control (migration 195): VND unless every paid event listed is USD.
+  // Bounds from another currency (the list changed since they were set) are ignored, never reinterpreted.
+  const currency = useMemo(() => dominantCurrency(items), [items]);
+  const step = PRICE_STEP[currency];
+  const boundsMatch = (draft.priceCurrency === 'USD' ? 'USD' : 'VND') === currency;
+  // Market behind the price control: everything that passes the OTHER filters, in that one currency.
+  const priceMarket = useMemo(() => pricesIn(applyDiscoveryFilters(items, { ...draft, priceMin: null, priceMax: null, free: false }, now), currency),
+    [items, draft, now, currency]);
   const hist = useMemo(() => priceHistogram(priceMarket, 14), [priceMarket]);
   const paidMedian = median(priceMarket.filter(p => p > 0));
-  const sliderMax = hist ? Math.ceil(hist.max / PRICE_STEP) * PRICE_STEP : 0;
-  const lo = draft.priceMin ?? 0;
-  const hi = draft.priceMax ?? sliderMax;
+  const sliderMax = hist ? Math.ceil(hist.max / step) * step : 0;
+  const lo = (boundsMatch && draft.priceMin) || 0;
+  const hi = (boundsMatch && draft.priceMax != null) ? draft.priceMax : sliderMax;
   const loIdx = bucketIndex(hist, lo);
   const hiIdx = bucketIndex(hist, hi);
-  const shown = (v) => formatVndShort(forTwo ? v * 2 : v);
+  const shown = (v) => formatMoneyShort(forTwo ? v * 2 : v, currency);
   const inRangePaid = priceMarket.filter(p => p > 0 && p >= lo && p <= hi).length;
   const catLabel = draft.cats.length === 1 ? T(...(() => { const c = CATEGORY_DEFS.find(x => x.key === draft.cats[0]); return [c.vi, c.en]; })()) : null;
   const contextLine = [catLabel, areaLabel, paidMedian != null ? T(`trung vị ${shown(paidMedian)}`, `median ${shown(paidMedian)}`) : null]
@@ -158,16 +164,16 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
                   })}
                 </div>
                 <div style={{ position: 'relative', height: 28, marginTop: 2 }}>
-                  <input type="range" min={0} max={sliderMax} step={PRICE_STEP} value={lo} aria-label={T('Giá thấp nhất', 'Minimum price')} data-testid="home-filter-price-min"
-                    onChange={(e) => { const v = Math.min(Number(e.target.value), hi); patch({ priceMin: v > 0 ? v : null, free: false }); }}
+                  <input type="range" min={0} max={sliderMax} step={step} value={lo} aria-label={T('Giá thấp nhất', 'Minimum price')} data-testid="home-filter-price-min"
+                    onChange={(e) => { const v = Math.min(Number(e.target.value), hi); patch({ priceMin: v > 0 ? v : null, priceMax: boundsMatch ? draft.priceMax : null, priceCurrency: currency, free: false }); }}
                     className="bb-range" style={{ position: 'absolute', inset: 0, width: '100%' }} />
-                  <input type="range" min={0} max={sliderMax} step={PRICE_STEP} value={hi} aria-label={T('Giá cao nhất', 'Maximum price')} data-testid="home-filter-price-max"
-                    onChange={(e) => { const v = Math.max(Number(e.target.value), lo); patch({ priceMax: v < sliderMax ? v : null, free: false }); }}
+                  <input type="range" min={0} max={sliderMax} step={step} value={hi} aria-label={T('Giá cao nhất', 'Maximum price')} data-testid="home-filter-price-max"
+                    onChange={(e) => { const v = Math.max(Number(e.target.value), lo); patch({ priceMax: v < sliderMax ? v : null, priceMin: boundsMatch ? draft.priceMin : null, priceCurrency: currency, free: false }); }}
                     className="bb-range" style={{ position: 'absolute', inset: 0, width: '100%' }} />
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, fontWeight: 600 }}>
                   <span>{lo > 0 ? shown(lo) : T('Miễn phí', 'Free')}</span>
-                  <span>{draft.priceMax != null ? shown(hi) : T(`${shown(sliderMax)}+`, `${shown(sliderMax)}+`)}</span>
+                  <span>{boundsMatch && draft.priceMax != null ? shown(hi) : T(`${shown(sliderMax)}+`, `${shown(sliderMax)}+`)}</span>
                 </div>
               </>
             ) : <div style={{ fontSize: 12.5, opacity: 0.6 }}>{T('Chưa có sự kiện trả phí nào khớp.', 'No paid events match yet.')}</div>}

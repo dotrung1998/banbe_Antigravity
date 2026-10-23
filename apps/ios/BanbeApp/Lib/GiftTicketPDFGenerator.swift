@@ -143,7 +143,7 @@ enum GiftTicketPDFGenerator {
                 cy += 21
             }
 
-            let whenText = formattedWhen(startDate: doc.startDate, fallback: doc.whenText, isEN: isEN)
+            let whenText = formattedWhen(startDate: doc.startDate, fallback: doc.whenText, isEN: isEN, timeZoneID: doc.timeZoneID)
             drawLabelValue(label: isEN ? "Date & time " : "Thời gian: ",
                            value: whenText, at: CGPoint(x: cx, y: cy),
                            width: cWidth, labelFont: UIFont.systemFont(ofSize: 11), valueFont: UIFont.systemFont(ofSize: 11, weight: .semibold),
@@ -383,13 +383,22 @@ enum GiftTicketPDFGenerator {
 
     /// Event times are shown in the event's own timezone rather than the
     /// reader's, so a printed ticket reads the same on both sides of the door.
-    private static func formattedWhen(startDate: Date?, fallback: String, isEN: Bool) -> String {
+    /// The event's own zone is the venue's (migration 195); nil = Vietnam.
+    private static func formattedWhen(startDate: Date?, fallback: String, isEN: Bool, timeZoneID: String? = nil) -> String {
         guard let startDate else { return fallback }
+        let zone = EventMarket.timeZone(timeZoneID)
         let f = DateFormatter()
         f.locale = Locale(identifier: isEN ? "en_US" : "vi_VN")
         f.dateFormat = isEN ? "EEEE dd/MM/yyyy · HH:mm" : "EEEE dd/MM/yyyy · HH:mm"
-        f.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
-        return f.string(from: startDate) + " (GMT+7)"
+        f.timeZone = zone
+        return f.string(from: startDate) + " (\(gmtLabel(zone, at: startDate)))"
+    }
+
+    /// "GMT+7", "GMT-8", "GMT+5:30" — the zone's offset on that date (DST included).
+    private static func gmtLabel(_ zone: TimeZone, at date: Date) -> String {
+        let seconds = zone.secondsFromGMT(for: date)
+        let h = abs(seconds) / 3600, m = (abs(seconds) % 3600) / 60
+        return "GMT" + (seconds < 0 ? "-" : "+") + "\(h)" + (m > 0 ? String(format: ":%02d", m) : "")
     }
 
     private static func drawRule(from x1: CGFloat, to x2: CGFloat, at y: CGFloat, color: UIColor, width: CGFloat) {

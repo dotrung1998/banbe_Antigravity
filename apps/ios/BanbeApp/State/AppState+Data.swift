@@ -654,6 +654,8 @@ extension AppState {
         await loadNotifications()
         startNotificationPolling()
         requestPushAuthorizationIfNeeded()
+        // A push tapped before the account was ready (cold launch) opens now, like a bell tap.
+        routePendingPushIfReady()
         await loadBookingForCurrentEvent()
         await prefsLoad?.value
     }
@@ -661,6 +663,9 @@ extension AppState {
     func signOut() async {
         // An unfinished onboarding draft holds this account's private answers.
         if let uid = userID { OnboardingDraftStore().clear(uid: uid) }
+        // While the session still exists: this device stops getting the leaving account's pushes (ENABLE_PUSH only).
+        await unregisterPushTokenForSignOut()
+        pendingPushNotification = nil
         try? await SupabaseService.client.auth.signOut()
         // Private media (chat attachments, invite-only event photos, payment
         // documents) must not survive into the next account on a shared
@@ -1353,7 +1358,7 @@ extension AppState {
     @MainActor
     func loadMapEvents(bounds: (south: Double, north: Double, west: Double, east: Double)? = nil) async {
         do {
-            let rows: [MapEventRow] = try await MediaColumns.retrying { withR2 in
+            let rows: [MapEventRow] = try await Self.retryingEventColumns { withR2 in
             var filter = SupabaseService.client
                 .from("events")
                 // Keyword-search fix (migration 108) — re-enabled
@@ -1366,7 +1371,7 @@ extension AppState {
                 // intro/organizers(name)) so the search document built by
                 // `Search.buildEventSearchDoc` has category/organizer/
                 // description text available regardless of `keywords`.
-                .select(MediaColumns.cols("id, cat_key, cat_label, name, area, city, country_code, state_province, neighborhood, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)", "cover_r2_ref", withR2))
+                .select(MediaColumns.cols("id, cat_key, cat_label, name, area, city, country_code, state_province, neighborhood, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)" + EventMarketColumns.suffix, "cover_r2_ref", withR2))
                 .eq("status", value: "live")
                 // Strict invite-only events (migration 113) — this query
                 // never filtered visibility at all, the exact same gap
@@ -2858,6 +2863,11 @@ extension AppState {
                 reserveError = ""
                 return
             }
+            // Migration 195's bookings trigger: a paid event in a currency banbe can't take bookings in yet (USD).
+            if code.hasPrefix("PAID_BOOKING_NOT_AVAILABLE") {
+                reserveError = T("Đặt vé trả phí cho sự kiện tại Mỹ sẽ sớm mở", "Paid booking for US events opens soon")
+                return
+            }
             reserveError = [
                 "NOT_AUTHENTICATED": T("Bạn cần đăng nhập để giữ chỗ.", "You need to sign in to hold a spot."),
                 "INVALID_QTY": T("Số lượng chỗ không hợp lệ.", "That number of spots isn’t valid."),
@@ -3340,7 +3350,19 @@ extension AppState {
     // (booking-approval mode + withdrawal history); additive, same table,
     // so every other existing reader of this constant is unaffected.
     private static let realEventColumns = "id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, approval, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, withdrawal_reason, withdrawn_at, cover_image, included_items, intro, address_line, city, postal_code, address_verified, keywords, country_code, state_province, neighborhood"
-    private static func eventColumns(_ withR2: Bool) -> String { MediaColumns.cols(realEventColumns, "cover_r2_ref", withR2) }
+    /// + `tz, currency` (migration 195) until the server says those columns don't exist yet.
+    private static func eventColumns(_ withR2: Bool) -> String {
+        MediaColumns.cols(realEventColumns + EventMarketColumns.suffix, "cover_r2_ref", withR2)
+    }
+
+    /// Every `eventColumns` read goes through this: the market retry sits INSIDE the R2 one, so a missing
+    /// `tz`/`currency` column is caught (and remembered) before `MediaColumns` could mistake that 42703 for
+    /// a missing `cover_r2_ref`.
+    static func retryingEventColumns<T>(_ body: (_ withR2: Bool) async throws -> T) async throws -> T {
+        try await MediaColumns.retrying { withR2 in
+            try await EventMarketColumns.retrying { try await body(withR2) }
+        }
+    }
 
     /// `events.cover_image` (migration 087) always wins over the gallery's
     /// own sort_order-first fallback when a host has explicitly picked one —
@@ -3468,7 +3490,7 @@ extension AppState {
         wanted.forEach { realEventsInFlight.insert($0) }
         defer { wanted.forEach { realEventsInFlight.remove($0) } }
         do {
-            let rows: [RealEventSummary] = try await MediaColumns.retrying { withR2 in
+            let rows: [RealEventSummary] = try await Self.retryingEventColumns { withR2 in
 try await SupabaseService.client
                 .from("events").select(Self.eventColumns(withR2)).in("id", values: wanted)
                 .execute().value }
@@ -3509,7 +3531,7 @@ try await SupabaseService.client
         defer { weekendEventsLoading = false }
         let (start, end) = Countdown.thisWeekendWindow()
         do {
-            let rows: [RealEventSummary] = try await MediaColumns.retrying { withR2 in
+            let rows: [RealEventSummary] = try await Self.retryingEventColumns { withR2 in
 try await SupabaseService.client
                 .from("events").select(Self.eventColumns(withR2))
                 .eq("status", value: "live").eq("visibility", value: "public")
@@ -3562,7 +3584,7 @@ try await SupabaseService.client
         discoveryEventsLoading = true
         defer { discoveryEventsLoading = false }
         do {
-            let rows: [RealEventSummary] = try await MediaColumns.retrying { withR2 in
+            let rows: [RealEventSummary] = try await Self.retryingEventColumns { withR2 in
 try await SupabaseService.client
                 .from("events").select(Self.eventColumns(withR2))
                 .eq("visibility", value: "public")
@@ -4849,6 +4871,8 @@ try await SupabaseService.client
         // MapKit didn't return, so a resubmit with a freshly re-picked
         // address CLEARS a stale old value server-side instead of
         // COALESCE-preserving it.
+        // The place's own zone first, so the date/time re-express once into the final zone (migration 195).
+        createPlaceTimeZoneID = suggestion.timeZoneID
         createCountryCode = suggestion.countryCode ?? ""
         createStateProvince = suggestion.stateProvince ?? ""
         createNeighborhood = suggestion.neighborhood ?? ""
@@ -4871,6 +4895,7 @@ try await SupabaseService.client
         createCountryCode = nil
         createStateProvince = nil
         createNeighborhood = nil
+        createPlaceTimeZoneID = nil
         createLat = nil
         createLng = nil
         createLocLabel = ""
@@ -4903,22 +4928,24 @@ try await SupabaseService.client
         createError = ""
         createMediaError = ""
 
-        let priceDigits = createPrice.filter { $0.isNumber }
+        // Price in the MINOR unit of the event's currency (migration 195): đồng, or cents for a US event.
+        guard let priceAmount = createPriceAmount else {
+            loading = false
+            createError = createCurrency == "USD"
+                ? T("Nhập giá dạng 12 hoặc 12.50 (USD).", "Enter the price like 12 or 12.50 (USD).")
+                : T("Giá vé không hợp lệ.", "That price isn't valid.")
+            return false
+        }
         let capacity = Int(createSeats.filter { $0.isNumber }) ?? 0
-        // Both createEventDate/createEventTime are picked in
-        // EventDateTimeSheet's own Asia/Ho_Chi_Minh calendar — formatted
-        // with that SAME timezone here so the wall-clock digits sent to the
-        // RPC match what the host actually saw, regardless of the device's
-        // own timezone setting.
-        let eventDate = createEventDate.map(AppState.vnDateFormatter.string(from:))
-        let eventTime = createEventTime.map(AppState.vnTimeFormatter.string(from:))
-        if let createEventDate, let createEventTime {
-            let combined = AppState.vnDateTimeFormatter.string(from: createEventDate) + " " + AppState.vnTimeFormatter.string(from: createEventTime)
-            if let picked = AppState.vnCombinedFormatter.date(from: combined), picked < Date().addingTimeInterval(-5 * 60) {
-                loading = false
-                createError = T("Ngày giờ sự kiện đã ở trong quá khứ.", "This event's date/time is in the past.")
-                return false
-            }
+        // Both createEventDate/createEventTime are picked in EventDateTimeSheet's calendar for the event's own
+        // zone (`createEventTimeZone`: the venue's, Vietnam by default) — formatted with that SAME zone here so
+        // the wall-clock digits sent to the RPC match what the host actually saw, regardless of the device zone.
+        let eventDate = createEventDate.map(createFormatter("yyyy-MM-dd").string(from:))
+        let eventTime = createEventTime.map(createFormatter("HH:mm:ss").string(from:))
+        if let picked = createStartsAt, picked < Date().addingTimeInterval(-5 * 60) {
+            loading = false
+            createError = T("Ngày giờ sự kiện đã ở trong quá khứ.", "This event's date/time is in the past.")
+            return false
         }
 
         // Address-autocomplete fix pass (2026-09-28) — client-side mirror
@@ -4993,7 +5020,7 @@ try await SupabaseService.client
                         description: createDesc.trimmingCharacters(in: .whitespaces),
                         location: createDistrict.trimmingCharacters(in: .whitespaces),
                         eventDate: eventDate, eventTime: eventTime,
-                        priceVnd: Int(priceDigits) ?? 0, capacity: capacity,
+                        priceVnd: priceAmount, capacity: capacity,
                         intro: createIntro.trimmingCharacters(in: .whitespacesAndNewlines),
                         includedItems: includedItemsPayload,
                         lat: submitLat, lng: submitLng,
@@ -5003,7 +5030,8 @@ try await SupabaseService.client
                         addressVerified: true,
                         countryCode: createCountryCode,
                         stateProvince: createStateProvince,
-                        neighborhood: createNeighborhood
+                        neighborhood: createNeighborhood,
+                        tz: createTzParam
                     ))
                     .execute().value
                 if case .bool(true) = result["success"] ?? .bool(false) {
@@ -5032,7 +5060,7 @@ try await SupabaseService.client
                         location: createDistrict.trimmingCharacters(in: .whitespaces),
                         eventDate: eventDate,
                         eventTime: eventTime,
-                        priceVnd: Int(priceDigits) ?? 0,
+                        priceVnd: priceAmount,
                         capacity: capacity,
                         organizerName: orgRegName.trimmingCharacters(in: .whitespaces).isEmpty
                             ? "Organizer" : orgRegName.trimmingCharacters(in: .whitespaces),
@@ -5047,7 +5075,8 @@ try await SupabaseService.client
                         addressVerified: true,
                         countryCode: createCountryCode,
                         stateProvince: createStateProvince,
-                        neighborhood: createNeighborhood
+                        neighborhood: createNeighborhood,
+                        tz: createTzParam
                     ))
                     .execute().value
                 eventID = created.id
@@ -5242,7 +5271,9 @@ try await SupabaseService.client
             } else {
                 code = ""
             }
-            if code.contains("RESUBMISSION_LIMIT_REACHED") {
+            if let marketMessage = createMarketErrorMessage(code) {
+                createError = marketMessage
+            } else if code.contains("RESUBMISSION_LIMIT_REACHED") {
                 createError = T(
                     "Bạn đã gửi lại tối đa 2 lần trong 24 giờ qua. Vui lòng thử lại sau.",
                     "You've already resubmitted this event twice in the last 24 hours. Please try again later."
@@ -5337,16 +5368,26 @@ try await SupabaseService.client
         createCountryCode = nil
         createStateProvince = nil
         createNeighborhood = nil
+        createPlaceTimeZoneID = nil
+        // Migration 195: while the address isn't re-picked, the row's own zone/currency apply. The currency a
+        // resubmit stores follows the row's country (the server re-derives it), so the price is typed in that.
+        createEditBaseTimeZoneID = real.timeZoneID
+        createEditBaseCurrency = EventMarket.eventCurrency(countryCode: real.countryCode) ?? real.rowCurrency
         createLocConfirmed = hadVerifiedAddress
         createAddressSuggestions = []
         createAddressSearching = false
         createAddressSearchError = ""
-        createEventDate = real.eventDate.flatMap { AppState.vnDateFormatter.date(from: $0) }
-        createEventTime = real.eventTime.flatMap { raw -> Date? in
+        // The row's wall-clock date/time, read in the event's own zone (set just above).
+        createEventDate = real.eventDate.flatMap { createFormatter("yyyy-MM-dd").date(from: $0) }
+        createEventTime = real.eventTime.flatMap { [self] raw -> Date? in
             let normalized = raw.count == 5 ? raw + ":00" : raw
-            return AppState.vnTimeFormatter.date(from: normalized)
+            return createFormatter("HH:mm:ss").date(from: normalized)
         }
-        createPrice = real.priceVnd.map(String.init) ?? ""
+        // A legacy VND price on a US row is not carried over as dollars: the host re-enters it.
+        createPrice = real.priceVnd.flatMap { amount -> String? in
+            if real.rowCurrency != createCurrency && amount > 0 { return nil }
+            return EventMarket.priceInputText(amount, currency: real.rowCurrency)
+        } ?? ""
         createSeats = real.capacity.map(String.init) ?? ""
         createIncludedItems = real.includedItems ?? []
         createKeywords = (real.keywords ?? []).joined(separator: ", ")
@@ -5466,7 +5507,7 @@ try await SupabaseService.client
         adminEventError = ""
         defer { adminEventsLoading = false }
         do {
-            let rows: [RealEventSummary] = try await MediaColumns.retrying { withR2 in
+            let rows: [RealEventSummary] = try await Self.retryingEventColumns { withR2 in
 try await SupabaseService.client
                 .from("events").select(Self.eventColumns(withR2))
                 .eq("status", value: "review")
@@ -5557,7 +5598,7 @@ try await SupabaseService.client
         let realKeys = myOrgEventKeys.filter { key in EventCatalog.all.first(where: { $0.key == key }) == nil }
         guard !realKeys.isEmpty else { myOrgEventSummaries = []; return }
         do {
-            let rows: [RealEventSummary] = try await MediaColumns.retrying { withR2 in
+            let rows: [RealEventSummary] = try await Self.retryingEventColumns { withR2 in
 try await SupabaseService.client
                 .from("events").select(Self.eventColumns(withR2)).in("id", values: realKeys)
                 .execute().value }
@@ -5636,6 +5677,8 @@ struct ResubmitEventParams: Encodable {
     let countryCode: String?
     let stateProvince: String?
     let neighborhood: String?
+    /// Migration 195 — see CreateEventParams.tz.
+    var tz: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case eventId = "p_event_id"
@@ -5658,6 +5701,7 @@ struct ResubmitEventParams: Encodable {
         case countryCode = "p_country_code"
         case stateProvince = "p_state_province"
         case neighborhood = "p_neighborhood"
+        case tz = "p_tz"
     }
 }
 
@@ -5712,6 +5756,9 @@ struct CreateEventParams: Encodable {
     let countryCode: String?
     let stateProvince: String?
     let neighborhood: String?
+    /// Migration 195 — sent only for a US address (`createTzParam`); nil is omitted, so a server without 195
+    /// still finds its own signature for every VN create.
+    var tz: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case name = "p_name"
@@ -5736,6 +5783,7 @@ struct CreateEventParams: Encodable {
         case countryCode = "p_country_code"
         case stateProvince = "p_state_province"
         case neighborhood = "p_neighborhood"
+        case tz = "p_tz"
     }
 }
 
@@ -5816,6 +5864,37 @@ extension AppState {
         } catch {
             print("hostCancelEvent failed:", error)
             return T("Không huỷ được sự kiện. Vui lòng thử lại.", "Couldn't cancel the event. Please try again.")
+        }
+    }
+}
+
+/// `events.tz` / `events.currency` (migration 195) are selected only while the server has them. Production may not
+/// have 195 yet, and PostgREST fails the WHOLE query on an unknown column (42703), so the first such failure retries
+/// once with the old column list and remembers it for the rest of the session (same idea as `MediaColumns`).
+/// Rows read without the columns fall back to `EventMarket.rowTimeZoneID` / `rowCurrency` (location zone, VND).
+enum EventMarketColumns {
+    private static let lock = NSLock()
+    private static var _missing = false
+    static var missing: Bool { lock.lock(); defer { lock.unlock() }; return _missing }
+    static func markMissing() { lock.lock(); _missing = true; lock.unlock() }
+
+    /// Appended to an `events` select list.
+    static var suffix: String { missing ? "" : ", tz, currency" }
+
+    /// Only an unknown `tz`/`currency` column counts (a missing `cover_r2_ref` is MediaColumns' business).
+    static func isMissingColumnError(_ error: Error) -> Bool {
+        let s = String(describing: error).lowercased()
+        guard s.contains("42703") || s.contains("does not exist") || s.contains("could not find") else { return false }
+        return s.contains(".tz") || s.contains("\"tz\"") || s.contains("'tz'") || s.contains(" tz ")
+            || s.contains(".currency") || s.contains("\"currency\"") || s.contains("'currency'") || s.contains(" currency ")
+    }
+
+    static func retrying<T>(_ body: () async throws -> T) async throws -> T {
+        if missing { return try await body() }
+        do { return try await body() } catch {
+            guard isMissingColumnError(error) else { throw error }
+            markMissing()
+            return try await body()
         }
     }
 }

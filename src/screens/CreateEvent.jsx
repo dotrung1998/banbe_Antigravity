@@ -2,18 +2,18 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { ReservationCriteriaPicker } from './ReservationCriteria.jsx';
 import { criteriaSummary, normalizeCriteria, CATEGORY_EMOJI } from '../lib/eventPrefs.js';
-import { useBanBe } from '../state/BanBeContext.jsx';
+import { useBanBe, createFormMarket } from '../state/BanBeContext.jsx';
 import { EVENTS, CREATE_PALETTES, bg } from '../data/events.js';
 import { liveEventOverrides } from '../lib/countdown.js';
 import { supabase } from '../lib/supabase.js';
 import { parseExcelOrZipPackage } from '../lib/excelEventImport.js';
-import { formatVnd } from '../lib/paymentDocument.js';
+import { formatMoney, formatMoneyShort, parsePriceInput, priceInputText, priceQuickPicks, todayInZone, wallClockToMs, VN_TIME_ZONE } from '../lib/eventMarket.js';
 import { paper, ink, rule, FACE, display, alert, clay } from '../theme.js';
 import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
 import { loadMapKit } from '../lib/mapkit.js';
 import { CountStepper, StepProgress } from '../components/ui/FormControls.jsx';
-import { PRICE_QUICK_PICKS, SEAT_QUICK_PICKS, TIME_QUICK_PICKS, dateQuickPicks, similarPriceRange, createDraftMatchesDefaults } from '../lib/smartDefaults.js';
-import { recipeChecks, recipeCopy, estimateOutcome, pricePosition, formatVndShort, slotLabel, hasBenchmarks, HOST_GOALS, priceToFraction, fractionToPrice, PRICE_SLIDER_STEP } from '../lib/eventRecipe.js';
+import { SEAT_QUICK_PICKS, TIME_QUICK_PICKS, dateQuickPicks, similarPriceRange, createDraftMatchesDefaults } from '../lib/smartDefaults.js';
+import { recipeChecks, recipeCopy, estimateOutcome, pricePosition, slotLabel, hasBenchmarks, HOST_GOALS, priceToFraction, fractionToPrice, priceSliderStep, localParts } from '../lib/eventRecipe.js';
 import { useHostBenchmarks } from '../lib/useHostBenchmarks.js';
 import { track } from '../lib/analytics.js';
 import { stepOfField, isTextField, firstMissingField } from '../lib/createFieldGuide.js';
@@ -29,6 +29,13 @@ const GOAL_LABELS = {
   try_idea: ['Thử ý tưởng mới', 'Try a new idea'],
   small_premium: ['Nhỏ & cao cấp', 'Small & premium'],
 };
+// The date field's tag: Vietnam time, or the US venue's own zone (migration 195) — "Venue time (PDT)".
+function zoneTag(timeZone, T) {
+  if (timeZone === VN_TIME_ZONE) return T('Giờ Việt Nam', 'Vietnam time');
+  let abbr = '';
+  try { abbr = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || ''; } catch { /* unknown zone */ }
+  return abbr ? T(`Giờ tại nơi tổ chức (${abbr})`, `Venue time (${abbr})`) : T('Giờ tại nơi tổ chức', 'Venue time');
+}
 const POSITION_LABELS = { free: ['miễn phí', 'free'], below: ['dưới mức thường', 'below typical'], typical: ['mức thường gặp', 'typical'], premium: ['cao cấp', 'premium'] };
 
 const IMPORT_FIELD_LABELS = {
@@ -236,6 +243,14 @@ export default function CreateEvent() {
   // excludes removed items (splice, not a soft-delete flag) and only ever
   // holds locally-staged/already-uploaded ones — there's nothing "failed/
   // in-progress" to separately exclude before a real upload attempt exists.
+  // The venue's market (migration 195): its zone for every date/time check and the price's currency.
+  const market = createFormMarket(s);
+  const fmtMoney = (v) => formatMoney(v, market.currency);
+  const fmtShort = (v) => formatMoneyShort(v, market.currency);
+  // Price typed for this currency, in minor units: 0 when empty (free), null when a dollar amount isn't a price.
+  // VND keeps its old lenient reading (digits only; no digits = free), so it never shows an error.
+  const parsedPrice = !s.createPrice.trim() ? 0
+    : market.currency === 'USD' ? parsePriceInput(s.createPrice, 'USD') : (parsePriceInput(s.createPrice, 'VND') ?? 0);
   const fieldErrors = {
     desc: !s.createDesc.trim(),
     dateTime: !s.createEventDate || !s.createEventTime,
@@ -243,6 +258,8 @@ export default function CreateEvent() {
     cats: s.createCats.length === 0,
     included: !s.createIncludedItems.some(it => (it.label || '').trim()),
     photos: photos.length < MIN_PHOTOS || photos.length > MAX_PHOTOS,
+    // A dollar amount must read like 12.50; a VND field keeps its old reading (digits only, never an error).
+    price: parsedPrice == null,
   };
   const hasFieldErrors = Object.values(fieldErrors).some(Boolean);
   // 2026-09-25 fix pass (Task 0 audit) — this screen can be reached
@@ -289,7 +306,7 @@ export default function CreateEvent() {
     { id: 'create-section-host', title: T('Host', 'Host'), done: !!(s.orgRegName || '').trim() },
     { id: 'create-section-basics', title: T('Cơ bản', 'Basics'), done: nameOk && !fieldErrors.desc && !fieldErrors.cats && !fieldErrors.included },
     { id: 'create-section-when', title: T('Thời gian & nơi', 'When & where'), done: !!s.createLocConfirmed && !fieldErrors.dateTime },
-    { id: 'create-section-tickets', title: T('Vé', 'Tickets'), done: !fieldErrors.seats },
+    { id: 'create-section-tickets', title: T('Vé', 'Tickets'), done: !fieldErrors.seats && !fieldErrors.price },
     { id: 'create-section-photos', title: T('Ảnh', 'Photos'), done: !fieldErrors.photos },
   ];
   // Note 53: always open on step 1 (Host), even when it's already ticked from the organizer profile, so the
@@ -336,7 +353,7 @@ export default function CreateEvent() {
     [!(s.orgRegName || '').trim() && T('tên host', 'host name')],
     [!nameOk && T('tên sự kiện', 'event name'), fieldErrors.desc && T('mô tả', 'description'), fieldErrors.cats && T('danh mục', 'a category'), fieldErrors.included && T('mục bao gồm', 'an included item')],
     [!s.createLocConfirmed && T('địa chỉ gợi ý', 'a suggested address'), fieldErrors.dateTime && T('ngày & giờ', 'date & time')],
-    [fieldErrors.seats && T('số chỗ', 'seats')],
+    [fieldErrors.price && T('giá vé hợp lệ', 'a valid price'), fieldErrors.seats && T('số chỗ', 'seats')],
     [fieldErrors.photos && T(`ít nhất ${MIN_PHOTOS} ảnh`, `at least ${MIN_PHOTOS} photos`)],
   ][step].filter(Boolean);
   const missing = [
@@ -344,6 +361,7 @@ export default function CreateEvent() {
     fieldErrors.desc && T('mô tả', 'description'),
     !s.createLocConfirmed && T('địa chỉ gợi ý', 'a suggested address'),
     fieldErrors.dateTime && T('ngày & giờ', 'date & time'),
+    fieldErrors.price && T('giá vé hợp lệ', 'a valid price'),
     fieldErrors.seats && T('số chỗ', 'seats'),
     fieldErrors.cats && T('danh mục', 'a category'),
     fieldErrors.included && T('mục bao gồm', 'an included item'),
@@ -357,15 +375,16 @@ export default function CreateEvent() {
   const MISSING_LABEL = {
     hostName: T('tên host', 'host name'), name: T('tên sự kiện', 'event name'), description: T('mô tả', 'description'),
     categories: T('danh mục', 'a category'), included: T('mục bao gồm', 'an included item'), location: T('địa chỉ gợi ý', 'a suggested address'),
-    date: T('ngày & giờ', 'date & time'), seats: T('số chỗ', 'seats'), photos: T(`ít nhất ${MIN_PHOTOS} ảnh`, `at least ${MIN_PHOTOS} photos`),
+    date: T('ngày & giờ', 'date & time'), price: T('giá vé hợp lệ', 'a valid price'), seats: T('số chỗ', 'seats'), photos: T(`ít nhất ${MIN_PHOTOS} ảnh`, `at least ${MIN_PHOTOS} photos`),
   };
   // ---- Recipe for success (note 50) ----------------------------------------------------------------
   const primaryCat = s.createCats[0] || '';
-  const { benchmarks, demand } = useHostBenchmarks(primaryCat, s.createCity, !!s.user && !s.createSent);
+  const { benchmarks, demand } = useHostBenchmarks(primaryCat, s.createCity, !!s.user && !s.createSent, market.currency);
   const bench = hasBenchmarks(benchmarks) ? benchmarks : null;
+  // The host's wall clock read in the venue's zone (the server does the same with events.tz).
   const draftStartsAt = s.createEventDate && s.createEventTime
-    ? Date.parse(`${s.createEventDate}T${String(s.createEventTime).slice(0, 5)}:00+07:00`) : null;
-  const draftPriceVnd = parseInt((String(s.createPrice || '').match(/[\d.]+/) || ['0'])[0].replace(/\./g, ''), 10) || 0;
+    ? wallClockToMs(s.createEventDate, String(s.createEventTime).slice(0, 5), market.timeZone) : null;
+  const draftPriceVnd = parsedPrice || 0; // minor units of market.currency
   const draftKeywords = (s.createKeywords || '').split(',').map(k => k.trim()).filter(Boolean);
   const recipe = useMemo(() => recipeChecks({
     name: s.createName, description: s.createDesc, intro: s.createIntro,
@@ -374,9 +393,10 @@ export default function CreateEvent() {
     seats: parseInt(String(s.createSeats || '').replace(/\D/g, ''), 10) || 0,
     startsAt: Number.isFinite(draftStartsAt) ? draftStartsAt : null,
     photos: items.length, chatGreeting: `${s.createChatGreeting || ''}${s.createChatGreetingEn || ''}`,
+    timeZone: market.timeZone, currency: market.currency,
   }, bench, s.createHostGoal, Date.now()),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [s.createName, s.createDesc, s.createIntro, s.createIncludedItems, s.createKeywords, draftPriceVnd, s.createSeats, draftStartsAt, items.length, s.createChatGreeting, s.createChatGreetingEn, bench, s.createHostGoal]);
+  [s.createName, s.createDesc, s.createIntro, s.createIncludedItems, s.createKeywords, draftPriceVnd, s.createSeats, draftStartsAt, items.length, s.createChatGreeting, s.createChatGreetingEn, bench, s.createHostGoal, market.timeZone, market.currency]);
   const recipeById = Object.fromEntries(recipe.map(c => [c.id, c]));
   const [recipeOpen, setRecipeOpen] = useState(false);
   const openRecipe = () => { setRecipeOpen(true); track('recipe_opened'); };
@@ -397,12 +417,9 @@ export default function CreateEvent() {
   const outcome = estimateOutcome(draftPriceVnd, parseInt(String(s.createSeats || '').replace(/\D/g, ''), 10) || 0, bench?.fill?.median_fill ?? null);
   const slotFill = (dateStr, timeStr) => {
     if (!bench || !dateStr || !timeStr) return null;
-    const ms = Date.parse(`${dateStr}T${timeStr}:00+07:00`);
+    const ms = wallClockToMs(dateStr, timeStr, market.timeZone);
     if (!Number.isFinite(ms)) return null;
-    const d = new Date(ms + 7 * 3600000);
-    const dow = ((d.getUTCDay() + 6) % 7) + 1;
-    const h = d.getUTCHours();
-    const slot = h < 17 ? 'afternoon' : h < 21 ? 'evening' : 'late';
+    const { dow, slot } = localParts(ms, market.timeZone);
     return (bench.slots || []).find(c => c.dow === dow && c.slot === slot) || null;
   };
 
@@ -418,10 +435,12 @@ export default function CreateEvent() {
     }
     createBack();
   };
-  const priceDigits = parseInt(String(s.createPrice || '').replace(/\D/g, ''), 10);
+  // Price chosen by a pick/slider, written the way the field shows it ("450000" for VND as before, "12.50" for USD).
+  const priceText = (v) => (market.currency === 'USD' ? priceInputText(v, 'USD') : String(v));
   const seatsNum = parseInt(String(s.createSeats || '').replace(/\D/g, ''), 10) || 0;
   const similar = s.createCats.length
-    ? similarPriceRange((s.discoveryEvents || []).filter(e => s.createCats.includes(e.catKey)).map(e => e.priceVnd || 0))
+    // Same-currency events only: a dong price never informs a dollar suggestion.
+    ? similarPriceRange((s.discoveryEvents || []).filter(e => s.createCats.includes(e.catKey) && (e.currency || 'VND') === market.currency).map(e => e.priceVnd || 0))
     : null;
   const createBtnStyle = {
     marginTop: 26, fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 15, borderRadius: 999,
@@ -671,15 +690,15 @@ export default function CreateEvent() {
         </Guided>
 
             <Guided field="date" attn={attn} style={fieldCol}>
-              <FormLabel icon="calendar" text={T('Ngày & giờ', 'Date & time')} required tag={T('Giờ Việt Nam', 'Vietnam time')} />
+              <FormLabel icon="calendar" text={T('Ngày & giờ', 'Date & time')} required tag={zoneTag(market.timeZone, T)} />
               <div style={{ display: 'flex', gap: 10 }}>
-                <input type="date" value={s.createEventDate} onChange={createEventDateType} min={new Date().toISOString().slice(0, 10)}
+                <input type="date" value={s.createEventDate} onChange={createEventDateType} min={todayInZone(market.timeZone)}
                   data-testid="create-event-date" aria-label={T('Ngày', 'Date')} style={{ ...bigInput, flex: 1.3 }} />
                 <input type="time" value={s.createEventTime} onChange={createEventTimeType}
                   data-testid="create-event-time" aria-label={T('Giờ', 'Time')} style={{ ...bigInput, flex: 1 }} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }} data-testid="create-date-quickpicks">
-                {dateQuickPicks().map(p => {
+                {dateQuickPicks(new Date(), market.timeZone).map(p => {
                   const cell = slotFill(p.date, (s.createEventTime || '19:00').slice(0, 5));
                   return (
                     <PickTile key={p.en} label={T(p.vi, p.en)} sub={cell ? T(`kín ${Math.round(cell.median_fill * 100)}%`, `fills ${Math.round(cell.median_fill * 100)}%`) : null}
@@ -711,23 +730,27 @@ export default function CreateEvent() {
           <StepCard title={T('Vé & ai được đặt', 'Tickets & who can book')} id="create-section-tickets">
             <Guided field="price" attn={attn} style={fieldCol}>
               <FormLabel icon="tag" text={T('Giá vé', 'Price')} tag={similar ? T('Gợi ý', 'Suggested') : null} />
-              {bench?.price && <PriceMarket price={bench.price} mine={draftPriceVnd} T={T} catLabel={createCatLabel} onChange={(v) => set({ createPrice: String(v) })} />}
+              {bench?.price && <PriceMarket price={bench.price} mine={draftPriceVnd} T={T} catLabel={createCatLabel} currency={market.currency} onChange={(v) => set({ createPrice: priceText(v), createPriceCurrency: market.currency })} />}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-                {PRICE_QUICK_PICKS.map(v => {
+                {priceQuickPicks(market.currency).map(v => {
                   const pos = bench?.price ? pricePosition(v, bench.price) : null;
                   return (
-                    <PickTile key={v} testId={`create-price-${v}`} label={v === 0 ? T('Miễn phí', 'Free') : (pos ? formatVndShort(v) : formatVnd(v))}
+                    <PickTile key={v} testId={`create-price-${v}`} label={v === 0 ? T('Miễn phí', 'Free') : (pos ? fmtShort(v) : fmtMoney(v))}
                       sub={pos && v > 0 ? T(...POSITION_LABELS[pos]) : null}
-                      selected={s.createPrice !== '' && priceDigits === v} onClick={() => set({ createPrice: String(v) })} />
+                      selected={s.createPrice !== '' && parsedPrice === v} onClick={() => set({ createPrice: priceText(v), createPriceCurrency: market.currency })} />
                   );
                 })}
               </div>
-              <input value={s.createPrice} onChange={createPriceType} placeholder={T('Giá khác, vd. 450.000', 'Other price, e.g. 450,000')} aria-label={T('Giá vé', 'Ticket price')} inputMode="numeric" style={bigInput} />
+              <input value={s.createPrice} onChange={createPriceType}
+                placeholder={market.currency === 'USD' ? T('Giá khác (USD), vd. 12.50', 'Other price (USD), e.g. 12.50') : T('Giá khác, vd. 450.000', 'Other price, e.g. 450,000')}
+                aria-label={T('Giá vé', 'Ticket price')} inputMode={market.currency === 'USD' ? 'decimal' : 'numeric'} data-testid="create-price-input"
+                aria-invalid={fieldErrors.price || undefined} style={bigInput} />
+              {fieldErrors.price && <p data-testid="create-price-error" style={errText}>{T('Nhập giá dạng 12.50', 'Enter a price like 12.50')}</p>}
               <span data-testid="create-price-hint" style={hintText}>
                 {bench?.price
-                  ? T(`Thường gặp: ${formatVndShort(bench.price.p25)}–${formatVndShort(bench.price.p75)} (${bench.price.n} sự kiện tương tự). Để trống là miễn phí.`, `Typical: ${formatVndShort(bench.price.p25)}–${formatVndShort(bench.price.p75)} (${bench.price.n} similar events). Leave empty for a free event.`)
+                  ? T(`Thường gặp: ${fmtShort(bench.price.p25)}–${fmtShort(bench.price.p75)} (${bench.price.n} sự kiện tương tự). Để trống là miễn phí.`, `Typical: ${fmtShort(bench.price.p25)}–${fmtShort(bench.price.p75)} (${bench.price.n} similar events). Leave empty for a free event.`)
                   : similar
-                    ? T(`Sự kiện tương tự: ${formatVnd(similar[0])}–${formatVnd(similar[1])}`, `Similar events: ${formatVnd(similar[0])}–${formatVnd(similar[1])}`)
+                    ? T(`Sự kiện tương tự: ${fmtMoney(similar[0])}–${fmtMoney(similar[1])}`, `Similar events: ${fmtMoney(similar[0])}–${fmtMoney(similar[1])}`)
                     : T('Để trống là miễn phí.', 'Leave empty for a free event.')}
               </span>
             </Guided>
@@ -748,8 +771,8 @@ export default function CreateEvent() {
               {outcome && (
                 <div data-testid="create-outcome" data-basis={outcome.basis} style={{ ...cardGlass({ padding: '12px 14px' }), fontSize: 13.5, lineHeight: 1.45 }}>
                   <b>{outcome.basis === 'similar'
-                    ? T(`~${outcome.guests} khách${draftPriceVnd > 0 ? ` · ~${formatVndShort(outcome.revenueVnd)}` : ''}`, `~${outcome.guests} guests${draftPriceVnd > 0 ? ` · ~${formatVndShort(outcome.revenueVnd)}` : ''}`)
-                    : T(`${outcome.guests} khách${draftPriceVnd > 0 ? ` · ${formatVndShort(outcome.revenueVnd)}` : ''}`, `${outcome.guests} guests${draftPriceVnd > 0 ? ` · ${formatVndShort(outcome.revenueVnd)}` : ''}`)}</b>
+                    ? T(`~${outcome.guests} khách${draftPriceVnd > 0 ? ` · ~${fmtShort(outcome.revenueVnd)}` : ''}`, `~${outcome.guests} guests${draftPriceVnd > 0 ? ` · ~${fmtShort(outcome.revenueVnd)}` : ''}`)
+                    : T(`${outcome.guests} khách${draftPriceVnd > 0 ? ` · ${fmtShort(outcome.revenueVnd)}` : ''}`, `${outcome.guests} guests${draftPriceVnd > 0 ? ` · ${fmtShort(outcome.revenueVnd)}` : ''}`)}</b>
                   <span style={{ opacity: 0.7 }}>{' '}{outcome.basis === 'similar'
                     ? T(`nếu kín như sự kiện tương tự (~${Math.round(outcome.fill * 100)}%)`, `if it fills like similar events (~${Math.round(outcome.fill * 100)}%)`)
                     : T('nếu bán hết chỗ', 'if every seat sells')}{draftPriceVnd > 0 ? T(', trước mọi khoản phí.', ', before any fees.') : '.'}</span>
@@ -899,7 +922,7 @@ export default function CreateEvent() {
               onClick={s.createSent ? undefined : () => {
                 if (!canReview) {
                   setAttemptedReview(true);
-                  const field = firstMissingField(missingFields);
+                  const field = firstMissingField(missingFields) || (fieldErrors.price ? 'price' : null);
                   if (field) guideTo(field, T('Còn thiếu: ', 'Still needed: ') + MISSING_LABEL[field]);
                   return;
                 }
@@ -994,13 +1017,17 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [tab, setTab] = useState('private');
   const dateLabel = [s.createEventDate, s.createEventTime].filter(Boolean).join(' ▪︎ ') || T('Chưa chọn', 'Not set');
-  const priceLabel = s.createPrice.trim() || T('Miễn phí', 'Free');
+  const market = createFormMarket(s);
+  const reviewPrice = s.createPrice.trim() ? (parsePriceInput(s.createPrice, market.currency) ?? 0) : 0;
+  const priceLabel = reviewPrice > 0 ? formatMoney(reviewPrice, market.currency) : (s.createPrice.trim() || T('Miễn phí', 'Free'));
   const seatsLabel = s.createSeats.trim() || T('Chưa nhập', 'Not set');
   const addressLabel = s.createLocLabel || [s.createAddressLine, s.createDistrict, s.createCity].filter(Boolean).join(', ') || T('Chưa xác nhận địa chỉ', 'Address not confirmed');
   const includedItems = (s.createIncludedItems || []).filter(it => (it.label || '').trim());
 
   // Public preview (owner, 2026-10-21): the REAL Event Detail, rendered from this draft (src/lib/draftPreview.js).
-  const draftDateObj = (s.createEventDate && s.createEventTime) ? new Date(`${s.createEventDate}T${s.createEventTime}`) : null;
+  // The wall clock read in the venue's zone, and shown in that zone (same as the published page will).
+  const draftMs = (s.createEventDate && s.createEventTime) ? wallClockToMs(s.createEventDate, String(s.createEventTime).slice(0, 5), market.timeZone) : null;
+  const draftDateObj = draftMs != null ? new Date(draftMs) : null;
   const firstCat = CAT_DEFS.find(c => c.key === (s.createCats[0] || 'supper'));
   const coverItem = items.find(p => p.url === coverKey) || items[0];
   const previewPhotos = (coverItem ? [coverItem, ...items.filter(p => p !== coverItem)] : items).map(p => ({ id: p.url, url: p.url }));
@@ -1008,7 +1035,8 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
     name: s.createName.trim() || T('(Chưa đặt tên)', '(Untitled)'),
     catKey: firstCat?.key, catLabel: firstCat?.vi || '',
     area: s.createDistrict || '', lat: s.createLat, lng: s.createLng, startsAt: draftDateObj,
-    priceVnd: parseDraftPriceVnd(s.createPrice), seats: parseInt(s.createSeats, 10) || null,
+    priceVnd: parseDraftPriceVnd(s.createPrice, market.currency), seats: parseInt(s.createSeats, 10) || null,
+    timeZone: market.timeZone, currency: market.currency,
     description: s.createDesc.trim(), intro: s.createIntro.trim(), includedItems,
     inviteOnly: s.createVisibility === 'invite', organizerName: (s.orgRegName || '').trim(),
     coverUrl: coverItem?.url || '',
@@ -1359,22 +1387,23 @@ function Insight({ check, line, T, testId }) {
 // arrow keys) to set the price; quick picks and the typed field stay in sync through createPrice. Bars and marker are
 // inset by half a knob so the marker sits exactly under the native thumb's centre.
 const KNOB = 26;
-function PriceMarket({ price, mine, T, catLabel, onChange }) {
+function PriceMarket({ price, mine, T, catLabel, currency = 'VND', onChange }) {
   const [dragging, setDragging] = useState(false);
   const counts = price.histogram || [];
   const peak = Math.max(1, ...counts);
-  const step = PRICE_SLIDER_STEP;
+  const step = priceSliderStep(currency);
+  const short = (v) => formatMoneyShort(v, currency);
   const lowest = Math.ceil(price.min / step) * step;
   const highest = Math.floor(price.max / step) * step;
   const narrow = !(highest > lowest);
   const unset = !(mine > 0);
-  const value = unset ? fractionToPrice(priceToFraction(price.median ?? price.min, price) ?? 0.5, price) : mine;
+  const value = unset ? fractionToPrice(priceToFraction(price.median ?? price.min, price) ?? 0.5, price, step) : mine;
   const f = priceToFraction(value, price) ?? 0.5;
   const at = `calc(${KNOB / 2}px + ${f} * (100% - ${KNOB}px))`;
   return (
     <div data-testid="create-price-market" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <span style={{ ...hintText, opacity: 0.8 }}>
-        {T(`${catLabel} · trung vị ${formatVndShort(price.median)} · ${price.n} sự kiện`, `${catLabel} · median ${formatVndShort(price.median)} · ${price.n} events`)}
+        {T(`${catLabel} · trung vị ${short(price.median)} · ${price.n} sự kiện`, `${catLabel} · median ${short(price.median)} · ${price.n} events`)}
       </span>
       <div style={{ position: 'relative', paddingTop: 6 }}>
         <div aria-hidden="true" style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', gap: 3, height: 44, padding: `0 ${KNOB / 2}px` }}>
@@ -1387,22 +1416,22 @@ function PriceMarket({ price, mine, T, catLabel, onChange }) {
         </div>
         {dragging && (
           <div aria-hidden="true" style={{ position: 'absolute', top: -22, left: at, transform: 'translateX(-50%)', fontSize: 12, fontWeight: 700, color: paper, background: ink, borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap', pointerEvents: 'none' }}>
-            {formatVndShort(value)}
+            {short(value)}
           </div>
         )}
         <input
           type="range" className={`bb-range bb-price${unset ? ' bb-price-unset' : ''}`} data-testid="create-price-slider"
           min={narrow ? price.min : lowest} max={narrow ? price.max : highest} step={narrow ? 1 : step} value={value}
-          aria-label={T('Kéo để chọn giá vé', 'Drag to set the ticket price')} aria-valuetext={formatVndShort(value)}
+          aria-label={T('Kéo để chọn giá vé', 'Drag to set the ticket price')} aria-valuetext={short(value)}
           onChange={(e) => onChange?.(Number(e.target.value))}
           onPointerDown={() => setDragging(true)} onPointerUp={() => setDragging(false)} onPointerCancel={() => setDragging(false)} onBlur={() => setDragging(false)}
           style={{ display: 'block', width: '100%', marginTop: 2 }}
         />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, opacity: 0.6 }}>
-        <span>{formatVndShort(price.min)}</span>
+        <span>{short(price.min)}</span>
         <span style={{ fontWeight: 600 }}>{T('‹ Kéo để chọn giá ›', '‹ Drag to set your price ›')}</span>
-        <span>{formatVndShort(price.max)}</span>
+        <span>{short(price.max)}</span>
       </div>
     </div>
   );

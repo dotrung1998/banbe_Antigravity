@@ -6,6 +6,7 @@ import DobCorrectionRequest from './DobCorrectionRequest.jsx';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
 import { paper, ink, FACE, display, fieldGlass, alert } from '../theme.js';
 import { CountStepper, InkButton, BookingJourneyProgress } from '../components/ui/FormControls.jsx';
+import { eventTotal, currencyUnavailable, CURRENCY_UNAVAILABLE_REASON } from '../lib/reserveBar.js';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -47,9 +48,13 @@ export default function Reserve() {
   // Host reservation criteria (migration 162): always pre-check on opening this screen,
   // block only when the server says ineligible; re-checks on every eventPrefsVersion change.
   const crit = useReservationCriteria(s.eventKey, { alwaysCheck: true });
-  const formOk = hasName && attendeesOk && !crit.blocked;
+  // Paid booking in this event's currency isn't open yet (paid USD, migration 195): disabled with the reason,
+  // like the criteria block — never a hold that the server would refuse.
+  const noCurrency = currencyUnavailable(ev);
+  const formOk = hasName && attendeesOk && !crit.blocked && !noCurrency;
   // Note 48: say which field blocks "Hold" instead of a silent grey button.
   const holdBlockReason = (() => {
+    if (noCurrency) return T(...CURRENCY_UNAVAILABLE_REASON);
     if (!hasName) return T('Lưu tên của bạn ở trên', 'Save your name above');
     if (crit.blocked) return null; // CriteriaUnmetCard explains itself
     const drafts = s.attendeeDrafts.slice(0, s.qty);
@@ -64,9 +69,8 @@ export default function Reserve() {
   const submitNameAtHold = async () => {
     await setNameAtHold(s.formName);
   };
-  const priceNum = parseInt((ev.price.match(/[\d.]+/) || ['0'])[0].replace(/\./g, ''), 10) || 0;
-  const isFree = /Miễn phí/.test(ev.price);
-  const totalStr = isFree ? 'Miễn phí' : (priceNum * s.qty).toLocaleString('vi-VN') + '₫';
+  // Same total as Event Detail's bar, in the event's own currency (src/lib/reserveBar.js).
+  const totalStr = eventTotal(ev, s.qty);
   const qtyTotalLabel = s.qty > 1 ? (T('Tổng ', 'Total ') + trStatus(totalStr)) : trStatus(ev.price);
 
   // Matches events.hold_minutes' default (migration 031 reverted this back

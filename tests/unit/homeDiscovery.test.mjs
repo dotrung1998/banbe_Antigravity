@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   dateWindow, fillBadge, applyDiscoveryFilters, activeFilterCount, optionCounts, relaxationHints,
-  sortEvents, median, priceHistogram, bucketIndex, DEFAULT_FILTERS,
+  sortEvents, median, priceHistogram, bucketIndex, DEFAULT_FILTERS, dominantCurrency, pricesIn,
 } from '../../src/lib/homeDiscovery.js';
 
 // Mirrored 1:1 by apps/ios/BanbeAppTests/HomeDiscoveryTests.swift — change both together.
@@ -119,4 +119,21 @@ test('median and histogram', () => {
   assert.equal(bucketIndex(h, 300), 3);
   assert.equal(bucketIndex(h, 5000), 3);
   assert.deepEqual(priceHistogram([500, 500], 3), { min: 500, max: 500, counts: [2, 0, 0] });
+});
+
+test('prices never mix currencies (migration 195: USD rows carry cents)', () => {
+  const vnd = ev('vnd', { priceVnd: 200000 });
+  const usd = ev('usd', { priceVnd: 1250, currency: 'USD' });
+  const freeUsd = ev('free-usd', { priceVnd: 0, currency: 'USD' });
+  const list = [vnd, usd, freeUsd];
+  // VND bounds (the default) never let a USD price through, however small its number.
+  assert.deepEqual(keys(applyDiscoveryFilters(list, { priceMax: 300000 }, WED_10)), ['vnd', 'free-usd']);
+  assert.deepEqual(keys(applyDiscoveryFilters(list, { priceMax: 2000, priceCurrency: 'USD' }, WED_10)), ['usd', 'free-usd']);
+  assert.equal(dominantCurrency(list), 'VND');
+  assert.equal(dominantCurrency([usd, freeUsd]), 'USD');
+  assert.equal(dominantCurrency([freeUsd]), 'VND');
+  assert.deepEqual(pricesIn(list, 'VND'), [200000, 0]);
+  assert.deepEqual(pricesIn(list, 'USD'), [1250, 0]);
+  // Price sort: free first, then VND, then USD.
+  assert.deepEqual(keys(sortEvents([usd, vnd, freeUsd], 'price')), ['free-usd', 'vnd', 'usd']);
 });

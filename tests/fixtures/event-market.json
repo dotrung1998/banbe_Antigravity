@@ -1,0 +1,83 @@
+{
+  "_comment": "Shared parity vectors for per-event time zone + currency (migration 195). Read by tests/unit/eventMarket.test.mjs (web), apps/ios/BanbeAppTests/EventMarketTests.swift (iOS) and supabase/_localtest/23_event_tz_currency_run.sh (SQL event_tz_for / event_currency_for). Amounts are in the currency's MINOR unit: dong for VND, cents for USD.",
+  "timeZones": [
+    { "country": "VN", "state": "Hồ Chí Minh", "tz": "Asia/Ho_Chi_Minh" },
+    { "country": "VN", "state": null, "tz": "Asia/Ho_Chi_Minh" },
+    { "country": null, "state": null, "tz": "Asia/Ho_Chi_Minh" },
+    { "country": "vn", "state": "Hà Nội", "tz": "Asia/Ho_Chi_Minh" },
+    { "country": "US", "state": "California", "tz": "America/Los_Angeles" },
+    { "country": "US", "state": "CA", "tz": "America/Los_Angeles" },
+    { "country": "US", "state": "new york", "tz": "America/New_York" },
+    { "country": "US", "state": " Texas ", "tz": "America/Chicago" },
+    { "country": "US", "state": "Colorado", "tz": "America/Denver" },
+    { "country": "US", "state": "Arizona", "tz": "America/Phoenix" },
+    { "country": "US", "state": "Hawaii", "tz": "Pacific/Honolulu" },
+    { "country": "US", "state": "Alaska", "tz": "America/Anchorage" },
+    { "country": "US", "state": "District of Columbia", "tz": "America/New_York" },
+    { "country": "US", "state": "Atlantis", "tz": null },
+    { "country": "US", "state": null, "tz": null },
+    { "country": "FR", "state": "Île-de-France", "tz": null }
+  ],
+  "currencies": [
+    { "country": "VN", "currency": "VND" },
+    { "country": null, "currency": "VND" },
+    { "country": "US", "currency": "USD" },
+    { "country": "us", "currency": "USD" },
+    { "country": "FR", "currency": null }
+  ],
+  "resolvedZones": [
+    { "country": "US", "state": "Idaho", "clientTz": "America/Boise", "tz": "America/Boise" },
+    { "country": "US", "state": "Idaho", "clientTz": null, "tz": "America/Denver" },
+    { "country": "US", "state": "California", "clientTz": "Asia/Tokyo", "tz": "America/Los_Angeles" },
+    { "country": "US", "state": "Atlantis", "clientTz": "America/Chicago", "tz": "America/Chicago" },
+    { "country": "VN", "state": "Hồ Chí Minh", "clientTz": "America/Chicago", "tz": "Asia/Ho_Chi_Minh" }
+  ],
+  "wallClock": [
+    { "date": "2027-03-06", "time": "19:00", "tz": "Asia/Ho_Chi_Minh", "utc": "2027-03-06T12:00:00Z" },
+    { "date": "2027-03-06", "time": "19:00", "tz": "America/Los_Angeles", "utc": "2027-03-07T03:00:00Z" },
+    { "date": "2027-03-20", "time": "19:00", "tz": "America/Los_Angeles", "utc": "2027-03-21T02:00:00Z" },
+    { "date": "2027-07-04", "time": "21:30", "tz": "America/New_York", "utc": "2027-07-05T01:30:00Z" },
+    { "date": "2027-01-01", "time": "00:15", "tz": "Pacific/Honolulu", "utc": "2027-01-01T10:15:00Z" }
+  ],
+  "zonedParts": [
+    { "utc": "2027-03-06T12:00:00Z", "tz": "Asia/Ho_Chi_Minh", "year": 2027, "month": 3, "day": 6, "hour": 19, "minute": 0, "weekday": 6 },
+    { "utc": "2027-03-07T03:00:00Z", "tz": "America/Los_Angeles", "year": 2027, "month": 3, "day": 6, "hour": 19, "minute": 0, "weekday": 6 },
+    { "utc": "2027-07-05T01:30:00Z", "tz": "America/New_York", "year": 2027, "month": 7, "day": 4, "hour": 21, "minute": 30, "weekday": 0 }
+  ],
+  "money": [
+    { "amount": 0, "currency": "VND", "text": "0₫", "short": "0₫" },
+    { "amount": 150000, "currency": "VND", "text": "150.000₫", "short": "150k₫" },
+    { "amount": 1500000, "currency": "VND", "text": "1.500.000₫", "short": "1,5M₫" },
+    { "amount": 0, "currency": "USD", "text": "$0", "short": "$0" },
+    { "amount": 1200, "currency": "USD", "text": "$12", "short": "$12" },
+    { "amount": 1250, "currency": "USD", "text": "$12.50", "short": "$12.50" },
+    { "amount": 125000, "currency": "USD", "text": "$1,250", "short": "$1,250" },
+    { "amount": 5, "currency": "USD", "text": "$0.05", "short": "$0.05" }
+  ],
+  "parsePrice": [
+    { "input": "450.000", "currency": "VND", "amount": 450000 },
+    { "input": "450000", "currency": "VND", "amount": 450000 },
+    { "input": "450,000₫", "currency": "VND", "amount": 450000 },
+    { "input": "", "currency": "VND", "amount": null },
+    { "input": "12", "currency": "USD", "amount": 1200 },
+    { "input": "12.50", "currency": "USD", "amount": 1250 },
+    { "input": "$12.5", "currency": "USD", "amount": 1250 },
+    { "input": "1,250", "currency": "USD", "amount": 125000 },
+    { "input": "0.99", "currency": "USD", "amount": 99 },
+    { "input": "12.345", "currency": "USD", "amount": null },
+    { "input": "abc", "currency": "USD", "amount": null },
+    { "input": "", "currency": "USD", "amount": null }
+  ],
+  "priceInput": [
+    { "amount": 450000, "currency": "VND", "text": "450.000" },
+    { "amount": 1200, "currency": "USD", "text": "12" },
+    { "amount": 1250, "currency": "USD", "text": "12.50" }
+  ],
+  "quickPicks": { "VND": [0, 200000, 300000, 500000], "USD": [0, 1000, 2000, 3000] },
+  "paidBooking": [
+    { "currency": "VND", "amount": 150000, "available": true },
+    { "currency": "VND", "amount": 0, "available": true },
+    { "currency": "USD", "amount": 0, "available": true },
+    { "currency": "USD", "amount": 1250, "available": false }
+  ]
+}

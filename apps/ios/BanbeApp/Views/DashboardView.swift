@@ -739,12 +739,12 @@ struct PendingEventDetailSheet: View {
     let row: RealEventSummary
 
     private var whenText: String {
-        if let d = row.startsAt { return Countdown.whenLabel(for: d) }
+        if let d = row.startsAt { return Countdown.whenLabel(for: d, timeZone: EventMarket.timeZone(row.timeZoneID)) }
         return [row.eventDate, row.eventTime].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
     }
     private var priceText: String {
         guard let p = row.priceVnd, p > 0 else { return app.T("Miễn phí", "Free") }
-        return formatVnd(p)
+        return EventMarket.formatMoney(p, currency: row.rowCurrency)
     }
 
     @State private var photoURLs: [URL] = []

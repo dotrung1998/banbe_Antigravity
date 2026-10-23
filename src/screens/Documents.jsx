@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { formatVnd, formatShortDate, eventDateAnchor } from '../lib/paymentDocument.js';
+import { rowTimeZone } from '../lib/eventMarket.js';
 import HostTitleIcon from './HostTitleIcon.jsx';
 import { paper, ink, rule, display, fieldGlass } from '../theme.js';
 
@@ -76,7 +77,8 @@ export default function Documents() {
           const eventDateRaw = doc.event?.name
             ? (doc.event.date ? `${doc.event.date}T${doc.event.time || '00:00:00'}` : null)
             : eventDateAnchor(doc.events);
-          const eventDate = formatShortDate(eventDateRaw, s.lang);
+          // An event's starts_at reads in the event's own zone (migration 195); wall-clock fallbacks stay as typed.
+          const eventDate = formatShortDate(eventDateRaw, s.lang, !doc.event?.name && doc.events?.starts_at ? rowTimeZone(doc.events) : undefined);
           // 2026-09-17 follow-up #7 (BUG 2): line 1 below used to read
           // `doc.event?.name || party` directly — for an uploaded document
           // the jsonb `event` snapshot is always empty ({}) AND, from the

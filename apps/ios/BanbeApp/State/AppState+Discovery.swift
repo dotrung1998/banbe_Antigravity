@@ -107,7 +107,7 @@ extension AppState {
             key: e.key, startsAt: discoveryStart(for: e, now: now), priceVnd: price,
             catKeys: [e.catKey, e.cat2Key].compactMap { $0 },
             booked: fill?.booked, capacity: fill?.capacity, soldOut: e.soldOut,
-            distanceKm: distance, popularity: (scores ?? pulseScores)[e.key]
+            distanceKm: distance, popularity: (scores ?? pulseScores)[e.key], currency: e.currency
         )
     }
 
@@ -128,10 +128,11 @@ extension AppState {
         return cal
     }
 
-    /// Photo badge: "TODAY · 19:00" / "TMRW · 19:00" / "SAT 24/10 · 19:00", in Vietnam time.
-    func discoveryDateBadge(_ date: Date?, now: Date = Date()) -> String {
+    /// Photo badge: "TODAY · 19:00" / "TMRW · 19:00" / "SAT 24/10 · 19:00", in the venue's zone (a real event's
+    /// own `tz`, migration 195), else Vietnam time.
+    func discoveryDateBadge(_ date: Date?, now: Date = Date(), timeZone: TimeZone? = nil) -> String {
         guard let date else { return "" }
-        let cal = Self.vnCalendar
+        let cal = timeZone.map(EventMarket.calendar) ?? Self.vnCalendar
         let c = cal.dateComponents([.weekday, .day, .month, .hour, .minute], from: date)
         let wd = (c.weekday ?? 1) - 1
         let time = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
@@ -146,10 +147,10 @@ extension AppState {
         return "\(day) · \(time)"
     }
 
-    /// Search row: "T7, 24.10 · 19:00" in Vietnam time.
-    func discoveryWhenLabel(_ date: Date?) -> String {
+    /// Search row: "T7, 24.10 · 19:00" in the venue's zone, else Vietnam time.
+    func discoveryWhenLabel(_ date: Date?, timeZone: TimeZone? = nil) -> String {
         guard let date else { return "" }
-        let c = Self.vnCalendar.dateComponents([.weekday, .day, .month, .hour, .minute], from: date)
+        let c = (timeZone.map(EventMarket.calendar) ?? Self.vnCalendar).dateComponents([.weekday, .day, .month, .hour, .minute], from: date)
         let wd = (c.weekday ?? 1) - 1
         let vi = ["CN", "Th 2", "Th 3", "Th 4", "Th 5", "Th 6", "Th 7"][wd]
         let en = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][wd]
@@ -182,14 +183,18 @@ extension AppState {
     private struct BenchmarkParams: Encodable {
         let cat: String
         let city: String
-        enum CodingKeys: String, CodingKey { case cat = "p_cat_key", city = "p_city" }
+        /// Migration 195. Sent ONLY for USD (nil is omitted), so a server without 195 keeps answering VND creates.
+        var currency: String? = nil
+        enum CodingKeys: String, CodingKey { case cat = "p_cat_key", city = "p_city", currency = "p_currency" }
     }
 
-    /// One request per category+city per session. nil = cold start / offline / not deployed (tips only).
-    func hostBenchmarks(cat rawCat: String, city rawCity: String) async -> HostBenchmarks? {
+    /// One request per category+city+currency per session. nil = cold start / offline / not deployed (tips only).
+    /// `currency` is the create form's (`createCurrency`): a USD event is only ever compared with USD events.
+    func hostBenchmarks(cat rawCat: String, city rawCity: String, currency: String = "VND") async -> HostBenchmarks? {
         let cat = rawCat.trimmingCharacters(in: .whitespaces).lowercased()
         let city = rawCity.trimmingCharacters(in: .whitespaces).lowercased()
-        let key = "\(cat)|\(city)"
+        let usd = currency == "USD"
+        let key = usd ? "\(cat)|\(city)|USD" : "\(cat)|\(city)"
         if let cached = hostBenchmarksCache[key] { return cached }
         #if DEBUG
         if UITestFixture.isActive { return nil }
@@ -198,9 +203,10 @@ extension AppState {
         var result: HostBenchmarks?
         do {
             let b: HostBenchmarks = try await SupabaseService.client
-                .rpc("get_host_benchmarks", params: BenchmarkParams(cat: cat, city: city))
+                .rpc("get_host_benchmarks", params: BenchmarkParams(cat: cat, city: city, currency: usd ? "USD" : nil))
                 .execute().value
-            result = b.success == false ? nil : b
+            // An older server ignores currency and answers VND: never show those numbers to a USD event.
+            result = b.success == false || (usd && b.currency != "USD") ? nil : b
         } catch {
             #if DEBUG
             print("get_host_benchmarks unavailable (migration 186 not applied?):", error)

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { useBanBe } from '../../state/BanBeContext.jsx';
 import { paper, ink, rule, display, fieldGlass, alert } from '../../theme.js';
+import { rowTimeZone } from '../../lib/eventMarket.js';
 import { downloadTicketPdfs } from '../../lib/ticketPdf.js';
 
 // Two bottom sheets that open and close like the profile share card:
@@ -87,7 +88,8 @@ export function ImportedTicketSheet() {
     return () => { live = false; };
   }, [t, isVoid]);
   if (!t) return null;
-  const when = t.starts_at ? new Date(t.starts_at).toLocaleString(s.lang === 'en' ? 'en-GB' : 'vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'full', timeStyle: 'short' }) : '';
+  // In the event's own zone (migration 195); the ticket row has no zone, so it comes from the loaded event, else VN.
+  const when = t.starts_at ? new Date(t.starts_at).toLocaleString(s.lang === 'en' ? 'en-GB' : 'vi-VN', { timeZone: rowTimeZone(s.realEventsById?.[t.event_id] || t), dateStyle: 'full', timeStyle: 'short' }) : '';
   const download = async () => {
     if (busy) return;
     setBusy(true);

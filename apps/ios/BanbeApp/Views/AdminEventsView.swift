@@ -131,7 +131,7 @@ struct AdminEventsView: View {
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 4) {
-                        Text((row.priceVnd ?? 0) > 0 ? EventLabels.vnd(row.priceVnd!) : app.T("Miễn phí", "Free"))
+                        Text((row.priceVnd ?? 0) > 0 ? EventMarket.formatMoney(row.priceVnd!, currency: row.rowCurrency) : app.T("Miễn phí", "Free"))
                             .font(BanbeTheme.display(19))
                         Text(isOpen ? app.T("Thu gọn", "Collapse") : app.T("Mở rộng", "Expand"))
                             .font(.system(size: 11, weight: .semibold)).underline()

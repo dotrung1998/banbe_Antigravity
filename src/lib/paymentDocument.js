@@ -106,11 +106,21 @@ export function amountInWordsVi(amount) {
   return sentence.charAt(0).toUpperCase() + sentence.slice(1) + ' đồng';
 }
 
-function formatDate(value) {
+// Day/month/year of an instant in an IANA zone (an event's own zone, migration 195), or in the browser's
+// zone when none is given. Plain Intl here: eventMarket.js imports this module, so it can't import it back.
+function dateParts(d, timeZone) {
+  if (!timeZone) return { day: d.getDate(), month: d.getMonth() + 1, year: d.getFullYear() };
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric' })
+    .formatToParts(d).map(x => [x.type, x.value]));
+  return { day: Number(p.day), month: Number(p.month), year: Number(p.year) };
+}
+
+function formatDate(value, timeZone) {
   if (!value) return '';
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
-  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+  const p = dateParts(d, timeZone);
+  return `${String(p.day).padStart(2, '0')}.${String(p.month).padStart(2, '0')}.${p.year}`;
 }
 
 /**
@@ -119,19 +129,22 @@ function formatDate(value) {
  * itself). Used by the Documents list to caption an uploaded receipt/invoice
  * with its event's date instead of a `total_vnd` figure that a raw upload
  * never actually has (08-payment-documents.md's 2026-09-17 follow-up #4).
+ * `timeZone` (optional): read an event instant in the event's own zone.
  */
-export function formatShortDate(value, lang = 'vi') {
+export function formatShortDate(value, lang = 'vi', timeZone) {
   if (!value) return '';
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return '';
-  if (lang === 'en') return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  return `${d.getDate()} Thg ${d.getMonth() + 1}`;
+  if (lang === 'en') return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(timeZone ? { timeZone } : {}) });
+  const p = dateParts(d, timeZone);
+  return `${p.day} Thg ${p.month}`;
 }
 
 /** starts_at, falling back to the legacy event_date/event_time pair — same
  * anchor precedence as upload_payment_document()'s 12-month retention clock
  * (057), so a receipt's displayed date always matches the one its own
- * purge/reminder schedule is actually anchored to. */
+ * purge/reminder schedule is actually anchored to. Only a starts_at anchor is
+ * an instant worth reading in the event's zone; the fallback is a wall clock. */
 export function eventDateAnchor(event) {
   if (!event) return null;
   if (event.starts_at) return event.starts_at;

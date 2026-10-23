@@ -3,7 +3,7 @@ import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, display, fieldGlass, alert } from '../theme.js';
 import { ChoiceChip, Button } from '../components/ui/FormControls.jsx';
 import { ADMIN_EVENT_FILTERS, ORPHAN_FILTER, STATUS_LABELS, ERRORS, en, isBlocked, blockerLine, summarize, isOrphanEvent } from '../lib/adminEvents.js';
-import { formatVnd } from '../lib/paymentDocument.js';
+import { formatMoney, rowCurrency, rowTimeZone, VN_TIME_ZONE } from '../lib/eventMarket.js';
 import { loadAdminManagedEvents, loadAdminEventChecks, runAdminEventAction } from '../lib/adminEventsApi.js';
 
 // Admin > Manage events (migrations 188 + 189, note 54). Every event, any status: search, filter, select one or many,
@@ -56,7 +56,8 @@ export default function AdminManageEvents() {
 
   const toggleExpanded = (id) => setExpanded(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const allExpanded = rows.length > 0 && rows.every(r => expanded.has(r.id));
-  const dateTime = (iso) => (iso ? new Date(iso).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short' }) : '—');
+  // Event times read in the event's own zone (migration 195); admin bookkeeping times stay in Vietnam time.
+  const dateTime = (iso, timeZone = VN_TIME_ZONE) => (iso ? new Date(iso).toLocaleString('vi-VN', { timeZone, dateStyle: 'short', timeStyle: 'short' }) : '—');
 
   const toggle = (id) => setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const run = async (action, ids, why = '') => {
@@ -71,7 +72,7 @@ export default function AdminManageEvents() {
     if (window.confirm(T(`Khôi phục ${restoreIds.length} sự kiện về trạng thái trước khi bị gỡ? Người tổ chức sẽ được báo.`,
       `Restore ${en(restoreIds.length, 'event')} to the status they had before? The host is told.`))) run('restore', restoreIds);
   };
-  const date = (iso) => (iso ? new Date(iso).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '');
+  const date = (iso, timeZone = VN_TIME_ZONE) => (iso ? new Date(iso).toLocaleDateString('vi-VN', { timeZone }) : '');
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper, paddingBottom: selected.size ? 220 : 40 }} data-screen-label="Admin manage events">
@@ -160,7 +161,7 @@ export default function AdminManageEvents() {
                               {T('Host đã xoá tài khoản', 'Host account deleted')}
                             </span>
                           )}
-                          <span style={{ opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[date(r.starts_at), orphan ? '' : r.organizer_name].filter(Boolean).join(' · ')}</span>
+                          <span style={{ opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[date(r.starts_at, rowTimeZone(r)), orphan ? '' : r.organizer_name].filter(Boolean).join(' · ')}</span>
                         </span>
                       </button>
                       {removed && <span style={{ fontSize: 12, opacity: 0.75 }}>{T('Lý do: ', 'Reason: ')}{r.removal_reason}</span>}
@@ -171,8 +172,8 @@ export default function AdminManageEvents() {
                       {open && (
                         <div data-testid={`admin-manage-details-${r.id}`} style={{ marginTop: 6, display: 'flex', flexDirection: 'column' }}>
                           {fact(T('Người tổ chức', 'Host'), orphan ? T('Đã xoá tài khoản', 'Account deleted') + (r.organizer_name && r.organizer_name !== 'Deleted organizer' ? ` (${r.organizer_name})` : '') : (r.organizer_name || '—'))}
-                          {fact(T('Bắt đầu', 'Starts'), dateTime(r.starts_at))}
-                          {fact(T('Giá vé', 'Price'), r.price_vnd > 0 ? formatVnd(r.price_vnd) : T('Miễn phí', 'Free'))}
+                          {fact(T('Bắt đầu', 'Starts'), dateTime(r.starts_at, rowTimeZone(r)))}
+                          {fact(T('Giá vé', 'Price'), r.price_vnd > 0 ? formatMoney(r.price_vnd, rowCurrency(r)) : T('Miễn phí', 'Free'))}
                           {fact(T('Chỗ', 'Seats'), r.capacity > 0 ? T(`${r.seats_remaining ?? '—'} còn / ${r.capacity}`, `${r.seats_remaining ?? '—'} left of ${r.capacity}`) : '—')}
                           {r.area && fact(T('Khu vực', 'Area'), r.area)}
                           {fact(T('Tạo lúc', 'Created'), dateTime(r.created_at))}

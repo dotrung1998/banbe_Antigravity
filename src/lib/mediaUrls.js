@@ -43,19 +43,34 @@ export const chatGreetingColumnList = () => [
   ...(chatGreetingColumnMissing || chatGreetingEnColumnMissing ? [] : ['chat_greeting_en']),
 ];
 
+// `events.tz`/`events.currency` (migration 195) — same idea again: a DB without
+// them gets the event rows without both, and rowTimeZone/rowCurrency
+// (eventMarket.js) derive the zone and fall back to VND.
+let marketColumnsMissing = false;
+/** The per-event market columns the DB is known (or not yet known) to have. */
+export const marketColumnList = () => (marketColumnsMissing ? [] : ['tz', 'currency']);
+/** True (and remembered for the session) when `error` is the DB lacking tz/currency: retry without them. */
+export function marketColumnsRejected(error) {
+  if (marketColumnsMissing || !isMissingColumnError(error) || !/\b(tz|currency)\b/i.test(error.message || '')) return false;
+  marketColumnsMissing = true;
+  return true;
+}
+
 /**
  * Runs `build(withR2)` (returns a thenable PostgREST query). First tries with
  * the new r2 columns; if the DB does not have them yet, retries once without
  * and remembers that for the rest of the session. An error naming
  * `chat_greeting`/`chat_greeting_en` flips only that flag (callers read it
- * through chatGreetingColumnList() when building their column list).
+ * through chatGreetingColumnList() when building their column list); one
+ * naming `tz`/`currency` flips the market flag (marketColumnList()).
  */
 export async function withR2Columns(build) {
   let res;
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
     res = await build(!r2ColumnsMissing);
     if (!isMissingColumnError(res?.error)) return res;
     const msg = res.error.message || '';
+    if (marketColumnsRejected(res.error)) continue;
     if (/chat_greeting_en/i.test(msg) && !chatGreetingEnColumnMissing) { chatGreetingEnColumnMissing = true; continue; }
     if (/chat_greeting/i.test(msg) && !/chat_greeting_en/i.test(msg) && !chatGreetingColumnMissing) { chatGreetingColumnMissing = true; continue; }
     if (r2ColumnsMissing) return res;

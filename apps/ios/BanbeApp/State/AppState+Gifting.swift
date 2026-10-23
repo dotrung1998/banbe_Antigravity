@@ -157,7 +157,8 @@ extension AppState {
             ticketCode: res.ticketCode ?? "",
             admissionToken: res.admissionToken ?? UUID(),
             claimCode: res.claimCode,
-            reference: res.bookingId?.uuidString ?? ""
+            reference: res.bookingId?.uuidString ?? "",
+            timeZoneID: event.timeZoneID
         )
     }
 
@@ -340,7 +341,7 @@ extension AppState {
             startDate: event.startDate, whenText: event.when,
             venue: event.locationLabel ?? event.where, details: event.desc,
             recipientName: t.name, ticketCode: t.ticketCode, admissionToken: t.admissionToken,
-            claimCode: nil, reference: t.attendeeId.uuidString)
+            claimCode: nil, reference: t.attendeeId.uuidString, timeZoneID: event.timeZoneID)
         return writeExportFile(name: "banbe-ticket-\(t.ticketCode).pdf",
                                data: GiftTicketPDFGenerator.renderPDF(document: document, isEN: isEN, isOwnTicket: true))
     }

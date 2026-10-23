@@ -893,7 +893,7 @@ struct HomeView: View {
             else if i == 0 && !forYouActive && topPulse == e.key { label = "popular" }
             return DiscoveryCardModel(
                 key: e.key, name: e.name, img: e.img,
-                dateBadge: app.discoveryDateBadge(it.startsAt, now: now),
+                dateBadge: app.discoveryDateBadge(it.startsAt, now: now, timeZone: e.eventTimeZone),
                 priceLabel: it.priceVnd == 0 ? app.T("Miễn phí", "Free") : app.trStatus(e.price),
                 isFree: it.priceVnd == 0,
                 metaLine: app.metaLine(for: e, distanceKm: it.distanceKm),

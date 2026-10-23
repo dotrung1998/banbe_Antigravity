@@ -7,7 +7,8 @@ options:
 
 # Debug (default, free/personal team): ENABLE_PUSH=NO, entitlements omit
 # aps-environment entirely (BanbeApp.entitlements) — real-device builds
-# sign fine with automatic/personal-team provisioning.
+# sign fine with automatic/personal-team provisioning. Config/Team.xcconfig
+# (Team ID + BANBE_PAID_ACCOUNT=YES) turns push on for Debug as well.
 # Release (paid team only): ENABLE_PUSH=YES, entitlements declare
 # aps-environment (BanbeAppPush.entitlements). See
 # .claude/notes/07-notifications.md for exactly what to flip once a paid
@@ -90,13 +91,13 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        # A real Apple Developer Team ID goes here once you have a PAID
-        # account — a free/personal team works fine for everything else
-        # (automatic signing installs to a real device), it just can't
-        # provision Push Notifications (see Config/*.xcconfig, which is
-        # where CODE_SIGN_ENTITLEMENTS/ENABLE_PUSH actually get set, per
-        # config — not here, so they can differ between Debug and Release).
-        DEVELOPMENT_TEAM: ""
+        # DEVELOPMENT_TEAM is NOT set here: it comes from Config/Team.xcconfig
+        # (included by Debug/Release; empty until a PAID account exists), so
+        # a target-level value can't shadow it. A free/personal team works
+        # fine for everything else (automatic signing installs to a real
+        # device), it just can't provision Push Notifications (see
+        # Config/*.xcconfig, which is where CODE_SIGN_ENTITLEMENTS/ENABLE_PUSH
+        # actually get set, per config — not here, so they can differ).
         CODE_SIGN_STYLE: Automatic
         # .claude/notes/18-ios-personal-team-signing.md — a build-setting
         # variable (not a literal string) so CFBundleDisplayName below can

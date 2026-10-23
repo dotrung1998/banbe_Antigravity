@@ -196,7 +196,7 @@ export default function Dashboard() {
     .filter(r => r && (r.status === 'live' || r.status === 'ended'))
     .map(r => {
       const startsAt = r.startsAt ? new Date(r.startsAt) : null;
-      const { weekdayShort, dayMonth, time } = startsAt ? formatVnEventDate(startsAt) : {};
+      const { weekdayShort, dayMonth, time } = startsAt ? formatVnEventDate(startsAt, r.tz) : {}; // venue zone (migration 195)
       return {
         key: r.key, name: r.name, img: r.photoUrl || '', startDate: startsAt, cancelled: false,
         meta: [r.catLabel, r.area, startsAt ? `${weekdayShort}, ${dayMonth} ▪︎ ${time}` : ''].filter(Boolean).join(' ▪︎ '),

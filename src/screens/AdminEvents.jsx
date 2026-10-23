@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useBanBe, resolveCoverUrl } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { withR2Columns } from '../lib/mediaUrls.js';
-import { formatVnd } from '../lib/paymentDocument.js';
+import { formatMoney, rowCurrency, rowTimeZone, VN_TIME_ZONE } from '../lib/eventMarket.js';
 import { mapsUrl } from '../data/events.js';
 import { paper, ink, rule, display, alert } from '../theme.js';
 import HostTitleIcon from './HostTitleIcon.jsx';
@@ -136,7 +136,7 @@ export default function AdminEvents() {
                   )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flex: 'none' }}>
-                  <span style={{ ...display(19, { whiteSpace: 'nowrap' }) }}>{e.priceVnd ? formatVnd(e.priceVnd) : T('Miễn phí', 'Free')}</span>
+                  <span style={{ ...display(19, { whiteSpace: 'nowrap' }) }}>{e.priceVnd ? formatMoney(e.priceVnd, rowCurrency(e)) : T('Miễn phí', 'Free')}</span>
                   <span data-testid="admin-event-toggle" style={{ fontSize: 11, fontWeight: 600, color: ink, textDecoration: 'underline' }}>
                     {isOpen ? T('Thu gọn', 'Collapse') : T('Mở rộng', 'Expand')}
                   </span>
@@ -161,7 +161,8 @@ export default function AdminEvents() {
                     <Line label={T('Trạng thái', 'Status')} value={e.status} />
                     <Line label={T('Danh mục', 'Category')} value={e.catLabel || e.catKey || T('Không Có Thông Tin', 'Not Provided')} />
                     <Line label={T('Từ khoá', 'Keywords')} value={e.keywords?.length ? e.keywords.join(', ') : T('Không Có Thông Tin', 'Not Provided')} />
-                    <Line label={T('Ngày', 'Date')} value={e.eventDate ? `${e.eventDate}${e.eventTime ? ' ▪︎ ' + e.eventTime.slice(0, 5) : ''}` : T('Chưa đặt', 'Not set')} />
+                    {/* The host's wall clock; its zone is named when it isn't Vietnam's (migration 195). */}
+                    <Line label={T('Ngày', 'Date')} value={e.eventDate ? `${e.eventDate}${e.eventTime ? ' ▪︎ ' + e.eventTime.slice(0, 5) : ''}${rowTimeZone(e) !== VN_TIME_ZONE ? ` (${rowTimeZone(e)})` : ''}` : T('Chưa đặt', 'Not set')} />
                     <Line label={T('Sức chứa', 'Capacity')} value={e.capacity != null ? String(e.capacity) : T('Không Có Thông Tin', 'Not Provided')} />
                     <Line label={T('Hiển thị', 'Visibility')} value={e.visibility || T('Không Có Thông Tin', 'Not Provided')} />
                     <Line label={T('Chế độ duyệt vé', 'Booking approval')} value={e.approval || T('Không Có Thông Tin', 'Not Provided')} />

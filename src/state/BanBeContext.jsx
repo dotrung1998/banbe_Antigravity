@@ -8,7 +8,7 @@ import { forYouTimeZone } from '../lib/forYou.js';
 import { EVENTS, findEvent, isCosmeticCatalogMatch, haversineKm } from '../data/events.js';
 import { supabase, getAuthRedirectUrl } from '../lib/supabase.js';
 import { requestAuthEmail, requestPasswordSignup, requestPasswordReset } from '../lib/authEmail.js';
-import { renderPaymentDocument, formatVnd } from '../lib/paymentDocument.js';
+import { renderPaymentDocument } from '../lib/paymentDocument.js';
 import { buildVietQrPayload } from '../lib/vietqr.js';
 import { msUntil, liveEventOverrides, thisWeekendWindow, formatVnEventDate } from '../lib/countdown.js';
 import { normalizeProofFile, normalizeImageForUpload, AVATAR_UPLOAD_BUDGET, EVENT_PHOTO_UPLOAD_BUDGET } from '../lib/proofUpload.js';
@@ -26,7 +26,8 @@ import { useEnsureOrganizer } from '../lib/useEnsureOrganizer.js';
 import { loadMapKit } from '../lib/mapkit.js';
 import { mapKitSearch } from '../lib/mapkitAdapter.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
-import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, isMissingColumnError } from '../lib/mediaUrls.js';
+import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, marketColumnList, isMissingColumnError } from '../lib/mediaUrls.js';
+import { rowTimeZone, rowCurrency, formatMoney, resolveEventTimeZone, eventCurrency, VN_TIME_ZONE, parsePriceInput, priceInputText, wallClockToMs } from '../lib/eventMarket.js';
 import { eventDraftDefaults, createDefaultsPatch, createDraftMatchesDefaults } from '../lib/smartDefaults.js';
 import { DEFAULT_FILTERS as HOME_DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
 import { flagOn, normalizeFlags, readCachedFlags, writeCachedFlags } from '../lib/featureFlags.js';
@@ -140,6 +141,11 @@ function shapeRealEvent(row, extra = {}) {
     // Host-set opening message for "Message host" (migration 156).
     chatGreeting: row.chat_greeting || '',
     chatGreetingEn: row.chat_greeting_en || '',
+    // Per-event market (migration 195): the venue's IANA zone and the price's currency.
+    // `priceVnd` above is in the minor unit of `currency` (cents for USD). Rows from a DB
+    // without 195 derive the zone from country/state and are VND.
+    tz: rowTimeZone(row),
+    currency: rowCurrency(row),
   };
 }
 
@@ -173,11 +179,24 @@ const isThreadDeletedForMe = (deletedAt, lastMessageAt) => !!deletedAt && (!last
 
 // `chat_greeting`/`chat_greeting_en` exist only after migrations 156/157 —
 // withR2Columns flips the flag when the DB rejects them, then retries.
+// `tz`/`currency` (migration 195) the same way: production may not have them
+// yet, so withR2Columns drops both on a 42703 and rowTimeZone/rowCurrency derive.
 const realEventColumns = (withR2) => {
   let cols = REAL_EVENT_ROW_COLUMNS_BASE;
   for (const c of chatGreetingColumnList()) cols += `, ${c}`;
+  for (const c of marketColumnList()) cols += `, ${c}`;
   return withR2 ? `${cols}, cover_r2_ref` : cols;
 };
+
+/** The create form's market (migration 195): the venue's IANA zone (VN until a US address says
+ * otherwise) and the price currency. Past-time checks, the date picker's minimum, the recipe's
+ * timing and the price field all read this; the date/time sent to the RPC stay the wall clock. */
+export function createFormMarket(st) {
+  return {
+    timeZone: resolveEventTimeZone(st.createCountryCode, st.createStateProvince, st.createTz) || VN_TIME_ZONE,
+    currency: eventCurrency(st.createCountryCode) ?? 'VND',
+  };
+}
 
 /** A real event's own selected `cover_image` (migration 087) resolved to a
  * public URL, falling back to `fallbackUrl` (the first `event_photos` row
@@ -274,7 +293,10 @@ function mergePhotoEngagement(existing, rows) {
  */
 export function shapeRealEventAsCurEvent(real) {
   const startsAt = real.startsAt ? new Date(real.startsAt) : null;
-  const { weekdayShort, dayMonth, dayLong, time } = startsAt ? formatVnEventDate(startsAt) : {};
+  const tz = rowTimeZone(real);
+  const currency = rowCurrency(real);
+  // Date/time read in the VENUE's zone (migration 195), the same for every viewer.
+  const { weekdayShort, dayMonth, dayLong, time } = startsAt ? formatVnEventDate(startsAt, tz) : {};
   // Events have no end time; the server flips live -> ended only on a cron (migration 167 makes it hourly).
   // Until then a live row 12h+ past its start is already over, so treat it as ended.
   const hoursSinceStart = startsAt ? Math.max(0, Math.round((Date.now() - startsAt.getTime()) / 3600000)) : null;
@@ -299,7 +321,9 @@ export function shapeRealEventAsCurEvent(real) {
     // demo events (which also have no street-level text) present theirs.
     where: [real.area, startsAt ? '0,0 km từ bạn' : null, dayLong, time].filter(Boolean).join(' ▪︎ '),
     when: startsAt ? `${weekdayShort}, ${dayMonth} ▪︎ ${time}` : '',
-    price: real.priceVnd ? formatVnd(real.priceVnd) : 'Miễn phí',
+    price: real.priceVnd ? formatMoney(real.priceVnd, currency) : 'Miễn phí',
+    // Raw price for booking math (src/lib/reserveBar.js): minor units of `currency`.
+    priceAmount: real.priceVnd || 0, currency, tz,
     seats: real.seatsRemaining != null ? String(real.seatsRemaining) : '',
     seatsLong: real.soldOut ? 'Hết chỗ' : (real.seatsRemaining != null ? real.seatsRemaining + ' chỗ trống' : ''),
     urgent: real.seatsRemaining != null && real.seatsRemaining <= 5,
@@ -1160,6 +1184,12 @@ const initialState = {
   createCountryCode: '',
   createStateProvince: '',
   createNeighborhood: '',
+  // The geocoder's IANA zone for the picked address, when it gave one (MapKit can; Nominatim can't).
+  // Only ever used for US venues (multi-zone states); see createFormMarket.
+  createTz: '',
+  // The currency `createPrice` was typed in (null = the form's starting VND). Picking an address in
+  // another currency clears the price instead of re-reading "450000" as dollars (migration 195).
+  createPriceCurrency: null,
   createLocConfirmed: false,
   createAddressSuggestions: [],
   createAddressSearching: false,
@@ -2481,11 +2511,11 @@ export function BanBeProvider({ children }) {
         followedHost: followedOrgIds.has(e.organizer_id),
       });
       const startsAt = real.startsAt ? new Date(real.startsAt) : null;
-      const { weekdayShort, dayMonth, time } = startsAt ? formatVnEventDate(startsAt) : {};
+      const { weekdayShort, dayMonth, time } = startsAt ? formatVnEventDate(startsAt, real.tz) : {};
       return {
         ...real,
         when: startsAt ? `${weekdayShort}, ${dayMonth} ▪︎ ${time}` : '',
-        priceLabel: real.priceVnd ? formatVnd(real.priceVnd) : null, // null -> caller shows "Miễn phí"/"Free"
+        priceLabel: real.priceVnd ? formatMoney(real.priceVnd, real.currency) : null, // null -> caller shows "Miễn phí"/"Free"
       };
     }).sort((a, b) => {
       if (a.followedHost !== b.followedHost) return a.followedHost ? -1 : 1;
@@ -4826,7 +4856,7 @@ export function BanBeProvider({ children }) {
     // `organizers` embed note) and because an `event:` alias would collide
     // with the existing jsonb column's key in the same row.
     const nowIso = new Date().toISOString();
-    let query = supabase.from('payment_documents').select('*, events(name, starts_at, event_date, event_time)').eq('kind', s.documentsKind).or(`superseded_at.is.null,purge_after.gt.${nowIso}`);
+    let query = supabase.from('payment_documents').select('*, events(name, starts_at, event_date, event_time, country_code, state_province)').eq('kind', s.documentsKind).or(`superseded_at.is.null,purge_after.gt.${nowIso}`);
     if (s.documentsRole === 'host') {
       // An organizer is usually also a goer, so filtering by RLS alone would
       // mix their own tickets into the list of documents they issued.
@@ -6256,7 +6286,7 @@ export function BanBeProvider({ children }) {
     const start = e.startsAt ? Date.parse(e.startsAt) : null;
     return {
       key: e.key, title: e.name || '', start: Number.isFinite(start) ? start : null, end: null,
-      timeZone: forYouTimeZone(e.countryCode, e.stateProvince) || null,
+      timeZone: e.tz || forYouTimeZone(e.countryCode, e.stateProvince) || null,
       location: [e.neighborhood, e.city || e.area].filter(Boolean).join(', ') || e.area || '',
       cancelled: e.status === 'cancelled',
       // Note 38's client rule: an event is over 12h after its start, even before the hourly cron marks it ended.
@@ -6480,7 +6510,7 @@ export function BanBeProvider({ children }) {
       createName: '', createCats: [], createDesc: '',
       createLoc: '', createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false,
       createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
-      createCountryCode: '', createStateProvince: '', createNeighborhood: '',
+      createCountryCode: '', createStateProvince: '', createNeighborhood: '', createTz: '', createPriceCurrency: null,
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
       ...createDefaultsPatch(eventDraftDefaults(null)),
       createIncludedItems: [], createIntro: '', createKeywords: '', createChatGreeting: '', createChatGreetingEn: '', createVisibility: 'public', createHostGoal: null,
@@ -6490,13 +6520,18 @@ export function BanBeProvider({ children }) {
     // last event" once it loads — only while the draft is still untouched.
     const orgIds = s.myOrganizerIds || [];
     if (orgIds.length) {
-      supabase.from('events').select('name, event_date, event_time, price_vnd, capacity, cat_key')
+      // `currency` (migration 195) rides the shared missing-column fallback; without it the row is VND.
+      withR2Columns(() => supabase.from('events').select(['name, event_date, event_time, price_vnd, capacity, cat_key', ...marketColumnList()].join(', '))
         .in('organizer_id', orgIds).not('event_date', 'is', null)
-        .order('submitted_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle()
+        .order('submitted_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle())
         .then(({ data }) => {
           if (!data) return;
-          set(prev => (prev.screen === 'create' && !prev.createEditEventId && createDraftMatchesDefaults(prev)
-            ? createDefaultsPatch(eventDraftDefaults(data)) : {}));
+          // The last price is copied only into a form of the same currency (never VND shown as dollars).
+          set(prev => {
+            if (prev.screen !== 'create' || prev.createEditEventId || !createDraftMatchesDefaults(prev)) return {};
+            const market = createFormMarket(prev);
+            return { ...createDefaultsPatch(eventDraftDefaults(data, new Date(), market)), createPriceCurrency: market.currency };
+          });
         }, () => {});
     }
   }, [set, s.user, s.myOrganizerIds, canHost, enableOrganizerMode]);
@@ -7255,7 +7290,7 @@ export function BanBeProvider({ children }) {
         createAddressLine: candidate.location_data.address_line || '', createDistrict: candidate.location_data.district || '',
         createCity: candidate.location_data.city || '', createPostalCode: candidate.location_data.postal_code || '',
         createCountryCode: candidate.location_data.country_code || '', createStateProvince: candidate.location_data.state_province || '',
-        createNeighborhood: candidate.location_data.neighborhood || '',
+        createNeighborhood: candidate.location_data.neighborhood || '', createTz: '',
         createLat: candidate.location_data.lat, createLng: candidate.location_data.lng,
         createLocLabel: candidate.location_label || '', createLocConfirmed: true,
       } : {}),
@@ -9699,7 +9734,7 @@ export function BanBeProvider({ children }) {
     set({
       createLoc: value, createLocConfirmed: false, createLat: null, createLng: null,
       createLocLabel: '', createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
-      createCountryCode: '', createStateProvince: '', createNeighborhood: '',
+      createCountryCode: '', createStateProvince: '', createNeighborhood: '', createTz: '',
       createAddressSuggestions: [], createAddressSearchError: '',
     });
     const query = value.trim();
@@ -9717,26 +9752,29 @@ export function BanBeProvider({ children }) {
   const selectCreateAddressSuggestion = useCallback((suggestion) => {
     if (createAddressTimer.current) clearTimeout(createAddressTimer.current);
     createAddressSeq.current += 1; // invalidate any still-in-flight search
-    set({
+    set(prev => ({
+      // A price typed in another currency is cleared, never re-read (450000₫ must not become $450,000).
+      ...(prev.createPrice.trim() && (prev.createPriceCurrency || 'VND') !== (eventCurrency(suggestion.countryCode) ?? 'VND')
+        ? { createPrice: '', createPriceCurrency: null } : {}),
       createAddressLine: suggestion.addressLine, createDistrict: suggestion.district,
       createCity: suggestion.city, createPostalCode: suggestion.postalCode,
       createCountryCode: suggestion.countryCode || '', createStateProvince: suggestion.stateProvince || '',
-      createNeighborhood: suggestion.neighborhood || '',
+      createNeighborhood: suggestion.neighborhood || '', createTz: suggestion.timeZone || '',
       createLat: suggestion.lat, createLng: suggestion.lng,
       createLocLabel: suggestion.label, createLocConfirmed: true,
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
-    });
+    }));
   }, [set]);
 
   /** "Adjust" — clears the confirmed selection so the host can search again, without losing what they'd typed. */
   const clearCreateAddressSelection = useCallback(() => set({
     createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
-    createCountryCode: '', createStateProvince: '', createNeighborhood: '',
+    createCountryCode: '', createStateProvince: '', createNeighborhood: '', createTz: '',
     createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false,
   }), [set]);
   const createEventDateType = useCallback((e) => set({ createEventDate: e.target.value }), [set]);
   const createEventTimeType = useCallback((e) => set({ createEventTime: e.target.value }), [set]);
-  const createPriceType = useCallback((e) => set({ createPrice: e.target.value }), [set]);
+  const createPriceType = useCallback((e) => { const value = e.target.value; set(prev => ({ createPrice: value, createPriceCurrency: createFormMarket(prev).currency })); }, [set]);
   const createSeatsType = useCallback((e) => set({ createSeats: e.target.value }), [set]);
   const pickCreateCat = useCallback((key) => set(prev => {
     let cats = prev.createCats.includes(key) ? prev.createCats.filter(x => x !== key) : [...prev.createCats, key];
@@ -9766,18 +9804,19 @@ export function BanBeProvider({ children }) {
    * "Gửi để duyệt" (createSubmit) does that, after the host has reviewed
    * the filled-in preview and corrected anything the import flagged.
    */
-  const importParsedEvent = useCallback((parsed) => set({
+  const importParsedEvent = useCallback((parsed) => set(prev => ({
     createName: parsed.name || '',
     createCats: parsed.categoryKey ? [parsed.categoryKey] : [],
     createDesc: parsed.description || '',
     createLoc: parsed.location || '',
     createEventDate: parsed.eventDate || '',
     createEventTime: parsed.eventTime ? parsed.eventTime.slice(0, 5) : '',
-    createPrice: parsed.priceVnd ? String(parsed.priceVnd) : '',
+    // The Excel template's price is VND: never dropped into a dollar field (migration 195).
+    createPrice: parsed.priceVnd && createFormMarket(prev).currency === 'VND' ? String(parsed.priceVnd) : '',
     createSeats: parsed.capacity ? String(parsed.capacity) : '',
     createIncludedItems: Array.isArray(parsed.inclusions) ? parsed.inclusions : [],
     createIntro: parsed.intro || '',
-  }), [set]);
+  })), [set]);
 
   /**
    * Real cover/gallery upload for the create-event flow (migration 087's
@@ -9989,19 +10028,28 @@ export function BanBeProvider({ children }) {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session?.user) throw new Error('AUTH_REQUIRED');
-      const priceVnd = parseInt((s.createPrice.match(/[\d.]+/) || ['0'])[0].replace(/\./g, ''), 10) || 0;
+      // Price in the minor unit of the venue's currency (migration 195): dong, or cents for USD.
+      // An empty field is a free event. A dollar amount that isn't a price stops here instead of saving
+      // 0; a VND field keeps its old lenient reading (digits only, no digits = free).
+      const market = createFormMarket(s);
+      const priceText = s.createPrice.trim();
+      const parsedPrice = !priceText ? 0 : market.currency === 'USD' ? parsePriceInput(priceText, 'USD') : (parsePriceInput(priceText, 'VND') ?? 0);
+      if (parsedPrice == null) throw new Error('INVALID_PRICE');
+      const priceVnd = parsedPrice;
       const capacity = parseInt(s.createSeats, 10) || 0;
       const eventDate = s.createEventDate || null;
       const eventTime = s.createEventTime ? `${s.createEventTime}:00` : null;
-      // Client-side nicety only — the RPC (migration 087/088) is the real
-      // gate, converting the SAME date+time AT TIME ZONE 'Asia/Ho_Chi_Minh'.
-      // Approximated the same way here so an obviously-past pick is caught
-      // before a round trip, without needing a timezone library.
+      // Client-side nicety only — the RPC is the real gate, converting the
+      // SAME wall-clock date+time AT TIME ZONE the event's own zone
+      // (migration 195; Asia/Ho_Chi_Minh for every VN event).
       if (eventDate && eventTime) {
-        const nowVn = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
-        const pickedVn = new Date(`${eventDate}T${eventTime}`);
-        if (pickedVn.getTime() < nowVn.getTime() - 5 * 60 * 1000) throw new Error('PAST_EVENT_NOT_ALLOWED');
+        const pickedMs = wallClockToMs(eventDate, s.createEventTime, market.timeZone);
+        if (pickedMs != null && pickedMs < Date.now() - 5 * 60 * 1000) throw new Error('PAST_EVENT_NOT_ALLOWED');
       }
+      // `p_tz` exists only after migration 195, so it is sent ONLY for a US venue (a VN create keeps
+      // working against a server without 195). The server re-derives it anyway; the client's zone only
+      // wins for a real US zone (multi-zone states).
+      const tzParam = (s.createCountryCode || '').trim().toUpperCase() === 'US' ? { p_tz: market.timeZone } : {};
       // Mirrors migration 087's own server-side validation (max 3, label
       // 1-60, detail <=300) — the RPC is the real gate; this only avoids a
       // round trip for an obviously-invalid client state.
@@ -10074,6 +10122,7 @@ export function BanBeProvider({ children }) {
           p_country_code: s.createCountryCode.trim() || null,
           p_state_province: s.createStateProvince.trim() || null,
           p_neighborhood: s.createNeighborhood.trim() || null,
+          ...tzParam,
         });
         if (error) throw error;
         if (data?.success === false) throw new Error(data.error);
@@ -10105,6 +10154,7 @@ export function BanBeProvider({ children }) {
           p_country_code: s.createCountryCode.trim() || null,
           p_state_province: s.createStateProvince.trim() || null,
           p_neighborhood: s.createNeighborhood.trim() || null,
+          ...tzParam,
         });
         if (error) throw error;
         eventId = data?.id || null;
@@ -10243,6 +10293,13 @@ export function BanBeProvider({ children }) {
         ? T('Giới thiệu sự kiện tối đa 4000 ký tự.', 'The event introduction is limited to 4000 characters.')
         : err.message === 'ADDRESS_NOT_VERIFIED'
         ? T('Hãy chọn một địa chỉ gợi ý và xác nhận vị trí trên bản đồ trước khi đăng.', 'Select a suggested address and confirm its pin before publishing.')
+        : err.message === 'INVALID_PRICE'
+        ? T('Nhập giá dạng 12.50', 'Enter a price like 12.50')
+        // Migration 195: where an event can be, and a US address whose zone can't be told.
+        : err.message?.startsWith('UNSUPPORTED_COUNTRY')
+        ? T('Sự kiện trên banbe chỉ có thể ở Việt Nam hoặc Mỹ.', 'banbe events can be in Vietnam or the United States.')
+        : err.message?.startsWith('TIMEZONE_UNKNOWN')
+        ? T('Không xác định được múi giờ của địa chỉ này. Hãy chọn lại địa chỉ.', "Couldn't tell this address's time zone. Pick the address again.")
         // Migration 107's atomic resubmission-limit rejection — a banbe
         // product policy (2 successful resubmissions per rolling 24h),
         // never phrased as a legal/Ticketbox requirement.
@@ -10258,7 +10315,7 @@ export function BanBeProvider({ children }) {
     } finally {
       createSubmitInFlightRef.current = false;
     }
-  }, [set, s.createName, s.createHostGoal, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createCountryCode, s.createStateProvince, s.createNeighborhood, s.createLat, s.createLng, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.createChatGreeting, s.createChatGreetingEn, s.createCriteria, s.createCriteriaLoaded, s.createCriteriaLoad, s.createCriteriaRetryEventId, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
+  }, [set, s.createName, s.createHostGoal, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createCountryCode, s.createStateProvince, s.createNeighborhood, s.createTz, s.createLat, s.createLng, s.createDate, s.createEventDate, s.createEventTime, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.createChatGreeting, s.createChatGreetingEn, s.createCriteria, s.createCriteriaLoaded, s.createCriteriaLoad, s.createCriteriaRetryEventId, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
 
   /**
@@ -10296,11 +10353,15 @@ export function BanBeProvider({ children }) {
       createAddressLine: real.addressLine || '', createDistrict: real.area || '',
       createCity: real.city || '', createPostalCode: real.postalCode || '',
       createCountryCode: real.countryCode || '', createStateProvince: real.stateProvince || '',
-      createNeighborhood: real.neighborhood || '',
+      createNeighborhood: real.neighborhood || '', createTz: real.tz || '',
       createLocConfirmed: !!real.addressVerified,
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
       createEventDate: real.eventDate || '', createEventTime: real.eventTime ? real.eventTime.slice(0, 5) : '',
-      createPrice: real.priceVnd ? String(real.priceVnd) : '',
+      // In the row's own currency (migration 195). A legacy VND price on a US event is left empty: the
+      // resubmit re-prices it in USD, so showing dong in a dollar field would only mislead.
+      createPrice: real.priceVnd && rowCurrency(real) === createFormMarket({ createCountryCode: real.countryCode }).currency
+        ? priceInputText(real.priceVnd, rowCurrency(real)) : '',
+      createPriceCurrency: rowCurrency(real),
       createSeats: real.capacity ? String(real.capacity) : '',
       createVisibility: real.visibility || 'public',
       // Root-cause fix (Stage A media-parity pass, 2026-09-26): this used

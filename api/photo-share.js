@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { getRedirectUrl } from './_lib/authLookup.js';
 import { escapeHtml } from './_lib/emailTemplate.js';
+import { rowTimeZone, VN_TIME_ZONE } from '../src/lib/eventMarket.js';
 
 // The page a shared photo link points at. Its only job is to carry Open
 // Graph tags naming *that photo* as the preview image, then send whoever
@@ -79,15 +80,18 @@ const STORAGE_PUBLIC = () => `${process.env.SUPABASE_URL || process.env.VITE_SUP
 
 async function resolveEvent(eid) {
   if (!EVENT_ID_PATTERN.test(eid)) return null;
-  const { data } = await anonClient()
+  // `tz` exists from migration 195 on; before that the zone is derived from country/state.
+  const query = (cols) => anonClient()
     .from('events')
-    .select('id, name, area, starts_at, visibility, status, organizers(name), event_photos(storage_path, sort_order)')
+    .select(`id, name, area, starts_at, visibility, status, country_code, state_province${cols}, organizers(name), event_photos(storage_path, sort_order)`)
     .eq('id', eid)
     .eq('visibility', 'public')
     .in('status', ['live', 'ended', 'cancelled'])
     .order('sort_order', { referencedTable: 'event_photos', ascending: true })
     .limit(1, { referencedTable: 'event_photos' })
     .maybeSingle();
+  let { data, error } = await query(', tz');
+  if (error && (error.code === '42703' || /does not exist/i.test(error.message || ''))) ({ data } = await query(''));
   if (!data) return null;
   const cover = data.event_photos?.[0]?.storage_path;
   return {
@@ -95,15 +99,21 @@ async function resolveEvent(eid) {
     name: data.name || '',
     area: data.area || '',
     startsAt: data.starts_at || null,
+    timeZone: rowTimeZone(data),
     organizerName: data.organizers?.name || '',
     imagePath: cover ? String(cover).replace(/^event-photos\//, '') : '',
   };
 }
 
-function formatWhen(iso) {
+// In the venue's own zone (migration 195). Vietnamese wording for Vietnam; a US event reads in English
+// with its zone, e.g. "Saturday, March 6 at 7:00 PM PST".
+function formatWhen(iso, timeZone = VN_TIME_ZONE) {
   if (!iso) return '';
   try {
-    return new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+    if (timeZone === VN_TIME_ZONE) {
+      return new Intl.DateTimeFormat('vi-VN', { timeZone, weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+    }
+    return new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date(iso));
   } catch { return ''; }
 }
 
@@ -150,7 +160,7 @@ export default async function handler(req, res) {
       if (ev.imagePath) imageUrl = `${STORAGE_PUBLIC()}${ev.imagePath}`;
       organizer = ev.organizerName;
       title = `${ev.name} ▪︎ banbe`;
-      description = [ev.area, formatWhen(ev.startsAt), ev.organizerName && `bởi ${ev.organizerName}`].filter(Boolean).join(' ▪︎ ');
+      description = [ev.area, formatWhen(ev.startsAt, ev.timeZone), ev.organizerName && `bởi ${ev.organizerName}`].filter(Boolean).join(' ▪︎ ');
     }
   } else if (pid) {
     const real = await resolveRealPhoto(pid);

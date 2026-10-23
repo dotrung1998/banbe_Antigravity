@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useBanBe, resolveCoverUrl } from '../../state/BanBeContext.jsx';
 import { supabase } from '../../lib/supabase.js';
 import { withR2Columns } from '../../lib/mediaUrls.js';
-import { formatVnd } from '../../lib/paymentDocument.js';
+import { formatMoney, rowCurrency, rowTimeZone } from '../../lib/eventMarket.js';
 import { paper, ink, rule, display, alert, honeyBg } from '../../theme.js';
 import { inkButton } from '../hostStyle.js';
 
@@ -88,7 +88,8 @@ export default function PendingEventSheet({ eventId, name, onClose, onChanged })
     </div>
   ) : null);
   const fmt = (iso) => (iso ? new Date(iso).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' }) : '');
-  const when = ev ? (ev.starts_at ? fmt(ev.starts_at) : [ev.event_date, ev.event_time].filter(Boolean).join(' ▪︎ ')) : '';
+  // The event's start in its own zone (migration 195; `select('*')` carries tz when the DB has it).
+  const when = ev ? (ev.starts_at ? new Date(ev.starts_at).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: rowTimeZone(ev) }) : [ev.event_date, ev.event_time].filter(Boolean).join(' ▪︎ ')) : '';
   const included = ev && Array.isArray(ev.included_items) ? ev.included_items.map(i => i?.label).filter(Boolean).join(' ▪︎ ') : '';
 
   return (
@@ -146,7 +147,7 @@ export default function PendingEventSheet({ eventId, name, onClose, onChanged })
             {line(T('Khu vực', 'Area'), ev.area)}
             {line(T('Địa chỉ', 'Address'), [ev.address_line, ev.city].filter(Boolean).join(', '))}
             {line(T('Danh mục', 'Category'), ev.cat_label)}
-            {line(T('Giá', 'Price'), ev.price_vnd > 0 ? formatVnd(ev.price_vnd) : T('Miễn phí', 'Free'))}
+            {line(T('Giá', 'Price'), ev.price_vnd > 0 ? formatMoney(ev.price_vnd, rowCurrency(ev)) : T('Miễn phí', 'Free'))}
             {line(T('Sức chứa', 'Capacity'), ev.capacity != null ? String(ev.capacity) : '')}
             {line(T('Mô tả', 'Description'), ev.description)}
             {line(T('Giới thiệu', 'About'), ev.intro)}

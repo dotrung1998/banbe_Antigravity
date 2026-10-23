@@ -133,6 +133,8 @@ struct GiftTicketDocument {
     var admissionToken: UUID
     var claimCode: String?
     var reference: String
+    /// The event's own IANA zone (migration 195); nil = Vietnam (every event before it).
+    var timeZoneID: String? = nil
 
     static func make(booking: Booking, event: CatalogEvent) -> GiftTicketDocument {
         GiftTicketDocument(
@@ -146,7 +148,8 @@ struct GiftTicketDocument {
             ticketCode: booking.code ?? "",
             admissionToken: booking.admissionToken ?? booking.id,
             claimCode: booking.claimCode,
-            reference: booking.id.uuidString
+            reference: booking.id.uuidString,
+            timeZoneID: event.timeZoneID
         )
     }
 
@@ -165,7 +168,8 @@ struct GiftTicketDocument {
             ticketCode: payable.code,
             admissionToken: payable.admissionToken ?? payable.id,
             claimCode: payable.claimCode,
-            reference: payable.id.uuidString
+            reference: payable.id.uuidString,
+            timeZoneID: event?.timeZoneID
         )
     }
 }

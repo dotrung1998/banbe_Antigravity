@@ -234,7 +234,7 @@ struct AdminManageEventsView: View {
                                     .foregroundStyle(BanbeTheme.alert)
                                     .accessibilityIdentifier("adminManage.orphan.\(row.id)")
                             }
-                            Text([row.startsAt.map(Self.dateLabel), orphan ? nil : row.organizerName].compactMap { $0 }.joined(separator: " · "))
+                            Text([row.startsAt.map { Self.dateLabel($0, timeZone: row.timeZone) }, orphan ? nil : row.organizerName].compactMap { $0 }.joined(separator: " · "))
                                 .font(.system(size: 12)).opacity(0.7).lineLimit(1)
                         }
                     }
@@ -281,8 +281,8 @@ struct AdminManageEventsView: View {
             : (row.organizerName ?? "—")
         return VStack(alignment: .leading, spacing: 0) {
             fact(app.T("Người tổ chức", "Host"), host)
-            fact(app.T("Bắt đầu", "Starts"), row.startsAt.map(Self.dateTimeLabel) ?? "—")
-            fact(app.T("Giá vé", "Price"), (row.priceVnd ?? 0) > 0 ? EventLabels.vnd(row.priceVnd ?? 0) : app.T("Miễn phí", "Free"))
+            fact(app.T("Bắt đầu", "Starts"), row.startsAt.map { Self.dateTimeLabel($0, timeZone: row.timeZone) } ?? "—")
+            fact(app.T("Giá vé", "Price"), (row.priceVnd ?? 0) > 0 ? EventMarket.formatMoney(row.priceVnd ?? 0, currency: row.rowCurrency) : app.T("Miễn phí", "Free"))
             if let cap = row.capacity, cap > 0 {
                 fact(app.T("Chỗ", "Seats"), app.T("\(row.seatsRemaining.map(String.init) ?? "—") còn / \(cap)", "\(row.seatsRemaining.map(String.init) ?? "—") left of \(cap)"))
             }
@@ -542,13 +542,11 @@ struct AdminManageEventsView: View {
     /// English count + noun ("1 event", "3 events"). Vietnamese has no plural form.
     static func en(_ n: Int, _ noun: String) -> String { n == 1 ? "\(n) \(noun)" : "\(n) \(noun)s" }
 
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "dd/MM/yyyy"
-        f.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
-        return f
-    }()
-    private static func dateLabel(_ d: Date) -> String { dateFormatter.string(from: d) }
+    /// An event's start, in the venue's own zone (migration 195); admin timestamps stay in Vietnam time.
+    private static func dateLabel(_ d: Date, timeZone: TimeZone) -> String {
+        let f = DateFormatter(); f.dateFormat = "dd/MM/yyyy"; f.timeZone = timeZone
+        return f.string(from: d)
+    }
     private static let dateTimeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "dd/MM/yyyy HH:mm"
@@ -556,4 +554,8 @@ struct AdminManageEventsView: View {
         return f
     }()
     private static func dateTimeLabel(_ d: Date) -> String { dateTimeFormatter.string(from: d) }
+    private static func dateTimeLabel(_ d: Date, timeZone: TimeZone) -> String {
+        let f = DateFormatter(); f.dateFormat = "dd/MM/yyyy HH:mm"; f.timeZone = timeZone
+        return f.string(from: d) + (timeZone.identifier == EventMarket.vnTimeZoneID ? "" : " (\(timeZone.abbreviation(for: d) ?? timeZone.identifier))")
+    }
 }

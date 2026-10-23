@@ -1,13 +1,13 @@
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, fieldGlass } from '../theme.js';
+import { eventTotal } from '../lib/reserveBar.js';
 
 export default function Refunded() {
   const { state, T, curEvent: ev, trStatus, stripKm, goHome, goChat } = useBanBe();
   const s = state;
 
-  const priceNum = parseInt((ev.price.match(/[\d.]+/) || ['0'])[0].replace(/\./g, ''), 10) || 0;
-  const isFree = /Miễn phí/.test(ev.price);
-  const refundAmount = isFree ? T('Miễn phí', 'Free') : ((priceNum * (s.tickets[ev.key] || 1)).toLocaleString('vi-VN') + '₫');
+  // In the event's own currency (migration 195); demo events read their VND text as before.
+  const refundAmount = trStatus(eventTotal(ev, s.tickets[ev.key] || 1));
   const refundCancelledWhen = ev.cancelledHoursAgo != null ? ev.agoLabel(ev.cancelledHoursAgo) + T(' ▪︎ người tổ chức đã hủy', ' ▪︎ cancelled by the organizer') : '';
 
   return (

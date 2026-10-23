@@ -273,6 +273,8 @@ final class AuthViewModel: ObservableObject {
     func signInWithFacebook() async { await signIn(with: .facebook) }
 
     func signOut() async {
+        // Same as AppState.signOut(): unregister this device's push token while the session still exists.
+        await AppDelegate.appState?.unregisterPushTokenForSignOut()
         try? await SupabaseService.client.auth.signOut()
     }
 }

@@ -433,28 +433,30 @@ struct CreateEventView: View {
 
     private var bench: HostBenchmarks? { EventRecipe.hasBenchmarks(benchmarks) ? benchmarks : nil }
     private var primaryCat: String { app.createCats.first ?? "" }
-    private var benchmarkKey: String { "\(primaryCat)|\(app.createCity.lowercased())|\(app.isSignedIn)|\(app.createSent)" }
+    private var benchmarkKey: String { "\(primaryCat)|\(app.createCity.lowercased())|\(app.createCurrency)|\(app.isSignedIn)|\(app.createSent)" }
     private var draftPriceVnd: Int { priceDigits ?? 0 }
     private var draftKeywords: [String] {
         app.createKeywords.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
-    /// The picked Vietnam date + Vietnam wall-clock time as one instant.
-    private var draftStartsAt: Date? {
-        guard let d = app.createEventDate, let t = app.createEventTime else { return nil }
-        return Self.vnInstant(day: d, time: t)
-    }
-    private static func vnInstant(day: Date, time: Date) -> Date? {
-        let cal = SmartDefaults.vnCalendar
+    /// The picked date + wall-clock time at the venue (`app.createEventTimeZone`) as one instant.
+    private var draftStartsAt: Date? { app.createStartsAt }
+    private func venueInstant(day: Date, time: Date) -> Date? {
+        let cal = EventMarket.calendar(app.createEventTimeZone)
         let dc = cal.dateComponents([.year, .month, .day], from: day)
         let tc = cal.dateComponents([.hour, .minute], from: time)
         return cal.date(from: DateComponents(year: dc.year, month: dc.month, day: dc.day, hour: tc.hour, minute: tc.minute))
+    }
+    /// UTC offset (minutes) of the event's zone at `date` — benchmark slots are bucketed in each event's own zone.
+    private func venueOffsetMin(_ date: Date?) -> Int {
+        app.createEventTimeZone.secondsFromGMT(for: date ?? Date()) / 60
     }
     private var recipe: [EventRecipe.Check] {
         EventRecipe.checks(EventRecipe.Draft(
             name: app.createName, description: app.createDesc, intro: app.createIntro,
             includedCount: app.createIncludedItems.filter { !$0.label.trimmingCharacters(in: .whitespaces).isEmpty }.count,
             keywords: draftKeywords, priceVnd: draftPriceVnd, seats: seatsBinding, startsAt: draftStartsAt,
-            photos: galleryItems.count, chatGreeting: app.createChatGreeting + app.createChatGreetingEn
+            photos: galleryItems.count, chatGreeting: app.createChatGreeting + app.createChatGreetingEn,
+            offsetMin: venueOffsetMin(draftStartsAt)
         ), benchmarks: bench, goal: app.createHostGoal, now: Date())
     }
     private func recipeCheck(_ id: String) -> EventRecipe.Check? { recipe.first { $0.id == id } }
@@ -469,7 +471,7 @@ struct CreateEventView: View {
     private func fixIngredient(_ c: EventRecipe.Check) {
         Analytics.track(.recipeFixTapped(ingredient: c.id))
         if CreateFieldGuide.step(of: c.fix.field) != nil {
-            guideTo(c.fix.field, hint: EventRecipe.copy(c, app.T).title)
+            guideTo(c.fix.field, hint: EventRecipe.copy(c, app.T, currency: app.createCurrency).title)
         } else {
             withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = false }
             goTo(Section(rawValue: c.fix.step) ?? .basics)
@@ -553,8 +555,9 @@ struct CreateEventView: View {
     }
     /// Fill rate of the benchmark cell a date quick pick would land in (with the current time, else 19:00).
     private func slotFill(day: Date, time: Date?) -> Double? {
-        guard let bench, let t = time ?? SmartDefaults.timeOfDay("19:00"), let at = Self.vnInstant(day: day, time: t) else { return nil }
-        let (dow, slot) = EventRecipe.localParts(at)
+        guard let bench, let t = time ?? SmartDefaults.timeOfDay("19:00", timeZone: app.createEventTimeZone),
+              let at = venueInstant(day: day, time: t) else { return nil }
+        let (dow, slot) = EventRecipe.localParts(at, offsetMin: venueOffsetMin(at))
         return bench.slots?.first { $0.dow == dow && $0.slot == slot }?.medianFill
     }
 
@@ -965,24 +968,15 @@ struct CreateEventView: View {
         }
     }
 
-    private static let vnDateLabelFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.timeZone = AppState.vietnamTimeZone
-        f.dateFormat = "dd.MM.yyyy"
-        return f
-    }()
-    private static let vnTimeLabelFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.timeZone = AppState.vietnamTimeZone
-        f.dateFormat = "HH:mm"
-        return f
-    }()
+    // Labels read the picked date/time in the event's own zone (Vietnam unless the venue is in the US).
+    private var dateLabelFormatter: DateFormatter { app.createFormatter("dd.MM.yyyy") }
+    private var timeLabelFormatter: DateFormatter { app.createFormatter("HH:mm") }
 
     /// "Tomorrow, Sat 25 Oct" style (the video's "Tomorrow, Fri 25 Mar").
     private func friendlyDateLabel(_ date: Date) -> String {
-        let cal = SmartDefaults.vnCalendar
+        let cal = EventMarket.calendar(app.createEventTimeZone)
         let f = DateFormatter()
-        f.timeZone = AppState.vietnamTimeZone
+        f.timeZone = app.createEventTimeZone
         f.locale = Locale(identifier: app.isEN ? "en_GB" : "vi_VN")
         f.dateFormat = app.isEN ? "EEE d MMM" : "EEEE, d/M"
         let base = f.string(from: date)
@@ -991,11 +985,19 @@ struct CreateEventView: View {
         return base
     }
 
+    /// "Vietnam time", or the venue's zone for a US address (migration 195), e.g. "Venue time (PDT)".
+    private var zoneTrailingLabel: String {
+        let tz = app.createEventTimeZone
+        guard tz.identifier != EventMarket.vnTimeZoneID else { return app.T("Giờ Việt Nam", "Vietnam time") }
+        let abbr = tz.abbreviation(for: app.createStartsAt ?? Date()) ?? tz.identifier
+        return app.T("Giờ tại nơi tổ chức (\(abbr))", "Venue time (\(abbr))")
+    }
+
     @ViewBuilder
     private func dateTimeRow() -> some View {
         VStack(alignment: .leading, spacing: 5) {
             FormFieldLabel(icon: "calendar", text: app.T("Ngày & giờ", "Date & time"), required: true,
-                           trailing: app.T("Giờ Việt Nam", "Vietnam time"))
+                           trailing: zoneTrailingLabel)
             Button {
                 dateTimeSheetOpen = true
             } label: {
@@ -1003,7 +1005,7 @@ struct CreateEventView: View {
                     if let date = app.createEventDate, let time = app.createEventTime {
                         Text(friendlyDateLabel(date))
                             .font(.system(size: 16, weight: .semibold))
-                        Text(Self.vnTimeLabelFormatter.string(from: time))
+                        Text(timeLabelFormatter.string(from: time))
                             .font(.system(size: 16))
                             .padding(.horizontal, 10).padding(.vertical, 4)
                             .background(app.palette.ink.opacity(0.07), in: Capsule())
@@ -1027,7 +1029,8 @@ struct CreateEventView: View {
         }
         .sheet(isPresented: $dateTimeSheetOpen) {
             EventDateTimeSheet(date: $app.createEventDate, time: $app.createEventTime,
-                               slotFill: bench == nil ? nil : { day, time in slotFill(day: day, time: time) })
+                               slotFill: bench == nil ? nil : { day, time in slotFill(day: day, time: time) },
+                               timeZone: app.createEventTimeZone)
                 .environmentObject(app)
         }
     }
@@ -1081,7 +1084,7 @@ struct CreateEventView: View {
                     onFixRecipe: fixIngredient,
                     dateLabel: {
                         if let date = app.createEventDate, let time = app.createEventTime {
-                            return "\(Self.vnDateLabelFormatter.string(from: date)) ▪︎ \(Self.vnTimeLabelFormatter.string(from: time))"
+                            return "\(dateLabelFormatter.string(from: date)) ▪︎ \(timeLabelFormatter.string(from: time))"
                         }
                         return app.T("Chưa chọn", "Not set")
                     }(),
@@ -1237,7 +1240,7 @@ struct CreateEventView: View {
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard !Task.isCancelled else { return }
             let cat = primaryCat
-            benchmarks = await app.hostBenchmarks(cat: cat, city: app.createCity)
+            benchmarks = await app.hostBenchmarks(cat: cat, city: app.createCity, currency: app.createCurrency)
             audienceDemand = cat.isEmpty ? nil : await app.audienceDemand(cat: cat)
         }
         .confirmationDialog(app.T("Bỏ sự kiện này?", "Discard this event?"),
@@ -1395,6 +1398,7 @@ struct CreateEventView: View {
                         app.createCountryCode = nil
                         app.createStateProvince = nil
                         app.createNeighborhood = nil
+                        app.createPlaceTimeZoneID = nil
                         app.createLocConfirmed = false
                         app.createAddressSuggestions = []
                         app.createAddressSearchError = ""
@@ -1742,23 +1746,31 @@ struct CreateEventView: View {
     }
 
     private var seatsBinding: Int { Int(app.createSeats.filter(\.isNumber)) ?? 0 }
-    private var priceDigits: Int? { Int(app.createPrice.filter(\.isNumber)) }
+    /// The typed price in minor units of `app.createCurrency` (nil when it isn't a price, e.g. "12.345" in USD).
+    private var priceDigits: Int? {
+        app.createPrice.trimmingCharacters(in: .whitespaces).isEmpty ? nil : app.createPriceAmount
+    }
+    private var currency: String { app.createCurrency }
+    /// What a quick pick / the slider writes into the price field (VND keeps its plain digits, USD "12.50").
+    private func priceText(_ v: Int) -> String {
+        currency == "USD" ? EventMarket.priceInputText(v, currency: "USD") : String(v)
+    }
 
     /// Contrast hint (note 48, honest anchoring): prices of similar live
-    /// events in the same category, never shown with too few samples.
+    /// events in the same category AND currency, never shown with too few samples.
     private var similarPriceHint: String? {
         let cats = Set(app.createCats)
         guard !cats.isEmpty else { return nil }
-        let prices = app.discoveryEvents.filter { cats.contains($0.catKey) }.map(\.priceVnd)
+        let prices = app.discoveryEvents.filter { cats.contains($0.catKey) && $0.currency == currency }.map(\.priceVnd)
         guard let range = SmartDefaults.similarPriceRange(prices) else { return nil }
-        return app.T("Sự kiện tương tự: \(EventLabels.vnd(range.lowerBound))–\(EventLabels.vnd(range.upperBound))",
-                     "Similar events: \(EventLabels.vnd(range.lowerBound))–\(EventLabels.vnd(range.upperBound))")
+        let lo = EventMarket.formatMoney(range.lowerBound, currency: currency), hi = EventMarket.formatMoney(range.upperBound, currency: currency)
+        return app.T("Sự kiện tương tự: \(lo)–\(hi)", "Similar events: \(lo)–\(hi)")
     }
 
     /// Benchmarks first ("Typical: 280k₫–380k₫ (13 similar events)"), then the loaded-events hint, then free.
     private var priceHint: String {
         if let p = bench?.price, p.p25 != nil {
-            let band = "\(EventRecipe.formatVndShort(p.p25))–\(EventRecipe.formatVndShort(p.p75))"
+            let band = "\(EventRecipe.formatMoneyShort(p.p25, currency: currency))–\(EventRecipe.formatMoneyShort(p.p75, currency: currency))"
             return app.T("Thường gặp: \(band) (\(p.n ?? 0) sự kiện tương tự). Để trống là miễn phí.",
                          "Typical: \(band) (\(p.n ?? 0) similar events). Leave empty for a free event.")
         }
@@ -1866,7 +1878,7 @@ struct CreateEventView: View {
     @ViewBuilder
     private func outcomeLine() -> some View {
         if let o = EventRecipe.estimateOutcome(priceVnd: draftPriceVnd, seats: seatsBinding, medianFill: bench?.fill?.medianFill) {
-            let money = draftPriceVnd > 0 ? " · " + (o.basis == "similar" ? "~" : "") + EventRecipe.formatVndShort(o.revenueVnd) : ""
+            let money = draftPriceVnd > 0 ? " · " + (o.basis == "similar" ? "~" : "") + EventRecipe.formatMoneyShort(o.revenueVnd, currency: currency) : ""
             let head = o.basis == "similar" ? app.T("~\(o.guests) khách", "~\(o.guests) guests") + money
                                              : app.T("\(o.guests) khách", "\(o.guests) guests") + money
             let basis = o.basis == "similar"
@@ -1893,21 +1905,25 @@ struct CreateEventView: View {
             FormFieldLabel(icon: "tag", text: app.T("Giá vé", "Price"),
                            trailing: similarPriceHint == nil ? nil : app.T("Gợi ý", "Suggested"))
             if let market = bench?.price {
-                PriceMarketView(price: market, mine: draftPriceVnd, catLabel: createCatLabel) { app.createPrice = String($0) }
+                PriceMarketView(price: market, mine: draftPriceVnd, catLabel: createCatLabel, currency: currency) { app.createPrice = priceText($0) }
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                ForEach(SmartDefaults.priceQuickPicks, id: \.self) { value in
+                ForEach(EventMarket.priceQuickPicks(currency: currency), id: \.self) { value in
                     // The option's outcome BEFORE it's chosen ("typical", "premium"), like a filter pill's count.
                     let pos = value > 0 ? EventRecipe.pricePosition(value, bench?.price).flatMap { bench?.price == nil ? nil : EventRecipe.positionLabels[$0] } : nil
-                    pickTile(value == 0 ? app.T("Miễn phí", "Free") : EventLabels.vnd(value),
+                    pickTile(value == 0 ? app.T("Miễn phí", "Free") : EventMarket.formatMoney(value, currency: currency),
                              sub: pos.map { app.T($0.vi, $0.en) },
                              selected: !app.createPrice.isEmpty && priceDigits == value,
-                             id: "create.price.\(value)") { app.createPrice = String(value) }
+                             id: "create.price.\(value)") { app.createPrice = priceText(value) }
                 }
             }
             guided("price") {
-                BanbeField(label: nil, placeholder: app.T("Giá khác, vd. 450.000", "Other price, e.g. 450,000"),
-                           text: $app.createPrice, keyboard: .numberPad, icon: "tag", focus: $focusedField, focusID: "price")
+                // USD takes cents ("12.50"), so the keypad needs a decimal point there (migration 195).
+                BanbeField(label: nil,
+                           placeholder: currency == "USD" ? app.T("Giá khác (USD), vd. 12.50", "Other price (USD), e.g. 12.50")
+                                                          : app.T("Giá khác, vd. 450.000", "Other price, e.g. 450,000"),
+                           text: $app.createPrice, keyboard: currency == "USD" ? .decimalPad : .numberPad, icon: "tag",
+                           focus: $focusedField, focusID: "price")
                     .accessibilityLabel(app.T("Giá vé", "Price"))
             }
             Text(priceHint)
@@ -2020,22 +2036,10 @@ private struct CreateEventReviewSheet: View {
             .filter { !$0.label.isEmpty }
     }
 
-    private var publicPriceVnd: Int { Int(app.createPrice.filter { $0.isNumber }) ?? 0 }
-    // Merges the two VN-timezone-picked Date/time values into ONE Date
-    // whose components read back correctly under the DEVICE's own local
-    // calendar, so `Countdown.formatVnEventDate` (which reads `.current`)
-    // shows the same wall-clock digits the host actually picked in
-    // EventDateTimeSheet, regardless of the device's own timezone setting.
-    private var mergedStartsAt: Date? {
-        guard let d = app.createEventDate, let t = app.createEventTime else { return nil }
-        var vnCal = Calendar(identifier: .gregorian); vnCal.timeZone = AppState.vietnamTimeZone
-        let dc = vnCal.dateComponents([.year, .month, .day], from: d)
-        let tc = vnCal.dateComponents([.hour, .minute], from: t)
-        var comps = DateComponents()
-        comps.year = dc.year; comps.month = dc.month; comps.day = dc.day
-        comps.hour = tc.hour; comps.minute = tc.minute
-        return Calendar(identifier: .gregorian).date(from: comps)
-    }
+    private var publicPriceVnd: Int { app.createPriceAmount ?? 0 }
+    // The real instant at the venue; `fromDraft` formats it in the event's own zone (migration 195), so the
+    // preview shows the wall-clock digits the host picked regardless of the device's zone.
+    private var mergedStartsAt: Date? { app.createStartsAt }
     @ViewBuilder
     private func row(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -2064,7 +2068,9 @@ private struct CreateEventReviewSheet: View {
             intro: app.createIntro.trimmingCharacters(in: .whitespacesAndNewlines),
             includedItems: reviewIncludedItems,
             inviteOnly: app.createVisibility == "invite",
-            organizerName: app.orgRegName.trimmingCharacters(in: .whitespaces)
+            organizerName: app.orgRegName.trimmingCharacters(in: .whitespaces),
+            currency: app.createCurrency,
+            timeZoneID: app.createEventTimeZoneID
         ))
     }
 
@@ -2191,7 +2197,9 @@ private struct CreateEventReviewSheet: View {
                             row(app.T("Ngày & giờ", "Date & time"), dateLabel)
                             row(app.T("Địa chỉ", "Address"), addressLabel)
                             row(app.T("Số chỗ", "Capacity"), app.createSeats.isEmpty ? app.T("Chưa nhập", "Not set") : app.createSeats)
-                            row(app.T("Giá vé", "Price"), app.createPrice.isEmpty ? app.T("Miễn phí", "Free") : app.createPrice)
+                            row(app.T("Giá vé", "Price"), (app.createPriceAmount ?? 0) > 0
+                                ? EventMarket.formatMoney(app.createPriceAmount ?? 0, currency: app.createCurrency)
+                                : (app.createPrice.isEmpty ? app.T("Miễn phí", "Free") : app.createPrice))
                             row(app.T("Quyền riêng tư", "Privacy"), app.createVisibility == "invite" ? app.T("Chỉ mời", "Invite-only") : app.T("Công khai", "Public"))
                             if !app.createDesc.trimmingCharacters(in: .whitespaces).isEmpty {
                                 row(app.T("Mô tả", "Description"), app.createDesc.trimmingCharacters(in: .whitespaces))
@@ -2343,8 +2351,9 @@ private extension Array {
 
 /// Date/time picker fix (Stage B, 2026-09-26) — ONE sheet, a graphical
 /// native calendar directly above a native wheel time picker, both forced
-/// to Asia/Ho_Chi_Minh via `.environment(\.timeZone, ...)` so the digits
-/// shown always match Vietnam wall-clock time regardless of the device's
+/// to the EVENT's zone via `.environment(\.timeZone, ...)` (Asia/Ho_Chi_Minh,
+/// or the venue's zone for a US address — migration 195) so the digits
+/// shown always match the venue's wall-clock time regardless of the device's
 /// own timezone. Nothing is written back to the parent's bindings until
 /// "Xong" — dismissing via "Hủy" (or a swipe) leaves the previously
 /// confirmed selection untouched, which is what "reopen retains draft
@@ -2360,6 +2369,9 @@ struct EventDateTimeSheet: View {
 
     @State private var draftDate: Date
     @State private var draftTime: Date
+    /// The event's own zone; the picked digits are wall clock there.
+    private let timeZone: TimeZone
+    private var calendar: Calendar { EventMarket.calendar(timeZone) }
     // Month-navigation snap-back fix (2026-09-29) — the graphical
     // DatePicker below used to take `in: Date()...` directly, which calls
     // `Date()` fresh on every `body` re-evaluation (e.g. every tick while
@@ -2370,22 +2382,18 @@ struct EventDateTimeSheet: View {
     // so the range argument is stable for the sheet's whole lifetime.
     private let minSelectableDate: Date
 
-    init(date: Binding<Date?>, time: Binding<Date?>, slotFill: ((Date, Date?) -> Double?)? = nil) {
+    init(date: Binding<Date?>, time: Binding<Date?>, slotFill: ((Date, Date?) -> Double?)? = nil,
+         timeZone: TimeZone = AppState.vietnamTimeZone) {
         self._date = date
         self._time = time
         self.slotFill = slotFill
-        let calendar = Self.vnCalendar
+        self.timeZone = timeZone
+        let calendar = EventMarket.calendar(timeZone)
         let today = calendar.startOfDay(for: Date())
         self._draftDate = State(initialValue: date.wrappedValue ?? today)
         self._draftTime = State(initialValue: time.wrappedValue ?? Date())
         self.minSelectableDate = today
     }
-
-    private static var vnCalendar: Calendar = {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = AppState.vietnamTimeZone
-        return cal
-    }()
 
     var body: some View {
         NavigationStack {
@@ -2396,7 +2404,7 @@ struct EventDateTimeSheet: View {
                     displayedComponents: [.date]
                 )
                 .datePickerStyle(.graphical)
-                .environment(\.timeZone, AppState.vietnamTimeZone)
+                .environment(\.timeZone, timeZone)
                 .padding(.horizontal, 12)
 
                 DatePicker(
@@ -2404,7 +2412,7 @@ struct EventDateTimeSheet: View {
                     displayedComponents: [.hourAndMinute]
                 )
                 .datePickerStyle(.wheel)
-                .environment(\.timeZone, AppState.vietnamTimeZone)
+                .environment(\.timeZone, timeZone)
                 .labelsHidden()
                 .padding(.horizontal, 12)
 
@@ -2431,23 +2439,23 @@ struct EventDateTimeSheet: View {
 }
 
 extension EventDateTimeSheet {
-    private static let hhmm: DateFormatter = {
+    private var hhmm: DateFormatter {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = AppState.vietnamTimeZone
+        f.timeZone = timeZone
         f.dateFormat = "HH:mm"
         return f
-    }()
+    }
 
     /// Note 48: the common choices one tap away; the full pickers stay below.
     var quickPicks: some View {
         VStack(alignment: .leading, spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(Array(SmartDefaults.dateQuickPicks().enumerated()), id: \.offset) { _, pick in
+                    ForEach(Array(SmartDefaults.dateQuickPicks(timeZone: timeZone).enumerated()), id: \.offset) { _, pick in
                         let fill = slotFill?(pick.date, draftTime).map { EventRecipe.pct($0) }
                         ChoiceChip(title: app.T(pick.label.vi, pick.label.en) + (fill.map { app.T(" · kín \($0)", " · fills \($0)") } ?? ""),
-                                   selected: Self.vnCalendar.isDate(draftDate, inSameDayAs: pick.date),
+                                   selected: calendar.isDate(draftDate, inSameDayAs: pick.date),
                                    compact: true, identifier: "dateSheet.day.\(pick.label.en)") {
                             draftDate = pick.date
                         }
@@ -2458,9 +2466,9 @@ extension EventDateTimeSheet {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     ForEach(SmartDefaults.timeQuickPicks, id: \.self) { t in
-                        ChoiceChip(title: t, selected: Self.hhmm.string(from: draftTime) == t,
+                        ChoiceChip(title: t, selected: hhmm.string(from: draftTime) == t,
                                    compact: true, identifier: "dateSheet.time.\(t)") {
-                            if let d = SmartDefaults.timeOfDay(t) { draftTime = d }
+                            if let d = SmartDefaults.timeOfDay(t, timeZone: timeZone) { draftTime = d }
                         }
                     }
                 }

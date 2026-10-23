@@ -162,3 +162,25 @@ test('price slider maps the market range both ways, snapped to 10k', () => {
   assert.equal(priceToFraction(5, null), null);
   assert.equal(fractionToPrice(0.5, { min: 251000, max: 259000 }), 255000, 'market narrower than a step');
 });
+
+// Migration 195: timing in the venue's zone, prices in the event's currency.
+import { localParts, priceSliderStep } from '../../src/lib/eventRecipe.js';
+
+test('timing reads the start in the event zone, not Vietnam', () => {
+  // Sat 2027-03-06 19:00 in Los Angeles = Sun 10:00 in Ho Chi Minh City.
+  const la = Date.parse('2027-03-07T03:00:00Z');
+  assert.deepEqual(localParts(la, 'America/Los_Angeles'), { dow: 6, slot: 'evening' });
+  assert.deepEqual(localParts(la), { dow: 7, slot: 'afternoon' });
+  const t = byId(recipeChecks({ ...GOOD_DRAFT, startsAt: la, timeZone: 'America/Los_Angeles' }, BENCH, null, NOW)).timing;
+  assert.deepEqual([t.dow, t.slot, t.status], [6, 'evening', 'good']);
+});
+
+test('a USD draft shows its band in dollars and slides in whole dollars', () => {
+  const usdBench = { ...BENCH, currency: 'USD', price: { n: 9, p25: 1500, median: 2000, p75: 2500, min: 1000, max: 4000 } };
+  const price = byId(recipeChecks({ ...GOOD_DRAFT, priceVnd: 2000, currency: 'USD' }, usdBench, null, NOW)).price;
+  assert.equal(price.position, 'typical');
+  assert.match(recipeCopy(price, T).detail, /\$15–\$25/);
+  assert.equal(priceSliderStep('USD'), 100);
+  assert.equal(priceSliderStep('VND'), 10000);
+  assert.equal(fractionToPrice(0.5, usdBench.price, priceSliderStep('USD')), 2500);
+});

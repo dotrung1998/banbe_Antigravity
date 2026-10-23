@@ -60,3 +60,19 @@ test('viewport refresh (Search here) changing the loaded set re-derives matches,
   assert.equal(cand.isBookable, true);
   assert.equal(forYouCandidateFromEvent({ ...RAW[4], key: 'e' }).isBookable, false);
 });
+
+test('USD rows compare against a USD budget in whole dollars (cents in price_vnd, migration 195)', () => {
+  const usdPrefs = { interests: ['music'], budget: { tier: 'low', currency: 'USD' } }; // low cap = $25
+  const rows = [
+    { key: 'cheap', catKey: 'music', priceVnd: 1250, currency: 'USD', tz: 'America/Los_Angeles', startsAtRaw: day(2), countryCode: 'US', stateProvince: 'CA', status: 'live' },
+    { key: 'dear', catKey: 'music', priceVnd: 9900, currency: 'USD', startsAtRaw: day(3), countryCode: 'US', stateProvince: 'CA', status: 'live' },
+  ];
+  const c = forYouCandidateFromEvent(rows[0]);
+  assert.equal(c.priceCurrency, 'USD');
+  assert.equal(c.priceAmount, 12.5);
+  assert.equal(c.timeZone, 'America/Los_Angeles');
+  assert.equal(forYouCandidateFromEvent(rows[1]).timeZone, 'America/Los_Angeles'); // derived from the state
+  assert.deepEqual(forYouRankEvents(rows, usdPrefs, true, NOW).map(m => m.key), ['cheap']);
+  // A legacy row with no currency column is VND (every row before 195).
+  assert.equal(forYouCandidateFromEvent({ key: 'old', catKey: 'music', priceVnd: 150000, countryCode: 'US', stateProvince: 'TX', status: 'live' }).priceCurrency, 'VND');
+});

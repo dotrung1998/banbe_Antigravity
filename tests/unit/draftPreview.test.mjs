@@ -34,3 +34,13 @@ test('price parsing matches createSubmit', () => {
   assert.equal(draftPriceVnd(''), 0);
   assert.equal(draftPriceVnd('Miễn phí'), 0);
 });
+
+test('a US draft shows its venue time and dollars (migration 195)', () => {
+  // 19:00 in Los Angeles = 02:00Z next day; the preview reads it in the venue zone, not the browser's.
+  const ev = shapeDraftAsCurEvent({ ...base, startsAt: new Date('2027-03-21T02:00:00Z'), timeZone: 'America/Los_Angeles', currency: 'USD', priceVnd: 1250 });
+  assert.match(ev.when, /20\.03 ▪︎ 19:00$/);
+  assert.equal(ev.price, '$12.50');
+  assert.equal(ev.currency, 'USD');
+  assert.equal(draftPriceVnd('12.50', 'USD'), 1250);
+  assert.equal(draftPriceVnd('12.345', 'USD'), 0);
+});

@@ -227,7 +227,7 @@ export function impactLines(p, vi) {
 /** Turns a shaped discovery event (BanBeContext's shapeRealEvent) into forYou.js's candidate input. */
 export function discoveryCandidate(e) {
   return {
-    key: e.key, catKey: e.catKey, priceVnd: e.priceVnd || 0, countryCode: e.countryCode, stateProvince: e.stateProvince,
+    key: e.key, catKey: e.catKey, priceVnd: e.priceVnd || 0, currency: e.currency, tz: e.tz, countryCode: e.countryCode, stateProvince: e.stateProvince,
     startsAt: e.startsAt, status: e.status, soldOut: !!e.soldOut, cancelled: e.status === 'cancelled',
     endedHoursAgo: e.status === 'ended' ? 0 : null, inviteOnly: e.visibility !== 'public',
   };

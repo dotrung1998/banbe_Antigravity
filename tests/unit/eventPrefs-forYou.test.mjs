@@ -57,7 +57,9 @@ test('USD budget vs VND-priced or unknown-currency event is neutral (never exclu
   assert.ok(m); assert.deepEqual(m.reasons, ['interest']);
   const unk = forYouMatch(ev('u', { priceAmount: 99999, priceCurrency: null }), usd, NOW);
   assert.ok(unk);
-  assert.equal(forYouPriceCurrency('US'), null);
+  // Migration 195: US events are priced in USD; any other country still cannot be compared.
+  assert.equal(forYouPriceCurrency('US'), 'USD');
+  assert.equal(forYouPriceCurrency('FR'), null);
   assert.equal(forYouPriceCurrency(undefined), 'VND');
 });
 

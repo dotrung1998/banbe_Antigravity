@@ -48,48 +48,131 @@ extension AppState {
         #endif
     }
 
+    /// The last token this device registered (UserDefaults), so sign-out can unregister exactly that one.
+    static let lastPushTokenKey = "banbe.push.lastToken.v1"
+
     /// Called by AppDelegate once UIKit hands back a real device token —
     /// unreachable when ENABLE_PUSH is off, since
     /// requestPushAuthorizationIfNeeded() above never calls
     /// registerForRemoteNotifications() in that build, but guarded here too
-    /// rather than relying on that alone. `register_push_token()`
-    /// (migration 049) upserts by token, so a reinstall/relaunch on the
-    /// same device just refreshes `updated_at` rather than erroring or
-    /// creating a duplicate row.
+    /// rather than relying on that alone. `register_push_token()` upserts by
+    /// token, so a reinstall/relaunch on the same device just refreshes
+    /// `updated_at` rather than erroring or creating a duplicate row.
+    /// Migration 194 also stores which APNs gateway the token belongs to
+    /// (`PushEnvironment.current`: sandbox for a development-signed build,
+    /// production for TestFlight/App Store) and the bundle id it was minted for.
     func registerPushToken(_ token: String) async {
         #if !ENABLE_PUSH
         return
         #else
         guard userID != nil else { return }
+        struct Params: Encodable {
+            let token: String
+            let platform: String
+            let environment: String
+            let appID: String?
+            enum CodingKeys: String, CodingKey {
+                case token = "p_token", platform = "p_platform", environment = "p_environment", appID = "p_app_id"
+            }
+        }
         do {
             _ = try await SupabaseService.client
-                .rpc("register_push_token", params: ["p_token": token, "p_platform": "ios"])
+                .rpc("register_push_token", params: Params(token: token, platform: "ios", environment: PushEnvironment.current,
+                                                           appID: Bundle.main.bundleIdentifier))
+                .execute()
+            UserDefaults.standard.set(token, forKey: Self.lastPushTokenKey)
+        } catch {
+            // A server without migration 194 only has register_push_token(p_token, p_platform).
+            do {
+                _ = try await SupabaseService.client
+                    .rpc("register_push_token", params: ["p_token": token, "p_platform": "ios"])
+                    .execute()
+                UserDefaults.standard.set(token, forKey: Self.lastPushTokenKey)
+            } catch {
+                print("register_push_token failed:", error)
+            }
+        }
+        #endif
+    }
+
+    /// Sign-out: stop this device receiving the leaving account's pushes. Must run BEFORE the session is cleared
+    /// (`unregister_push_token` is scoped to auth.uid()). Best-effort: a failure (offline, a server without 194)
+    /// never blocks signing out; the row then simply moves to the next account that registers this token.
+    func unregisterPushTokenForSignOut() async {
+        #if ENABLE_PUSH
+        guard userID != nil, let token = UserDefaults.standard.string(forKey: Self.lastPushTokenKey) else { return }
+        do {
+            _ = try await SupabaseService.client
+                .rpc("unregister_push_token", params: ["p_token": token])
                 .execute()
         } catch {
-            print("register_push_token failed:", error)
+            print("unregister_push_token failed:", error)
         }
+        UserDefaults.standard.removeObject(forKey: Self.lastPushTokenKey)
+        setAppBadge(0)
         #endif
     }
 
     /// Account deletion (Task 2, Account/Settings pass) — client-side
     /// cleanup step for "drop any push-token registration this device
-    /// holds for this now-deleted account". Checked first, honestly: this
-    /// app caches NO device token locally (no UserDefaults/Keychain key
-    /// anywhere in this file or AppDelegate.swift — confirmed by reading
-    /// both) — `registerPushToken(_:)` above only ever WRITES the token to
-    /// the server (`register_push_token` RPC), it never persists a local
-    /// copy to later delete. The server-side row itself is already gone by
-    /// the time this runs regardless: `device_push_tokens.user_id`
+    /// holds for this now-deleted account". The server-side row itself is
+    /// already gone by the time this runs: `device_push_tokens.user_id`
     /// references `profiles(id)` (migration 049), which cascades from
     /// `auth.users` the same way every other per-user table does, so
     /// `admin.auth.admin.deleteUser()` (the delete-account endpoint's own
-    /// final step) already removed it server-side. This function exists so
-    /// the call site reads as an explicit, intentional step rather than a
-    /// silently-skipped one — not because there is local state left to
-    /// clear today.
+    /// final step) already removed it server-side. Locally only the
+    /// remembered token (`lastPushTokenKey`) and the app badge are left.
     func forgetPushTokenLocally() {
         #if ENABLE_PUSH
+        UserDefaults.standard.removeObject(forKey: Self.lastPushTokenKey)
+        setAppBadge(0)
         UIApplication.shared.unregisterForRemoteNotifications()
         #endif
+    }
+
+    // MARK: Badge
+
+    /// The app icon badge follows the unread notification count (called from `notifications`' didSet).
+    /// ENABLE_PUSH builds only: without push there is nothing outside the app that could raise it.
+    func syncAppBadge() {
+        #if ENABLE_PUSH
+        let count = userID == nil ? 0 : unreadNotifications
+        guard count != appBadgeCount else { return }
+        setAppBadge(count)
+        #endif
+    }
+
+    func setAppBadge(_ count: Int) {
+        #if ENABLE_PUSH
+        appBadgeCount = count
+        UNUserNotificationCenter.current().setBadgeCount(count) { error in
+            if let error { print("setBadgeCount failed:", error) }
+        }
+        #endif
+    }
+
+    // MARK: Push taps
+
+    /// A push arrived while the app is open: the in-app toast shows it (willPresent returns no banner), so only
+    /// make sure the list/toast poll picks it up now instead of on its next 5s tick.
+    func pushArrivedInForeground() {
+        guard userID != nil else { return }
+        Task { await loadNotifications() }
+    }
+
+    /// The person tapped a push. Signed in: route it like a bell tap (marks it read, opens its screen). Cold launch
+    /// or not signed in yet: keep it until `applySession` has loaded the account (`routePendingPushIfReady`).
+    func handlePushTap(_ notification: AppNotification) {
+        pendingPushNotification = notification
+        routePendingPushIfReady()
+    }
+
+    func routePendingPushIfReady() {
+        guard let pending = pendingPushNotification, let uid = userID, !policyGateActive else { return }
+        pendingPushNotification = nil
+        var n = pending
+        n.recipientId = uid
+        if let loaded = notifications.first(where: { $0.id == n.id }) { n = loaded }
+        openNotification(n)
     }
 }

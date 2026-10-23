@@ -89,6 +89,12 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
     /// organizer row id, so Search can match keywords and open the host (note 50).
     var keywords: [String]? = nil
     var organizerId: String? = nil
+    /// Real events only (set by `fromReal`/`fromDraft`, not in `CodingKeys`; migration 195): the event's own
+    /// currency ("VND" | "USD") and IANA zone. `priceAmount` is the price in that currency's MINOR unit (đồng or
+    /// cents), so `priceVnd` never has to re-parse a "$12.50" label. The demo catalogue keeps VND / device zone.
+    var currency: String = "VND"
+    var timeZoneID: String? = nil
+    var priceAmount: Int? = nil
 
     enum CodingKeys: String, CodingKey {
         case key, catKey, cat, cat2Key, catDisplay, name, img, lat, lng, meta
@@ -130,11 +136,19 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
     /// Whether this event is still live in the feed (not cancelled, not over).
     var isOpen: Bool { !cancelled && endedHoursAgo == nil }
 
-    /// Numeric price in đồng, parsed from the display string ("900.000₫").
+    /// Numeric price in the MINOR unit of `currency` (đồng, or cents for USD). Real events carry it directly;
+    /// the demo catalogue's is parsed from its VND display string ("900.000₫").
     var priceVnd: Int {
+        if let priceAmount { return priceAmount }
         let digits = price.filter { $0.isNumber }
         return Int(digits) ?? 0
     }
+
+    /// The venue's zone (real events); nil = the demo catalogue, shown in the device zone as before.
+    var eventTimeZone: TimeZone? { timeZoneID.flatMap(TimeZone.init(identifier:)) }
+
+    /// Paid USD booking is not available yet (migration 195); free events book in any currency.
+    var paidBookingAvailable: Bool { isFree || EventMarket.paidBookingAvailable(currency: currency, amount: priceVnd) }
 
     var isFree: Bool { price.contains("Miễn phí") }
 
@@ -231,6 +245,10 @@ struct RealEventSummary: Decodable {
     let approval: String?
     let withdrawalReason: String?
     let withdrawnAt: Date?
+    /// Migration 195: the event's own IANA zone and currency. Absent on a server without 195 (and from the
+    /// selects that fall back to the old column list) — see `timeZoneID`/`rowCurrency` for the defaults.
+    var tz: String? = nil
+    var currency: String? = nil
     var organizerName: String = ""
     /// events.chat_greeting (migration 156). Not part of the shared select
     /// list (that would break every query before the migration is applied);
@@ -279,9 +297,14 @@ struct RealEventSummary: Decodable {
         case coverR2Ref = "cover_r2_ref"
         case includedItems = "included_items"
         case intro
+        case tz, currency
     }
 
     var soldOut: Bool { (seatsRemaining ?? 1) <= 0 }
+    /// Stored zone, else derived from the location, else Vietnam.
+    var timeZoneID: String { EventMarket.rowTimeZoneID(tz: tz, countryCode: countryCode, stateProvince: stateProvince) }
+    /// Stored currency, else VND (every row before migration 195).
+    var rowCurrency: String { EventMarket.rowCurrency(currency) }
     var location: EventLocation {
         EventLocation(countryCode: countryCode, stateProvince: stateProvince, city: city, area: area, neighborhood: neighborhood)
     }
@@ -311,7 +334,9 @@ extension CatalogEvent {
         let lapsed = real.status == "live" && (Countdown.hoursAgo(real.startsAt, now: now) ?? 0) >= 12
         let endedHoursAgo = (real.status == "ended" || lapsed) ? Countdown.hoursAgo(real.startsAt, now: now) : nil
         let cancelledHoursAgo = real.status == "cancelled" ? (Countdown.hoursAgo(real.cancelledAt, now: now) ?? 0) : nil
-        let priceLabel = (real.priceVnd ?? 0) > 0 ? EventLabels.vnd(real.priceVnd ?? 0) : "Miễn phí"
+        let priceLabel = (real.priceVnd ?? 0) > 0 ? EventMarket.formatMoney(real.priceVnd ?? 0, currency: real.rowCurrency) : "Miễn phí"
+        // Shown in the VENUE's zone (migration 195): a US event's 19:00 reads 19:00 wherever the viewer is.
+        let zone = EventMarket.timeZone(real.timeZoneID)
         // Intro/included-parity fix pass (2026-09-28) — `included` mirrors
         // the legacy derived text web's own `events.included` column holds
         // (bullet-joined labels), computed client-side since
@@ -344,17 +369,17 @@ extension CatalogEvent {
         // own real lat/lng rather than spelled out in this label, matching
         // how demo events (with no street-level text at all) present theirs.
         let whereLabel: String = {
-            let dayLong = real.startsAt.map { Countdown.formatVnEventDate($0).dayLong }
-            let timeLabel = real.startsAt.map { Countdown.formatVnEventDate($0).time }
+            let dayLong = real.startsAt.map { Countdown.formatVnEventDate($0, timeZone: zone).dayLong }
+            let timeLabel = real.startsAt.map { Countdown.formatVnEventDate($0, timeZone: zone).time }
             let kmSegment = real.startsAt != nil ? "0,0 km từ bạn" : nil
             return [real.area, kmSegment, dayLong, timeLabel].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
         }()
-        let whenLabel = real.startsAt.map(Countdown.whenLabel) ?? ""
+        let whenLabel = real.startsAt.map { Countdown.whenLabel(for: $0, timeZone: zone) } ?? ""
         let seatsLabel = real.seatsRemaining.map(String.init) ?? ""
         let seatsLongLabel = real.soldOut ? "Hết chỗ" : (real.seatsRemaining.map { "\($0) chỗ trống" } ?? "")
         let isUrgent = (real.seatsRemaining ?? 99) <= 5
         let isCancelled = real.status == "cancelled"
-        return CatalogEvent(
+        var event = CatalogEvent(
             key: real.id, catKey: real.catKey ?? "all", cat: real.catLabel ?? "", cat2Key: nil, catDisplay: real.catLabel ?? "",
             name: real.name, img: real.photoURL?.absoluteString ?? "", lat: real.lat, lng: real.lng,
             meta: metaLabel,
@@ -378,26 +403,31 @@ extension CatalogEvent {
             keywords: real.keywords,
             organizerId: real.organizerId
         )
+        event.currency = real.rowCurrency
+        event.timeZoneID = real.timeZoneID
+        event.priceAmount = real.priceVnd ?? 0
+        return event
     }
 
     /// Create-event "Public preview" (2026-10-21): an unsaved draft shaped like `fromReal` so the REAL Event Detail
     /// renders it. Differences from a published event: the key is `draftPreviewKey`, nothing is booked yet (all seats
     /// free), and `where` has no distance segment (a draft has no "km from you" worth showing).
     static func fromDraft(_ d: EventDraft) -> CatalogEvent {
-        let priceLabel = d.priceVnd > 0 ? EventLabels.vnd(d.priceVnd) : "Miễn phí"
+        let priceLabel = d.priceVnd > 0 ? EventMarket.formatMoney(d.priceVnd, currency: d.currency) : "Miễn phí"
+        let zone = EventMarket.timeZone(d.timeZoneID)
         let items = d.includedItems.filter { !$0.label.isEmpty }
         let includedSummary = items.map(\.label).joined(separator: " ▪︎ ")
         let introOrNil: String? = d.intro.isEmpty ? nil : d.intro
         let itemsOrNil: [IncludedItem]? = items.isEmpty ? nil : items
         let metaLabel = [d.catLabel, d.area].filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
         let whereLabel: String = {
-            let date = d.startsAt.map(Countdown.formatVnEventDate)
+            let date = d.startsAt.map { Countdown.formatVnEventDate($0, timeZone: zone) }
             return [d.area, date?.dayLong, date?.time].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
         }()
-        let whenLabel = d.startsAt.map(Countdown.whenLabel) ?? ""
+        let whenLabel = d.startsAt.map { Countdown.whenLabel(for: $0, timeZone: zone) } ?? ""
         let seatsLabel = d.seats.map(String.init) ?? ""
         let seatsLongLabel = d.seats.map { "\($0) chỗ trống" } ?? ""
-        return CatalogEvent(
+        var event = CatalogEvent(
             key: draftPreviewKey, catKey: d.catKey ?? "all", cat: d.catLabel, cat2Key: nil, catDisplay: d.catLabel,
             name: d.name, img: d.coverPath, lat: d.lat, lng: d.lng,
             meta: metaLabel,
@@ -418,6 +448,10 @@ extension CatalogEvent {
             intro: introOrNil,
             includedItems: itemsOrNil
         )
+        event.currency = d.currency
+        event.timeZoneID = d.timeZoneID
+        event.priceAmount = d.priceVnd
+        return event
     }
 
     /// Key of the draft shown in the create-event Public preview; never a real event id.
@@ -553,4 +587,7 @@ struct EventDraft {
     var organizerName: String
     /// An already-uploaded cover's URL (editing an event); "" when the cover is a local, not-yet-uploaded photo.
     var coverPath: String = ""
+    /// Migration 195: the draft's currency (price is in its minor unit) and its venue zone (`startsAt` is a real instant).
+    var currency: String = "VND"
+    var timeZoneID: String? = nil
 }

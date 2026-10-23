@@ -24,6 +24,14 @@ struct AdminEventRow: Decodable, Identifiable, Equatable {
     var capacity: Int? = nil
     var seatsRemaining: Int? = nil
     var area: String? = nil
+    /// Location + migration 195's zone/currency, so the start time reads in the venue's zone and the price in its
+    /// own currency (`tz`/`currency` are absent on a server without 195).
+    var countryCode: String? = nil
+    var stateProvince: String? = nil
+    var tz: String? = nil
+    var currency: String? = nil
+    var timeZone: TimeZone { EventMarket.timeZone(EventMarket.rowTimeZoneID(tz: tz, countryCode: countryCode, stateProvince: stateProvince)) }
+    var rowCurrency: String { EventMarket.rowCurrency(currency) }
     // Filled from the organizers lookup (not columns of `events`).
     var organizerName: String?
     /// The organizer row was found (false = deleted, or not readable).
@@ -41,6 +49,9 @@ struct AdminEventRow: Decodable, Identifiable, Equatable {
         case submittedAt = "submitted_at"
         case priceVnd = "price_vnd"
         case seatsRemaining = "seats_remaining"
+        case countryCode = "country_code"
+        case stateProvince = "state_province"
+        case tz, currency
     }
 
     init(id: String, name: String, status: String, startsAt: Date?, removalReason: String? = nil, removedAt: Date? = nil,
@@ -156,14 +167,16 @@ extension AppState {
         var rows: [AdminEventRow] = []
         var page = 0
         while true {
+            let batch: [AdminEventRow] = try await EventMarketColumns.retrying {
             var query = SupabaseService.client.from("events")
-                .select("id,name,status,starts_at,created_at,submitted_at,price_vnd,capacity,seats_remaining,area,removal_reason,removed_at,organizer_id")
+                .select("id,name,status,starts_at,created_at,submitted_at,price_vnd,capacity,seats_remaining,area,removal_reason,removed_at,organizer_id,country_code,state_province" + (EventMarketColumns.missing ? "" : ",tz,currency"))
             if let status { query = query.eq("status", value: status) }
             if !term.isEmpty { query = query.ilike("name", pattern: "%\(term)%") }
             let from = page * AdminManagedEvents.pageSize
-            let batch: [AdminEventRow] = try await query
+            return try await query
                 .order("starts_at", ascending: false, nullsFirst: false).order("id")
                 .range(from: from, to: from + AdminManagedEvents.pageSize - 1).execute().value
+            }
             rows += batch
             page += 1
             if !AdminManagedEvents.needsAnotherPage(lastPageCount: batch.count, totalSoFar: rows.count) { break }

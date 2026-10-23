@@ -15,6 +15,10 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:banbe.app</string>
+		<!-- The site is served from www.banbe.app (the apex redirects), and iOS
+		     never follows a redirect when fetching apple-app-site-association,
+		     so the www host needs its own entry. -->
+		<string>applinks:www.banbe.app</string>
 	</array>
 </dict>
 </plist>

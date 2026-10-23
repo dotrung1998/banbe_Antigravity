@@ -12,6 +12,7 @@ import {
   INTERESTS, NO_PREFERENCE, budgetCap, budgetRegionForCurrency, budgetRegionCurrency,
   declaredInterests, declaredGoals, declaredAvailability,
 } from './eventPrefs.js';
+import { eventTimeZone, eventCurrency, rowCurrency, majorAmount } from './eventMarket.js';
 
 /** Documented category affinity for each goal (soft signal, +10 each, capped at +20). */
 export const GOAL_AFFINITY = {
@@ -22,34 +23,16 @@ export const GOAL_AFFINITY = {
 };
 
 // ---- time zone (events are normalized to THEIR timezone, not the device's) ----
-const US_STATE_ZONES = (() => {
-  const m = {};
-  const add = (zone, states) => { for (const [code, name] of states) { m[code.toLowerCase()] = zone; m[name.toLowerCase()] = zone; } };
-  add('America/New_York', [['CT','Connecticut'],['DE','Delaware'],['DC','District of Columbia'],['FL','Florida'],['GA','Georgia'],['ME','Maine'],['MD','Maryland'],['MA','Massachusetts'],['NH','New Hampshire'],['NJ','New Jersey'],['NY','New York'],['NC','North Carolina'],['OH','Ohio'],['PA','Pennsylvania'],['RI','Rhode Island'],['SC','South Carolina'],['VT','Vermont'],['VA','Virginia'],['WV','West Virginia'],['MI','Michigan'],['IN','Indiana'],['KY','Kentucky']]);
-  add('America/Chicago', [['AL','Alabama'],['AR','Arkansas'],['IL','Illinois'],['IA','Iowa'],['LA','Louisiana'],['MN','Minnesota'],['MS','Mississippi'],['MO','Missouri'],['OK','Oklahoma'],['TX','Texas'],['WI','Wisconsin'],['KS','Kansas'],['NE','Nebraska'],['SD','South Dakota'],['ND','North Dakota'],['TN','Tennessee']]);
-  add('America/Denver', [['CO','Colorado'],['MT','Montana'],['NM','New Mexico'],['UT','Utah'],['WY','Wyoming'],['ID','Idaho']]);
-  add('America/Phoenix', [['AZ','Arizona']]);
-  add('America/Los_Angeles', [['CA','California'],['NV','Nevada'],['OR','Oregon'],['WA','Washington']]);
-  add('America/Anchorage', [['AK','Alaska']]);
-  add('Pacific/Honolulu', [['HI','Hawaii']]);
-  return m;
-})();
+// The country/state -> zone map lives in eventMarket.js (shared with SQL event_tz_for, migration 195).
 
 /** VN -> Asia/Ho_Chi_Minh; US -> by state code/name; anything else -> null (unknown). */
 export function forYouTimeZone(countryCode, stateProvince) {
-  switch (String(countryCode ?? 'VN').toUpperCase()) {
-    case 'VN': return 'Asia/Ho_Chi_Minh';
-    case 'US': {
-      const s = String(stateProvince ?? '').trim().toLowerCase();
-      return US_STATE_ZONES[s] || null;
-    }
-    default: return null;
-  }
+  return eventTimeZone(countryCode, stateProvince);
 }
 
-/** `price_vnd` is the only stored price: VND for Vietnam (and legacy rows with no country), unknown elsewhere. */
+/** Kept for older callers: the currency an event in this country is priced in (VND / USD), else null. */
 export function forYouPriceCurrency(countryCode) {
-  return String(countryCode ?? 'VN').toUpperCase() === 'VN' ? 'VND' : null;
+  return eventCurrency(countryCode);
 }
 
 const fmtCache = new Map();
@@ -161,18 +144,20 @@ export function forYouRank(events, p, now = Date.now()) {
 // ---- shared candidate builder (Home feed + Map) ----
 // ONE place that turns an app event into a For You candidate, so Home and Map can never
 // score differently. Input is the normalized event both surfaces already have:
-//   { key, catKey, cat2Key?, priceVnd, isFree?, countryCode, stateProvince,
+//   { key, catKey, cat2Key?, priceVnd, currency?, tz?, isFree?, countryCode, stateProvince,
 //     startsAtRaw|startsAt, status, soldOut, cancelled, endedHoursAgo, inviteOnly }
+// `priceVnd` is in the minor unit of `currency` (migration 195); budgets compare in major units.
 export function forYouCandidateFromEvent(e) {
   const startsAt = e.startsAtRaw ?? e.startsAt ?? null;
+  const currency = rowCurrency(e);
   return {
     key: e.key,
     categories: [e.catKey, e.cat2Key].filter(c => c && c !== 'all'),
-    priceAmount: e.isFree === true || !e.priceVnd ? 0 : e.priceVnd,
-    priceCurrency: forYouPriceCurrency(e.countryCode),
+    priceAmount: e.isFree === true || !e.priceVnd ? 0 : majorAmount(e.priceVnd, currency),
+    priceCurrency: currency,
     isFree: !e.priceVnd,
     startsAt: startsAt ? new Date(startsAt).getTime() : null,
-    timeZone: forYouTimeZone(e.countryCode, e.stateProvince),
+    timeZone: e.tz || forYouTimeZone(e.countryCode, e.stateProvince),
     isBookable: e.status === 'live' && !e.cancelled && e.endedHoursAgo == null && !e.soldOut && !e.inviteOnly,
   };
 }

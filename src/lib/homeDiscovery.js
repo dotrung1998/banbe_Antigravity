@@ -4,13 +4,16 @@
 //
 // Item shape (already normalized by the caller, real and demo events alike):
 //   { key, startsAt: number|null (ms), priceVnd: number|null (0 = free, null = unknown),
+//     currency?: 'VND'|'USD' (default VND; priceVnd is in its minor unit, migration 195),
 //     catKeys: string[], booked: number|null, capacity: number|null, soldOut: boolean,
 //     distanceKm: number|null, popularity: number|null }
 //
 // Filters (all optional; DEFAULT_FILTERS = everything shown):
 //   { date: 'any'|'today'|'tomorrow'|'weekend'|'week'|'on:YYYY-MM-DD',
-//     priceMin: number|null, priceMax: number|null, free: boolean,
-//     cats: string[] (empty = all), seatsLeft: boolean, almostFull: boolean }
+//     priceMin: number|null, priceMax: number|null, priceCurrency?: 'VND'|'USD' (the bounds' currency,
+//     default VND), free: boolean, cats: string[] (empty = all), seatsLeft: boolean, almostFull: boolean }
+// Prices never mix currencies: a paid event in another currency than the bounds never passes a price
+// bound, and the histogram/slider only ever show one currency (dominantCurrency).
 //
 // Day boundaries use a fixed UTC offset (minutes). Every launch market is Vietnam (UTC+7, no DST), so
 // 420 is the default; pass another offset rather than reading the device zone, so tests are exact.
@@ -89,14 +92,19 @@ export function normalizeFilters(filters) {
   return { ...DEFAULT_FILTERS, ...(filters || {}), cats: [...((filters && filters.cats) || [])] };
 }
 
+const currencyOf = (item) => (item?.currency === 'USD' ? 'USD' : 'VND');
+// Free is free in any currency; a paid price is only comparable with bounds in its own currency.
+const priceComparable = (item, currency) => item.priceVnd === 0 || (item.priceVnd != null && currencyOf(item) === currency);
+
 function matches(item, f, now, offsetMin) {
   if (f.date && f.date !== 'any') {
     const w = dateWindow(f.date, now, offsetMin);
     if (w && (item.startsAt == null || item.startsAt < w[0] || item.startsAt >= w[1])) return false;
   }
   if (f.free && item.priceVnd !== 0) return false;
-  if (f.priceMin != null && (item.priceVnd == null || item.priceVnd < f.priceMin)) return false;
-  if (f.priceMax != null && (item.priceVnd == null || item.priceVnd > f.priceMax)) return false;
+  const boundsCurrency = f.priceCurrency === 'USD' ? 'USD' : 'VND';
+  if (f.priceMin != null && (!priceComparable(item, boundsCurrency) || item.priceVnd < f.priceMin)) return false;
+  if (f.priceMax != null && (!priceComparable(item, boundsCurrency) || item.priceVnd > f.priceMax)) return false;
   if (f.cats.length && !(item.catKeys || []).some(c => f.cats.includes(c))) return false;
   if (f.seatsLeft) {
     const left = seatsLeftOf(item);
@@ -181,7 +189,9 @@ export function sortEvents(items, mode) {
     soonest: (a, b) => nullsLast(a.startsAt, b.startsAt, (x, y) => x - y),
     nearest: (a, b) => nullsLast(a.distanceKm, b.distanceKm, (x, y) => x - y),
     popular: (a, b) => nullsLast(a.popularity, b.popularity, (x, y) => y - x),
-    price: (a, b) => nullsLast(a.priceVnd, b.priceVnd, (x, y) => x - y),
+    // Free first, then paid grouped by currency (VND before USD), cheapest first within one currency.
+    price: (a, b) => nullsLast(a.priceVnd, b.priceVnd, (x, y) => ((x > 0) - (y > 0))
+      || (x > 0 && y > 0 ? (currencyOf(a) === 'USD') - (currencyOf(b) === 'USD') : 0) || x - y),
   }[mode];
   if (!by) return indexed.map(([it]) => it);
   return indexed.sort(([a, i], [b, j]) => by(a, b) || i - j).map(([it]) => it);
@@ -195,7 +205,18 @@ export function median(values) {
   return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
 }
 
-/** Equal-width histogram of paid prices. Returns { min, max, counts[] } or null when there are no paid prices. */
+/** The one currency the price control shows for a list: USD only when every paid event is USD, else VND. */
+export function dominantCurrency(items) {
+  const paid = (items || []).filter(it => it.priceVnd > 0);
+  return paid.length && paid.every(it => currencyOf(it) === 'USD') ? 'USD' : 'VND';
+}
+
+/** Prices (minor units) of the items comparable in `currency`: its paid events plus every free one. */
+export function pricesIn(items, currency) {
+  return (items || []).filter(it => priceComparable(it, currency === 'USD' ? 'USD' : 'VND')).map(it => it.priceVnd);
+}
+
+/** Equal-width histogram of paid prices (one currency; see pricesIn). Returns { min, max, counts[] } or null when there are no paid prices. */
 export function priceHistogram(prices, buckets = 12) {
   const v = (prices || []).filter(p => typeof p === 'number' && p > 0);
   if (!v.length) return null;

@@ -95,12 +95,19 @@ struct MapEventRow: Codable, Identifiable, Hashable {
     var countryCode: String?
     var stateProvince: String?
     var neighborhood: String?
+    /// Migration 195 — the event's own IANA zone and currency (`priceVnd` is in that currency's minor unit).
+    /// Absent on a server without 195; `rowCurrency`/`timeZoneID` give the defaults.
+    var tz: String? = nil
+    var currency: String? = nil
+    var rowCurrency: String { EventMarket.rowCurrency(currency) }
+    var timeZoneID: String { EventMarket.rowTimeZoneID(tz: tz, countryCode: countryCode, stateProvince: stateProvince) }
     var location: EventLocation {
         EventLocation(countryCode: countryCode, stateProvince: stateProvince, city: city, area: area, neighborhood: neighborhood)
     }
 
     enum CodingKeys: String, CodingKey {
         case id
+        case tz, currency
         case countryCode = "country_code"
         case stateProvince = "state_province"
         case neighborhood
@@ -194,6 +201,9 @@ struct AddressSuggestion: Identifiable, Equatable {
     /// (subLocality first) that's never true, so this is nil in practice
     /// — intentionally left honest rather than guessing a finer level.
     let neighborhood: String?
+    /// Migration 195 — `MKMapItem.timeZone` (the place's own IANA zone, exact for multi-zone US states);
+    /// sent as `p_tz` for a US event. nil when MapKit doesn't say.
+    let timeZoneID: String?
 
     /// `nil` when MapKit's own result can't resolve to a genuinely
     /// precise point by this app's rules — same heuristic web's
@@ -255,5 +265,6 @@ struct AddressSuggestion: Identifiable, Equatable {
         let subLocality = (placemark.subLocality ?? "").trimmingCharacters(in: .whitespaces)
         let trimmedDistrict = district.trimmingCharacters(in: .whitespaces)
         self.neighborhood = (!subLocality.isEmpty && SearchMatch.normalize(subLocality) != SearchMatch.normalize(trimmedDistrict)) ? subLocality : nil
+        self.timeZoneID = mapItem.timeZone?.identifier
     }
 }

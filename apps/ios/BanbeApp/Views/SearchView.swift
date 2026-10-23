@@ -295,7 +295,7 @@ struct SearchView: View {
 
     private func priceLabel(_ e: CatalogEvent) -> String {
         if AppState.catalogKeys.contains(e.key) { return app.trStatus(e.price) }
-        return e.priceVnd > 0 ? EventLabels.vnd(e.priceVnd) : app.T("Miễn phí", "Free")
+        return e.priceVnd > 0 ? EventMarket.formatMoney(e.priceVnd, currency: e.currency) : app.T("Miễn phí", "Free")
     }
 
     @ViewBuilder
@@ -336,7 +336,7 @@ struct SearchView: View {
                                 Spacer(minLength: 0)
                                 Text(priceLabel(d.event)).font(.system(size: 13, weight: .bold)).lineLimit(1).fixedSize()
                             }
-                            Text([app.discoveryWhenLabel(d.startsAt), d.event.locationLabel ?? ""].filter { !$0.isEmpty }.joined(separator: " · "))
+                            Text([app.discoveryWhenLabel(d.startsAt, timeZone: d.event.eventTimeZone), d.event.locationLabel ?? ""].filter { !$0.isEmpty }.joined(separator: " · "))
                                 .font(.system(size: 12)).opacity(0.65).lineLimit(1)
                         }
                     }

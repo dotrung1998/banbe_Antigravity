@@ -69,6 +69,8 @@ struct LastEventSnapshot: Equatable {
     let priceVnd: Int?
     let capacity: Int?
     let catKey: String?
+    /// The event's currency (migration 195); `priceVnd` is in its minor unit.
+    var currency: String = "VND"
 }
 
 struct EventDraftDefaults: Equatable {
@@ -91,28 +93,31 @@ extension SmartDefaults {
     /// Saturday in Calendar's 1 = Sunday numbering.
     static let saturday = 7
     static let seatRange = 1...500
-    /// Quick-pick prices (VND). "Free" is 0.
-    static let priceQuickPicks: [Int] = [0, 200_000, 300_000, 500_000]
+    /// Quick-pick prices (VND). "Free" is 0. Per currency: `EventMarket.priceQuickPicks(currency:)`.
+    static let priceQuickPicks: [Int] = EventMarket.priceQuickPicks(currency: "VND")
 
-    static var vnCalendar: Calendar {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = AppState.vietnamTimeZone
-        return cal
-    }
+    static var vnCalendar: Calendar { EventMarket.calendar(AppState.vietnamTimeZone) }
 
-    /// Next date (Vietnam midnight) falling on `weekday`, at least
+    /// Next date (midnight in `timeZone`, Vietnam by default) falling on `weekday`, at least
     /// `minDaysAhead` days after `now` — far enough out to promote.
-    static func nextWeekday(_ weekday: Int, after now: Date, minDaysAhead: Int = 2) -> Date {
-        let cal = vnCalendar
+    static func nextWeekday(_ weekday: Int, after now: Date, minDaysAhead: Int = 2,
+                            timeZone: TimeZone = AppState.vietnamTimeZone) -> Date {
+        let cal = EventMarket.calendar(timeZone)
         let start = cal.date(byAdding: .day, value: minDaysAhead, to: cal.startOfDay(for: now))!
         let current = cal.component(.weekday, from: start)
         let delta = (weekday - current + 7) % 7
         return cal.date(byAdding: .day, value: delta, to: start)!
     }
 
-    static func timeOfDay(_ raw: String) -> Date? {
+    /// A Date whose wall clock in `timeZone` (Vietnam by default) is `raw` ("19:00" / "19:00:00").
+    static func timeOfDay(_ raw: String, timeZone: TimeZone = AppState.vietnamTimeZone) -> Date? {
         let normalized = raw.count == 5 ? raw + ":00" : raw
-        return AppState.vnTimeFormatter.date(from: normalized)
+        guard timeZone.identifier != AppState.vietnamTimeZone.identifier else { return AppState.vnTimeFormatter.date(from: normalized) }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = timeZone
+        f.dateFormat = "HH:mm:ss"
+        return f.date(from: normalized)
     }
 
     /// Defaults for a brand-new event draft. A returning host gets their own
@@ -130,20 +135,21 @@ extension SmartDefaults {
             .map { vnCalendar.component(.weekday, from: $0) } ?? saturday
         return EventDraftDefaults(
             date: nextWeekday(weekday, after: now),
-            time: last.eventTime.flatMap(timeOfDay) ?? fallbackTime,
-            price: last.priceVnd.map(String.init),
+            time: last.eventTime.flatMap { timeOfDay($0) } ?? fallbackTime,
+            // VND keeps its plain digits; a USD event's cents become "12.50" (typed in USD once a US address is picked).
+            price: last.priceVnd.map { last.currency == "USD" ? EventMarket.priceInputText($0, currency: "USD") : String($0) },
             seats: 0,
             categories: last.catKey.map { [$0] } ?? [],
             sourceName: last.name
         )
     }
 
-    /// Date quick picks for the date sheet: "This Sat", "Next Sat", "Fri".
-    static func dateQuickPicks(now: Date = Date()) -> [(label: (vi: String, en: String), date: Date)] {
-        let cal = vnCalendar
-        let thisSat = nextWeekday(saturday, after: now, minDaysAhead: 0)
+    /// Date quick picks for the date sheet: "This Sat", "Next Sat", "Fri" — days in the event's own zone.
+    static func dateQuickPicks(now: Date = Date(), timeZone: TimeZone = AppState.vietnamTimeZone) -> [(label: (vi: String, en: String), date: Date)] {
+        let cal = EventMarket.calendar(timeZone)
+        let thisSat = nextWeekday(saturday, after: now, minDaysAhead: 0, timeZone: timeZone)
         let nextSat = cal.date(byAdding: .day, value: 7, to: thisSat)!
-        let fri = nextWeekday(6, after: now, minDaysAhead: 0)
+        let fri = nextWeekday(6, after: now, minDaysAhead: 0, timeZone: timeZone)
         let tomorrow = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now))!
         return [
             (("Ngày mai", "Tomorrow"), tomorrow),

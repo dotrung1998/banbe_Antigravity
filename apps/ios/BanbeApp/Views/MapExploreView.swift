@@ -1083,7 +1083,7 @@ struct MapExploreView: View {
                         // price, including a genuinely free (0 VND) one.
                         // `> 0`, never a bare truthiness check, so a real 0
                         // correctly reads as "Miễn phí"/Free, not "missing".
-                        Text(ev.priceVnd > 0 ? EventLabels.vnd(ev.priceVnd) : app.T("Miễn phí", "Free"))
+                        Text(ev.priceVnd > 0 ? EventMarket.formatMoney(ev.priceVnd, currency: ev.rowCurrency) : app.T("Miễn phí", "Free"))
                             .font(.system(size: 13, weight: .semibold))
                         Spacer()
                         Text(isSoldOut(ev) ? app.T("Hết chỗ", "Sold out") : app.T("Còn chỗ", "Available"))

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { zonedParts } from './eventMarket.js';
 
 // Shared countdown formatting + a ticking clock, used everywhere a payment
 // deadline is shown: Home's banners, the ticket screen, the payment screen,
@@ -125,14 +126,19 @@ function pad2(n) { return String(n).padStart(2, '0'); }
  * catalogue happened to hardcode for that event key. Exported for Home's
  * "Cuối tuần này" section (retention roadmap P1) — those cards have no
  * static catalogue counterpart to merge onto, so they call this directly
- * instead of going through liveEventOverrides below. */
-export function formatVnEventDate(date) {
-  const dow = date.getDay();
+ * instead of going through liveEventOverrides below.
+ * `timeZone` (optional, IANA) reads the instant in the event's own zone
+ * (migration 195: a US event's 19:00 stays 19:00 for every viewer); without
+ * it the browser's zone is used, as before. */
+export function formatVnEventDate(date, timeZone) {
+  const p = timeZone
+    ? zonedParts(date.getTime(), timeZone)
+    : { year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate(), hour: date.getHours(), minute: date.getMinutes(), weekday: date.getDay() };
   return {
-    weekdayShort: VN_WEEKDAY_SHORT[dow],
-    dayMonth: `${pad2(date.getDate())}.${pad2(date.getMonth() + 1)}`,
-    dayLong: `${VN_WEEKDAY_LONG[dow]}, ${date.getDate()} tháng ${date.getMonth() + 1}`,
-    time: `${pad2(date.getHours())}:${pad2(date.getMinutes())}`,
+    weekdayShort: VN_WEEKDAY_SHORT[p.weekday],
+    dayMonth: `${pad2(p.day)}.${pad2(p.month)}`,
+    dayLong: `${VN_WEEKDAY_LONG[p.weekday]}, ${p.day} tháng ${p.month}`,
+    time: `${pad2(p.hour)}:${pad2(p.minute)}`,
   };
 }
 
@@ -169,7 +175,7 @@ function liveDateOverrides(liveEvent, staticEv, now) {
   if (!liveEvent?.starts_at) return {};
   const startsAt = new Date(liveEvent.starts_at);
   if (Number.isNaN(startsAt.getTime())) return {};
-  const { weekdayShort, dayMonth, dayLong, time } = formatVnEventDate(startsAt);
+  const { weekdayShort, dayMonth, dayLong, time } = formatVnEventDate(startsAt, liveEvent.tz || undefined);
   const until = relDaysFromNow(startsAt, now);
   const overrides = {
     startDate: startsAt,

@@ -211,7 +211,7 @@ extension AppState {
             return ForYou.candidate(
                 key: e.key, catKey: e.catKey, cat2Key: e.cat2Key, priceVnd: e.priceVnd, isFree: e.isFree,
                 countryCode: loc.countryCode, stateProvince: loc.stateProvince, startsAt: e.startDate,
-                isBookable: !e.inviteOnly && e.isOpen && !e.soldOut)
+                isBookable: !e.inviteOnly && e.isOpen && !e.soldOut, currency: e.currency, timeZoneID: e.timeZoneID)
         }
     }
 
@@ -240,7 +240,7 @@ extension AppState {
                 ForYou.candidate(
                     key: row.id, catKey: row.catKey, cat2Key: nil, priceVnd: row.priceVnd, isFree: row.priceVnd == 0,
                     countryCode: row.countryCode, stateProvince: row.stateProvince, startsAt: row.startsAt,
-                    isBookable: row.status == "live" && (row.seatsRemaining ?? 1) > 0)
+                    isBookable: row.status == "live" && (row.seatsRemaining ?? 1) > 0, currency: row.currency, timeZoneID: row.tz)
             }
         return ForYou.rank(cands, prefs: prefs, now: now)
     }

@@ -10,8 +10,8 @@ struct ForYouCandidate: Equatable {
     let key: String
     /// Category ids (catKey, cat2Key) — only ids in the shared interest taxonomy count.
     let categories: [String]
-    /// Whole currency units + ISO code. `currency == nil` means "cannot compare"
-    /// (e.g. a US event: the schema only stores `price_vnd`, and we never invent an FX rate).
+    /// Whole currency units + ISO code (the event's own `events.currency`). `currency == nil` means
+    /// "cannot compare"; a budget in another currency is never compared (we never invent an FX rate).
     let priceAmount: Int?
     let priceCurrency: String?
     let isFree: Bool
@@ -38,51 +38,30 @@ enum ForYou {
 
     // MARK: time zone (events are normalized to THEIR timezone, not the device's)
 
-    private static let usStateZones: [String: String] = {
-        var m: [String: String] = [:]
-        func add(_ zone: String, _ states: [(String, String)]) {
-            for (code, name) in states { m[code.lowercased()] = zone; m[name.lowercased()] = zone }
-        }
-        add("America/New_York", [("CT","Connecticut"),("DE","Delaware"),("DC","District of Columbia"),("FL","Florida"),("GA","Georgia"),("ME","Maine"),("MD","Maryland"),("MA","Massachusetts"),("NH","New Hampshire"),("NJ","New Jersey"),("NY","New York"),("NC","North Carolina"),("OH","Ohio"),("PA","Pennsylvania"),("RI","Rhode Island"),("SC","South Carolina"),("VT","Vermont"),("VA","Virginia"),("WV","West Virginia"),("MI","Michigan"),("IN","Indiana"),("KY","Kentucky")])
-        add("America/Chicago", [("AL","Alabama"),("AR","Arkansas"),("IL","Illinois"),("IA","Iowa"),("LA","Louisiana"),("MN","Minnesota"),("MS","Mississippi"),("MO","Missouri"),("OK","Oklahoma"),("TX","Texas"),("WI","Wisconsin"),("KS","Kansas"),("NE","Nebraska"),("SD","South Dakota"),("ND","North Dakota"),("TN","Tennessee")])
-        add("America/Denver", [("CO","Colorado"),("MT","Montana"),("NM","New Mexico"),("UT","Utah"),("WY","Wyoming"),("ID","Idaho")])
-        add("America/Phoenix", [("AZ","Arizona")])
-        add("America/Los_Angeles", [("CA","California"),("NV","Nevada"),("OR","Oregon"),("WA","Washington")])
-        add("America/Anchorage", [("AK","Alaska")])
-        add("Pacific/Honolulu", [("HI","Hawaii")])
-        return m
-    }()
-
     /// VN → Asia/Ho_Chi_Minh (the app's own convention); US → by state; anything else → nil (unknown).
+    /// One rule for the whole app: Lib/EventMarket.swift (shared vectors with web + SQL).
     static func timeZone(countryCode: String?, stateProvince: String?) -> TimeZone? {
-        switch (countryCode ?? "VN").uppercased() {
-        case "VN": return TimeZone(identifier: "Asia/Ho_Chi_Minh")
-        case "US":
-            guard let s = stateProvince?.trimmingCharacters(in: .whitespaces).lowercased(),
-                  let id = usStateZones[s] else { return nil }
-            return TimeZone(identifier: id)
-        default: return nil
-        }
-    }
-
-    /// Price currency of an event row. `price_vnd` is the only stored price,
-    /// so it is VND for Vietnam (and legacy rows with no country); for any
-    /// other country the currency is unknown and budget comparison is skipped.
-    static func priceCurrency(countryCode: String?) -> String? {
-        (countryCode ?? "VN").uppercased() == "VN" ? "VND" : nil
+        EventMarket.eventTimeZone(countryCode: countryCode, stateProvince: stateProvince).flatMap(TimeZone.init(identifier:))
     }
 
     /// ONE constructor for a candidate, shared by Home (CatalogEvent) and Map (MapEventRow),
     /// so the two surfaces can never normalise price/zone/bookability differently.
+    /// `priceVnd` is the row's price in the minor unit of `currency` (the row's own `events.currency`,
+    /// VND for every row before migration 195); `timeZoneID` is the row's own `events.tz` when loaded.
     static func candidate(key: String, catKey: String?, cat2Key: String?, priceVnd: Int, isFree: Bool,
                           countryCode: String?, stateProvince: String?, startsAt: Date?,
-                          isBookable: Bool) -> ForYouCandidate {
-        ForYouCandidate(
+                          isBookable: Bool, currency: String? = nil, timeZoneID: String? = nil) -> ForYouCandidate {
+        let cur = EventMarket.rowCurrency(currency)
+        // Budgets are whole currency units (USD = dollars). Rounding a cent price UP keeps `amount <= cap`
+        // exact against an integer cap ($25.50 is over a $25 cap).
+        let major = Int(EventMarket.majorAmount(priceVnd, currency: cur).rounded(.up))
+        let zone = timeZoneID.flatMap(TimeZone.init(identifier:)) ?? timeZone(countryCode: countryCode, stateProvince: stateProvince)
+        return ForYouCandidate(
             key: key, categories: [catKey, cat2Key].compactMap { $0 },
-            priceAmount: isFree ? 0 : priceVnd,
-            priceCurrency: priceCurrency(countryCode: countryCode),
+            priceAmount: isFree ? 0 : major,
+            priceCurrency: cur,
             isFree: isFree, startsAt: startsAt,
-            timeZone: timeZone(countryCode: countryCode, stateProvince: stateProvince),
+            timeZone: zone,
             isBookable: isBookable)
     }
 

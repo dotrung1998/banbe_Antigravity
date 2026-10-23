@@ -8,7 +8,7 @@ struct RefundedView: View {
     private var event: CatalogEvent { app.currentEvent }
     private var refundAmount: String {
         event.isFree ? app.T("Miễn phí", "Free")
-                     : EventLabels.vnd(event.priceVnd * (app.tickets[event.key] ?? 1))
+                     : EventMarket.formatMoney(event.priceVnd * (app.tickets[event.key] ?? 1), currency: event.currency)
     }
 
     var body: some View {

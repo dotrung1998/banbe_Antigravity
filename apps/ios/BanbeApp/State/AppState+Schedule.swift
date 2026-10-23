@@ -32,7 +32,7 @@ extension AppState {
         let loc = eventLocation(e)
         return ScheduleEventInfo(
             key: e.key, title: e.name, start: e.startDate, end: nil,
-            timeZone: ForYou.timeZone(countryCode: loc.countryCode, stateProvince: loc.stateProvince),
+            timeZone: e.eventTimeZone ?? ForYou.timeZone(countryCode: loc.countryCode, stateProvince: loc.stateProvince),
             location: e.locationLabel ?? "",
             cancelled: e.cancelled, ended: e.endedHoursAgo != nil,
             inviteOnly: e.inviteOnly, soldOut: e.soldOut)

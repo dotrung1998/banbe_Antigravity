@@ -23,7 +23,16 @@ struct HomeFilterSheet: View {
     @State private var areaOpen = false
     @State private var pickedDate = Date()
 
-    private static let priceStep = 50_000
+    private static let vndPriceStep = 50_000
+    /// The price slider's step in the market's currency: 50.000₫, or $5 (cents).
+    private var priceStep: Int { marketCurrency == "USD" ? 500 : Self.vndPriceStep }
+    /// Everything that passes the OTHER filters (the market behind the price control) and its one currency.
+    private var priceOthers: HomeDiscovery.Filters {
+        var others = draft
+        others.priceMin = nil; others.priceMax = nil; others.free = false
+        return others
+    }
+    private var marketCurrency: String { D.dominantCurrency(D.apply(items, priceOthers, now: now)) }
     private typealias D = HomeDiscovery
 
     private var canSortNearest: Bool { app.located == true && app.userCoords != nil }
@@ -216,14 +225,13 @@ struct HomeFilterSheet: View {
     // MARK: Price
 
     private var priceSection: some View {
-        // Market behind the price control: everything that passes the OTHER filters.
-        var others = draft
-        others.priceMin = nil; others.priceMax = nil; others.free = false
-        let market = D.apply(items, others, now: now).compactMap(\.priceVnd)
+        // Market behind the price control: everything that passes the OTHER filters, in ONE currency.
+        let currency = marketCurrency
+        let market = D.priceMarket(D.apply(items, priceOthers, now: now), currency: currency)
         let paid = market.filter { $0 > 0 }
         let hist = D.priceHistogram(market, buckets: 14)
         let paidMedian = D.median(paid.map(Double.init))
-        let step = Self.priceStep
+        let step = priceStep
         let sliderMax = hist.map { Int((Double($0.max) / Double(step)).rounded(.up)) * step } ?? 0
         let lo = draft.priceMin ?? 0
         let hi = draft.priceMax ?? sliderMax
@@ -269,6 +277,7 @@ struct HomeFilterSheet: View {
                 PriceRangeSlider(low: lo, high: hi, maxValue: sliderMax, step: step, label: shown) { newLo, newHi in
                     draft.priceMin = newLo > 0 ? newLo : nil
                     draft.priceMax = newHi < sliderMax ? newHi : nil
+                    draft.priceCurrency = currency
                     draft.free = false
                 }
                 HStack {
@@ -288,7 +297,7 @@ struct HomeFilterSheet: View {
         }
     }
 
-    private func shown(_ v: Int) -> String { EventRecipe.formatVndShort(forTwo ? v * 2 : v) }
+    private func shown(_ v: Int) -> String { EventMarket.formatMoneyShort(forTwo ? v * 2 : v, currency: marketCurrency) }
 
     // MARK: Category / seats / location / sort
 

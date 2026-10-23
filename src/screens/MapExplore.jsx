@@ -6,10 +6,10 @@ import { SHEET_SNAPS, computeMapLayout, snapForSelection } from '../lib/mapLayou
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useBanBe, resolveCoverUrl, firstPhotoUrlByEvent } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
-import { withR2Columns } from '../lib/mediaUrls.js';
+import { withR2Columns, marketColumnList } from '../lib/mediaUrls.js';
 import { findEvent, isCosmeticCatalogMatch, haversineKm, distanceLabel } from '../data/events.js';
 import { liveEventOverrides } from '../lib/countdown.js';
-import { formatVnd } from '../lib/paymentDocument.js';
+import { formatMoney, rowCurrency, rowTimeZone } from '../lib/eventMarket.js';
 import { densityHotspot } from '../lib/densityHotspot.js';
 import { buildEventSearchDoc, matchesSearchQuery } from '../lib/search.js';
 import { prefsIsEmpty } from '../lib/eventPrefs.js';
@@ -65,7 +65,7 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
     // search document built below (`buildEventSearchDoc`) can include
     // category/organizer/description text regardless of whether
     // `keywords` happens to be populated for a given row.
-    .select('id, key, name, cat_key, cat_label, area, city, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, ' + (withR2 ? 'cover_r2_ref, ' : '') + 'keywords, description, intro, country_code, state_province, neighborhood, organizers(name)')
+    .select('id, key, name, cat_key, cat_label, area, city, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, ' + (withR2 ? 'cover_r2_ref, ' : '') + 'keywords, description, intro, country_code, state_province, neighborhood, ' + marketColumnList().map(c => c + ', ').join('') + 'organizers(name)')
     .eq('status', 'live')
     // Strict invite-only events (2026-10-25): unlike loadWeekendEvents/
     // loadDiscoveryEvents (BanBeContext.jsx), this query never filtered
@@ -163,7 +163,10 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
       startsAt: row.starts_at,
       // Raw fields the shared For You candidate builder (src/lib/forYou.js) reads —
       // the same ones Home's events carry, so Home and Map can never score differently.
+      // Minor units of `currency` (migration 195): dong, or cents for USD. `tz` is the venue's zone.
       priceVnd: row.price_vnd || 0,
+      currency: rowCurrency(row),
+      tz: rowTimeZone(row),
       status: row.status,
       // Map price bug fix (2026-09-29) — root cause: this was ALWAYS
       // `cosmetic?.price` (the static demo catalogue's own hand-written
@@ -180,7 +183,7 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
       // `> 0`, never a bare truthiness/`||` check that would treat 0 the
       // same as null/undefined. Same convention Home.jsx's own
       // `discoveryShaped` mapping already uses for a real event's price.
-      price: row.price_vnd > 0 ? formatVnd(row.price_vnd) : 'Miễn phí',
+      price: row.price_vnd > 0 ? formatMoney(row.price_vnd, rowCurrency(row)) : 'Miễn phí',
       img: isCosmeticMatch ? cosmetic?.img : resolveCoverUrl(row.cover_image, fallbackPhotoByEvent[row.id], row.cover_r2_ref),
       when: dateOverrides?.when || cosmetic?.when,
       urgent: row.seats_remaining != null && row.seats_remaining <= 5,

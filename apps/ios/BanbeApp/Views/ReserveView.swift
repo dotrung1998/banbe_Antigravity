@@ -16,10 +16,16 @@ struct ReserveView: View {
     // input that writes via setNameAtHold() (rename_display_name(), same
     // RPC Account's "Đổi tên" uses) instead of a value that goes nowhere.
     private var hasName: Bool { !(app.user?.displayName ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
-    private var formOK: Bool { hasName && app.attendeesComplete && app.reserveEligibilityBlock == nil }
+    private var formOK: Bool {
+        hasName && app.attendeesComplete && app.reserveEligibilityBlock == nil && event.paidBookingAvailable
+    }
     /// Why "Hold" is disabled, in on-screen order (note 48). The eligibility
     /// block already explains itself with CriteriaUnmetCard, so no caption.
     private var holdBlockReason: String? {
+        // Paid USD events (migration 195): the server refuses the booking (PAID_BOOKING_NOT_AVAILABLE), so say so first.
+        if !event.paidBookingAvailable {
+            return app.T("Đặt vé trả phí cho sự kiện tại Mỹ sẽ sớm mở", "Paid booking for US events opens soon")
+        }
         if !hasName { return app.T("Lưu tên của bạn ở trên", "Save your name above") }
         if app.reserveEligibilityBlock != nil { return nil }
         switch SmartDefaults.attendeeGap(Array(app.attendeeDrafts.prefix(app.qty))) {
@@ -35,7 +41,7 @@ struct ReserveView: View {
             : app.T("Giữ \(app.qty) chỗ ▪︎ 30 phút", "Hold \(app.qty) seats ▪︎ 30 min")
     }
     private var totalLabel: String {
-        event.isFree ? "Miễn phí" : EventLabels.vnd(event.priceVnd * app.qty)
+        ReserveBar.totalPrice(amount: event.isFree ? 0 : event.priceVnd, currency: event.currency, qty: app.qty)
     }
 
     @ViewBuilder

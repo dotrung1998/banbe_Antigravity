@@ -31,12 +31,14 @@ enum HomeDiscovery {
         var soldOut: Bool
         var distanceKm: Double?
         var popularity: Double?
+        /// The event's own currency (migration 195); `priceVnd` is in its MINOR unit (đồng, or cents for USD).
+        var currency: String
 
         init(key: String, startsAt: Date?, priceVnd: Int?, catKeys: [String], booked: Int? = nil, capacity: Int? = nil,
-             soldOut: Bool = false, distanceKm: Double? = nil, popularity: Double? = nil) {
+             soldOut: Bool = false, distanceKm: Double? = nil, popularity: Double? = nil, currency: String = "VND") {
             self.key = key; self.startsAt = startsAt; self.priceVnd = priceVnd; self.catKeys = catKeys
             self.booked = booked; self.capacity = capacity; self.soldOut = soldOut
-            self.distanceKm = distanceKm; self.popularity = popularity
+            self.distanceKm = distanceKm; self.popularity = popularity; self.currency = currency
         }
     }
 
@@ -45,6 +47,8 @@ enum HomeDiscovery {
         var date = "any"
         var priceMin: Int?
         var priceMax: Int?
+        /// The currency `priceMin`/`priceMax` were set in; a price bound never compares across currencies.
+        var priceCurrency = "VND"
         var free = false
         /// Empty = all categories.
         var cats: [String] = []
@@ -150,6 +154,8 @@ enum HomeDiscovery {
             guard let s = item.startsAt, s >= w.start, s < w.end else { return false }
         }
         if f.free && item.priceVnd != 0 { return false }
+        // Never mix currencies: with a price bound set, an event priced in another currency can't be compared.
+        if (f.priceMin != nil || f.priceMax != nil) && item.currency != f.priceCurrency { return false }
         if let lo = f.priceMin { guard let p = item.priceVnd, p >= lo else { return false } }
         if let hi = f.priceMax { guard let p = item.priceVnd, p <= hi else { return false } }
         if !f.cats.isEmpty && !item.catKeys.contains(where: f.cats.contains) { return false }
@@ -254,6 +260,18 @@ enum HomeDiscovery {
     }
 
     /// Equal-width histogram of PAID prices; nil when there are none.
+    /// The one currency the price histogram/bounds work in: VND unless every PAID event being filtered is USD.
+    static func dominantCurrency(_ items: [Item]) -> String {
+        let paid = items.filter { ($0.priceVnd ?? 0) > 0 }
+        return !paid.isEmpty && paid.allSatisfy { $0.currency == "USD" } ? "USD" : "VND"
+    }
+
+    /// Prices that may feed the histogram/bounds for `currency`: that currency's events, plus free ones (0 is 0
+    /// in any currency). Never a cent amount next to a đồng one.
+    static func priceMarket(_ items: [Item], currency: String) -> [Int] {
+        items.filter { $0.currency == currency || $0.priceVnd == 0 }.compactMap(\.priceVnd)
+    }
+
     static func priceHistogram(_ prices: [Int], buckets: Int = 12) -> Histogram? {
         let v = prices.filter { $0 > 0 }
         guard let lo = v.min(), let hi = v.max(), buckets > 0 else { return nil }

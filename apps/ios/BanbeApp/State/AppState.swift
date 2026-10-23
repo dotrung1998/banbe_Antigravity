@@ -1020,8 +1020,12 @@ final class AppState: ObservableObject {
     var unreadCountGeneration = 0
 
     // MARK: Notifications
-    @Published var notifications: [AppNotification] = []
+    @Published var notifications: [AppNotification] = [] { didSet { syncAppBadge() } }
     var unreadNotifications: Int { notifications.filter { $0.readAt == nil }.count }
+    /// Last value written to the app icon badge (ENABLE_PUSH builds; -1 = never written this launch).
+    var appBadgeCount = -1
+    /// A tapped push waiting for the account to finish loading (cold launch / not signed in yet).
+    var pendingPushNotification: AppNotification?
     // Batch-fetched by loadNotifications() alongside `notifications` itself
     // — avatarSource(for:maps:accountType:) (Lib/NotificationPresentation.swift)
     // reads this instead of a join per row.
@@ -1923,9 +1927,17 @@ final class AppState: ObservableObject {
     // Location hierarchy (migration 112) — from the picked
     // `AddressSuggestion`; nil = not (re)picked this session, see
     // `selectCreateAddressSuggestion`/`goEditEvent`.
-    @Published var createCountryCode: String?
-    @Published var createStateProvince: String?
+    @Published var createCountryCode: String? { didSet { rezoneCreateDateTime() } }
+    @Published var createStateProvince: String? { didSet { rezoneCreateDateTime() } }
     @Published var createNeighborhood: String?
+    /// Migration 195 — the picked address's own IANA zone as MapKit reports it (exact for multi-zone US states);
+    /// nil = not known / not re-picked. See `createEventTimeZoneID` (AppState+CreateMarket.swift).
+    @Published var createPlaceTimeZoneID: String? { didSet { rezoneCreateDateTime() } }
+    /// Editing an event whose address is NOT re-picked (createCountryCode == nil): that row's own zone/currency.
+    var createEditBaseTimeZoneID: String? { didSet { rezoneCreateDateTime() } }
+    var createEditBaseCurrency: String?
+    /// The zone `createEventDate`/`createEventTime` are currently expressed in (see `rezoneCreateDateTime`).
+    var createZoneApplied = EventMarket.vnTimeZoneID
     @Published var createLocConfirmed = false
     @Published var createAddressSuggestions: [AddressSuggestion] = []
     @Published var createAddressSearching = false
@@ -1935,9 +1947,9 @@ final class AppState: ObservableObject {
     var createAddressSeq = 0
     // Date/time picker fix (Stage B, 2026-09-26) — REPLACES the old
     // free-text `createDate` ("11.07 19:00", hand-parsed with a regex and a
-    // hardcoded year) with two real Date values, always interpreted in
-    // Asia/Ho_Chi_Minh (EventDateTimeSheet's own timezone), matching what
-    // the RPC itself does server-side.
+    // hardcoded year) with two real Date values, interpreted in the event's
+    // own zone (`createEventTimeZone`: Asia/Ho_Chi_Minh unless the address is
+    // in the US, migration 195), matching what the RPC itself does server-side.
     @Published var createEventDate: Date?
     @Published var createEventTime: Date?
     @Published var createPrice = ""
@@ -3454,6 +3466,9 @@ final class AppState: ObservableObject {
         createCountryCode = nil
         createStateProvince = nil
         createNeighborhood = nil
+        createPlaceTimeZoneID = nil
+        createEditBaseTimeZoneID = nil
+        createEditBaseCurrency = nil
         createLocConfirmed = false
         createAddressSuggestions = []
         createAddressSearching = false
@@ -3480,7 +3495,8 @@ final class AppState: ObservableObject {
             .filter { $0.eventDate != nil }
             .max { ($0.submittedAt ?? $0.startsAt ?? .distantPast) < ($1.submittedAt ?? $1.startsAt ?? .distantPast) }
             .map { LastEventSnapshot(name: $0.name, eventDate: $0.eventDate, eventTime: $0.eventTime,
-                                     priceVnd: $0.priceVnd, capacity: $0.capacity, catKey: $0.catKey) }
+                                     priceVnd: $0.priceVnd, capacity: $0.capacity, catKey: $0.catKey,
+                                     currency: $0.rowCurrency) }
     }
 
     /// Pre-fill a NEW draft (never an edit) with smart defaults (note 48).

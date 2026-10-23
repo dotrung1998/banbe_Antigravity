@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { PKPass } from 'passkit-generator';
 import { PNG } from 'pngjs';
+import { eventTimeZone, VN_TIME_ZONE } from '../../src/lib/eventMarket.js';
 
 // Shared by api/wallet-pass.js (issue), api/wallet/[...path].js (Apple's pass
 // update web service), api/wallet-refresh.js and the sweep cron, so a pass
@@ -12,7 +13,7 @@ const b64 = (v) => (v ? Buffer.from(v, 'base64') : null);
 
 export const TICKET_SELECT =
   'id, code, qty, status, payment_state, admission_token, gifted_at, user_id, purchaser_id, recipient_name, '
-  + 'events(name, starts_at, area, address_line)';
+  + 'events(name, starts_at, area, address_line, country_code, state_province)';
 
 export function readWalletConfig() {
   const cfg = {
@@ -68,12 +69,20 @@ const rgb = (hex) => {
   return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
 };
 
-function when(startsAt) {
+// In the venue's zone (migration 195; derived from country/state so it works before 195 is applied).
+function when(startsAt, ev = {}) {
   if (!startsAt) return '';
-  return new Intl.DateTimeFormat('vi-VN', {
-    timeZone: 'Asia/Ho_Chi_Minh', weekday: 'short', day: '2-digit', month: '2-digit',
-    year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
-  }).format(new Date(startsAt)) + ' (GMT+7)';
+  const timeZone = eventTimeZone(ev.country_code, ev.state_province) || VN_TIME_ZONE;
+  if (timeZone === VN_TIME_ZONE) {
+    return new Intl.DateTimeFormat('vi-VN', {
+      timeZone, weekday: 'short', day: '2-digit', month: '2-digit',
+      year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(startsAt)) + ' (GMT+7)';
+  }
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone, weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+  }).format(new Date(startsAt));
 }
 
 let iconCache = null;
@@ -196,7 +205,7 @@ export async function buildPass({ booking, design, cfg, origin, webService = tru
   if (gift && booking.recipient_name) {
     pass.headerFields.push({ key: 'to', label: 'GIFTED TO', value: booking.recipient_name });
   }
-  const startsText = when(ev.starts_at);
+  const startsText = when(ev.starts_at, ev);
   if (startsText) pass.secondaryFields.push({ key: 'when', label: 'DATE & TIME', value: startsText });
   const place = text(ev.address_line) || text(ev.area);
   if (place) pass.secondaryFields.push({ key: 'where', label: 'VENUE', value: place });

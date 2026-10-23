@@ -118,6 +118,8 @@ export function shapeMapKitPlace(place) {
     id: `${lat},${lng},${addressLine}`, addressLine, district, city, postalCode: t(place.postCode), isVenue, lat, lng,
     countryCode: iso || null, stateProvince: adminArea.slice(0, 100) || null,
     neighborhood: sub && sub.toLowerCase() !== district.toLowerCase() ? sub.slice(0, 100) : null,
+    // The place's IANA zone when MapKit gives one (migration 195 takes it for multi-zone US states); else null.
+    timeZone: typeof place.timeZone === 'string' ? place.timeZone : (t(place.timeZone?.identifier) || null),
     label: [addressLine, district, city].filter(Boolean).join(', '),
   };
 }
