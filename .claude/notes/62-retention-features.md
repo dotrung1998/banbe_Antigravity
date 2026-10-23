@@ -38,3 +38,28 @@ Q1 ticket reveal, Q2 what-happens-next + typical confirmation time (n ≥ 5), Q3
 `src/lib/quickWins.js` ⇄ `Lib/QuickWins.swift`. Notes: the awaiting-confirmation timer that shows how long the host has
 to respond was kept (informational, pre-existing); the host's note on the ticket is the host's own chat greeting;
 checked-in bookings (status `attended`) now count as tickets.
+
+## Phase 2 (199 + clients)
+- **L1** reminders: `send_event_reminders` every 10 min (`bb_event_reminders`), day-before (23–25 h) and soon
+  (2.5–3.5 h), once per booking (`event_reminder_log`), muted kinds skipped, time in the venue zone (12-hour in the US).
+  Switch event_reminders ON. Email reminders NOT built.
+- **L2** `events_on_ended` trigger → `event_recap` notice; `event_feedback` (±1 + note ≤ 500, 14 days, ticket holders
+  only); host sees `get_event_feedback_summary` only from 3 answers, notes without names in random order.
+  Web `EventRecap.jsx` (/event/:id/recap) ⇄ iOS `EventRecapView`.
+- **L3** `follows.created_at` (old rows NULL = never "new"); `get_host_event_recap`; web `HostRecap.jsx`
+  (/host/recap/:id) ⇄ iOS `HostRecapView`; Run it again prefills Create Event (fixture `runItAgain`), never submits.
+- **L4** `follow_alert_queue` filled when an event goes live+public; `send_follow_alerts` hourly, max 1 per person per
+  24 h, 09:00–20:00 on their clock (`user_local_zone`: Rewards zone → device zone → market zone).
+- Routing for all new kinds: `src/lib/coreLoops.js notificationRoute` ⇄ `Lib/CoreLoops.swift route` (+ push taps).
+
+## Phase 3 (200 + clients), all switches OFF
+- **L5** digest: `digest_opt_in` + `set_my_digest_opt_in` (refused while the switch is off), append-only
+  `notification_consent_log` (promo_push writes to it too), `send_weekly_digests` hourly → Thursday 18:00 local, once per
+  ISO week, never empty, market-matched; UI Account › Settings › Notifications (hidden while off).
+- **L6** `intentTitle(goals)` (fixture `intentTitles`) for the For You title + why-line; ranking unchanged.
+- **L7** web Show-ticket on the venue-local event day; iOS `BanbeLiveActivity` widget extension (no entitlements, signs
+  on a free team), `EventDayAttributes`, `LiveActivityController` (local start 6 h before, ends start + 12 h, no push
+  updates, `banbe://ticket/<id>`); not device-checked.
+- **L8** "Copy invite for Zalo" (no verified Zalo share URL exists without a registered Zalo app) and "Text a friend"
+  `sms:&body=` in the event ⋯ menu; fixture `shareText`.
+- **L9** prepared only: `docs/impl/rewards-switch-on.md`.

@@ -66,5 +66,12 @@ local superuser (sequence permission); in production both belong to `postgres` �
   intent_foryou, live_activity, market_share all false; `send_weekly_digests()` → 0. Residue: 0 consent rows.
   Minor: the trigger function `notification_consent_log_append_only()` keeps the default EXECUTE grant (it only raises).
 
-## Flags (final values are reported at the end of the run)
-admin_event_wipe=true (untouched), rewards=false (untouched), rewards_v2=false (untouched), push_enabled=false (new).
+### Final web deploy
+Phase 1 (6b003a3), Phase 2 (870a441) and Phase 3 (this commit's main) deployed by `git push origin main`; each live
+bundle checked for a string from that build.
+
+## Final switch values in production (read 2026-10-23, end of run)
+admin_event_wipe=true (untouched), rewards=false (untouched), rewards_v2=false (untouched), push_enabled=false,
+app_events=false, event_reminders=true, event_recap=false, host_recap=false, follow_alerts=false, weekly_digest=false,
+intent_foryou=false, live_activity=false, market_share=false. Migrations not applied: 182–184 only (held back on
+purpose, other workstream).

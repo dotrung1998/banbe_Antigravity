@@ -19,7 +19,7 @@ Status (2026-10-23 run; details: notes 60–62, production log note 61, how-to `
 | L1 reminders | applied (199) + deployed; switch `event_reminders` ON (in-app); email not built (mail setup unverified) |
 | L2 / L3 / L4 | applied (199) + clients deployed; switches OFF (L2 needs B12 re-consent; L3/L4 product/legal check) |
 | L5 digest | applied (200) + opt-in UI deployed; switch OFF (legal review: Decree 91/2020, CAN-SPAM) |
-| L6 / L7 / L8 | see the last status update below this table (Phase 3 clients) |
+| L6 / L7 / L8 | built (web + iOS; L7 includes the iOS Live Activity extension, not device-checked) + switch defs applied (200) + web deployed; switches `intent_foryou`, `live_activity`, `market_share` OFF |
 | L9 Rewards | prepared only (`docs/impl/rewards-switch-on.md`); `rewards` / `rewards_v2` unchanged (OFF) |
 
 Each phase has its own implementation plan in `docs/impl/`. Baseline query (counts only): `docs/sql/retention-baseline.sql`.
