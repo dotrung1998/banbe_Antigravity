@@ -598,6 +598,8 @@ const initialState = {
   homeSort: 'soonest',
   homeFilterSheetOpen: false,
   eventFill: {},
+  // Phase 1 Q5: the event whose approval notification the host just opened (Dashboard shows its "live" card once).
+  liveCelebrationFor: null,
   searchQuery: '',
   searchOverlayOpen: false,
   notificationsOverlayOpen: false,
@@ -10777,7 +10779,12 @@ export function BanBeProvider({ children }) {
         // already see their own real (non-catalogue) event's status/
         // rejection reason (see Dashboard.jsx's myEvents), same per-event
         // ownership guard as every other organizer-bound kind here.
-        if (n.data?.event_id && iOrganize(n.data.event_id)) goDashboard();
+        // Phase 1 Q5: an approval opens the dashboard with the "Your event is live" card for that event (once per
+        // event per device, src/lib/quickWins.js).
+        if (n.data?.event_id && iOrganize(n.data.event_id)) {
+          if (n.kind === 'event_approved') set({ liveCelebrationFor: n.data.event_id });
+          goDashboard();
+        }
         break;
       case 'payment_awaiting_verification':
       case 'payment_verification_nudge':
@@ -10810,11 +10817,18 @@ export function BanBeProvider({ children }) {
         }
         break;
       }
-      case 'checked_in':
+      case 'checked_in': {
+        // Phase 1 Q4: the ticket screen itself, where the check-in moment ("You're in") shows once per booking.
+        if (n.data?.booking_id) {
+          const result = await openBookingConfirmed(n.data.booking_id, n.data.event_id, 'notifications');
+          if (result?.notFound) reportStaleNotification(n);
+        }
+        break;
+      }
       case 'checkin_undone':
-        // Both are check-in-status changes on an already-confirmed
-        // booking — the guest's own payment/ticket screen already reflects
-        // current status live, no separate "checked in" screen exists.
+        // A check-in-status change on an already-confirmed booking — the
+        // guest's own payment/ticket screen already reflects current status
+        // live, no separate "checked in" screen exists.
         if (n.data?.booking_id) openPaymentDetails(n.data.booking_id, 'notifications');
         break;
       case 'dispute_message':

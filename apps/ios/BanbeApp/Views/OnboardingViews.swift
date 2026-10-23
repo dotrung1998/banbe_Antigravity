@@ -1171,8 +1171,9 @@ struct CreateEventView: View {
             }
         } message: {
             // Note 53: what happens next, honestly — it's pending review, so there's no link to share yet.
-            Text(app.T("✓ Đã gửi → banbe duyệt → lên sóng, bạn sẽ nhận thông báo. Bạn muốn làm gì tiếp theo?",
-                       "✓ Sent → banbe reviews it → it goes live and we'll notify you. What would you like to do next?"))
+            // Phase 1 Q5: sharing opens at approval, where the "Your event is live" card offers it.
+            Text(app.T("✓ Đã gửi → banbe duyệt → lên sóng, bạn sẽ nhận thông báo. Bạn có thể chia sẻ sự kiện ngay khi banbe duyệt. Bạn muốn làm gì tiếp theo?",
+                       "✓ Sent → banbe reviews it → it goes live and we'll notify you. Sharing opens once banbe approves it. What would you like to do next?"))
         }
         // Swipe-to-dismiss/backdrop-tap on the sheet flips this binding to
         // false WITHOUT any button firing — same "unambiguous success"

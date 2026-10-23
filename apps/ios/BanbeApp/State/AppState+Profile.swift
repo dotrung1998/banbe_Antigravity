@@ -545,6 +545,8 @@ extension AppState {
     /// instead, the ordinary system behavior for a link with no verified
     /// app association. No code here needs to detect or special-case that.
     func handleUniversalLink(_ url: URL) {
+        // Phase 1 Q7: an invite link (https://www.banbe.app/?ref=CODE) parks its code for redemption after sign-in.
+        captureReferral(from: url)
         let parts = url.pathComponents.filter { $0 != "/" }
         guard parts.count == 2 else { return }
         switch parts[0] {

@@ -121,6 +121,7 @@ struct HomeView: View {
                     if let next = nextUp {
                         NextUpBanner(event: next.event, phase: next.phase, haloTrigger: reminderHaloTrigger)
                     }
+                    if app.isSignedIn, !savedUpcoming.isEmpty { savedUpcomingSection }
                     if app.isSignedIn {
                         ActionCenterView(items: actionItems, onSeeAll: { app.goNotifications() })
                         ActivationChecklistCard()
@@ -810,6 +811,59 @@ struct HomeView: View {
             }
         }
         .frame(width: 28, height: 28)
+    }
+
+    // MARK: Phase 1 Q8 — "Saved, coming up" (same rule as web Home.jsx)
+
+    /// Saved events that are live and start within 30 days, soonest first, at most 5 (Lib/QuickWins.swift).
+    private var savedUpcoming: [CatalogEvent] {
+        let resolved = app.favorites.compactMap(app.resolvedEvent(for:))
+        let picked = QuickWins.savedComingUp(resolved.map { e in
+            QuickWins.Candidate(key: e.key, status: e.cancelled ? "cancelled" : (e.endedHoursAgo != nil ? "ended" : "live"), startsAt: e.startDate)
+        }, now: Date())
+        return picked.compactMap { c in resolved.first { $0.key == c.key } }
+    }
+
+    /// Each with its real date and, when known, its real fill ("12 of 20 taken"). No timers, no urgency words.
+    private var savedUpcomingSection: some View {
+        let rows = savedUpcoming
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(app.T("Đã lưu, sắp diễn ra", "Saved, coming up"))
+                .font(BanbeTheme.display(17))
+                .accessibilityAddTraits(.isHeader)
+                .padding(.bottom, 6)
+            ForEach(Array(rows.enumerated()), id: \.element.key) { index, e in
+                Button { app.goEvent(e.key) } label: {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(e.name).font(.system(size: 14.5, weight: .semibold)).lineLimit(1)
+                            Text(savedRowDetail(e)).font(.system(size: 12.5)).opacity(0.65)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).opacity(0.4)
+                            .accessibilityHidden(true)
+                    }
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .overlay(alignment: .top) { if index > 0 { Rectangle().fill(app.palette.rule).frame(height: 1) } }
+                .accessibilityIdentifier("home.savedUpcoming.\(e.key)")
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 10)
+        .accessibilityIdentifier("home.savedUpcoming")
+        .task(id: rows.map(\.key).joined(separator: ",")) {
+            let missing = rows.map(\.key).filter { app.eventFill[$0] == nil }
+            await app.loadPublicEventFill(ids: missing)
+        }
+    }
+
+    private func savedRowDetail(_ e: CatalogEvent) -> String {
+        let when = app.discoveryWhenLabel(e.startDate, timeZone: EventMarket.timeZone(e.timeZoneID))
+        guard let fill = app.eventFill[e.key], let t = QuickWins.fillText(capacity: fill.capacity, booked: fill.booked) else { return when }
+        return when + " · " + app.T(t.vi, t.en)
     }
 
     /// Reminder only for a ticket-holder's own event (not a hold, not merely saved).

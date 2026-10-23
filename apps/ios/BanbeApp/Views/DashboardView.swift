@@ -26,6 +26,10 @@ struct DashboardView: View {
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var photoPickerEventID: String?
     @State private var creditEventID: String = ""
+    // Phase 1 Q5 "You're live": the event whose celebration card is showing (once per event per device).
+    @State private var liveEventID: String?
+    @State private var liveMessage = ""
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var creditUserID: String = ""
     /// Remaining-resubmission-attempts hint's own next-eligible-time
     /// display (migration 107) — plain locale-default formatting, same as
@@ -82,6 +86,118 @@ struct DashboardView: View {
         if event.orgTrusted { return app.T("Đã xác minh", "Verified") }
         return app.orgVerifyRequested ? app.T("Đang xác minh", "Verifying")
                                       : app.T("Chưa xác minh", "Not verified")
+    }
+
+    // MARK: Phase 1 Q5 — "You're live" (same rule as web Dashboard.jsx)
+
+    private var liveEvent: RealEventSummary? {
+        liveEventID.flatMap { id in app.myOrgEventSummaries.first { $0.id == id } }
+    }
+
+    /// The event whose approval notification was just opened, or one banbe approved in the last 7 days that hasn't
+    /// happened yet; the first one this device hasn't celebrated gets the card.
+    private func evaluateLiveCelebration() {
+        guard liveEventID == nil else { return }
+        let now = Date()
+        let fromNotification = app.liveCelebrationEventID
+        let candidates = app.myOrgEventSummaries
+            .filter { e in
+                (e.id == fromNotification && e.status != "cancelled" && e.status != "removed")
+                    || QuickWins.isNewlyLive(status: e.status, reviewedAt: e.reviewedAt, startsAt: e.startsAt, now: now)
+            }
+            .sorted { ($0.id == fromNotification ? 0 : 1) < ($1.id == fromNotification ? 0 : 1) }
+        let pick = candidates.first { QuickWins.claimOnce(.eventLive, $0.id) }
+        if let fromNotification, pick != nil || app.myOrgEventSummaries.contains(where: { $0.id == fromNotification }) {
+            app.liveCelebrationEventID = nil
+        }
+        guard let pick else { return }
+        withAnimation(reduceMotion ? .easeOut(duration: 0.3) : .spring(response: 0.42, dampingFraction: 0.78)) { liveEventID = pick.id }
+        Haptics.success()
+        UIAccessibility.post(notification: .announcement, argument: app.T("Sự kiện của bạn đã được đăng", "Your event is live"))
+    }
+
+    private func liveCard(_ e: RealEventSummary) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(app.T("Sự kiện của bạn đã được đăng", "Your event is live") + " 🎉").font(BanbeTheme.display(19))
+                    Text(e.name).font(.system(size: 12.5)).opacity(0.75).lineLimit(2)
+                }
+                Spacer(minLength: 0)
+                Button { withAnimation { liveEventID = nil } } label: {
+                    Image(systemName: "xmark").font(.system(size: 12, weight: .semibold))
+                        .frame(width: 30, height: 30).background(app.palette.paper.opacity(0.6), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(app.T("Đóng", "Close"))
+                .accessibilityIdentifier("dashboard.live.close")
+            }
+            HStack(spacing: 8) {
+                Button { shareLive(e) } label: { livePill(app.T("Chia sẻ", "Share"), filled: true) }
+                    .buttonStyle(.plain).accessibilityIdentifier("dashboard.live.share")
+                Button { copyLiveLink(e) } label: { livePill(app.T("Sao chép link", "Copy link"), filled: false) }
+                    .buttonStyle(.plain).accessibilityIdentifier("dashboard.live.copy")
+                Button { addLiveToSchedule(e) } label: { livePill(app.T("Thêm vào lịch banbe", "Add to Schedule"), filled: false) }
+                    .buttonStyle(.plain).accessibilityIdentifier("dashboard.live.schedule")
+            }
+            if !liveMessage.isEmpty {
+                Text(liveMessage).font(.system(size: 12)).opacity(0.75)
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(alignment: .top) { ConfettiBurst().padding(.top, 22) }
+        .accessibilityIdentifier("dashboard.liveCard")
+    }
+
+    private func livePill(_ title: String, filled: Bool) -> some View {
+        Text(title)
+            .font(.system(size: 12.5, weight: .semibold))
+            .lineLimit(1).minimumScaleFactor(0.85)
+            .foregroundStyle(filled ? app.palette.paper : app.palette.ink)
+            .padding(.horizontal, 14).padding(.vertical, 9)
+            .background(filled ? app.palette.ink : .clear, in: Capsule())
+            .overlay(Capsule().stroke(app.palette.ink, lineWidth: filled ? 0 : 1))
+    }
+
+    private func liveLink(_ e: RealEventSummary) -> URL? {
+        guard let id = e.id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return nil }
+        return URL(string: "\(AppConfig.publicWebOrigin)/api/photo-share?eid=\(id)")
+    }
+
+    private func flashLive(_ text: String) {
+        liveMessage = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { if liveMessage == text { liveMessage = "" } }
+    }
+
+    /// The same public event link Event Detail's Share uses (/api/photo-share?eid=).
+    private func shareLive(_ e: RealEventSummary) {
+        guard let url = liveLink(e) else { return }
+        let text = [e.name, e.area ?? ""].filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
+        let activity = UIActivityViewController(activityItems: [text, url], applicationActivities: nil)
+        activity.completionWithItemsHandler = { type, completed, _, _ in
+            guard completed else { return }
+            Analytics.track(.shareCompleted(channel: AppEventRules.shareChannel(type), context: "event"))
+        }
+        UIApplication.shared.topViewController?.present(activity, animated: true)
+    }
+
+    private func copyLiveLink(_ e: RealEventSummary) {
+        guard let url = liveLink(e) else { return }
+        UIPasteboard.general.string = url.absoluteString
+        Haptics.light()
+        flashLive(app.T("Đã sao chép link", "Link copied"))
+    }
+
+    private func addLiveToSchedule(_ e: RealEventSummary) {
+        switch app.addToBanbeSchedule(CatalogEvent.fromReal(e)) {
+        case .added: flashLive(app.T("Đã thêm vào lịch banbe", "Added to your banbe Schedule"))
+        case .alreadyThere: flashLive(app.T("Đã có trong lịch banbe của bạn", "Already in your banbe Schedule"))
+        case .ineligible: flashLive(app.T("Sự kiện này không thêm vào lịch được.", "This event can't be added."))
+        case .needsSignIn: break
+        }
     }
 
     /// TASK A (2026-10-01 UX foundation pass) — Dashboard is host-only (this
@@ -226,6 +342,12 @@ struct DashboardView: View {
                         // TASK A (2026-10-01 UX foundation pass) — host-only
                         // Action Center (this screen only ever renders for
                         // an organizer).
+                        if let live = liveEvent {
+                            liveCard(live)
+                                .padding(.top, 16)
+                                .transition(reduceMotion ? .opacity : .scale(scale: 0.94).combined(with: .opacity))
+                        }
+
                         ActionCenterView(items: actionItems, onSeeAll: { app.openVerifications(back: .dashboard) }, horizontalInset: 0)
 
                         // Event review queue — a real submission's own
@@ -464,8 +586,10 @@ struct DashboardView: View {
             // it reads myOrgEventKeys, which THAT call is what populates.
             await app.loadMyOrgEventSummaries()
         }
-        .onAppear { reminderHaloTrigger += 1 }
+        .onAppear { reminderHaloTrigger += 1; evaluateLiveCelebration() }
         .onChange(of: app.screen) { _, new in if new == .dashboard { reminderHaloTrigger += 1 } }
+        .onChange(of: app.myOrgEventSummaries.map { "\($0.id):\($0.status)" }) { _, _ in evaluateLiveCelebration() }
+        .onChange(of: app.liveCelebrationEventID) { _, _ in evaluateLiveCelebration() }
         .task { await app.loadHomeLiveEvents() }
         .task { if let id = app.myOrganizerID { await app.loadOrganizerStats(organizerID: id) } }
         // Organizer Team pass (2026-09-27, Stage 1) — owner-only, the FULL

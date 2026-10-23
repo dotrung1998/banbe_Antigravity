@@ -9,6 +9,8 @@ import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCent
 import ActionCenter from './ActionCenter.jsx';
 import { supabase } from '../lib/supabase.js';
 import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
+import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
+import { claimOnce, isNewlyLive } from '../lib/quickWins.js';
 
 // THIRD STALE-AVATAR SITE (2026-09-28) — this header's round avatar next to
 // the org name / "Bởi <org> Team" line used to always be `bg(ev.img, ...)`,
@@ -45,7 +47,7 @@ export default function Dashboard() {
     loadRealEventsById, goEditEvent, openOrganizerProfile,
     loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember,
     assignEventCredit, withdrawEventSubmission, loadResubmissionStatus,
-    loadMyOrgStats,
+    loadMyOrgStats, set, shareEvent, addToBanbeSchedule,
   } = useBanBe();
   const s = state;
   const [creditEventKey, setCreditEventKey] = useState('');
@@ -79,6 +81,37 @@ export default function Dashboard() {
   const ROLE_STATUS_LABEL = { invited: T('Đang chờ', 'Pending'), accepted: T('Đã tham gia', 'Joined'), declined: T('Đã từ chối', 'Declined'), removed: T('Đã xoá', 'Removed') };
   const myRealEvents = myRealOrgKeys.map(k => s.realEventsById[k]).filter(Boolean);
   const teamCount = s.orgTeamRoster.filter(m => m.status !== 'removed').length;
+  // Phase 1 Q5 "You're live": the event whose approval notification was just opened, or one banbe approved in the last
+  // 7 days that hasn't happened yet, gets a celebration card once per event per device (src/lib/quickWins.js).
+  const [liveKey, setLiveKey] = useState(null);
+  const [liveMsg, setLiveMsg] = useState('');
+  const liveSig = myRealEvents.map(e => `${e.key}:${e.status}`).join(',');
+  useEffect(() => {
+    if (liveKey) return;
+    const now = Date.now();
+    const fromNotification = s.liveCelebrationFor;
+    const candidates = myRealEvents
+      .filter(e => (e.key === fromNotification && e.status !== 'cancelled' && e.status !== 'removed') || isNewlyLive(e, now))
+      .sort((a, b) => (b.key === fromNotification) - (a.key === fromNotification));
+    const pick = candidates.find(e => claimOnce('eventLive', e.key));
+    if (pick) setLiveKey(pick.key);
+    if (fromNotification && (pick || myRealEvents.some(e => e.key === fromNotification))) set({ liveCelebrationFor: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveSig, s.liveCelebrationFor, liveKey]);
+  const liveEvent = liveKey ? myRealEvents.find(e => e.key === liveKey) : null;
+  const liveReduceMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const flashLive = (m) => { setLiveMsg(m); setTimeout(() => setLiveMsg(''), 2400); };
+  const copyLiveLink = () => {
+    const url = `https://www.banbe.app/api/photo-share?eid=${encodeURIComponent(liveKey)}`;
+    const done = () => flashLive(T('Đã sao chép link', 'Link copied'));
+    try { navigator.clipboard?.writeText(url).then(done, done); } catch { done(); }
+  };
+  const addLiveToSchedule = () => {
+    const r = addToBanbeSchedule(liveKey);
+    flashLive(r === 'added' ? T('Đã thêm vào lịch banbe', 'Added to your banbe Schedule')
+      : r === 'alreadyThere' ? T('Đã có trong lịch banbe của bạn', 'Already in your banbe Schedule')
+      : r === 'ineligible' ? T('Sự kiện này không thêm vào lịch được.', "This event can't be added.") : '');
+  };
   // Review tracking reads live rows (polled), not the one-shot realEventsById
   // cache, so an admin approving / sending an event back shows up on its own.
   const submitted = useSubmittedEvents(true);
@@ -285,6 +318,32 @@ export default function Dashboard() {
           <span onClick={requestVerify} style={{ flex: 'none', fontSize: 12.5, fontWeight: 600, padding: '9px 16px', borderRadius: 999, background: ink, color: paper, cursor: 'pointer' }}>{T('Yêu cầu xác minh', 'Request')}</span>
         </div>
       )}
+
+      {/* Phase 1 Q5: polite live region, so the celebration is announced without interrupting. */}
+      <div role="status" aria-live="polite">
+        {liveEvent && (
+          <div data-testid="dashboard-live-card" style={{ ...cardGlass({ margin: '16px 22px 0', padding: '18px 18px 14px', position: 'relative' }), animation: liveReduceMotion ? 'banbeFade 0.4s ease both' : 'bbPopIn 0.42s cubic-bezier(.22,.61,.36,1) both' }}>
+            <ConfettiBurst top={22} />
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                <span style={{ ...display(19, { lineHeight: 1.25 }) }}>{T('Sự kiện của bạn đã được đăng', 'Your event is live')} 🎉</span>
+                <span style={{ fontSize: 12.5, color: ink, opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveEvent.name}</span>
+              </div>
+              <span onClick={() => setLiveKey(null)} role="button" aria-label={T('Đóng', 'Close')} data-testid="dashboard-live-close"
+                style={{ flex: 'none', width: 30, height: 30, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 13, color: ink, background: 'var(--bb-field)' }}>✕</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+              <span onClick={() => shareEvent({ key: liveEvent.key, name: liveEvent.name, where: liveEvent.area || '' })} role="button" data-testid="dashboard-live-share"
+                style={{ fontSize: 12.5, fontWeight: 600, padding: '9px 16px', borderRadius: 999, background: ink, color: paper, cursor: 'pointer' }}>{T('Chia sẻ', 'Share')}</span>
+              <span onClick={copyLiveLink} role="button" data-testid="dashboard-live-copy"
+                style={{ fontSize: 12.5, fontWeight: 600, padding: '9px 16px', borderRadius: 999, border: `1px solid ${ink}`, color: ink, cursor: 'pointer' }}>{T('Sao chép link', 'Copy link')}</span>
+              <span onClick={addLiveToSchedule} role="button" data-testid="dashboard-live-schedule"
+                style={{ fontSize: 12.5, fontWeight: 600, padding: '9px 16px', borderRadius: 999, border: `1px solid ${ink}`, color: ink, cursor: 'pointer' }}>{T('Thêm vào lịch banbe', 'Add to Schedule')}</span>
+            </div>
+            {liveMsg && <div style={{ marginTop: 10, fontSize: 12, color: ink, opacity: 0.75 }}>{liveMsg}</div>}
+          </div>
+        )}
+      </div>
 
       <ActionCenter items={actionItems} onSeeAll={() => openVerifications('dashboard')} T={T} inset={22} />
 

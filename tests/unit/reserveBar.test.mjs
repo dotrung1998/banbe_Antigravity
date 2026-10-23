@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { parsePrice, totalPrice, reserveBarState, clampQty, QTY_PRESETS, MAX_QTY, eventPrice, eventTotal, currencyUnavailable, CURRENCY_UNAVAILABLE_REASON } from '../../src/lib/reserveBar.js';
 
 // Mirrored by apps/ios/BanbeAppTests/ReserveBarTests.swift — change both together.
@@ -32,6 +33,18 @@ test('bar state follows the old label priority', () => {
   assert.equal(reserveBarState({ ...base, currencyUnavailable: true, blocked: true }), 'currencyUnavailable');
   assert.equal(reserveBarState({ ...base, currencyUnavailable: true, soldOut: true }), 'soldOut');
   assert.equal(reserveBarState({ ...base, currencyUnavailable: true, booking: true }), 'pending');
+});
+
+test('an event that is over says so before the ticket (Phase 1 Q3, shared vectors)', () => {
+  const V = JSON.parse(readFileSync(new URL('../fixtures/quick-wins.json', import.meta.url), 'utf8'));
+  assert.ok(V.endedPrecedence.length > 0);
+  for (const v of V.endedPrecedence) {
+    const { booking, ticket, cancelled, ended, soldOut } = v;
+    assert.equal(reserveBarState({ booking, ticket, cancelled, ended, soldOut, blocked: false }), v.expect, v.case);
+  }
+  const base = { booking: false, ticket: false, cancelled: false, ended: true, soldOut: true, blocked: true };
+  assert.equal(reserveBarState({ ...base, booking: true, ticket: true }), 'endedAttended');
+  assert.equal(reserveBarState({ ...base, currencyUnavailable: true }), 'ended');
 });
 
 test('money follows the event currency (migration 195)', () => {

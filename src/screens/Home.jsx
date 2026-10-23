@@ -32,6 +32,9 @@ import HomeFilterSheet, { DATE_LABELS, RELAX_LABELS, SORT_LABELS } from './sheet
 import SortMenu from './sheets/SortMenu.jsx';
 import PulseTicker from '../components/home/PulseTicker.jsx';
 import { setBellOrigin } from '../lib/bellOrigin.js';
+import { supabase } from '../lib/supabase.js';
+import { savedComingUp, fillText, whenLabel } from '../lib/quickWins.js';
+import { rowTimeZone } from '../lib/eventMarket.js';
 import {
   applyDiscoveryFilters, sortEvents, fillBadge, activeFilterCount, optionCounts, relaxationHints, DEFAULT_FILTERS,
 } from '../lib/homeDiscovery.js';
@@ -580,6 +583,36 @@ export default function Home() {
     .sort((a, b) => reminderRank(a.reminder) - reminderRank(b.reminder));
   const nextUp = savedList.find(x => x.reminder) || null;
 
+  // Phase 1 Q8 "Saved, coming up": the person's saved events that are live and start within 30 days, soonest first,
+  // at most 5 (src/lib/quickWins.js), each with its real date and, when known, its real fill ("12 of 20 taken" from
+  // get_public_event_fill). No timers, no urgency words. Hidden for guests and when empty.
+  const favKeys = s.user ? (s.favorites || []) : [];
+  const missingFavKeys = favKeys.filter(k => !EVENTS.some(e => e.key === k) && !(k in s.realEventsById));
+  useEffect(() => {
+    if (missingFavKeys.length) loadRealEventsById(missingFavKeys);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingFavKeys.join(','), loadRealEventsById]);
+  const savedUpcoming = savedComingUp(favKeys.map(k => {
+    const catalogEv = EVENTS.find(e => e.key === k);
+    if (catalogEv) {
+      const e = withLive(catalogEv);
+      return { key: k, name: e.name, status: e.cancelled ? 'cancelled' : e.endedHoursAgo != null ? 'ended' : 'live', startsAt: e.startDate || null, tz: null };
+    }
+    const real = s.realEventsById[k];
+    return real ? { key: k, name: real.name, status: real.status, startsAt: real.startsAt, tz: rowTimeZone(real) } : null;
+  }).filter(Boolean), Date.now());
+  const missingFillKeys = savedUpcoming.map(e => e.key).filter(k => !(k in s.eventFill));
+  useEffect(() => {
+    if (!missingFillKeys.length) return undefined;
+    let live = true;
+    supabase.rpc('get_public_event_fill', { p_event_ids: missingFillKeys }).then(({ data, error }) => {
+      if (!live || error || !Array.isArray(data)) return;
+      set(prev => ({ eventFill: { ...prev.eventFill, ...Object.fromEntries(data.map(r => [r.event_id, { booked: r.booked, capacity: r.capacity }])) } }));
+    }, () => {});
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingFillKeys.join(',')]);
+
   const homeHostLinkLabel = hasHosted ? T('Trang tổ chức của bạn', 'Your host page') : T('Dành cho người tổ chức ▪︎ hoàn toàn miễn phí', 'For organizers ▪︎ completely free');
   const homeHostLink = hasHosted ? () => switchToHost('home') : becomeHost;
 
@@ -720,6 +753,29 @@ export default function Home() {
           Action Center covering both roles this account can hold. See
           src/lib/actionCenter.js for the source list and ordering rule. */}
       <NextUpBanner item={nextUp && { ...nextUp, when: nextUp.status }} onOpen={() => openSaved(nextUp)} T={T} />
+
+      {savedUpcoming.length > 0 && (
+        <section data-testid="home-saved-upcoming" aria-labelledby="home-saved-upcoming-title" style={{ padding: '6px 20px 10px' }}>
+          <h2 id="home-saved-upcoming-title" style={{ ...display(17), margin: '0 0 6px' }}>{T('Đã lưu, sắp diễn ra', 'Saved, coming up')}</h2>
+          {savedUpcoming.map((e, i) => {
+            const fill = s.eventFill[e.key];
+            const ft = fill ? fillText(fill.capacity, fill.booked) : null;
+            return (
+              <div key={e.key} onClick={() => goEvent(e.key)} role="button" tabIndex={0} data-testid={`home-saved-upcoming-${e.key}`}
+                onKeyDown={(k) => { if (k.key === 'Enter' || k.key === ' ') { k.preventDefault(); goEvent(e.key); } }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderTop: i > 0 ? `1px solid ${rule}` : 'none', cursor: 'pointer' }}>
+                <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontSize: 14.5, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+                  <span style={{ fontSize: 12.5, color: ink, opacity: 0.65 }}>
+                    {whenLabel(e.startsAt, e.tz, s.lang === 'en')}{ft ? ` · ${T(ft.vi, ft.en)}` : ''}
+                  </span>
+                </span>
+                <span aria-hidden style={{ fontSize: 16, color: ink, opacity: 0.4, flex: 'none' }}>›</span>
+              </div>
+            );
+          })}
+        </section>
+      )}
 
       {/* Note 49: a guest sees a sign-in banner instead of the personal Action Center / checklist. */}
       {s.user ? (

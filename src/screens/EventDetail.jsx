@@ -11,6 +11,10 @@ import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
 import { reserveBarState, eventTotal, eventPrice, currencyUnavailable, clampQty, QTY_PRESETS, MAX_QTY, CURRENCY_UNAVAILABLE_REASON } from '../lib/reserveBar.js';
 import GlassMenu, { GlassMenuItem, GlassMenuDivider } from '../components/GlassMenu.jsx';
 import { viewerTimeNote } from '../lib/schedulePresentation.js';
+import { supabase } from '../lib/supabase.js';
+import { withR2Columns, marketColumnList } from '../lib/mediaUrls.js';
+import { rowTimeZone } from '../lib/eventMarket.js';
+import { nextFromHost, whenLabel } from '../lib/quickWins.js';
 
 // Airbnb-style layout (mirrors iOS EventDetailView): the photo is a pinned backdrop that fades out while the
 // rounded info sheet scrolls up over it; pulling down from the very top closes the screen with a shrink.
@@ -71,7 +75,7 @@ let lastVisit = null;
 // saved; every guest control (save, share, ⋯, calendar pill, host actions, seat chips, Reserve) is shown but inert.
 // iOS twin: EventDetailView(preview:).
 export default function EventDetail({ preview = null } = {}) {
-  const { state, T, trStatus, stripKm, curEvent, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, setQty, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
+  const { state, T, trStatus, stripKm, curEvent, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, setQty, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav, toggleFollowOrganizer, goEvent } = useBanBe();
   const s = state;
   const ev = preview?.ev ?? curEvent;
   // Spread into a guest control's style in preview: visible exactly as guests see it, but does nothing.
@@ -264,7 +268,8 @@ export default function EventDetail({ preview = null } = {}) {
   // for any of those, announcing a ticket + exposing the entry code before
   // there was one. The only source of truth for "ticket exists" is BOTH
   // booking.status === 'confirmed' AND payment_state === 'confirmed'.
-  const myBookingIsTicket = isBookingTicket(myBooking);
+  // A checked-in booking ('attended', migration 021) is still that same paid ticket (Phase 1 Q3 "You went ✓").
+  const myBookingIsTicket = isBookingTicket(myBooking) || (myBooking?.status === 'attended' && myBooking?.payment_state === 'confirmed');
 
   // A completed event has nothing left to reserve — showing "Reserve"
   // (or even "Sold out ▪︎ message for waitlist") on something that already
@@ -293,7 +298,8 @@ export default function EventDetail({ preview = null } = {}) {
     ticket: () => T('Xem vé của bạn ▪︎ mã ' + myBooking.code, 'View your ticket ▪︎ code ' + myBooking.code),
     pending: () => T('Xem trạng thái thanh toán', 'View payment status'),
     cancelled: () => T('Sự kiện đã bị huỷ', 'Event has been cancelled'),
-    ended: () => T('Sự kiện đã kết thúc', 'Event has ended'),
+    endedAttended: () => T('Bạn đã tham gia ✓', 'You went ✓'),
+    ended: () => T('Sự kiện đã kết thúc', 'This event has ended'),
     soldOut: () => T('Hết chỗ ▪︎ nhắn để vào danh sách chờ', 'Sold out ▪︎ message for waitlist'),
     // The bar says WHY it can't be used, and tapping shows the full explanation card instead of doing nothing.
     blocked: () => T('Chưa đủ điều kiện ▪︎ xem lý do', 'Not eligible yet ▪︎ see why'),
@@ -302,7 +308,7 @@ export default function EventDetail({ preview = null } = {}) {
     reserve: () => (qty === 1 ? T('Giữ chỗ ▪︎ ', 'Reserve ▪︎ ') : T(`Giữ ${qty} chỗ ▪︎ `, `Reserve ${qty} seats ▪︎ `)) + totalStr,
   }[barState]();
   const showCriteriaWhy = () => critRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-  const reserveBarTap = { ticket: openHeld, pending: openHeld, cancelled: undefined, ended: undefined, soldOut: goChat, currencyUnavailable: undefined, blocked: showCriteriaWhy, reserve: goReserve }[barState];
+  const reserveBarTap = { ticket: openHeld, pending: openHeld, cancelled: undefined, endedAttended: undefined, ended: undefined, soldOut: goChat, currencyUnavailable: undefined, blocked: showCriteriaWhy, reserve: goReserve }[barState];
   const ctaBase = { fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 12px', borderRadius: 18, color: ink };
   const reserveBarStyle = (barState === 'reserve' || barState === 'ticket' || barState === 'pending')
     ? inkButton({ padding: '15px 12px' })
@@ -312,6 +318,26 @@ export default function EventDetail({ preview = null } = {}) {
     : showRefund
       ? T('Hoàn tiền tự động 100% nếu sự kiện bị hủy', 'Automatic full refund if the event is cancelled')
       : T('Chỗ được giữ 30 phút để bạn xác nhận', 'Seats are held for 30 minutes while you confirm');
+
+  // Phase 1 Q3: an ended page is not a dead end. Up to 3 of this host's live events still ahead ("Next from this
+  // host") and a Follow host button; the photos section below already shows the recap (event_photos stays readable
+  // for ended events, migration 084). A demo event without an organizer id shows neither.
+  const isOver = barState === 'ended' || barState === 'endedAttended';
+  const [hostNext, setHostNext] = useState([]);
+  useEffect(() => {
+    setHostNext([]);
+    if (!isOver || !evOrganizerId || preview) return undefined;
+    let live = true;
+    withR2Columns(() => supabase.from('events').select(['id, name, starts_at, status', ...marketColumnList()].join(', '))
+      .eq('organizer_id', evOrganizerId).eq('status', 'live').gt('starts_at', new Date().toISOString())
+      .order('starts_at', { ascending: true }).limit(4))
+      .then(({ data }) => {
+        if (!live || !data) return;
+        const rows = data.map(r => ({ key: r.id, name: r.name, status: r.status, startsAt: r.starts_at, tz: rowTimeZone(r) }));
+        setHostNext(nextFromHost(rows, Date.now(), ev.key));
+      }, () => {});
+    return () => { live = false; };
+  }, [isOver, evOrganizerId, ev.key, preview]);
 
   // Ngày / Giờ tiles: `when` is "Th 4, 04.11 ▪︎ 20:00" for both catalogue and real events.
   const [whenDate, whenTime] = (ev.when || '').split(' ▪︎ ');
@@ -636,6 +662,31 @@ export default function EventDetail({ preview = null } = {}) {
                   <span key={i}>{i > 0 && <span aria-hidden style={{ color: clay, margin: '0 8px' }}>▪︎</span>}{label}</span>
                 ))}
               </p>
+            )}
+          </div>
+        )}
+        {isOver && !preview && evOrganizerId && (
+          <div data-testid="event-ended-next" style={{ marginTop: 28 }}>
+            <button type="button" onClick={() => toggleFollowOrganizer(evOrganizerId)} data-testid="event-ended-follow" aria-pressed={evOrgFollowed}
+              style={{ ...pillBtn, width: '100%', padding: '11px 14px', border: `1px solid ${clay}`, background: evOrgFollowed ? clayBg : 'transparent', fontSize: 14, fontWeight: 600, color: clay }}>
+              <IconHost />{evOrgFollowed ? T('Đang theo dõi host ✓', 'Following this host ✓') : T('Theo dõi host', 'Follow host')}
+            </button>
+            {hostNext.length > 0 && (
+              <>
+                <div style={{ ...sectionHeading, marginTop: 24 }}>{T('Sự kiện tiếp theo của host', 'Next from this host')}</div>
+                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column' }}>
+                  {hostNext.map((r, i) => (
+                    <div key={r.key} onClick={() => { scrollerRef.current?.scrollTo?.({ top: 0 }); goEvent(r.key); }} role="button" data-testid={`event-ended-next-${i}`}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '11px 0', borderTop: i > 0 ? `1px solid ${softRule}` : 'none', cursor: 'pointer' }}>
+                      <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span style={{ ...display(15), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+                        <span style={{ fontSize: 12.5, color: ink, opacity: 0.65 }}>{whenLabel(r.startsAt, r.tz, s.lang === 'en')}</span>
+                      </span>
+                      <span aria-hidden style={{ color: clay, fontSize: 16, flex: 'none' }}>›</span>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}

@@ -1,0 +1,30 @@
+{
+  "_comment": "Shared parity vectors for Phase 2-3 clients (docs/impl/phase2-core-loops.md, phase3-extras.md). Read by tests/unit/coreLoops.test.mjs (web) and apps/ios/BanbeAppTests/CoreLoopsTests.swift (iOS).",
+  "notificationRoutes": [
+    { "kind": "event_reminder_day", "data": { "event_id": "e1", "booking_id": "b1" }, "route": "ticket", "id": "b1" },
+    { "kind": "event_reminder_soon", "data": { "event_id": "e1", "booking_id": "b1" }, "route": "ticket", "id": "b1" },
+    { "kind": "event_recap", "data": { "event_id": "e1" }, "route": "eventRecap", "id": "e1" },
+    { "kind": "host_event_recap", "data": { "event_id": "e1" }, "route": "hostRecap", "id": "e1" },
+    { "kind": "follow_alert", "data": { "event_id": "e1", "count": 1 }, "route": "event", "id": "e1" },
+    { "kind": "follow_alert", "data": { "event_id": "e1", "count": 3 }, "route": "following", "id": null },
+    { "kind": "weekly_digest", "data": { "screen": "this_weekend", "count": 4 }, "route": "thisWeekend", "id": null }
+  ],
+  "runItAgain": [
+    { "case": "same weekday next week", "eventDate": "2027-03-06", "eventTime": "19:00", "today": "2027-03-08", "expectDate": "2027-03-13", "expectTime": "19:00" },
+    { "case": "never in the past: first matching weekday at least 2 days ahead", "eventDate": "2027-01-02", "eventTime": "18:30", "today": "2027-03-08", "expectDate": "2027-03-13", "expectTime": "18:30" },
+    { "case": "upcoming event: one week after it", "eventDate": "2027-03-20", "eventTime": "20:00", "today": "2027-03-08", "expectDate": "2027-03-27", "expectTime": "20:00" }
+  ],
+  "feedback": { "noteMax": 500, "ratings": [1, -1], "openDays": 14, "hostMinResponses": 3 },
+  "intentTitles": [
+    { "goal": "meet_people", "vi": "Gặp gỡ mọi người", "en": "Meet new people", "whyVi": "Vì bạn muốn gặp gỡ mọi người", "whyEn": "Because you said you want to meet people" },
+    { "goal": "learn", "vi": "Học điều mới", "en": "Learn something new", "whyVi": "Vì bạn muốn học hỏi", "whyEn": "Because you said you want to learn something" },
+    { "goal": "experiences", "vi": "Trải nghiệm đáng nhớ", "en": "Experiences to enjoy", "whyVi": "Vì bạn muốn tận hưởng trải nghiệm", "whyEn": "Because you said you want to enjoy experiences" },
+    { "goal": "networking", "vi": "Kết nối nghề nghiệp", "en": "Grow your network", "whyVi": "Vì bạn muốn kết nối nghề nghiệp", "whyEn": "Because you said you want professional networking" },
+    { "goal": null, "vi": "Dành cho bạn", "en": "For You", "whyVi": null, "whyEn": null }
+  ],
+  "shareText": [
+    { "market": "VN", "name": "Đêm nhạc Jazz", "when": "Th 7, 06.03 ▪︎ 19:00", "url": "https://www.banbe.app/e/jazz-1", "text": "Đêm nhạc Jazz ▪︎ Th 7, 06.03 ▪︎ 19:00\nhttps://www.banbe.app/e/jazz-1" },
+    { "market": "US", "name": "Jazz Night", "when": "Sat, Mar 6 ▪︎ 7:00 PM", "url": "https://www.banbe.app/e/jazz-1", "text": "Jazz Night ▪︎ Sat, Mar 6 ▪︎ 7:00 PM\nhttps://www.banbe.app/e/jazz-1", "sms": "sms:&body=Jazz%20Night%20%E2%96%AA%EF%B8%8E%20Sat%2C%20Mar%206%20%E2%96%AA%EF%B8%8E%207%3A00%20PM%0Ahttps%3A%2F%2Fwww.banbe.app%2Fe%2Fjazz-1" }
+  ],
+  "liveActivity": { "startHoursBefore": 6, "endHoursAfterStart": 12 }
+}

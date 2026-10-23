@@ -1232,13 +1232,13 @@ function SubmitSuccessChooser({ T, onCreateAnother, onGoHome, onViewPending, onG
       style={{ border: 'none', borderRadius: 18, padding: 0, maxWidth: 320, width: '88%', background: paper, color: ink }}
     >
       {/* The end of creating an event is its peak (note 53, peak-end rule): a moment of celebration, then what
-          happens next, honestly. The event is still pending review, so there's no link to share yet. */}
+          happens next, honestly. The event is still pending review, so there's no link to share yet: the copy says sharing opens at approval (Phase 1 Q5). */}
       <div style={{ padding: 22, position: 'relative' }}>
         <ConfettiBurst top={30} />
         <div aria-hidden style={{ fontSize: 40, lineHeight: 1, textAlign: 'center' }}>🎉</div>
         <p style={{ ...display(20, { margin: '10px 0 4px', textAlign: 'center' }) }}>{T('Đã gửi sự kiện!', 'Event submitted!')}</p>
         <p data-testid="submit-next-steps" style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, opacity: 0.8, margin: '0 0 18px', textAlign: 'center' }}>
-          {T('✓ Đã gửi  →  banbe duyệt  →  lên sóng, bạn sẽ nhận thông báo. Bạn muốn làm gì tiếp theo?', "✓ Sent  →  banbe reviews it  →  it goes live and we'll notify you. What would you like to do next?")}
+          {T('✓ Đã gửi  →  banbe duyệt  →  lên sóng, bạn sẽ nhận thông báo. Bạn có thể chia sẻ sự kiện ngay khi banbe duyệt. Bạn muốn làm gì tiếp theo?', "✓ Sent  →  banbe reviews it  →  it goes live and we'll notify you. Sharing opens once banbe approves it. What would you like to do next?")}
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button onClick={onCreateAnother} data-testid="submit-chooser-create-another" style={rowBtnStyle}>{T('Tạo sự kiện khác', 'Create another event')}</button>

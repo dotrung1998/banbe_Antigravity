@@ -51,13 +51,16 @@ export function currencyUnavailable(ev) {
   return !paidBookingAvailable(currency, unit);
 }
 
-// First match wins, in the order the old inline label chain used: a booking beats every closed state, cancelled
-// beats ended/sold out (a cancelled event's stale seats_remaining can say either), a paid event nobody can book
-// yet (currencyUnavailable) comes next, and the criteria block applies only when nothing else does.
+// First match wins. An event that is over says so first (Phase 1 Q3, tests/fixtures/quick-wins.json
+// `endedPrecedence`): 'endedAttended' ("You went ✓") for a confirmed ticket, else 'ended', and a cancellation still
+// wins over both. Before that, a booking beats every closed state (a cancelled event keeps its payment status
+// reachable for the refund), cancelled beats sold out (a cancelled event's stale seats_remaining can say either), a
+// paid event nobody can book yet (currencyUnavailable) comes next, and the criteria block applies only when nothing
+// else does.
 export function reserveBarState({ booking, ticket, cancelled, ended, soldOut, currencyUnavailable: noCurrency, blocked }) {
+  if (ended) return cancelled ? 'cancelled' : (booking && ticket ? 'endedAttended' : 'ended');
   if (booking) return ticket ? 'ticket' : 'pending';
   if (cancelled) return 'cancelled';
-  if (ended) return 'ended';
   if (soldOut) return 'soldOut';
   if (noCurrency) return 'currencyUnavailable';
   if (blocked) return 'blocked';

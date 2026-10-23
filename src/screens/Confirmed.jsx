@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
@@ -12,6 +12,9 @@ import { giftPdfData, isAppleWalletBrowser, addToAppleWallet, walletErrorMessage
 import { BookingJourneyProgress } from '../components/ui/FormControls.jsx';
 import { track, ticketDayBucket } from '../lib/analytics.js';
 import { rowTimeZone } from '../lib/eventMarket.js';
+import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
+import { claimOnce, typicalWaitText, isCheckedIn } from '../lib/quickWins.js';
+import { mapsUrl } from '../data/events.js';
 
 export default function Confirmed() {
   const {
@@ -29,7 +32,8 @@ export default function Confirmed() {
   // TASK B (2026-10-01 UX foundation pass) — the ticket/QR is only ever
   // real once BOTH booking.status AND payment_state read 'confirmed'; see
   // isBookingTicket()'s own doc comment (src/lib/bookingTicket.js).
-  const isPaid = isBookingTicket(s.booking);
+  // A checked-in booking is 'attended' (check_in_guest, migration 021) and is still the same paid ticket.
+  const isPaid = isBookingTicket(s.booking) || (s.booking?.status === 'attended' && s.booking?.payment_state === 'confirmed');
   const isHolding = phase === 'holding';
   const isPendingVerification = phase === 'pending_verification';
   const isDisputed = phase === 'disputed';
@@ -152,6 +156,72 @@ export default function Confirmed() {
     return () => { live = false; };
   }, [isPaid, s.booking?.id]);
   const toggleSel = (id) => setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  // Phase 1 quick wins (src/lib/quickWins.js). Q1: the first time this device shows a confirmed ticket for a booking,
+  // a short reveal; Q4: the first time it sees that booking checked in, "You're in". Each once per booking per device
+  // (claimOnce), confetti hidden and the card only fading in under reduced motion, announced through aria-live.
+  const checkedIn = isPaid && isCheckedIn(s.booking, attendees);
+  const [moment, setMoment] = useState(null); // { kind: 'ticket' | 'checkIn', bookingId }
+  useEffect(() => {
+    const id = s.booking?.id;
+    if (!isPaid || !id) return;
+    if (checkedIn) {
+      claimOnce('ticketReveal', id); // a ticket first seen at the door goes straight to the check-in moment
+      if (claimOnce('checkIn', id)) setMoment({ kind: 'checkIn', bookingId: id });
+    } else if (claimOnce('ticketReveal', id)) {
+      setMoment({ kind: 'ticket', bookingId: id });
+    }
+  }, [isPaid, checkedIn, s.booking?.id]);
+  const shownMoment = moment && moment.bookingId === s.booking?.id ? moment.kind : null;
+  const reduceMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  // While the event is about to start or under way, the ticket screen watches for the door scan (same 6s convention
+  // as the polls above); it stops once checked in. Outside that window nothing is polled.
+  const startMs = ev?.startDate instanceof Date ? ev.startDate.getTime() : NaN;
+  const nearDoor = Number.isFinite(startMs) && Date.now() > startMs - 3 * 3600000 && Date.now() < startMs + 12 * 3600000;
+  useEffect(() => {
+    if (!isPaid || checkedIn || !nearDoor || !s.booking?.id) return undefined;
+    const bookingId = s.booking.id;
+    const id = setInterval(async () => {
+      const { data } = await supabase.from('bookings').select('*').eq('id', bookingId).maybeSingle();
+      if (data && data.status !== s.booking?.status) set(prev => (prev.booking?.id === bookingId ? { booking: data } : {}));
+      if (hasNamed) loadBookingAttendees(bookingId);
+    }, 6000);
+    return () => clearInterval(id);
+  }, [isPaid, checkedIn, nearDoor, s.booking?.id, s.booking?.status, hasNamed, set, loadBookingAttendees]);
+
+  // Q2 honest waiting: this host's typical confirmation time (get_host_confirmation_time, migration 198), asked once
+  // per screen open; below 5 confirmations, on error or before the migration exists, nothing extra is shown.
+  const [typicalWait, setTypicalWait] = useState(null);
+  const waitAskedFor = useRef(null);
+  useEffect(() => {
+    const eventId = s.booking?.event_id;
+    if (!isPendingVerification || !eventId || waitAskedFor.current === s.booking.id) return undefined;
+    waitAskedFor.current = s.booking.id;
+    let live = true;
+    supabase.rpc('get_host_confirmation_time', { p_event_id: eventId })
+      .then(({ data, error }) => { if (live && !error && data?.success) setTypicalWait(typicalWaitText(data.median_minutes)); }, () => {});
+    return () => { live = false; };
+  }, [isPendingVerification, s.booking?.id, s.booking?.event_id]);
+
+  // Q1 "Next": the venue (with directions when the event has a pin) and the host's own note to guests, if they wrote
+  // one (events.chat_greeting, migration 156; never the built-in default). Read once per ticket.
+  const [hostNote, setHostNote] = useState({ vi: '', en: '', address: '' });
+  useEffect(() => {
+    const eventId = s.booking?.event_id;
+    setHostNote({ vi: '', en: '', address: '' });
+    if (!isPaid || !eventId) return undefined;
+    let live = true;
+    (async () => {
+      let res = await supabase.from('events').select('address_line, chat_greeting, chat_greeting_en').eq('id', eventId).maybeSingle();
+      if (res.error) res = await supabase.from('events').select('address_line').eq('id', eventId).maybeSingle();
+      if (!live || !res.data) return;
+      setHostNote({ vi: (res.data.chat_greeting || '').trim(), en: (res.data.chat_greeting_en || '').trim(), address: (res.data.address_line || '').trim() });
+    })().catch(() => {});
+    return () => { live = false; };
+  }, [isPaid, s.booking?.event_id]);
+  const noteText = s.lang === 'en' ? (hostNote.en || hostNote.vi) : (hostNote.vi || hostNote.en);
+  const placeText = hostNote.address || trStatus(stripKm(ev.where, ev));
+  const directionsUrl = mapsUrl(ev);
 
   const eventStart = ev.startDate || new Date();
   const calUrl = googleCalendarUrl({
@@ -289,6 +359,18 @@ export default function Confirmed() {
           </div>
         )}
 
+        {isPendingVerification && (
+          <div style={{ ...cardGlass({ marginTop: 12, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 6 }) }} data-testid="confirmed-what-next">
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: ink }}>{T('Tiếp theo là gì', 'What happens next')}</span>
+            <span style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.8 }}>
+              {T('Host kiểm tra khoản chuyển khoản và xác nhận. Chúng tôi sẽ báo cho bạn.', "The host checks the transfer and confirms. We'll notify you.")}
+            </span>
+            {typicalWait && (
+              <span style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.8 }} data-testid="confirmed-typical-wait">{T(typicalWait.vi, typicalWait.en)}</span>
+            )}
+          </div>
+        )}
+
         {isDisputed && (
           <div style={{ ...cardGlass({ marginTop: 22, padding: '16px 18px' }) }} data-testid="confirmed-disputed">
             <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{T('banbe đang xem xét', 'banbe is reviewing this')}</span>
@@ -325,6 +407,19 @@ export default function Confirmed() {
             <span style={{ fontSize: 17, color: ink, flex: 'none', lineHeight: 1 }}>›</span>
           </div>
         )}
+        {/* Q1/Q4 moment: a short peak, then the calm ticket below. Polite, so it never interrupts a screen reader. */}
+        <div role="status" aria-live="polite" style={{ position: 'relative' }}>
+          {shownMoment && (
+            <div key={shownMoment} data-testid={shownMoment === 'ticket' ? 'confirmed-ticket-reveal' : 'confirmed-checkin-moment'}
+              style={{ ...cardGlass({ marginTop: 22, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 12, position: 'relative' }), animation: reduceMotion ? 'banbeFade 0.4s ease both' : 'bbPopIn 0.42s cubic-bezier(.22,.61,.36,1) both' }}>
+              <ConfettiBurst top={18} />
+              <span aria-hidden style={{ fontSize: 26, lineHeight: 1, flex: 'none' }}>{shownMoment === 'ticket' ? '🎟️' : '✓'}</span>
+              <span style={{ ...display(18, { lineHeight: 1.3 }) }}>
+                {shownMoment === 'ticket' ? T('Vé của bạn đã sẵn sàng', 'Your ticket is ready') : T('Bạn đã vào cửa. Chúc bạn vui!', "You're in. Enjoy tonight!")}
+              </span>
+            </div>
+          )}
+        </div>
         {isPaid && hasNamed ? (
           <div style={{ marginTop: 28, borderTop: `1px solid ${rule}`, paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }} data-testid="confirmed-attendee-tickets">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
@@ -412,6 +507,30 @@ export default function Confirmed() {
             the same shared Banbe loading GIF, at half its previous pixel
             size (public/banbe-loading.gif was resized 380x297 -> 190x148,
             not just displayed smaller) per this follow-up's own request. */}
+        {/* Q1 calm ending: where to go and what the host said. Calendar and "Give a ticket" are the rows below. */}
+        {isPaid && !isGifted && (
+          <div style={{ marginTop: 22, display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="confirmed-next">
+            <span style={{ ...display(17) }}>{T('Tiếp theo', 'Next')}</span>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Địa điểm', 'Place')}</span>
+                <span style={{ fontSize: 13, lineHeight: 1.45, color: ink, overflowWrap: 'anywhere' }}>{placeText}</span>
+              </div>
+              {directionsUrl && (
+                <a href={directionsUrl} target="_blank" rel="noopener noreferrer" data-testid="confirmed-directions"
+                  style={{ flex: 'none', fontSize: 12.5, fontWeight: 600, color: ink, textDecoration: 'none', padding: '8px 12px', borderRadius: 999, background: 'var(--bb-field)' }}>
+                  {T('Chỉ đường', 'Directions')} ↗
+                </a>
+              )}
+            </div>
+            {noteText && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }} data-testid="confirmed-host-note">
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Lời nhắn từ host', 'Note from the host')}</span>
+                <span style={{ fontSize: 13, lineHeight: 1.5, color: ink, whiteSpace: 'pre-wrap' }}>{noteText}</span>
+              </div>
+            )}
+          </div>
+        )}
         <div style={{ flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 20, paddingBottom: 24 }}>
           <BanbeLoadingVisual size={190} />
         </div>

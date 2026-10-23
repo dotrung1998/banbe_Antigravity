@@ -25,6 +25,18 @@ struct ConfirmedView: View {
     @State private var selectedAttendeeIDs: Set<UUID> = []
     /// ticket_opened is counted once per confirmed ticket shown (migration 196).
     @State private var ticketOpenedFor: UUID?
+    // Phase 1 quick wins (Lib/QuickWins.swift). Q1/Q4: the moment shown for this booking (once per booking per device).
+    @State private var moment: (kind: MomentKind, bookingID: UUID)?
+    // Q2: this host's typical confirmation time, asked once per screen open.
+    @State private var typicalWait: (vi: String, en: String)?
+    @State private var waitAskedFor: UUID?
+    // Q1 "Next": venue address + the host's own note, read once per ticket.
+    @State private var nextInfo = AppState.TicketNextInfo()
+    @State private var nextInfoFor: UUID?
+    // Q4: while the event is about to start or under way, watch for the door scan (6s, like the polls below).
+    @State private var doorPollTask: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private enum MomentKind { case ticket, checkIn }
 
     private var event: CatalogEvent { app.currentEvent }
     /// This booking's named tickets, once loaded. Empty for a booking made
@@ -46,8 +58,12 @@ struct ConfirmedView: View {
     // that once had paidMarkedAt set as still "paid".
     private var isPaid: Bool {
         guard let booking = app.booking else { return false }
+        // A checked-in booking is "attended" (check_in_guest, migration 021) and is still the same paid ticket.
         return booking.isTicket || (booking.paidMarkedAt != nil && booking.status == "confirmed")
+            || (booking.status == "attended" && booking.paymentState == .confirmed)
     }
+    private var checkedIn: Bool { isPaid && QuickWins.isCheckedIn(app.booking, attendees: attendees) }
+    private var shownMoment: MomentKind? { moment?.bookingID == app.booking?.id ? moment?.kind : nil }
     private var isHolding: Bool { app.booking != nil && phase == .holding }
     private var isPendingVerification: Bool { phase == .pendingVerification }
     private var isDisputed: Bool { phase == .disputed }
@@ -188,6 +204,27 @@ struct ConfirmedView: View {
                             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .padding(.top, 22)
                             .accessibilityIdentifier("confirmed.verifyCountdown")
+
+                            // Q2 honest waiting: what happens next, and this host's typical time when it's real data.
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(app.T("Tiếp theo là gì", "What happens next"))
+                                    .font(.system(size: 12.5, weight: .semibold))
+                                Text(app.T("Host kiểm tra khoản chuyển khoản và xác nhận. Chúng tôi sẽ báo cho bạn.",
+                                           "The host checks the transfer and confirms. We'll notify you."))
+                                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.8))
+                                if let typicalWait {
+                                    Text(app.T(typicalWait.vi, typicalWait.en))
+                                        .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.8))
+                                        .accessibilityIdentifier("confirmed.typicalWait")
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 18).padding(.vertical, 14)
+                            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .padding(.top, 12)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("confirmed.whatNext")
                         }
 
                         if isDisputed {
@@ -252,6 +289,13 @@ struct ConfirmedView: View {
                             .accessibilityIdentifier("confirmed.pay")
                         }
 
+                        // Q1/Q4 moment: a short peak, then the calm ticket below.
+                        if let kind = shownMoment {
+                            momentCard(kind)
+                                .padding(.top, 22)
+                                .transition(reduceMotion ? .opacity : .scale(scale: 0.92).combined(with: .opacity))
+                        }
+
                         Divider().overlay(app.palette.rule).padding(.top, 28)
 
                         if isPaid && hasNamedAttendees && app.booking?.isGifted != true {
@@ -307,6 +351,10 @@ struct ConfirmedView: View {
                         // Banbe loading GIF, at half its previous pixel
                         // size (public/banbe-loading.gif was resized
                         // 380x297 -> 190x148, not just displayed smaller).
+                        if isPaid, app.booking?.isGifted != true {
+                            nextBlock.padding(.top, 22)
+                        }
+
                         HStack {
                             Spacer()
                             BanbeLoadingVisual(size: 190)
@@ -418,13 +466,15 @@ struct ConfirmedView: View {
         }
         // Q6: a confirmed ticket on screen is the moment a reminder is useful (once per account per device, switch on).
         .sheet(isPresented: $app.pushAskPresented) { PushAskSheet().environmentObject(app) }
-        .onAppear { startPollingIfNeeded(); refreshReceiptStatusIfNeeded(); loadAttendeesIfNeeded(); app.offerPushAskIfAppropriate(hasConfirmedTicket: isPaid); trackTicketOpened() }
-        .onChange(of: app.booking?.id) { _, _ in startPollingIfNeeded(); refreshReceiptStatusIfNeeded(); loadAttendeesIfNeeded(); trackTicketOpened() }
-        .onChange(of: isPaid) { _, paid in refreshReceiptStatusIfNeeded(); app.offerPushAskIfAppropriate(hasConfirmedTicket: paid); trackTicketOpened() }
+        .onAppear { startPollingIfNeeded(); refreshReceiptStatusIfNeeded(); loadAttendeesIfNeeded(); app.offerPushAskIfAppropriate(hasConfirmedTicket: isPaid); trackTicketOpened(); quickWinsRefresh() }
+        .onChange(of: app.booking?.id) { _, _ in startPollingIfNeeded(); refreshReceiptStatusIfNeeded(); loadAttendeesIfNeeded(); trackTicketOpened(); quickWinsRefresh() }
+        .onChange(of: isPaid) { _, paid in refreshReceiptStatusIfNeeded(); app.offerPushAskIfAppropriate(hasConfirmedTicket: paid); trackTicketOpened(); quickWinsRefresh() }
+        .onChange(of: checkedIn) { _, _ in quickWinsRefresh() }
+        .onChange(of: isPendingVerification) { _, _ in quickWinsRefresh() }
         .onChange(of: phase) { _, newPhase in
             if newPhase == .confirmed { pollTask?.cancel() } else { startPollingIfNeeded() }
         }
-        .onDisappear { pollTask?.cancel(); receiptPollTask?.cancel() }
+        .onDisappear { pollTask?.cancel(); receiptPollTask?.cancel(); doorPollTask?.cancel() }
         .onChange(of: app.receiptDoc) { _, _ in startReceiptPollingIfNeeded() }
         // app.now ticks every second app-wide, which is what drives
         // `countdown` above — the moment it notices this screen's own
@@ -501,6 +551,139 @@ struct ConfirmedView: View {
             Task { await app.openDocumentFromNotification(doc.id, backTo: .confirmed) }
         } else if !app.receiptRequestSent, let bookingID = app.booking?.id {
             Task { await app.requestReceipt(bookingID: bookingID) }
+        }
+    }
+
+    // MARK: Phase 1 quick wins (same rules as web Confirmed.jsx)
+
+    /// Runs every per-booking quick win once the booking/phase settles: the once-only moment, the honest-wait
+    /// lookup, the "Next" details and the door watch.
+    private func quickWinsRefresh() {
+        evaluateMoment()
+        loadTypicalWaitIfNeeded()
+        loadNextInfoIfNeeded()
+        startDoorPollIfNeeded()
+    }
+
+    /// Q1: the first time this device shows a confirmed ticket for a booking, "Your ticket is ready"; Q4: the first
+    /// time it sees that booking checked in, "You're in". A ticket first seen at the door goes straight to Q4.
+    private func evaluateMoment() {
+        guard isPaid, let id = app.booking?.id else { return }
+        let key = id.uuidString
+        var kind: MomentKind?
+        if checkedIn {
+            QuickWins.claimOnce(.ticketReveal, key)
+            if QuickWins.claimOnce(.checkIn, key) { kind = .checkIn }
+        } else if QuickWins.claimOnce(.ticketReveal, key) {
+            kind = .ticket
+        }
+        guard let kind else { return }
+        withAnimation(reduceMotion ? .easeOut(duration: 0.3) : .spring(response: 0.42, dampingFraction: 0.78)) {
+            moment = (kind, id)
+        }
+        if kind == .ticket { Haptics.success() } else { Haptics.light() }
+        UIAccessibility.post(notification: .announcement, argument: momentTitle(kind))
+    }
+
+    private func momentTitle(_ kind: MomentKind) -> String {
+        kind == .ticket ? app.T("Vé của bạn đã sẵn sàng", "Your ticket is ready")
+                        : app.T("Bạn đã vào cửa. Chúc bạn vui!", "You're in. Enjoy tonight!")
+    }
+
+    private func momentCard(_ kind: MomentKind) -> some View {
+        HStack(spacing: 12) {
+            Text(kind == .ticket ? "🎟️" : "✓").font(.system(size: 26)).accessibilityHidden(true)
+            Text(momentTitle(kind)).font(BanbeTheme.display(18))
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(alignment: .top) { ConfettiBurst().padding(.top, 18) }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(kind == .ticket ? "confirmed.ticketReveal" : "confirmed.checkInMoment")
+    }
+
+    /// Q2: get_host_confirmation_time once per screen open; nothing extra on error or below 5 confirmations.
+    private func loadTypicalWaitIfNeeded() {
+        guard isPendingVerification, let booking = app.booking, waitAskedFor != booking.id else { return }
+        waitAskedFor = booking.id
+        let eventID = booking.eventId
+        Task { @MainActor in
+            let minutes = await app.hostConfirmationMinutes(eventID: eventID)
+            guard app.booking?.id == booking.id else { return }
+            typicalWait = QuickWins.typicalWaitText(minutes: minutes)
+        }
+    }
+
+    private func loadNextInfoIfNeeded() {
+        guard isPaid, let booking = app.booking, nextInfoFor != booking.id else { return }
+        nextInfoFor = booking.id
+        nextInfo = AppState.TicketNextInfo()
+        let eventID = booking.eventId
+        Task { @MainActor in
+            let info = await app.ticketNextInfo(eventID: eventID)
+            guard app.booking?.id == booking.id else { return }
+            nextInfo = info
+        }
+    }
+
+    /// Q1 calm ending: where to go and what the host said. Calendar and "Give a ticket" are the rows below.
+    private var nextBlock: some View {
+        let note = app.lang == "en" ? (nextInfo.noteEn.isEmpty ? nextInfo.noteVi : nextInfo.noteEn)
+                                    : (nextInfo.noteVi.isEmpty ? nextInfo.noteEn : nextInfo.noteVi)
+        let place = nextInfo.address.isEmpty ? app.trStatus(app.stripKm(event.where, event: event)) : nextInfo.address
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(app.T("Tiếp theo", "Next")).font(BanbeTheme.display(17))
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(app.T("Địa điểm", "Place")).font(.system(size: 11.5, weight: .semibold)).opacity(0.65)
+                    Text(place).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                if let url = event.mapsURL {
+                    Link(destination: url) {
+                        Text(app.T("Chỉ đường", "Directions") + " ↗")
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(app.palette.field, in: Capsule())
+                    }
+                    .accessibilityIdentifier("confirmed.directions")
+                }
+            }
+            if !note.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(app.T("Lời nhắn từ host", "Note from the host")).font(.system(size: 11.5, weight: .semibold)).opacity(0.65)
+                    Text(note).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("confirmed.hostNote")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("confirmed.next")
+    }
+
+    /// Q4: from 3h before the start to 12h after, re-read the booking (and its named tickets) every 6s until it is
+    /// checked in. Outside that window nothing is polled.
+    private func startDoorPollIfNeeded() {
+        doorPollTask?.cancel()
+        guard isPaid, !checkedIn, let bookingID = app.booking?.id, let start = event.startDate else { return }
+        let now = Date()
+        guard now > start.addingTimeInterval(-3 * 3600), now < start.addingTimeInterval(12 * 3600) else { return }
+        let named = hasNamedAttendees
+        doorPollTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                if Task.isCancelled { return }
+                guard app.booking?.id == bookingID, !checkedIn else { return }
+                if let fresh: Booking = try? await SupabaseService.client
+                    .from("bookings").select().eq("id", value: bookingID.uuidString)
+                    .single().execute().value,
+                   app.booking?.id == bookingID, fresh.status != app.booking?.status {
+                    app.booking = fresh
+                }
+                if named { await app.loadBookingAttendees(bookingID) }
+            }
         }
     }
 

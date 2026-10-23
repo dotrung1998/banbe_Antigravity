@@ -32,6 +32,25 @@ final class ReserveBarTests: XCTestCase {
         XCTAssertEqual(s(blocked: true), .blocked)
     }
 
+    /// Phase 1 Q3: shared vectors in tests/fixtures/quick-wins.json (`endedPrecedence`), same as the web test.
+    func testEndedWinsOverTheTicket() throws {
+        var url = URL(fileURLWithPath: #filePath)
+        for _ in 0..<4 { url.deleteLastPathComponent() }
+        let data = try Data(contentsOf: url.appendingPathComponent("tests/fixtures/quick-wins.json"))
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let vectors = try XCTUnwrap(root["endedPrecedence"] as? [[String: Any]])
+        XCTAssertFalse(vectors.isEmpty)
+        for v in vectors {
+            let got = ReserveBar.state(booking: v["booking"] as? Bool ?? false, ticket: v["ticket"] as? Bool ?? false,
+                                       cancelled: v["cancelled"] as? Bool ?? false, ended: v["ended"] as? Bool ?? false,
+                                       soldOut: v["soldOut"] as? Bool ?? false, blocked: false)
+            XCTAssertEqual(got.rawValue, v["expect"] as? String, v["case"] as? String ?? "")
+        }
+        XCTAssertEqual(ReserveBar.state(booking: true, ticket: true, cancelled: false, ended: true, soldOut: true, blocked: true), .endedAttended)
+        XCTAssertEqual(ReserveBar.state(booking: false, ticket: false, cancelled: false, ended: true, soldOut: true,
+                                        currencyUnavailable: true, blocked: true), .ended)
+    }
+
     func testTotalFollowsTheEventsCurrency() {
         XCTAssertEqual(ReserveBar.totalPrice(amount: 200_000, currency: "VND", qty: 2), "400.000₫")
         XCTAssertEqual(ReserveBar.totalPrice(amount: 1250, currency: "USD", qty: 2), "$25")

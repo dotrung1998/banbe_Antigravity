@@ -592,6 +592,36 @@ struct AccountView: View {
             }
             .padding(.top, 14)
 
+            // Phase 1 Q7 — iOS parity of web Account.jsx "Invite friends": shares this account's own
+            // https://www.banbe.app/?ref=<code> link. No reward, so nothing is promised.
+            if app.referralLink != nil {
+                groupedContainer {
+                    SwipeSafeButton { app.shareReferral() } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "person.2").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(app.T("Mời bạn bè", "Invite friends")).font(BanbeTheme.display(16))
+                                Text(app.T("Rủ bạn bè cùng tham gia banbe qua link riêng của bạn.", "Bring friends onto banbe with your own link."))
+                                    .font(.system(size: 11.5)).opacity(0.7)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 8)
+                            Text(app.T("Chia sẻ", "Share"))
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(app.palette.paper)
+                                .padding(.horizontal, 16).padding(.vertical, 9)
+                                .background(app.palette.ink, in: Capsule())
+                        }
+                        .foregroundStyle(app.palette.ink)
+                        .padding(.horizontal, 16).padding(.vertical, 14)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("account.inviteFriends")
+                }
+                .padding(.top, 20)
+            }
+
             // Account IA reorder pass (2026-09-30 second) — second cluster:
             // account-level settings. The `team` group card used to always
             // render here — REMOVED wholesale (not simply moved into

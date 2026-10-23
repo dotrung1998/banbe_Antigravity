@@ -10,7 +10,8 @@ enum ReserveBar {
 
     /// `currencyUnavailable`: a PAID event in a currency banbe can't take bookings in yet (USD, migration 195) —
     /// a clear disabled bar, never an error after tapping.
-    enum State: String { case ticket, pending, cancelled, ended, soldOut, currencyUnavailable, blocked, reserve }
+    /// `endedAttended` / `ended` (Phase 1 Q3): the event is over, with or without a confirmed ticket ("You went ✓").
+    enum State: String { case ticket, pending, cancelled, endedAttended, ended, soldOut, currencyUnavailable, blocked, reserve }
 
     /// "200.000₫" / "Miễn phí" / "Free" -> (free, unit in VND; 0 when free or unparseable).
     static func parsePrice(_ price: String) -> (free: Bool, unit: Int) {
@@ -33,15 +34,17 @@ enum ReserveBar {
         amount <= 0 ? "Miễn phí" : EventMarket.formatMoney(amount * max(1, qty), currency: currency)
     }
 
-    /// First match wins, in the order the old inline chain used: a booking beats every closed state, cancelled beats
-    /// ended/sold out (a cancelled event's stale seatsRemaining can say either), a paid booking that isn't open in the
-    /// event's currency beats the criteria block (meeting the criteria wouldn't make it bookable), and the criteria
-    /// block applies only when nothing else does.
+    /// First match wins. An event that is over says so first (Phase 1 Q3, tests/fixtures/quick-wins.json
+    /// `endedPrecedence`): `.endedAttended` ("You went ✓") for a confirmed ticket, else `.ended`, and a cancellation
+    /// still wins over both. Before that, a booking beats every closed state (a cancelled event keeps its payment
+    /// status reachable for the refund), cancelled beats sold out (a cancelled event's stale seatsRemaining can say
+    /// either), a paid booking that isn't open in the event's currency beats the criteria block (meeting the criteria
+    /// wouldn't make it bookable), and the criteria block applies only when nothing else does.
     static func state(booking: Bool, ticket: Bool, cancelled: Bool, ended: Bool, soldOut: Bool,
                       currencyUnavailable: Bool = false, blocked: Bool) -> State {
+        if ended { return cancelled ? .cancelled : (booking && ticket ? .endedAttended : .ended) }
         if booking { return ticket ? .ticket : .pending }
         if cancelled { return .cancelled }
-        if ended { return .ended }
         if soldOut { return .soldOut }
         if currencyUnavailable { return .currencyUnavailable }
         if blocked { return .blocked }

@@ -56,6 +56,9 @@ struct Profile: Codable, Identifiable, Hashable {
     // model. Optional only because a row from before this migration has
     // no such column.
     var canManageAdmins: Bool?
+    /// This account's own invite code (migration 023), shared as https://www.banbe.app/?ref=<code> from Account
+    /// (Phase 1 Q7). Optional: a row selected before that migration has no such column.
+    var referralCode: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -82,6 +85,7 @@ struct Profile: Codable, Identifiable, Hashable {
         case socialLinks = "social_links"
         case organizerModeEnabled = "organizer_mode_enabled"
         case canManageAdmins = "can_manage_admins"
+        case referralCode = "referral_code"
     }
 }
 

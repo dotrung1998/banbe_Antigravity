@@ -653,6 +653,8 @@ extension AppState {
         }
 
         await loadMyEvents()
+        // Phase 1 Q7: an invite link opened before (or right after) sign-in is redeemed now, once.
+        await redeemPendingReferralIfNeeded()
         await loadNotifications()
         startNotificationPolling()
         resumePushRegistrationIfAllowed()
@@ -2236,11 +2238,22 @@ extension AppState {
             // Event review queue — DashboardView is the one place the host
             // can already see their own real event's status/rejection
             // reason, same per-event ownership guard as every other
-            // organizer-bound kind here.
+            // organizer-bound kind here. Phase 1 Q5: an approval also asks
+            // the dashboard for that event's "live" card (once per event).
             if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key) {
+                if notification.kind == "event_approved" { liveCelebrationEventID = key }
                 goDashboard()
             }
-        case "hold_created", "payment_needs_info", "checked_in", "checkin_undone":
+        case "checked_in":
+            // Phase 1 Q4: the ticket screen itself, where the check-in moment ("You're in") shows once per booking.
+            if let bookingIDString = notification.data["booking_id"]?.stringValue,
+               let bookingID = UUID(uuidString: bookingIDString) {
+                Task {
+                    let opened = await openBookingConfirmed(bookingID: bookingID, eventKey: notification.data["event_id"]?.stringValue, back: .notifications)
+                    if opened == false { reportStaleNotification(notification) }
+                }
+            }
+        case "hold_created", "payment_needs_info", "checkin_undone":
             // 01-hold-payment.md follow-up: hold_created is the guest's own
             // mirror of "booking_requested" (hold_seats(), migration 053)
             // — straight back to their own timer/QR/payment screen.

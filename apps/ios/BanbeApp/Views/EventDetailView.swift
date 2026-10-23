@@ -67,6 +67,8 @@ struct EventDetailView: View {
     @State private var introIncludedSheetOpen = false
     /// "Link copied" flash after the ⋯ menu's Copy link.
     @State private var linkCopied = false
+    /// Phase 1 Q3: "Next from this host" on an ended page (up to 3 live events still ahead).
+    @State private var hostNext: [AppState.HostUpcomingEvent] = []
     /// Where the in-sheet title is right now (global), measured from its layout frame (its own fade/shrink transforms
     /// don't move that, so there is no feedback loop).
     @State private var titleFrame: CGRect = .zero
@@ -864,6 +866,10 @@ struct EventDetailView: View {
                     .padding(.top, 20)
             }
 
+            if isOver, !isPreview, let orgID = endedOrganizerID {
+                endedNextSection(orgID).padding(.top, 28)
+            }
+
             hostSection.allowsHitTesting(!isPreview).padding(.top, 32)
 
             // "Hình ảnh": the horizontal photo strip.
@@ -1003,6 +1009,68 @@ struct EventDetailView: View {
         if let year = stats?.sinceYear { parts.append(app.T("Tham gia từ \(year)", "Joined \(year)")) }
         if let stats, stats.count > 0 { parts.append(app.T("Đã tổ chức \(stats.count) sự kiện", "Hosted \(stats.count) events")) }
         return parts.joined(separator: " · ")
+    }
+
+    // MARK: Phase 1 Q3 — an ended page is not a dead end
+
+    private var isOver: Bool { barState == .ended || barState == .endedAttended }
+    /// Real events only: a demo event without an organizer id shows neither the follow button nor the list.
+    private var endedOrganizerID: String? { app.eventOrganizerID[event.key] ?? event.organizerId }
+
+    /// Follow host, then up to 3 of the host's live events still ahead ("Next from this host"); the photos section
+    /// below already shows the recap (event_photos stays readable for ended events, migration 084).
+    private func endedNextSection(_ organizerID: String) -> some View {
+        let following = app.isFollowing(organizerID)
+        return VStack(alignment: .leading, spacing: 0) {
+            Button { Task { await app.toggleFollowOrganizer(organizerID) } } label: {
+                Label(following ? app.T("Đang theo dõi host ✓", "Following this host ✓") : app.T("Theo dõi host", "Follow host"),
+                      systemImage: "person")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(app.palette.clay)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(following ? app.palette.clay.opacity(0.12) : .clear, in: Capsule())
+                    .overlay(Capsule().stroke(app.palette.clay, lineWidth: 1))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(following ? .isSelected : [])
+            .accessibilityIdentifier("event.ended.follow")
+            if !hostNext.isEmpty {
+                Text(app.T("Sự kiện tiếp theo của host", "Next from this host"))
+                    .font(BanbeTheme.display(20))
+                    .padding(.top, 24)
+                VStack(spacing: 0) {
+                    ForEach(Array(hostNext.enumerated()), id: \.element.id) { index, e in
+                        Button { app.goEvent(e.id) } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(e.name).font(BanbeTheme.display(15)).lineLimit(1)
+                                    Text(app.discoveryWhenLabel(e.startsAt, timeZone: EventMarket.timeZone(e.timeZoneID)))
+                                        .font(.system(size: 12.5)).opacity(0.65)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(app.palette.clay).accessibilityHidden(true)
+                            }
+                            .padding(.vertical, 11)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .overlay(alignment: .top) { if index > 0 { Rectangle().fill(softRule).frame(height: 1) } }
+                        .accessibilityIdentifier("event.ended.next.\(index)")
+                    }
+                }
+                .padding(.top, 8)
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .accessibilityIdentifier("event.ended.section")
+        .task(id: "\(event.key)|\(organizerID)") {
+            hostNext = []
+            let rows = await app.nextFromHost(organizerID: organizerID, excluding: event.key)
+            hostNext = rows
+        }
     }
 
     /// "Người tổ chức": its own section — heading, then a soft card with the host and two actions (same outlined clay
@@ -1169,7 +1237,9 @@ struct EventDetailView: View {
     /// out because a cancelled event's stale `seatsRemaining` can still read as available or sold out; a held booking
     /// is NOT a ticket until `Booking.isTicket` (TASK B, 2026-10-01).
     private var barState: ReserveBar.State {
-        ReserveBar.state(booking: myBooking != nil, ticket: myBooking?.isTicket ?? false,
+        // A checked-in booking ("attended", migration 021) is still that same paid ticket (Phase 1 Q3 "You went ✓").
+        let ticket = myBooking.map { $0.isTicket || ($0.status == "attended" && $0.paymentState == .confirmed) } ?? false
+        return ReserveBar.state(booking: myBooking != nil, ticket: ticket,
                          cancelled: event.cancelled, ended: ended, soldOut: event.soldOut,
                          currencyUnavailable: !event.paidBookingAvailable,
                          blocked: !isPreview && app.reserveEligibilityBlock != nil)
@@ -1291,8 +1361,11 @@ struct EventDetailView: View {
         case .cancelled:
             fieldLabel(app.T("Sự kiện đã bị huỷ", "Event has been cancelled"))
                 .accessibilityIdentifier("event.actionBar")
+        case .endedAttended:
+            fieldLabel(app.T("Bạn đã tham gia ✓", "You went ✓"))
+                .accessibilityIdentifier("event.actionBar")
         case .ended:
-            fieldLabel(app.T("Sự kiện đã kết thúc", "Event has ended"))
+            fieldLabel(app.T("Sự kiện đã kết thúc", "This event has ended"))
                 .accessibilityIdentifier("event.actionBar")
         case .soldOut:
             Button { app.goChat() } label: { fieldLabel(app.T("Hết chỗ ▪︎ nhắn để vào danh sách chờ", "Sold out ▪︎ message for waitlist")) }

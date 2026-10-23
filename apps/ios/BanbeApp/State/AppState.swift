@@ -492,6 +492,8 @@ final class AppState: ObservableObject {
     /// function isn't deployed: badges then simply don't show. `seats_remaining` is never decremented
     /// after insert, so it is never used for "N left".
     @Published var eventFill: [String: (booked: Int, capacity: Int)] = [:]
+    /// Phase 1 Q5: the event whose approval notification the host just opened (Dashboard shows its "live" card once).
+    @Published var liveCelebrationEventID: String?
     /// The Search screen's query, kept while it's open.
     @Published var searchQuery = ""
     @Published var searchBackScreen: Screen = .home
@@ -3309,6 +3311,8 @@ final class AppState: ObservableObject {
     /// explicit "Open" button.
     func handleDeepLink(_ url: URL) {
         guard url.scheme == "banbe" else { return }
+        // Phase 1 Q7: banbe://…?ref=CODE carries an invite like the universal link does.
+        captureReferral(from: url)
         if url.host == "gift" {
             handleGiftClaimLink(url)
             return
