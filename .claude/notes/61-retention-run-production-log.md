@@ -48,5 +48,23 @@ only; new tables `app_events`, `app_event_names`, `report_excluded_users` no ano
 app_events=false; app_events rows 0; profiles.market backfilled for 5 profiles; report_excluded_users 2 (the two test
 logins); `set_date_of_birth` contains the AGE_TOO_YOUNG check.
 
+### Wave 3 (199 core loops, 200 digest + switches)
+**Backup:** `~/banbe-backups/2026-10-23-pre-199-200/` (schema f3a78ab28282c5af, data 8b4074972960e442).
+**Dry run:** production schema copy: 199 → 200 applied cleanly. Suites 26/27 on the copy failed only where the copy
+differs from production: (a) translation ROWS are data, not schema, so the copy had none (production has them:
+checked 3/3 rows of 198); (b) on the copy, restored functions belong to `postgres` while new objects belong to the
+local superuser (sequence permission); in production both belong to `postgres` — proven below. Fresh-chain suites
+23–27 ALL PASS.
+**Applied one at a time, verified after each:**
+- 199 at 12:31:12 — client RPCs (submit/get feedback, feedback summary, host recap) authenticated only; helpers and
+  tables `event_feedback`, `event_reminder_log`, `follow_alert_queue` closed to clients; `follows.created_at` inherits the
+  table's existing column grants (RLS unchanged); switches event_reminders=true, event_recap/host_recap/follow_alerts=false;
+  jobs `bb_event_reminders`, `bb_follow_alerts`; rolled-back run of `send_event_reminders()` → 0 due now.
+- 200 at 12:31:45 — `set_my_digest_opt_in` authenticated only; `notification_consent_log`, `weekly_digest_log` closed;
+  rolled-back functional check as the test admin: digest opt-in refused while the switch is off (NOT_AVAILABLE),
+  promo push opt-in writes its consent row (sequence OK), preferences return both keys; switches weekly_digest,
+  intent_foryou, live_activity, market_share all false; `send_weekly_digests()` → 0. Residue: 0 consent rows.
+  Minor: the trigger function `notification_consent_log_append_only()` keeps the default EXECUTE grant (it only raises).
+
 ## Flags (final values are reported at the end of the run)
 admin_event_wipe=true (untouched), rewards=false (untouched), rewards_v2=false (untouched), push_enabled=false (new).
