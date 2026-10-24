@@ -48,7 +48,7 @@ export default function Welcome() {
   const v2 = flagOn(s.featureFlags, 'onboarding_v2');
   // V2 entrance plays when Welcome opens, not again when coming back from the story.
   const [entrance, setEntrance] = useState(true);
-  const rise = i => (v2 && entrance ? { className: 'bb-wel-rise', style: { animationDelay: `${1000 + i * 90}ms` } } : {});
+  const rise = i => (v2 && entrance ? { className: 'bb-wel-rise', style: { animationDelay: `${2600 + i * 220}ms` } } : {});
   const [seen, setSeen] = useState(readSeen);
   // Owner, 2026-10-24: swiping past the very last demo screen finishes the tour with a thank-you.
   const [finished, setFinished] = useState(false);

@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import MapKit
 import CoreLocation
 
@@ -59,6 +60,9 @@ struct MapExploreView: View {
     @EnvironmentObject var app: AppState
     @State private var cameraPosition: MapCameraPosition
     @State private var lastQueriedRegion: MKCoordinateRegion?
+    /// The 5s live-refresh poll, kept in @State so it is made once per screen: built inline in `body`, a new timer was made on every
+    /// redraw, so a busy map (camera moving, sheet animating) kept restarting it and it could never fire.
+    @State private var pollTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     @State private var boundsChanged = false
     @State private var catFilter: String
     @State private var openNowOnly: Bool
@@ -343,7 +347,14 @@ struct MapExploreView: View {
                 // was observed reporting a region nowhere near Vietnam
                 // before MapKit had caught up to `cameraPosition`, silently
                 // corrupting every later bounded poll/pagination reload.
-                if lastQueriedRegion == nil { lastQueriedRegion = context.region; return }
+                // Owner, 2026-10-24 ("no events until I pull down"): before the first centring has run, MapKit's
+                // callback can still report a bogus region (seen over Europe); freezing THAT made every poll
+                // ask for an empty part of the world and wipe the list. Until then polls stay unbounded.
+                if lastQueriedRegion == nil {
+                    guard initialCenterSet else { return }
+                    lastQueriedRegion = context.region
+                    return
+                }
                 boundsChanged = true
             }
             // A tap that lands on the map background (a pin's own
@@ -694,7 +705,7 @@ struct MapExploreView: View {
             postDismissRevealTask?.cancel()
             app.cancelRootPull()
         }
-        .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(pollTimer) { _ in
             guard !isPreview else { return }
             Task { await app.loadMapEvents(bounds: lastQueriedRegion.map(boundsOf)) }
         }

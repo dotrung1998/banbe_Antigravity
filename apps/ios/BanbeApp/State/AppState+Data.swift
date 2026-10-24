@@ -1368,6 +1368,8 @@ extension AppState {
     /// initial load, used only to compute the density-hotspot center.
     @MainActor
     func loadMapEvents(bounds: (south: Double, north: Double, west: Double, east: Double)? = nil) async {
+        mapEventsGeneration += 1
+        let generation = mapEventsGeneration
         do {
             let rows: [MapEventRow] = try await Self.retryingEventColumns { withR2 in
             var filter = SupabaseService.client
@@ -1402,6 +1404,8 @@ extension AppState {
                 .limit(60)
                 .execute().value
             }
+            // A newer load started while this one was in flight: its answer wins, this one is dropped.
+            guard generation == mapEventsGeneration else { return }
             mapEvents = rows
             mapEventsLoadFailed = false
 
@@ -1427,6 +1431,7 @@ extension AppState {
             mapEventCoverURLs = urls
         } catch {
             print("Failed to load map events:", error)
+            guard generation == mapEventsGeneration else { return }
             mapEventsLoadFailed = true
         }
         mapEventsLoading = false

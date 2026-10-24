@@ -265,6 +265,14 @@ export default function MapExplore() {
   const [boundsChanged, setBoundsChanged] = useState(false);
   const [page, setPage] = useState(0);
   const lastQueriedBounds = useRef(null);
+  // Owner, 2026-10-24 ("no events on the map until I pull down"): each load takes a number and only the newest one
+  // may write the list, so a slow, stale answer can never overwrite a newer, good one. iOS twin: mapEventsGeneration.
+  const loadSeq = useRef(0);
+  const loadLatest = async (opts) => {
+    const n = ++loadSeq.current;
+    const rows = await fetchLiveEvents(opts);
+    return n === loadSeq.current ? rows : null;
+  };
   // The pin/list-row currently showing the compact in-map preview card —
   // null when nothing is selected. Not a second data source: it's just an
   // id into the same `events`/`visibleEvents` this screen already loads.
@@ -456,9 +464,9 @@ export default function MapExplore() {
   useEffect(() => {
     let active = true;
     (async () => {
-      const initial = await fetchLiveEvents({});
+      const initial = await loadLatest({});
       if (!active) return;
-      setEvents(initial);
+      if (initial) setEvents(initial);
       setLoading(false);
 
       // Bug 2: a restored camera center takes priority over density-hotspot
@@ -571,8 +579,8 @@ export default function MapExplore() {
   useEffect(() => {
     const interval = setInterval(async () => {
       const bounds = lastQueriedBounds.current ? boundsToBox(lastQueriedBounds.current) : null;
-      const fresh = await fetchLiveEvents({ bounds });
-      setEvents(fresh);
+      const fresh = await loadLatest({ bounds });
+      if (fresh) setEvents(fresh);
     }, POLL_MS);
     return () => clearInterval(interval);
   }, []);
@@ -774,8 +782,8 @@ export default function MapExplore() {
     setBoundsChanged(false);
     setPage(0);
     setLoading(true);
-    const fresh = await fetchLiveEvents({ bounds });
-    setEvents(fresh);
+    const fresh = await loadLatest({ bounds });
+    if (fresh) setEvents(fresh);
     setLoading(false);
   }, []);
 

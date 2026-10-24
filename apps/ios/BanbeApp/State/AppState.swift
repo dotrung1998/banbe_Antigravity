@@ -2039,6 +2039,10 @@ final class AppState: ObservableObject {
     /// live and the catalogue's are not.
     @Published var mapEvents: [MapEventRow] = []
     @Published var mapEventsLoading = true
+    /// Owner, 2026-10-24 ("no events on the map until I pull down"): every Map load takes a number and only the
+    /// newest one may write `mapEvents`, so a slow, stale answer (e.g. a poll that used a not-yet-settled camera
+    /// region and found nothing) can never overwrite a newer, good list.
+    var mapEventsGeneration = 0
     /// The last Map load failed (offline, server down): the list says so instead of showing nothing.
     @Published var mapEventsLoadFailed = false
     // Real-cover-photo fix (2026-10-19) — resolved cover-photo URL per

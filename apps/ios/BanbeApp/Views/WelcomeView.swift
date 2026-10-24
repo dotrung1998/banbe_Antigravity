@@ -212,7 +212,7 @@ private struct WelcomeRise: ViewModifier {
                 .opacity(shown ? 1 : 0)
                 .offset(y: shown || reduceMotion ? 0 : 24)
                 .animation(reduceMotion ? .easeOut(duration: 0.2)
-                           : .timingCurve(0.22, 1, 0.36, 1, duration: 0.8).delay(1.0 + Double(index) * 0.09), value: shown)
+                           : .timingCurve(0.22, 1, 0.36, 1, duration: 1.2).delay(2.6 + Double(index) * 0.22), value: shown)
         } else {
             content
         }
@@ -256,7 +256,7 @@ private struct WelcomeIllustration: View {
                     .opacity(still || photosIn ? 1 : 0)
                     .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
                     .zIndex(i == 1 ? 1 : 0)
-                    .animation(ease(i == 1 ? 0.95 : 1.0, [0, 0.2, 0.08][i]), value: photosIn)
+                    .animation(ease(i == 1 ? 1.5 : 1.6, [0.15, 0.6, 0.35][i]), value: photosIn)
             }
             HStack(spacing: 4) {
                 Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
@@ -271,7 +271,7 @@ private struct WelcomeIllustration: View {
             .scaleEffect(still || chipIn || reduceMotion ? 1 : 1.35)
             .offset(y: 86 + (still || chipIn || reduceMotion ? 0 : 56))
             .opacity(still || chipIn ? 1 : 0)
-            .animation(ease(0.75, 0), value: chipIn)
+            .animation(ease(1.1, 0), value: chipIn)
             .zIndex(2)
         }
         .frame(height: 200)
@@ -279,13 +279,14 @@ private struct WelcomeIllustration: View {
             guard animated else { return }
             photosIn = true
             Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(750))
+                // Owner, 2026-10-24: slower, so it can be taken in (same timings as web .bb-wel-*).
+                try? await Task.sleep(for: .milliseconds(1500))
                 chipIn = true
                 guard !reduceMotion else { return }
-                try? await Task.sleep(for: .milliseconds(300))
-                withAnimation(.easeOut(duration: 0.45)) { glow = true }
-                try? await Task.sleep(for: .milliseconds(450))
-                withAnimation(.easeOut(duration: 0.85)) { glow = false }
+                try? await Task.sleep(for: .milliseconds(600))
+                withAnimation(.easeOut(duration: 0.7)) { glow = true }
+                try? await Task.sleep(for: .milliseconds(700))
+                withAnimation(.easeOut(duration: 1.2)) { glow = false }
             }
         }
     }

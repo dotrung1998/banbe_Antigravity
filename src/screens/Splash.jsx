@@ -13,7 +13,13 @@ const LOGOMOTION_WIDTH = 280;
 const LOGOMOTION_HEIGHT = Math.round((LOGOMOTION_WIDTH / 1288) * 800);
 
 export default function Splash() {
-  const { dismissSplash, notifyLogomotionComplete } = useBanBe();
+  const { state: s, T, dismissSplash, notifyLogomotionComplete } = useBanBe();
+  // Owner, 2026-10-24: a greeting under the motion. Signed in: "Welcome back, <given name>" (Vietnamese names put
+  // the given name last, English first); signed out: a general welcome. iOS twin: SplashView.greeting.
+  const parts = String(s.user?.name || '').trim().split(/\s+/).filter(Boolean);
+  const given = parts.length ? (s.lang === 'en' ? parts[0] : parts[parts.length - 1]) : '';
+  const greeting = !s.user ? T('Chào mừng bạn đến với banbe', 'Welcome to banbe')
+    : given ? T(`Chào mừng trở lại, ${given}`, `Welcome back, ${given}`) : T('Chào mừng bạn trở lại', 'Welcome back');
   const iframeRef = useRef(null);
 
   // Completion-gating fix (2026-09-30) — `logomotion2309.html` posts a
@@ -53,7 +59,8 @@ export default function Splash() {
           background: 'transparent', pointerEvents: 'none', animation: 'banbeIn 0.7s cubic-bezier(.22,.61,.36,1) both',
         }}
       />
-      <span style={{ fontFamily: "'Be Vietnam Pro',sans-serif", fontSize: 14, fontWeight: 400, letterSpacing: '0.01em', color: ink, marginTop: 16, animation: 'banbeFade 0.9s ease 0.5s both' }}>bạn mới mỗi tuần</span>
+      <div data-testid="splash-greeting" className="bb-wel-rise" style={{ fontFamily: "'Be Vietnam Pro',sans-serif", fontSize: 22, fontWeight: 600, color: ink, marginTop: 18, padding: '0 32px', textAlign: 'center', animationDelay: '0.6s', animationDuration: '1s' }}>{greeting}</div>
+      <span style={{ fontFamily: "'Be Vietnam Pro',sans-serif", fontSize: 14, fontWeight: 400, letterSpacing: '0.01em', color: ink, opacity: 0.75, marginTop: 8, animation: 'banbeFade 0.9s ease 0.9s both' }}>{T('bạn mới mỗi tuần', 'new friends every week')}</span>
     </div>
   );
 }

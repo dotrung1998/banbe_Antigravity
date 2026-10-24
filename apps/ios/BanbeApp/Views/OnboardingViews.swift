@@ -55,6 +55,17 @@ struct SplashView: View {
     @State private var dismissed = false
     @State private var dwellElapsed = false
     @State private var dwellTask: Task<Void, Never>? = nil
+    @State private var greetingShown = false
+
+    /// Vietnamese names put the given name last ("Nguyễn Văn An" → An), English first (same rule as onboarding).
+    private var greeting: String {
+        guard auth.session != nil else { return app.T("Chào mừng bạn đến với banbe", "Welcome to banbe") }
+        let parts = (app.user?.displayName ?? "").split(whereSeparator: \.isWhitespace).map(String.init)
+        guard let name = app.isEN ? parts.first : parts.last, !name.isEmpty else {
+            return app.T("Chào mừng bạn trở lại", "Welcome back")
+        }
+        return app.T("Chào mừng trở lại, \(name)", "Welcome back, \(name)")
+    }
 
     private static let logomotionAspect: CGFloat = 800.0 / 1288.0
     // A few seconds past the real ~ (totalFrames / 24fps) authored
@@ -97,10 +108,22 @@ struct SplashView: View {
             VStack(spacing: 0) {
                 LogomotionView(onComplete: { animationComplete = true })
                     .frame(width: 280, height: 280 * Self.logomotionAspect)
+                // Owner, 2026-10-24: a greeting under the motion. Signed in: "Welcome back, <given name>" (the name
+                // fades in once the account has loaded); signed out: a general welcome. Web twin: Splash.jsx.
+                Text(greeting)
+                    .font(.system(.title2, design: .rounded).weight(.semibold))
+                    .foregroundStyle(app.palette.ink)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 18).padding(.horizontal, 32)
+                    .contentTransition(.opacity)
+                    .animation(.easeOut(duration: 0.4), value: greeting)
+                    .opacity(greetingShown ? 1 : 0)
+                    .offset(y: greetingShown || reduceMotion ? 0 : 10)
+                    .accessibilityIdentifier("splash.greeting")
                 Text(app.T("bạn mới mỗi tuần", "new friends every week"))
                     .font(.system(size: 14))
-                    .foregroundStyle(app.palette.ink)
-                    .padding(.top, 16)
+                    .foregroundStyle(app.palette.ink.opacity(0.75))
+                    .padding(.top, 8)
             }
         }
         .contentShape(Rectangle())
@@ -115,6 +138,9 @@ struct SplashView: View {
             try? await Task.sleep(nanoseconds: Self.fallbackTimeout)
             fallbackFired = true
             advance(force: false)
+        }
+        .onAppear {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.3) : .timingCurve(0.22, 1, 0.36, 1, duration: 1.0).delay(0.6)) { greetingShown = true }
         }
         .onDisappear { dwellTask?.cancel() }
     }
