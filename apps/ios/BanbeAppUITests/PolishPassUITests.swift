@@ -83,6 +83,28 @@ final class PolishPassUITests: XCTestCase {
         shot("onboarding-goals-selected")
     }
 
+    /// Save draft → leave → the draft can be reopened from Drafts with what was typed.
+    func testSaveDraftAndReopen() {
+        let app = launchShell("create")
+        XCTAssertTrue(el(app, "create.step.next").waitForExistence(timeout: 10))
+        el(app, "create.step.next").tap()
+        let intro = el(app, "create.intro")
+        XCTAssertTrue(intro.waitForExistence(timeout: 5))
+        intro.tap()
+        intro.typeText("Draft text")
+        el(app, "create.saveDraft").tap()
+        // "Draft saved" card: start a new (blank) draft, then reopen the saved one from Drafts.
+        XCTAssertTrue(el(app, "create.draftSaved").waitForExistence(timeout: 5), "Draft saved card")
+        el(app, "create.draftSaved.new").tap()
+        XCTAssertTrue(el(app, "create.drafts").waitForExistence(timeout: 5), "Drafts pill after saving")
+        el(app, "create.drafts").tap()
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'create.draft.'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "the saved draft is listed")
+        row.tap()
+        XCTAssertTrue(el(app, "create.intro").waitForExistence(timeout: 5))
+        XCTAssertEqual(el(app, "create.intro").value as? String, "Draft text")
+    }
+
     /// Owner report (2026-10-20): new event → type something → Back → Discard force-quit the app.
     func testLeavingCreateAfterTypingDoesNotCrash() {
         let app = launchShell("create")

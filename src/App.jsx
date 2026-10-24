@@ -801,8 +801,9 @@ function Shell() {
         {state.reasonPrompt && <ReasonSheet />}
         {state.importOpen && <ImportSheet />}
         {state.importedTicketOpen && <ImportedTicketSheet />}
-        {/* Not on Create: submitting an event shows the loading GIF on its Confirm button instead (iOS parity). */}
-        {state.loading && state.screen !== 'create' && <Loading label={T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
+        {state.loading && <Loading label={state.screen === 'create'
+          ? T('Đang gửi sự kiện cho banbe duyệt…', 'Sending your event to banbe…')
+          : T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
       {showBar && <DockRow collapsed={barCollapsed} showCreate={state.organizerMode} />}
       {/* Undo after leaving a new-event draft (BanBeContext createUndoOffer), above the dock when it shows. */}

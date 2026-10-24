@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import BanbeLoadingVisual from './BanbeLoadingVisual.jsx';
 import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { FieldNote } from '../components/ui/FormControls.jsx';
 
@@ -185,7 +184,6 @@ export default function Login() {
       {showSubmit && (
         <div onClick={submit} data-testid="login-submit" role="button" aria-busy={busy || undefined} className="bb-press"
           style={{ ...submitStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, ...(busy ? { cursor: 'default', opacity: 0.85 } : {}) }}>
-          {busy && <span style={{ display: 'inline-flex', width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }}><BanbeLoadingVisual size={22} /></span>}
           {submitLabel}
         </div>
       )}

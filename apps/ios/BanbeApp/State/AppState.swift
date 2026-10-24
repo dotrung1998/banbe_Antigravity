@@ -508,6 +508,9 @@ final class AppState: ObservableObject {
     /// Leaving a NEW event draft that has input (Back or edge swipe) offers Undo for a few seconds
     /// (RootView's CreateUndoToast) instead of asking "Discard this event?" first.
     @Published var createUndoOffer: CreateUndoOffer?
+    /// Saved drafts of this account (up to 5) and the one the open form was loaded from / last saved as.
+    @Published var eventDrafts: [HostEventDraft] = []
+    @Published var createDraftID: UUID?
     /// What only CreateEventView holds in its own @State (photos, cover, step) plus whether the draft
     /// has input, mirrored as it changes so Undo can bring the draft back exactly as it was.
     var createDraftStash = CreateDraftStash()
@@ -2034,6 +2037,8 @@ final class AppState: ObservableObject {
     /// live and the catalogue's are not.
     @Published var mapEvents: [MapEventRow] = []
     @Published var mapEventsLoading = true
+    /// The last Map load failed (offline, server down): the list says so instead of showing nothing.
+    @Published var mapEventsLoadFailed = false
     // Real-cover-photo fix (2026-10-19) — resolved cover-photo URL per
     // event id, keyed by `MapEventRow.id`, populated by `loadMapEvents()`.
     // MapExploreView reads this instead of `EventCatalog.find(ev.id)?.img`,
@@ -3470,9 +3475,12 @@ final class AppState: ObservableObject {
         createEditEventId = nil
         createSent = false
         createError = ""
-        createOriginScreen = screen
+        // "Create another event" calls this while .create is already showing: keep the screen the person
+        // really came from, or Back/swipe-back would "return" to Create itself and trap them there.
+        if screen != .create { createOriginScreen = screen }
         // A fresh draft replaces whatever an Undo could still have brought back.
         createUndoOffer = nil
+        createDraftID = nil
         createRestorePending = false
         createDraftStash = CreateDraftStash()
         // TASK 3 (event creation validation pass) — "Create another event"

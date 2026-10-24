@@ -1644,6 +1644,33 @@ struct MapExploreView: View {
             }
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else if visibleEvents.isEmpty {
+            // Without For You the list used to show nothing at all when empty or offline.
+            VStack(spacing: 10) {
+                if app.mapEventsLoading {
+                    ProgressView()
+                    Text(app.T("Đang tải sự kiện…", "Loading events…")).font(.system(size: 13)).opacity(0.6)
+                } else if app.mapEventsLoadFailed {
+                    Image(systemName: "wifi.exclamationmark").font(.system(size: 22)).opacity(0.6)
+                    Text(app.T("Chưa tải được sự kiện. Kiểm tra kết nối mạng rồi thử lại.",
+                               "Couldn't load events. Check your connection and try again."))
+                        .font(.system(size: 13)).opacity(0.7).multilineTextAlignment(.center)
+                    Button {
+                        Task { await app.loadMapEvents(bounds: lastQueriedRegion.map { boundsOf($0) }) }
+                    } label: {
+                        Text(app.T("Thử lại", "Try again")).font(.system(size: 13, weight: .semibold)).underline()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("map.retry")
+                } else {
+                    Text(app.T("Không có sự kiện nào trong vùng bản đồ này. Thử thu nhỏ bản đồ hoặc đổi bộ lọc.",
+                               "No events in this part of the map. Try zooming out or changing the filters."))
+                        .font(.system(size: 13)).opacity(0.7).multilineTextAlignment(.center)
+                }
+            }
+            .accessibilityIdentifier("map.emptyState")
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
     }
 

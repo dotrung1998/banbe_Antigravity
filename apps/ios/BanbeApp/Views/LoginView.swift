@@ -208,6 +208,7 @@ struct LoginView: View {
                                    noteIdentifier: "login.emailIssue",
                                    contentType: .username)
                             .accessibilityIdentifier("login.email")
+                            .onChange(of: email) { old, new in autofillArrived(old: old, new: new) }
                         if showEmailFormatError {
                             Text(app.T("Email chưa đúng định dạng (ví dụ: ban@email.com)",
                                        "That doesn't look like an email address (e.g. ban@email.com)"))
@@ -221,18 +222,7 @@ struct LoginView: View {
                                        text: $password, secure: true,
                                        contentType: mode == .signup ? .newPassword : .password)
                                 .accessibilityIdentifier("login.password")
-                                // Autofill (Passwords / a password manager) fills email + password in one go
-                                // and iOS then leaves the keyboard up on the email field: a password that
-                                // arrives in one step (not typed key by key) means the form is complete, so
-                                // close the keyboard. Repeated once because iOS may refocus after the fill.
-                                .onChange(of: password) { old, new in
-                                    guard mode == .login, old.isEmpty, new.count > 1, emailFormatOk else { return }
-                                    for delay in [0.15, 0.45] {
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                                        }
-                                    }
-                                }
+                                .onChange(of: password) { old, new in autofillArrived(old: old, new: new) }
                             if mode == .signup {
                                 BanbeField(label: nil, placeholder: app.T("Nhập lại mật khẩu", "Re-enter password"),
                                            text: $passwordConfirm, secure: true, contentType: .newPassword)
@@ -287,8 +277,7 @@ struct LoginView: View {
                 }
 
                 if showSubmit {
-                    InkButton(title: submitLabel, enabled: !busy && (auth.codeSent ? !code.isEmpty : canRequest),
-                              busy: busy) {
+                    InkButton(title: submitLabel, enabled: !busy && (auth.codeSent ? !code.isEmpty : canRequest)) {
                         Task { submitting = true; await submit(); submitting = false }
                     }
                     .padding(.top, 14)
@@ -451,6 +440,19 @@ struct LoginView: View {
         code = ""
         password = ""
         passwordConfirm = ""
+    }
+
+    /// Apple Passwords / a password manager fills email AND password in one step and iOS leaves the cursor in the
+    /// email field with the keyboard up. A field that jumps from empty (or by several characters at once) while
+    /// the other one is filled means the fill happened: close the keyboard, again a bit later because iOS can
+    /// refocus once the fill finishes.
+    private func autofillArrived(old: String, new: String) {
+        guard mode == .login, method == .password, new.count - old.count > 1, !email.isEmpty, !password.isEmpty else { return }
+        for delay in [0.1, 0.35, 0.8] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
+        }
     }
 
     private var busy: Bool { submitting || auth.isSendingCode }

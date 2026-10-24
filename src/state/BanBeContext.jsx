@@ -471,7 +471,7 @@ const PRIVATE_STATE_KEYS = [
   'myOrganizerIdsStatus', 'myOrganizerAvatarPath', 'myOrganizerAvatarR2Ref', 'orgRegName', 'orgRegDesc', 'orgRegIntroLong',
   'orgRegLinks', 'myOrgEventKeys', 'myOrgEventOrganizerId', 'myOrgPublishedEventCount', 'myOrgHostingSinceYear',
   'ensureOrganizerStatus', 'ensureOrganizerError', 'hostSetupOpen', 'organizerProfile', 'scheduleAddedKeys', 'guestPrompt',
-  'eventRecapId', 'hostRecapId', 'createSeedCoverUrl', 'createUndoOffer',
+  'eventRecapId', 'hostRecapId', 'createSeedCoverUrl', 'createUndoOffer', 'createDraftId',
 ];
 const isPublicEventRow = (e) => !!e && e.visibility === 'public' && ['live', 'ended', 'cancelled'].includes(e.status);
 /** The signed-out state patch. Cached events keep only public rows (a private/invite/draft event fetched while
@@ -1224,6 +1224,8 @@ const initialState = {
   createSeedCoverUrl: null,
   // Leaving a NEW event draft with input offers Undo for a few seconds (App.jsx CreateUndoToast; iOS parity).
   createUndoOffer: null,
+  // The saved draft the open Create form came from / was last saved as (lib/eventDrafts.js).
+  createDraftId: null,
   createEventTime: '',
   createPrice: '',
   createSeats: '',
@@ -6581,8 +6583,8 @@ export function BanBeProvider({ children }) {
     // A fresh draft replaces whatever an Undo could still have brought back.
     discardLeftCreateDraft();
     set(prev => ({
-      screen: 'create', mode: 'host', createEditEventId: null, createSent: false, createError: '', createOriginScreen: prev.screen,
-      createUndoOffer: null,
+      screen: 'create', mode: 'host', createEditEventId: null, createSent: false, createError: '', createOriginScreen: prev.screen === 'create' ? prev.createOriginScreen : prev.screen, // "Create another" must not make Create its own Back target
+      createUndoOffer: null, createDraftId: null,
       createName: '', createCats: [], createDesc: '',
       createLoc: '', createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false,
       createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',

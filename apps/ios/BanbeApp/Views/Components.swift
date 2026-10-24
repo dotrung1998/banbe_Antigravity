@@ -354,8 +354,6 @@ struct InkButton: View {
     /// Why the button is disabled, shown as a caption under it (note 48).
     /// nil = no caption (the original behaviour).
     var disabledReason: String? = nil
-    /// true = the banbe loading GIF sits before the title (an action is in progress).
-    var busy = false
     let action: () -> Void
 
     @EnvironmentObject private var app: AppState
@@ -379,10 +377,7 @@ struct InkButton: View {
 
     private var button: some View {
         Button(action: { if enabled { action() } }) {
-            HStack(spacing: 8) {
-                if busy { BanbeLoadingVisual(size: 22) }
-                Text(title)
-            }
+            Text(title)
                 .font(font ?? .system(size: 15, weight: .semibold))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 15)

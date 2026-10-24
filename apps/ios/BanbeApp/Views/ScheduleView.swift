@@ -18,6 +18,9 @@ private struct ScheduleScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var loading = false
+    /// The first load of this visit has finished: until then cards show as placeholders, so a card and its buttons
+    /// never appear ahead of the rest of the screen.
+    @State private var loadedOnce = false
     @State private var monthPickerOpen: Bool = {
         #if DEBUG
         return UITestFixture.opensMonth
@@ -143,6 +146,7 @@ private struct ScheduleScreen: View {
         loading = true
         await app.loadScheduleData(force: force)
         loading = false
+        loadedOnce = true
     }
 
     // MARK: header
@@ -398,7 +402,7 @@ private struct ScheduleScreen: View {
         let items = SchedulePresentation.items(mine.items, on: selected, calendar: calendar)
         if app.paymentBookingsLoadFailed && items.isEmpty {
             errorCard(app.T("Chưa tải được đặt chỗ của bạn. Lịch có thể chưa đầy đủ.", "Couldn't load your bookings, so this schedule may be incomplete."))
-        } else if loading && mine.items.isEmpty {
+        } else if !loadedOnce || (loading && mine.items.isEmpty) {
             loadingRows
         } else if items.isEmpty {
             MotivatingEmptyState(
@@ -417,7 +421,7 @@ private struct ScheduleScreen: View {
             )
         } else {
             VStack(spacing: 10) {
-                ForEach(items) { item in mineCard(item) }
+                ForEach(items) { item in mineCard(item).appearsAsOne() }
             }
         }
         if mine.undatedCount > 0 {
@@ -433,7 +437,7 @@ private struct ScheduleScreen: View {
         let events = SchedulePresentation.events(discover, on: selected, calendar: calendar)
         if app.discoveryEventsLoadFailed && discover.isEmpty {
             errorCard(app.T("Chưa tải được sự kiện. Kéo xuống để thử lại.", "Couldn't load events. Pull down to try again."))
-        } else if (loading || app.discoveryEventsLoading) && discover.isEmpty {
+        } else if !loadedOnce || ((loading || app.discoveryEventsLoading) && discover.isEmpty) {
             loadingRows
         } else if events.isEmpty {
             // Note 48: point at the next day that actually has something, else the map.
@@ -459,7 +463,7 @@ private struct ScheduleScreen: View {
             )
         } else {
             VStack(spacing: 10) {
-                ForEach(events, id: \.key) { e in discoverCard(e) }
+                ForEach(events, id: \.key) { e in discoverCard(e).appearsAsOne() }
             }
         }
     }
@@ -572,10 +576,9 @@ private struct ScheduleScreen: View {
                 .accessibilityIdentifier("schedule.discover.\(e.key)")
                 // One line each when they fit, stacked when they don't (narrow
                 // phones, large text) — never a three-line pill.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) { discoverActions(e, oneLine: true) }
-                    VStack(alignment: .leading, spacing: 8) { discoverActions(e, oneLine: false) }
-                }
+                // Always stacked (no ViewThatFits): ViewThatFits laid the buttons out on its own, so during the
+                // day-slide they sat at their final place while the rest of the card slid in to meet them.
+                VStack(alignment: .leading, spacing: 8) { discoverActions(e, oneLine: false) }
             }
             .padding(14)
             // Dashed outline: a suggestion, never mistakable for a confirmed plan.
@@ -603,10 +606,7 @@ private struct ScheduleScreen: View {
     }
 
     private func cardActions(_ e: ScheduleEventInfo, removable: Bool) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { mineActions(e, removable: removable, oneLine: true) }
-            VStack(alignment: .leading, spacing: 4) { mineActions(e, removable: removable, oneLine: false) }
-        }
+        VStack(alignment: .leading, spacing: 4) { mineActions(e, removable: removable, oneLine: false) }
     }
 
     @ViewBuilder
@@ -668,3 +668,17 @@ private struct ScheduleScreen: View {
         Analytics.track(.scheduleConflictShown(countBucket: AnalyticsEvent.bucket(p.count)))
     }
 }
+
+
+/// A card and its buttons fade in as ONE flattened layer, hidden until the first frame is laid out, so the
+/// solid buttons never show before the rest of the card.
+private struct AppearsAsOne: ViewModifier {
+    @State private var shown = false
+    func body(content: Content) -> some View {
+        content
+            .compositingGroup()
+            .opacity(shown ? 1 : 0)
+            .onAppear { withAnimation(.easeOut(duration: 0.2)) { shown = true } }
+    }
+}
+private extension View { func appearsAsOne() -> some View { modifier(AppearsAsOne()) } }

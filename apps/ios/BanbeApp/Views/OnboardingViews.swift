@@ -336,6 +336,9 @@ struct CreateEventView: View {
     /// taps "what's missing"), instead of shouting from the first render.
     @State private var attemptedReview = false
     @State private var scrollProxy: ScrollViewProxy?
+    @State private var draftsSheetOpen = false
+    @State private var draftFullAlert = false
+    @State private var draftSavedOpen = false
     /// Note 48: Create event is a 5-step flow, one section per page. Note 53: it always opens on step 1 (Host),
     /// even when Host is already ticked from the organizer profile, so the host can check it.
     @State private var currentStep: Section = .host
@@ -1118,7 +1121,9 @@ struct CreateEventView: View {
                             defaultKeywordsLabel: defaultKeywordsLabel
                         )
                         if ok {
-                            withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = false }
+                            // Review stays under the chooser (closing it first flashed the form again);
+                            // whichever choice is made then leaves it in one step.
+                            if let id = app.createDraftID { app.deleteEventDraft(id) }
                             successChoiceMade = false
                             successChooserOpen = true
                         }
@@ -1128,6 +1133,41 @@ struct CreateEventView: View {
                 .transition(.move(edge: .trailing))
                 .zIndex(1)
             }
+        }
+        .onAppear { app.loadEventDrafts() }
+        // After "Save draft": what next, in the same card style as "Event submitted!".
+        .overlay {
+            if draftSavedOpen {
+                DraftSavedCard(
+                    onExit: {
+                        draftSavedOpen = false
+                        // Everything is in the draft: leaving needs no Undo toast.
+                        app.createDraftStash.hasUnsavedInput = false
+                        app.createBack()
+                    },
+                    onNew: {
+                        draftSavedOpen = false
+                        galleryItems = []; coverItemID = nil; photoError = ""
+                        seededForEventID = nil; seededExistingIDs = []
+                        attemptedReview = false
+                        currentStep = .host
+                        app.goCreate()
+                    },
+                    onViewDrafts: { draftSavedOpen = false; draftsSheetOpen = true },
+                    onDismiss: { draftSavedOpen = false }
+                )
+                .transition(.identity)
+                .zIndex(30)
+            }
+        }
+        .sheet(isPresented: $draftsSheetOpen) {
+            EventDraftsSheet(onOpen: openDraft).environmentObject(app)
+        }
+        .alert(app.T("Đã đủ 5 bản nháp", "You have 5 drafts"), isPresented: $draftFullAlert) {
+            Button(app.T("Xem bản nháp", "Manage drafts")) { draftsSheetOpen = true }
+            Button(app.T("Đóng", "OK"), role: .cancel) {}
+        } message: {
+            Text(app.T("Xoá một bản nháp để lưu bản mới.", "Delete one to save another."))
         }
         .onChange(of: reviewOpen) { _, open in app.isCreateReviewOpen = open }
         .onDisappear { app.isCreateReviewOpen = false }
@@ -1155,6 +1195,7 @@ struct CreateEventView: View {
                     onCreateAnother: {
                         successChoiceMade = true
                         successChooserOpen = false
+                        reviewOpen = false
                         galleryItems = []
                         coverItemID = nil
                         photoError = ""
@@ -1459,6 +1500,42 @@ struct CreateEventView: View {
         })
     }
 
+    private func draftPill(_ title: String, icon: String, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.system(size: 12.5, weight: .semibold))
+                .padding(.horizontal, 12).frame(minHeight: 34)
+                .background(app.palette.field, in: Capsule())
+                .overlay(Capsule().stroke(app.palette.rule))
+                .foregroundStyle(app.palette.ink)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityIdentifier(id)
+    }
+
+    /// Saves the open form as a draft (or updates the one it came from). Photos and the step are this view's own state.
+    private func saveDraftTapped() {
+        let photos = galleryItems.compactMap(\.image)
+        let cover = galleryItems.first { $0.id == coverItemID }?.image
+        let coverIndex = cover.flatMap { c in photos.firstIndex { $0 === c } } ?? 0
+        if app.saveEventDraft(photos: photos, coverIndex: coverIndex, step: currentStep.rawValue) {
+            Haptics.success()
+            draftSavedOpen = true
+        } else {
+            draftFullAlert = true
+        }
+    }
+
+    private func openDraft(_ d: HostEventDraft) {
+        let images = EventDraftStore.photos(of: d)
+        app.applyEventDraft(d)
+        galleryItems = images.map { StagedGalleryItem(id: UUID().uuidString, kind: .new(image: $0)) }
+        coverItemID = galleryItems.indices.contains(d.coverIndex) ? galleryItems[d.coverIndex].id : galleryItems.first?.id
+        seededForEventID = nil; seededExistingIDs = []
+        currentStep = Section(rawValue: d.step) ?? .host
+        draftsSheetOpen = false
+    }
+
     private var createFormScroll: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
@@ -1467,10 +1544,21 @@ struct CreateEventView: View {
                 // returning to the REAL originating tab (see
                 // createOriginScreen's own comment) instead of always
                 // landing on Dashboard/HostIntro.
-                BackLink(label: app.T("Quay lại", "Back")) {
-                    // Leaves straight away; with input, Home shows an Undo toast (AppState.createBack),
-                    // which replaced the "Discard this event?" question.
-                    app.createBack()
+                HStack(spacing: 8) {
+                    BackLink(label: app.T("Quay lại", "Back")) {
+                        // Leaves straight away; with input, Home shows an Undo toast (AppState.createBack),
+                        // which replaced the "Discard this event?" question.
+                        app.createBack()
+                    }
+                    Spacer(minLength: 0)
+                    if app.createEditEventId == nil {
+                        if !app.eventDrafts.isEmpty {
+                            draftPill(app.T("Bản nháp (\(app.eventDrafts.count)/\(EventDraftStore.maxDrafts))",
+                                            "Drafts (\(app.eventDrafts.count)/\(EventDraftStore.maxDrafts))"),
+                                      icon: "tray.full", id: "create.drafts") { draftsSheetOpen = true }
+                        }
+                        draftPill(app.T("Lưu nháp", "Save draft"), icon: "square.and.arrow.down", id: "create.saveDraft") { saveDraftTapped() }
+                    }
                 }
 
                 Text(app.T("Dành cho người tổ chức", "For organizers"))
@@ -2091,8 +2179,7 @@ private struct CreateEventReviewSheet: View {
                     ? app.T("Đã gửi, đang chờ Banbe duyệt", "Submitted, waiting for Banbe to review")
                     : (confirmBusy ? app.T("Đang gửi…", "Submitting…") : app.T("Xác nhận và gửi", "Confirm & submit")),
                 enabled: !confirmBusy && !app.createSent,
-                cornerRadius: 999,
-                busy: confirmBusy
+                cornerRadius: 999
             ) {
                 Task { confirmBusy = true; await onConfirm(); confirmBusy = false }
             }
@@ -2699,5 +2786,210 @@ struct CreateUndoToast: View {
             guard !Task.isCancelled else { return }
             app.expireCreateUndo(offer.id)
         }
+    }
+}
+
+
+/// "Draft saved": what next, styled like the "Event submitted!" card (SubmittedChooserCard).
+struct DraftSavedCard: View {
+    let onExit: () -> Void
+    let onNew: () -> Void
+    let onViewDrafts: () -> Void
+    let onDismiss: () -> Void
+
+    @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(shown ? 0.32 : 0)
+                .ignoresSafeArea()
+                .onTapGesture { onDismiss() }
+                .accessibilityHidden(true)
+            card
+                .padding(.horizontal, 20)
+                .scaleEffect(reduceMotion ? 1 : (shown ? 1 : 0.72))
+                .offset(y: reduceMotion ? 0 : (shown ? 0 : 40))
+                .opacity(shown ? 1 : 0)
+        }
+        .onAppear {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.48, dampingFraction: 0.62)) { shown = true }
+        }
+    }
+
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(app.T("💾 Đã lưu bản nháp", "💾 Draft saved"))
+                .font(.system(.title2, design: .rounded).weight(.bold))
+                .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 10) {
+                step("iphone", app.T("Lưu trên máy này, trong tài khoản của bạn", "Kept on this phone, for your account"))
+                step("pencil", app.T("Tiếp tục chỉnh sửa bất cứ lúc nào", "Pick it up and edit it any time"))
+                step("tray.full", app.T("Tối đa \(EventDraftStore.maxDrafts) bản nháp (\(app.eventDrafts.count)/\(EventDraftStore.maxDrafts))",
+                                        "Up to \(EventDraftStore.maxDrafts) drafts (\(app.eventDrafts.count)/\(EventDraftStore.maxDrafts) used)"))
+            }
+            Text(app.T("Bạn muốn làm gì tiếp theo?", "What would you like to do next?"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(app.palette.ink.opacity(0.75))
+            VStack(spacing: 10) {
+                Button(action: onViewDrafts) {
+                    Label(app.T("Xem bản nháp", "View drafts"), systemImage: "tray.full")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                        .foregroundStyle(app.palette.paper)
+                        .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityIdentifier("create.draftSaved.view")
+                SecondaryButton(title: app.T("Bắt đầu bản nháp mới", "Start a new draft"), systemImage: "square.and.pencil", action: onNew)
+                    .accessibilityIdentifier("create.draftSaved.new")
+                SecondaryButton(title: app.T("Thoát", "Exit"), systemImage: "arrow.uturn.backward", action: onExit)
+                    .accessibilityIdentifier("create.draftSaved.exit")
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(22)
+        .frame(maxWidth: 520)
+        .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+        .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("create.draftSaved")
+        .accessibilityAddTraits(.isModal)
+    }
+
+    private func step(_ icon: String, _ text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 28, height: 28)
+                .background(app.palette.field, in: Circle())
+                .accessibilityHidden(true)
+            Text(text).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// The host's saved drafts, laid out like the Share card sheet (paper sheet, inline title, X to close).
+/// Tap a draft (or ⋯ › Edit, or swipe left › Edit) to continue it; ⋯ › Delete or swipe left › Delete removes it.
+struct EventDraftsSheet: View {
+    @EnvironmentObject private var app: AppState
+    @Environment(\.dismiss) private var dismiss
+    let onOpen: (HostEventDraft) -> Void
+    @State private var thumbs: [UUID: UIImage] = [:]
+    @State private var pendingDelete: HostEventDraft?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Text(app.T("Bản nháp lưu trên máy này, tối đa \(EventDraftStore.maxDrafts). Chạm để tiếp tục, hoặc vuốt trái / chạm ⋯ để sửa hay xoá.",
+                           "Drafts are kept on this phone, up to \(EventDraftStore.maxDrafts). Tap one to continue, or swipe left / tap ⋯ to edit or delete."))
+                    .font(.system(size: 11)).opacity(0.65)
+                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 8, trailing: 20))
+                if app.eventDrafts.isEmpty {
+                    Text(app.T("Chưa có bản nháp nào.", "No drafts yet."))
+                        .font(.system(size: 13)).opacity(0.7)
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                }
+                ForEach(app.eventDrafts) { d in
+                    row(d)
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) { pendingDelete = d } label: { Label(app.T("Xoá", "Delete"), systemImage: "trash") }
+                            Button { onOpen(d) } label: { Label(app.T("Sửa", "Edit"), systemImage: "pencil") }
+                                .tint(app.palette.clay)
+                        }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(app.palette.paper.ignoresSafeArea())
+            .foregroundStyle(app.palette.ink)
+            .navigationTitle(app.T("Bản nháp (\(app.eventDrafts.count)/\(EventDraftStore.maxDrafts))",
+                                   "Drafts (\(app.eventDrafts.count)/\(EventDraftStore.maxDrafts))"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) {
+                if #available(iOS 26.0, *) {
+                    Button(role: .close) { dismiss() }.accessibilityIdentifier("create.drafts.close")
+                } else {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(app.palette.ink)
+                            .frame(width: 30, height: 30)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .accessibilityLabel(app.T("Đóng", "Close"))
+                    .accessibilityIdentifier("create.drafts.close")
+                }
+            } }
+            .confirmationDialog(app.T("Xoá bản nháp này?", "Delete this draft?"),
+                                isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                                titleVisibility: .visible) {
+                Button(app.T("Xoá", "Delete"), role: .destructive) {
+                    if let d = pendingDelete { app.deleteEventDraft(d.id); thumbs[d.id] = nil }
+                    pendingDelete = nil
+                }
+                Button(app.T("Huỷ", "Cancel"), role: .cancel) { pendingDelete = nil }
+            } message: {
+                Text(app.T("Thông tin và ảnh trong bản nháp sẽ mất.", "Its details and photos will be gone."))
+            }
+        }
+        .presentationDragIndicator(.visible)
+        .task(id: app.eventDrafts.map(\.id)) {
+            for d in app.eventDrafts where thumbs[d.id] == nil {
+                if let t = EventDraftStore.coverThumbnail(of: d) { thumbs[d.id] = t }
+            }
+        }
+    }
+
+    private func row(_ d: HostEventDraft) -> some View {
+        HStack(spacing: 12) {
+            Button { onOpen(d) } label: {
+                HStack(spacing: 12) {
+                    Group {
+                        if let t = thumbs[d.id] {
+                            Image(uiImage: t).resizable().scaledToFill()
+                        } else {
+                            Image(systemName: "photo").font(.system(size: 18)).opacity(0.4)
+                        }
+                    }
+                    .frame(width: 56, height: 56)
+                    .background(app.palette.paper)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(d.displayName.isEmpty ? app.T("Chưa đặt tên", "Untitled event") : d.displayName)
+                            .font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                        Text(app.T("Lưu \(d.savedAt.formatted(date: .abbreviated, time: .shortened))",
+                                   "Saved \(d.savedAt.formatted(date: .abbreviated, time: .shortened))"))
+                            .font(.system(size: 12)).opacity(0.65)
+                        Text(app.T("\(d.photoFiles.count) ảnh · bước \(d.step + 1)/5", "\(d.photoFiles.count) photos · step \(d.step + 1)/5"))
+                            .font(.system(size: 12)).opacity(0.65)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("create.draft.\(d.id.uuidString)")
+            Menu {
+                Button { onOpen(d) } label: { Label(app.T("Sửa", "Edit"), systemImage: "pencil") }
+                Button(role: .destructive) { pendingDelete = d } label: { Label(app.T("Xoá", "Delete"), systemImage: "trash") }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 36, height: 36)
+                    .background(app.palette.paper, in: Circle())
+                    .overlay(Circle().stroke(app.palette.rule))
+            }
+            .accessibilityLabel(app.T("Thao tác bản nháp", "Draft actions"))
+            .accessibilityIdentifier("create.draft.menu.\(d.id.uuidString)")
+        }
+        .padding(12)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }

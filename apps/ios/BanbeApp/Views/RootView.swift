@@ -536,7 +536,10 @@ struct RootView: View {
     }
 
     private var showsAccountGate: Bool {
-        auth.session != nil && (auth.gate != .ready || app.appliedSessionUID != auth.session?.user.id)
+        // Also while the login form is still the current screen: the gate used to fade out a moment before the
+        // redirect to Home settled, so Login flashed back between the loading screen and Home.
+        auth.session != nil && (auth.gate != .ready || app.appliedSessionUID != auth.session?.user.id
+                                || app.screen == .login || app.screen == .welcome)
             && app.screen != .splash
     }
 
@@ -874,9 +877,9 @@ struct RootView: View {
             // ONE dismiss animation entirely itself (see that file's
             // `commitDismiss()`) — this conditional must never layer a
             // second SwiftUI transition on top of it.
-            // Not while an event is being submitted: the Confirm & submit button shows its own
-            // loading GIF next to "Submitting…" instead of a full-screen "Holding your seat…" cover.
-            if app.loading && !app.submitCreateEventInFlight { loadingOverlay }
+            // Also while a new event is submitted (owner, 2026-10-24): the cover then reads "Sending your event
+            // to banbe…" and lifts back onto the same Review screen, under the "Event submitted!" card.
+            if app.loading { loadingOverlay }
 
             // Undo after leaving a new-event draft (AppState.createBack), above the dock when it shows.
             if let offer = app.createUndoOffer, app.screen != .create {
@@ -1445,7 +1448,8 @@ struct RootView: View {
                 // pending, replacing the plain mark+spinner this used
                 // before (BanbeLoadingVisual honors Reduce Motion itself).
                 BanbeLoadingVisual(size: 64)
-                Text(app.T("Đang giữ chỗ cho bạn…", "Holding your seat…"))
+                Text(app.screen == .create ? app.T("Đang gửi sự kiện cho banbe duyệt…", "Sending your event to banbe…")
+                                           : app.T("Đang giữ chỗ cho bạn…", "Holding your seat…"))
                     .font(.system(size: 13))
                     .foregroundStyle(app.palette.ink)
             }

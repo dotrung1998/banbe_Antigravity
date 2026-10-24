@@ -1403,6 +1403,7 @@ extension AppState {
                 .execute().value
             }
             mapEvents = rows
+            mapEventsLoadFailed = false
 
             // Real-cover-photo fix (2026-10-19) — root cause: MapExploreView
             // used to render `EventCatalog.find(ev.id)?.img` unconditionally
@@ -1426,6 +1427,7 @@ extension AppState {
             mapEventCoverURLs = urls
         } catch {
             print("Failed to load map events:", error)
+            mapEventsLoadFailed = true
         }
         mapEventsLoading = false
     }
@@ -5924,5 +5926,65 @@ enum EventMarketColumns {
             markMissing()
             return try await body()
         }
+    }
+}
+
+
+// MARK: - Event drafts (host)
+
+extension AppState {
+    func loadEventDrafts() {
+        eventDrafts = userID.map { EventDraftStore.load($0) } ?? []
+    }
+
+    /// Snapshots the open form (text fields from here, photos/step from the view). False = already 5 drafts.
+    func saveEventDraft(photos: [UIImage], coverIndex: Int, step: Int) -> Bool {
+        guard let uid = userID else { return false }
+        var d = eventDrafts.first { $0.id == createDraftID } ?? HostEventDraft()
+        d.step = step; d.coverIndex = coverIndex
+        d.name = createName; d.desc = createDesc; d.intro = createIntro; d.keywords = createKeywords
+        d.chatGreeting = createChatGreeting; d.chatGreetingEn = createChatGreetingEn
+        d.cats = createCats; d.included = createIncludedItems
+        d.price = createPrice; d.seats = createSeats; d.visibility = createVisibility
+        d.hostGoal = createHostGoal; d.criteria = createCriteria
+        d.eventDate = createEventDate; d.eventTime = createEventTime
+        d.loc = createLoc; d.locLabel = createLocLabel; d.addressLine = createAddressLine
+        d.district = createDistrict; d.city = createCity; d.postalCode = createPostalCode
+        d.lat = createLat; d.lng = createLng
+        d.countryCode = createCountryCode; d.stateProvince = createStateProvince
+        d.neighborhood = createNeighborhood; d.placeTimeZoneID = createPlaceTimeZoneID
+        d.locConfirmed = createLocConfirmed
+        guard EventDraftStore.save(d, photos: photos, uid: uid) else { return false }
+        createDraftID = d.id
+        loadEventDrafts()
+        return true
+    }
+
+    /// Fills the form from a draft (photos are returned for the view's own gallery state).
+    func applyEventDraft(_ d: HostEventDraft) {
+        createEditEventId = nil
+        createSent = false; createError = ""
+        createDraftID = d.id
+        createName = d.name; createDesc = d.desc; createIntro = d.intro; createKeywords = d.keywords
+        createChatGreeting = d.chatGreeting; createChatGreetingEn = d.chatGreetingEn
+        createCats = d.cats; createIncludedItems = d.included
+        createPrice = d.price; createSeats = d.seats; createVisibility = d.visibility
+        createHostGoal = d.hostGoal; createCriteria = d.criteria
+        // Place first (its didSet re-zones the date/time), then the date and time themselves.
+        createCountryCode = d.countryCode; createStateProvince = d.stateProvince
+        createPlaceTimeZoneID = d.placeTimeZoneID; createNeighborhood = d.neighborhood
+        createLoc = d.loc; createLocLabel = d.locLabel; createAddressLine = d.addressLine
+        createDistrict = d.district; createCity = d.city; createPostalCode = d.postalCode
+        createLat = d.lat; createLng = d.lng; createLocConfirmed = d.locConfirmed
+        createEventDate = d.eventDate; createEventTime = d.eventTime
+        createDefaultsSource = nil; createAppliedDefaults = nil
+        createUndoOffer = nil
+    }
+
+    func deleteEventDraft(_ id: UUID) {
+        guard let uid = userID else { return }
+        EventDraftStore.delete(id, uid: uid)
+        if createDraftID == id { createDraftID = nil }
+        loadEventDrafts()
     }
 }

@@ -19,7 +19,8 @@ import { track } from '../lib/analytics.js';
 import { stepOfField, isTextField, firstMissingField } from '../lib/createFieldGuide.js';
 import RecipeSheet, { RecipeMeter, RecipeList } from './sheets/RecipeSheet.jsx';
 import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
-import BanbeLoadingVisual from './BanbeLoadingVisual.jsx';
+import { listDrafts, saveDraft, deleteDraft, draftFields, draftPhotoItems } from '../lib/eventDrafts.js';
+import { DraftSavedCard, EventDraftsSheet } from './sheets/EventDrafts.jsx';
 import { mirrorCreateDraft, releaseCreateDraft, peekCreateDraftRestore, clearCreateDraftRestore } from '../lib/createDraftUndo.js';
 import EventDetail from './EventDetail.jsx';
 import { shapeDraftAsCurEvent, draftPriceVnd as parseDraftPriceVnd } from '../lib/draftPreview.js';
@@ -66,7 +67,7 @@ const CAT_DEFS = [
 
 export default function CreateEvent() {
   const {
-    state, T, curEvent: ev, createBack,
+    state, T, EN, curEvent: ev, createBack,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createIntroType, createKeywordsType, createChatGreetingType, createChatGreetingEnType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
@@ -458,6 +459,55 @@ export default function CreateEvent() {
   useEffect(() => { mirrorCreateDraft({ items, coverKey, step, hasUnsavedInput }); }, [items, coverKey, step, hasUnsavedInput]);
   // Leaves straight away; with input, an Undo toast follows (it replaced the "Discard this event?" question).
   const leaveCreate = () => createBack();
+
+  // Drafts (iOS parity): up to 5 saved new events in this browser (lib/eventDrafts.js).
+  const uid = s.user?.id;
+  const [drafts, setDrafts] = useState([]);
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [draftSavedOpen, setDraftSavedOpen] = useState(false);
+  const [draftFull, setDraftFull] = useState(false);
+  const refreshDrafts = () => listDrafts(uid).then(setDrafts);
+  useEffect(() => { refreshDrafts(); }, [uid]); // eslint-disable-line react-hooks/exhaustive-deps
+  const saveDraftNow = async () => {
+    const coverIndex = Math.max(0, items.filter(it => it.kind === 'new').findIndex(it => it.url === coverKey));
+    const res = await saveDraft(uid, { id: s.createDraftId, fields: draftFields(s), photos: items, coverIndex, step });
+    if (!res.ok) { if (res.reason === 'full') setDraftFull(true); return; }
+    setDraftFull(false);
+    set({ createDraftId: res.id });
+    await refreshDrafts();
+    setDraftSavedOpen(true);
+  };
+  const openDraft = (d) => {
+    items.forEach(it => { if (it.kind === 'new') URL.revokeObjectURL(it.url); });
+    const photos = draftPhotoItems(d);
+    set({ ...d.fields, createDraftId: d.id, createEditEventId: null, createSent: false, createError: '',
+      createDefaultsSource: null, createAppliedDefaults: null, createUndoOffer: null });
+    setItems(photos);
+    setCoverKey(photos[Math.min(d.coverIndex || 0, photos.length - 1)]?.url ?? null);
+    setPhotoError(''); setAttemptedReview(false);
+    setStep(Math.min(Math.max(d.step || 0, 0), 4));
+    setDraftsOpen(false);
+  };
+  const removeDraft = async (d) => {
+    await deleteDraft(d.id);
+    if (s.createDraftId === d.id) set({ createDraftId: null });
+    await refreshDrafts();
+  };
+  const startNewDraft = () => {
+    setDraftSavedOpen(false);
+    items.forEach(it => { if (it.kind === 'new') URL.revokeObjectURL(it.url); });
+    setItems([]); setCoverKey(null); setPhotoError(''); setAttemptedReview(false);
+    seededExistingIds.current = [];
+    setStep(0);
+    goCreate();
+  };
+  const exitAfterDraft = () => {
+    setDraftSavedOpen(false);
+    // Everything is in the draft: leaving needs no Undo toast.
+    mirrorCreateDraft({ items, coverKey, step, hasUnsavedInput: false });
+    createBack();
+  };
+  const draftPill = { display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 34, padding: '0 12px', borderRadius: 999, background: 'var(--bb-field)', border: `1px solid ${rule}`, color: ink, fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' };
   // Price chosen by a pick/slider, written the way the field shows it ("450000" for VND as before, "12.50" for USD).
   const priceText = (v) => (market.currency === 'USD' ? priceInputText(v, 'USD') : String(v));
   const seatsNum = parseInt(String(s.createSeats || '').replace(/\D/g, ''), 10) || 0;
@@ -478,7 +528,26 @@ export default function CreateEvent() {
   // screen-high blank gap and a confirm button far below. The end state is identical (opacity 1, no transform).
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) backwards', minHeight: '100%', background: paper }} data-screen-label="Create event">
-      <div ref={topRef} onClick={leaveCreate} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {createBackLabel}</div>
+      <div ref={topRef} style={{ padding: '58px 22px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span onClick={leaveCreate} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {createBackLabel}</span>
+        <span style={{ flex: 1 }} />
+        {!s.createEditEventId && drafts.length > 0 && (
+          <button type="button" onClick={() => setDraftsOpen(true)} data-testid="create-drafts" className="bb-press" style={draftPill}>
+            🗂️ {T(`Bản nháp (${drafts.length}/5)`, `Drafts (${drafts.length}/5)`)}
+          </button>
+        )}
+        {!s.createEditEventId && (
+          <button type="button" onClick={saveDraftNow} data-testid="create-save-draft" className="bb-press" style={draftPill}>
+            💾 {T('Lưu nháp', 'Save draft')}
+          </button>
+        )}
+      </div>
+      {draftFull && (
+        <p role="alert" data-testid="create-drafts-full" style={{ fontSize: 12.5, lineHeight: 1.5, color: alert, margin: '10px 22px 0' }}>
+          {T('Đã đủ 5 bản nháp. Xoá một bản để lưu bản mới. ', 'You have 5 drafts. Delete one to save another. ')}
+          <span onClick={() => { setDraftFull(false); setDraftsOpen(true); }} style={{ textDecoration: 'underline', fontWeight: 600, cursor: 'pointer' }}>{T('Xem bản nháp', 'Manage drafts')}</span>
+        </p>
+      )}
       {/* Note 48 (iOS parity): a 5-step flow, one section per page. The sticky numbered bar shows %, an encouraging
           line and a ✓ per finished step; tap any step to jump there. */}
       {!s.createSent && (
@@ -992,18 +1061,31 @@ export default function CreateEvent() {
             const good = recipe.filter(c => c.status === 'good').length;
             track('submit_recipe_score', { bucket: good >= 9 ? '9-10' : good >= 7 ? '7-8' : good >= 4 ? '4-6' : '0-3' });
             const ok = await createSubmit(newFilesInOrder, coverIndex, { removePhotoIds: removedExistingIds, existingCoverPath, defaultKeywordsLabel: createCatLabel });
-            if (ok) { setReviewOpen(false); setSuccessChooserOpen(true); }
+            if (ok) {
+              // A submitted draft is no longer a draft.
+              if (s.createDraftId) { deleteDraft(s.createDraftId).then(refreshDrafts); set({ createDraftId: null }); }
+              setSuccessChooserOpen(true); // review stays under the chooser: no flash of the form
+            }
           }}
         />
       )}
       {recipeOpen && (
         <RecipeSheet checks={recipe} hasData={!!bench} n={bench?.n} onFix={fixIngredient} onClose={() => setRecipeOpen(false)} T={T} />
       )}
+      {draftSavedOpen && (
+        <DraftSavedCard T={T} count={drafts.length}
+          onExit={exitAfterDraft} onNew={startNewDraft}
+          onViewDrafts={() => { setDraftSavedOpen(false); setDraftsOpen(true); }}
+          onDismiss={() => setDraftSavedOpen(false)} />
+      )}
+      {draftsOpen && (
+        <EventDraftsSheet T={T} EN={EN} drafts={drafts} onOpen={openDraft} onDelete={removeDraft} onClose={() => setDraftsOpen(false)} />
+      )}
       {successChooserOpen && (
         <SubmitSuccessChooser
           T={T}
           onCreateAnother={() => {
-            setSuccessChooserOpen(false);
+            setSuccessChooserOpen(false); setReviewOpen(false);
             setItems([]); setCoverKey(null); setPhotoError(''); setAttemptedReview(false);
             seededExistingIds.current = [];
             goCreate();
@@ -1082,8 +1164,6 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         }}
       >
-        {/* The loading GIF sits beside "Submitting…" on the button (no full-screen cover: App.jsx skips it on Create). */}
-        {confirmBusy && !s.createSent && <span style={{ display: 'inline-flex', width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }}><BanbeLoadingVisual size={22} /></span>}
         {s.createSent
           ? T('Đã gửi, đang chờ Banbe duyệt', 'Submitted, waiting for Banbe to review')
           : confirmBusy ? T('Đang gửi…', 'Submitting…') : T('Xác nhận và gửi', 'Confirm & submit')}
