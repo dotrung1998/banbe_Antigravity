@@ -42,3 +42,11 @@ test('rewards_v2 stays off unless the server says true (a new feature must not a
   assert.equal(flagOn({ rewards_v2: true }, 'rewards_v2'), true);
   assert.deepEqual(normalizeFlags({ rewards: true, rewards_v2: true }), { rewards: true, rewards_v2: true });
 });
+
+test('onboarding_v2 (migration 201): missing or false = Version 1, only true = Version 2', () => {
+  assert.equal(flagOn({}, 'onboarding_v2'), false);
+  assert.equal(flagOn(null, 'onboarding_v2'), false);
+  assert.equal(flagOn({ onboarding_v2: false }, 'onboarding_v2'), false);
+  assert.equal(flagOn({ onboarding_v2: true }, 'onboarding_v2'), true);
+  assert.deepEqual(normalizeFlags({ onboarding_v2: true, onboarding_v3: true }), { onboarding_v2: true });
+});

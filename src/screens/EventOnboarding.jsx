@@ -192,7 +192,7 @@ function WelcomeStep({ send }) {
 
 // [title, subtitle (one line), step name, hero emoji]. The first question greets by name (note 53: personal,
 // conversational, one short line under the title instead of a paragraph).
-const QUESTION_COPY = {
+export const QUESTION_COPY = {
   goals: [['Bạn muốn gì từ một buổi đi chơi?', 'What do you want from a night out?'], ['Chọn bao nhiêu cũng được.', 'Pick as many as you like.'], ['Mục tiêu', 'Goals'], '👋'],
   interests: [['Loại sự kiện nào hợp với bạn?', 'Which kinds of events are you into?'], ['Chỉ những loại bạn chọn được gắn ★.', 'Only the kinds you pick get the ★.'], ['Sở thích', 'Interests'], '🎟️'],
   availability: [['Bạn thường rảnh khi nào?', 'When are you usually free?'], ['Giờ khác vẫn hiện, chỉ xếp sau.', 'Other times still show, just lower.'], ['Thời gian', 'Time'], '🗓️'],
@@ -203,7 +203,7 @@ const QUESTION_COPY = {
 const TILE_QUESTIONS = new Set(['goals', 'interests', 'availability']);
 
 /** An answer. Selected = tinted fill + ink outline + check badge + a bigger emoji; never solid ink (that's the CTA). */
-function ChoiceRow({ title, emoji, selected, onClick, testId, multi = true, tile = false }) {
+export function ChoiceRow({ title, emoji, selected, onClick, testId, multi = true, tile = false }) {
   const check = (
     <span aria-hidden style={{
       width: 22, height: 22, borderRadius: multi ? 7 : 11, flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

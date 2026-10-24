@@ -28,6 +28,8 @@ enum Screen: String {
     case surveyPublic
     case surveysHosting
     case helpGuide, helpFaq
+    // Note 63: Help & Legal > How banbe works (the Welcome story, replayable while signed in).
+    case helpHowItWorks
     case eventPreferences
     // Note 44 — signed-out public entry, and the Schedule dock tab.
     case welcome
@@ -3842,7 +3844,7 @@ final class AppState: ObservableObject {
         case .policy: screen = policyBackScreen
         // Help & Legal guides / Q&A go back to the Help & Legal group.
         case .helpGuide where helpGuideKey == "admin": screen = .profile
-        case .helpGuide, .helpFaq: accountGroupKey = "helpLegal"; screen = .accountGroup
+        case .helpGuide, .helpFaq, .helpHowItWorks: accountGroupKey = "helpLegal"; screen = .accountGroup
         case .eventRecap: screen = eventRecapBack
         case .hostRecap: screen = hostRecapBack
         default: break
@@ -3961,7 +3963,7 @@ final class AppState: ObservableObject {
         // other screen this exact bug class already hit).
         case .policy: return policyBackScreen
         case .helpGuide where helpGuideKey == "admin": return .profile
-        case .helpGuide, .helpFaq: return .accountGroup
+        case .helpGuide, .helpFaq, .helpHowItWorks: return .accountGroup
         case .eventRecap: return eventRecapBack
         case .hostRecap: return hostRecapBack
         default: return .home

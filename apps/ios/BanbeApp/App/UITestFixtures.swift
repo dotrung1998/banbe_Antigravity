@@ -33,6 +33,8 @@ enum UITestFixture {
     /// `-uiFixtureRewards off` is an admin having hidden Rewards & badges (migration 187).
     static let seedsPulse = UserDefaults.standard.bool(forKey: "uiFixturePulse")
     static let rewardsSwitch = UserDefaults.standard.string(forKey: "uiFixtureRewards") ?? "on"
+    /// Note 63: `-uiFixtureOnboardingV2 YES` is an admin having picked onboarding Version 2.
+    static let onboardingV2 = UserDefaults.standard.bool(forKey: "uiFixtureOnboardingV2")
     /// Stable fake account id so the draft store/relaunch tests have a key.
     static let userID = UUID(uuidString: "00000000-0000-4000-8000-00000000F1F0")!
 
@@ -155,6 +157,7 @@ struct UITestFixtureRoot: View {
         guard !ready else { return }
         let signedOut = name.hasPrefix("auth") || name == "routing.signedOut"
         if !signedOut { app.userID = UITestFixture.userID }
+        if UITestFixture.onboardingV2 { app.featureFlags["onboarding_v2"] = true }
         if name.hasPrefix("shell") { configureShell() }
         else if name.hasPrefix("reports") { configureReports() }
         else if isRouted { configureRouted() }

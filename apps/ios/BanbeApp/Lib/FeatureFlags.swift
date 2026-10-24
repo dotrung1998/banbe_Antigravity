@@ -11,15 +11,16 @@ import Foundation
 /// - Anything that is not a boolean, and any key this build does not know, is ignored.
 enum FeatureFlags {
     static let keys = ["rewards", "admin_event_wipe", "rewards_v2", "push_enabled", "app_events",
-                       "event_reminders", "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share"]
+                       "event_reminders", "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share", "onboarding_v2"]
     /// Flags that are OFF unless the server explicitly says true (a missing key never turns them on). Note 54:
     /// "admin_event_wipe" is a TESTING-PHASE admin tool that must never switch itself on. "rewards_v2" (migration
     /// 192) is a new feature that stays dark until an admin turns it on (same list as src/lib/featureFlags.js).
     /// "push_enabled" (migration 194): real push notifications, off until an admin turns them on.
     /// "app_events" (migration 196): first-party measurement, nothing is sent until an admin turns it on.
     /// Migrations 199/200: "event_reminders" is on unless an admin turns it off; the rest stay dark until set.
+    /// "onboarding_v2" (migration 201): off/missing = onboarding Version 1, on = Version 2 (note 63).
     static let offUnlessSet: Set<String> = ["admin_event_wipe", "rewards_v2", "push_enabled", "app_events",
-                                            "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share"]
+                                            "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share", "onboarding_v2"]
     static let cacheKey = "banbe.featureFlags.v1"
 
     /// Keep only known keys with real booleans.

@@ -63,6 +63,11 @@ struct AdminFeaturesView: View {
              hintVi: "Thêm nút chia sẻ qua Zalo (sự kiện ở Việt Nam) và Nhắn tin cho bạn (sự kiện ở Mỹ) cạnh nút chia sẻ của hệ thống. Mặc định tắt.",
              hintEn: "Adds Share via Zalo (Vietnam events) and Text a friend (US events) next to the system share. Off by default.",
              onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off"),
+        // Migration 201, note 63: a version picker on top of a boolean switch (off = Version 1, on = Version 2).
+        Flag(key: "onboarding_v2", vi: "Bản giới thiệu: Phiên bản 2", en: "Onboarding demo: Version 2",
+             hintVi: "Tắt = Phiên bản 1: màn Chào mừng tĩnh và 4 trang chữ \"banbe hoạt động thế nào\". Bật = Phiên bản 2: màn Chào mừng có chuyển động và mỗi phần có các màn demo vuốt qua lại. Mặc định tắt.",
+             hintEn: "Off = Version 1: still Welcome screen and the 4 text pages of \"How banbe works\". On = Version 2: animated Welcome entrance and swipeable demo screens in each section. Off by default.",
+             onVi: "Đang dùng Phiên bản 2", onEn: "Showing Version 2", offVi: "Đang dùng Phiên bản 1", offEn: "Showing Version 1"),
         // TESTING-PHASE (note 54): remove this row with the wipe tool before public release.
         Flag(key: "admin_event_wipe", vi: "Xoá sự kiện thử nghiệm (giai đoạn thử)", en: "Test event wipe (testing phase)",
              hintVi: "Cho admin xoá vĩnh viễn bất kỳ sự kiện nào cùng mọi dữ liệu liên quan, không cần lý do, trong Quản lý sự kiện (chỉ iOS). Chỉ dùng cho dữ liệu thử nghiệm.",

@@ -53,6 +53,7 @@ const STATIC = {
   adminDobCorrections: '/admin/birthday-corrections',
   policy: '/policy',
   faq: '/help/faq',
+  howItWorks: '/help/how-banbe-works',
   reports: '/reports',
   surveysHosting: '/surveys',
   confirmed: '/ticket',

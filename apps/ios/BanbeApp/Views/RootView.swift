@@ -1428,6 +1428,7 @@ struct RootView: View {
         case .surveysHosting: SurveysHostingView()
         case .helpGuide: HelpGuideView()
         case .helpFaq: HelpFaqView()
+        case .helpHowItWorks: HowItWorksScreen()
         case .eventRecap: EventRecapView()
         case .hostRecap: HostRecapView()
         }

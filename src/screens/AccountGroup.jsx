@@ -433,10 +433,11 @@ export default function AccountGroup() {
           </div>
         )}
 
-        {/* Help & Legal — Terms (the full policy screen), then the text guides
-            (Personal, Host; the Admin guide lives on the Admin tab), then the Q&A. */}
+        {/* Help & Legal — How banbe works (note 63: the Welcome story, replayable), Terms (the full policy screen),
+            then the text guides (Personal, Host; the Admin guide lives on the Admin tab), then the Q&A. */}
         {key === 'helpLegal' && (
           <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
+            <Row icon="lightbulb" label={T('banbe hoạt động thế nào', 'How banbe works')} trailing="›" testId="help-how-it-works" onClick={() => set({ screen: 'howItWorks' })} />
             <Row icon="document" label={T('Điều khoản', 'Terms')} trailing="›" testId="help-terms" onClick={openPolicy} />
             <Row icon="checklist" label={T('Hướng dẫn: Người tham gia', 'Guide: Personal')} trailing="›" testId="help-guide-personal" onClick={() => set({ screen: 'guide', guideKey: 'personal' })} />
             <Row icon="checklist" label={T('Hướng dẫn: Người tổ chức (Host)', 'Guide: Host')} trailing="›" testId="help-guide-host" onClick={() => set({ screen: 'guide', guideKey: 'host' })} />

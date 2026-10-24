@@ -93,6 +93,16 @@ const FLAGS = [
     hintVi: 'Thêm nút chia sẻ qua Zalo (sự kiện ở Việt Nam) và Nhắn tin cho bạn (sự kiện ở Mỹ) cạnh nút chia sẻ của hệ thống. Mặc định tắt.',
     hintEn: 'Adds Share via Zalo (Vietnam events) and Text a friend (US events) next to the system share. Off by default.',
   },
+  {
+    // Migration 201, note 63: a version picker on top of a boolean switch (off = Version 1, on = Version 2).
+    key: 'onboarding_v2',
+    vi: 'Bản giới thiệu: Phiên bản 2',
+    en: 'Onboarding demo: Version 2',
+    hintVi: 'Tắt = Phiên bản 1: màn Chào mừng tĩnh và 4 trang chữ "banbe hoạt động thế nào". Bật = Phiên bản 2: màn Chào mừng có chuyển động và mỗi phần có các màn demo vuốt qua lại. Mặc định tắt.',
+    hintEn: 'Off = Version 1: still Welcome screen and the 4 text pages of "How banbe works". On = Version 2: animated Welcome entrance and swipeable demo screens in each section. Off by default.',
+    stateOn: ['Đang dùng Phiên bản 2', 'Showing Version 2'],
+    stateOff: ['Đang dùng Phiên bản 1', 'Showing Version 1'],
+  },
 ];
 
 const ERRORS = {
@@ -135,7 +145,8 @@ export default function AdminFeatures() {
                   <div style={{ fontSize: 15.5, fontWeight: 600 }}>{T(f.vi, f.en)}</div>
                   <div style={{ fontSize: 12.5, lineHeight: 1.45, opacity: 0.7, marginTop: 3 }}>{T(f.hintVi, f.hintEn)}</div>
                   <div data-testid={`admin-flag-${f.key}-state`} style={{ fontSize: 12, fontWeight: 600, marginTop: 6, opacity: on ? 1 : 0.7 }}>
-                    {on ? T('Đang hiện cho mọi người', 'Visible to everyone') : T('Đang ẩn với mọi người', 'Hidden from everyone')}
+                    {f.stateOn ? (on ? T(...f.stateOn) : T(...f.stateOff))
+                      : on ? T('Đang hiện cho mọi người', 'Visible to everyone') : T('Đang ẩn với mọi người', 'Hidden from everyone')}
                   </div>
                 </div>
                 <GlassSwitch on={on} busy={s.featureFlagBusy === f.key} testId={`admin-flag-${f.key}-switch`} onPress={() => flip(f.key, !on)} />

@@ -20,6 +20,10 @@ extension AppState {
     /// Real push notifications (migration 194). Off unless an admin turns them on; registration and the Q6 ask wait for it.
     var pushEnabled: Bool { FeatureFlags.isOn(featureFlags, "push_enabled") }
 
+    /// Onboarding demo version (migration 201, note 63): off = Version 1 (still Welcome + text story), on = Version 2
+    /// (animated Welcome entrance + swipeable demo screens). Off unless an admin turns it on.
+    var onboardingV2Enabled: Bool { FeatureFlags.isOn(featureFlags, "onboarding_v2") }
+
     /// Called when the flags changed: turning Rewards off clears its numbers; turning it on loads them. Push turning
     /// on re-registers a device iOS already allows (never prompts).
     func featureFlagsDidChange(from old: [String: Bool]) {

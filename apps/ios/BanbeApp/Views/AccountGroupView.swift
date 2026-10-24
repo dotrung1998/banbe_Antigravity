@@ -676,10 +676,13 @@ struct AccountGroupView: View {
     // shield" glyph, with no visual way to tell them apart at a glance;
     // each now has its own distinct icon (destinations/badges unchanged).
     @ViewBuilder
-    // Help & Legal — Terms (the full policy screen), the text guides (Admin
-    // guide only for admins) and the Q&A. Mirrors web's `helpLegal` group.
+    // Help & Legal — How banbe works (note 63: the Welcome story, replayable),
+    // Terms (the full policy screen), the text guides (Admin guide only for
+    // admins) and the Q&A. Mirrors web's `helpLegal` group.
     private var helpLegalContent: some View {
         VStack(spacing: 0) {
+            row(app.T("banbe hoạt động thế nào", "How banbe works"), identifier: "help.howItWorks", icon: "lightbulb", trailing: "›") { app.screen = .helpHowItWorks }
+            Divider().overlay(app.palette.rule)
             row(app.T("Điều khoản", "Terms"), identifier: "help.terms", icon: "doc.text", trailing: "›") { app.openPolicy() }
             Divider().overlay(app.palette.rule)
             row(app.T("Hướng dẫn: Người tham gia", "Guide: Personal"), identifier: "help.guide.personal", icon: "checklist", trailing: "›") { openGuide("personal") }

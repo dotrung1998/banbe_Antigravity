@@ -120,7 +120,7 @@ struct OnboardingFlowView: View {
 
 // MARK: - Shared pieces
 
-private struct OnboardingTopBar: View {
+struct OnboardingTopBar: View {
     @EnvironmentObject var app: AppState
     let step: Int
     let onBack: () -> Void
@@ -173,7 +173,7 @@ private struct OnboardingTopBar: View {
 /// An answer, with an explicit selected state (tint + ink outline + check + trait), never colour alone.
 /// Note 53: selected is a light tint, NOT solid ink, so a picked answer can't be mistaken for the Continue button
 /// under it; each answer leads with its emoji, which grows a little when picked. `tile` = the 2-column grid look.
-private struct OnboardingChoiceRow: View {
+struct OnboardingChoiceRow: View {
     @EnvironmentObject var app: AppState
     let title: String
     var detail: String? = nil

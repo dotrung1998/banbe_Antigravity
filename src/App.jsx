@@ -66,6 +66,7 @@ import ToastStack from './screens/ToastStack.jsx';
 import Policy from './screens/Policy.jsx';
 import Guide from './screens/Guide.jsx';
 import Faq from './screens/Faq.jsx';
+import HowItWorks from './screens/HowItWorks.jsx';
 import MapExplore from './screens/MapExplore.jsx';
 import DockCreateButton from './screens/DockCreateButton.jsx';
 import StoryCreateOverlay from './screens/StoryCreateOverlay.jsx';
@@ -137,6 +138,7 @@ const SCREENS = {
   policy: Policy,
   guide: Guide,
   faq: Faq,
+  howItWorks: HowItWorks,
   mapExplore: MapExplore,
   editProfile: EditProfile,
   publicProfile: PublicProfile,

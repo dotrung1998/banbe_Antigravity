@@ -42,4 +42,12 @@ final class FeatureFlagsTests: XCTestCase {
         XCTAssertTrue(FeatureFlags.isOn(["admin_event_wipe": true], "admin_event_wipe"))
         XCTAssertTrue(FeatureFlags.isOn([:], "rewards"), "other flags keep missing = on")
     }
+
+    /// Migration 201 (note 63): missing or false = onboarding Version 1, only an explicit true = Version 2.
+    func testOnboardingV2IsVersionOneUnlessExplicitlyOn() {
+        XCTAssertFalse(FeatureFlags.isOn([:], "onboarding_v2"))
+        XCTAssertFalse(FeatureFlags.isOn(["onboarding_v2": false], "onboarding_v2"))
+        XCTAssertTrue(FeatureFlags.isOn(["onboarding_v2": true], "onboarding_v2"))
+        XCTAssertEqual(FeatureFlags.normalize(["onboarding_v2": true, "onboarding_v3": true]), ["onboarding_v2": true])
+    }
 }
