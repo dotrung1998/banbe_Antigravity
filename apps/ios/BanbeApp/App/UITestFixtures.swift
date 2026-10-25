@@ -204,6 +204,10 @@ struct UITestFixtureRoot: View {
         case "inbox": app.screen = .inbox
         case "account", "accountSolo": app.screen = .profile
         case "adminFeatures": app.screen = .adminFeatures
+        case "guide":
+            app.helpGuideKey = UserDefaults.standard.string(forKey: "uiFixtureGuide") ?? "personal"
+            app.screen = .helpGuide
+        case "faq": app.screen = .helpFaq
         case "adminManageEvents":
             // Note 54. `-uiFixtureWipe YES` is an admin having turned the TESTING-PHASE wipe switch on.
             if UserDefaults.standard.bool(forKey: "uiFixtureWipe") { app.featureFlags["admin_event_wipe"] = true }

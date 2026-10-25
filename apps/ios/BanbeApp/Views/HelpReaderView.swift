@@ -16,6 +16,10 @@ struct HelpReaderView: View {
 
     @State private var query = ""
     @State private var tocOpen = true
+    /// Contents / jump-to-top / jump-to-bottom all ask for a scroll by setting this (a counter makes the same target
+    /// fire twice). The `ScrollViewReader` that acts on it lives INSIDE the scroll view's content: on iOS 27 a reader
+    /// wrapped around `ScreenScaffold` (outside its ScrollView) no longer scrolls anything, so Contents taps did nothing.
+    @State private var jump: (id: String, anchor: UnitPoint, n: Int)?
 
     private var isEN: Bool { app.lang == "en" }
     private func pick(_ vi: String, _ en: String) -> String { isEN ? en : vi }
@@ -82,8 +86,9 @@ struct HelpReaderView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
+        ZStack {
             ScreenScaffold {
+                ScrollViewReader { proxy in
                 VStack(alignment: .leading, spacing: 0) {
                     Color.clear.frame(height: 1).id("helpTop")
                     BackLink(label: backLabel, action: onBack)
@@ -105,16 +110,18 @@ struct HelpReaderView: View {
                             .accessibilityIdentifier("\(idPrefix).resultCount")
                     }
 
-                    if !visible.isEmpty { toc(proxy) }
+                    if !visible.isEmpty { toc }
 
                     ForEach(Array(visible.enumerated()), id: \.element.id) { n, sec in
                         VStack(alignment: .leading, spacing: 0) {
+                            // The jump target is a plain anchor view, like helpTop / helpBottom. An `.id` put on the
+                            // ForEach's own generated row is not found by `scrollTo` on iOS 27 (Contents did nothing).
+                            Color.clear.frame(height: 1).id("sec-\(sec.id)")
                             Text(highlighted((tokens.isEmpty ? "\(n + 1). " : "") + pick(sec.vi, sec.en)))
                                 .font(.system(size: 17, weight: .semibold))
+                                .padding(.top, 25)
                             ForEach(Array(sec.blocks.enumerated()), id: \.offset) { _, b in blockView(b) }
                         }
-                        .padding(.top, 26)
-                        .id("sec-\(sec.id)")
                     }
                     Color.clear.frame(height: 1).id("helpBottom")
                 }
@@ -122,19 +129,28 @@ struct HelpReaderView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
                 .padding(.bottom, 120)
+                .onChange(of: jump?.n) { _, _ in
+                    guard let j = jump else { return }
+                    withAnimation { proxy.scrollTo(j.id, anchor: j.anchor) }
+                }
+                }
             }
             .overlay(alignment: .bottomTrailing) {
                 VStack(spacing: 8) {
                     floatButton("arrow.up", label: app.T("Lên đầu trang", "Jump to top"), id: "\(idPrefix).toTop") {
-                        withAnimation { proxy.scrollTo("helpTop", anchor: .top) }
+                        requestJump("helpTop", .top)
                     }
                     floatButton("arrow.down", label: app.T("Xuống cuối trang", "Jump to bottom"), id: "\(idPrefix).toBottom") {
-                        withAnimation { proxy.scrollTo("helpBottom", anchor: .bottom) }
+                        requestJump("helpBottom", .bottom)
                     }
                 }
                 .padding(.trailing, 16).padding(.bottom, 96)
             }
         }
+    }
+
+    private func requestJump(_ id: String, _ anchor: UnitPoint) {
+        jump = (id, anchor, (jump?.n ?? 0) + 1)
     }
 
     private func floatButton(_ icon: String, label: String, id: String, action: @escaping () -> Void) -> some View {
@@ -150,7 +166,7 @@ struct HelpReaderView: View {
         .accessibilityIdentifier(id)
     }
 
-    private func toc(_ proxy: ScrollViewProxy) -> some View {
+    private var toc: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button { tocOpen.toggle() } label: {
                 HStack {
@@ -164,7 +180,7 @@ struct HelpReaderView: View {
             .accessibilityIdentifier("\(idPrefix).tocToggle")
             if tocOpen {
                 ForEach(Array(visible.enumerated()), id: \.element.id) { n, sec in
-                    Button { withAnimation { proxy.scrollTo("sec-\(sec.id)", anchor: .top) } } label: {
+                    Button { requestJump("sec-\(sec.id)", .top) } label: {
                         Text("\(n + 1). \(pick(sec.vi, sec.en))")
                             .font(.system(size: 13.5)).underline()
                             .multilineTextAlignment(.leading)
