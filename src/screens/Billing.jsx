@@ -1,5 +1,6 @@
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { paper, ink, FACE, display, fieldGlass, inkButton, alert } from '../theme.js';
+import AsyncSuccessButton from '../components/ui/AsyncSuccessButton.jsx';
+import { paper, ink, FACE, display, fieldGlass, alert } from '../theme.js';
 
 // The buyer block on every invoice and receipt this account is ever issued.
 // Kept apart from "Rename" on purpose: what you are called in the app and
@@ -14,7 +15,7 @@ export default function Billing() {
 
   // An address is what a document actually needs and the one field a person
   // is most likely to skip, so it — not the name — gates saving.
-  const canSave = s.billingName.trim().length > 0 && s.billingAddress.trim().length > 0 && !s.billingSaving;
+  const canSave = s.billingName.trim().length > 0 && s.billingAddress.trim().length > 0;
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Billing">
@@ -40,13 +41,10 @@ export default function Billing() {
                placeholder={T('Dành cho công ty', 'For companies')} testid="billing-tax" />
       </div>
 
-      <div
-        onClick={() => canSave && saveBillingDetails()}
-        style={{ ...inkButton({ margin: '20px 22px 0', borderRadius: 18, padding: 15, fontSize: 14.5, opacity: canSave ? 1 : 0.45, cursor: canSave ? 'pointer' : 'default' }) }}
-        data-testid="billing-save"
-      >
-        {s.billingSaving ? T('Đang lưu…', 'Saving…') : T('Lưu', 'Save')}
-      </div>
+      {/* Note 64: stay-and-update. ✓ after save_billing_details accepted it, then back to Save; "Saved." stays below. */}
+      <AsyncSuccessButton testId="billing-save" label={T('Lưu', 'Save')} enabled={canSave} run={saveBillingDetails} resetAfterSuccess
+        pendingLabel={T('Đang lưu…', 'Saving…')} successLabel={T('Đã lưu', 'Saved')}
+        wrapStyle={{ margin: '20px 22px 0', width: 'auto' }} style={{ padding: 15, fontSize: 14.5 }} />
 
       {s.billingSaved && (
         <p style={{ fontSize: 12.5, color: ink, opacity: 0.75, margin: '12px 22px 0' }} data-testid="billing-saved">

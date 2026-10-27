@@ -2840,8 +2840,11 @@ extension AppState {
         }
     }
 
-    func submitReserve() async {
-        loading = true
+    /// Note 64: `deferNavigation` is the AsyncSuccessButton path: no full-screen loader (the button morphs) and no
+    /// screen change here; the button opens Confirmed once its ✓ has drawn. Returns true only when the hold exists.
+    @discardableResult
+    func submitReserve(deferNavigation: Bool = false) async -> Bool {
+        loading = !deferNavigation
         reserveError = ""
         do {
             // hold_seats() (migration 026), not the legacy claim_seats() —
@@ -2878,8 +2881,11 @@ extension AppState {
             tickets[eventKey] = qty
             if !attending.contains(eventKey) { attending.append(eventKey) }
             loading = false
-            screen = .confirmed
-            Haptics.success()
+            if !deferNavigation {
+                screen = .confirmed
+                Haptics.success()
+            }
+            return true
         } catch {
             loading = false
             Haptics.error()
@@ -2896,12 +2902,12 @@ extension AppState {
                 // Criteria not met: show the guidance card, not a generic error.
                 reserveEligibilityBlock = block
                 reserveError = ""
-                return
+                return false
             }
             // Migration 195's bookings trigger: a paid event in a currency banbe can't take bookings in yet (USD).
             if code.hasPrefix("PAID_BOOKING_NOT_AVAILABLE") {
                 reserveError = T("Đặt vé trả phí cho sự kiện tại Mỹ sẽ sớm mở", "Paid booking for US events opens soon")
-                return
+                return false
             }
             reserveError = [
                 "NOT_AUTHENTICATED": T("Bạn cần đăng nhập để giữ chỗ.", "You need to sign in to hold a spot."),
@@ -2921,6 +2927,7 @@ extension AppState {
                 "Không thể giữ chỗ lúc này. Vui lòng thử lại.",
                 "Could not hold this spot right now. Please try again."
             )
+            return false
         }
     }
 
@@ -4953,13 +4960,15 @@ try await SupabaseService.client
     func submitCreateEvent(
         newImages: [UIImage] = [], coverNewIndex: Int? = nil,
         removeExistingPhotoIDs: [UUID] = [], existingCoverPath: String? = nil,
-        defaultKeywordsLabel: String = ""
+        defaultKeywordsLabel: String = "",
+        showsLoader: Bool = true
     ) async -> Bool {
         guard !createName.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
         guard !submitCreateEventInFlight else { return false }
         submitCreateEventInFlight = true
         defer { submitCreateEventInFlight = false }
-        loading = true
+        // Note 64: Review's AsyncSuccessButton is the progress indicator, so it asks for no full-screen loader.
+        loading = showsLoader
         createError = ""
         createMediaError = ""
 

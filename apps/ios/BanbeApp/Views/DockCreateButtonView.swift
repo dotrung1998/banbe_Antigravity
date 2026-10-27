@@ -108,6 +108,7 @@ struct DockCreateButtonView: View {
                 .environmentObject(app)
             }
             .accessibilityIdentifier("dock.createButton")
+            .tourTarget("tour.dock.create")
             .accessibilityLabel(app.T("Tạo mới", "Create"))
         }
     }

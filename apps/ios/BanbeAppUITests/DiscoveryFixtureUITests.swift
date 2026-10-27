@@ -176,6 +176,11 @@ final class DiscoveryFixtureUITests: XCTestCase {
     /// The admin screen shows the state, flips it, and Account loses the Rewards row.
     func testAdminFeatureSwitchFlipsState() {
         let app = launch("adminFeatures")
+        // Note 64: categories start collapsed; the switch rows only exist once their group is open.
+        let group = el(app, "adminFeatures.cat.rewards")
+        XCTAssertTrue(group.waitForExistence(timeout: 20))
+        XCTAssertFalse(el(app, "adminFeatures.rewards.state").exists)
+        group.tap()
         let state = el(app, "adminFeatures.rewards.state")
         XCTAssertTrue(state.waitForExistence(timeout: 20))
         XCTAssertEqual(state.label, "Visible to everyone")

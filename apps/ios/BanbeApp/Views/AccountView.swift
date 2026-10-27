@@ -1430,6 +1430,7 @@ struct AccountView: View {
         .disabled(app.organizerModeBusy)
         .opacity(app.organizerModeBusy ? 0.55 : 1)
         .accessibilityIdentifier("account.organizerToggle")
+        .tourTarget("tour.account.organizerMode")
         .padding(.top, 10)
         .id("account-hosting-toggle")
 

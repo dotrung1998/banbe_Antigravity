@@ -208,9 +208,12 @@ final class RecordingAnalyticsSink: AnalyticsSink {
 
 enum Analytics {
     static var sink: AnalyticsSink = NoopAnalyticsSink()
+    /// Note 64: the v3 tour shows the real screens without the person using them, so nothing is measured meanwhile.
+    static var paused = false
     private static let log = Logger(subsystem: "com.banbe.ios", category: "analytics")
 
     static func track(_ event: AnalyticsEvent) {
+        if paused { return }
         #if DEBUG
         log.debug("\(event.name, privacy: .public) \(event.properties.description, privacy: .public)")
         #endif
@@ -220,7 +223,7 @@ enum Analytics {
     /// `first_*` events fire once per account per device. The marker is a
     /// local boolean keyed by the account id — the id itself is never sent.
     static func trackFirst(_ event: AnalyticsEvent, userID: UUID?, defaults: UserDefaults = .standard) {
-        guard let userID else { return }
+        guard let userID, !paused else { return }
         let key = "banbe.analytics.first.\(event.name).\(userID.uuidString)"
         guard !defaults.bool(forKey: key) else { return }
         defaults.set(true, forKey: key)

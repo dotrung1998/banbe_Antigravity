@@ -124,3 +124,7 @@ How each platform does it:
   - iOS `OnboardingV2UITests` 5/5, including `testEveryCardAndSwipeToFinish`, which screenshots all 17 cards and the
     thank-you.
   - Web `tests/public/onboarding-v2.spec.js` 5/5. Clicking the bouncing hint needs `force: true`.
+
+## Later: Version 3 (note 64)
+`onboarding_v3` (migration 202) adds Version 3 = Version 2 + a guided tour over the real app. The admin row is now one
+Version 1/2/3 control (`admin_set_onboarding_version`, atomic); `onboardingV2Enabled` means version ≥ 2. See note 64.

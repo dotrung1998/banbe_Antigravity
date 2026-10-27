@@ -1073,12 +1073,12 @@ struct BillingView: View {
                 }
                 .padding(.top, 20)
 
-                InkButton(title: app.billingSaving ? app.T("Đang lưu…", "Saving…") : app.T("Lưu", "Save"),
-                          enabled: canSave) {
-                    Task { await app.saveBillingDetails() }
-                }
+                // Note 64: stay-and-update. ✓ after save_billing_details accepted it, then back to Save.
+                AsyncSuccessButton(title: app.T("Lưu", "Save"), enabled: canSave,
+                                   pendingLabel: app.T("Đang lưu…", "Saving…"), successLabel: app.T("Đã lưu", "Saved"),
+                                   resetAfterSuccess: true, identifier: "billing.save",
+                                   run: { await app.saveBillingDetails() ? .success : .failure(app.billingError) })
                 .padding(.top, 20)
-                .accessibilityIdentifier("billing.save")
 
                 if app.billingSaved {
                     Text(app.T("Đã lưu.", "Saved."))
@@ -1200,12 +1200,12 @@ struct PayoutView: View {
                                text: $app.payoutNote).accessibilityIdentifier("payout.note")
                 }
 
-                InkButton(title: app.payoutSaving ? app.T("Đang lưu…", "Saving…") : app.T("Lưu", "Save"),
-                          enabled: canSave) {
-                    Task { await app.savePayoutDetails() }
-                }
+                // Note 64: stay-and-update. ✓ after save_organizer_payment accepted it, then back to Save.
+                AsyncSuccessButton(title: app.T("Lưu", "Save"), enabled: canSave,
+                                   pendingLabel: app.T("Đang lưu…", "Saving…"), successLabel: app.T("Đã lưu", "Saved"),
+                                   resetAfterSuccess: true, identifier: "payout.save",
+                                   run: { await app.savePayoutDetails() ? .success : .failure(app.payoutError) })
                 .padding(.top, 20)
-                .accessibilityIdentifier("payout.save")
 
                 if app.payoutSaved {
                     Text(app.T("Đã lưu. Khách sẽ thấy thông tin này khi thanh toán.",

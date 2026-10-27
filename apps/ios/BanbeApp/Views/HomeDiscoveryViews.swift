@@ -128,6 +128,7 @@ struct HomeSearchBar: View {
         .accessibilityLabel(app.T("Tìm sự kiện, host, khu vực", "Search events, hosts, areas"))
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("home.searchBar")
+        .tourTarget("tour.home.search")
     }
 }
 

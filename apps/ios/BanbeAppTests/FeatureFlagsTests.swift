@@ -48,6 +48,20 @@ final class FeatureFlagsTests: XCTestCase {
         XCTAssertFalse(FeatureFlags.isOn([:], "onboarding_v2"))
         XCTAssertFalse(FeatureFlags.isOn(["onboarding_v2": false], "onboarding_v2"))
         XCTAssertTrue(FeatureFlags.isOn(["onboarding_v2": true], "onboarding_v2"))
-        XCTAssertEqual(FeatureFlags.normalize(["onboarding_v2": true, "onboarding_v3": true]), ["onboarding_v2": true])
+        XCTAssertEqual(FeatureFlags.normalize(["onboarding_v2": true, "onboarding_v4": true]), ["onboarding_v2": true])
+    }
+
+    func testOnboardingVersionPrecedence() {
+        XCTAssertEqual(FeatureFlags.onboardingVersion([:]), 1)
+        XCTAssertEqual(FeatureFlags.onboardingVersion(["onboarding_v2": false, "onboarding_v3": false]), 1)
+        XCTAssertEqual(FeatureFlags.onboardingVersion(["onboarding_v2": true]), 2)
+        XCTAssertEqual(FeatureFlags.onboardingVersion(["onboarding_v3": true]), 3)
+        XCTAssertEqual(FeatureFlags.onboardingVersion(["onboarding_v2": true, "onboarding_v3": true]), 3)
+    }
+
+    func testEveryFlagIsInExactlyOneAdminCategory() {
+        let seen = FeatureFlagCategories.all.flatMap { $0.flags.flatMap(FeatureFlagCategories.keys(of:)) }
+        XCTAssertEqual(Set(seen), Set(FeatureFlags.keys))
+        XCTAssertEqual(seen.count, Set(seen).count)
     }
 }

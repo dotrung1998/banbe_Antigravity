@@ -617,6 +617,16 @@ const initialState = {
   // answer cached on this device; a missing key means "on" (src/lib/featureFlags.js).
   featureFlags: readCachedFlags(),
   featureFlagBusy: '',
+  // Sign-in hand-off (note 64): true from a local password/code submit until its ✓ finishes. While it is set the
+  // auth listener leaves Login on screen and AccountGate hides its loader, so there is no in-between screen.
+  signInHandoff: false,
+  // One-shot: the first Home after a sign-in reveals its regions top to bottom (data-reveal), then clears.
+  justSignedIn: false,
+  // Onboarding v3 tour (note 64, src/components/tour/OnboardingTour.jsx). tourActive pauses Home's For You
+  // observation while it runs; the two tokens are its entry points (first run / Help & Legal replay).
+  tourActive: false,
+  tourAutoStartToken: 0,
+  tourReplayRequest: 0,
   // Host reservation criteria (migration 162): criteria cache by event id,
   // the guest eligibility pre-check, and the create-flow retry target.
   eventCriteriaByKey: {},
@@ -1903,6 +1913,7 @@ export function BanBeProvider({ children }) {
     ensureOrganizerStatus: 'idle', ensureOrganizerError: '', hostSetupOpen: false,
     organizerProfile: null, hasHosted: false,
   };
+  const signInHandoffRef = useRef(null);
   useEffect(() => {
     let active = true;
     const syncUser = async (user) => {
@@ -2106,8 +2117,10 @@ export function BanBeProvider({ children }) {
         // A password-reset link lands here as a real session too — but it
         // must go to the "choose a new password" screen, never straight
         // into whatever authReturnScreen was pending.
+        // A sign-in hand-off in progress keeps Login up: completeSignInHandoff() navigates once the ✓ is done.
+        const holdLogin = !!signInHandoffRef.current && _event !== 'PASSWORD_RECOVERY';
         set(prev => ({
-          screen: _event === 'PASSWORD_RECOVERY' ? 'resetPassword' : (prev.screen === 'login' ? prev.authReturnScreen : prev.screen),
+          screen: _event === 'PASSWORD_RECOVERY' ? 'resetPassword' : (prev.screen === 'login' && !holdLogin ? prev.authReturnScreen : prev.screen),
           loginSent: false,
           loginSentVia: null,
           authSyncing: true,
@@ -4791,9 +4804,11 @@ export function BanBeProvider({ children }) {
       if (error) throw error;
       if (data && data.success === false) throw new Error(data.error || 'SAVE_FAILED');
       set({ billingSaving: false, billingSaved: true });
+      return true;
     } catch (e) {
       console.warn('saveBillingDetails failed:', e);
       set({ billingSaving: false, billingError: T('Chưa lưu được. Thử lại nhé.', "Couldn't save. Please try again.") });
+      return false;
     }
   }, [set, T, s.billingName, s.billingAddress, s.billingPhone, s.billingTaxCode]);
 
@@ -4819,7 +4834,7 @@ export function BanBeProvider({ children }) {
 
   const savePayoutDetails = useCallback(async () => {
     const orgId = s.myOrganizerIds[0];
-    if (!orgId) return set({ payoutError: T('Chưa có trang tổ chức.', 'No host page yet.') });
+    if (!orgId) { set({ payoutError: T('Chưa có trang tổ chức.', 'No host page yet.') }); return false; }
     set({ payoutSaving: true, payoutError: '', payoutSaved: false });
     try {
       const { data, error } = await supabase.rpc('save_organizer_payment', {
@@ -4831,9 +4846,11 @@ export function BanBeProvider({ children }) {
       if (error) throw error;
       if (data && data.success === false) throw new Error(data.error || 'SAVE_FAILED');
       set({ payoutSaving: false, payoutSaved: true });
+      return true;
     } catch (e) {
       console.warn('savePayoutDetails failed:', e);
       set({ payoutSaving: false, payoutError: T('Chưa lưu được. Thử lại nhé.', "Couldn't save. Please try again.") });
+      return false;
     }
   }, [set, T, s.myOrganizerIds, s.payoutBankName, s.payoutAccountName, s.payoutAccountNo,
       s.payoutMomo, s.payoutNote, s.payoutAddress, s.payoutTaxCode]);
@@ -5036,6 +5053,50 @@ export function BanBeProvider({ children }) {
   // flaky read never traps the user in onboarding.
   const eventPrefsUidRef = useRef(null);
   const eventPrefsGate = useAccountGate();
+
+  // ---- Sign-in hand-off (note 64) ----
+  // Two conditions, one navigation: the session is applied (user loaded, gate answered) AND the button's ✓ has
+  // finished. The gate keeps authority: a blocked/unavailable gate counts as "answered", so the ✓ hands straight
+  // to the real phone/DOB screen. The 20s timer is only a way out of a stuck request, never a success signal.
+  const beginSignInHandoff = useCallback(() => {
+    const prev = signInHandoffRef.current;
+    if (prev?.timer) clearTimeout(prev.timer);
+    let resolve;
+    const ready = new Promise(r => { resolve = r; });
+    const h = { ready, resolve, done: false, timer: null };
+    h.timer = setTimeout(() => { if (signInHandoffRef.current === h && !h.done) { h.done = true; h.resolve(false); } }, 20000);
+    signInHandoffRef.current = h;
+    set({ signInHandoff: true });
+  }, [set]);
+  const cancelSignInHandoff = useCallback(() => {
+    const h = signInHandoffRef.current;
+    if (h?.timer) clearTimeout(h.timer);
+    signInHandoffRef.current = null;
+    // A session that already landed while held on Login goes where it would have gone without the hand-off.
+    set(prev => ({ signInHandoff: false, ...(prev.user && prev.screen === 'login' ? { screen: prev.authReturnScreen } : {}) }));
+  }, [set]);
+  const awaitSignInReady = useCallback(() => signInHandoffRef.current?.ready ?? Promise.resolve(false), []);
+  const completeSignInHandoff = useCallback(() => {
+    const h = signInHandoffRef.current;
+    if (h?.timer) clearTimeout(h.timer);
+    signInHandoffRef.current = null;
+    set(prev => {
+      const screen = prev.screen === 'login' ? prev.authReturnScreen : prev.screen;
+      return { signInHandoff: false, screen, justSignedIn: screen === 'home' };
+    });
+  }, [set]);
+  const clearJustSignedIn = useCallback(() => set({ justSignedIn: false }), [set]);
+  // The reveal ended: the v3 tour may start now (it checks the version, marker and gates itself).
+  const noteSignInRevealDone = useCallback(() => set({ tourAutoStartToken: Date.now() }), [set]);
+  const replayOnboardingTour = useCallback(() => set({ screen: 'home', tourReplayRequest: Date.now() }), [set]);
+  useEffect(() => {
+    const h = signInHandoffRef.current;
+    if (!s.signInHandoff || !h || h.done) return;
+    if (s.user && !s.authSyncing && eventPrefsGate.gate !== 'unknown' && eventPrefsGate.gate !== 'none') {
+      h.done = true;
+      h.resolve(true);
+    }
+  }, [s.signInHandoff, s.user, s.authSyncing, eventPrefsGate.gate]);
   const resetEventPrefsState = useCallback(() => set({
     eventPrefs: null, eventPrefsVersion: 0, eventPrefsLoaded: false,
     needsSettingsOnboarding: false, needsPreferencesOnboarding: false,
@@ -5149,6 +5210,8 @@ export function BanBeProvider({ children }) {
     // Owner, 2026-10-21: Home opens at the very top after onboarding so the checklist is seen (App.jsx).
     set({ homeScrollTopToken: Date.now() });
     if (openEventKey) goEventRef.current?.(openEventKey);
+    // Note 64: personalization just landed on Home, the v3 tour may start (it re-checks everything itself).
+    else set({ tourAutoStartToken: Date.now() });
   }, [set, updateActivation]);
   const goEventRef = useRef(null);
 
@@ -5545,6 +5608,22 @@ export function BanBeProvider({ children }) {
       return { ok: false, error: data?.error || (missing ? 'NOT_DEPLOYED' : 'NETWORK') };
     }
     const next = { ...normalizeFlags(s.featureFlags), [key]: enabled };
+    writeCachedFlags(next);
+    set({ featureFlags: next, featureFlagBusy: '' });
+    return { ok: true };
+  }, [s.featureFlagBusy, s.featureFlags, set]);
+  // Note 64, migration 202: one audited RPC sets onboarding_v2 + onboarding_v3 together, so exactly one onboarding
+  // version is active. The client only mirrors the answer the server accepted.
+  const setOnboardingVersion = useCallback(async (version) => {
+    if (s.featureFlagBusy) return { ok: false, error: 'BUSY' };
+    set({ featureFlagBusy: 'onboarding_version' });
+    const { data, error } = await supabase.rpc('admin_set_onboarding_version', { p_version: version });
+    if (error || data?.success !== true) {
+      set({ featureFlagBusy: '' });
+      const missing = error && (error.code === 'PGRST202' || error.code === '42883');
+      return { ok: false, error: data?.error || (missing ? 'NOT_DEPLOYED' : 'NETWORK') };
+    }
+    const next = { ...normalizeFlags(s.featureFlags), onboarding_v2: version === 2, onboarding_v3: version === 3 };
     writeCachedFlags(next);
     set({ featureFlags: next, featureFlagBusy: '' });
     return { ok: true };
@@ -6845,7 +6924,9 @@ export function BanBeProvider({ children }) {
     editProfileLinks: prev.editProfileLinks.filter((_, i) => i !== index),
   })), [set]);
 
-  const saveProfileFields = useCallback(async (avatarUrlOverride) => {
+  // Note 64: `{ deferNavigation: true }` (Edit profile's AsyncSuccessButton) saves without leaving the screen; the
+  // button goes back to Account with backFromEditProfileSaved() once its ✓ has drawn.
+  const saveProfileFields = useCallback(async (avatarUrlOverride, opts = {}) => {
     set({ editProfileBusy: true, editProfileError: '' });
     const interests = s.editProfileInterests.split(',').map(x => x.trim()).filter(Boolean);
     const links = s.editProfileLinks.filter(l => l.url.trim());
@@ -6869,7 +6950,7 @@ export function BanBeProvider({ children }) {
       return false;
     }
     set(prev => ({
-      editProfileBusy: false, screen: 'profile',
+      editProfileBusy: false, screen: opts.deferNavigation ? prev.screen : 'profile',
       user: {
         ...prev.user, name: s.editProfileName, handle: data.handle, bio: s.editProfileBio, city: s.editProfileCity,
         interests, profileTheme: s.editProfileTheme, avatarUrl: avatarUrlOverride ?? prev.user?.avatarUrl,
@@ -6878,6 +6959,7 @@ export function BanBeProvider({ children }) {
     }));
     return true;
   }, [set, s.editProfileHandle, s.editProfileName, s.editProfileBio, s.editProfileCity, s.editProfileInterests, s.editProfileTheme, s.editProfileIntroLong, s.editProfileLinks, T]);
+  const backFromEditProfileSaved = useCallback(() => set({ screen: 'profile' }), [set]);
 
   /** Owner-only avatar upload — validated client-side (type/size) before
    * ever reaching Storage; the bucket's own RLS (avatars_owner_write,
@@ -8461,9 +8543,13 @@ export function BanBeProvider({ children }) {
     set(prev => ({ reserveNameSaving: false, reserveNameError: '', user: { ...prev.user, name: data?.new_name || newName } }));
     return { success: true };
   }, [set, T]);
-  const submitReserve = useCallback(async (formOk) => {
-    if (!formOk) return;
-    set({ loading: true, reserveError: '' });
+  // Note 64: `{ deferNavigation: true }` is the AsyncSuccessButton path. No full-screen loader (the button morphs
+  // instead), no screen change here: the button calls goReserveConfirmed() once its ✓ has finished. Returns true
+  // only when the hold really exists.
+  const submitReserve = useCallback(async (formOk, opts = {}) => {
+    if (!formOk) return false;
+    const defer = !!opts.deferNavigation;
+    set({ loading: !defer, reserveError: '' });
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -8495,12 +8581,13 @@ export function BanBeProvider({ children }) {
       set(prev => ({
         loading: false,
         booking,
-        screen: 'confirmed',
+        screen: defer ? prev.screen : 'confirmed',
         holdDeadline,
         now: Date.now(),
         tickets: { ...prev.tickets, [prev.eventKey]: prev.qty },
         attending: prev.attending.includes(prev.eventKey) ? prev.attending : [...prev.attending, prev.eventKey],
       }));
+      return true;
     } catch (err) {
       console.warn('Supabase booking failed:', err);
       // hold_seats() (031:38) raises one of these as a plain
@@ -8520,7 +8607,7 @@ export function BanBeProvider({ children }) {
           loading: false, reserveError: '',
           eligibilityByKey: { ...prev.eligibilityByKey, [prev.eventKey]: { ...(detail || {}), success: true, eligible: false, mode: 'declared' } },
         }));
-        return;
+        return false;
       }
       const message = {
         NOT_AUTHENTICATED: T('Bạn cần đăng nhập để giữ chỗ.', 'You need to sign in to hold a spot.'),
@@ -8540,8 +8627,10 @@ export function BanBeProvider({ children }) {
         INVITE_REQUIRED: T('Sự kiện này chỉ dành cho người được mời.', 'This event is invite-only.'),
       }[err.message] || T('Không thể giữ chỗ lúc này. Vui lòng thử lại.', 'Could not hold this spot right now. Please try again.');
       set({ loading: false, reserveError: message });
+      return false;
     }
   }, [set, s.eventKey, s.qty, s.attendeeDrafts]);
+  const goReserveConfirmed = useCallback(() => set({ screen: 'confirmed' }), [set]);
 
   // ---- named tickets & import (migrations 151/152) ----
   const loadBookingAttendees = useCallback(async (bookingId) => {
@@ -8810,9 +8899,10 @@ export function BanBeProvider({ children }) {
     const { error } = await supabase.auth.signInWithPassword({ email: s.loginEmail.trim(), password: s.loginPassword });
     if (error) {
       set({ reserveError: T('Sai email hoặc mật khẩu.', 'Wrong email or password.') });
-      return;
+      return false;
     }
     set({ reserveError: '' });
+    return true;
   }, [set, s.loginEmail, s.loginPassword, T]);
   // Runs exactly once, right after a brand-new account's first sign-in
   // (never on an ordinary login — see the isSignup guard at the call site).
@@ -8863,10 +8953,11 @@ export function BanBeProvider({ children }) {
     const { error } = await supabase.auth.verifyOtp({ email, token, type: isSignup ? 'signup' : 'email' });
     if (error) {
       set({ reserveError: T('Mã không đúng hoặc đã hết hạn. Vui lòng thử lại.', 'That code is wrong or has expired. Please try again.') });
-      return;
+      return false;
     }
     set({ reserveError: '', loginEmailCode: '' });
     if (isSignup) claimPendingReferralAndWelcome();
+    return true;
   }, [set, s.loginEmail, s.loginEmailCode, s.pendingEmailMode, T, claimPendingReferralAndWelcome]);
   // "Forgot password?" — always shows the same generic confirmation
   // regardless of whether the account actually exists (see
@@ -8915,9 +9006,10 @@ export function BanBeProvider({ children }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider, options: { redirectTo: getAuthRedirectUrl() },
     });
-    if (error) set({ reserveError: error.message });
+    if (error) { set({ reserveError: error.message }); return false; }
     // No further state change on success: signInWithOAuth navigates the
     // whole page away immediately, so there's nothing left to update here.
+    return true;
   }, [set]);
   const loginGoogle = useCallback(() => startOAuth('google'), [startOAuth]);
   const loginFacebook = useCallback(() => startOAuth('facebook'), [startOAuth]);
@@ -10137,6 +10229,7 @@ export function BanBeProvider({ children }) {
     'Your event was submitted but the reservation criteria were not saved. Please try again, the event will not go out unrestricted.'
   );
 
+  // Note 64: `mediaOpts.noLoader` = Review's AsyncSuccessButton is the progress indicator (no full-screen loader).
   const createSubmit = useCallback(async (photoFiles = [], coverIndex = 0, mediaOpts = {}) => {
     if (!s.createName.trim()) return;
     // Retry of ONLY the criteria save for an event that is already submitted
@@ -10144,7 +10237,7 @@ export function BanBeProvider({ children }) {
     if (s.createCriteriaRetryEventId) {
       if (createSubmitInFlightRef.current) return;
       createSubmitInFlightRef.current = true;
-      set({ loading: true, createError: '' });
+      set({ loading: !mediaOpts.noLoader, createError: '' });
       try {
         if (criteriaNeedsSave()) {
           const err = await saveCriteriaFor(s.createCriteriaRetryEventId);
@@ -10169,7 +10262,7 @@ export function BanBeProvider({ children }) {
     if (createSubmitInFlightRef.current) return;
     createSubmitInFlightRef.current = true;
     const { removePhotoIds = [], existingCoverPath = '', defaultKeywordsLabel = '' } = mediaOpts;
-    set({ loading: true, createError: '', createMediaError: '' });
+    set({ loading: !mediaOpts.noLoader, createError: '', createMediaError: '' });
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session?.user) throw new Error('AUTH_REQUIRED');
@@ -11319,16 +11412,16 @@ export function BanBeProvider({ children }) {
     loadDisputeChats, toggleDisputeChat, openDisputeChatInInbox, loadRefundDisputeChat, sendRefundDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, backFromEditProfileSaved, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
-    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
+    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
-    qtyMinus, qtyPlus, setQty, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
+    qtyMinus, qtyPlus, setQty, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, goReserveConfirmed, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     setAttendeeField, loadBookingAttendees, loadImportedTickets, openTicketImport, closeTicketImport, setImportCode, openImportedTicket, closeImportedTicket, claimTicket,
-    loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
+    loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, beginSignInHandoff, cancelSignInHandoff, awaitSignInReady, completeSignInHandoff, clearJustSignedIn, noteSignInRevealDone, replayOnboardingTour, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, deleteThreadForMe, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, openStoryLibraryPicker, openStoryCameraPicker, closeStoryPickerRequests, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createKeywordsType, createChatGreetingType, createChatGreetingEnType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
@@ -11358,16 +11451,16 @@ export function BanBeProvider({ children }) {
     loadDisputeChats, toggleDisputeChat, openDisputeChatInInbox, loadRefundDisputeChat, sendRefundDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, backFromEditProfileSaved, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
-    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
+    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
-    qtyMinus, qtyPlus, setQty, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
+    qtyMinus, qtyPlus, setQty, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, goReserveConfirmed, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     setAttendeeField, loadBookingAttendees, loadImportedTickets, openTicketImport, closeTicketImport, setImportCode, openImportedTicket, closeImportedTicket, claimTicket,
-    loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
+    loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, beginSignInHandoff, cancelSignInHandoff, awaitSignInReady, completeSignInHandoff, clearJustSignedIn, noteSignInRevealDone, replayOnboardingTour, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, deleteThreadForMe, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, openStoryLibraryPicker, openStoryCameraPicker, closeStoryPickerRequests, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createKeywordsType, createChatGreetingType, createChatGreetingEnType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,

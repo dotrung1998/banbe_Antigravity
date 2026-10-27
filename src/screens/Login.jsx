@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { FieldNote } from '../components/ui/FormControls.jsx';
+import AsyncSuccessButton from '../components/ui/AsyncSuccessButton.jsx';
 
 export default function Login() {
   const {
@@ -10,17 +11,34 @@ export default function Login() {
     loginPasswordType, loginPasswordConfirmType, toggleLang, pickTheme, loginGoogle,
     emailValid, passwordValid, setAuthMethod, requestPasswordResetSubmit, submitCurrentForm,
     togglePolicyConsent, openPolicy,
+    beginSignInHandoff, cancelSignInHandoff, awaitSignInReady, completeSignInHandoff,
   } = useBanBe();
   const s = state;
-  // The request is in flight: the loading GIF shows next to the button's text (iOS parity).
+  // Note 64: the submit button is an AsyncSuccessButton. Password login and code verify are real sign-ins: the ✓
+  // only shows once the session is applied and the account gate has answered, then completeSignInHandoff()
+  // navigates once. Sending a code (or signing up, which also ends in a code) is an intermediate step: it spins,
+  // then returns to the form / code entry with no ✓.
   const [busy, setBusy] = useState(false);
-  const busyRef = useRef(false);
-  const submit = async () => {
-    if (busyRef.current) return;
-    busyRef.current = true; setBusy(true);
-    try { await submitCurrentForm(); } finally { busyRef.current = false; setBusy(false); }
+  const submitBtnRef = useRef(null);
+  const runSubmit = async () => {
+    const signsIn = s.loginSentVia === 'email' || (s.authMethod === 'password' && s.authMode !== 'signup');
+    if (signsIn) beginSignInHandoff();
+    const ok = await submitCurrentForm();
+    if (!signsIn) return { ok: false };
+    if (ok !== true) { cancelSignInHandoff(); return { ok: false }; }
+    const ready = await awaitSignInReady();
+    if (!ready) { cancelSignInHandoff(); return { ok: false }; }
+    return { ok: true };
   };
-  const onEnter = (e) => { if (e.key === 'Enter') submit(); };
+  const onEnter = (e) => { if (e.key === 'Enter') submitBtnRef.current?.querySelector('button')?.click(); };
+  const [oauthBusy, setOauthBusy] = useState(false);
+  const onGoogle = async () => {
+    if (oauthBusy) return;
+    setOauthBusy(true);
+    // The page redirects away on success; only a failure to start comes back here.
+    const started = await loginGoogle();
+    if (started === false) setOauthBusy(false);
+  };
   // Autofill (Passwords / a password manager) fills email + password in one step and leaves the
   // keyboard up on the email field: a password that arrives whole (not typed key by key) means the
   // form is complete, so close the keyboard. Repeated once because iOS may refocus after the fill.
@@ -116,7 +134,10 @@ export default function Login() {
 
       {/* Real Supabase OAuth, not gated on the consent checkbox (note 10). */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
-        <div onClick={loginGoogle} data-testid="login-google" style={oauthBtn}>{T('Tiếp tục với Google', 'Continue with Google')}</div>
+        <button type="button" onClick={onGoogle} data-testid="login-google" aria-busy={oauthBusy || undefined} className="bb-press"
+          style={{ ...oauthBtn, border: 'none', fontFamily: 'inherit', minHeight: 44, ...(oauthBusy ? { opacity: 0.7, cursor: 'default' } : {}) }}>
+          {oauthBusy ? T('Đang mở Google…', 'Opening Google…') : T('Tiếp tục với Google', 'Continue with Google')}
+        </button>
         <div aria-disabled="true" data-testid="login-facebook" style={{ ...oauthBtn, opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' }}>{T('Tiếp tục với Facebook', 'Continue with Facebook')}</div>
         <p style={{ fontSize: 11.5, lineHeight: 1.4, color: ink, opacity: 0.7, margin: '-2px 0 0', textAlign: 'center' }} data-testid="login-facebook-note">{T('Đăng nhập Facebook đang được phát triển.', 'Facebook login is under development.')}</p>
       </div>
@@ -182,16 +203,20 @@ export default function Login() {
       )}
 
       {showSubmit && (
-        <div onClick={submit} data-testid="login-submit" role="button" aria-busy={busy || undefined} className="bb-press"
-          style={{ ...submitStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, ...(busy ? { cursor: 'default', opacity: 0.85 } : {}) }}>
-          {submitLabel}
+        <div ref={submitBtnRef}>
+          <AsyncSuccessButton testId="login-submit" label={submitLabel} run={runSubmit}
+            onPhaseChange={ph => setBusy(ph === 'pending')}
+            onSuccessAnimationComplete={completeSignInHandoff}
+            pendingLabel={submitLabel} successLabel={T('Đã đăng nhập', 'Signed in')}
+            wrapStyle={{ marginTop: 14 }}
+            style={{ ...submitStyle, marginTop: 0 }} />
         </div>
       )}
 
       {s.resetRequested && !s.reserveError && <p style={note()}>{T('Nếu email này có tài khoản, một email đặt lại mật khẩu vừa được gửi.', 'If that email has an account, a password reset email was just sent.')}</p>}
       {awaitingCode && <p style={note()}>{T('Đã gửi mã tới email của bạn. Nhập mã để tiếp tục.', 'A code was sent to your email. Enter it to continue.')}</p>}
       {s.loginSentVia === 'phone' && <p style={note()}>{T('Đã gửi mã OTP. Hãy nhập mã để tiếp tục.', 'OTP sent. Enter the code to continue.')}</p>}
-      {s.reserveError && !emailIssue && <p style={note({ color: alert })}>{s.reserveError}</p>}
+      {s.reserveError && !emailIssue && <p role="alert" data-testid="login-error" style={note({ color: alert })}>{s.reserveError}</p>}
 
     </div>
   );

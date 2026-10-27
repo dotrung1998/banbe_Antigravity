@@ -11,16 +11,16 @@ import Foundation
 /// - Anything that is not a boolean, and any key this build does not know, is ignored.
 enum FeatureFlags {
     static let keys = ["rewards", "admin_event_wipe", "rewards_v2", "push_enabled", "app_events",
-                       "event_reminders", "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share", "onboarding_v2"]
+                       "event_reminders", "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share", "onboarding_v2", "onboarding_v3"]
     /// Flags that are OFF unless the server explicitly says true (a missing key never turns them on). Note 54:
     /// "admin_event_wipe" is a TESTING-PHASE admin tool that must never switch itself on. "rewards_v2" (migration
     /// 192) is a new feature that stays dark until an admin turns it on (same list as src/lib/featureFlags.js).
     /// "push_enabled" (migration 194): real push notifications, off until an admin turns them on.
     /// "app_events" (migration 196): first-party measurement, nothing is sent until an admin turns it on.
     /// Migrations 199/200: "event_reminders" is on unless an admin turns it off; the rest stay dark until set.
-    /// "onboarding_v2" (migration 201): off/missing = onboarding Version 1, on = Version 2 (note 63).
+    /// "onboarding_v2" (migration 201) + "onboarding_v3" (migration 202): which onboarding runs, see `onboardingVersion`.
     static let offUnlessSet: Set<String> = ["admin_event_wipe", "rewards_v2", "push_enabled", "app_events",
-                                            "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share", "onboarding_v2"]
+                                            "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share", "onboarding_v2", "onboarding_v3"]
     static let cacheKey = "banbe.featureFlags.v1"
 
     /// Keep only known keys with real booleans.
@@ -33,6 +33,15 @@ enum FeatureFlags {
     /// Missing key = on, except for `offUnlessSet` keys (missing = off).
     static func isOn(_ flags: [String: Bool], _ key: String) -> Bool {
         offUnlessSet.contains(key) ? flags[key] == true : flags[key] != false
+    }
+
+    /// Which onboarding is active (notes 63/64): 3 if onboarding_v3, else 2 if onboarding_v2, else 1. Strict
+    /// precedence, so a stray v2+v3 pair still resolves to one version. admin_set_onboarding_version (migration 202)
+    /// writes both booleans in one transaction. Web twin: onboardingVersion() in src/lib/featureFlags.js.
+    static func onboardingVersion(_ flags: [String: Bool]) -> Int {
+        if isOn(flags, "onboarding_v3") { return 3 }
+        if isOn(flags, "onboarding_v2") { return 2 }
+        return 1
     }
 
     static func read(_ defaults: UserDefaults = .standard) -> [String: Bool] {

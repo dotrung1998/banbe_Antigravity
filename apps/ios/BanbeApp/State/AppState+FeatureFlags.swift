@@ -20,9 +20,11 @@ extension AppState {
     /// Real push notifications (migration 194). Off unless an admin turns them on; registration and the Q6 ask wait for it.
     var pushEnabled: Bool { FeatureFlags.isOn(featureFlags, "push_enabled") }
 
-    /// Onboarding demo version (migration 201, note 63): off = Version 1 (still Welcome + text story), on = Version 2
-    /// (animated Welcome entrance + swipeable demo screens). Off unless an admin turns it on.
-    var onboardingV2Enabled: Bool { FeatureFlags.isOn(featureFlags, "onboarding_v2") }
+    /// Active onboarding version (notes 63/64): 1, 2 or 3. Version 1 unless an admin picks another.
+    var onboardingVersion: Int { FeatureFlags.onboardingVersion(featureFlags) }
+    /// Version 2 visuals (animated Welcome entrance + swipeable demo screens). Version 3 keeps them and adds the
+    /// guided tour over the real app after the first sign-in.
+    var onboardingV2Enabled: Bool { onboardingVersion >= 2 }
 
     /// Called when the flags changed: turning Rewards off clears its numbers; turning it on loads them. Push turning
     /// on re-registers a device iOS already allows (never prompts).
@@ -74,6 +76,39 @@ extension AppState {
             guard r.success == true else { return (false, r.error ?? "UNKNOWN") }
             var next = featureFlags
             next[key] = enabled
+            FeatureFlags.write(next)
+            featureFlags = next
+            return (true, nil)
+        } catch {
+            return (false, RewardsLogic.isFunctionMissing(error) ? "NOT_DEPLOYED" : "NETWORK")
+        }
+    }
+
+    /// Note 64, migration 202: one audited RPC sets onboarding_v2 + onboarding_v3 together, so exactly one onboarding
+    /// version is active. The local flags change only after the server accepted it.
+    func setOnboardingVersion(_ version: Int) async -> (ok: Bool, error: String?) {
+        guard featureFlagBusy.isEmpty else { return (false, "BUSY") }
+        #if DEBUG
+        if UITestFixture.isActive {
+            featureFlags["onboarding_v2"] = version == 2
+            featureFlags["onboarding_v3"] = version == 3
+            return (true, nil)
+        }
+        #endif
+        featureFlagBusy = "onboarding_version"
+        defer { featureFlagBusy = "" }
+        struct Reply: Decodable { var success: Bool?; var error: String? }
+        struct Params: Encodable {
+            let version: Int
+            enum CodingKeys: String, CodingKey { case version = "p_version" }
+        }
+        do {
+            let r: Reply = try await SupabaseService.client
+                .rpc("admin_set_onboarding_version", params: Params(version: version)).execute().value
+            guard r.success == true else { return (false, r.error ?? "UNKNOWN") }
+            var next = featureFlags
+            next["onboarding_v2"] = version == 2
+            next["onboarding_v3"] = version == 3
             FeatureFlags.write(next)
             featureFlags = next
             return (true, nil)

@@ -2,12 +2,15 @@ import { useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, display, fieldGlass, alert } from '../theme.js';
 import GlassSwitch from '../components/ui/GlassSwitch.jsx';
-import { flagOn } from '../lib/featureFlags.js';
+import { flagOn, onboardingVersion } from '../lib/featureFlags.js';
+import { FLAG_CATEGORIES, ONBOARDING_CONTROL, keysOf } from '../lib/featureFlagCategories.js';
+import { useReducedMotion } from '../lib/useReducedMotion.js';
 
 // Admin > Feature switches (migration 187, note 51). One row per platform feature flag. Turning a switch off hides
 // the feature everywhere (web + iOS, signed-in and signed-out) without a release; turning it on shows it again.
 // The server decides who may flip it (is_platform_admin() inside admin_set_feature_flag, audited); this screen
 // only calls it, and the switch moves only after the server accepted the change.
+// Note 64: rows are grouped into collapsible categories (src/lib/featureFlagCategories.js), all collapsed on open.
 const FLAGS = [
   {
     key: 'rewards',
@@ -108,21 +111,81 @@ const FLAGS = [
 const ERRORS = {
   NOT_AUTHORIZED: ['Bạn không có quyền.', 'You are not allowed to do this.'],
   INVALID_VALUE: ['Giá trị không hợp lệ.', 'Invalid value.'],
-  NOT_DEPLOYED: ['Máy chủ chưa có công tắc này (chạy migration 187/192).', 'The server does not have this switch yet (apply migration 187/192).'],
+  NOT_DEPLOYED: ['Máy chủ chưa có công tắc này. Cần chạy migration mới nhất.', "The server doesn't have this switch yet. Apply the latest migrations."],
   NETWORK: ['Không kết nối được. Thử lại nhé.', "Couldn't reach the server. Try again."],
   BUSY: ['Đang xử lý…', 'Working…'],
 };
 
+const VERSION_HINT = [
+  'Phiên bản 1: màn Chào mừng tĩnh và 4 trang chữ "banbe hoạt động thế nào". Phiên bản 2: màn Chào mừng có chuyển động và các màn demo vuốt qua lại. Phiên bản 3: như Phiên bản 2, cộng thêm hướng dẫn trên giao diện thật ngay sau khi đăng nhập lần đầu.',
+  'Version 1: still Welcome screen and the 4 text pages of "How banbe works". Version 2: animated Welcome and swipeable demo screens. Version 3: Version 2 plus a guided tour over the real app right after the first sign-in.',
+];
+
+function FlagRow({ f, first, s, T, flip }) {
+  const on = flagOn(s.featureFlags, f.key);
+  return (
+    <div data-testid={`admin-flag-${f.key}`} data-on={on}
+      style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', borderTop: first ? 'none' : '1px solid var(--bb-rule)' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 15.5, fontWeight: 600 }}>{T(f.vi, f.en)}</div>
+        <div style={{ fontSize: 12.5, lineHeight: 1.45, opacity: 0.7, marginTop: 3 }}>{T(f.hintVi, f.hintEn)}</div>
+        <div data-testid={`admin-flag-${f.key}-state`} style={{ fontSize: 12, fontWeight: 600, marginTop: 6, opacity: on ? 1 : 0.7 }}>
+          {f.stateOn ? (on ? T(...f.stateOn) : T(...f.stateOff))
+            : on ? T('Đang hiện cho mọi người', 'Visible to everyone') : T('Đang ẩn với mọi người', 'Hidden from everyone')}
+        </div>
+      </div>
+      <GlassSwitch on={on} busy={s.featureFlagBusy === f.key} testId={`admin-flag-${f.key}-switch`} onPress={() => flip(f.key, !on)} />
+    </div>
+  );
+}
+
+/** Migration 202: one 1/2/3 control instead of a v2 switch, so two versions can never be on at once. */
+function OnboardingVersionRow({ first, s, T, pick }) {
+  const v = onboardingVersion(s.featureFlags);
+  const busy = s.featureFlagBusy === ONBOARDING_CONTROL;
+  return (
+    <div data-testid="admin-onboarding-version" data-version={v}
+      style={{ padding: '16px 18px', borderTop: first ? 'none' : '1px solid var(--bb-rule)' }}>
+      <div id="admin-onboarding-version-label" style={{ fontSize: 15.5, fontWeight: 600 }}>{T('Bản giới thiệu', 'Onboarding version')}</div>
+      <div style={{ fontSize: 12.5, lineHeight: 1.45, opacity: 0.7, marginTop: 3 }}>{T(...VERSION_HINT)}</div>
+      <div role="radiogroup" aria-labelledby="admin-onboarding-version-label" aria-busy={busy || undefined}
+        style={{ display: 'flex', gap: 4, padding: 3, marginTop: 10, borderRadius: 999, background: 'rgba(var(--bb-fg-rgb),0.06)', opacity: busy ? 0.6 : 1 }}>
+        {[1, 2, 3].map(n => (
+          <button key={n} type="button" role="radio" aria-checked={v === n} data-testid={`admin-onboarding-version-${n}`}
+            onClick={() => { if (!busy && v !== n) pick(n); }}
+            style={{ flex: 1, minHeight: 40, borderRadius: 999, border: 'none', cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit',
+              fontSize: 13.5, fontWeight: v === n ? 700 : 500, color: ink,
+              background: v === n ? 'var(--bb-bg)' : 'transparent', boxShadow: v === n ? '0 1px 3px rgba(27,25,22,0.18)' : 'none' }}>
+            {T(`Phiên bản ${n}`, `Version ${n}`)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminFeatures() {
-  const { state: s, T, set, setFeatureFlag, loadFeatureFlags } = useBanBe();
+  const { state: s, T, set, setFeatureFlag, setOnboardingVersion, loadFeatureFlags } = useBanBe();
   const [error, setError] = useState('');
+  // Independent sections, every one collapsed when the screen opens.
+  const [open, setOpen] = useState({});
+  const reduce = useReducedMotion();
   if (s.accountType !== 'admin') return null;
 
+  const fail = (r) => { const m = ERRORS[r.error] || ERRORS.NETWORK; setError(T(m[0], m[1])); loadFeatureFlags(); };
   const flip = async (key, enabled) => {
     setError('');
     const r = await setFeatureFlag(key, enabled);
-    if (!r.ok) { const m = ERRORS[r.error] || ERRORS.NETWORK; setError(T(m[0], m[1])); loadFeatureFlags(); }
+    if (!r.ok) fail(r);
   };
+  const pickVersion = async (n) => {
+    setError('');
+    const r = await setOnboardingVersion(n);
+    if (!r.ok) fail(r);
+  };
+  // Until migration 202 is on the server (no onboarding_v3 key comes back), keep the old Version 2 switch.
+  const versionDeployed = Object.prototype.hasOwnProperty.call(s.featureFlags || {}, 'onboarding_v3');
+  const byKey = Object.fromEntries(FLAGS.map(f => [f.key, f]));
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Admin feature switches">
@@ -135,25 +198,42 @@ export default function AdminFeatures() {
           {T('Bật hoặc tắt một tính năng cho mọi người dùng, không cần phát hành bản mới. Mọi thay đổi đều được ghi lại.',
             'Turn a feature on or off for every user without a release. Every change is logged.')}
         </p>
-        <div style={{ ...fieldGlass({ marginTop: 22, display: 'flex', flexDirection: 'column' }) }}>
-          {FLAGS.map((f, i) => {
-            const on = flagOn(s.featureFlags, f.key);
-            return (
-              <div key={f.key} data-testid={`admin-flag-${f.key}`} data-on={on}
-                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', borderTop: i ? '1px solid var(--bb-rule)' : 'none' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15.5, fontWeight: 600 }}>{T(f.vi, f.en)}</div>
-                  <div style={{ fontSize: 12.5, lineHeight: 1.45, opacity: 0.7, marginTop: 3 }}>{T(f.hintVi, f.hintEn)}</div>
-                  <div data-testid={`admin-flag-${f.key}-state`} style={{ fontSize: 12, fontWeight: 600, marginTop: 6, opacity: on ? 1 : 0.7 }}>
-                    {f.stateOn ? (on ? T(...f.stateOn) : T(...f.stateOff))
-                      : on ? T('Đang hiện cho mọi người', 'Visible to everyone') : T('Đang ẩn với mọi người', 'Hidden from everyone')}
-                  </div>
-                </div>
-                <GlassSwitch on={on} busy={s.featureFlagBusy === f.key} testId={`admin-flag-${f.key}-switch`} onPress={() => flip(f.key, !on)} />
+        {FLAG_CATEGORIES.map(cat => {
+          const isOpen = !!open[cat.key];
+          const keys = cat.flags.flatMap(keysOf);
+          const switches = cat.flags.filter(k => k !== ONBOARDING_CONTROL);
+          const onCount = switches.filter(k => flagOn(s.featureFlags, k)).length;
+          const bodyId = `admin-cat-${cat.key}-body`;
+          return (
+            <section key={cat.key} data-testid={`admin-cat-${cat.key}`} data-open={isOpen} data-keys={keys.join(' ')}
+              style={{ ...fieldGlass({ marginTop: 14, display: 'flex', flexDirection: 'column' }) }}>
+              <h2 style={{ margin: 0 }}>
+                <button type="button" data-testid={`admin-cat-${cat.key}-toggle`} aria-expanded={isOpen} aria-controls={bodyId}
+                  onClick={() => setOpen(o => ({ ...o, [cat.key]: !o[cat.key] }))}
+                  style={{ width: '100%', minHeight: 52, display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', border: 'none',
+                    background: 'none', color: ink, fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+                  <span style={{ flex: 1, fontSize: 15.5, fontWeight: 700 }}>{T(cat.vi, cat.en)}</span>
+                  {switches.length > 0 && (
+                    <span data-testid={`admin-cat-${cat.key}-count`} style={{ fontSize: 12.5, opacity: 0.65, fontVariantNumeric: 'tabular-nums' }}>
+                      {T(`${onCount}/${switches.length} bật`, `${onCount}/${switches.length} on`)}
+                    </span>
+                  )}
+                  <svg aria-hidden="true" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"
+                    style={{ transform: `rotate(${isOpen ? 90 : 0}deg)`, transition: reduce ? 'none' : 'transform .2s ease', opacity: 0.6 }}>
+                    <path d="M9 6l6 6-6 6" />
+                  </svg>
+                </button>
+              </h2>
+              <div id={bodyId} hidden={!isOpen} style={{ borderTop: '1px solid var(--bb-rule)' }}>
+                {isOpen && cat.flags.map((k, i) => (k === ONBOARDING_CONTROL
+                  ? (versionDeployed
+                    ? <OnboardingVersionRow key={k} first={i === 0} s={s} T={T} pick={pickVersion} />
+                    : <FlagRow key="onboarding_v2" f={byKey.onboarding_v2} first={i === 0} s={s} T={T} flip={flip} />)
+                  : <FlagRow key={k} f={byKey[k]} first={i === 0} s={s} T={T} flip={flip} />))}
               </div>
-            );
-          })}
-        </div>
+            </section>
+          );
+        })}
         {error && <p role="alert" data-testid="admin-features-error" style={{ fontSize: 12.5, color: alert, margin: '12px 2px 0' }}>{error}</p>}
       </div>
     </div>

@@ -1125,7 +1125,7 @@ struct CreateEventView: View {
                         guard !app.createName.trimmingCharacters(in: .whitespaces).isEmpty,
                               app.createLocConfirmed, !hasCreateFieldErrors else {
                             withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = false }
-                            return
+                            return false
                         }
                         // Keyword-search fix (migration 108) — same
                         // default-to-category-label(s) fallback web's
@@ -1144,15 +1144,17 @@ struct CreateEventView: View {
                         let ok = await app.submitCreateEvent(
                             newImages: newImagesInOrder, coverNewIndex: coverNewIndex,
                             removeExistingPhotoIDs: removedExistingIDs, existingCoverPath: existingCoverPath,
-                            defaultKeywordsLabel: defaultKeywordsLabel
+                            defaultKeywordsLabel: defaultKeywordsLabel, showsLoader: false
                         )
-                        if ok {
-                            // Review stays under the chooser (closing it first flashed the form again);
-                            // whichever choice is made then leaves it in one step.
-                            if let id = app.createDraftID { app.deleteEventDraft(id) }
-                            successChoiceMade = false
-                            successChooserOpen = true
-                        }
+                        if ok, let id = app.createDraftID { app.deleteEventDraft(id) }
+                        return ok
+                    },
+                    // Note 64: present-modal class. The chooser opens once the ✓ ("Sent for review") has drawn.
+                    // Review stays under the chooser (closing it first flashed the form again); whichever choice
+                    // is made then leaves it in one step.
+                    onConfirmed: {
+                        successChoiceMade = false
+                        successChooserOpen = true
                     }
                 )
                 .environmentObject(app)
@@ -2110,8 +2112,9 @@ private struct CreateEventReviewSheet: View {
     // `@Environment(\.dismiss)` on; the parent instead owns `reviewOpen`
     // and hands down this closure, exactly like web's `ReviewStep(onBack)`.
     let onBack: () -> Void
-    let onConfirm: () async -> Void
-    @State private var confirmBusy = false
+    /// True only when the RPC really accepted the event.
+    let onConfirm: () async -> Bool
+    var onConfirmed: () -> Void = {}
     private enum Tab { case privateTab, publicTab }
     @State private var tab: Tab = .privateTab
     // `swipeAxisLocked` is decided once per gesture, the first time its
@@ -2196,19 +2199,22 @@ private struct CreateEventReviewSheet: View {
         }
     }
 
-    /// Confirm & submit (+ any submit error). Local `confirmBusy` disables the button for this ONE tap on top of
-    /// `AppState.submitCreateEventInFlight`'s own synchronous guard.
+    /// Confirm & submit (+ any submit error). AsyncSuccessButton refuses a second tap while pending, on top of
+    /// `AppState.submitCreateEventInFlight`'s own synchronous guard. Note 64: the ✓ says "Sent for review", never
+    /// "live": banbe still has to approve the event.
     private var confirmBlock: some View {
         VStack(alignment: .leading, spacing: 0) {
-            InkButton(
+            AsyncSuccessButton(
                 title: app.createSent
                     ? app.T("Đã gửi, đang chờ Banbe duyệt", "Submitted, waiting for Banbe to review")
-                    : (confirmBusy ? app.T("Đang gửi…", "Submitting…") : app.T("Xác nhận và gửi", "Confirm & submit")),
-                enabled: !confirmBusy && !app.createSent,
-                cornerRadius: 999
-            ) {
-                Task { confirmBusy = true; await onConfirm(); confirmBusy = false }
-            }
+                    : app.T("Xác nhận và gửi", "Confirm & submit"),
+                enabled: !app.createSent,
+                pendingLabel: app.T("Đang gửi…", "Submitting…"),
+                successLabel: app.T("Đã gửi để duyệt", "Sent for review"),
+                identifier: "create.review.confirm",
+                run: { await onConfirm() ? .success : .failure(app.createError) },
+                onSuccessAnimationComplete: onConfirmed
+            )
 
             if !app.createError.isEmpty {
                 Text(app.createError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert).padding(.top, 12)

@@ -9,12 +9,12 @@
 //   everything, which is the behaviour from before flags existed.
 // - Anything that is not a boolean is ignored.
 
-export const FLAG_KEYS = ['rewards', 'rewards_v2', 'push_enabled', 'app_events', 'event_reminders', 'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'intent_foryou', 'live_activity', 'market_share', 'onboarding_v2'];
+export const FLAG_KEYS = ['rewards', 'rewards_v2', 'push_enabled', 'app_events', 'event_reminders', 'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'intent_foryou', 'live_activity', 'market_share', 'onboarding_v2', 'onboarding_v3'];
 // push_enabled (migration 194): real push notifications (iPhone), dark until an admin turns it on.
 // app_events (migration 196): first-party measurement; nothing is sent until an admin turns it on.
 // Migrations 199/200: event_reminders is on unless an admin turns it off; the rest stay dark until set.
-// onboarding_v2 (migration 201): off/missing = onboarding Version 1, on = Version 2 (note 63).
-export const OFF_UNLESS_SET = ['rewards_v2', 'push_enabled', 'app_events', 'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'intent_foryou', 'live_activity', 'market_share', 'onboarding_v2'];
+// onboarding_v2 (migration 201) + onboarding_v3 (migration 202): which onboarding runs, see onboardingVersion().
+export const OFF_UNLESS_SET = ['rewards_v2', 'push_enabled', 'app_events', 'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'intent_foryou', 'live_activity', 'market_share', 'onboarding_v2', 'onboarding_v3'];
 const CACHE_KEY = 'banbe_feature_flags_v1';
 
 /** Keep only known keys with real booleans. Unknown keys from a newer server are ignored, never trusted. */
@@ -29,6 +29,17 @@ export function normalizeFlags(data) {
 export function flagOn(flags, key) {
   if (OFF_UNLESS_SET.includes(key)) return !!(flags && flags[key] === true);
   return !(flags && flags[key] === false);
+}
+
+/**
+ * Which onboarding is active (notes 63/64): 3 if onboarding_v3, else 2 if onboarding_v2, else 1. Strict precedence,
+ * so a stray v2+v3 pair still resolves to one version. The admin setter (admin_set_onboarding_version, migration
+ * 202) writes both booleans in one transaction; older clients that only know onboarding_v2 keep seeing v1/v2.
+ */
+export function onboardingVersion(flags) {
+  if (flagOn(flags, 'onboarding_v3')) return 3;
+  if (flagOn(flags, 'onboarding_v2')) return 2;
+  return 1;
 }
 
 export function readCachedFlags(storage = typeof localStorage !== 'undefined' ? localStorage : null) {

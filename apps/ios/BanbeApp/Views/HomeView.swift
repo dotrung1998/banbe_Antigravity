@@ -99,7 +99,7 @@ struct HomeView: View {
         ZStack {
             app.palette.paper.ignoresSafeArea()
         VStack(alignment: .leading, spacing: 0) {
-            header
+            header.revealRegion(0)
             // L5 weekly digest: its notification asks for the "This weekend" rail (AppState.goHomeThisWeekend).
             ScrollViewReader { weekendProxy in
             ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: homeScrollAnchorBinding, restoreOffsetY: app.homeScrollOffsetY, onScrollOffset: { app.homeScrollOffsetY = $0 }, scrollToTopToken: app.homeScrollToTopToken, refreshIndicatorTopPadding: 16, onRefresh: {
@@ -119,26 +119,29 @@ struct HomeView: View {
                     // categories → quick row → "Upcoming · N" → feed → hints → empty/footer → weekend → surveys.
                     // The old "Your events" strip and status chips are gone (Schedule + Account own your events).
                     // Banbe Pulse: one slim ticker line (note 51), replacing the big tile in the story row.
-                    PulseTickerView().padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 6)
+                    // Note 64: `.revealRegion(n)` = the sign-in reveal order (header 0, summary 1, feed 2, dock 3).
+                    PulseTickerView().padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 6).revealRegion(1)
                     if let next = nextUp {
-                        NextUpBanner(event: next.event, phase: next.phase, haloTrigger: reminderHaloTrigger)
+                        NextUpBanner(event: next.event, phase: next.phase, haloTrigger: reminderHaloTrigger).revealRegion(1)
                     }
-                    if app.isSignedIn, !savedUpcoming.isEmpty { savedUpcomingSection }
+                    if app.isSignedIn, !savedUpcoming.isEmpty { savedUpcomingSection.revealRegion(1) }
                     if app.isSignedIn {
-                        ActionCenterView(items: actionItems, onSeeAll: { app.goNotifications() })
-                        ActivationChecklistCard()
+                        ActionCenterView(items: actionItems, onSeeAll: { app.goNotifications() }).revealRegion(1)
+                        ActivationChecklistCard().revealRegion(1)
                     } else {
                         GuestBrowseBanner()
                     }
-                    if !app.homeStories.isEmpty { storyRow }
-                    HomeCategoryRow()
-                    quickRow(snap)
-                    if app.filterForYou && app.hasForYouMatches { forYouEditRow.padding(.bottom, 4) }
-                    sectionHeader(snap)
+                    if !app.homeStories.isEmpty { storyRow.revealRegion(1) }
+                    HomeCategoryRow().revealRegion(2)
+                    quickRow(snap).revealRegion(2)
+                    if app.filterForYou && app.hasForYouMatches { forYouEditRow.padding(.bottom, 4).revealRegion(2) }
+                    sectionHeader(snap).revealRegion(2)
                     ForEach(snap.cards) { card in
                         Group {
                             if layoutMode == "list" { DiscoveryRow(model: card) } else { DiscoveryCard(model: card) }
                         }
+                        .revealRegion(2)
+                        .modifier(FirstCardTourTarget(isFirst: card.key == snap.cards.first?.key))
                         .id(card.key)
                     }
                     // Requirements are soft: when filters leave almost nothing, offer the one change that adds the most.
@@ -154,6 +157,11 @@ struct HomeView: View {
                 .padding(.bottom, 100)
             }
             .task(id: app.homeWeekendScrollRequest) { await scrollToWeekendIfAsked(weekendProxy) }
+            // Note 64: the v3 tour's event-card step brings the first card into view (a scroll, nothing else).
+            .onReceive(OnboardingTourController.shared.$scrollRequest.dropFirst()) { _ in
+                guard let first = snap.cards.first?.key else { return }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) { weekendProxy.scrollTo(first, anchor: .center) }
+            }
             }
         }
         }
@@ -164,6 +172,7 @@ struct HomeView: View {
         // chip until Home happened to remount. Re-runs the same loads
         // (idempotent re-fetch, same as every other "also loaded here"
         // source in this codebase) on returning to the foreground.
+        .task(id: app.justSignedIn) { await app.finishSignInReveal(reduceMotion: reduceMotion) }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, app.userID != nil else { return }
             Task {
@@ -1147,6 +1156,8 @@ struct HomeView: View {
     }
 
     private func observeForYouAlert() {
+        // Note 64: while the v3 tour shows Home, nothing is observed or saved on the person's behalf.
+        guard !app.tourActive else { return }
         let matches = app.forYouMatches.map { m in
             ForYouAlertMatch(id: m.key, version: app.discoveryAlertVersions[m.key] ?? "")
         }
@@ -1228,6 +1239,7 @@ struct HomeView: View {
         .buttonStyle(.plain)
         .modifier(ForYouAttentionEffect(animating: forYouAlert.animating, reduceMotion: reduceMotion, token: reminderHaloTrigger &+ forYouAlert.replayToken))
         .accessibilityIdentifier("filter.foryou")
+        .tourTarget("tour.home.forYou")
         .accessibilityLabel(forYouAlert.hasPending && !active
             ? chipTitle + app.T(", có gợi ý mới", ", new recommendations")
             : chipTitle)
@@ -1413,5 +1425,13 @@ struct HomeNotificationsButton: View {
         .accessibilityLabel(app.unreadNotifications > 0
             ? app.T("Thông báo, \(app.unreadNotifications) chưa đọc", "Notifications, \(app.unreadNotifications) unread")
             : app.T("Thông báo", "Notifications"))
+    }
+}
+
+/// Note 64: only the first card of the feed is the v3 tour's "an event" target.
+private struct FirstCardTourTarget: ViewModifier {
+    let isFirst: Bool
+    func body(content: Content) -> some View {
+        if isFirst { content.tourTarget("tour.home.eventCard") } else { content }
     }
 }

@@ -683,6 +683,11 @@ struct AccountGroupView: View {
         VStack(spacing: 0) {
             row(app.T("banbe hoạt động thế nào", "How banbe works"), identifier: "help.howItWorks", icon: "lightbulb", trailing: "›") { app.screen = .helpHowItWorks }
             Divider().overlay(app.palette.rule)
+            // Note 64: only while onboarding Version 3 is on. Replays the tour; never touches the first-run marker.
+            if app.onboardingVersion == 3 {
+                row(app.T("Xem hướng dẫn trong ứng dụng", "Tour the app"), identifier: "help.appTour", icon: "lightbulb", trailing: "›") { app.replayOnboardingTour() }
+                Divider().overlay(app.palette.rule)
+            }
             row(app.T("Điều khoản", "Terms"), identifier: "help.terms", icon: "doc.text", trailing: "›") { app.openPolicy() }
             Divider().overlay(app.palette.rule)
             row(app.T("Hướng dẫn: Người tham gia", "Guide: Personal"), identifier: "help.guide.personal", icon: "checklist", trailing: "›") { openGuide("personal") }

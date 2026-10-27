@@ -4,6 +4,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { BanBeProvider, useBanBe } from './state/BanBeContext.jsx';
 import useUrlSync from './lib/useUrlSync.js';
 import useKeepFocusedVisible from './lib/useKeepFocusedVisible.js';
+import useSignInReveal from './lib/useSignInReveal.js';
+import OnboardingTour from './components/tour/OnboardingTour.jsx';
 import { CREATE_UNDO_MS } from './lib/createDraftUndo.js';
 import BottomTabBar, { showsBottomBar, DOCK_ORDER, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET } from './screens/BottomTabBar.jsx';
 import { paper, ink, rule } from './theme.js';
@@ -197,6 +199,7 @@ function CreateUndoToast({ offer, aboveDock }) {
 function DockRow({ collapsed, showCreate }) {
   return (
     <div
+      data-reveal="3"
       style={{
         position: 'absolute', left: '50%', bottom: BAR_BOTTOM_OFFSET,
         width: `calc(100% - ${DOCK_MARGIN * 2}px)`,
@@ -259,6 +262,8 @@ function Shell() {
   useUrlSync(goc);
   // Note 53: the field being typed in never sits under the on-screen keyboard (Create event's intro, Login, …).
   useKeepFocusedVisible();
+  // Note 64: first Home after a sign-in reveals top to bottom, once; its end may start the v3 tour.
+  useSignInReveal(goc.state.justSignedIn, goc.state.screen, goc.clearJustSignedIn, goc.noteSignInRevealDone);
   const {
     state, T,
     goHome, goMapExplore, goNotifications, goSchedule, goInbox, goProfile,
@@ -825,6 +830,8 @@ function Shell() {
       {/* event onboarding (note 34) — below the gate, above every screen */}
       <EventOnboarding />
       <GuestPromptSheet />
+      {/* Onboarding v3 tour (note 64): portals itself outside #root and makes #root inert while it runs. */}
+      <OnboardingTour />
      </div></div>
     </div>
   );

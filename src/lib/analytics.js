@@ -11,7 +11,12 @@ let sink = () => {};
 
 export function setAnalyticsSink(fn) { sink = typeof fn === 'function' ? fn : () => {}; }
 
+// Note 64: the v3 tour shows the real screens without the person using them, so nothing is measured meanwhile.
+let paused = false;
+export function setAnalyticsPaused(v) { paused = !!v; }
+
 export function track(name, props) {
+  if (paused) return;
   try { devLog({ name, props }); } catch { /* logging must never break the app */ }
   try { sink({ name, props }); } catch { /* analytics must never break the app */ }
 }

@@ -5,7 +5,8 @@ import { bg } from '../data/events.js';
 import DobCorrectionRequest from './DobCorrectionRequest.jsx';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
 import { paper, ink, FACE, display, fieldGlass, alert } from '../theme.js';
-import { CountStepper, InkButton, BookingJourneyProgress } from '../components/ui/FormControls.jsx';
+import { CountStepper, BookingJourneyProgress } from '../components/ui/FormControls.jsx';
+import AsyncSuccessButton from '../components/ui/AsyncSuccessButton.jsx';
 import { eventTotal, currencyUnavailable, CURRENCY_UNAVAILABLE_REASON } from '../lib/reserveBar.js';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -13,7 +14,7 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 export default function Reserve() {
   const {
     state, T, trStatus, curEvent: ev, backToEvent,
-    qtyMinus, qtyPlus, formNameType, setNameAtHold, submitReserve, goEditName, setAttendeeField,
+    qtyMinus, qtyPlus, formNameType, setNameAtHold, submitReserve, goReserveConfirmed, goEditName, setAttendeeField,
   } = useBanBe();
   const s = state;
 
@@ -201,10 +202,18 @@ export default function Reserve() {
       {crit.restricted && <WhoCanReserve criteria={crit.criteria} style={{ margin: '14px 22px 0' }} />}
       {crit.blocked && <CriteriaUnmetCard eligibility={crit.eligibility} returnTo="reserve" style={{ margin: '12px 22px 0' }} />}
       <div style={{ margin: '18px 22px 0' }}>
-        <InkButton testId="reserve-submit" label={reserveBtnLabel} enabled={formOk && !s.loading}
-          reason={s.loading ? null : holdBlockReason} onClick={() => submitReserve(formOk)} />
+        {/* Note 64: navigate class. The ✓ shows only once hold_seats_with_attendees returned a booking; Confirmed
+            opens when it has drawn. A refusal returns the label and shows the error under it. */}
+        <AsyncSuccessButton testId="reserve-submit" label={reserveBtnLabel} enabled={formOk}
+          run={() => submitReserve(formOk, { deferNavigation: true })}
+          onSuccessAnimationComplete={goReserveConfirmed}
+          pendingLabel={T('Đang giữ chỗ…', 'Holding…')} successLabel={T('Đã giữ chỗ', 'Seat held')}
+          style={{ borderRadius: 999, padding: 16, fontSize: 15 }} />
+        {!formOk && holdBlockReason && (
+          <div data-testid="reserve-submit-reason" style={{ fontSize: 12, textAlign: 'center', color: ink, opacity: 0.7, marginTop: 8 }}>{holdBlockReason}</div>
+        )}
       </div>
-      {s.reserveError && <div style={{ margin: '12px 22px 0', fontSize: 12, lineHeight: 1.5, color: alert }}>{s.reserveError}</div>}
+      {s.reserveError && <div role="alert" data-testid="reserve-error" style={{ margin: '12px 22px 0', fontSize: 12, lineHeight: 1.5, color: alert }}>{s.reserveError}</div>}
       <div style={{ height: 40 }} />
     </div>
   );

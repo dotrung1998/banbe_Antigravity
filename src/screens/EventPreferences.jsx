@@ -5,7 +5,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { paper, ink, rule, display, fieldSolid, inkButton, alert } from '../theme.js';
+import AsyncSuccessButton from '../components/ui/AsyncSuccessButton.jsx';
+import { paper, ink, rule, display, fieldSolid, alert } from '../theme.js';
 import {
   INTERESTS, GOALS, AVAILABILITY, LANGUAGES, BUDGET_TIERS, NO_PREFERENCE, BUDGET_REGIONS,
   toggleMulti, pickBudgetTier, budgetTierLabel, budgetRegionDefault, budgetRegionForCurrency,
@@ -107,7 +108,6 @@ export default function EventPreferences() {
   const [draft, setDraft] = useState(() => s.eventPrefs || {});
   const [baseline, setBaseline] = useState(() => s.eventPrefs || {});
   const [region, setRegion] = useState(() => (s.eventPrefs?.budget?.currency ? budgetRegionForCurrency(s.eventPrefs.budget.currency) : budgetRegionDefault()));
-  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [failed, setFailed] = useState(false);
   const seededLoaded = useRef(s.eventPrefsLoaded);
@@ -137,21 +137,19 @@ export default function EventPreferences() {
   };
   const edit = (next) => { setDraft(next); setSaved(false); setFailed(false); };
 
+  // Note 64: AsyncSuccessButton. Stay-and-update from Settings; navigate (back to the reservation) when it came
+  // from there, after the ✓. Nothing changed (only reachable from the reservation prompt): just go back.
   const save = async () => {
-    if (saving) return;
-    setSaving(true); setSaved(false); setFailed(false);
-    // Nothing changed (only reachable from the reservation prompt): just go back.
-    if (!changed) { setSaving(false); if (fromReservation) goBack(); return; }
+    setSaved(false); setFailed(false);
+    if (!changed) return true;
     const ok = await saveEventPreferences(draft);
-    setSaving(false);
-    if (ok) {
-      setBaseline(normalizeForSave(draft)); setSaved(true);
-      if (fromReservation) goBack();
-    } else setFailed(true);
+    if (ok) { setBaseline(normalizeForSave(draft)); setSaved(true); return true; }
+    setFailed(true);
+    return false;
   };
 
-  const enabled = !saving && (changed || fromReservation);
-  const label = saving ? T('Đang lưu…', 'Saving…') : fromReservation ? T('Lưu và quay lại', 'Save and go back') : T('Lưu', 'Save');
+  const enabled = changed || fromReservation;
+  const label = fromReservation ? T('Lưu và quay lại', 'Save and go back') : T('Lưu', 'Save');
 
   return (
     <div style={{ animation: 'banbeFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="EventPreferences" data-testid="event-preferences-screen">
@@ -167,12 +165,11 @@ export default function EventPreferences() {
           <EventPreferencesForm prefs={draft} onChange={edit} region={region} onRegionChange={setRegion} />
         </div>
         <div style={{ marginTop: 22 }}><EventPrefsPrivacyNote /></div>
-        {failed && <p data-testid="prefs-save-error" style={{ fontSize: 12, color: alert, margin: '14px 0 0' }}>{T('Chưa lưu được. Vui lòng thử lại.', "Couldn't save. Please try again.")}</p>}
+        {failed && <p role="alert" data-testid="prefs-save-error" style={{ fontSize: 12, color: alert, margin: '14px 0 0' }}>{T('Chưa lưu được. Vui lòng thử lại.', "Couldn't save. Please try again.")}</p>}
         {saved && !failed && <p data-testid="prefs-save-ok" style={{ fontSize: 12, color: ink, margin: '14px 0 0' }}>{T('Đã lưu sở thích.', 'Preferences saved.')}</p>}
-        <div
-          onClick={enabled ? save : undefined} role="button" aria-disabled={!enabled} data-testid="prefs-save"
-          style={{ ...inkButton({ marginTop: 16, borderRadius: 18, padding: 15, fontSize: 15 }), opacity: enabled ? 1 : 0.45, cursor: enabled ? 'pointer' : 'default' }}
-        >{label}</div>
+        <AsyncSuccessButton testId="prefs-save" label={label} enabled={enabled} run={save}
+          resetAfterSuccess={!fromReservation} onSuccessAnimationComplete={fromReservation ? goBack : undefined}
+          pendingLabel={T('Đang lưu…', 'Saving…')} successLabel={T('Đã lưu', 'Saved')} wrapStyle={{ marginTop: 16 }} />
       </div>
     </div>
   );

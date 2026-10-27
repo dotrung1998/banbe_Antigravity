@@ -244,8 +244,9 @@ function ConfirmDob({ lockedUntil }) {
 export default function AccountGate() {
   const { state, T } = useBanBe();
   const { gate, status, blocking } = useAccountGate();
-  // Like iOS: the splash plays first, then the gate takes over.
-  if (!blocking || state.screen === 'splash') return null;
+  // Like iOS: the splash plays first, then the gate takes over. During a sign-in hand-off (note 64) Login's own
+  // button is the progress indicator; the gate appears right after its ✓ (blocked/unavailable) or never (ready).
+  if (!blocking || state.screen === 'splash' || state.signInHandoff) return null;
 
   let body;
   if (gate === 'blocked' && status) {

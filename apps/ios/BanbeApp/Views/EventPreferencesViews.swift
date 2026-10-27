@@ -130,7 +130,6 @@ struct EventPreferencesView: View {
     @State private var draft = EventPreferences()
     @State private var region = BudgetRegion.deviceDefault()
     @State private var baseline = EventPreferences()
-    @State private var saving = false
     @State private var saved = false
     @State private var failed = false
     @State private var seeded = false
@@ -166,13 +165,13 @@ struct EventPreferencesView: View {
                         .font(.system(size: 12)).padding(.top, 14)
                 }
 
-                InkButton(title: saving ? app.T("Đang lưu…", "Saving…")
-                                        : fromReservation ? app.T("Lưu và quay lại", "Save and go back")
-                                                          : app.T("Lưu", "Save"),
-                          enabled: !saving && (changed || fromReservation)) {
-                    Task { await save() }
-                }
-                .accessibilityIdentifier("prefs.save")
+                // Note 64: stay-and-update from Settings; navigate (back to the reservation) after the ✓ from there.
+                AsyncSuccessButton(title: fromReservation ? app.T("Lưu và quay lại", "Save and go back") : app.T("Lưu", "Save"),
+                                   enabled: changed || fromReservation,
+                                   pendingLabel: app.T("Đang lưu…", "Saving…"), successLabel: app.T("Đã lưu", "Saved"),
+                                   resetAfterSuccess: !fromReservation, identifier: "prefs.save",
+                                   run: { await save() ? .success : .failure() },
+                                   onSuccessAnimationComplete: fromReservation ? { app.goBack() } : nil)
                 .padding(.top, 16)
             }
             .foregroundStyle(app.palette.ink)
@@ -191,18 +190,17 @@ struct EventPreferencesView: View {
         if let c = p.budget?.currency { region = BudgetRegion.forCurrency(c) }
     }
 
-    private func save() async {
-        saving = true; saved = false; failed = false
-        defer { saving = false }
-        // Nothing changed (only reachable from the reservation prompt): just go back.
-        if !changed { if fromReservation { app.goBack() }; return }
+    /// True when saved (or nothing to save). Going back is the button's job, after its ✓.
+    private func save() async -> Bool {
+        saved = false; failed = false
+        if !changed { return true }
         if await app.saveEventPreferences(draft) {
             baseline = draft
             saved = true
-            if fromReservation { app.goBack() }
-        } else {
-            failed = true
+            return true
         }
+        failed = true
+        return false
     }
 }
 

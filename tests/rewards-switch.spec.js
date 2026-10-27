@@ -96,7 +96,13 @@ test.describe('Rewards & badges switch', () => {
     await page.getByTestId('account-tab-admin').click();
     await page.getByTestId('account-group-adminReview').click();
     await page.getByTestId('admin-features').click();
+    // Note 64: every category starts collapsed; opening one must not touch its switches.
+    await expect(page.getByTestId('admin-cat-rewards-toggle')).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByTestId('admin-flag-rewards')).toHaveCount(0);
+    await page.getByTestId('admin-cat-rewards-toggle').click();
+    await expect(page.getByTestId('admin-cat-rewards-toggle')).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByTestId('admin-flag-rewards')).toHaveAttribute('data-on', 'true');
+    expect(calls).toEqual([]);
 
     await page.getByTestId('admin-flag-rewards-switch').click();
     await expect(page.getByTestId('admin-flag-rewards')).toHaveAttribute('data-on', 'false');
@@ -112,6 +118,7 @@ test.describe('Rewards & badges switch', () => {
     await page.getByTestId('account-tab-admin').click();
     await page.getByTestId('account-group-adminReview').click();
     await page.getByTestId('admin-features').click();
+    await page.getByTestId('admin-cat-rewards-toggle').click();
     await page.getByTestId('admin-flag-rewards-switch').click();
     await expect(page.getByTestId('admin-flag-rewards')).toHaveAttribute('data-on', 'true');
     expect(calls[1]).toEqual({ p_key: 'rewards', p_enabled: true });
@@ -125,8 +132,66 @@ test.describe('Rewards & badges switch', () => {
     await page.getByTestId('account-tab-admin').click();
     await page.getByTestId('account-group-adminReview').click();
     await page.getByTestId('admin-features').click();
+    await page.getByTestId('admin-cat-rewards-toggle').click();
     await page.getByTestId('admin-flag-rewards-switch').click();
     await expect(page.getByTestId('admin-features-error')).toBeVisible();
     await expect(page.getByTestId('admin-flag-rewards')).toHaveAttribute('data-on', 'true');
+  });
+
+  test('admin categories: collapsed by default, keyboard opens/closes, counts on', async ({ page }) => {
+    await mockServer(page, { flags: { current: { rewards: true, event_reminders: true, push_enabled: false } }, admin: true });
+    await toHome(page);
+    await page.getByTestId('tab-profile').click();
+    await page.getByTestId('account-tab-admin').click();
+    await page.getByTestId('account-group-adminReview').click();
+    await page.getByTestId('admin-features').click();
+    for (const k of ['onboarding', 'rewards', 'notifications', 'events', 'platform']) {
+      await expect(page.getByTestId(`admin-cat-${k}-toggle`)).toHaveAttribute('aria-expanded', 'false');
+    }
+    await expect(page.getByTestId('admin-cat-rewards-count')).toHaveText('1/2 on');
+    const notif = page.getByTestId('admin-cat-notifications-toggle');
+    await notif.focus();
+    await page.keyboard.press('Enter');
+    await expect(notif).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('admin-flag-event_reminders')).toBeVisible();
+    await page.keyboard.press('Space');
+    await expect(notif).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByTestId('admin-flag-event_reminders')).toHaveCount(0);
+  });
+
+  test('admin onboarding version: one atomic call, exactly one version shows as active', async ({ page }) => {
+    const flags = { current: { rewards: true, onboarding_v2: true, onboarding_v3: false } };
+    const versionCalls = [];
+    await mockServer(page, { flags, admin: true });
+    await page.route('**/rest/v1/rpc/admin_set_onboarding_version', async (r) => {
+      const body = r.request().postDataJSON();
+      versionCalls.push(body);
+      flags.current = { ...flags.current, onboarding_v2: body.p_version === 2, onboarding_v3: body.p_version === 3 };
+      await r.fulfill(json({ success: true, version: body.p_version }));
+    });
+    await toHome(page);
+    await page.getByTestId('tab-profile').click();
+    await page.getByTestId('account-tab-admin').click();
+    await page.getByTestId('account-group-adminReview').click();
+    await page.getByTestId('admin-features').click();
+    await page.getByTestId('admin-cat-onboarding-toggle').click();
+    await expect(page.getByTestId('admin-onboarding-version')).toHaveAttribute('data-version', '2');
+    await expect(page.getByTestId('admin-onboarding-version-2')).toHaveAttribute('aria-checked', 'true');
+    await page.getByTestId('admin-onboarding-version-3').click();
+    await expect(page.getByTestId('admin-onboarding-version')).toHaveAttribute('data-version', '3');
+    await expect(page.getByTestId('admin-onboarding-version-2')).toHaveAttribute('aria-checked', 'false');
+    expect(versionCalls).toEqual([{ p_version: 3 }]);
+  });
+
+  test('admin onboarding version: before migration 202 the old Version 2 switch stays', async ({ page }) => {
+    await mockServer(page, { flags: { current: { rewards: true, onboarding_v2: false } }, admin: true });
+    await toHome(page);
+    await page.getByTestId('tab-profile').click();
+    await page.getByTestId('account-tab-admin').click();
+    await page.getByTestId('account-group-adminReview').click();
+    await page.getByTestId('admin-features').click();
+    await page.getByTestId('admin-cat-onboarding-toggle').click();
+    await expect(page.getByTestId('admin-onboarding-version')).toHaveCount(0);
+    await expect(page.getByTestId('admin-flag-onboarding_v2-switch')).toBeVisible();
   });
 });

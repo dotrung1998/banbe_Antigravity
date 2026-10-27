@@ -153,6 +153,9 @@ private final class DockOverlayWindow: UIWindow {
     // `.zero` (no toast currently shown) contains no point, so this is a
     // pure no-op whenever there's nothing to tap.
     var toastRect: CGRect = .zero
+    /// Note 64: the v3 tour overlay is drawn in this window and must take EVERY touch while it runs, so nothing in
+    /// the main window underneath can be pressed.
+    var tourActive = false
 
     private var hostsMenu: Bool {
         if rootViewController?.presentedViewController != nil { return true }
@@ -165,7 +168,7 @@ private final class DockOverlayWindow: UIWindow {
         // controller). It extends far outside the dock band, so without this
         // its expanded submenu header, rows and dismiss area were rejected here
         // and the tap fell through to the screen underneath.
-        guard trayOpen || passthroughRect.contains(point) || toastRect.contains(point) || hostsMenu else { return nil }
+        guard tourActive || trayOpen || passthroughRect.contains(point) || toastRect.contains(point) || hostsMenu else { return nil }
         return super.hitTest(point, with: event)
     }
 }
@@ -444,6 +447,12 @@ final class BottomTabBarOverlay {
         window?.toastRect = rect
     }
 
+    /// Note 64: while the v3 tour runs this window captures every touch (its overlay is the only thing usable).
+    func setTourActive(_ on: Bool) {
+        window?.tourActive = on
+        if on { window?.isHidden = false; window?.isUserInteractionEnabled = true }
+    }
+
     private func applyVisibility() {
         let shouldShow = !(appLocked || forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || surveyModalOpen || onboardingOpen || shareCardOpen || !openSheets.isEmpty)
             && BottomTabBar.visibleScreens.contains(currentScreen)
@@ -557,6 +566,8 @@ private struct BottomTabBarOverlayRoot: View {
         // longer ever changes size in the first place.
         ZStack(alignment: .bottom) {
             DockRow()
+                .revealRegion(3) // note 64: last in the sign-in reveal
+                .accessibilityHidden(app.tourActive)
                 .offset(y: app.dockVisible ? 0 : 40)
                 .opacity(app.dockVisible ? 1 : 0)
                 .allowsHitTesting(app.dockVisible)
@@ -582,6 +593,13 @@ private struct BottomTabBarOverlayRoot: View {
             if !app.toasts.isEmpty {
                 ToastOverlay()
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
+
+            // Note 64: the v3 tour, above the dock AND the main window (this window is the topmost).
+            if app.tourActive {
+                OnboardingTourOverlay()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
             }
         }
         // BUG FIX (dock-centered-instead-of-bottom regression) — see this

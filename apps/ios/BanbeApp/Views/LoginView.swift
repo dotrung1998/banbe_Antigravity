@@ -167,10 +167,19 @@ struct LoginView: View {
                 // a mandatory Policy screen — not by trying to gate this
                 // button beforehand.
                 VStack(spacing: 10) {
-                    oauthButton(app.T("Tiếp tục với Google", "Continue with Google")) {
-                        Task { await auth.signInWithGoogle() }
-                    }
-                    .accessibilityIdentifier("login.google")
+                    // Note 64: pending while the system web sheet is up; the ✓ only after the session has returned
+                    // and applied, through the same hand-off as password login.
+                    AsyncSuccessButton(
+                        title: app.T("Tiếp tục với Google", "Continue with Google"),
+                        role: .secondary,
+                        pendingLabel: app.T("Đang mở Google…", "Opening Google…"),
+                        successLabel: app.T("Đã đăng nhập", "Signed in"),
+                        identifier: "login.google",
+                        run: runGoogle,
+                        onSuccessAnimationComplete: {
+                            app.completeSignInHandoff(sessionApplied: app.appliedSessionUID != nil && app.appliedSessionUID == auth.session?.user.id)
+                        }
+                    )
                     // Facebook sign-in is switched off while it is under development.
                     oauthButton(app.T("Tiếp tục với Facebook", "Continue with Facebook")) {}
                         .disabled(true)
@@ -277,11 +286,22 @@ struct LoginView: View {
                 }
 
                 if showSubmit {
-                    InkButton(title: submitLabel, enabled: !busy && (auth.codeSent ? !code.isEmpty : canRequest)) {
-                        Task { submitting = true; await submit(); submitting = false }
-                    }
+                    // Note 64: password login and code verify are real sign-ins. The ✓ only shows once the session is
+                    // applied (or the gate answered), then completeSignInHandoff navigates once. Sending a code (and a
+                    // password sign-up, which ends in a code) is intermediate: it spins and returns to the form.
+                    AsyncSuccessButton(
+                        title: submitLabel,
+                        enabled: !auth.isSendingCode && (auth.codeSent ? !code.isEmpty : canRequest),
+                        pendingLabel: submitLabel,
+                        successLabel: app.T("Đã đăng nhập", "Signed in"),
+                        identifier: "login.submit",
+                        run: runSubmit,
+                        onSuccessAnimationComplete: {
+                            app.completeSignInHandoff(sessionApplied: app.appliedSessionUID != nil && app.appliedSessionUID == auth.session?.user.id)
+                        },
+                        onPhaseChange: { submitting = $0 == .pending }
+                    )
                     .padding(.top, 14)
-                    .accessibilityIdentifier("login.submit")
                 }
 
                 if resetRequested {
@@ -366,6 +386,34 @@ struct LoginView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(id)
+    }
+
+    private func runGoogle() async -> AsyncActionResult {
+        app.beginSignInHandoff()
+        await auth.signInWithGoogle()
+        let applied = app.appliedSessionUID != nil && app.appliedSessionUID == auth.session?.user.id
+        guard auth.errorMessage == nil, await app.awaitSignInReady() else {
+            app.cancelSignInHandoff(sessionApplied: applied)
+            return .failure(auth.errorMessage)
+        }
+        return .success
+    }
+
+    private func runSubmit() async -> AsyncActionResult {
+        let signsIn = auth.codeSent || (method == .password && mode == .login)
+        if signsIn { app.beginSignInHandoff() }
+        await submit()
+        let applied = { app.appliedSessionUID != nil && app.appliedSessionUID == auth.session?.user.id }
+        guard signsIn else { return .failure() }
+        guard auth.errorMessage == nil, localError.isEmpty else {
+            app.cancelSignInHandoff(sessionApplied: applied())
+            return .failure(auth.errorMessage ?? localError)
+        }
+        guard await app.awaitSignInReady() else {
+            app.cancelSignInHandoff(sessionApplied: applied())
+            return .failure()
+        }
+        return .success
     }
 
     private func submit() async {

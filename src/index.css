@@ -556,3 +556,36 @@ input::placeholder, textarea::placeholder {
 @media (prefers-reduced-motion: reduce) {
   .bb-bounce-in { animation: banbeFade .2s ease-out both; }
 }
+
+/* AsyncSuccessButton (note 64): the button morphs into a circle on the original axis, an arc spins while the real
+   request runs, then a ✓ draws. Width/radius are inline (they need the measured px); the motion lives here.
+   Reduced motion: no morph, no spin, a short crossfade only (same state timing). */
+.bb-async { position: relative; overflow: hidden; transition: width .32s cubic-bezier(.22,1,.36,1), border-radius .32s cubic-bezier(.22,1,.36,1), padding .32s cubic-bezier(.22,1,.36,1); }
+.bb-async-label { transition: opacity .14s ease; }
+.bb-async-glyph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+@keyframes bb-async-spin { to { transform: rotate(360deg); } }
+@keyframes bb-async-draw { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+@keyframes bb-async-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes bb-async-pop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+.bb-async-spinner { animation: bb-async-spin .8s linear infinite, bb-async-fade .18s ease both; }
+.bb-async-check { animation: bb-async-pop .34s cubic-bezier(.22,1,.36,1) both; }
+.bb-async-check path { stroke-dasharray: 24; animation: bb-async-draw .32s .06s cubic-bezier(.22,1,.36,1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .bb-async { transition: none; }
+  .bb-async-spinner { animation: bb-async-fade .15s ease both; }
+  .bb-async-check, .bb-async-check path { animation: bb-async-fade .15s ease both; stroke-dasharray: none; }
+}
+.bb-sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* First Home after a sign-in (note 64): regions rise in top to bottom, header 0 → summary 1 → feed 2 → dock 3.
+   Everything is rendered and accessible the whole time; only opacity/translate move. useSignInReveal() sets
+   <html data-reveal="1"> once and removes it when done, so ordinary navigation never replays it. */
+@keyframes bb-reveal { from { opacity: 0; translate: 0 12px; } to { opacity: 1; translate: 0 0; } }
+:root[data-reveal="1"] [data-reveal] { animation: bb-reveal .42s cubic-bezier(.22,1,.36,1) both; }
+:root[data-reveal="1"] [data-reveal="1"] { animation-delay: 80ms; }
+:root[data-reveal="1"] [data-reveal="2"] { animation-delay: 160ms; }
+:root[data-reveal="1"] [data-reveal="3"] { animation-delay: 240ms; }
+@keyframes bb-reveal-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-reveal="1"] [data-reveal] { animation: bb-reveal-fade .2s ease both; animation-delay: 0ms; }
+}

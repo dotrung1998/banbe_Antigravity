@@ -435,6 +435,7 @@ struct BottomTabBar: View {
         }
         .frame(minWidth: 44, maxWidth: .infinity, minHeight: barHeight)
         .accessibilityIdentifier("tab.\(item.id)")
+        .tourTarget("tour.dock.\(item.id)") // note 64 (tour.dock.map / .schedule / .inbox)
         .accessibilityLabel(item.label)
         .accessibilityAddTraits(isActive ? [.isSelected] : [])
         .anchorPreference(key: TabItemFrameKey.self, value: .bounds) { [item.id: $0] }

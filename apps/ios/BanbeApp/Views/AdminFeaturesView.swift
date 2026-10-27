@@ -5,9 +5,14 @@ import SwiftUI
 /// out) without a release; turning it on shows it again. The server decides who may flip it (is_platform_admin()
 /// inside admin_set_feature_flag, audited); this view only calls it, and the switch moves only after the server
 /// accepted the change.
+///
+/// Note 64: rows are grouped into collapsible categories (Lib/FeatureFlagCategories.swift), all collapsed on open,
+/// and onboarding is one Version 1/2/3 control (migration 202) instead of the old Version 2 switch.
 struct AdminFeaturesView: View {
     @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var error = ""
+    @State private var expanded: Set<String> = []
 
     private struct Flag: Identifiable {
         let key: String, vi: String, en: String, hintVi: String, hintEn: String
@@ -80,10 +85,124 @@ struct AdminFeaturesView: View {
         switch code ?? "" {
         case "NOT_AUTHORIZED": return app.T("Bạn không có quyền.", "You are not allowed to do this.")
         case "INVALID_VALUE": return app.T("Giá trị không hợp lệ.", "Invalid value.")
-        case "NOT_DEPLOYED": return app.T("Máy chủ chưa có công tắc này (chạy migration 187).", "The server does not have this switch yet (apply migration 187).")
+        case "NOT_DEPLOYED": return app.T("Máy chủ chưa có công tắc này. Cần chạy migration mới nhất.", "The server doesn't have this switch yet. Apply the latest migrations.")
         case "BUSY": return app.T("Đang xử lý…", "Working…")
         default: return app.T("Không kết nối được. Thử lại nhé.", "Couldn't reach the server. Try again.")
         }
+    }
+
+    private func pickVersion(_ version: Int) async {
+        error = ""
+        let r = await app.setOnboardingVersion(version)
+        if !r.ok {
+            error = message(r.error)
+            await app.loadFeatureFlags(force: true)
+        }
+    }
+
+    /// Until migration 202 is on the server (no onboarding_v3 key comes back), keep the old Version 2 switch.
+    private var versionDeployed: Bool { app.featureFlags["onboarding_v3"] != nil }
+
+    @ViewBuilder private func categorySection(_ cat: FeatureFlagCategories.Category) -> some View {
+        let isOpen = expanded.contains(cat.key)
+        let switches = cat.flags.filter { $0 != FeatureFlagCategories.onboardingControl }
+        let onCount = switches.filter { FeatureFlags.isOn(app.featureFlags, $0) }.count
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                    if isOpen { expanded.remove(cat.key) } else { expanded.insert(cat.key) }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Text(app.T(cat.vi, cat.en)).font(.system(size: 15.5, weight: .bold))
+                    Spacer(minLength: 0)
+                    if !switches.isEmpty {
+                        Text(app.T("\(onCount)/\(switches.count) bật", "\(onCount)/\(switches.count) on"))
+                            .font(.system(size: 12.5)).monospacedDigit().opacity(0.65)
+                    }
+                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).opacity(0.6)
+                        .rotationEffect(.degrees(isOpen ? 90 : 0))
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(.horizontal, 18).frame(minHeight: 52)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityValue(isOpen ? app.T("Đang mở", "Expanded") : app.T("Đang đóng", "Collapsed"))
+            .accessibilityHint(app.T("Chạm hai lần để mở hoặc đóng nhóm", "Double-tap to expand or collapse"))
+            .accessibilityIdentifier("adminFeatures.cat.\(cat.key)")
+
+            if isOpen {
+                Divider().overlay(app.palette.rule)
+                ForEach(Array(cat.flags.enumerated()), id: \.element) { i, key in
+                    if i > 0 { Divider().overlay(app.palette.rule) }
+                    if key == FeatureFlagCategories.onboardingControl {
+                        if versionDeployed { versionRow } else if let f = flags.first(where: { $0.key == "onboarding_v2" }) { flagRow(f) }
+                    } else if let f = flags.first(where: { $0.key == key }) {
+                        flagRow(f)
+                    }
+                }
+            }
+        }
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private func flagRow(_ f: Flag) -> some View {
+        let on = FeatureFlags.isOn(app.featureFlags, f.key)
+        return HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(app.T(f.vi, f.en)).font(.system(size: 15.5, weight: .semibold))
+                Text(app.T(f.hintVi, f.hintEn)).font(.system(size: 12.5)).opacity(0.7)
+                Text(on ? app.T(f.onVi, f.onEn) : app.T(f.offVi, f.offEn))
+                    .font(.system(size: 12, weight: .semibold)).opacity(on ? 1 : 0.7).padding(.top, 3)
+                    .accessibilityIdentifier("adminFeatures.\(f.key).state")
+            }
+            Spacer(minLength: 0)
+            GlassSwitch(isOn: on, loading: app.featureFlagBusy == f.key, identifier: "adminFeatures.\(f.key).switch") {
+                Task { await flip(f.key, to: !on) }
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("adminFeatures.\(f.key)")
+    }
+
+    private var versionRow: some View {
+        let v = app.onboardingVersion
+        let busy = app.featureFlagBusy == FeatureFlagCategories.onboardingControl
+        return VStack(alignment: .leading, spacing: 3) {
+            Text(app.T("Bản giới thiệu", "Onboarding version")).font(.system(size: 15.5, weight: .semibold))
+            Text(app.T("Phiên bản 1: màn Chào mừng tĩnh và 4 trang chữ \"banbe hoạt động thế nào\". Phiên bản 2: màn Chào mừng có chuyển động và các màn demo vuốt qua lại. Phiên bản 3: như Phiên bản 2, cộng thêm hướng dẫn trên giao diện thật ngay sau khi đăng nhập lần đầu.",
+                       "Version 1: still Welcome screen and the 4 text pages of \"How banbe works\". Version 2: animated Welcome and swipeable demo screens. Version 3: Version 2 plus a guided tour over the real app right after the first sign-in."))
+                .font(.system(size: 12.5)).opacity(0.7)
+            HStack(spacing: 4) {
+                ForEach(1...3, id: \.self) { n in
+                    Button {
+                        guard !busy, v != n else { return }
+                        Task { await pickVersion(n) }
+                    } label: {
+                        Text(app.T("Phiên bản \(n)", "Version \(n)"))
+                            .font(.system(size: 13.5, weight: v == n ? .bold : .medium))
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(v == n ? app.palette.paper : .clear, in: Capsule())
+                            .shadow(color: .black.opacity(v == n ? 0.15 : 0), radius: 2, y: 1)
+                            .foregroundStyle(app.palette.ink)
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(v == n ? [.isSelected] : [])
+                    .accessibilityIdentifier("adminFeatures.onboardingVersion.\(n)")
+                }
+            }
+            .padding(3)
+            .background(app.palette.ink.opacity(0.06), in: Capsule())
+            .opacity(busy ? 0.6 : 1)
+            .padding(.top, 8)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("adminFeatures.onboardingVersion")
     }
 
     private func flip(_ key: String, to enabled: Bool) async {
@@ -109,29 +228,9 @@ struct AdminFeaturesView: View {
                            "Turn a feature on or off for every user without a release. Every change is logged."))
                     .font(.system(size: 13.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
 
-                VStack(spacing: 0) {
-                    ForEach(flags) { f in
-                        let on = FeatureFlags.isOn(app.featureFlags, f.key)
-                        HStack(spacing: 14) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(app.T(f.vi, f.en)).font(.system(size: 15.5, weight: .semibold))
-                                Text(app.T(f.hintVi, f.hintEn)).font(.system(size: 12.5)).opacity(0.7)
-                                Text(on ? app.T(f.onVi, f.onEn) : app.T(f.offVi, f.offEn))
-                                    .font(.system(size: 12, weight: .semibold)).opacity(on ? 1 : 0.7).padding(.top, 3)
-                                    .accessibilityIdentifier("adminFeatures.\(f.key).state")
-                            }
-                            Spacer(minLength: 0)
-                            GlassSwitch(isOn: on, loading: app.featureFlagBusy == f.key, identifier: "adminFeatures.\(f.key).switch") {
-                                Task { await flip(f.key, to: !on) }
-                            }
-                        }
-                        .padding(.horizontal, 18).padding(.vertical, 16)
-                        .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("adminFeatures.\(f.key)")
-                    }
+                ForEach(FeatureFlagCategories.all) { cat in
+                    categorySection(cat).padding(.top, 14)
                 }
-                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .padding(.top, 22)
 
                 if !error.isEmpty {
                     Text(error).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 12)

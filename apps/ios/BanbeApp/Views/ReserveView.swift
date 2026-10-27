@@ -232,13 +232,23 @@ struct ReserveView: View {
                         .padding(.top, 18)
                 }
 
-                InkButton(title: app.loading
-                          ? app.T("Đang giữ chỗ…", "Holding…")
-                          : holdTitle,
-                          enabled: formOK && !app.loading,
-                          cornerRadius: 999,
-                          disabledReason: app.loading ? nil : holdBlockReason) {
-                    Task { await app.submitReserve() }
+                // Note 64: navigate class. The ✓ shows only once hold_seats_with_attendees returned a booking;
+                // Confirmed opens when it has drawn. A refusal returns the label and shows the error below.
+                VStack(spacing: 8) {
+                    AsyncSuccessButton(title: holdTitle, enabled: formOK,
+                                       pendingLabel: app.T("Đang giữ chỗ…", "Holding…"),
+                                       successLabel: app.T("Đã giữ chỗ", "Seat held"),
+                                       identifier: "reserve.submit",
+                                       run: { await app.submitReserve(deferNavigation: true) ? .success : .failure(app.reserveError) },
+                                       onSuccessAnimationComplete: { app.screen = .confirmed })
+                    if !formOK, let holdBlockReason, !holdBlockReason.isEmpty {
+                        Text(holdBlockReason)
+                            .font(.footnote)
+                            .foregroundStyle(app.palette.ink.opacity(0.7))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                            .accessibilityIdentifier("inkButton.disabledReason")
+                    }
                 }
                 .padding(.top, 18)
 

@@ -134,6 +134,13 @@ extension AppState {
         // "Get started" checklist is visible instead of the feed.
         resetHomeScrollToTop()
         if let key = openEventKey { goEvent(key) }
+        else {
+            // Note 64: personalization just landed on Home; the v3 tour may start once its overlay has gone.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                self?.maybeStartOnboardingTour()
+            }
+        }
     }
 
     /// The checklist's one-time "all set" celebration has played; it now stays hidden.

@@ -1,7 +1,8 @@
 import { useBanBe } from '../state/BanBeContext.jsx';
+import AsyncSuccessButton from '../components/ui/AsyncSuccessButton.jsx';
 import { HostPaymentQr } from './sheets/PaymentQrManager.jsx';
 import HostTitleIcon from './HostTitleIcon.jsx';
-import { paper, ink, FACE, display, fieldGlass, inkButton, alert } from '../theme.js';
+import { paper, ink, FACE, display, fieldGlass, alert } from '../theme.js';
 
 // Where the organizer says how they want to be paid. Without this filled in,
 // a guest's payment screen has nothing to show them — so this is the one
@@ -13,7 +14,7 @@ export default function Payout() {
   // Either rail is enough. save_organizer_payment() derives pay_methods from
   // whichever fields are non-empty, so a half-filled bank block can never
   // advertise itself to a guest.
-  const canSave = (s.payoutAccountNo.trim() || s.payoutMomo.trim()) && !s.payoutSaving;
+  const canSave = (s.payoutAccountNo.trim() || s.payoutMomo.trim());
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Payout">
@@ -58,13 +59,10 @@ export default function Payout() {
         </div>
       </div>
 
-      <div
-        onClick={() => canSave && savePayoutDetails()}
-        style={{ ...inkButton({ margin: '20px 22px 0', borderRadius: 18, padding: 15, fontSize: 14.5, opacity: canSave ? 1 : 0.45, cursor: canSave ? 'pointer' : 'default' }) }}
-        data-testid="payout-save"
-      >
-        {s.payoutSaving ? T('Đang lưu…', 'Saving…') : T('Lưu', 'Save')}
-      </div>
+      {/* Note 64: stay-and-update. ✓ after save_organizer_payment accepted it, then back to Save. */}
+      <AsyncSuccessButton testId="payout-save" label={T('Lưu', 'Save')} enabled={!!canSave} run={savePayoutDetails} resetAfterSuccess
+        pendingLabel={T('Đang lưu…', 'Saving…')} successLabel={T('Đã lưu', 'Saved')}
+        wrapStyle={{ margin: '20px 22px 0', width: 'auto' }} style={{ padding: 15, fontSize: 14.5 }} />
 
       {s.payoutSaved && (
         <p style={{ fontSize: 12.5, color: ink, opacity: 0.75, margin: '12px 22px 0' }} data-testid="payout-saved">

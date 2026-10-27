@@ -538,9 +538,11 @@ struct RootView: View {
     private var showsAccountGate: Bool {
         // Also while the login form is still the current screen: the gate used to fade out a moment before the
         // redirect to Home settled, so Login flashed back between the loading screen and Home.
+        // Note 64: during a sign-in hand-off Login's own button is the progress indicator, so the loader stays
+        // hidden; the real gate (phone/DOB/unavailable) appears right after the ✓.
         auth.session != nil && (auth.gate != .ready || app.appliedSessionUID != auth.session?.user.id
                                 || app.screen == .login || app.screen == .welcome)
-            && app.screen != .splash
+            && app.screen != .splash && !app.signInHandoffPending
     }
 
     private var showsEventOnboarding: Bool {
@@ -1108,10 +1110,15 @@ struct RootView: View {
                 // Navigating earlier (on the raw session change) tripped the
                 // "no guest browsing" guard below, which bounced the user back
                 // to Login and left them stuck there until a relaunch.
-                if auth.session != nil && (app.screen == .login || app.screen == .welcome) { app.screen = app.authReturnScreen }
-                // Note 48: finish what a guest prompt was asked for (e.g. set
-                // up Reserve properly, open the chat thread).
-                if auth.session != nil { app.runPendingAuthResume() }
+                // Note 64: a sign-in hand-off navigates itself once its ✓ is done (completeSignInHandoff).
+                if auth.session != nil && app.signInHandoffPending {
+                    app.markSignInReady()
+                } else {
+                    if auth.session != nil && (app.screen == .login || app.screen == .welcome) { app.screen = app.authReturnScreen }
+                    // Note 48: finish what a guest prompt was asked for (e.g. set
+                    // up Reserve properly, open the chat thread).
+                    if auth.session != nil { app.runPendingAuthResume() }
+                }
                 // A gift claim link that arrived before there was a session
                 // parks its code (see AppState.openGiftImport); once there IS
                 // a verified session, finish the job the link started instead
@@ -1119,6 +1126,16 @@ struct RootView: View {
                 app.checkPendingGiftClaimOnSignIn()
             }
         }
+        // Note 64: a gate that answers "blocked"/"unavailable" also completes the sign-in wait, so the ✓ hands
+        // straight to the real phone/DOB screen instead of a loader.
+        .onChange(of: auth.gate) { _, gate in
+            if app.signInHandoffPending && gate != .ready && gate != .unknown { app.markSignInReady() }
+            if gate != .ready { app.abortOnboardingTour() }
+        }
+        // Note 64: the v3 tour overlay lives in the dock window; that window takes every touch while it runs and the
+        // real app underneath is hidden from VoiceOver (a picture, never a second actionable copy).
+        .onChange(of: app.tourActive) { _, on in BottomTabBarOverlay.shared.setTourActive(on) }
+        .accessibilityHidden(app.tourActive)
         // Task 1 — no guest browsing of any screen: the single, centralized
         // enforcement point, rather than auditing every `screen = .x`
         // call site in this large app individually. Catches cases the

@@ -35,6 +35,9 @@ enum UITestFixture {
     static let rewardsSwitch = UserDefaults.standard.string(forKey: "uiFixtureRewards") ?? "on"
     /// Note 63: `-uiFixtureOnboardingV2 YES` is an admin having picked onboarding Version 2.
     static let onboardingV2 = UserDefaults.standard.bool(forKey: "uiFixtureOnboardingV2")
+    /// Note 64: `-uiFixtureTourV3 YES` (with a `shell.*` fixture) is onboarding Version 3 with its tour started
+    /// (as a Help & Legal replay, so no first-run marker is written).
+    static let tourV3 = UserDefaults.standard.bool(forKey: "uiFixtureTourV3")
     /// Stable fake account id so the draft store/relaunch tests have a key.
     static let userID = UUID(uuidString: "00000000-0000-4000-8000-00000000F1F0")!
 
@@ -158,6 +161,7 @@ struct UITestFixtureRoot: View {
         let signedOut = name.hasPrefix("auth") || name == "routing.signedOut"
         if !signedOut { app.userID = UITestFixture.userID }
         if UITestFixture.onboardingV2 { app.featureFlags["onboarding_v2"] = true }
+        if UITestFixture.tourV3 { app.featureFlags["onboarding_v3"] = true }
         if name.hasPrefix("shell") { configureShell() }
         else if name.hasPrefix("reports") { configureReports() }
         else if isRouted { configureRouted() }
@@ -193,6 +197,9 @@ struct UITestFixtureRoot: View {
                 """
                 return try! JSONDecoder().decode(PulseItem.self, from: Data(json.utf8))
             }
+        }
+        if UITestFixture.tourV3 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [app] in app.replayOnboardingTour() }
         }
         if UITestFixture.seedsForYou {
             app.eventPrefs = EventPreferences(interests: ["supper", "gallery", "music"], goals: ["meet_people"], availability: ["evening"],

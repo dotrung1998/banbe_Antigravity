@@ -1,8 +1,9 @@
 import { useRef } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { paper, ink, rule, display, fieldGlass, alert, inkButton } from '../theme.js';
+import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 import { PROFILE_PALETTES } from '../lib/profileTheme.js';
 import KeychainSettings from '../components/KeychainSettings.jsx';
+import AsyncSuccessButton from '../components/ui/AsyncSuccessButton.jsx';
 import { LINK_PLATFORMS, SocialLinksEditor } from './SocialLinksEditor.jsx';
 
 // TASK D (2026-10-01 UX foundation pass) — the owner's own editable public
@@ -13,6 +14,7 @@ export default function EditProfile() {
   const {
     state, T, backFromEditProfile, set, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile,
     editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink,
+    backFromEditProfileSaved,
   } = useBanBe();
   const s = state;
   const fileRef = useRef(null);
@@ -25,7 +27,6 @@ export default function EditProfile() {
     if (url) await saveProfileFields(url);
   };
 
-  const canSave = s.editProfileHandle.trim().length >= 3 && s.editProfileName.trim().length > 0 && !s.editProfileBusy;
   const monogram = (s.editProfileName || s.user?.name || 'B').trim()[0]?.toUpperCase() || 'B';
 
   return (
@@ -109,12 +110,15 @@ export default function EditProfile() {
 
         <KeychainSettings />
 
-        {s.editProfileError && <p style={{ fontSize: 12, color: alert, margin: 0 }}>{s.editProfileError}</p>}
+        {s.editProfileError && <p role="alert" data-testid="edit-profile-error" style={{ fontSize: 12, color: alert, margin: 0 }}>{s.editProfileError}</p>}
 
-        <div onClick={() => canSave && saveProfileFields()} data-testid="edit-profile-save"
-          style={{ ...inkButton({ padding: '15px 0', opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'default', marginTop: 4 }) }}>
-          {s.editProfileBusy ? T('Đang lưu…', 'Saving…') : T('Lưu', 'Save')}
-        </div>
+        {/* Note 64: navigate class. ✓ only after save_profile accepted it, then back to Account. */}
+        <AsyncSuccessButton testId="edit-profile-save" label={T('Lưu', 'Save')}
+          enabled={s.editProfileHandle.trim().length >= 3 && s.editProfileName.trim().length > 0}
+          run={() => saveProfileFields(undefined, { deferNavigation: true })}
+          onSuccessAnimationComplete={backFromEditProfileSaved}
+          pendingLabel={T('Đang lưu…', 'Saving…')} successLabel={T('Đã lưu', 'Saved')}
+          wrapStyle={{ marginTop: 4 }} />
 
         {s.user?.handle && (
           <div onClick={() => openPublicProfile(s.user.handle, 'editProfile')} style={{ textAlign: 'center', fontSize: 12.5, color: ink, opacity: 0.75, cursor: 'pointer', padding: '10px 0 30px' }} data-testid="edit-profile-preview">

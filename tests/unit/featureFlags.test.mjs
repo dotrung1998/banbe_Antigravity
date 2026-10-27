@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeFlags, flagOn, readCachedFlags, writeCachedFlags } from '../../src/lib/featureFlags.js';
+import { normalizeFlags, flagOn, readCachedFlags, writeCachedFlags, onboardingVersion } from '../../src/lib/featureFlags.js';
 
 // Mirrored by apps/ios/BanbeAppTests/FeatureFlagsTests.swift — change both together.
 const memory = () => { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, v) }; };
@@ -48,5 +48,15 @@ test('onboarding_v2 (migration 201): missing or false = Version 1, only true = V
   assert.equal(flagOn(null, 'onboarding_v2'), false);
   assert.equal(flagOn({ onboarding_v2: false }, 'onboarding_v2'), false);
   assert.equal(flagOn({ onboarding_v2: true }, 'onboarding_v2'), true);
-  assert.deepEqual(normalizeFlags({ onboarding_v2: true, onboarding_v3: true }), { onboarding_v2: true });
+  assert.deepEqual(normalizeFlags({ onboarding_v2: true, onboarding_v4: true }), { onboarding_v2: true });
+});
+
+test('onboardingVersion (migration 202): v3 > v2 > v1, missing = 1', () => {
+  assert.equal(onboardingVersion({}), 1);
+  assert.equal(onboardingVersion(null), 1);
+  assert.equal(onboardingVersion({ onboarding_v2: false, onboarding_v3: false }), 1);
+  assert.equal(onboardingVersion({ onboarding_v2: true }), 2);
+  assert.equal(onboardingVersion({ onboarding_v3: true }), 3);
+  assert.equal(onboardingVersion({ onboarding_v2: true, onboarding_v3: true }), 3);
+  assert.equal(onboardingVersion(normalizeFlags({ onboarding_v3: 'true' })), 1);
 });

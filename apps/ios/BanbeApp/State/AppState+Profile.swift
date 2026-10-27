@@ -198,7 +198,9 @@ extension AppState {
     func backFromEditProfile() { screen = .profile }
 
     @discardableResult
-    func saveProfileFields(avatarURLOverride: String? = nil) async -> Bool {
+    /// Note 64: `deferNavigation` (Edit profile's AsyncSuccessButton) saves without leaving; the button returns to
+    /// Account once its ✓ has drawn.
+    func saveProfileFields(avatarURLOverride: String? = nil, deferNavigation: Bool = false) async -> Bool {
         editProfileBusy = true
         editProfileError = ""
         defer { editProfileBusy = false }
@@ -234,7 +236,7 @@ extension AppState {
             user?.introLong = editProfileIntroLong
             user?.socialLinks = links
             if let avatarURLOverride { user?.avatarURL = avatarURLOverride.isEmpty ? nil : avatarURLOverride }
-            screen = .profile
+            if !deferNavigation { screen = .profile }
             return true
         } catch {
             print("saveProfileFields failed:", error, "userID:", userID?.uuidString ?? "nil")

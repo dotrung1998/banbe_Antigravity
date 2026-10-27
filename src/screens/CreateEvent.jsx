@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import AsyncSuccessButton from '../components/ui/AsyncSuccessButton.jsx';
 import { flushSync } from 'react-dom';
 import { ReservationCriteriaPicker } from './ReservationCriteria.jsx';
 import { criteriaSummary, normalizeCriteria, CATEGORY_EMOJI } from '../lib/eventPrefs.js';
@@ -1057,16 +1058,18 @@ export default function CreateEvent() {
           // chooser — a failure leaves Review open with data intact and
           // s.createError already showing, never the chooser.
           onConfirm={async () => {
-            if (!s.createName.trim() || hasFieldErrors) { setReviewOpen(false); setAttemptedReview(true); return; }
+            if (!s.createName.trim() || hasFieldErrors) { setReviewOpen(false); setAttemptedReview(true); return false; }
             const good = recipe.filter(c => c.status === 'good').length;
             track('submit_recipe_score', { bucket: good >= 9 ? '9-10' : good >= 7 ? '7-8' : good >= 4 ? '4-6' : '0-3' });
-            const ok = await createSubmit(newFilesInOrder, coverIndex, { removePhotoIds: removedExistingIds, existingCoverPath, defaultKeywordsLabel: createCatLabel });
+            const ok = await createSubmit(newFilesInOrder, coverIndex, { removePhotoIds: removedExistingIds, existingCoverPath, defaultKeywordsLabel: createCatLabel, noLoader: true });
             if (ok) {
               // A submitted draft is no longer a draft.
               if (s.createDraftId) { deleteDraft(s.createDraftId).then(refreshDrafts); set({ createDraftId: null }); }
-              setSuccessChooserOpen(true); // review stays under the chooser: no flash of the form
             }
+            return ok === true;
           }}
+          // Note 64: present-modal class. The chooser opens once the ✓ ("Sent") has drawn; review stays under it.
+          onConfirmed={() => setSuccessChooserOpen(true)}
         />
       )}
       {recipeOpen && (
@@ -1118,8 +1121,7 @@ export default function CreateEvent() {
 /** Small section heading in the Review step's Private tab (event name / recipe / details / included / photos). */
 const reviewHeading = { fontSize: 11.5, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: ink, opacity: 0.6 };
 
-function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe, onBack, onConfirm }) {
-  const [confirmBusy, setConfirmBusy] = useState(false);
+function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe, onBack, onConfirm, onConfirmed }) {
   const [tab, setTab] = useState('private');
   const dateLabel = [s.createEventDate, s.createEventTime].filter(Boolean).join(' ▪︎ ') || T('Chưa chọn', 'Not set');
   const market = createFormMarket(s);
@@ -1148,26 +1150,16 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
   });
 
   // Confirm — the ONLY call site that actually submits, available from either tab (the Public preview shows the same
-  // block under the page). A local `confirmBusy` disables the button for the duration of this ONE click (on top of
+  // block under the page). AsyncSuccessButton refuses a second activation while pending (on top of
   // BanBeContext's own synchronous createSubmitInFlightRef guard).
   const confirmBlock = (
     <>
-      <div
-        onClick={confirmBusy || s.createSent ? undefined : async () => { setConfirmBusy(true); await onConfirm(); setConfirmBusy(false); }}
-        data-testid="create-review-confirm"
-        aria-busy={confirmBusy || undefined}
-        style={{
-          fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 16, borderRadius: 999,
-          background: confirmBusy || s.createSent ? 'rgba(27,25,22,0.16)' : ink,
-          color: confirmBusy || s.createSent ? ink : paper,
-          cursor: confirmBusy || s.createSent ? 'default' : 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-        }}
-      >
-        {s.createSent
-          ? T('Đã gửi, đang chờ Banbe duyệt', 'Submitted, waiting for Banbe to review')
-          : confirmBusy ? T('Đang gửi…', 'Submitting…') : T('Xác nhận và gửi', 'Confirm & submit')}
-      </div>
+      {/* Note 64: the ✓ means "sent for review" (it says "Sent"), never "live": banbe still has to approve it. */}
+      <AsyncSuccessButton testId="create-review-confirm"
+        label={s.createSent ? T('Đã gửi, đang chờ Banbe duyệt', 'Submitted, waiting for Banbe to review') : T('Xác nhận và gửi', 'Confirm & submit')}
+        enabled={!s.createSent} run={onConfirm} onSuccessAnimationComplete={onConfirmed}
+        pendingLabel={T('Đang gửi…', 'Submitting…')} successLabel={T('Đã gửi để duyệt', 'Sent for review')}
+        style={{ borderRadius: 999, padding: 16, fontSize: 15 }} />
       {s.createError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createError}</p>}
     </>
   );

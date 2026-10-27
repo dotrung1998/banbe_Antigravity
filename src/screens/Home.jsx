@@ -332,6 +332,8 @@ export default function Home() {
   const forYouAlert = useForYouAlert({
     userId: s.user?.id, matches: forYouAlertMatches, prefsVersion: s.eventPrefsVersion,
     loading: !!s.discoveryEventsLoading || !s.eventPrefs,
+    // Note 64: while the v3 tour shows Home, nothing is observed or saved on the person's behalf.
+    passive: !!s.tourActive,
   });
 
   const demoted = e => (e.cancelled && (e.cancelledHoursAgo == null || e.cancelledHoursAgo >= 2)) ? 1 : 0;
@@ -688,7 +690,7 @@ export default function Home() {
           theme). Search lives here again (same openEventSearch action and
           data-testid as the old floating button). */}
       {/* Pinned like iOS (HomeView's `header` sits above its ScrollView): stays put while the feed scrolls under it. */}
-      <div data-testid="home-fixed-header" style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 8px`, display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
+      <div data-testid="home-fixed-header" data-reveal="0" style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 8px`, display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
         <div ref={headerRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: DOCK_HEADER.rowHeight }}>
           {/* Note 53: the shared dock header — same logo, gap, title and row height as Schedule/Messages/Account. */}
           <DockHeaderTitle title={T('Nhà', 'Home')} testId="home-title" wordmark={layout.wordmark} showTitle={showTitle} />
@@ -777,6 +779,9 @@ export default function Home() {
         {/* A little breathing room under the search bar, like Map's own search field (iOS: 12pt). */}
         <div style={{ marginBottom: 4, opacity: s.searchOverlayOpen ? 0 : 1 }}><HomeSearchBar onOpen={openSearch} T={T} /></div>
       </div>
+      {/* Note 64: regions 1 and 2 are the sign-in reveal order (header 0, summary 1, feed 2, dock 3). Plain block
+          wrappers, so layout is unchanged; they only animate while <html data-reveal="1">. */}
+      <div data-reveal="1">
       {/* First thing in the scrolling feed, like iOS (PulseTickerView at the top of the LazyVStack). */}
       <div style={{ padding: '0 20px' }}><PulseTicker pulse={s.pulseDaily} onOpen={openPulseViewer} T={T} /></div>
 
@@ -849,6 +854,9 @@ export default function Home() {
         </div>
       )}
 
+      </div>
+
+      <div data-reveal="2">
       <CategoryRow values={homeFilters.cats} onPick={pickFilter} T={T} />
 
       {/* Quick row: Filters + Sort open the sheet; For You stays pinned at the leading edge (notes 34/36); the
@@ -1162,6 +1170,7 @@ export default function Home() {
         {T('Vài buổi vui dành cho riêng bạn tuần này. Không xếp hạng, không quảng cáo, không lướt vô tận.', 'A few fun gatherings made just for you this week. No ratings, no ads, no endless scrolling.')}
       </div>
       <div onClick={homeHostLink} style={{ padding: '4px 20px 44px', fontSize: 14.5, fontWeight: 600, letterSpacing: '-0.01em', color: ink, cursor: 'pointer' }}>{homeHostLinkLabel} ›</div>
+      </div>
     </div>
     {sortMenuAnchor && (
       <SortMenu

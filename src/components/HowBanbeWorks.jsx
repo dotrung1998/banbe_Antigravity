@@ -10,6 +10,7 @@ import { HIW_SECTIONS, HIW_STEP_NAMES, HIW_STEP_TIPS } from '../data/howItWorks.
 import { ChoiceRow, QUESTION_COPY } from '../screens/EventOnboarding.jsx';
 import { questionOptions } from '../lib/onboardingFlow.js';
 import { prefLabel, optionEmoji } from '../lib/eventPrefs.js';
+import { useReducedMotion } from '../lib/useReducedMotion.js';
 import ConfettiBurst from './ui/ConfettiBurst.jsx';
 
 const GOLD = '#CC9E29';
@@ -201,17 +202,6 @@ function Deck({ T, cards, active, onActive, onPast, finishing }) {
   );
 }
 
-function useReducedMotion() {
-  const q = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
-  const [r, setR] = useState(!!q?.matches);
-  useEffect(() => {
-    if (!q) return undefined;
-    const on = () => setR(q.matches);
-    q.addEventListener?.('change', on);
-    return () => q.removeEventListener?.('change', on);
-  }, [q]);
-  return r;
-}
 
 // ---------------------------------------------------------------------------------------------- demo screens
 // Small, self-contained mocks built from the catalogue (no live data, nothing is saved). The few controls inside

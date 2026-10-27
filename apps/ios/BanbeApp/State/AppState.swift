@@ -823,6 +823,17 @@ final class AppState: ObservableObject {
     /// UID whose `applySession` run (favorites, tickets, profile data) has
     /// completed; nil until the first run finishes. SplashView waits on it.
     @Published var appliedSessionUID: UUID? = nil
+    // Sign-in hand-off (note 64; AppState+SignInHandoff.swift). Pending from a local password/code submit until its
+    // ✓ finishes: RootView keeps Login up and the account-gate loader hidden, then navigates once.
+    @Published var signInHandoffPending = false
+    var signInReady = false
+    var signInReadyContinuation: CheckedContinuation<Bool, Never>?
+    var signInHandoffGeneration = 0
+    /// One-shot: the first Home after a sign-in reveals its regions top to bottom (`.revealRegion`), then clears.
+    @Published var justSignedIn = false
+    /// Onboarding v3 tour running (State/OnboardingTourController.swift): RootView hides the real app from VoiceOver and
+    /// touches, the dock window takes every touch for the overlay, Home stops observing For You.
+    @Published var tourActive = false
     // submitCreateEvent's own synchronous submit-in-flight guard (task 1) —
     // plain, non-`@Published` (same reasoning as `organizerModeInFlight`,
     // 17-ux-foundation-release.md's 2026-10-07 fix pass): a repeated tap on

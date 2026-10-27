@@ -211,7 +211,8 @@ extension AppState {
         }
     }
 
-    func saveBillingDetails() async {
+    @discardableResult
+    func saveBillingDetails() async -> Bool {
         billingSaving = true
         billingError = ""
         billingSaved = false
@@ -226,10 +227,12 @@ extension AppState {
                 .execute()
             billingSaving = false
             billingSaved = true
+            return true
         } catch {
             print("saveBillingDetails failed:", error)
             billingSaving = false
             billingError = T("Chưa lưu được. Thử lại nhé.", "Couldn't save. Please try again.")
+            return false
         }
     }
 
@@ -263,10 +266,11 @@ extension AppState {
         }
     }
 
-    func savePayoutDetails() async {
+    @discardableResult
+    func savePayoutDetails() async -> Bool {
         guard let orgID = myOrganizerIDs.first else {
             payoutError = T("Chưa có trang tổ chức.", "No host page yet.")
-            return
+            return false
         }
         payoutSaving = true
         payoutError = ""
@@ -286,10 +290,12 @@ extension AppState {
                 .execute()
             payoutSaving = false
             payoutSaved = true
+            return true
         } catch {
             print("savePayoutDetails failed:", error)
             payoutSaving = false
             payoutError = T("Chưa lưu được. Thử lại nhé.", "Couldn't save. Please try again.")
+            return false
         }
     }
 

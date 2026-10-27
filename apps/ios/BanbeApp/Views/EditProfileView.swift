@@ -104,10 +104,12 @@ struct EditProfileView: View {
                         Text(app.editProfileError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
                     }
 
-                    InkButton(title: app.editProfileBusy ? app.T("Đang lưu…", "Saving…") : app.T("Lưu", "Save"), enabled: canSave) {
-                        Task { await app.saveProfileFields() }
-                    }
-                    .accessibilityIdentifier("editProfile.save")
+                    // Note 64: navigate class. ✓ only after save_profile accepted it, then back to Account.
+                    AsyncSuccessButton(title: app.T("Lưu", "Save"), enabled: canSave,
+                                       pendingLabel: app.T("Đang lưu…", "Saving…"), successLabel: app.T("Đã lưu", "Saved"),
+                                       identifier: "editProfile.save",
+                                       run: { await app.saveProfileFields(deferNavigation: true) ? .success : .failure(app.editProfileError) },
+                                       onSuccessAnimationComplete: { app.screen = .profile })
 
                     if let handle = app.user?.handle, !handle.isEmpty {
                         Button(app.T("Xem hồ sơ công khai của bạn", "View your public profile")) {

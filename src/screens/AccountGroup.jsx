@@ -7,6 +7,7 @@ import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../them
 import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
 import { computeHostActionCount, computeRefundActionCount, computeMyRefundActionCount, formatBadgeCount } from '../lib/badges.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
+import { onboardingVersion } from '../lib/featureFlags.js';
 import { giftPdfData } from '../lib/giftTicket.js';
 import { downloadTicketPdfs } from '../lib/ticketPdf.js';
 
@@ -81,7 +82,7 @@ export default function AccountGroup() {
     requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite,
     requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite,
     requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission,
-    openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote,
+    openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, replayOnboardingTour,
   } = useBanBe();
   const key = s.accountGroupKey;
 
@@ -438,6 +439,10 @@ export default function AccountGroup() {
         {key === 'helpLegal' && (
           <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
             <Row icon="lightbulb" label={T('banbe hoạt động thế nào', 'How banbe works')} trailing="›" testId="help-how-it-works" onClick={() => set({ screen: 'howItWorks' })} />
+            {/* Note 64: only while onboarding Version 3 is on. Replays the tour over the real app; never touches the first-run marker. */}
+            {onboardingVersion(s.featureFlags) === 3 && (
+              <Row icon="lightbulb" label={T('Xem hướng dẫn trong ứng dụng', 'Tour the app')} trailing="›" testId="help-app-tour" onClick={replayOnboardingTour} />
+            )}
             <Row icon="document" label={T('Điều khoản', 'Terms')} trailing="›" testId="help-terms" onClick={openPolicy} />
             <Row icon="checklist" label={T('Hướng dẫn: Người tham gia', 'Guide: Personal')} trailing="›" testId="help-guide-personal" onClick={() => set({ screen: 'guide', guideKey: 'personal' })} />
             <Row icon="checklist" label={T('Hướng dẫn: Người tổ chức (Host)', 'Guide: Host')} trailing="›" testId="help-guide-host" onClick={() => set({ screen: 'guide', guideKey: 'host' })} />
