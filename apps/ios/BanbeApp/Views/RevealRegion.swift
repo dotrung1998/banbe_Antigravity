@@ -9,13 +9,21 @@ struct RevealRegion: ViewModifier {
     @EnvironmentObject private var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hidden = false
+    /// UITestFixture only exists in DEBUG builds.
+    private var underUITests: Bool {
+        #if DEBUG
+        return UITestFixture.isActive
+        #else
+        return false
+        #endif
+    }
 
     func body(content: Content) -> some View {
         content
             .opacity(hidden ? 0 : 1)
             .offset(y: hidden && !reduceMotion ? 12 : 0)
             .task(id: app.justSignedIn) {
-                guard app.justSignedIn, !UITestFixture.isActive else { hidden = false; return }
+                guard app.justSignedIn, !underUITests else { hidden = false; return }
                 hidden = true
                 let delay = reduceMotion ? 0 : Double(order) * 0.08
                 withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .timingCurve(0.22, 1, 0.36, 1, duration: 0.42).delay(delay)) {

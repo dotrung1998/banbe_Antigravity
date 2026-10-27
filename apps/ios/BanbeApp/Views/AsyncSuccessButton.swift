@@ -34,6 +34,14 @@ struct AsyncSuccessButton: View {
     @State private var showCheck = false
 
     private static let height: CGFloat = 50
+    /// UITestFixture only exists in DEBUG builds.
+    private static var underUITests: Bool {
+        #if DEBUG
+        return UITestFixture.isActive
+        #else
+        return false
+        #endif
+    }
     private static let turn: TimeInterval = 0.8
 
     private var morphed: Bool { !reduceMotion && state.phase != .idle && state.phase != .failure }
@@ -83,7 +91,7 @@ struct AsyncSuccessButton: View {
     }
 
     @ViewBuilder private var spinner: some View {
-        if reduceMotion || UITestFixture.isActive {
+        if reduceMotion || Self.underUITests {
             // Still under Reduce Motion, and under UI tests (XCUITest waits for an idle app, note 63).
             arc(angle: .degrees(-90))
         } else {
@@ -144,7 +152,7 @@ struct AsyncSuccessButton: View {
 
     @MainActor private func finishSuccess() async {
         // Let the arc finish the turn it is on, then draw the ✓.
-        if !reduceMotion && !UITestFixture.isActive {
+        if !reduceMotion && !Self.underUITests {
             let elapsed = Date().timeIntervalSince(spinStart)
             let rest = Self.turn - elapsed.truncatingRemainder(dividingBy: Self.turn)
             try? await Task.sleep(nanoseconds: UInt64(rest * 1_000_000_000))
