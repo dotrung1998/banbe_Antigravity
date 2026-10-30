@@ -178,6 +178,8 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
         if let untilLabel = d.untilLabel { copy.untilLabel = untilLabel }
         if let meta = d.meta { copy.meta = meta }
         if let where_ = d.where_ { copy.where = where_ }
+        if let details = live?.details { copy.details = details.values }
+        if let capacity = live?.capacity { copy.capacity = capacity }
         return copy
     }
 }

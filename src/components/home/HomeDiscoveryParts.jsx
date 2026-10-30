@@ -9,6 +9,8 @@ import { bg } from '../../data/events.js';
 import { REMINDER_CSS } from '../../lib/eventReminder.js';
 import { setSearchOrigin } from '../../lib/searchOrigin.js';
 import { categoryDefs } from '../../lib/eventTypes.js';
+import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 // ---- category glyphs: one stroke weight, line style, original drawings -------------------
 const GLYPH_PATHS = {
@@ -31,31 +33,96 @@ export function CategoryGlyph({ cat, size = 22, strokeWidth = 1.7 }) {
 
 export const CATEGORY_DEFS = categoryDefs({ withAll: true }); // src/data/eventTypeProfiles.json
 
-/** Quiet tinted rounded-square tiles; they stay out of the way of the event photos below. */
-export function CategoryRow({ values = [], onPick, T }) {
+/**
+ * Quiet tinted rounded-square tiles; they stay out of the way of the event photos below. `keys` is the row
+ * (All first, then categories with events in the area, most first; src/lib/homeDiscovery.js categoryRowKeys) and
+ * `counts` what tapping each one would show. "Show all" at the end opens every category A–Z.
+ */
+export function CategoryRow({ values = [], onPick, T, keys = CATEGORY_DEFS.map(c => c.key), counts = null, onShowAll }) {
+  const byKey = Object.fromEntries(CATEGORY_DEFS.map(c => [c.key, c]));
+  const tile = (active) => ({
+    width: 48, height: 48, borderRadius: RADIUS.tile, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: active ? 'rgba(var(--bb-fg-rgb), 0.9)' : 'rgba(var(--bb-fg-rgb), 0.06)',
+    color: active ? 'var(--bb-bg)' : ink,
+    boxShadow: active ? '0 2px 6px rgba(27,25,22,0.18)' : 'inset 0 0 0 1px rgba(var(--bb-fg-rgb), 0.06)',
+    transition: 'background 0.15s ease, color 0.15s ease',
+  });
+  const btn = { flex: 'none', minWidth: 56, maxWidth: 84, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '2px 2px', border: 'none', background: 'none', cursor: 'pointer', color: ink, fontFamily: 'inherit' };
+  const label = { fontSize: 11.5, lineHeight: 1.2, textAlign: 'center', overflowWrap: 'anywhere' };
   return (
     <div data-hscroll="true" data-testid="home-category-row" role="tablist" aria-label={T('Danh mục', 'Categories')}
-      style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none', padding: '12px 14px 4px' }}>
-      {CATEGORY_DEFS.map(c => {
+      style={{ display: 'flex', gap: 2, overflowX: 'auto', scrollbarWidth: 'none', padding: '12px 12px 4px' }}>
+      {keys.map(k => {
+        const c = byKey[k];
+        if (!c) return null;
         const active = c.key === 'all' ? values.length === 0 : values.includes(c.key);
+        const n = counts ? counts[c.key] : null;
         return (
           <button key={c.key} type="button" role="tab" aria-selected={active} onClick={() => onPick(c.key)}
-            data-testid={`home-category-${c.key}`}
-            style={{ flex: 'none', width: 64, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '2px 0', border: 'none', background: 'none', cursor: 'pointer', color: ink, fontFamily: 'inherit' }}>
-            <span style={{
-              width: 52, height: 52, borderRadius: RADIUS.tile, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: active ? 'rgba(var(--bb-fg-rgb), 0.9)' : 'rgba(var(--bb-fg-rgb), 0.06)',
-              color: active ? 'var(--bb-bg)' : ink,
-              boxShadow: active ? '0 2px 6px rgba(27,25,22,0.18)' : 'inset 0 0 0 1px rgba(var(--bb-fg-rgb), 0.06)',
-              transition: 'background 0.15s ease, color 0.15s ease',
-            }}>
-              <CategoryGlyph cat={c.key} />
-            </span>
-            <span style={{ fontSize: 11.5, fontWeight: active ? 600 : 500, lineHeight: 1.2, maxWidth: '100%', textAlign: 'center', overflowWrap: 'anywhere', opacity: active ? 1 : 0.8 }}>{T(c.vi, c.en)}</span>
+            data-testid={`home-category-${c.key}`} aria-label={n != null ? `${T(c.vi, c.en)}, ${n}` : T(c.vi, c.en)} style={btn}>
+            <span style={tile(active)}><CategoryGlyph cat={c.key} /></span>
+            <span style={{ ...label, fontWeight: active ? 600 : 500, opacity: active ? 1 : 0.8 }}>{T(c.vi, c.en)}</span>
+            {n != null && <span data-testid={`home-category-count-${c.key}`} style={{ fontSize: 11, opacity: 0.55, fontVariantNumeric: 'tabular-nums' }}>{n}</span>}
           </button>
         );
       })}
+      {onShowAll && (
+        <button type="button" onClick={onShowAll} data-testid="home-category-show-all" aria-haspopup="dialog" style={btn}>
+          <span style={tile(false)} aria-hidden="true">
+            <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round"><path d="M5 12h.01M12 12h.01M19 12h.01" /></svg>
+          </span>
+          <span style={{ ...label, fontWeight: 500, opacity: 0.8 }}>{T('Xem tất cả', 'Show all')}</span>
+        </button>
+      )}
     </div>
+  );
+}
+
+/** Every category A–Z with what tapping it would show in the current area. Zero ones stay visible, dimmed. */
+export function CategorySheet({ keys, counts, values = [], onPick, onClose, T }) {
+  const byKey = Object.fromEntries(CATEGORY_DEFS.map(c => [c.key, c]));
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const target = typeof document !== 'undefined' ? (document.querySelector('.bb-screen') || document.body) : null;
+  if (!target) return null;
+  return createPortal(
+    <div onClick={onClose} data-testid="home-category-sheet-backdrop"
+      style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(12,12,12,0.45)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
+      <div role="dialog" aria-modal="true" aria-label={T('Tất cả danh mục', 'All categories')} onClick={(e) => e.stopPropagation()} data-testid="home-category-sheet"
+        style={{ background: 'var(--bb-bg)', color: ink, borderRadius: '22px 22px 0 0', maxHeight: '80%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '10px 14px 8px' }}>
+          <span />
+          <span style={{ ...display(17), textAlign: 'center' }}>{T('Tất cả danh mục', 'All categories')}</span>
+          <button type="button" onClick={onClose} aria-label={T('Đóng', 'Close')} data-testid="home-category-sheet-close"
+            style={{ justifySelf: 'end', width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(var(--bb-fg-rgb),0.07)', color: ink, fontSize: 18, cursor: 'pointer' }}>×</button>
+        </div>
+        <div role="list" style={{ overflowY: 'auto', padding: '0 12px 24px' }}>
+          {keys.map(k => {
+            const c = byKey[k];
+            if (!c) return null;
+            const n = counts?.[k] ?? 0;
+            const active = values.includes(k);
+            return (
+              <button key={k} type="button" role="listitem" onClick={() => onPick(k)} data-testid={`home-category-sheet-${k}`} aria-pressed={active}
+                aria-label={T(`${c.vi}, ${n} sự kiện`, `${c.en}, ${n} event${n === 1 ? '' : 's'}`)}
+                style={{ width: '100%', minHeight: 52, display: 'flex', alignItems: 'center', gap: 12, padding: '6px 8px', border: 'none', borderRadius: 14,
+                  background: active ? 'rgba(var(--bb-fg-rgb),0.08)' : 'transparent', color: ink, fontFamily: 'inherit', cursor: 'pointer', opacity: n === 0 ? 0.45 : 1, textAlign: 'left' }}>
+                <span style={{ width: 40, height: 40, flex: 'none', borderRadius: RADIUS.tile, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(var(--bb-fg-rgb), 0.06)' }}>
+                  <CategoryGlyph cat={k} size={20} />
+                </span>
+                <span style={{ flex: 1, fontSize: 15.5, fontWeight: active ? 600 : 500 }}>{T(c.vi, c.en)}</span>
+                <span style={{ fontSize: 14, opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>{n}</span>
+                {active && <span aria-hidden="true" style={{ fontSize: 15 }}>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>,
+    target,
   );
 }
 

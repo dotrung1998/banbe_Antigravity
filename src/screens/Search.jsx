@@ -114,7 +114,7 @@ export default function Search({ overlay = false }) {
     const demo = EVENTS.filter(e => !realKeys.has(e.key) && !e.inviteOnly).map(e => ({
       key: e.key, name: e.name, img: e.img, organizerId: null, organizerName: e.hostShort, area: e.locationLabel,
       startsAt: catalogStartMs(e, s.homeLiveEvents?.[e.key]?.starts_at), price: e.price,
-      doc: buildEventSearchDoc({ ...e, catLabel: e.cat, area: e.locationLabel, organizerName: e.hostShort, description: e.desc }),
+      doc: buildEventSearchDoc({ ...e, catLabel: e.cat, area: e.locationLabel, organizerName: e.hostShort, description: e.desc, details: s.homeLiveEvents?.[e.key]?.details }),
     }));
     return [...real, ...demo.filter(d => d.startsAt == null || now - d.startsAt <= ENDED_AFTER_MS)];
   }, [s.discoveryEvents, s.homeLiveEvents]);

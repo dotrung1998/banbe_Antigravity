@@ -65,6 +65,8 @@ enum SearchMatch {
         parts.append(event.desc)
         if let intro = event.intro { parts.append(intro) }
         parts.append(contentsOf: event.keywords ?? [])
+        // Event type facts (migration 203/204): "jazz", "nhiếp ảnh", a lineup name, "18+", "BYO"…
+        parts.append(contentsOf: EventTypes.detailSearchTerms(EventTypes.profile(event.catKey), event.details))
         return normalize(parts.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.joined(separator: " "))
     }
 

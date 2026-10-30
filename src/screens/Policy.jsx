@@ -247,6 +247,20 @@ function PolicyView({ state, flags, backFromPolicy, acceptPolicyGate, declinePol
           </Section>
         )}
 
+        {/* Feature-switched (event_type_profiles, migration 203/204): shown only while event types are on. iOS twin: PolicyView A10. */}
+        {on('event_types') && (
+          <Section id="A10" titleVi="A10. Đồ uống có cồn và độ tuổi" titleEn="A10. Alcohol and minimum age">
+            <Bi
+              vi="Mỗi sự kiện cho biết có đồ uống có cồn hay không (không có, đã gồm trong vé, có bán tại chỗ, hoặc khách được mang theo) và độ tuổi tối thiểu (16, 18 hoặc 21). banbe chỉ dành cho người từ 16 tuổi, nên không có lựa chọn “mọi lứa tuổi”. Host khai các thông tin này khi tạo sự kiện và chịu trách nhiệm về độ chính xác của chúng cũng như việc tuân thủ pháp luật về đồ uống có cồn, kể cả việc không phục vụ đồ uống có cồn cho người dưới 18 tuổi."
+              en="Each event states whether alcohol is involved (none, included in the ticket, sold on site, or guests may bring their own) and its minimum age (16, 18 or 21). banbe is for people aged 16 and over, so there is no “all ages” option. Hosts declare these when creating the event and are responsible for their accuracy and for following the law on alcohol, including not serving alcohol to anyone under 18."
+            />
+            <Bi
+              vi="Bạn chỉ nên đặt chỗ khi bạn đạt độ tuổi tối thiểu. Host có thể kiểm tra giấy tờ tại cửa và từ chối người không đủ tuổi. banbe không kiểm tra tuổi tại sự kiện và không xác minh thông tin host khai, nhưng sẽ gỡ sự kiện khai sai khi được báo cáo."
+              en="Only book when you meet the minimum age. A host may check ID at the door and turn away anyone under it. banbe does not check age at events or verify what hosts declare, but removes events found to declare it falsely when reported."
+            />
+          </Section>
+        )}
+
         <PartHeading vi="Phần B. Thông báo quyền riêng tư" en="Part B. Privacy Notice" />
 
         <Section id="B1" titleVi="B1. Bên kiểm soát dữ liệu" titleEn="B1. Who controls your data">

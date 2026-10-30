@@ -216,7 +216,12 @@ export function liveEventOverrides(liveEvent, staticEv, now = Date.now()) {
   // cancelled or ended event still has a real `starts_at` worth showing
   // correctly, same as a live one. See `liveDateOverrides`'s own comment
   // for the full root-cause writeup.
-  const dateOverrides = liveDateOverrides(liveEvent, staticEv, now);
+  // Event type facts (migration 203): the real row's, when it has them (a catalogue event's text is static).
+  const dateOverrides = {
+    ...liveDateOverrides(liveEvent, staticEv, now),
+    ...(liveEvent.details && typeof liveEvent.details === 'object' ? { details: liveEvent.details } : null),
+    ...(liveEvent.capacity != null ? { capacity: liveEvent.capacity } : null),
+  };
   if (liveEvent.status === 'cancelled') {
     return {
       ...dateOverrides,

@@ -210,6 +210,37 @@ enum HomeDiscovery {
         return out
     }
 
+    // MARK: Category row + "Show all" sheet (web twin: categoryCounts / categoryRowKeys / categorySheetKeys)
+
+    /// What tapping each category would show: that category alone, its type chips dropped (picking a category clears
+    /// them), every other filter kept. "all" = no category. The SAME `apply` the feed renders with.
+    static func categoryCounts(_ items: [Item], _ filters: Filters, keys: [String], now: Date,
+                               offsetMin: Int = defaultOffsetMin) -> [String: Int] {
+        var f = filters
+        f.typeFilters = []
+        var all = f; all.cats = []
+        var out = ["all": apply(items, all, now: now, offsetMin: offsetMin).count]
+        for k in keys { var g = f; g.cats = [k]; out[k] = apply(items, g, now: now, offsetMin: offsetMin).count }
+        return out
+    }
+
+    /// The row: "all" first, then categories with events, most first (ties keep `keys` order). A selected one stays.
+    static func categoryRowKeys(_ counts: [String: Int], keys: [String], selected: [String] = []) -> [String] {
+        let order = Dictionary(uniqueKeysWithValues: keys.enumerated().map { ($1, $0) })
+        let shown = keys.filter { (counts[$0] ?? 0) > 0 || selected.contains($0) }
+            .sorted { a, b in
+                let ca = counts[a] ?? 0, cb = counts[b] ?? 0
+                return ca != cb ? ca > cb : (order[a] ?? 0) < (order[b] ?? 0)
+            }
+        return ["all"] + shown
+    }
+
+    /// The "Show all" sheet: every category A–Z by its label in the current language, accent-folded.
+    static func categorySheetKeys(_ defs: [(key: String, vi: String, en: String)], lang: String) -> [String] {
+        func fold(_ s: String) -> String { SearchMatch.normalize(s) }
+        return defs.sorted { fold(lang == "vi" ? $0.vi : $0.en) < fold(lang == "vi" ? $1.vi : $1.en) }.map(\.key)
+    }
+
     private static let relaxations: [(id: String, active: (Filters) -> Bool, relax: (Filters) -> Filters)] = [
         ("date", { $0.date != "any" }, { var f = $0; f.date = "any"; return f }),
         ("price", { $0.priceMin != nil || $0.priceMax != nil }, { var f = $0; f.priceMin = nil; f.priceMax = nil; return f }),

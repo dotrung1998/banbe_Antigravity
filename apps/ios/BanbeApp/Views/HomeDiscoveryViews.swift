@@ -42,58 +42,149 @@ enum CategoryGlyph {
 }
 
 /// Quiet tinted rounded-square tiles; they stay out of the way of the event photos below.
+/// Category tiles. `keys` is the row (All first, then categories with events in the area, most first;
+/// HomeDiscovery.categoryRowKeys) and `counts` what tapping each one would show. "Show all" opens every category A–Z.
 struct HomeCategoryRow: View {
     @EnvironmentObject private var app: AppState
-    // Today's sizes at the default text size, growing with Dynamic Type (labels used to be a fixed 11.5pt and
-    // could spill past their 64pt column).
+    var keys: [String] = HomeDiscovery.categories.map(\.key)
+    var counts: [String: Int]? = nil
+    var onShowAll: (() -> Void)? = nil
+    // Today's sizes at the default text size, growing with Dynamic Type; labels wrap instead of clipping.
     @ScaledMetric(relativeTo: .caption) private var labelSize: CGFloat = 11.5
-    @ScaledMetric(relativeTo: .caption) private var columnWidth: CGFloat = 64
+    @ScaledMetric(relativeTo: .caption) private var columnWidth: CGFloat = 60
+    @ScaledMetric(relativeTo: .caption) private var tileSize: CGFloat = 48
+
+    private func tile(_ symbol: String, active: Bool) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 19, weight: .regular))
+            .foregroundStyle(active ? app.palette.paper : app.palette.ink)
+            .frame(width: tileSize, height: tileSize)
+            .background(active ? app.palette.ink.opacity(0.9) : app.palette.ink.opacity(0.06),
+                        in: RoundedRectangle(cornerRadius: BanbeTheme.Radius.tile, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: BanbeTheme.Radius.tile, style: .continuous)
+                    .strokeBorder(app.palette.ink.opacity(active ? 0 : 0.06), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(active ? 0.18 : 0), radius: 3, y: 2)
+    }
 
     var body: some View {
+        let byKey = Dictionary(uniqueKeysWithValues: HomeDiscovery.categories.map { ($0.key, $0) })
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(HomeDiscovery.categories, id: \.key) { c in
-                    let cats = app.homeFilters.cats
-                    let active = c.key == "all" ? cats.isEmpty : cats.contains(c.key)
-                    SwipeSafeButton {
-                        if !active { Haptics.selection() }
-                        app.pickFilter(c.key)
-                    } label: {
-                        VStack(spacing: 6) {
-                            Image(systemName: CategoryGlyph.symbol(c.key))
-                                .font(.system(size: 20, weight: .regular))
-                                .foregroundStyle(active ? app.palette.paper : app.palette.ink)
-                                .frame(width: 52, height: 52)
-                                .background(active ? app.palette.ink.opacity(0.9) : app.palette.ink.opacity(0.06),
-                                            in: RoundedRectangle(cornerRadius: BanbeTheme.Radius.tile, style: .continuous))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: BanbeTheme.Radius.tile, style: .continuous)
-                                        .strokeBorder(app.palette.ink.opacity(active ? 0 : 0.06), lineWidth: 1)
+            HStack(alignment: .top, spacing: 2) {
+                ForEach(keys, id: \.self) { key in
+                    if let c = byKey[key] {
+                        let cats = app.homeFilters.cats
+                        let active = c.key == "all" ? cats.isEmpty : cats.contains(c.key)
+                        let n = counts?[c.key]
+                        SwipeSafeButton {
+                            if !active { Haptics.selection() }
+                            app.pickFilter(c.key)
+                        } label: {
+                            VStack(spacing: 4) {
+                                tile(CategoryGlyph.symbol(c.key), active: active)
+                                Text(app.T(c.vi, c.en))
+                                    .font(.system(size: labelSize, weight: active ? .semibold : .medium))
+                                    .lineLimit(2).multilineTextAlignment(.center).minimumScaleFactor(0.85)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .opacity(active ? 1 : 0.8)
+                                if let n {
+                                    Text("\(n)").font(.system(size: labelSize - 0.5)).monospacedDigit().opacity(0.55)
+                                        .accessibilityIdentifier("home.categoryCount.\(c.key)")
                                 }
-                                .shadow(color: .black.opacity(active ? 0.18 : 0), radius: 3, y: 2)
-                            Text(app.T(c.vi, c.en))
-                                .font(.system(size: labelSize, weight: active ? .semibold : .medium))
+                            }
+                            .frame(width: columnWidth)
+                            .foregroundStyle(app.palette.ink)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(n.map { app.T("\(c.vi), \($0) sự kiện", "\(c.en), \($0) events") } ?? app.T(c.vi, c.en))
+                        .accessibilityAddTraits(active ? [.isSelected, .isButton] : .isButton)
+                        // Same ids as the old text chips (UI tests filter by category through these).
+                        .accessibilityIdentifier("filter.\(c.key)")
+                        .animation(.easeOut(duration: 0.15), value: active)
+                    }
+                }
+                if let onShowAll {
+                    SwipeSafeButton { onShowAll() } label: {
+                        VStack(spacing: 4) {
+                            tile("ellipsis", active: false)
+                            Text(app.T("Xem tất cả", "Show all"))
+                                .font(.system(size: labelSize, weight: .medium))
                                 .lineLimit(2).multilineTextAlignment(.center).minimumScaleFactor(0.85)
                                 .fixedSize(horizontal: false, vertical: true)
-                                .opacity(active ? 1 : 0.8)
+                                .opacity(0.8)
                         }
                         .frame(width: columnWidth)
                         .foregroundStyle(app.palette.ink)
                     }
                     .buttonStyle(.plain)
                     .accessibilityElement(children: .combine)
-                    .accessibilityLabel(app.T(c.vi, c.en))
-                    .accessibilityAddTraits(active ? [.isSelected, .isButton] : .isButton)
-                    // Same ids as the old text chips (UI tests filter by category through these).
-                    .accessibilityIdentifier("filter.\(c.key)")
-                    .animation(.easeOut(duration: 0.15), value: active)
+                    .accessibilityLabel(app.T("Xem tất cả danh mục", "Show all categories"))
+                    .accessibilityIdentifier("home.category.showAll")
                 }
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 12)
             .padding(.top, 12).padding(.bottom, 4)
         }
         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .rootSwipeExclusion("homeCategories")
+    }
+}
+
+/// Every category A–Z with what tapping it would show in the current area. Zero ones stay visible, dimmed.
+struct HomeCategorySheet: View {
+    @EnvironmentObject private var app: AppState
+    @Environment(\.dismiss) private var dismiss
+    let counts: [String: Int]
+
+    var body: some View {
+        let byKey = Dictionary(uniqueKeysWithValues: HomeDiscovery.categories.map { ($0.key, $0) })
+        let keys = HomeDiscovery.categorySheetKeys(EventTypes.categoryDefs(), lang: app.isEN ? "en" : "vi")
+        NavigationStack {
+            List(keys, id: \.self) { key in
+                if let c = byKey[key] {
+                    let n = counts[key] ?? 0
+                    let active = app.homeFilters.cats.contains(key)
+                    Button {
+                        Haptics.selection()
+                        app.pickFilter(key)
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: CategoryGlyph.symbol(key)).font(.system(size: 18))
+                                .frame(width: 40, height: 40)
+                                .background(app.palette.ink.opacity(0.06), in: RoundedRectangle(cornerRadius: BanbeTheme.Radius.tile, style: .continuous))
+                            Text(app.T(c.vi, c.en)).font(.body.weight(active ? .semibold : .regular))
+                            Spacer()
+                            Text("\(n)").font(.subheadline).monospacedDigit().opacity(0.7)
+                            if active { Image(systemName: "checkmark").font(.subheadline.weight(.semibold)) }
+                        }
+                        .foregroundStyle(app.palette.ink)
+                        .opacity(n == 0 ? 0.45 : 1)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(app.T("\(c.vi), \(n) sự kiện", "\(c.en), \(n) events"))
+                    .accessibilityAddTraits(active ? [.isSelected, .isButton] : .isButton)
+                    .accessibilityIdentifier("home.categorySheet.\(key)")
+                }
+            }
+            .listStyle(.plain)
+            .navigationTitle(app.T("Tất cả danh mục", "All categories"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel(app.T("Đóng", "Close"))
+                        .accessibilityIdentifier("home.categorySheet.close")
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .hidesDock("home.categorySheet")  // the dock window would otherwise float over the list (note 45)
+        .accessibilityIdentifier("home.categorySheet")
     }
 }
 

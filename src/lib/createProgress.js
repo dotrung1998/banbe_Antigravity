@@ -8,11 +8,13 @@ import { CREATE_FIELD_STEP } from './createFieldGuide.js';
 
 export const CREATE_STEP_COUNT = 5;
 
-/** Every field that can be required, in the order the steps show them. */
-export const FIELD_ORDER = ['hostName', 'name', 'description', 'categories', 'included', 'location', 'date', 'price', 'seats', 'photos'];
+/** Every field that can be required, in the order the steps show them (type facts sit under Included). */
+export const FIELD_ORDER = ['hostName', 'name', 'description', 'categories', 'included',
+  'lineup', 'artists', 'brands', 'alcohol', 'min_age',
+  'location', 'date', 'price', 'seats', 'photos'];
 
-/** What every event needs today (the generic event type). */
-export const DEFAULT_REQUIRED = FIELD_ORDER;
+/** What an event of no known type needs (the generic event type, unchanged). */
+export const DEFAULT_REQUIRED = ['hostName', 'name', 'description', 'categories', 'included', 'location', 'date', 'price', 'seats', 'photos'];
 
 /**
  * `missing` maps a field id to true while that field is still missing.
@@ -51,6 +53,11 @@ export function missingLabel(id, T, minPhotos) {
     case 'price': return T('giá vé hợp lệ', 'a valid price');
     case 'seats': return T('số chỗ', 'seats');
     case 'photos': return T(`ít nhất ${minPhotos} ảnh`, `at least ${minPhotos} photos`);
+    case 'lineup': return T('đội hình', 'the lineup');
+    case 'artists': return T('nghệ sĩ', 'the artists');
+    case 'brands': return T('thương hiệu', 'the brands');
+    case 'alcohol': return T('đồ uống có cồn', 'alcohol');
+    case 'min_age': return T('độ tuổi tối thiểu', 'minimum age');
     default: return id;
   }
 }

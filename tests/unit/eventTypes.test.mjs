@@ -10,6 +10,9 @@ import { applyDiscoveryFilters, optionCounts, activeFilterCount, relaxationHints
 import { INTERESTS, CATEGORY_EMOJI } from '../../src/lib/eventPrefs.js';
 import { FIELD_ORDER } from '../../src/lib/createProgress.js';
 import { stepOfField } from '../../src/lib/createFieldGuide.js';
+import { missingDetails, categoryDefs as typeDefs, DETAIL_FIELD_IDS } from '../../src/lib/eventTypes.js';
+import { recipeChecks } from '../../src/lib/eventRecipe.js';
+import { categoryCounts, categoryRowKeys, categorySheetKeys } from '../../src/lib/homeDiscovery.js';
 
 // Mirrored by apps/ios/BanbeAppTests/EventTypesTests.swift through the same fixture.
 const fx = JSON.parse(readFileSync(new URL('../fixtures/event-types.json', import.meta.url), 'utf8'));
@@ -72,4 +75,43 @@ test('discovery: dropping the type chips is a relax hint', () => {
   const [h] = relaxationHints(discItems, disc.relax.filters, 0);
   assert.equal(h.id, disc.relax.expect.id);
   assert.equal(h.gain, disc.relax.expect.gain);
+});
+
+// Phase 2 vectors (same file drives EventTypesTests.swift).
+for (const [k, req] of Object.entries(fx.required)) test(`required: ${k}`, () => assert.deepEqual(requiredFields(profileFor(k)), req));
+for (const c of fx.missingDetails) test(`missingDetails: ${c.case}`, () => assert.deepEqual(missingDetails(profileFor(c.type), c.raw), c.expect));
+for (const c of fx.searchTerms) {
+  test(`searchTerms: ${c.case}`, () => {
+    const doc = buildEventSearchDoc({ name: 'Untitled', catKey: c.catKey, catLabel: '', details: c.details });
+    assert.equal(matchesSearchQuery(doc, c.query), c.expect);
+  });
+}
+const blankDraft = { name: '', description: '', photos: 0, keywords: [], priceVnd: 0, seats: 0, startsAt: null };
+for (const [k, ids] of Object.entries(fx.recipe)) {
+  if (k.startsWith('_')) continue;
+  test(`recipe ingredients: ${k}`, () => {
+    const p = k === 'legacy_unknown' ? null : profileFor(k);
+    assert.deepEqual(recipeChecks(blankDraft, null, null, 0, p).map(c => c.id), ids);
+  });
+}
+for (const c of fx.recipeFacts) {
+  test(`recipe facts: ${c.case}`, () => {
+    const f = recipeChecks({ ...blankDraft, details: c.details }, null, null, 0, profileFor(c.type)).find(x => x.id === 'facts');
+    assert.equal(f.status, c.expect.status);
+    assert.equal(f.fix.field, c.expect.field);
+    assert.notEqual(stepOfField(f.fix.field), null);
+  });
+}
+test('category row and Show all sheet', () => {
+  const cr = fx.categoryRow;
+  const items = cr.items.map(i => ({ ...i, startsAt: null, priceVnd: null, booked: null, capacity: null, soldOut: false }));
+  const counts = categoryCounts(items, cr.filters, TYPE_KEYS, 0);
+  assert.deepEqual(counts, cr.counts);
+  assert.deepEqual(categoryRowKeys(counts, TYPE_KEYS), cr.row);
+  assert.deepEqual(categoryRowKeys(counts, TYPE_KEYS, ['popup']), [...cr.row, 'popup'], 'a selected empty category stays');
+  assert.deepEqual(categorySheetKeys(typeDefs(), 'vi'), cr.sheetVi);
+  assert.deepEqual(categorySheetKeys(typeDefs(), 'en'), cr.sheetEn);
+});
+test('every detail field has a create-form anchor', () => {
+  for (const id of DETAIL_FIELD_IDS) assert.notEqual(stepOfField(id), null, id);
 });

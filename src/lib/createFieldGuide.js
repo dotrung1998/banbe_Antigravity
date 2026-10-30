@@ -7,6 +7,9 @@
 export const CREATE_FIELD_STEP = {
   hostName: 0,
   name: 1, description: 1, intro: 1, greeting: 1, categories: 1, keywords: 1, included: 1,
+  // Event type facts (src/data/eventTypeProfiles.json): all in Basics, under Included.
+  dietary: 1, dress_code: 1, lineup: 1, genre: 1, format: 1, artists: 1, medium: 1, brands: 1, experience: 1,
+  entry_mode: 1, price_range: 1, alcohol: 1, min_age: 1,
   location: 2, date: 2,
   price: 3, seats: 3,
   photos: 4,

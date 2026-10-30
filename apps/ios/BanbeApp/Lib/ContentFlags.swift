@@ -11,6 +11,7 @@ import Foundation
 ///   push_enabled   real push notifications on (migration 194)
 ///   app_events     first-party measurement on (migration 196)
 ///   event_reminders, event_recap, host_recap, follow_alerts (199); weekly_digest, live_activity (200)
+///   event_types    the event_type_profiles switch is on (migration 203/204): alcohol & minimum-age terms (A10)
 enum ContentFlags {
     static func isOn(_ flags: [String: Bool], _ key: String?) -> Bool {
         guard let key else { return true }
@@ -22,6 +23,7 @@ enum ContentFlags {
         // Dark until set: only an explicit true shows their text (same rule as the web).
         case "push_enabled", "app_events", "event_recap", "host_recap", "follow_alerts", "weekly_digest", "live_activity":
             return flags[key] == true
+        case "event_types": return flags["event_type_profiles"] == true
         // On unless an admin turned it off (migration 199 seeds it ON).
         case "event_reminders": return FeatureFlags.isOn(flags, "event_reminders")
         default: return false

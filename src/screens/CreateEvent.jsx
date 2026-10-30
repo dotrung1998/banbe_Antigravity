@@ -19,7 +19,7 @@ import { useHostBenchmarks } from '../lib/useHostBenchmarks.js';
 import { track } from '../lib/analytics.js';
 import { stepOfField, isTextField } from '../lib/createFieldGuide.js';
 import { computeCreateProgress, missingLabel } from '../lib/createProgress.js';
-import { categoryDefs, profileFor, requiredFields, keywordSuggestions, droppedDetailTypes, cleanDetails, detailFacts, localized } from '../lib/eventTypes.js';
+import { categoryDefs, profileFor, requiredFields, keywordSuggestions, droppedDetailTypes, cleanDetails, detailFacts, localized, missingDetails } from '../lib/eventTypes.js';
 import { flagOn } from '../lib/featureFlags.js';
 import RecipeSheet, { RecipeMeter, RecipeList } from './sheets/RecipeSheet.jsx';
 import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
@@ -290,12 +290,15 @@ export default function CreateEvent() {
     dateTime: !s.createEventDate || !s.createEventTime,
     seats: !(parseInt(s.createSeats, 10) > 0),
     cats: s.createCats.length === 0,
-    included: !s.createIncludedItems.some(it => (it.label || '').trim()),
+    // Required unless the event type says otherwise (a music night lists its lineup instead).
+    included: requiredFields(typeProfile).includes('included') && !s.createIncludedItems.some(it => (it.label || '').trim()),
     photos: photos.length < MIN_PHOTOS || photos.length > MAX_PHOTOS,
     // A dollar amount must read like 12.50; a VND field keeps its old reading (digits only, never an error).
     price: parsedPrice == null,
   };
-  const hasFieldErrors = Object.values(fieldErrors).some(Boolean);
+  // Event types on: the type's required facts (alcohol, minimum age…) gate Review like every other required field.
+  const typeMissing = typeProfile ? missingDetails(typeProfile, typeDetails) : {};
+  const hasFieldErrors = Object.values(fieldErrors).some(Boolean) || Object.values(typeMissing).some(Boolean);
   // 2026-09-25 fix pass (Task 0 audit) — this screen can be reached
   // directly (not only via Home, which is the only other place that calls
   // this), so `s.homeLiveEvents` can't be assumed already populated; same
@@ -342,6 +345,8 @@ export default function CreateEvent() {
     hostName: !(s.orgRegName || '').trim(), name: !nameOk, description: fieldErrors.desc, categories: fieldErrors.cats,
     included: fieldErrors.included, location: !s.createLocConfirmed, date: fieldErrors.dateTime, price: fieldErrors.price,
     seats: fieldErrors.seats, photos: fieldErrors.photos,
+    // The type's own required facts (alcohol + minimum age for every type; lineup, artists or brands for some).
+    ...typeMissing,
   }, requiredFields(typeProfile));
   const MISSING_LABEL = (id) => missingLabel(id, T, MIN_PHOTOS);
   const sectionTitles = [T('Host', 'Host'), T('Cơ bản', 'Basics'), T('Thời gian & nơi', 'When & where'), T('Vé', 'Tickets'), T('Ảnh', 'Photos')];
@@ -408,10 +413,10 @@ export default function CreateEvent() {
     seats: parseInt(String(s.createSeats || '').replace(/\D/g, ''), 10) || 0,
     startsAt: Number.isFinite(draftStartsAt) ? draftStartsAt : null,
     photos: items.length, chatGreeting: `${s.createChatGreeting || ''}${s.createChatGreetingEn || ''}`,
-    timeZone: market.timeZone, currency: market.currency,
-  }, bench, s.createHostGoal, Date.now()),
+    timeZone: market.timeZone, currency: market.currency, details: typeDetails,
+  }, bench, s.createHostGoal, Date.now(), typeProfile),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [s.createName, s.createDesc, s.createIntro, s.createIncludedItems, s.createKeywords, draftPriceVnd, s.createSeats, draftStartsAt, items.length, s.createChatGreeting, s.createChatGreetingEn, bench, s.createHostGoal, market.timeZone, market.currency]);
+  [s.createName, s.createDesc, s.createIntro, s.createIncludedItems, s.createKeywords, draftPriceVnd, s.createSeats, draftStartsAt, items.length, s.createChatGreeting, s.createChatGreetingEn, bench, s.createHostGoal, market.timeZone, market.currency, typeDetails, typeProfile]);
   const recipeById = Object.fromEntries(recipe.map(c => [c.id, c]));
   // Keyword ideas: with event types on, the type's own seeds + the area + what other hosts use (also on a cold
   // start, with no benchmarks), each dismissible; off, only what other hosts use, as before.
@@ -703,7 +708,8 @@ export default function CreateEvent() {
               {attemptedReview && fieldErrors.included && <p style={errText}>{T('Hãy thêm ít nhất một mục Bao gồm.', 'Please add at least one Included item.')}</p>}
             </Guided>
             {typeProfile?.wizard?.details?.length > 0 && (
-              <TypeDetailsEditor profile={typeProfile} values={typeDetails} lang={lang} T={T}
+              <TypeDetailsEditor profile={typeProfile} values={typeDetails} lang={lang} T={T} attn={attn}
+                showErrors={attemptedReview} required={requiredFields(typeProfile)}
                 onChange={(field, value) => setCreateDetail(typeKey, field, value)} />
             )}
           </StepCard>
@@ -1608,33 +1614,55 @@ function MissingChips({ testId, lead, fields, label, onPick, T, tone = 'plain', 
 }
 
 /** The event type's own facts (a supper club: dietary options, BYO, dress code). All optional. */
-function TypeDetailsEditor({ profile, values, lang, T, onChange }) {
+function TypeDetailsEditor({ profile, values, lang, T, onChange, attn, showErrors, required }) {
   const fields = profile.detailFields || {};
   const chip = (on) => ({
     minHeight: 44, padding: '0 14px', borderRadius: 999, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer',
     border: `1px solid ${on ? ink : rule}`, background: on ? ink : 'transparent', color: on ? paper : ink, fontWeight: on ? 600 : 400,
   });
+  const isEmpty = (v) => v == null || (Array.isArray(v) ? !v.some(x => String(x).trim()) : !String(v).trim());
   return (
     <div data-testid="create-type-details" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <p style={{ ...hintText, margin: 0 }}>{T('Khách hay hỏi những điều này trước khi đặt chỗ. Không bắt buộc.', 'Guests often ask about these before booking. Optional.')}</p>
+      <p style={{ ...hintText, margin: 0 }}>{T('Khách hay hỏi những điều này trước khi đặt chỗ.', 'Guests often ask about these before booking.')}</p>
       {profile.wizard.details.map(id => {
         const def = fields[id];
         if (!def) return null;
         const label = localized(def.label, lang);
-        if (def.kind === 'text') {
-          return (
-            <label key={id} style={fieldCol}>
-              <FormLabel icon="sparkles" text={label} />
-              <input value={values[id] || ''} maxLength={def.max || 80} onChange={(e) => onChange(id, e.target.value)}
-                placeholder={def.placeholder ? localized(def.placeholder, lang) : ''} data-testid={`create-detail-${id}`} style={bigInput} />
-            </label>
-          );
-        }
-        const multi = def.kind === 'multi';
+        const req = required.includes(id);
+        const err = showErrors && req && isEmpty(values[id]);
         const cur = values[id];
-        return (
-          <div key={id} role="group" aria-label={label} style={fieldCol}>
-            <FormLabel icon="sparkles" text={label} />
+        let body;
+        if (def.kind === 'text') {
+          body = (
+            <input value={cur || ''} maxLength={def.max || 80} onChange={(e) => onChange(id, e.target.value)}
+              placeholder={def.placeholder ? localized(def.placeholder, lang) : ''} data-testid={`create-detail-${id}`} style={bigInput} />
+          );
+        } else if (def.kind === 'list') {
+          const items = Array.isArray(cur) && cur.length ? cur : [''];
+          body = (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {items.map((it, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input value={it} maxLength={def.itemMax || 60} data-testid={`create-detail-${id}-${i}`}
+                    aria-label={`${label} ${i + 1}`} placeholder={def.placeholder ? localized(def.placeholder, lang) : ''}
+                    onChange={(e) => onChange(id, items.map((x, j) => (j === i ? e.target.value : x)))} style={{ ...bigInput, flex: 1 }} />
+                  {items.length > 1 && (
+                    <button type="button" onClick={() => onChange(id, items.filter((_, j) => j !== i))} aria-label={T('Xoá', 'Remove')}
+                      style={{ width: 44, height: 44, border: 'none', background: 'none', color: ink, opacity: 0.45, fontSize: 18, cursor: 'pointer' }}>ⓧ</button>
+                  )}
+                </div>
+              ))}
+              {items.length < (def.max || 6) && (
+                <button type="button" data-testid={`create-detail-${id}-add`} onClick={() => onChange(id, [...items, ''])}
+                  style={{ minHeight: 44, borderRadius: 14, border: '1.2px dashed rgba(var(--bb-fg-rgb),0.3)', background: 'transparent', color: ink, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                  ⊕ {T('Thêm', 'Add')}
+                </button>
+              )}
+            </div>
+          );
+        } else {
+          const multi = def.kind === 'multi';
+          body = (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {def.options.map(o => {
                 const on = multi ? Array.isArray(cur) && cur.includes(o.id) : cur === o.id;
@@ -1647,7 +1675,17 @@ function TypeDetailsEditor({ profile, values, lang, T, onChange }) {
                 );
               })}
             </div>
-          </div>
+          );
+        }
+        return (
+          <Guided key={id} field={id} attn={attn} style={fieldCol}>
+            <div role={def.kind === 'text' ? undefined : 'group'} aria-label={label} style={fieldCol}>
+              <FormLabel icon="sparkles" text={label} required={req} />
+              {def.hint && <p style={{ ...hintText, margin: 0 }}>{localized(def.hint, lang)}</p>}
+              {body}
+              {err && <p style={errText}>{T(`Hãy chọn ${label.toLowerCase()}.`, `Please fill in ${label.toLowerCase()}.`)}</p>}
+            </div>
+          </Guided>
         );
       })}
     </div>

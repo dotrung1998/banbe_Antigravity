@@ -411,9 +411,20 @@ struct CreateEventView: View {
     private var dateTimeValid: Bool { app.createEventDate != nil && app.createEventTime != nil }
     private var seatsValid: Bool { Int(app.createSeats) ?? 0 > 0 }
     private var catsValid: Bool { !app.createCats.isEmpty }
-    private var includedValid: Bool { app.createIncludedItems.contains { !$0.label.trimmingCharacters(in: .whitespaces).isEmpty } }
+    /// Required unless the event type says otherwise (a music night lists its lineup instead).
+    private var includedValid: Bool {
+        !EventTypes.requiredFields(typeProfile ?? .generic("")).contains("included")
+            || app.createIncludedItems.contains { !$0.label.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+    /// Event types on: the type's required facts (alcohol, minimum age…) still empty.
+    private var typeMissing: [String: Bool] {
+        guard let typeProfile, let key = app.createCats.first else { return [:] }
+        return EventTypes.missingDetails(typeProfile, app.createDetails[key] ?? [:])
+    }
     private var photosValid: Bool { galleryItems.count >= minPhotos && galleryItems.count <= maxPhotos }
-    private var hasCreateFieldErrors: Bool { !descValid || !dateTimeValid || !seatsValid || !catsValid || !includedValid || !photosValid }
+    private var hasCreateFieldErrors: Bool {
+        !descValid || !dateTimeValid || !seatsValid || !catsValid || !includedValid || !photosValid || typeMissing.values.contains(true)
+    }
     private var nameValid: Bool { !app.createName.trimmingCharacters(in: .whitespaces).isEmpty }
     private var canOpenReview: Bool { nameValid && app.createLocConfirmed && !hasCreateFieldErrors }
 
@@ -469,8 +480,9 @@ struct CreateEventView: View {
             includedCount: app.createIncludedItems.filter { !$0.label.trimmingCharacters(in: .whitespaces).isEmpty }.count,
             keywords: draftKeywords, priceVnd: draftPriceVnd, seats: seatsBinding, startsAt: draftStartsAt,
             photos: galleryItems.count, chatGreeting: app.createChatGreeting + app.createChatGreetingEn,
-            offsetMin: venueOffsetMin(draftStartsAt)
-        ), benchmarks: bench, goal: app.createHostGoal, now: Date())
+            offsetMin: venueOffsetMin(draftStartsAt),
+            details: app.createCats.first.flatMap { app.createDetails[$0] } ?? [:]
+        ), benchmarks: bench, goal: app.createHostGoal, now: Date(), profile: typeProfile)
     }
     private func recipeCheck(_ id: String) -> EventRecipe.Check? { recipe.first { $0.id == id } }
     private var createCatLabel: String {
@@ -551,7 +563,7 @@ struct CreateEventView: View {
     private var missingFields: [String: Bool] {
         ["hostName": app.orgRegName.trimmingCharacters(in: .whitespaces).isEmpty, "name": !nameValid, "description": !descValid,
          "categories": !catsValid, "included": !includedValid, "location": !app.createLocConfirmed, "date": !dateTimeValid,
-         "price": !priceValid, "seats": !seatsValid, "photos": !photosValid]
+         "price": !priceValid, "seats": !seatsValid, "photos": !photosValid].merging(typeMissing) { _, new in new }
     }
     private func missingLabel(_ field: String) -> String {
         CreateProgress.label(field, minPhotos: minPhotos) { app.T($0, $1) }
@@ -1401,7 +1413,19 @@ struct CreateEventView: View {
 
                     guided("included") { includedItemsEditor() }
                     if let typeProfile, let key = app.createCats.first, !(typeProfile.wizard?.details ?? []).isEmpty {
-                        TypeDetailsEditor(profile: typeProfile, typeKey: key)
+                        Text(app.T("Khách hay hỏi những điều này trước khi đặt chỗ.", "Guests often ask about these before booking."))
+                            .font(.footnote).opacity(0.75)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 8)
+                        ForEach(typeProfile.wizard?.details ?? [], id: \.self) { id in
+                            if let def = typeProfile.detailFields?[id] {
+                                guided(id) {
+                                    TypeDetailField(typeKey: key, id: id, def: def,
+                                                    required: EventTypes.requiredFields(typeProfile).contains(id),
+                                                    showError: attemptedReview && typeMissing[id] == true)
+                                }
+                            }
+                        }
                     }
                 }
         })
@@ -3080,79 +3104,123 @@ private struct MissingChips: View {
     }
 }
 
-/// The event type's own facts in the create form (a supper club: dietary options, BYO, dress code). All optional.
-private struct TypeDetailsEditor: View {
+/// One of the event type's own fields in the create form (a supper club's dietary options, a music night's lineup,
+/// alcohol and minimum age for every type): choice chips, a short text, or a list of names.
+private struct TypeDetailField: View {
     @EnvironmentObject private var app: AppState
-    let profile: EventTypeProfile
     let typeKey: String
+    let id: String
+    let def: EventTypeProfile.DetailField
+    let required: Bool
+    let showError: Bool
 
     private var lang: String { app.isEN ? "en" : "vi" }
-    private var values: EventDetails { app.createDetails[typeKey] ?? [:] }
+    private var value: EventDetailValue? { app.createDetails[typeKey]?[id] }
+    private func set(_ v: EventDetailValue?) { app.setCreateDetail(type: typeKey, field: id, value: v) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text(app.T("Khách hay hỏi những điều này trước khi đặt chỗ. Không bắt buộc.", "Guests often ask about these before booking. Optional."))
-                .font(.footnote).opacity(0.75)
-            ForEach(profile.wizard?.details ?? [], id: \.self) { id in
-                if let def = profile.detailFields?[id] { field(id, def) }
+        VStack(alignment: .leading, spacing: 10) {
+            FormFieldLabel(icon: "sparkles", text: def.label.text(lang), required: required)
+            if let hint = def.hint { Text(hint.text(lang)).font(.footnote).opacity(0.7) }
+            switch def.kind {
+            case "text": textField
+            case "list": listField
+            default: chips
+            }
+            if showError {
+                Text(app.T("Hãy điền \(def.label.vi.lowercased()).", "Please fill in \(def.label.en.lowercased())."))
+                    .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
             }
         }
         .foregroundStyle(app.palette.ink)
         .padding(.top, 8)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("create.typeDetails")
+        .accessibilityIdentifier("create.typeField.\(id)")
     }
 
-    @ViewBuilder
-    private func field(_ id: String, _ def: EventTypeProfile.DetailField) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            FormFieldLabel(icon: "sparkles", text: def.label.text(lang))
-            if def.kind == "text" {
-                TextField(def.placeholder?.text(lang) ?? "", text: Binding(
-                    get: { if case .text(let s)? = values[id] { return s }; return "" },
-                    set: { app.setCreateDetail(type: typeKey, field: id, value: .text(String($0.prefix(def.max ?? 80)))) }))
-                    .roundedFormField(app: app, focused: false)
-                    .accessibilityIdentifier("create.detail.\(id)")
-            } else {
-                FlowRow(spacing: 8) {
-                    ForEach(def.options ?? [], id: \.id) { o in
-                        let on = isOn(id, o.id)
-                        Button {
-                            Haptics.selection()
-                            toggle(id, def.kind == "multi", o.id)
-                        } label: {
-                            Text(lang == "vi" ? o.vi : o.en)
-                                .font(.subheadline.weight(on ? .semibold : .regular))
-                                .foregroundStyle(on ? app.palette.paper : app.palette.ink)
-                                .padding(.horizontal, 14).frame(minHeight: 44)
-                                .background(on ? app.palette.ink : Color.clear, in: Capsule())
-                                .overlay(Capsule().stroke(on ? Color.clear : app.palette.rule, lineWidth: 1))
-                                .contentShape(Capsule())
+    private var textField: some View {
+        TextField(def.placeholder?.text(lang) ?? "", text: Binding(
+            get: { if case .text(let s)? = value { return s }; return "" },
+            set: { set(.text(String($0.prefix(def.max ?? 80)))) }))
+            .roundedFormField(app: app, focused: false)
+            .accessibilityIdentifier("create.detail.\(id)")
+    }
+
+    private var items: [String] { if case .list(let a)? = value, !a.isEmpty { return a }; return [""] }
+
+    private var listField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+                HStack(spacing: 6) {
+                    TextField(def.placeholder?.text(lang) ?? "", text: Binding(
+                        get: { item },
+                        set: { new in var a = items; if i < a.count { a[i] = String(new.prefix(def.itemMax ?? 60)) }; set(.list(a)) }))
+                        .roundedFormField(app: app, focused: false)
+                        .accessibilityLabel("\(def.label.text(lang)) \(i + 1)")
+                        .accessibilityIdentifier("create.detail.\(id).\(i)")
+                    if items.count > 1 {
+                        Button { var a = items; a.remove(at: i); set(.list(a)) } label: {
+                            Image(systemName: "xmark.circle.fill").font(.system(size: 20))
+                                .foregroundStyle(app.palette.ink.opacity(0.35))
+                                .frame(width: 44, height: 44).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .accessibilityAddTraits(on ? [.isSelected, .isButton] : .isButton)
-                        .accessibilityIdentifier("create.detail.\(id).\(o.id)")
+                        .accessibilityLabel(app.T("Xoá", "Remove"))
                     }
                 }
+            }
+            if items.count < (def.max ?? 6) {
+                Button { set(.list(items + [""])) } label: {
+                    Label(app.T("Thêm", "Add"), systemImage: "plus.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(app.palette.ink.opacity(0.3), style: StrokeStyle(lineWidth: 1.2, dash: [5])))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("create.detail.\(id).add")
             }
         }
     }
 
-    private func isOn(_ id: String, _ option: String) -> Bool {
-        switch values[id] {
+    private var chips: some View {
+        FlowRow(spacing: 8) {
+            ForEach(def.options ?? [], id: \.id) { o in
+                let on = isOn(o.id)
+                Button {
+                    Haptics.selection()
+                    toggle(o.id)
+                } label: {
+                    Text(lang == "vi" ? o.vi : o.en)
+                        .font(.subheadline.weight(on ? .semibold : .regular))
+                        .foregroundStyle(on ? app.palette.paper : app.palette.ink)
+                        .padding(.horizontal, 14).frame(minHeight: 44)
+                        .background(on ? app.palette.ink : Color.clear, in: Capsule())
+                        .overlay(Capsule().stroke(on ? Color.clear : app.palette.rule, lineWidth: 1))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? [.isSelected, .isButton] : .isButton)
+                .accessibilityIdentifier("create.detail.\(id).\(o.id)")
+            }
+        }
+    }
+
+    private func isOn(_ option: String) -> Bool {
+        switch value {
         case .list(let a)?: return a.contains(option)
         case .text(let s)?: return s == option
         case nil: return false
         }
     }
 
-    private func toggle(_ id: String, _ multi: Bool, _ option: String) {
-        if multi {
-            var a: [String] = { if case .list(let a)? = values[id] { return a }; return [] }()
+    private func toggle(_ option: String) {
+        if def.kind == "multi" {
+            var a: [String] = { if case .list(let a)? = value { return a }; return [] }()
             if let i = a.firstIndex(of: option) { a.remove(at: i) } else { a.append(option) }
-            app.setCreateDetail(type: typeKey, field: id, value: a.isEmpty ? nil : .list(a))
+            set(a.isEmpty ? nil : .list(a))
         } else {
-            app.setCreateDetail(type: typeKey, field: id, value: isOn(id, option) ? nil : .text(option))
+            set(isOn(option) ? nil : .text(option))
         }
     }
 }

@@ -14,6 +14,8 @@ struct HomeView: View {
     @EnvironmentObject var app: AppState
     /// Chip text: 13pt at the default size, growing with Dynamic Type (it used to stay 13pt at every size).
     @ScaledMetric(relativeTo: .footnote) private var chipFont: CGFloat = 13
+    /// The "Show all" category sheet (every category A–Z with its count).
+    @State private var categorySheetOpen = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var tickTask: Task<Void, Never>?
     @State private var tick = Date()
@@ -134,7 +136,8 @@ struct HomeView: View {
                         GuestBrowseBanner()
                     }
                     if !app.homeStories.isEmpty { storyRow.revealRegion(1) }
-                    HomeCategoryRow().revealRegion(2)
+                    HomeCategoryRow(keys: snap.categoryRow, counts: snap.categoryCounts, onShowAll: { categorySheetOpen = true })
+                        .revealRegion(2)
                     quickRow(snap)
                         // One scrolling row of capsules: let it grow, but not past the size where a chip still fits.
                         .dynamicTypeSize(...DynamicTypeSize.accessibility3)
@@ -279,6 +282,10 @@ struct HomeView: View {
         .sheet(isPresented: $app.homeFilterSheetOpen) {
             HomeFilterSheet(items: makeSnapshot().items, now: Date(), onClose: { app.homeFilterSheetOpen = false })
             .environmentObject(app)
+        }
+        .sheet(isPresented: $categorySheetOpen) {
+            HomeCategorySheet(counts: makeSnapshot().categoryCounts)
+                .environmentObject(app)
         }
     }
 
@@ -932,6 +939,8 @@ struct HomeView: View {
         let filterBadge: Int
         var typeChips: [EventTypeProfile.HomeFilter] = []
         var typeCounts: [String: Int] = [:]
+        var categoryCounts: [String: Int] = [:]
+        var categoryRow: [String] = ["all"]
     }
 
     private static let quickChips: [(key: String, vi: String, en: String)] = [
@@ -995,7 +1004,7 @@ struct HomeView: View {
                 fill: fill, cancelled: e.cancelled,
                 going: app.isGoing(e.key) && !e.cancelled && e.endedHoursAgo == nil,
                 label: label,
-                typeLine: app.eventTypesEnabled && !AppState.catalogKeys.contains(e.key)
+                typeLine: app.eventTypesEnabled && (!AppState.catalogKeys.contains(e.key) || !e.details.isEmpty)
                     ? EventTypes.cardLine(EventTypes.profile(e.catKey), capacity: it.capacity ?? e.capacity ?? 0,
                                           details: e.details, lang: app.isEN ? "en" : "vi")
                     : nil
@@ -1006,8 +1015,11 @@ struct HomeView: View {
         let typeChips = app.eventTypesEnabled && f.cats.count == 1 ? EventTypes.homeFilters(EventTypes.profile(f.cats[0])) : []
         let typeCounts = typeChips.isEmpty ? [:]
             : HomeDiscovery.optionCounts(items, f, .typeFilters, options: typeChips.map(\.id), now: now)
+        // Category row (web twin): what tapping each category shows, with the very same filter the feed renders with.
+        let catCounts = HomeDiscovery.categoryCounts(items, f, keys: EventTypes.keys, now: now)
+        let catRow = HomeDiscovery.categoryRowKeys(catCounts, keys: EventTypes.keys, selected: f.cats)
         return Snapshot(items: items, shown: shown, cards: cards, quickCounts: quick, relaxHints: hints, filterBadge: badge,
-                        typeChips: typeChips, typeCounts: typeCounts)
+                        typeChips: typeChips, typeCounts: typeCounts, categoryCounts: catCounts, categoryRow: catRow)
     }
 
     /// Event type profiles (switch event_type_profiles): the selected category's own chips (a supper club:

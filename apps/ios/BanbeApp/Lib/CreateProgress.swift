@@ -8,8 +8,12 @@ import Foundation
 enum CreateProgress {
     static let stepCount = 5
 
-    /// Every field that can be required, in the order the steps show them.
-    static let fieldOrder = ["hostName", "name", "description", "categories", "included", "location", "date", "price", "seats", "photos"]
+    /// Every field that can be required, in the order the steps show them (type facts sit under Included).
+    static let fieldOrder = ["hostName", "name", "description", "categories", "included",
+                             "lineup", "artists", "brands", "alcohol", "min_age",
+                             "location", "date", "price", "seats", "photos"]
+    /// What an event of no known type needs (the generic event type, unchanged).
+    static let defaultRequired = ["hostName", "name", "description", "categories", "included", "location", "date", "price", "seats", "photos"]
 
     struct Step: Equatable {
         let index: Int
@@ -27,7 +31,7 @@ enum CreateProgress {
     }
 
     /// `missing[id] == true` while that field is still missing. Only fields in `required` count.
-    static func compute(missing: [String: Bool], required: [String] = fieldOrder) -> Result {
+    static func compute(missing: [String: Bool], required: [String] = defaultRequired) -> Result {
         let req = Set(required)
         let gaps = fieldOrder.filter { req.contains($0) && missing[$0] == true }
         let steps = (0..<stepCount).map { index in
@@ -53,6 +57,11 @@ enum CreateProgress {
         case "price": return T("giá vé hợp lệ", "a valid price")
         case "seats": return T("số chỗ", "seats")
         case "photos": return T("ít nhất \(minPhotos) ảnh", "at least \(minPhotos) photos")
+        case "lineup": return T("đội hình", "the lineup")
+        case "artists": return T("nghệ sĩ", "the artists")
+        case "brands": return T("thương hiệu", "the brands")
+        case "alcohol": return T("đồ uống có cồn", "alcohol")
+        case "min_age": return T("độ tuổi tối thiểu", "minimum age")
         default: return id
         }
     }

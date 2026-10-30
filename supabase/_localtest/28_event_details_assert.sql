@@ -1,5 +1,5 @@
 -- LOCAL TEST HARNESS ONLY — never deployed, never run against a real project.
--- Migration 203: events.details (event type profiles). Needs the vectors the runner builds from
+-- Migrations 203 + 204: events.details (event type profiles, all five types + alcohol / minimum age). Needs the vectors the runner builds from
 -- src/data/eventTypeProfiles.json + tests/fixtures/event-types.json (temp tables vec_fields, vec_clean).
 \set ON_ERROR_STOP on
 BEGIN;
@@ -32,7 +32,14 @@ BEGIN
   PERFORM pg_temp.ok(NOT public.validate_event_details('{"dietary":["vegan"]}'), 'E2a version required');
   PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1}'), 'E2b version alone is not a value');
   PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":2,"byo":"no"}'), 'E2c unknown version');
-  PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1,"byo":"beer"}'), 'E2d unknown option');
+  PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1,"alcohol":"beer"}'), 'E2d unknown option');
+  PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1,"byo":"wine"}'), 'E2d2 203''s supper byo is gone (folded into alcohol)');
+  PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1,"min_age":"0"}'), 'E2d3 no all-ages option');
+  PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1,"lineup":[" Mây"]}'), 'E2d4 list items must be trimmed');
+  PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1,"lineup":["a","a"]}'), 'E2d5 list items distinct');
+  PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1,"lineup":["a","b","c","d","e","f","g"]}'), 'E2d6 lineup at most 6');
+  PERFORM pg_temp.ok(NOT public.validate_event_details(jsonb_build_object('v', 1, 'artists', jsonb_build_array(repeat('x', 61)))), 'E2d7 item at most 60');
+  PERFORM pg_temp.ok(public.validate_event_details('{"v":1,"brands":["Lụa","Mộc"],"entry_mode":"timed","price_range":"mid","alcohol":"paid","min_age":"21"}'), 'E2d8 popup facts');
   PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1,"dietary":["vegan","vegan"]}'), 'E2e duplicate option');
   PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1,"dietary":[]}'), 'E2f empty list');
   PERFORM pg_temp.ok(NOT public.validate_event_details(jsonb_build_object('v', 1, 'dress_code', repeat('x', 81))), 'E2g text too long');
@@ -45,23 +52,25 @@ BEGIN
   UPDATE events SET cat_key = 'supper' WHERE id = 'test_evt_a';
   UPDATE events SET cat_key = 'music' WHERE id = 'test_evt_b';
   PERFORM pg_temp.as_user(NULL);
-  r := public.set_event_details('test_evt_a', '{"v":1,"byo":"wine"}');
+  r := public.set_event_details('test_evt_a', '{"v":1,"alcohol":"byo"}');
   PERFORM pg_temp.ok(r->>'error' = 'AUTH_REQUIRED', 'E3a signed out');
   PERFORM pg_temp.as_user(goer);
-  r := public.set_event_details('test_evt_a', '{"v":1,"byo":"wine"}');
+  r := public.set_event_details('test_evt_a', '{"v":1,"alcohol":"byo"}');
   PERFORM pg_temp.ok(r->>'error' = 'EVENT_NOT_FOUND', 'E3b not the host');
   PERFORM pg_temp.as_user(host);
-  r := public.set_event_details('test_evt_a', '{"v":1,"byo":"wine","dietary":["vegan"]}');
-  PERFORM pg_temp.ok((r->>'success')::boolean AND (SELECT details->>'byo' FROM events WHERE id = 'test_evt_a') = 'wine', 'E3c host writes');
-  r := public.set_event_details('test_evt_a', '{"v":1,"byo":"beer"}');
-  PERFORM pg_temp.ok(r->>'error' = 'INVALID_DETAILS' AND (SELECT details->>'byo' FROM events WHERE id = 'test_evt_a') = 'wine', 'E3d invalid rejected, old kept');
-  r := public.set_event_details('test_evt_b', '{"v":1,"byo":"wine"}');
+  r := public.set_event_details('test_evt_a', '{"v":1,"alcohol":"byo","min_age":"18","dietary":["vegan"]}');
+  PERFORM pg_temp.ok((r->>'success')::boolean AND (SELECT details->>'alcohol' FROM events WHERE id = 'test_evt_a') = 'byo', 'E3c host writes');
+  r := public.set_event_details('test_evt_a', '{"v":1,"alcohol":"beer"}');
+  PERFORM pg_temp.ok(r->>'error' = 'INVALID_DETAILS' AND (SELECT details->>'alcohol' FROM events WHERE id = 'test_evt_a') = 'byo', 'E3d invalid rejected, old kept');
+  r := public.set_event_details('test_evt_b', '{"v":1,"dietary":["vegan"]}');
   PERFORM pg_temp.ok(r->>'error' = 'FIELD_NOT_FOR_TYPE', 'E3e a supper field on a music event');
+  r := public.set_event_details('test_evt_b', '{"v":1,"lineup":["Trio Hà"],"format":"seated","alcohol":"paid","min_age":"18"}');
+  PERFORM pg_temp.ok((r->>'success')::boolean, 'E3e2 music facts on a music event');
   r := public.set_event_details('test_evt_a', '{}');
   PERFORM pg_temp.ok((r->>'success')::boolean AND (SELECT details FROM events WHERE id = 'test_evt_a') = '{}'::jsonb, 'E3f clear');
 
   -- E4: changing the category never fails on details left over from the old type.
-  PERFORM public.set_event_details('test_evt_a', '{"v":1,"byo":"any"}');
+  PERFORM public.set_event_details('test_evt_a', '{"v":1,"dietary":["vegan"]}');
   UPDATE events SET cat_key = 'music' WHERE id = 'test_evt_a';
   PERFORM pg_temp.ok((SELECT cat_key FROM events WHERE id = 'test_evt_a') = 'music', 'E4a category change with old details');
   r := public.set_event_details('test_evt_a', '{}');

@@ -9,10 +9,10 @@
   ],
   "shaped": {
     "supper": true,
-    "fashion": false,
-    "gallery": false,
-    "music": false,
-    "popup": false,
+    "fashion": true,
+    "gallery": true,
+    "music": true,
+    "popup": true,
     "legacy_unknown": false
   },
   "cleanDetails": [
@@ -31,9 +31,10 @@
           "meat_only",
           "vegetarian"
         ],
-        "byo": "beer",
+        "alcohol": "beer",
         "spicy": true,
-        "dress_code": "  Smart casual  "
+        "dress_code": "  Smart casual  ",
+        "min_age": "18"
       },
       "expect": {
         "v": 1,
@@ -41,7 +42,8 @@
           "vegetarian",
           "vegan"
         ],
-        "dress_code": "Smart casual"
+        "dress_code": "Smart casual",
+        "min_age": "18"
       }
     },
     {
@@ -56,12 +58,61 @@
       }
     },
     {
-      "case": "a type with no detail fields stores nothing",
+      "case": "a list keeps order, trims, drops blanks and repeats, caps items",
       "type": "music",
       "raw": {
-        "byo": "any"
+        "lineup": [
+          "  Trio Hà 20:00 ",
+          "",
+          "Mây",
+          "Mây",
+          "a",
+          "b",
+          "c",
+          "d",
+          "e"
+        ]
       },
-      "expect": {}
+      "expect": {
+        "v": 1,
+        "lineup": [
+          "Trio Hà 20:00",
+          "Mây",
+          "a",
+          "b",
+          "c",
+          "d"
+        ]
+      }
+    },
+    {
+      "case": "list items capped at itemMax",
+      "type": "gallery",
+      "raw": {
+        "artists": [
+          "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+        ]
+      },
+      "expect": {
+        "v": 1,
+        "artists": [
+          "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+        ]
+      }
+    },
+    {
+      "case": "another type's field is not this type's",
+      "type": "music",
+      "raw": {
+        "dietary": [
+          "vegan"
+        ],
+        "alcohol": "paid"
+      },
+      "expect": {
+        "v": 1,
+        "alcohol": "paid"
+      }
     },
     {
       "case": "blank text and empty list store nothing",
@@ -69,6 +120,37 @@
       "raw": {
         "dress_code": "   ",
         "dietary": []
+      },
+      "expect": {}
+    },
+    {
+      "case": "popup fields",
+      "type": "popup",
+      "raw": {
+        "brands": [
+          "Lụa"
+        ],
+        "entry_mode": "drop_in",
+        "price_range": "budget",
+        "alcohol": "none",
+        "min_age": "16"
+      },
+      "expect": {
+        "v": 1,
+        "brands": [
+          "Lụa"
+        ],
+        "entry_mode": "drop_in",
+        "price_range": "budget",
+        "alcohol": "none",
+        "min_age": "16"
+      }
+    },
+    {
+      "case": "all ages is not an option",
+      "type": "fashion",
+      "raw": {
+        "min_age": "0"
       },
       "expect": {}
     }
@@ -79,7 +161,9 @@
       "primary": "music",
       "draft": {
         "supper": {
-          "byo": "wine"
+          "dietary": [
+            "vegan"
+          ]
         }
       },
       "expect": [
@@ -91,7 +175,7 @@
       "primary": "supper",
       "draft": {
         "supper": {
-          "byo": "wine"
+          "alcohol": "byo"
         }
       },
       "expect": []
@@ -101,7 +185,7 @@
       "primary": "music",
       "draft": {
         "supper": {
-          "byo": "beer"
+          "alcohol": "beer"
         }
       },
       "expect": []
@@ -115,7 +199,8 @@
       "details": {
         "v": 1,
         "dress_code": "Smart casual",
-        "byo": "wine",
+        "alcohol": "byo",
+        "min_age": "18",
         "dietary": [
           "vegetarian",
           "halal"
@@ -128,9 +213,14 @@
           "value": "Vegetarian-friendly, Halal"
         },
         {
-          "id": "byo",
-          "label": "Bring your own",
-          "value": "BYO wine"
+          "id": "alcohol",
+          "label": "Alcohol",
+          "value": "Bring your own"
+        },
+        {
+          "id": "min_age",
+          "label": "Minimum age",
+          "value": "18+"
         },
         {
           "id": "dress_code",
@@ -145,13 +235,38 @@
       "lang": "vi",
       "details": {
         "v": 1,
-        "byo": "no"
+        "alcohol": "none"
       },
       "expect": [
         {
-          "id": "byo",
-          "label": "Mang đồ uống",
-          "value": "Không mang theo"
+          "id": "alcohol",
+          "label": "Đồ uống có cồn",
+          "value": "Không có đồ uống có cồn"
+        }
+      ]
+    },
+    {
+      "case": "music lineup is a list",
+      "type": "music",
+      "lang": "en",
+      "details": {
+        "v": 1,
+        "lineup": [
+          "Trio Hà",
+          "Mây"
+        ],
+        "format": "seated"
+      },
+      "expect": [
+        {
+          "id": "lineup",
+          "label": "Lineup",
+          "value": "Trio Hà, Mây"
+        },
+        {
+          "id": "format",
+          "label": "Format",
+          "value": "Seated"
         }
       ]
     },
@@ -165,7 +280,7 @@
   ],
   "cardLine": [
     {
-      "case": "table size + first dietary + BYO",
+      "case": "supper: table size, first dietary, alcohol, age",
       "type": "supper",
       "lang": "vi",
       "capacity": 8,
@@ -174,12 +289,13 @@
         "dietary": [
           "vegan"
         ],
-        "byo": "any"
+        "alcohol": "byo",
+        "min_age": "18"
       },
-      "expect": "Bàn 8 người · Thuần chay · BYO"
+      "expect": "Bàn 8 người · Thuần chay · BYO · 18+"
     },
     {
-      "case": "English, no details",
+      "case": "supper English, no details",
       "type": "supper",
       "lang": "en",
       "capacity": 10,
@@ -195,10 +311,55 @@
       "expect": null
     },
     {
-      "case": "unshaped type: no line",
+      "case": "music: format, genre, age; no table size",
       "type": "music",
       "lang": "en",
       "capacity": 50,
+      "details": {
+        "v": 1,
+        "format": "standing",
+        "genre": [
+          "electronic",
+          "indie"
+        ],
+        "min_age": "21"
+      },
+      "expect": "Standing · Electronic · 21+"
+    },
+    {
+      "case": "gallery: medium, artist count",
+      "type": "gallery",
+      "lang": "vi",
+      "capacity": 30,
+      "details": {
+        "v": 1,
+        "medium": [
+          "lacquer"
+        ],
+        "artists": [
+          "A",
+          "B"
+        ]
+      },
+      "expect": "Sơn mài · 2 nghệ sĩ"
+    },
+    {
+      "case": "popup: short labels",
+      "type": "popup",
+      "lang": "en",
+      "capacity": 0,
+      "details": {
+        "v": 1,
+        "entry_mode": "drop_in",
+        "price_range": "budget"
+      },
+      "expect": "Drop-in · Budget"
+    },
+    {
+      "case": "unknown type: no line",
+      "type": "legacy_unknown",
+      "lang": "en",
+      "capacity": 5,
       "details": {},
       "expect": null
     }
@@ -228,29 +389,40 @@
       "expect": false
     },
     {
-      "case": "enum in set",
+      "case": "enum equal",
       "type": "supper",
-      "filter": "byo:any",
+      "filter": "alcohol:byo",
       "details": {
-        "byo": "wine"
+        "alcohol": "byo"
       },
       "expect": true
     },
     {
-      "case": "enum out of set",
+      "case": "enum different",
       "type": "supper",
-      "filter": "byo:any",
+      "filter": "alcohol:byo",
       "details": {
-        "byo": "no"
+        "alcohol": "none"
       },
       "expect": false
     },
     {
       "case": "legacy event never matches",
       "type": "supper",
-      "filter": "byo:any",
+      "filter": "alcohol:byo",
       "details": {},
       "expect": false
+    },
+    {
+      "case": "music genre",
+      "type": "music",
+      "filter": "genre:jazz",
+      "details": {
+        "genre": [
+          "jazz"
+        ]
+      },
+      "expect": true
     }
   ],
   "keywordSuggestions": [
@@ -353,7 +525,7 @@
             "vegetarian",
             "vegan"
           ],
-          "byo": "wine"
+          "alcohol": "byo"
         }
       },
       {
@@ -379,6 +551,18 @@
         "key": "d",
         "catKeys": [
           "music"
+        ],
+        "details": {
+          "v": 1,
+          "genre": [
+            "jazz"
+          ]
+        }
+      },
+      {
+        "key": "e",
+        "catKeys": [
+          "gallery"
         ],
         "details": {}
       }
@@ -423,7 +607,7 @@
           ],
           "typeFilters": [
             "dietary:vegetarian",
-            "byo:any"
+            "alcohol:byo"
           ]
         },
         "expect": [
@@ -461,12 +645,12 @@
       "options": [
         "dietary:vegetarian",
         "dietary:vegan",
-        "byo:any"
+        "alcohol:byo"
       ],
       "expect": {
         "dietary:vegetarian": 2,
         "dietary:vegan": 1,
-        "byo:any": 1
+        "alcohol:byo": 1
       }
     },
     "relax": {
@@ -475,7 +659,7 @@
           "supper"
         ],
         "typeFilters": [
-          "byo:any"
+          "alcohol:byo"
         ]
       },
       "expect": {
@@ -483,5 +667,390 @@
         "gain": 2
       }
     }
+  },
+  "required": {
+    "supper": [
+      "hostName",
+      "name",
+      "description",
+      "categories",
+      "included",
+      "location",
+      "date",
+      "price",
+      "seats",
+      "photos",
+      "alcohol",
+      "min_age"
+    ],
+    "music": [
+      "hostName",
+      "name",
+      "description",
+      "categories",
+      "location",
+      "date",
+      "price",
+      "seats",
+      "photos",
+      "lineup",
+      "alcohol",
+      "min_age"
+    ],
+    "gallery": [
+      "hostName",
+      "name",
+      "description",
+      "categories",
+      "location",
+      "date",
+      "price",
+      "seats",
+      "photos",
+      "artists",
+      "alcohol",
+      "min_age"
+    ],
+    "fashion": [
+      "hostName",
+      "name",
+      "description",
+      "categories",
+      "location",
+      "date",
+      "price",
+      "seats",
+      "photos",
+      "brands",
+      "alcohol",
+      "min_age"
+    ],
+    "popup": [
+      "hostName",
+      "name",
+      "description",
+      "categories",
+      "location",
+      "date",
+      "price",
+      "seats",
+      "photos",
+      "brands",
+      "alcohol",
+      "min_age"
+    ],
+    "legacy_unknown": [
+      "hostName",
+      "name",
+      "description",
+      "categories",
+      "included",
+      "location",
+      "date",
+      "price",
+      "seats",
+      "photos"
+    ]
+  },
+  "missingDetails": [
+    {
+      "case": "music needs lineup, alcohol and age",
+      "type": "music",
+      "raw": {
+        "genre": [
+          "jazz"
+        ]
+      },
+      "expect": {
+        "lineup": true,
+        "alcohol": true,
+        "min_age": true
+      }
+    },
+    {
+      "case": "supper with both answers",
+      "type": "supper",
+      "raw": {
+        "alcohol": "byo",
+        "min_age": "18"
+      },
+      "expect": {
+        "alcohol": false,
+        "min_age": false
+      }
+    },
+    {
+      "case": "a blank list item does not count",
+      "type": "gallery",
+      "raw": {
+        "artists": [
+          " "
+        ],
+        "alcohol": "none",
+        "min_age": "16"
+      },
+      "expect": {
+        "artists": true,
+        "alcohol": false,
+        "min_age": false
+      }
+    }
+  ],
+  "searchTerms": [
+    {
+      "case": "a lineup name finds the event",
+      "catKey": "music",
+      "details": {
+        "lineup": [
+          "Trio Hà"
+        ]
+      },
+      "query": "trio ha",
+      "expect": true
+    },
+    {
+      "case": "an option label in the other language",
+      "catKey": "gallery",
+      "details": {
+        "medium": [
+          "photography"
+        ]
+      },
+      "query": "nhiếp ảnh",
+      "expect": true
+    },
+    {
+      "case": "age",
+      "catKey": "supper",
+      "details": {
+        "min_age": "18"
+      },
+      "query": "18+",
+      "expect": true
+    },
+    {
+      "case": "no facts, no match",
+      "catKey": "music",
+      "details": {},
+      "query": "jazz",
+      "expect": false
+    }
+  ],
+  "recipe": {
+    "_comment": "Ingredient ids per type, in order (the denominator is their count). Data-derived: a check stays when at least half of the type's current events use it (note 66). legacy_unknown = the original 10.",
+    "supper": [
+      "title",
+      "photos",
+      "description",
+      "included",
+      "keywords",
+      "price",
+      "seats",
+      "timing",
+      "lead",
+      "greeting",
+      "facts"
+    ],
+    "music": [
+      "title",
+      "photos",
+      "description",
+      "included",
+      "keywords",
+      "price",
+      "seats",
+      "timing",
+      "lead",
+      "greeting",
+      "facts"
+    ],
+    "gallery": [
+      "title",
+      "photos",
+      "description",
+      "included",
+      "keywords",
+      "price",
+      "seats",
+      "timing",
+      "lead",
+      "greeting",
+      "facts"
+    ],
+    "fashion": [
+      "title",
+      "photos",
+      "description",
+      "included",
+      "keywords",
+      "price",
+      "seats",
+      "timing",
+      "lead",
+      "greeting",
+      "facts"
+    ],
+    "popup": [
+      "title",
+      "photos",
+      "description",
+      "keywords",
+      "price",
+      "timing",
+      "lead",
+      "facts"
+    ],
+    "legacy_unknown": [
+      "title",
+      "photos",
+      "description",
+      "included",
+      "keywords",
+      "price",
+      "seats",
+      "timing",
+      "lead",
+      "greeting"
+    ]
+  },
+  "recipeFacts": [
+    {
+      "case": "required missing",
+      "type": "music",
+      "details": {
+        "genre": [
+          "jazz"
+        ]
+      },
+      "expect": {
+        "status": "missing",
+        "field": "lineup"
+      }
+    },
+    {
+      "case": "required done, optional open",
+      "type": "music",
+      "details": {
+        "lineup": [
+          "A"
+        ],
+        "alcohol": "none",
+        "min_age": "18"
+      },
+      "expect": {
+        "status": "improve",
+        "field": "genre"
+      }
+    },
+    {
+      "case": "everything",
+      "type": "popup",
+      "details": {
+        "brands": [
+          "A"
+        ],
+        "entry_mode": "timed",
+        "price_range": "mid",
+        "alcohol": "paid",
+        "min_age": "18"
+      },
+      "expect": {
+        "status": "good",
+        "field": "brands"
+      }
+    }
+  ],
+  "categoryRow": {
+    "_comment": "Home category row: counts = what tapping that category would show (type chips dropped, every other filter kept). Row: All first, then categories with events, most first (ties: profile order). Sheet: every category A-Z by its folded label, zero ones included.",
+    "items": [
+      {
+        "key": "a",
+        "catKeys": [
+          "supper"
+        ],
+        "details": {
+          "v": 1,
+          "dietary": [
+            "vegetarian",
+            "vegan"
+          ],
+          "alcohol": "byo"
+        }
+      },
+      {
+        "key": "b",
+        "catKeys": [
+          "supper"
+        ],
+        "details": {
+          "v": 1,
+          "dietary": [
+            "vegetarian"
+          ]
+        }
+      },
+      {
+        "key": "c",
+        "catKeys": [
+          "supper"
+        ],
+        "details": {}
+      },
+      {
+        "key": "d",
+        "catKeys": [
+          "music"
+        ],
+        "details": {
+          "v": 1,
+          "genre": [
+            "jazz"
+          ]
+        }
+      },
+      {
+        "key": "e",
+        "catKeys": [
+          "gallery"
+        ],
+        "details": {}
+      }
+    ],
+    "filters": {
+      "cats": [
+        "supper"
+      ],
+      "typeFilters": [
+        "alcohol:byo"
+      ]
+    },
+    "counts": {
+      "all": 5,
+      "supper": 3,
+      "music": 1,
+      "gallery": 1,
+      "fashion": 0,
+      "popup": 0
+    },
+    "row": [
+      "all",
+      "supper",
+      "gallery",
+      "music"
+    ],
+    "sheetVi": [
+      "music",
+      "gallery",
+      "popup",
+      "supper",
+      "fashion"
+    ],
+    "sheetEn": [
+      "fashion",
+      "gallery",
+      "music",
+      "popup",
+      "supper"
+    ]
   }
 }

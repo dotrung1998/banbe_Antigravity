@@ -1328,12 +1328,15 @@ extension AppState {
     /// `applyingLiveStatus` leaves the bundled catalogue untouched then.
     func loadLiveEventStatus() async {
         do {
-            let rows: [LiveEventStatus] = try await SupabaseService.client
-                .from("events")
-                .select("status, starts_at, cancelled_at, cancel_reason")
-                .eq("id", value: eventKey)
-                .limit(1)
-                .execute().value
+            let key = eventKey
+            let rows: [LiveEventStatus] = try await EventDetailsColumns.retrying {
+                try await SupabaseService.client
+                    .from("events")
+                    .select("status, starts_at, cancelled_at, cancel_reason, capacity" + EventDetailsColumns.suffix)
+                    .eq("id", value: key)
+                    .limit(1)
+                    .execute().value
+            }
             liveEventStatus = rows.first
         } catch {
             liveEventStatus = nil
@@ -1347,11 +1350,14 @@ extension AppState {
     /// single-event fetch — no signed-in gate.
     func loadHomeLiveEvents() async {
         do {
-            let rows: [KeyedLiveEventStatus] = try await SupabaseService.client
-                .from("events")
-                .select("slug, status, starts_at, cancelled_at, cancel_reason, area, city, country_code, state_province, neighborhood")
-                .in("slug", values: EventCatalog.all.map(\.key))
-                .execute().value
+            let rows: [KeyedLiveEventStatus] = try await EventDetailsColumns.retrying {
+                try await SupabaseService.client
+                    .from("events")
+                    .select("slug, status, starts_at, cancelled_at, cancel_reason, area, city, country_code, state_province, neighborhood, capacity"
+                            + EventDetailsColumns.suffix)
+                    .in("slug", values: EventCatalog.all.map(\.key))
+                    .execute().value
+            }
             homeLiveEvents = Dictionary(uniqueKeysWithValues: rows.map { ($0.slug, $0.status) })
             // Location hierarchy (migration 112) — the demo catalogue's
             // own live DB location, so Home's location filter places each

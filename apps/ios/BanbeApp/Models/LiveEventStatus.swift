@@ -10,11 +10,16 @@ struct LiveEventStatus: Codable, Hashable {
     var startsAt: Date?
     var cancelledAt: Date?
     var cancelReason: String?
+    /// Migration 203: the event type facts + capacity, so a bundled catalogue event (whose text is static) still
+    /// shows the facts its real row carries. nil when not selected or not on the server.
+    var details: EventDetailsPayload?
+    var capacity: Int?
 
     enum CodingKeys: String, CodingKey {
         case status
         case startsAt = "starts_at"
         case cancelledAt = "cancelled_at"
         case cancelReason = "cancel_reason"
+        case details, capacity
     }
 }

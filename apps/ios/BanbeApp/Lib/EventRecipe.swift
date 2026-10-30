@@ -168,6 +168,8 @@ enum EventRecipe {
         var chatGreeting = ""
         /// UTC offset (minutes) of the event's zone at `startsAt`; Vietnam unless the venue is elsewhere.
         var offsetMin = 420
+        /// The event type's answers (event type profiles), for the `facts` ingredient.
+        var details: EventDetails = [:]
     }
 
     enum Status: String { case good, improve, missing }
@@ -185,7 +187,7 @@ enum EventRecipe {
 
     /// One ingredient. Facts are optional and only set by the ingredients they belong to (same keys as web).
     struct Check: Equatable, Identifiable {
-        /// title | photos | description | included | keywords | price | seats | timing | lead | greeting
+        /// title | photos | description | included | keywords | price | seats | timing | lead | greeting | facts
         let id: String
         var status: Status
         var source: Source
@@ -209,6 +211,9 @@ enum EventRecipe {
         var ownFill: Double? = nil
         var best: BestSlot? = nil
         var days: Int? = nil
+        /// facts: how many of the type's fields are filled, of how many.
+        var filled: Int? = nil
+        var total: Int? = nil
     }
 
     struct Outcome: Equatable {
@@ -257,7 +262,10 @@ enum EventRecipe {
 
     // MARK: Checks
 
-    static func checks(_ d: Draft, benchmarks: HostBenchmarks?, goal: String?, now: Date) -> [Check] {
+    /// `profile` (event type profiles, optional): its `recipe.ingredients` picks which checks apply to this kind of event,
+    /// so the denominator differs per type; a type with detail fields adds `facts`. Without a profile the original 10
+    /// run, unchanged. Same rules as the web's recipeChecks.
+    static func checks(_ d: Draft, benchmarks: HostBenchmarks?, goal: String?, now: Date, profile: EventTypeProfile? = nil) -> [Check] {
         let b = hasBenchmarks(benchmarks) ? benchmarks : nil
         var out: [Check] = []
 
@@ -375,7 +383,29 @@ enum EventRecipe {
         out.append(Check(id: "greeting",
                          status: d.chatGreeting.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .improve : .good,
                          source: .tip, fix: Fix(step: Step.basics, field: "greeting")))
-        return out
+
+        // 11. The event type's own facts (what guests ask before booking): required ones, then the optional ones.
+        let fieldIDs = profile?.wizard?.details ?? []
+        if let profile, !fieldIDs.isEmpty {
+            let required = Set(profile.wizard?.required ?? [])
+            func filled(_ id: String) -> Bool {
+                switch d.details[id] {
+                case .list(let a)?: return a.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                case .text(let s)?: return !s.trimmingCharacters(in: .whitespaces).isEmpty
+                case nil: return false
+                }
+            }
+            let missingRequired = fieldIDs.filter { required.contains($0) && !filled($0) }
+            let missingOptional = fieldIDs.filter { !required.contains($0) && !filled($0) }
+            out.append(Check(id: "facts",
+                             status: !missingRequired.isEmpty ? .missing : !missingOptional.isEmpty ? .improve : .good,
+                             source: .tip,
+                             fix: Fix(step: Step.basics, field: missingRequired.first ?? missingOptional.first ?? fieldIDs[0]),
+                             filled: fieldIDs.count - missingRequired.count - missingOptional.count, total: fieldIDs.count))
+        }
+
+        guard let wanted = profile?.recipe?.ingredients else { return out }
+        return wanted.compactMap { id in out.first { $0.id == id } }
     }
 
     static func score(_ checks: [Check]) -> (good: Int, total: Int) {
@@ -551,6 +581,10 @@ enum EventRecipe {
             return (T("Lời chào khi khách nhắn", "An opening message"),
                     T("Khách nhắn tin hỏi trước khi đặt. Một lời chào sẵn giúp họ yên tâm.",
                       "Guests often message before booking. A ready greeting reassures them."))
+        case "facts":
+            return (T("Những điều khách hay hỏi", "What guests ask first"),
+                    T("Đã điền \(c.filled ?? 0)/\(c.total ?? 0). Khách xem các thông tin này trước khi quyết định đặt chỗ.",
+                      "\(c.filled ?? 0) of \(c.total ?? 0) filled in. Guests look for these before deciding to book.") + " " + evidence)
         default:
             return (c.id, "")
         }

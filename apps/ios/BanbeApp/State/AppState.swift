@@ -2370,7 +2370,8 @@ final class AppState: ObservableObject {
     // demo event's name/price/photo/description in its place.
     var currentEvent: CatalogEvent {
         if let catalogEvent = EventCatalog.find(eventKey), catalogEvent.key == eventKey {
-            return catalogEvent.applyingLiveStatus(liveEventStatus)
+            // Until this event's own row arrives, the Home overlay already in memory (same row, same facts).
+            return catalogEvent.applyingLiveStatus(liveEventStatus ?? homeLiveEvents[eventKey])
         }
         switch realEventsByID[eventKey] {
         case .some(.some(let real)): return real

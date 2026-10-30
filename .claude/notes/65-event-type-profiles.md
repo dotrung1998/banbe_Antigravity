@@ -1,7 +1,9 @@
 # 65 — Event type profiles (create form, Event Detail, Home adapt to the kind of event)
 
-Status: IMPLEMENTED LOCALLY (web + iOS), NOT committed. Migration 203 NOT applied anywhere but a throwaway local
-Postgres. Switch `event_type_profiles` seeded OFF, so nothing changes for anyone until an admin turns it on.
+Status: IMPLEMENTED (web + iOS, commit d00e6b0). Migration 203 APPLIED to production (by another session, found
+applied 2026-10-30) and switch `event_type_profiles` is ON there. Phase 2 (all five types, alcohol + minimum age,
+per-type recipe, Home category row + Show all, migration 204, production backfill) is note 66, which supersedes the
+supper `byo` field and the fixed "Recipe N/10" described below.
 
 ## Owner decisions (2026-10-27)
 - The first picked category is the PRIMARY type and the only one that shapes anything. A second pick stays a

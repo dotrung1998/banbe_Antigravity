@@ -33,7 +33,7 @@ final class EventTypesUITests: XCTestCase {
     func testSupperClubBasicsShowsItsOwnFields() {
         let app = launch("shell.create")
         XCTAssertTrue(el(app, "create.recipeMeter").waitForExistence(timeout: 10))
-        let details = el(app, "create.typeDetails")
+        let details = el(app, "create.typeField.dietary")
         scroll(app, to: details)
         XCTAssertTrue(details.exists, "the supper club's own fields in Basics")
         XCTAssertTrue(app.staticTexts["ON THE MENU"].exists || app.staticTexts["On the menu"].exists, "Included is called On the menu")
@@ -70,7 +70,7 @@ final class EventTypesUITests: XCTestCase {
         let details = el(app, "create.reviewDetails")
         scroll(app, to: details)
         XCTAssertTrue(app.staticTexts["Dietary"].exists, "the type facts are rows of Event details")
-        XCTAssertTrue(app.staticTexts["BYO wine"].exists)
+        XCTAssertTrue(app.staticTexts["Bring your own"].exists)
         shot("types-review-private")
         app.buttons["Public preview"].tap()
         XCTAssertTrue(el(app, "createEvent.preview.public").waitForExistence(timeout: 5))
@@ -79,5 +79,56 @@ final class EventTypesUITests: XCTestCase {
         XCTAssertTrue(facts.exists, "guests see the facts on the real Event Detail")
         sleep(1)
         shot("types-review-public")
+    }
+
+    // MARK: Phase 2 (note 66)
+
+    func testHomeCategoryRowAndShowAllSheet() {
+        let app = launch("shell.home")
+        let row = el(app, "filter.all")
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        XCTAssertTrue(el(app, "home.categoryCount.all").exists, "every tile carries its live count")
+        XCTAssertFalse(el(app, "filter.popup").exists, "a category with no events here is not in the row")
+        sleep(1)
+        shot("home-category-row")
+        let showAll = el(app, "home.category.showAll")
+        if !showAll.isHittable { el(app, "filter.all").swipeLeft() }
+        showAll.tap()
+        XCTAssertTrue(el(app, "home.categorySheet.popup").waitForExistence(timeout: 5), "Show all lists every category, zero ones too")
+        sleep(1)
+        shot("home-category-sheet")
+        el(app, "home.categorySheet.music").tap()
+        XCTAssertFalse(el(app, "home.categorySheet.popup").waitForExistence(timeout: 2), "picking closes the sheet")
+        XCTAssertTrue(el(app, "filter.music").isSelected, "and applies it as the category filter")
+        sleep(1)
+        shot("home-category-picked")
+    }
+
+    func testEventDetailFactsPerType() {
+        for key in ["bepnho", "jazzgac", "khongnguoi", "aeie"] {
+            let app = launch("shell.event", extra: ["-uiFixtureEventKey", key])
+            let facts = el(app, "event.typeFacts")
+            XCTAssertTrue(el(app, "event.fact.seats").waitForExistence(timeout: 10), key)
+            scroll(app, to: facts, max: 8)
+            XCTAssertTrue(facts.exists, "\(key): the type's facts on Event Detail")
+            XCTAssertTrue(el(app, "event.typeFact.alcohol").exists && el(app, "event.typeFact.min_age").exists, "\(key): alcohol and age")
+            sleep(1)
+            shot("event-facts-\(key)")
+            app.terminate()
+        }
+    }
+
+    func testPopupCreateFormAsksItsOwnFacts() {
+        let app = launch("shell.create", extra: ["-uiFixtureCreateType", "popup"])
+        XCTAssertTrue(el(app, "create.recipeMeter").waitForExistence(timeout: 10))
+        let brands = el(app, "create.typeField.brands")
+        scroll(app, to: brands, max: 20)
+        XCTAssertTrue(brands.exists, "a pop-up asks for its brands")
+        XCTAssertTrue(el(app, "create.typeField.entry_mode").exists)
+        sleep(1)
+        shot("create-popup-fields")
+        scroll(app, to: el(app, "create.typeField.min_age"), max: 6)
+        sleep(1)
+        shot("create-popup-alcohol-age")
     }
 }

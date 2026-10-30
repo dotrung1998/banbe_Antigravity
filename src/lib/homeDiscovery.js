@@ -161,6 +161,36 @@ export function optionCounts(items, filters, dimension, options, now, offsetMin 
   return out;
 }
 
+// ---- category row + "Show all" sheet ---------------------------------------
+/**
+ * What tapping each category would show: that category alone, its type chips dropped (picking a category clears
+ * them), every other filter kept. `all` = no category. The SAME applyDiscoveryFilters the feed renders with.
+ */
+export function categoryCounts(items, filters, keys, now, offsetMin = DEFAULT_OFFSET_MIN) {
+  const f = { ...normalizeFilters(filters), typeFilters: [] };
+  const out = { all: applyDiscoveryFilters(items, { ...f, cats: [] }, now, offsetMin).length };
+  for (const k of keys) out[k] = applyDiscoveryFilters(items, { ...f, cats: [k] }, now, offsetMin).length;
+  return out;
+}
+
+/** The row: "all" first, then categories with events, most first (ties keep `keys` order). A selected one stays. */
+export function categoryRowKeys(counts, keys, selected = []) {
+  const shown = keys.filter(k => (counts[k] || 0) > 0 || selected.includes(k));
+  const order = new Map(keys.map((k, i) => [k, i]));
+  shown.sort((a, b) => (counts[b] || 0) - (counts[a] || 0) || order.get(a) - order.get(b));
+  return ['all', ...shown];
+}
+
+const foldLabel = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+/** The "Show all" sheet: every category A–Z by its label in the current language, accent-folded. */
+export function categorySheetKeys(defs, lang) {
+  return [...defs].sort((a, b) => {
+    const x = foldLabel(lang === 'vi' ? a.vi : a.en);
+    const y = foldLabel(lang === 'vi' ? b.vi : b.en);
+    return x < y ? -1 : x > y ? 1 : 0;
+  }).map(d => d.key);
+}
+
 const RELAXATIONS = [
   { id: 'date', active: f => f.date !== 'any', relax: f => ({ ...f, date: 'any' }) },
   { id: 'price', active: f => f.priceMin != null || f.priceMax != null, relax: f => ({ ...f, priceMin: null, priceMax: null }) },

@@ -67,6 +67,23 @@ final class ContentFlagsTests: XCTestCase {
         XCTAssertFalse(weekly.contains("Miss a day"))
     }
 
+    /// A10 (alcohol and minimum age) is the same text on both, and only while event types are on.
+    func testPolicyAlcoholAgeTextMatchesTheWeb() throws {
+        var url = URL(fileURLWithPath: #filePath)
+        for _ in 0..<4 { url.deleteLastPathComponent() }
+        let web = try String(contentsOf: url.appendingPathComponent("src/screens/Policy.jsx"), encoding: .utf8)
+        let ios = try String(contentsOf: url.appendingPathComponent("apps/ios/BanbeApp/Views/PolicyView.swift"), encoding: .utf8)
+        let a10 = try XCTUnwrap(web.range(of: "<Section id=\"A10\"")).lowerBound
+        let partB = try XCTUnwrap(web.range(of: "<PartHeading vi=\"Phần B.")).lowerBound
+        let re = try NSRegularExpression(pattern: "(?:vi|en)=\"([^\"]+)\"")
+        let chunk = String(web[a10..<partB])
+        let found = re.matches(in: chunk, range: NSRange(chunk.startIndex..., in: chunk)).map { String(chunk[Range($0.range(at: 1), in: chunk)!]) }
+        XCTAssertEqual(found.count, 4, "A10 has 2 bilingual passages")
+        for t in found { XCTAssertTrue(ios.contains(t), "missing on iOS: \(t.prefix(60))") }
+        XCTAssertFalse(ContentFlags.isOn([:], "event_types"))
+        XCTAssertTrue(ContentFlags.isOn(["event_type_profiles": true], "event_types"))
+    }
+
     /// The iOS policy shows exactly the web's rewards passages (generated from src/screens/Policy.jsx).
     func testPolicyRewardsTextMatchesTheWeb() throws {
         var url = URL(fileURLWithPath: #filePath)
@@ -74,7 +91,7 @@ final class ContentFlagsTests: XCTestCase {
         let web = try String(contentsOf: url.appendingPathComponent("src/screens/Policy.jsx"), encoding: .utf8)
         let ios = try String(contentsOf: url.appendingPathComponent("apps/ios/BanbeApp/Views/PolicyView.swift"), encoding: .utf8)
         let a9 = try XCTUnwrap(web.range(of: "<Section id=\"A9\"")).lowerBound
-        let partB = try XCTUnwrap(web.range(of: "<PartHeading vi=\"Phần B.")).lowerBound
+        let partB = try XCTUnwrap(web.range(of: "<Section id=\"A10\"") ?? web.range(of: "<PartHeading vi=\"Phần B.")).lowerBound
         let re = try NSRegularExpression(pattern: "(?:vi|en)=\"([^\"]+)\"")
         let chunk = String(web[a9..<partB])
         let found = re.matches(in: chunk, range: NSRange(chunk.startIndex..., in: chunk)).map { String(chunk[Range($0.range(at: 1), in: chunk)!]) }

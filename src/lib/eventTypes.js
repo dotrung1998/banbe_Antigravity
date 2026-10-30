@@ -8,7 +8,17 @@ import PROFILES from '../data/eventTypeProfiles.json' with { type: 'json' };
 import { DEFAULT_REQUIRED } from './createProgress.js';
 
 export const DETAILS_VERSION = 1;
-export const EVENT_TYPES = PROFILES.types;
+// `common` (alcohol + minimum age) is merged into every type: its fields, its form block and its required list.
+const COMMON = PROFILES.common || { required: [], detailFields: {} };
+const withCommon = (t) => ({
+  ...t,
+  detailFields: { ...(t.detailFields || {}), ...COMMON.detailFields },
+  wizard: t.wizard ? { ...t.wizard, required: [...t.wizard.required, ...COMMON.required],
+    details: [...(t.wizard.details || []), ...Object.keys(COMMON.detailFields)] } : t.wizard,
+});
+export const EVENT_TYPES = PROFILES.types.map(withCommon);
+/** Every detail field id any type uses (for the create form's field anchors). */
+export const DETAIL_FIELD_IDS = [...new Set(EVENT_TYPES.flatMap(t => Object.keys(t.detailFields || {})))];
 export const TYPE_KEYS = EVENT_TYPES.map(t => t.key);
 
 const BY_KEY = Object.fromEntries(EVENT_TYPES.map(t => [t.key, t]));
@@ -46,7 +56,8 @@ export const localized = pick;
 
 /**
  * The details a host can publish for this type, cleaned the same way the server validates them
- * (validate_event_details, migration 202): known keys only, known option ids only, text trimmed and capped.
+ * (validate_event_details, migration 204): known keys only, known option ids only, text and list items trimmed and
+ * capped (a list keeps its order, drops blanks and repeats, at most `max` items).
  * Returns {} when nothing is set, so an untouched form stores nothing.
  */
 export function cleanDetails(profile, raw) {
@@ -64,6 +75,13 @@ export function cleanDetails(profile, raw) {
     } else if (def.kind === 'text' && typeof v === 'string') {
       const t = v.trim().slice(0, def.max || 80);
       if (t) out[id] = t;
+    } else if (def.kind === 'list' && Array.isArray(v)) {
+      const items = [];
+      for (const x of v) {
+        const t = typeof x === 'string' ? x.trim().slice(0, def.itemMax || 60) : '';
+        if (t && !items.includes(t)) items.push(t);
+      }
+      if (items.length) out[id] = items.slice(0, def.max || 6);
     }
   }
   return Object.keys(out).length ? { v: DETAILS_VERSION, ...out } : {};
@@ -74,9 +92,19 @@ export function droppedDetailTypes(primaryKey, draftDetails) {
   return Object.keys(draftDetails || {}).filter(k => k !== primaryKey && Object.keys(cleanDetails(profileFor(k), draftDetails[k])).length > 0);
 }
 
-function optionLabel(def, id, lang) {
+function optionLabel(def, id, lang, short = false) {
   const o = (def.options || []).find(x => x.id === id);
-  return o ? pick(o, lang) : null;
+  if (!o) return null;
+  return short && o.short ? pick(o.short, lang) : pick(o, lang);
+}
+
+/** Required detail fields still empty for this type: { id: true } (the create form's progress reads it). */
+export function missingDetails(profile, raw) {
+  const clean = cleanDetails(profile, raw);
+  const fields = profile?.detailFields || {};
+  const out = {};
+  for (const id of requiredFields(profile)) if (fields[id]) out[id] = clean[id] == null;
+  return out;
 }
 
 /** [{ id, label, value }] for Event Detail, in the order the profile lists them; empty values are skipped. */
@@ -91,22 +119,52 @@ export function detailFacts(profile, details, lang) {
     if (def.kind === 'multi' && Array.isArray(v)) value = v.map(x => optionLabel(def, x, lang)).filter(Boolean).join(', ');
     else if (def.kind === 'enum') value = optionLabel(def, v, lang);
     else if (def.kind === 'text') value = String(v);
+    else if (def.kind === 'list' && Array.isArray(v)) value = v.join(', ');
     if (value) out.push({ id, label: pick(def.label, lang), value });
   }
   return out;
 }
 
-/** The short type-aware line under a Home card, or null. `ev` needs { capacity, details }. */
+/**
+ * The short type-aware line under a Home card, or null. `ev` needs { capacity, details }. From the profile's
+ * `card`: an optional table size, then each listed field (a choice's short label, a list's count or first item).
+ */
 export function cardLine(profile, ev, lang) {
-  if (profile?.card?.line !== 'table_for_n_price') return null;
+  const card = profile?.card;
+  if (!card) return null;
   const parts = [];
   const n = Number(ev?.capacity) || 0;
-  if (n > 0) parts.push(lang === 'vi' ? `Bàn ${n} người` : `Table for ${n}`);
+  if (card.capacity === 'table' && n > 0) parts.push(lang === 'vi' ? `Bàn ${n} người` : `Table for ${n}`);
   const d = ev?.details || {};
-  const diet = profile.detailFields?.dietary;
-  if (Array.isArray(d.dietary) && d.dietary.length && diet) parts.push(optionLabel(diet, d.dietary[0], lang));
-  if (d.byo === 'wine' || d.byo === 'any') parts.push('BYO');
-  return parts.length ? parts.join(' · ') : null;
+  for (const id of card.fields || []) {
+    const def = profile.detailFields?.[id];
+    const v = d[id];
+    if (!def || v == null) continue;
+    if (def.kind === 'multi' && Array.isArray(v) && v.length) parts.push(optionLabel(def, v[0], lang, true));
+    else if (def.kind === 'enum') parts.push(optionLabel(def, v, lang, true));
+    else if (def.kind === 'list' && Array.isArray(v) && v.length) {
+      parts.push(def.countLabel ? pick(def.countLabel, lang).replace('{n}', String(v.length)) : v[0]);
+    }
+  }
+  const out = parts.filter(Boolean);
+  return out.length ? out.join(' · ') : null;
+}
+
+/** Words an event's facts add to its search document: option labels in both languages, list items, text. */
+export function detailSearchTerms(profile, details) {
+  const fields = profile?.detailFields || {};
+  const out = [];
+  for (const [id, v] of Object.entries(details || {})) {
+    const def = fields[id];
+    if (!def) continue;
+    const ids = Array.isArray(v) ? v : [v];
+    if (def.kind === 'multi' || def.kind === 'enum') {
+      for (const x of ids) { const o = (def.options || []).find(op => op.id === x); if (o) out.push(o.vi, o.en); }
+    } else if (def.kind === 'list' || def.kind === 'text') {
+      for (const x of ids) if (typeof x === 'string') out.push(x);
+    }
+  }
+  return out;
 }
 
 /** Type-specific Home chips for one selected category. */

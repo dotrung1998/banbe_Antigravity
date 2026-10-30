@@ -6,7 +6,7 @@ import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, 
 import { prefsIsEmpty, declaredGoals } from '../lib/eventPrefs.js';
 import { intentTitle, isEventLocalDay } from '../lib/coreLoops.js';
 import { flagOn } from '../lib/featureFlags.js';
-import { profileFor, homeFilters as homeTypeFilters, cardLine } from '../lib/eventTypes.js';
+import { profileFor, homeFilters as homeTypeFilters, cardLine, TYPE_KEYS, categoryDefs } from '../lib/eventTypes.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 import { forYouRankEvents } from '../lib/forYou.js';
 import { forYouEventVersion } from '../lib/forYouAlert.js';
@@ -31,7 +31,7 @@ import ActionCenter from './ActionCenter.jsx';
 import ActivationChecklistCard from './ActivationChecklistCard.jsx';
 import { GuestBrowseBanner } from './GuestPromptSheet.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
-import { CategoryRow, HomeSearchBar, DiscoveryCard, DiscoveryRow, NextUpBanner } from '../components/home/HomeDiscoveryParts.jsx';
+import { CategoryRow, CategorySheet, HomeSearchBar, DiscoveryCard, DiscoveryRow, NextUpBanner } from '../components/home/HomeDiscoveryParts.jsx';
 import HomeFilterSheet, { DATE_LABELS, RELAX_LABELS, SORT_LABELS } from './sheets/HomeFilterSheet.jsx';
 import SortMenu from './sheets/SortMenu.jsx';
 import PulseTicker from '../components/home/PulseTicker.jsx';
@@ -41,6 +41,7 @@ import { savedComingUp, fillText, whenLabel } from '../lib/quickWins.js';
 import { rowTimeZone } from '../lib/eventMarket.js';
 import {
   applyDiscoveryFilters, sortEvents, fillBadge, activeFilterCount, optionCounts, relaxationHints, DEFAULT_FILTERS,
+  categoryCounts, categoryRowKeys, categorySheetKeys,
 } from '../lib/homeDiscovery.js';
 
 // Quick chips (note 50): one-tap shortcuts into the same filters the filter sheet edits (src/lib/homeDiscovery.js).
@@ -445,6 +446,13 @@ export default function Home() {
     const cur = f.typeFilters || [];
     return { ...f, typeFilters: cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id] };
   });
+  // Category row (web + iOS twin): the counts are what tapping each category shows, with the very same filter the
+  // feed renders with (categoryCounts); the row only lists categories that have events here, most first.
+  const categoryCountMap = useMemo(() => categoryCounts(discoveryItems, homeFilters, TYPE_KEYS, nowMs),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [discoveryItems, homeFilters, Math.floor(nowMs / 60000)]);
+  const categoryRow = categoryRowKeys(categoryCountMap, TYPE_KEYS, homeFilters.cats);
+  const [categorySheetOpen, setCategorySheetOpen] = useState(false);
   const filterBadge = activeFilterCount(homeFilters);
   const sortActive = !!s.homeSort && s.homeSort !== 'soonest';
   const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
@@ -487,7 +495,7 @@ export default function Home() {
       key: e.key, name: e.name, img: e.img, dateBadge: badgeDate(it.startsAt, e.isReal ? e.tz : null),
       priceLabel: it.priceVnd === 0 ? T('Miễn phí', 'Free') : trStatus(e.price), isFree: it.priceVnd === 0,
       metaLine: meta, fill, cancelled: !!e.cancelled, saved: e.saved, going: e.going, label,
-      typeLine: typesOn && e.isReal ? cardLine(profileFor(e.catKey), { capacity: it.capacity ?? e.capacity, details: e.details }, s.lang === 'en' ? 'en' : 'vi') : null,
+      typeLine: typesOn && (e.isReal || Object.keys(e.details || {}).length > 0) ? cardLine(profileFor(e.catKey), { capacity: it.capacity ?? e.capacity, details: e.details }, s.lang === 'en' ? 'en' : 'vi') : null,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [shownItems, forYouRanked, forYouActive, topPulseKey, trStatus, T, typesOn, s.lang]);
@@ -871,7 +879,12 @@ export default function Home() {
       </div>
 
       <div data-reveal="2">
-      <CategoryRow values={homeFilters.cats} onPick={pickFilter} T={T} />
+      <CategoryRow values={homeFilters.cats} onPick={pickFilter} T={T} keys={categoryRow} counts={categoryCountMap}
+        onShowAll={() => setCategorySheetOpen(true)} />
+      {categorySheetOpen && (
+        <CategorySheet keys={categorySheetKeys(categoryDefs(), s.lang === 'en' ? 'en' : 'vi')} counts={categoryCountMap} values={homeFilters.cats} T={T}
+          onPick={(k) => { pickFilter(k); setCategorySheetOpen(false); }} onClose={() => setCategorySheetOpen(false)} />
+      )}
 
       {/* Quick row: Filters + Sort open the sheet; For You stays pinned at the leading edge (notes 34/36); the
           one-tap chips scroll (data-hscroll so the root tab swipe ignores them). */}

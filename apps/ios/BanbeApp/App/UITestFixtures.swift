@@ -41,6 +41,10 @@ enum UITestFixture {
     /// Note 65: `-uiFixtureEventTypes YES` is an admin having turned on `event_type_profiles` (with `shell.create`
     /// the draft also gets supper club facts; with `shell.home` two fixture events get some).
     static let eventTypes = UserDefaults.standard.bool(forKey: "uiFixtureEventTypes")
+    /// Note 66: `-uiFixtureEventKey jazzgac` opens that catalogue event with `shell.event`; `-uiFixtureCreateType popup`
+    /// makes the `shell.create` draft that type.
+    static let eventKey = UserDefaults.standard.string(forKey: "uiFixtureEventKey") ?? "bepnho"
+    static let createType = UserDefaults.standard.string(forKey: "uiFixtureCreateType")
     /// Stable fake account id so the draft store/relaunch tests have a key.
     static let userID = UUID(uuidString: "00000000-0000-4000-8000-00000000F1F0")!
 
@@ -165,7 +169,23 @@ struct UITestFixtureRoot: View {
         if !signedOut { app.userID = UITestFixture.userID }
         if UITestFixture.onboardingV2 { app.featureFlags["onboarding_v2"] = true }
         if UITestFixture.tourV3 { app.featureFlags["onboarding_v3"] = true }
-        if UITestFixture.eventTypes { app.featureFlags["event_type_profiles"] = true }
+        if UITestFixture.eventTypes {
+            app.featureFlags["event_type_profiles"] = true
+            // The facts the production backfill gave these catalogue events (note 66), as their real rows would.
+            let seeded: [String: EventDetails] = [
+                "bepnho": ["dietary": .list(["vegetarian", "can_accommodate"]), "alcohol": .text("included"), "min_age": .text("18")],
+                "comnha": ["dietary": .list(["vegetarian"]), "alcohol": .text("none"), "min_age": .text("16"), "dress_code": .text("Thoải mái")],
+                "jazzgac": ["lineup": .list(["Bộ ba Gác", "Khách mời: Linh Sax"]), "genre": .list(["jazz"]), "format": .text("seated"),
+                            "alcohol": .text("included"), "min_age": .text("18")],
+                "khongnguoi": ["artists": .list(["Trần Vũ"]), "medium": .list(["photography"]), "alcohol": .text("none"), "min_age": .text("16")],
+                "aeie": ["brands": .list(["AEIE"]), "experience": .text("show"), "price_range": .text("premium"),
+                         "alcohol": .text("none"), "min_age": .text("16")],
+            ]
+            for (key, details) in seeded {
+                app.homeLiveEvents[key] = LiveEventStatus(status: "live", startsAt: nil, cancelledAt: nil, cancelReason: nil,
+                                                          details: EventDetailsPayload(details), capacity: nil)
+            }
+        }
         if name.hasPrefix("shell") { configureShell() }
         else if name.hasPrefix("reports") { configureReports() }
         else if isRouted { configureRouted() }
@@ -238,7 +258,7 @@ struct UITestFixtureRoot: View {
             // Event Detail on a long catalogue event (included items, photos, long description), so scrolling
             // reaches the collapsing nav bar (note 52).
             app.screen = .home
-            app.goEvent("bepnho")
+            app.goEvent(UITestFixture.eventKey)
         default: app.screen = .home
         }
     }
@@ -254,7 +274,8 @@ struct UITestFixtureRoot: View {
         app.createKeywords = "wine"
         app.createIncludedItems = [IncludedItem(label: "5 courses", detail: "")]
         if UITestFixture.eventTypes {
-            app.createDetails = ["supper": ["dietary": .list(["vegetarian"]), "byo": .text("wine")]]
+            app.createDetails = ["supper": ["dietary": .list(["vegetarian"]), "alcohol": .text("byo")]]
+            if let type = UITestFixture.createType { app.createCats = [type] }
             // Open on Basics, where the type's own fields are (the Undo restore hook, no new view state).
             app.createDraftStash.step = 1
             app.createRestorePending = true

@@ -15,25 +15,35 @@ struct EventTypeProfile: Decodable {
         let id: String
         let vi: String
         let en: String
+        /// The card's shorter wording ("BYO", "Drop-in"); the full label otherwise.
+        let short: Pair?
     }
     struct DetailField: Decodable {
-        let kind: String // multi | enum | text
+        let kind: String // multi | enum | text | list
         let label: Pair
         let options: [Option]?
+        /// text: max characters; list: max items.
         let max: Int?
+        /// list: max characters per item.
+        let itemMax: Int?
         let placeholder: Pair?
+        let hint: Pair?
+        /// list: "{n} artists" on cards instead of the first item.
+        let countLabel: Pair?
     }
     struct Wizard: Decodable {
-        let required: [String]
+        var required: [String]
         let includedTitle: Pair?
         let includedPlaceholder: Pair?
-        let details: [String]
+        var details: [String]
     }
     struct Detail: Decodable {
         let includedTitle: Pair?
         let facts: [String]
     }
-    struct Card: Decodable { let line: String }
+    /// Card line: an optional table size ("table"), then each listed field.
+    struct Card: Decodable { let capacity: String?; let fields: [String]? }
+    struct Recipe: Decodable { let ingredients: [String] }
     struct HomeFilter: Decodable, Identifiable {
         let id: String
         let field: String
@@ -59,16 +69,17 @@ struct EventTypeProfile: Decodable {
     let icon: [String: String]?
     let aliases: [String]?
     let keywordSeeds: [String: [String]]?
-    let wizard: Wizard?
-    let detailFields: [String: DetailField]?
+    var wizard: Wizard?
+    var detailFields: [String: DetailField]?
     let detail: Detail?
     let card: Card?
     let home: Home?
+    let recipe: Recipe?
 
     /// The generic event: today's behaviour, used for unknown or legacy keys.
     static func generic(_ key: String) -> EventTypeProfile {
         EventTypeProfile(key: key, label: nil, emoji: nil, icon: nil, aliases: [], keywordSeeds: [:], wizard: nil,
-                         detailFields: nil, detail: nil, card: nil, home: nil)
+                         detailFields: nil, detail: nil, card: nil, home: nil, recipe: nil)
     }
 }
 
@@ -131,8 +142,12 @@ struct EventDetailsPayload: Codable, Hashable {
 enum EventTypes {
     static let detailsVersion = 1
 
-    private struct File: Decodable { let version: Int; let types: [EventTypeProfile] }
+    private struct Common: Decodable { let required: [String]; let detailFields: [String: EventTypeProfile.DetailField] }
+    private struct File: Decodable { let version: Int; let common: Common?; let types: [EventTypeProfile] }
+    /// The shared fields' order in the form (alcohol, then minimum age), as in the JSON.
+    private static let commonOrder = ["alcohol", "min_age"]
 
+    /// `common` (alcohol + minimum age) is merged into every type: its fields, its form block and its required list.
     static let all: [EventTypeProfile] = {
         guard let url = Bundle.main.url(forResource: "eventTypeProfiles", withExtension: "json"),
               let data = try? Data(contentsOf: url),
@@ -140,8 +155,23 @@ enum EventTypes {
             assertionFailure("eventTypeProfiles.json missing from the bundle — run xcodegen generate")
             return []
         }
-        return file.types
+        guard let common = file.common else { return file.types }
+        let commonIDs = commonOrder.filter { common.detailFields[$0] != nil }
+            + common.detailFields.keys.sorted().filter { !commonOrder.contains($0) }
+        return file.types.map { t in
+            var p = t
+            p.detailFields = (t.detailFields ?? [:]).merging(common.detailFields) { _, new in new }
+            if var w = t.wizard {
+                w.required += common.required
+                w.details += commonIDs
+                p.wizard = w
+            }
+            return p
+        }
     }()
+
+    /// Every detail field id any type uses (for the create form's field anchors).
+    static var detailFieldIDs: Set<String> { Set(all.flatMap { ($0.detailFields ?? [:]).keys }) }
 
     static var keys: [String] { all.map(\.key) }
 
@@ -172,11 +202,21 @@ enum EventTypes {
     }
 
     static func requiredFields(_ p: EventTypeProfile) -> [String] {
-        p.wizard?.required ?? CreateProgress.fieldOrder
+        p.wizard?.required ?? CreateProgress.defaultRequired
     }
 
-    /// Cleaned the same way the server validates (validate_event_details, migration 202): known keys and option
-    /// ids only, text trimmed and capped. Empty when nothing is set, so an untouched form stores nothing.
+    /// Required detail fields still empty for this type: [id: true] (the create form's progress reads it).
+    static func missingDetails(_ p: EventTypeProfile, _ raw: EventDetails) -> [String: Bool] {
+        let cleaned = clean(p, raw)
+        let fields = p.detailFields ?? [:]
+        var out: [String: Bool] = [:]
+        for id in requiredFields(p) where fields[id] != nil { out[id] = cleaned[id] == nil }
+        return out
+    }
+
+    /// Cleaned the same way the server validates (validate_event_details, migration 204): known keys and option
+    /// ids only, text and list items trimmed and capped (a list keeps its order, drops blanks and repeats, at most
+    /// `max` items). Empty when nothing is set, so an untouched form stores nothing.
     /// Encode with `json(_:)`, which adds the version.
     static func clean(_ p: EventTypeProfile, _ raw: EventDetails) -> EventDetails {
         guard let fields = p.detailFields else { return [:] }
@@ -192,6 +232,13 @@ enum EventTypes {
             case ("text", .text(let v)?):
                 let t = String(v.trimmingCharacters(in: .whitespacesAndNewlines).prefix(def.max ?? 80))
                 if !t.isEmpty { out[id] = .text(t) }
+            case ("list", .list(let v)?):
+                var items: [String] = []
+                for x in v {
+                    let t = String(x.trimmingCharacters(in: .whitespacesAndNewlines).prefix(def.itemMax ?? 60))
+                    if !t.isEmpty && !items.contains(t) { items.append(t) }
+                }
+                if !items.isEmpty { out[id] = .list(Array(items.prefix(def.max ?? 6))) }
             default: break
             }
         }
@@ -219,8 +266,10 @@ enum EventTypes {
         draft.keys.sorted().filter { $0 != primary && !clean(profile($0), draft[$0] ?? [:]).isEmpty }
     }
 
-    private static func optionLabel(_ def: EventTypeProfile.DetailField, _ id: String, _ lang: String) -> String? {
-        (def.options ?? []).first { $0.id == id }.map { lang == "vi" ? $0.vi : $0.en }
+    private static func optionLabel(_ def: EventTypeProfile.DetailField, _ id: String, _ lang: String, short: Bool = false) -> String? {
+        guard let o = (def.options ?? []).first(where: { $0.id == id }) else { return nil }
+        if short, let s = o.short { return s.text(lang) }
+        return lang == "vi" ? o.vi : o.en
     }
 
     struct Fact: Equatable { let id: String; let label: String; let value: String }
@@ -235,6 +284,7 @@ enum EventTypes {
             case ("multi", .list(let a)): value = a.compactMap { optionLabel(def, $0, lang) }.joined(separator: ", ")
             case ("enum", .text(let s)): value = optionLabel(def, s, lang)
             case ("text", .text(let s)): value = s
+            case ("list", .list(let a)): value = a.joined(separator: ", ")
             default: value = nil
             }
             guard let value, !value.isEmpty else { return nil }
@@ -242,15 +292,39 @@ enum EventTypes {
         }
     }
 
-    /// The short type-aware line under a Home card, or nil.
+    /// The short type-aware line under a Home card, or nil. From the profile's `card`: an optional table size, then
+    /// each listed field (a choice's short label, a list's count or first item).
     static func cardLine(_ p: EventTypeProfile, capacity: Int, details: EventDetails, lang: String) -> String? {
-        guard p.card?.line == "table_for_n_price" else { return nil }
+        guard let card = p.card else { return nil }
         var parts: [String] = []
-        if capacity > 0 { parts.append(lang == "vi" ? "Bàn \(capacity) người" : "Table for \(capacity)") }
-        if case .list(let diet)? = details["dietary"], let first = diet.first, let def = p.detailFields?["dietary"],
-           let label = optionLabel(def, first, lang) { parts.append(label) }
-        if case .text(let byo)? = details["byo"], byo == "wine" || byo == "any" { parts.append("BYO") }
+        if card.capacity == "table", capacity > 0 { parts.append(lang == "vi" ? "Bàn \(capacity) người" : "Table for \(capacity)") }
+        for id in card.fields ?? [] {
+            guard let def = p.detailFields?[id], let v = details[id] else { continue }
+            switch (def.kind, v) {
+            case ("multi", .list(let a)): if let f = a.first, let l = optionLabel(def, f, lang, short: true) { parts.append(l) }
+            case ("enum", .text(let s)): if let l = optionLabel(def, s, lang, short: true) { parts.append(l) }
+            case ("list", .list(let a)) where !a.isEmpty:
+                parts.append(def.countLabel.map { $0.text(lang).replacingOccurrences(of: "{n}", with: String(a.count)) } ?? a[0])
+            default: break
+            }
+        }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Words an event's facts add to its search document: option labels in both languages, list items, text.
+    static func detailSearchTerms(_ p: EventTypeProfile, _ details: EventDetails) -> [String] {
+        let fields = p.detailFields ?? [:]
+        var out: [String] = []
+        for (id, v) in details {
+            guard let def = fields[id] else { continue }
+            let values: [String] = { switch v { case .list(let a): return a; case .text(let s): return [s] } }()
+            if def.kind == "multi" || def.kind == "enum" {
+                for x in values { if let o = def.options?.first(where: { $0.id == x }) { out += [o.vi, o.en] } }
+            } else {
+                out += values
+            }
+        }
+        return out
     }
 
     static func homeFilters(_ p: EventTypeProfile) -> [EventTypeProfile.HomeFilter] { p.home?.filters ?? [] }

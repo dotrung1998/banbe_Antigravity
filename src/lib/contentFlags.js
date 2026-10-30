@@ -12,6 +12,7 @@
 //   push_enabled   real push notifications are on (migration 194)  (APNs, quiet hours, device tokens)
 //   app_events     first-party measurement is on (migration 196)   (usage events, 13-month retention)
 //   event_reminders, event_recap, host_recap, follow_alerts (199); weekly_digest, live_activity (200): one key per switch
+//   event_types    the event_type_profiles switch is on (migration 203/204): alcohol & minimum-age terms (A10)
 //
 // Markers in the help data (src/data/help/*.js):
 //   section   { id, vi, en, blocks, flag: 'rewards' }
@@ -20,7 +21,7 @@
 import { flagOn } from './featureFlags.js';
 
 export const CONTENT_KEYS = ['rewards', 'rewards_daily', 'rewards_v2', 'push_enabled', 'app_events', 'event_reminders',
-  'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'live_activity'];
+  'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'live_activity', 'event_types'];
 
 /** Is content tagged `key` shown under these platform flags? An unknown key is never shown. */
 export function contentOn(flags, key) {
@@ -40,6 +41,7 @@ export function contentOn(flags, key) {
     case 'live_activity': return !!(flags && flags[key] === true);
     // On unless an admin turned it off (migration 199 seeds it ON).
     case 'event_reminders': return flagOn(flags, 'event_reminders');
+    case 'event_types': return !!(flags && flags.event_type_profiles === true);
     default: return false;
   }
 }

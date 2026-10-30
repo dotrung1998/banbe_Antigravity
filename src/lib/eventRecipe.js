@@ -17,6 +17,11 @@
 // fetched for that same currency, so prices are only ever compared like with like.
 // Benchmarks: the raw get_host_benchmarks jsonb (or null while loading / offline / cold start).
 // Goal: null | 'fill_seats' | 'regular_crowd' | 'try_idea' | 'small_premium'.
+// Profile (event type profiles, optional): its `recipe.ingredients` picks which checks apply to this kind of event,
+// so the denominator differs per type (a gallery has no seats/greeting check, a music night no Included). A type
+// with detail fields adds `facts`: its answers filled in (`draft.details`, required ones first). Without a profile
+// the original 10 checks run, unchanged. The benchmarks are already per category (get_host_benchmarks(p_cat_key)),
+// so the data-backed targets come from events of the same type, under the same k-limits.
 
 import { VN_TIME_ZONE, zonedParts, formatMoneyShort } from './eventMarket.js';
 
@@ -52,7 +57,7 @@ function bestSlot(b) {
 }
 
 /** Each ingredient: { id, status: 'good'|'improve'|'missing', source: 'data'|'tip', n, fix: {step, field}, ...facts } */
-export function recipeChecks(draft, benchmarks, goal, now) {
+export function recipeChecks(draft, benchmarks, goal, now, profile = null) {
   const d = draft || {};
   const b = hasBenchmarks(benchmarks) ? benchmarks : null;
   const out = [];
@@ -183,7 +188,22 @@ export function recipeChecks(draft, benchmarks, goal, now) {
     fix: { step: RECIPE_STEPS.basics, field: 'greeting' },
   });
 
-  return out;
+  // 11. The event type's own facts (what guests ask before booking): required ones, then the optional ones.
+  const fieldIds = profile?.wizard?.details || [];
+  if (fieldIds.length) {
+    const filled = (id) => { const v = d.details?.[id]; return v != null && (!Array.isArray(v) || v.length > 0) && String(v).trim() !== ''; };
+    const required = new Set(profile.wizard.required || []);
+    const missingRequired = fieldIds.filter(id => required.has(id) && !filled(id));
+    const missingOptional = fieldIds.filter(id => !required.has(id) && !filled(id));
+    out.push({
+      id: 'facts', status: missingRequired.length ? 'missing' : missingOptional.length ? 'improve' : 'good', source: 'tip',
+      fix: { step: RECIPE_STEPS.basics, field: missingRequired[0] || missingOptional[0] || fieldIds[0] },
+      filled: fieldIds.length - missingRequired.length - missingOptional.length, total: fieldIds.length,
+    });
+  }
+
+  const wanted = profile?.recipe?.ingredients;
+  return wanted ? wanted.map(id => out.find(c => c.id === id)).filter(Boolean) : out;
 }
 
 export function recipeScore(checks) {
@@ -327,6 +347,12 @@ export function recipeCopy(c, T) {
       return {
         title: T('Lời chào khi khách nhắn', 'An opening message'),
         detail: T('Khách nhắn tin hỏi trước khi đặt. Một lời chào sẵn giúp họ yên tâm.', 'Guests often message before booking. A ready greeting reassures them.'),
+      };
+    case 'facts':
+      return {
+        title: T('Những điều khách hay hỏi', 'What guests ask first'),
+        detail: T(`Đã điền ${c.filled}/${c.total}. Khách xem các thông tin này trước khi quyết định đặt chỗ.`,
+          `${c.filled} of ${c.total} filled in. Guests look for these before deciding to book.`) + ' ' + evidence,
       };
     default:
       return { title: c.id, detail: '' };

@@ -128,4 +128,65 @@ final class EventTypesTests: XCTestCase {
         XCTAssertEqual(hint.id, want["id"] as? String)
         XCTAssertEqual(hint.gain, want["gain"] as? Int)
     }
+
+    // MARK: Phase 2 (same vectors as tests/unit/eventTypes.test.mjs)
+
+    func testRequiredFieldsPerType() throws {
+        let req = try XCTUnwrap(try fixture()["required"] as? [String: [String]])
+        for (k, want) in req { XCTAssertEqual(EventTypes.requiredFields(EventTypes.profile(k)), want, k) }
+    }
+
+    func testMissingDetails() throws {
+        for c in try group("missingDetails") {
+            let got = EventTypes.missingDetails(EventTypes.profile(c["type"] as? String), details(c["raw"]))
+            XCTAssertEqual(got, c["expect"] as? [String: Bool], c["case"] as? String ?? "?")
+        }
+    }
+
+    func testSearchTerms() throws {
+        for c in try group("searchTerms") {
+            let key = c["catKey"] as? String ?? ""
+            let terms = EventTypes.detailSearchTerms(EventTypes.profile(key), details(c["details"]))
+            let doc = SearchMatch.normalize((["Untitled", key] + (SearchMatch.categoryAliases[key] ?? []) + terms).joined(separator: " "))
+            XCTAssertEqual(SearchMatch.matches(doc: doc, query: c["query"] as? String ?? ""), c["expect"] as? Bool, c["case"] as? String ?? "?")
+        }
+    }
+
+    func testRecipeIngredientsPerType() throws {
+        let r = try XCTUnwrap(try fixture()["recipe"] as? [String: Any])
+        let blank = EventRecipe.Draft()
+        for (k, v) in r where !k.hasPrefix("_") {
+            let p: EventTypeProfile? = k == "legacy_unknown" ? nil : EventTypes.profile(k)
+            let ids = EventRecipe.checks(blank, benchmarks: nil, goal: nil, now: Date(timeIntervalSince1970: 0), profile: p).map(\.id)
+            XCTAssertEqual(ids, v as? [String], k)
+        }
+        for c in try group("recipeFacts") {
+            var d = EventRecipe.Draft()
+            d.details = details(c["details"])
+            let f = try XCTUnwrap(EventRecipe.checks(d, benchmarks: nil, goal: nil, now: Date(timeIntervalSince1970: 0),
+                                                     profile: EventTypes.profile(c["type"] as? String)).first { $0.id == "facts" })
+            let want = try XCTUnwrap(c["expect"] as? [String: String])
+            XCTAssertEqual(f.status.rawValue, want["status"], c["case"] as? String ?? "?")
+            XCTAssertEqual(f.fix.field, want["field"], c["case"] as? String ?? "?")
+            XCTAssertNotNil(CreateFieldGuide.step(of: f.fix.field))
+        }
+    }
+
+    func testCategoryRowAndSheet() throws {
+        let cr = try XCTUnwrap(try fixture()["categoryRow"] as? [String: Any])
+        let items = try XCTUnwrap(cr["items"] as? [[String: Any]]).map {
+            HomeDiscovery.Item(key: $0["key"] as? String ?? "", startsAt: nil, priceVnd: nil,
+                               catKeys: $0["catKeys"] as? [String] ?? [], details: details($0["details"]))
+        }
+        let counts = HomeDiscovery.categoryCounts(items, filters(cr["filters"]), keys: EventTypes.keys, now: Date(timeIntervalSince1970: 0))
+        XCTAssertEqual(counts, cr["counts"] as? [String: Int])
+        XCTAssertEqual(HomeDiscovery.categoryRowKeys(counts, keys: EventTypes.keys), cr["row"] as? [String])
+        XCTAssertEqual(HomeDiscovery.categoryRowKeys(counts, keys: EventTypes.keys, selected: ["popup"]), (cr["row"] as? [String] ?? []) + ["popup"])
+        XCTAssertEqual(HomeDiscovery.categorySheetKeys(EventTypes.categoryDefs(), lang: "vi"), cr["sheetVi"] as? [String])
+        XCTAssertEqual(HomeDiscovery.categorySheetKeys(EventTypes.categoryDefs(), lang: "en"), cr["sheetEn"] as? [String])
+    }
+
+    func testEveryDetailFieldHasAnAnchor() {
+        for id in EventTypes.detailFieldIDs { XCTAssertNotNil(CreateFieldGuide.step(of: id), id) }
+    }
 }

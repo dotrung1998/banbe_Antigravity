@@ -15,7 +15,7 @@ final class CreateProgressTests: XCTestCase {
         for c in try cases() {
             let name = c["case"] as? String ?? "?"
             let missing = Dictionary(uniqueKeysWithValues: (c["missing"] as? [String] ?? []).map { ($0, true) })
-            let p = CreateProgress.compute(missing: missing, required: c["required"] as? [String] ?? CreateProgress.fieldOrder)
+            let p = CreateProgress.compute(missing: missing, required: c["required"] as? [String] ?? CreateProgress.defaultRequired)
             let e = try XCTUnwrap(c["expect"] as? [String: Any])
             XCTAssertEqual(p.steps.map(\.done), e["done"] as? [Bool], name)
             XCTAssertEqual(p.percent, e["percent"] as? Int, name)

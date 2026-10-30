@@ -2199,9 +2199,9 @@ export function BanBeProvider({ children }) {
   useEffect(() => {
     let active = true;
     (async () => {
-      const { data } = await supabase.from('events')
-        .select('status, starts_at, cancelled_at, cancel_reason')
-        .eq('slug', s.eventKey).maybeSingle();
+      const { data } = await withR2Columns(() => supabase.from('events')
+        .select(['status, starts_at, cancelled_at, cancel_reason, capacity', ...detailsColumnList()].join(', '))
+        .eq('slug', s.eventKey).maybeSingle());
       if (active) set({ liveEvent: data || null });
     })();
     return () => { active = false; };
@@ -2213,9 +2213,10 @@ export function BanBeProvider({ children }) {
   // "Sắp diễn ra"/"Đã kết thúc" filter chips. Public information, same as
   // the single-event fetch — runs for every visitor, no `s.user?.id` gate.
   const loadHomeLiveEvents = useCallback(async () => {
-    const { data } = await supabase.from('events')
-      .select('slug, status, starts_at, cancelled_at, cancel_reason')
-      .in('slug', EVENTS.map(e => e.key));
+    // + capacity/details (migration 203) so a bundled catalogue event shows the type facts its real row carries.
+    const { data } = await withR2Columns(() => supabase.from('events')
+      .select(['slug, status, starts_at, cancelled_at, cancel_reason, capacity', ...detailsColumnList()].join(', '))
+      .in('slug', EVENTS.map(e => e.key)));
     const map = {};
     for (const row of data || []) map[row.slug] = row;
     set({ homeLiveEvents: map });

@@ -1,93 +1,1018 @@
 {
-  "_comment": "Event type profiles: ONE file read by web (src/lib/eventTypes.js) and iOS (bundled by apps/ios/project.yml, read by Lib/EventTypes.swift). Keys are events.cat_key values and the server's fixed ids (normalize_event_category, migration 087; preference interests, migration 162): never rename one. 'detailFields' must match validate_event_details (migration 202), checked by supabase/_localtest/28_event_details_assert.sql. A type without 'wizard' / 'detail' / 'card' / 'home' behaves exactly like the generic event.",
-  "version": 1,
+  "_comment": "Event type profiles: ONE file read by web (src/lib/eventTypes.js) and iOS (bundled by apps/ios/project.yml, read by Lib/EventTypes.swift). Keys are events.cat_key values and the server's fixed ids (normalize_event_category, migration 087; preference interests, migration 162): never rename one. 'common' fields (alcohol + minimum age) are merged into EVERY type and always required. Every type's 'detailFields' (+ common) must match validate_event_details (migration 204), checked by supabase/_localtest/28_event_details_assert.sql. 'recipe' lists the ingredients that apply to the type (its denominator): a check stays when at least half of that type's current events use it (counts in note 66, 2026-10-30); a type with no events yet (popup) keeps only the checks that need no host habit data.",
+  "version": 2,
   "types": [
     {
       "key": "supper",
-      "label": { "vi": "Supper club", "en": "Supper club" },
+      "label": {
+        "vi": "Supper club",
+        "en": "Supper club"
+      },
       "emoji": "🍽️",
-      "icon": { "ios": "fork.knife" },
-      "aliases": ["supper club", "supper", "tiec toi", "tiec", "dinner", "an toi", "bua toi"],
-      "keywordSeeds": { "vi": ["an toi", "tiec toi", "chef's table"], "en": ["dinner", "tasting menu", "chef's table"] },
+      "icon": {
+        "ios": "fork.knife"
+      },
+      "aliases": [
+        "supper club",
+        "supper",
+        "tiec toi",
+        "tiec",
+        "dinner",
+        "an toi",
+        "bua toi"
+      ],
+      "keywordSeeds": {
+        "vi": [
+          "an toi",
+          "tiec toi",
+          "chef's table"
+        ],
+        "en": [
+          "dinner",
+          "tasting menu",
+          "chef's table"
+        ]
+      },
       "wizard": {
-        "required": ["hostName", "name", "description", "categories", "included", "location", "date", "price", "seats", "photos"],
-        "includedTitle": { "vi": "Thực đơn", "en": "On the menu" },
-        "includedPlaceholder": { "vi": "VD: 5 món theo mùa", "en": "e.g. 5 seasonal courses" },
-        "details": ["dietary", "byo", "dress_code"]
+        "required": [
+          "hostName",
+          "name",
+          "description",
+          "categories",
+          "included",
+          "location",
+          "date",
+          "price",
+          "seats",
+          "photos"
+        ],
+        "includedTitle": {
+          "vi": "Thực đơn",
+          "en": "On the menu"
+        },
+        "includedPlaceholder": {
+          "vi": "VD: 5 món theo mùa",
+          "en": "e.g. 5 seasonal courses"
+        },
+        "details": [
+          "dietary",
+          "dress_code"
+        ]
       },
       "detailFields": {
         "dietary": {
           "kind": "multi",
-          "label": { "vi": "Chế độ ăn", "en": "Dietary" },
+          "label": {
+            "vi": "Chế độ ăn",
+            "en": "Dietary"
+          },
           "options": [
-            { "id": "vegetarian", "vi": "Có món chay", "en": "Vegetarian-friendly" },
-            { "id": "vegan", "vi": "Thuần chay", "en": "Vegan" },
-            { "id": "pescatarian", "vi": "Hải sản, không thịt", "en": "Pescatarian" },
-            { "id": "halal", "vi": "Halal", "en": "Halal" },
-            { "id": "gluten_free", "vi": "Không gluten", "en": "Gluten-free" },
-            { "id": "can_accommodate", "vi": "Báo trước để điều chỉnh", "en": "Can adjust on request" }
-          ]
-        },
-        "byo": {
-          "kind": "enum",
-          "label": { "vi": "Mang đồ uống", "en": "Bring your own" },
-          "options": [
-            { "id": "no", "vi": "Không mang theo", "en": "No BYO" },
-            { "id": "wine", "vi": "Được mang rượu vang", "en": "BYO wine" },
-            { "id": "any", "vi": "Được mang đồ uống", "en": "BYO drinks" }
+            {
+              "id": "vegetarian",
+              "vi": "Có món chay",
+              "en": "Vegetarian-friendly"
+            },
+            {
+              "id": "vegan",
+              "vi": "Thuần chay",
+              "en": "Vegan"
+            },
+            {
+              "id": "pescatarian",
+              "vi": "Hải sản, không thịt",
+              "en": "Pescatarian"
+            },
+            {
+              "id": "halal",
+              "vi": "Halal",
+              "en": "Halal"
+            },
+            {
+              "id": "gluten_free",
+              "vi": "Không gluten",
+              "en": "Gluten-free"
+            },
+            {
+              "id": "can_accommodate",
+              "vi": "Báo trước để điều chỉnh",
+              "en": "Can adjust on request"
+            }
           ]
         },
         "dress_code": {
           "kind": "text",
           "max": 80,
-          "label": { "vi": "Trang phục", "en": "Dress code" },
-          "placeholder": { "vi": "VD: Lịch sự, thoải mái", "en": "e.g. Smart casual" }
+          "label": {
+            "vi": "Trang phục",
+            "en": "Dress code"
+          },
+          "placeholder": {
+            "vi": "VD: Lịch sự, thoải mái",
+            "en": "e.g. Smart casual"
+          }
         }
       },
       "detail": {
-        "includedTitle": { "vi": "Thực đơn", "en": "On the menu" },
-        "facts": ["dietary", "byo", "dress_code"]
+        "includedTitle": {
+          "vi": "Thực đơn",
+          "en": "On the menu"
+        },
+        "facts": [
+          "dietary",
+          "alcohol",
+          "min_age",
+          "dress_code"
+        ]
       },
-      "card": { "line": "table_for_n_price" },
+      "card": {
+        "capacity": "table",
+        "fields": [
+          "dietary",
+          "alcohol",
+          "min_age"
+        ]
+      },
       "home": {
         "filters": [
-          { "id": "dietary:vegetarian", "field": "dietary", "value": "vegetarian", "vi": "Có món chay", "en": "Vegetarian-friendly" },
-          { "id": "dietary:vegan", "field": "dietary", "value": "vegan", "vi": "Thuần chay", "en": "Vegan" },
-          { "id": "byo:any", "field": "byo", "value": ["wine", "any"], "vi": "Được mang đồ uống", "en": "BYO" }
+          {
+            "id": "dietary:vegetarian",
+            "field": "dietary",
+            "value": "vegetarian",
+            "vi": "Có món chay",
+            "en": "Vegetarian-friendly"
+          },
+          {
+            "id": "dietary:vegan",
+            "field": "dietary",
+            "value": "vegan",
+            "vi": "Thuần chay",
+            "en": "Vegan"
+          },
+          {
+            "id": "alcohol:byo",
+            "field": "alcohol",
+            "value": "byo",
+            "vi": "Được mang đồ uống",
+            "en": "BYO"
+          },
+          {
+            "id": "alcohol:none",
+            "field": "alcohol",
+            "value": "none",
+            "vi": "Không cồn",
+            "en": "No alcohol"
+          }
+        ]
+      },
+      "recipe": {
+        "ingredients": [
+          "title",
+          "photos",
+          "description",
+          "included",
+          "keywords",
+          "price",
+          "seats",
+          "timing",
+          "lead",
+          "greeting",
+          "facts"
         ]
       }
     },
     {
       "key": "fashion",
-      "label": { "vi": "Thời trang", "en": "Fashion" },
+      "label": {
+        "vi": "Thời trang",
+        "en": "Fashion"
+      },
       "emoji": "👗",
-      "icon": { "ios": "tshirt" },
-      "aliases": ["thoi trang", "fashion", "quan ao", "lookbook"],
-      "keywordSeeds": { "vi": ["thoi trang", "local brand"], "en": ["fashion", "local brand"] }
+      "icon": {
+        "ios": "tshirt"
+      },
+      "aliases": [
+        "thoi trang",
+        "fashion",
+        "quan ao",
+        "lookbook"
+      ],
+      "keywordSeeds": {
+        "vi": [
+          "thoi trang",
+          "local brand"
+        ],
+        "en": [
+          "fashion",
+          "local brand"
+        ]
+      },
+      "wizard": {
+        "required": [
+          "hostName",
+          "name",
+          "description",
+          "categories",
+          "location",
+          "date",
+          "price",
+          "seats",
+          "photos",
+          "brands"
+        ],
+        "includedTitle": {
+          "vi": "Bao gồm",
+          "en": "Included"
+        },
+        "includedPlaceholder": {
+          "vi": "VD: stylist riêng",
+          "en": "e.g. a stylist"
+        },
+        "details": [
+          "brands",
+          "experience",
+          "price_range"
+        ]
+      },
+      "detailFields": {
+        "brands": {
+          "kind": "list",
+          "max": 8,
+          "itemMax": 60,
+          "label": {
+            "vi": "Thương hiệu",
+            "en": "Brands"
+          },
+          "placeholder": {
+            "vi": "Tên thương hiệu",
+            "en": "Brand name"
+          },
+          "countLabel": {
+            "vi": "{n} thương hiệu",
+            "en": "{n} brands"
+          }
+        },
+        "experience": {
+          "kind": "enum",
+          "label": {
+            "vi": "Hình thức",
+            "en": "Format"
+          },
+          "options": [
+            {
+              "id": "show",
+              "vi": "Trình diễn",
+              "en": "Show"
+            },
+            {
+              "id": "fitting",
+              "vi": "Thử đồ",
+              "en": "Fitting"
+            },
+            {
+              "id": "sale",
+              "vi": "Mở bán",
+              "en": "Sale"
+            },
+            {
+              "id": "talk",
+              "vi": "Trò chuyện",
+              "en": "Talk"
+            }
+          ]
+        },
+        "price_range": {
+          "kind": "enum",
+          "label": {
+            "vi": "Tầm giá sản phẩm",
+            "en": "Price range"
+          },
+          "options": [
+            {
+              "id": "budget",
+              "vi": "Bình dân",
+              "en": "Budget"
+            },
+            {
+              "id": "mid",
+              "vi": "Tầm trung",
+              "en": "Mid-range"
+            },
+            {
+              "id": "premium",
+              "vi": "Cao cấp",
+              "en": "Premium"
+            }
+          ]
+        }
+      },
+      "detail": {
+        "facts": [
+          "brands",
+          "experience",
+          "price_range",
+          "alcohol",
+          "min_age"
+        ]
+      },
+      "card": {
+        "fields": [
+          "experience",
+          "price_range",
+          "min_age"
+        ]
+      },
+      "home": {
+        "filters": [
+          {
+            "id": "experience:show",
+            "field": "experience",
+            "value": "show",
+            "vi": "Trình diễn",
+            "en": "Show"
+          },
+          {
+            "id": "experience:fitting",
+            "field": "experience",
+            "value": "fitting",
+            "vi": "Thử đồ",
+            "en": "Fitting"
+          },
+          {
+            "id": "price_range:budget",
+            "field": "price_range",
+            "value": "budget",
+            "vi": "Bình dân",
+            "en": "Budget"
+          },
+          {
+            "id": "price_range:premium",
+            "field": "price_range",
+            "value": "premium",
+            "vi": "Cao cấp",
+            "en": "Premium"
+          }
+        ]
+      },
+      "recipe": {
+        "ingredients": [
+          "title",
+          "photos",
+          "description",
+          "included",
+          "keywords",
+          "price",
+          "seats",
+          "timing",
+          "lead",
+          "greeting",
+          "facts"
+        ]
+      }
     },
     {
       "key": "gallery",
-      "label": { "vi": "Phòng tranh", "en": "Gallery" },
+      "label": {
+        "vi": "Phòng tranh",
+        "en": "Gallery"
+      },
       "emoji": "🖼️",
-      "icon": { "ios": "photo.artframe" },
-      "aliases": ["phong tranh", "gallery", "trien lam", "art", "nghe thuat", "exhibition"],
-      "keywordSeeds": { "vi": ["trien lam", "nghe thuat"], "en": ["exhibition", "art"] }
+      "icon": {
+        "ios": "photo.artframe"
+      },
+      "aliases": [
+        "phong tranh",
+        "gallery",
+        "trien lam",
+        "art",
+        "nghe thuat",
+        "exhibition"
+      ],
+      "keywordSeeds": {
+        "vi": [
+          "trien lam",
+          "nghe thuat"
+        ],
+        "en": [
+          "exhibition",
+          "art"
+        ]
+      },
+      "wizard": {
+        "required": [
+          "hostName",
+          "name",
+          "description",
+          "categories",
+          "location",
+          "date",
+          "price",
+          "seats",
+          "photos",
+          "artists"
+        ],
+        "includedTitle": {
+          "vi": "Vào cửa gồm",
+          "en": "Entry includes"
+        },
+        "includedPlaceholder": {
+          "vi": "VD: catalogue",
+          "en": "e.g. catalogue"
+        },
+        "details": [
+          "artists",
+          "medium"
+        ]
+      },
+      "detailFields": {
+        "artists": {
+          "kind": "list",
+          "max": 8,
+          "itemMax": 60,
+          "label": {
+            "vi": "Nghệ sĩ",
+            "en": "Artists"
+          },
+          "placeholder": {
+            "vi": "Tên nghệ sĩ",
+            "en": "Artist name"
+          },
+          "countLabel": {
+            "vi": "{n} nghệ sĩ",
+            "en": "{n} artists"
+          }
+        },
+        "medium": {
+          "kind": "multi",
+          "label": {
+            "vi": "Chất liệu",
+            "en": "Medium"
+          },
+          "options": [
+            {
+              "id": "photography",
+              "vi": "Nhiếp ảnh",
+              "en": "Photography"
+            },
+            {
+              "id": "painting",
+              "vi": "Hội hoạ",
+              "en": "Painting"
+            },
+            {
+              "id": "lacquer",
+              "vi": "Sơn mài",
+              "en": "Lacquer"
+            },
+            {
+              "id": "print",
+              "vi": "Đồ hoạ & giấy",
+              "en": "Print & paper"
+            },
+            {
+              "id": "sculpture",
+              "vi": "Điêu khắc",
+              "en": "Sculpture"
+            },
+            {
+              "id": "installation",
+              "vi": "Sắp đặt",
+              "en": "Installation"
+            }
+          ]
+        }
+      },
+      "detail": {
+        "includedTitle": {
+          "vi": "Vào cửa gồm",
+          "en": "Entry includes"
+        },
+        "facts": [
+          "artists",
+          "medium",
+          "alcohol",
+          "min_age"
+        ]
+      },
+      "card": {
+        "fields": [
+          "medium",
+          "artists",
+          "min_age"
+        ]
+      },
+      "home": {
+        "filters": [
+          {
+            "id": "medium:photography",
+            "field": "medium",
+            "value": "photography",
+            "vi": "Nhiếp ảnh",
+            "en": "Photography"
+          },
+          {
+            "id": "medium:painting",
+            "field": "medium",
+            "value": "painting",
+            "vi": "Hội hoạ",
+            "en": "Painting"
+          },
+          {
+            "id": "medium:lacquer",
+            "field": "medium",
+            "value": "lacquer",
+            "vi": "Sơn mài",
+            "en": "Lacquer"
+          },
+          {
+            "id": "medium:print",
+            "field": "medium",
+            "value": "print",
+            "vi": "Đồ hoạ & giấy",
+            "en": "Print & paper"
+          }
+        ]
+      },
+      "recipe": {
+        "ingredients": [
+          "title",
+          "photos",
+          "description",
+          "included",
+          "keywords",
+          "price",
+          "seats",
+          "timing",
+          "lead",
+          "greeting",
+          "facts"
+        ]
+      }
     },
     {
       "key": "music",
-      "label": { "vi": "Nhạc", "en": "Music" },
+      "label": {
+        "vi": "Nhạc",
+        "en": "Music"
+      },
       "emoji": "🎵",
-      "icon": { "ios": "music.note" },
-      "aliases": ["nhac", "music", "am nhac", "concert", "live music", "nhac song"],
-      "keywordSeeds": { "vi": ["nhac song", "acoustic"], "en": ["live music", "acoustic"] }
+      "icon": {
+        "ios": "music.note"
+      },
+      "aliases": [
+        "nhac",
+        "music",
+        "am nhac",
+        "concert",
+        "live music",
+        "nhac song"
+      ],
+      "keywordSeeds": {
+        "vi": [
+          "nhac song",
+          "acoustic"
+        ],
+        "en": [
+          "live music",
+          "acoustic"
+        ]
+      },
+      "wizard": {
+        "required": [
+          "hostName",
+          "name",
+          "description",
+          "categories",
+          "location",
+          "date",
+          "price",
+          "seats",
+          "photos",
+          "lineup"
+        ],
+        "includedTitle": {
+          "vi": "Vé gồm",
+          "en": "Ticket includes"
+        },
+        "includedPlaceholder": {
+          "vi": "VD: 1 đồ uống",
+          "en": "e.g. 1 drink"
+        },
+        "details": [
+          "lineup",
+          "genre",
+          "format"
+        ]
+      },
+      "detailFields": {
+        "lineup": {
+          "kind": "list",
+          "max": 6,
+          "itemMax": 60,
+          "label": {
+            "vi": "Đội hình",
+            "en": "Lineup"
+          },
+          "placeholder": {
+            "vi": "Tên nghệ sĩ, giờ diễn (tuỳ chọn)",
+            "en": "Artist, set time (optional)"
+          }
+        },
+        "genre": {
+          "kind": "multi",
+          "label": {
+            "vi": "Thể loại",
+            "en": "Genre"
+          },
+          "options": [
+            {
+              "id": "jazz",
+              "vi": "Jazz",
+              "en": "Jazz"
+            },
+            {
+              "id": "acoustic",
+              "vi": "Acoustic",
+              "en": "Acoustic"
+            },
+            {
+              "id": "electronic",
+              "vi": "Điện tử",
+              "en": "Electronic"
+            },
+            {
+              "id": "indie",
+              "vi": "Indie",
+              "en": "Indie"
+            },
+            {
+              "id": "classical",
+              "vi": "Cổ điển",
+              "en": "Classical"
+            },
+            {
+              "id": "folk",
+              "vi": "Dân gian",
+              "en": "Folk"
+            },
+            {
+              "id": "experimental",
+              "vi": "Thể nghiệm",
+              "en": "Experimental"
+            }
+          ]
+        },
+        "format": {
+          "kind": "enum",
+          "label": {
+            "vi": "Chỗ",
+            "en": "Format"
+          },
+          "options": [
+            {
+              "id": "seated",
+              "vi": "Ngồi nghe",
+              "en": "Seated"
+            },
+            {
+              "id": "standing",
+              "vi": "Đứng",
+              "en": "Standing"
+            },
+            {
+              "id": "mixed",
+              "vi": "Ngồi & đứng",
+              "en": "Mixed"
+            }
+          ]
+        }
+      },
+      "detail": {
+        "includedTitle": {
+          "vi": "Vé gồm",
+          "en": "Ticket includes"
+        },
+        "facts": [
+          "lineup",
+          "genre",
+          "format",
+          "alcohol",
+          "min_age"
+        ]
+      },
+      "card": {
+        "fields": [
+          "format",
+          "genre",
+          "min_age"
+        ]
+      },
+      "home": {
+        "filters": [
+          {
+            "id": "genre:jazz",
+            "field": "genre",
+            "value": "jazz",
+            "vi": "Jazz",
+            "en": "Jazz"
+          },
+          {
+            "id": "genre:acoustic",
+            "field": "genre",
+            "value": "acoustic",
+            "vi": "Acoustic",
+            "en": "Acoustic"
+          },
+          {
+            "id": "genre:electronic",
+            "field": "genre",
+            "value": "electronic",
+            "vi": "Điện tử",
+            "en": "Electronic"
+          },
+          {
+            "id": "format:seated",
+            "field": "format",
+            "value": "seated",
+            "vi": "Ngồi nghe",
+            "en": "Seated"
+          },
+          {
+            "id": "format:standing",
+            "field": "format",
+            "value": "standing",
+            "vi": "Đứng",
+            "en": "Standing"
+          }
+        ]
+      },
+      "recipe": {
+        "ingredients": [
+          "title",
+          "photos",
+          "description",
+          "included",
+          "keywords",
+          "price",
+          "seats",
+          "timing",
+          "lead",
+          "greeting",
+          "facts"
+        ]
+      }
     },
     {
       "key": "popup",
-      "label": { "vi": "Pop-up", "en": "Pop-up" },
+      "label": {
+        "vi": "Pop-up",
+        "en": "Pop-up"
+      },
       "emoji": "🛍️",
-      "icon": { "ios": "storefront" },
-      "aliases": ["pop-up", "popup", "pop up", "cho phien", "market", "hoi cho"],
-      "keywordSeeds": { "vi": ["pop-up", "cho phien"], "en": ["pop-up", "market"] }
+      "icon": {
+        "ios": "storefront"
+      },
+      "aliases": [
+        "pop-up",
+        "popup",
+        "pop up",
+        "cho phien",
+        "market",
+        "hoi cho"
+      ],
+      "keywordSeeds": {
+        "vi": [
+          "pop-up",
+          "cho phien"
+        ],
+        "en": [
+          "pop-up",
+          "market"
+        ]
+      },
+      "wizard": {
+        "required": [
+          "hostName",
+          "name",
+          "description",
+          "categories",
+          "location",
+          "date",
+          "price",
+          "seats",
+          "photos",
+          "brands"
+        ],
+        "includedTitle": {
+          "vi": "Bao gồm",
+          "en": "Included"
+        },
+        "includedPlaceholder": {
+          "vi": "VD: túi vải",
+          "en": "e.g. tote bag"
+        },
+        "details": [
+          "brands",
+          "entry_mode",
+          "price_range"
+        ]
+      },
+      "detailFields": {
+        "brands": {
+          "kind": "list",
+          "max": 8,
+          "itemMax": 60,
+          "label": {
+            "vi": "Thương hiệu",
+            "en": "Brands"
+          },
+          "placeholder": {
+            "vi": "Tên thương hiệu",
+            "en": "Brand name"
+          },
+          "countLabel": {
+            "vi": "{n} thương hiệu",
+            "en": "{n} brands"
+          }
+        },
+        "entry_mode": {
+          "kind": "enum",
+          "label": {
+            "vi": "Vào cửa",
+            "en": "Entry"
+          },
+          "options": [
+            {
+              "id": "drop_in",
+              "vi": "Ghé lúc nào cũng được",
+              "en": "Drop in anytime",
+              "short": {
+                "vi": "Ghé tự do",
+                "en": "Drop-in"
+              }
+            },
+            {
+              "id": "timed",
+              "vi": "Theo khung giờ",
+              "en": "Timed slots",
+              "short": {
+                "vi": "Theo khung giờ",
+                "en": "Timed"
+              }
+            }
+          ]
+        },
+        "price_range": {
+          "kind": "enum",
+          "label": {
+            "vi": "Tầm giá sản phẩm",
+            "en": "Price range"
+          },
+          "options": [
+            {
+              "id": "budget",
+              "vi": "Bình dân",
+              "en": "Budget"
+            },
+            {
+              "id": "mid",
+              "vi": "Tầm trung",
+              "en": "Mid-range"
+            },
+            {
+              "id": "premium",
+              "vi": "Cao cấp",
+              "en": "Premium"
+            }
+          ]
+        }
+      },
+      "detail": {
+        "facts": [
+          "brands",
+          "entry_mode",
+          "price_range",
+          "alcohol",
+          "min_age"
+        ]
+      },
+      "card": {
+        "fields": [
+          "entry_mode",
+          "price_range",
+          "min_age"
+        ]
+      },
+      "home": {
+        "filters": [
+          {
+            "id": "entry_mode:drop_in",
+            "field": "entry_mode",
+            "value": "drop_in",
+            "vi": "Ghé tự do",
+            "en": "Drop-in"
+          },
+          {
+            "id": "price_range:budget",
+            "field": "price_range",
+            "value": "budget",
+            "vi": "Bình dân",
+            "en": "Budget"
+          }
+        ]
+      },
+      "recipe": {
+        "ingredients": [
+          "title",
+          "photos",
+          "description",
+          "keywords",
+          "price",
+          "timing",
+          "lead",
+          "facts"
+        ]
+      }
     }
-  ]
+  ],
+  "common": {
+    "required": [
+      "alcohol",
+      "min_age"
+    ],
+    "detailFields": {
+      "alcohol": {
+        "kind": "enum",
+        "label": {
+          "vi": "Đồ uống có cồn",
+          "en": "Alcohol"
+        },
+        "options": [
+          {
+            "id": "none",
+            "vi": "Không có đồ uống có cồn",
+            "en": "No alcohol",
+            "short": {
+              "vi": "Không cồn",
+              "en": "No alcohol"
+            }
+          },
+          {
+            "id": "included",
+            "vi": "Đã gồm đồ uống có cồn",
+            "en": "Alcohol included",
+            "short": {
+              "vi": "Có cồn",
+              "en": "Alcohol incl."
+            }
+          },
+          {
+            "id": "paid",
+            "vi": "Có bán đồ uống có cồn",
+            "en": "Alcohol for sale",
+            "short": {
+              "vi": "Bán đồ có cồn",
+              "en": "Bar"
+            }
+          },
+          {
+            "id": "byo",
+            "vi": "Được mang đồ uống",
+            "en": "Bring your own",
+            "short": {
+              "vi": "BYO",
+              "en": "BYO"
+            }
+          }
+        ]
+      },
+      "min_age": {
+        "kind": "enum",
+        "label": {
+          "vi": "Độ tuổi tối thiểu",
+          "en": "Minimum age"
+        },
+        "hint": {
+          "vi": "Tối thiểu 16 tuổi trên banbe.",
+          "en": "banbe's minimum is 16."
+        },
+        "options": [
+          {
+            "id": "16",
+            "vi": "16+",
+            "en": "16+"
+          },
+          {
+            "id": "18",
+            "vi": "18+",
+            "en": "18+"
+          },
+          {
+            "id": "21",
+            "vi": "21+",
+            "en": "21+"
+          }
+        ]
+      }
+    }
+  }
 }

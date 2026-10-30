@@ -52,14 +52,15 @@ run_suite 24_event_tz_currency_assert.sql 'US RESULT: ALL PASS' "$VEC"
 run_suite 25_measurement_age_assert.sql 'MEASURE RESULT: ALL PASS'
 run_suite 26_quickwins_coreloops_assert.sql 'LOOPS RESULT: ALL PASS'
 run_suite 27_digest_assert.sql 'DIGEST RESULT: ALL PASS'
-# 28: events.details (migration 203), checked against the shared profile file and the client's cleaned output.
+# 28: events.details (migrations 203 + 204), checked against the shared profile file and the client's cleaned output.
 DVEC=$(node --input-type=module -e '
   import { readFileSync } from "node:fs";
   const p = JSON.parse(readFileSync(process.argv[1], "utf8"));
   const f = JSON.parse(readFileSync(process.argv[2], "utf8"));
   const q = (x) => `'"'"'${String(x).replace(/'"'"'/g, "'"'"''"'"'")}'"'"'`;
   const out = ["BEGIN;", "CREATE TEMP TABLE vec_fields (type_key text, fields text[]);", "CREATE TEMP TABLE vec_clean (label text, details jsonb);"];
-  for (const t of p.types) out.push(`INSERT INTO vec_fields VALUES (${q(t.key)}, ARRAY[${Object.keys(t.detailFields || {}).map(q).join(",")}]::text[]);`);
+  const common = Object.keys((p.common || {}).detailFields || {});
+  for (const t of p.types) out.push(`INSERT INTO vec_fields VALUES (${q(t.key)}, ARRAY[${[...Object.keys(t.detailFields || {}), ...common].map(q).join(",")}]::text[]);`);
   for (const c of f.cleanDetails) out.push(`INSERT INTO vec_clean VALUES (${q(c.case)}, ${q(JSON.stringify(c.expect))}::jsonb);`);
   console.log(out.join("\n"));
 ' "$ROOT/src/data/eventTypeProfiles.json" "$ROOT/tests/fixtures/event-types.json")
