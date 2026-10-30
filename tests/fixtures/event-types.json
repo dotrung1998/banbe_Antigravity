@@ -1,0 +1,487 @@
+{
+  "_comment": "Shared parity vectors for event type profiles (src/data/eventTypeProfiles.json). Read by tests/unit/eventTypes.test.mjs (web) and apps/ios/BanbeAppTests/EventTypesTests.swift (iOS).",
+  "keys": [
+    "supper",
+    "fashion",
+    "gallery",
+    "music",
+    "popup"
+  ],
+  "shaped": {
+    "supper": true,
+    "fashion": false,
+    "gallery": false,
+    "music": false,
+    "popup": false,
+    "legacy_unknown": false
+  },
+  "cleanDetails": [
+    {
+      "case": "untouched form stores nothing",
+      "type": "supper",
+      "raw": {},
+      "expect": {}
+    },
+    {
+      "case": "unknown keys and option ids dropped, order follows the profile",
+      "type": "supper",
+      "raw": {
+        "dietary": [
+          "vegan",
+          "meat_only",
+          "vegetarian"
+        ],
+        "byo": "beer",
+        "spicy": true,
+        "dress_code": "  Smart casual  "
+      },
+      "expect": {
+        "v": 1,
+        "dietary": [
+          "vegetarian",
+          "vegan"
+        ],
+        "dress_code": "Smart casual"
+      }
+    },
+    {
+      "case": "text capped at max",
+      "type": "supper",
+      "raw": {
+        "dress_code": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "expect": {
+        "v": 1,
+        "dress_code": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
+      "case": "a type with no detail fields stores nothing",
+      "type": "music",
+      "raw": {
+        "byo": "any"
+      },
+      "expect": {}
+    },
+    {
+      "case": "blank text and empty list store nothing",
+      "type": "supper",
+      "raw": {
+        "dress_code": "   ",
+        "dietary": []
+      },
+      "expect": {}
+    }
+  ],
+  "droppedDetailTypes": [
+    {
+      "case": "values for another type are reported",
+      "primary": "music",
+      "draft": {
+        "supper": {
+          "byo": "wine"
+        }
+      },
+      "expect": [
+        "supper"
+      ]
+    },
+    {
+      "case": "the primary type is never reported",
+      "primary": "supper",
+      "draft": {
+        "supper": {
+          "byo": "wine"
+        }
+      },
+      "expect": []
+    },
+    {
+      "case": "invalid-only values are not worth a warning",
+      "primary": "music",
+      "draft": {
+        "supper": {
+          "byo": "beer"
+        }
+      },
+      "expect": []
+    }
+  ],
+  "detailFacts": [
+    {
+      "case": "profile order, localized",
+      "type": "supper",
+      "lang": "en",
+      "details": {
+        "v": 1,
+        "dress_code": "Smart casual",
+        "byo": "wine",
+        "dietary": [
+          "vegetarian",
+          "halal"
+        ]
+      },
+      "expect": [
+        {
+          "id": "dietary",
+          "label": "Dietary",
+          "value": "Vegetarian-friendly, Halal"
+        },
+        {
+          "id": "byo",
+          "label": "Bring your own",
+          "value": "BYO wine"
+        },
+        {
+          "id": "dress_code",
+          "label": "Dress code",
+          "value": "Smart casual"
+        }
+      ]
+    },
+    {
+      "case": "Vietnamese",
+      "type": "supper",
+      "lang": "vi",
+      "details": {
+        "v": 1,
+        "byo": "no"
+      },
+      "expect": [
+        {
+          "id": "byo",
+          "label": "Mang đồ uống",
+          "value": "Không mang theo"
+        }
+      ]
+    },
+    {
+      "case": "legacy event: nothing",
+      "type": "supper",
+      "lang": "en",
+      "details": {},
+      "expect": []
+    }
+  ],
+  "cardLine": [
+    {
+      "case": "table size + first dietary + BYO",
+      "type": "supper",
+      "lang": "vi",
+      "capacity": 8,
+      "details": {
+        "v": 1,
+        "dietary": [
+          "vegan"
+        ],
+        "byo": "any"
+      },
+      "expect": "Bàn 8 người · Thuần chay · BYO"
+    },
+    {
+      "case": "English, no details",
+      "type": "supper",
+      "lang": "en",
+      "capacity": 10,
+      "details": {},
+      "expect": "Table for 10"
+    },
+    {
+      "case": "no capacity, no details: no line",
+      "type": "supper",
+      "lang": "en",
+      "capacity": 0,
+      "details": {},
+      "expect": null
+    },
+    {
+      "case": "unshaped type: no line",
+      "type": "music",
+      "lang": "en",
+      "capacity": 50,
+      "details": {},
+      "expect": null
+    }
+  ],
+  "homeFilter": [
+    {
+      "case": "multi contains",
+      "type": "supper",
+      "filter": "dietary:vegetarian",
+      "details": {
+        "dietary": [
+          "vegan",
+          "vegetarian"
+        ]
+      },
+      "expect": true
+    },
+    {
+      "case": "multi missing",
+      "type": "supper",
+      "filter": "dietary:vegan",
+      "details": {
+        "dietary": [
+          "halal"
+        ]
+      },
+      "expect": false
+    },
+    {
+      "case": "enum in set",
+      "type": "supper",
+      "filter": "byo:any",
+      "details": {
+        "byo": "wine"
+      },
+      "expect": true
+    },
+    {
+      "case": "enum out of set",
+      "type": "supper",
+      "filter": "byo:any",
+      "details": {
+        "byo": "no"
+      },
+      "expect": false
+    },
+    {
+      "case": "legacy event never matches",
+      "type": "supper",
+      "filter": "byo:any",
+      "details": {},
+      "expect": false
+    }
+  ],
+  "keywordSuggestions": [
+    {
+      "case": "seeds, then area, then benchmarks; folded and deduped",
+      "type": "supper",
+      "lang": "vi",
+      "area": "Bình Thạnh",
+      "benchmark": [
+        "tiec toi",
+        "rooftop",
+        "wine"
+      ],
+      "typed": [
+        "Ăn tối"
+      ],
+      "dismissed": [],
+      "expect": [
+        "tiec toi",
+        "chef's table",
+        "binh thanh",
+        "rooftop",
+        "wine"
+      ]
+    },
+    {
+      "case": "dismissed ideas never come back; cap 5",
+      "type": "supper",
+      "lang": "en",
+      "area": "",
+      "benchmark": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ],
+      "typed": [],
+      "dismissed": [
+        "dinner"
+      ],
+      "expect": [
+        "tasting menu",
+        "chef's table",
+        "a",
+        "b",
+        "c"
+      ]
+    },
+    {
+      "case": "unknown type: area and benchmarks only",
+      "type": "legacy_unknown",
+      "lang": "en",
+      "area": "District 1",
+      "benchmark": [],
+      "typed": [],
+      "dismissed": [],
+      "expect": [
+        "district 1"
+      ]
+    }
+  ],
+  "search": [
+    {
+      "case": "Vietnamese synonym finds a supper club",
+      "catKey": "supper",
+      "query": "tiệc tối",
+      "expect": true
+    },
+    {
+      "case": "Pop-up has synonyms now",
+      "catKey": "popup",
+      "query": "chợ phiên",
+      "expect": true
+    },
+    {
+      "case": "music synonym",
+      "catKey": "music",
+      "query": "nhac song",
+      "expect": true
+    },
+    {
+      "case": "a synonym of another type does not match",
+      "catKey": "gallery",
+      "query": "concert",
+      "expect": false
+    }
+  ],
+  "discovery": {
+    "_comment": "Home with type chips: items (catKeys + details), filters → shown keys, chip counts, badge, relax hint.",
+    "items": [
+      {
+        "key": "a",
+        "catKeys": [
+          "supper"
+        ],
+        "details": {
+          "v": 1,
+          "dietary": [
+            "vegetarian",
+            "vegan"
+          ],
+          "byo": "wine"
+        }
+      },
+      {
+        "key": "b",
+        "catKeys": [
+          "supper"
+        ],
+        "details": {
+          "v": 1,
+          "dietary": [
+            "vegetarian"
+          ]
+        }
+      },
+      {
+        "key": "c",
+        "catKeys": [
+          "supper"
+        ],
+        "details": {}
+      },
+      {
+        "key": "d",
+        "catKeys": [
+          "music"
+        ],
+        "details": {}
+      }
+    ],
+    "cases": [
+      {
+        "case": "no type chips: the category alone",
+        "filters": {
+          "cats": [
+            "supper"
+          ],
+          "typeFilters": []
+        },
+        "expect": [
+          "a",
+          "b",
+          "c"
+        ],
+        "badge": 1
+      },
+      {
+        "case": "one chip",
+        "filters": {
+          "cats": [
+            "supper"
+          ],
+          "typeFilters": [
+            "dietary:vegetarian"
+          ]
+        },
+        "expect": [
+          "a",
+          "b"
+        ],
+        "badge": 2
+      },
+      {
+        "case": "two chips are AND",
+        "filters": {
+          "cats": [
+            "supper"
+          ],
+          "typeFilters": [
+            "dietary:vegetarian",
+            "byo:any"
+          ]
+        },
+        "expect": [
+          "a"
+        ],
+        "badge": 3
+      },
+      {
+        "case": "an unknown chip id is ignored",
+        "filters": {
+          "cats": [
+            "supper"
+          ],
+          "typeFilters": [
+            "nope:x"
+          ]
+        },
+        "expect": [
+          "a",
+          "b",
+          "c"
+        ],
+        "badge": 2
+      }
+    ],
+    "counts": {
+      "filters": {
+        "cats": [
+          "supper"
+        ],
+        "typeFilters": [
+          "dietary:vegetarian"
+        ]
+      },
+      "options": [
+        "dietary:vegetarian",
+        "dietary:vegan",
+        "byo:any"
+      ],
+      "expect": {
+        "dietary:vegetarian": 2,
+        "dietary:vegan": 1,
+        "byo:any": 1
+      }
+    },
+    "relax": {
+      "filters": {
+        "cats": [
+          "supper"
+        ],
+        "typeFilters": [
+          "byo:any"
+        ]
+      },
+      "expect": {
+        "id": "type",
+        "gain": 2
+      }
+    }
+  }
+}

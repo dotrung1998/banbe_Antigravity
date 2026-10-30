@@ -77,6 +77,10 @@ targets:
       - path: ../../public/logomotion
         type: folder
         buildPhase: resources
+      # Event type profiles (supper club, music…): the same JSON the web app imports, referenced in place so
+      # both apps read one file (Lib/EventTypes.swift ⇄ src/lib/eventTypes.js).
+      - path: ../../src/data/eventTypeProfiles.json
+        buildPhase: resources
     resources:
       - BanbeApp/Resources
     dependencies:

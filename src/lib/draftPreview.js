@@ -15,7 +15,7 @@ export function draftPriceVnd(raw, currency = 'VND') {
 }
 
 /** { name, catKey, catLabel, area, lat, lng, startsAt (Date|null), priceVnd, seats (number|null), description,
- *  intro, includedItems, inviteOnly, organizerName, coverUrl, timeZone?, currency? } → a curEvent-shaped object.
+ *  intro, includedItems, inviteOnly, organizerName, coverUrl, timeZone?, currency?, details? } → a curEvent-shaped object.
  *  `timeZone`/`currency` are the form's venue market (migration 195); without them the browser zone and VND. */
 export function shapeDraftAsCurEvent(d) {
   const startsAt = d.startsAt && !Number.isNaN(d.startsAt.getTime()) ? d.startsAt : null;
@@ -37,6 +37,7 @@ export function shapeDraftAsCurEvent(d) {
     seatsLong: seats != null ? `${seats} chỗ trống` : '',
     urgent: false,
     desc: d.description || '', included: items.map(it => it.label).join(' ▪︎ '), includedItems: items, intro: d.intro || '',
+    details: d.details || {}, capacity: seats,
     host: d.organizerName || '', hostShort: d.organizerName || '', greeting: '',
     gallery: [], orgGallery: [], orgName: d.organizerName || '', orgIg: '', orgDesc: '',
     orgSince: '', orgCount: 0, orgTrusted: false,

@@ -73,6 +73,11 @@ struct AdminFeaturesView: View {
              hintVi: "Tắt = Phiên bản 1: màn Chào mừng tĩnh và 4 trang chữ \"banbe hoạt động thế nào\". Bật = Phiên bản 2: màn Chào mừng có chuyển động và mỗi phần có các màn demo vuốt qua lại. Mặc định tắt.",
              hintEn: "Off = Version 1: still Welcome screen and the 4 text pages of \"How banbe works\". On = Version 2: animated Welcome entrance and swipeable demo screens in each section. Off by default.",
              onVi: "Đang dùng Phiên bản 2", onEn: "Showing Version 2", offVi: "Đang dùng Phiên bản 1", offEn: "Showing Version 1"),
+        // Migration 203, note 65.
+        Flag(key: "event_type_profiles", vi: "Biểu mẫu theo loại sự kiện", en: "Event-type forms",
+             hintVi: "Màn tạo sự kiện, trang sự kiện và Trang chủ thay đổi theo loại sự kiện. Hiện có Supper club: chế độ ăn, mang đồ uống, trang phục, bộ lọc riêng trên Trang chủ. Mặc định tắt.",
+             hintEn: "The create form, the event page and Home adapt to the kind of event. Supper club first: dietary options, BYO, dress code, its own Home filters. Off by default.",
+             onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off"),
         // TESTING-PHASE (note 54): remove this row with the wipe tool before public release.
         Flag(key: "admin_event_wipe", vi: "Xoá sự kiện thử nghiệm (giai đoạn thử)", en: "Test event wipe (testing phase)",
              hintVi: "Cho admin xoá vĩnh viễn bất kỳ sự kiện nào cùng mọi dữ liệu liên quan, không cần lý do, trong Quản lý sự kiện (chỉ iOS). Chỉ dùng cho dữ liệu thử nghiệm.",

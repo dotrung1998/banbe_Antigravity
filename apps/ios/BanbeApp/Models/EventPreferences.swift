@@ -17,13 +17,8 @@ enum EventPrefTaxonomy {
     static let noPreference = "no_preference"
 
     /// Existing event category ids (CreateEventView.categories / events.cat_key).
-    static let interests: [PrefOption] = [
-        .init(id: "supper", vi: "Supper club", en: "Supper club"),
-        .init(id: "fashion", vi: "Thời trang", en: "Fashion"),
-        .init(id: "gallery", vi: "Phòng tranh", en: "Gallery"),
-        .init(id: "music", vi: "Nhạc", en: "Music"),
-        .init(id: "popup", vi: "Pop-up", en: "Pop-up"),
-    ]
+    /// The event types (src/data/eventTypeProfiles.json); their keys are migration 162's interest ids.
+    static let interests: [PrefOption] = EventTypes.categoryDefs().map { .init(id: $0.key, vi: $0.vi, en: $0.en) }
     static let goals: [PrefOption] = [
         .init(id: "meet_people", vi: "Gặp gỡ mọi người", en: "Meet people"),
         .init(id: "learn", vi: "Học hỏi", en: "Learn something"),
@@ -53,7 +48,7 @@ enum EventPrefTaxonomy {
 /// Client-side only: each answer gets a face so the questions read at a glance instead of as a list of text.
 /// Categories share one map with Create event. Web twin: `OPTION_EMOJI` / `CATEGORY_EMOJI` in src/lib/eventPrefs.js.
 enum PrefEmoji {
-    static let categories: [String: String] = ["supper": "🍽️", "fashion": "👗", "gallery": "🖼️", "music": "🎵", "popup": "🛍️"]
+    static let categories: [String: String] = EventTypes.emoji
     static let all: [String: String] = categories.merging([
         "meet_people": "👋", "learn": "💡", "experiences": "✨", "networking": "🤝",
         "weekdays": "📅", "weekends": "🎉", "daytime": "☀️", "evening": "🌙",

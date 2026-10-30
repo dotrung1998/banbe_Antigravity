@@ -8,6 +8,7 @@ import { ink, display, fieldGlass, cardGlass, CHIP_COLORS, photoChip, lightChip,
 import { bg } from '../../data/events.js';
 import { REMINDER_CSS } from '../../lib/eventReminder.js';
 import { setSearchOrigin } from '../../lib/searchOrigin.js';
+import { categoryDefs } from '../../lib/eventTypes.js';
 
 // ---- category glyphs: one stroke weight, line style, original drawings -------------------
 const GLYPH_PATHS = {
@@ -28,14 +29,7 @@ export function CategoryGlyph({ cat, size = 22, strokeWidth = 1.7 }) {
   );
 }
 
-export const CATEGORY_DEFS = [
-  { key: 'all', vi: 'Tất cả', en: 'All' },
-  { key: 'supper', vi: 'Supper club', en: 'Supper club' },
-  { key: 'fashion', vi: 'Thời trang', en: 'Fashion' },
-  { key: 'gallery', vi: 'Phòng tranh', en: 'Gallery' },
-  { key: 'music', vi: 'Nhạc', en: 'Music' },
-  { key: 'popup', vi: 'Pop-up', en: 'Pop-up' },
-];
+export const CATEGORY_DEFS = categoryDefs({ withAll: true }); // src/data/eventTypeProfiles.json
 
 /** Quiet tinted rounded-square tiles; they stay out of the way of the event photos below. */
 export function CategoryRow({ values = [], onPick, T }) {
@@ -57,7 +51,7 @@ export function CategoryRow({ values = [], onPick, T }) {
             }}>
               <CategoryGlyph cat={c.key} />
             </span>
-            <span style={{ fontSize: 11.5, fontWeight: active ? 600 : 500, whiteSpace: 'nowrap', opacity: active ? 1 : 0.8 }}>{T(c.vi, c.en)}</span>
+            <span style={{ fontSize: 11.5, fontWeight: active ? 600 : 500, lineHeight: 1.2, maxWidth: '100%', textAlign: 'center', overflowWrap: 'anywhere', opacity: active ? 1 : 0.8 }}>{T(c.vi, c.en)}</span>
           </button>
         );
       })}
@@ -136,6 +130,8 @@ export function DiscoveryCard({ ev, onOpen, onToggleSave, T }) {
         <span style={{ fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap', color: ev.isFree ? 'var(--bb-honey)' : ink }}>{ev.priceLabel}</span>
       </div>
       {ev.metaLine && <div style={{ fontSize: 12.5, color: ink, opacity: 0.68, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.metaLine}</div>}
+      {/* What kind of evening it is (event type profiles), e.g. "Bàn 8 người · Có món chay · BYO". */}
+      {ev.typeLine && <div data-testid="home-card-type-line" style={{ fontSize: 12.5, color: ink, opacity: 0.8, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.typeLine}</div>}
       {ev.fill?.going != null && !ev.cancelled && (
         <div data-testid="home-card-going" style={{ fontSize: 11.5, color: ink, opacity: 0.6, marginTop: 3 }}>{T(`${ev.fill.going} người sẽ đến`, `${ev.fill.going} going`)}</div>
       )}
@@ -158,6 +154,7 @@ export function DiscoveryRow({ ev, onOpen, T }) {
           <span style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap', color: ev.isFree ? 'var(--bb-honey)' : ink }}>{ev.priceLabel}</span>
         </div>
         <span style={{ fontSize: 12, opacity: 0.68, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[ev.dateBadge, ev.metaLine].filter(Boolean).join(' · ')}</span>
+        {ev.typeLine && <span style={{ fontSize: 12, opacity: 0.8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.typeLine}</span>}
         {(ev.cancelled || ev.fill?.soldOut || ev.fill?.almostFull) && (
           <span style={{ fontSize: 11.5, fontWeight: 600, color: ev.cancelled ? 'var(--bb-alert)' : 'var(--bb-honey)' }}>
             {ev.cancelled ? T('Đã hủy', 'Cancelled') : ev.fill.soldOut ? T('Hết chỗ', 'Sold out') : T(`Sắp hết · còn ${ev.fill.left}`, `Almost full · ${ev.fill.left} left`)}

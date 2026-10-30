@@ -16,6 +16,8 @@
 // includes the category (independent of whether keywords happen to be
 // populated) closes that gap structurally, not just for today's data.
 
+import { searchAliases } from './eventTypes.js';
+
 // Vietnamese diacritics + đ/Đ -> plain ASCII, case-folded, whitespace
 // collapsed. `String.normalize('NFD')` decomposes accented Latin letters
 // into base letter + combining marks, which the following regex strips;
@@ -33,19 +35,9 @@ export function normalizeSearchText(value) {
     .trim();
 }
 
-// Derived from Home.jsx's own `FILTER_DEFS` (the single source of truth
-// for the four real category keys this app has) plus a couple of honest
-// Vietnamese synonyms per category — never invented categories that don't
-// exist in the schema. Bilingual on purpose: a Vietnamese-speaking user
-// typing "tiệc tối" for a Supper Club event must match it exactly like an
-// English speaker typing "supper."
-export const CATEGORY_SEARCH_ALIASES = {
-  all: [],
-  supper: ['supper club', 'supper', 'tiec toi', 'tiec', 'dinner'],
-  fashion: ['thoi trang', 'fashion', 'thời trang'],
-  gallery: ['phong tranh', 'gallery', 'trien lam', 'triển lãm', 'art'],
-  music: ['nhac', 'music', 'am nhac', 'âm nhạc', 'concert'],
-};
+// Synonyms per category (VI + EN, accent-free since the document is folded anyway) come from the event type
+// profiles (src/data/eventTypeProfiles.json), the same file iOS reads — never invented categories.
+export const CATEGORY_SEARCH_ALIASES = searchAliases();
 
 // Builds ONE normalized search document per event. Category/name coverage
 // never depends on `keywords` being populated — it's always included from

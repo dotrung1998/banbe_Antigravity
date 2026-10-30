@@ -18,6 +18,7 @@ import { shareMarket, shareWhen, shareInviteText, smsInviteHref, ZALO_COPIED } f
 import { track } from '../lib/analytics.js';
 import { nextFromHost, whenLabel } from '../lib/quickWins.js';
 import { flagOn } from '../lib/featureFlags.js';
+import { profileFor, detailFacts } from '../lib/eventTypes.js';
 
 // Airbnb-style layout (mirrors iOS EventDetailView): the photo is a pinned backdrop that fades out while the
 // rounded info sheet scrolls up over it; pulling down from the very top closes the screen with a shrink.
@@ -82,6 +83,10 @@ export default function EventDetail({ preview = null } = {}) {
   const { state, T, trStatus, stripKm, curEvent, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, setQty, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav, toggleFollowOrganizer, goEvent, openEventRecap } = useBanBe();
   const s = state;
   const ev = preview?.ev ?? curEvent;
+  // Event type profiles (migration 203): only while the switch is on; a type without a profile renders as before.
+  const typeProfile = flagOn(s.featureFlags, 'event_type_profiles') ? profileFor(ev?.catKey) : null;
+  const typeFacts = typeProfile ? detailFacts(typeProfile, ev?.details, s.lang === 'en' ? 'en' : 'vi') : [];
+  const typeIncludedTitle = typeProfile?.detail?.includedTitle || null;
   // Spread into a guest control's style in preview: visible exactly as guests see it, but does nothing.
   const inert = preview ? { pointerEvents: 'none' } : null;
   const scrollerRef = useRef(null);
@@ -674,6 +679,18 @@ export default function EventDetail({ preview = null } = {}) {
         {crit.restricted && crit.blocked && !myBooking && !ev.cancelled && !ended && (
           <div ref={critRef} style={{ marginTop: 12, scrollMarginBottom: 160 }}><CriteriaUnmetCard eligibility={crit.eligibility} returnTo="event" /></div>
         )}
+        {/* What kind of evening it is (event type profiles, switch event_type_profiles): the type's own facts, e.g. a
+            supper club's dietary options, BYO and dress code. Legacy events (no details) show nothing new. */}
+        {typeFacts.length > 0 && (
+          <dl data-testid="event-type-facts" style={{ margin: '16px 0 0', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 14, rowGap: 8 }}>
+            {typeFacts.map(f => (
+              <div key={f.id} data-testid={`event-type-fact-${f.id}`} style={{ display: 'contents' }}>
+                <dt style={{ fontSize: 13, opacity: 0.65, color: ink }}>{f.label}</dt>
+                <dd style={{ margin: 0, fontSize: 14.5, lineHeight: 1.45, color: ink }}>{f.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
         {/* Sections below are separated by whitespace only (no rules): 28 between sections, 8–10 from a heading to its
             content, so related things sit together and the page reads as one calm surface (transcript lessons 3/11/12). */}
         {/* "Bao gồm": one line of text, items separated by the signature ▪︎; the full intro + item details stay one tap
@@ -683,7 +700,7 @@ export default function EventDetail({ preview = null } = {}) {
             aria-label={hasAboutSheet ? T('Giới thiệu và bao gồm, xem thêm', 'Introduction and included, view more') : undefined}
             style={{ marginTop: 20, cursor: hasAboutSheet ? 'pointer' : 'default' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-              <span style={sectionHeading}>{includedChips.length > 0 ? T('Bao gồm', 'Included') : T('Giới thiệu', 'About')}</span>
+              <span style={sectionHeading}>{includedChips.length > 0 ? (typeIncludedTitle ? T(typeIncludedTitle.vi, typeIncludedTitle.en) : T('Bao gồm', 'Included')) : T('Giới thiệu', 'About')}</span>
               {hasAboutSheet && <span style={{ fontSize: 13, fontWeight: 600, color: clay, whiteSpace: 'nowrap' }}>{T('Xem thêm', 'More')} ›</span>}
             </div>
             {includedChips.length > 0 && (

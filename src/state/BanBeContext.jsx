@@ -26,12 +26,13 @@ import { useEnsureOrganizer } from '../lib/useEnsureOrganizer.js';
 import { loadMapKit } from '../lib/mapkit.js';
 import { mapKitSearch } from '../lib/mapkitAdapter.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
-import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, marketColumnList, isMissingColumnError } from '../lib/mediaUrls.js';
+import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, marketColumnList, detailsColumnList, isMissingColumnError } from '../lib/mediaUrls.js';
 import { rowTimeZone, rowCurrency, formatMoney, resolveEventTimeZone, eventCurrency, VN_TIME_ZONE, parsePriceInput, priceInputText, wallClockToMs, todayInZone } from '../lib/eventMarket.js';
 import { eventDraftDefaults, createDefaultsPatch, createDraftMatchesDefaults } from '../lib/smartDefaults.js';
 import { notificationRoute, runItAgainDate } from '../lib/coreLoops.js';
 import { DEFAULT_FILTERS as HOME_DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
 import { flagOn, normalizeFlags, readCachedFlags, writeCachedFlags } from '../lib/featureFlags.js';
+import { cleanDetails, profileFor } from '../lib/eventTypes.js';
 import { holdLeftCreateDraft, beginCreateDraftRestore, discardLeftCreateDraft } from '../lib/createDraftUndo.js';
 
 /** Media-API upload with the current session token. Resolves `{provider:'supabase'}`
@@ -148,6 +149,8 @@ function shapeRealEvent(row, extra = {}) {
     // without 195 derive the zone from country/state and are VND.
     tz: rowTimeZone(row),
     currency: rowCurrency(row),
+    // Event type facts (migration 203): {} when none, or on a DB without the column.
+    details: row.details && typeof row.details === 'object' && !Array.isArray(row.details) ? row.details : {},
   };
 }
 
@@ -187,6 +190,7 @@ const realEventColumns = (withR2) => {
   let cols = REAL_EVENT_ROW_COLUMNS_BASE;
   for (const c of chatGreetingColumnList()) cols += `, ${c}`;
   for (const c of marketColumnList()) cols += `, ${c}`;
+  for (const c of detailsColumnList()) cols += `, ${c}`;
   return withR2 ? `${cols}, cover_r2_ref` : cols;
 };
 
@@ -330,6 +334,7 @@ export function shapeRealEventAsCurEvent(real) {
     seatsLong: real.soldOut ? 'Hết chỗ' : (real.seatsRemaining != null ? real.seatsRemaining + ' chỗ trống' : ''),
     urgent: real.seatsRemaining != null && real.seatsRemaining <= 5,
     desc: real.description || '', included: real.included || '', includedItems: real.includedItems || [], intro: real.intro || '',
+    details: real.details || {}, capacity: real.capacity ?? null,
     host: real.organizerName || '', hostShort: real.organizerName || '', greeting: real.chatGreeting || '',
     gallery: [], orgGallery: [], orgName: real.organizerName || '', orgIg: '', orgDesc: '',
     orgSince: '', orgCount: 0, orgTrusted: false,
@@ -1272,6 +1277,11 @@ const initialState = {
   // Host's optional opening message for "Message host" (events.chat_greeting, migration 156).
   createChatGreeting: '',
   createChatGreetingEn: '',
+  // Event type facts (migration 203), kept PER TYPE ({ supper: { byo: 'wine' } }) so switching the category never
+  // throws a host's answers away; only the primary type's are published (set_event_details).
+  createDetails: {},
+  // Keyword ideas the host dismissed in this draft (never suggested again for it).
+  createKwDismissed: [],
   createMediaError: '',
   // "Giới thiệu sự kiện" (migration 088) — a separate, longer host-written
   // editorial description, never conflated with createDesc ("Mô tả") or
@@ -6671,6 +6681,7 @@ export function BanBeProvider({ children }) {
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
       ...createDefaultsPatch(eventDraftDefaults(null)),
       createIncludedItems: [], createIntro: '', createKeywords: '', createChatGreeting: '', createChatGreetingEn: '', createVisibility: 'public', createHostGoal: null,
+      createDetails: {}, createKwDismissed: [],
       createCriteria: everyoneCriteria(), createCriteriaLoaded: everyoneCriteria(), createCriteriaLoad: 'ready', createCriteriaRetryEventId: null,
       createSeedCoverUrl: null,
       ...(seed || {}),
@@ -8437,8 +8448,9 @@ export function BanBeProvider({ children }) {
   // ---- filter ----
   // Category: the single selection lives in homeFilters.cats (the main row and the filter sheet edit the same
   // value), so a category picked on Home is already ticked when the filter sheet opens.
+  // Type chips (event type profiles) belong to one category, so a new category starts without them.
   const pickFilter = useCallback((key) => set(prev => ({
-    homeFilters: { ...HOME_DEFAULT_FILTERS, ...prev.homeFilters, cats: key === 'all' ? [] : [key] },
+    homeFilters: { ...HOME_DEFAULT_FILTERS, ...prev.homeFilters, cats: key === 'all' ? [] : [key], typeFilters: [] },
   })), [set]);
   const clearFilters = useCallback(() => set({
     filter: 'all', area: LOCATION_ALL,
@@ -10016,8 +10028,15 @@ export function BanBeProvider({ children }) {
   const pickCreateCat = useCallback((key) => set(prev => {
     let cats = prev.createCats.includes(key) ? prev.createCats.filter(x => x !== key) : [...prev.createCats, key];
     if (cats.length > 2) cats = [cats[0], key];
+    // The first pick is the type that shapes the form (event type profiles); record which one, never content.
+    if (cats[0] && cats[0] !== prev.createCats[0] && flagOn(prev.featureFlags, 'event_type_profiles')) track('create_event_type_selected', { type: cats[0] });
     return { createCats: cats };
   }), [set]);
+  // One event-type fact for one type (kept per type, see createDetails).
+  const setCreateDetail = useCallback((type, field, value) => set(prev => ({
+    createDetails: { ...prev.createDetails, [type]: { ...(prev.createDetails[type] || {}), [field]: value } },
+  })), [set]);
+  const dismissCreateKeyword = useCallback((kw) => set(prev => ({ createKwDismissed: [...prev.createKwDismissed, kw] })), [set]);
   const pickCreatePalette = useCallback((key) => set({ createPalette: key }), [set]);
   const pickCreateVisibility = useCallback((v) => set({ createVisibility: v === 'invite' ? 'invite' : 'public' }), [set]);
   const tapPhotoSlot = useCallback((index) => set(prev => ({ createPhotos: index < prev.createPhotos ? prev.createPhotos : Math.min(8, prev.createPhotos + 1) })), [set]);
@@ -10420,6 +10439,16 @@ export function BanBeProvider({ children }) {
         });
         if (keywordsError) console.warn('set_event_keywords failed:', keywordsError);
 
+        // Event type facts (migration 203): only the primary type's, cleaned like the server validates. Best-effort
+        // like keywords. Skipped while the switch is off, so nothing changes for anyone until an admin turns it on.
+        if (flagOn(s.featureFlags, 'event_type_profiles')) {
+          const primary = s.createCats[0] || 'supper';
+          const details = cleanDetails(profileFor(primary), (s.createDetails || {})[primary]);
+          const { data: detailsRes, error: detailsError } = await supabase.rpc('set_event_details', { p_event_id: eventId, p_details: details });
+          if (detailsError || detailsRes?.success === false) console.warn('set_event_details failed (migration 203 not applied?):', detailsError || detailsRes?.error);
+          else set(prev => (prev.realEventsById[eventId] ? { realEventsById: { ...prev.realEventsById, [eventId]: { ...prev.realEventsById[eventId], details } } } : {}));
+        }
+
         // Strict invite-only events (migration 113) — same "separate,
         // additive RPC" pattern as set_event_keywords just above, not a
         // new positional param on create_event_draft/resubmit_event_for_
@@ -10553,7 +10582,7 @@ export function BanBeProvider({ children }) {
     } finally {
       createSubmitInFlightRef.current = false;
     }
-  }, [set, s.createName, s.createHostGoal, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createCountryCode, s.createStateProvince, s.createNeighborhood, s.createTz, s.createLat, s.createLng, s.createDate, s.createEventDate, s.createEventTime, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.createChatGreeting, s.createChatGreetingEn, s.createCriteria, s.createCriteriaLoaded, s.createCriteriaLoad, s.createCriteriaRetryEventId, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
+  }, [set, s.createName, s.createHostGoal, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createCountryCode, s.createStateProvince, s.createNeighborhood, s.createTz, s.createLat, s.createLng, s.createDate, s.createEventDate, s.createEventTime, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.createChatGreeting, s.createChatGreetingEn, s.createDetails, s.featureFlags, s.createCriteria, s.createCriteriaLoaded, s.createCriteriaLoad, s.createCriteriaRetryEventId, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
 
   /**
@@ -10615,6 +10644,8 @@ export function BanBeProvider({ children }) {
       createKeywords: Array.isArray(real.keywords) ? real.keywords.join(', ') : '',
       createChatGreeting: real.chatGreeting || '',
       createChatGreetingEn: real.chatGreetingEn || '',
+      createDetails: real.details && Object.keys(real.details).length ? { [real.catKey]: real.details } : {},
+      createKwDismissed: [],
       createCriteriaRetryEventId: null,
     });
     loadEventPhotos(eventId);
@@ -11426,7 +11457,7 @@ export function BanBeProvider({ children }) {
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createKeywordsType, createChatGreetingType, createChatGreetingEnType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
-    pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
+    pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, setCreateDetail, dismissCreateKeyword, importParsedEvent, createSubmit, requestVerify,
     goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, toggleSurveyEditMode, openSurveyStoryModal, closeSurveyStoryModal, sendSurveyRespondCode, verifySurveyRespondCode, loadMySurveys, loadSurveyCandidates, refreshSurveyCandidatesAction, dismissSurveyCandidateAction, restoreSurveyCandidateAction, setSurveyCandidatesStatusAction, archiveSurveysAction, unarchiveSurveyAction, deleteArchivedSurveysAction, deleteSurveyCandidatesAction, searchAddressSuggestions, applySurveyCandidateAction, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction, shareSurveyLinkAction, openShareToStoryConfirm, closeShareToStoryConfirm, confirmShareSurveyToStory,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
@@ -11465,7 +11496,7 @@ export function BanBeProvider({ children }) {
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createKeywordsType, createChatGreetingType, createChatGreetingEnType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
-    pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
+    pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, setCreateDetail, dismissCreateKeyword, importParsedEvent, createSubmit, requestVerify,
     goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, toggleSurveyEditMode, openSurveyStoryModal, closeSurveyStoryModal, sendSurveyRespondCode, verifySurveyRespondCode, loadMySurveys, loadSurveyCandidates, refreshSurveyCandidatesAction, dismissSurveyCandidateAction, restoreSurveyCandidateAction, setSurveyCandidatesStatusAction, archiveSurveysAction, unarchiveSurveyAction, deleteArchivedSurveysAction, deleteSurveyCandidatesAction, searchAddressSuggestions, applySurveyCandidateAction, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction, shareSurveyLinkAction, openShareToStoryConfirm, closeShareToStoryConfirm, confirmShareSurveyToStory,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   ]);

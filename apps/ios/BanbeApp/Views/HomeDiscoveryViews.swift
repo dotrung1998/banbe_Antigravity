@@ -22,6 +22,8 @@ struct DiscoveryCardModel: Identifiable, Equatable {
     let going: Bool
     /// best | popular | nil
     let label: String?
+    /// What kind of evening it is (event type profiles), e.g. "Bàn 8 người · Có món chay · BYO"; nil when none.
+    var typeLine: String? = nil
 }
 
 /// Line-style category glyphs. SF Symbols at one weight stand in for the web's hand-drawn SVG set
@@ -42,6 +44,10 @@ enum CategoryGlyph {
 /// Quiet tinted rounded-square tiles; they stay out of the way of the event photos below.
 struct HomeCategoryRow: View {
     @EnvironmentObject private var app: AppState
+    // Today's sizes at the default text size, growing with Dynamic Type (labels used to be a fixed 11.5pt and
+    // could spill past their 64pt column).
+    @ScaledMetric(relativeTo: .caption) private var labelSize: CGFloat = 11.5
+    @ScaledMetric(relativeTo: .caption) private var columnWidth: CGFloat = 64
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -66,11 +72,12 @@ struct HomeCategoryRow: View {
                                 }
                                 .shadow(color: .black.opacity(active ? 0.18 : 0), radius: 3, y: 2)
                             Text(app.T(c.vi, c.en))
-                                .font(.system(size: 11.5, weight: active ? .semibold : .medium))
-                                .lineLimit(1).fixedSize()
+                                .font(.system(size: labelSize, weight: active ? .semibold : .medium))
+                                .lineLimit(2).multilineTextAlignment(.center).minimumScaleFactor(0.85)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .opacity(active ? 1 : 0.8)
                         }
-                        .frame(width: 64)
+                        .frame(width: columnWidth)
                         .foregroundStyle(app.palette.ink)
                     }
                     .buttonStyle(.plain)
@@ -85,6 +92,7 @@ struct HomeCategoryRow: View {
             .padding(.horizontal, 14)
             .padding(.top, 12).padding(.bottom, 4)
         }
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .rootSwipeExclusion("homeCategories")
     }
 }
@@ -245,6 +253,14 @@ struct DiscoveryCard: View {
                         .lineLimit(1)
                         .padding(.top, 3)
                 }
+                if let typeLine = model.typeLine {
+                    Text(typeLine)
+                        .font(.system(size: 12.5))
+                        .opacity(0.8)
+                        .lineLimit(1)
+                        .padding(.top, 3)
+                        .accessibilityIdentifier("home.card.typeLine")
+                }
                 if let going = model.fill.going, !model.cancelled {
                     Text(app.T("\(going) người sẽ đến", "\(going) going"))
                         .font(.system(size: 11.5))
@@ -286,6 +302,9 @@ struct DiscoveryRow: View {
                     }
                     Text([model.dateBadge, model.metaLine].filter { !$0.isEmpty }.joined(separator: " · "))
                         .font(.system(size: 12)).opacity(0.68).lineLimit(1)
+                    if let typeLine = model.typeLine {
+                        Text(typeLine).font(.system(size: 12)).opacity(0.8).lineLimit(1)
+                    }
                     if model.cancelled || model.fill.soldOut || model.fill.almostFull {
                         Text(model.cancelled ? app.T("Đã hủy", "Cancelled")
                              : model.fill.soldOut ? app.T("Hết chỗ", "Sold out")

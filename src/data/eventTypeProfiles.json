@@ -1,0 +1,93 @@
+{
+  "_comment": "Event type profiles: ONE file read by web (src/lib/eventTypes.js) and iOS (bundled by apps/ios/project.yml, read by Lib/EventTypes.swift). Keys are events.cat_key values and the server's fixed ids (normalize_event_category, migration 087; preference interests, migration 162): never rename one. 'detailFields' must match validate_event_details (migration 202), checked by supabase/_localtest/28_event_details_assert.sql. A type without 'wizard' / 'detail' / 'card' / 'home' behaves exactly like the generic event.",
+  "version": 1,
+  "types": [
+    {
+      "key": "supper",
+      "label": { "vi": "Supper club", "en": "Supper club" },
+      "emoji": "🍽️",
+      "icon": { "ios": "fork.knife" },
+      "aliases": ["supper club", "supper", "tiec toi", "tiec", "dinner", "an toi", "bua toi"],
+      "keywordSeeds": { "vi": ["an toi", "tiec toi", "chef's table"], "en": ["dinner", "tasting menu", "chef's table"] },
+      "wizard": {
+        "required": ["hostName", "name", "description", "categories", "included", "location", "date", "price", "seats", "photos"],
+        "includedTitle": { "vi": "Thực đơn", "en": "On the menu" },
+        "includedPlaceholder": { "vi": "VD: 5 món theo mùa", "en": "e.g. 5 seasonal courses" },
+        "details": ["dietary", "byo", "dress_code"]
+      },
+      "detailFields": {
+        "dietary": {
+          "kind": "multi",
+          "label": { "vi": "Chế độ ăn", "en": "Dietary" },
+          "options": [
+            { "id": "vegetarian", "vi": "Có món chay", "en": "Vegetarian-friendly" },
+            { "id": "vegan", "vi": "Thuần chay", "en": "Vegan" },
+            { "id": "pescatarian", "vi": "Hải sản, không thịt", "en": "Pescatarian" },
+            { "id": "halal", "vi": "Halal", "en": "Halal" },
+            { "id": "gluten_free", "vi": "Không gluten", "en": "Gluten-free" },
+            { "id": "can_accommodate", "vi": "Báo trước để điều chỉnh", "en": "Can adjust on request" }
+          ]
+        },
+        "byo": {
+          "kind": "enum",
+          "label": { "vi": "Mang đồ uống", "en": "Bring your own" },
+          "options": [
+            { "id": "no", "vi": "Không mang theo", "en": "No BYO" },
+            { "id": "wine", "vi": "Được mang rượu vang", "en": "BYO wine" },
+            { "id": "any", "vi": "Được mang đồ uống", "en": "BYO drinks" }
+          ]
+        },
+        "dress_code": {
+          "kind": "text",
+          "max": 80,
+          "label": { "vi": "Trang phục", "en": "Dress code" },
+          "placeholder": { "vi": "VD: Lịch sự, thoải mái", "en": "e.g. Smart casual" }
+        }
+      },
+      "detail": {
+        "includedTitle": { "vi": "Thực đơn", "en": "On the menu" },
+        "facts": ["dietary", "byo", "dress_code"]
+      },
+      "card": { "line": "table_for_n_price" },
+      "home": {
+        "filters": [
+          { "id": "dietary:vegetarian", "field": "dietary", "value": "vegetarian", "vi": "Có món chay", "en": "Vegetarian-friendly" },
+          { "id": "dietary:vegan", "field": "dietary", "value": "vegan", "vi": "Thuần chay", "en": "Vegan" },
+          { "id": "byo:any", "field": "byo", "value": ["wine", "any"], "vi": "Được mang đồ uống", "en": "BYO" }
+        ]
+      }
+    },
+    {
+      "key": "fashion",
+      "label": { "vi": "Thời trang", "en": "Fashion" },
+      "emoji": "👗",
+      "icon": { "ios": "tshirt" },
+      "aliases": ["thoi trang", "fashion", "quan ao", "lookbook"],
+      "keywordSeeds": { "vi": ["thoi trang", "local brand"], "en": ["fashion", "local brand"] }
+    },
+    {
+      "key": "gallery",
+      "label": { "vi": "Phòng tranh", "en": "Gallery" },
+      "emoji": "🖼️",
+      "icon": { "ios": "photo.artframe" },
+      "aliases": ["phong tranh", "gallery", "trien lam", "art", "nghe thuat", "exhibition"],
+      "keywordSeeds": { "vi": ["trien lam", "nghe thuat"], "en": ["exhibition", "art"] }
+    },
+    {
+      "key": "music",
+      "label": { "vi": "Nhạc", "en": "Music" },
+      "emoji": "🎵",
+      "icon": { "ios": "music.note" },
+      "aliases": ["nhac", "music", "am nhac", "concert", "live music", "nhac song"],
+      "keywordSeeds": { "vi": ["nhac song", "acoustic"], "en": ["live music", "acoustic"] }
+    },
+    {
+      "key": "popup",
+      "label": { "vi": "Pop-up", "en": "Pop-up" },
+      "emoji": "🛍️",
+      "icon": { "ios": "storefront" },
+      "aliases": ["pop-up", "popup", "pop up", "cho phien", "market", "hoi cho"],
+      "keywordSeeds": { "vi": ["pop-up", "cho phien"], "en": ["pop-up", "market"] }
+    }
+  ]
+}

@@ -27,6 +27,7 @@ export const SORT_LABELS = {
 export const RELAX_LABELS = {
   date: ['bỏ ngày', 'any date'], price: ['bỏ khoảng giá', 'any price'], free: ['bỏ "Miễn phí"', 'not only free'],
   cats: ['mọi danh mục', 'every category'], seatsLeft: ['cả sự kiện hết chỗ', 'include sold out'], almostFull: ['bỏ "Sắp hết"', 'not only almost full'],
+  type: ['bỏ bộ lọc theo loại', 'no type filters'],
 };
 // Slider step in the price control's currency's minor unit: 50.000₫ / $5.
 const PRICE_STEP = { VND: 50000, USD: 500 };

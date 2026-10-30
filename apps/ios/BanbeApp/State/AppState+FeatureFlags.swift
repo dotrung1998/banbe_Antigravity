@@ -26,6 +26,10 @@ extension AppState {
     /// guided tour over the real app after the first sign-in.
     var onboardingV2Enabled: Bool { onboardingVersion >= 2 }
 
+    /// Event type profiles (migration 203): the create form, Event Detail and Home adapt to the kind of event.
+    /// Off unless an admin turns it on.
+    var eventTypesEnabled: Bool { FeatureFlags.isOn(featureFlags, "event_type_profiles") }
+
     /// Called when the flags changed: turning Rewards off clears its numbers; turning it on loads them. Push turning
     /// on re-registers a device iOS already allows (never prompts).
     func featureFlagsDidChange(from old: [String: Bool]) {

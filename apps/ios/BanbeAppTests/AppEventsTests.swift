@@ -25,7 +25,7 @@ final class AppEventsTests: XCTestCase {
         .publicEntryViewed, .publicEntryGetStarted, .publicEntryLogin, .publicStoryOpened, .publicStoryCompleted,
         .publicStorySkipped(step: 2), .guestBrowseStarted, .guestSignInPromptShown(context: "save"),
         .guestSignInPromptAccepted(context: "reserve"), .createEventStartedBlank, .recipeOpened,
-        .recipeFixTapped(ingredient: "photos"), .submitRecipeScore(bucket: "7-8"), .scheduleOpened,
+        .recipeFixTapped(ingredient: "photos"), .submitRecipeScore(bucket: "7-8"), .createEventStillNeededTapped(field: "photos"), .createEventTypeSelected(type: "supper"), .scheduleOpened,
         .scheduleModeSelected(mode: "mine"), .scheduleDaySelected(bucket: "today"), .scheduleConflictShown(countBucket: "1-2"),
         .banbeScheduleAdd, .banbeScheduleRemove, .banbeScheduleResult(result: "added"), .systemCalendarEditorOpened,
         .systemCalendarEditorResult(result: "saved"), .rewardsBadgeCelebrated(code: "first_outing"),

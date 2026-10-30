@@ -62,6 +62,10 @@ enum AnalyticsEvent: Equatable {
     case recipeFixTapped(ingredient: String)
     /// `bucket` ∈ 0-3 | 4-6 | 7-8 | 9-10 — never the exact score.
     case submitRecipeScore(bucket: String)
+    /// `field` is a create-form field id (name, photos…), never what was typed.
+    case createEventStillNeededTapped(field: String)
+    /// `type` is the primary event type key (supper, music…).
+    case createEventTypeSelected(type: String)
     // Schedule.
     case scheduleOpened
     /// `mode` ∈ mine | discover.
@@ -113,6 +117,8 @@ enum AnalyticsEvent: Equatable {
         case .recipeOpened: return "recipe_opened"
         case .recipeFixTapped: return "recipe_fix_tapped"
         case .submitRecipeScore: return "submit_recipe_score"
+        case .createEventStillNeededTapped: return "create_event_still_needed_tapped"
+        case .createEventTypeSelected: return "create_event_type_selected"
         case .scheduleOpened: return "schedule_opened"
         case .scheduleModeSelected: return "schedule_mode_selected"
         case .scheduleDaySelected: return "schedule_day_selected"
@@ -161,6 +167,10 @@ enum AnalyticsEvent: Equatable {
             return ["ingredient": ingredient]
         case .submitRecipeScore(let bucket):
             return ["bucket": bucket]
+        case .createEventStillNeededTapped(let field):
+            return ["field": field]
+        case .createEventTypeSelected(let type):
+            return ["type": type]
         case .scheduleModeSelected(let mode):
             return ["mode": mode]
         case .scheduleDaySelected(let bucket):

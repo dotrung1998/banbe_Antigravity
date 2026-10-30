@@ -3,17 +3,13 @@
 // Server contract: supabase/migrations/..._162_event_preferences_and_reservation_criteria.sql
 // (ids MUST match event_pref_ids()). Rules: .claude/notes/34-onboarding-for-you-criteria.md.
 // Pure module: no React, no network.
+import { categoryDefs, CATEGORY_EMOJI as TYPE_EMOJI } from './eventTypes.js';
 
 /** Server sentinel meaning "I have no preference" (stored as ["no_preference"]). */
 export const NO_PREFERENCE = 'no_preference';
 
-export const INTERESTS = [
-  { id: 'supper', vi: 'Supper club', en: 'Supper club' },
-  { id: 'fashion', vi: 'Thời trang', en: 'Fashion' },
-  { id: 'gallery', vi: 'Phòng tranh', en: 'Gallery' },
-  { id: 'music', vi: 'Nhạc', en: 'Music' },
-  { id: 'popup', vi: 'Pop-up', en: 'Pop-up' },
-];
+// The event types (src/data/eventTypeProfiles.json); their keys are migration 162's interest ids.
+export const INTERESTS = categoryDefs().map(({ key, vi, en }) => ({ id: key, vi, en }));
 export const GOALS = [
   { id: 'meet_people', vi: 'Gặp gỡ mọi người', en: 'Meet people' },
   { id: 'learn', vi: 'Học hỏi', en: 'Learn something' },
@@ -39,7 +35,7 @@ export const BUDGET_TIERS = ['free', 'low', 'medium', 'flexible'];
  * The category ids share CATEGORY_EMOJI with Create event, so a kind of event looks the same everywhere.
  * Mirrored by apps/ios/BanbeApp/Models/EventPreferences.swift `PrefEmoji`.
  */
-export const CATEGORY_EMOJI = { supper: '🍽️', fashion: '👗', gallery: '🖼️', music: '🎵', popup: '🛍️' };
+export const CATEGORY_EMOJI = TYPE_EMOJI;
 export const OPTION_EMOJI = {
   ...CATEGORY_EMOJI,
   meet_people: '👋', learn: '💡', experiences: '✨', networking: '🤝',

@@ -6,23 +6,26 @@
 //   { key, startsAt: number|null (ms), priceVnd: number|null (0 = free, null = unknown),
 //     currency?: 'VND'|'USD' (default VND; priceVnd is in its minor unit, migration 195),
 //     catKeys: string[], booked: number|null, capacity: number|null, soldOut: boolean,
-//     distanceKm: number|null, popularity: number|null }
+//     distanceKm: number|null, popularity: number|null, details?: object (events.details, migration 203) }
 //
 // Filters (all optional; DEFAULT_FILTERS = everything shown):
 //   { date: 'any'|'today'|'tomorrow'|'weekend'|'week'|'on:YYYY-MM-DD',
 //     priceMin: number|null, priceMax: number|null, priceCurrency?: 'VND'|'USD' (the bounds' currency,
-//     default VND), free: boolean, cats: string[] (empty = all), seatsLeft: boolean, almostFull: boolean }
+//     default VND), free: boolean, cats: string[] (empty = all), seatsLeft: boolean, almostFull: boolean,
+//     typeFilters: string[] (event-type chip ids, e.g. 'dietary:vegan'; src/lib/eventTypes.js) }
 // Prices never mix currencies: a paid event in another currency than the bounds never passes a price
 // bound, and the histogram/slider only ever show one currency (dominantCurrency).
 //
 // Day boundaries use a fixed UTC offset (minutes). Every launch market is Vietnam (UTC+7, no DST), so
 // 420 is the default; pass another offset rather than reading the device zone, so tests are exact.
 
+import { typeFilterDef, matchesHomeFilter } from './eventTypes.js';
+
 export const DEFAULT_OFFSET_MIN = 420;
 export const DATE_OPTIONS = ['any', 'today', 'tomorrow', 'weekend', 'week'];
 export const SORT_MODES = ['soonest', 'nearest', 'popular', 'price'];
 export const DEFAULT_FILTERS = Object.freeze({
-  date: 'any', priceMin: null, priceMax: null, free: false, cats: [], seatsLeft: false, almostFull: false,
+  date: 'any', priceMin: null, priceMax: null, free: false, cats: [], seatsLeft: false, almostFull: false, typeFilters: [],
 });
 
 const DAY = 86400000;
@@ -89,7 +92,7 @@ function seatsLeftOf(item) {
 
 // ---- filtering ---------------------------------------------------------------
 export function normalizeFilters(filters) {
-  return { ...DEFAULT_FILTERS, ...(filters || {}), cats: [...((filters && filters.cats) || [])] };
+  return { ...DEFAULT_FILTERS, ...(filters || {}), cats: [...((filters && filters.cats) || [])], typeFilters: [...((filters && filters.typeFilters) || [])] };
 }
 
 const currencyOf = (item) => (item?.currency === 'USD' ? 'USD' : 'VND');
@@ -111,6 +114,10 @@ function matches(item, f, now, offsetMin) {
     if (left === 0 || item.soldOut) return false;
   }
   if (f.almostFull && !fillBadge(item.booked, item.capacity).almostFull) return false;
+  for (const id of f.typeFilters) {
+    const def = typeFilterDef(id);
+    if (def && !matchesHomeFilter(def, item.details)) return false;
+  }
   return true;
 }
 
@@ -129,6 +136,7 @@ export function activeFilterCount(filters) {
   if (f.cats.length) n++;
   if (f.seatsLeft) n++;
   if (f.almostFull) n++;
+  if (f.typeFilters.length) n += f.typeFilters.length;
   return n;
 }
 
@@ -144,6 +152,9 @@ export function optionCounts(items, filters, dimension, options, now, offsetMin 
   } else if (dimension === 'cats') {
     const others = { ...f, cats: [] };
     for (const c of options || []) out[c] = applyDiscoveryFilters(items, { ...others, cats: [c] }, now, offsetMin).length;
+  } else if (dimension === 'typeFilters') {
+    // What tapping that chip would give: it joins the others (AND).
+    for (const id of options || []) out[id] = applyDiscoveryFilters(items, { ...f, typeFilters: [...f.typeFilters.filter(x => x !== id), id] }, now, offsetMin).length;
   } else if (dimension === 'free' || dimension === 'seatsLeft' || dimension === 'almostFull') {
     out.true = applyDiscoveryFilters(items, { ...f, [dimension]: true }, now, offsetMin).length;
   }
@@ -157,6 +168,7 @@ const RELAXATIONS = [
   { id: 'cats', active: f => f.cats.length > 0, relax: f => ({ ...f, cats: [] }) },
   { id: 'seatsLeft', active: f => f.seatsLeft, relax: f => ({ ...f, seatsLeft: false }) },
   { id: 'almostFull', active: f => f.almostFull, relax: f => ({ ...f, almostFull: false }) },
+  { id: 'type', active: f => f.typeFilters.length > 0, relax: f => ({ ...f, typeFilters: [] }) },
 ];
 
 /**

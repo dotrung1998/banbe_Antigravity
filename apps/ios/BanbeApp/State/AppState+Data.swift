@@ -3394,7 +3394,7 @@ extension AppState {
     private static let realEventColumns = "id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, approval, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, withdrawal_reason, withdrawn_at, cover_image, included_items, intro, address_line, city, postal_code, address_verified, keywords, country_code, state_province, neighborhood"
     /// + `tz, currency` (migration 195) until the server says those columns don't exist yet.
     private static func eventColumns(_ withR2: Bool) -> String {
-        MediaColumns.cols(realEventColumns + EventMarketColumns.suffix, "cover_r2_ref", withR2)
+        MediaColumns.cols(realEventColumns + EventMarketColumns.suffix + EventDetailsColumns.suffix, "cover_r2_ref", withR2)
     }
 
     /// Every `eventColumns` read goes through this: the market retry sits INSIDE the R2 one, so a missing
@@ -3402,7 +3402,7 @@ extension AppState {
     /// a missing `cover_r2_ref`.
     static func retryingEventColumns<T>(_ body: (_ withR2: Bool) async throws -> T) async throws -> T {
         try await MediaColumns.retrying { withR2 in
-            try await EventMarketColumns.retrying { try await body(withR2) }
+            try await EventMarketColumns.retrying { try await EventDetailsColumns.retrying { try await body(withR2) } }
         }
     }
 
@@ -4837,12 +4837,24 @@ try await SupabaseService.client
     // MARK: - Create event
 
     func pickCreateCategory(_ key: String) {
+        let primaryBefore = createCats.first
         if let index = createCats.firstIndex(of: key) {
             createCats.remove(at: index)
         } else {
             createCats.append(key)
             if createCats.count > 2 { createCats = [createCats[0], key] }
         }
+        // The first pick is the type that shapes the form (event type profiles); record which one, never content.
+        if let primary = createCats.first, primary != primaryBefore, eventTypesEnabled {
+            Analytics.track(.createEventTypeSelected(type: primary))
+        }
+    }
+
+    /// One event-type fact for one type (kept per type, see `createDetails`). nil clears it.
+    func setCreateDetail(type: String, field: String, value: EventDetailValue?) {
+        var forType = createDetails[type] ?? [:]
+        forType[field] = value
+        createDetails[type] = forType
     }
 
     /// Event review queue — branches on `createEditEventId`: a fresh
@@ -5197,6 +5209,25 @@ try await SupabaseService.client
                     print("set_event_keywords failed:", error)
                 }
 
+                // Event type facts (migration 203): only the primary type's, cleaned like the server validates.
+                // Best-effort like keywords; skipped while the switch is off.
+                if eventTypesEnabled {
+                    struct SetDetailsParams: Encodable {
+                        let eventId: String
+                        let details: EventDetailsPayload
+                        enum CodingKeys: String, CodingKey { case eventId = "p_event_id", details = "p_details" }
+                    }
+                    let primary = createCats.first ?? "supper"
+                    let cleaned = EventTypes.clean(EventTypes.profile(primary), createDetails[primary] ?? [:])
+                    do {
+                        let _: JSONValue = try await SupabaseService.client
+                            .rpc("set_event_details", params: SetDetailsParams(eventId: eventID, details: EventDetailsPayload(cleaned)))
+                            .execute().value
+                    } catch {
+                        print("set_event_details failed (migration 203 not applied?):", error)
+                    }
+                }
+
                 // Strict invite-only events (migration 113) — same
                 // "separate, additive RPC" pattern as set_event_keywords
                 // just above, not a new positional param on
@@ -5359,6 +5390,9 @@ try await SupabaseService.client
         createIntro = real.intro ?? ""
         createChatGreeting = real.chatGreeting ?? ""
         createChatGreetingEn = real.chatGreetingEn ?? ""
+        createDetails = [:]
+        if let key = real.catKey, let values = real.details?.values, !values.isEmpty { createDetails[key] = values }
+        createKwDismissed = []
         if real.chatGreeting == nil && real.chatGreetingEn == nil {
             let editID = real.id
             Task { [weak self] in
@@ -5912,6 +5946,32 @@ extension AppState {
     }
 }
 
+/// `events.details` (migration 203, event type profiles): selected only while the server has it, same idea as
+/// `EventMarketColumns` below. Rows read without it have no type facts (today's behaviour).
+enum EventDetailsColumns {
+    private static let lock = NSLock()
+    private static var _missing = false
+    static var missing: Bool { lock.lock(); defer { lock.unlock() }; return _missing }
+    static func markMissing() { lock.lock(); _missing = true; lock.unlock() }
+
+    static var suffix: String { missing ? "" : ", details" }
+
+    static func isMissingColumnError(_ error: Error) -> Bool {
+        let s = String(describing: error).lowercased()
+        guard s.contains("42703") || s.contains("does not exist") || s.contains("could not find") else { return false }
+        return s.contains(".details") || s.contains("\"details\"") || s.contains("'details'") || s.contains(" details ")
+    }
+
+    static func retrying<T>(_ body: () async throws -> T) async throws -> T {
+        if missing { return try await body() }
+        do { return try await body() } catch {
+            guard isMissingColumnError(error) else { throw error }
+            markMissing()
+            return try await body()
+        }
+    }
+}
+
 /// `events.tz` / `events.currency` (migration 195) are selected only while the server has them. Production may not
 /// have 195 yet, and PostgREST fails the WHOLE query on an unknown column (42703), so the first such failure retries
 /// once with the old column list and remembers it for the rest of the session (same idea as `MediaColumns`).
@@ -5958,6 +6018,7 @@ extension AppState {
         d.step = step; d.coverIndex = coverIndex
         d.name = createName; d.desc = createDesc; d.intro = createIntro; d.keywords = createKeywords
         d.chatGreeting = createChatGreeting; d.chatGreetingEn = createChatGreetingEn
+        d.details = createDetails.mapValues { EventDetailsPayload($0) }; d.kwDismissed = createKwDismissed
         d.cats = createCats; d.included = createIncludedItems
         d.price = createPrice; d.seats = createSeats; d.visibility = createVisibility
         d.hostGoal = createHostGoal; d.criteria = createCriteria
@@ -5981,6 +6042,7 @@ extension AppState {
         createDraftID = d.id
         createName = d.name; createDesc = d.desc; createIntro = d.intro; createKeywords = d.keywords
         createChatGreeting = d.chatGreeting; createChatGreetingEn = d.chatGreetingEn
+        createDetails = (d.details ?? [:]).mapValues(\.values); createKwDismissed = d.kwDismissed ?? []
         createCats = d.cats; createIncludedItems = d.included
         createPrice = d.price; createSeats = d.seats; createVisibility = d.visibility
         createHostGoal = d.hostGoal; createCriteria = d.criteria

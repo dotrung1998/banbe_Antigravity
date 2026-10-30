@@ -17,7 +17,10 @@ import { SEAT_QUICK_PICKS, TIME_QUICK_PICKS, dateQuickPicks, similarPriceRange, 
 import { recipeChecks, recipeCopy, estimateOutcome, pricePosition, slotLabel, hasBenchmarks, HOST_GOALS, priceToFraction, fractionToPrice, priceSliderStep, localParts } from '../lib/eventRecipe.js';
 import { useHostBenchmarks } from '../lib/useHostBenchmarks.js';
 import { track } from '../lib/analytics.js';
-import { stepOfField, isTextField, firstMissingField } from '../lib/createFieldGuide.js';
+import { stepOfField, isTextField } from '../lib/createFieldGuide.js';
+import { computeCreateProgress, missingLabel } from '../lib/createProgress.js';
+import { categoryDefs, profileFor, requiredFields, keywordSuggestions, droppedDetailTypes, cleanDetails, detailFacts, localized } from '../lib/eventTypes.js';
+import { flagOn } from '../lib/featureFlags.js';
 import RecipeSheet, { RecipeMeter, RecipeList } from './sheets/RecipeSheet.jsx';
 import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
 import { listDrafts, saveDraft, deleteDraft, draftFields, draftPhotoItems } from '../lib/eventDrafts.js';
@@ -58,13 +61,7 @@ const MIN_PHOTOS = 3;
 const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_PHOTO_BYTES = 50 * 1024 * 1024; // event-photos bucket's own cap, migration 005
 
-const CAT_DEFS = [
-  { key: 'supper', vi: 'Supper club', en: 'Supper club' },
-  { key: 'fashion', vi: 'Thời trang', en: 'Fashion' },
-  { key: 'gallery', vi: 'Phòng tranh', en: 'Gallery' },
-  { key: 'music', vi: 'Nhạc', en: 'Music' },
-  { key: 'popup', vi: 'Pop-up', en: 'Pop-up' },
-];
+const CAT_DEFS = categoryDefs(); // src/data/eventTypeProfiles.json
 
 export default function CreateEvent() {
   const {
@@ -73,7 +70,7 @@ export default function CreateEvent() {
     createNameType, createDescType, createIntroType, createKeywordsType, createChatGreetingType, createChatGreetingEnType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, pickCreateVisibility, setCreateCriteria,
-    addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent,
+    addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, setCreateDetail, dismissCreateKeyword, importParsedEvent,
     createSubmit, goEvent, loadHomeLiveEvents,
     goCreate, goHome, goDashboard, goProfile, set, clearCreateDefaults,
   } = useBanBe();
@@ -275,6 +272,13 @@ export default function CreateEvent() {
   // in-progress" to separately exclude before a real upload attempt exists.
   // The venue's market (migration 195): its zone for every date/time check and the price's currency.
   const market = createFormMarket(s);
+  // Event type profiles (switch event_type_profiles, migration 203): the first picked category shapes the form.
+  // Off, or a type with no profile: everything below behaves exactly as before.
+  const lang = s.lang === 'en' ? 'en' : 'vi';
+  const typesOn = flagOn(s.featureFlags, 'event_type_profiles');
+  const typeKey = s.createCats[0] || '';
+  const typeProfile = typesOn && typeKey ? profileFor(typeKey) : null;
+  const typeDetails = (s.createDetails || {})[typeKey] || {};
   const fmtMoney = (v) => formatMoney(v, market.currency);
   const fmtShort = (v) => formatMoneyShort(v, market.currency);
   // Price typed for this currency, in minor units: 0 when empty (free), null when a dollar amount isn't a price.
@@ -332,13 +336,16 @@ export default function CreateEvent() {
   // needed" summary instead of a silent grey button, and honest loss framing
   // when leaving a draft.
   const nameOk = !!s.createName.trim();
-  const sections = [
-    { id: 'create-section-host', title: T('Host', 'Host'), done: !!(s.orgRegName || '').trim() },
-    { id: 'create-section-basics', title: T('Cơ bản', 'Basics'), done: nameOk && !fieldErrors.desc && !fieldErrors.cats && !fieldErrors.included },
-    { id: 'create-section-when', title: T('Thời gian & nơi', 'When & where'), done: !!s.createLocConfirmed && !fieldErrors.dateTime },
-    { id: 'create-section-tickets', title: T('Vé', 'Tickets'), done: !fieldErrors.seats && !fieldErrors.price },
-    { id: 'create-section-photos', title: T('Ảnh', 'Photos'), done: !fieldErrors.photos },
-  ];
+  // One calculation (src/lib/createProgress.js) behind the ring, "N steps left", "Still needed here" and the
+  // Review summary, so they can never disagree.
+  const progress = computeCreateProgress({
+    hostName: !(s.orgRegName || '').trim(), name: !nameOk, description: fieldErrors.desc, categories: fieldErrors.cats,
+    included: fieldErrors.included, location: !s.createLocConfirmed, date: fieldErrors.dateTime, price: fieldErrors.price,
+    seats: fieldErrors.seats, photos: fieldErrors.photos,
+  }, requiredFields(typeProfile));
+  const MISSING_LABEL = (id) => missingLabel(id, T, MIN_PHOTOS);
+  const sectionTitles = [T('Host', 'Host'), T('Cơ bản', 'Basics'), T('Thời gian & nơi', 'When & where'), T('Vé', 'Tickets'), T('Ảnh', 'Photos')];
+  const sections = progress.steps.map((x, i) => ({ id: ['create-section-host', 'create-section-basics', 'create-section-when', 'create-section-tickets', 'create-section-photos'][i], title: sectionTitles[i], done: x.done }));
   // Note 53: always open on step 1 (Host), even when it's already ticked from the organizer profile, so the
   // host can check it; the head start (Host ✓, 20%) still shows. This replaces note 48's "skip Host".
   const [step, setStep] = useState(() => restored?.step ?? 0);
@@ -372,41 +379,19 @@ export default function CreateEvent() {
     clearTimeout(attnTimer.current);
     attnTimer.current = setTimeout(() => setAttn(null), 4200);
   };
-  const doneCount = sections.filter(x => x.done).length;
-  const left = sections.length - doneCount;
+  const { doneCount, stepsLeft: left } = progress;
   const progressMessage = doneCount === 0 ? T('Bắt đầu thôi! ✨', "Let's get started! ✨")
     : left === 0 ? T('Xong hết rồi, xem lại nhé! 🎉', 'All set, time to review! 🎉')
       : left === 1 ? T('Sắp xong rồi, còn 1 bước 🔥', 'Almost there, 1 step left 🔥')
         : T(`Bạn đang làm rất tốt, còn ${left} bước 🔥`, `You're doing great, ${left} steps left 🔥`);
   // What's still missing on THIS step (shown above Next; never blocks it — fill in any order).
-  const stepGaps = [
-    [!(s.orgRegName || '').trim() && T('tên host', 'host name')],
-    [!nameOk && T('tên sự kiện', 'event name'), fieldErrors.desc && T('mô tả', 'description'), fieldErrors.cats && T('danh mục', 'a category'), fieldErrors.included && T('mục bao gồm', 'an included item')],
-    [!s.createLocConfirmed && T('địa chỉ gợi ý', 'a suggested address'), fieldErrors.dateTime && T('ngày & giờ', 'date & time')],
-    [fieldErrors.price && T('giá vé hợp lệ', 'a valid price'), fieldErrors.seats && T('số chỗ', 'seats')],
-    [fieldErrors.photos && T(`ít nhất ${MIN_PHOTOS} ảnh`, `at least ${MIN_PHOTOS} photos`)],
-  ][step].filter(Boolean);
-  const missing = [
-    !nameOk && T('tên sự kiện', 'event name'),
-    fieldErrors.desc && T('mô tả', 'description'),
-    !s.createLocConfirmed && T('địa chỉ gợi ý', 'a suggested address'),
-    fieldErrors.dateTime && T('ngày & giờ', 'date & time'),
-    fieldErrors.price && T('giá vé hợp lệ', 'a valid price'),
-    fieldErrors.seats && T('số chỗ', 'seats'),
-    fieldErrors.cats && T('danh mục', 'a category'),
-    fieldErrors.included && T('mục bao gồm', 'an included item'),
-    fieldErrors.photos && T(`ít nhất ${MIN_PHOTOS} ảnh`, `at least ${MIN_PHOTOS} photos`),
-  ].filter(Boolean);
-  // Same gaps, keyed by field id (note 53), so Review-with-gaps can land on the first one.
-  const missingFields = {
-    hostName: !(s.orgRegName || '').trim(), name: !nameOk, description: fieldErrors.desc, categories: fieldErrors.cats,
-    included: fieldErrors.included, location: !s.createLocConfirmed, date: fieldErrors.dateTime, seats: fieldErrors.seats, photos: fieldErrors.photos,
+  const stepGaps = progress.steps[step].missing;
+  // A tap on a "Still needed" chip lands on that field (same guide as a recipe Fix).
+  const goToMissing = (field) => {
+    track('create_event_still_needed_tapped', { field });
+    guideTo(field, T('Còn thiếu: ', 'Still needed: ') + MISSING_LABEL(field));
   };
-  const MISSING_LABEL = {
-    hostName: T('tên host', 'host name'), name: T('tên sự kiện', 'event name'), description: T('mô tả', 'description'),
-    categories: T('danh mục', 'a category'), included: T('mục bao gồm', 'an included item'), location: T('địa chỉ gợi ý', 'a suggested address'),
-    date: T('ngày & giờ', 'date & time'), price: T('giá vé hợp lệ', 'a valid price'), seats: T('số chỗ', 'seats'), photos: T(`ít nhất ${MIN_PHOTOS} ảnh`, `at least ${MIN_PHOTOS} photos`),
-  };
+  const missing = progress.missing;
   // ---- Recipe for success (note 50) ----------------------------------------------------------------
   const primaryCat = s.createCats[0] || '';
   const { benchmarks, demand } = useHostBenchmarks(primaryCat, s.createCity, !!s.user && !s.createSent, market.currency);
@@ -428,6 +413,12 @@ export default function CreateEvent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [s.createName, s.createDesc, s.createIntro, s.createIncludedItems, s.createKeywords, draftPriceVnd, s.createSeats, draftStartsAt, items.length, s.createChatGreeting, s.createChatGreetingEn, bench, s.createHostGoal, market.timeZone, market.currency]);
   const recipeById = Object.fromEntries(recipe.map(c => [c.id, c]));
+  // Keyword ideas: with event types on, the type's own seeds + the area + what other hosts use (also on a cold
+  // start, with no benchmarks), each dismissible; off, only what other hosts use, as before.
+  const keywordIdeas = typesOn
+    ? keywordSuggestions({ profile: typeProfile, lang, area: s.createNeighborhood || s.createDistrict, benchmark: recipeById.keywords?.suggestions || [],
+      typed: draftKeywords, dismissed: s.createKwDismissed || [] })
+    : (recipeById.keywords?.suggestions || []);
   const [recipeOpen, setRecipeOpen] = useState(false);
   const openRecipe = () => { setRecipeOpen(true); track('recipe_opened'); };
   const fixIngredient = (c) => {
@@ -666,25 +657,33 @@ export default function CreateEvent() {
               <BigField icon="search" label={T('Từ khoá tìm kiếm', 'Search keywords')} value={s.createKeywords} onChange={createKeywordsType}
                 placeholder={T('vd. tiệc tối, rượu vang, ẩm thực Việt', 'e.g. supper club, wine, Vietnamese food')} />
               <p style={hintText}>{T('Cách nhau bằng dấu phẩy. Để trống sẽ tự dùng danh mục đã chọn ở trên.', 'Comma-separated. Left blank, the category picked above is used instead.')}</p>
-              {recipeById.keywords?.suggestions?.length > 0 && (
+              {keywordIdeas.length > 0 && (
                 <div data-testid="create-keyword-suggestions" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                  <span style={{ ...hintText, margin: 0 }}>{T('Host khác hay dùng:', 'Other hosts use:')}</span>
-                  {recipeById.keywords.suggestions.map(k => (
-                    <button key={k} type="button" data-testid="create-keyword-suggestion"
-                      onClick={() => set({ createKeywords: [...draftKeywords, k].join(', ') })}
-                      style={{ fontSize: 12.5, fontFamily: 'inherit', padding: '5px 10px', borderRadius: 999, border: `1px solid ${rule}`, background: 'none', color: ink, cursor: 'pointer' }}>+ {k}</button>
+                  <span style={{ ...hintText, margin: 0 }}>{typesOn ? T('Gợi ý:', 'Ideas:') : T('Host khác hay dùng:', 'Other hosts use:')}</span>
+                  {keywordIdeas.map(k => (
+                    <span key={k} style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, border: `1px solid ${rule}` }}>
+                      <button type="button" data-testid="create-keyword-suggestion"
+                        onClick={() => set({ createKeywords: [...draftKeywords, k].join(', ') })}
+                        style={{ minHeight: 36, fontSize: 12.5, fontFamily: 'inherit', padding: typesOn ? '0 4px 0 10px' : '0 10px', border: 'none', background: 'none', color: ink, cursor: 'pointer' }}>+ {k}</button>
+                      {typesOn && (
+                        <button type="button" data-testid="create-keyword-dismiss" onClick={() => dismissCreateKeyword(k)}
+                          aria-label={T(`Bỏ gợi ý ${k}`, `Dismiss ${k}`)}
+                          style={{ minWidth: 32, minHeight: 36, fontSize: 13, fontFamily: 'inherit', border: 'none', background: 'none', color: ink, opacity: 0.5, cursor: 'pointer' }}>×</button>
+                      )}
+                    </span>
                   ))}
                 </div>
               )}
             </Guided>
             <Guided field="included" attn={attn} style={fieldCol}>
-              <FormLabel icon="checklist" text={T('Bao gồm', 'Included')} required tag={`${s.createIncludedItems.length}/3`} />
+              <FormLabel icon="checklist" text={typeProfile?.wizard?.includedTitle ? localized(typeProfile.wizard.includedTitle, lang) : T('Bao gồm', 'Included')}
+                required={requiredFields(typeProfile).includes('included')} tag={`${s.createIncludedItems.length}/3`} />
               {s.createIncludedItems.map((it, i) => (
                 <div key={i} className="bb-focus-ring" style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 8px 14px 16px', borderRadius: 14, background: paper, border: `1px solid ${rule}` }}>
                   <span aria-hidden style={{ fontSize: 18, lineHeight: '24px' }}>✅</span>
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <input value={it.label} maxLength={60} onChange={(e) => setCreateIncludedItem(i, 'label', e.target.value)}
-                      placeholder={T('Tên mục (vd. 5 món)', 'Label (e.g. 5 courses)')} data-testid={`create-included-${i}-label`} data-bare
+                      placeholder={typeProfile?.wizard?.includedPlaceholder ? localized(typeProfile.wizard.includedPlaceholder, lang) : T('Tên mục (vd. 5 món)', 'Label (e.g. 5 courses)')} data-testid={`create-included-${i}-label`} data-bare
                       style={{ border: 'none', background: 'none', outline: 'none', fontFamily: FACE, fontSize: 16, fontWeight: 600, color: ink, padding: 0 }} />
                     <div style={{ height: 1, background: rule }} />
                     <input value={it.detail} maxLength={300} onChange={(e) => setCreateIncludedItem(i, 'detail', e.target.value)}
@@ -703,6 +702,10 @@ export default function CreateEvent() {
               )}
               {attemptedReview && fieldErrors.included && <p style={errText}>{T('Hãy thêm ít nhất một mục Bao gồm.', 'Please add at least one Included item.')}</p>}
             </Guided>
+            {typeProfile?.wizard?.details?.length > 0 && (
+              <TypeDetailsEditor profile={typeProfile} values={typeDetails} lang={lang} T={T}
+                onChange={(field, value) => setCreateDetail(typeKey, field, value)} />
+            )}
           </StepCard>
         )}
 
@@ -984,9 +987,8 @@ export default function CreateEvent() {
         {step < 4 && !s.createSent && (
           <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
             {stepGaps.length > 0 && (
-              <p data-testid="create-step-gaps" style={{ fontSize: 12.5, textAlign: 'center', color: ink, opacity: 0.7, margin: 0 }}>
-                {T('Còn thiếu ở bước này: ', 'Still needed here: ') + stepGaps.join(', ')}
-              </p>
+              <MissingChips testId="create-step-gaps" lead={T('Còn thiếu ở bước này:', 'Still needed here:')} fields={stepGaps}
+                label={MISSING_LABEL} onPick={goToMissing} T={T} />
             )}
             <div style={{ display: 'flex', gap: 10 }}>
               {step > 0 && (
@@ -1015,8 +1017,8 @@ export default function CreateEvent() {
               onClick={s.createSent ? undefined : () => {
                 if (!canReview) {
                   setAttemptedReview(true);
-                  const field = firstMissingField(missingFields) || (fieldErrors.price ? 'price' : null);
-                  if (field) guideTo(field, T('Còn thiếu: ', 'Still needed: ') + MISSING_LABEL[field]);
+                  const field = progress.firstMissing;
+                  if (field) guideTo(field, T('Còn thiếu: ', 'Still needed: ') + MISSING_LABEL(field));
                   return;
                 }
                 setReviewOpen(true);
@@ -1029,9 +1031,8 @@ export default function CreateEvent() {
                 : T('Xem lại sự kiện của bạn', 'Review your event')}
             </div>
             {!s.createSent && missing.length > 0 && (
-              <p data-testid="create-missing-summary" style={{ fontSize: 11.5, lineHeight: 1.5, color: attemptedReview ? alert : ink, opacity: attemptedReview ? 1 : 0.7, margin: '8px 0 0', textAlign: 'center' }}>
-                {T('Còn thiếu: ', 'Still needed: ') + missing.join(', ')}
-              </p>
+              <MissingChips testId="create-missing-summary" lead={T('Còn thiếu:', 'Still needed:')} fields={missing}
+                label={MISSING_LABEL} onPick={goToMissing} T={T} tone={attemptedReview ? 'error' : 'plain'} style={{ marginTop: 8 }} />
             )}
           </>
         )}
@@ -1130,6 +1131,15 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
   const seatsLabel = s.createSeats.trim() || T('Chưa nhập', 'Not set');
   const addressLabel = s.createLocLabel || [s.createAddressLine, s.createDistrict, s.createCity].filter(Boolean).join(', ') || T('Chưa xác nhận địa chỉ', 'Address not confirmed');
   const includedItems = (s.createIncludedItems || []).filter(it => (it.label || '').trim());
+  // Event type facts exactly as guests will see them, and a warning for answers kept for another type that will
+  // NOT be published (switching the category never throws them away silently).
+  const lang = s.lang === 'en' ? 'en' : 'vi';
+  const typesOn = flagOn(s.featureFlags, 'event_type_profiles');
+  const primaryType = s.createCats[0] || 'supper';
+  const typeDetails = typesOn ? cleanDetails(profileFor(primaryType), (s.createDetails || {})[primaryType]) : {};
+  const typeFacts = typesOn ? detailFacts(profileFor(primaryType), typeDetails, lang) : [];
+  const droppedTypes = typesOn ? droppedDetailTypes(primaryType, s.createDetails) : [];
+  const typeName = (k) => { const c = CAT_DEFS.find(x => x.key === k); return c ? T(c.vi, c.en) : k; };
 
   // Public preview (owner, 2026-10-21): the REAL Event Detail, rendered from this draft (src/lib/draftPreview.js).
   // The wall clock read in the venue's zone, and shown in that zone (same as the published page will).
@@ -1147,6 +1157,7 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
     description: s.createDesc.trim(), intro: s.createIntro.trim(), includedItems,
     inviteOnly: s.createVisibility === 'invite', organizerName: (s.orgRegName || '').trim(),
     coverUrl: coverItem?.url || '',
+    details: typeDetails,
   });
 
   // Confirm — the ONLY call site that actually submits, available from either tab (the Public preview shows the same
@@ -1235,7 +1246,14 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
               {row(T('Ai có thể đặt', 'Who can reserve'), criteriaSummary(normalizeCriteria(s.createCriteria), T(true, false)))}
               {s.createDesc.trim() && row(T('Mô tả', 'Description'), s.createDesc.trim())}
               {s.createIntro.trim() && row(T('Giới thiệu sự kiện', 'Event introduction'), s.createIntro.trim())}
+              {typeFacts.map(f => <div key={f.id} data-testid={`create-review-fact-${f.id}`}>{row(f.label, f.value)}</div>)}
             </div>
+            {droppedTypes.length > 0 && (
+              <p role="note" data-testid="create-review-dropped-details" style={{ fontSize: 12.5, lineHeight: 1.5, color: 'var(--bb-honey)', margin: '10px 2px 0' }}>
+                {T(`Thông tin bạn đã nhập cho ${droppedTypes.map(typeName).join(', ')} sẽ không được đăng, vì loại chính là ${typeName(primaryType)}. Chúng vẫn được giữ trong bản nháp nếu bạn đổi lại.`,
+                  `What you entered for ${droppedTypes.map(typeName).join(', ')} won't be published, since the main type is ${typeName(primaryType)}. It stays in this draft if you switch back.`)}
+              </p>
+            )}
 
             {includedItems.length > 0 && (
               <div style={{ marginTop: 26 }}>
@@ -1566,6 +1584,72 @@ function StepCard({ title, id, children }) {
     <div id={id} style={{ ...cardGlass({ marginTop: 22, padding: 18, display: 'flex', flexDirection: 'column', gap: 18 }) }}>
       <h2 style={display(20, { margin: 0 })}>{title}</h2>
       {children}
+    </div>
+  );
+}
+
+/** "Still needed" as tappable chips: each one takes the host to that field. */
+function MissingChips({ testId, lead, fields, label, onPick, T, tone = 'plain', style }) {
+  const color = tone === 'error' ? alert : ink;
+  return (
+    <div data-testid={testId} role="group" aria-label={lead}
+      style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 6, ...style }}>
+      <span style={{ fontSize: 12.5, color, opacity: tone === 'error' ? 1 : 0.7 }}>{lead}</span>
+      {fields.map(id => (
+        <button key={id} type="button" onClick={() => onPick(id)} data-testid={`${testId}-${id}`} className="bb-press"
+          aria-label={T('Đi tới: ', 'Go to: ') + label(id)}
+          style={{ minHeight: 44, padding: '0 12px', borderRadius: 999, border: `1px solid ${tone === 'error' ? alert : rule}`, background: 'transparent',
+            color, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          {label(id)}<span aria-hidden style={{ opacity: 0.6 }}>›</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The event type's own facts (a supper club: dietary options, BYO, dress code). All optional. */
+function TypeDetailsEditor({ profile, values, lang, T, onChange }) {
+  const fields = profile.detailFields || {};
+  const chip = (on) => ({
+    minHeight: 44, padding: '0 14px', borderRadius: 999, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer',
+    border: `1px solid ${on ? ink : rule}`, background: on ? ink : 'transparent', color: on ? paper : ink, fontWeight: on ? 600 : 400,
+  });
+  return (
+    <div data-testid="create-type-details" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <p style={{ ...hintText, margin: 0 }}>{T('Khách hay hỏi những điều này trước khi đặt chỗ. Không bắt buộc.', 'Guests often ask about these before booking. Optional.')}</p>
+      {profile.wizard.details.map(id => {
+        const def = fields[id];
+        if (!def) return null;
+        const label = localized(def.label, lang);
+        if (def.kind === 'text') {
+          return (
+            <label key={id} style={fieldCol}>
+              <FormLabel icon="sparkles" text={label} />
+              <input value={values[id] || ''} maxLength={def.max || 80} onChange={(e) => onChange(id, e.target.value)}
+                placeholder={def.placeholder ? localized(def.placeholder, lang) : ''} data-testid={`create-detail-${id}`} style={bigInput} />
+            </label>
+          );
+        }
+        const multi = def.kind === 'multi';
+        const cur = values[id];
+        return (
+          <div key={id} role="group" aria-label={label} style={fieldCol}>
+            <FormLabel icon="sparkles" text={label} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {def.options.map(o => {
+                const on = multi ? Array.isArray(cur) && cur.includes(o.id) : cur === o.id;
+                const next = multi
+                  ? (on ? cur.filter(x => x !== o.id) : [...(Array.isArray(cur) ? cur : []), o.id])
+                  : (on ? null : o.id);
+                return (
+                  <button key={o.id} type="button" aria-pressed={on} data-testid={`create-detail-${id}-${o.id}`}
+                    onClick={() => onChange(id, next)} style={chip(on)}>{localized(o, lang)}</button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

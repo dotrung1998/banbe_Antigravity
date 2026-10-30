@@ -33,12 +33,15 @@ enum HomeDiscovery {
         var popularity: Double?
         /// The event's own currency (migration 195); `priceVnd` is in its MINOR unit (đồng, or cents for USD).
         var currency: String
+        /// events.details (migration 203): what the event-type chips match on. Empty for legacy and demo events.
+        var details: EventDetails
 
         init(key: String, startsAt: Date?, priceVnd: Int?, catKeys: [String], booked: Int? = nil, capacity: Int? = nil,
-             soldOut: Bool = false, distanceKm: Double? = nil, popularity: Double? = nil, currency: String = "VND") {
+             soldOut: Bool = false, distanceKm: Double? = nil, popularity: Double? = nil, currency: String = "VND",
+             details: EventDetails = [:]) {
             self.key = key; self.startsAt = startsAt; self.priceVnd = priceVnd; self.catKeys = catKeys
             self.booked = booked; self.capacity = capacity; self.soldOut = soldOut
-            self.distanceKm = distanceKm; self.popularity = popularity; self.currency = currency
+            self.distanceKm = distanceKm; self.popularity = popularity; self.currency = currency; self.details = details
         }
     }
 
@@ -54,6 +57,8 @@ enum HomeDiscovery {
         var cats: [String] = []
         var seatsLeft = false
         var almostFull = false
+        /// Event-type chip ids (e.g. "dietary:vegan"; Lib/EventTypes.swift). AND-combined.
+        var typeFilters: [String] = []
 
         static let `default` = Filters()
     }
@@ -66,10 +71,10 @@ enum HomeDiscovery {
         var going: Int?
     }
 
-    enum Dimension { case date, cats, free, seatsLeft, almostFull }
+    enum Dimension { case date, cats, free, seatsLeft, almostFull, typeFilters }
 
     struct RelaxHint: Equatable {
-        /// date | price | free | cats | seatsLeft | almostFull
+        /// date | price | free | cats | seatsLeft | almostFull | type
         let id: String
         let gain: Int
         let filters: Filters
@@ -161,6 +166,9 @@ enum HomeDiscovery {
         if !f.cats.isEmpty && !item.catKeys.contains(where: f.cats.contains) { return false }
         if f.seatsLeft && (seatsLeft(of: item) == 0 || item.soldOut) { return false }
         if f.almostFull && !fillBadge(booked: item.booked, capacity: item.capacity).almostFull { return false }
+        for id in f.typeFilters {
+            if let def = EventTypes.typeFilter(id), !EventTypes.matches(def, item.details) { return false }
+        }
         return true
     }
 
@@ -177,6 +185,7 @@ enum HomeDiscovery {
         if !f.cats.isEmpty { n += 1 }
         if f.seatsLeft { n += 1 }
         if f.almostFull { n += 1 }
+        n += f.typeFilters.count
         return n
     }
 
@@ -194,6 +203,9 @@ enum HomeDiscovery {
         case .free: var g = f; g.free = true; out["true"] = count(g)
         case .seatsLeft: var g = f; g.seatsLeft = true; out["true"] = count(g)
         case .almostFull: var g = f; g.almostFull = true; out["true"] = count(g)
+        case .typeFilters:
+            // What tapping that chip would give: it joins the others (AND).
+            for id in options { var g = f; g.typeFilters = g.typeFilters.filter { $0 != id } + [id]; out[id] = count(g) }
         }
         return out
     }
@@ -205,6 +217,7 @@ enum HomeDiscovery {
         ("cats", { !$0.cats.isEmpty }, { var f = $0; f.cats = []; return f }),
         ("seatsLeft", { $0.seatsLeft }, { var f = $0; f.seatsLeft = false; return f }),
         ("almostFull", { $0.almostFull }, { var f = $0; f.almostFull = false; return f }),
+        ("type", { !$0.typeFilters.isEmpty }, { var f = $0; f.typeFilters = []; return f }),
     ]
 
     /// "+6 events if you drop the date" — for empty / near-empty results. Each hint removes ONE active filter;
@@ -308,15 +321,9 @@ extension HomeDiscovery {
         "date": ("bỏ ngày", "any date"), "price": ("bỏ khoảng giá", "any price"), "free": ("bỏ \"Miễn phí\"", "not only free"),
         "cats": ("mọi danh mục", "every category"), "seatsLeft": ("cả sự kiện hết chỗ", "include sold out"),
         "almostFull": ("bỏ \"Sắp hết\"", "not only almost full"),
+        "type": ("bỏ bộ lọc theo loại", "no type filters"),
     ]
 
     /// Home category row + filter-sheet categories (web CATEGORY_DEFS).
-    static let categories: [(key: String, vi: String, en: String)] = [
-        ("all", "Tất cả", "All"),
-        ("supper", "Supper club", "Supper club"),
-        ("fashion", "Thời trang", "Fashion"),
-        ("gallery", "Phòng tranh", "Gallery"),
-        ("music", "Nhạc", "Music"),
-        ("popup", "Pop-up", "Pop-up"),
-    ]
+    static let categories = EventTypes.categoryDefs(withAll: true) // src/data/eventTypeProfiles.json
 }

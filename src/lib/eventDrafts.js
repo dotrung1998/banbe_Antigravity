@@ -8,7 +8,7 @@ export const MAX_DRAFTS = 5;
 /** The BanBeContext form keys a draft keeps (all plain JSON). */
 export const DRAFT_FIELDS = [
   'createName', 'createCats', 'createDesc', 'createIntro', 'createKeywords', 'createChatGreeting', 'createChatGreetingEn',
-  'createIncludedItems', 'createPrice', 'createPriceCurrency', 'createSeats', 'createVisibility', 'createHostGoal', 'createCriteria',
+  'createIncludedItems', 'createDetails', 'createKwDismissed', 'createPrice', 'createPriceCurrency', 'createSeats', 'createVisibility', 'createHostGoal', 'createCriteria',
   'createEventDate', 'createEventTime',
   'createLoc', 'createLocLabel', 'createLocConfirmed', 'createLat', 'createLng', 'createAddressLine', 'createDistrict',
   'createCity', 'createPostalCode', 'createCountryCode', 'createStateProvince', 'createNeighborhood', 'createTz',

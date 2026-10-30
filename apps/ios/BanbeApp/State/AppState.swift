@@ -1929,6 +1929,11 @@ final class AppState: ObservableObject {
     @Published var createIntro = ""
     @Published var createChatGreeting = ""
     @Published var createChatGreetingEn = ""
+    /// Event type facts (migration 203), kept PER TYPE (["supper": ["byo": .text("wine")]]) so switching the
+    /// category never throws a host's answers away; only the primary type's are published (set_event_details).
+    @Published var createDetails: [String: EventDetails] = [:]
+    /// Keyword ideas the host dismissed in this draft (never suggested again for it).
+    @Published var createKwDismissed: [String] = []
     // "Bao gồm" item-editing parity fix (2026-09-29) — mirrors web's
     // identical `createIncludedItems` (BanBeContext.jsx): up to 3 { label,
     // detail } items, sent as `p_included_items` to the same
@@ -3523,6 +3528,8 @@ final class AppState: ObservableObject {
         createIntro = ""
         createChatGreeting = ""
         createChatGreetingEn = ""
+        createDetails = [:]
+        createKwDismissed = []
         // Never carry a previous session's confirmed address/coordinates
         // into an unrelated fresh event.
         createLoc = ""
@@ -4022,7 +4029,8 @@ final class AppState: ObservableObject {
         Task { await persistFollowToggle(eventKey: key, uid: uid, wasFollowing: wasFollowing) }
     }
 
-    func pickFilter(_ key: String) { homeFilters.cats = key == "all" ? [] : [key] }
+    /// Type chips (event type profiles) belong to one category, so a new category starts without them.
+    func pickFilter(_ key: String) { homeFilters.cats = key == "all" ? [] : [key]; homeFilters.typeFilters = [] }
     func clearFilters() {
         area = "all"
         filterAttending = false; filterSaved = false; filterSoldOut = false

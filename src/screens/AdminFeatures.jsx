@@ -106,6 +106,14 @@ const FLAGS = [
     stateOn: ['Đang dùng Phiên bản 2', 'Showing Version 2'],
     stateOff: ['Đang dùng Phiên bản 1', 'Showing Version 1'],
   },
+  {
+    // Migration 203, note 65.
+    key: 'event_type_profiles',
+    vi: 'Biểu mẫu theo loại sự kiện',
+    en: 'Event-type forms',
+    hintVi: 'Màn tạo sự kiện, trang sự kiện và Trang chủ thay đổi theo loại sự kiện. Hiện có Supper club: chế độ ăn, mang đồ uống, trang phục, bộ lọc riêng trên Trang chủ. Mặc định tắt.',
+    hintEn: 'The create form, the event page and Home adapt to the kind of event. Supper club first: dietary options, BYO, dress code, its own Home filters. Off by default.',
+  },
 ];
 
 const ERRORS = {

@@ -56,6 +56,11 @@ export function marketColumnsRejected(error) {
   return true;
 }
 
+// `events.details` (migration 203, event type profiles) — same idea: a DB without it gets rows without it and
+// every reader treats a missing value as {} (no type facts, today's behaviour).
+let detailsColumnMissing = false;
+export const detailsColumnList = () => (detailsColumnMissing ? [] : ['details']);
+
 /**
  * Runs `build(withR2)` (returns a thenable PostgREST query). First tries with
  * the new r2 columns; if the DB does not have them yet, retries once without
@@ -66,11 +71,12 @@ export function marketColumnsRejected(error) {
  */
 export async function withR2Columns(build) {
   let res;
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (let attempt = 0; attempt < 6; attempt++) {
     res = await build(!r2ColumnsMissing);
     if (!isMissingColumnError(res?.error)) return res;
     const msg = res.error.message || '';
     if (marketColumnsRejected(res.error)) continue;
+    if (/\bdetails\b/i.test(msg) && !detailsColumnMissing) { detailsColumnMissing = true; continue; }
     if (/chat_greeting_en/i.test(msg) && !chatGreetingEnColumnMissing) { chatGreetingEnColumnMissing = true; continue; }
     if (/chat_greeting/i.test(msg) && !/chat_greeting_en/i.test(msg) && !chatGreetingColumnMissing) { chatGreetingColumnMissing = true; continue; }
     if (r2ColumnsMissing) return res;

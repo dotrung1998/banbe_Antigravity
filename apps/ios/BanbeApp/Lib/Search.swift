@@ -29,18 +29,9 @@ enum SearchMatch {
         return collapsed
     }
 
-    /// Derived from `BottomTabBar`/Home's own four real category keys
-    /// (`FILTER_DEFS` on web has no direct iOS twin, so this lists the
-    /// same four keys/labels directly) plus a couple of honest Vietnamese
-    /// synonyms per category — never invented categories that don't exist
-    /// in the schema.
-    static let categoryAliases: [String: [String]] = [
-        "all": [],
-        "supper": ["supper club", "supper", "tiec toi", "tiec", "dinner"],
-        "fashion": ["thoi trang", "fashion"],
-        "gallery": ["phong tranh", "gallery", "trien lam", "art"],
-        "music": ["nhac", "music", "am nhac", "concert"],
-    ]
+    /// Synonyms per category (VI + EN, accent-free since the document is folded anyway) come from the event
+    /// type profiles (src/data/eventTypeProfiles.json), the same file the web reads — never invented categories.
+    static let categoryAliases: [String: [String]] = EventTypes.searchAliases
 
     /// Builds ONE normalized search document per event. Category/name
     /// coverage never depends on `keywords` being populated — it's always

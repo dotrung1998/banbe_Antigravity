@@ -320,13 +320,7 @@ struct StagedGalleryItem: Identifiable, Equatable {
 struct CreateEventView: View {
     @EnvironmentObject var app: AppState
 
-    private let categories: [(key: String, vi: String, en: String)] = [
-        ("supper", "Supper club", "Supper club"),
-        ("fashion", "Thời trang", "Fashion"),
-        ("gallery", "Phòng tranh", "Gallery"),
-        ("music", "Nhạc", "Music"),
-        ("popup", "Pop-up", "Pop-up"),
-    ]
+    private let categories = EventTypes.categoryDefs() // src/data/eventTypeProfiles.json
     private let maxPhotos = 8
     private let minPhotos = 3
 
@@ -431,31 +425,22 @@ struct CreateEventView: View {
         [app.T("Host", "Host"), app.T("Cơ bản", "Basics"), app.T("Thời gian & nơi", "When & where"),
          app.T("Vé", "Tickets"), app.T("Ảnh", "Photos")]
     }
-    private func sectionDone(_ section: Section) -> Bool {
-        switch section {
-        case .host: return !app.orgRegName.trimmingCharacters(in: .whitespaces).isEmpty
-        case .basics: return nameValid && descValid && catsValid && includedValid
-        case .whenWhere: return app.createLocConfirmed && dateTimeValid
-        case .tickets: return seatsValid
-        case .photos: return photosValid
-        }
+    /// One calculation (Lib/CreateProgress.swift) behind the ring, "N steps left", "Still needed here" and the
+    /// Review summary, so they can never disagree.
+    private var progress: CreateProgress.Result {
+        CreateProgress.compute(missing: missingFields, required: EventTypes.requiredFields(typeProfile ?? .generic("")))
     }
+    /// Event type profiles (switch event_type_profiles, migration 203): the first picked category shapes the form.
+    /// Off, or a type with no profile: everything behaves exactly as before.
+    private var typeProfile: EventTypeProfile? {
+        guard app.eventTypesEnabled, let key = app.createCats.first else { return nil }
+        return EventTypes.profile(key)
+    }
+    private var langCode: String { app.isEN ? "en" : "vi" }
+    private func sectionDone(_ section: Section) -> Bool { progress.steps[section.rawValue].done }
     private var firstIncompleteSection: Section? { Section.allCases.first { !sectionDone($0) } }
-
-    /// "Still needed: …" — every blocker, in on-screen order.
-    private var missingSummary: String? {
-        var items: [String] = []
-        if !nameValid { items.append(app.T("tên sự kiện", "event name")) }
-        if !descValid { items.append(app.T("mô tả", "description")) }
-        if !app.createLocConfirmed { items.append(app.T("địa chỉ gợi ý", "a suggested address")) }
-        if !dateTimeValid { items.append(app.T("ngày & giờ", "date & time")) }
-        if !seatsValid { items.append(app.T("số chỗ", "seats")) }
-        if !catsValid { items.append(app.T("danh mục", "a category")) }
-        if !includedValid { items.append(app.T("mục bao gồm", "an included item")) }
-        if !photosValid { items.append(app.T("ít nhất \(minPhotos) ảnh", "at least \(minPhotos) photos")) }
-        guard !items.isEmpty else { return nil }
-        return app.T("Còn thiếu: ", "Still needed: ") + items.joined(separator: ", ")
-    }
+    /// A dollar amount must read like 12.50; an empty field means free.
+    private var priceValid: Bool { app.createPrice.trimmingCharacters(in: .whitespaces).isEmpty || priceDigits != nil }
 
     // MARK: Recipe for success (note 50)
 
@@ -566,20 +551,15 @@ struct CreateEventView: View {
     private var missingFields: [String: Bool] {
         ["hostName": app.orgRegName.trimmingCharacters(in: .whitespaces).isEmpty, "name": !nameValid, "description": !descValid,
          "categories": !catsValid, "included": !includedValid, "location": !app.createLocConfirmed, "date": !dateTimeValid,
-         "seats": !seatsValid, "photos": !photosValid]
+         "price": !priceValid, "seats": !seatsValid, "photos": !photosValid]
     }
     private func missingLabel(_ field: String) -> String {
-        switch field {
-        case "hostName": return app.T("tên host", "host name")
-        case "name": return app.T("tên sự kiện", "event name")
-        case "description": return app.T("mô tả", "description")
-        case "categories": return app.T("danh mục", "a category")
-        case "included": return app.T("mục bao gồm", "an included item")
-        case "location": return app.T("địa chỉ gợi ý", "a suggested address")
-        case "date": return app.T("ngày & giờ", "date & time")
-        case "seats": return app.T("số chỗ", "seats")
-        default: return app.T("ít nhất \(minPhotos) ảnh", "at least \(minPhotos) photos")
-        }
+        CreateProgress.label(field, minPhotos: minPhotos) { app.T($0, $1) }
+    }
+    /// A tap on a "Still needed" chip lands on that field (same guide as a recipe Fix).
+    private func goToMissing(_ field: String) {
+        Analytics.track(.createEventStillNeededTapped(field: field))
+        guideTo(field, hint: app.T("Còn thiếu: ", "Still needed: ") + missingLabel(field))
     }
     /// Fill rate of the benchmark cell a date quick pick would land in (with the current time, else 19:00).
     private func slotFill(day: Date, time: Date?) -> Double? {
@@ -863,7 +843,8 @@ struct CreateEventView: View {
     @ViewBuilder
     private func includedItemsEditor() -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            FormFieldLabel(icon: "checklist", text: app.T("Bao gồm", "Included"), required: true,
+            FormFieldLabel(icon: "checklist", text: typeProfile?.wizard?.includedTitle?.text(langCode) ?? app.T("Bao gồm", "Included"),
+                           required: EventTypes.requiredFields(typeProfile ?? .generic("")).contains("included"),
                            trailing: "\(app.createIncludedItems.count)/3")
             ForEach(Array(app.createIncludedItems.enumerated()), id: \.offset) { index, item in
                 HStack(alignment: .top, spacing: 12) {
@@ -873,7 +854,7 @@ struct CreateEventView: View {
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 8) {
                         TextField(
-                            app.T("Tên (vd. 5 món)", "Label (e.g. 5 courses)"),
+                            typeProfile?.wizard?.includedPlaceholder?.text(langCode) ?? app.T("Tên (vd. 5 món)", "Label (e.g. 5 courses)"),
                             text: Binding(get: { item.label }, set: { app.setCreateIncludedItemLabel(index, $0) })
                         )
                         .focused($focusedField, equals: "included.\(index).label")
@@ -1419,6 +1400,9 @@ struct CreateEventView: View {
                     .foregroundStyle(app.palette.ink) }
 
                     guided("included") { includedItemsEditor() }
+                    if let typeProfile, let key = app.createCats.first, !(typeProfile.wizard?.details ?? []).isEmpty {
+                        TypeDetailsEditor(profile: typeProfile, typeKey: key)
+                    }
                 }
         })
     }
@@ -1661,7 +1645,7 @@ struct CreateEventView: View {
                     guard canOpenReview else {
                         attemptedReview = true
                         // Note 53: land on the first missing FIELD (glowing, focused), not just its step.
-                        if let field = CreateFieldGuide.firstMissing(missingFields) {
+                        if let field = progress.firstMissing {
                             guideTo(field, hint: app.T("Còn thiếu: ", "Still needed: ") + missingLabel(field))
                         } else if let first = firstIncompleteSection { goTo(first) }
                         return
@@ -1678,12 +1662,9 @@ struct CreateEventView: View {
                 }
                 .padding(.top, 26)
 
-                if let missingSummary, !app.createSent {
-                    Text(missingSummary)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(attemptedReview ? BanbeTheme.alert : app.palette.ink.opacity(0.7))
-                        .frame(maxWidth: .infinity)
-                        .multilineTextAlignment(.center)
+                if !progress.missing.isEmpty, !app.createSent {
+                    MissingChips(lead: app.T("Còn thiếu:", "Still needed:"), fields: progress.missing, label: missingLabel,
+                                 goToPrefix: app.T("Đi tới: ", "Go to: "), alertTone: attemptedReview, onPick: goToMissing)
                         .padding(.top, 8)
                         .accessibilityIdentifier("create.missingSummary")
                 }
@@ -1745,8 +1726,8 @@ struct CreateEventView: View {
 
     /// Encouraging line for the step bar, by how many steps are done.
     private var createProgressMessage: String {
-        let done = Section.allCases.filter(sectionDone).count
-        let left = Section.allCases.count - done
+        let done = progress.doneCount
+        let left = progress.stepsLeft
         switch done {
         case 0: return app.T("Bắt đầu thôi! ✨", "Let's get started! ✨")
         case Section.allCases.count: return app.T("Xong hết rồi, xem lại nhé! 🎉", "All set, time to review! 🎉")
@@ -1768,21 +1749,7 @@ struct CreateEventView: View {
     }
 
     /// What's still missing on THIS step (shown above Next; never blocks it).
-    private var currentStepGaps: [String] {
-        switch currentStep {
-        case .host: return app.orgRegName.trimmingCharacters(in: .whitespaces).isEmpty ? [app.T("tên host", "host name")] : []
-        case .basics:
-            return [!nameValid ? app.T("tên sự kiện", "event name") : nil,
-                    !descValid ? app.T("mô tả", "description") : nil,
-                    !catsValid ? app.T("danh mục", "a category") : nil,
-                    !includedValid ? app.T("mục bao gồm", "an included item") : nil].compactMap { $0 }
-        case .whenWhere:
-            return [!app.createLocConfirmed ? app.T("địa chỉ gợi ý", "a suggested address") : nil,
-                    !dateTimeValid ? app.T("ngày & giờ", "date & time") : nil].compactMap { $0 }
-        case .tickets: return seatsValid ? [] : [app.T("số chỗ", "seats")]
-        case .photos: return photosValid ? [] : [app.T("ít nhất \(minPhotos) ảnh", "at least \(minPhotos) photos")]
-        }
-    }
+    private var currentStepGaps: [String] { progress.steps[currentStep.rawValue].missing }
 
     /// Back / Next under each step. Next is never blocked: hosts can fill in
     /// any order and come back (finished steps show a check in the bar).
@@ -1791,11 +1758,8 @@ struct CreateEventView: View {
         let prev = Section(rawValue: currentStep.rawValue - 1)
         return VStack(spacing: 10) {
             if !currentStepGaps.isEmpty {
-                Text(app.T("Còn thiếu ở bước này: ", "Still needed here: ") + currentStepGaps.joined(separator: ", "))
-                    .font(.system(size: 12))
-                    .foregroundStyle(app.palette.ink.opacity(0.7))
-                    .frame(maxWidth: .infinity)
-                    .multilineTextAlignment(.center)
+                MissingChips(lead: app.T("Còn thiếu ở bước này:", "Still needed here:"), fields: currentStepGaps, label: missingLabel,
+                             goToPrefix: app.T("Đi tới: ", "Go to: "), alertTone: false, onPick: goToMissing)
                     .accessibilityIdentifier("create.step.gaps")
             }
             HStack(spacing: 10) {
@@ -1945,22 +1909,41 @@ struct CreateEventView: View {
     /// Keywords other hosts in this slice actually use (only from benchmarks; none on a cold start).
     @ViewBuilder
     private func keywordSuggestions() -> some View {
-        if let k = recipeCheck("keywords"), !k.suggestions.isEmpty {
+        // With event types on: the type's own seeds + the area + what other hosts use (also on a cold start),
+        // each dismissible. Off: only what other hosts use, as before.
+        let benchmark = recipeCheck("keywords")?.suggestions ?? []
+        let ideas = app.eventTypesEnabled
+            ? EventTypes.keywordSuggestions(typeProfile ?? .generic(""), lang: langCode,
+                                            area: app.createNeighborhood ?? app.createDistrict, benchmark: benchmark,
+                                            typed: draftKeywords, dismissed: app.createKwDismissed)
+            : benchmark
+        if !ideas.isEmpty {
             FlowRow(spacing: 6) {
-                Text(app.T("Host khác hay dùng:", "Other hosts use:")).font(.system(size: 11)).opacity(0.75)
+                Text(app.eventTypesEnabled ? app.T("Gợi ý:", "Ideas:") : app.T("Host khác hay dùng:", "Other hosts use:"))
+                    .font(.system(size: 11)).opacity(0.75)
                     .frame(minHeight: 32)
-                ForEach(k.suggestions, id: \.self) { word in
-                    Button {
-                        Haptics.selection()
-                        app.createKeywords = (draftKeywords + [word]).joined(separator: ", ")
-                    } label: {
-                        Text("+ \(word)").font(.system(size: 12.5))
-                            .padding(.horizontal, 10).frame(minHeight: 32)
-                            .overlay(Capsule().strokeBorder(app.palette.rule, lineWidth: 1))
-                            .contentShape(Capsule())
+                ForEach(ideas, id: \.self) { word in
+                    HStack(spacing: 0) {
+                        Button {
+                            Haptics.selection()
+                            app.createKeywords = (draftKeywords + [word]).joined(separator: ", ")
+                        } label: {
+                            Text("+ \(word)").font(.system(size: 12.5))
+                                .padding(.leading, 10).padding(.trailing, app.eventTypesEnabled ? 4 : 10).frame(minHeight: 36)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(app.T("Thêm từ khoá \(word)", "Add keyword \(word)"))
+                        if app.eventTypesEnabled {
+                            Button { app.createKwDismissed.append(word) } label: {
+                                Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).opacity(0.5)
+                                    .frame(width: 32, height: 36).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(app.T("Bỏ gợi ý \(word)", "Dismiss \(word)"))
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(app.T("Thêm từ khoá \(word)", "Add keyword \(word)"))
+                    .overlay(Capsule().strokeBorder(app.palette.rule, lineWidth: 1))
                 }
             }
             .accessibilityElement(children: .contain)
@@ -2184,8 +2167,27 @@ private struct CreateEventReviewSheet: View {
             inviteOnly: app.createVisibility == "invite",
             organizerName: app.orgRegName.trimmingCharacters(in: .whitespaces),
             currency: app.createCurrency,
-            timeZoneID: app.createEventTimeZoneID
+            timeZoneID: app.createEventTimeZoneID,
+            details: reviewTypeDetails
         ))
+    }
+
+    // Event type facts exactly as guests will see them, and the answers kept for another type that will NOT be
+    // published (switching the category never throws them away silently).
+    private var reviewPrimaryType: String { app.createCats.first ?? "supper" }
+    private var reviewTypeDetails: EventDetails {
+        guard app.eventTypesEnabled else { return [:] }
+        return EventTypes.clean(EventTypes.profile(reviewPrimaryType), app.createDetails[reviewPrimaryType] ?? [:])
+    }
+    private var reviewTypeFacts: [EventTypes.Fact] {
+        guard app.eventTypesEnabled else { return [] }
+        return EventTypes.detailFacts(EventTypes.profile(reviewPrimaryType), reviewTypeDetails, lang: app.isEN ? "en" : "vi")
+    }
+    private var reviewDroppedTypes: [String] {
+        app.eventTypesEnabled ? EventTypes.droppedDetailTypes(primary: reviewPrimaryType, draft: app.createDetails) : []
+    }
+    private func typeName(_ key: String) -> String {
+        categories.first { $0.key == key }.map { app.T($0.vi, $0.en) } ?? key
     }
 
     /// Cover first, then the rest — the hero, then the photo strip.
@@ -2324,6 +2326,7 @@ private struct CreateEventReviewSheet: View {
                             if !app.createIntro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                 row(app.T("Giới thiệu sự kiện", "Event introduction"), app.createIntro.trimmingCharacters(in: .whitespacesAndNewlines))
                             }
+                            ForEach(reviewTypeFacts, id: \.id) { f in row(f.label, f.value) }
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 4)
@@ -2331,6 +2334,15 @@ private struct CreateEventReviewSheet: View {
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .padding(.top, 8)
                         .accessibilityIdentifier("create.reviewDetails")
+                        if !reviewDroppedTypes.isEmpty {
+                            let names = reviewDroppedTypes.map(typeName).joined(separator: ", ")
+                            Text(app.T("Thông tin bạn đã nhập cho \(names) sẽ không được đăng, vì loại chính là \(typeName(reviewPrimaryType)). Chúng vẫn được giữ trong bản nháp nếu bạn đổi lại.",
+                                       "What you entered for \(names) won't be published, since the main type is \(typeName(reviewPrimaryType)). It stays in this draft if you switch back."))
+                                .font(.footnote)
+                                .foregroundStyle(app.palette.honey)
+                                .padding(.top, 10).padding(.horizontal, 2)
+                                .accessibilityIdentifier("create.reviewDroppedDetails")
+                        }
 
                         if !reviewIncludedItems.isEmpty {
                             reviewHeading(app.T("Bao gồm", "Included")).padding(.top, 26)
@@ -3023,5 +3035,124 @@ struct EventDraftsSheet: View {
         }
         .padding(12)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+/// "Still needed" as tappable chips: each one takes the host to that field. Wraps onto more lines at large
+/// text sizes instead of clipping.
+private struct MissingChips: View {
+    @EnvironmentObject private var app: AppState
+    let lead: String
+    let fields: [String]
+    let label: (String) -> String
+    let goToPrefix: String
+    let alertTone: Bool
+    let onPick: (String) -> Void
+
+    var body: some View {
+        let tint = alertTone ? BanbeTheme.alert : app.palette.ink
+        VStack(spacing: 6) {
+            Text(lead)
+                .font(.footnote)
+                .foregroundStyle(tint.opacity(alertTone ? 1 : 0.7))
+            FlowLayout(spacing: 6, lineSpacing: 6) {
+                ForEach(fields, id: \.self) { id in
+                    Button { onPick(id) } label: {
+                        HStack(spacing: 4) {
+                            Text(label(id))
+                            Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).opacity(0.6)
+                        }
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(tint)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44)
+                        .overlay(Capsule().stroke(alertTone ? BanbeTheme.alert : app.palette.rule, lineWidth: 1))
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(goToPrefix + label(id))
+                    .accessibilityIdentifier("create.missing.\(id)")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// The event type's own facts in the create form (a supper club: dietary options, BYO, dress code). All optional.
+private struct TypeDetailsEditor: View {
+    @EnvironmentObject private var app: AppState
+    let profile: EventTypeProfile
+    let typeKey: String
+
+    private var lang: String { app.isEN ? "en" : "vi" }
+    private var values: EventDetails { app.createDetails[typeKey] ?? [:] }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(app.T("Khách hay hỏi những điều này trước khi đặt chỗ. Không bắt buộc.", "Guests often ask about these before booking. Optional."))
+                .font(.footnote).opacity(0.75)
+            ForEach(profile.wizard?.details ?? [], id: \.self) { id in
+                if let def = profile.detailFields?[id] { field(id, def) }
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.top, 8)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("create.typeDetails")
+    }
+
+    @ViewBuilder
+    private func field(_ id: String, _ def: EventTypeProfile.DetailField) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            FormFieldLabel(icon: "sparkles", text: def.label.text(lang))
+            if def.kind == "text" {
+                TextField(def.placeholder?.text(lang) ?? "", text: Binding(
+                    get: { if case .text(let s)? = values[id] { return s }; return "" },
+                    set: { app.setCreateDetail(type: typeKey, field: id, value: .text(String($0.prefix(def.max ?? 80)))) }))
+                    .roundedFormField(app: app, focused: false)
+                    .accessibilityIdentifier("create.detail.\(id)")
+            } else {
+                FlowRow(spacing: 8) {
+                    ForEach(def.options ?? [], id: \.id) { o in
+                        let on = isOn(id, o.id)
+                        Button {
+                            Haptics.selection()
+                            toggle(id, def.kind == "multi", o.id)
+                        } label: {
+                            Text(lang == "vi" ? o.vi : o.en)
+                                .font(.subheadline.weight(on ? .semibold : .regular))
+                                .foregroundStyle(on ? app.palette.paper : app.palette.ink)
+                                .padding(.horizontal, 14).frame(minHeight: 44)
+                                .background(on ? app.palette.ink : Color.clear, in: Capsule())
+                                .overlay(Capsule().stroke(on ? Color.clear : app.palette.rule, lineWidth: 1))
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(on ? [.isSelected, .isButton] : .isButton)
+                        .accessibilityIdentifier("create.detail.\(id).\(o.id)")
+                    }
+                }
+            }
+        }
+    }
+
+    private func isOn(_ id: String, _ option: String) -> Bool {
+        switch values[id] {
+        case .list(let a)?: return a.contains(option)
+        case .text(let s)?: return s == option
+        case nil: return false
+        }
+    }
+
+    private func toggle(_ id: String, _ multi: Bool, _ option: String) {
+        if multi {
+            var a: [String] = { if case .list(let a)? = values[id] { return a }; return [] }()
+            if let i = a.firstIndex(of: option) { a.remove(at: i) } else { a.append(option) }
+            app.setCreateDetail(type: typeKey, field: id, value: a.isEmpty ? nil : .list(a))
+        } else {
+            app.setCreateDetail(type: typeKey, field: id, value: isOn(id, option) ? nil : .text(option))
+        }
     }
 }

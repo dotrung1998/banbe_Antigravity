@@ -826,7 +826,7 @@ struct AccountView: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier(app.isSignedIn ? "account.signOut" : "account.signIn")
             .padding(.top, 12)
-            .padding(.bottom, 100)
+            .padding(.bottom, BottomTabBar.contentClearance)
         }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 20)
@@ -1050,7 +1050,7 @@ struct AccountView: View {
         }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 20)
-        .padding(.bottom, 100)
+        .padding(.bottom, BottomTabBar.contentClearance)
     }
 
     private func syncAccountTabToRole() {

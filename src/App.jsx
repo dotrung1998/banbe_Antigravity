@@ -7,7 +7,7 @@ import useKeepFocusedVisible from './lib/useKeepFocusedVisible.js';
 import useSignInReveal from './lib/useSignInReveal.js';
 import OnboardingTour from './components/tour/OnboardingTour.jsx';
 import { CREATE_UNDO_MS } from './lib/createDraftUndo.js';
-import BottomTabBar, { showsBottomBar, DOCK_ORDER, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET } from './screens/BottomTabBar.jsx';
+import BottomTabBar, { showsBottomBar, DOCK_ORDER, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET, BAR_HEIGHT } from './screens/BottomTabBar.jsx';
 import { paper, ink, rule } from './theme.js';
 
 import Splash from './screens/Splash.jsx';
@@ -195,6 +195,9 @@ function CreateUndoToast({ offer, aboveDock }) {
     </div>
   );
 }
+
+// Room under every docked screen so its last row scrolls clear of the floating dock (was a bare 92).
+const DOCK_CLEARANCE = BAR_HEIGHT + BAR_BOTTOM_OFFSET + 18;
 
 function DockRow({ collapsed, showCreate }) {
   return (
@@ -766,7 +769,7 @@ function Shell() {
             drops the old sibling), so React never tears down and remounts
             the destination the way changing `<Screen key={state.screen}/>`'s
             own key used to. */}
-        <div style={{ paddingBottom: showBar ? 92 : 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
+        <div style={{ paddingBottom: showBar ? DOCK_CLEARANCE : 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
           {[...(eventUnderlay ? [eventUnderlay] : []), state.screen, ...(swipeNeighbor ? [swipeNeighbor] : [])].map((s) => {
             const isCurrent = s === state.screen;
             // iOS parity (2026-10-18): the screen an open event returns to stays mounted BENEATH it (inert), so

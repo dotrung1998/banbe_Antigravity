@@ -38,6 +38,9 @@ enum UITestFixture {
     /// Note 64: `-uiFixtureTourV3 YES` (with a `shell.*` fixture) is onboarding Version 3 with its tour started
     /// (as a Help & Legal replay, so no first-run marker is written).
     static let tourV3 = UserDefaults.standard.bool(forKey: "uiFixtureTourV3")
+    /// Note 65: `-uiFixtureEventTypes YES` is an admin having turned on `event_type_profiles` (with `shell.create`
+    /// the draft also gets supper club facts; with `shell.home` two fixture events get some).
+    static let eventTypes = UserDefaults.standard.bool(forKey: "uiFixtureEventTypes")
     /// Stable fake account id so the draft store/relaunch tests have a key.
     static let userID = UUID(uuidString: "00000000-0000-4000-8000-00000000F1F0")!
 
@@ -162,6 +165,7 @@ struct UITestFixtureRoot: View {
         if !signedOut { app.userID = UITestFixture.userID }
         if UITestFixture.onboardingV2 { app.featureFlags["onboarding_v2"] = true }
         if UITestFixture.tourV3 { app.featureFlags["onboarding_v3"] = true }
+        if UITestFixture.eventTypes { app.featureFlags["event_type_profiles"] = true }
         if name.hasPrefix("shell") { configureShell() }
         else if name.hasPrefix("reports") { configureReports() }
         else if isRouted { configureRouted() }
@@ -249,6 +253,12 @@ struct UITestFixtureRoot: View {
         app.createDesc = "A long table for sixteen in a converted garage."
         app.createKeywords = "wine"
         app.createIncludedItems = [IncludedItem(label: "5 courses", detail: "")]
+        if UITestFixture.eventTypes {
+            app.createDetails = ["supper": ["dietary": .list(["vegetarian"]), "byo": .text("wine")]]
+            // Open on Basics, where the type's own fields are (the Undo restore hook, no new view state).
+            app.createDraftStash.step = 1
+            app.createRestorePending = true
+        }
         app.createPrice = "300000"
         app.createSeats = "16"
         app.createCity = "Hồ Chí Minh"

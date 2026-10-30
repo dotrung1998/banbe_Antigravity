@@ -87,7 +87,7 @@ private struct ScheduleScreen: View {
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: app.scheduleMode)
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: calendar.startOfDay(for: selected))
                     .padding(.horizontal, 20)
-                    .padding(.bottom, 110)
+                    .padding(.bottom, BottomTabBar.contentClearance + 10)
                 }
             }
         }

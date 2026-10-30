@@ -82,6 +82,8 @@ struct BottomTabBar: View {
     static let barWidth: CGFloat = 380
     static let barHorizontalPadding: CGFloat = 20
     static let bottomOffset: CGFloat = 2
+    /// Room under a docked screen's scroll content so its last row clears the floating dock (was a bare 100).
+    static let contentClearance: CGFloat = barHeight + bottomOffset + 34
     // TASK 1 — shared with the create-"+" button (DockCreateButtonView) and
     // DockRow's own gap/margin, so "one layout group, shared vertical
     // center" is structural, not two independently-tuned numbers that can

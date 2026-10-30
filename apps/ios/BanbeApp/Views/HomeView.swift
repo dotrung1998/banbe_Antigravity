@@ -12,6 +12,8 @@ import UIKit
 /// feed, relax hints, the "This weekend" rail, surveys and the host link.
 struct HomeView: View {
     @EnvironmentObject var app: AppState
+    /// Chip text: 13pt at the default size, growing with Dynamic Type (it used to stay 13pt at every size).
+    @ScaledMetric(relativeTo: .footnote) private var chipFont: CGFloat = 13
     @Environment(\.scenePhase) private var scenePhase
     @State private var tickTask: Task<Void, Never>?
     @State private var tick = Date()
@@ -133,7 +135,15 @@ struct HomeView: View {
                     }
                     if !app.homeStories.isEmpty { storyRow.revealRegion(1) }
                     HomeCategoryRow().revealRegion(2)
-                    quickRow(snap).revealRegion(2)
+                    quickRow(snap)
+                        // One scrolling row of capsules: let it grow, but not past the size where a chip still fits.
+                        .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+                        .revealRegion(2)
+                    if !snap.typeChips.isEmpty {
+                        typeChipRow(snap)
+                            .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+                            .revealRegion(2)
+                    }
                     if app.filterForYou && app.hasForYouMatches { forYouEditRow.padding(.bottom, 4).revealRegion(2) }
                     sectionHeader(snap).revealRegion(2)
                     ForEach(snap.cards) { card in
@@ -154,7 +164,7 @@ struct HomeView: View {
                     tagline
                     hostLink
                 }
-                .padding(.bottom, 100)
+                .padding(.bottom, BottomTabBar.contentClearance)
             }
             .task(id: app.homeWeekendScrollRequest) { await scrollToWeekendIfAsked(weekendProxy) }
             // Note 64: the v3 tour's event-card step brings the first card into view (a scroll, nothing else).
@@ -920,6 +930,8 @@ struct HomeView: View {
         let quickCounts: [String: Int]
         let relaxHints: [HomeDiscovery.RelaxHint]
         let filterBadge: Int
+        var typeChips: [EventTypeProfile.HomeFilter] = []
+        var typeCounts: [String: Int] = [:]
     }
 
     private static let quickChips: [(key: String, vi: String, en: String)] = [
@@ -982,11 +994,60 @@ struct HomeView: View {
                 metaLine: app.metaLine(for: e, distanceKm: it.distanceKm),
                 fill: fill, cancelled: e.cancelled,
                 going: app.isGoing(e.key) && !e.cancelled && e.endedHoursAgo == nil,
-                label: label
+                label: label,
+                typeLine: app.eventTypesEnabled && !AppState.catalogKeys.contains(e.key)
+                    ? EventTypes.cardLine(EventTypes.profile(e.catKey), capacity: it.capacity ?? e.capacity ?? 0,
+                                          details: e.details, lang: app.isEN ? "en" : "vi")
+                    : nil
             )
         }
         let badge = HomeDiscovery.activeFilterCount(f)
-        return Snapshot(items: items, shown: shown, cards: cards, quickCounts: quick, relaxHints: hints, filterBadge: badge)
+        // Event type profiles: with exactly one category picked, that type's own chips (counts like the quick chips).
+        let typeChips = app.eventTypesEnabled && f.cats.count == 1 ? EventTypes.homeFilters(EventTypes.profile(f.cats[0])) : []
+        let typeCounts = typeChips.isEmpty ? [:]
+            : HomeDiscovery.optionCounts(items, f, .typeFilters, options: typeChips.map(\.id), now: now)
+        return Snapshot(items: items, shown: shown, cards: cards, quickCounts: quick, relaxHints: hints, filterBadge: badge,
+                        typeChips: typeChips, typeCounts: typeCounts)
+    }
+
+    /// Event type profiles (switch event_type_profiles): the selected category's own chips (a supper club:
+    /// Vegetarian-friendly, Vegan, BYO). AND-combined; a chip with 0 events hides unless on.
+    private func typeChipRow(_ snap: Snapshot) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(snap.typeChips) { chip in
+                    let active = app.homeFilters.typeFilters.contains(chip.id)
+                    let n = snap.typeCounts[chip.id] ?? 0
+                    if active || n > 0 {
+                        SwipeSafeButton {
+                            Haptics.selection()
+                            var f = app.homeFilters
+                            if let i = f.typeFilters.firstIndex(of: chip.id) { f.typeFilters.remove(at: i) } else { f.typeFilters.append(chip.id) }
+                            app.setHomeFilters(f)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text(app.T(chip.vi, chip.en))
+                                if !active { Text("\(n)").font(.system(size: 12)).monospacedDigit().opacity(0.6) }
+                            }
+                            .font(.system(size: chipFont, weight: active ? .semibold : .regular))
+                            .lineLimit(1)
+                            .padding(.horizontal, 14).frame(minHeight: 36)
+                            .foregroundStyle(active ? app.palette.paper : app.palette.ink)
+                            .background { homeGlassCapsule(active: active) }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(active ? .isSelected : [])
+                        .accessibilityIdentifier("home.type.\(chip.id)")
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 2)
+        }
+        .padding(.top, 8)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(app.T("Lọc theo loại sự kiện", "Filter by event type"))
+        .rootSwipeExclusion("homeTypeChips")
     }
 
     /// Filters + Sort open the sheet; For You stays pinned at the leading edge (notes 34/36); the one-tap chips
@@ -1063,7 +1124,7 @@ struct HomeView: View {
                                     Text(app.T(chip.vi, chip.en))
                                     if !active { Text("\(n)").font(.system(size: 12)).monospacedDigit().opacity(0.6) }
                                 }
-                                .font(.system(size: 13, weight: active ? .semibold : .regular))
+                                .font(.system(size: chipFont, weight: active ? .semibold : .regular))
                                 .lineLimit(1)
                                 .padding(.horizontal, 14).frame(minHeight: 36)
                                 .foregroundStyle(active ? app.palette.paper : app.palette.ink)
@@ -1219,7 +1280,7 @@ struct HomeView: View {
                 Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
                     .foregroundStyle(active ? app.palette.paper : gold)
                 Text(chipTitle)
-                    .font(.system(size: 13, weight: active ? .bold : .regular))
+                    .font(.system(size: chipFont, weight: active ? .bold : .regular))
                     .lineLimit(1)
                 if forYouAlert.hasPending {
                     // White on #7A5200 = ~6.9:1 (AA); static, retained until acknowledged.

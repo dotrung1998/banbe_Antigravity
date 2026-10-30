@@ -10,6 +10,8 @@ import SwiftUI
 // Edits a local draft; nothing changes on Home until the CTA is pressed. Web twin: HomeFilterSheet.jsx.
 struct HomeFilterSheet: View {
     @EnvironmentObject private var app: AppState
+    /// Pill text: 13.5pt at the default size, growing with Dynamic Type (pills wrap, so they never clip).
+    @ScaledMetric(relativeTo: .footnote) private var pillFont: CGFloat = 13.5
     let items: [HomeDiscovery.Item]
     let now: Date
     let onClose: () -> Void
@@ -146,7 +148,7 @@ struct HomeFilterSheet: View {
                     Text("\(count)").font(.system(size: 12)).monospacedDigit().opacity(0.65)
                 }
             }
-            .font(.system(size: 13.5, weight: active ? .semibold : .medium))
+            .font(.system(size: pillFont, weight: active ? .semibold : .medium))
             .lineLimit(1)
             .padding(.horizontal, 14)
             .frame(minHeight: 38)

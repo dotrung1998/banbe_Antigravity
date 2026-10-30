@@ -1,0 +1,39 @@
+{
+  "_comment": "Shared parity vectors for the create-event progress (ring %, steps left, Still needed). Read by tests/unit/createProgress.test.mjs (web) and apps/ios/BanbeAppTests/CreateProgressTests.swift (iOS). 'required' omitted = every field.",
+  "cases": [
+    {
+      "case": "blank draft: nothing done",
+      "missing": ["hostName", "name", "description", "categories", "included", "location", "date", "price", "seats", "photos"],
+      "expect": { "done": [false, false, false, false, false], "percent": 0, "stepsLeft": 5, "firstMissing": "hostName",
+        "missing": ["hostName", "name", "description", "categories", "included", "location", "date", "price", "seats", "photos"] }
+    },
+    {
+      "case": "host head start: 20%, 4 steps left",
+      "missing": ["name", "description", "included", "location", "date", "seats", "photos"],
+      "expect": { "done": [true, false, false, false, false], "percent": 20, "stepsLeft": 4, "firstMissing": "name",
+        "missing": ["name", "description", "included", "location", "date", "seats", "photos"] }
+    },
+    {
+      "case": "an invalid price alone keeps Tickets open (both platforms)",
+      "missing": ["price"],
+      "expect": { "done": [true, true, true, false, true], "percent": 80, "stepsLeft": 1, "firstMissing": "price", "missing": ["price"] }
+    },
+    {
+      "case": "everything in",
+      "missing": [],
+      "expect": { "done": [true, true, true, true, true], "percent": 100, "stepsLeft": 0, "firstMissing": null, "missing": [] }
+    },
+    {
+      "case": "a field the type does not require never counts",
+      "required": ["hostName", "name", "description", "categories", "location", "date", "price", "seats", "photos"],
+      "missing": ["included"],
+      "expect": { "done": [true, true, true, true, true], "percent": 100, "stepsLeft": 0, "firstMissing": null, "missing": [] }
+    },
+    {
+      "case": "missing list follows step order, not input order",
+      "missing": ["photos", "seats", "name", "date"],
+      "expect": { "done": [true, false, false, false, false], "percent": 20, "stepsLeft": 4, "firstMissing": "name",
+        "missing": ["name", "date", "seats", "photos"] }
+    }
+  ]
+}

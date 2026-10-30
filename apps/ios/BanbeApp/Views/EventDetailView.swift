@@ -176,6 +176,11 @@ struct EventDetailView: View {
     private let dismissCloseDistance: CGFloat = 140
 
     private var event: CatalogEvent { preview?.event ?? app.currentEvent }
+    /// Event type profiles (migration 203): only while the switch is on; a type without a profile renders as before.
+    private var typeProfile: EventTypeProfile? { app.eventTypesEnabled ? EventTypes.profile(event.catKey) : nil }
+    private var typeFacts: [EventTypes.Fact] {
+        typeProfile.map { EventTypes.detailFacts($0, event.details, lang: app.isEN ? "en" : "vi") } ?? []
+    }
     // STAGE D (2026-09-25) — real event_photos URLs, replacing the static
     // demo `event.gallery` below.
     // Photo-interactions redesign (2026-09-26) — each entry now carries the
@@ -901,6 +906,33 @@ struct EventDetailView: View {
                 .padding(.top, 10)
                 .id("event.criteria")
 
+            // What kind of evening it is (event type profiles): the type's own facts, e.g. a supper club's dietary
+            // options, BYO and dress code. Legacy events (no details) show nothing new.
+            if !typeFacts.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(typeFacts, id: \.id) { f in
+                        ViewThatFits(in: .horizontal) {
+                            HStack(alignment: .firstTextBaseline, spacing: 14) {
+                                Text(f.label).font(.footnote).opacity(0.65)
+                                Text(f.value).font(.subheadline)
+                                Spacer(minLength: 0)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(f.label).font(.footnote).opacity(0.65)
+                                Text(f.value).font(.subheadline)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("event.typeFact.\(f.id)")
+                    }
+                }
+                .foregroundStyle(app.palette.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 16)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("event.typeFacts")
+            }
+
             // Sections below are separated by whitespace only (no rules): 28 between sections, 8–10 from a heading to its
             // content, so related things sit together and the page reads as one calm surface (transcript 3/11/12).
             // "Bao gồm": one line of text, items separated by the signature ▪︎; the full intro + item details stay one
@@ -1037,7 +1069,9 @@ struct EventDetailView: View {
     private var includedSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(includedChips.isEmpty ? app.T("Giới thiệu", "About") : app.T("Bao gồm", "Included")).font(BanbeTheme.display(20))
+                Text(includedChips.isEmpty ? app.T("Giới thiệu", "About")
+                     : (typeProfile?.detail?.includedTitle?.text(app.isEN ? "en" : "vi") ?? app.T("Bao gồm", "Included")))
+                    .font(BanbeTheme.display(20))
                 Spacer()
                 if hasAboutSheet {
                     Text(app.T("Xem thêm", "More") + " ›").font(.system(size: 13, weight: .semibold)).foregroundStyle(app.palette.clay)

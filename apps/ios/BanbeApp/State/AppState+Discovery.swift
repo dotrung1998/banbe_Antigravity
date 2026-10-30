@@ -107,7 +107,8 @@ extension AppState {
             key: e.key, startsAt: discoveryStart(for: e, now: now), priceVnd: price,
             catKeys: [e.catKey, e.cat2Key].compactMap { $0 },
             booked: fill?.booked, capacity: fill?.capacity, soldOut: e.soldOut,
-            distanceKm: distance, popularity: (scores ?? pulseScores)[e.key], currency: e.currency
+            distanceKm: distance, popularity: (scores ?? pulseScores)[e.key], currency: e.currency,
+            details: e.details
         )
     }
 

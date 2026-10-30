@@ -1685,7 +1685,7 @@ struct NotificationsView: View {
                 .foregroundStyle(app.palette.ink)
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
-                .padding(.bottom, 100)
+                .padding(.bottom, BottomTabBar.contentClearance)
             }
             .task {
                 await app.loadNotifications()

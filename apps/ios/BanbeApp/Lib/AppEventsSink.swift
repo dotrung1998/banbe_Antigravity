@@ -39,6 +39,8 @@ enum AppEventsContract {
         "recipe_opened": [],
         "recipe_fix_tapped": ["ingredient"],
         "submit_recipe_score": ["bucket"],
+        "create_event_still_needed_tapped": ["field"],
+        "create_event_type_selected": ["type"],
         "schedule_opened": [],
         "schedule_mode_selected": ["mode"],
         "schedule_day_selected": ["day_bucket"],

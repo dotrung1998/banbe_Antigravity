@@ -6,6 +6,7 @@ import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, 
 import { prefsIsEmpty, declaredGoals } from '../lib/eventPrefs.js';
 import { intentTitle, isEventLocalDay } from '../lib/coreLoops.js';
 import { flagOn } from '../lib/featureFlags.js';
+import { profileFor, homeFilters as homeTypeFilters, cardLine } from '../lib/eventTypes.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 import { forYouRankEvents } from '../lib/forYou.js';
 import { forYouEventVersion } from '../lib/forYouAlert.js';
@@ -69,7 +70,8 @@ const quickToggle = {
 
 function homeCapsule(extra, active = false) {
   return {
-    display: 'inline-flex', alignItems: 'center', height: 36, boxSizing: 'border-box', padding: '0 14px',
+    // minHeight, not height: with a larger browser text size the label grows and the capsule grows with it.
+    display: 'inline-flex', alignItems: 'center', minHeight: 36, boxSizing: 'border-box', padding: '0 14px',
     borderRadius: 999, fontSize: 14, whiteSpace: 'nowrap', cursor: 'pointer', flex: 'none', userSelect: 'none',
     color: active ? 'var(--bb-bg)' : ink,
     ...(active
@@ -412,7 +414,7 @@ export default function Home() {
     return {
       key: e.key, startsAt, priceVnd, currency: e.isReal ? e.currency : 'VND', catKeys: [e.catKey, e.cat2Key].filter(Boolean),
       booked: fillRow ? fillRow.booked : null, capacity: fillRow ? fillRow.capacity : null,
-      soldOut: !!e.soldOut, distanceKm, popularity: pulseScore.get(e.key) ?? null, ev: e,
+      soldOut: !!e.soldOut, distanceKm, popularity: pulseScore.get(e.key) ?? null, details: e.details || {}, ev: e,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [feed, s.eventFill, s.homeLiveEvents, located, s.userCoords, pulseScore]);
@@ -432,6 +434,17 @@ export default function Home() {
   const relaxHints = useMemo(() => (shownItems.length < 3 ? relaxationHints(discoveryItems, homeFilters, nowMs) : []),
   // eslint-disable-next-line react-hooks/exhaustive-deps
     [discoveryItems, homeFilters, shownItems.length]);
+  // Event type profiles (switch event_type_profiles, migration 203): with exactly one category picked, that
+  // type's own chips (a supper club: Vegetarian-friendly, Vegan, BYO). A chip with 0 events hides unless on.
+  const typesOn = flagOn(s.featureFlags, 'event_type_profiles');
+  const typeChips = typesOn && homeFilters.cats.length === 1 ? homeTypeFilters(profileFor(homeFilters.cats[0])) : [];
+  const typeCounts = useMemo(() => (typeChips.length ? optionCounts(discoveryItems, homeFilters, 'typeFilters', typeChips.map(c => c.id), nowMs) : {}),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [discoveryItems, homeFilters, typeChips.length, Math.floor(nowMs / 60000)]);
+  const toggleTypeFilter = (id) => setHomeFilters(f => {
+    const cur = f.typeFilters || [];
+    return { ...f, typeFilters: cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id] };
+  });
   const filterBadge = activeFilterCount(homeFilters);
   const sortActive = !!s.homeSort && s.homeSort !== 'soonest';
   const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
@@ -474,9 +487,10 @@ export default function Home() {
       key: e.key, name: e.name, img: e.img, dateBadge: badgeDate(it.startsAt, e.isReal ? e.tz : null),
       priceLabel: it.priceVnd === 0 ? T('Miễn phí', 'Free') : trStatus(e.price), isFree: it.priceVnd === 0,
       metaLine: meta, fill, cancelled: !!e.cancelled, saved: e.saved, going: e.going, label,
+      typeLine: typesOn && e.isReal ? cardLine(profileFor(e.catKey), { capacity: it.capacity ?? e.capacity, details: e.details }, s.lang === 'en' ? 'en' : 'vi') : null,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [shownItems, forYouRanked, forYouActive, topPulseKey, trStatus, T]);
+  }), [shownItems, forYouRanked, forYouActive, topPulseKey, trStatus, T, typesOn, s.lang]);
 
   // Retention roadmap P1 ("Cuối tuần này") — reuses the SAME district
   // (curArea) and category (homeFilters.cats) picks already driving the main feed
@@ -910,6 +924,24 @@ export default function Home() {
           })}
         </div>
       </div>
+      {typeChips.length > 0 && (
+        <div data-hscroll="true" role="group" aria-label={T('Lọc theo loại sự kiện', 'Filter by event type')} data-testid="home-type-chips"
+          style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', padding: '8px 20px 0' }}>
+          {typeChips.map(c => {
+            const active = (homeFilters.typeFilters || []).includes(c.id);
+            const n = typeCounts[c.id];
+            if (!active && !n) return null;
+            return (
+              <button type="button" key={c.id} onClick={() => toggleTypeFilter(c.id)} aria-pressed={active}
+                data-testid={`home-type-${c.id.replace(':', '-')}`}
+                style={homeCapsule({ fontWeight: active ? 600 : 400, border: 'none', fontFamily: 'inherit', gap: 6 }, active)}>
+                {T(c.vi, c.en)}
+                {!active && <span style={{ fontSize: 12, opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>{n}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {forYouActive && (
         <div style={{ padding: '0 20px 4px' }}>
           {forYouWhy && <div data-testid="home-foryou-why" style={{ fontSize: 13, opacity: 0.75, marginBottom: 4 }}>{forYouWhy}</div>}

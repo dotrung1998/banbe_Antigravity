@@ -20,6 +20,10 @@ struct HostEventDraft: Codable, Identifiable, Equatable {
     var lat: Double?, lng: Double?
     var countryCode: String?, stateProvince: String?, neighborhood: String?, placeTimeZoneID: String?
     var locConfirmed = false
+    /// Event type facts per type, and dismissed keyword ideas (migration 203). Optional so drafts saved before
+    /// them still decode.
+    var details: [String: EventDetailsPayload]?
+    var kwDismissed: [String]?
 
     var displayName: String { name.trimmingCharacters(in: .whitespaces) }
 }

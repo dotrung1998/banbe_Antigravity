@@ -95,6 +95,10 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
     var currency: String = "VND"
     var timeZoneID: String? = nil
     var priceAmount: Int? = nil
+    /// Real events and drafts only (not in `CodingKeys`; migration 203): the event type facts and the capacity
+    /// the Home card line reads ("Table for 8").
+    var details: EventDetails = [:]
+    var capacity: Int? = nil
 
     enum CodingKeys: String, CodingKey {
         case key, catKey, cat, cat2Key, catDisplay, name, img, lat, lng, meta
@@ -249,6 +253,8 @@ struct RealEventSummary: Decodable {
     /// selects that fall back to the old column list) — see `timeZoneID`/`rowCurrency` for the defaults.
     var tz: String? = nil
     var currency: String? = nil
+    /// Migration 203: event type facts. Absent (nil) on a server without it.
+    var details: EventDetailsPayload? = nil
     var organizerName: String = ""
     /// events.chat_greeting (migration 156). Not part of the shared select
     /// list (that would break every query before the migration is applied);
@@ -297,7 +303,7 @@ struct RealEventSummary: Decodable {
         case coverR2Ref = "cover_r2_ref"
         case includedItems = "included_items"
         case intro
-        case tz, currency
+        case tz, currency, details
     }
 
     var soldOut: Bool { (seatsRemaining ?? 1) <= 0 }
@@ -406,6 +412,8 @@ extension CatalogEvent {
         event.currency = real.rowCurrency
         event.timeZoneID = real.timeZoneID
         event.priceAmount = real.priceVnd ?? 0
+        event.details = real.details?.values ?? [:]
+        event.capacity = real.capacity
         return event
     }
 
@@ -451,6 +459,8 @@ extension CatalogEvent {
         event.currency = d.currency
         event.timeZoneID = d.timeZoneID
         event.priceAmount = d.priceVnd
+        event.details = d.details
+        event.capacity = d.seats
         return event
     }
 
@@ -590,4 +600,6 @@ struct EventDraft {
     /// Migration 195: the draft's currency (price is in its minor unit) and its venue zone (`startsAt` is a real instant).
     var currency: String = "VND"
     var timeZoneID: String? = nil
+    /// Migration 203: the primary type's facts, already cleaned (`EventTypes.clean`).
+    var details: EventDetails = [:]
 }
