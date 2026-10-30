@@ -89,3 +89,15 @@ dist-ssr
 !/supabase/_localtest/24_event_tz_currency_run.sh
 !/supabase/_localtest/retention_suites_run.sh
 .migration-state/
+
+# Impeccable design-skill install (vendored tooling, ~19 MB per copy incl. its
+# downloaded binary). Reinstall it instead of committing it. PRODUCT.md stays tracked.
+/.claude/skills/impeccable/
+/.claude/agents/impeccable-*.md
+/.github/skills/impeccable/
+/.github/agents/impeccable-*.agent.md
+/.github/hooks/impeccable.json
+/.impeccable/
+
+# graphify knowledge-graph output (generated locally, rebuild with /graphify)
+/graphify-out/
