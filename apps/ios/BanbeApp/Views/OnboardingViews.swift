@@ -249,6 +249,9 @@ struct ThemePickView: View {
                     .padding(.top, 10)
 
                 VStack(spacing: 10) {
+                    choice(title: app.T("Theo thiết bị", "System"), subtitle: app.T("Tự đổi sáng/tối theo máy của bạn", "Follows your device"),
+                           active: app.theme == "system") { app.pickTheme("system") }
+                        .accessibilityIdentifier("theme.system")
                     choice(title: app.T("Sáng", "Light"), subtitle: app.T("Nền giấy ấm", "Warm paper"),
                            active: app.theme == "light") { app.pickTheme("light") }
                         .accessibilityIdentifier("theme.light")
@@ -319,6 +322,7 @@ struct StagedGalleryItem: Identifiable, Equatable {
 /// create_event_draft.
 struct CreateEventView: View {
     @EnvironmentObject var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let categories = EventTypes.categoryDefs() // src/data/eventTypeProfiles.json
     private let maxPhotos = 8
@@ -373,7 +377,8 @@ struct CreateEventView: View {
     /// Note 53: steps slide in from the side you're moving towards, instead of a lone cross-fade.
     @State private var stepForward = true
     private var stepTransition: AnyTransition {
-        .asymmetric(insertion: .offset(x: stepForward ? 28 : -28).combined(with: .opacity), removal: .opacity)
+        Motion.transition(.asymmetric(insertion: .offset(x: stepForward ? 28 : -28).combined(with: .opacity), removal: .opacity),
+                          reduce: reduceMotion)
     }
     /// Note 50 — "recipe for success": get_host_benchmarks for the primary category + city (nil = tips only,
     /// never numbers) and the platform-wide audience count for the category.
@@ -438,6 +443,31 @@ struct CreateEventView: View {
     }
     /// One calculation (Lib/CreateProgress.swift) behind the ring, "N steps left", "Still needed here" and the
     /// Review summary, so they can never disagree.
+    /// Note 66: required fields that just turned complete (pop their ✓ once); cleared shortly after.
+    @State private var freshDone: Set<String> = []
+    private var doneMarks: CreateDoneMarks {
+        let required = Set(EventTypes.requiredFields(typeProfile ?? .generic("")))
+        let missing = Set(progress.missing)
+        return CreateDoneMarks(done: required.subtracting(missing), fresh: freshDone)
+    }
+    /// One haptic, one VoiceOver line, and the ✓ pop for each field that just became complete.
+    private func noteCompleted(previous: [String], current: [String]) {
+        let fresh = CreateProgress.newlyCompleted(previous: previous, current: current)
+        guard !fresh.isEmpty else { return }
+        freshDone = Set(fresh)
+        Haptics.light()
+        let names = fresh.map { CreateProgress.label($0, minPhotos: minPhotos, T: app.T) }.joined(separator: ", ")
+        let left = progress.stepsLeft
+        let line = left == 0
+            ? app.T("Xong: \(names). Đã đủ mọi bước.", "Done: \(names). Every step is complete.")
+            : app.T("Xong: \(names). Còn \(left) bước.", "Done: \(names). \(left) \(left == 1 ? "step" : "steps") left.")
+        AccessibilityNotification.Announcement(line).post()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            if freshDone == Set(fresh) { freshDone = [] }
+        }
+    }
+
     private var progress: CreateProgress.Result {
         CreateProgress.compute(missing: missingFields, required: EventTypes.requiredFields(typeProfile ?? .generic("")))
     }
@@ -498,7 +528,7 @@ struct CreateEventView: View {
         if CreateFieldGuide.step(of: c.fix.field) != nil {
             guideTo(c.fix.field, hint: EventRecipe.copy(c, app.T, currency: app.createCurrency).title)
         } else {
-            withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = false }
+            withAnimation(Motion.fade(.easeInOut(duration: 0.25), reduce: reduceMotion)) { reviewOpen = false }
             goTo(Section(rawValue: c.fix.step) ?? .basics)
         }
     }
@@ -510,25 +540,25 @@ struct CreateEventView: View {
         guard let index = CreateFieldGuide.step(of: field), let section = Section(rawValue: index) else { return }
         focusedField = nil
         recipeOpen = false
-        withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = false }
+        withAnimation(Motion.fade(.easeInOut(duration: 0.25), reduce: reduceMotion)) { reviewOpen = false }
         if currentStep != section {
             stepForward = section.rawValue >= currentStep.rawValue
-            withAnimation(.easeInOut(duration: 0.22)) { currentStep = section }
+            withAnimation(Motion.fade(.easeInOut(duration: 0.22), reduce: reduceMotion)) { currentStep = section }
         }
         attnClearTask?.cancel()
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(Motion.fade(.easeOut(duration: 0.2), reduce: reduceMotion)) {
             attnHint = hint
             attnField = field
         }
         attnToken += 1
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-            withAnimation(.easeInOut(duration: 0.3)) { scrollProxy?.scrollTo(CreateFieldGuide.anchor(field), anchor: .center) }
+            withAnimation(Motion.fade(.easeInOut(duration: 0.3), reduce: reduceMotion)) { scrollProxy?.scrollTo(CreateFieldGuide.anchor(field), anchor: .center) }
             if CreateFieldGuide.isTextField(field) { focusedField = field }
         }
         attnClearTask = Task {
             try? await Task.sleep(nanoseconds: 4_500_000_000)
             guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.3)) { attnField = nil; attnHint = nil }
+            withAnimation(Motion.fade(.easeOut(duration: 0.3), reduce: reduceMotion)) { attnField = nil; attnHint = nil }
         }
     }
 
@@ -632,7 +662,11 @@ struct CreateEventView: View {
             HStack {
                 HStack(spacing: 4) {
                     Text(app.T("Hình ảnh", "Photos")).font(.system(size: 11.5))
-                    Text("*").font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                    if doneMarks.done.contains("photos") {
+                        DoneMark(field: "photos", pop: doneMarks.fresh.contains("photos"))
+                    } else {
+                        Text("*").font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                    }
                 }
                 Spacer()
                 Text("\(galleryItems.count)/\(maxPhotos) (\(app.T("tối thiểu \(minPhotos)", "min \(minPhotos)")))").font(.system(size: 10.5))
@@ -857,7 +891,7 @@ struct CreateEventView: View {
         VStack(alignment: .leading, spacing: 10) {
             FormFieldLabel(icon: "checklist", text: typeProfile?.wizard?.includedTitle?.text(langCode) ?? app.T("Bao gồm", "Included"),
                            required: EventTypes.requiredFields(typeProfile ?? .generic("")).contains("included"),
-                           trailing: "\(app.createIncludedItems.count)/3")
+                           trailing: "\(app.createIncludedItems.count)/3", field: "included")
             ForEach(Array(app.createIncludedItems.enumerated()), id: \.offset) { index, item in
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "checkmark.seal.fill")
@@ -1018,7 +1052,7 @@ struct CreateEventView: View {
     private func dateTimeRow() -> some View {
         VStack(alignment: .leading, spacing: 5) {
             FormFieldLabel(icon: "calendar", text: app.T("Ngày & giờ", "Date & time"), required: true,
-                           trailing: zoneTrailingLabel)
+                           trailing: zoneTrailingLabel, field: "date")
             Button {
                 dateTimeSheetOpen = true
             } label: {
@@ -1109,7 +1143,7 @@ struct CreateEventView: View {
                         }
                         return app.T("Chưa chọn", "Not set")
                     }(),
-                    onBack: { withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = false } },
+                    onBack: { withAnimation(Motion.fade(.easeInOut(duration: 0.25), reduce: reduceMotion)) { reviewOpen = false } },
                     onConfirm: {
                         // TASK 3 (event creation validation pass) —
                         // defense-in-depth: this sheet's own fields are
@@ -1117,7 +1151,7 @@ struct CreateEventView: View {
                         // than trust nothing changed since Review opened.
                         guard !app.createName.trimmingCharacters(in: .whitespaces).isEmpty,
                               app.createLocConfirmed, !hasCreateFieldErrors else {
-                            withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = false }
+                            withAnimation(Motion.fade(.easeInOut(duration: 0.25), reduce: reduceMotion)) { reviewOpen = false }
                             return false
                         }
                         // Keyword-search fix (migration 108) — same
@@ -1206,6 +1240,9 @@ struct CreateEventView: View {
         .onChange(of: galleryItems) { _, items in app.createDraftStash.items = items }
         .onChange(of: coverItemID) { _, id in app.createDraftStash.coverItemID = id }
         .onChange(of: currentStep) { _, step in app.createDraftStash.step = step.rawValue }
+        // Note 66: the ✓ next to each complete required field, from the same progress result as the ring.
+        .environment(\.createDoneMarks, doneMarks)
+        .onChange(of: progress.missing) { previous, current in noteCompleted(previous: previous, current: current) }
         // TASK 3 (event creation validation pass) — the post-submission chooser. Was a native
         // `.confirmationDialog`, which iOS 26 draws as a narrow popover that wrapped the explanation
         // awkwardly; now a full-width card (SubmittedChooserCard below): what happens next as a short
@@ -1283,7 +1320,7 @@ struct CreateEventView: View {
                     guard let field else { return }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                         guard focusedField == field else { return }
-                        withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(CreateFieldGuide.anchor(field), anchor: .center) }
+                        withAnimation(Motion.fade(.easeInOut(duration: 0.25), reduce: reduceMotion)) { proxy.scrollTo(CreateFieldGuide.anchor(field), anchor: .center) }
                     }
                 }
                 .scrollDismissesKeyboard(.interactively)
@@ -1324,7 +1361,7 @@ struct CreateEventView: View {
                             .accessibilityIdentifier("create.hostPrefilled")
                     }
                     guided("hostName") {
-                        BanbeField(label: app.T("Tên", "Name"), placeholder: "Bếp Nhỏ", text: $app.orgRegName, icon: "person.crop.circle",
+                        BanbeField(label: app.T("Tên", "Name"), placeholder: "Bếp Nhỏ", text: $app.orgRegName, icon: "person.crop.circle", doneField: "hostName",
                                    focus: $focusedField, focusID: "hostName")
                     }
                     BanbeField(label: "Instagram", placeholder: "@bepnho.saigon", text: $app.orgRegIg, icon: "at",
@@ -1344,7 +1381,7 @@ struct CreateEventView: View {
                     guided("name") {
                         BanbeField(label: app.T("Tên sự kiện", "Event name"),
                                    placeholder: app.T("Tên sự kiện của bạn", "Your event name"), text: $app.createName,
-                                   required: true, icon: "sparkles",
+                                   required: true, icon: "sparkles", doneField: "name",
                                    state: !nameValid && !app.createSent && attemptedReview ? .error(app.T("Hãy đặt tên cho sự kiện.", "Please give your event a name.")) : .normal,
                                    focus: $focusedField, focusID: "name")
                     }
@@ -1352,7 +1389,7 @@ struct CreateEventView: View {
                     guided("description") {
                         BanbeField(label: app.T("Mô tả", "Description"),
                                    placeholder: app.T("Buổi này có gì?", "What happens?"), text: $app.createDesc,
-                                   required: true, icon: "text.alignleft",
+                                   required: true, icon: "text.alignleft", doneField: "description",
                                    state: !descValid && !app.createSent && attemptedReview ? .error(app.T("Hãy nhập mô tả.", "Please enter a description.")) : .normal,
                                    focus: $focusedField, focusID: "description")
                     }
@@ -1360,7 +1397,7 @@ struct CreateEventView: View {
                     guided("greeting") { greetingEditor() }
                     guided("categories") { VStack(alignment: .leading, spacing: 16) {
                     FormFieldLabel(icon: "square.grid.2x2", text: app.T("Hạng mục", "Categories"), required: true,
-                                   trailing: app.T("Tối đa 2", "Up to 2"))
+                                   trailing: app.T("Tối đa 2", "Up to 2"), field: "categories")
                         .padding(.top, 8)
                     FlowRow(spacing: 8) {
                         ForEach(categories, id: \.key) { category in
@@ -1440,6 +1477,7 @@ struct CreateEventView: View {
                         text: $app.createLoc,
                         required: true,
                         icon: "mappin.and.ellipse",
+                        doneField: "location",
                         state: !app.createLocConfirmed && !app.createSent && attemptedReview
                             ? .error(app.T("Hãy chọn một địa chỉ gợi ý.", "Pick one of the suggested addresses.")) : .normal,
                         focus: $focusedField, focusID: "location"
@@ -1682,7 +1720,7 @@ struct CreateEventView: View {
                     // that automatically, so any focused text field stayed
                     // focused — and the keyboard visible — underneath it.
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = true }
+                    withAnimation(Motion.fade(.easeInOut(duration: 0.25), reduce: reduceMotion)) { reviewOpen = true }
                 }
                 .padding(.top, 26)
 
@@ -1763,7 +1801,7 @@ struct CreateEventView: View {
     private func goTo(_ section: Section) {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         stepForward = section.rawValue >= currentStep.rawValue
-        withAnimation(.easeInOut(duration: 0.22)) { currentStep = section }
+        withAnimation(Motion.fade(.easeInOut(duration: 0.22), reduce: reduceMotion)) { currentStep = section }
         DispatchQueue.main.async { scrollProxy?.scrollTo("create.top", anchor: .top) }
     }
 
@@ -2023,7 +2061,7 @@ struct CreateEventView: View {
     private func ticketsSection() -> some View {
         VStack(alignment: .leading, spacing: 10) {
             FormFieldLabel(icon: "tag", text: app.T("Giá vé", "Price"),
-                           trailing: similarPriceHint == nil ? nil : app.T("Gợi ý", "Suggested"))
+                           trailing: similarPriceHint == nil ? nil : app.T("Gợi ý", "Suggested"), field: "price")
             if let market = bench?.price {
                 PriceMarketView(price: market, mine: draftPriceVnd, catLabel: createCatLabel, currency: currency) { app.createPrice = priceText($0) }
             }
@@ -2050,7 +2088,7 @@ struct CreateEventView: View {
                 .font(.system(size: 12)).opacity(0.7)
                 .accessibilityIdentifier("create.priceHint")
 
-            FormFieldLabel(icon: "person.2", text: app.T("Số chỗ", "Seats"), required: true)
+            FormFieldLabel(icon: "person.2", text: app.T("Số chỗ", "Seats"), required: true, field: "seats")
                 .padding(.top, 12)
             guided("seats") { HStack {
                 CountStepper(value: max(seatsBinding, 0), range: 0...SmartDefaults.seatRange.upperBound,
@@ -3120,7 +3158,7 @@ private struct TypeDetailField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            FormFieldLabel(icon: "sparkles", text: def.label.text(lang), required: required)
+            FormFieldLabel(icon: "sparkles", text: def.label.text(lang), required: required, field: id)
             if let hint = def.hint { Text(hint.text(lang)).font(.footnote).opacity(0.7) }
             switch def.kind {
             case "text": textField

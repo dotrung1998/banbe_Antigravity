@@ -41,17 +41,16 @@ test.describe('Personal-vs-organizer profile hierarchy', () => {
     // Cá nhân (Account's default tab), not inside Tổ chức; confirms
     // organizer mode really is on (seeded by beforeEach) before navigating
     // into the Tổ chức tab itself, which only exists while it's on.
+    // Note 66: no Host tab; organizer mode on means Account already shows the host content.
     await expect(page.getByTestId('organizer-mode-toggle')).toBeVisible({ timeout: 8000 });
-    await page.getByTestId('account-tab-host').click();
+    await expect(page.locator('[data-screen-label="Account"]')).toHaveAttribute('data-account-mode', 'host');
   }
 
   test('personal profile shows display_name, a Founder line, and no organizer edit/guest-preview actions', async ({ page }) => {
     await setupToHome(page);
     await goToHostTab(page);
-    await page.getByTestId('account-tab-personal').click();
-    await expect(page.getByTestId('account-tab-panel-personal')).toBeVisible();
-
-    await page.getByTestId('account-edit-profile').click();
+    // Host mode: the small "Personal profile ›" link under the organizer card opens the personal public page.
+    await page.getByTestId('account-switch-identity').click();
     await expect(page.locator('[data-screen-label="Public profile"]')).toBeVisible({ timeout: 5000 });
 
     await expect(page.getByTestId('public-profile-display-name')).toHaveText(TEST_DISPLAY_NAME);
@@ -61,10 +60,10 @@ test.describe('Personal-vs-organizer profile hierarchy', () => {
     await expect(page.getByTestId('public-profile-edit-org')).toHaveCount(0);
     await expect(page.getByTestId('public-profile-view-as-guest')).toHaveCount(0);
 
-    // Back returns to Account, Cá nhân tab preserved.
+    // Back returns to Account (still host mode).
     await page.getByText(/Quay lại|Back/).first().click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId('account-tab-panel-personal')).toBeVisible();
+    await expect(page.getByTestId('account-switch-identity')).toBeVisible();
   });
 
   test('management page shows the real organizer name + owner, and its one button opens the organizer public profile', async ({ page }) => {
@@ -92,12 +91,12 @@ test.describe('Personal-vs-organizer profile hierarchy', () => {
     await expect(page.getByTestId('organizer-profile-name')).toHaveText('Hierarchy Test Org');
     await expect(page.getByTestId('organizer-profile-edit')).toBeVisible();
 
-    // Back returns to Dashboard, then to Account (Tổ chức tab preserved).
+    // Back returns to Dashboard, then to Account (host mode).
     await page.getByText(/Quay lại|Back/).first().click();
     await expect(page.locator('[data-screen-label="Organizer dashboard"]')).toBeVisible({ timeout: 5000 });
     await page.locator('[data-screen-label="Organizer dashboard"]').getByText('‹').click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId('account-tab-panel-host')).toBeVisible();
+    await expect(page.getByTestId('org-profile-card')).toBeVisible();
   });
 
   test('a signed-out visitor can open the organizer public profile via /org/<id>, with no owner-only controls', async ({ browser }) => {

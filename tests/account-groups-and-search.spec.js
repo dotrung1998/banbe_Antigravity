@@ -14,44 +14,47 @@ test.describe('Account — grouped entry cards, role-gated', () => {
   // --workers=1; only concurrent execution flakes).
   test.describe.configure({ mode: 'serial' });
 
-  test('Cá nhân: identity card is first, group cards open their own child screen', async ({ page }) => {
+  // Note 66: Account has no tabs. Goer mode: identity card, then the four tiles, then More.
+  test('goer: identity card is first, tiles open their own child screen', async ({ page }) => {
     await setupToHome(page);
     await page.getByTestId('tab-profile').click();
-    await expect(page.locator('[data-screen-label="Account"]')).toBeVisible();
+    const account = page.locator('[data-screen-label="Account"]');
+    await expect(account).toBeVisible();
+    await expect(account).toHaveAttribute('data-account-mode', 'goer');
+    await expect(page.getByTestId('account-tabs')).toHaveCount(0);
 
-    const panel = page.locator('[data-testid="account-tab-panel-personal"]');
-    // Identity card renders before the group cards in DOM order.
-    const cardBox = await panel.getByTestId('account-profile-card').boundingBox();
-    const teamBox = await panel.getByTestId('account-group-team').boundingBox();
-    expect(cardBox.y).toBeLessThan(teamBox.y);
-    // Going/Saved sit between the identity card and the group cards.
-    const goingBox = await panel.getByTestId('account-going-card').boundingBox();
-    expect(goingBox.y).toBeGreaterThan(cardBox.y);
-    expect(goingBox.y).toBeLessThan(teamBox.y);
+    // Identity card renders before the tiles, and the tiles before the More list.
+    const cardBox = await account.getByTestId('account-profile-card').boundingBox();
+    const ticketsBox = await account.getByTestId('account-tile-tickets').boundingBox();
+    const moreBox = await account.getByTestId('account-more-group').boundingBox();
+    expect(cardBox.y).toBeLessThan(ticketsBox.y);
+    expect(ticketsBox.y).toBeLessThan(moreBox.y);
+    for (const k of ['tickets', 'wallet', 'saved', 'help']) {
+      const box = await account.getByTestId(`account-tile-${k}`).boundingBox();
+      expect(box.height).toBeGreaterThanOrEqual(88);
+    }
 
-    await page.getByTestId('account-group-payments').click();
+    await page.getByTestId('account-tile-wallet').click();
     await expect(page.locator('[data-screen-label="AccountGroup"]')).toBeVisible();
     await expect(page.getByTestId('account-invoices')).toBeVisible();
     await expect(page.getByTestId('account-receipts')).toBeVisible();
 
     await page.getByTestId('account-group-back').click();
-    await expect(page.locator('[data-screen-label="Account"]')).toBeVisible();
-    // accountTab is preserved across the round trip.
-    await expect(page.locator('[data-testid="account-tab-panel-personal"]')).toBeVisible();
+    await expect(account).toBeVisible();
+    await expect(page.getByTestId('account-tile-tickets')).toBeVisible();
   });
 
-  test('hostOps/adminReview group cards never show for a plain attendee', async ({ page }) => {
+  test('host tiles and Admin tools never show for a plain attendee', async ({ page }) => {
     await setupToHome(page);
     await page.getByTestId('tab-profile').click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible();
+    await expect(page.getByTestId('account-tile-getpaid')).toHaveCount(0);
     await expect(page.getByTestId('account-group-hostOps')).toHaveCount(0);
+    await expect(page.getByTestId('account-admin-tools')).toHaveCount(0);
     await expect(page.getByTestId('account-group-adminReview')).toHaveCount(0);
-    // Nor is Admin/Host even a reachable tab.
-    await expect(page.getByTestId('account-tab-host')).toHaveCount(0);
-    await expect(page.getByTestId('account-tab-admin')).toHaveCount(0);
   });
 
-  test('organizer mode on: hostOps group card reaches the exact same host-management actions', async ({ page }) => {
+  test('organizer mode on: Get paid tile reaches the exact same host-management actions', async ({ page }) => {
     test.skip(!hasServiceRole(), 'requires service role to flip role/organizer_mode_enabled');
     const admin = adminClient();
     const { data } = await admin.from('email_registrations')
@@ -60,9 +63,8 @@ test.describe('Account — grouped entry cards, role-gated', () => {
 
     await setupToHome(page);
     await page.getByTestId('tab-profile').click();
-    await page.getByTestId('account-tab-host').click();
-    await expect(page.getByTestId('account-group-hostOps')).toBeVisible();
-    await page.getByTestId('account-group-hostOps').click();
+    await expect(page.getByTestId('account-tile-getpaid')).toBeVisible();
+    await page.getByTestId('account-tile-getpaid').click();
     await expect(page.getByTestId('host-verifications')).toBeVisible();
     await expect(page.getByTestId('host-payout')).toBeVisible();
 

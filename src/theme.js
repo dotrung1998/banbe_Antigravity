@@ -26,6 +26,17 @@ export const honeyBg = 'var(--bb-honey-bg)';
 // of `alert`/`honey`, never an error colour and never the primary CTA. Mirrors `Palette.clay` / `Palette.clayBg`.
 export const clay = 'var(--bb-clay)';
 export const clayBg = 'var(--bb-clay-bg)';
+// Simple Shell surfaces (note 66): three steps of depth per theme instead of borders. surface1 = cards and rows,
+// surface2 = fields, chips and sheets, surface3 = pressed states and popovers. ink2/ink3 = secondary/tertiary text
+// (ink3 stays >= 4.5:1 on every surface), divider = hairline inside a group. Mirror `Palette` in BanbeTheme.swift.
+export const surface1 = 'var(--bb-surface-1)';
+export const surface2 = 'var(--bb-surface-2)';
+export const surface3 = 'var(--bb-surface-3)';
+export const ink2 = 'var(--bb-fg-2)';
+export const ink3 = 'var(--bb-fg-3)';
+export const divider = 'var(--bb-divider)';
+// Guided-focus halo gold (decoration only). Mirrors `BanbeTheme.attn`.
+export const attn = 'var(--bb-attn)';
 
 // Named per-context spacing around BanbeLoadingVisual, mirroring
 // apps/ios/BanbeApp/Views/BanbeTheme.swift's `BanbeTheme.LoadingVisual`.
@@ -76,7 +87,7 @@ const clipBackdropFilter = {
 
 // Field glass — inputs, list containers, small tiles.
 export const fieldGlass = (extra) => ({
-  background: 'linear-gradient(168deg, var(--bb-white) 0%, rgba(255,255,255,0.16) 42%, rgba(255,255,255,0) 100%), var(--bb-card)',
+  background: 'linear-gradient(168deg, var(--bb-white) 0%, rgba(255,255,255,calc(0.16 * var(--bb-sheen, 1))) 42%, rgba(255,255,255,0) 100%), var(--bb-card)',
   backdropFilter: 'blur(12px) saturate(1.06)', WebkitBackdropFilter: 'blur(12px) saturate(1.06)',
   boxShadow: 'inset 0 1px 0 var(--bb-white), 0 1px 3px var(--bb-shadow)',
   borderRadius: 12, ...clipBackdropFilter, ...extra,
@@ -84,7 +95,7 @@ export const fieldGlass = (extra) => ({
 
 // Card glass — section cards, stat cards, panels.
 export const cardGlass = (extra) => ({
-  background: 'linear-gradient(168deg, var(--bb-white) 0%, rgba(255,255,255,0.24) 45%, rgba(255,255,255,0.04) 100%), var(--bb-card2)',
+  background: 'linear-gradient(168deg, var(--bb-white) 0%, rgba(255,255,255,calc(0.24 * var(--bb-sheen, 1))) 45%, rgba(255,255,255,calc(0.04 * var(--bb-sheen, 1))) 100%), var(--bb-card2)',
   backdropFilter: 'blur(14px) saturate(1.05)', WebkitBackdropFilter: 'blur(14px) saturate(1.05)',
   boxShadow: 'inset 0 1px 0 var(--bb-white), 0 1px 4px var(--bb-shadow)',
   borderRadius: 12, ...clipBackdropFilter, ...extra,

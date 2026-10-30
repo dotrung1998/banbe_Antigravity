@@ -266,15 +266,11 @@ final class ScreenshotCatalogTests: XCTestCase {
         tab(app, "tab.profile").tap()
         XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 15))
 
-        app.buttons["account.goingCard"].tap()
-        if app.otherElements["screen.eventList"].waitForExistence(timeout: 18) {
-            capture("02-home-discovery", 3, "going-list", "Going", "Events the account is currently attending.", role: "goer", app: app)
-            app.buttons["‹"].firstMatch.tap() // EventListView's own back chevron — no accessibilityIdentifier, no BackLink component.
-        }
-        if !app.otherElements["screen.profile"].waitForExistence(timeout: 5) { tab(app, "tab.profile").tap() }
-        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 18))
+        // note 66: the Going counter is gone from Account (Tickets tile shows "N upcoming"); Saved is a tile,
+        // Past Events lives inside the Tickets group.
+        skip("going-list — no Going entry on Account since note 66 (reachable through Account search)")
 
-        app.buttons["account.savedCard"].tap()
+        app.buttons["account.tile.saved"].tap()
         if app.otherElements["screen.eventList"].waitForExistence(timeout: 18) {
             capture("02-home-discovery", 4, "saved-list", "Saved", "Events the account has favorited.", role: "goer", app: app)
             app.buttons["‹"].firstMatch.tap() // EventListView's own back chevron — no accessibilityIdentifier, no BackLink component.
@@ -282,6 +278,8 @@ final class ScreenshotCatalogTests: XCTestCase {
         if !app.otherElements["screen.profile"].waitForExistence(timeout: 5) { tab(app, "tab.profile").tap() }
         XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 18))
 
+        app.buttons["account.tile.tickets"].tap()
+        XCTAssertTrue(app.otherElements["screen.accountGroup"].waitForExistence(timeout: 18))
         app.buttons["account.completedList"].tap()
         if app.otherElements["screen.eventList"].waitForExistence(timeout: 18) {
             capture("02-home-discovery", 5, "completed-list", "Completed events", "Events that have already ended.", role: "goer", app: app)
@@ -526,12 +524,20 @@ final class ScreenshotCatalogTests: XCTestCase {
         XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 15))
         capture("08-account-settings", 1, "account", "Account", "Signed-in Account screen.", role: "goer", app: app)
 
+        // note 66: Settings is a row in the More card; Language & Appearance and Security are inside it.
+        let settings = app.buttons["account.group.preferences"]
+        for _ in 0..<6 where !settings.exists || !settings.isHittable { app.swipeUp() }
+        settings.tap()
+        XCTAssertTrue(app.otherElements["screen.accountGroup"].waitForExistence(timeout: 18))
         app.buttons["account.preferences"].tap()
         XCTAssertTrue(app.otherElements["screen.preferences"].waitForExistence(timeout: 18))
         capture("08-account-settings", 2, "app-preferences", "App preferences", "Language + theme, renamed from \"Language & appearance\".", role: "goer", app: app)
-        app.buttons["‹ Tài khoản"].tap()
+        tab(app, "tab.profile").tap()
         XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 18))
 
+        // Receipts live in the Wallet tile's group.
+        app.buttons["account.tile.wallet"].tap()
+        XCTAssertTrue(app.otherElements["screen.accountGroup"].waitForExistence(timeout: 18))
         app.buttons["account.receipts"].tap()
         XCTAssertTrue(app.otherElements["screen.documents"].waitForExistence(timeout: 18))
         capture("08-account-settings", 3, "documents-receipts", "Receipts", "The guest's own receipts.", role: "goer", app: app)
@@ -540,8 +546,13 @@ final class ScreenshotCatalogTests: XCTestCase {
         // `tab.profile` does not exist here; confirmed by an actual failed
         // run before this fix.
         app.buttons["documents.back"].tap()
+        XCTAssertTrue(app.otherElements["screen.accountGroup"].waitForExistence(timeout: 18))
+        app.buttons["accountGroup.back"].tap()
         XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 18))
 
+        for _ in 0..<6 where !settings.exists || !settings.isHittable { app.swipeUp() }
+        settings.tap()
+        XCTAssertTrue(app.otherElements["screen.accountGroup"].waitForExistence(timeout: 18))
         app.buttons["account.security"].tap()
         XCTAssertTrue(app.otherElements["screen.security"].waitForExistence(timeout: 18))
         capture("08-account-settings", 4, "security", "Security", "Account security settings.", role: "goer", app: app)

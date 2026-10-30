@@ -5,80 +5,28 @@ import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { supabase } from '../lib/supabase.js';
 import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
-import { paper, ink, rule, display, fieldGlass, fieldSolid, cardGlass, inkButton, alert } from '../theme.js';
+import { paper, ink, ink2, ink3, surface1, rule, display, fieldGlass, fieldSolid, cardGlass, inkButton, alert } from '../theme.js';
 import { AttachMenuIcon } from './Chat.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
 import ActionCenter from './ActionCenter.jsx';
 import AccountSearchResults from './AccountSearch.jsx';
 import { takeSearchState, resetSearchState } from '../lib/accountSearch.js';
-import { useSubmittedEvents, SubmittedEventsRow } from '../lib/submittedEvents.jsx';
-import ProfileShareSheet, { ShareCardRow, profileShareLinks } from './sheets/ProfileShareSheet.jsx';
+import { useSubmittedEvents } from '../lib/submittedEvents.jsx';
+import ProfileShareSheet, { profileShareLinks } from './sheets/ProfileShareSheet.jsx';
 import { KeychainFrame, useMyKeychain } from '../components/KeychainCharm.jsx';
 import { pickSoonest, liveEventOverrides } from '../lib/countdown.js';
 import { reminderPhase, REMINDER_CSS } from '../lib/eventReminder.js';
-import { computeAdminModerationCount, computeHostActionCount, computeMyTicketsActionCount, computeMyRefundActionCount, computePersonalActionCount, formatBadgeCount } from '../lib/badges.js';
+import { computeAdminModerationCount, computeHostActionCount, computeMyTicketsActionCount, computeMyRefundActionCount } from '../lib/badges.js';
+import { capsuleStreak } from '../lib/rewards.js';
+import { AccountTileGrid, AccountSectionLabel, MoreList, MoreRow, RewardsStrip } from './AccountTiles.jsx';
 
 function organizerAvatarUrl(path, r2Ref, variant = 'thumb') {
   return organizerAvatarPublicUrl(path, r2Ref, variant);
 }
 
-// TASK 3C (2026-09-22 twenty-first follow-up) — no existing icon
-// component/library covers this screen's semantics (only Chat.jsx's own
-// attach-menu `AttachMenuIcon`, a different icon set for a different
-// purpose), so per this ticket's own instruction this is a minimal local
-// inline-SVG set: one stroke weight (1.8), one viewBox (24x24 at 18px),
-// `ink` only — no new colors, no third-party icon set.
-// Account extension (2026-09-27, Stage 3) — the one recognizable "Số liệu
-// & báo cáo" entry point every visible tab gets, near its own top (not
-// buried among the rest of that tab's rows). `scope` here is always the
-// SAME string get_account_kpis (migration 097) expects — never re-derived
-// inside Reports.jsx itself, so what the user tapped is exactly what gets
-// fetched.
-// iOS parity (2026-10-18): rows inside one grouped card (AccountView `groupedContainer`) — no per-row
-// background or margin; the container draws the card and a hairline divider sits between rows.
-export const groupedRowStyle = { padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' };
-
-/** One card holding several rows with dividers between them (iOS `groupedContainer`). */
-export function GroupedContainer({ children, marginTop = 14, testId }) {
-  const rows = [].concat(children).flat().filter(Boolean);
-  return (
-    <div data-testid={testId} style={{ ...fieldGlass({ margin: `${marginTop}px 20px 0`, padding: 0, overflow: 'hidden' }) }}>
-      {rows.map((row, i) => (
-        <div key={i} style={{ borderTop: i > 0 ? '1px solid rgba(var(--bb-fg-rgb),0.10)' : 'none' }}>{row}</div>
-      ))}
-    </div>
-  );
-}
-
-/** Plain grouped row: icon + label + optional trailing text + chevron. */
-export function GroupedRow({ icon, label, trailing, onClick, testId, badge = 0, badgeLabel }) {
-  return (
-    <div onClick={onClick} data-testid={testId} style={groupedRowStyle}>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind={icon} />{label}</span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {badge > 0 && <span aria-label={badgeLabel} style={{ minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px', boxSizing: 'border-box', background: 'var(--bb-alert)', color: 'var(--bb-on-alert)', fontSize: 11, fontWeight: 700, lineHeight: '20px', textAlign: 'center' }}>{badge > 99 ? '99+' : badge}</span>}
-        <span style={{ fontSize: trailing ? 13 : 15, color: ink, lineHeight: 1 }}>{trailing ? `${trailing} ›` : '›'}</span>
-      </span>
-    </div>
-  );
-}
-
-export function ReportsRow({ label, onClick, testId, icon = 'checklist', badge = 0, badgeLabel, grouped = false }) {
-  return (
-    <div
-      onClick={onClick}
-      data-testid={testId}
-      style={grouped ? groupedRowStyle : { ...fieldGlass({ margin: '18px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
-    >
-      <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind={icon} />{label}</span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {badge > 0 && <span aria-label={badgeLabel} style={{ minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px', boxSizing: 'border-box', background: 'var(--bb-alert)', color: 'var(--bb-on-alert)', fontSize: 11, fontWeight: 700, lineHeight: '20px', textAlign: 'center' }}>{badge > 99 ? '99+' : badge}</span>}
-        <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-      </span>
-    </div>
-  );
-}
+// Note 66: the grouped-row helpers (GroupedContainer/GroupedRow/ReportsRow/GroupCard/SectionHeader) left with
+// the tabs; Account's rows and tiles now live in AccountTiles.jsx.
 
 // Color-as-wayfinding pass (2026-09-27) — a restrained accent, reusing the
 // SAME existing profile-palette tokens (src/lib/profileTheme.js — already
@@ -131,6 +79,11 @@ export function RowIcon({ kind, size = 22, accent }) {
     hexCoin: <><circle cx="12" cy="12" r="8.6" /><path d="M12 7.2l4.2 2.4v4.8L12 16.8l-4.2-2.4V9.6z" /></>,
     store: <><path d="M4 9.5l1.5-5h13L20 9.5" /><path d="M4 9.5c0 1.4 1.1 2.5 2.7 2.5s2.6-1.1 2.6-2.5c0 1.4 1.1 2.5 2.7 2.5s2.7-1.1 2.7-2.5c0 1.4 1 2.5 2.6 2.5S20 10.9 20 9.5" /><path d="M5.5 12v8h13v-8M10 20v-4.5h4V20" /></>,
     coin: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5v9M9.6 9.6c.5-.8 1.4-1.2 2.4-1.2 1.4 0 2.4.7 2.4 1.8 0 2.4-4.8 1.2-4.8 3.6 0 1.1 1 1.8 2.4 1.8 1 0 1.9-.4 2.4-1.2" /></>,
+    // Note 66: Account tiles.
+    ticket: <><path d="M3.5 8.2V6.5h17v1.7a2.3 2.3 0 0 0 0 4.6v4.7h-17v-4.7a2.3 2.3 0 0 0 0-4.6z" /><path d="M14.5 6.5v11" strokeDasharray="1.6 2" /></>,
+    wallet: <><path d="M4 7.5h14.5a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 1-1.5 1.5H5.5A1.5 1.5 0 0 1 4 18.5z" /><path d="M4 7.5l11-3v3" /><path d="M16 13.5h.01" /></>,
+    help: <><circle cx="12" cy="12" r="8.6" /><path d="M9.6 9.6a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.1-2.4 3.6" /><path d="M12 16.9v.01" /></>,
+    chart: <><path d="M4 20h16" /><path d="M7 16.5v-5M12 16.5V7M17 16.5v-8" /></>,
     alertShield: <><path d="M12 3.2l6.8 2.8v5.7c0 4.7-3 7.4-6.8 8.7-3.8-1.3-6.8-4-6.8-8.7V6z" /><path d="M12 8.5v4.3M12 15.4v0" /></>,
   };
   return (
@@ -147,71 +100,17 @@ export function RowIcon({ kind, size = 22, accent }) {
   );
 }
 
-// Account IA pass (2026-09-27) — a grouped entry card: icon + title +
-// optional badge (an urgent pending-action COUNT, never buried inside the
-// child screen only — see this ticket's own "preserve urgent pending-
-// action visibility... at the group entry" instruction) + chevron, opening
-// the shared AccountGroup child screen. `groupKey` doubles as the
-// `ROW_ACCENT_COLORS` lookup AND the `data-testid`/route id both platforms
-// share, so iOS/web can't drift on what a given group actually is.
-function GroupCard({ groupKey, iconKind, label, badge, onClick, marginTop = 8, grouped = false }) {
-  const { T } = useBanBe();
-  return (
-    <div
-      onClick={onClick}
-      data-testid={`account-group-${groupKey}`}
-      style={grouped ? groupedRowStyle : { ...fieldGlass({ margin: `${marginTop}px 20px 0`, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
-    >
-      <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
-        <RowIcon kind={iconKind} accent={ROW_ACCENT_COLORS[groupKey]} />
-        {label}
-      </span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {/* TASK 5 (Account badges pass) — "99+" display, same cap
-            convention BottomTabBar.jsx's own Notifications badge already
-            uses, with the real count kept in aria-label/title (never lost,
-            just not rendered) for accessibility/debugging. */}
-        {!!badge && (
-          <span
-            role="status"
-            aria-label={`${badge} ${T('mục mới', 'new item(s)')}`}
-            title={String(badge)}
-            style={{ fontSize: 11, fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}
-            data-testid={`account-group-${groupKey}-badge`}
-          >
-            {badge > 99 ? '99+' : badge}
-          </span>
-        )}
-        <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-      </span>
-    </div>
-  );
-}
-
-// Account IA reorder pass (2026-09-30 second) — a reusable section header,
-// visually identical to the pre-existing "Tổ Chức" header style (11.5px,
-// weight 600, `ink`) so every cluster in Personal/Host/Admin reads as one
-// consistent convention instead of a one-off. Purely presentational — never
-// changes a groupKey/testid/route, only adds a label above a cluster.
-export function SectionHeader({ label, testId, marginTop = 22 }) {
-  return (
-    <div style={{ padding: `${marginTop}px 20px 0` }} data-testid={testId}>
-      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{label}</span>
-    </div>
-  );
-}
-
 export default function Account() {
   const {
-    state, T, set, goHome, goEditName, goGoingList, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
-    openMyRefunds, openEditProfile,
+    state, T, set, goEditName, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
+    openMyRefunds,
     loadHomeStories, openStoryViewer, openStoryLibraryPicker, openStoryCameraPicker,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadPendingEventsCount,
     openPaymentDetails, goDashboard, loadHomeLiveEvents, loadRealEventsById,
-    loadMyOrgStats, setAccountTab, openPublicProfile, openReports, openAccountGroup, goSurveysHosting,
+    loadMyOrgStats, openPublicProfile, openReports, openAccountGroup, goSurveysHosting,
     loadMyOrganizerMemberships,
     loadMyEventCredits, loadMyConfirmedEventCredits,
-    loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openHostSetup, goNotifications, goSchedule, rewardsEnabled,
+    loadMyAdminInvite, loadAdminTeam, openHostSetup, openOrganizerProfile, goNotifications, rewardsEnabled, rewardsV2Enabled, loadRewardsSummary,
   } = useBanBe();
   const s = state;
   const myKeychain = useMyKeychain();
@@ -227,70 +126,31 @@ export default function Account() {
     if (searchOpen) { setSearchQuery(''); resetSearchState(); }
     setSearchOpen(v => !v);
   };
+  // Note 66 (Simple Shell, Phase 2): Account has no Personal / Host / Admin tabs any more. Its content follows the
+  // mode: organizer mode on = host content, off = goer content. Admin lives behind one "Admin tools" row (the
+  // 'admin' AccountGroup). `s.accountTab` is kept in state for compatibility but is no longer read here.
+  const isOrganizer = s.organizerMode;
+  const isAdmin = s.accountType === 'admin';
   // Host-side review tracking (iOS parity): submitted ('review') + needs-fix events.
-  const submitted = useSubmittedEvents(!!s.user?.id && s.organizerMode);
-  // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Both panes stay
-  // mounted (display:none on the inactive one, not unmounted), each in its
-  // OWN independently-scrolling container — switching tabs never resets
-  // either one's scroll position, and never touches organizerMode/canHost
-  // (that stays a wholly separate, explicit toggle inside the Tổ chức
-  // pane itself, same as before).
-  // iPhone fix pass (2026-09-26) — lifted into global state (s.accountTab)
-  // so it survives this component remounting on any navigation away and
-  // back (Preferences, the public-profile link below, etc.) — see the
-  // state's own comment (BanBeContext.jsx) for the full root cause.
-  const accountTab = s.accountTab;
-  // Account extension (2026-09-27, Stage 1/2) — a role change (organizer
-  // mode toggled off elsewhere, an admin demoted, an account switch) can
-  // land this component with `accountTab` pointing at a tab that's no
-  // longer in the list above; the toggle's own redirect (BanBeContext.jsx,
-  // applyOrganizerMode) covers the direct toggle path, this is the general
-  // safety net for every other path (mount, account switch, server resync).
-  useEffect(() => {
-    if (accountTab === 'host' && !s.organizerMode) setAccountTab('personal');
-    else if (accountTab === 'admin' && s.accountType !== 'admin') setAccountTab('personal');
-  }, [accountTab, s.organizerMode, s.accountType, setAccountTab]);
-  // Task 1 (2026-09-21 real-device follow-up) — "Post Story" is now a real
-  // two-option menu (Photo library / Camera), matching Chat.jsx's own
-  // attach-menu convention (same icon set, same popup shape) instead of a
-  // single link that only ever opened the library picker.
-  // TASK 1 (dock "+" menu pass) — the actual file inputs/upload/preview
-  // this opens now live in StoryCreateOverlay.jsx (mounted once, globally,
-  // in App.jsx) — not here — so the dock "+" menu's own "Đăng story" row
-  // can drive the exact same pipeline. This component only flips the
-  // shared open* flags below.
-  const [storyMenuOpen, setStoryMenuOpen] = useState(false);
+  const submitted = useSubmittedEvents(!!s.user?.id && isOrganizer);
+  // "Post a story" (host mode only) — the two-option menu (Photo library / Camera). The file inputs and upload
+  // live in StoryCreateOverlay.jsx (mounted once in App.jsx); this only flips the shared open* flags.
   const [hostStoryMenuOpen, setHostStoryMenuOpen] = useState(false);
 
-  // Stage 1 (2026-09-27 nav/discovery pass) — this card's own inline
-  // avatar/name/intro editor is gone: the whole card is now a single tap
-  // target that opens the REAL public organizer profile
-  // (openPublicProfile), which already has its own "Chỉnh sửa" entry
-  // (PublicProfile.jsx's org edit card) — editing one place, not two.
-
-  // Task 3.3 (07-notifications.md) — loads active stories (mine + followed
-  // hosts') so the ring below reflects real data even when Account is
-  // opened directly, without having visited Home first this session.
+  // Task 3.3 (07-notifications.md) — active stories (mine + followed hosts') so the avatar ring reflects real data.
   useEffect(() => { if (s.user) loadHomeStories(); }, [s.user, loadHomeStories]);
-  // Organizer Team pass (2026-09-27, Stage 1) — this account's own pending
-  // invites/accepted memberships, shown in the Cá nhân tab below.
+  // Organizer Team pass — this account's own pending invites/accepted memberships (team invite banner, Team tile).
   useEffect(() => { if (s.user?.id) loadMyOrganizerMemberships(); }, [s.user?.id, loadMyOrganizerMemberships]);
-  // Admin Team pass (2026-10-02) — this account's own pending admin invite,
-  // if any — reachable regardless of current role (the invitee isn't an
-  // admin yet), same "Cá nhân" tab placement as the Team-invite banner.
+  // Admin Team pass — this account's own pending admin invite (Action Center), reachable regardless of role.
   useEffect(() => { if (s.user?.id) loadMyAdminInvite(); }, [s.user?.id, loadMyAdminInvite]);
-  // A manage-admins-capable admin's own badge/roster source — loaded here
-  // (not only on opening the group) for the same reason pendingEventsCount
-  // is loaded on mount below: an accurate badge, never a guessed/stale one.
   useEffect(() => { if (s.canManageAdmins) loadAdminTeam(); }, [s.canManageAdmins, loadAdminTeam]);
-  // Organizer Team pass (2026-09-27, Stage 2) — this account's own pending
-  // event-credit invites ("did I really help organize this event").
+  // Pending event-credit invites ("did I really help organize this event") — the Team tile badge.
   useEffect(() => { if (s.user?.id) loadMyEventCredits(); }, [s.user?.id, loadMyEventCredits]);
   useEffect(() => { if (s.user?.id) loadMyConfirmedEventCredits(); }, [s.user?.id, loadMyConfirmedEventCredits]);
-  // TASK A (2026-10-01 UX foundation pass) — Account is one of this
-  // component's three placements; loads the same canonical sources Home
-  // does so the Action Center reflects live server state here too, not a
-  // stale snapshot from whenever Home last loaded them.
+  // Rewards strip: the same summary the Home shortcut reads; no request at all while the switch is off.
+  useEffect(() => { if (s.user?.id && rewardsEnabled) loadRewardsSummary(); }, [s.user?.id, rewardsEnabled, loadRewardsSummary]);
+  // TASK A (2026-10-01 UX foundation pass) — the same canonical sources Home loads, so the Action Center and the
+  // tile badges reflect live server state here too.
   useEffect(() => {
     if (!s.user?.id) return;
     loadPaymentBookings();
@@ -300,25 +160,13 @@ export default function Account() {
       loadRefundQueue();
       loadOrganizerHoldingSummary();
     }
-    // TASK 5 (Account badges pass) — same "load it here so the group-entry
-    // badge is real, not stale" reasoning as verifications/refundQueue
-    // above, gated on the actual admin role (RLS-backed), not a UI toggle.
-    if (s.accountType === 'admin') loadPendingEventsCount();
-  }, [s.user?.id, canHost, s.accountType, loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadPendingEventsCount]);
-  // Stage 1 — re-run whenever this account's organizer id becomes known
-  // (session restore, or right after creating a first event — see
-  // createSubmit's own comment) so the host card's real published-event
-  // stats reflect the latest admin approval/cancellation, not a stale
-  // snapshot from whenever it was last loaded.
+    if (isAdmin) loadPendingEventsCount();
+  }, [s.user?.id, canHost, isAdmin, loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadPendingEventsCount]);
   useEffect(() => { if (canHost && s.myOrganizerId) loadMyOrgStats(); }, [canHost, s.myOrganizerId, loadMyOrgStats]);
   const myHolding = pickSoonest(s.paymentBookings, 'holding', 'hold_expires_at');
   const myPendingVerification = (s.paymentBookings || [])
     .filter(b => b.payment_state === 'pending_verification')
     .sort((a, b) => new Date(a.proof_uploaded_at || 0) - new Date(b.proof_uploaded_at || 0))[0] || null;
-  // Goer-side items belong to Personal; host-side items (payments to verify,
-  // refunds you owe, guests holding seats) belong to the Host tab, the same
-  // split the tab badges use. While the Host tab is hidden (organizerMode
-  // off) they stay on Personal so owed money is never silently hidden.
   const goerActionItems = sortActionCenterItems(buildActionCenterItems({
     role: 'goer', T, now: s.now || Date.now(),
     myHolding, myPendingVerification, myRefunds: s.myRefunds || [],
@@ -334,30 +182,21 @@ export default function Account() {
     onOpenRefundCenter: () => openVerifications('profile'),
     onOpenDashboard: () => goDashboard('profile'),
   })) : [];
-  const actionItems = s.organizerMode ? goerActionItems : sortActionCenterItems([...goerActionItems, ...hostActionItems]);
+  // Goer mode: as before on Personal (host duties stay visible while organizer mode is off, so owed money is never
+  // hidden). Host mode: host duties first-class, plus this account's own goer deadlines (a held seat about to
+  // expire) — with the tabs gone there is no other Account surface that would show those.
+  const actionItems = sortActionCenterItems([...goerActionItems, ...hostActionItems]);
   const myStoryGroup = s.myOrganizerIds.length ? s.homeStories.find(g => s.myOrganizerIds.includes(g.organizerId)) : null;
   const hasActiveStory = !!myStoryGroup;
   const storyUnviewed = hasActiveStory && !myStoryGroup.allViewed;
 
-  // Once an event is over it belongs in "Completed", not "Going" — otherwise
-  // it just sits there forever looking like something still upcoming.
+  // Once an event is over it belongs in "Completed", not "Going".
   const goingCount = s.attending
     .map(k => EVENTS.find(e => e.key === k))
     .filter(e => e && e.endedHoursAgo == null).length;
+  const savedCount = (s.favorites || []).length;
 
   const profileName = s.user ? (s.user.name || (s.user.email ? s.user.email.split('@')[0] : T('Bạn', 'You'))) : T('Khách', 'Guest');
-  // TASK B (2026-10-03 fix pass) — `isOrganizer` is the CURRENT UI
-  // preference (organizerMode), never eligibility (canHost). Using
-  // `canHost` here was the actual root cause of "organizer mode appears on
-  // by default and cannot be turned off": `canHost` stays true forever
-  // for any account that has ever really hosted (via `hasHosted`), so the
-  // switch/host section never visually reflected a toggle-off at all —
-  // see applyOrganizerMode's/toggleOrganizerMode's own doc comments for
-  // the matching state-side half of this same bug. `canHost` is still
-  // used on its own below (and by the Action Center above) wherever the
-  // question is genuinely "is this account eligible," not "is host UI on
-  // right now."
-  const isOrganizer = s.organizerMode;
   // Host card highlight: this host has an open event starting within 24h or in progress.
   const hostOwnKeys = s.myOrgEventKeys.filter(k => s.myOrgEventOrganizerId[k] === s.myOrganizerId);
   const hostRealKeys = hostOwnKeys.filter(k => !EVENTS.some(e => e.key === k));
@@ -378,22 +217,127 @@ export default function Account() {
     return r ? reminderPhase(r.startsAt, { status: r.status }) : null;
   }).filter(Boolean);
   const hostReminder = hostPhases.includes('live') ? 'live' : hostPhases[0] || null;
-  const profileSub = s.accountType === 'admin' ? T('Quản trị viên', 'Admin') : isOrganizer ? T('Người tham gia ▪︎ Người tổ chức', 'Goer ▪︎ Host') : T('Người tham gia', 'Goer');
+  const profileSub = isAdmin ? T('Quản trị viên', 'Admin') : isOrganizer ? T('Người tham gia ▪︎ Người tổ chức', 'Goer ▪︎ Host') : T('Người tham gia', 'Goer');
+  const openMyPublicProfile = () => { if (s.user?.handle) openPublicProfile(s.user.handle, 'profile'); };
+
+  // ---- Tiles (note 66) --------------------------------------------------------------------------------------
+  const goerTiles = [
+    { tileKey: 'tickets', icon: 'ticket', title: T('Vé & đặt chỗ', 'Tickets'),
+      value: goingCount > 0 ? T(`${goingCount} sắp tới`, `${goingCount} upcoming`) : T('Chưa có vé sắp tới', 'Nothing upcoming'),
+      badge: computeMyTicketsActionCount(s), onClick: () => openAccountGroup('activity'),
+      // Test-only observability carried over from the old account-going-card: the unfiltered s.attending.length.
+      dataAttrs: { 'data-attending-raw-count': s.attending.length } },
+    { tileKey: 'wallet', icon: 'wallet', title: T('Ví & chứng từ', 'Wallet'),
+      value: T('Hoá đơn, biên nhận, hoàn tiền', 'Invoices, receipts, refunds'),
+      badge: computeMyRefundActionCount(s), onClick: () => openAccountGroup('payments') },
+    { tileKey: 'saved', icon: 'bookmark', title: T('Đã lưu', 'Saved'),
+      value: T(`${savedCount} sự kiện`, `${savedCount} ${savedCount === 1 ? 'event' : 'events'}`), onClick: goSavedList },
+    { tileKey: 'help', icon: 'help', title: T('Trợ giúp', 'Help'),
+      value: T('Hướng dẫn, điều khoản, Q&A', 'Guides, terms, Q&A'), onClick: () => openAccountGroup('helpLegal') },
+  ];
+  const eventsValue = (() => {
+    const bits = [];
+    if (submitted.pending.length) bits.push(T(`${submitted.pending.length} chờ duyệt`, `${submitted.pending.length} in review`));
+    if (submitted.needsFix.length) bits.push(T(`${submitted.needsFix.length} cần sửa`, `${submitted.needsFix.length} to fix`));
+    if (bits.length) return bits.join(' · ');
+    if (s.myOrgPublishedEventCount !== null && s.myOrgPublishedEventCount !== undefined) {
+      return T(`${s.myOrgPublishedEventCount} đã đăng`, `${s.myOrgPublishedEventCount} published`);
+    }
+    return null;
+  })();
+  const hostTiles = [
+    // Was the "Submitted Events" row; the Dashboard holds the same review queue (pending + needs fixing + View).
+    { tileKey: 'events', icon: 'calendarCheck', title: T('Sự kiện', 'Events'), value: eventsValue,
+      badge: submitted.total, onClick: () => goDashboard('profile') },
+    { tileKey: 'getpaid', icon: 'banknote', title: T('Nhận tiền', 'Get paid'),
+      value: T('Xác nhận, hoàn tiền, chứng từ', 'Verify, refunds, documents'),
+      badge: computeHostActionCount(s), onClick: () => openAccountGroup('hostOps') },
+    { tileKey: 'team', icon: 'users', title: T('Đội ngũ', 'Team'),
+      value: T('Lời mời, thành viên', 'Invites, members'),
+      badge: s.myOrganizerInvites.length + s.myEventCredits.length, onClick: () => openAccountGroup('team') },
+    // No organizer yet: the tile opens the same "Set up profile" flow as org-profile-ensure.
+    { tileKey: 'reports', icon: 'chart', title: T('Báo cáo', 'Reports'),
+      value: s.myOrganizerId ? T('Số liệu tổ chức', 'Host metrics') : null,
+      onClick: () => (s.myOrganizerId ? openReports('host', s.myOrganizerId, 'profile') : openHostSetup()) },
+  ];
+
+  const rewardsSummaryLive = rewardsEnabled && s.rewardsSummaryStatus === 'loaded' && !!s.rewardsSummary;
+  const rewardsStreak = capsuleStreak(s.rewardsSummary, rewardsV2Enabled);
+  const rewardsLabel = rewardsSummaryLive
+    ? (rewardsStreak.unit === 'week'
+      ? T(`🔥 ${rewardsStreak.value} tuần · ${s.rewardsSummary.balance} xu`, `🔥 ${rewardsStreak.value}-week streak · ${s.rewardsSummary.balance} coins`)
+      : T(`🔥 ${rewardsStreak.value} ngày · ${s.rewardsSummary.balance} xu`, `🔥 ${rewardsStreak.value}-day streak · ${s.rewardsSummary.balance} coins`))
+    : T('Phần thưởng & huy hiệu', 'Rewards & badges');
+
+  const organizerToggleRow = (
+    <MoreRow
+      key="organizer-mode"
+      icon="switch"
+      label={T('Chế độ tổ chức', 'Hosting mode')}
+      sub={T('Bật để tạo và quản lý sự kiện. Tắt lúc nào cũng được.', 'Turn on to create and manage events. Turn it off any time.')}
+      testId="organizer-mode-toggle"
+      role="switch" ariaChecked={isOrganizer}
+      disabled={s.organizerModeBusy}
+      onClick={toggleOrganizerMode}
+      end={(
+        <span aria-hidden style={{ flex: 'none', width: 44, height: 26, borderRadius: 13, padding: 3, boxSizing: 'border-box', background: isOrganizer ? ink : 'rgba(var(--bb-fg-rgb),0.18)', transition: 'background .15s' }}>
+          <span style={{ display: 'block', width: 20, height: 20, borderRadius: '50%', background: paper, transform: isOrganizer ? 'translateX(18px)' : 'translateX(0)', transition: 'transform .15s' }} />
+        </span>
+      )}
+    />
+  );
+  const notificationsRow = (
+    <MoreRow key="notifications" icon="bell" label={T('Thông báo', 'Notifications')} testId="account-notifications" onClick={goNotifications}
+      badge={s.unreadNotifications || 0} badgeLabel={T(`${s.unreadNotifications || 0} chưa đọc`, `${s.unreadNotifications || 0} unread`)} />
+  );
+  const settingsRow = (
+    <MoreRow key="settings" icon="sliders" label={T('Cài đặt', 'Settings')} testId="account-group-preferences" onClick={() => openAccountGroup('preferences')} />
+  );
+  const adminRow = isAdmin ? (
+    <MoreRow key="admin" icon="shield" label={T('Công cụ quản trị', 'Admin tools')} testId="account-admin-tools"
+      badge={computeAdminModerationCount(s)} badgeLabel={T(`${computeAdminModerationCount(s)} mục mới`, `${computeAdminModerationCount(s)} new item(s)`)}
+      onClick={() => openAccountGroup('admin')} />
+  ) : null;
+
+  const goerMoreRows = [
+    notificationsRow,
+    <MoreRow key="following" icon="heart" label={T('Đang theo dõi', 'Following')} testId="account-following"
+      trailing={s.followedStatus === 'loaded' ? String(s.followedOrgIds.length) : null} onClick={() => set({ screen: 'following' })} />,
+    referralLink ? (
+      <MoreRow key="invite" icon="users" label={T('Mời bạn bè', 'Invite friends')} testId="account-invite-friends" onClick={shareReferral}
+        sub={s.referralShared ? T('Đã sao chép link mời ▪︎ gửi cho bạn bè thôi!', 'Invite link copied ▪︎ send it to a friend!') : null} />
+    ) : null,
+    s.user?.handle ? (
+      <MoreRow key="share" icon="person" label={T('Chia sẻ thẻ hồ sơ', 'Share your card')} testId="account-share-card-personal" onClick={() => setShareCardFor('member')} />
+    ) : null,
+    s.user ? (
+      <MoreRow key="reports" icon="chart" label={T('Báo cáo', 'Reports')} testId="account-reports-personal" onClick={() => openReports('personal', null, 'profile')} />
+    ) : null,
+    settingsRow,
+    s.user ? organizerToggleRow : null,
+    adminRow,
+  ];
+  const hostMoreRows = [
+    notificationsRow,
+    <MoreRow key="story" icon="pencil" label={T('Đăng story', 'Post a story')} testId="account-host-post-story"
+      sub={T('Thêm chữ và liên kết, sửa hoặc xóa sau khi đăng', 'Add text and a link, edit or delete after posting')}
+      onClick={() => setHostStoryMenuOpen(v => !v)} />,
+    s.myOrganizerId ? (
+      <MoreRow key="share-host" icon="store" label={T('Chia sẻ thẻ tổ chức', 'Share host card')} testId="account-share-card-host" onClick={() => setShareCardFor('host')} />
+    ) : null,
+    <MoreRow key="surveys" icon="lightbulb" label={T('Khảo sát & ý tưởng sự kiện', 'Surveys & event ideas')} testId="account-group-surveys" onClick={goSurveysHosting} />,
+    s.myOrganizerId ? (
+      <MoreRow key="org-profile" icon="store" label={T('Hồ sơ tổ chức', 'Organizer profile')} testId="account-organizer-profile" onClick={() => openOrganizerProfile(s.myOrganizerId, 'profile')} />
+    ) : null,
+    settingsRow,
+    organizerToggleRow,
+    adminRow,
+  ];
 
   return (
-    <div style={{ position: 'relative', animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Account">
-      {/* Fixed-header pass (2026-10-02) — title row + tabs used to just
-          scroll away with the rest of the page (this screen has no sticky
-          header at all before this pass, unlike iOS's own `accountHeader`/
-          `accountTabsBar` siblings above `ScreenScaffold`). `position:
-          sticky` on the single shared scroll container this screen already
-          renders inside (App.jsx's Shell, see its own `overflowY: 'auto'`
-          div) keeps both stationary while only the content below scrolls —
-          no second scroll/tab system, same `accountTab` state and
-          `setAccountTab` routing as before. */}
-      {/* paddingBottom: breathing room under the Personal / Host / Admin tabs, so scrolled content never touches them (iOS). */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 5, background: paper, paddingBottom: 12 }} data-testid="account-fixed-header">
-        {/* Note 53: same padding and row height as every dock header (top was 66). */}
+    <div style={{ position: 'relative', animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Account" data-account-mode={isOrganizer ? 'host' : 'goer'}>
+      {/* Sticky header: title + search toggle/input (unchanged by note 66, minus the tabs that used to sit under it). */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 5, background: paper, paddingBottom: 8 }} data-testid="account-fixed-header">
         <div style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 0`, height: DOCK_HEADER.rowHeight, boxSizing: 'content-box', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {searchOpen ? (
             <input
@@ -419,627 +363,232 @@ export default function Account() {
             </span>
           </span>
         </div>
-
-        {/* Stage D — Cá nhân/Tổ chức top-level tabs. Purely a display switch
-            below (both panes' own scroll containers keep their scrollTop
-            whichever is hidden) — never calls toggleOrganizerMode or any
-            hosting-mode side effect by itself. */}
-        <div style={{ display: searchOpen ? 'none' : 'flex', gap: 4, margin: '18px 20px 14px', padding: 4, borderRadius: 999, background: 'rgba(var(--bb-fg-rgb),0.06)' }} data-testid="account-tabs" role="tablist">
-        {[
-          // Same source as the "Tickets & Bookings" group card badge below.
-          { key: 'personal', icon: 'person', label: T('Cá Nhân', 'Personal'), badge: computePersonalActionCount(s) },
-          // Account extension (2026-09-27, Stage 1) — "organizer mode OFF
-          // means host UI is OFF": Tổ chức only shows while `organizerMode`
-          // (the CURRENT toggle) is actually on, never `canHost`
-          // (eligibility) — a never-hosted account reaches hosting via the
-          // toggle row moved into Cá nhân below, not this tab.
-          // FIX PASS (2026-09-30) — badge propagated from the SAME source
-          // as this tab's own group card ("Vận hành & thanh toán tổ chức"
-          // below): verifications + refundQueue, never a second count.
-          ...(isOrganizer ? [{ key: 'host', icon: 'store', label: T('Tổ Chức', 'Host'), badge: computeHostActionCount(s) + submitted.total }] : []),
-          // Stage 2 — Admin depends only on a server-confirmed role
-          // (`accountType`, set exclusively by syncUser()'s own read of
-          // `profiles.role`/`set_organizer_mode`'s return value — never
-          // client-writable to "admin" by this toggle), never organizerMode.
-          // Badge propagated from the SAME source as the "Duyệt & kiểm
-          // duyệt" group card / "Sự kiện chờ duyệt" row below —
-          // pendingEventsCount, never a second, independently-derived count.
-          ...(s.accountType === 'admin' ? [{ key: 'admin', icon: 'shield', label: T('Quản Trị', 'Admin'), badge: computeAdminModerationCount(s) }] : []),
-        ].map(tab => (
-          <span
-            key={tab.key}
-            onClick={() => setAccountTab(tab.key)}
-            data-testid={`account-tab-${tab.key}`}
-            role="tab" aria-selected={accountTab === tab.key}
-            style={{
-              flex: 1, minWidth: 0, minHeight: 44, fontSize: 14, fontWeight: 600, padding: '0 6px', borderRadius: 999, cursor: 'pointer', color: ink,
-              transition: 'background .2s, box-shadow .2s', outline: 'none', WebkitTapHighlightColor: 'transparent',
-              // Always the FULL `border` shorthand in both states: mixing it with a `borderColor` override made
-              // React clear just the colour on deselect, leaving a black (currentColor) ring on the old tab.
-              ...(accountTab === tab.key
-                // The selected segment is a raised glass bubble, like iOS GlassSegmentedControl.
-                ? { border: '1px solid rgba(var(--bb-fg-rgb),0.12)', background: 'linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.18)), var(--bb-bg)', boxShadow: '0 4px 14px rgba(27,25,22,0.14), inset 0 1px 0 rgba(255,255,255,0.6)' }
-                : { border: '1px solid transparent', background: 'transparent', boxShadow: 'none' }),
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, whiteSpace: 'nowrap',
-            }}
-          >
-            <RowIcon kind={tab.icon} size={18} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
-            {!!tab.badge && (
-              <span
-                data-testid={`account-tab-${tab.key}-badge`}
-                role="status"
-                aria-label={T(`${tab.badge} mục mới`, `${tab.badge} new item(s)`)}
-                title={String(tab.badge)}
-                style={{
-                  fontSize: 10, fontWeight: 700, minWidth: 16, height: 16, padding: '0 4px', lineHeight: '16px',
-                  textAlign: 'center', borderRadius: 999,
-                  background: alert,
-                  color: '#fff',
-                }}
-              >
-                {formatBadgeCount(tab.badge)}
-              </span>
-            )}
-          </span>
-        ))}
-        </div>
       </div>
 
-      {/* iPhone fix pass (2026-09-26) — this personal identity card (and
-          its story ring/"Đổi tên") used to sit ABOVE both tab panes, so it
-          rendered on the Tổ chức tab too, right on top of that tab's own
-          organizer profile card below — two profile cards for one screen.
-          Moved inside the SAME Cá nhân pane wrapper as the rest of this
-          tab's content (opened here, closed at its usual spot further
-          down) — the Tổ chức tab gets its own separate, organizer-only
-          card instead. */}
       {searchOpen && <div style={{ height: 8 }} />}
       {searchOpen && <AccountSearchResults query={searchQuery} />}
 
-      <div data-testid="account-tab-panel-personal" style={{ display: !searchOpen && accountTab === 'personal' ? 'block' : 'none' }}>
-      {/* Account IA pass (2026-09-27) — the identity card is now the FIRST
-          thing under the tab pills (was: reports row, then Team invites/
-          memberships/event-credit sections, THEN this card) — Going/Saved
-          immediately follow it, per this ticket's own ordering ask.
-          Team invites/memberships and event credits (pending + confirmed)
-          moved into the "team"/"activity" AccountGroup child screens below
-          — never duplicated here, only their own pending COUNTS surface at
-          the group-entry level now (GroupCard's `badge`).
-          TASK D (2026-10-01 UX foundation pass) — the header is now a
-          tappable rounded profile card (editorial style: soft gradient
-          wash from the account's own chosen palette, real avatar or a
-          palette-tinted monogram, handle line). The story ring/post-story
-          menu keep their own existing nested tap targets unchanged — a
-          separate small "Chỉnh sửa" affordance (not the whole card) opens
-          EditProfile, so it can't conflict with those. */}
-      <KeychainFrame config={myKeychain} margin="22px 20px 0" cardHeight={92} testId="account-keychain-frame">
-      {({ reserveLeft, reserveRight }) => (
-      <div
-        style={{
-          ...cardGlass({ margin: 0, padding: `18px ${16 + reserveRight}px 18px ${16 + reserveLeft}px`, display: 'flex', gap: 14, alignItems: 'center' }),
-          background: `linear-gradient(165deg, ${PROFILE_PALETTE_COLORS[s.user?.profileTheme] || PROFILE_PALETTE_COLORS.default}55, transparent 70%)`,
-        }}
-        data-testid="account-profile-card"
-      >
-        {/* Task 3.3 (07-notifications.md) — story ring: a bright outline
-            while this host has an active, not-fully-viewed story; a
-            subdued one once every active story has been viewed; no ring
-            at all when there's no active story. Tapping the avatar opens
-            the viewer only when there's something to view. */}
-        <div
-          onClick={hasActiveStory ? () => openStoryViewer(myStoryGroup.organizerId) : undefined}
-          data-testid="account-story-ring"
-          data-story-state={hasActiveStory ? (storyUnviewed ? 'unviewed' : 'viewed') : 'none'}
-          style={{
-            flex: 'none', width: 64, height: 64, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            border: hasActiveStory ? `2.5px solid ${storyUnviewed ? alert : 'transparent'}` : '2.5px solid transparent',
-            boxShadow: hasActiveStory && !storyUnviewed ? `inset 0 0 0 2.5px ${rule}` : 'none',
-            cursor: hasActiveStory ? 'pointer' : 'default',
-          }}
-        >
-          {s.user?.avatarUrl ? (
-            <img src={s.user.avatarUrl} alt="" style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover' }} />
-          ) : (
-            <div style={{ ...fieldGlass({ width: 56, height: 56, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }), ...display(22) }}>
-              {(profileName || 'B').trim()[0]?.toUpperCase() || 'B'}
-            </div>
-          )}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
-            <span style={{ ...display(22, { lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{profileName}</span>
-            {s.user && (
-              <span onClick={goEditName} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer', flex: 'none' }}>
-                <RowIcon kind="pencil" size={13} />{T('Đổi tên', 'Rename')}
-              </span>
-            )}
-          </div>
-          {s.user?.handle && <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>@{s.user.handle}</span>}
-          <span style={{ fontSize: 11, letterSpacing: '0.06em', color: ink }}>{profileSub}</span>
-          {/* Task 3.2 — story creation entry point, hosts only. */}
-          {isOrganizer && (
-            <div style={{ position: 'relative' }}>
-              <span onClick={() => setStoryMenuOpen(v => !v)} data-testid="account-post-story" style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer' }}>
-                {T('▪︎ Đăng story', '▪︎ Post story')}
-              </span>
-              {storyMenuOpen && (
-                <div onClick={() => setStoryMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 35 }}>
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ ...cardGlass({ position: 'absolute', top: 20, left: 0, minWidth: 200 }), padding: 6, display: 'flex', flexDirection: 'column' }}
-                  >
-                    <div
-                      onClick={() => { setStoryMenuOpen(false); openStoryLibraryPicker(); }}
-                      data-testid="account-post-story-library"
-                      style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
-                    >
-                      <AttachMenuIcon name="library" />
-                      {T('Thư Viện Ảnh', 'Photo Library')}
-                    </div>
-                    <div
-                      onClick={() => { setStoryMenuOpen(false); openStoryCameraPicker(); }}
-                      data-testid="account-post-story-camera"
-                      style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
-                    >
-                      <AttachMenuIcon name="camera" />
-                      {T('Camera', 'Camera')}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        {/* iPhone fix pass (2026-09-26) — this used to open EditProfile
-            directly; it now opens the same public profile page anyone else
-            sees when visiting this account's own /u/<handle> (isOwnProfile
-            there is what actually surfaces its own "Chỉnh sửa hồ sơ" row)
-            — editing is one tap further in, not the arrow's own
-            destination. */}
-        {s.user && (
-          <span
-            onClick={() => s.user?.handle && openPublicProfile(s.user.handle, 'profile')}
-            data-testid="account-edit-profile"
-            style={{ flex: 'none', fontSize: 20, color: ink, opacity: 0.55, cursor: 'pointer', alignSelf: 'center' }}>
-            ›
-          </span>
-        )}
-      </div>
-      )}
-      </KeychainFrame>
-
-      {s.user?.handle && (
-        <ShareCardRow onClick={() => setShareCardFor('member')} testId="account-share-card-personal" />
-      )}
-
-      {/* Account IA reorder pass (2026-09-30 second) — target order per
-          17-ux-foundation-release.md's dated section: this cluster answers
-          "what needs my attention / where are my tickets and payments"
-          first (a product hypothesis on common task frequency — ticket/
-          booking access, then payments, then settings, then hosting, then
-          admin — NOT measured banbe usage data, none exists to cite). */}
-      <SectionHeader label={T('Hoạt Động Của Bạn', 'Your Activity')} testId="account-section-activity" />
-
-      <ActionCenter items={actionItems} onSeeAll={() => openVerifications('profile')} T={T} />
-
-      {/* Account IA reorg (2026-09-30) — relabeled "Vé & Hoạt Động"/"Tickets
-          & Activity" -> "Vé & Đặt Chỗ"/"Tickets & Bookings"; `groupKey`
-          stays "activity" (route/testid unchanged, only the visible label
-          and its content changed — see AccountGroup.jsx). Badge is now the
-          real count of this account's own holding/awaiting-payment/
-          pending-verification bookings (computeMyTicketsActionCount,
-          reading the SAME `paymentBookings` array already loaded above for
-          the Action Center — no new query). */}
-      {/* iOS parity (2026-10-18): one grouped card, same order as AccountView — Tickets & Bookings, the
-          Going / Saved counters, My schedule, Notifications, Payments & Documents, Metrics & Reports. */}
-      <GroupedContainer testId="account-activity-group">
-        <GroupCard grouped groupKey="activity" iconKind="calendarCheck"
-          label={T('Vé & Đặt Chỗ', 'Tickets & Bookings')}
-          badge={computeMyTicketsActionCount(s)}
-          onClick={() => openAccountGroup('activity')} />
-        <div style={{ display: 'flex' }}>
-          {/* data-attending-raw-count is the unfiltered s.attending.length — test-only observability (see history). */}
-          <div onClick={goGoingList} data-testid="account-going-card" data-attending-raw-count={s.attending.length}
-            style={{ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }}>
-            <RowIcon kind="checkCircle" size={22} />
-            <span style={{ ...display(24) }}>{goingCount}</span>
-            <span style={{ fontSize: 12, color: ink }}>{T('Đang tham gia', 'Going')}</span>
-          </div>
-          <div aria-hidden style={{ width: 1, background: 'rgba(var(--bb-fg-rgb),0.10)' }} />
-          <div onClick={goSavedList} data-testid="account-saved-card"
-            style={{ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }}>
-            <RowIcon kind="bookmark" size={22} />
-            <span style={{ ...display(24) }}>{(s.favorites || []).length}</span>
-            <span style={{ fontSize: 12, color: ink }}>{T('Sự Kiện Đã Lưu', 'Saved Events')}</span>
-          </div>
-        </div>
-        <GroupedRow icon="calendar" label={T('Lịch của tôi', 'My schedule')} testId="account-schedule" onClick={goSchedule} />
-        {/* Note 44 web parity: Notifications left the dock; reachable here, from the Home bell and Action Center. */}
-        <GroupedRow icon="bell" label={T('Thông báo', 'Notifications')} testId="account-notifications" onClick={goNotifications}
-          badge={s.unreadNotifications || 0} badgeLabel={T(`${s.unreadNotifications || 0} chưa đọc`, `${s.unreadNotifications || 0} unread`)} />
-        <GroupCard grouped groupKey="payments" iconKind="banknote"
-          label={T('Thanh Toán & Giấy Tờ', 'Payments & Documents')}
-          badge={computeMyRefundActionCount(s)}
-          onClick={() => openAccountGroup('payments')} />
-        <ReportsRow grouped label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} icon="document" testId="account-reports-personal" onClick={() => openReports('personal', null, 'profile')} />
-      </GroupedContainer>
-
-      {referralLink && (
-        <div style={{ ...cardGlass({ margin: '20px 20px 0', padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, cursor: 'pointer' }) }} onClick={shareReferral}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-          <RowIcon kind="users" />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-            <span style={{ ...display(16) }}>{T('Mời bạn bè', 'Invite friends')}</span>
-            <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink, opacity: 0.7 }}>
-              {s.referralShared
-                ? T('Đã sao chép link mời ▪︎ gửi cho bạn bè thôi!', 'Invite link copied ▪︎ send it to a friend!')
-                : T('Rủ bạn bè cùng tham gia banbe qua link riêng của bạn.', 'Bring friends onto banbe with your own link.')}
-            </span>
-          </div>
-          </div>
-          <span style={{ flex: 'none', fontSize: 12, fontWeight: 600, color: paper, background: ink, borderRadius: 999, padding: '9px 16px' }}>{T('Chia sẻ', 'Share')}</span>
-        </div>
-      )}
-
-      {/* Account IA reorder pass (2026-09-30 second) — second cluster:
-          account-level settings, reached after the actionable/ticket stuff
-          above. `team` GroupCard used to always render here — REMOVED
-          wholesale (not simply moved into Hosting): a user can receive a
-          co-organizer invite before ever turning Hosting Mode on, and
-          hiding the ONLY entry point to that invite behind the Hosting
-          toggle would strand them with an invisible, un-actionable invite.
-          Instead: (a) the Host tab now has its own entry point into the
-          SAME `groupKey: 'team'` screen (see account-tab-panel-host below —
-          mirrors the existing "two doors, one destination" pattern already
-          used for the Payment Disputes row), and (b) a lightweight
-          conditional row right below surfaces the SAME destination here
-          ONLY when there's a real pending invite AND Hosting is currently
-          off (so it's never invisible, but a participant who's never
-          touched hosting doesn't see an empty organizer-team card by
-          default). Gating is mutually exclusive with the Host-tab card
-          (that card only renders while organizerMode is on — see
-          `useEffect` above that forces accountTab off 'host' whenever
-          organizerMode is false), so the two entry points are never both
-          visible at once and neither ever double-counts. */}
-      <SectionHeader label={T('Tài Khoản & Cài Đặt', 'Account & Settings')} testId="account-section-settings" />
-
-      <GroupedContainer testId="account-settings-group">
-        <GroupedRow icon="person" label={T('Hồ Sơ Cá Nhân', 'Personal Profile')} testId="account-personal-profile"
-          onClick={() => s.user?.handle && openPublicProfile(s.user.handle, 'profile')} />
-        <GroupedRow icon="heart" label={T('Đang theo dõi', 'Following')} testId="account-following"
-          trailing={s.followedStatus === 'loaded' ? String(s.followedOrgIds.length) : null} onClick={() => set({ screen: 'following' })} />
-        {rewardsEnabled && (
-          <GroupedRow icon="hexCoin" label={T('Phần Thưởng & Huy Hiệu', 'Rewards & Badges')} testId="account-rewards"
-            onClick={() => set({ screen: 'rewards', rewardsBack: 'profile' })} />
-        )}
-        {/* groupKey/testid/route unchanged ("preferences" — see AccountGroup.jsx's GROUP_META). */}
-        <GroupCard grouped groupKey="preferences" iconKind="sliders" label={T('Cài Đặt', 'Settings')} onClick={() => openAccountGroup('preferences')} />
-        {/* Help & Legal opens the helpLegal group (Terms -> policy screen, Guides, Q&A) — see AccountGroup.jsx. */}
-        <GroupedRow icon="shield" label={T('Trợ Giúp & Pháp Lý', 'Help & Legal')} testId="account-help-legal" onClick={() => openAccountGroup('helpLegal')} />
-      </GroupedContainer>
-
-      {/* Account IA reorder pass — the lightweight conditional invite row
-          described above. Same badge SOURCE as the Host-tab `team` card
-          (myOrganizerInvites.length [+ myEventCredits.length]) — never a
-          second independently-derived count, and never rendered at the
-          same time as that card (mutually exclusive on `isOrganizer`). */}
-      {!isOrganizer && s.myOrganizerInvites.length > 0 && (
-        <div
-          onClick={() => openAccountGroup('team')}
-          data-testid="account-team-invite-banner"
-          style={{ ...fieldGlass({ margin: '8px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
-        >
-          <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
-            <RowIcon kind="users" accent={ROW_ACCENT_COLORS.team} />{T('Bạn có lời mời Team', 'You have a team invite')}
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span
-              role="status"
-              aria-label={T(`${s.myOrganizerInvites.length} lời mời`, `${s.myOrganizerInvites.length} invite(s)`)}
-              style={{ fontSize: 11, fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}
-              data-testid="account-team-invite-banner-badge"
-            >
-              {s.myOrganizerInvites.length}
-            </span>
-            <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-          </span>
-        </div>
-      )}
-
-
-      {/* Account extension (2026-09-27, Stage 1) — "Organizer mode OFF
-          means host UI is OFF": the whole Tổ chức tab disappears while
-          this is off, so the ON/OFF control itself (and any actionable
-          host duty) can't live there any more — moved here, into Cá nhân,
-          which is always reachable. The Tổ chức tab (when it does show)
-          now holds only the organizer identity card + its management
-          entry point (org-profile-card, above/unchanged). */}
-      <div style={{ padding: '22px 20px 0' }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Tổ Chức', 'Hosting')}</span>
-        {/* TASK 2 (2026-10-05 fix pass) — `organizerModeBusy` (real guard
-            in toggleOrganizerMode/applyOrganizerMode, see BanBeContext.jsx)
-            mirrored here as `.opacity`/no-op click so a second tap while
-            one request is already in flight visibly does nothing instead
-            of silently queuing a race. */}
-        <div
-          onClick={s.organizerModeBusy ? undefined : toggleOrganizerMode}
-          data-testid="organizer-mode-toggle"
-          aria-disabled={s.organizerModeBusy}
-          style={{ ...fieldGlass({ marginTop: 10, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: s.organizerModeBusy ? 'default' : 'pointer', opacity: s.organizerModeBusy ? 0.55 : 1 }) }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, paddingRight: 12 }}>
-            <RowIcon kind="switch" />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-              <span style={{ fontSize: 14, color: ink }}>{T('Chế độ tổ chức', 'Organizer mode')}</span>
-              <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink, opacity: 0.7 }}>{T('Bật để tạo và quản lý sự kiện. Tắt lúc nào cũng được.', 'Turn on to create and manage events. Turn it off any time.')}</span>
-            </div>
-          </div>
-          <span aria-hidden style={{ flex: 'none', width: 44, height: 26, borderRadius: 13, padding: 3, background: isOrganizer ? ink : 'rgba(27,25,22,0.18)', transition: 'background .15s' }}>
-            <span style={{ display: 'block', width: 20, height: 20, borderRadius: '50%', background: paper, transform: isOrganizer ? 'translateX(18px)' : 'translateX(0)', transition: 'transform .15s' }} />
-          </span>
-        </div>
-        {s.organizerModeError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0' }}>{s.organizerModeError}</p>}
-        {/* Account regression fix pass (2026-09-27), Item 1 — the actual
-            host-management rows (verifications/payout/invoices/receipts)
-            used to live here too, so Cá nhân showed the full old
-            "Tổ chức" management menu underneath a toggle that was
-            supposed to be the ONLY thing here. They moved to the Tổ chức
-            tab (below, in account-tab-panel-host) — reachable ONLY while
-            organizerMode is actually on, matching that tab's own
-            visibility. Any genuinely URGENT outstanding duty (a pending
-            verification, an overdue refund) still surfaces here via the
-            ActionCenter above, which is gated on `canHost` (eligibility),
-            not `organizerMode` — a neutral actionable notice, never the
-            full menu. */}
-        {/* No separate "Xem trang tổ chức của bạn" card here — org-profile-card
-            (Tổ chức tab, once organizerMode is on) is the single entry into
-            that management page now. This onboarding pitch is for an
-            account that has never hosted (`canHost` false always implies
-            `organizerMode` false too, so it can only ever show in the true
-            "never hosted" case). */}
-        {!canHost && (
-          <div style={{ ...cardGlass({ marginTop: 10, padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 10 }) }}>
-            <span style={{ ...display(19, { lineHeight: 1.3 }) }}>{T('Tổ chức sự kiện đầu tiên', 'Host your first event')}</span>
-            <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, margin: 0 }}>
-              {T('Miễn phí hoàn toàn khi banbe còn mới: không phí đăng, không phí giao dịch. Tạo sự kiện đầu tiên để mở trang tổ chức.', 'Completely free while banbe is new: no listing or transaction fees. Create your first event to unlock your host page.')}
-            </p>
-            <div onClick={toggleOrganizerMode} style={{ ...inkButton({ marginTop: 4, borderRadius: 18, padding: 14, fontSize: 14 }) }}>{T('Bắt đầu tổ chức ▪︎ miễn phí', 'Start hosting ▪︎ free')}</div>
-          </div>
-        )}
-      </div>
-
-      {s.user ? (
-        <div onClick={logout} style={{ padding: '24px 20px 40px', display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: ink, cursor: 'pointer' }}><RowIcon kind="logout" size={18} />{T('Đăng xuất', 'Sign out')}</div>
-      ) : (
-        <div onClick={goLogin} style={{ padding: '24px 20px 40px', display: 'flex', alignItems: 'center', gap: 12, fontSize: 12.5, lineHeight: 1.5, color: ink, cursor: 'pointer' }}><RowIcon kind="login" size={18} />{T('Đăng nhập để lưu sự kiện và nhắn tin', 'Sign in to save events and message hosts')}</div>
-      )}
-      </div>
-
-      <div data-testid="account-tab-panel-host" style={{ display: !searchOpen && accountTab === 'host' ? 'block' : 'none' }}>
-      {/* Account IA pass (2026-09-27) — identity card FIRST under the tab
-          pills (was: reports row, then this card) — matches Cá nhân's own
-          reordering. */}
-      {/* Host tab's OWN rounded profile card (Stage D) — organizer avatar/
-          name/introduction, stored on `organizers` (migration 090), never
-          profiles.display_name. Only shown once this account has ever
-          hosted; a never-hosted account instead sees the same "Host your
-          first event" pitch further down (unchanged from before). */}
-      {/* ensure_my_organizer (migration 163): organizer mode is on but no owned
-          organizer yet (created lazily at first event before) — show progress,
-          or an error with ONE explicit Retry (no automatic retry loop). */}
-      {canHost && s.organizerMode && !s.myOrganizerId && !s.hostSetupOpen && (
-        <div data-testid="org-profile-ensure" style={{ ...cardGlass({ margin: '22px 20px 0', padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 10 }) }}>
-          <span style={{ ...display(18, { lineHeight: 1.3 }) }}>{T('Hoàn tất hồ sơ tổ chức', 'Finish your host profile')}</span>
-          <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, opacity: 0.75, margin: 0 }}>
-            {T('Chọn ảnh bìa, đặt tên và viết vài dòng giới thiệu để khách biết bạn là ai.', 'Pick a cover, name it and add a short intro so guests know who you are.')}
-          </p>
-          <div role="button" data-testid="org-profile-ensure-setup" onClick={openHostSetup} style={{ ...inkButton({ marginTop: 4, borderRadius: 18, padding: 14, fontSize: 14 }) }}>{T('Thiết lập hồ sơ', 'Set up profile')}</div>
-        </div>
-      )}
-      {canHost && s.myOrganizerId && (
-        <div
-          onClick={() => goDashboard('profile')}
-          className={hostReminder ? 'bb-rem-card' : undefined}
-          data-reminder={hostReminder || undefined}
-          style={{
-            ...cardGlass({ margin: '22px 20px 0', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer' }),
-            position: 'relative', '--bb-rem-r': '12px',
-            // Account regression fix pass (2026-09-27), Item 4 — same
-            // visual quality as the personal card's own gradient wash
-            // (account-profile-card, above), but a deliberately DIFFERENT
-            // palette (moss, never the account's own chosen `profileTheme`)
-            // so this always reads as a distinct organization identity,
-            // never a second copy of the personal card.
-            background: `linear-gradient(165deg, ${PROFILE_PALETTE_COLORS.moss}66, transparent 70%)`,
-          }}
-          data-testid="org-profile-card"
-        >
-          {hostReminder && <style>{REMINDER_CSS}</style>}
-          <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-            {/* Real avatar only — a rounded-SQUARE frame (never the
-                personal card's circular one), so the two are never
-                visually confusable at a glance even before reading any
-                text. A missing avatar falls back to a real monogram
-                (organizer name's own first letter), never a broken
-                image/placeholder icon. */}
-            <div style={{ flex: 'none', width: 56, height: 56, borderRadius: 14, overflow: 'hidden' }}>
-              {organizerAvatarUrl(s.myOrganizerAvatarPath, s.myOrganizerAvatarR2Ref) ? (
-                <img src={organizerAvatarUrl(s.myOrganizerAvatarPath, s.myOrganizerAvatarR2Ref)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: ink, color: paper, ...display(20) }}>
-                  {(s.orgRegName || 'B').trim()[0]?.toUpperCase() || 'B'}
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1 }}>
-              <span style={{ ...display(18, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{s.orgRegName || T('Chưa đặt tên', 'Unnamed host')}</span>
-              {/* Stage 1 — same published-events-only rule as
-                  get_public_profile's event_count/hosting_since_year
-                  (migration 091, loadMyOrgStats above), so this card and
-                  the public page never disagree. null = not loaded yet
-                  (shows nothing rather than a flash of "0 sự kiện") — never
-                  a fabricated count either way. */}
-              {s.myOrgPublishedEventCount !== null && (
-                <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>
-                  {s.myOrgHostingSinceYear
-                    ? T(`Tổ chức từ ${s.myOrgHostingSinceYear} ▪︎ ${s.myOrgPublishedEventCount} sự kiện`, `Hosting since ${s.myOrgHostingSinceYear} ▪︎ ${s.myOrgPublishedEventCount} events`)
-                    : T('Chưa có sự kiện công khai nào', 'No published events yet')}
-                </span>
-              )}
-            </div>
-            {/* Profile-nav fix pass (2026-09-27) — the whole card is now
-                the single tap target, opening the real organizer
-                management page (Dashboard.jsx, real upcoming/past events +
-                check-in), NOT the public profile — visiting the public
-                page is Dashboard's own "Hồ sơ công khai của tổ chức"
-                button. This chevron is purely visual, matching the
-                personal profile card's own right-side "›" — an
-                accessible, large tap target (the whole card, not just
-                this glyph). */}
-            {hostReminder && (
-              <span data-testid="org-profile-checkin-hint" style={{ flex: 'none', fontSize: 12, fontWeight: 700, color: '#7A5200' }}>{T('Điểm danh', 'Check-in')}</span>
-            )}
-            <span
-              aria-hidden
-              data-testid="org-profile-view-public"
-              style={{ flex: 'none', fontSize: 20, color: ink, opacity: hostReminder ? 1 : 0.55 }}
-            >›</span>
-          </div>
-          {s.orgRegDesc && (
-            <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, opacity: 0.85, margin: 0 }}>{s.orgRegDesc}</p>
-          )}
-        </div>
-      )}
-
-      {/* Account regression fix pass (2026-09-27), Item 1 — host-management
-          rows, only ever reachable while organizerMode is on (this whole
-          tab's own visibility rule). Account IA pass (2026-09-27) — now
-          ONE grouped entry card (was an inline 4-row list) — same exact
-          child actions/testids, moved into the shared AccountGroup screen.
-          Badge = real outstanding host duties (verifications + refund
-          queue), never invented. */}
-      {/* Host tab "Post a story" row — story posting is a host action (matches
-          iOS's postStoryCTA); same two pickers as the personal card's menu. */}
-      {isOrganizer && (
-        <div style={{ position: 'relative', margin: '14px 20px 0' }}>
+      <div data-testid="account-content" style={{ display: searchOpen ? 'none' : 'block' }}>
+        {/* 2. Identity card. Goer: the personal profile card (it IS the profile; › opens the public page).
+            Host: the organizer card instead, with a small link back to the personal public profile. */}
+        {!isOrganizer && (
+          <KeychainFrame config={myKeychain} margin="8px 20px 0" cardHeight={92} testId="account-keychain-frame">
+          {({ reserveLeft, reserveRight }) => (
           <div
-            onClick={() => setHostStoryMenuOpen(v => !v)}
-            data-testid="account-host-post-story"
-            style={{ ...cardGlass({ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }) }}
+            style={{
+              ...cardGlass({ margin: 0, padding: `18px ${16 + reserveRight}px 18px ${16 + reserveLeft}px`, display: 'flex', gap: 14, alignItems: 'center' }),
+              background: `linear-gradient(165deg, ${PROFILE_PALETTE_COLORS[s.user?.profileTheme] || PROFILE_PALETTE_COLORS.default}55, transparent 70%)`,
+            }}
+            data-testid="account-profile-card"
           >
-            <span aria-hidden style={{ flex: 'none', width: 24, height: 24, borderRadius: '50%', background: ink, color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, lineHeight: 1 }}>+</span>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
-              <span style={{ fontSize: 15, fontWeight: 600, color: ink }}>{T('Đăng story', 'Post a story')}</span>
-              <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{T('Thêm chữ và liên kết, sửa hoặc xóa sau khi đăng', 'Add text and a link, edit or delete after posting')}</span>
+            {/* Story ring: bright while an active story is unviewed, subdued once viewed, none without a story. */}
+            <div
+              onClick={hasActiveStory ? () => openStoryViewer(myStoryGroup.organizerId) : undefined}
+              data-testid="account-story-ring"
+              data-story-state={hasActiveStory ? (storyUnviewed ? 'unviewed' : 'viewed') : 'none'}
+              style={{
+                flex: 'none', width: 64, height: 64, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: hasActiveStory ? `2.5px solid ${storyUnviewed ? alert : 'transparent'}` : '2.5px solid transparent',
+                boxShadow: hasActiveStory && !storyUnviewed ? `inset 0 0 0 2.5px ${rule}` : 'none',
+                cursor: hasActiveStory ? 'pointer' : 'default',
+              }}
+            >
+              {s.user?.avatarUrl ? (
+                <img src={s.user.avatarUrl} alt="" style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover' }} />
+              ) : (
+                <div style={{ ...fieldGlass({ width: 56, height: 56, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }), ...display(22) }}>
+                  {(profileName || 'B').trim()[0]?.toUpperCase() || 'B'}
+                </div>
+              )}
             </div>
-            <span aria-hidden style={{ fontSize: 12, color: ink, opacity: 0.5 }}>⌃⌄</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+                <span style={{ ...display(22, { lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{profileName}</span>
+                {s.user && (
+                  <span onClick={goEditName} data-testid="account-rename" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: ink2, cursor: 'pointer', flex: 'none' }}>
+                    <RowIcon kind="pencil" size={13} />{T('Đổi tên', 'Rename')}
+                  </span>
+                )}
+              </div>
+              {s.user?.handle && <span style={{ fontSize: 11.5, color: ink2 }}>@{s.user.handle}</span>}
+              <span style={{ fontSize: 11, letterSpacing: '0.06em', color: ink2 }}>{profileSub}</span>
+            </div>
+            {s.user && (
+              <span
+                onClick={openMyPublicProfile}
+                role="button"
+                aria-label={T('Mở hồ sơ công khai', 'Open your public profile')}
+                data-testid="account-edit-profile"
+                style={{ flex: 'none', fontSize: 20, color: ink, opacity: 0.55, cursor: 'pointer', alignSelf: 'center', padding: '12px 4px' }}>
+                ›
+              </span>
+            )}
           </div>
-          {hostStoryMenuOpen && (
-            <div onClick={() => setHostStoryMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 35 }}>
+          )}
+          </KeychainFrame>
+        )}
+
+        {isOrganizer && (
+          <>
+            {/* ensure_my_organizer (migration 163): organizer mode on but no owned organizer yet. */}
+            {canHost && !s.myOrganizerId && !s.hostSetupOpen && (
+              <div data-testid="org-profile-ensure" style={{ ...cardGlass({ margin: '8px 20px 0', padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 10 }) }}>
+                <span style={{ ...display(18, { lineHeight: 1.3 }) }}>{T('Hoàn tất hồ sơ tổ chức', 'Finish your host profile')}</span>
+                <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink2, margin: 0 }}>
+                  {T('Chọn ảnh bìa, đặt tên và viết vài dòng giới thiệu để khách biết bạn là ai.', 'Pick a cover, name it and add a short intro so guests know who you are.')}
+                </p>
+                <div role="button" data-testid="org-profile-ensure-setup" onClick={openHostSetup} style={{ ...inkButton({ marginTop: 4, borderRadius: 18, padding: 14, fontSize: 14 }) }}>{T('Thiết lập hồ sơ', 'Set up profile')}</div>
+              </div>
+            )}
+            {canHost && s.myOrganizerId && (
               <div
-                onClick={(e) => e.stopPropagation()}
-                style={{ ...cardGlass({ position: 'absolute', right: 20, top: '50%', minWidth: 200 }), padding: 6, display: 'flex', flexDirection: 'column' }}
+                onClick={() => goDashboard('profile')}
+                className={hostReminder ? 'bb-rem-card' : undefined}
+                data-reminder={hostReminder || undefined}
+                style={{
+                  ...cardGlass({ margin: '8px 20px 0', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer' }),
+                  position: 'relative', '--bb-rem-r': '12px',
+                  // Moss wash, never the personal `profileTheme`, so it always reads as the organization identity.
+                  background: `linear-gradient(165deg, ${PROFILE_PALETTE_COLORS.moss}66, transparent 70%)`,
+                }}
+                data-testid="org-profile-card"
               >
-                <div
-                  onClick={() => { setHostStoryMenuOpen(false); openStoryLibraryPicker(); }}
-                  style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
-                >
-                  <AttachMenuIcon name="library" />{T('Thư Viện Ảnh', 'Photo Library')}
+                {hostReminder && <style>{REMINDER_CSS}</style>}
+                <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                  <div style={{ flex: 'none', width: 56, height: 56, borderRadius: 14, overflow: 'hidden' }}>
+                    {organizerAvatarUrl(s.myOrganizerAvatarPath, s.myOrganizerAvatarR2Ref) ? (
+                      <img src={organizerAvatarUrl(s.myOrganizerAvatarPath, s.myOrganizerAvatarR2Ref)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: ink, color: paper, ...display(20) }}>
+                        {(s.orgRegName || 'B').trim()[0]?.toUpperCase() || 'B'}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1 }}>
+                    <span style={{ ...display(18, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{s.orgRegName || T('Chưa đặt tên', 'Unnamed host')}</span>
+                    {s.myOrgPublishedEventCount !== null && (
+                      <span style={{ fontSize: 11, color: ink2 }}>
+                        {s.myOrgHostingSinceYear
+                          ? T(`Tổ chức từ ${s.myOrgHostingSinceYear} ▪︎ ${s.myOrgPublishedEventCount} sự kiện`, `Hosting since ${s.myOrgHostingSinceYear} ▪︎ ${s.myOrgPublishedEventCount} events`)
+                          : T('Chưa có sự kiện công khai nào', 'No published events yet')}
+                      </span>
+                    )}
+                  </div>
+                  {hostReminder && (
+                    <span data-testid="org-profile-checkin-hint" style={{ flex: 'none', fontSize: 12, fontWeight: 700, color: '#7A5200' }}>{T('Điểm danh', 'Check-in')}</span>
+                  )}
+                  <span aria-hidden data-testid="org-profile-view-public" style={{ flex: 'none', fontSize: 20, color: ink, opacity: hostReminder ? 1 : 0.55 }}>›</span>
                 </div>
-                <div
-                  onClick={() => { setHostStoryMenuOpen(false); openStoryCameraPicker(); }}
-                  style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
+                {s.orgRegDesc && (
+                  <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink2, margin: 0 }}>{s.orgRegDesc}</p>
+                )}
+              </div>
+            )}
+            {s.user?.handle && (
+              <div style={{ padding: '8px 24px 0', display: 'flex', justifyContent: 'flex-end' }}>
+                <span
+                  onClick={openMyPublicProfile}
+                  role="button"
+                  data-testid="account-switch-identity"
+                  style={{ fontSize: 12.5, color: ink2, cursor: 'pointer', padding: '12px 0', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                 >
-                  <AttachMenuIcon name="camera" />{T('Camera', 'Camera')}
-                </div>
+                  {T('Hồ sơ cá nhân', 'Personal profile')} <span aria-hidden>›</span>
+                </span>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* 3. Four big tiles, mode-scoped. */}
+        <AccountTileGrid tiles={isOrganizer ? hostTiles : goerTiles} T={T} />
+
+        {/* 4. Rewards strip (behind the `rewards` switch, both modes). */}
+        {rewardsEnabled && s.user && (
+          <RewardsStrip
+            label={rewardsLabel}
+            ariaLabel={rewardsSummaryLive ? `${rewardsLabel}. ${T('Mở phần thưởng và huy hiệu', 'Open rewards and badges')}` : rewardsLabel}
+            onClick={() => set({ screen: 'rewards', rewardsBack: 'profile' })}
+          />
+        )}
+
+        {/* 5. Action Center (renders nothing when there is nothing to do). */}
+        <ActionCenter items={actionItems} onSeeAll={() => openVerifications('profile')} T={T} />
+
+        {/* 6. Team invite banner — goer mode only (in host mode the Team tile carries the same badge). */}
+        {!isOrganizer && s.myOrganizerInvites.length > 0 && (
+          <div
+            onClick={() => openAccountGroup('team')}
+            role="button"
+            data-testid="account-team-invite-banner"
+            style={{ margin: '8px 20px 0', minHeight: 52, boxSizing: 'border-box', padding: '10px 16px', borderRadius: 14, background: surface1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 15, color: ink }}>
+              <RowIcon kind="users" accent={ROW_ACCENT_COLORS.team} />{T('Bạn có lời mời Team', 'You have a team invite')}
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span
+                role="status"
+                aria-label={T(`${s.myOrganizerInvites.length} lời mời`, `${s.myOrganizerInvites.length} invite(s)`)}
+                style={{ fontSize: 11, fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}
+                data-testid="account-team-invite-banner-badge"
+              >
+                {s.myOrganizerInvites.length}
+              </span>
+              <span aria-hidden style={{ fontSize: 17, color: ink3, lineHeight: 1 }}>›</span>
+            </span>
+          </div>
+        )}
+
+        {/* 7. More: one grouped list. */}
+        <AccountSectionLabel label={T('Thêm', 'More')} testId="account-section-more" />
+        <MoreList testId="account-more-group">{isOrganizer ? hostMoreRows : goerMoreRows}</MoreList>
+        {s.organizerModeError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 24px 0' }}>{s.organizerModeError}</p>}
+
+        {/* Host-mode "Post a story" menu (same two pickers as before). */}
+        {isOrganizer && hostStoryMenuOpen && (
+          <div onClick={() => setHostStoryMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 35 }}>
+            <div
+              onClick={(e) => e.stopPropagation()}
+              data-testid="account-host-post-story-menu"
+              style={{ ...cardGlass({ position: 'absolute', right: 20, top: '40%', minWidth: 200 }), padding: 6, display: 'flex', flexDirection: 'column' }}
+            >
+              <div
+                onClick={() => { setHostStoryMenuOpen(false); openStoryLibraryPicker(); }}
+                data-testid="account-host-post-story-library"
+                style={{ padding: '12px 14px', minHeight: 44, boxSizing: 'border-box', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
+              >
+                <AttachMenuIcon name="library" />{T('Thư Viện Ảnh', 'Photo Library')}
+              </div>
+              <div
+                onClick={() => { setHostStoryMenuOpen(false); openStoryCameraPicker(); }}
+                data-testid="account-host-post-story-camera"
+                style={{ padding: '12px 14px', minHeight: 44, boxSizing: 'border-box', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
+              >
+                <AttachMenuIcon name="camera" />{T('Camera', 'Camera')}
               </div>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
 
-      {canHost && s.myOrganizerId && (
-        <ShareCardRow host onClick={() => setShareCardFor('host')} testId="account-share-card-host" />
-      )}
+        {/* 8. "Host your first event" — only for an account that has never hosted (goer mode by definition). */}
+        {!isOrganizer && !canHost && s.user && (
+          <div data-testid="account-host-first-event" style={{ margin: '16px 20px 0', padding: '16px', borderRadius: 14, background: surface1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={{ ...display(17, { lineHeight: 1.3 }) }}>{T('Tổ chức sự kiện đầu tiên', 'Host your first event')}</span>
+            <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink2, margin: 0 }}>
+              {T('Miễn phí khi banbe còn mới: không phí đăng, không phí giao dịch.', 'Free while banbe is new: no listing or transaction fees.')}
+            </p>
+            <div role="button" onClick={toggleOrganizerMode} data-testid="account-host-first-event-start" style={{ ...inkButton({ marginTop: 4, borderRadius: 18, padding: 12, fontSize: 14 }) }}>{T('Bắt đầu tổ chức ▪︎ miễn phí', 'Start hosting ▪︎ free')}</div>
+          </div>
+        )}
 
-      <ActionCenter items={hostActionItems} onSeeAll={() => openVerifications('profile')} T={T} />
-
-      {/* iOS parity (2026-10-18): "Host Management" is one grouped card — Event Operations & Payments,
-          Submitted Events, Organizer Profile & Team, Surveys & Event Ideas, Metrics & Reports. Same routes,
-          testids and badge sources as before; only the layout changed. */}
-      {canHost && (
-        <>
-          <SectionHeader label={T('Quản Lý Tổ Chức', 'Host Management')} testId="account-section-host-management" />
-          <GroupedContainer testId="account-host-group">
-            <GroupCard grouped groupKey="hostOps" iconKind="checklist"
-              label={T('Vận Hành & Thanh Toán Tổ Chức', 'Event Operations & Payments')}
-              badge={computeHostActionCount(s)}
-              onClick={() => openAccountGroup('hostOps')} />
-            <SubmittedEventsRow grouped submitted={submitted} />
-            <GroupCard grouped groupKey="team" iconKind="users"
-              label={T('Hồ Sơ & Team Tổ Chức', 'Organizer Profile & Team')}
-              badge={s.myOrganizerInvites.length + s.myEventCredits.length}
-              onClick={() => openAccountGroup('team')} />
-            {/* Interest surveys — standalone screen (own tabs + create form); badge honestly 0 until candidate
-                generation exists (note 21). */}
-            <GroupCard grouped groupKey="surveys" iconKind="lightbulb"
-              label={T('Khảo Sát & Ý Tưởng Sự Kiện', 'Surveys & Event Ideas')}
-              badge={0}
-              onClick={goSurveysHosting} />
-            {s.myOrganizerId && (
-              <ReportsRow grouped label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} icon="document" testId="account-reports-host" onClick={() => openReports('host', s.myOrganizerId, 'profile')} />
-            )}
-          </GroupedContainer>
-        </>
-      )}
-
-      <div style={{ height: 24 }} />
+        {/* 9. Sign out / Sign in, both modes. */}
+        {s.user ? (
+          <div onClick={logout} role="button" data-testid="account-sign-out" style={{ padding: '24px 24px 40px', minHeight: 44, display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink, cursor: 'pointer' }}><RowIcon kind="logout" size={18} />{T('Đăng xuất', 'Sign out')}</div>
+        ) : (
+          <div onClick={goLogin} role="button" data-testid="account-sign-in" style={{ padding: '24px 24px 40px', minHeight: 44, display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, lineHeight: 1.5, color: ink, cursor: 'pointer' }}><RowIcon kind="login" size={18} />{T('Đăng nhập để lưu sự kiện và nhắn tin', 'Sign in to save events and message hosts')}</div>
+        )}
       </div>
 
-      {/* Stage 2 — Admin is its own top-level tab now, independent of
-          organizerMode: these two rows used to sit inside the Tổ chức
-          pane, so an admin who never turned organizer mode on (or turned
-          it off) lost them entirely once that tab started hiding itself
-          for Stage 1. Same actions, same RPC/RLS-enforced screens
-          (openDisputes/openAdminEvents) — moved, not cloned. Still JS-
-          gated on `s.accountType === 'admin'` (not just the CSS
-          display:none the personal/host panes use), so these two rows
-          never even reach the DOM for a non-admin — a real, if secondary,
-          reason on top of RLS/RPC enforcement, and what an existing test
-          (payment-state-machine.spec.js) already asserts by element count. */}
-      {s.accountType === 'admin' && (
-        <div data-testid="account-tab-panel-admin" style={{ display: !searchOpen && accountTab === 'admin' ? 'block' : 'none' }}>
-          {/* Account IA reorder pass (2026-09-30 second) — this tab had no
-              header at all ("nothing to group"); now there is: the header
-              plus a real order swap justify it. Actionable review/disputes
-              FIRST, administrative reports AFTER — the explicit instruction
-              for this tab, a real reorder from the previous code, not just
-              a label change. */}
-          <SectionHeader label={T('Quản Trị', 'Administration')} testId="account-section-admin" marginTop={22} />
-          {/* Account IA pass (2026-09-27) — same "Payment disputes"/
-              "Pending events" actions, now one grouped entry card. No
-              identity card exists for Admin (there never was one) — this
-              tab has nothing else to reorder ahead of. */}
-          {/* iOS parity (2026-10-18): one grouped card — Review & Moderation, Admin Team, Metrics & Reports,
-              Admin Guide. adminTeam's badge only counts real pending invites (RLS: managers only). */}
-          <GroupedContainer testId="account-admin-group">
-            <GroupCard grouped groupKey="adminReview" iconKind="alertShield"
-              label={T('Duyệt & Kiểm Duyệt', 'Review & Moderation')}
-              badge={s.pendingEventsCount}
-              onClick={() => openAccountGroup('adminReview')} />
-            <GroupCard grouped groupKey="adminTeam" iconKind="users"
-              label={T('Đội Ngũ Quản Trị', 'Admin Team')}
-              badge={s.adminInvites.filter(i => i.status === 'pending').length}
-              onClick={() => openAccountGroup('adminTeam')} />
-            <ReportsRow grouped label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} icon="document" testId="account-reports-admin" onClick={() => openReports('admin', null, 'profile')} />
-            {/* Concise admin-only guide (Help & Legal holds the user guides). */}
-            <GroupedRow icon="checklist" label={T('Hướng Dẫn Quản Trị', 'Admin Guide')} testId="account-admin-guide"
-              onClick={() => set({ screen: 'guide', guideKey: 'admin' })} />
-          </GroupedContainer>
-          <div style={{ height: 24 }} />
-        </div>
-      )}
       <ProfileShareSheet
         open={shareCardFor !== null}
         onClose={() => setShareCardFor(null)}

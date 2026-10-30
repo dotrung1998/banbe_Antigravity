@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import DockCreateCenter from './DockCreateCenter.jsx';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { BAR_HEIGHT, BAR_BOTTOM_OFFSET, DOCK_MARGIN, CREATE_SIZE } from './BottomTabBar.jsx';
 import { ink, paper, rule, dockGlass } from '../theme.js';
@@ -23,7 +24,14 @@ import { AttachMenuIcon } from './Chat.jsx';
 // a real bottom tray (below) that rises above the dock and dims the actual
 // screen, which an absolutely-positioned popover anchored to this button
 // alone could never do convincingly.
-export default function DockCreateButton() {
+export default function DockCreateButton({ variant } = {}) {
+  // Simple Shell (switch simple_shell, note 66): the centre "+" inside the bar, for everyone. Separate component so
+  // the legacy button below (and its hooks) is untouched.
+  if (variant === 'center') return <DockCreateCenter />;
+  return <LegacyDockCreateButton />;
+}
+
+function LegacyDockCreateButton() {
   const { state, T, goCreate, openStoryLibraryPicker, openStoryCameraPicker } = useBanBe();
   const [open, setOpen] = useState(false);
   const [dragY, setDragY] = useState(0);

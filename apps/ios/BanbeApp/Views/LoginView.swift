@@ -105,8 +105,8 @@ struct LoginView: View {
                     // Language and theme are reachable before signing in, so the very first
                     // screens (and the loading message after login) can be read comfortably.
                     prefPill(app.T("EN", "VN"), id: "login.lang") { app.toggleLang() }
-                    prefPill(app.theme == "dark" ? app.T("Sáng", "Light") : app.T("Tối", "Dark"), id: "login.theme") {
-                        app.pickTheme(app.theme == "dark" ? "light" : "dark")
+                    prefPill(app.isDark ? app.T("Sáng", "Light") : app.T("Tối", "Dark"), id: "login.theme") {
+                        app.pickTheme(app.isDark ? "light" : "dark")
                     }
                 }
 

@@ -57,5 +57,34 @@ enum OnboardingTourContent {
         steps.filter { $0.requires == nil || ($0.requires == "organizerMode" && organizerMode) }
     }
 
+    /// Simple Shell (note 66, switch simple_shell): the same 8 steps, retargeted. Map is a Home view (the map layout
+    /// toggle), the organizer-mode step points at Home's mode switch, and "+" is in the dock for everyone. Built from
+    /// `steps` (not new literals) so the web/iOS parity test keeps reading one list.
+    static func simpleShellSteps() -> [TourStep] {
+        steps.map { s in
+            switch s.id {
+            case "dock.map":
+                return TourStep(id: s.id, target: "tour.home.mapView", screen: "home", below: true, requires: s.requires,
+                                vi: s.vi, en: s.en, short: s.short)
+            case "account.organizerMode":
+                return TourStep(id: s.id, target: "tour.home.modeSwitch", screen: "home", below: true, requires: s.requires,
+                                vi: ("Muốn tổ chức?", "Chuyển sang Tổ chức ở đây để tạo sự kiện của riêng bạn. Chuyển lại lúc nào cũng được."),
+                                en: ("Want to host?", "Switch to Hosting here to create your own events. Switch back any time."),
+                                short: s.short)
+            case "dock.create":
+                return TourStep(id: s.id, target: s.target, screen: "home", below: false, requires: nil,
+                                vi: ("Nút +", "Thêm vào lịch, mời bạn bè, hoặc tạo sự kiện khi bạn tổ chức."),
+                                en: ("The + button", "Add to your schedule, invite friends, or create an event when you host."),
+                                short: s.short)
+            default:
+                return s
+            }
+        }
+    }
+
+    static func eligible(organizerMode: Bool, simpleShell: Bool) -> [TourStep] {
+        simpleShell ? simpleShellSteps() : eligible(organizerMode: organizerMode)
+    }
+
     static func doneKey(_ uid: UUID) -> String { "banbe.tour.v3.done.\(uid.uuidString.lowercased())" }
 }

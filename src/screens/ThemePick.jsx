@@ -4,8 +4,8 @@ import { paper, ink, rule, display, inkButton } from '../theme.js';
 // Mirrors iOS ThemePickView: caption, title, helper, two stacked choice rows
 // (name + subtitle, "✓"/"›" trailing), then a full-width ink Continue button.
 export default function ThemePick() {
-  const { state, T, pickLight, pickDark, finishOnboarding } = useBanBe();
-  const isDark = state.theme === 'dark';
+  const { state, T, pickLight, pickDark, pickTheme, finishOnboarding } = useBanBe();
+  const pick = state.theme;
 
   const choice = (title, subtitle, active, onClick, id) => (
     <div
@@ -42,8 +42,9 @@ export default function ThemePick() {
       </span>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 28 }}>
-        {choice(T('Sáng', 'Light'), T('Nền giấy ấm', 'Warm paper'), !isDark, pickLight, 'theme-light')}
-        {choice(T('Tối', 'Dark'), T('Nền mực dịu mắt', 'Soft ink background'), isDark, pickDark, 'theme-dark')}
+        {choice(T('Theo thiết bị', 'System'), T('Tự đổi sáng/tối theo máy của bạn', 'Follows your device'), pick === 'system', () => pickTheme('system'), 'theme-system')}
+        {choice(T('Sáng', 'Light'), T('Nền giấy ấm', 'Warm paper'), pick === 'light', pickLight, 'theme-light')}
+        {choice(T('Tối', 'Dark'), T('Nền mực dịu mắt', 'Soft ink background'), pick === 'dark', pickDark, 'theme-dark')}
       </div>
 
       <div onClick={finishOnboarding} data-testid="onboarding-continue" style={{ ...inkButton({ marginTop: 26, padding: '15px 0', borderRadius: 18 }) }}>

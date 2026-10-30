@@ -15,7 +15,7 @@ import { createPortal } from 'react-dom';
 import { useBanBe } from '../../state/BanBeContext.jsx';
 import { useAccountGate } from '../../lib/accountGate.js';
 import { useEventOnboardingActive } from '../../screens/EventOnboarding.jsx';
-import { onboardingVersion } from '../../lib/featureFlags.js';
+import { onboardingVersion, flagOn } from '../../lib/featureFlags.js';
 import { setAnalyticsPaused } from '../../lib/analytics.js';
 import { useReducedMotion } from '../../lib/useReducedMotion.js';
 import { eligibleSteps, WEB_TARGETS, tourDoneKey } from '../../data/onboardingTour.js';
@@ -50,12 +50,12 @@ export default function OnboardingTour() {
   const pendingStart = useRef(0);
 
   const start = useCallback(({ replay }) => {
-    const steps = eligibleSteps({ organizerMode: !!s.organizerMode });
+    const steps = eligibleSteps({ organizerMode: !!s.organizerMode, simpleShell: flagOn(s.featureFlags, 'simple_shell') });
     if (!steps.length) return;
     restoreFocus.current = document.activeElement;
     setRect(null);
     setRun({ replay, steps, index: 0, dir: 1, missing: new Set() });
-  }, [s.organizerMode]);
+  }, [s.organizerMode, s.featureFlags]);
 
   const end = useCallback((completed) => {
     setRun(r => {

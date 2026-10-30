@@ -41,9 +41,10 @@ final class HelpContentsUITests: XCTestCase {
     /// The way a person gets there: Account > Help & Legal > Guide: Personal, then a Contents entry.
     func testViaAccountHelpLegal() {
         let app = XCUIApplication()
-        app.launchArguments += ["-uiFixture", "shell.account", "-banbe.lang", "en", "-uiTesting", "1"]
+        // note 66: Help is a goer tile (shell.accountSolo = organizer mode off).
+        app.launchArguments += ["-uiFixture", "shell.accountSolo", "-banbe.lang", "en", "-uiTesting", "1"]
         app.launch()
-        let help = app.descendants(matching: .any)["account.helpLegal"].firstMatch
+        let help = app.descendants(matching: .any)["account.tile.help"].firstMatch
         XCTAssertTrue(help.waitForExistence(timeout: 10))
         if !help.isHittable { app.swipeUp() }
         help.tap()

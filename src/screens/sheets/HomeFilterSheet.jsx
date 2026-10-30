@@ -57,7 +57,10 @@ const Section = ({ title, right, children }) => (
   </div>
 );
 
-export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel }) {
+// Simple Shell (switch simple_shell, note 66): Home's category row, type chips and Sort live in here. `simpleShell` adds
+// the home-category-row / home-type-chips / home-sort-button ids to those sections; `typeChipsFor(cat)` (event type
+// profiles on) lists one category's own chips, shown while exactly one category is picked.
+export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel, simpleShell = false, typeChipsFor = null }) {
   const [draft, setDraft] = useState(() => normalizeFilters(filters));
   const [draftSort, setDraftSort] = useState(sort || 'soonest');
   const [forTwo, setForTwo] = useState(false);
@@ -79,6 +82,9 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
   const freeCount = useMemo(() => optionCounts(items, draft, 'free', null, now).true, [items, draft, now]);
   const seatsCount = useMemo(() => optionCounts(items, draft, 'seatsLeft', null, now).true, [items, draft, now]);
   const almostCount = useMemo(() => optionCounts(items, draft, 'almostFull', null, now).true, [items, draft, now]);
+  const typeChips = typeChipsFor && draft.cats.length === 1 ? typeChipsFor(draft.cats[0]) : [];
+  const typeCounts = useMemo(() => (typeChips.length ? optionCounts(items, draft, 'typeFilters', typeChips.map(c => c.id), now) : {}),
+    [items, draft, now, typeChips.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const hints = useMemo(() => (resultCount === 0 ? relaxationHints(items, draft, now, undefined, 1) : []), [items, draft, now, resultCount]);
 
   // One currency for the whole price control (migration 195): VND unless every paid event listed is USD.
@@ -186,7 +192,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
           </Section>
 
           <Section title={T('Danh mục', 'Category')}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }} data-testid={simpleShell ? 'home-category-row' : undefined}>
               {CATEGORY_DEFS.filter(c => c.key !== 'all').map(c => {
                 const on = draft.cats.includes(c.key);
                 return (
@@ -198,6 +204,23 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
               })}
             </div>
           </Section>
+
+          {typeChips.length > 0 && (
+            <Section title={T('Kiểu sự kiện', 'Event style')}>
+              <div role="group" aria-label={T('Lọc theo loại sự kiện', 'Filter by event type')} data-testid={simpleShell ? 'home-type-chips' : 'home-filter-type-chips'}
+                style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {typeChips.map(c => {
+                  const on = (draft.typeFilters || []).includes(c.id);
+                  return (
+                    <Pill key={c.id} active={on} count={typeCounts[c.id]} disabled={!on && !typeCounts[c.id]} testId={`home-type-${c.id.replace(':', '-')}`}
+                      onClick={() => patch({ typeFilters: on ? (draft.typeFilters || []).filter(x => x !== c.id) : [...(draft.typeFilters || []), c.id] })}>
+                      {T(c.vi, c.en)}
+                    </Pill>
+                  );
+                })}
+              </div>
+            </Section>
+          )}
 
           <Section title={T('Chỗ ngồi', 'Seats')}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -214,7 +237,8 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
           </Section>
 
           <Section title={T('Sắp xếp', 'Sort by')}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <div role={simpleShell ? 'group' : undefined} aria-label={simpleShell ? T('Sắp xếp', 'Sort by') : undefined}
+              data-testid={simpleShell ? 'home-sort-button' : undefined} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {Object.keys(SORT_LABELS).map(m => (
                 <Pill key={m} active={draftSort === m} onClick={() => setDraftSort(m)} disabled={m === 'nearest' && !canSortNearest} testId={`home-sort-${m}`}>
                   {T(...SORT_LABELS[m])}

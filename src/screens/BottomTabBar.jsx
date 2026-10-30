@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { ink, alert, dockGlass, dockHighlight } from '../theme.js';
 import { computeAccountDockBadge } from '../lib/badges.js';
+import { flagOn } from '../lib/featureFlags.js';
+import { dockSlots, dockHighlightFor, CREATE_SLOT } from '../lib/dockLayout.js';
+import DockCreateButton from './DockCreateButton.jsx';
 
 // FEATURE follow-up (623ec1e real-device report): Map/Notifications/Inbox
 // were still hard to tell apart at a glance despite 64f2719's stroke-count
@@ -200,13 +203,20 @@ export default function BottomTabBar({ collapsed }) {
   // `badge: 0` (hidden) — no real underlying actionable/unread source
   // exists for any of them.
   const accountBadge = computeAccountDockBadge(s);
-  const items = useMemo(() => [
+  // Simple Shell (switch simple_shell, note 66): Map leaves the dock and the "+" takes the centre slot INSIDE the bar
+  // (src/lib/dockLayout.js). Off = the five tabs below, unchanged. The "+" slot is an equal flex slice like a tab, so
+  // the percentage highlight math keeps working; it is never selected and hitTest skips it.
+  const simpleShell = flagOn(s.featureFlags, 'simple_shell');
+  const tabDefs = useMemo(() => [
     { key: 'home', icon: 'home', onClick: goHome, label: T('Trang chính', 'Home'), testId: 'tab-home', badge: 0, badgeCapped: false },
     { key: 'mapExplore', icon: 'map', onClick: goMapExplore, label: T('Bản đồ', 'Map'), testId: 'tab-map', badge: 0, badgeCapped: false },
     { key: 'schedule', icon: 'schedule', onClick: goSchedule, label: T('Lịch', 'Schedule'), testId: 'tab-schedule', badge: 0, badgeCapped: false },
     { key: 'inbox', icon: 'inbox', onClick: goInbox, label: T('Tin nhắn', 'Messages'), testId: 'tab-inbox', badge: s.unreadMessages || 0, badgeCapped: false },
     { key: 'profile', icon: 'profile', onClick: goProfile, label: T('Tài khoản', 'Account'), testId: 'tab-profile', badge: accountBadge, badgeCapped: true, badgeCap: 99 },
   ], [goHome, goMapExplore, goSchedule, goInbox, goProfile, T, s.unreadMessages, accountBadge]);
+  const items = useMemo(() => dockSlots(simpleShell)
+    .map(k => (k === CREATE_SLOT ? { key: CREATE_SLOT, isCreate: true } : tabDefs.find(t => t.key === k))), [simpleShell, tabDefs]);
+  const highlightKey = dockHighlightFor(s.screen, simpleShell);
 
   // FEATURE — scrub-to-select: press anywhere on the bar and drag; a soft
   // highlight blob follows the finger in real time and lands on whichever
@@ -307,7 +317,7 @@ export default function BottomTabBar({ collapsed }) {
   // that changes, as long as a drag isn't already driving it live.
   useEffect(() => {
     if (draggingRef.current) return;
-    const idx = items.findIndex((it) => it.key === s.screen);
+    const idx = highlightKey ? items.findIndex((it) => it.key === highlightKey) : -1;
     activeIndexRef.current = idx === -1 ? null : idx;
     setActiveIndex(idx === -1 ? null : idx);
     // Whatever a gesture left behind (goo blobs, a half-placed highlight) is cleared on every screen change.
@@ -316,7 +326,7 @@ export default function BottomTabBar({ collapsed }) {
     if (idx !== -1) placeHighlight(idx, true);
     else if (highlightRef.current) highlightRef.current.style.opacity = '0';
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.screen, items]);
+  }, [s.screen, items, highlightKey]);
 
   // Imperative, ref-driven — deliberately NOT React state on every pixel of
   // drag (that's exactly Bug 1's mistake, applied here it would make the
@@ -444,7 +454,7 @@ export default function BottomTabBar({ collapsed }) {
     let closest = 0;
     let closestDist = Infinity;
     rectsRef.current.forEach((r, i) => {
-      if (!r) return;
+      if (!r || items[i]?.isCreate) return;
       const dist = Math.abs(r.left + r.width / 2 - x);
       if (dist < closestDist) { closestDist = dist; closest = i; }
     });
@@ -528,7 +538,7 @@ export default function BottomTabBar({ collapsed }) {
     // transition, so without this final call it would stay stretched/
     // off-slot instead of visibly relaxing into the selected tab.
     placeHighlight(idx, true);
-    if (idx != null && items[idx]) items[idx].onClick();
+    if (idx != null && items[idx] && !items[idx].isCreate) items[idx].onClick();
   };
 
   // Cancelled drag (pointercancel, e.g. an interrupting system gesture)
@@ -541,7 +551,7 @@ export default function BottomTabBar({ collapsed }) {
       setGooVisible(false);
       gooEngagedRef.current = false;
     }
-    const idx = items.findIndex((it) => it.key === s.screen);
+    const idx = highlightKey ? items.findIndex((it) => it.key === highlightKey) : -1;
     activeIndexRef.current = idx === -1 ? null : idx;
     setActiveIndex(idx === -1 ? null : idx);
     if (idx !== -1) placeHighlight(idx, true);
@@ -645,7 +655,18 @@ export default function BottomTabBar({ collapsed }) {
             willChange: 'transform',
           }}
         />
-        {items.map((item, i) => (
+        {items.map((item, i) => (item.isCreate ? (
+          // The centre "+" (switch simple_shell): a button, not a tab. Its own pointerdown never reaches the bar, so
+          // pressing it starts no scrub and moves no highlight.
+          <div
+            key={item.key}
+            ref={(el) => { itemRefs.current[i] = el; }}
+            onPointerDown={(e) => e.stopPropagation()}
+            style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '1 1 0', minWidth: 44, height: '100%', zIndex: 2 }}
+          >
+            <DockCreateButton variant="center" />
+          </div>
+        ) : (
           <div
             key={item.key}
             ref={(el) => { itemRefs.current[i] = el; }}
@@ -685,7 +706,7 @@ export default function BottomTabBar({ collapsed }) {
               })()}
             </div>
           </div>
-        ))}
+        )))}
     </div>
   );
 }

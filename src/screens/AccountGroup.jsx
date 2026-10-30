@@ -36,7 +36,11 @@ const GROUP_META = {
   adminReview: { vi: 'Duyệt & Kiểm Duyệt', en: 'Review & Moderation' },
   adminTeam: { vi: 'Đội Ngũ Quản Trị', en: 'Admin Team' },
   helpLegal: { vi: 'Trợ Giúp & Pháp Lý', en: 'Help & Legal' },
+  // Note 66: the old Account "Admin" tab, now one "Admin tools" row on Account that opens this list.
+  admin: { vi: 'Quản trị', en: 'Administration' },
 };
+// Note 66: groups opened FROM the admin list return to it (not to Account).
+const ADMIN_CHILD_GROUPS = new Set(['adminReview', 'adminTeam']);
 
 // TASK 5 real-device follow-up — `badge` (0/undefined = hidden) so a child
 // row (e.g. "Pending events") can show the SAME real count its own
@@ -82,7 +86,7 @@ export default function AccountGroup() {
     requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite,
     requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite,
     requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission,
-    openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, replayOnboardingTour,
+    openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, replayOnboardingTour, openReports, loadPendingEventsCount,
   } = useBanBe();
   const key = s.accountGroupKey;
 
@@ -109,7 +113,7 @@ export default function AccountGroup() {
   // rather than showing a group its own role no longer has.
   useEffect(() => {
     if (key === 'hostOps' && !s.organizerMode) set({ screen: 'profile' });
-    else if (key === 'adminReview' && s.accountType !== 'admin') set({ screen: 'profile' });
+    else if ((key === 'adminReview' || key === 'admin') && s.accountType !== 'admin') set({ screen: 'profile' });
   }, [key, s.organizerMode, s.accountType, set]);
 
   // Account IA reorg (2026-09-30) — "My Tickets" (the `activity` group's
@@ -129,21 +133,30 @@ export default function AccountGroup() {
   useEffect(() => {
     if (key === 'adminTeam' && s.canManageAdmins) loadAdminTeam();
   }, [key, s.canManageAdmins, loadAdminTeam]);
+  // Note 66: the admin list's badges, for a deep link straight to /profile/group/admin.
+  useEffect(() => {
+    if (key !== 'admin' || s.accountType !== 'admin') return;
+    loadPendingEventsCount();
+    if (s.canManageAdmins) loadAdminTeam();
+  }, [key, s.accountType, s.canManageAdmins, loadPendingEventsCount, loadAdminTeam]);
 
   if (!key || !GROUP_META[key]) return null;
   const title = T(GROUP_META[key].vi, GROUP_META[key].en);
+  // Note 66: Back from Review / Admin Team returns to the admin list when that is where they were opened from.
+  const backToAdmin = s.accountGroupBack === 'admin' && ADMIN_CHILD_GROUPS.has(key) && s.accountType === 'admin';
+  const openFromAdmin = (child) => set({ screen: 'accountGroup', accountGroupKey: child, accountGroupBack: 'admin' });
   const completedCount = [...new Set([...(s.favorites || []), ...s.attending])]
     .map(k => EVENTS.find(e => e.key === k))
     .filter(e => e && e.endedHoursAgo != null).length;
 
   return (
     <div style={{ animation: 'banbeFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="AccountGroup">
-      <div onClick={() => set({ screen: 'profile' })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="account-group-back">
-        ‹ {T('Tài khoản', 'Account')}
+      <div onClick={() => set(backToAdmin ? { screen: 'accountGroup', accountGroupKey: 'admin', accountGroupBack: null } : { screen: 'profile', accountGroupBack: null })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="account-group-back">
+        ‹ {backToAdmin ? T(GROUP_META.admin.vi, GROUP_META.admin.en) : T('Tài khoản', 'Account')}
       </div>
       <div style={{ padding: '16px 20px 40px' }}>
         <h1 style={{ ...display(27, { margin: 0, lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: 10 }) }}>
-          <RowIcon kind={{ team: 'users', activity: 'calendarCheck', payments: 'banknote', preferences: 'sliders', hostOps: 'checklist', adminReview: 'alertShield', adminTeam: 'users', helpLegal: 'shield' }[key]} size={26} accent={ROW_ACCENT_COLORS[key]} />
+          <RowIcon kind={{ team: 'users', activity: 'calendarCheck', payments: 'banknote', preferences: 'sliders', hostOps: 'checklist', adminReview: 'alertShield', adminTeam: 'users', helpLegal: 'shield', admin: 'shield' }[key]} size={26} accent={ROW_ACCENT_COLORS[key]} />
           {title}
         </h1>
 
@@ -454,7 +467,7 @@ export default function AccountGroup() {
           <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
             <Row
               icon="sliders" label={T('Tùy chỉnh ứng dụng', 'App Preferences')}
-              trailing={`${s.lang === 'en' ? 'English' : 'Tiếng Việt'} ▪︎ ${s.theme === 'dark' ? T('Tối', 'Dark') : T('Sáng', 'Light')}`}
+              trailing={`${s.lang === 'en' ? 'English' : 'Tiếng Việt'} ▪︎ ${s.theme === 'system' ? T('Theo thiết bị', 'System') : s.theme === 'dark' ? T('Tối', 'Dark') : T('Sáng', 'Light')}`}
               testId="account-preferences"
               onClick={openPreferences}
             />
@@ -512,6 +525,16 @@ export default function AccountGroup() {
             <Row icon="banknote" label={T('Nhận thanh toán', 'Getting Paid')} trailing="›" testId="host-payout" onClick={openPayout} />
             <Row icon="document" label={T('Hoá đơn đã phát hành', 'Invoices Issued')} trailing="›" testId="host-invoices" onClick={() => openDocuments('invoice', 'host')} />
             <Row icon="receipt" label={T('Biên nhận đã phát hành', 'Receipts Issued')} trailing="›" testId="host-receipts" onClick={() => openDocuments('receipt', 'host')} border={false} />
+          </div>
+        )}
+
+        {/* Note 66: exactly the old Account Admin tab's entries, same badges and destinations. */}
+        {key === 'admin' && (
+          <div data-testid="account-admin-group" style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
+            <Row icon="alertShield" label={T('Duyệt & Kiểm Duyệt', 'Review & Moderation')} trailing="›" testId="account-group-adminReview" onClick={() => openFromAdmin('adminReview')} badge={s.pendingEventsCount} />
+            <Row icon="users" label={T('Đội Ngũ Quản Trị', 'Admin Team')} trailing="›" testId="account-group-adminTeam" onClick={() => openFromAdmin('adminTeam')} badge={(s.adminInvites || []).filter(i => i.status === 'pending').length} />
+            <Row icon="document" label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} trailing="›" testId="account-reports-admin" onClick={() => openReports('admin', null, 'accountGroup')} />
+            <Row icon="checklist" label={T('Hướng Dẫn Quản Trị', 'Admin Guide')} trailing="›" testId="account-admin-guide" onClick={() => set({ screen: 'guide', guideKey: 'admin' })} border={false} />
           </div>
         )}
 

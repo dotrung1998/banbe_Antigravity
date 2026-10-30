@@ -280,6 +280,11 @@ final class BottomTabBarOverlay {
     // area), just not padded by 80-90pt of genuinely dead margin anymore.
     private static var bandWidth: CGFloat { BottomTabBar.barWidth + BottomTabBar.barHorizontalPadding * 2 + 24 }
     private static var bandHeight: CGFloat { BottomTabBar.barHeight + BottomTabBar.bottomOffset + 34 + 24 }
+    /// Simple Shell (note 66): the "+" lives INSIDE the bar, so the band is just the one bar as DockRow lays it out
+    /// (barWidth, capped by the screen minus DockRow's side margins) plus a small slack for the press swell. OFF keeps
+    /// the band above unchanged (bar + the separate "+" beside it).
+    private static let simpleShellBandSlack: CGFloat = 8
+    private var simpleShell = false
 
     /// Called from RootView's `.onAppear` once a `UIWindowScene` and the
     /// shared `AppState` are both available. Idempotent — RootView can
@@ -308,6 +313,7 @@ final class BottomTabBarOverlay {
         // touches outside the small dock band while the tray is closed.
         let win = DockOverlayWindow(windowScene: scene)
         win.frame = screenBounds
+        simpleShell = appState.simpleShellEnabled
         win.passthroughRect = bandFrame(in: screenBounds)
         win.backgroundColor = .clear
         win.rootViewController = hosting
@@ -317,7 +323,18 @@ final class BottomTabBarOverlay {
         // `.alert` or the keyboard, which must still be able to cover it.
         win.windowLevel = .normal + 1
         window = win
+        applyTheme(appState.theme)
         updateVisibility(for: appState.screen)
+    }
+
+    /// The dock window is a separate UIWindow, so the main window's `.preferredColorScheme` never reaches its
+    /// glass/materials. Mirror the theme choice here ("system" = follow the device). Called from RootView.
+    func applyTheme(_ choice: String) {
+        switch ThemeChoice.colorScheme(for: choice) {
+        case .dark?: window?.overrideUserInterfaceStyle = .dark
+        case .light?: window?.overrideUserInterfaceStyle = .light
+        default: window?.overrideUserInterfaceStyle = .unspecified
+        }
     }
 
     /// See this type's own doc comment for the full a5fd823 regression
@@ -397,8 +414,21 @@ final class BottomTabBarOverlay {
         applyVisibility()
     }
 
+    /// The switch flipped (RootView): recompute the band for the new bar shape.
+    func setSimpleShell(_ on: Bool) {
+        guard simpleShell != on else { return }
+        simpleShell = on
+        window?.passthroughRect = bandFrame(in: sceneBounds)
+    }
+
     private func bandFrame(in bounds: CGRect) -> CGRect {
-        let width = min(Self.bandWidth, bounds.width)
+        let width: CGFloat
+        if simpleShell {
+            let bar = min(BottomTabBar.barWidth, bounds.width - BottomTabBar.dockMargin * 2)
+            width = min(bar + Self.simpleShellBandSlack * 2, bounds.width)
+        } else {
+            width = min(Self.bandWidth, bounds.width)
+        }
         return CGRect(
             x: (bounds.width - width) / 2,
             y: bounds.height - Self.bandHeight,

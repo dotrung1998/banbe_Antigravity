@@ -274,7 +274,14 @@ final class AppState: ObservableObject {
     static let hostOnlyScreens: Set<Screen> = [.dashboard, .create, .attendance]
 
     // MARK: Navigation
-    @Published var screen: Screen = .home
+    @Published var screen: Screen = .home {
+        // note 66 — a nested Account group (Administration › Review) forgets its parent once a dock root shows.
+        didSet {
+            if accountGroupParentKey != nil, [.profile, .home, .schedule, .inbox, .mapExplore].contains(screen) {
+                accountGroupParentKey = nil
+            }
+        }
+    }
     // Bottom tab bar (BottomTabBar.swift) — shrinks a bit while scrolling
     // down, same idea as iOS 26's `.tabBarMinimizeBehavior(.onScrollDown)`,
     // hand-rolled because this app's deployment target is iOS 17. Driven by
@@ -444,9 +451,14 @@ final class AppState: ObservableObject {
     @Published var lang: String = UserDefaults.standard.string(forKey: "banbe.lang") ?? "vi" {
         didSet { UserDefaults.standard.set(lang, forKey: "banbe.lang") }
     }
-    @Published var theme: String = UserDefaults.standard.string(forKey: "banbe.theme") ?? "light" {
+    /// The theme CHOICE: "light", "dark" or "system" (note 66). New installs start on "system"; a saved
+    /// light/dark choice is kept. What is actually drawn is `isDark` / `resolvedTheme` (Lib/ThemeChoice.swift).
+    @Published var theme: String = ThemeChoice.normalize(UserDefaults.standard.string(forKey: "banbe.theme"),
+                                                         fresh: UserDefaults.standard.string(forKey: "banbe.theme") == nil) {
         didSet { UserDefaults.standard.set(theme, forKey: "banbe.theme") }
     }
+    /// The device's own light/dark setting, fed by RootView while the choice is "system".
+    @Published var systemIsDark: Bool = UIScreen.main.traitCollection.userInterfaceStyle == .dark
     // Location hierarchy (migration 112) — now a `LocationHierarchy` node
     // ID ("all", "c:VN", "c:VN|a:Quận 1", …) instead of one of six
     // hardcoded keys. Still purely in-memory (it never was persisted —
@@ -612,6 +624,10 @@ final class AppState: ObservableObject {
     // DockCreateButtonView's own doc comment for the real-device clipping
     // bug that caused.
     @Published var dockCreateMenuOpen = false
+    /// Simple Shell "+" (host): "Share one of my events" opens the host's live-event picker (RootView presents it).
+    @Published var dockEventStoryPickerOpen = false
+    /// Simple Shell "+" (host): "New survey" lands on Surveys & Event Ideas with the create form already open.
+    @Published var surveyCreateRequested = false
     // MARK: Feed state
     @Published var favorites: [String] = []
     @Published var following: [String] = []
@@ -707,6 +723,9 @@ final class AppState: ObservableObject {
     // "team" | "activity" | "payments" | "preferences" | "hostOps" |
     // "adminReview". `accountTab` itself is untouched by opening a group.
     @Published var accountGroupKey: String?
+    /// note 66 — the group a nested group was opened from ("admin" for Review & Moderation / Admin Team), so
+    /// Back returns to Administration instead of Account. nil = opened straight from Account.
+    @Published var accountGroupParentKey: String?
     /// Which Help & Legal guide `.helpGuide` shows: personal | host | admin.
     @Published var helpGuideKey: String = "personal"
     @Published var orgProfileSaving = false
@@ -2820,6 +2839,7 @@ final class AppState: ObservableObject {
         persistPreference(["locale": value])
     }
     func pickTheme(_ value: String) {
+        if value == "system" { systemIsDark = UIScreen.main.traitCollection.userInterfaceStyle == .dark }
         theme = value
         persistPreference(["theme": value])
     }
@@ -3853,7 +3873,14 @@ final class AppState: ObservableObject {
         // Account IA pass (2026-09-27) — `accountTab` is never touched by
         // AccountGroupView, so returning to `.profile` always lands back
         // on whichever tab was already showing.
-        case .accountGroup: screen = .profile
+        // note 66 — a nested group (opened from Administration) goes back to its parent group first.
+        case .accountGroup:
+            if let parent = accountGroupParentKey {
+                accountGroupKey = parent
+                accountGroupParentKey = nil
+            } else {
+                screen = .profile
+            }
         // 2026-10-02 fix — same confirmed bug class as `.refundAccounts`/
         // `.organizerTeam` above: `.policy` ("Help & Legal") had no case
         // here at all, so a completed edge-swipe fell to `default: break`
@@ -3866,7 +3893,7 @@ final class AppState: ObservableObject {
         // can never drift apart.
         case .policy: screen = policyBackScreen
         // Help & Legal guides / Q&A go back to the Help & Legal group.
-        case .helpGuide where helpGuideKey == "admin": screen = .profile
+        case .helpGuide where helpGuideKey == "admin": screen = accountGroupKey == "admin" ? .accountGroup : .profile   // note 66
         case .helpGuide, .helpFaq, .helpHowItWorks: accountGroupKey = "helpLegal"; screen = .accountGroup
         case .eventRecap: screen = eventRecapBack
         case .hostRecap: screen = hostRecapBack
@@ -3890,7 +3917,8 @@ final class AppState: ObservableObject {
         case "team": return T("Hồ Sơ & Team", "Profile & Team")
         case "activity": return T("Vé & Đặt Chỗ", "Tickets & Bookings")
         case "payments": return T("Thanh Toán & Giấy Tờ", "Payments & Documents")
-        case "preferences": return T("Tùy Chỉnh", "App Preferences")
+        case "preferences": return T("Cài đặt", "Settings")   // note 66: renamed for web parity
+        case "admin": return T("Quản trị", "Administration")   // note 66: the former Admin tab
         case "hostOps": return T("Vận Hành & Thanh Toán Tổ Chức", "Event Operations & Payments")
         case "adminReview": return T("Duyệt & Kiểm Duyệt", "Review & Moderation")
         case "adminTeam": return T("Đội Ngũ Quản Trị", "Admin Team")
@@ -3978,14 +4006,14 @@ final class AppState: ObservableObject {
         // of where Team was actually opened from.
         case .organizerTeam: return organizerTeamBackScreen
         case .reports: return reportsBackScreen
-        case .accountGroup: return .profile
+        case .accountGroup: return accountGroupParentKey != nil ? .accountGroup : .profile   // note 66
         // 2026-10-02 fix — matches goBack()'s own new `.policy` case: same
         // missing-case bug, this half controlling what peeks in behind the
         // screen during the drag itself (would have shown Home instead of
         // wherever Help & Legal was actually opened from, same as every
         // other screen this exact bug class already hit).
         case .policy: return policyBackScreen
-        case .helpGuide where helpGuideKey == "admin": return .profile
+        case .helpGuide where helpGuideKey == "admin": return accountGroupKey == "admin" ? .accountGroup : .profile   // note 66
         case .helpGuide, .helpFaq, .helpHowItWorks: return .accountGroup
         case .eventRecap: return eventRecapBack
         case .hostRecap: return hostRecapBack

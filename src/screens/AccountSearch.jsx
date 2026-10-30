@@ -5,58 +5,68 @@ import { RowIcon } from './Account.jsx';
 
 // Web port of iOS's accountSearchEntries / accountSearchResults
 // (AccountView.swift). Every destination reachable from Account, tagged with
-// its tab (personal / host / admin) and the section it lives under. Host and
-// Admin entries only exist for accounts that actually have those tabs.
+// its group (personal / host / admin) and the section it lives under. Note 66:
+// Account has no tabs any more; the group is only how results are grouped.
+// Host entries exist while organizer mode is on, Admin entries for admins.
 // `keywords` adds the words people might type that the title wouldn't match
 // (both languages, any diacritics — see foldText in lib/accountSearch.js).
 // Same ids and keyword lists as iOS so the two platforms find the same rows.
 
 const TABS = [
-  { key: 'personal', vi: 'Cá Nhân', en: 'Personal' },
-  { key: 'host', vi: 'Tổ Chức', en: 'Host' },
-  { key: 'admin', vi: 'Quản Trị', en: 'Admin' },
+  { key: 'personal', vi: 'Cá nhân', en: 'Personal' },
+  { key: 'host', vi: 'Tổ chức', en: 'Host' },
+  { key: 'admin', vi: 'Quản trị', en: 'Admin' },
 ];
 
 export function useAccountSearchEntries() {
   const g = useBanBe();
   const { state: s, set, canHost } = g;
   const e = (id, tab, secVi, secEn, vi, en, icon, keywords, action, extra) => ({ id, tab, secVi, secEn, vi, en, icon, keywords, action, ...extra });
-  const actVi = 'Hoạt Động Của Bạn', actEn = 'Your Activity';
-  const setVi = 'Tài Khoản & Cài Đặt', setEn = 'Account & Settings';
+  // Note 66: sections name where the row lives now that Account has no tabs: the top tiles / profile card
+  // ("Account"), a tile's own screen ("Tickets", "Wallet", ...), the "More" list, or Settings.
+  const accVi = 'Tài khoản', accEn = 'Account';
+  const tixVi = 'Vé & đặt chỗ', tixEn = 'Tickets';
+  const walVi = 'Ví & chứng từ', walEn = 'Wallet';
+  const moreVi = 'Thêm', moreEn = 'More';
+  const setVi = 'Cài đặt', setEn = 'Settings';
   // Screens that return through documentsBack (Payout / Disputes / AdminEvents)
   // would otherwise land on 'accountGroup'; point them at Account so Back
   // returns to the search results.
   const viaDocsBack = (fn) => () => { set({ documentsBack: 'profile' }); fn(); };
 
   const list = [
-    e('tickets', 'personal', actVi, actEn, 'Vé & Đặt Chỗ', 'Tickets & Bookings', 'calendarCheck',
-      'vé ticket booking đặt chỗ giữ chỗ hold qr check-in đã hủy hết hạn cancelled expired my tickets vé của tôi', () => g.openAccountGroup('activity')),
-    e('going', 'personal', actVi, actEn, 'Đang tham gia', 'Going', 'calendarCheck',
-      'attending sắp tham gia sự kiện của tôi my events upcoming', () => g.goGoingList()),
-    e('saved', 'personal', actVi, actEn, 'Sự Kiện Đã Lưu', 'Saved Events', 'document',
-      'lưu yêu thích favorites favourite bookmark wishlist', () => g.goSavedList()),
-    e('past', 'personal', actVi, actEn, 'Sự Kiện Quá Khứ', 'Past Events', 'calendarCheck',
+    e('tickets', 'personal', accVi, accEn, 'Vé & đặt chỗ', 'Tickets', 'ticket',
+      'vé ticket booking bookings đặt chỗ giữ chỗ hold qr check-in đã hủy hết hạn cancelled expired my tickets vé của tôi', () => g.openAccountGroup('activity')),
+    e('going', 'personal', tixVi, tixEn, 'Đang tham gia', 'Going', 'calendarCheck',
+      'attending sắp tham gia sắp tới upcoming sự kiện của tôi my events', () => g.goGoingList()),
+    e('saved', 'personal', accVi, accEn, 'Đã lưu', 'Saved', 'bookmark',
+      'lưu sự kiện đã lưu saved events yêu thích favorites favourite bookmark wishlist', () => g.goSavedList()),
+    e('past', 'personal', tixVi, tixEn, 'Sự kiện quá khứ', 'Past events', 'calendarCheck',
       'đã hoàn thành completed ended lịch sử history đã qua', () => g.goCompletedList()),
-    e('payments', 'personal', actVi, actEn, 'Thanh Toán & Giấy Tờ', 'Payments & Documents', 'banknote',
-      'thanh toán payment tiền money giấy tờ documents', () => g.openAccountGroup('payments')),
-    e('invoices', 'personal', actVi, actEn, 'Hoá đơn', 'Invoices', 'document',
+    e('payments', 'personal', accVi, accEn, 'Ví & chứng từ', 'Wallet', 'wallet',
+      'ví wallet thanh toán payment payments tiền money giấy tờ documents chứng từ', () => g.openAccountGroup('payments')),
+    e('invoices', 'personal', walVi, walEn, 'Hoá đơn', 'Invoices', 'document',
       'hóa đơn invoice bill tài liệu pdf', () => g.openDocuments('invoice', 'guest', 'profile')),
-    e('receipts', 'personal', actVi, actEn, 'Biên nhận', 'Receipts', 'receipt',
+    e('receipts', 'personal', walVi, walEn, 'Biên nhận', 'Receipts', 'receipt',
       'receipt biên lai chứng từ pdf', () => g.openDocuments('receipt', 'guest', 'profile')),
-    e('refundAccounts', 'personal', actVi, actEn, 'Tài khoản thanh toán & nhận hoàn tiền', 'Payment & refund accounts', 'banknote',
+    e('refundAccounts', 'personal', walVi, walEn, 'Tài khoản thanh toán & nhận hoàn tiền', 'Payment & refund accounts', 'banknote',
       'ngân hàng bank tài khoản account số tài khoản momo chuyển khoản hoàn tiền refund destination', () => g.openRefundAccounts('profile')),
-    e('refunds', 'personal', actVi, actEn, 'Hoàn tiền', 'Refunds', 'checklist',
+    e('refunds', 'personal', walVi, walEn, 'Hoàn tiền', 'Refunds', 'checklist',
       'refund hoàn trả trả lại tiền hủy sự kiện tranh chấp dispute', () => g.openMyRefunds('profile')),
-    e('reportsPersonal', 'personal', actVi, actEn, 'Số Liệu & Báo Cáo', 'Metrics & Reports', 'checklist',
-      'thống kê statistics analytics báo cáo report số liệu insights', () => g.openReports('personal', null, 'profile')),
-    e('profile', 'personal', setVi, setEn, 'Hồ Sơ Cá Nhân', 'Personal Profile', 'pencil',
+    ...(s.user ? [e('reportsPersonal', 'personal', moreVi, moreEn, 'Báo cáo', 'Reports', 'chart',
+      'thống kê statistics analytics báo cáo report reports số liệu metrics insights', () => g.openReports('personal', null, 'profile'))] : []),
+    e('profile', 'personal', accVi, accEn, 'Hồ sơ cá nhân', 'Personal profile', 'pencil',
       'profile hồ sơ tên name avatar ảnh đại diện handle chỉnh sửa edit public trang cá nhân',
       () => { if (s.user?.handle) g.openPublicProfile(s.user.handle, 'profile'); }),
-    e('following', 'personal', setVi, setEn, 'Đang theo dõi', 'Following', 'heart',
+    e('notifications', 'personal', moreVi, moreEn, 'Thông báo', 'Notifications', 'bell',
+      'thông báo notifications notification alerts chưa đọc unread bell chuông', () => g.goNotifications()),
+    e('following', 'personal', moreVi, moreEn, 'Đang theo dõi', 'Following', 'heart',
       'following theo dõi follow host tổ chức organizer followed unfollow bỏ theo dõi', () => set({ screen: 'following' })),
-    ...(g.rewardsEnabled ? [e('rewards', 'personal', setVi, setEn, 'Phần thưởng & huy hiệu', 'Rewards & badges', 'coin',
+    ...(g.referralLink ? [e('inviteFriends', 'personal', moreVi, moreEn, 'Mời bạn bè', 'Invite friends', 'users',
+      'mời invite bạn bè friends giới thiệu referral link chia sẻ share', () => g.shareReferral(), { keepSearch: false })] : []),
+    ...(g.rewardsEnabled ? [e('rewards', 'personal', accVi, accEn, 'Phần thưởng & huy hiệu', 'Rewards & badges', 'coin',
       'rewards phần thưởng huy hiệu badges coin xu streak chuỗi ngày milestone thành tích', () => set({ screen: 'rewards', rewardsBack: 'profile' }))] : []),
-    e('preferences', 'personal', setVi, setEn, 'Cài Đặt', 'Settings', 'sliders',
+    e('preferences', 'personal', moreVi, moreEn, 'Cài đặt', 'Settings', 'sliders',
       'settings cài đặt tùy chỉnh preferences', () => g.openAccountGroup('preferences')),
     e('language', 'personal', setVi, setEn, 'Ngôn ngữ & Hiển thị', 'Language & Appearance', 'sliders',
       'ngôn ngữ language tiếng việt english vn en theme giao diện sáng tối dark light mode hiển thị appearance kính glass độ trong suốt', () => g.openPreferences()),
@@ -64,41 +74,46 @@ export function useAccountSearchEntries() {
       'security mật khẩu password face id sinh trắc biometric đăng nhập login khóa lock đổi mật khẩu', () => g.openSecurity()),
     e('eventPreferences', 'personal', setVi, setEn, 'Sở thích sự kiện', 'Event preferences', 'sliders',
       'sở thích interests gợi ý for you ngân sách budget mục tiêu goals thời gian rảnh availability ngôn ngữ sự kiện preferences', () => g.openEventPreferences(null)),
-    e('help', 'personal', setVi, setEn, 'Trợ Giúp & Pháp Lý', 'Help & Legal', 'shield',
-      'help trợ giúp hỗ trợ support policy chính sách điều khoản terms privacy quyền riêng tư pháp lý legal liên hệ contact hướng dẫn guide hỏi đáp faq q&a câu hỏi questions', () => g.openAccountGroup('helpLegal')),
-    e('organizerMode', 'personal', 'Tổ Chức', 'Hosting', 'Chế độ tổ chức', 'Organizer mode', 'switch',
-      'host tổ chức organizer bật tắt toggle tạo sự kiện create event quản lý manage', () => g.toggleOrganizerMode()),
-    e('signOut', 'personal', setVi, setEn, s.user ? 'Đăng xuất' : 'Đăng nhập', s.user ? 'Sign out' : 'Sign in', s.user ? 'logout' : 'login',
+    e('help', 'personal', accVi, accEn, 'Trợ giúp', 'Help', 'help',
+      'help trợ giúp hỗ trợ support policy chính sách điều khoản terms privacy quyền riêng tư pháp lý legal liên hệ contact hướng dẫn guide guides hỏi đáp faq q&a câu hỏi questions', () => g.openAccountGroup('helpLegal')),
+    ...(s.user ? [e('organizerMode', 'personal', moreVi, moreEn, 'Chế độ tổ chức', 'Hosting mode', 'switch',
+      'host hosting tổ chức organizer mode chế độ bật tắt toggle tạo sự kiện create event quản lý manage', () => g.toggleOrganizerMode())] : []),
+    e('signOut', 'personal', accVi, accEn, s.user ? 'Đăng xuất' : 'Đăng nhập', s.user ? 'Sign out' : 'Sign in', s.user ? 'logout' : 'login',
       'logout log out thoát đăng xuất đăng nhập sign in login tài khoản account', () => (s.user ? g.logout() : g.goLogin()), { keepSearch: false }),
   ];
   if (s.organizerMode && canHost) {
-    const hVi = 'Tổ Chức', hEn = 'Host';
+    const paidVi = 'Nhận tiền', paidEn = 'Get paid';
     list.push(
-      e('hostOps', 'host', hVi, hEn, 'Vận Hành & Thanh Toán Tổ Chức', 'Event Operations & Payments', 'checklist',
-        'vận hành operations thanh toán payments tổ chức host sự kiện', () => g.openAccountGroup('hostOps')),
-      e('submittedEvents', 'host', hVi, hEn, 'Sự Kiện Đã Gửi Chờ Duyệt', 'Submitted Events', 'checklist',
-        'chờ duyệt đã gửi submitted review pending cần chỉnh sửa needs fixing nhắc admin remind rút lại withdraw', () => g.goDashboard('profile')),
-      e('verifications', 'host', hVi, hEn, 'Chờ xác nhận thanh toán', 'Awaiting Verification', 'checklist',
+      e('submittedEvents', 'host', accVi, accEn, 'Sự kiện', 'Events', 'calendarCheck',
+        'sự kiện events chờ duyệt đã gửi submitted review pending cần chỉnh sửa needs fixing nhắc admin remind rút lại withdraw quản lý manage dashboard', () => g.goDashboard('profile')),
+      e('hostOps', 'host', accVi, accEn, 'Nhận tiền', 'Get paid', 'banknote',
+        'nhận tiền get paid vận hành operations thanh toán payments tổ chức host sự kiện', () => g.openAccountGroup('hostOps')),
+      e('verifications', 'host', paidVi, paidEn, 'Chờ xác nhận thanh toán', 'Awaiting Verification', 'checklist',
         'xác nhận verify verification thanh toán chờ pending người mua guest bằng chứng proof chuyển khoản', () => g.openVerifications('profile')),
-      e('hostRefunds', 'host', hVi, hEn, 'Hoàn tiền', 'Refunds', 'banknote',
+      e('hostRefunds', 'host', paidVi, paidEn, 'Hoàn tiền', 'Refunds', 'banknote',
         'refund hoàn trả hủy sự kiện cancel batch đã gửi mark sent tranh chấp dispute', () => g.openVerificationsRefunds('profile')),
-      e('payout', 'host', hVi, hEn, 'Nhận thanh toán', 'Getting Paid', 'banknote',
+      e('payout', 'host', paidVi, paidEn, 'Nhận thanh toán', 'Getting Paid', 'banknote',
         'payout nhận tiền ngân hàng bank thanh toán doanh thu revenue rút tiền', viaDocsBack(() => g.openPayout())),
-      e('invoicesIssued', 'host', hVi, hEn, 'Hoá đơn đã phát hành', 'Invoices Issued', 'document',
+      e('invoicesIssued', 'host', paidVi, paidEn, 'Hoá đơn đã phát hành', 'Invoices Issued', 'document',
         'hóa đơn invoice phát hành tải lên upload tài liệu', () => g.openDocuments('invoice', 'host', 'profile')),
-      e('receiptsIssued', 'host', hVi, hEn, 'Biên nhận đã phát hành', 'Receipts Issued', 'receipt',
+      e('receiptsIssued', 'host', paidVi, paidEn, 'Biên nhận đã phát hành', 'Receipts Issued', 'receipt',
         'biên lai receipt phát hành tải lên upload tài liệu', () => g.openDocuments('receipt', 'host', 'profile')),
-      e('team', 'host', hVi, hEn, 'Hồ Sơ & Team Tổ Chức', 'Organizer Profile & Team', 'users',
-        'team đội nhóm thành viên member mời invite hồ sơ tổ chức organizer profile đóng góp contribution credit', () => g.openAccountGroup('team')),
-      e('surveys', 'host', hVi, hEn, 'Khảo Sát & Ý Tưởng Sự Kiện', 'Surveys & Event Ideas', 'checklist',
+      e('team', 'host', accVi, accEn, 'Đội ngũ', 'Team', 'users',
+        'team đội ngũ nhóm thành viên member mời invite hồ sơ tổ chức organizer profile đóng góp contribution credit', () => g.openAccountGroup('team')),
+      e('surveys', 'host', moreVi, moreEn, 'Khảo sát & ý tưởng sự kiện', 'Surveys & event ideas', 'lightbulb',
         'survey khảo sát ý tưởng idea góp ý feedback câu hỏi form', () => g.goSurveysHosting(), { keepSearch: false }),
-      e('reportsHost', 'host', hVi, hEn, 'Số Liệu & Báo Cáo', 'Metrics & Reports', 'checklist',
-        'thống kê statistics analytics báo cáo report số liệu doanh thu', () => g.openReports('host', s.myOrganizerId, 'profile')),
+      ...(s.myOrganizerId ? [e('organizerProfile', 'host', moreVi, moreEn, 'Hồ sơ tổ chức', 'Organizer profile', 'store',
+        'hồ sơ tổ chức organizer profile trang công khai public page host page', () => g.openOrganizerProfile(s.myOrganizerId, 'profile'))] : []),
+      e('reportsHost', 'host', accVi, accEn, 'Báo cáo', 'Reports', 'chart',
+        'thống kê statistics analytics báo cáo report reports số liệu metrics doanh thu',
+        () => (s.myOrganizerId ? g.openReports('host', s.myOrganizerId, 'profile') : g.openHostSetup()), s.myOrganizerId ? undefined : { keepSearch: false }),
     );
   }
   if (s.accountType === 'admin') {
-    const aVi = 'Quản Trị', aEn = 'Administration';
+    const aVi = 'Công cụ quản trị', aEn = 'Admin tools';
     list.push(
+      e('adminTools', 'admin', moreVi, moreEn, 'Công cụ quản trị', 'Admin tools', 'shield',
+        'admin quản trị administration công cụ tools', () => g.openAccountGroup('admin')),
       e('adminReview', 'admin', aVi, aEn, 'Duyệt & Kiểm Duyệt', 'Review & Moderation', 'alertShield',
         'duyệt review kiểm duyệt moderation approve phê duyệt', () => g.openAccountGroup('adminReview')),
       e('disputes', 'admin', aVi, aEn, 'Tranh Chấp Thanh Toán', 'Payment Disputes', 'alertShield',
@@ -107,8 +122,10 @@ export function useAccountSearchEntries() {
         'sự kiện chờ duyệt pending events approve từ chối reject nhắc remind', viaDocsBack(() => g.openAdminEvents())),
       e('adminTeam', 'admin', aVi, aEn, 'Đội Ngũ Quản Trị', 'Admin Team', 'users',
         'admin quản trị viên mời invite thành viên team đội ngũ', () => g.openAccountGroup('adminTeam')),
-      e('reportsAdmin', 'admin', aVi, aEn, 'Số Liệu & Báo Cáo', 'Metrics & Reports', 'checklist',
+      e('reportsAdmin', 'admin', aVi, aEn, 'Số Liệu & Báo Cáo', 'Metrics & Reports', 'chart',
         'thống kê statistics analytics báo cáo report số liệu', () => g.openReports('admin', null, 'profile')),
+      e('adminGuide', 'admin', aVi, aEn, 'Hướng Dẫn Quản Trị', 'Admin Guide', 'checklist',
+        'hướng dẫn guide quản trị admin handbook', () => set({ screen: 'guide', guideKey: 'admin' }), { keepSearch: false }),
     );
   }
   return list;
@@ -116,7 +133,7 @@ export function useAccountSearchEntries() {
 
 /** Results grouped under Personal / Host / Admin, in the same grouped-card style as the rest of Account. */
 export default function AccountSearchResults({ query }) {
-  const { T, setAccountTab } = useBanBe();
+  const { T } = useBanBe();
   const entries = useAccountSearchEntries();
   const groups = TABS
     .map(t => ({ t, items: entries.filter(en => en.tab === t.key && entryMatches(en, query, t)) }))
@@ -141,7 +158,6 @@ export default function AccountSearchResults({ query }) {
                 data-testid={`account-search-${en.id}`}
                 onClick={() => {
                   // Keep the search + its query so Back from the result returns here.
-                  setAccountTab(en.tab);
                   if (en.keepSearch !== false) markReturnToSearch(query);
                   en.action();
                 }}

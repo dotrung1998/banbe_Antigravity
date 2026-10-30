@@ -41,6 +41,10 @@ enum UITestFixture {
     /// Note 65: `-uiFixtureEventTypes YES` is an admin having turned on `event_type_profiles` (with `shell.create`
     /// the draft also gets supper club facts; with `shell.home` two fixture events get some).
     static let eventTypes = UserDefaults.standard.bool(forKey: "uiFixtureEventTypes")
+    /// Note 66: `-uiFixtureSimpleShell YES` is an admin having turned on `simple_shell` (new Home + centre "+" dock);
+    /// `-uiFixtureHostMode YES` (with a `shell.*` fixture) starts in organizer mode (Home shows the host sections).
+    static let simpleShell = UserDefaults.standard.bool(forKey: "uiFixtureSimpleShell")
+    static let hostMode = UserDefaults.standard.bool(forKey: "uiFixtureHostMode")
     /// Note 66: `-uiFixtureEventKey jazzgac` opens that catalogue event with `shell.event`; `-uiFixtureCreateType popup`
     /// makes the `shell.create` draft that type.
     static let eventKey = UserDefaults.standard.string(forKey: "uiFixtureEventKey") ?? "bepnho"
@@ -159,7 +163,7 @@ struct UITestFixtureRoot: View {
                 }
             }
         }
-        .preferredColorScheme(app.theme == "dark" ? .dark : .light)
+        .preferredColorScheme(ThemeChoice.colorScheme(for: app.theme))
         .task { configure() }
     }
 
@@ -169,6 +173,7 @@ struct UITestFixtureRoot: View {
         if !signedOut { app.userID = UITestFixture.userID }
         if UITestFixture.onboardingV2 { app.featureFlags["onboarding_v2"] = true }
         if UITestFixture.tourV3 { app.featureFlags["onboarding_v3"] = true }
+        if UITestFixture.simpleShell { app.featureFlags["simple_shell"] = true }
         if UITestFixture.eventTypes {
             app.featureFlags["event_type_profiles"] = true
             // The facts the production backfill gave these catalogue events (note 66), as their real rows would.
@@ -204,7 +209,7 @@ struct UITestFixtureRoot: View {
         BottomTabBarOverlay.shared.updateVisibility(for: .splash)
         configureSchedule()
         let variant = name.split(separator: ".").dropFirst().first.map(String.init) ?? "home"
-        app.organizerMode = variant == "account"
+        app.organizerMode = variant == "account" || UITestFixture.hostMode
         app.accountType = (variant == "account" || variant == "adminFeatures" || variant == "adminManageEvents") ? "admin" : "participant"
         app.accountTab = "personal"
         // Streak/coins capsule visible: the tightest Home header layout.

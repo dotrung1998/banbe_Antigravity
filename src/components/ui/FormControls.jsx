@@ -6,6 +6,7 @@
 // action never looks like the alternatives, and FieldNote for a field's
 // error / warning line (the field itself gets aria-invalid / data-state, see
 // the field-state rules in src/index.css).
+import { useEffect, useRef, useState } from 'react';
 import { paper, ink, display } from '../../theme.js';
 
 const RULE = 'rgba(27,25,22,0.16)';
@@ -62,7 +63,7 @@ function PercentRing({ pct }) {
       <svg width="44" height="44" viewBox="0 0 44 44" style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
         <circle cx="22" cy="22" r={r} fill="none" stroke="rgba(var(--bb-fg-rgb),0.12)" strokeWidth="3" />
         <circle cx="22" cy="22" r={r} fill="none" stroke={ink} strokeWidth="3" strokeLinecap="round"
-          strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} style={{ transition: 'stroke-dashoffset .25s ease-out' }} />
+          className="bb-ring-fill" strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} style={{ transition: 'stroke-dashoffset .25s ease-out' }} />
       </svg>
       <span style={{ position: 'relative', fontSize: pct >= 100 ? 11.5 : 13, fontVariantNumeric: 'tabular-nums' }}>{pct}%</span>
     </span>
@@ -71,6 +72,21 @@ function PercentRing({ pct }) {
 
 export function StepProgress({ steps, current, completed, message, showPercent = true, onSelect, testId }) {
   const isDone = (i) => (completed ? !!completed[i] : i < current);
+  // Note 66: a step that turns done pops once (index.css .bb-step-pop, none under Reduce Motion).
+  const prevDone = useRef(null);
+  const [popped, setPopped] = useState([]);
+  const doneKey = steps.map((_, i) => (isDone(i) ? 1 : 0)).join('');
+  useEffect(() => {
+    const now = doneKey.split('').map(Number);
+    const before = prevDone.current;
+    prevDone.current = now;
+    if (!before) return undefined;
+    const fresh = now.map((d, i) => (d && !before[i] ? i : -1)).filter(i => i >= 0);
+    if (!fresh.length) return undefined;
+    setPopped(fresh);
+    const t = setTimeout(() => setPopped([]), 400);
+    return () => clearTimeout(t);
+  }, [doneKey]);
   const doneCount = completed ? completed.filter(Boolean).length : current;
   const pct = stepPercent(doneCount, steps.length);
   const line = (on) => (on ? ink : 'rgba(var(--bb-fg-rgb),0.14)');
@@ -96,7 +112,8 @@ export function StepProgress({ steps, current, completed, message, showPercent =
               <span style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: 36 }}>
                 <span aria-hidden style={{ position: 'absolute', left: 0, width: '50%', height: 2, background: i === 0 ? 'transparent' : line(isDone(i - 1)) }} />
                 <span aria-hidden style={{ position: 'absolute', right: 0, width: '50%', height: 2, background: i === steps.length - 1 ? 'transparent' : line(done) }} />
-                <span style={{ position: 'relative', width: 28, height: 28, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                <span className={popped.includes(i) ? 'bb-step-pop' : undefined} data-pop={popped.includes(i) ? 'true' : undefined}
+                  style={{ position: 'relative', width: 28, height: 28, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: filled ? ink : paper, color: filled ? paper : 'rgba(var(--bb-fg-rgb),0.6)', fontSize: 13, fontWeight: 700,
                   border: filled ? 'none' : '1.5px solid rgba(var(--bb-fg-rgb),0.25)', boxSizing: 'border-box',
                   boxShadow: active ? '0 0 0 4px rgba(var(--bb-fg-rgb),0.18)' : 'none' }}>

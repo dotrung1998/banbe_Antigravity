@@ -50,6 +50,8 @@ struct HomeFilterSheet: View {
                     whenSection
                     priceSection
                     categorySection
+                    // Simple Shell (note 66): the event-type chips moved here from Home (same ids, applied with the draft).
+                    if app.simpleShellEnabled { typeSection }
                     seatsSection
                     locationSection
                     sortSection
@@ -313,6 +315,29 @@ struct HomeFilterSheet: View {
                     pill(app.T(c.vi, c.en), active: on, count: counts[c.key], disabled: !on && counts[c.key] == 0,
                          icon: CategoryGlyph.symbol(c.key), id: "home.filter.cat.\(c.key)") {
                         if on { draft.cats.removeAll { $0 == c.key } } else { draft.cats.append(c.key) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The one picked category's own chips (event_type_profiles on, exactly one category). Same rule as Home's row:
+    /// AND-combined, a chip with 0 events hides unless it is on.
+    @ViewBuilder
+    private var typeSection: some View {
+        let chips = app.eventTypesEnabled && draft.cats.count == 1 ? EventTypes.homeFilters(EventTypes.profile(draft.cats[0])) : []
+        if !chips.isEmpty {
+            let counts = D.optionCounts(items, draft, .typeFilters, options: chips.map(\.id), now: now)
+            section(app.T("Loại sự kiện", "Event type")) {
+                FlowRow(spacing: 8) {
+                    ForEach(chips) { chip in
+                        let on = draft.typeFilters.contains(chip.id)
+                        let n = counts[chip.id] ?? 0
+                        if on || n > 0 {
+                            pill(app.T(chip.vi, chip.en), active: on, count: on ? nil : n, id: "home.type.\(chip.id)") {
+                                if on { draft.typeFilters.removeAll { $0 == chip.id } } else { draft.typeFilters.append(chip.id) }
+                            }
+                        }
                     }
                 }
             }

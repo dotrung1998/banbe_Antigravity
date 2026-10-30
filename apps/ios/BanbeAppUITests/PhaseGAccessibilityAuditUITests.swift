@@ -51,17 +51,16 @@ final class PhaseGAccessibilityAuditUITests: XCTestCase {
         XCTAssertTrue(found.isEmpty, found.joined(separator: "\n"))
     }
 
-    /// Note 45: the redesigned Account tab bar (audited on the real RootView; only the new
-    /// tab-bar elements are judged here — the rest of Account predates this change).
-    func testAccountTabBarAudit() throws {
+    /// Note 66: Account's big tiles (audited on the real RootView; only the tiles are judged here).
+    func testAccountTilesAudit() throws {
         let app = XCUIApplication()
         app.launchArguments += ["-uiFixture", "shell.account", "-banbe.lang", "en", "-uiTesting", "1", "-banbe.onboarded", "YES"]
         app.launch()
-        XCTAssertTrue(app.descendants(matching: .any)["account.tab.host"].firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.descendants(matching: .any)["account.tile.events"].firstMatch.waitForExistence(timeout: 20))
         var found: [String] = []
         try app.performAccessibilityAudit { issue in
             let el = issue.element
-            guard el?.identifier.hasPrefix("account.tab") == true else { return true }
+            guard el?.identifier.hasPrefix("account.tile") == true else { return true }
             found.append("[\(issue.compactDescription)] id=\(el?.identifier ?? "-") label=\(el?.label ?? "-") frame=\(el?.frame ?? .zero)")
             return true
         }

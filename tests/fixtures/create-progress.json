@@ -35,5 +35,12 @@
       "expect": { "done": [true, false, false, false, false], "percent": 20, "stepsLeft": 4, "firstMissing": "name",
         "missing": ["name", "date", "seats", "photos"] }
     }
+  ],
+  "newlyCompleted": [
+    { "case": "first render never celebrates", "prev": null, "next": ["name", "photos"], "expect": [] },
+    { "case": "one field completed", "prev": ["name", "photos"], "next": ["photos"], "expect": ["name"] },
+    { "case": "several, in form order", "prev": ["photos", "seats", "name"], "next": [], "expect": ["name", "seats", "photos"] },
+    { "case": "a field that becomes missing again is not done", "prev": ["name"], "next": ["name", "price"], "expect": [] },
+    { "case": "type fact completed", "prev": ["alcohol", "min_age"], "next": ["min_age"], "expect": ["alcohol"] }
   ]
 }

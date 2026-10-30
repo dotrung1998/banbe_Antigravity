@@ -34,6 +34,7 @@ struct AccountGroupView: View {
         // icon (AccountView.swift's groupCardRow call).
         case "adminTeam": return "person.3.fill"
         case "helpLegal": return "lock.shield"
+        case "admin": return "checkmark.shield"   // note 66: the former Admin tab
         default: return "circle"
         }
     }
@@ -46,7 +47,8 @@ struct AccountGroupView: View {
         ScreenScaffold {
             LazyVStack(alignment: .leading, spacing: 0) {
                 Button { app.goBack() } label: {
-                    Text("‹ " + app.T("Tài khoản", "Account"))
+                    // note 66 — a group nested under Administration names it on the way back.
+                    Text("‹ " + (app.accountGroupParentKey.map { app.accountGroupTitle(for: $0) } ?? app.T("Tài khoản", "Account")))
                         .font(.system(size: 12))
                 }
                 .buttonStyle(.plain)
@@ -78,6 +80,7 @@ struct AccountGroupView: View {
                     // `.padding(.top, 22)` is applied to every child (heading, card, row).
                     case "adminTeam": VStack(alignment: .leading, spacing: 0) { adminTeamContent }
                     case "helpLegal": helpLegalContent
+                    case "admin": adminContent   // note 66
                     default: EmptyView()
                     }
                 }
@@ -112,7 +115,7 @@ struct AccountGroupView: View {
             if app.accountGroupKey == "hostOps", !on { app.screen = .profile }
         }
         .onChange(of: app.accountType) { _, type in
-            if app.accountGroupKey == "adminReview", type != "admin" { app.screen = .profile }
+            if ["adminReview", "admin"].contains(app.accountGroupKey ?? ""), type != "admin" { app.screen = .profile }
         }
         // Admin Team pass (2026-10-02) — a direct deep link straight into
         // `accountGroupKey: "adminTeam"` (e.g. from the admin_invite_
@@ -702,6 +705,34 @@ struct AccountGroupView: View {
     private func openGuide(_ key: String) {
         app.helpGuideKey = key
         app.screen = .helpGuide
+    }
+
+    /// note 66 — Administration: exactly what the old Account › Admin tab listed. Review & Moderation and
+    /// Admin Team open nested (Back returns here, not to Account).
+    private var adminContent: some View {
+        VStack(spacing: 0) {
+            row(app.T("Duyệt & Kiểm Duyệt", "Review & Moderation"), identifier: "account.group.adminReview",
+                icon: "exclamationmark.shield", trailing: "›", badge: app.pendingEventsCount) { openNested("adminReview") }
+            Divider().overlay(app.palette.divider)
+            row(app.T("Đội Ngũ Quản Trị", "Admin Team"), identifier: "account.group.adminTeam", icon: "person.3.fill",
+                trailing: "›", badge: app.adminInvites.filter { $0.status == "pending" }.count) { openNested("adminTeam") }
+            Divider().overlay(app.palette.divider)
+            row(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsAdmin",
+                icon: "chart.bar.doc.horizontal", trailing: "›") { app.openReports(scope: "admin", back: .accountGroup) }
+            Divider().overlay(app.palette.divider)
+            row(app.T("Hướng Dẫn Quản Trị", "Admin Guide"), identifier: "account.adminGuide", icon: "checklist", trailing: "›") {
+                app.helpGuideKey = "admin"; app.screen = .helpGuide
+            }
+        }
+        .background(app.palette.surface1, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .task { if app.isAdmin { await app.loadPendingEventsCount() } }
+        .task { if app.canManageAdmins { await app.loadAdminTeam() } }
+    }
+
+    private func openNested(_ key: String) {
+        app.accountGroupParentKey = app.accountGroupKey
+        app.accountGroupKey = key
+        if key == "adminTeam" && app.canManageAdmins { Task { await app.loadAdminTeam() } }
     }
 
     private var adminReviewContent: some View {

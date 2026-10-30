@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncSuccessButton from '../components/ui/AsyncSuccessButton.jsx';
 import { flushSync } from 'react-dom';
 import { ReservationCriteriaPicker } from './ReservationCriteria.jsx';
@@ -18,7 +18,7 @@ import { recipeChecks, recipeCopy, estimateOutcome, pricePosition, slotLabel, ha
 import { useHostBenchmarks } from '../lib/useHostBenchmarks.js';
 import { track } from '../lib/analytics.js';
 import { stepOfField, isTextField } from '../lib/createFieldGuide.js';
-import { computeCreateProgress, missingLabel } from '../lib/createProgress.js';
+import { computeCreateProgress, missingLabel, newlyCompleted } from '../lib/createProgress.js';
 import { categoryDefs, profileFor, requiredFields, keywordSuggestions, droppedDetailTypes, cleanDetails, detailFacts, localized, missingDetails } from '../lib/eventTypes.js';
 import { flagOn } from '../lib/featureFlags.js';
 import RecipeSheet, { RecipeMeter, RecipeList } from './sheets/RecipeSheet.jsx';
@@ -397,6 +397,32 @@ export default function CreateEvent() {
     guideTo(field, T('Còn thiếu: ', 'Still needed: ') + MISSING_LABEL(field));
   };
   const missing = progress.missing;
+  // Note 66 (Revolut-style feedback): a required field that turns complete earns a small ✓ next to its label and
+  // one polite screen-reader line. Same single source as the ring and chips. A field that was already complete
+  // when the form opened never animates; one completed later pops once.
+  const requiredSet = useMemo(() => new Set(requiredFields(typeProfile)), [typeProfile]);
+  const prevMissingRef = useRef(undefined);
+  const [freshDone, setFreshDone] = useState([]);
+  const [doneAnnounce, setDoneAnnounce] = useState('');
+  const missingKey = missing.join(',');
+  useEffect(() => {
+    const fresh = newlyCompleted(prevMissingRef.current, missing);
+    prevMissingRef.current = missing;
+    if (!fresh.length) return undefined;
+    setFreshDone(fresh);
+    const names = fresh.map(MISSING_LABEL).join(', ');
+    setDoneAnnounce(left === 0
+      ? T(`Xong: ${names}. Đã đủ mọi bước.`, `Done: ${names}. Every step is complete.`)
+      : T(`Xong: ${names}. Còn ${left} bước.`, `Done: ${names}. ${left} ${left === 1 ? 'step' : 'steps'} left.`));
+    const t = setTimeout(() => setFreshDone([]), 900);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingKey]);
+  const doneMarks = useMemo(() => ({
+    done: (field) => requiredSet.has(field) && !missing.includes(field),
+    fresh: (field) => freshDone.includes(field),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [requiredSet, missingKey, freshDone]);
   // ---- Recipe for success (note 50) ----------------------------------------------------------------
   const primaryCat = s.createCats[0] || '';
   const { benchmarks, demand } = useHostBenchmarks(primaryCat, s.createCity, !!s.user && !s.createSent, market.currency);
@@ -524,7 +550,9 @@ export default function CreateEvent() {
   // below) in Safari. Review then spanned this whole tall form instead of the screen, which showed up as a
   // screen-high blank gap and a confirm button far below. The end state is identical (opacity 1, no transform).
   return (
+    <DoneMarks.Provider value={doneMarks}>
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) backwards', minHeight: '100%', background: paper }} data-screen-label="Create event">
+      <div role="status" aria-live="polite" data-testid="create-done-announce" style={visuallyHidden}>{doneAnnounce}</div>
       <div ref={topRef} style={{ padding: '58px 22px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
         <span onClick={leaveCreate} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {createBackLabel}</span>
         <span style={{ flex: 1 }} />
@@ -585,7 +613,7 @@ export default function CreateEvent() {
               </p>
             )}
             <Guided field="hostName" attn={attn}>
-              <BigField icon="person" label={T('Tên', 'Name')} value={s.orgRegName} onChange={orgRegNameType} placeholder="Bếp Nhỏ" />
+              <BigField icon="person" field="hostName" label={T('Tên', 'Name')} value={s.orgRegName} onChange={orgRegNameType} placeholder="Bếp Nhỏ" />
             </Guided>
             <BigField icon="at" label="Instagram" value={s.orgRegIg} onChange={orgRegIgType} placeholder="@bepnho.saigon" />
             <BigField icon="quote" label={T('Giới thiệu', 'About')} value={s.orgRegDesc} onChange={orgRegDescType} placeholder={T('Minh nấu cho người lạ từ 2021…', 'Minh has cooked for strangers since 2021…')} />
@@ -595,7 +623,7 @@ export default function CreateEvent() {
         {step === 1 && (
           <StepCard title={T('Cơ bản', 'Basics')} id="create-section-basics">
             <Guided field="name" attn={attn}>
-              <BigField icon="sparkles" label={T('Tên sự kiện', 'Event name')} required value={s.createName} onChange={createNameType} placeholder="Bếp Nhỏ №13" testId="create-name"
+              <BigField icon="sparkles" field="name" label={T('Tên sự kiện', 'Event name')} required value={s.createName} onChange={createNameType} placeholder="Bếp Nhỏ №13" testId="create-name"
                 invalid={attemptedReview && !nameOk} />
             </Guided>
             <div style={fieldCol} data-testid="create-goal">
@@ -615,7 +643,7 @@ export default function CreateEvent() {
               <p style={hintText}>{T('Chỉ bạn thấy. Giúp banbe đưa gợi ý phù hợp hơn.', 'Only you see this. It tunes the tips below to what you want.')}</p>
             </div>
             <Guided field="description" attn={attn}>
-              <BigField icon="text" label={T('Mô tả', 'Description')} required value={s.createDesc} onChange={createDescType} placeholder={T('Mười bốn chỗ. Một ga-ra cải tạo…', 'Fourteen seats. A converted garage…')}
+              <BigField icon="text" field="description" label={T('Mô tả', 'Description')} required value={s.createDesc} onChange={createDescType} placeholder={T('Mười bốn chỗ. Một ga-ra cải tạo…', 'Fourteen seats. A converted garage…')}
                 invalid={attemptedReview && fieldErrors.desc} describedBy="create-desc-error" />
               {attemptedReview && fieldErrors.desc && <p id="create-desc-error" style={errText}>{T('Hãy nhập mô tả.', 'Please enter a description.')}</p>}
             </Guided>
@@ -638,7 +666,7 @@ export default function CreateEvent() {
                 placeholder="Hi! Happy to answer any questions, I'll reply as soon as I can." style={{ ...bigInput, resize: 'vertical', lineHeight: 1.5 }} />
             </Guided>
             <Guided field="categories" attn={attn} style={fieldCol}>
-              <FormLabel icon="grid" text={T('Danh mục', 'Categories')} required tag={T('Tối đa 2', 'Up to 2')} />
+              <FormLabel icon="grid" field="categories" text={T('Danh mục', 'Categories')} required tag={T('Tối đa 2', 'Up to 2')} />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {CAT_DEFS.map(c => {
                   const on = s.createCats.includes(c.key);
@@ -681,7 +709,7 @@ export default function CreateEvent() {
               )}
             </Guided>
             <Guided field="included" attn={attn} style={fieldCol}>
-              <FormLabel icon="checklist" text={typeProfile?.wizard?.includedTitle ? localized(typeProfile.wizard.includedTitle, lang) : T('Bao gồm', 'Included')}
+              <FormLabel icon="checklist" field="included" text={typeProfile?.wizard?.includedTitle ? localized(typeProfile.wizard.includedTitle, lang) : T('Bao gồm', 'Included')}
                 required={requiredFields(typeProfile).includes('included')} tag={`${s.createIncludedItems.length}/3`} />
               {s.createIncludedItems.map((it, i) => (
                 <div key={i} className="bb-focus-ring" style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 8px 14px 16px', borderRadius: 14, background: paper, border: `1px solid ${rule}` }}>
@@ -718,7 +746,7 @@ export default function CreateEvent() {
         {step === 2 && (
           <StepCard title={T('Thời gian & địa điểm', 'When & where')} id="create-section-when">
         <Guided field="location" attn={attn} style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
-          <FormLabel icon="pin" text={T('Địa điểm', 'Location')} required />
+          <FormLabel icon="pin" field="location" text={T('Địa điểm', 'Location')} required />
           <p style={hintText}>
             {T(
               'Gõ số nhà + tên đường (hoặc tên địa điểm nếu không có số nhà) rồi chọn một gợi ý. Cần thiết để đăng sự kiện.',
@@ -792,7 +820,7 @@ export default function CreateEvent() {
         </Guided>
 
             <Guided field="date" attn={attn} style={fieldCol}>
-              <FormLabel icon="calendar" text={T('Ngày & giờ', 'Date & time')} required tag={zoneTag(market.timeZone, T)} />
+              <FormLabel icon="calendar" field="date" text={T('Ngày & giờ', 'Date & time')} required tag={zoneTag(market.timeZone, T)} />
               <div style={{ display: 'flex', gap: 10 }}>
                 <input type="date" value={s.createEventDate} onChange={createEventDateType} min={todayInZone(market.timeZone)}
                   data-testid="create-event-date" aria-label={T('Ngày', 'Date')} style={{ ...bigInput, flex: 1.3 }} />
@@ -831,7 +859,7 @@ export default function CreateEvent() {
         {step === 3 && (
           <StepCard title={T('Vé & ai được đặt', 'Tickets & who can book')} id="create-section-tickets">
             <Guided field="price" attn={attn} style={fieldCol}>
-              <FormLabel icon="tag" text={T('Giá vé', 'Price')} tag={similar ? T('Gợi ý', 'Suggested') : null} />
+              <FormLabel icon="tag" field="price" text={T('Giá vé', 'Price')} tag={similar ? T('Gợi ý', 'Suggested') : null} />
               {bench?.price && <PriceMarket price={bench.price} mine={draftPriceVnd} T={T} catLabel={createCatLabel} currency={market.currency} onChange={(v) => set({ createPrice: priceText(v), createPriceCurrency: market.currency })} />}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                 {priceQuickPicks(market.currency).map(v => {
@@ -857,7 +885,7 @@ export default function CreateEvent() {
               </span>
             </Guided>
             <Guided field="seats" attn={attn} style={fieldCol}>
-              <FormLabel icon="people" text={T('Số chỗ', 'Seats')} required />
+              <FormLabel icon="people" field="seats" text={T('Số chỗ', 'Seats')} required />
               <div style={{ padding: '10px 14px', borderRadius: 14, background: paper, border: `1px solid ${rule}` }}>
                 <CountStepper testId="create-seats-stepper" value={seatsNum} min={0} max={500} unit={T('chỗ', 'seats')}
                   onChange={(n) => set({ createSeats: n ? String(n) : '' })} />
@@ -908,7 +936,7 @@ export default function CreateEvent() {
         {step === 4 && (
         <Guided field="photos" attn={attn} id="create-section-photos" style={{ marginTop: 22, scrollMarginTop: 90 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <FormLabel icon="photo" text={T('Hình ảnh', 'Photos')} required />
+            <FormLabel icon="photo" field="photos" text={T('Hình ảnh', 'Photos')} required />
             <span style={{ fontSize: 10.5, color: ink }}>{photos.length}/{MAX_PHOTOS} ({T(`tối thiểu ${MIN_PHOTOS}`, `min ${MIN_PHOTOS}`)})</span>
           </div>
           <Insight testId="create-photos-insight" check={recipeById.photos} T={T}
@@ -1106,6 +1134,7 @@ export default function CreateEvent() {
         />
       )}
     </div>
+    </DoneMarks.Provider>
   );
 }
 
@@ -1448,12 +1477,28 @@ function Icon({ name }) {
   );
 }
 
-function FormLabel({ icon, text, required, tag, tagTone }) {
+// Note 66: which required fields are complete (and which just became so), from CreateEvent's single progress result.
+const DoneMarks = createContext(null);
+const visuallyHidden = { position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0 };
+
+/** The small ✓ after a complete required field's label. `pop` draws it once (a plain fade under Reduce Motion). */
+function DoneMark({ field, pop }) {
+  return (
+    <span aria-hidden data-testid={`create-done-${field}`} data-pop={pop ? 'true' : undefined} className={pop ? 'bb-done-mark bb-done-pop' : 'bb-done-mark'}>
+      <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.4 5 8.8l4.5-5.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+    </span>
+  );
+}
+
+function FormLabel({ icon, text, required, tag, tagTone, field }) {
+  const marks = useContext(DoneMarks);
+  const done = !!(field && marks?.done(field));
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: ink, opacity: 0.85 }}>
       <Icon name={icon} />
       <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{text}</span>
-      {required && <span style={{ color: alert, fontSize: 12, fontWeight: 600 }}>*</span>}
+      {required && !done && <span style={{ color: alert, fontSize: 12, fontWeight: 600 }}>*</span>}
+      {done && <DoneMark field={field} pop={marks.fresh(field)} />}
       <span style={{ flex: 1 }} />
       {tag && (
         <span data-tone={tagTone || undefined} style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, fontVariantNumeric: 'tabular-nums',
@@ -1464,10 +1509,10 @@ function FormLabel({ icon, text, required, tag, tagTone }) {
   );
 }
 
-function BigField({ icon, label, required, value, onChange, placeholder, testId, invalid, describedBy }) {
+function BigField({ icon, label, required, value, onChange, placeholder, testId, invalid, describedBy, field }) {
   return (
     <label style={fieldCol}>
-      <FormLabel icon={icon} text={label} required={required} />
+      <FormLabel icon={icon} text={label} required={required} field={field} />
       <input value={value} onChange={onChange} placeholder={placeholder} data-testid={testId} style={bigInput}
         aria-invalid={invalid ? true : undefined} aria-describedby={invalid && describedBy ? describedBy : undefined} />
     </label>
@@ -1680,7 +1725,7 @@ function TypeDetailsEditor({ profile, values, lang, T, onChange, attn, showError
         return (
           <Guided key={id} field={id} attn={attn} style={fieldCol}>
             <div role={def.kind === 'text' ? undefined : 'group'} aria-label={label} style={fieldCol}>
-              <FormLabel icon="sparkles" text={label} required={req} />
+              <FormLabel icon="sparkles" field={id} text={label} required={req} />
               {def.hint && <p style={{ ...hintText, margin: 0 }}>{localized(def.hint, lang)}</p>}
               {body}
               {err && <p style={errText}>{T(`Hãy chọn ${label.toLowerCase()}.`, `Please fill in ${label.toLowerCase()}.`)}</p>}

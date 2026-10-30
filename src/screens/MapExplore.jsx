@@ -198,7 +198,7 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
 }
 
 export default function MapExplore() {
-  const { state: s, T, goEvent, backFromMapExplore, allowLocation, setMapExploreState, curArea, openArea, openEventPreferences } = useBanBe();
+  const { state: s, T, resolvedTheme, goEvent, backFromMapExplore, allowLocation, setMapExploreState, curArea, openArea, openEventPreferences } = useBanBe();
   // Restored once, at mount, if MapExplore.jsx's own CTA saved a snapshot
   // right before navigating to Event Detail (bug 2) — App.jsx's Shell
   // unmounts/remounts this whole component on every `screen` change, so
@@ -371,16 +371,16 @@ export default function MapExplore() {
 
   // Basemap follows the app theme (derived Liberty light/dark, src/lib/mapStyle.js); camera,
   // markers and selection survive a style swap.
-  const themeRef = useRef(s.theme === 'dark' ? 'dark' : 'light');
+  const themeRef = useRef(resolvedTheme);
   useEffect(() => {
-    const mode = s.theme === 'dark' ? 'dark' : 'light';
+    const mode = resolvedTheme;
     if (themeRef.current === mode) return undefined;
     themeRef.current = mode;
     let cancelled = false;
     if (mapRef.current?.__isMapKit) { mapRef.current.setColorScheme(mode); return undefined; }
     loadMapStyle(mode).then(style => { if (!cancelled && mapRef.current) mapRef.current.setStyle(style); });
     return () => { cancelled = true; };
-  }, [s.theme]);
+  }, [resolvedTheme]);
 
   // ---- location permission state (drives the compass button's opacity) ----
   const [locPermission, setLocPermission] = useState('prompt'); // 'granted' | 'denied' | 'prompt'

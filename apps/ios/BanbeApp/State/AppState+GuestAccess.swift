@@ -6,6 +6,8 @@ import Foundation
 
 enum GuestPromptContext: String {
     case save, follow, reserve, message, like
+    // Simple Shell (note 66): the Home "Hosting" segment and the dock "+" rows.
+    case host, schedule, invite
 }
 
 /// Work to finish once the guest has signed in from a prompt.
@@ -78,6 +80,15 @@ extension AppState {
         case .like:
             return (T("Thích ảnh này", "Like this photo"),
                     T("Đăng nhập để thích ảnh và ủng hộ host.", "Log in to like photos and support the host."))
+        case .host:
+            return (T("Tổ chức sự kiện", "Host an event"),
+                    T("Đăng nhập để tổ chức sự kiện của riêng bạn. Miễn phí khi banbe còn mới.", "Log in to host your own events. Free while banbe is new."))
+        case .schedule:
+            return (T("Thêm vào lịch của bạn", "Add to your schedule"),
+                    T("Đăng nhập để lưu các buổi bạn muốn đi vào lịch của bạn.", "Log in to keep the plans you want to go to in your schedule."))
+        case .invite:
+            return (T("Mời bạn bè", "Invite friends"),
+                    T("Đăng nhập để lấy đường dẫn mời của riêng bạn.", "Log in to get your own invite link."))
         }
     }
 }

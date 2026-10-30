@@ -36,6 +36,9 @@ test('first missing field follows the on-screen order', () => {
   assert.equal(firstMissingField({ seats: true, location: true }), 'location');
   assert.equal(firstMissingField({ hostName: true, description: true }), 'hostName');
   assert.equal(firstMissingField({ included: false, date: true }), 'date');
+  // Same order as the ring: price and the type facts count too (was a stale list without them).
+  assert.equal(firstMissingField({ price: true, seats: true }), 'price');
+  assert.equal(firstMissingField({ alcohol: true, location: true }), 'alcohol');
 });
 
 test('keyboard check: a field under the keyboard is hidden, one in view is not', () => {

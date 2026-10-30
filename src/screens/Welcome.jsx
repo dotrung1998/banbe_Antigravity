@@ -43,7 +43,7 @@ const primaryBtn = { width: '100%', minHeight: 56, borderRadius: 18, border: 'no
 const secondaryBtn = { width: '100%', minHeight: 50, borderRadius: 18, border: '1px solid var(--bb-rule)', background: 'var(--bb-field)', color: ink, fontFamily: 'inherit', fontSize: 15.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
 
 export default function Welcome() {
-  const { state: s, T, toggleLang, toggleTheme, browseAsGuest, openAuth } = useBanBe();
+  const { state: s, T, resolvedTheme, toggleLang, toggleTheme, browseAsGuest, openAuth } = useBanBe();
   const [page, setPage] = useState(null); // null = welcome; 0..3 = story page
   const v2 = flagOn(s.featureFlags, 'onboarding_v2');
   // V2 entrance plays when Welcome opens, not again when coming back from the story.
@@ -86,7 +86,7 @@ export default function Welcome() {
           {page !== null && <span data-testid="welcome-story-progress" style={{ fontSize: 13, fontWeight: 600, opacity: 0.7 }}>{page + 1}/{HIW_PAGE_COUNT}</span>}
           <span style={{ flex: 1 }} />
           <button type="button" onClick={toggleLang} data-testid="welcome-lang" style={pill}>{T('EN', 'VN')}</button>
-          <button type="button" onClick={toggleTheme} data-testid="welcome-theme" style={pill}>{s.theme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}</button>
+          <button type="button" onClick={toggleTheme} data-testid="welcome-theme" style={pill}>{resolvedTheme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}</button>
           {page !== null && (
             <button type="button" data-testid="welcome-story-skip" onClick={() => { track('public_story_skipped', { step: page }); setPage(null); }} style={{ ...pill, background: 'none', border: 'none', fontSize: 15 }}>{T('Bỏ qua', 'Skip')}</button>
           )}

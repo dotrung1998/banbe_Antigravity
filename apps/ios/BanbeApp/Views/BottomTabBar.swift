@@ -133,8 +133,14 @@ struct BottomTabBar: View {
         )
     }
 
+    /// Simple Shell (note 66): the slot list (Lib/DockLayout.swift). OFF it is exactly today's five tab ids, so every
+    /// index computation below is unchanged; ON it is home, schedule, [create], inbox, profile.
+    private var simpleShell: Bool { app.simpleShellEnabled }
+    private var slots: [String] { DockLayout.slots(simpleShell: simpleShell) }
+    private var slotCount: Int { max(slots.count, 1) }
+
     private var items: [Item] {
-        [
+        let all: [Item] = [
             Item(id: "home", icon: { AnyView(HomeGlyph(color: $0, filled: $1)) }, label: app.T("Trang chính", "Home"), action: { app.goHome() }, badge: 0),
             Item(id: "map", icon: { AnyView(MapGlyph(color: $0, filled: $1)) }, label: app.T("Bản đồ", "Map"), action: { app.goMapExplore() }, badge: 0),
             Item(id: "schedule", icon: { AnyView(ScheduleGlyph(color: $0, filled: $1)) }, label: app.T("Lịch", "Schedule"), action: { app.goSchedule() }, badge: 0),
@@ -144,6 +150,8 @@ struct BottomTabBar: View {
             Item(id: "inbox", icon: { AnyView(InboxGlyph(color: $0, filled: $1)) }, label: app.T("Tin nhắn", "Messages"), action: { app.goInbox() }, badge: app.unreadMessages),
             Item(id: "profile", icon: { AnyView(ProfileGlyph(color: $0, filled: $1)) }, label: app.T("Tài khoản", "Account"), action: { app.goProfile() }, badge: accountBadge, badgeCapped: true, badgeCap: 99),
         ]
+        let shown = Set(slots)
+        return all.filter { shown.contains($0.id) }
     }
 
     // FEATURE — scrub-to-select: which tab is currently under the finger
@@ -253,14 +261,8 @@ struct BottomTabBar: View {
 
     private func syncActiveToScreen() {
         guard !isDragging else { return }
-        switch app.screen {
-        case .home: activeID = "home"
-        case .mapExplore: activeID = "map"
-        case .schedule: activeID = "schedule"
-        case .inbox: activeID = "inbox"
-        case .profile: activeID = "profile"
-        default: activeID = nil
-        }
+        // OFF: the same screen → tab mapping as always. ON: Map is a Home view, so it lights Home.
+        activeID = DockLayout.highlight(for: app.screen, simpleShell: simpleShell)
     }
 
     /// Touch x -> tab, from the bar's OWN live width (every item is an equal
@@ -270,9 +272,10 @@ struct BottomTabBar: View {
     /// past either end still resolve to that end's tab.
     private func hitTest(_ x: CGFloat, barWidth: CGFloat) -> String? {
         guard !items.isEmpty, barWidth > 0 else { return nil }
-        let slice = barWidth / CGFloat(items.count)
-        let i = min(items.count - 1, max(0, Int(x / slice)))
-        return items[i].id
+        let slice = barWidth / CGFloat(slotCount)
+        let i = min(slotCount - 1, max(0, Int(x / slice)))
+        // The Simple Shell create slot is not a tab: nil, so a scrub across the "+" never selects it.
+        return DockLayout.tab(atSlot: i, simpleShell: simpleShell)
     }
 
     // Continuous "index space" position for a raw touch x — 0 at Home's own
@@ -283,9 +286,9 @@ struct BottomTabBar: View {
     // last icon's own position.
     private func indexFloat(for x: CGFloat, barWidth: CGFloat) -> CGFloat? {
         guard !items.isEmpty, barWidth > 0 else { return nil }
-        let tabWidth = barWidth / CGFloat(items.count)
+        let tabWidth = barWidth / CGFloat(slotCount)
         let raw = x / tabWidth - 0.5
-        return min(CGFloat(items.count - 1), max(0, raw))
+        return min(CGFloat(slotCount - 1), max(0, raw))
     }
 
     /// Photos-style scrub (iOS 26): touching down lifts/enlarges the glass
@@ -305,7 +308,8 @@ struct BottomTabBar: View {
                     }
                 }
                 let id = hitTest(value.location.x, barWidth: barWidth)
-                if id != activeID { activeID = id }
+                // Over the Simple Shell "+" slot (nil) the last tab stays lit.
+                if let id, id != activeID { activeID = id }
                 dragIndexFloat = indexFloat(for: value.location.x, barWidth: barWidth)
                 if !reduceMotion {
                     // Water-droplet stretch: the faster the swipe, the longer
@@ -319,6 +323,8 @@ struct BottomTabBar: View {
                 let id = hitTest(value.location.x, barWidth: barWidth)
                 activeID = id
                 finishTouch()
+                // Released over the Simple Shell "+" slot: no tab change, the highlight goes back to the current one.
+                if id == nil { syncActiveToScreen() }
                 if let id, let item = items.first(where: { $0.id == id }) {
                     // No haptic on switching tabs (note 47).
                     // Note 53: a dock tap is a quick cross-fade (RootView reads this), not the push/pop slide that
@@ -379,7 +385,7 @@ struct BottomTabBar: View {
     // class the highlight itself was exposed to.
     private var activeIndex: Int? {
         guard let activeID else { return nil }
-        return items.firstIndex(where: { $0.id == activeID })
+        return slots.firstIndex(of: activeID)
     }
 
     // Continuous "index space" TARGET position for the single glass/
@@ -408,7 +414,7 @@ struct BottomTabBar: View {
     /// 1 when the glass pill is exactly over this item, fading to 0 one tab
     /// away.
     private func iconProximity(_ item: Item) -> CGFloat {
-        guard let i = items.firstIndex(where: { $0.id == item.id }) else { return 0 }
+        guard let i = slots.firstIndex(of: item.id) else { return 0 }
         let pill = renderIndexFloat ?? CGFloat(i)
         return max(0, 1 - abs(CGFloat(i) - pill))
     }
@@ -463,7 +469,7 @@ struct BottomTabBar: View {
             // grows past the bar's top/bottom while a finger is down, and the
             // icon over it swells with it.
             if let indexFloat = renderIndexFloat {
-                let count = max(items.count, 1)
+                let count = slotCount
                 let tabWidth = geo.size.width / CGFloat(count)
                 let clampedIndexFloat = min(CGFloat(count - 1), max(0, indexFloat))
                 let center = tabWidth * (clampedIndexFloat + 0.5)
@@ -534,8 +540,14 @@ struct BottomTabBar: View {
             }
 
             HStack(spacing: 0) {
-                ForEach(items) { item in
-                    tabItem(item)
+                // One equal slice per slot. OFF: the five tabs exactly as before. ON: the centre slot is empty here;
+                // the create button sits on top of it (overlay below), outside the scrub gesture.
+                ForEach(slots, id: \.self) { slot in
+                    if let item = items.first(where: { $0.id == slot }) {
+                        tabItem(item)
+                    } else {
+                        Color.clear.frame(minWidth: 44, maxWidth: .infinity, minHeight: barHeight).accessibilityHidden(true)
+                    }
                 }
             }
         }
@@ -567,6 +579,13 @@ struct BottomTabBar: View {
         }
         .overlay(Capsule().strokeBorder(app.palette.ink.opacity(0.06)))
         .shadow(color: .black.opacity(0.16), radius: 14, x: 0, y: 6)
+        // Simple Shell (note 66): the "+" inside the bar, in the centre slot. An overlay, so it is NOT inside the
+        // scrub gesture's view: a tap on it is a plain Button tap, and a scrub never selects it.
+        .overlay {
+            if simpleShell {
+                DockCreateButtonView(centred: true)
+            }
+        }
         // BUG (2026-10-06 fix pass) — the shrink-on-scroll `.scaleEffect`
         // used to live HERE, scoped to just this capsule's own body. Since
         // `DockRow` lays this out as one HStack sibling of
@@ -671,7 +690,8 @@ struct DockRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: BottomTabBar.dockGap) {
             BottomTabBar()
-            if app.organizerMode {
+            // Simple Shell puts the "+" inside the bar (centre slot, everyone); OFF keeps it beside the bar for hosts.
+            if app.organizerMode && !app.simpleShellEnabled {
                 DockCreateButtonView()
             }
         }

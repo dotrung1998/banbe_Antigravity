@@ -7,7 +7,9 @@ import useKeepFocusedVisible from './lib/useKeepFocusedVisible.js';
 import useSignInReveal from './lib/useSignInReveal.js';
 import OnboardingTour from './components/tour/OnboardingTour.jsx';
 import { CREATE_UNDO_MS } from './lib/createDraftUndo.js';
-import BottomTabBar, { showsBottomBar, DOCK_ORDER, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET, BAR_HEIGHT } from './screens/BottomTabBar.jsx';
+import { dockOrder } from './lib/dockLayout.js';
+import { flagOn } from './lib/featureFlags.js';
+import BottomTabBar, { showsBottomBar, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET, BAR_HEIGHT } from './screens/BottomTabBar.jsx';
 import { paper, ink, rule } from './theme.js';
 
 import Splash from './screens/Splash.jsx';
@@ -273,7 +275,7 @@ function Shell() {
     loadHomeLiveEvents, loadDiscoveryEvents, loadWeekendEvents, loadHomeStories, loadHomeSurveyDiscovery,
     loadNotifications, loadInboxThreads,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadMyOrgStats,
-    canHost,
+    canHost, resolvedTheme,
   } = useBanBe();
   const scrollRef = useRef(null);
   const scrollPositions = useRef({});
@@ -299,6 +301,8 @@ function Shell() {
   // read fresh values without a stale closure, without re-subscribing
   // every callback to `state` itself.
   const stateRef = useRef(state);
+  // Root swipe order (src/lib/dockLayout.js): Simple Shell drops Map from the dock; the centre "+" is never a stop.
+  const dockOrderNow = () => dockOrder(flagOn(stateRef.current.featureFlags, 'simple_shell'));
   stateRef.current = state;
   // iPhone fix pass (2026-09-27), Item 1 — the real tap-race root cause:
   // `endGesture`'s committed-swipe branch (below) used to unconditionally
@@ -417,8 +421,8 @@ function Shell() {
   // current screen (which uses `swipeX` directly), not an independent
   // transition.
   const neighborOffset = (screen) => {
-    const idx = DOCK_ORDER.indexOf(stateRef.current.screen);
-    const nIdx = DOCK_ORDER.indexOf(screen);
+    const idx = dockOrderNow().indexOf(stateRef.current.screen);
+    const nIdx = dockOrderNow().indexOf(screen);
     if (idx === -1 || nIdx === -1) return 0;
     const width = gestureRef.current.width || window.innerWidth;
     const sign = nIdx > idx ? 1 : -1;
@@ -426,7 +430,7 @@ function Shell() {
   };
 
   const gotoDockIndex = (idx) => {
-    const key = DOCK_ORDER[idx];
+    const key = dockOrderNow()[idx];
     ({ home: goHome, mapExplore: goMapExplore, schedule: goSchedule, inbox: goInbox, profile: goProfile })[key]?.();
   };
 
@@ -486,8 +490,8 @@ function Shell() {
     if (g.phase === 'horizontal') {
       e.preventDefault();
       setIsSwiping(true);
-      const idx = DOCK_ORDER.indexOf(stateRef.current.screen);
-      const canNext = idx !== -1 && idx < DOCK_ORDER.length - 1;
+      const idx = dockOrderNow().indexOf(stateRef.current.screen);
+      const canNext = idx !== -1 && idx < dockOrderNow().length - 1;
       const canPrev = idx > 0;
       let clamped = dx;
       if (dx < 0 && !canNext) clamped = dx * 0.25;
@@ -496,7 +500,7 @@ function Shell() {
       // Mount the real adjacent screen as soon as a direction is known —
       // its own existing loader (`.task`/mount effect) starts right away
       // instead of waiting for the gesture to commit.
-      const neighbor = clamped < 0 && canNext ? DOCK_ORDER[idx + 1] : clamped > 0 && canPrev ? DOCK_ORDER[idx - 1] : null;
+      const neighbor = clamped < 0 && canNext ? dockOrderNow()[idx + 1] : clamped > 0 && canPrev ? dockOrderNow()[idx - 1] : null;
       setSwipeNeighbor(neighbor);
     } else if (g.phase === 'pull') {
       e.preventDefault();
@@ -512,9 +516,9 @@ function Shell() {
     const dx = g.lastX - g.startX;
 
     if (g.phase === 'horizontal') {
-      const idx = DOCK_ORDER.indexOf(stateRef.current.screen);
+      const idx = dockOrderNow().indexOf(stateRef.current.screen);
       const width = g.width || window.innerWidth;
-      const commitNext = dx <= -SWIPE_COMMIT_PX && idx !== -1 && idx < DOCK_ORDER.length - 1;
+      const commitNext = dx <= -SWIPE_COMMIT_PX && idx !== -1 && idx < dockOrderNow().length - 1;
       const commitPrev = dx >= SWIPE_COMMIT_PX && idx > 0;
       setIsSwiping(false);
       if (commitNext || commitPrev) {
@@ -696,7 +700,7 @@ function Shell() {
   };
 
   return (
-    <div className="bb-stage" data-bb-theme={state.theme} style={{ position: 'fixed', inset: 0, display: 'flex', justifyContent: 'center', background: '#EFEBE0' }}>
+    <div className="bb-stage" data-bb-theme={resolvedTheme} style={{ position: 'fixed', inset: 0, display: 'flex', justifyContent: 'center', background: '#EFEBE0' }}>
      {/* On a desktop browser .bb-device/.bb-screen draw a phone around the app
          (index.css); anywhere else they are `display: contents` and change
          nothing. .bb-screen is also the containing block for every
@@ -815,7 +819,8 @@ function Shell() {
           ? T('Đang gửi sự kiện cho banbe duyệt…', 'Sending your event to banbe…')
           : T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
-      {showBar && <DockRow collapsed={barCollapsed} showCreate={state.organizerMode} />}
+      {/* Simple Shell (switch simple_shell): the "+" lives inside the bar (BottomTabBar), so no "+" beside it. */}
+      {showBar && <DockRow collapsed={barCollapsed} showCreate={state.organizerMode && !flagOn(state.featureFlags, 'simple_shell')} />}
       {/* Undo after leaving a new-event draft (BanBeContext createUndoOffer), above the dock when it shows. */}
       {state.createUndoOffer && state.screen !== 'create' && (
         <CreateUndoToast key={state.createUndoOffer.id} offer={state.createUndoOffer} aboveDock={showBar} />

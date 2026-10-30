@@ -78,6 +78,11 @@ struct AdminFeaturesView: View {
              hintVi: "Màn tạo sự kiện, trang sự kiện và Trang chủ thay đổi theo loại sự kiện. Hiện có Supper club: chế độ ăn, mang đồ uống, trang phục, bộ lọc riêng trên Trang chủ. Mặc định tắt.",
              hintEn: "The create form, the event page and Home adapt to the kind of event. Supper club first: dietary options, BYO, dress code, its own Home filters. Off by default.",
              onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off"),
+        // Migration 206, note 66.
+        Flag(key: "simple_shell", vi: "Bố cục gọn (Simple Shell)", en: "Simple Shell layout",
+             hintVi: "Trang chủ gọn: nút chuyển Đi chơi | Tổ chức luôn hiện, một khối chính ở trên cùng, bản đồ là một kiểu xem của Trang chủ. Thanh dưới có 5 ô với nút \"+\" ở giữa cho mọi người. Mặc định tắt.",
+             hintEn: "Simpler Home: an always-visible Going out | Hosting switch, one main block at the top, and the map as a Home view. The dock has 5 slots with a \"+\" in the centre for everyone. Off by default.",
+             onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off"),
         // TESTING-PHASE (note 54): remove this row with the wipe tool before public release.
         Flag(key: "admin_event_wipe", vi: "Xoá sự kiện thử nghiệm (giai đoạn thử)", en: "Test event wipe (testing phase)",
              hintVi: "Cho admin xoá vĩnh viễn bất kỳ sự kiện nào cùng mọi dữ liệu liên quan, không cần lý do, trong Quản lý sự kiện (chỉ iOS). Chỉ dùng cho dữ liệu thử nghiệm.",

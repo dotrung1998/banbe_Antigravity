@@ -48,7 +48,7 @@ test.describe('Organizer Team membership (Stage 1)', () => {
     await setupToHome(page);
     await page.getByTestId('tab-profile').click();
     await page.waitForSelector('[data-screen-label="Account"]');
-    await page.getByTestId('account-tab-host').click();
+    // Note 66: no Host tab; organizer mode on shows the organizer card directly.
     await page.getByTestId('org-profile-card').click();
     await expect(page.locator('[data-screen-label="Organizer dashboard"]')).toBeVisible({ timeout: 8000 });
 
@@ -111,7 +111,7 @@ test.describe('Organizer Team membership (Stage 1)', () => {
     await page.reload();
     await page.getByTestId('tab-profile').click();
     await page.waitForSelector('[data-screen-label="Account"]');
-    await page.getByTestId('account-tab-host').click();
+    // Note 66: no Host tab; organizer mode on shows the organizer card directly.
     await page.getByTestId('org-profile-card').click();
     await expect(page.locator('[data-screen-label="Organizer dashboard"]')).toBeVisible({ timeout: 8000 });
     await expect(page.getByTestId(`dashboard-team-member-${membershipRow.id}`)).toContainText('Đã tham gia');

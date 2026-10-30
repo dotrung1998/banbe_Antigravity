@@ -6,7 +6,7 @@ test.describe('Help & Legal', () => {
   test.beforeEach(async ({ page }) => {
     await setupToHome(page);
     await page.getByTestId('tab-profile').click();
-    await page.getByTestId('account-help-legal').click();
+    await page.getByTestId('account-tile-help').click();
   });
 
   test('lists Terms, guides and Q&A (no admin guide for non-admins)', async ({ page }) => {

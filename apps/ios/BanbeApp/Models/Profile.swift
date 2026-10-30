@@ -9,7 +9,7 @@ struct Profile: Codable, Identifiable, Hashable {
     var phoneVerified: Bool
     var avatarURL: String?
     var locale: String       // "vi" | "en"
-    var theme: String?       // "light" | "dark" (migration 018)
+    var theme: String?       // "light" | "dark" | "system" (migrations 018, 205)
     /// False until this account has made an explicit language/theme choice —
     /// distinguishes "never chose" from "chose the defaults", so a fresh
     /// sign-in doesn't overwrite a real preference with a default.

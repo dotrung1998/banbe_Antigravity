@@ -9,9 +9,7 @@ enum CreateProgress {
     static let stepCount = 5
 
     /// Every field that can be required, in the order the steps show them (type facts sit under Included).
-    static let fieldOrder = ["hostName", "name", "description", "categories", "included",
-                             "lineup", "artists", "brands", "alcohol", "min_age",
-                             "location", "date", "price", "seats", "photos"]
+    static let fieldOrder = CreateFieldGuide.fieldOrder
     /// What an event of no known type needs (the generic event type, unchanged).
     static let defaultRequired = ["hostName", "name", "description", "categories", "included", "location", "date", "price", "seats", "photos"]
 
@@ -45,6 +43,14 @@ enum CreateProgress {
     }
 
     /// The short label for a missing field, as shown after "Still needed: ".
+    /// Required fields that were missing before and are complete now (note 66): what earns the small ✓ and the
+    /// VoiceOver "… done" line. A field that was never missing is not "newly" complete. Web: `newlyCompleted`.
+    static func newlyCompleted(previous: [String]?, current: [String]) -> [String] {
+        guard let previous else { return [] }
+        let now = Set(current)
+        return fieldOrder.filter { previous.contains($0) && !now.contains($0) }
+    }
+
     static func label(_ id: String, minPhotos: Int, T: (String, String) -> String) -> String {
         switch id {
         case "hostName": return T("tên host", "host name")

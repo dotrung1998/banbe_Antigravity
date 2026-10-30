@@ -67,11 +67,35 @@ export const WEB_TARGETS = {
   'tour.dock.inbox': '[data-testid="tab-inbox"]',
   'tour.account.organizerMode': '[data-testid="organizer-mode-toggle"]',
   'tour.dock.create': '[data-testid="dock-create-button"]',
+  // Simple Shell (switch simple_shell, note 66): Map is a Home view and the mode switch sits in Home's header.
+  'tour.home.mapView': '[data-testid="home-layout-map"]',
+  'tour.home.modeSwitch': '[data-testid="home-mode-switch"]',
+};
+
+// Simple Shell retargets (same ids, same order, still 8 steps): the Map step points at Home's map view toggle, the
+// organizer-mode step at Home's "Going out | Hosting" switch, and the "+" step is for everyone (the "+" always shows).
+const SIMPLE_SHELL_OVERRIDES = {
+  'dock.map': {
+    target: 'tour.home.mapView', screen: 'home', placement: 'above',
+    vi: ['Bản đồ', 'Xem các sự kiện này trên bản đồ, ngay từ Trang chính.'],
+    en: ['Map', 'See these events on a map, right from Home.'],
+  },
+  'account.organizerMode': {
+    target: 'tour.home.modeSwitch', screen: 'home', placement: 'below',
+    vi: ['Muốn tổ chức?', 'Chạm Tổ chức để tạo sự kiện của riêng bạn. Chuyển lại Đi chơi lúc nào cũng được.'],
+    en: ['Want to host?', 'Tap Hosting to create your own events. Switch back to Going out any time.'],
+  },
+  'dock.create': {
+    requires: undefined,
+    vi: ['Nút +', 'Thêm kế hoạch, mời bạn bè hoặc tạo sự kiện khi bạn đang tổ chức.'],
+    en: ['The + button', 'Add plans, invite friends, or create an event while you are hosting.'],
+  },
 };
 
 /** The steps this account can see, in order. */
 export function eligibleSteps(ctx) {
-  return TOUR_STEPS.filter(st => !st.requires || !!ctx?.[st.requires]);
+  const steps = ctx?.simpleShell ? TOUR_STEPS.map(st => (SIMPLE_SHELL_OVERRIDES[st.id] ? { ...st, ...SIMPLE_SHELL_OVERRIDES[st.id] } : st)) : TOUR_STEPS;
+  return steps.filter(st => !st.requires || !!ctx?.[st.requires]);
 }
 
 export const tourDoneKey = uid => `banbe.tour.v3.done.${uid}`;

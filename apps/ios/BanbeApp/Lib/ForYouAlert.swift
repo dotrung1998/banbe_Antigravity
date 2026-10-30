@@ -211,7 +211,7 @@ struct ForYouAttentionEffect: ViewModifier {
                     let alpha = t < total ? 0.6 * (1 - cycle) : 0
                     // Outer-only shadow ring: stroke centred on the shape inflated by spread/2.
                     shape(inflatedBy: spread / 2)
-                        .stroke(Color(red: 224 / 255, green: 165 / 255, blue: 38 / 255).opacity(alpha), lineWidth: max(spread, 0.001))
+                        .stroke(BanbeTheme.attn.opacity(alpha), lineWidth: max(spread, 0.001))
                         .padding(-spread / 2)
                         .allowsHitTesting(false)
                 }
@@ -290,7 +290,7 @@ struct FieldAttentionHalo: ViewModifier {
         content.overlay {
             if active {
                 RoundedRectangle(cornerRadius: cornerRadius + 8, style: .continuous)
-                    .stroke(Color(red: 224 / 255, green: 165 / 255, blue: 38 / 255), lineWidth: 2)
+                    .stroke(BanbeTheme.attn, lineWidth: 2)
                     .modifier(ForYouAttentionEffect(animating: true, reduceMotion: reduceMotion, token: token, cornerRadius: cornerRadius + 8))
                     .padding(-8)
                     .allowsHitTesting(false)

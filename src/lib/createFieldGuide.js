@@ -15,6 +15,12 @@ export const CREATE_FIELD_STEP = {
   photos: 4,
 };
 
+/** Every field that can be required, in the order the steps show them (type facts sit under Included).
+ *  The single order behind firstMissingField below and createProgress.js `FIELD_ORDER`. */
+export const CREATE_FIELD_ORDER = ['hostName', 'name', 'description', 'categories', 'included',
+  'lineup', 'artists', 'brands', 'alcohol', 'min_age',
+  'location', 'date', 'price', 'seats', 'photos'];
+
 /** Fields that take typing, so a jump there also focuses them and opens the keyboard. */
 export const CREATE_TEXT_FIELDS = new Set(['hostName', 'name', 'description', 'intro', 'greeting', 'keywords', 'location', 'price']);
 
@@ -31,6 +37,6 @@ export function isTextField(field) {
  * `missing` holds one boolean per id (true = still missing).
  */
 export function firstMissingField(missing) {
-  const order = ['hostName', 'name', 'description', 'categories', 'included', 'location', 'date', 'seats', 'photos'];
-  return order.find(id => !!missing?.[id]) || null;
+  // Same order as the progress ring (was a separate list that left out price and the type facts).
+  return CREATE_FIELD_ORDER.find(id => !!missing?.[id]) || null;
 }

@@ -30,7 +30,7 @@ test.describe('Account KPI reports', () => {
     if (data?.auth_user_id) await admin.from('profiles').update({ role: 'participant' }).eq('id', data.auth_user_id);
   });
 
-  test('personal reports open from Cá nhân, details sheet, CSV/JSON/PDF export real files', async ({ page }) => {
+  test('personal reports open from Account > More (goer mode), details sheet, CSV/JSON/PDF export real files', async ({ page }) => {
     await setupToHome(page);
     await page.getByTestId('tab-profile').click();
     await page.waitForSelector('[data-screen-label="Account"]');
@@ -84,13 +84,12 @@ test.describe('Account KPI reports', () => {
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 5000 });
   });
 
-  test('host reports open from Tổ chức with real org-scoped numbers', async ({ page }) => {
+  test('host reports open from the host Reports tile with real org-scoped numbers', async ({ page }) => {
     await setupToHome(page);
     await page.getByTestId('tab-profile').click();
     await page.waitForSelector('[data-screen-label="Account"]');
-    await page.getByTestId('account-tab-host').click();
-
-    await page.getByTestId('account-reports-host').click();
+    // Note 66: organizer mode on = host content; the old account-reports-host row is the Reports tile.
+    await page.getByTestId('account-tile-reports').click();
     await expect(page.locator('[data-screen-label="Reports"]')).toBeVisible({ timeout: 8000 });
     await expect(page.getByTestId('kpi-card-value-published_events')).toBeVisible({ timeout: 8000 });
   });
@@ -99,7 +98,7 @@ test.describe('Account KPI reports', () => {
     await setupToHome(page);
     await page.getByTestId('tab-profile').click();
     await page.waitForSelector('[data-screen-label="Account"]');
-    await expect(page.getByTestId('account-tab-admin')).toHaveCount(0);
+    await expect(page.getByTestId('account-admin-tools')).toHaveCount(0);
     await expect(page.getByTestId('account-reports-admin')).toHaveCount(0);
   });
 });

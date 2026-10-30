@@ -25,6 +25,17 @@ struct Palette {
     let clayBg: Color
     /// Wordmark tint — ink on light, bright amber on dark.
     let logo: Color
+    /// Simple Shell surfaces (note 66): depth comes from three surface steps, not borders. surface1 = cards and
+    /// rows, surface2 = fields, chips and sheets, surface3 = pressed states and popovers. Mirrors web
+    /// `--bb-surface-1/2/3` (index.css, theme.js `surface1/2/3`) value-for-value in both themes.
+    let surface1: Color
+    let surface2: Color
+    let surface3: Color
+    /// Secondary / tertiary text (web `--bb-fg-2` / `--bb-fg-3`); ink3 stays >= 4.5:1 on every surface.
+    let ink2: Color
+    let ink3: Color
+    /// Hairline between rows inside one group (web `--bb-divider`). `rule` stays for input and outline edges.
+    let divider: Color
 
     static let light = Palette(
         paper: Color(hex: 0xF7F4EC),
@@ -35,18 +46,32 @@ struct Palette {
         honeyBg: Color(hex: 0xF0E2BE),
         clay: Color(hex: 0x9C5B3B),
         clayBg: Color(hex: 0xEFE0D2),
-        logo: Color(hex: 0x1B1916)
+        logo: Color(hex: 0x1B1916),
+        surface1: Color(hex: 0xFBF8F1),
+        surface2: Color(hex: 0xEEE8DA),
+        surface3: Color(hex: 0xE6DFCF),
+        ink2: Color(hex: 0x1B1916).opacity(0.72),
+        ink3: Color(hex: 0x1B1916).opacity(0.64),
+        divider: Color(hex: 0x1B1916).opacity(0.10)
     )
+    /// Near-black warm base; depth from the lighter surface steps (tonal elevation), not borders or shadows.
     static let dark = Palette(
-        paper: Color(hex: 0x14120E),
+        paper: Color(hex: 0x0F0E0B),
         ink: Color(hex: 0xF2EDE1),
-        rule: Color(hex: 0xF2EDE1).opacity(0.28),
-        field: Color(hex: 0x3A352B),
+        rule: Color(hex: 0xF2EDE1).opacity(0.18),
+        // Fields sit on surface2 (was 0x3A352B, where alert text was only 4.03:1).
+        field: Color(hex: 0x24211C),
         honey: Color(hex: 0xF2C46D),
         honeyBg: Color(hex: 0x3D3016),
         clay: Color(hex: 0xD8926C),
         clayBg: Color(hex: 0x3B2A20),
-        logo: Color(hex: 0xF6C453)
+        logo: Color(hex: 0xF6C453),
+        surface1: Color(hex: 0x1A1815),
+        surface2: Color(hex: 0x24211C),
+        surface3: Color(hex: 0x2E2A24),
+        ink2: Color(hex: 0xF2EDE1).opacity(0.72),
+        ink3: Color(hex: 0xF2EDE1).opacity(0.56),
+        divider: Color(hex: 0xF2EDE1).opacity(0.10)
     )
 }
 
@@ -63,8 +88,11 @@ enum BanbeTheme {
     })
     /// Label colour for text sitting ON an alert-filled surface.
     static let onAlert = Color(UIColor { trait in
-        trait.userInterfaceStyle == .dark ? UIColor(red: 0x14 / 255, green: 0x12 / 255, blue: 0x0E / 255, alpha: 1) : .white
+        trait.userInterfaceStyle == .dark ? UIColor(red: 0x0F / 255, green: 0x0E / 255, blue: 0x0B / 255, alpha: 1) : .white
     })
+
+    /// Guided-focus halo gold (web `--bb-attn`), decoration only, never text. Was a hard-coded literal.
+    static let attn = Color(hex: 0xE0A526)
 
     /// On-photo state chips, the only coloured surfaces in the design
     /// (CHIP_COLORS in src/theme.js).
@@ -121,5 +149,5 @@ extension Color {
 }
 
 extension AppState {
-    var palette: Palette { theme == "dark" ? .dark : .light }
+    var palette: Palette { isDark ? .dark : .light }
 }

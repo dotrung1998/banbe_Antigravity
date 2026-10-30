@@ -42,6 +42,9 @@ struct PreferencesView: View {
                 }
 
                 section(app.T("Hiển thị", "Appearance")) {
+                    choice(title: app.T("Theo thiết bị", "System"), subtitle: app.T("Tự đổi sáng/tối theo máy của bạn", "Follows your device"),
+                           active: app.theme == "system") { app.pickTheme("system") }
+                        .accessibilityIdentifier("pref.theme.system")
                     choice(title: app.T("Sáng", "Light"), subtitle: app.T("Nền giấy ấm", "Warm paper"),
                            active: app.theme == "light") { app.pickTheme("light") }
                         .accessibilityIdentifier("pref.theme.light")

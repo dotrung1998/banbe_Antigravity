@@ -30,3 +30,16 @@ test('eligibility drops host-only steps for guests of the dock "+"', () => {
 test('completion marker is per account', () => {
   assert.equal(tourDoneKey('abc'), 'banbe.tour.v3.done.abc');
 });
+
+test('simple_shell retargets Map and organizer mode to Home, keeps 8 steps, "+" for everyone', () => {
+  const on = eligibleSteps({ organizerMode: false, simpleShell: true });
+  assert.equal(on.length, TOUR_STEPS.length);
+  assert.deepEqual(on.map(s => s.id), TOUR_STEPS.map(s => s.id));
+  const by = Object.fromEntries(on.map(s => [s.id, s]));
+  assert.equal(by['dock.map'].target, 'tour.home.mapView');
+  assert.equal(by['account.organizerMode'].target, 'tour.home.modeSwitch');
+  assert.equal(by['account.organizerMode'].screen, 'home');
+  for (const s of on) assert.ok(WEB_TARGETS[s.target], s.target);
+  // Off: unchanged.
+  assert.deepEqual(eligibleSteps({ organizerMode: true, simpleShell: false }), TOUR_STEPS);
+});

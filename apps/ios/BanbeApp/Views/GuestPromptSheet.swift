@@ -15,6 +15,9 @@ struct GuestPromptSheet: View {
         case .reserve: return "ticket.fill"
         case .message: return "bubble.left.and.bubble.right.fill"
         case .like: return "hand.thumbsup.fill"
+        case .host: return "sparkles"
+        case .schedule: return "calendar.badge.plus"
+        case .invite: return "person.2.fill"
         }
     }
 

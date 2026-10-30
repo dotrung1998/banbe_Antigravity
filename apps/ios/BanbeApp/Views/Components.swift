@@ -461,6 +461,7 @@ struct FieldChrome: ViewModifier {
     /// false = no border at rest (the flat `field`-filled style); the focus/state border still shows.
     var bordered = true
     @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var tint: Color? {
         switch state {
@@ -487,8 +488,8 @@ struct FieldChrome: ViewModifier {
                         .padding(-3)
                 }
             }
-            .animation(.easeOut(duration: 0.15), value: focused)
-            .animation(.easeOut(duration: 0.15), value: state)
+            .animation(Motion.animation(.easeOut(duration: 0.15), reduce: reduceMotion), value: focused)
+            .animation(Motion.animation(.easeOut(duration: 0.15), reduce: reduceMotion), value: state)
     }
 }
 
@@ -544,6 +545,8 @@ struct BanbeField: View {
     /// Note 48 form style: an SF Symbol before an uppercase label, and a
     /// larger, bordered input (used by Create event). nil = original look.
     var icon: String? = nil
+    /// Create-event field id for the ✓ in its label (note 66).
+    var doneField: String? = nil
     /// Note 53: error / warning state (border + message under the field).
     var state: FieldState = .normal
     /// Note 53: lets a screen drive focus (Create event's "take me to this field"). Without it the field
@@ -584,7 +587,7 @@ struct BanbeField: View {
 
     private func iconStyle(_ icon: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let label { FormFieldLabel(icon: icon, text: label, required: required) }
+            if let label { FormFieldLabel(icon: icon, text: label, required: required, field: doneField) }
             input
             .font(.system(size: 16))
             .keyboardType(keyboard)
@@ -709,13 +712,85 @@ struct DockHeaderTitle: View {
 }
 
 /// Icon + uppercase label above a form field (note 48 form style).
+/// Note 66: which required create-event fields are complete, and which just became so. Set once at the root of
+/// CreateEventView from its single progress result; read by `FormFieldLabel(field:)`.
+struct CreateDoneMarks: Equatable {
+    var done: Set<String> = []
+    var fresh: Set<String> = []
+}
+
+private struct CreateDoneMarksKey: EnvironmentKey {
+    static let defaultValue = CreateDoneMarks()
+}
+
+extension EnvironmentValues {
+    var createDoneMarks: CreateDoneMarks {
+        get { self[CreateDoneMarksKey.self] }
+        set { self[CreateDoneMarksKey.self] = newValue }
+    }
+}
+
+/// The small ✓ after a complete required field's label: ink disc, paper check. `pop` draws it once
+/// (scale 0.6 → 1.08 → 1 and the check stroke drawing in); Reduce Motion = a plain fade. Web: `DoneMark`.
+struct DoneMark: View {
+    let field: String
+    var pop = false
+    @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var drawn: CGFloat = 1
+    @State private var scale: CGFloat = 1
+    @State private var shown: Double = 1
+
+    var body: some View {
+        ZStack {
+            Circle().fill(app.palette.ink)
+            CheckShape().trim(from: 0, to: drawn)
+                .stroke(app.palette.paper, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                .frame(width: 9, height: 9)
+        }
+        .frame(width: 16, height: 16)
+        .scaleEffect(scale)
+        .opacity(shown)
+        .accessibilityHidden(true)
+        .accessibilityIdentifier("create.done.\(field)")
+        .onAppear { if pop { play() } }
+        .onChange(of: pop) { _, now in if now { play() } }
+    }
+
+    private func play() {
+        if reduceMotion {
+            shown = 0
+            withAnimation(.easeOut(duration: 0.15)) { shown = 1 }
+            return
+        }
+        drawn = 0; scale = 0.6; shown = 0
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.55)) { scale = 1; shown = 1 }
+        withAnimation(.easeOut(duration: 0.24).delay(0.08)) { drawn = 1 }
+    }
+
+    private struct CheckShape: Shape {
+        func path(in rect: CGRect) -> Path {
+            var p = Path()
+            p.move(to: CGPoint(x: rect.minX + rect.width * 0.08, y: rect.minY + rect.height * 0.53))
+            p.addLine(to: CGPoint(x: rect.minX + rect.width * 0.38, y: rect.minY + rect.height * 0.82))
+            p.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.04, y: rect.minY + rect.height * 0.2))
+            return p
+        }
+    }
+}
+
 struct FormFieldLabel: View {
     let icon: String
     let text: String
     var required = false
     var trailing: String? = nil
+    /// Create-event field id (note 66): shows the ✓ once this required field is complete.
+    var field: String? = nil
 
     @EnvironmentObject private var app: AppState
+    @Environment(\.createDoneMarks) private var marks
+
+    private var isDone: Bool { field.map { marks.done.contains($0) } ?? false }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -726,7 +801,9 @@ struct FormFieldLabel: View {
             Text(text.uppercased())
                 .font(.system(size: 12, weight: .semibold))
                 .kerning(0.6)
-            if required {
+            if isDone, let field {
+                DoneMark(field: field, pop: marks.fresh.contains(field))
+            } else if required {
                 Text("*").font(.system(size: 12, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
                     .accessibilityLabel(app.T("bắt buộc", "required"))
             }

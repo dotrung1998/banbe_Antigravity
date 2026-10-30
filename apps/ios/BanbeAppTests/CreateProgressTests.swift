@@ -34,4 +34,16 @@ final class CreateProgressTests: XCTestCase {
             XCTAssertNotEqual(CreateProgress.label(id, minPhotos: 4) { vi, _ in vi }, id, id)
         }
     }
+
+    /// Note 66: the shared "newly completed" vectors (web: tests/unit/createProgress.test.mjs).
+    func testNewlyCompletedSharedVectors() throws {
+        var url = URL(fileURLWithPath: #filePath)
+        for _ in 0..<4 { url.deleteLastPathComponent() }
+        let data = try Data(contentsOf: url.appendingPathComponent("tests/fixtures/create-progress.json"))
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        for c in try XCTUnwrap(root["newlyCompleted"] as? [[String: Any]]) {
+            XCTAssertEqual(CreateProgress.newlyCompleted(previous: c["prev"] as? [String], current: c["next"] as? [String] ?? []),
+                           c["expect"] as? [String], "\(c["case"] ?? "")")
+        }
+    }
 }

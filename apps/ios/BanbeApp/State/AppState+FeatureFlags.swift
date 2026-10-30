@@ -30,6 +30,12 @@ extension AppState {
     /// Off unless an admin turns it on.
     var eventTypesEnabled: Bool { FeatureFlags.isOn(featureFlags, "event_type_profiles") }
 
+    /// Simple Shell (note 66, migration 206): the new Home (mode switch, one hero, Map as a Home view) and the dock
+    /// with the centre "+". Off unless an admin turns it on; off renders today's Home and dock unchanged.
+    var simpleShellEnabled: Bool { FeatureFlags.isOn(featureFlags, "simple_shell") }
+    /// The dock's tab order for the active layout (RootView's root tab swipe walks it).
+    var dockOrder: [Screen] { DockLayout.dockOrder(simpleShell: simpleShellEnabled) }
+
     /// Called when the flags changed: turning Rewards off clears its numbers; turning it on loads them. Push turning
     /// on re-registers a device iOS already allows (never prompts).
     func featureFlagsDidChange(from old: [String: Bool]) {

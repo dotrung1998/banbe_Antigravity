@@ -167,7 +167,7 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
       // start from an empty `attending` on first login either way. The
       // real regression only shows up later, when this same already-
       // populated state has to correctly DROP the booking after resolution.
-      await expect(participantPage.locator('[data-testid="account-going-card"]'))
+      await expect(participantPage.locator('[data-testid="account-tile-tickets"]'))
         .toHaveAttribute('data-attending-raw-count', '1', { timeout: 5000 });
     }
 
@@ -176,14 +176,9 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
     const organizerPage = await organizerContext.newPage();
     await loginWithPassword(organizerPage, organizerUser.email, organizerUser.password);
     await organizerPage.getByTestId('tab-profile').click();
-    // Account regression fix pass (2026-09-27), Item 1 — host-management
-    // rows (like verifications) moved back to the Tổ chức tab, reachable
-    // only while organizerMode is on (true here — organizerUser has
-    // role='organizer').
-    await organizerPage.locator('[data-testid="account-tab-host"]').click();
-    // Account IA pass (2026-09-27) — verifications now behind the
-    // "hostOps" group card, not directly on the Tổ chức tab.
-    await organizerPage.locator('[data-testid="account-group-hostOps"]').click();
+    // Note 66: no tabs; organizer mode on (organizerUser has role='organizer') shows the host tiles, and
+    // verifications sit behind the "Get paid" tile (the hostOps group).
+    await organizerPage.locator('[data-testid="account-tile-getpaid"]').click();
     await organizerPage.locator('[data-testid="host-verifications"]').click();
     await expect(organizerPage.locator('[data-testid="verifications-title"]')).toBeVisible({ timeout: 5000 });
 
@@ -240,9 +235,8 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
     const adminPage = await adminContext.newPage();
     await loginWithPassword(adminPage, adminAcct.email, adminAcct.password);
     await adminPage.getByTestId('tab-profile').click();
-    // Stage 2 — Admin is its own top-level tab now, independent of
-    // organizerMode.
-    await adminPage.locator('[data-testid="account-tab-admin"]').click();
+    // Note 66: Admin is one "Admin tools" row, independent of organizerMode.
+    await adminPage.locator('[data-testid="account-admin-tools"]').click();
     // Account IA pass (2026-09-27) — disputes now behind the
     // "adminReview" group card, not directly on the Admin tab.
     await adminPage.locator('[data-testid="account-group-adminReview"]').click();
@@ -302,7 +296,10 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
         res => res.url().includes('/rest/v1/bookings') && res.request().method() === 'GET',
         { timeout: 8000 }
       );
-      await participantPage.locator('[data-testid="account-going-card"]').click();
+      // Note 66: the Going list (goGoingList, which refetches) is reached from Account search now.
+      await participantPage.locator('[data-testid="account-search-toggle"]').click();
+      await participantPage.locator('[data-testid="account-search-input"]').fill('going');
+      await participantPage.locator('[data-testid="account-search-going"]').click();
       const res = await bookingsResponse;
       const rows = await res.json();
       const stillListedInQuery = (rows || []).some(r => r.event_id === eventId || r.id === bookingId);
@@ -312,7 +309,9 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
       // count attribute lives on — go back to Account to read it post-refetch.
       await participantPage.locator('[data-testid="event-list-back"]').click();
       await expect(participantPage.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 5000 });
-      const goingCard = participantPage.locator('[data-testid="account-going-card"]');
+      // Back from a search result restores the search; close it so the tiles show again.
+      await participantPage.locator('[data-testid="account-search-toggle"]').click();
+      const goingCard = participantPage.locator('[data-testid="account-tile-tickets"]');
       await expect(goingCard).toHaveAttribute('data-attending-raw-count', '0', { timeout: 8000 });
 
       results.goingListExcludesResolved = true;

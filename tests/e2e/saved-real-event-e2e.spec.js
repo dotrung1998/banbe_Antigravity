@@ -112,7 +112,7 @@ test.describe('Real (non-catalogue) event — save/weekend E2E (retention roadma
     await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 8000 });
     await page.getByText('Tài khoản').first().click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 5000 });
-    await page.getByTestId('account-saved-card').click();
+    await page.getByTestId('account-tile-saved').click();
     const savedScreen = page.locator('[data-screen-label="Saved"]');
     await expect(savedScreen).toBeVisible({ timeout: 5000 });
     await expect(savedScreen.getByText(EVENT_NAME)).toBeVisible({ timeout: 5000 });

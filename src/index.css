@@ -53,35 +53,59 @@
   --bb-clay: #9C5B3B;
   --bb-clay-rgb: 156,91,59;
   --bb-clay-bg: #EFE0D2;
+  /* Simple Shell surfaces (note 66): depth comes from three surface steps, not borders.
+     surface-1 = cards/rows, surface-2 = fields/chips/sheets, surface-3 = pressed/popovers.
+     fg-2/fg-3 = secondary/tertiary text (fg-3 stays >= 4.5:1 on every surface).
+     Mirrored value-for-value by Palette.surface1/2/3, .ink2/.ink3, .divider in BanbeTheme.swift. */
+  --bb-surface-1: #FBF8F1;
+  --bb-surface-2: #EEE8DA;
+  --bb-surface-3: #E6DFCF;
+  --bb-fg-2: rgba(27,25,22,0.72);
+  --bb-fg-3: rgba(27,25,22,0.64);
+  --bb-divider: rgba(27,25,22,0.10);
+  /* Guided-focus halo gold (was a hard-coded #E0A526 in CSS and Swift). Decoration only, never text. */
+  --bb-attn: #E0A526;
+  --bb-attn-rgb: 224,165,38;
 }
 
 [data-bb-theme="dark"] {
-  --bb-bg: #14120E;
+  /* Near-black warm base; depth comes from the lighter surface steps below
+     (Material/Base-style tonal elevation), not from borders or shadows. */
+  --bb-bg: #0F0E0B;
   --bb-fg: #F2EDE1;
   --bb-fg-rgb: 242,237,225;
-  --bb-bg-rgb: 20,18,14;
+  --bb-bg-rgb: 15,14,11;
   /* Brighter coral so error/destructive text and chips stay legible on the
-     dark paper (the light #9A3E2D vanishes there). */
+     dark paper (the light #9A3E2D vanishes there). 5.3:1 on surface-2. */
   --bb-alert: #E8715B;
   --bb-alert-rgb: 232,113,91;
-  --bb-on-alert: #14120E;
+  --bb-on-alert: #0F0E0B;
   --bb-ink-deep: #F2EDE1;
-  --bb-rule: rgba(242,237,225,0.28);
-  --bb-field: #3A352B;
-  --bb-card: rgba(74,68,57,0.70);
-  --bb-card2: rgba(86,79,66,0.40);
-  --bb-button: rgba(242,237,225,0.92);
-  --bb-button-text: #14120E;
-  --bb-white: rgba(242,237,225,0.19);
-  --bb-shadow: rgba(0,0,0,0.28);
+  /* Input/outline edges. Group dividers use the quieter --bb-divider. */
+  --bb-rule: rgba(242,237,225,0.18);
+  --bb-divider: rgba(242,237,225,0.10);
+  --bb-surface-1: #1A1815;
+  --bb-surface-2: #24211C;
+  --bb-surface-3: #2E2A24;
+  --bb-fg-2: rgba(242,237,225,0.72);
+  --bb-fg-3: rgba(242,237,225,0.56);
+  /* Fields sit on surface-2 (was #3A352B, where alert text was only 4.03:1). */
+  --bb-field: #24211C;
+  /* Glass recipes resolve to solid surfaces in dark: no blur under text. */
+  --bb-card: #24211C;
+  --bb-card2: #1A1815;
+  --bb-button: #F2EDE1;
+  --bb-button-text: #0F0E0B;
+  --bb-white: rgba(242,237,225,0.04);
+  /* Turns off the white sheen inside fieldGlass/cardGlass (theme.js): dark cards are flat surfaces. */
+  --bb-sheen: 0;
+  --bb-shadow: rgba(0,0,0,0);
   --bb-pill-hi: 0.08;
   --bb-pill-edge: rgba(242,237,225,0.22);
   --bb-pill-shadow: rgba(0,0,0,0.5);
   --bb-pill-inset: rgba(242,237,225,0.10);
   /* Honey's dark pair — same hue as the light values, lifted for contrast on
-     the dark paper (mirrors Palette.dark.honey / .honeyBg in BanbeTheme.swift).
-     Unlike --bb-alert this one DOES need a per-theme value, since a fixed
-     dark honey would disappear into --bb-bg. */
+     the dark paper (mirrors Palette.dark.honey / .honeyBg in BanbeTheme.swift). */
   --bb-honey: #F2C46D;
   --bb-honey-bg: #3D3016;
   /* Clay's dark pair: same hue, lifted so icons and outlines stay legible on the dark paper. */
@@ -139,7 +163,7 @@ input::placeholder, textarea::placeholder {
 }
 :where(input, textarea, select)[data-state="warning"]:not([data-bare]), .bb-focus-ring[data-state="warning"] {
   border-color: var(--bb-honey) !important;
-  box-shadow: inset 0 0 0 1px var(--bb-honey), 0 0 0 4px rgba(224, 165, 38, 0.18) !important;
+  box-shadow: inset 0 0 0 1px var(--bb-honey), 0 0 0 4px rgba(var(--bb-attn-rgb), 0.18) !important;
 }
 @media (prefers-reduced-motion: reduce) {
   :is(input, textarea, select), .bb-focus-ring { transition: none !important; }
@@ -153,12 +177,12 @@ input::placeholder, textarea::placeholder {
 /* "Look here" on a form field (note 53), the For You chip's gold halo + sheen (ForYouChip.jsx) reshaped for a
    rounded field: drawn by pseudo-elements around the field's wrapper, so nothing in the layout moves. The class is
    put on by CreateEvent for ~4s after a recipe Fix / Review-with-gaps jump. Reduced motion: a still gold border. */
-@keyframes bb-attn-halo { 0% { box-shadow: 0 0 0 0 rgba(224,165,38,0.6); } 100% { box-shadow: 0 0 0 12px rgba(224,165,38,0); } }
+@keyframes bb-attn-halo { 0% { box-shadow: 0 0 0 0 rgba(var(--bb-attn-rgb),0.6); } 100% { box-shadow: 0 0 0 12px rgba(var(--bb-attn-rgb),0); } }
 @keyframes bb-attn-sweep { 0% { background-position: 130% 0; opacity: 1; } 85% { opacity: 1; } 100% { background-position: -40% 0; opacity: 0; } }
 @keyframes bb-attn-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
 .bb-attn { position: relative; }
 .bb-attn::before, .bb-attn::after { content: ''; position: absolute; inset: -8px; border-radius: 18px; pointer-events: none; }
-.bb-attn::before { border: 2px solid #E0A526; animation: bb-attn-halo 1.2s ease-out 2, bb-attn-fade 4s ease forwards; }
+.bb-attn::before { border: 2px solid var(--bb-attn); animation: bb-attn-halo 1.2s ease-out 2, bb-attn-fade 4s ease forwards; }
 .bb-attn::after {
   background: linear-gradient(100deg, transparent 35%, rgba(255,226,140,0.55) 50%, transparent 65%) no-repeat;
   background-size: 250% 100%; animation: bb-attn-sweep 2.4s ease-in-out 1 forwards;
@@ -177,6 +201,24 @@ input::placeholder, textarea::placeholder {
 @keyframes bb-coach-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .bb-coach { animation: bb-coach-in .25s ease-out both; }
 @media (prefers-reduced-motion: reduce) { .bb-coach { animation: none; } }
+/* Create event (note 66): the small ✓ after a complete required field's label. Ink disc, paper check. When a field
+   turns complete the disc pops (0.6 → 1.08 → 1) and the check draws in; Reduce Motion = a plain fade. */
+.bb-done-mark { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 999px;
+  background: var(--bb-fg); color: var(--bb-bg); flex: none; }
+.bb-done-pop { animation: bb-done-pop .32s cubic-bezier(.22,.61,.36,1) both; }
+.bb-done-pop path { stroke-dasharray: 12; stroke-dashoffset: 12; animation: bb-done-draw .24s ease-out .08s forwards; }
+@keyframes bb-done-pop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes bb-done-draw { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .bb-done-pop { animation: bbFadeOnly .15s ease both; }
+  .bb-done-pop path { animation: none; stroke-dashoffset: 0; }
+}
+/* Step circle that just turned done (FormControls.jsx StepProgress): one small pop. None under Reduce Motion. */
+.bb-step-pop { animation: bb-step-pop .36s cubic-bezier(.22,.61,.36,1); }
+@keyframes bb-step-pop { 0% { transform: scale(1); } 45% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .bb-step-pop { animation: none; } }
+/* Create-event progress ring (FormControls.jsx PercentRing): jumps instead of tweening under Reduce Motion. */
+@media (prefers-reduced-motion: reduce) { .bb-ring-fill { transition: none !important; } }
 
 #root {
   min-height: 100vh;
@@ -217,6 +259,13 @@ input::placeholder, textarea::placeholder {
 @keyframes banbeEventIn {
   from { opacity: 0; transform: scale(0.9); }
   to { opacity: 1; transform: scale(1); }
+}
+/* Reduce Motion: the screen/sheet/event entrances (used inline from JSX) become a plain fade, no travel or scale. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes banbeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes bbIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes banbeSheetIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes banbeEventIn { from { opacity: 0; } to { opacity: 1; } }
 }
 
 /* Pulse item panel: grows in from slightly smaller / shrinks away, at the same pace as Event Detail and the photo viewer. */

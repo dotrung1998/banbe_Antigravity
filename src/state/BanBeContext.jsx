@@ -34,6 +34,7 @@ import { DEFAULT_FILTERS as HOME_DEFAULT_FILTERS } from '../lib/homeDiscovery.js
 import { flagOn, normalizeFlags, readCachedFlags, writeCachedFlags } from '../lib/featureFlags.js';
 import { cleanDetails, profileFor } from '../lib/eventTypes.js';
 import { holdLeftCreateDraft, beginCreateDraftRestore, discardLeftCreateDraft } from '../lib/createDraftUndo.js';
+import { normalizeThemeChoice, resolveTheme, systemPrefersDark } from '../lib/themeChoice.js';
 
 /** Media-API upload with the current session token. Resolves `{provider:'supabase'}`
  * when the caller must use the legacy path; throws MediaUploadError only after bytes were PUT. */
@@ -1685,7 +1686,8 @@ export function BanBeProvider({ children }) {
       return {
         ...initialState,
         lang: saved.lang === 'en' ? 'en' : 'vi',
-        theme: saved.theme === 'dark' ? 'dark' : 'light',
+        theme: normalizeThemeChoice(saved.theme, raw == null),
+        systemDark: systemPrefersDark(),
         // Remember only the yes/no decision, never the coordinates
         // themselves — matches what the location sheet promises ("not
         // stored"). A fresh position is requested again each session below.
@@ -1892,6 +1894,16 @@ export function BanBeProvider({ children }) {
   // Dev server only (stripped from production builds): lets a local browser script put the app on a given screen
   // to measure layout, e.g. the dock headers (note 53). Never reachable in a deployed build.
   useEffect(() => { if (import.meta.env.DEV) window.__banbeDevSet = set; }, [set]);
+
+  // 'system' theme (note 66): follow the device's light/dark setting live.
+  useEffect(() => {
+    let mq;
+    try { mq = window.matchMedia('(prefers-color-scheme: dark)'); } catch { return undefined; }
+    if (!mq) return undefined;
+    const onChange = (e) => setStateRaw(prev => (prev.systemDark === e.matches ? prev : { ...prev, systemDark: e.matches }));
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('banbe.preferences', JSON.stringify({ lang: state.lang, theme: state.theme, located: state.located }));
@@ -2105,7 +2117,7 @@ export function BanBeProvider({ children }) {
       if (profile?.prefs_saved) {
         set(prev => ({
           lang: profile.locale === 'en' ? 'en' : 'vi',
-          theme: profile.theme === 'dark' ? 'dark' : 'light',
+          theme: normalizeThemeChoice(profile.theme),
           screen: ['splash', 'langPick', 'themePick'].includes(prev.screen) ? 'home' : prev.screen,
         }));
       } else if (profile) {
@@ -3135,6 +3147,8 @@ export function BanBeProvider({ children }) {
 
   const EN = s.lang === 'en';
   const T = useCallback((vi, en) => (EN ? en : vi), [EN]);
+  // The theme actually rendered ('light'|'dark'); s.theme is the choice and may be 'system'.
+  const resolvedTheme = resolveTheme(s.theme, s.systemDark);
 
   // ---- Note 49 (web parity of note 48): guest browsing, contextual sign-in, resume ----
   const RESUME_KEY = 'banbe.authResume.v1';
@@ -3167,10 +3181,10 @@ export function BanBeProvider({ children }) {
     });
   }, [set, s.guestPrompt]);
   const toggleTheme = useCallback(() => {
-    const next = s.theme === 'dark' ? 'light' : 'dark';
+    const next = resolveTheme(s.theme, s.systemDark) === 'dark' ? 'light' : 'dark';
     set({ theme: next });
     persistAccountPreference({ theme: next });
-  }, [set, s.theme, persistAccountPreference]);
+  }, [set, s.theme, s.systemDark, persistAccountPreference]);
   const pickTheme = useCallback((theme) => { set({ theme }); persistAccountPreference({ theme }); }, [set, persistAccountPreference]);
 
   // Task 1's consent checkbox (Login.jsx) — unticked by default, gates
@@ -5239,7 +5253,9 @@ export function BanBeProvider({ children }) {
   // a title + back-to-Account + a handful of existing rows, relocated,
   // never rebuilt). `accountTab` itself is untouched, so returning to
   // 'profile' lands back on whichever tab was already showing.
-  const openAccountGroup = useCallback((key) => set({ screen: 'accountGroup', accountGroupKey: key }), [set]);
+  // Note 66: `accountGroupBack` is set only by the admin list (AccountGroup 'admin'); any other entry clears it so
+  // Back returns to Account.
+  const openAccountGroup = useCallback((key) => set({ screen: 'accountGroup', accountGroupKey: key, accountGroupBack: null }), [set]);
 
   const trStatus = useCallback((str) => {
     if (!EN) return str;
@@ -11202,7 +11218,7 @@ export function BanBeProvider({ children }) {
       case 'admin_invite_response':
       case 'admin_removal_vote':
       case 'admin_removal_vote_result':
-        if (s.canManageAdmins) { set({ accountTab: 'admin' }); openAccountGroup('adminTeam'); }
+        if (s.canManageAdmins) openAccountGroup('adminTeam'); // note 66: no Admin tab to select any more
         break;
       case 'admin_access_revoked':
         // Already handled proactively by the toast poll itself (see its
@@ -11447,7 +11463,7 @@ export function BanBeProvider({ children }) {
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, backFromEditProfileSaved, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
-    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
+    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, resolvedTheme, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, setQty, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, goReserveConfirmed, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
@@ -11486,7 +11502,7 @@ export function BanBeProvider({ children }) {
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, backFromEditProfileSaved, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
-    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
+    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, resolvedTheme, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, setQty, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, goReserveConfirmed, payHoldNow, confirmPayment, cancelBooking, cancelEvent,

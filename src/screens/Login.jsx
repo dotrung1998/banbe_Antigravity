@@ -12,6 +12,7 @@ export default function Login() {
     emailValid, passwordValid, setAuthMethod, requestPasswordResetSubmit, submitCurrentForm,
     togglePolicyConsent, openPolicy,
     beginSignInHandoff, cancelSignInHandoff, awaitSignInReady, completeSignInHandoff,
+    resolvedTheme,
   } = useBanBe();
   const s = state;
   // Note 64: the submit button is an AsyncSuccessButton. Password login and code verify are real sign-ins: the ✓
@@ -112,7 +113,7 @@ export default function Login() {
     marginTop: 14, padding: '15px 0', borderRadius: 18, cursor: valid ? 'pointer' : 'default',
     ...(valid ? {} : { background: 'rgba(var(--bb-fg-rgb), 0.16)', color: ink, boxShadow: 'none', border: 'none', textShadow: 'none' }),
   });
-  const dark = s.theme === 'dark';
+  const dark = resolvedTheme === 'dark';
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: '66px 26px 40px', background: paper, color: ink }} data-screen-label="Login">

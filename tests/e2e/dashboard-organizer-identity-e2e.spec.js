@@ -165,7 +165,7 @@ test.describe('Dashboard organizer-identity scope — real backend E2E', () => {
       await page.getByTestId('tab-profile').click();
       await page.waitForSelector('[data-screen-label="Account"]');
       await expect(page.getByTestId('organizer-mode-toggle')).toBeVisible({ timeout: 8000 });
-      await page.getByTestId('account-tab-host').click();
+      // Note 66: no Host tab; organizer mode on shows the organizer card directly.
 
       const orgCard = page.getByTestId('org-profile-card');
       await expect(orgCard).toBeVisible({ timeout: 8000 });

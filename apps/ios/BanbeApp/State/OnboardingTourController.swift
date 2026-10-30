@@ -109,7 +109,7 @@ extension AppState {
     func signInRevealDidFinish() { maybeStartOnboardingTour() }
 
     private func startOnboardingTour(replay: Bool) {
-        let steps = OnboardingTourContent.eligible(organizerMode: organizerMode)
+        let steps = OnboardingTourContent.eligible(organizerMode: organizerMode, simpleShell: simpleShellEnabled)
         guard !steps.isEmpty else { return }
         Analytics.paused = true
         tourActive = true

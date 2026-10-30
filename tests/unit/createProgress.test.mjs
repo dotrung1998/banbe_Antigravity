@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { computeCreateProgress, FIELD_ORDER, missingLabel } from '../../src/lib/createProgress.js';
+import { computeCreateProgress, FIELD_ORDER, missingLabel, newlyCompleted } from '../../src/lib/createProgress.js';
 import { stepOfField } from '../../src/lib/createFieldGuide.js';
 
 // Mirrored by apps/ios/BanbeAppTests/CreateProgressTests.swift through the same fixture.
@@ -35,3 +35,9 @@ test('every field has a step and a label', () => {
     assert.notEqual(missingLabel(id, T, 4), id, id);
   }
 });
+
+for (const c of fx.newlyCompleted) {
+  test(`newly completed: ${c.case}`, () => {
+    assert.deepEqual(newlyCompleted(c.prev ?? undefined, c.next), c.expect);
+  });
+}

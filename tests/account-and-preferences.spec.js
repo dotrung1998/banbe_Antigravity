@@ -117,7 +117,7 @@ test.describe('Account & Preferences Screen', () => {
     const accountScreen = page.locator('[data-screen-label="Account"]');
     await expect(accountScreen).toBeVisible({ timeout: 3000 });
 
-    await accountScreen.getByTestId('account-saved-card').click();
+    await accountScreen.getByTestId('account-tile-saved').click();
     const savedScreen = page.locator('[data-screen-label="Saved"]');
     await expect(savedScreen).toBeVisible({ timeout: 3000 });
 
@@ -135,17 +135,22 @@ test.describe('Account & Preferences Screen', () => {
   // "Going"/"Saved" used to be inert stat cards; they now open their own
   // list view and — the point of the fix — a single tap back lands on
   // Account again, not Home.
+  // Note 66: "Saved" is a tile; the Going list (no longer a card, its count is the Tickets tile value) is
+  // reached from Account search.
   test('"Going" and "Saved" open their own list, and back returns to Account', async ({ page }) => {
     await page.getByTestId('tab-profile').click();
     const accountScreen = page.locator('[data-screen-label="Account"]');
     await expect(accountScreen).toBeVisible({ timeout: 3000 });
 
-    await accountScreen.getByTestId('account-going-card').click();
+    await page.getByTestId('account-search-toggle').click();
+    await page.getByTestId('account-search-input').fill('going');
+    await page.getByTestId('account-search-going').click();
     await expect(page.locator('[data-screen-label="Going"]')).toBeVisible({ timeout: 3000 });
     await page.getByTestId('event-list-back').click();
     await expect(accountScreen).toBeVisible({ timeout: 3000 });
+    await page.getByTestId('account-search-toggle').click();
 
-    await accountScreen.getByTestId('account-saved-card').click();
+    await accountScreen.getByTestId('account-tile-saved').click();
     await expect(page.locator('[data-screen-label="Saved"]')).toBeVisible({ timeout: 3000 });
     await page.getByTestId('event-list-back').click();
     await expect(accountScreen).toBeVisible({ timeout: 3000 });

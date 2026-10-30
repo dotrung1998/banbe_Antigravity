@@ -39,10 +39,10 @@ test.describe('Account cleanup + admin organizer-mode fix', () => {
     // Tổ chức: the management rows are reachable here instead — via the
     // "Vận hành & thanh toán tổ chức" group card (Account IA pass,
     // 2026-09-27), never inline on Account itself any more.
-    await page.getByTestId('account-tab-host').click();
-    await expect(page.getByTestId('account-tab-panel-host')).toBeVisible();
-    await expect(page.getByTestId('account-group-hostOps')).toBeVisible();
-    await page.getByTestId('account-group-hostOps').click();
+    // Note 66: no tabs; organizer mode on = host content, where "Get paid" is a tile.
+    await expect(page.locator('[data-screen-label="Account"]')).toHaveAttribute('data-account-mode', 'host');
+    await expect(page.getByTestId('account-tile-getpaid')).toBeVisible();
+    await page.getByTestId('account-tile-getpaid').click();
     await expect(page.getByTestId('host-verifications')).toBeVisible();
     await expect(page.getByTestId('host-payout')).toBeVisible();
     await expect(page.getByTestId('host-invoices')).toBeVisible();
@@ -60,7 +60,7 @@ test.describe('Account cleanup + admin organizer-mode fix', () => {
     await setupToHome(page);
     await page.getByTestId('tab-profile').click();
     await page.waitForSelector('[data-screen-label="Account"]');
-    await page.getByTestId('account-tab-host').click();
+    // Note 66: the organizer card is the identity card while organizer mode is on (no Host tab).
 
     const card = page.getByTestId('org-profile-card');
     await expect(card).toBeVisible({ timeout: 8000 });
@@ -110,20 +110,22 @@ test.describe('Account cleanup + admin organizer-mode fix', () => {
     await page.getByTestId('tab-profile').click();
     await page.waitForSelector('[data-screen-label="Account"]', { timeout: 8000 });
 
-    await expect(page.getByTestId('account-tab-admin')).toBeVisible({ timeout: 8000 });
+    // Note 66: Admin is one "Admin tools" row in both modes; host content follows organizer mode.
+    await expect(page.getByTestId('account-admin-tools')).toBeVisible({ timeout: 8000 });
     await expect(page.getByTestId('organizer-mode-toggle')).toBeVisible();
-    await expect(page.getByTestId('account-tab-host')).toBeVisible();
+    await expect(page.getByTestId('account-tile-getpaid')).toBeVisible();
 
     await page.getByTestId('organizer-mode-toggle').click();
-    await expect(page.getByTestId('account-tab-host')).toHaveCount(0, { timeout: 8000 });
-    await expect(page.getByTestId('account-tab-admin')).toBeVisible();
+    await expect(page.getByTestId('account-tile-getpaid')).toHaveCount(0, { timeout: 8000 });
+    await expect(page.getByTestId('account-tile-tickets')).toBeVisible();
+    await expect(page.getByTestId('account-admin-tools')).toBeVisible();
     const { data: afterOff } = await admin.from('profiles').select('role, organizer_mode_enabled').eq('id', uid).single();
     expect(afterOff.role).toBe('admin');
     expect(afterOff.organizer_mode_enabled).toBe(false);
 
     await page.getByTestId('organizer-mode-toggle').click();
-    await expect(page.getByTestId('account-tab-host')).toBeVisible({ timeout: 8000 });
-    await expect(page.getByTestId('account-tab-admin')).toBeVisible();
+    await expect(page.getByTestId('account-tile-getpaid')).toBeVisible({ timeout: 8000 });
+    await expect(page.getByTestId('account-admin-tools')).toBeVisible();
     const { data: afterOn } = await admin.from('profiles').select('role, organizer_mode_enabled').eq('id', uid).single();
     expect(afterOn.role).toBe('admin');
     expect(afterOn.organizer_mode_enabled).toBe(true);

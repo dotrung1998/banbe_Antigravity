@@ -10,6 +10,7 @@ export default function Preferences() {
     { key: 'en', title: 'English', subtitle: T('Bạn có thể đổi lại bất cứ lúc nào', 'Switch anytime') },
   ];
   const themes = [
+    { key: 'system', title: T('Theo thiết bị', 'System'), subtitle: T('Tự đổi sáng/tối theo máy của bạn', 'Follows your device') },
     { key: 'light', title: T('Sáng', 'Light'), subtitle: T('Nền giấy ấm', 'Warm paper') },
     { key: 'dark', title: T('Tối', 'Dark'), subtitle: T('Nền mực dịu mắt', 'Soft ink background') },
   ];

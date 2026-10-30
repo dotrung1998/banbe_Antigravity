@@ -58,29 +58,25 @@ import SwiftUI
 /// itself switched from white-on-ink to `app.palette.ink`, since a
 /// translucent material needs an ink-colored glyph for contrast the same
 /// way every dock tab icon already is.
+///
+/// Simple Shell (note 66, switch `simple_shell`): `centred: true` is the "+" INSIDE the bar's centre slot — shown to
+/// everyone (guests too), an ink disc with a paper "+", and a menu that follows the mode (Lib/DockLayout.swift and
+/// BottomTabBar's overlay place it). `centred: false` is today's host-only "+" beside the bar, unchanged.
 struct DockCreateButtonView: View {
     @EnvironmentObject private var app: AppState
     @State private var menuOpen = false
+    var centred = false
 
     var body: some View {
-        // Visible only in organizer mode (current UI preference — see
-        // AppState+Data.swift's applyOrganizerMode fix — never
-        // eligibility), matching the old pill's own gate exactly. DockRow
-        // itself already only inserts this view under the same condition,
-        // but keeping the check here too means this view never renders
-        // anything if ever reused/embedded elsewhere without that gate.
-        // Same gate Post-story's own row in AccountView uses, so a
-        // non-organizer never sees a dead "Post a story" action here either
-        // — the whole button (and both its actions) is simply absent,
-        // matching this codebase's existing "hide while organizerMode is
-        // off" convention rather than showing a disabled/explained row.
-        if app.organizerMode {
-            // Native `Menu`, exactly like Home's Area control: the glass surface,
-            // stroke and shadow live INSIDE the label so the whole control
-            // morphs into the system menu, and the actions are the menu's own
-            // rows. (The old tray existed because this window used to be a
-            // small band that clipped a Menu; DockOverlayWindow is now
-            // permanently full-screen, so that no longer applies.)
+        if centred {
+            centredButton
+        } else if app.organizerMode {
+            // Visible only in organizer mode (current UI preference — see
+            // AppState+Data.swift's applyOrganizerMode fix — never
+            // eligibility), matching the old pill's own gate exactly. DockRow
+            // itself already only inserts this view under the same condition,
+            // but keeping the check here too means this view never renders
+            // anything if ever reused/embedded elsewhere without that gate.
             // Note 53 (owner report): a popover, not a `Menu`. On iOS 26 the Menu lifted this disc's bounding box
             // into the menu and put a white square back for a moment after it closed. Same three actions; the story
             // submenu is flattened into two rows.
@@ -111,5 +107,82 @@ struct DockCreateButtonView: View {
             .tourTarget("tour.dock.create")
             .accessibilityLabel(app.T("Tạo mới", "Create"))
         }
+    }
+
+    // MARK: Simple Shell centre "+"
+
+    /// Ink disc, paper "+", 48pt (the touch target is the whole disc; the bar slot around it is wider).
+    private static let discSize: CGFloat = 48
+
+    private var centredButton: some View {
+        Button {
+            Haptics.light()
+            menuOpen = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(app.palette.paper)
+                .frame(width: Self.discSize, height: Self.discSize)
+                .background(app.palette.ink, in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(PressableButtonStyle(haptic: false))
+        .popover(isPresented: $menuOpen, arrowEdge: .bottom) {
+            PopoverMenuList(items: centredMenuItems) { menuOpen = false }
+                .environmentObject(app)
+        }
+        .accessibilityIdentifier("dock.createButton")
+        .tourTarget("tour.dock.create")
+        .accessibilityLabel(app.T("Tạo mới", "Create"))
+        .accessibilityHint(app.organizerMode
+                           ? app.T("Tạo sự kiện, đăng story hoặc khảo sát", "Create an event, a story or a survey")
+                           : app.T("Thêm vào lịch, mời bạn bè hoặc tổ chức sự kiện", "Add to your schedule, invite friends or host an event"))
+    }
+
+    /// Host (organizer mode on): Create event first, then Post a story, Share one of my events, New survey.
+    /// Goer: Add to my schedule, Invite friends, Host an event (no story: stories are host-only, owner decision 3).
+    /// Guest: the goer rows, each opening the contextual sign-in prompt.
+    private var centredMenuItems: [PopoverMenuItem] {
+        if app.isSignedIn && app.organizerMode {
+            return [
+                PopoverMenuItem(id: "dock.createMenu.event", title: app.T("Tạo sự kiện", "Create event"),
+                                systemImage: "calendar.badge.plus") { app.goCreate() },
+                // Same pipeline AccountView's "Đăng story" uses (storyLibraryPickerOpen / storyCameraOpen -> publishStory()).
+                PopoverMenuItem(id: "dock.createMenu.story.library", title: app.T("Đăng story từ Thư viện ảnh", "Post a story from Photos"),
+                                systemImage: "photo.on.rectangle") { app.storyLibraryPickerOpen = true },
+                PopoverMenuItem(id: "dock.createMenu.story.camera", title: app.T("Đăng story bằng Camera", "Post a story with Camera"),
+                                systemImage: "camera") { app.storyCameraOpen = true },
+                // Same picker + beginEventStory as Account's "Share one of my events" (presented by RootView).
+                PopoverMenuItem(id: "dock.createMenu.story.event", title: app.T("Chia sẻ một sự kiện của tôi", "Share one of my events"),
+                                systemImage: "calendar") { app.dockEventStoryPickerOpen = true },
+                PopoverMenuItem(id: "dock.createMenu.survey", title: app.T("Khảo sát mới", "New survey"),
+                                systemImage: "list.bullet.clipboard") {
+                    app.surveysHostingTab = "active"
+                    app.surveyCreateRequested = true
+                    app.screen = .surveysHosting
+                },
+            ]
+        }
+        let guest = !app.isSignedIn
+        return [
+            PopoverMenuItem(id: "dock.createMenu.schedule", title: app.T("Thêm vào lịch của tôi", "Add to my schedule"),
+                            systemImage: "calendar.badge.plus") {
+                // Note 44: plans are added from Schedule's Discover list (device-local "Add to banbe Schedule").
+                if guest { return app.promptSignIn(.schedule) }
+                app.scheduleMode = .discover
+                app.goSchedule()
+            },
+            PopoverMenuItem(id: "dock.createMenu.invite", title: app.T("Mời bạn bè", "Invite friends"),
+                            systemImage: "person.2", disabled: !guest && app.referralLink == nil) {
+                if guest { return app.promptSignIn(.invite) }
+                app.shareReferral()
+            },
+            PopoverMenuItem(id: "dock.createMenu.host", title: app.T("Tổ chức sự kiện", "Host an event"),
+                            systemImage: "sparkles") {
+                if guest { return app.promptSignIn(.host) }
+                // Account's "Start hosting" (turns organizer mode on; the server records it).
+                if !app.organizerMode { app.toggleOrganizerMode() }
+            },
+        ]
     }
 }

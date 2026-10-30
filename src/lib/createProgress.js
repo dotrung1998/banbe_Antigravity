@@ -4,14 +4,12 @@
 // (src/lib/eventTypes.js), so a type can add or drop required fields without the ring, the count and the
 // footer disagreeing.
 // iOS twin: apps/ios/BanbeApp/Lib/CreateProgress.swift. Shared vectors: tests/fixtures/create-progress.json.
-import { CREATE_FIELD_STEP } from './createFieldGuide.js';
+import { CREATE_FIELD_STEP, CREATE_FIELD_ORDER } from './createFieldGuide.js';
 
 export const CREATE_STEP_COUNT = 5;
 
 /** Every field that can be required, in the order the steps show them (type facts sit under Included). */
-export const FIELD_ORDER = ['hostName', 'name', 'description', 'categories', 'included',
-  'lineup', 'artists', 'brands', 'alcohol', 'min_age',
-  'location', 'date', 'price', 'seats', 'photos'];
+export const FIELD_ORDER = CREATE_FIELD_ORDER;
 
 /** What an event of no known type needs (the generic event type, unchanged). */
 export const DEFAULT_REQUIRED = ['hostName', 'name', 'description', 'categories', 'included', 'location', 'date', 'price', 'seats', 'photos'];
@@ -38,6 +36,17 @@ export function computeCreateProgress(missing, required = DEFAULT_REQUIRED) {
     missing: gaps,
     firstMissing: gaps[0] || null,
   };
+}
+
+/**
+ * Required fields that were missing before and are complete now (note 66): what earns the small ✓ and the
+ * screen-reader "… done" line. Takes two `progress.missing` lists; order follows the second call's FIELD_ORDER.
+ * A field that was never missing (already filled when the form opened) is not "newly" complete.
+ */
+export function newlyCompleted(prevMissing, nextMissing) {
+  if (!Array.isArray(prevMissing)) return [];
+  const now = new Set(nextMissing || []);
+  return FIELD_ORDER.filter(id => prevMissing.includes(id) && !now.has(id));
 }
 
 /** The short label for a missing field, as shown after "Still needed: ". */

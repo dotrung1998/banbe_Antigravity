@@ -134,42 +134,56 @@ final class ShellFixtureUITests: XCTestCase {
         XCTAssertTrue(el(app, "schedule.monthDay.15").waitForNonExistence(timeout: 3), "back to the week")
     }
 
-    // MARK: 4 — Account tabs
+    // MARK: 4 — Account follows the mode (note 66: no tabs)
 
-    func testAccountTabsAreSwipeableAndStayInAccount() {
-        let app = launch("account")
-        XCTAssertTrue(el(app, "account.tab.personal").waitForExistence(timeout: 20))
-        XCTAssertTrue(el(app, "account.tab.personal").isSelected)
-        XCTAssertGreaterThanOrEqual(el(app, "account.tab.personal").frame.height, 44, "large touch targets")
-
-        swipe(app, y: 0.115, from: 0.7, to: 0.2)
-        XCTAssertTrue(el(app, "account.tab.host").waitForExistence(timeout: 3))
-        XCTAssertTrue(el(app, "account.tab.host").isSelected)
-        swipe(app, y: 0.115, from: 0.7, to: 0.2)
-        XCTAssertTrue(el(app, "account.tab.admin").isSelected)
-        // Past the last tab: nothing happens, and it never leaves Account.
-        swipe(app, y: 0.115, from: 0.7, to: 0.2)
-        XCTAssertTrue(el(app, "account.tab.admin").isSelected)
-        XCTAssertTrue(app.otherElements["screen.profile"].exists)
-        // Back with a right swipe, and past the first tab it stays put too.
-        swipe(app, y: 0.115, from: 0.35, to: 0.8)
-        XCTAssertTrue(el(app, "account.tab.host").isSelected)
-        swipe(app, y: 0.115, from: 0.35, to: 0.8)
-        XCTAssertTrue(el(app, "account.tab.personal").isSelected)
-        swipe(app, y: 0.115, from: 0.35, to: 0.8)
-        XCTAssertTrue(el(app, "account.tab.personal").isSelected)
-        XCTAssertTrue(app.otherElements["screen.profile"].exists, "never hops to Messages")
-        el(app, "account.tab.admin").tap()
-        XCTAssertTrue(el(app, "account.tab.admin").isSelected, "tapping still works")
+    /// Scrolls Account until `id` exists (the body is a LazyVStack).
+    private func reveal(_ app: XCUIApplication, _ id: String, swipes: Int = 6) -> XCUIElement {
+        let e = el(app, id)
+        for _ in 0..<swipes where !e.exists || !e.isHittable { app.swipeUp() }
+        return e
     }
 
-    func testAccountWithOnlyPersonalKeepsTheDockSwipe() {
-        let app = launch("accountSolo")
-        XCTAssertTrue(el(app, "account.tab.personal").waitForExistence(timeout: 20))
-        XCTAssertFalse(el(app, "account.tab.host").exists)
+    func testAccountHostModeShowsHostTilesAndNoTabs() {
+        let app = launch("account")   // organizer mode on, admin
+        XCTAssertTrue(el(app, "account.tile.events").waitForExistence(timeout: 20))
+        for key in ["events", "getpaid", "team", "reports"] {
+            let tile = el(app, "account.tile.\(key)")
+            XCTAssertTrue(tile.exists, key)
+            XCTAssertGreaterThanOrEqual(tile.frame.height, 88, "big tiles: \(key)")
+        }
+        XCTAssertFalse(el(app, "account.tile.tickets").exists, "goer tiles are hidden in host mode")
+        XCTAssertFalse(el(app, "account.tab.personal").exists, "no Personal/Host/Admin tabs any more")
+        XCTAssertFalse(el(app, "account.tabs").exists)
+        // Admin tools live in More and open the Administration group.
+        let admin = reveal(app, "account.adminTools")
+        XCTAssertTrue(admin.exists)
+        XCTAssertGreaterThanOrEqual(admin.frame.height, 44)
+        admin.tap()
+        XCTAssertTrue(el(app, "account.group.adminReview").waitForExistence(timeout: 5))
+        XCTAssertTrue(el(app, "account.adminGuide").exists)
+    }
+
+    func testAccountSignOutAppearsOnce() {
+        let app = launch("account")
+        XCTAssertTrue(el(app, "account.tile.events").waitForExistence(timeout: 20))
+        XCTAssertTrue(reveal(app, "account.signOut", swipes: 8).exists)
+        let q = app.buttons.matching(identifier: "account.signOut")
+        XCTAssertEqual(q.count, 1, "Sign out renders once, not per mode or tab")
+    }
+
+    func testAccountGoerShowsGoerTilesAndKeepsTheDockSwipe() {
+        let app = launch("accountSolo")   // organizer mode off, not an admin
+        XCTAssertTrue(el(app, "account.tile.tickets").waitForExistence(timeout: 20))
+        for key in ["tickets", "wallet", "saved", "help"] {
+            XCTAssertTrue(el(app, "account.tile.\(key)").exists, key)
+        }
+        XCTAssertFalse(el(app, "account.tile.events").exists)
+        XCTAssertFalse(el(app, "account.tab.personal").exists)
+        XCTAssertTrue(el(app, "account.profileCard").exists)
+        XCTAssertFalse(reveal(app, "account.adminTools").exists, "admins only")
+        // Nothing to swipe between inside Account, so the dock swipe stays available.
         swipe(app, y: 0.115, from: 0.35, to: 0.8)
-        XCTAssertTrue(app.otherElements["screen.inbox"].waitForExistence(timeout: 8),
-                      "nothing to swipe between, so the dock swipe stays available")
+        XCTAssertTrue(app.otherElements["screen.inbox"].waitForExistence(timeout: 8))
     }
 
     // MARK: Note 47 — event zoom from Home

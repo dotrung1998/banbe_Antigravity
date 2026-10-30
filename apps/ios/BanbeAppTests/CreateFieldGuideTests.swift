@@ -34,6 +34,9 @@ final class CreateFieldGuideTests: XCTestCase {
         XCTAssertEqual(G.firstMissing(["seats": true, "location": true]), "location")
         XCTAssertEqual(G.firstMissing(["hostName": true, "description": true]), "hostName")
         XCTAssertEqual(G.firstMissing(["included": false, "date": true]), "date")
+        // Same order as the ring: price and the type facts count too (was a stale list without them).
+        XCTAssertEqual(G.firstMissing(["price": true, "seats": true]), "price")
+        XCTAssertEqual(G.firstMissing(["alcohol": true, "location": true]), "alcohol")
     }
 
     func testAnchor() {

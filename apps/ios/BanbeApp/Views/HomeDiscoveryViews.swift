@@ -191,6 +191,10 @@ struct HomeCategorySheet: View {
 /// Full-width search entry. The placeholder says what you can actually search for.
 struct HomeSearchBar: View {
     @EnvironmentObject private var app: AppState
+    /// Simple Shell (note 66): "Find events near D1" (the area folded in). nil = today's placeholder.
+    var placeholder: String? = nil
+    /// Room kept free on the trailing edge for a control laid over the bar (Simple Shell's area button).
+    var trailingInset: CGFloat = 0
 
     var body: some View {
         SwipeSafeButton {
@@ -201,14 +205,15 @@ struct HomeSearchBar: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 16, weight: .semibold))
                     .opacity(0.7)
-                Text(app.T("Tìm sự kiện, host, khu vực, vibe…", "Search events, hosts, areas, vibes…"))
+                Text(placeholder ?? app.T("Tìm sự kiện, host, khu vực, vibe…", "Search events, hosts, areas, vibes…"))
                     .font(.system(size: 14.5))
                     .opacity(0.6)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
             .foregroundStyle(app.palette.ink)
-            .padding(.horizontal, 16)
+            .padding(.leading, 16)
+            .padding(.trailing, 16 + trailingInset)
             .frame(maxWidth: .infinity, minHeight: 46)
             .background { Color.clear.nativeGlassCapsule(interactive: true) }
             .contentShape(Capsule())
@@ -224,7 +229,7 @@ struct HomeSearchBar: View {
         })
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(app.T("Tìm sự kiện, host, khu vực", "Search events, hosts, areas"))
+        .accessibilityLabel(placeholder ?? app.T("Tìm sự kiện, host, khu vực", "Search events, hosts, areas"))
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("home.searchBar")
         .tourTarget("tour.home.search")

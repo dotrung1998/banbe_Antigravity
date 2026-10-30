@@ -12,6 +12,8 @@ import UIKit
 /// feed, relax hints, the "This weekend" rail, surveys and the host link.
 struct HomeView: View {
     @EnvironmentObject var app: AppState
+    /// Simple Shell's goer hero needs the checklist's own visibility rule (it reads the Face ID setting).
+    @EnvironmentObject private var auth: AuthViewModel
     /// Chip text: 13pt at the default size, growing with Dynamic Type (it used to stay 13pt at every size).
     @ScaledMetric(relativeTo: .footnote) private var chipFont: CGFloat = 13
     /// The "Show all" category sheet (every category A–Z with its count).
@@ -48,7 +50,12 @@ struct HomeView: View {
     /// considered, host items only while `app.canHost`, merged and
     /// re-sorted together (mirrors src/screens/Home.jsx's own actionItems).
     private var actionItems: [ActionCenterItem] {
-        var goer = buildActionCenterItems(ActionCenterInputs(
+        sortActionCenterItems(goerActionItems + (app.canHost ? hostActionItems : []))
+    }
+
+    /// The goer half of Things to do (Simple Shell's goer hero shows only these: mode decides content).
+    private var goerActionItems: [ActionCenterItem] {
+        buildActionCenterItems(ActionCenterInputs(
             role: .goer, now: tick,
             myHolding: app.myHolding, myPendingVerification: app.myPendingVerification, myAdminInvite: app.myAdminInvite, myRefunds: app.myRefunds,
             refundDestinations: app.refundDestinationsLoaded ? app.refundDestinations : nil,
@@ -61,8 +68,11 @@ struct HomeView: View {
             onOpenRefundDispute: { claimID, back in app.openRefundDisputeFromActionCenter(claimID: claimID, back: back) },
             T: app.T
         ))
-        if app.canHost {
-            goer += buildActionCenterItems(ActionCenterInputs(
+    }
+
+    /// The host half (Simple Shell's host Home shows these).
+    private var hostActionItems: [ActionCenterItem] {
+            buildActionCenterItems(ActionCenterInputs(
                 role: .host, now: tick,
                 verifications: app.verifications, refundQueue: app.refundQueue, orgHolding: app.organizerHoldingSummary,
                 onOpenVerifications: { app.openVerifications() },
@@ -73,8 +83,6 @@ struct HomeView: View {
                 onOpenRefundDispute: { claimID, back in app.openRefundDisputeFromActionCenter(claimID: claimID, back: back) },
                 T: app.T
             ))
-        }
-        return sortActionCenterItems(goer)
     }
 
     var body: some View {
@@ -103,7 +111,7 @@ struct HomeView: View {
         ZStack {
             app.palette.paper.ignoresSafeArea()
         VStack(alignment: .leading, spacing: 0) {
-            header.revealRegion(0)
+            activeHeader.revealRegion(0)
             // L5 weekly digest: its notification asks for the "This weekend" rail (AppState.goHomeThisWeekend).
             ScrollViewReader { weekendProxy in
             ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: homeScrollAnchorBinding, restoreOffsetY: app.homeScrollOffsetY, onScrollOffset: { app.homeScrollOffsetY = $0 }, scrollToTopToken: app.homeScrollToTopToken, refreshIndicatorTopPadding: 16, onRefresh: {
@@ -119,6 +127,14 @@ struct HomeView: View {
                 // the eager VStack kicked off all ~21 hero downloads at launch
                 // and they all fought for the same bandwidth.
                 LazyVStack(alignment: .leading, spacing: 0) {
+                    // Simple Shell (note 66, switch simple_shell): one hero per mode. OFF renders the feed below unchanged.
+                    if app.simpleShellEnabled {
+                        if hostHome {
+                            HostHomeSections(actionItems: sortActionCenterItems(hostActionItems)).revealRegion(1)
+                        } else {
+                            simpleGoerFeed(snap)
+                        }
+                    } else {
                     // Note 50/51 order: Pulse ticker → Next-up (note-37 reminder only) → Action Center / guest banner → stories (only if any) →
                     // categories → quick row → "Upcoming · N" → feed → hints → empty/footer → weekend → surveys.
                     // The old "Your events" strip and status chips are gone (Schedule + Account own your events).
@@ -166,6 +182,7 @@ struct HomeView: View {
                     if app.isSignedIn { surveyDiscoveryRow }
                     tagline
                     hostLink
+                    }
                 }
                 .padding(.bottom, BottomTabBar.contentClearance)
             }
@@ -563,11 +580,11 @@ struct HomeView: View {
                 .accessibilityIdentifier("header.lang")
                 Button {
                     Haptics.light()
-                    app.pickTheme(app.theme == "dark" ? "light" : "dark")
+                    app.pickTheme(app.isDark ? "light" : "dark")
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: app.theme == "dark" ? "sun.max" : "moon").font(.system(size: 13, weight: .semibold))
-                        Text(app.theme == "dark" ? app.T("Sáng", "Light") : app.T("Tối", "Dark"))
+                        Image(systemName: app.isDark ? "sun.max" : "moon").font(.system(size: 13, weight: .semibold))
+                        Text(app.isDark ? app.T("Sáng", "Light") : app.T("Tối", "Dark"))
                     }
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(app.palette.ink)
@@ -575,7 +592,7 @@ struct HomeView: View {
                     .contentShape(Rectangle())
                 }
                 .fixedSize()
-                .accessibilityLabel(app.theme == "dark" ? app.T("Chuyển sang giao diện sáng", "Switch to light mode")
+                .accessibilityLabel(app.isDark ? app.T("Chuyển sang giao diện sáng", "Switch to light mode")
                                                         : app.T("Chuyển sang giao diện tối", "Switch to dark mode"))
                 .accessibilityIdentifier("header.theme")
             }
@@ -588,6 +605,163 @@ struct HomeView: View {
         .padding(.horizontal, 20)
         .padding(.top, 16)
     }
+    // MARK: Simple Shell (note 66, switch simple_shell)
+
+    /// Home shows the host sections while the mode switch is on Hosting.
+    private var hostHome: Bool { app.simpleShellEnabled && app.isSignedIn && app.organizerMode }
+
+    @ViewBuilder
+    private var activeHeader: some View {
+        if app.simpleShellEnabled { simpleHeader } else { header }
+    }
+
+    /// Logo, the Going out | Hosting switch and the bell. Streak/coins and the area/language/theme chips are gone from
+    /// here (Account tiles, Settings, and the area button inside the search bar). Degrades by shrinking the logo, then
+    /// putting the switch on its own row (large text).
+    private var simpleHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ViewThatFits(in: .horizontal) {
+                simpleTopRow(logo: BanbeLogo.headerWordmarkWidth)
+                simpleTopRow(logo: 84)
+                simpleTopRow(logo: 64)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        BanbeLogo(kind: .wordmark, width: 84)
+                        Spacer(minLength: 0)
+                        HomeNotificationsButton(size: 44)
+                    }
+                    HomeModeSwitch()
+                }
+            }
+            .frame(minHeight: DockHeaderTitle.rowHeight)
+            if !hostHome {
+                simpleSearchBar.padding(.bottom, 12)
+            }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
+        .padding(.bottom, hostHome ? 12 : 0)
+    }
+
+    private func simpleTopRow(logo: CGFloat) -> some View {
+        HStack(spacing: 10) {
+            BanbeLogo(kind: .wordmark, width: logo)
+            Spacer(minLength: 0)
+            HomeModeSwitch()
+            HomeNotificationsButton(size: 44)
+        }
+    }
+
+    /// The search bar with the location folded in: "Find events near D1", and a trailing area button inside it.
+    private var simpleSearchBar: some View {
+        let place = app.area == LocationHierarchy.allID ? nil : app.currentAreaLabel
+        let placeholder = place.map { app.T("Tìm sự kiện gần \($0)", "Find events near \($0)") }
+            ?? app.T("Tìm sự kiện ở mọi nơi", "Find events anywhere")
+        return HomeSearchBar(placeholder: placeholder, trailingInset: 52)
+            .overlay(alignment: .trailing) {
+                Menu {
+                    AreaMenuOptions { areaSearchOpen = true }
+                } label: {
+                    HStack(spacing: 8) {
+                        Rectangle().fill(app.palette.divider).frame(width: 1, height: 22)
+                        Image(systemName: "mappin.and.ellipse").font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .frame(width: 52, height: 46)
+                    .contentShape(Rectangle())
+                }
+                .opacity(app.searchOverlayOpen ? 0 : 1)
+                .accessibilityLabel(app.T("Khu vực: \(place ?? "Mọi nơi"). Đổi khu vực", "Area: \(place ?? "Everywhere"). Change area"))
+                .accessibilityIdentifier("header.area")
+            }
+    }
+
+    /// The new-user checklist's own visibility rule (ActivationChecklistCard), so the hero picker can rank it.
+    private var checklistVisible: Bool {
+        guard app.activation.enabled && !app.activation.dismissed else { return false }
+        let items = ActivationChecklist.items(biometricsAvailable: BiometricAuthService.cachedAvailability.available)
+        return ActivationChecklist.isVisible(state: app.activation, items: items,
+                                             hasSavedEvent: !app.favorites.isEmpty, faceIDEnabled: auth.faceIDEnabled)
+    }
+
+    /// Exactly one hero (Lib/HomeHero.swift): Next up > the goer Things to do > the checklist > nothing; guests get
+    /// the guest banner.
+    @ViewBuilder
+    private func goerHero(_ kind: HomeHero.Goer, items: [ActionCenterItem]) -> some View {
+        switch kind {
+        case .guest: GuestBrowseBanner()
+        case .nextUp:
+            if let next = nextUp { NextUpBanner(event: next.event, phase: next.phase, haloTrigger: reminderHaloTrigger) }
+        case .action: ActionCenterView(items: items, onSeeAll: { app.goNotifications() })
+        case .checklist: ActivationChecklistCard()
+        case .none: EmptyView()
+        }
+    }
+
+    private var pulseHasItems: Bool { !PulseTicker.items(from: app.pulseDaily).isEmpty }
+
+    /// Hero → (saved, only without a hero) → one chip row → "N events · cards | list | map" → cards, with the stories
+    /// row after the 3rd card and the Pulse ticker after the 6th → the rest of today's feed footer.
+    @ViewBuilder
+    private func simpleGoerFeed(_ snap: Snapshot) -> some View {
+        let items = app.isSignedIn ? sortActionCenterItems(goerActionItems) : []
+        let kind = HomeHero.goer(signedIn: app.isSignedIn, hasNextUp: nextUp != nil, actionCount: items.count,
+                                 checklistVisible: app.isSignedIn && checklistVisible)
+        goerHero(kind, items: items).revealRegion(1)
+        if kind == .none, !savedUpcoming.isEmpty { savedUpcomingSection.revealRegion(1) }
+        simpleChipRow(snap)
+            .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+            .revealRegion(2)
+        if app.filterForYou && app.hasForYouMatches { forYouEditRow.padding(.bottom, 4).revealRegion(2) }
+        sectionHeader(snap, includeMap: true).revealRegion(2)
+        let last = snap.cards.count - 1
+        ForEach(Array(snap.cards.enumerated()), id: \.element.key) { i, card in
+            Group {
+                if layoutMode == "list" { DiscoveryRow(model: card) } else { DiscoveryCard(model: card) }
+            }
+            .revealRegion(2)
+            .modifier(FirstCardTourTarget(isFirst: i == 0))
+            .id(card.key)
+            if i == min(2, last), !app.homeStories.isEmpty { storyRow }
+            if i == min(5, last), pulseHasItems {
+                PulseTickerView().padding(.horizontal, 20).padding(.vertical, 10)
+            }
+        }
+        if !snap.relaxHints.isEmpty && !snap.items.isEmpty { relaxHintsRow(snap.relaxHints) }
+        if snap.cards.isEmpty {
+            emptyState
+            if !app.homeStories.isEmpty { storyRow }
+            if pulseHasItems { PulseTickerView().padding(.horizontal, 20).padding(.vertical, 10) }
+        } else {
+            footer
+        }
+        if app.homeFilters.date != "weekend" { weekendSection.id("home.weekend") }
+        if app.isSignedIn { surveyDiscoveryRow }
+        tagline
+        hostLink
+    }
+
+    /// For You first, then Today / This weekend / Free / Almost full (scrolling), then Filters with its count, pinned.
+    /// Categories, event-type chips and Sort live in the Filters sheet.
+    private func simpleChipRow(_ snap: Snapshot) -> some View {
+        HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    if app.hasForYouMatches { forYouChip.fixedSize(horizontal: true, vertical: false) }
+                    ForEach(Self.quickChips, id: \.key) { chip in quickChip(chip, snap) }
+                }
+                .padding(.leading, 20).padding(.trailing, 4)
+                .padding(.vertical, 4)
+            }
+            .rootSwipeExclusion("homeQuickChips")
+            filtersButton(snap).padding(.trailing, 20)
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.top, 6).padding(.bottom, 6)
+    }
+
     // MARK: Story row (Task 3.3, 07-notifications.md)
     // Host stories only. Banbe Pulse moved to the ticker at the top of the feed (note 51, PulseTickerView), so this
     // row is shown ONLY when there are stories: no stories, no row, no empty band. Compact 52pt rings.
@@ -1066,24 +1240,7 @@ struct HomeView: View {
     /// scroll on their own (registered as a root-gesture exclusion zone). A chip with 0 events hides unless on.
     private func quickRow(_ snap: Snapshot) -> some View {
         HStack(spacing: 8) {
-            SwipeSafeButton {
-                Haptics.light()
-                app.homeFilterSheetOpen = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "slider.horizontal.3").font(.system(size: 14, weight: .semibold))
-                    if snap.filterBadge > 0 {
-                        Text("\(snap.filterBadge)").font(.system(size: 12, weight: .bold)).monospacedDigit()
-                    }
-                }
-                .padding(.horizontal, 12).frame(minWidth: 44, minHeight: 36)
-                .foregroundStyle(snap.filterBadge > 0 ? app.palette.paper : app.palette.ink)
-                .background { homeGlassCapsule(active: snap.filterBadge > 0) }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(snap.filterBadge > 0 ? app.T("Bộ lọc, \(snap.filterBadge) đang bật", "Filters, \(snap.filterBadge) on")
-                                                     : app.T("Bộ lọc", "Filters"))
-            .accessibilityIdentifier("home.filtersButton")
+            filtersButton(snap)
             // Sort is its own native pop-up (same mechanism as the area menu) with ONLY the sort options.
             // The capsule turns "on" while a non-default sort is chosen.
             let sortActive = app.homeSort != "soonest"
@@ -1124,29 +1281,7 @@ struct HomeView: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(Self.quickChips, id: \.key) { chip in
-                        let active = quickActive(chip.key, app.homeFilters)
-                        let n = snap.quickCounts[chip.key] ?? 0
-                        if active || n > 0 {
-                            SwipeSafeButton {
-                                Haptics.selection()
-                                toggleQuick(chip.key)
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Text(app.T(chip.vi, chip.en))
-                                    if !active { Text("\(n)").font(.system(size: 12)).monospacedDigit().opacity(0.6) }
-                                }
-                                .font(.system(size: chipFont, weight: active ? .semibold : .regular))
-                                .lineLimit(1)
-                                .padding(.horizontal, 14).frame(minHeight: 36)
-                                .foregroundStyle(active ? app.palette.paper : app.palette.ink)
-                                .background { homeGlassCapsule(active: active) }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityAddTraits(active ? .isSelected : [])
-                            .accessibilityIdentifier("home.quick.\(chip.key)")
-                        }
-                    }
+                    ForEach(Self.quickChips, id: \.key) { chip in quickChip(chip, snap) }
                 }
                 .padding(.trailing, 20)
                 .padding(.vertical, 2)
@@ -1158,8 +1293,57 @@ struct HomeView: View {
         .padding(.top, 10).padding(.bottom, 6)
     }
 
+    /// Filters opens the sheet; the number is how many filters are on (shared by today's row and Simple Shell's).
+    private func filtersButton(_ snap: Snapshot) -> some View {
+        SwipeSafeButton {
+            Haptics.light()
+            app.homeFilterSheetOpen = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "slider.horizontal.3").font(.system(size: 14, weight: .semibold))
+                if snap.filterBadge > 0 {
+                    Text("\(snap.filterBadge)").font(.system(size: 12, weight: .bold)).monospacedDigit()
+                }
+            }
+            .padding(.horizontal, 12).frame(minWidth: 44, minHeight: 36)
+            .foregroundStyle(snap.filterBadge > 0 ? app.palette.paper : app.palette.ink)
+            .background { homeGlassCapsule(active: snap.filterBadge > 0) }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(snap.filterBadge > 0 ? app.T("Bộ lọc, \(snap.filterBadge) đang bật", "Filters, \(snap.filterBadge) on")
+                                                 : app.T("Bộ lọc", "Filters"))
+        .accessibilityIdentifier("home.filtersButton")
+    }
+
+    /// One one-tap chip (Today / This weekend / Free / Almost full); hidden at 0 unless it is on.
+    @ViewBuilder
+    private func quickChip(_ chip: (key: String, vi: String, en: String), _ snap: Snapshot) -> some View {
+        let active = quickActive(chip.key, app.homeFilters)
+        let n = snap.quickCounts[chip.key] ?? 0
+        if active || n > 0 {
+            SwipeSafeButton {
+                Haptics.selection()
+                toggleQuick(chip.key)
+            } label: {
+                HStack(spacing: 6) {
+                    Text(app.T(chip.vi, chip.en))
+                    if !active { Text("\(n)").font(.system(size: 12)).monospacedDigit().opacity(0.6) }
+                }
+                .font(.system(size: chipFont, weight: active ? .semibold : .regular))
+                .lineLimit(1)
+                .padding(.horizontal, 14).frame(minHeight: 36)
+                .foregroundStyle(active ? app.palette.paper : app.palette.ink)
+                .background { homeGlassCapsule(active: active) }
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(active ? .isSelected : [])
+            .accessibilityIdentifier("home.quick.\(chip.key)")
+        }
+    }
+
     /// What you're looking through, and a cards/list switch (no single default suits everyone).
-    private func sectionHeader(_ snap: Snapshot) -> some View {
+    /// Simple Shell adds a third option, map, which opens the Map screen (Map is a Home view there, not a dock tab).
+    private func sectionHeader(_ snap: Snapshot, includeMap: Bool = false) -> some View {
         let date = app.homeFilters.date
         let title: String = {
             if date != "any", let l = HomeDiscovery.dateLabels[date] { return app.T(l.vi, l.en) }
@@ -1197,6 +1381,21 @@ struct HomeView: View {
                     .accessibilityLabel(label)
                     .accessibilityAddTraits(on ? .isSelected : [])
                     .accessibilityIdentifier("home.layout.\(mode)")
+                }
+                if includeMap {
+                    Button {
+                        Haptics.selection()
+                        app.goMapExplore()
+                    } label: {
+                        Image(systemName: "map").font(.system(size: 13, weight: .semibold))
+                            .frame(width: 36, height: 30)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(app.T("Bản đồ", "Map"))
+                    .accessibilityIdentifier("home.layout.map")
+                    .tourTarget("tour.home.mapView")
                 }
             }
             .padding(.horizontal, 2)

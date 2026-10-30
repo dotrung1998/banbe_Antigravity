@@ -9,6 +9,7 @@ struct RootView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var auth: AuthViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     // Live-follows the finger while an edge swipe is in progress, the same
     // way UIKit's interactivePopGestureRecognizer drags the current view
@@ -254,8 +255,8 @@ struct RootView: View {
                     app.isRootSwipeActive = true
                 }
                 guard tabSwipeDirection == "horizontal" else { return }
-                let idx = BottomTabBar.dockOrder.firstIndex(of: app.screen)
-                let canNext = idx != nil && idx! < BottomTabBar.dockOrder.count - 1
+                let idx = app.dockOrder.firstIndex(of: app.screen)
+                let canNext = idx != nil && idx! < app.dockOrder.count - 1
                 let canPrev = (idx ?? 0) > 0
                 var dx = value.translation.width
                 if dx < 0 && !canNext { dx *= 0.25 }
@@ -269,13 +270,13 @@ struct RootView: View {
                     tabSwipeDirection = nil
                     return
                 }
-                let idx = BottomTabBar.dockOrder.firstIndex(of: app.screen)
+                let idx = app.dockOrder.firstIndex(of: app.screen)
                 let dx = value.translation.width
                 let width = UIScreen.main.bounds.width
-                if dx <= -tabSwipeCommitDistance, let idx, idx < BottomTabBar.dockOrder.count - 1 {
-                    commitTabSwipe(to: BottomTabBar.dockOrder[idx + 1], settleTranslation: -width)
+                if dx <= -tabSwipeCommitDistance, let idx, idx < app.dockOrder.count - 1 {
+                    commitTabSwipe(to: app.dockOrder[idx + 1], settleTranslation: -width)
                 } else if dx >= tabSwipeCommitDistance, let idx, idx > 0 {
-                    commitTabSwipe(to: BottomTabBar.dockOrder[idx - 1], settleTranslation: width)
+                    commitTabSwipe(to: app.dockOrder[idx - 1], settleTranslation: width)
                 } else {
                     withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) { tabSwipeTranslation = 0 }
                     tabSwipeDirection = nil
@@ -436,9 +437,9 @@ struct RootView: View {
     private var tabSwipeNeighbor: Screen? {
         if let target = tabSwipeCommittingTarget { return target }
         guard tabSwipeDirection == "horizontal" else { return nil }
-        guard let idx = BottomTabBar.dockOrder.firstIndex(of: app.screen) else { return nil }
-        if tabSwipeTranslation < 0, idx < BottomTabBar.dockOrder.count - 1 { return BottomTabBar.dockOrder[idx + 1] }
-        if tabSwipeTranslation > 0, idx > 0 { return BottomTabBar.dockOrder[idx - 1] }
+        guard let idx = app.dockOrder.firstIndex(of: app.screen) else { return nil }
+        if tabSwipeTranslation < 0, idx < app.dockOrder.count - 1 { return app.dockOrder[idx + 1] }
+        if tabSwipeTranslation > 0, idx > 0 { return app.dockOrder[idx - 1] }
         return nil
     }
 
@@ -471,8 +472,8 @@ struct RootView: View {
         // follows the finger, one shared coordinate system with the
         // current screen above.
         let width = UIScreen.main.bounds.width
-        guard let idx = BottomTabBar.dockOrder.firstIndex(of: app.screen),
-              let neighborIdx = BottomTabBar.dockOrder.firstIndex(of: screen) else { return tabSwipeTranslation }
+        guard let idx = app.dockOrder.firstIndex(of: app.screen),
+              let neighborIdx = app.dockOrder.firstIndex(of: screen) else { return tabSwipeTranslation }
         let sign: CGFloat = neighborIdx > idx ? 1 : -1
         return tabSwipeTranslation + sign * width
     }
@@ -1027,7 +1028,13 @@ struct RootView: View {
                 }
             }
         }
-        .preferredColorScheme(app.theme == "dark" ? .dark : .light)
+        .preferredColorScheme(ThemeChoice.colorScheme(for: app.theme))
+        // "System" theme (note 66): while the choice is "system" nothing overrides the window, so this
+        // environment value IS the device setting; feed it to AppState so `palette` follows it live.
+        .onChange(of: colorScheme) { _, scheme in
+            if app.theme == "system" { app.systemIsDark = scheme == .dark }
+        }
+        .onChange(of: app.theme) { _, choice in BottomTabBarOverlay.shared.applyTheme(choice) }
         // BottomTabBarOverlay.swift: the bar now lives in its own always-
         // on-top UIWindow instead of this ZStack — attach it once a
         // UIWindowScene actually exists. Idempotent (guards on `window ==
@@ -1089,6 +1096,10 @@ struct RootView: View {
         .keyboardDoneToolbar()
         .sheet(item: $app.guestPrompt) { prompt in
             GuestPromptSheet(prompt: prompt).environmentObject(app)
+        }
+        // Simple Shell "+" (host): "Share one of my events" (same picker + beginEventStory as Account's).
+        .sheet(isPresented: $app.dockEventStoryPickerOpen) {
+            DockEventStoryPickerSheet().environmentObject(app)
         }
         .sheet(isPresented: Binding(
             get: { app.pulseOpen },
@@ -1304,6 +1315,10 @@ struct RootView: View {
         // MapExploreView's own sheet/camera/filter/search/selection state.
         .onChange(of: app.dockCreateMenuOpen) { _, open in
             BottomTabBarOverlay.shared.setDockCreateTrayOpen(open)
+        }
+        // Simple Shell (note 66): the dock's overlay band follows the bar's shape (one bar with the "+" inside).
+        .onChange(of: app.simpleShellEnabled) { _, on in
+            BottomTabBarOverlay.shared.setSimpleShell(on)
         }
         // TASK 3 (2026-09-22 seventeenth follow-up) — same "separate
         // UIWindow, isHidden not zIndex" reasoning as `setForcedHidden`'s

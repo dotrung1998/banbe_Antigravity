@@ -69,8 +69,8 @@ struct WelcomeView: View {
             }
             Spacer(minLength: 0)
             pill(app.T("EN", "VN"), id: "welcome.lang") { app.toggleLang() }
-            pill(app.theme == "dark" ? app.T("Sáng", "Light") : app.T("Tối", "Dark"), id: "welcome.theme") {
-                app.pickTheme(app.theme == "dark" ? "light" : "dark")
+            pill(app.isDark ? app.T("Sáng", "Light") : app.T("Tối", "Dark"), id: "welcome.theme") {
+                app.pickTheme(app.isDark ? "light" : "dark")
             }
             if story.isOnStory {
                 Button {

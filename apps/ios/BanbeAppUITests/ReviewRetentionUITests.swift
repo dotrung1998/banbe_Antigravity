@@ -65,8 +65,10 @@ final class ReviewRetentionUITests: XCTestCase {
 
     func testDeleteAccountAsksBeforeYouGo() {
         let app = launch("shell.account")
+        // note 66: Settings is a row in Account's More card, below the tiles.
+        XCTAssertTrue(el(app, "account.tile.events").waitForExistence(timeout: 10))
         let group = el(app, "account.group.preferences")
-        XCTAssertTrue(group.waitForExistence(timeout: 10))
+        for _ in 0..<6 where !group.exists || !group.isHittable { app.swipeUp() }
         group.tap()
         let row = el(app, "account.deleteRow")
         for _ in 0..<4 where !row.isHittable { app.swipeUp() }

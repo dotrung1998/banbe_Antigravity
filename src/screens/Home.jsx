@@ -16,6 +16,11 @@ import { reminderPhase, reminderRank } from '../lib/eventReminder.js';
 import { compactCoins, shortcutLabels, capsuleStreak } from '../lib/rewards.js';
 import { HEADER, hitSlop } from '../lib/homeHeaderLayout.js';
 import DockHeaderTitle, { DOCK_HEADER } from '../components/ui/DockHeaderTitle.jsx';
+import HomeModeSwitch from '../components/home/HomeModeSwitch.jsx';
+import HostHome from '../components/home/HostHome.jsx';
+import { pickGoerHero } from '../lib/homeHero.js';
+import { checklistVisible } from '../lib/activationChecklist.js';
+import { tickerItems } from '../lib/pulseTicker.js';
 
 // Header fit order (iOS note 45): wordmark steps down before the title goes; 96 matches every other screen.
 const HEADER_FIT_STEPS = [
@@ -104,10 +109,15 @@ export default function Home() {
     openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, loadPulse,
     loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openEventPreferences,
     openSearch, setHomeFilters, located, allowLocation, rewardsEnabled, rewardsV2Enabled, openBookingConfirmed,
+    resolvedTheme,
   } = useBanBe();
 
   const s = state;
   const hasHosted = s.hasHosted;
+  // Simple Shell (switch simple_shell, note 66): Going out | Hosting in the header, one hero, one chip row, location in
+  // the search bar, map as a Home view. Off = this screen exactly as before.
+  const simpleShell = flagOn(s.featureFlags, 'simple_shell');
+  const hostView = simpleShell && !!s.organizerMode;
   // Compact-vertical-list pass — see iOS HomeView.swift's
   // `visibleSurveyDiscoveryCount` for the full reasoning: deliberately
   // SEPARATE from both `s.homeSurveyDiscovery.length` and
@@ -209,14 +219,15 @@ export default function Home() {
       onOpenMyRefunds: () => openMyRefunds('home'),
       onOpenAdminInvite: () => openAccountGroup('adminTeam'),
     }),
-    ...(canHost ? buildActionCenterItems({
+    // Simple Shell: host to-dos live on the Hosting Home (HostHome.jsx); Going out shows your own only.
+    ...(canHost && !simpleShell ? buildActionCenterItems({
       role: 'host', T, now: tickNow,
       verifications: s.verifications || [], refundQueue: s.refundQueue || [], orgHolding,
       onOpenVerifications: () => openVerifications('home'),
       onOpenRefundCenter: () => openVerifications('home'),
       onOpenDashboard: goDashboard,
     }) : []),
-  ]), [T, tickNow, myHolding, myPendingVerification, s.myRefunds, s.myAdminInvite, openAccountGroup, canHost, s.verifications, s.refundQueue, orgHolding, openPaymentDetails, openMyRefunds, openVerifications, goDashboard]);
+  ]), [T, tickNow, myHolding, myPendingVerification, s.myRefunds, s.myAdminInvite, openAccountGroup, canHost, simpleShell, s.verifications, s.refundQueue, orgHolding, openPaymentDetails, openMyRefunds, openVerifications, goDashboard]);
 
   // Home is often the screen a buyer is sitting on when a hold's countdown
   // reaches zero — not just the ticket screen. myHolding above already
@@ -704,6 +715,83 @@ export default function Home() {
     if (overflow) setFitStep(fitStep + 1);
   });
 
+  // The area picker, anchored under whichever control opened it (the location pill, or the search bar's area button).
+  const openAreaMenu = (e) => {
+    // Anchor in the coordinates of the overlay container: on desktop the app sits inside a phone frame
+    // (.bb-screen is the containing block for fixed overlays); elsewhere .bb-screen is display:contents
+    // and its rect is empty, so the viewport is the reference.
+    const r = e.currentTarget.getBoundingClientRect();
+    const frame = e.currentTarget.closest('.bb-screen')?.getBoundingClientRect();
+    const inFrame = frame && frame.width > 0;
+    set({ areaMenuOpen: true, areaMenuAnchor: {
+      left: r.left - (inFrame ? frame.left : 0), bottom: r.bottom - (inFrame ? frame.top : 0),
+      width: inFrame ? frame.width : window.innerWidth } });
+  };
+  const areaName = curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label;
+
+  // Simple Shell: exactly one block at the top (src/lib/homeHero.js). Saved-coming-up only when nothing else leads.
+  const goerHero = simpleShell ? pickGoerHero({
+    signedIn: !!s.user, nextUp, actionCount: actionItems.length,
+    checklistVisible: !!s.user && checklistVisible(s.activation, (s.favorites || []).length > 0),
+  }) : null;
+  // Sort moved into Filters, so a non-default sort counts on the Filters badge too.
+  const simpleFilterBadge = filterBadge + (sortActive ? 1 : 0);
+  const hasPulse = tickerItems(s.pulseDaily).length > 0;
+
+  const savedUpcomingEl = savedUpcoming.length > 0 && (
+    <section data-testid="home-saved-upcoming" aria-labelledby="home-saved-upcoming-title" style={{ padding: '6px 20px 10px' }}>
+        <h2 id="home-saved-upcoming-title" style={{ ...display(17), margin: '0 0 6px' }}>{T('Đã lưu, sắp diễn ra', 'Saved, coming up')}</h2>
+        {savedUpcoming.map((e, i) => {
+          const fill = s.eventFill[e.key];
+          const ft = fill ? fillText(fill.capacity, fill.booked) : null;
+          return (
+            <div key={e.key} onClick={() => goEvent(e.key)} role="button" tabIndex={0} data-testid={`home-saved-upcoming-${e.key}`}
+              onKeyDown={(k) => { if (k.key === 'Enter' || k.key === ' ') { k.preventDefault(); goEvent(e.key); } }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderTop: i > 0 ? `1px solid ${rule}` : 'none', cursor: 'pointer' }}>
+              <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontSize: 14.5, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+                <span style={{ fontSize: 12.5, color: ink, opacity: 0.65 }}>
+                  {whenLabel(e.startsAt, e.tz, s.lang === 'en')}{ft ? ` · ${T(ft.vi, ft.en)}` : ''}
+                </span>
+              </span>
+              <span aria-hidden style={{ fontSize: 16, color: ink, opacity: 0.4, flex: 'none' }}>›</span>
+            </div>
+          );
+        })}
+      </section>
+  );
+  const pulseTicker = <div style={{ padding: '0 20px' }}><PulseTicker pulse={s.pulseDaily} onOpen={openPulseViewer} T={T} /></div>;
+  // Host stories (07-notifications.md Task 3.3). Banbe Pulse moved to the ticker under the search bar (note 51),
+  // so this row exists ONLY when there are stories: no stories, no row, no empty band. Compact 52px rings.
+  const storyRow = s.homeStories.length > 0 && (
+    <div data-hscroll="true" data-testid="home-story-row" style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '10px 20px 6px', scrollbarWidth: 'none' }}>
+      {s.homeStories.map(g => (
+        <div
+          key={g.organizerId}
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            openStoryViewer(g.organizerId, { top: r.top, left: r.left, width: r.width, height: r.height });
+          }}
+          data-testid="home-story-avatar"
+          data-org-id={g.organizerId}
+          data-story-state={g.allViewed ? 'viewed' : 'unviewed'}
+          style={{ flex: 'none', width: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+        >
+          <div style={{
+            width: 52, height: 52, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: `2.5px solid ${g.allViewed ? 'transparent' : alert}`,
+            boxShadow: g.allViewed ? `inset 0 0 0 2.5px ${rule}` : 'none',
+          }}>
+            <div style={{ ...fieldGlass({ width: 44, height: 44, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }), fontSize: 15, fontWeight: 700 }}>
+              {(g.orgName || '?').charAt(0).toUpperCase()}
+            </div>
+          </div>
+          <span style={{ fontSize: 9.5, color: ink, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 56 }}>{g.orgName}</span>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <>
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Home">
@@ -715,9 +803,11 @@ export default function Home() {
       <div data-testid="home-fixed-header" data-reveal="0" style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 8px`, display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
         <div ref={headerRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: DOCK_HEADER.rowHeight }}>
           {/* Note 53: the shared dock header — same logo, gap, title and row height as Schedule/Messages/Account. */}
-          <DockHeaderTitle title={T('Nhà', 'Home')} testId="home-title" wordmark={layout.wordmark} showTitle={showTitle} />
+          <DockHeaderTitle title={T('Nhà', 'Home')} testId="home-title" wordmark={layout.wordmark} showTitle={simpleShell ? false : showTitle} />
           <div style={{ display: 'flex', alignItems: 'center', gap: HEADER.groupGap, flex: 'none' }} data-testid="home-header-actions">
-          {shortcutsOn && (() => {
+          {/* Simple Shell: streak/coins live on Account's top tiles; the mode switch takes their place. */}
+          {simpleShell && <HomeModeSwitch />}
+          {!simpleShell && shortcutsOn && (() => {
             const sum = s.rewardsSummary;
             const lbl = shortcutLabels(T, sum, rewardsV2Enabled);
             const open = () => set({ screen: 'rewards', rewardsBack: 'home' });
@@ -765,22 +855,14 @@ export default function Home() {
         </div>
         {/* Note 50: language + theme live in Settings > Language & Appearance; the area menu is a location pill
             ("Deliver to"-style) and the full-width search bar takes the slot "Your events" used to fill. */}
+        {/* Simple Shell: area moves into the search bar; language + theme stay in Settings and Welcome. */}
+        {!simpleShell && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
-        <button type="button" onClick={(e) => {
-          // Anchor in the coordinates of the overlay container: on desktop the app sits inside a phone frame
-          // (.bb-screen is the containing block for fixed overlays); elsewhere .bb-screen is display:contents
-          // and its rect is empty, so the viewport is the reference.
-          const r = e.currentTarget.getBoundingClientRect();
-          const frame = e.currentTarget.closest('.bb-screen')?.getBoundingClientRect();
-          const inFrame = frame && frame.width > 0;
-          set({ areaMenuOpen: true, areaMenuAnchor: {
-            left: r.left - (inFrame ? frame.left : 0), bottom: r.bottom - (inFrame ? frame.top : 0),
-            width: inFrame ? frame.width : window.innerWidth } });
-        }} aria-haspopup="menu" data-testid="home-area-toggle"
+        <button type="button" onClick={openAreaMenu} aria-haspopup="menu" data-testid="home-area-toggle"
           style={{ ...quickToggle, flex: '0 1 auto', minWidth: 0 }}>
           <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
           <span style={{ opacity: 0.6, fontWeight: 500, flex: 'none' }}>{T('Gần', 'Near')}</span>
-          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label}</span>
+          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{areaName}</span>
           <span aria-hidden="true" style={{ fontSize: 9, marginLeft: 2, flex: 'none' }}>▾</span>
         </button>
         {/* Quick language + light/dark switch, same plain-text style as the location pill and right beside it.
@@ -791,21 +873,44 @@ export default function Home() {
           {T('EN', 'VN')}
         </button>
         <button type="button" onClick={toggleTheme} data-testid="home-theme-toggle" style={quickToggle}
-          aria-label={s.theme === 'dark' ? T('Chuyển sang giao diện sáng', 'Switch to light mode') : T('Chuyển sang giao diện tối', 'Switch to dark mode')}>
-          {s.theme === 'dark'
+          aria-label={resolvedTheme === 'dark' ? T('Chuyển sang giao diện sáng', 'Switch to light mode') : T('Chuyển sang giao diện tối', 'Switch to dark mode')}>
+          {resolvedTheme === 'dark'
             ? <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" /></svg>
             : <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z" /></svg>}
-          {s.theme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}
+          {resolvedTheme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}
         </button>
         </div>
+        )}
         {/* A little breathing room under the search bar, like Map's own search field (iOS: 12pt). */}
-        <div style={{ marginBottom: 4, opacity: s.searchOverlayOpen ? 0 : 1 }}><HomeSearchBar onOpen={openSearch} T={T} /></div>
+        {!hostView && (
+          <div style={{ marginBottom: 4, opacity: s.searchOverlayOpen ? 0 : 1 }}>
+            {simpleShell
+              ? <HomeSearchBar onOpen={openSearch} T={T} areaLabel={areaName} onArea={openAreaMenu} everywhere={curArea.key === 'all'} />
+              : <HomeSearchBar onOpen={openSearch} T={T} />}
+          </div>
+        )}
       </div>
+      {hostView ? (
+        <div data-reveal="1"><HostHome /><div style={{ height: 44 }} /></div>
+      ) : (
+      <>
       {/* Note 64: regions 1 and 2 are the sign-in reveal order (header 0, summary 1, feed 2, dock 3). Plain block
           wrappers, so layout is unchanged; they only animate while <html data-reveal="1">. */}
+      {simpleShell ? (
+        <div data-reveal="1" data-testid="home-hero" data-hero={goerHero}>
+          {goerHero === 'nextUp' && (
+            <NextUpBanner item={nextUp && { ...nextUp, when: nextUp.status }} onOpen={() => openSaved(nextUp)} T={T}
+              onShowTicket={nextUpTicket ? () => openBookingConfirmed(nextUpTicket.id, nextUpTicket.event_id, 'home') : null} />
+          )}
+          {goerHero === 'action' && <ActionCenter items={actionItems} onSeeAll={goNotifications} T={T} />}
+          {goerHero === 'checklist' && <ActivationChecklistCard />}
+          {goerHero === 'guest' && <GuestBrowseBanner />}
+          {goerHero === 'none' && savedUpcomingEl}
+        </div>
+      ) : (
       <div data-reveal="1">
       {/* First thing in the scrolling feed, like iOS (PulseTickerView at the top of the LazyVStack). */}
-      <div style={{ padding: '0 20px' }}><PulseTicker pulse={s.pulseDaily} onOpen={openPulseViewer} T={T} /></div>
+      {pulseTicker}
 
       {/* TASK A (2026-10-01 UX foundation pass) — replaces the old fixed
           four-banner block: one unified, priority-sorted, 3-card-capped
@@ -814,28 +919,7 @@ export default function Home() {
       <NextUpBanner item={nextUp && { ...nextUp, when: nextUp.status }} onOpen={() => openSaved(nextUp)} T={T}
         onShowTicket={nextUpTicket ? () => openBookingConfirmed(nextUpTicket.id, nextUpTicket.event_id, 'home') : null} />
 
-      {savedUpcoming.length > 0 && (
-        <section data-testid="home-saved-upcoming" aria-labelledby="home-saved-upcoming-title" style={{ padding: '6px 20px 10px' }}>
-          <h2 id="home-saved-upcoming-title" style={{ ...display(17), margin: '0 0 6px' }}>{T('Đã lưu, sắp diễn ra', 'Saved, coming up')}</h2>
-          {savedUpcoming.map((e, i) => {
-            const fill = s.eventFill[e.key];
-            const ft = fill ? fillText(fill.capacity, fill.booked) : null;
-            return (
-              <div key={e.key} onClick={() => goEvent(e.key)} role="button" tabIndex={0} data-testid={`home-saved-upcoming-${e.key}`}
-                onKeyDown={(k) => { if (k.key === 'Enter' || k.key === ' ') { k.preventDefault(); goEvent(e.key); } }}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderTop: i > 0 ? `1px solid ${rule}` : 'none', cursor: 'pointer' }}>
-                <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <span style={{ fontSize: 14.5, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
-                  <span style={{ fontSize: 12.5, color: ink, opacity: 0.65 }}>
-                    {whenLabel(e.startsAt, e.tz, s.lang === 'en')}{ft ? ` · ${T(ft.vi, ft.en)}` : ''}
-                  </span>
-                </span>
-                <span aria-hidden style={{ fontSize: 16, color: ink, opacity: 0.4, flex: 'none' }}>›</span>
-              </div>
-            );
-          })}
-        </section>
-      )}
+      {savedUpcomingEl}
 
       {/* Note 49: a guest sees a sign-in banner instead of the personal Action Center / checklist. */}
       {s.user ? (
@@ -845,40 +929,13 @@ export default function Home() {
         </>
       ) : <GuestBrowseBanner />}
 
-      {/* Host stories (07-notifications.md Task 3.3). Banbe Pulse moved to the ticker under the search bar (note 51),
-          so this row exists ONLY when there are stories: no stories, no row, no empty band. Compact 52px rings. */}
-      {s.homeStories.length > 0 && (
-        <div data-hscroll="true" data-testid="home-story-row" style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '10px 20px 6px', scrollbarWidth: 'none' }}>
-          {s.homeStories.map(g => (
-            <div
-              key={g.organizerId}
-              onClick={(e) => {
-                const r = e.currentTarget.getBoundingClientRect();
-                openStoryViewer(g.organizerId, { top: r.top, left: r.left, width: r.width, height: r.height });
-              }}
-              data-testid="home-story-avatar"
-              data-org-id={g.organizerId}
-              data-story-state={g.allViewed ? 'viewed' : 'unviewed'}
-              style={{ flex: 'none', width: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer' }}
-            >
-              <div style={{
-                width: 52, height: 52, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                border: `2.5px solid ${g.allViewed ? 'transparent' : alert}`,
-                boxShadow: g.allViewed ? `inset 0 0 0 2.5px ${rule}` : 'none',
-              }}>
-                <div style={{ ...fieldGlass({ width: 44, height: 44, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }), fontSize: 15, fontWeight: 700 }}>
-                  {(g.orgName || '?').charAt(0).toUpperCase()}
-                </div>
-              </div>
-              <span style={{ fontSize: 9.5, color: ink, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 56 }}>{g.orgName}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {storyRow}
 
       </div>
+      )}
 
       <div data-reveal="2">
+      {!simpleShell && (<>
       <CategoryRow values={homeFilters.cats} onPick={pickFilter} T={T} keys={categoryRow} counts={categoryCountMap}
         onShowAll={() => setCategorySheetOpen(true)} />
       {categorySheetOpen && (
@@ -955,6 +1012,48 @@ export default function Home() {
           })}
         </div>
       )}
+      </>)}
+      {simpleShell && (
+        // Simple Shell: ONE chip row. For You first, the one-tap chips, then Filters (categories, type chips and Sort
+        // live in the sheet now). The middle scrolls (data-hscroll so the root tab swipe ignores it).
+        <div data-testid="home-chip-row" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 0 6px', paddingInlineStart: 20 }}>
+          {hasForYou && (
+            <ForYouChip
+              T={T}
+              active={!!s.filterForYou}
+              pending={forYouAlert.pending}
+              animate={forYouAlert.animate}
+              capsuleStyle={homeCapsule({ fontWeight: s.filterForYou ? 600 : 400, minHeight: 44 }, !!s.filterForYou)}
+              title={forYouIntent?.goal ? forYouIntent : null}
+              onClick={() => {
+                if (!s.filterForYou) forYouAlert.acknowledge(forYouRanked.map(m => m.key));
+                toggleHomeFilter('forYou');
+              }}
+            />
+          )}
+          <div data-hscroll="true" data-testid="home-filter-extra-scroller" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none' }}>
+            {QUICK_CHIPS.map(c => {
+              const active = c.on(homeFilters);
+              const n = quickCounts[c.key];
+              if (!active && !n) return null;
+              return (
+                <button type="button" key={c.key} onClick={() => setHomeFilters(c.apply)} aria-pressed={active}
+                  data-testid={`home-quick-${c.key.toLowerCase()}`}
+                  style={homeCapsule({ fontWeight: active ? 600 : 400, border: 'none', fontFamily: 'inherit', gap: 6, minHeight: 44 }, active)}>
+                  {T(c.vi, c.en)}
+                  {!active && <span style={{ fontSize: 12, opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>{n}</span>}
+                </button>
+              );
+            })}
+          </div>
+          <button type="button" onClick={() => set({ homeFilterSheetOpen: true })} data-testid="home-filters-button"
+            aria-label={simpleFilterBadge ? T(`Bộ lọc, ${simpleFilterBadge} đang bật`, `Filters, ${simpleFilterBadge} on`) : T('Bộ lọc', 'Filters')}
+            style={{ ...homeCapsule({ padding: '0 12px', gap: 6, position: 'relative', border: 'none', fontFamily: 'inherit', minHeight: 44, marginInlineEnd: 20 }, simpleFilterBadge > 0) }}>
+            <svg aria-hidden="true" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
+            {simpleFilterBadge > 0 && <span data-testid="home-filters-badge" style={{ fontSize: 12, fontWeight: 700 }}>{simpleFilterBadge}</span>}
+          </button>
+        </div>
+      )}
       {forYouActive && (
         <div style={{ padding: '0 20px 4px' }}>
           {forYouWhy && <div data-testid="home-foryou-why" style={{ fontSize: 13, opacity: 0.75, marginBottom: 4 }}>{forYouWhy}</div>}
@@ -975,13 +1074,15 @@ export default function Home() {
           <span style={{ ...display(SECTION_TITLE), whiteSpace: 'nowrap' }}>
             {homeFilters.date !== 'any' && DATE_LABELS[homeFilters.date] ? T(...DATE_LABELS[homeFilters.date]) : forYouActive ? (forYouIntent?.goal ? T(forYouIntent.vi, forYouIntent.en) : T('Dành cho bạn', 'For you')) : T('Sắp diễn ra', 'Upcoming')}
           </span>
-          <span data-testid="home-result-count" data-count={shownItems.length} style={{ fontSize: 13, opacity: 0.6, whiteSpace: 'nowrap' }}>
+          <span data-testid="home-result-count" data-count={shownItems.length} style={{ fontSize: 13, opacity: 0.6, whiteSpace: 'nowrap', ...(simpleShell ? { color: ink } : null) }}>
             {T(`${shownItems.length} sự kiện`, `${shownItems.length} event${shownItems.length === 1 ? '' : 's'}`)}
           </span>
         </div>
         <div role="radiogroup" aria-label={T('Kiểu hiển thị', 'Layout')} style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 999, background: 'rgba(var(--bb-fg-rgb),0.06)' }}>
-          {[['cards', T('Thẻ', 'Cards'), 'M4 4h16v7H4zM4 13h16v7H4z'], ['list', T('Danh sách', 'List'), 'M4 6h16M4 12h16M4 18h16']].map(([m, lbl, d]) => (
-            <button key={m} type="button" role="radio" aria-checked={layoutMode === m} aria-label={lbl} onClick={() => pickLayout(m)} data-testid={`home-layout-${m}`}
+          {[['cards', T('Thẻ', 'Cards'), 'M4 4h16v7H4zM4 13h16v7H4z'], ['list', T('Danh sách', 'List'), 'M4 6h16M4 12h16M4 18h16'],
+            // Simple Shell: Map is a Home view (it left the dock); this opens the map screen, which keeps its own state.
+            ...(simpleShell ? [['map', T('Bản đồ', 'Map'), 'M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5L9 4zM9 4v13.5M15 6.5V20']] : [])].map(([m, lbl, d]) => (
+            <button key={m} type="button" role="radio" aria-checked={layoutMode === m} aria-label={lbl} onClick={() => (m === 'map' ? goMapExplore() : pickLayout(m))} data-testid={`home-layout-${m}`}
               style={{ width: 34, height: 30, borderRadius: 999, border: 'none', cursor: 'pointer', color: ink, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: layoutMode === m ? 'var(--bb-bg)' : 'transparent', boxShadow: layoutMode === m ? '0 1px 3px rgba(27,25,22,0.18)' : 'none' }}>
               <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
@@ -990,9 +1091,19 @@ export default function Home() {
         </div>
       </div>
 
-      {cards.map(ev => (layoutMode === 'list'
-        ? <DiscoveryRow key={ev.key} ev={ev} onOpen={() => goEvent(ev.key)} T={T} />
-        : <DiscoveryCard key={ev.key} ev={ev} onOpen={() => goEvent(ev.key)} onToggleSave={() => toggleFav(ev.key)} T={T} />))}
+      {cards.map((ev, i) => {
+        const card = layoutMode === 'list'
+          ? <DiscoveryRow key={ev.key} ev={ev} onOpen={() => goEvent(ev.key)} T={T} />
+          : <DiscoveryCard key={ev.key} ev={ev} onOpen={() => goEvent(ev.key)} onToggleSave={() => toggleFav(ev.key)} T={T} />;
+        if (!simpleShell) return card;
+        // Simple Shell: stories (only if any) after the 3rd card, the Pulse ticker (only with items) after the 6th.
+        // Fewer cards than that: they follow the last card.
+        const out = [card];
+        if (storyRow && i === Math.min(2, cards.length - 1)) out.push(<div key="home-stories-slot" style={{ paddingBottom: 14 }}>{storyRow}</div>);
+        if (hasPulse && i === Math.min(5, cards.length - 1)) out.push(<div key="home-pulse-slot" style={{ paddingBottom: 18 }}>{pulseTicker}</div>);
+        return out.length > 1 ? out : card;
+      })}
+      {simpleShell && cards.length === 0 && storyRow}
 
       {/* Requirements are soft: when filters leave almost nothing, offer the one change that adds the most. */}
       {relaxHints.length > 0 && feed.length > 0 && (
@@ -1214,8 +1325,13 @@ export default function Home() {
       <div style={{ padding: '6px 20px 8px', fontSize: 11, color: ink }}>
         {T('Vài buổi vui dành cho riêng bạn tuần này. Không xếp hạng, không quảng cáo, không lướt vô tận.', 'A few fun gatherings made just for you this week. No ratings, no ads, no endless scrolling.')}
       </div>
-      <div onClick={homeHostLink} style={{ padding: '4px 20px 44px', fontSize: 14.5, fontWeight: 600, letterSpacing: '-0.01em', color: ink, cursor: 'pointer' }}>{homeHostLinkLabel} ›</div>
+      {/* Simple Shell: hosting is one tap away in the header's mode switch, so this link only shows with the switch off. */}
+      {simpleShell ? <div style={{ height: 40 }} /> : (
+        <div onClick={homeHostLink} style={{ padding: '4px 20px 44px', fontSize: 14.5, fontWeight: 600, letterSpacing: '-0.01em', color: ink, cursor: 'pointer' }}>{homeHostLinkLabel} ›</div>
+      )}
       </div>
+      </>
+      )}
     </div>
     {sortMenuAnchor && (
       <SortMenu
@@ -1233,6 +1349,7 @@ export default function Home() {
         areaLabel={curArea.key === 'all' ? '' : curArea.label}
         onClose={() => set({ homeFilterSheetOpen: false })}
         onApply={(f, sort) => { setHomeFilters(f); set({ homeFilterSheetOpen: false, homeSort: sort }); }}
+        {...(simpleShell ? { simpleShell: true, typeChipsFor: typesOn ? (cat) => homeTypeFilters(profileFor(cat)) : null } : {})}
       />
     )}
     </>

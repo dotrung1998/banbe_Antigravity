@@ -281,7 +281,7 @@ function CreateSurveyForm({ T, onCreate, busy, error, searchAddressSuggestions }
  * Idea" pre-fills Create Event, it never creates anything by itself. */
 export default function SurveysHosting() {
   const {
-    state, T, goHome, mySurveys, mySurveysLoading, loadMySurveys,
+    state, set, T, goHome, mySurveys, mySurveysLoading, loadMySurveys,
     createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction,
     mySurveyCreateBusy, mySurveyCreateError, goSurveyPublic,
     shareSurveyLinkAction, openShareToStoryConfirm, closeShareToStoryConfirm, confirmShareSurveyToStory,
@@ -293,7 +293,9 @@ export default function SurveysHosting() {
   // Returning from a survey Preview restores the tab it was opened from
   // (e.g. Archived) rather than resetting to Active.
   const [tab, setTab] = useState(() => (TABS.some(x => x.key === state.surveysHostingReturnTab) ? state.surveysHostingReturnTab : 'active'));
-  const [showCreate, setShowCreate] = useState(false);
+  // Simple Shell's "+" › New survey opens straight on the create form (one-shot flag, cleared below).
+  const [showCreate, setShowCreate] = useState(() => !!state.surveysHostingOpenCreate);
+  useEffect(() => { if (state.surveysHostingOpenCreate) set({ surveysHostingOpenCreate: false }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [showDismissed, setShowDismissed] = useState(false);
   // Multi-select (Closed tab: archive; Suggested tab: dismiss). One mode
   // flag + one id list, reset whenever the tab changes.

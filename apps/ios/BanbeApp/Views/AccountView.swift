@@ -55,16 +55,8 @@ struct AccountView: View {
     @State private var highlightedTeamInviteOrganizerId: String?
     @State private var highlightedEventCreditId: UUID?
 
-    // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Purely a
-    // display switch (`if app.accountTab == ...` below) — never calls
-    // toggleOrganizerMode or any hosting-mode side effect by itself.
-    // Simplification disclosed vs. web: each tab does NOT get its own
-    // independently-preserved scroll position here — this screen's
-    // existing scroll-restore mechanism (`accountScrollAnchorID`, see its
-    // own doc comment above) is a single shared anchor across the whole
-    // LazyVStack, and giving each tab its own would mean a second,
-    // parallel scroll-tracking system; not built this pass.
-    // Lifted to AppState — see its own `app.accountTab` doc comment.
+    // note 66 — the Personal/Host/Admin tabs are gone: the content follows `app.organizerMode`.
+    // `app.accountTab` stays on AppState for compatibility but is never rendered or read here.
 
     private var myStoryGroup: StoryGroup? {
         app.homeStories.first { g in app.myOrganizerIdsCache.contains(g.organizerId) }
@@ -109,8 +101,9 @@ struct AccountView: View {
         )))
     }
 
+    /// note 66 — one list in both modes (goer + host duties), so nothing owed hides behind the mode switch.
     private var actionItems: [ActionCenterItem] {
-        app.organizerMode ? goerActionItems : sortActionCenterItems(goerActionItems + hostActionItems)
+        sortActionCenterItems(goerActionItems + hostActionItems)
     }
 
     // TASK B (2026-10-03 fix pass) — current UI mode (organizerMode), not
@@ -139,7 +132,6 @@ struct AccountView: View {
     private var searchQuery: String { app.accountSearchQuery }
     @FocusState private var searchFocused: Bool
     @State private var imageCacheClearedAt: Date?
-    @State private var tabBarFrame: CGRect = .zero
 
     var body: some View {
         // Pull-to-refresh header fix (2026-09-29 follow-up) — Messages'
@@ -170,7 +162,6 @@ struct AccountView: View {
             // comment as `accountHeader` just above) — only the selected
             // tab's own body, inside ScreenScaffold, scrolls now.
             // Search spans every tab, so the tab pills are hidden while it's open.
-            if !searchOpen { accountTabsBar }
             ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: accountScrollAnchorBinding, refreshIndicatorTopPadding: 24, onRefresh: {
                 guard app.userID != nil else { return }
                 await app.loadPaymentBookings()
@@ -186,12 +177,7 @@ struct AccountView: View {
                 if searchOpen { accountSearchResults } else { accountContent }
             }
         }
-        // Note 45 — swipe left/right between Personal / Host / Admin, from the header, the tab
-        // strip or the content. While there are several tabs a horizontal swipe belongs to them:
-        // it never hops to another dock section (tap the dock for that).
-        .contentShape(Rectangle())   // empty header/margin space must count as a touch target for the swipe too
-        .simultaneousGesture(accountTabSwipe)
-        .rootSwipeExclusion("account.tabs", enabled: accountTabs.count > 1 && !searchOpen)
+        // note 66 — no tab swipe any more: a horizontal swipe on Account belongs to the dock again.
         }
         .task { if app.userID != nil { await app.loadHomeStories() } }
         .task { if app.userID != nil { await app.loadMyOrganizerMemberships() } }
@@ -228,8 +214,8 @@ struct AccountView: View {
         // Host duties (held seats, verifications, refunds) are re-read every time
         // the Host tab is shown, so a seat the goer lost or the host cancelled
         // stops showing without a manual pull to refresh.
-        .task(id: app.accountTab) {
-            guard app.userID != nil, app.canHost, app.accountTab == "host" else { return }
+        .task(id: app.organizerMode) {
+            guard app.userID != nil, app.canHost, app.organizerMode else { return }
             await app.loadMyOrgEventSummaries()   // for the "Submitted events" card
             await app.loadOrganizerHoldingSummary()
             await app.loadVerifications()
@@ -242,18 +228,14 @@ struct AccountView: View {
         .task(id: app.myOrganizerID) {
             if app.canHost, app.myOrganizerID != nil { await app.loadMyOrgStats(); await app.loadMyOrgEventSummaries() }   // summaries feed the Host tab's badge
         }
-        .onAppear { hostHaloTrigger += 1; retryScrollRestoreIfNeeded(); syncAccountTabToRole(); consumeTeamHighlightsIfNeeded() }
+        .onAppear { hostHaloTrigger += 1; retryScrollRestoreIfNeeded(); consumeTeamHighlightsIfNeeded() }
+        // note 66 — the rewards strip reads the same summary as Home's streak/coins capsule.
+        .task(id: app.rewardsEnabled) {
+            if app.userID != nil, app.rewardsEnabled, app.rewardsSummaryStatus != .loaded { await app.loadRewardsSummary() }
+        }
         .onChange(of: app.screen) { _, new in if new == .profile { hostHaloTrigger += 1 } }
         .onChange(of: app.teamInviteHighlightOrganizerId) { _, _ in consumeTeamHighlightsIfNeeded() }
         .onChange(of: app.eventCreditHighlightId) { _, _ in consumeTeamHighlightsIfNeeded() }
-        // Account extension (2026-09-27, Stage 1/2) — a role change
-        // (organizer mode toggled off elsewhere, an admin demoted, an
-        // account switch) can leave `app.accountTab` pointing at a tab
-        // that's no longer in `accountTabs`; the toggle's own redirect
-        // (AppState+Data.swift, applyOrganizerMode) covers the direct
-        // toggle path, this is the general safety net for every other one.
-        .onChange(of: app.organizerMode) { _, _ in syncAccountTabToRole() }
-        .onChange(of: app.accountType) { _, _ in syncAccountTabToRole() }
         // TASK 1 (dock "+" native-menu pass) — the `.photosPicker`/
         // `.fullScreenCover` presentation for story creation (and the
         // BottomTabBarOverlay force-hide while any of it is up) is now
@@ -324,527 +306,486 @@ struct AccountView: View {
         .padding(.top, 16)
     }
 
-    /// Fixed-header pass (2026-10-02) — extracted out of `accountContent`
-    /// (see `body`'s own call-site comment) so switching tabs never
-    /// requires scrolling back to the top first. Same tab-button model
-    /// (`accountTabs`/`accountTabButton`) and `app.accountTab` state,
-    /// unchanged — purely a layout move, no new tab/navigation system.
-    private var accountTabsBar: some View {
-        let tabs = accountTabs
-        return Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                // Large text: stacked full-width rows read better than three squeezed segments.
-                VStack(spacing: 8) {
-                    ForEach(tabs, id: \.0) { key, label, badge in
-                        accountTabSegment(key: key, label: label, badge: badge, stacked: true)
-                    }
-                }
-            } else {
-                GlassSegmentedControl(
-                    segments: tabs.map { key, label, badge in
-                        GlassSegment(id: key, label: label, icon: accountTabIcon(key), badge: badge,
-                                     badgeID: "account.tab.\(key).badge",
-                                     spokenLabel: badge > 0 ? app.T("\(label), \(badge) mục mới", "\(label), \(badge) new item(s)") : label,
-                                     identifier: "account.tab.\(key)")
-                    },
-                    selection: app.accountTab, height: 52, frame: $tabBarFrame,
-                    onSelect: { selectAccountTab($0) })
-                // Press-and-hold on the bubble belongs to the tabs from the very first touch, even
-                // on the first visit before the measured exclusion zone exists (note 48).
-                .claimsRootSwipe()
-            }
-        }
-        // Three segments stay readable up to the first accessibility size; beyond it the
-        // rows are already stacked full width and the page itself keeps scaling.
-        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
-        .padding(.bottom, 12)
-        .background(app.palette.paper)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("account.tabs")
-    }
+    /// note 66 (Simple Shell phase 2) — Account has no tabs: its content follows the mode. Goer: profile card,
+    /// four tiles, rewards strip, Action Center, team-invite banner, More, Host-your-first-event, Sign out.
+    /// Host: organizer card, four host tiles, rewards strip, Action Center, More, Sign out. Admin tools are a
+    /// row in More (the 'admin' AccountGroup). Sign out renders once, at the very bottom.
+    private var isHostMode: Bool { app.organizerMode && app.canHost }
 
-    private func accountTabIcon(_ key: String) -> String {
-        switch key {
-        case "host": return "storefront"
-        case "admin": return "checkmark.shield"
-        default: return "person.crop.circle"
-        }
-    }
-
-    /// One large, clearly-labelled segment: icon + title (+ count badge), a 52pt target,
-    /// selection shown by the sliding ink capsule AND the inverted text — never colour alone.
-    @ViewBuilder
-    private func accountTabSegment(key: String, label: String, badge: Int, stacked: Bool) -> some View {
-        let selected = app.accountTab == key
-        SwipeSafeButton {
-            selectAccountTab(key)
-        } label: {
-            HStack(spacing: 7) {
-                Image(systemName: accountTabIcon(key)).font(.system(size: 16, weight: .semibold))
-                    .accessibilityHidden(true)
-                Text(label)
-                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                    .lineLimit(1).minimumScaleFactor(0.8)
-                if badge > 0 {
-                    Text(AccountBadges.format(badge))
-                        .font(.system(size: 11, weight: .bold)).monospacedDigit()
-                        .padding(.horizontal, 5)
-                        .frame(minWidth: 18, minHeight: 18)
-                        .background(selected ? app.palette.paper : BanbeTheme.alert, in: Capsule())
-                        .foregroundStyle(selected ? app.palette.ink : BanbeTheme.onAlert)
-                        .accessibilityIdentifier("account.tab.\(key).badge")
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: stacked ? 56 : 52)
-            .foregroundStyle(selected ? app.palette.paper : app.palette.ink)
-            .background {
-                if stacked { Capsule().fill(selected ? app.palette.ink : app.palette.field) }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(badge > 0 ? app.T("\(label), \(badge) mục mới", "\(label), \(badge) new item(s)") : label)
-        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityIdentifier("account.tab.\(key)")
-    }
-
-    /// Switch tab with a light fade; the tab you switch TO opens at its top.
-    private func selectAccountTab(_ key: String) {
-        guard app.accountTab != key else { return }
-        Haptics.selection()
-        app.accountScrollAnchorIDByTab[key] = nil
-        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { app.accountTab = key }
-    }
-
-    /// One tab left/right. Does nothing at either end (no wrap-around, no hop to another section).
-    private func moveAccountTab(_ delta: Int) {
-        let tabs = accountTabs
-        guard let i = tabs.firstIndex(where: { $0.0 == app.accountTab }) else { return }
-        let j = i + delta
-        guard tabs.indices.contains(j) else { return }
-        selectAccountTab(tabs[j].0)
-    }
-
-    private var accountTabSwipe: some Gesture {
-        DragGesture(minimumDistance: 28, coordinateSpace: .named("rootGesture"))
-            .onEnded { v in
-                guard !searchOpen, accountTabs.count > 1 else { return }
-                // A drag that starts on the glass bubble belongs to the bubble.
-                guard !tabBarFrame.contains(v.startLocation) else { return }
-                let dx = v.translation.width, dy = v.translation.height
-                // Clearly horizontal and long enough; a vertical scroll never counts.
-                guard abs(dx) >= 60, abs(dx) > abs(dy) * 1.8 else { return }
-                moveAccountTab(dx < 0 ? 1 : -1)
-            }
-    }
+    /// Keys the scroll anchor and the content identity (was `app.accountTab`).
+    private var modeKey: String { isHostMode ? "host" : "personal" }
 
     private var accountContent: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
-            // iPhone fix pass (2026-09-26) — this personal identity
-            // card (and its story ring/"Đổi tên") used to render
-            // regardless of `app.accountTab`, so it also showed on Tổ chức,
-            // right above that tab's own separate organizer card — two
-            // profile cards on one screen. Scoped to the Cá nhân tab
-            // only, matching the web fix.
-            if app.accountTab == "personal" {
-            // Account IA pass (2026-09-27) — identity card FIRST under
-            // the tab pills (was: reports row, then Team invites/
-            // memberships/event-credit content, THEN this card). Those
-            // moved into the "team"/"activity" AccountGroupView children
-            // below — only their pending COUNTS surface here now
-            // (groupCard's `badge`).
-            // TASK D (2026-10-01 UX foundation pass) — the header is
-            // now a tappable rounded profile card (editorial style:
-            // soft gradient wash from the account's own chosen
-            // palette). The story ring/post-story menu keep their own
-            // existing nested tap targets unchanged — a separate
-            // trailing chevron (not the whole card) opens EditProfile.
-            HStack(spacing: 14) {
-                // The story ring lives on the Host card (stories are a host
-                // feature) — this personal avatar is just the picture.
-                Group {
-                    if let urlStr = app.user?.avatarURL, let url = URL(string: urlStr) {
-                        AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
-                            .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    } else {
-                        Text(String(app.displayName.prefix(1)).uppercased())
-                            .font(BanbeTheme.display(22))
-                            .frame(width: 56, height: 56)
-                            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                }
-                .frame(width: 64, height: 64)
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(app.displayName).font(BanbeTheme.display(22)).lineLimit(1)
-                        if app.isSignedIn {
-                            SwipeSafeButton {
-                                app.goEditName()
-                            } label: {
-                                Label(app.T("Đổi tên", "Rename"), systemImage: "pencil")
-                                    .labelStyle(.titleAndIcon)
-                            }
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(app.palette.ink.opacity(0.65))
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    if let handle = app.user?.handle, !handle.isEmpty {
-                        Text("@\(handle)").font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
-                    }
-                    Text(subtitle).font(.system(size: 11)).kerning(0.6)
-                    // Story posting moved to the Host tab (hostStoryAndShareCard).
-                }
-                Spacer(minLength: 0)
-                if app.isSignedIn {
-                    // iPhone fix pass — this used to open EditProfile
-                    // directly; it now opens the same public profile
-                    // page anyone else sees at this account's own
-                    // handle (`isOwnProfile` there is what surfaces its
-                    // own "Chỉnh sửa hồ sơ" row) — editing is one tap
-                    // further in, not the arrow's own destination.
-                    SwipeSafeButton {
-                        if let handle = app.user?.handle, !handle.isEmpty {
-                            app.openPublicProfile(handle: handle, back: .profile)
-                        }
-                    } label: {
-                        Image(systemName: "chevron.right").font(.system(size: 16)).foregroundStyle(app.palette.ink.opacity(0.55))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("account.editProfile")
-                }
-            }
-            .keychainProfileCharm(handle: app.user?.handle, layout: .leading, outset: 16)
-            .padding(16)
-            .background(
-                LinearGradient(
-                    colors: [(ProfilePalette.all.first { $0.key == (app.user?.profileTheme ?? "default") }?.color ?? ProfilePalette.all[0].color).opacity(0.35), .clear],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                ),
-                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-            )
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
-            .padding(.top, 22)
-            .accessibilityIdentifier("account.profileCard")
-            shareCardCTA(host: false)
-            } // app.accountTab == "personal" (profile card)
-
-            if app.accountTab == "personal" {
-            // Account IA reorder pass (2026-09-30 second) — mirrors web's
-            // Account.jsx target order exactly: same product hypothesis on
-            // common task frequency (ticket/booking access, then payments,
-            // then settings, then hosting, then admin) — NOT measured
-            // banbe usage data, none exists to cite.
-            sectionHeader(app.T("Hoạt Động Của Bạn", "Your Activity"))
-                .accessibilityIdentifier("account.section.activity")
-
-            // TASK A (2026-10-01 UX foundation pass) — same canonical
-            // Action Center Home/Dashboard show; Account is one of its
-            // three placements.
-            ActionCenterView(items: actionItems, onSeeAll: { app.openVerifications(back: .profile) })
-
-            // Relabeled "Vé & Hoạt Động"/"Tickets & Activity" -> "Vé & Đặt
-            // Chỗ"/"Tickets & Bookings"; `groupKey` stays "activity" (route/
-            // identifier unchanged). Badge is now the real count of this
-            // account's own holding/awaiting-payment/pending-verification
-            // bookings (`AccountBadges.myTicketsActionCount`, reading the
-            // SAME `paymentBookings` array already loaded for the Action
-            // Center above — no new query).
-            // 2026-10-02 fix — these four used to be four separate floating
-            // cards with gaps between them; same grouping styling as
-            // "Event Operations & Payments" now applies here too — one
-            // contiguous container, same content/order/routes/badges.
-            groupedContainer {
-                groupCardRow(groupKey: "activity", icon: "calendar.badge.checkmark", label: app.T("Vé & Đặt Chỗ", "Tickets & Bookings"), badge: AccountBadges.myTicketsActionCount(paymentBookings: app.paymentBookings))
-                groupDivider()
-                HStack(spacing: 0) {
-                    // 2026-10-02 fix — was "calendar.badge.checkmark", the
-                    // exact same glyph the "Tickets & Bookings" row directly
-                    // above already uses in this same container; a distinct
-                    // glyph instead (still legible as "confirmed/going").
-                    counterGroupRow(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going"), icon: "checkmark.circle", identifier: "account.goingCard") { app.goGoingList() }
-                    groupDivider()
-                    // Relabeled "Đã lưu"/"Saved" (generic) -> "Sự Kiện Đã Lưu"/
-                    // "Saved Events"; destination/identifier unchanged.
-                    counterGroupRow(value: app.favorites.count, label: app.T("Sự Kiện Đã Lưu", "Saved Events"), icon: "bookmark", identifier: "account.savedCard") { app.goSavedList() }
-                }
-                .id("account-stats")
-                groupDivider()
-                // Note 44 — Schedule's second door, and Notifications' home in
-                // Account now that its dock slot went to Schedule.
-                row(app.T("Lịch của tôi", "My schedule"), identifier: "account.schedule", icon: "calendar", trailing: "›") {
-                    app.goSchedule()
-                }
-                groupDivider()
-                row(app.T("Thông báo", "Notifications"), identifier: "account.notifications", icon: "bell",
-                    trailing: app.unreadNotifications > 0 ? "\(app.unreadNotifications) ›" : "›") {
-                    app.goNotifications(back: .profile)
-                }
-                groupDivider()
-                groupCardRow(groupKey: "payments", icon: "banknote", label: app.T("Thanh Toán & Giấy Tờ", "Payments & Documents"), badge: AccountBadges.myRefundActionCount(myRefunds: app.myRefunds))
-                groupDivider()
-                reportsGroupRow(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsPersonal") {
-                    app.openReports(scope: "personal", back: .profile)
-                }
-            }
-            .padding(.top, 14)
-
-            // Phase 1 Q7 — iOS parity of web Account.jsx "Invite friends": shares this account's own
-            // https://www.banbe.app/?ref=<code> link. No reward, so nothing is promised.
-            if app.referralLink != nil {
-                groupedContainer {
-                    SwipeSafeButton { app.shareReferral() } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "person.2").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(app.T("Mời bạn bè", "Invite friends")).font(BanbeTheme.display(16))
-                                Text(app.T("Rủ bạn bè cùng tham gia banbe qua link riêng của bạn.", "Bring friends onto banbe with your own link."))
-                                    .font(.system(size: 11.5)).opacity(0.7)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            Spacer(minLength: 8)
-                            Text(app.T("Chia sẻ", "Share"))
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(app.palette.paper)
-                                .padding(.horizontal, 16).padding(.vertical, 9)
-                                .background(app.palette.ink, in: Capsule())
-                        }
-                        .foregroundStyle(app.palette.ink)
-                        .padding(.horizontal, 16).padding(.vertical, 14)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("account.inviteFriends")
-                }
-                .padding(.top, 20)
+            if isHostMode {
+                hostIdentity
+            } else {
+                personalProfileCard
             }
 
-            // Account IA reorder pass (2026-09-30 second) — second cluster:
-            // account-level settings. The `team` group card used to always
-            // render here — REMOVED wholesale (not simply moved into
-            // Hosting): a user can receive a co-organizer invite before
-            // ever turning Hosting Mode on, and hiding the ONLY entry point
-            // to that invite behind the Hosting toggle would strand them.
-            // Instead: (a) the Host tab now has its own entry point into
-            // the SAME "team" screen (see hostManagementRows below — same
-            // "two doors, one destination" pattern already used for the
-            // Payment Disputes row), and (b) the lightweight conditional
-            // row below surfaces the SAME destination here ONLY when
-            // there's a real pending invite AND Hosting is off — mutually
-            // exclusive with the Host-tab card (accountTab can never be
-            // "host" while organizerMode is false — see the tab-list
-            // filter/redirect elsewhere in this file), so neither ever
-            // double-counts.
-            sectionHeader(app.T("Tài Khoản & Cài Đặt", "Account & Settings"), topPadding: 22)
-                .accessibilityIdentifier("account.section.settings")
+            AccountTilesGrid(tiles: isHostMode ? hostTiles : goerTiles)
+                .padding(.top, 16)
+                .id("account-tiles")
 
-            // 2026-10-02 fix — same grouping as the Activity cluster above:
-            // these three were separate floating cards, now one contiguous
-            // container. Content/routes/identifiers unchanged.
-            groupedContainer {
-                SwipeSafeButton {
-                    if let handle = app.user?.handle, !handle.isEmpty {
-                        app.openPublicProfile(handle: handle, back: .profile)
-                    }
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "person.crop.circle").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
-                        Text(app.T("Hồ Sơ Cá Nhân", "Personal Profile")).font(.system(size: 14))
-                        Spacer()
-                        Text("›").font(.system(size: 15)).opacity(0.85)
-                    }
-                    .foregroundStyle(app.palette.ink)
-                    .padding(.horizontal, 16).padding(.vertical, 15)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("account.personalProfile")
-                groupDivider()
-                SwipeSafeButton { app.screen = .following } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "heart").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
-                        Text(app.T("Đang theo dõi", "Following")).font(.system(size: 14))
-                        Spacer()
-                        Text(app.followedStatus == .loaded ? "\(app.followedOrgIDs.count) ›" : "›").font(.system(size: 15)).opacity(0.85)
-                    }
-                    .foregroundStyle(app.palette.ink)
-                    .padding(.horizontal, 16).padding(.vertical, 15)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("account.following")
-                if app.rewardsEnabled {
-                groupDivider()
-                SwipeSafeButton { app.openRewards(from: .profile) } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "circle.hexagongrid.circle").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
-                        Text(app.T("Phần thưởng & huy hiệu", "Rewards & badges")).font(.system(size: 14))
-                        Spacer()
-                        Text("›").font(.system(size: 15)).opacity(0.85)
-                    }
-                    .foregroundStyle(app.palette.ink)
-                    .padding(.horizontal, 16).padding(.vertical, 15)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("account.rewards")
-                }
-                groupDivider()
-                // App Preferences is the destination name for language,
-                // appearance, and Liquid Glass controls.
-                // (reads more accurately for its actual contents). `groupKey`/
-                // identifier/route unchanged.
-                groupCardRow(groupKey: "preferences", icon: "slider.horizontal.3", label: app.T("Tùy Chỉnh", "App Preferences"))
-                groupDivider()
-                SwipeSafeButton { openGroup("helpLegal") } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "lock.shield").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
-                        Text(app.T("Trợ Giúp & Pháp Lý", "Help & Legal")).font(.system(size: 14))
-                        Spacer()
-                        Text("›").font(.system(size: 15)).opacity(0.85)
-                    }
-                    .foregroundStyle(app.palette.ink)
-                    .padding(.horizontal, 16).padding(.vertical, 15)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("account.helpLegal")
-            }
-            .padding(.top, 14)
-            // "Help & Legal" (grouped above) — no dedicated in-app Help/
-            // Support screen exists anywhere in this codebase (searched for
-            // one); only the real, already-wired Policy screen
-            // (`app.openPolicy()`/`PolicyView.swift`, the same bilingual
-            // policy text used at signup consent, reachable read-only here
-            // — its own "‹ Back" returns to `app.policyBackScreen`, set to
-            // whichever screen opened it). That row is therefore the Legal
-            // half only — the "Help" half has no real destination yet, a
-            // genuine gap flagged in 09-auth-onboarding.md's dated fix-pass
-            // section, not fabricated here.
+            if app.rewardsEnabled { rewardsStrip.padding(.top, 12) }
 
-            // The lightweight conditional invite row described above. Same
-            // badge SOURCE as the Host-tab "team" card (myOrganizerInvites
-            // [+ myEventCredits]) — never a second independently-derived
-            // count, never shown at the same time as that card.
-            if !app.organizerMode && !app.myOrganizerInvites.isEmpty {
-                SwipeSafeButton { app.accountGroupKey = "team"; app.screen = .accountGroup } label: {
-                    HStack(spacing: 12) {
-                        // 2026-10-02 fix — size/no-background standardized
-                        // to match every other row icon on this screen.
-                        Image(systemName: "person.3").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
-                        Text(app.T("Bạn có lời mời Team", "You have a team invite")).font(.system(size: 14))
-                        Spacer()
-                        Text("\(app.myOrganizerInvites.count)")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(app.palette.paper)
-                            .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(BanbeTheme.alert, in: Capsule())
-                            .accessibilityIdentifier("account.teamInviteBanner.badge")
-                        Text("›").font(.system(size: 15))
-                    }
-                    .foregroundStyle(app.palette.ink)
-                    .padding(16)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 8)
-                .accessibilityIdentifier("account.teamInviteBanner")
+            // Same canonical Action Center as Home; only when it has items. Goer and host duties are shown
+            // together in both modes so owed money is never hidden behind a mode switch.
+            if !actionItems.isEmpty {
+                ActionCenterView(items: actionItems, onSeeAll: { app.openVerifications(back: .profile) })
+                    .padding(.top, 6)
             }
 
+            if !isHostMode && !app.myOrganizerInvites.isEmpty { teamInviteBanner }
 
-            // Account extension (2026-09-27, Stage 1) — "organizer mode
-            // OFF means host UI is OFF": the whole Tổ chức tab disappears
-            // while this is off, so the ON/OFF control itself (and any
-            // actionable host duty) can't live there any more — moved
-            // here, into Cá nhân, which is always reachable. The Tổ chức
-            // tab (when it does show) now holds only the organizer
-            // identity card + its management entry point (orgProfileCard).
-            hostingSection
-            } // app.accountTab == "personal"
-
-            if app.accountTab == "host" {
-            // Account IA pass (2026-09-27) — identity card FIRST (was:
-            // reports row, then this card).
-            orgProfileCard()
-            postStoryCTA
-            shareCardCTA(host: true)
-            ActionCenterView(items: hostActionItems, onSeeAll: { app.openVerifications(back: .profile) })
-            hostManagementRows
-            // Metrics & Reports now lives as the last row INSIDE
-            // `hostManagementRows`' grouped card (same pattern as Personal's
-            // "Your Activity"), under its own "Host Management" header.
-            } // app.accountTab == "host"
-
-            if app.accountTab == "admin" {
-            // No header existed here before ("nothing to group"); now
-            // there is: this header plus the reorder below justifies it.
-            sectionHeader(app.T("Quản Trị", "Administration"))
-                .accessibilityIdentifier("account.section.admin")
-            adminSection
-            } // app.accountTab == "admin"
-
-
-            // Bandwidth pass (2026-10-01) — lets anyone stuck with a stale
-            // cached cover (or just wanting the disk space back) reclaim it
-            // without affecting drafts/sessions/tickets, which PhotoLoader's
-            // caches never touch in the first place. See
-            // .claude/notes/22-supabase-bandwidth-optimization.md.
-            SwipeSafeButton {
-                PhotoLoader.clearCache()
-                imageCacheClearedAt = Date()
-            } label: {
-                Label(
-                    imageCacheClearedAt == nil
-                        ? app.T("Xoá bộ nhớ đệm hình ảnh", "Clear Image Cache")
-                        : app.T("Đã xoá bộ nhớ đệm hình ảnh", "Image cache cleared"),
-                    systemImage: "photo.stack"
-                )
-                .labelStyle(.titleAndIcon)
+            sectionHeader(app.T("Thêm", "More"), topPadding: 24)
+                .accessibilityIdentifier("account.section.more")
+            moreCard.padding(.top, 10)
+            if !app.organizerModeError.isEmpty {
+                Text(app.organizerModeError)
+                    .font(.system(size: 12))
+                    .foregroundStyle(BanbeTheme.alert)
+                    .padding(.top, 10)
             }
-            .font(.system(size: 13))
-            .foregroundStyle(app.palette.ink)
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("account.clearImageCache")
-            .padding(.top, 24)
 
-            SwipeSafeButton {
-                if app.isSignedIn { Task { await app.signOut() } } else { app.goLogin() }
-            } label: {
-                Label(
-                    app.isSignedIn
-                        ? app.T("Đăng xuất", "Sign out")
-                        : app.T("Đăng nhập để lưu sự kiện và nhắn tin", "Sign in to save events and message hosts"),
-                    systemImage: app.isSignedIn ? "rectangle.portrait.and.arrow.right" : "arrow.right.to.line"
-                )
-                .labelStyle(.titleAndIcon)
-            }
-            .font(.system(size: 13))
-            .foregroundStyle(app.palette.ink)
-            .buttonStyle(.plain)
-            .accessibilityIdentifier(app.isSignedIn ? "account.signOut" : "account.signIn")
-            .padding(.top, 12)
-            .padding(.bottom, BottomTabBar.contentClearance)
+            if !isHostMode && !app.canHost { hostFirstEventCard }
+
+            signOutButton
         }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 20)
         .padding(.top, 16)
-        // Fixed-header pass (2026-10-02) — each tab's body is now a
-        // distinctly-identified subtree, so switching tabs tears down and
-        // recreates it (standard SwiftUI "new identity resets scroll
-        // offset" behavior) instead of silently keeping whatever physical
-        // scroll offset the PREVIOUS tab's (now-replaced) content happened
-        // to be at. Combined with `accountScrollAnchorBinding`'s own
-        // per-tab dictionary, a tab with a previously-stored anchor still
-        // restores to it on this same re-creation — same mechanism
-        // `retryScrollRestoreIfNeeded` already uses for a full screen
-        // return, just re-keyed per tab instead of per screen visit.
-        .id(app.accountTab)
+        // A mode switch swaps the whole body (and its own scroll anchor), like a tab switch used to.
+        .id(modeKey)
         .transition(.opacity)
         .sheet(isPresented: $shareCardOpen) { shareCardSheet }
         .sheet(isPresented: $eventStoryPickerOpen) { eventStoryPicker }
+    }
+
+    // MARK: Identity
+
+    /// The goer identity card (unchanged: KeychainFrame charm, rename, › to the public profile).
+    private var personalProfileCard: some View {
+        HStack(spacing: 14) {
+            Group {
+                if let urlStr = app.user?.avatarURL, let url = URL(string: urlStr) {
+                    AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
+                        .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                } else {
+                    Text(String(app.displayName.prefix(1)).uppercased())
+                        .font(BanbeTheme.display(22))
+                        .frame(width: 56, height: 56)
+                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
+            .frame(width: 64, height: 64)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(app.displayName).font(BanbeTheme.display(22)).lineLimit(1)
+                    if app.isSignedIn {
+                        SwipeSafeButton {
+                            app.goEditName()
+                        } label: {
+                            Label(app.T("Đổi tên", "Rename"), systemImage: "pencil")
+                                .labelStyle(.titleAndIcon)
+                        }
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(app.palette.ink.opacity(0.65))
+                        .buttonStyle(.plain)
+                    }
+                }
+                if let handle = app.user?.handle, !handle.isEmpty {
+                    Text("@\(handle)").font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                }
+                Text(subtitle).font(.system(size: 11)).kerning(0.6)
+            }
+            Spacer(minLength: 0)
+            if app.isSignedIn {
+                SwipeSafeButton {
+                    openOwnPublicProfile()
+                } label: {
+                    Image(systemName: "chevron.right").font(.system(size: 16)).foregroundStyle(app.palette.ink.opacity(0.55))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(app.T("Hồ sơ cá nhân", "Personal profile"))
+                .accessibilityIdentifier("account.editProfile")
+            }
+        }
+        .keychainProfileCharm(handle: app.user?.handle, layout: .leading, outset: 16)
+        .padding(16)
+        .background(
+            LinearGradient(
+                colors: [(ProfilePalette.all.first { $0.key == (app.user?.profileTheme ?? "default") }?.color ?? ProfilePalette.all[0].color).opacity(0.35), .clear],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+        .padding(.top, 22)
+        .accessibilityIdentifier("account.profileCard")
+    }
+
+    /// Host mode: the organizer card (or its ensure card), plus a small link to the personal public profile.
+    @ViewBuilder
+    private var hostIdentity: some View {
+        orgProfileCard()
+        if let handle = app.user?.handle, !handle.isEmpty {
+            SwipeSafeButton { openOwnPublicProfile() } label: {
+                HStack(spacing: 4) {
+                    Text(app.T("Hồ sơ cá nhân", "Personal profile"))
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                }
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(app.palette.ink2)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(app.T("Hồ sơ cá nhân", "Personal profile"))
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("account.switchIdentity")
+        }
+    }
+
+    private func openOwnPublicProfile() {
+        if let handle = app.user?.handle, !handle.isEmpty {
+            app.openPublicProfile(handle: handle, back: .profile)
+        }
+    }
+
+    // MARK: Tiles
+
+    private var goerTiles: [AccountTile] {
+        let going = app.goingEventsCount
+        let saved = app.favorites.count
+        return [
+            AccountTile(key: "tickets", symbol: "ticket", title: app.T("Vé & đặt chỗ", "Tickets"),
+                        value: app.T("\(going) sắp tới", "\(going) upcoming"),
+                        badge: AccountBadges.myTicketsActionCount(paymentBookings: app.paymentBookings)) { openGroup("activity") },
+            AccountTile(key: "wallet", symbol: "creditcard", title: app.T("Ví & chứng từ", "Wallet"),
+                        value: app.T("Hoá đơn, biên nhận, hoàn tiền", "Invoices, receipts, refunds"),
+                        badge: AccountBadges.myRefundActionCount(myRefunds: app.myRefunds)) { openGroup("payments") },
+            AccountTile(key: "saved", symbol: "heart", title: app.T("Đã lưu", "Saved"),
+                        value: app.T("\(saved) sự kiện", saved == 1 ? "1 event" : "\(saved) events")) { app.goSavedList() },
+            AccountTile(key: "help", symbol: "questionmark.circle", title: app.T("Trợ giúp", "Help"),
+                        value: app.T("Hướng dẫn, điều khoản, Q&A", "Guides, terms, Q&A")) { openGroup("helpLegal") },
+        ]
+    }
+
+    private var hostTiles: [AccountTile] {
+        let opsBadge = AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueue: app.refundQueue)
+        let teamBadge = app.myOrganizerInvites.count + app.myEventCredits.count
+        let eventsValue: String = {
+            if submittedTotal > 0 { return app.T("\(submittedTotal) chờ duyệt", "\(submittedTotal) in review") }
+            if let n = app.myOrgPublishedEventCount { return app.T("\(n) đã đăng", n == 1 ? "1 published" : "\(n) published") }
+            return app.T("Quản lý & điểm danh", "Manage & check in")
+        }()
+        return [
+            AccountTile(key: "events", symbol: "calendar", title: app.T("Sự kiện", "Events"),
+                        value: eventsValue, badge: submittedTotal) { app.goDashboard(back: .profile) },
+            AccountTile(key: "getpaid", symbol: "banknote", title: app.T("Nhận tiền", "Get paid"),
+                        value: opsBadge > 0 ? app.T("\(opsBadge) việc cần làm", "\(opsBadge) to do")
+                                            : app.T("Xác nhận, hoàn tiền, chứng từ", "Verify, refunds, documents"),
+                        badge: opsBadge) { openGroup("hostOps") },
+            AccountTile(key: "team", symbol: "person.3", title: app.T("Đội ngũ", "Team"),
+                        value: app.T("Thành viên & lời mời", "Members & invites"), badge: teamBadge) { openGroup("team") },
+            AccountTile(key: "reports", symbol: "chart.bar.doc.horizontal", title: app.T("Báo cáo", "Reports"),
+                        value: app.T("Số liệu & xuất file", "Metrics & exports")) { openHostReports() },
+        ]
+    }
+
+    /// Host reports need an organizer; without one, the ensure (host setup) flow opens instead.
+    private func openHostReports() {
+        if let id = app.myOrganizerID {
+            app.openReports(scope: "host", organizerID: id, back: .profile)
+        } else {
+            app.hostSetupOpen = true
+        }
+    }
+
+    // MARK: Rewards strip
+
+    private var rewardsStrip: some View {
+        let summary = app.rewardsSummaryStatus == .loaded ? app.rewardsSummary : nil
+        let text: String
+        let spoken: String
+        if let sum = summary {
+            let streak = RewardsLogic.capsuleStreak(sum, weekly: app.rewardsV2Enabled)
+            text = streak.weekly
+                ? app.T("🔥 Chuỗi \(streak.value) tuần · \(RewardsLogic.compactCoins(sum.balance)) xu", "🔥 \(streak.value)-week streak · \(RewardsLogic.compactCoins(sum.balance)) coins")
+                : app.T("🔥 Chuỗi \(streak.value) ngày · \(RewardsLogic.compactCoins(sum.balance)) xu", "🔥 \(streak.value)-day streak · \(RewardsLogic.compactCoins(sum.balance)) coins")
+            spoken = app.T("Phần thưởng & huy hiệu, ", "Rewards & badges, ") + text.replacingOccurrences(of: "🔥 ", with: "")
+        } else {
+            text = app.T("Phần thưởng & huy hiệu", "Rewards & badges")
+            spoken = text
+        }
+        return SwipeSafeButton { app.openRewards(from: .profile) } label: {
+            HStack(spacing: 10) {
+                if summary == nil {
+                    Image(systemName: "circle.hexagongrid.circle").font(.system(size: 16, weight: .medium)).accessibilityHidden(true)
+                }
+                Text(text).font(.subheadline.weight(.semibold)).monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink3)
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .background(app.palette.surface1, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spoken)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("account.rewards")
+    }
+
+    // MARK: Team invite banner (goer only)
+
+    private var teamInviteBanner: some View {
+        SwipeSafeButton { openGroup("team") } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "person.3").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
+                Text(app.T("Bạn có lời mời Team", "You have a team invite")).font(.system(size: 14))
+                Spacer()
+                Text("\(app.myOrganizerInvites.count)")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(BanbeTheme.onAlert)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(BanbeTheme.alert, in: Capsule())
+                    .accessibilityIdentifier("account.teamInviteBanner.badge")
+                Text("›").font(.system(size: 15))
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(16)
+            .background(app.palette.surface1, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 12)
+        .accessibilityIdentifier("account.teamInviteBanner")
+    }
+
+    // MARK: More
+
+    @ViewBuilder
+    private var moreCard: some View {
+        VStack(spacing: 0) {
+            moreRow(app.T("Thông báo", "Notifications"), icon: "bell", identifier: "account.notifications",
+                    badge: app.unreadNotifications) { app.goNotifications(back: .profile) }
+            if isHostMode {
+                moreDivider()
+                postStoryRow
+                if app.myOrganizerID != nil {
+                    moreDivider()
+                    moreRow(app.T("Chia sẻ thẻ tổ chức", "Share host card"), icon: "qrcode", identifier: "account.shareHostCard") {
+                        shareCardForHost = true; shareCardOpen = true
+                    }
+                }
+                moreDivider()
+                moreRow(app.T("Khảo sát & ý tưởng sự kiện", "Surveys & event ideas"), icon: "lightbulb", identifier: "account.group.surveys") {
+                    app.screen = .surveysHosting
+                }
+                moreDivider()
+                moreRow(app.T("Hồ sơ tổ chức", "Organizer profile"), icon: "storefront", identifier: "account.organizerProfile") {
+                    if let id = app.myOrganizerID { app.openOrganizerProfile(organizerID: id, back: .profile) } else { app.hostSetupOpen = true }
+                }
+            } else {
+                moreDivider()
+                moreRow(app.T("Đang theo dõi", "Following"), icon: "person.crop.circle.badge.checkmark", identifier: "account.following",
+                        trailing: app.followedStatus == .loaded ? "\(app.followedOrgIDs.count)" : nil) { app.screen = .following }
+                if app.referralLink != nil {
+                    moreDivider()
+                    moreRow(app.T("Mời bạn bè", "Invite friends"), icon: "person.2", identifier: "account.inviteFriends") { app.shareReferral() }
+                }
+                if let handle = app.user?.handle, !handle.isEmpty {
+                    moreDivider()
+                    moreRow(app.T("Chia sẻ thẻ của bạn", "Share your card"), icon: "qrcode", identifier: "account.shareProfileCard") {
+                        shareCardForHost = false; shareCardOpen = true
+                    }
+                }
+                moreDivider()
+                moreRow(app.T("Báo cáo", "Reports"), icon: "chart.bar.doc.horizontal", identifier: "account.reportsPersonal") {
+                    app.openReports(scope: "personal", back: .profile)
+                }
+            }
+            moreDivider()
+            moreRow(app.T("Cài đặt", "Settings"), icon: "gearshape", identifier: "account.group.preferences") { openGroup("preferences") }
+            moreDivider()
+            moreRow(imageCacheClearedAt == nil ? app.T("Xoá bộ nhớ đệm hình ảnh", "Clear image cache")
+                                               : app.T("Đã xoá bộ nhớ đệm hình ảnh", "Image cache cleared"),
+                    icon: "photo.stack", identifier: "account.clearImageCache", chevron: false) {
+                PhotoLoader.clearCache()
+                imageCacheClearedAt = Date()
+            }
+            moreDivider()
+            hostingToggleRow
+            if app.isAdmin {
+                moreDivider()
+                moreRow(app.T("Công cụ quản trị", "Admin tools"), icon: "checkmark.shield", identifier: "account.adminTools",
+                        badge: AccountBadges.adminModerationCount(accountType: app.accountType, pendingEventsCount: app.pendingEventsCount)
+                            + app.adminInvites.filter { $0.status == "pending" }.count) { openGroup("admin") }
+            }
+        }
+        .background(app.palette.surface1, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func moreDivider() -> some View {
+        Rectangle().fill(app.palette.divider).frame(height: 1 / UIScreen.main.scale).padding(.leading, 50)
+    }
+
+    private func moreRowLabel(_ title: String, icon: String, badge: Int = 0, trailing: String? = nil, chevron: Bool = true) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .medium))
+                .frame(width: 22, height: 22)
+                .foregroundStyle(app.palette.ink2)
+                .accessibilityHidden(true)
+            Text(title).font(.body).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            if badge > 0 {
+                Text(AccountBadges.format(badge))
+                    .font(.caption2.weight(.bold)).monospacedDigit()
+                    .padding(.horizontal, 6)
+                    .frame(minWidth: 20, minHeight: 20)
+                    .background(BanbeTheme.alert, in: Capsule())
+                    .foregroundStyle(BanbeTheme.onAlert)
+            }
+            if let trailing { Text(trailing).font(.subheadline).foregroundStyle(app.palette.ink2) }
+            if chevron {
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink3)
+                    .accessibilityHidden(true)
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    private func moreRow(_ title: String, icon: String, identifier: String, badge: Int = 0, trailing: String? = nil,
+                         chevron: Bool = true, action: @escaping () -> Void) -> some View {
+        SwipeSafeButton(action: action) {
+            moreRowLabel(title, icon: icon, badge: badge, trailing: trailing, chevron: chevron)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(badge > 0 ? app.T("\(title), \(badge) mục mới", "\(title), \(badge) new item(s)")
+                                      : (trailing.map { "\(title), \($0)" } ?? title))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier(identifier)
+    }
+
+    /// Host mode: Post a story (same menu as before, incl. "Share one of my events").
+    private var postStoryRow: some View {
+        Menu {
+            Button { app.storyLibraryPickerOpen = true } label: {
+                Label(app.T("Thư Viện Ảnh", "Photo Library"), systemImage: "photo.on.rectangle")
+            }
+            Button { app.storyCameraOpen = true } label: {
+                Label(app.T("Camera", "Camera"), systemImage: "camera")
+            }
+            Button { eventStoryPickerOpen = true } label: {
+                Label(app.T("Chọn từ sự kiện của tôi", "Share one of my events"), systemImage: "calendar")
+            }
+        } label: {
+            moreRowLabel(app.T("Đăng story", "Post a story"), icon: "plus.circle", chevron: false)
+                .overlay(alignment: .trailing) {
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 12)).foregroundStyle(app.palette.ink3)
+                        .padding(.trailing, 16).accessibilityHidden(true)
+                }
+        }
+        .accessibilityIdentifier("account.postStory")
+    }
+
+    /// Hosting mode on/off (the same toggle as before; keeps the tour target).
+    private var hostingToggleRow: some View {
+        SwipeSafeButton { app.toggleOrganizerMode() } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "person.2.badge.gearshape")
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 22, height: 22)
+                    .foregroundStyle(app.palette.ink2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.T("Chế độ tổ chức", "Hosting mode")).font(.body)
+                    Text(app.T("Bật để tạo và quản lý sự kiện.", "Turn on to create and manage events."))
+                        .font(.footnote)
+                        .foregroundStyle(app.palette.ink2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Toggle("", isOn: Binding(
+                    get: { app.organizerMode },
+                    set: { enabled in
+                        guard enabled != app.organizerMode else { return }
+                        app.toggleOrganizerMode()
+                    }
+                ))
+                .labelsHidden()
+                .toggleStyle(BanbeLiquidToggleStyle())
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(app.organizerModeBusy)
+        .opacity(app.organizerModeBusy ? 0.55 : 1)
+        .accessibilityIdentifier("account.organizerToggle")
+        .tourTarget("tour.account.organizerMode")
+        .id("account-hosting-toggle")
+    }
+
+    /// Goer who has never hosted: a compact pitch.
+    private var hostFirstEventCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(app.T("Tổ chức sự kiện đầu tiên", "Host your first event"))
+                .font(BanbeTheme.display(17))
+            Text(app.T("Miễn phí khi banbe còn mới. Không phí đăng, không phí giao dịch.",
+                       "Free while banbe is new. No listing or transaction fees."))
+                .font(.footnote)
+                .foregroundStyle(app.palette.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+            InkButton(title: app.T("Bắt đầu tổ chức ▪︎ miễn phí", "Start hosting ▪︎ free")) {
+                app.toggleOrganizerMode()
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(app.palette.surface1, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.top, 16)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("account.hostFirstEvent")
+    }
+
+    /// Rendered once, at the very bottom (it used to render under every tab).
+    private var signOutButton: some View {
+        SwipeSafeButton {
+            if app.isSignedIn { Task { await app.signOut() } } else { app.goLogin() }
+        } label: {
+            Label(
+                app.isSignedIn
+                    ? app.T("Đăng xuất", "Sign out")
+                    : app.T("Đăng nhập để lưu sự kiện và nhắn tin", "Sign in to save events and message hosts"),
+                systemImage: app.isSignedIn ? "rectangle.portrait.and.arrow.right" : "arrow.right.to.line"
+            )
+            .labelStyle(.titleAndIcon)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .font(.system(size: 14))
+        .foregroundStyle(app.palette.ink)
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)   // one element (the Label's icon was a second "button")
+        .accessibilityIdentifier(app.isSignedIn ? "account.signOut" : "account.signIn")
+        .padding(.top, 20)
+        .padding(.bottom, BottomTabBar.contentClearance)
     }
 
     // iPhone fix pass (2026-09-27), Issue 1 — consumes whichever highlight
@@ -857,7 +798,6 @@ struct AccountView: View {
     private func consumeTeamHighlightsIfNeeded() {
         if let target = app.teamInviteHighlightOrganizerId,
            app.myOrganizerInvites.contains(where: { $0.organizerId == target }) {
-            app.accountTab = "personal"
             highlightedTeamInviteOrganizerId = target
             app.teamInviteHighlightOrganizerId = nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
@@ -866,7 +806,6 @@ struct AccountView: View {
         }
         if let target = app.eventCreditHighlightId,
            app.myEventCredits.contains(where: { $0.id == target }) || app.myConfirmedEventCredits.contains(where: { $0.id == target }) {
-            app.accountTab = "personal"
             highlightedEventCreditId = target
             app.eventCreditHighlightId = nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
@@ -878,6 +817,7 @@ struct AccountView: View {
     // MARK: Search
 
     private func openGroup(_ key: String) {
+        app.accountGroupParentKey = nil   // note 66: opened straight from Account
         app.accountGroupKey = key
         app.screen = .accountGroup
     }
@@ -892,63 +832,72 @@ struct AccountView: View {
         func e(_ id: String, _ tab: String, _ secVi: String, _ secEn: String, _ vi: String, _ en: String, _ icon: String, _ kw: String, _ action: @escaping () -> Void) -> AccountSearchEntry {
             AccountSearchEntry(id: id, tab: tab, secVi: secVi, secEn: secEn, vi: vi, en: en, icon: icon, keywords: kw, action: action)
         }
-        let actVi = "Hoạt Động Của Bạn", actEn = "Your Activity"
-        let setVi = "Tài Khoản & Cài Đặt", setEn = "Account & Settings"
+        // note 66 — sections follow the new layout: the top tiles ("Account") and the More card ("More").
+        let actVi = "Tài khoản", actEn = "Account"
+        let setVi = "Thêm", setEn = "More"
         var list: [AccountSearchEntry] = [
-            e("tickets", "personal", actVi, actEn, "Vé & Đặt Chỗ", "Tickets & Bookings", "calendar.badge.checkmark",
-              "vé ticket booking đặt chỗ giữ chỗ hold qr check-in đã hủy hết hạn cancelled expired my tickets vé của tôi") { openGroup("activity") },
+            e("tickets", "personal", actVi, actEn, "Vé & đặt chỗ", "Tickets", "ticket",
+              "vé ticket booking đặt chỗ giữ chỗ hold qr check-in đã hủy hết hạn cancelled expired my tickets vé của tôi bookings") { openGroup("activity") },
             e("going", "personal", actVi, actEn, "Đang tham gia", "Going", "checkmark.circle",
-              "attending sắp tham gia sự kiện của tôi my events upcoming") { app.goGoingList() },
+              "attending sắp tham gia sự kiện của tôi my events upcoming sắp tới") { app.goGoingList() },
             e("schedule", "personal", actVi, actEn, "Lịch của tôi", "My schedule", "calendar",
               "lịch schedule calendar agenda kế hoạch plans hôm nay today tuần week") { app.goSchedule() },
-            e("notifications", "personal", actVi, actEn, "Thông báo", "Notifications", "bell",
-              "thông báo notifications chuông bell alerts cập nhật updates") { app.goNotifications(back: .profile) },
-            e("saved", "personal", actVi, actEn, "Sự Kiện Đã Lưu", "Saved Events", "bookmark",
-              "lưu yêu thích favorites favourite bookmark wishlist") { app.goSavedList() },
+            e("saved", "personal", actVi, actEn, "Đã lưu", "Saved", "heart",
+              "lưu yêu thích favorites favourite bookmark wishlist saved events sự kiện đã lưu") { app.goSavedList() },
             e("past", "personal", actVi, actEn, "Sự Kiện Quá Khứ", "Past Events", "calendar.badge.checkmark",
               "đã hoàn thành completed ended lịch sử history đã qua") { app.goCompletedList(back: .profile) },
-            e("payments", "personal", actVi, actEn, "Thanh Toán & Giấy Tờ", "Payments & Documents", "banknote",
-              "thanh toán payment tiền money giấy tờ documents") { openGroup("payments") },
+            e("payments", "personal", actVi, actEn, "Ví & chứng từ", "Wallet", "creditcard",
+              "ví wallet thanh toán payment payments documents tiền money giấy tờ chứng từ") { openGroup("payments") },
             e("invoices", "personal", actVi, actEn, "Hoá đơn", "Invoices", "doc.text",
-              "hóa đơn invoice bill tài liệu pdf") { app.openDocuments(kind: "invoice", role: "guest", back: .profile) },
+              "hóa đơn invoice bill tài liệu pdf ví wallet") { app.openDocuments(kind: "invoice", role: "guest", back: .profile) },
             e("receipts", "personal", actVi, actEn, "Biên nhận", "Receipts", "receipt",
-              "receipt biên lai chứng từ pdf") { app.openDocuments(kind: "receipt", role: "guest", back: .profile) },
+              "receipt biên lai chứng từ pdf ví wallet") { app.openDocuments(kind: "receipt", role: "guest", back: .profile) },
             e("refundAccounts", "personal", actVi, actEn, "Tài khoản thanh toán & nhận hoàn tiền", "Payment & refund accounts", "banknote",
               "ngân hàng bank tài khoản account số tài khoản momo chuyển khoản hoàn tiền refund destination") { app.openRefundAccounts(back: .profile) },
             e("refunds", "personal", actVi, actEn, "Hoàn tiền", "Refunds", "checklist",
               "refund hoàn trả trả lại tiền hủy sự kiện tranh chấp dispute") { app.openMyRefunds(back: .profile) },
-            e("reportsPersonal", "personal", actVi, actEn, "Số Liệu & Báo Cáo", "Metrics & Reports", "chart.bar.doc.horizontal",
-              "thống kê statistics analytics báo cáo report số liệu insights") { app.openReports(scope: "personal", back: .profile) },
-            e("profile", "personal", setVi, setEn, "Hồ Sơ Cá Nhân", "Personal Profile", "person.crop.circle",
-              "profile hồ sơ tên name avatar ảnh đại diện handle chỉnh sửa edit public trang cá nhân") {
-                  if let handle = app.user?.handle, !handle.isEmpty { app.openPublicProfile(handle: handle, back: .profile) }
-              },
-            e("following", "personal", setVi, setEn, "Đang theo dõi", "Following", "heart",
-              "following theo dõi follow host tổ chức organizer followed unfollow bỏ theo dõi") { app.screen = .following },
-            e("rewards", "personal", setVi, setEn, "Phần thưởng & huy hiệu", "Rewards & badges", "circle.hexagongrid.circle",
+            e("help", "personal", actVi, actEn, "Trợ giúp", "Help", "questionmark.circle",
+              "help trợ giúp hỗ trợ support policy chính sách điều khoản terms privacy quyền riêng tư pháp lý legal liên hệ contact hướng dẫn guide hỏi đáp faq q&a câu hỏi questions") { openGroup("helpLegal") },
+            e("rewards", "personal", actVi, actEn, "Phần thưởng & huy hiệu", "Rewards & badges", "circle.hexagongrid.circle",
               "rewards phần thưởng huy hiệu badges coin xu streak chuỗi ngày milestone thành tích") { app.openRewards(from: .profile) },
-            e("preferences", "personal", setVi, setEn, "Tùy Chỉnh", "App Preferences", "slider.horizontal.3",
-              "settings cài đặt tùy chỉnh preferences") { openGroup("preferences") },
+            e("profile", "personal", actVi, actEn, "Hồ sơ cá nhân", "Personal profile", "person.crop.circle",
+              "profile hồ sơ tên name avatar ảnh đại diện handle chỉnh sửa edit public trang cá nhân") { openOwnPublicProfile() },
+            e("notifications", "personal", setVi, setEn, "Thông báo", "Notifications", "bell",
+              "thông báo notifications chuông bell alerts cập nhật updates") { app.goNotifications(back: .profile) },
+            e("following", "personal", setVi, setEn, "Đang theo dõi", "Following", "person.crop.circle.badge.checkmark",
+              "following theo dõi follow host tổ chức organizer followed unfollow bỏ theo dõi") { app.screen = .following },
+            e("reportsPersonal", "personal", setVi, setEn, "Báo cáo", "Reports", "chart.bar.doc.horizontal",
+              "thống kê statistics analytics báo cáo report số liệu insights metrics") { app.openReports(scope: "personal", back: .profile) },
+            e("preferences", "personal", setVi, setEn, "Cài đặt", "Settings", "gearshape",
+              "settings cài đặt tùy chỉnh preferences app preferences") { openGroup("preferences") },
             e("language", "personal", setVi, setEn, "Ngôn ngữ & Hiển thị", "Language & Appearance", "slider.horizontal.3",
               "ngôn ngữ language tiếng việt english vn en theme giao diện sáng tối dark light mode hiển thị appearance kính glass độ trong suốt") { app.openPreferences() },
             e("security", "personal", setVi, setEn, "Bảo mật", "Security", "lock.shield",
               "security mật khẩu password face id sinh trắc biometric đăng nhập login khóa lock đổi mật khẩu") { app.openSecurity() },
-            e("help", "personal", setVi, setEn, "Trợ Giúp & Pháp Lý", "Help & Legal", "lock.shield",
-              "help trợ giúp hỗ trợ support policy chính sách điều khoản terms privacy quyền riêng tư pháp lý legal liên hệ contact hướng dẫn guide hỏi đáp faq q&a câu hỏi questions") { openGroup("helpLegal") },
-            e("organizerMode", "personal", "Tổ Chức", "Hosting", "Chế độ tổ chức", "Organizer mode", "person.2.badge.gearshape",
-              "host tổ chức organizer bật tắt toggle tạo sự kiện create event quản lý manage") { app.toggleOrganizerMode() },
-            e("clearCache", "personal", setVi, setEn, "Xoá bộ nhớ đệm hình ảnh", "Clear Image Cache", "photo.stack",
+            e("organizerMode", "personal", setVi, setEn, "Chế độ tổ chức", "Hosting mode", "person.2.badge.gearshape",
+              "host tổ chức organizer mode bật tắt toggle tạo sự kiện create event quản lý manage") { app.toggleOrganizerMode() },
+            e("clearCache", "personal", setVi, setEn, "Xoá bộ nhớ đệm hình ảnh", "Clear image cache", "photo.stack",
               "cache bộ nhớ đệm dung lượng storage ảnh hình image xóa clear") { PhotoLoader.clearCache(); imageCacheClearedAt = Date() },
             e("signOut", "personal", setVi, setEn, app.isSignedIn ? "Đăng xuất" : "Đăng nhập", app.isSignedIn ? "Sign out" : "Sign in", "rectangle.portrait.and.arrow.right",
               "logout log out thoát đăng xuất đăng nhập sign in login tài khoản account") {
                   if app.isSignedIn { Task { await app.signOut() } } else { app.goLogin() }
               },
         ]
+        if app.referralLink != nil {
+            list.append(e("inviteFriends", "personal", setVi, setEn, "Mời bạn bè", "Invite friends", "person.2",
+                          "mời invite bạn bè friends giới thiệu referral link chia sẻ share") { app.shareReferral() })
+        }
+        if let handle = app.user?.handle, !handle.isEmpty {
+            list.append(e("shareCard", "personal", setVi, setEn, "Chia sẻ thẻ của bạn", "Share your card", "qrcode",
+                          "thẻ card qr chia sẻ share hồ sơ profile") { shareCardForHost = false; shareCardOpen = true })
+        }
         if app.organizerMode && app.canHost {
             let hVi = "Tổ Chức", hEn = "Host"
             list += [
-                e("hostOps", "host", hVi, hEn, "Vận Hành & Thanh Toán Tổ Chức", "Event Operations & Payments", "checklist",
-                  "vận hành operations thanh toán payments tổ chức host sự kiện") { openGroup("hostOps") },
+                e("hostEvents", "host", hVi, hEn, "Sự kiện", "Events", "calendar",
+                  "sự kiện events quản lý manage điểm danh check-in chờ duyệt submitted pending dashboard") { app.goDashboard(back: .profile) },
+                e("hostOps", "host", hVi, hEn, "Nhận tiền", "Get paid", "banknote",
+                  "nhận tiền get paid vận hành operations thanh toán payments tổ chức host sự kiện") { openGroup("hostOps") },
                 e("verifications", "host", hVi, hEn, "Chờ xác nhận thanh toán", "Awaiting Verification", "checklist",
                   "xác nhận verify verification thanh toán chờ pending người mua guest bằng chứng proof chuyển khoản") { app.openVerifications(back: .profile) },
                 e("hostRefunds", "host", hVi, hEn, "Hoàn tiền", "Refunds", "banknote",
@@ -959,29 +908,44 @@ struct AccountView: View {
                   "hóa đơn invoice phát hành tải lên upload tài liệu") { app.openDocuments(kind: "invoice", role: "host", back: .profile) },
                 e("receiptsIssued", "host", hVi, hEn, "Biên nhận đã phát hành", "Receipts Issued", "receipt",
                   "biên lai receipt phát hành tải lên upload tài liệu") { app.openDocuments(kind: "receipt", role: "host", back: .profile) },
-                e("team", "host", hVi, hEn, "Hồ Sơ & Team Tổ Chức", "Organizer Profile & Team", "person.3",
-                  "team đội nhóm thành viên member mời invite hồ sơ tổ chức organizer profile đóng góp contribution credit") { openGroup("team") },
-                e("surveys", "host", hVi, hEn, "Khảo Sát & Ý Tưởng Sự Kiện", "Surveys & Event Ideas", "lightbulb",
+                e("team", "host", hVi, hEn, "Đội ngũ", "Team", "person.3",
+                  "team đội nhóm thành viên member mời invite đóng góp contribution credit") { openGroup("team") },
+                e("reportsHost", "host", hVi, hEn, "Báo cáo", "Reports", "chart.bar.doc.horizontal",
+                  "thống kê statistics analytics báo cáo report số liệu doanh thu metrics") { openHostReports() },
+                e("surveys", "host", hVi, hEn, "Khảo sát & ý tưởng sự kiện", "Surveys & event ideas", "lightbulb",
                   "survey khảo sát ý tưởng idea góp ý feedback câu hỏi form") { app.screen = .surveysHosting },
-                e("reportsHost", "host", hVi, hEn, "Số Liệu & Báo Cáo", "Metrics & Reports", "chart.bar.doc.horizontal",
-                  "thống kê statistics analytics báo cáo report số liệu doanh thu") { app.openReports(scope: "host", organizerID: app.myOrganizerID, back: .profile) },
+                e("organizerProfile", "host", hVi, hEn, "Hồ sơ tổ chức", "Organizer profile", "storefront",
+                  "hồ sơ tổ chức organizer profile trang tổ chức host page") {
+                      if let id = app.myOrganizerID { app.openOrganizerProfile(organizerID: id, back: .profile) } else { app.hostSetupOpen = true }
+                  },
             ]
+            if app.myOrganizerID != nil {
+                list.append(e("shareHostCard", "host", hVi, hEn, "Chia sẻ thẻ tổ chức", "Share host card", "qrcode",
+                              "thẻ card qr chia sẻ share tổ chức host") { shareCardForHost = true; shareCardOpen = true })
+            }
         }
         if app.accountType == "admin" {
             let aVi = "Quản Trị", aEn = "Administration"
+            // note 66 — the two admin groups open nested under Administration, so Back returns there.
             list += [
+                e("adminTools", "admin", aVi, aEn, "Công cụ quản trị", "Admin tools", "checkmark.shield",
+                  "admin quản trị công cụ tools administration") { openGroup("admin") },
                 e("adminReview", "admin", aVi, aEn, "Duyệt & Kiểm Duyệt", "Review & Moderation", "exclamationmark.shield",
-                  "duyệt review kiểm duyệt moderation approve phê duyệt") { openGroup("adminReview") },
+                  "duyệt review kiểm duyệt moderation approve phê duyệt") {
+                      app.accountGroupKey = "adminReview"; app.screen = .accountGroup; app.accountGroupParentKey = "admin"
+                  },
                 e("disputes", "admin", aVi, aEn, "Tranh Chấp Thanh Toán", "Payment Disputes", "exclamationmark.bubble",
                   "tranh chấp dispute khiếu nại escalation thanh toán payment dashboard bảng điều khiển bảng quản trị admin panel") { app.openAdminDashboard() },
                 e("pendingEvents", "admin", aVi, aEn, "Sự Kiện Chờ Duyệt", "Pending Events", "exclamationmark.shield",
                   "sự kiện chờ duyệt pending events approve từ chối reject") { app.openAdminEvents() },
                 e("adminTeam", "admin", aVi, aEn, "Đội Ngũ Quản Trị", "Admin Team", "person.3.fill",
-                  "admin quản trị viên mời invite thành viên team đội ngũ") { openGroup("adminTeam") },
+                  "admin quản trị viên mời invite thành viên team đội ngũ") {
+                      app.accountGroupKey = "adminTeam"; app.screen = .accountGroup; app.accountGroupParentKey = "admin"
+                  },
                 e("reportsAdmin", "admin", aVi, aEn, "Số Liệu & Báo Cáo", "Metrics & Reports", "chart.bar.doc.horizontal",
                   "thống kê statistics analytics báo cáo report số liệu") { app.openReports(scope: "admin", back: .profile) },
                 e("adminGuide", "admin", aVi, aEn, "Hướng Dẫn Quản Trị", "Admin Guide", "checklist",
-                  "admin guide hướng dẫn quản trị help trợ giúp") { app.helpGuideKey = "admin"; app.screen = .helpGuide },
+                  "admin guide hướng dẫn quản trị help trợ giúp") { app.accountGroupKey = nil; app.helpGuideKey = "admin"; app.screen = .helpGuide },
             ]
         }
         // Rewards & badges can be hidden by an admin (migration 187): its search entry goes with the row.
@@ -1015,11 +979,9 @@ struct AccountView: View {
                 groupedContainer {
                     ForEach(Array(group.items.enumerated()), id: \.element.id) { i, entry in
                         SwipeSafeButton {
-                            let tab = entry.tab
                             // Keep the search open with its query, so swiping back
                             // from the result returns to these same results.
                             searchFocused = false
-                            app.accountTab = tab
                             app.accountSearchReturn = true
                             entry.action()
                         } label: {
@@ -1053,38 +1015,6 @@ struct AccountView: View {
         .padding(.bottom, BottomTabBar.contentClearance)
     }
 
-    private func syncAccountTabToRole() {
-        if app.accountTab == "host" && !app.organizerMode { app.accountTab = "personal" }
-        else if app.accountTab == "admin" && app.accountType != "admin" { app.accountTab = "personal" }
-    }
-
-    // Personal-vs-organizer hierarchy pass (2026-09-27) — extracted out of
-    // `body`'s own `ForEach` (a real Swift type-checker timeout once this
-    // ScreenScaffold call gained an `onRefresh:` closure alongside
-    // everything already in `body` — same "unable to type-check this
-    // expression in reasonable time" class of bug BottomTabBar.swift's own
-    // `tabItem` extraction already fixed once).
-    // Account extension (2026-09-27, Stage 1) — Tổ chức only while
-    // `organizerMode` is actually on (never `canHost`/eligibility); Admin
-    // (Stage 2) only for a server-confirmed admin, independent of
-    // `organizerMode` entirely.
-    // FIX PASS (2026-09-30) — badges propagated from the SAME sources as
-    // each tab's own group card below (host: "Vận hành & thanh toán tổ
-    // chức"; admin: "Duyệt & kiểm duyệt") — see Lib/Badges.swift.
-    private var accountTabs: [(String, String, Int)] {
-        var tabs: [(String, String, Int)] = [("personal", app.T("Cá Nhân", "Personal"), AccountBadges.personalActionCount(paymentBookings: app.paymentBookings, myRefunds: app.myRefunds))]
-        if app.organizerMode {
-            let hostBadge = AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueue: app.refundQueue, holdingCount: app.organizerHoldingSummary?.count ?? 0)
-            // Events waiting for Banbe's review (or sent back for fixing) count too.
-            tabs.append(("host", app.T("Tổ Chức", "Host"), hostBadge + submittedTotal))
-        }
-        if app.accountType == "admin" {
-            let adminBadge = AccountBadges.adminModerationCount(accountType: app.accountType, pendingEventsCount: app.pendingEventsCount)
-            tabs.append(("admin", app.T("Quản Trị", "Admin"), adminBadge))
-        }
-        return tabs
-    }
-
     // Account extension (2026-09-27, Stage 3) — the one recognizable "Số
     // liệu & báo cáo" entry point every visible tab gets, near its own top.
     // Account IA reorder pass (2026-09-30 second) — mirrors web's
@@ -1098,26 +1028,6 @@ struct AccountView: View {
             .foregroundStyle(app.palette.ink)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, topPadding)
-    }
-
-    private func reportsRow(_ title: String, identifier: String, action: @escaping () -> Void) -> some View {
-        SwipeSafeButton(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: "chart.bar.doc.horizontal")
-                    .font(.system(size: 16, weight: .medium))
-                    .frame(width: 22, height: 22)
-                    .opacity(0.72)
-                Text(title).font(.system(size: 14))
-                Spacer()
-                Text("›").font(.system(size: 15))
-            }
-            .foregroundStyle(app.palette.ink)
-            .padding(16)
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .padding(.top, 22)
-        .accessibilityIdentifier(identifier)
     }
 
     // Account IA pass (2026-09-27) — a grouped entry card: icon (accented,
@@ -1147,112 +1057,6 @@ struct AccountView: View {
     }
 
     private func groupDivider() -> some View { Divider().overlay(app.palette.rule) }
-
-    /// Same content as `groupCard` below, minus the background/top-padding
-    /// a `groupedContainer` already supplies once for the whole group.
-    // 2026-10-02 fix — "icons inconsistent in size, some duplication":
-    // this used to be its own 30x30 frame with a `ROW_ACCENT_COLORS`-
-    // tinted circle behind it — the ONE outlier size/treatment on this
-    // whole screen (every other row icon here — `row`/`reportsRow`/
-    // `reportsGroupRow`/the inline Personal Profile & Help & Legal
-    // buttons — is a plain 22x22/16pt/0.72-opacity glyph with no
-    // background of its own, since the row already sits on the group's
-    // shared container background). Standardized to that same size/
-    // treatment; distinctness now comes only from each icon's own glyph,
-    // not a second, redundant color layer.
-    private func groupCardRow(groupKey: String, icon: String, label: String, badge: Int = 0) -> some View {
-        return SwipeSafeButton { app.accountGroupKey = groupKey; app.screen = .accountGroup } label: {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .medium))
-                    .frame(width: 22, height: 22)
-                    .opacity(0.72)
-                Text(label).font(.system(size: 14))
-                Spacer()
-                if badge > 0 {
-                    Text(badge > 99 ? "99+" : "\(badge)")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(app.palette.paper)
-                        .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(BanbeTheme.alert, in: Capsule())
-                        .accessibilityIdentifier("account.group.\(groupKey).badge")
-                        .accessibilityLabel(app.T("\(badge) mục mới", "\(badge) new item(s)"))
-                }
-                Text("›").font(.system(size: 15))
-            }
-            .foregroundStyle(app.palette.ink)
-            .padding(16)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("account.group.\(groupKey)")
-    }
-
-    /// Same content as `reportsRow` below, minus its own background/padding.
-    private func reportsGroupRow(_ title: String, identifier: String, action: @escaping () -> Void) -> some View {
-        SwipeSafeButton(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: "chart.bar.doc.horizontal")
-                    .font(.system(size: 16, weight: .medium))
-                    .frame(width: 22, height: 22)
-                    .opacity(0.72)
-                Text(title).font(.system(size: 14))
-                Spacer()
-                Text("›").font(.system(size: 15))
-            }
-            .foregroundStyle(app.palette.ink)
-            .padding(16)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(identifier)
-    }
-
-    /// Same content as `counter` below, minus its own background — used
-    /// side by side inside `groupedContainer`, where a `Divider()` between
-    /// them (SwiftUI renders it vertical inside an `HStack`) stands in for
-    /// the group's usual horizontal separator.
-    // 2026-10-02 fix — size standardized to the same 22x22/16pt every
-    // other row icon on this screen now uses (was 20x20/15pt, its own
-    // third size on top of the 30x30-with-circle outlier fixed above).
-    private func counterGroupRow(value: Int, label: String, icon: String, identifier: String? = nil, action: @escaping () -> Void) -> some View {
-        SwipeSafeButton(action: action) {
-            VStack(alignment: .leading, spacing: 3) {
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .medium))
-                    .frame(width: 22, height: 22)
-                    .opacity(0.72)
-                Text("\(value)").font(BanbeTheme.display(24))
-                Text(label).font(.system(size: 11))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16).padding(.vertical, 14)
-            .foregroundStyle(app.palette.ink)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(identifier ?? label)
-    }
-
-    private func row(_ title: String, identifier: String? = nil, icon: String, trailing: String,
-                     action: @escaping () -> Void) -> some View {
-        SwipeSafeButton(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .medium))
-                    .frame(width: 22, height: 22)
-                    .opacity(0.72)
-                Text(title).font(.system(size: 14))
-                Spacer()
-                Text(trailing).font(.system(size: 13))
-            }
-            .foregroundStyle(app.palette.ink)
-            .padding(.horizontal, 16).padding(.vertical, 15)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(identifier ?? title)
-    }
 
     // Account extension (2026-09-27, Stage 1) — extracted out of `body`'s
     // own Cá nhân branch (a real Swift type-checker timeout, same class of
@@ -1384,240 +1188,6 @@ struct AccountView: View {
         }
     }
 
-    @ViewBuilder
-    private var hostingSection: some View {
-        Text(app.T("Tổ Chức", "Hosting"))
-            .font(.system(size: 11.5, weight: .semibold))
-            .padding(.top, 22)
-
-        SwipeSafeButton { app.toggleOrganizerMode() } label: {
-            // TASK 2 (2026-10-05 fix pass) — `.opacity`, not a
-            // spinner: this toggle's own round-trip is already
-            // near-instant on a normal connection, and a flashing
-            // spinner for that would read as jankier than a brief
-            // dim. `.disabled` below is what actually matters —
-            // it's the real guard against the double-tap race
-            // (see toggleOrganizerMode()'s own comment).
-            HStack(spacing: 12) {
-                Image(systemName: "person.2.badge.gearshape")
-                    .font(.system(size: 16, weight: .medium))
-                    .frame(width: 22, height: 22)
-                    .opacity(0.72)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(app.T("Chế độ tổ chức", "Organizer mode")).font(.system(size: 14))
-                    Text(app.T("Bật để tạo và quản lý sự kiện. Tắt lúc nào cũng được.",
-                               "Turn on to create and manage events. Turn it off any time."))
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(app.palette.ink.opacity(0.7))
-                        .multilineTextAlignment(.leading)
-                }
-                Spacer(minLength: 0)
-                Toggle("", isOn: Binding(
-                    get: { app.organizerMode },
-                    set: { enabled in
-                        guard enabled != app.organizerMode else { return }
-                        app.toggleOrganizerMode()
-                    }
-                ))
-                .labelsHidden()
-                .toggleStyle(BanbeLiquidToggleStyle())
-            }
-            .foregroundStyle(app.palette.ink)
-            .padding(16)
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .disabled(app.organizerModeBusy)
-        .opacity(app.organizerModeBusy ? 0.55 : 1)
-        .accessibilityIdentifier("account.organizerToggle")
-        .tourTarget("tour.account.organizerMode")
-        .padding(.top, 10)
-        .id("account-hosting-toggle")
-
-        if !app.organizerModeError.isEmpty {
-            Text(app.organizerModeError)
-                .font(.system(size: 12))
-                .foregroundStyle(BanbeTheme.alert)
-                .padding(.top, 10)
-        }
-
-        // Account regression fix pass (2026-09-27), Item 1 — the real
-        // host-management rows (verifications/payout/invoices/receipts)
-        // used to live here too, so Cá nhân showed the full old
-        // "Tổ chức" management menu underneath a toggle that was supposed
-        // to be the ONLY thing here. They moved to `hostManagementRows`
-        // (Tổ chức tab, below) — reachable ONLY while organizerMode is
-        // actually on. Any genuinely urgent outstanding duty still
-        // surfaces here via ActionCenterView (gated on `canHost`, not
-        // `organizerMode`) — a neutral actionable notice, never the full
-        // menu.
-
-        // No separate "Xem trang tổ chức của bạn" card here — orgProfileCard()
-        // (Tổ chức tab, once organizerMode is on) is the single entry into
-        // that management page now. This pitch is for an account that has
-        // never hosted (`canHost` false always implies `organizerMode`
-        // false too, so it can only ever show in the true "never hosted"
-        // case).
-        if !app.canHost {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(app.T("Tổ chức sự kiện đầu tiên", "Host your first event"))
-                    .font(BanbeTheme.display(19))
-                Text(app.T(
-                    "Miễn phí hoàn toàn khi banbe còn mới. Không phí đăng, không phí giao dịch. Tạo sự kiện đầu tiên để mở trang tổ chức.",
-                    "Completely free while banbe is new. No listing or transaction fees. Create your first event to unlock your host page."
-                ))
-                .font(.system(size: 12.5))
-                .lineSpacing(3)
-                InkButton(title: app.T("Bắt đầu tổ chức ▪︎ miễn phí", "Start hosting ▪︎ free")) {
-                    app.toggleOrganizerMode()
-                }
-            }
-            .foregroundStyle(app.palette.ink)
-            .padding(16)
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(.top, 10)
-        }
-    }
-
-    // Account regression fix pass (2026-09-27), Item 1 — moved out of
-    // Cá nhân's `hostingSection`: real host-management rows, only ever
-    // reachable while organizerMode is on (this whole tab's own
-    // visibility rule) — never duplicated in both tabs.
-    @ViewBuilder
-    // Account IA pass (2026-09-27) — was an inline 4-row "Quản lý thanh
-    // toán" list; now ONE grouped entry card opening AccountGroupView's
-    // "hostOps" content (same exact child actions/identifiers). Badge =
-    // real outstanding host duties (verifications + refund queue), never
-    // invented.
-    private var hostManagementRows: some View {
-        Group {
-            // 2026-10-02 fix — "connected account row groups": these three
-            // were separate floating cards; grouped into one contiguous
-            // container, same styling source as before (this group WAS
-            // already the reference — now actually applied to itself too).
-            if app.canHost {
-                sectionHeader(app.T("Quản Lý Tổ Chức", "Host Management"), topPadding: 22)
-                    .accessibilityIdentifier("account.section.hostManagement")
-                groupedContainer {
-                    groupCardRow(
-                        groupKey: "hostOps", icon: "checklist",
-                        label: app.T("Vận Hành & Thanh Toán Tổ Chức", "Event Operations & Payments"),
-                        // Stale-badge fix pass — was a raw `refundQueue.count`,
-                        // bypassing `AccountBadges.hostActionCount` entirely
-                        // (the one place this app already decides what's
-                        // actually host-actionable) — same staleness bug every
-                        // other raw-count call site this pass fixes.
-                        badge: AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueue: app.refundQueue)
-                    )
-                    groupDivider()
-                    submittedEventsRow
-                    groupDivider()
-                    // Account IA reorder pass (2026-09-30 second) — the Host
-                    // tab's own entry point into the SAME "team" screen the
-                    // Personal tab's conditional invite row also opens (see
-                    // that row's own comment for the full "two doors, one
-                    // destination" reasoning — mirrors the Payment Disputes
-                    // row's existing pattern). Gated `canHost`, matching
-                    // hostOps above.
-                    groupCardRow(
-                        groupKey: "team", icon: "person.3",
-                        label: app.T("Hồ Sơ & Team Tổ Chức", "Organizer Profile & Team"),
-                        badge: app.myOrganizerInvites.count + app.myEventCredits.count
-                    )
-                    groupDivider()
-                    // Interest surveys (Slice B) — a standalone screen
-                    // (SurveysHostingView), not a case inside AccountGroupView's
-                    // switch, since it has its own tabs (Active/Closed/
-                    // Suggested Drafts) and a create form, not a simple flat
-                    // list. Badge honestly 0 for now — the unseen/actionable
-                    // candidate count this badge is meant to carry (candidate
-                    // generation) is not implemented yet.
-                    SwipeSafeButton { app.screen = .surveysHosting } label: {
-                        HStack(spacing: 12) {
-                            // 2026-10-02 fix — was "checklist", a duplicate
-                            // of this SAME container's own "Event
-                            // Operations & Payments" row above; "lightbulb"
-                            // fits "Event Ideas" literally and is distinct.
-                            // Size/no-background standardized too.
-                            Image(systemName: "lightbulb")
-                                .font(.system(size: 16, weight: .medium))
-                                .frame(width: 22, height: 22)
-                                .opacity(0.72)
-                            Text(app.T("Khảo Sát & Ý Tưởng Sự Kiện", "Surveys & Event Ideas")).font(.system(size: 14))
-                            Spacer()
-                            Text("›").font(.system(size: 15))
-                        }
-                        .foregroundStyle(app.palette.ink)
-                        .padding(16)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("account.group.surveys")
-                    if app.myOrganizerID != nil {
-                        groupDivider()
-                        reportsGroupRow(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsHost") {
-                            app.openReports(scope: "host", organizerID: app.myOrganizerID, back: .profile)
-                        }
-                    }
-                }
-                .padding(.top, 14)
-            }
-        }
-    }
-
-    // Stage 2 — Admin is its own top-level tab now, independent of
-    // organizerMode: these two rows used to sit inside the Tổ chức pane,
-    // so an admin who never turned organizer mode on (or turned it off)
-    // lost them entirely once that tab started hiding itself for Stage 1.
-    // Same actions, same RLS-enforced screens — moved, not cloned.
-    @ViewBuilder
-    // Account IA pass (2026-09-27) — same "Bảng quản trị"/"Sự kiện chờ
-    // duyệt" actions, now one grouped entry card. Admin Panel is still
-    // visible only to accountType == "admin" (banbetestadmin@gmail.com,
-    // migration 040) — RLS is the real backstop; openAdminDashboard()
-    // guards again regardless.
-    private var adminSection: some View {
-        // 2026-10-02 fix — "connected account row groups": these two were
-        // still two separate floating cards despite already being stacked
-        // in one VStack (each kept its OWN background/top-padding) — now
-        // one contiguous container with an internal divider.
-        groupedContainer {
-            groupCardRow(groupKey: "adminReview", icon: "exclamationmark.shield", label: app.T("Duyệt & Kiểm Duyệt", "Review & Moderation"), badge: app.pendingEventsCount)
-            groupDivider()
-            // Admin Team pass (2026-10-02) — reachable to every admin (a
-            // permission-less admin can at least see who the team is /
-            // why they can't manage it, AccountGroupView's own gate
-            // decides what renders inside); badge only ever counts real,
-            // still-pending invites (adminInvites is only populated for a
-            // canManageAdmins account — RLS denies the read otherwise, so
-            // a non-manager's badge is honestly 0, never a guessed number).
-            // 2026-10-02 fix — "person.3.fill" (was "person.3", the exact
-            // same glyph the Host tab's UNRELATED "Organizer Profile &
-            // Team" row uses) — distinct glyph for a distinct destination.
-            groupCardRow(groupKey: "adminTeam", icon: "person.3.fill", label: app.T("Đội Ngũ Quản Trị", "Admin Team"), badge: app.adminInvites.filter { $0.status == "pending" }.count)
-            groupDivider()
-            reportsGroupRow(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsAdmin") {
-                app.openReports(scope: "admin", back: .profile)
-            }
-            groupDivider()
-            // Concise admin-only guide (Help & Legal holds the user guides).
-            SwipeSafeButton { app.helpGuideKey = "admin"; app.screen = .helpGuide } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "checklist").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
-                    Text(app.T("Hướng Dẫn Quản Trị", "Admin Guide")).font(.system(size: 14))
-                    Spacer()
-                    Text("›").font(.system(size: 15))
-                }
-                .foregroundStyle(app.palette.ink)
-                .padding(16)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("account.adminGuide")
-        }
-        .padding(.top, 14)
-    }
-
     @State private var shareCardOpen = false
     @State private var eventStoryPickerOpen = false
     @State private var eventStoryBusyKey: String?
@@ -1625,131 +1195,7 @@ struct AccountView: View {
     @State private var eventStoryMessage: String?
     @State private var shareCardForHost = false
 
-    /// Prominent entry point to the shareable profile card (Personal + Host).
-    private func shareCardCTA(host: Bool) -> some View {
-        Button {
-            shareCardForHost = host
-            shareCardOpen = true
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "qrcode").font(.system(size: 22, weight: .semibold)).foregroundStyle(app.palette.honey)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(host ? app.T("Chia sẻ thẻ tổ chức của bạn", "Share your host card")
-                              : app.T("Chia sẻ thẻ hồ sơ của bạn", "Share your profile card"))
-                        .font(.system(size: 15, weight: .semibold))
-                    Text(app.T("Thẻ có mã QR, tuỳ chỉnh màu và ảnh nền", "A card with a QR code, pick your colours and background"))
-                        .font(.system(size: 11.5)).opacity(0.8)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "square.and.arrow.up").font(.system(size: 16, weight: .semibold)).foregroundStyle(app.palette.honey)
-            }
-            .padding(.horizontal, 16).padding(.vertical, 14)
-            .foregroundStyle(app.palette.ink)
-            .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.honey.opacity(0.45), lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .padding(.top, 14)
-        .accessibilityIdentifier(host ? "account.shareHostCard" : "account.shareProfileCard")
-    }
-
-    @State private var submittedExpandedOverride: Bool?
-
     private var submittedTotal: Int { app.myPendingEvents.count + app.myNeedsFixEvents.count }
-
-    private var submittedExpanded: Bool { submittedExpandedOverride ?? false }
-
-    /// "Submitted Events" row in Host Management: the red number says how many are waiting;
-    /// tapping it expands the events right here (View / Withdraw event on each).
-    private var submittedEventsRow: some View {
-        VStack(spacing: 0) {
-            SwipeSafeButton {
-                withAnimation(.easeInOut(duration: 0.2)) { submittedExpandedOverride = !submittedExpanded }
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "hourglass")
-                        .font(.system(size: 16, weight: .medium))
-                        .frame(width: 22, height: 22)
-                        .opacity(0.72)
-                    Text(app.T("Sự Kiện Đã Gửi Chờ Duyệt", "Submitted Events")).font(.system(size: 14))
-                    Spacer()
-                    if submittedTotal > 0 {
-                        Text(submittedTotal > 99 ? "99+" : "\(submittedTotal)")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(app.palette.paper)
-                            .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(BanbeTheme.alert, in: Capsule())
-                            .accessibilityIdentifier("account.group.submittedEvents.badge")
-                            .accessibilityLabel(app.T("\(submittedTotal) mục mới", "\(submittedTotal) new item(s)"))
-                    }
-                    Text("›").font(.system(size: 15))
-                        .rotationEffect(.degrees(submittedExpanded ? 90 : 0))
-                }
-                .foregroundStyle(app.palette.ink)
-                .padding(16)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("account.group.submittedEvents")
-
-            if submittedExpanded {
-                if submittedTotal == 0 {
-                    Text(app.T("Không có sự kiện nào đang chờ duyệt.", "No events are waiting for review."))
-                        .font(.system(size: 12)).opacity(0.65)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 16).padding(.bottom, 14)
-                }
-                ForEach(app.myPendingEvents, id: \.id) { row in
-                    Divider().overlay(app.palette.rule)
-                    PendingEventRow(row: row)
-                }
-                if !app.myNeedsFixEvents.isEmpty {
-                    Divider().overlay(app.palette.rule)
-                    Button { app.goDashboard(back: .profile) } label: {
-                        HStack {
-                            Text(app.T("\(app.myNeedsFixEvents.count) sự kiện cần chỉnh sửa, sửa & gửi lại", "\(app.myNeedsFixEvents.count) event(s) need fixing, fix & resubmit"))
-                                .font(.system(size: 12.5, weight: .semibold)).underline().foregroundStyle(BanbeTheme.alert)
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.system(size: 11)).opacity(0.5)
-                        }
-                        .padding(.horizontal, 16).padding(.vertical, 13).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    /// Story posting is a host action — lives on the Host tab.
-    private var postStoryCTA: some View {
-        Menu {
-            Button { app.storyLibraryPickerOpen = true } label: {
-                Label(app.T("Thư Viện Ảnh", "Photo Library"), systemImage: "photo.on.rectangle")
-            }
-            Button { app.storyCameraOpen = true } label: {
-                Label(app.T("Camera", "Camera"), systemImage: "camera")
-            }
-            Button { eventStoryPickerOpen = true } label: {
-                Label(app.T("Chọn từ sự kiện của tôi", "Share one of my events"), systemImage: "calendar")
-            }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "plus.circle.fill").font(.system(size: 22))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(app.T("Đăng story", "Post a story")).font(.system(size: 15, weight: .semibold))
-                    Text(app.T("Thêm chữ và liên kết, sửa hoặc xóa sau khi đăng", "Add text and a link, edit or delete after posting"))
-                        .font(.system(size: 11.5)).opacity(0.65)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 12)).opacity(0.5)
-            }
-            .padding(.horizontal, 16).padding(.vertical, 14)
-            .foregroundStyle(app.palette.ink)
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        }
-        .padding(.top, 14)
-        .accessibilityIdentifier("account.postStory")
-    }
 
     /// Pick one of the host's own live events to post as a story (the same
     /// server-checked `create_event_share_story` the Event Detail button uses).
@@ -1983,9 +1429,9 @@ struct AccountView: View {
     // equivalent async "feed" gate its own content is waiting on), so this
     // never needs to fall back to a delayed retry.
     private func retryScrollRestoreIfNeeded() {
-        guard !didAttemptScrollRestore, let target = app.accountScrollAnchorIDByTab[app.accountTab] else { return }
+        guard !didAttemptScrollRestore, let target = app.accountScrollAnchorIDByTab[modeKey] else { return }
         didAttemptScrollRestore = true
-        let tab = app.accountTab
+        let tab = modeKey
         app.accountScrollAnchorIDByTab[tab] = nil
         DispatchQueue.main.async {
             app.accountScrollAnchorIDByTab[tab] = target
@@ -1998,8 +1444,8 @@ struct AccountView: View {
     /// own position independently instead of one shared anchor.
     private var accountScrollAnchorBinding: Binding<String?> {
         Binding(
-            get: { app.accountScrollAnchorIDByTab[app.accountTab] },
-            set: { app.accountScrollAnchorIDByTab[app.accountTab] = $0 }
+            get: { app.accountScrollAnchorIDByTab[modeKey] },
+            set: { app.accountScrollAnchorIDByTab[modeKey] = $0 }
         )
     }
 }

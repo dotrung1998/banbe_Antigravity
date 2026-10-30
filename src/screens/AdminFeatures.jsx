@@ -114,6 +114,14 @@ const FLAGS = [
     hintVi: 'Màn tạo sự kiện, trang sự kiện và Trang chủ thay đổi theo loại sự kiện. Hiện có Supper club: chế độ ăn, mang đồ uống, trang phục, bộ lọc riêng trên Trang chủ. Mặc định tắt.',
     hintEn: 'The create form, the event page and Home adapt to the kind of event. Supper club first: dietary options, BYO, dress code, its own Home filters. Off by default.',
   },
+  {
+    // Migration 206, note 66.
+    key: 'simple_shell',
+    vi: 'Bố cục gọn (Simple Shell)',
+    en: 'Simple Shell layout',
+    hintVi: 'Trang chủ gọn: nút chuyển Đi chơi | Tổ chức luôn hiện, một khối chính ở trên cùng, bản đồ là một kiểu xem của Trang chủ. Thanh dưới có 5 ô với nút "+" ở giữa cho mọi người. Mặc định tắt.',
+    hintEn: 'Simpler Home: an always-visible Going out | Hosting switch, one main block at the top, and the map as a Home view. The dock has 5 slots with a "+" in the centre for everyone. Off by default.',
+  },
 ];
 
 const ERRORS = {

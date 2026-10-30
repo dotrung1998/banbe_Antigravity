@@ -93,7 +93,7 @@ test.describe('Rewards & badges switch', () => {
     await expect(page.getByTestId('home-reward-shortcuts')).toBeVisible({ timeout: 10000 });
 
     await page.getByTestId('tab-profile').click();
-    await page.getByTestId('account-tab-admin').click();
+    await page.getByTestId('account-admin-tools').click();
     await page.getByTestId('account-group-adminReview').click();
     await page.getByTestId('admin-features').click();
     // Note 64: every category starts collapsed; opening one must not touch its switches.
@@ -115,7 +115,7 @@ test.describe('Rewards & badges switch', () => {
 
     // And back on.
     await page.getByTestId('tab-profile').click();
-    await page.getByTestId('account-tab-admin').click();
+    await page.getByTestId('account-admin-tools').click();
     await page.getByTestId('account-group-adminReview').click();
     await page.getByTestId('admin-features').click();
     await page.getByTestId('admin-cat-rewards-toggle').click();
@@ -129,7 +129,7 @@ test.describe('Rewards & badges switch', () => {
     await page.route('**/rest/v1/rpc/admin_set_feature_flag', (r) => r.fulfill(json({ success: false, error: 'NOT_AUTHORIZED' })));
     await toHome(page);
     await page.getByTestId('tab-profile').click();
-    await page.getByTestId('account-tab-admin').click();
+    await page.getByTestId('account-admin-tools').click();
     await page.getByTestId('account-group-adminReview').click();
     await page.getByTestId('admin-features').click();
     await page.getByTestId('admin-cat-rewards-toggle').click();
@@ -142,7 +142,7 @@ test.describe('Rewards & badges switch', () => {
     await mockServer(page, { flags: { current: { rewards: true, event_reminders: true, push_enabled: false } }, admin: true });
     await toHome(page);
     await page.getByTestId('tab-profile').click();
-    await page.getByTestId('account-tab-admin').click();
+    await page.getByTestId('account-admin-tools').click();
     await page.getByTestId('account-group-adminReview').click();
     await page.getByTestId('admin-features').click();
     for (const k of ['onboarding', 'rewards', 'notifications', 'events', 'platform']) {
@@ -171,7 +171,7 @@ test.describe('Rewards & badges switch', () => {
     });
     await toHome(page);
     await page.getByTestId('tab-profile').click();
-    await page.getByTestId('account-tab-admin').click();
+    await page.getByTestId('account-admin-tools').click();
     await page.getByTestId('account-group-adminReview').click();
     await page.getByTestId('admin-features').click();
     await page.getByTestId('admin-cat-onboarding-toggle').click();
@@ -187,7 +187,7 @@ test.describe('Rewards & badges switch', () => {
     await mockServer(page, { flags: { current: { rewards: true, onboarding_v2: false } }, admin: true });
     await toHome(page);
     await page.getByTestId('tab-profile').click();
-    await page.getByTestId('account-tab-admin').click();
+    await page.getByTestId('account-admin-tools').click();
     await page.getByTestId('account-group-adminReview').click();
     await page.getByTestId('admin-features').click();
     await page.getByTestId('admin-cat-onboarding-toggle').click();

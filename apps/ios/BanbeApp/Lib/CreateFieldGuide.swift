@@ -23,10 +23,15 @@ enum CreateFieldGuide {
     static func step(of field: String) -> Int? { fieldStep[field] }
     static func isTextField(_ field: String) -> Bool { textFields.contains(field) }
 
+    /// Every field that can be required, in the order the steps show them. The single order behind
+    /// `firstMissing` and `CreateProgress.fieldOrder` (web: createFieldGuide.js `CREATE_FIELD_ORDER`).
+    static let fieldOrder = ["hostName", "name", "description", "categories", "included",
+                             "lineup", "artists", "brands", "alcohol", "min_age",
+                             "location", "date", "price", "seats", "photos"]
+
     /// The first required field still missing, in the order the steps show them.
     static func firstMissing(_ missing: [String: Bool]) -> String? {
-        let order = ["hostName", "name", "description", "categories", "included", "location", "date", "seats", "photos"]
-        return order.first { missing[$0] == true }
+        fieldOrder.first { missing[$0] == true }
     }
 
     /// The scroll anchor of a field (or of one of its sub-fields, e.g. "greetingEn").

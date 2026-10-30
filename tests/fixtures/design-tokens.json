@@ -1,0 +1,30 @@
+{
+  "_comment": "Simple Shell colour tokens (note 66). Read by tests/unit/designTokens.test.mjs (against src/index.css) and apps/ios/BanbeAppTests/DesignTokensTests.swift (against Palette). Contrast pairs are WCAG 2 ratios that must hold; alpha text is composited over its background first.",
+  "light": {
+    "paper": "#F7F4EC", "ink": "#1B1916", "field": "#EEE8DA",
+    "surface1": "#FBF8F1", "surface2": "#EEE8DA", "surface3": "#E6DFCF",
+    "ink2Alpha": 0.72, "ink3Alpha": 0.64, "alert": "#9A3E2D", "clay": "#9C5B3B", "honey": "#8C6014"
+  },
+  "dark": {
+    "paper": "#0F0E0B", "ink": "#F2EDE1", "field": "#24211C",
+    "surface1": "#1A1815", "surface2": "#24211C", "surface3": "#2E2A24",
+    "ink2Alpha": 0.72, "ink3Alpha": 0.56, "alert": "#E8715B", "clay": "#D8926C", "honey": "#F2C46D"
+  },
+  "minContrast": {
+    "ink": 7.0, "ink2": 4.5, "ink3": 4.5, "alert": 4.5
+  },
+  "themeChoice": [
+    { "stored": null, "fresh": true, "choice": "system" },
+    { "stored": null, "fresh": false, "choice": "light" },
+    { "stored": "dark", "fresh": true, "choice": "dark" },
+    { "stored": "light", "fresh": true, "choice": "light" },
+    { "stored": "system", "fresh": false, "choice": "system" },
+    { "stored": "sepia", "fresh": false, "choice": "light" }
+  ],
+  "themeResolve": [
+    { "choice": "system", "systemDark": true, "theme": "dark" },
+    { "choice": "system", "systemDark": false, "theme": "light" },
+    { "choice": "light", "systemDark": true, "theme": "light" },
+    { "choice": "dark", "systemDark": false, "theme": "dark" }
+  ]
+}

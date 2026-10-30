@@ -127,7 +127,34 @@ export function CategorySheet({ keys, counts, values = [], onPick, onClose, T })
 }
 
 /** Full-width search entry. The placeholder says what you can actually search for. */
-export function HomeSearchBar({ onOpen, T }) {
+export function HomeSearchBar({ onOpen, T, areaLabel, onArea, everywhere = false }) {
+  // Simple Shell (switch simple_shell, note 66): the location folds INTO the bar. The search part stays the
+  // home-search-bar button; a trailing area button (home-area-toggle, same area picker) sits inside the same pill.
+  if (onArea) {
+    const placeholder = everywhere ? T('Tìm sự kiện ở mọi nơi', 'Find events anywhere') : T(`Tìm sự kiện gần ${areaLabel}`, `Find events near ${areaLabel}`);
+    return (
+      <div style={{ ...fieldGlass({ borderRadius: RADIUS.pill }), height: 46, width: '100%', display: 'flex', alignItems: 'center', boxSizing: 'border-box', paddingInlineEnd: 4 }}>
+        <button type="button" onClick={(e) => { setSearchOrigin(e.currentTarget.getBoundingClientRect()); onOpen(); }} data-testid="home-search-bar"
+          aria-label={placeholder}
+          style={{ flex: '1 1 auto', minWidth: 0, height: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '0 6px 0 16px', border: 'none', background: 'none', cursor: 'text', color: ink, fontFamily: 'inherit', textAlign: 'left' }}>
+          <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7, flex: 'none' }}>
+            <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" />
+          </svg>
+          <span style={{ fontSize: 14.5, opacity: 0.6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {placeholder}
+          </span>
+        </button>
+        <span aria-hidden="true" style={{ width: 1, height: 22, background: 'currentColor', opacity: 0.14, flex: 'none' }} />
+        <button type="button" onClick={onArea} aria-haspopup="menu" data-testid="home-area-toggle"
+          aria-label={T(`Khu vực: ${areaLabel}. Đổi khu vực`, `Area: ${areaLabel}. Change area`)}
+          style={{ flex: '0 1 auto', minWidth: 44, maxWidth: '40%', height: 44, display: 'flex', alignItems: 'center', gap: 5, padding: '0 12px', border: 'none', borderRadius: RADIUS.pill, background: 'none', cursor: 'pointer', color: ink, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600 }}>
+          <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
+          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{areaLabel}</span>
+          <span aria-hidden="true" style={{ fontSize: 9, flex: 'none' }}>▾</span>
+        </button>
+      </div>
+    );
+  }
   return (
     // Remembers where the bar is so Search can glide its own field up from here (src/lib/searchOrigin.js).
     <button type="button" onClick={(e) => { setSearchOrigin(e.currentTarget.getBoundingClientRect()); onOpen(); }} data-testid="home-search-bar"

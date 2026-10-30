@@ -214,6 +214,12 @@ struct SurveysHostingView: View {
         .foregroundStyle(app.palette.ink)
         .task { await app.loadMySurveys() }
         .task(id: app.mySurveys) { if !app.mySurveysLoading { await app.loadSurveyCandidates() } }
+        // Simple Shell dock "+" → "New survey": open on the create form (one shot).
+        .onAppear {
+            guard app.surveyCreateRequested else { return }
+            app.surveyCreateRequested = false
+            showCreate = true
+        }
         .sheet(item: $app.surveyShareToStoryTarget) { survey in
             ShareSurveyToStoryConfirmView(survey: survey)
         }

@@ -645,7 +645,7 @@ extension AppState {
             // preferences, so signing in on any device restores them.
             if profile.prefsSaved == true {
                 lang = profile.locale == "en" ? "en" : "vi"
-                theme = profile.theme == "dark" ? "dark" : "light"
+                theme = ThemeChoice.normalize(profile.theme, fresh: false)
             } else {
                 persistPreference(["locale": lang, "theme": theme])
             }
@@ -2536,9 +2536,10 @@ extension AppState {
             accountTab = "personal"
         case "admin_invite_response", "admin_removal_vote", "admin_removal_vote_result":
             if canManageAdmins {
-                accountTab = "admin"
+                // note 66 — no Admin tab any more: Admin Team opens nested under Administration.
                 accountGroupKey = "adminTeam"
                 screen = .accountGroup
+                accountGroupParentKey = "admin"
             }
         case "admin_access_revoked":
             // Already handled proactively by the toast poll itself (see

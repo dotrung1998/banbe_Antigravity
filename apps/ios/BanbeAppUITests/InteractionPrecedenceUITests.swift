@@ -84,28 +84,26 @@ final class InteractionPrecedenceUITests: XCTestCase {
         XCTAssertFalse(app.otherElements["screen.home"].exists)
     }
 
-    /// Issue 3 — one tap on an Account subtab switches immediately and
-    /// exactly once, even though `tabSwipeGesture`'s own
-    /// `.simultaneousGesture(DragGesture(minimumDistance: 8))` spans the
-    /// whole of Account (a root dock screen). Skips gracefully where this
-    /// session's account has no organizer mode (so no Tổ chức tab exists to
-    /// switch to) rather than asserting on setup it doesn't control.
-    func testAccountSubtabTapsSwitchImmediatelyAndExactlyOnce() throws {
+    /// Note 66 — Account has no subtabs any more: it shows exactly one identity for the current mode
+    /// (the organizer card in host mode, the personal profile card otherwise) and one tap on a tile
+    /// opens its destination.
+    func testAccountShowsOneIdentityForTheModeAndTilesOpenOnce() throws {
         let app = launchToHome()
         app.buttons["header.account"].tap()
         XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["account.tab.personal"].exists, "no tabs")
 
-        let hostTab = app.buttons["account.tab.host"]
-        try XCTSkipUnless(hostTab.waitForExistence(timeout: 3), "Organizer mode not enabled on this session")
-
-        hostTab.tap()
-        XCTAssertTrue(app.buttons["org.profile.card"].waitForExistence(timeout: 3),
-                      "One tap on Tổ chức should switch immediately")
-
-        app.buttons["account.tab.personal"].tap()
-        XCTAssertTrue(app.buttons["account.organizerToggle"].waitForExistence(timeout: 3),
-                      "One tap on Cá nhân should switch immediately, exactly once")
-        XCTAssertFalse(app.buttons["org.profile.card"].exists)
+        let hostMode = app.descendants(matching: .any)["account.tile.events"].firstMatch.waitForExistence(timeout: 3)
+        let personalCard = app.descendants(matching: .any)["account.profileCard"].firstMatch
+        if hostMode {
+            XCTAssertFalse(personalCard.exists, "host mode shows the organizer card instead")
+        } else {
+            XCTAssertTrue(personalCard.exists)
+            XCTAssertFalse(app.buttons["org.profile.card"].exists)
+            app.buttons["account.tile.tickets"].tap()
+            XCTAssertTrue(app.otherElements["screen.accountGroup"].waitForExistence(timeout: 3),
+                          "One tap on the Tickets tile opens Tickets & Bookings")
+        }
     }
 
     /// Regression coverage for the e56aeb2 over-correction: that pass's

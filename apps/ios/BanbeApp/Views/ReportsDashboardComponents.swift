@@ -23,9 +23,9 @@ struct ReportCardSurface: ViewModifier {
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(app.palette.rule.opacity(app.theme == "dark" ? 0.6 : 0), lineWidth: 1)
+                    .stroke(app.palette.rule.opacity(app.isDark ? 0.6 : 0), lineWidth: 1)
             )
-            .shadow(color: app.palette.ink.opacity(app.theme == "dark" ? 0 : 0.06), radius: 12, x: 0, y: 4)
+            .shadow(color: app.palette.ink.opacity(app.isDark ? 0 : 0.06), radius: 12, x: 0, y: 4)
     }
 }
 
@@ -35,7 +35,7 @@ struct ReportHeroSurface: ViewModifier {
     @EnvironmentObject private var app: AppState
 
     func body(content: Content) -> some View {
-        let dark = app.theme == "dark"
+        let dark = app.isDark
         let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
         content
             .padding(20)
@@ -72,7 +72,7 @@ struct ReportGlyph: View {
             .font(.system(size: size * 0.48, weight: .semibold))
             .foregroundStyle(app.palette.ink.opacity(0.8))
             .frame(width: size, height: size)
-            .background(reportsAccent.opacity(app.theme == "dark" ? 0.28 : 0.5), in: Circle())
+            .background(reportsAccent.opacity(app.isDark ? 0.28 : 0.5), in: Circle())
             .accessibilityHidden(true)
     }
 }

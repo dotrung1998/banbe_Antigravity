@@ -9,7 +9,8 @@
 // 'search' (note 50): the Search screen only reads public events, same as Home/Map.
 export const GUEST_BROWSE_SCREENS = new Set(['home', 'mapExplore', 'event', 'search']);
 
-export const PROMPT_CONTEXTS = ['save', 'follow', 'reserve', 'message', 'like'];
+// 'host' / 'schedule' / 'invite': the Simple Shell (switch simple_shell) mode switch and centre "+" rows (note 66).
+export const PROMPT_CONTEXTS = ['save', 'follow', 'reserve', 'message', 'like', 'host', 'schedule', 'invite'];
 
 export function promptCopy(context, T) {
   switch (context) {
@@ -18,6 +19,9 @@ export function promptCopy(context, T) {
     case 'reserve': return { title: T('Giữ chỗ của bạn', 'Hold your seat'), body: T('Đăng nhập để giữ chỗ. Bạn sẽ quay lại đúng sự kiện này.', "Log in to hold your seat. You'll come right back to this event.") };
     case 'message': return { title: T('Nhắn tin cho host', 'Message the host'), body: T('Đăng nhập để nhắn tin. Bạn sẽ quay lại đúng cuộc trò chuyện này.', "Log in to send a message. You'll come right back to this chat.") };
     case 'like': return { title: T('Thích ảnh này', 'Like this photo'), body: T('Đăng nhập để thích ảnh và ủng hộ host.', 'Log in to like photos and support the host.') };
+    case 'host': return { title: T('Tổ chức sự kiện', 'Host an event'), body: T('Đăng nhập để tổ chức. Miễn phí, tắt lúc nào cũng được.', 'Log in to host. It is free and you can turn it off any time.') };
+    case 'schedule': return { title: T('Lịch của bạn', 'Your schedule'), body: T('Đăng nhập để lưu kế hoạch vào lịch và xem trên mọi thiết bị.', 'Log in to keep plans in your schedule on every device.') };
+    case 'invite': return { title: T('Mời bạn bè', 'Invite friends'), body: T('Đăng nhập để nhận link mời của riêng bạn.', 'Log in to get your own invite link.') };
     default: return { title: T('Đăng nhập để tiếp tục', 'Log in to continue'), body: '' };
   }
 }

@@ -159,7 +159,7 @@ test.describe('Navigation & Event Exploration', () => {
     // The save landed on the real favourites list, not just the icon.
     await page.getByText('‹ banbe').first().click();
     await page.getByText('Tài khoản').first().click();
-    await expect(page.locator('[data-screen-label="Account"]').getByTestId('account-saved-card')).toContainText('1');
+    await expect(page.locator('[data-screen-label="Account"]').getByTestId('account-tile-saved')).toContainText('1');
   });
 
   test('a shared "?org=" link opens that organizer and offers the app', async ({ page }) => {

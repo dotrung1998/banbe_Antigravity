@@ -140,6 +140,9 @@ struct StepProgress: View {
     var onSelect: ((Int) -> Void)? = nil
 
     @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Note 66: steps that just turned done pop once (none under Reduce Motion). Web: `.bb-step-pop`.
+    @State private var popped: Set<Int> = []
 
     private var doneCount: Int { completed.map { $0.filter { $0 }.count } ?? current }
     private var percent: Int { StepProgressModel.percent(current: doneCount, total: steps.count) }
@@ -174,6 +177,16 @@ struct StepProgress: View {
         }
         .accessibilityElement(children: onSelect == nil ? .ignore : .contain)
         .accessibilityLabel(accessibilitySummary)
+        .onChange(of: completed ?? []) { previous, now in
+            guard !reduceMotion, previous.count == now.count else { return }
+            let fresh = Set(now.indices.filter { now[$0] && !previous[$0] })
+            guard !fresh.isEmpty else { return }
+            withAnimation(.spring(response: 0.18, dampingFraction: 0.5)) { popped = fresh }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 180_000_000)
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) { popped = [] }
+            }
+        }
         .modifier(OptionalIdentifier(identifier: identifier))
     }
 
@@ -195,7 +208,7 @@ struct StepProgress: View {
                 .padding(4)
         }
         .frame(width: 44, height: 44)
-        .animation(.easeOut(duration: 0.25), value: doneCount)
+        .animation(Motion.animation(.easeOut(duration: 0.25), reduce: reduceMotion), value: doneCount)
     }
 
     private var accessibilitySummary: String {
@@ -235,6 +248,7 @@ struct StepProgress: View {
                     }
                 }
                 .frame(width: 28, height: 28)
+                .scaleEffect(popped.contains(index) ? 1.12 : 1)
                 // The step you're on gets a halo; a finished current step keeps its number.
                 .overlay(Circle().stroke(app.palette.ink.opacity(active ? 0.22 : 0), lineWidth: 4).padding(-4))
                 .overlay(alignment: .topTrailing) {

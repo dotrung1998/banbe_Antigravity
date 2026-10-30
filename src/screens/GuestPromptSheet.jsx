@@ -6,7 +6,7 @@ import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, display, inkButton } from '../theme.js';
 import { promptCopy, promptBenefits } from '../lib/guestAccess.js';
 
-const ICON = { save: '♥', follow: '＋', reserve: '🎟', message: '💬', like: '👍' };
+const ICON = { save: '♥', follow: '＋', reserve: '🎟', message: '💬', like: '👍', host: '✦', schedule: '📅', invite: '✉' };
 
 export default function GuestPromptSheet() {
   const { state: s, T, continueFromGuestPrompt, dismissGuestPrompt } = useBanBe();
