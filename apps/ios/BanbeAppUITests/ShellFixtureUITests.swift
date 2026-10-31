@@ -412,6 +412,23 @@ final class ShellFixtureUITests: XCTestCase {
         XCTAssertFalse(el(app, "home.filter.cat.supper").exists, "no category section in the Filters sheet")
     }
 
+    /// Note 69: Hosting Home has shortcuts, and each Submitted tile is its own button into the dashboard.
+    func testHostHomeQuickActionsAndSubmittedTiles() {
+        let app = launchSimple(host: true)
+        XCTAssertTrue(el(app, "home.host.quick").waitForExistence(timeout: 20))
+        for id in ["guests", "refunds", "story", "surveys"] {
+            let chip = el(app, "home.host.quick.\(id)")
+            XCTAssertTrue(chip.exists, id)
+            XCTAssertGreaterThanOrEqual(chip.frame.height, 44, id)
+        }
+        XCTAssertEqual(app.buttons.matching(identifier: "home.host.quick.create").count
+                       + app.buttons.matching(identifier: "home.host.plan.create").count, 1, "Create event shows once")
+        let pending = reveal(app, "home.host.submitted.pending")
+        XCTAssertTrue(pending.exists)
+        pending.tap()
+        XCTAssertTrue(app.otherElements["screen.dashboard"].waitForExistence(timeout: 8))
+    }
+
     /// Item 5: the three KPI tiles are the same width, at least 88pt tall, and show the short label in full.
     func testHostKPITilesAreEqualAndShowShortLabels() {
         let app = launchSimple(host: true)

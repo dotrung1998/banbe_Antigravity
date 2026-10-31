@@ -598,7 +598,11 @@ struct DashboardView: View {
             // it reads myOrgEventKeys, which THAT call is what populates.
             await app.loadMyOrgEventSummaries()
         }
-        .onAppear { reminderHaloTrigger += 1; evaluateLiveCelebration() }
+        .onAppear {
+            reminderHaloTrigger += 1; evaluateLiveCelebration()
+            // Note 69: opened from Home's Pending / Needs fixing tile.
+            if app.dashboardOpenSubmitted { submittedOpen = true; app.dashboardOpenSubmitted = false }
+        }
         .onChange(of: app.screen) { _, new in if new == .dashboard { reminderHaloTrigger += 1 } }
         .onChange(of: app.myOrgEventSummaries.map { "\($0.id):\($0.status)" }) { _, _ in evaluateLiveCelebration() }
         .onChange(of: app.liveCelebrationEventID) { _, _ in evaluateLiveCelebration() }

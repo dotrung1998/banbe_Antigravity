@@ -100,8 +100,10 @@ struct HostHomeSections: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let e = nextHosted { hero(e) } else { planCard }
+            quickActions.padding(.top, 16)
             ActionCenterView(items: actionItems, onSeeAll: { app.goNotifications() })
                 .padding(.top, 16)
+            upcomingList.padding(.top, 16)
             submittedSummary.padding(.top, 16)
             kpiTiles.padding(.top, 16)
         }
@@ -110,6 +112,129 @@ struct HostHomeSections: View {
         .task {
             await app.loadMyEvents()
             await app.loadMyOrgEventSummaries()
+        }
+        // Note 69: "This month" used to appear only after Reports had been opened this session. Load the host numbers
+        // here when nothing host-scoped is in hand (same RPC and range as Reports).
+        .task(id: app.myOrganizerID) {
+            guard let org = app.myOrganizerID, !app.reportsLoading else { return }
+            if let r = app.reportsData, r.success, ReportRole(scope: r.scope) == .host { return }
+            await app.fetchAccountKpis(scope: "host", organizerID: org, rangeDays: app.reportsRangeDays,
+                                       customStart: app.reportsCustomStart, customEnd: app.reportsCustomEnd)
+        }
+    }
+
+    /// The most recent event you hosted that has already started (what "start from your last event" copies).
+    private var lastHosted: CatalogEvent? {
+        let now = Date()
+        return app.myOrgEvents.filter { !$0.cancelled && ($0.startDate.map { $0 < now } ?? false) }
+            .max { ($0.startDate ?? .distantPast) < ($1.startDate ?? .distantPast) }
+    }
+
+    /// Up to three upcoming hosted events after the hero's.
+    private var upcoming: [CatalogEvent] {
+        let now = Date()
+        return Array(app.myOrgEvents
+            .filter { !$0.cancelled && $0.endedHoursAgo == nil && ($0.startDate.map { $0 > now } ?? false) && $0.key != nextHosted?.key }
+            .sorted { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
+            .prefix(3))
+    }
+
+    // MARK: Quick actions (note 69)
+
+    private struct QuickAction: Identifiable { let id: String, title: String, icon: String, run: () -> Void }
+
+    private var quickActionItems: [QuickAction] {
+        var out: [QuickAction] = []
+        // The plan card already has "Create event"; with a hero event, Create joins the shortcuts instead. The hero
+        // has its own Check-in and Message buttons, so they are not repeated here.
+        if nextHosted != nil {
+            out.append(QuickAction(id: "create", title: app.T("Tạo sự kiện", "Create event"), icon: "plus") { app.goCreate() })
+        }
+        out += [
+            QuickAction(id: "guests", title: app.T("Khách & thanh toán", "Guests & payments"), icon: "person.2.badge.gearshape") { app.openVerifications(back: .home) },
+            QuickAction(id: "refunds", title: app.T("Hoàn tiền", "Refunds"), icon: "arrow.uturn.backward.circle") { app.openVerificationsRefunds(back: .home) },
+            QuickAction(id: "story", title: app.T("Đăng story", "Post a story"), icon: "plus.circle") { app.storyLibraryPickerOpen = true },
+            QuickAction(id: "surveys", title: app.T("Khảo sát", "Surveys"), icon: "lightbulb") { app.screen = .surveysHosting },
+        ]
+        if let org = app.myOrganizerID {
+            out += [
+                QuickAction(id: "profile", title: app.T("Hồ sơ tổ chức", "Host profile"), icon: "storefront") { app.openOrganizerProfile(organizerID: org, back: .home) },
+                QuickAction(id: "reports", title: app.T("Báo cáo", "Reports"), icon: "chart.bar.doc.horizontal") { app.openReports(scope: "host", organizerID: org, back: .home) },
+            ]
+        }
+        return out
+    }
+
+    private var quickActions: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(quickActionItems) { a in
+                    Button { Haptics.light(); a.run() } label: {
+                        Label(a.title, systemImage: a.icon)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 44)
+                            .foregroundStyle(app.palette.ink)
+                            .background(app.palette.block, in: Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("home.host.quick.\(a.id)")
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(app.T("Lối tắt tổ chức", "Hosting shortcuts"))
+        .accessibilityIdentifier("home.host.quick")
+    }
+
+    // MARK: Upcoming (note 69)
+
+    @ViewBuilder
+    private var upcomingList: some View {
+        let list = upcoming
+        if !list.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(app.T("Sắp tới", "Coming up")).font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                VStack(spacing: 0) {
+                    ForEach(Array(list.enumerated()), id: \.element.key) { i, e in
+                        if i > 0 { Divider().overlay(app.palette.divider).padding(.leading, 64) }
+                        Button { app.goEvent(e.key) } label: {
+                            HStack(spacing: 12) {
+                                CatalogPhoto(path: e.img, height: 40, width: 40, cornerRadius: 8)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(e.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                    Text(app.discoveryWhenLabel(e.startDate, timeZone: EventMarket.timeZone(e.timeZoneID)))
+                                        .font(.footnote).foregroundStyle(app.palette.ink2)
+                                }
+                                Spacer(minLength: 8)
+                                if let fill = app.eventFill[e.key], fill.capacity > 0 {
+                                    Text("\(fill.booked)/\(fill.capacity)")
+                                        .font(.footnote.weight(.semibold)).monospacedDigit()
+                                        .accessibilityLabel(app.T("\(fill.booked) trên \(fill.capacity) chỗ đã bán", "\(fill.booked) of \(fill.capacity) seats sold"))
+                                }
+                                Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
+                                    .foregroundStyle(app.palette.ink3).accessibilityHidden(true)
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 10)
+                            .frame(minHeight: 56)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("home.host.upcoming.\(e.key)")
+                    }
+                }
+                .background(app.palette.block, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .padding(.horizontal, 20)
+            .accessibilityIdentifier("home.host.upcoming")
+            .task(id: list.map(\.key)) {
+                let missing = list.map(\.key).filter { app.eventFill[$0] == nil }
+                if !missing.isEmpty { await app.loadPublicEventFill(ids: missing) }
+            }
         }
     }
 
@@ -187,6 +312,15 @@ struct HostHomeSections: View {
                 .font(.subheadline)
                 .foregroundStyle(app.palette.ink2)
                 .fixedSize(horizontal: false, vertical: true)
+            if let last = lastHosted {
+                // Note 69: what "start from your last event" will copy, so the card says something concrete.
+                Text(app.T("Lần trước: \(last.name), \(app.discoveryWhenLabel(last.startDate, timeZone: EventMarket.timeZone(last.timeZoneID)))",
+                           "Last time: \(last.name), \(app.discoveryWhenLabel(last.startDate, timeZone: EventMarket.timeZone(last.timeZoneID)))"))
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(app.palette.ink2)
+                    .lineLimit(2)
+                    .accessibilityIdentifier("home.host.plan.last")
+            }
             InkButton(title: app.T("Tạo sự kiện", "Create event"), cornerRadius: 999) { app.goCreate() }
                 .padding(.top, 4)
                 .accessibilityIdentifier("home.host.plan.create")
@@ -210,11 +344,13 @@ struct HostHomeSections: View {
             (app.T("Cần sửa", "Needs fixing"), app.myNeedsFixEvents.count, "needsFix"),
             (app.T("Đang mở", "Live"), live, "live"),
         ]
-        return Button {
-            Haptics.light()
-            app.goDashboard(back: .home)
-        } label: {
-            VStack(alignment: .leading, spacing: 10) {
+        // Note 69: each tile is its own button. Pending / Needs fixing open the dashboard with Submitted events
+        // expanded; Live opens it where the live events are.
+        return VStack(alignment: .leading, spacing: 10) {
+            Button {
+                Haptics.light()
+                app.goDashboard(back: .home)
+            } label: {
                 HStack {
                     Text(app.T("Sự kiện đã gửi", "Submitted events")).font(.headline)
                     Spacer()
@@ -222,20 +358,21 @@ struct HostHomeSections: View {
                         .foregroundStyle(app.palette.ink3).accessibilityHidden(true)
                 }
                 .frame(minHeight: 44)
-                HostTileGrid(tiles: chips.map { title, n, key in
-                    HostTileGrid.Tile(id: key, value: "\(n)", label: title,
-                                      highlight: key == "needsFix" && n > 0)
-                })
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityHint(app.T("Mở trang tổ chức", "Opens your host dashboard"))
+            .accessibilityIdentifier("home.host.submitted")
+            HostTileGrid(tiles: chips.map { title, n, key in
+                HostTileGrid.Tile(id: key, value: "\(n)", label: title,
+                                  highlight: key == "needsFix" && n > 0,
+                                  identifier: "home.host.submitted.\(key)") {
+                    app.dashboardOpenSubmitted = key != "live"
+                    app.goDashboard(back: .home)
+                }
+            })
         }
-        .buttonStyle(.plain)
         .padding(.horizontal, 20)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(app.T("Sự kiện đã gửi: \(chips[0].1) chờ duyệt, \(chips[1].1) cần sửa, \(live) đang mở",
-                                  "Submitted events: \(chips[0].1) pending, \(chips[1].1) needs fixing, \(live) live"))
-        .accessibilityHint(app.T("Mở trang tổ chức", "Opens your host dashboard"))
-        .accessibilityIdentifier("home.host.submitted")
     }
 
     // MARK: KPIs (only when Reports already loaded host numbers)
@@ -287,6 +424,8 @@ struct HostTileGrid: View {
         var highlight = false
         var accessibilityValue: String? = nil
         var identifier: String? = nil
+        /// Note 69: a tile can be its own button (Submitted events: each status opens its own place).
+        var onTap: (() -> Void)? = nil
     }
 
     @EnvironmentObject private var app: AppState
@@ -330,7 +469,15 @@ struct HostTileGrid: View {
         .frame(maxWidth: .infinity, minHeight: Self.minHeight, maxHeight: .infinity, alignment: .topLeading)
         .background(t.highlight ? app.palette.honeyBg : app.palette.block,
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        if let id = t.identifier {
+        if let onTap = t.onTap {
+            Button { Haptics.light(); onTap() } label: { base.contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous)) }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(t.label)
+                .accessibilityValue(t.accessibilityValue ?? t.value)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier(t.identifier ?? "tile.\(t.id)")
+        } else if let id = t.identifier {
             base
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(t.label)

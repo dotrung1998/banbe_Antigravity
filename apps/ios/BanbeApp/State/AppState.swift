@@ -429,6 +429,8 @@ final class AppState: ObservableObject {
     // somewhere it didn't come from.
     @Published var inboxBack: Screen = .home
     @Published var dashboardBack: Screen = .home
+    /// Note 69: Home's Pending / Needs fixing tiles open the dashboard with "Submitted events" expanded (read once).
+    var dashboardOpenSubmitted = false
     // Stage 1 (2026-09-27 nav/discovery pass) — the real root screen/tab
     // dock + (or Dashboard's "Sửa & gửi lại") was entered from; createBack()
     // and backTarget's own `.create` case (below) both read this instead of
