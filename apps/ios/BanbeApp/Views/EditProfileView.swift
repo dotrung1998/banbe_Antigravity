@@ -154,10 +154,11 @@ struct ProfilePalette {
     let key: String
     let color: Color
     static let all: [ProfilePalette] = [
-        ProfilePalette(key: "default", color: Color(red: 0.93, green: 0.91, blue: 0.85)),
-        ProfilePalette(key: "rose", color: Color(red: 0.91, green: 0.79, blue: 0.76)),
-        ProfilePalette(key: "moss", color: Color(red: 0.78, green: 0.80, blue: 0.70)),
-        ProfilePalette(key: "ink", color: Color(red: 0.23, green: 0.21, blue: 0.19)),
-        ProfilePalette(key: "sand", color: Color(red: 0.89, green: 0.83, blue: 0.71)),
+        // Exact web values (src/lib/profileTheme.js; shared fixture tests/fixtures/profile-card.json, note 68).
+        ProfilePalette(key: "default", color: Color(hex: 0xEDE7D9)),
+        ProfilePalette(key: "rose", color: Color(hex: 0xE7C9C2)),
+        ProfilePalette(key: "moss", color: Color(hex: 0xC8CBB2)),
+        ProfilePalette(key: "ink", color: Color(hex: 0x3A3630)),
+        ProfilePalette(key: "sand", color: Color(hex: 0xE3D3B4)),
     ]
 }

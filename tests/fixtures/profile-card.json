@@ -1,0 +1,39 @@
+{
+  "_comment": "Shared by tests/unit/profileCard.test.mjs and apps/ios/BanbeAppTests/ProfileCardTests.swift (note 68). Palettes mirror src/lib/profileTheme.js PROFILE_PALETTES. Change both together.",
+  "palettes": { "default": "#EDE7D9", "rose": "#E7C9C2", "moss": "#C8CBB2", "ink": "#3A3630", "sand": "#E3D3B4" },
+  "tint": 0.18,
+  "glow": 0.1,
+  "roleLabel": [
+    { "in": { "organizerName": "Bếp Nhỏ", "organizerMode": true }, "en": "Host · Founder of Bếp Nhỏ", "vi": "Host · Founder tổ chức Bếp Nhỏ" },
+    { "in": { "organizerName": "Bếp Nhỏ", "organizerMode": false }, "en": "Member", "vi": "Thành viên" },
+    { "in": { "organizerName": null, "organizerMode": true }, "en": "Member", "vi": "Thành viên" }
+  ],
+  "dedupeChips": [
+    { "name": "interests ['Admin', 'Admin'] show one chip (regression: banbetestadmin's real data)", "chips": ["Admin", "Admin"], "shown": ["Member", "Test bio"], "out": ["Admin"] },
+    { "name": "a chip that repeats the bio is dropped", "chips": ["Admin", "Jazz"], "shown": ["Member", "Admin"], "out": ["Jazz"] },
+    { "name": "case and spaces", "chips": [" jazz ", "Jazz", "Food"], "shown": [], "out": [" jazz ", "Food"] },
+    { "name": "nothing to drop", "chips": ["Food"], "shown": ["Host · Founder of X", ""], "out": ["Food"] }
+  ],
+  "profileStats": [
+    { "name": "host visitor: hosted, followers, since", "in": { "organizer": { "event_count": 3, "follower_count": 12, "hosting_since_year": 2025 }, "organizerMode": true, "isOwner": false, "rewardsOn": true, "badgeCount": 5, "upcomingCount": 1 }, "out": [["hosted", 3], ["followers", 12], ["since", 2025]] },
+    { "name": "host owner with rewards on: badges instead of since", "in": { "organizer": { "event_count": 3, "follower_count": 12, "hosting_since_year": 2025 }, "organizerMode": true, "isOwner": true, "rewardsOn": true, "badgeCount": 5, "upcomingCount": 1 }, "out": [["hosted", 3], ["followers", 12], ["badges", 5]] },
+    { "name": "rewards switch off: no badges", "in": { "organizer": { "event_count": 3, "follower_count": 12, "hosting_since_year": null }, "organizerMode": true, "isOwner": true, "rewardsOn": false, "badgeCount": 5, "upcomingCount": 1 }, "out": [["hosted", 3], ["followers", 12]] },
+    { "name": "member owner: upcoming and badges", "in": { "organizer": null, "organizerMode": false, "isOwner": true, "rewardsOn": true, "badgeCount": 2, "upcomingCount": 4 }, "out": [["upcoming", 4], ["badges", 2]] },
+    { "name": "member owner, rewards off: one column is hidden", "in": { "organizer": null, "organizerMode": false, "isOwner": true, "rewardsOn": false, "badgeCount": 2, "upcomingCount": 4 }, "out": [] },
+    { "name": "member visitor: nothing public", "in": { "organizer": null, "organizerMode": false, "isOwner": false, "rewardsOn": true, "badgeCount": null, "upcomingCount": null }, "out": [] }
+  ],
+  "upcoming": {
+    "events": [
+      { "key": "a", "name": "A", "organizerId": "org1", "start": 300, "ended": false, "cancelled": false },
+      { "key": "b", "name": "B", "organizerId": "org2", "start": 100, "ended": false, "cancelled": false },
+      { "key": "c", "name": "C", "organizerId": "org1", "start": 50, "ended": true, "cancelled": false },
+      { "key": "d", "name": "D", "organizerId": "org1", "start": 200, "ended": false, "cancelled": true },
+      { "key": "e", "name": "E", "organizerId": "org3", "start": null, "ended": false, "cancelled": false }
+    ],
+    "cases": [
+      { "name": "owner host: hosting + going, by start", "in": { "organizerId": "org1", "organizerMode": true, "isOwner": true, "goingKeys": ["b", "e", "c"] }, "out": [["b", "going"], ["a", "hosting"], ["e", "going"]] },
+      { "name": "visitor never sees bookings", "in": { "organizerId": "org1", "organizerMode": true, "isOwner": false, "goingKeys": ["b"] }, "out": [["a", "hosting"]] },
+      { "name": "organizer mode off: no hosting rows", "in": { "organizerId": "org1", "organizerMode": false, "isOwner": true, "goingKeys": [] }, "out": [] }
+    ]
+  }
+}

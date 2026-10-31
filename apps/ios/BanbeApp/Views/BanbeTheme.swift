@@ -120,6 +120,15 @@ enum BanbeTheme {
     /// One shape language for discovery surfaces (note 50): cards and icon tiles share one radius,
     /// thumbnails a slightly smaller one, chips/pills are fully round (use `Capsule()`). Mirrors
     /// src/theme.js `RADIUS`.
+    /// One spacing scale on the 4/8 grid (note 68): `xl` between sections, `m` inside one. Mirrors src/theme.js `SPACE`.
+    enum Space {
+        static let xs: CGFloat = 4
+        static let s: CGFloat = 8
+        static let m: CGFloat = 12
+        static let l: CGFloat = 16
+        static let xl: CGFloat = 24
+    }
+
     enum Radius {
         static let card: CGFloat = 14
         static let tile: CGFloat = 14

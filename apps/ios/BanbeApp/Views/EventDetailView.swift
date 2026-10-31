@@ -76,9 +76,12 @@ struct EventDetailView: View {
     @State private var titleFrame: CGRect = .zero
     /// Bumped by the blocked bar's "see why" tap; the scroll view scrolls the criteria card into view.
     @State private var criteriaScrollRequest = 0
+    /// About's "Read more" expanded the description in place (note 68).
+    @State private var aboutExpanded = false
 
     // Airbnb-style layout: the photo is a fixed backdrop that fades out while the rounded info sheet scrolls up over it.
-    private let heroHeight: CGFloat = 400
+    /// 320 (was 400, note 68): with the sheet's overlap, Date / Time / Place, the Host row and the CTA fit a 6.1" phone.
+    private let heroHeight: CGFloat = 320
     private let sheetOverlap: CGFloat = 40
     // Matches the iPhone's own screen-corner curvature (~47-55pt on current models).
     private let sheetRadius: CGFloat = 46
@@ -457,15 +460,14 @@ struct EventDetailView: View {
     @ViewBuilder
     private var criteriaSection: some View {
         if let c = app.eventCriteriaByKey[event.key], !c.isEveryone {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
                 Text(app.T("Ai được đặt chỗ: ", "Who can reserve: ") + c.summary(vi: !app.isEN))
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.footnote.weight(.semibold))
                     .accessibilityIdentifier("event.criteria.summary")
                 if let block = app.reserveEligibilityBlock {
                     CriteriaUnmetCard(eligibility: block, returnTo: .event, idPrefix: "event")
                 }
             }
-            .padding(.bottom, 14)
         }
     }
 
@@ -753,9 +755,10 @@ struct EventDetailView: View {
     /// One hairline weight for the page's own dividers: softer than `rule`, so sections read as one surface.
     private var softRule: Color { app.palette.ink.opacity(0.10) }
     private var hostName: String { event.orgName.isEmpty ? event.hostShort : event.orgName }
-    private var hasAboutSheet: Bool { event.intro != nil || !(event.includedItems?.isEmpty ?? true) }
-    /// Long descriptions clamp to 4 lines when the fuller write-up is one tap away (About & Included sheet).
-    private var canClampDescription: Bool { hasAboutSheet && event.desc.count > 180 }
+    /// About (note 68): description (else the intro's first paragraph) clamped to 3 lines; a blank intro is no intro.
+    private var about: EventDetailPresentation.About {
+        EventDetailPresentation.aboutSection(desc: event.desc, intro: event.intro, includedCount: event.includedItems?.count ?? 0)
+    }
     /// `where` is "area ▪︎ distance ▪︎ day ▪︎ time"; the date and time have their own tiles, so the place tile keeps
     /// only the area and, once located, the distance.
     private var placeLine: String {
@@ -767,281 +770,277 @@ struct EventDetailView: View {
         let parts = event.when.components(separatedBy: " ▪︎ ").filter { !$0.isEmpty }
         return (parts.first, parts.count > 1 ? parts[1] : nil)
     }
-    /// Host track record where the mockup has its rating row — real data only (banbe has no ratings).
-    private var trackRecordLine: String {
-        let stats = app.eventOrganizerID[event.key].flatMap { app.organizerStats[$0] }
-        var parts = [hostName]
-        if let stats, stats.count > 0 { parts.append(app.T("\(stats.count) sự kiện", "\(stats.count) events")) }
-        if let year = stats?.sinceYear { parts.append(app.T("từ \(year)", "since \(year)")) }
-        return parts.filter { !$0.isEmpty }.joined(separator: " · ")
+    /// Capacity and seats still free: the live fill only (never an invented capacity); a draft has every seat free.
+    private var seatCounts: (capacity: Int?, remaining: Int?) {
+        if let preview { return (preview.capacity, preview.capacity) }
+        guard let fill = app.eventFill[event.key], fill.capacity > 0 else { return (nil, nil) }
+        return (fill.capacity, max(0, fill.capacity - fill.booked))
     }
-    /// Seats bar only when the live fill (booked + capacity) is known; never an invented capacity.
-    private var seatFill: (ratio: Double, remaining: Int)? {
-        if let preview {
-            guard let capacity = preview.capacity, capacity > 0 else { return nil }
-            return (0, capacity)
+    /// One seat status beside the price (note 68): "You're going" for a ticket holder, "Sold out" (also at 0 left),
+    /// else "N left" (honey when few). The bar only shows while seats are actually open.
+    private var seat: EventDetailPresentation.SeatStatus {
+        EventDetailPresentation.seatStatus(capacity: seatCounts.capacity, remaining: seatCounts.remaining,
+                                           soldOut: event.soldOut, going: barState == .ticket)
+    }
+    private var seatPill: (text: String, fg: Color, bg: Color)? {
+        switch seat.kind {
+        case .going: return (app.T("Bạn sẽ tham gia", "You're going"), app.palette.clay, app.palette.clayBg)
+        case .soldOut: return (app.trStatus("Hết chỗ"), app.palette.ink2, app.palette.surface2)
+        case .few: return (app.T("Còn \(seat.left ?? 0) chỗ", "\(seat.left ?? 0) left"), app.palette.honey, app.palette.honeyBg)
+        case .open: return (app.T("Còn \(seat.left ?? 0) chỗ", "\(seat.left ?? 0) left"), app.palette.ink2, app.palette.surface2)
+        case .unknown:
+            let text = app.trStatus(event.seatsLong)
+            return text.isEmpty ? nil : (text, app.palette.ink2, app.palette.surface2)
         }
-        guard let fill = app.eventFill[event.key], fill.capacity > 0 else { return nil }
-        let remaining = max(0, fill.capacity - fill.booked)
-        return (min(1, max(0, Double(fill.capacity - remaining) / Double(fill.capacity))), remaining)
     }
-    private var seatsText: String {
-        if event.soldOut { return app.trStatus("Hết chỗ") }
-        if let f = seatFill { return app.T("Còn \(f.remaining) chỗ", "\(f.remaining) seats left") }
-        return app.trStatus(event.seatsLong)
-    }
+    /// Event type facts: minimum age is a restriction, so it sits beside the category; alcohol + dietary are chips.
+    private var facts: EventDetailPresentation.SplitFacts { EventDetailPresentation.splitFacts(typeFacts) }
     private var includedChips: [String] {
         if let items = event.includedItems, !items.isEmpty { return items.map(\.label) }
         return event.included.components(separatedBy: CharacterSet(charactersIn: "▪︎,·")).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 
     private var details: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        // One spacing scale (note 68): 24 between sections, 8–12 inside one.
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.xl) {
             if let shareStoryMessage {
                 Text(shareStoryMessage)
-                    .font(.system(size: 11))
-                    .foregroundStyle(app.palette.ink.opacity(0.7))
-                    .padding(.bottom, 10)
+                    .font(.footnote)
+                    .foregroundStyle(app.palette.ink3)
             }
 
-            HStack(spacing: 8) {
-                // Category as an ink chip (mockup); invite-only beside it in clay. No chip at all without a category.
-                if !app.trStatus(event.cat).isEmpty {
-                Text(app.trStatus(event.cat).uppercased())
-                    .font(.system(size: 11.5, weight: .semibold)).tracking(0.7)
-                    .foregroundStyle(app.palette.paper)
-                    .padding(.horizontal, 12).padding(.vertical, 5)
-                    .background(app.palette.ink, in: Capsule())
-                    .accessibilityIdentifier("event.category")
-                }
-                if event.inviteOnly {
-                    Text(app.T("Riêng tư ▪︎ theo lời mời", "Private ▪︎ invite only"))
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(app.palette.clay)
-                        .padding(.horizontal, 12).padding(.vertical, 5)
-                        .background(app.palette.clayBg, in: Capsule())
-                        .accessibilityIdentifier("event.inviteChip")
-                }
-            }
-
-            // Note 46 — the title with the calendar pill (banbe Schedule / Apple Calendar).
-            EventPlanTitleRow(event: event)
-                .allowsHitTesting(!isPreview)
-                .opacity(1 - titleProgress)
-                .scaleEffect(1 - 0.3 * titleProgress, anchor: .bottomLeading)
-                .offset(y: -12 * titleProgress)
-                .background(GeometryReader { g in
-                    Color.clear.preference(key: EventTitleFrameKey.self, value: g.frame(in: .global))
-                })
-                .onPreferenceChange(EventTitleFrameKey.self) { titleFrame = $0 }
-
-            // Body copy supports the title instead of competing with it.
-            Text(event.desc)
-                .font(.system(size: 15))
-                .lineSpacing(4)
-                .opacity(0.85)
-                .lineLimit(canClampDescription ? 4 : nil)
-            if canClampDescription {
-                Button { introIncludedSheetOpen = true } label: {
-                    Text(app.T("Xem thêm", "Read more")).font(.system(size: 13, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 6)
-                .accessibilityIdentifier("event.readMore")
-            }
-
-            if !trackRecordLine.isEmpty {
-                Button { app.openEventOrganizer(eventKey: app.eventKey) } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "person").font(.system(size: 13, weight: .medium))
-                        Text(trackRecordLine).font(.system(size: 14)).multilineTextAlignment(.leading)
-                        if app.isFollowing(app.eventOrganizerID[event.key]) {
-                            Text("✓ " + app.T("Đang theo dõi", "Following")).font(.system(size: 12, weight: .semibold))
-                        }
+            // Header: category + minimum age + invite pills, the title with the calendar pill, then price and seat status.
+            VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+                FlowRow(spacing: BanbeTheme.Space.s) {
+                    // Category as an ink chip (mockup); minimum age beside it (a restriction, seen first); invite in clay.
+                    if !app.trStatus(event.cat).isEmpty {
+                        Text(app.trStatus(event.cat).uppercased())
+                            .font(.footnote.weight(.semibold)).tracking(0.5)
+                            .foregroundStyle(app.palette.paper)
+                            .padding(.horizontal, 12).padding(.vertical, 4)
+                            .background(app.palette.ink, in: Capsule())
+                            .accessibilityIdentifier("event.category")
                     }
-                    .foregroundStyle(app.palette.clay)
-                }
-                .buttonStyle(.plain)
-                .allowsHitTesting(!isPreview)
-                .padding(.top, 10)
-                .accessibilityIdentifier("event.trackRecord")
-            }
-
-            if !event.price.isEmpty {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(app.trStatus(event.price)).font(BanbeTheme.display(26))
-                    if !event.isFree { Text(app.T("/ vé", "/ ticket")).font(.system(size: 13)).opacity(0.6) }
-                }
-                .padding(.top, 12)
-                .accessibilityIdentifier("event.price")
-            }
-
-            // Ngày / Giờ / Địa điểm: three equal tiles; directions is an icon-only button in the place tile's corner.
-            HStack(alignment: .top, spacing: 8) { dateTile; timeTile; placeTile }
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 14)
-
-            // Seats: a thin clay bar when the live fill is known, otherwise just the text.
-            HStack(spacing: 12) {
-                if let f = seatFill {
-                    GeometryReader { g in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(app.palette.ink.opacity(0.08))
-                            Capsule().fill(LinearGradient(colors: [app.palette.clay.opacity(0.75), app.palette.clay], startPoint: .leading, endPoint: .trailing))
-                                .frame(width: max(6, g.size.width * f.ratio))
-                        }
+                    if let age = facts.minAge {
+                        Text(age.value)
+                            .font(.footnote.weight(.semibold))
+                            .padding(.horizontal, 11).padding(.vertical, 3)
+                            .overlay(Capsule().stroke(app.palette.ink, lineWidth: 1))
+                            .accessibilityLabel("\(age.label) \(age.value)")
+                            .accessibilityIdentifier("event.typeFact.\(age.id)")
                     }
-                    .frame(height: 5)
-                    .accessibilityHidden(true)
+                    if event.inviteOnly {
+                        Text(app.T("Riêng tư ▪︎ theo lời mời", "Private ▪︎ invite only"))
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(app.palette.clay)
+                            .padding(.horizontal, 12).padding(.vertical, 4)
+                            .background(app.palette.clayBg, in: Capsule())
+                            .accessibilityIdentifier("event.inviteChip")
+                    }
                 }
-                Text(seatsText)
-                    .font(.system(size: 13.5))
-                    .foregroundStyle(event.soldOut ? app.palette.ink : app.palette.clay)
-                    .frame(maxWidth: seatFill == nil ? .infinity : nil, alignment: .leading)
-            }
-            .padding(.top, 12)
-            .accessibilityIdentifier("event.fact.seats")
 
-            criteriaSection
-                .padding(.top, 10)
-                .id("event.criteria")
+                // Note 46 — the title with the calendar pill (banbe Schedule / Apple Calendar).
+                EventPlanTitleRow(event: event)
+                    .allowsHitTesting(!isPreview)
+                    .opacity(1 - titleProgress)
+                    .scaleEffect(1 - 0.3 * titleProgress, anchor: .bottomLeading)
+                    .offset(y: -12 * titleProgress)
+                    .background(GeometryReader { g in
+                        Color.clear.preference(key: EventTitleFrameKey.self, value: g.frame(in: .global))
+                    })
+                    .onPreferenceChange(EventTitleFrameKey.self) { titleFrame = $0 }
 
-            // What kind of evening it is (event type profiles): the type's own facts, e.g. a supper club's dietary
-            // options, BYO and dress code. Legacy events (no details) show nothing new.
-            if !typeFacts.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(typeFacts, id: \.id) { f in
-                        ViewThatFits(in: .horizontal) {
-                            HStack(alignment: .firstTextBaseline, spacing: 14) {
-                                Text(f.label).font(.footnote).opacity(0.65)
-                                Text(f.value).font(.subheadline)
-                                Spacer(minLength: 0)
+                // Price left, one seat status right (note 68); the thin bar under them only while seats are open.
+                if !event.price.isEmpty || seatPill != nil {
+                    VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+                        HStack(alignment: .center, spacing: BanbeTheme.Space.m) {
+                            if !event.price.isEmpty {
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                    Text(app.trStatus(event.price)).font(BanbeTheme.display(26))
+                                    if !event.isFree { Text(app.T("/ vé", "/ ticket")).font(.footnote).foregroundStyle(app.palette.ink3) }
+                                }
+                                .accessibilityElement(children: .combine)
+                                .accessibilityIdentifier("event.price")
                             }
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(f.label).font(.footnote).opacity(0.65)
-                                Text(f.value).font(.subheadline)
+                            Spacer(minLength: 0)
+                            if let pill = seatPill {
+                                Text(pill.text)
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(pill.fg)
+                                    .padding(.horizontal, 12).padding(.vertical, 6)
+                                    .background(pill.bg, in: Capsule())
+                                    .accessibilityIdentifier("event.seatStatus")
                             }
                         }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("event.typeFact.\(f.id)")
+                        if let ratio = seat.ratio {
+                            GeometryReader { g in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(app.palette.ink.opacity(0.08))
+                                    Capsule().fill(seat.kind == .few ? app.palette.clay : app.palette.ink.opacity(0.35))
+                                        .frame(width: max(4, g.size.width * ratio))
+                                }
+                            }
+                            .frame(height: 4)
+                            .accessibilityHidden(true)
+                        }
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("event.fact.seats")
+                }
+            }
+
+            // Ngày / Giờ / Địa điểm: three equal tiles; directions is an icon-only button in the place tile's corner. The
+            // venue-time note is one quiet line under them, only when this device's clock reads the time differently.
+            VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: BanbeTheme.Space.s) { dateTile; timeTile; placeTile }
+                        .fixedSize(horizontal: false, vertical: true)
+                    // Accessibility text sizes: one tile per row, never clipped.
+                    VStack(spacing: BanbeTheme.Space.s) { dateTile; timeTile; placeTile }
+                }
+                if let note = venueTimeNote {
+                    Text(note).font(.footnote).foregroundStyle(app.palette.ink3)
+                        .accessibilityIdentifier("event.fact.venueTime")
+                }
+            }
+
+            // The host, once (note 68): avatar, name, real stats, a Message icon button; the row opens the host's page.
+            hostSection.allowsHitTesting(!isPreview)
+
+            // What kind of evening it is (event type profiles): alcohol + dietary as icon chips, the type's other facts
+            // as an aligned label/value list. Minimum age is the pill in the header.
+            if !facts.chips.isEmpty || !facts.rows.isEmpty {
+                VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
+                    if !facts.chips.isEmpty {
+                        FlowRow(spacing: BanbeTheme.Space.s) {
+                            ForEach(facts.chips, id: \.id) { f in
+                                Label {
+                                    Text(f.value)
+                                } icon: {
+                                    Image(systemName: f.id == "alcohol" ? "wineglass" : "leaf").foregroundStyle(app.palette.clay)
+                                }
+                                .font(.footnote)
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(app.palette.surface2, in: Capsule())
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel("\(f.label): \(f.value)")
+                                .accessibilityIdentifier("event.typeFact.\(f.id)")
+                            }
+                        }
+                    }
+                    if !facts.rows.isEmpty {
+                        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: BanbeTheme.Space.l, verticalSpacing: BanbeTheme.Space.s) {
+                            ForEach(facts.rows, id: \.id) { f in
+                                GridRow {
+                                    Text(f.label).font(.footnote).foregroundStyle(app.palette.ink3)
+                                    Text(f.value).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                                }
+                                .accessibilityElement(children: .combine)
+                                .accessibilityIdentifier("event.typeFact.\(f.id)")
+                            }
+                        }
                     }
                 }
                 .foregroundStyle(app.palette.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 16)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("event.typeFacts")
             }
 
-            // Sections below are separated by whitespace only (no rules): 28 between sections, 8–10 from a heading to its
-            // content, so related things sit together and the page reads as one calm surface (transcript 3/11/12).
-            // "Bao gồm": one line of text, items separated by the signature ▪︎; the full intro + item details stay one
-            // tap away in the About & Included sheet.
-            if !includedChips.isEmpty || hasAboutSheet {
-                Button { if hasAboutSheet { introIncludedSheetOpen = true } } label: { includedSection }
-                    .buttonStyle(.plain)
-                    .disabled(!hasAboutSheet)
-                    .accessibilityIdentifier("event.includedSection")
-                    .accessibilityLabel(app.T("Giới thiệu và bao gồm, xem thêm", "Introduction and included, view more"))
-                    .padding(.top, 20)
-            }
+            criteriaSection
+                .id("event.criteria")
+
+            // About (note 68): the description clamped to 3 lines ("Read more" expands it here), then the included
+            // line. "More ›" on the heading opens the About & Included sheet. Never a heading with nothing under it.
+            if about.visible { aboutSection }
 
             // L2 (switch event_recap): a guest who went opens their recap card, where the private feedback lives.
             if barState == .endedAttended, !isPreview, app.eventRecapEnabled, (app.realEventsByID[event.key] ?? nil) != nil {
                 InkButton(title: app.T("Xem tổng kết và gửi cảm nhận", "See the recap and share feedback")) {
                     app.openEventRecap(event.key, back: .event)
                 }
-                .padding(.top, 28)
                 .accessibilityIdentifier("event.openRecap")
             }
             if isOver, !isPreview, let orgID = endedOrganizerID {
-                endedNextSection(orgID).padding(.top, 28)
+                endedNextSection(orgID)
             }
 
-            hostSection.allowsHitTesting(!isPreview).padding(.top, 32)
-
-            // "Hình ảnh": the horizontal photo strip.
-            HStack(alignment: .firstTextBaseline) {
-                Text(app.T("Hình ảnh", "Photos")).font(BanbeTheme.display(20))
-                Spacer()
-                let photoCount = preview?.photos.count ?? realPhotos.count
-                if photoCount > 0 { Text("\(photoCount)").font(.system(size: 13)).opacity(0.6) }
-            }
-            .padding(.top, 28)
-            // STAGE D (2026-09-25) — real event_photos rows, not the static demo `event.gallery`. A genuinely
-            // photo-less real event shows plain text, never a fake/demo photo standing in for a real one.
-            if let preview {
-                if preview.photos.isEmpty {
-                    Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet."))
-                        .font(.system(size: 13)).opacity(0.6)
-                        .padding(.top, 10)
-                } else {
-                    previewPhotoStrip(preview.photos).padding(.top, 10)
+            VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+                // "Hình ảnh": the horizontal photo strip.
+                HStack(alignment: .firstTextBaseline) {
+                    Text(app.T("Hình ảnh", "Photos")).font(BanbeTheme.display(17))
+                    Spacer()
+                    let photoCount = preview?.photos.count ?? realPhotos.count
+                    if photoCount > 0 { Text("\(photoCount)").font(.footnote).foregroundStyle(app.palette.ink3) }
                 }
-            } else if app.eventPhotosLoading {
-                Text(app.T("Đang tải…", "Loading…"))
-                    .font(.system(size: 13)).opacity(0.6)
-                    .padding(.top, 10)
-            } else if realPhotos.isEmpty {
-                Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet."))
-                    .font(.system(size: 13)).opacity(0.6)
-                    .padding(.top, 10)
-            } else {
-                photoStrip.padding(.top, 10)
+                // STAGE D (2026-09-25) — real event_photos rows, not the static demo `event.gallery`. A genuinely
+                // photo-less real event shows plain text, never a fake/demo photo standing in for a real one.
+                if let preview {
+                    if preview.photos.isEmpty {
+                        Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet."))
+                            .font(.footnote).foregroundStyle(app.palette.ink3)
+                    } else {
+                        previewPhotoStrip(preview.photos)
+                    }
+                } else if app.eventPhotosLoading {
+                    Text(app.T("Đang tải…", "Loading…"))
+                        .font(.footnote).foregroundStyle(app.palette.ink3)
+                } else if realPhotos.isEmpty {
+                    Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet."))
+                        .font(.footnote).foregroundStyle(app.palette.ink3)
+                } else {
+                    photoStrip
+                }
             }
-        }
+            }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 22)
-        .padding(.top, 30)
-        .padding(.bottom, 30)
+        .padding(.top, BanbeTheme.Space.xl)
+        .padding(.bottom, BanbeTheme.Space.xl + 8)
     }
 
-    /// Ngày / Giờ / Địa điểm tile (mockup): soft fill, clay icon, small label over the value. All three share one
-    /// width (each takes `maxWidth: .infinity`) and one height (the row is `fixedSize` vertically).
+    /// Ngày / Giờ / Địa điểm tile (note 68): clay icon, the value (what you came for) over a quiet label. All three
+    /// share one width (each takes `maxWidth: .infinity`) and one height (the row is `fixedSize` vertically); the
+    /// Simple Shell surface2 fill (= the light block), no hairline.
     private func tile<Content: View>(_ symbol: String, _ label: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Image(systemName: symbol).font(.system(size: 17)).foregroundStyle(app.palette.clay)
-            Text(label).font(.system(size: 12.5)).opacity(0.62).padding(.top, 8)
-            content().font(.system(size: 14.5)).padding(.top, 2)
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.xs) {
+            Image(systemName: symbol).font(.system(size: 15)).foregroundStyle(app.palette.clay)
+                .padding(.bottom, BanbeTheme.Space.xs)
+                .accessibilityHidden(true)
+            content().font(.subheadline.weight(.semibold))
+            Text(label).font(.footnote).foregroundStyle(app.palette.ink3)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(12)
-        .background(app.palette.ink.opacity(0.045), in: RoundedRectangle(cornerRadius: BanbeTheme.Radius.tile, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: BanbeTheme.Radius.tile, style: .continuous).stroke(softRule, lineWidth: 1))
+        .padding(BanbeTheme.Space.m)
+        .background(app.palette.surface2, in: RoundedRectangle(cornerRadius: BanbeTheme.Radius.tile, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder private var dateTile: some View {
         if let date = whenParts.date {
-            tile("calendar", app.T("Ngày", "Date")) { Text(date).minimumScaleFactor(0.85) }
+            tile("calendar", app.T("Ngày", "Date")) { Text(date) }
                 .accessibilityIdentifier("event.fact.when")
         }
     }
 
     @ViewBuilder private var timeTile: some View {
         if let time = whenParts.time {
-            tile("clock", app.T("Giờ", "Time")) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(time).minimumScaleFactor(0.85)
-                    // Real events show the VENUE's wall clock (migration 195); when this device is in another zone,
-                    // say so, in the Schedule's own wording ("19:00 at the venue").
-                    if let note = venueTimeNote {
-                        Text(note).font(.system(size: 11)).opacity(0.6).minimumScaleFactor(0.8)
-                            .accessibilityIdentifier("event.fact.venueTime")
-                    }
-                }
-            }
-            .accessibilityIdentifier("event.fact.time")
+            tile("clock", app.T("Giờ", "Time")) { Text(time) }
+                .accessibilityIdentifier("event.fact.time")
         }
     }
 
+    /// Real events show the VENUE's wall clock (migration 195); when this device reads it differently, the viewer's
+    /// own clock as one quiet line under the tiles (web `viewerTimeNote`).
     private var venueTimeNote: String? {
-        guard event.eventTimeZone != nil else { return nil }
-        return SchedulePresentation.venueTimeNote(app.scheduleInfo(for: event), agendaZone: .current, vi: !app.isEN)
+        guard let zone = event.eventTimeZone, let start = event.startDate else { return nil }
+        return SchedulePresentation.viewerTimeNote(start: start, venueZone: zone, vi: !app.isEN)
     }
 
     private var placeTile: some View {
-        tile("mappin.and.ellipse", app.T("Địa điểm", "Place")) { Text(placeLine).lineLimit(3) }
+        tile("mappin.and.ellipse", app.T("Địa điểm", "Place")) { Text(placeLine).fixedSize(horizontal: false, vertical: true) }
+            .accessibilityIdentifier("event.fact.where")
             .overlay(alignment: .topTrailing) {
                 if let mapsURL = event.mapsURL {
                     // Icon-only (no text, to save space): opens directions in Maps.
@@ -1066,30 +1065,55 @@ struct EventDetailView: View {
             }
     }
 
-    private var includedSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(includedChips.isEmpty ? app.T("Giới thiệu", "About")
-                     : (typeProfile?.detail?.includedTitle?.text(app.isEN ? "en" : "vi") ?? app.T("Bao gồm", "Included")))
-                    .font(BanbeTheme.display(20))
-                Spacer()
-                if hasAboutSheet {
-                    Text(app.T("Xem thêm", "More") + " ›").font(.system(size: 13, weight: .semibold)).foregroundStyle(app.palette.clay)
+    /// About (note 68): heading ("More ›" opens the About & Included sheet when it has an intro or items), the
+    /// description clamped to 3 lines with "Read more" expanding it in place, then the included line.
+    private var aboutSection: some View {
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+            Button { if about.hasSheet { introIncludedSheetOpen = true } } label: {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(app.T("Giới thiệu", "About")).font(BanbeTheme.display(17))
+                    Spacer()
+                    if about.hasSheet {
+                        Text(app.T("Xem thêm", "More") + " ›").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.clay)
+                    }
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!about.hasSheet)
+            .accessibilityIdentifier("event.includedSection")
+            .accessibilityLabel(about.hasSheet ? app.T("Giới thiệu và bao gồm, xem thêm", "Introduction and included, view more") : app.T("Giới thiệu", "About"))
+            if !about.body.isEmpty {
+                Text(about.body)
+                    .font(.system(size: 15))
+                    .lineSpacing(4)
+                    .opacity(0.85)
+                    .lineLimit(about.clampable && !aboutExpanded ? EventDetailPresentation.aboutLines : nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("event.description")
+                if about.clampable && !aboutExpanded {
+                    Button { aboutExpanded = true } label: {
+                        Text(app.T("Xem thêm", "Read more")).font(.footnote.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("event.readMore")
                 }
             }
             if !includedChips.isEmpty {
-                includedChips.enumerated().reduce(Text("")) { line, item in
+                let title = typeProfile?.detail?.includedTitle?.text(app.isEN ? "en" : "vi") ?? app.T("Bao gồm", "Included")
+                includedChips.enumerated().reduce(Text(title + ": ").fontWeight(.semibold)) { line, item in
                     item.offset == 0 ? line + Text(item.element)
                         : line + Text("  ▪︎  ").foregroundColor(app.palette.clay) + Text(item.element)
                 }
                 .font(.system(size: 15))
                 .lineSpacing(3)
                 .multilineTextAlignment(.leading)
+                .accessibilityIdentifier("event.includedLine")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(app.palette.ink)
-        .contentShape(Rectangle())
     }
 
     /// Host subline in the card (real stats only).
@@ -1097,7 +1121,7 @@ struct EventDetailView: View {
         let stats = app.eventOrganizerID[event.key].flatMap { app.organizerStats[$0] }
         var parts: [String] = []
         if let year = stats?.sinceYear { parts.append(app.T("Tham gia từ \(year)", "Joined \(year)")) }
-        if let stats, stats.count > 0 { parts.append(app.T("Đã tổ chức \(stats.count) sự kiện", "Hosted \(stats.count) events")) }
+        if let stats, stats.count > 0 { parts.append(app.T("\(stats.count) sự kiện", stats.count == 1 ? "1 event" : "\(stats.count) events")) }
         return parts.joined(separator: " · ")
     }
 
@@ -1165,63 +1189,52 @@ struct EventDetailView: View {
 
     /// "Người tổ chức": its own section — heading, then a soft card with the host and two actions (same outlined clay
     /// buttons as before).
+    /// The host, once (note 68): avatar, name (wraps to two lines), real stats, a 44pt Message icon button. The whole
+    /// row opens the host's page.
     private var hostSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(app.T("Người tổ chức", "Host")).font(BanbeTheme.display(20))
-            VStack(alignment: .leading, spacing: 12) {
-                Button { app.openEventOrganizer(eventKey: app.eventKey) } label: {
-                    HStack(spacing: 12) {
-                        organizerAvatar
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 8) {
-                                Text(hostName.isEmpty ? app.T("Người tổ chức", "Host") : hostName)
-                                    .font(BanbeTheme.display(16)).lineLimit(1)
-                                if app.isFollowing(app.eventOrganizerID[event.key]) {
-                                    Text("✓ " + app.T("Đang theo dõi", "Following")).font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(app.palette.clay)
-                                }
-                            }
-                            if !hostSubline.isEmpty {
-                                Text(hostSubline).font(.system(size: 12.5)).opacity(0.65)
-                                    .accessibilityIdentifier("event.organizerStats")
+        HStack(spacing: BanbeTheme.Space.m) {
+            Button { app.openEventOrganizer(eventKey: app.eventKey) } label: {
+                HStack(spacing: BanbeTheme.Space.m) {
+                    organizerAvatar
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: BanbeTheme.Space.s) {
+                            Text(hostName.isEmpty ? app.T("Người tổ chức", "Host") : hostName)
+                                .font(BanbeTheme.display(17)).lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if app.isFollowing(app.eventOrganizerID[event.key]) {
+                                Text("✓ " + app.T("Đang theo dõi", "Following")).font(.caption.weight(.semibold))
+                                    .foregroundStyle(app.palette.clay)
                             }
                         }
-                        Spacer(minLength: 0)
+                        Text(hostSubline.isEmpty ? app.T("Người tổ chức", "Host") : hostSubline)
+                            .font(.footnote).foregroundStyle(app.palette.ink3)
+                            .accessibilityIdentifier("event.organizerStats")
                     }
-                    .contentShape(Rectangle())
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink3)
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("event.organizer")
-                HStack(spacing: 8) {
-                    Button { app.openEventOrganizer(eventKey: app.eventKey) } label: {
-                        hostAction(app.T("Xem hồ sơ", "View profile"), systemImage: "person")
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("event.viewProfile")
-                    // Moved here from the retired standalone organizer page: message the host straight from the event.
-                    Button { app.goChat() } label: {
-                        hostAction(app.T("Nhắn tin", "Message"), systemImage: "bubble.left")
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("event.messageHost")
-                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
             }
-            .padding(14)
-            .background(app.palette.ink.opacity(0.045), in: RoundedRectangle(cornerRadius: BanbeTheme.Radius.card, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: BanbeTheme.Radius.card, style: .continuous).stroke(softRule, lineWidth: 1))
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel([app.T("Người tổ chức", "Host"), hostName, hostSubline].filter { !$0.isEmpty }.joined(separator: ", "))
+            .accessibilityHint(app.T("Mở trang", "Opens profile"))
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("event.organizer")
+            // Moved here from the retired standalone organizer page: message the host straight from the event.
+            Button { app.goChat() } label: {
+                Image(systemName: "bubble.left")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(app.palette.clay)
+                    .frame(width: 44, height: 44)
+                    .background(app.palette.clayBg, in: Circle())
+            }
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityLabel(app.T("Nhắn cho ", "Message ") + hostName)
+            .accessibilityIdentifier("event.messageHost")
         }
         .foregroundStyle(app.palette.ink)
-    }
-
-    /// The outlined clay button style of the host actions.
-    private func hostAction(_ title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .font(.system(size: 13.5, weight: .semibold))
-            .foregroundStyle(app.palette.clay)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 9)
-            .overlay(Capsule().stroke(app.palette.clay, lineWidth: 1))
-            .contentShape(Capsule())
     }
 
     /// The host's round photo (their initial when there is none).
@@ -1229,7 +1242,7 @@ struct EventDetailView: View {
         let stats = app.eventOrganizerID[event.key].flatMap { app.organizerStats[$0] }
         let url = MediaURLs.organizerAvatar(path: stats?.avatarPath, r2Ref: stats?.avatarR2Ref, variant: .thumb)
         return ZStack {
-            Circle().fill(app.palette.field)
+            Circle().fill(app.palette.surface2)
             if let url {
                 RemoteImage(path: url.absoluteString, maxPixel: 144)
             } else {
@@ -1237,9 +1250,8 @@ struct EventDetailView: View {
                     .font(.system(size: 16, weight: .semibold))
             }
         }
-        .frame(width: 44, height: 44)
+        .frame(width: 40, height: 40)
         .clipShape(Circle())
-        .overlay(Circle().stroke(app.palette.rule, lineWidth: 0.5))
     }
 
     private var photoStrip: some View {
@@ -1433,7 +1445,8 @@ struct EventDetailView: View {
     private func ctaButton(_ state: ReserveBar.State, qty: Int) -> some View {
         switch state {
         case .ticket:
-            InkButton(title: app.T("Xem vé của bạn ▪︎ mã \(myBooking?.code ?? "")", "View your ticket ▪︎ code \(myBooking?.code ?? "")")) {
+            // The action, with the entry code as a quiet second line (note 68).
+            InkButton(title: app.T("Xem vé của bạn", "View your ticket"), subtitle: app.T("Mã \(myBooking?.code ?? "")", "Code \(myBooking?.code ?? "")")) {
                 app.openHeld()
             }
             .accessibilityIdentifier("event.actionBar")

@@ -77,6 +77,9 @@ export const display = (size, extra) => ({
 // one radius, chips/pills are fully round. Mirrors apps/ios/BanbeApp/Views/BanbeTheme.swift `BanbeTheme.Radius`.
 export const RADIUS = { card: 14, tile: 14, thumb: 12, pill: 999 };
 
+// One spacing scale on the 4/8 grid (note 68): `xl` between sections, `m` inside one. Mirrors BanbeTheme.Space.
+export const SPACE = { xs: 4, s: 8, m: 12, l: 16, xl: 24 };
+
 // ---- Glass recipes (exact, from the handoff) ----
 
 // Safari (and some Chromium builds) fail to clip `backdrop-filter` to

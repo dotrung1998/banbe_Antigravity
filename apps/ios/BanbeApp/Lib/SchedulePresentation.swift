@@ -310,6 +310,24 @@ enum SchedulePresentation {
         return vi ? "\(t) giờ tại nơi tổ chức" : "\(t) at the venue"
     }
 
+    /// Event Detail shows an event's date/time in the VENUE's zone (migration 195); when the viewer's zone reads it
+    /// differently, the viewer's own clock — "Venue time · 10:00, Sun 7/3 your time". Port of web `viewerTimeNote`.
+    static func viewerTimeNote(start: Date, venueZone: TimeZone, viewerZone: TimeZone = .current, vi: Bool) -> String? {
+        guard venueZone.identifier != viewerZone.identifier else { return nil }
+        let venue = time(start, timeZone: venueZone, vi: vi), local = time(start, timeZone: viewerZone, vi: vi)
+        func dayOf(_ tz: TimeZone) -> String {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: vi ? "vi_VN" : "en_US")
+            f.timeZone = tz
+            f.dateFormat = vi ? "EEE d/M" : "EEE M/d"
+            return f.string(from: start)
+        }
+        let sameDay = dayOf(venueZone) == dayOf(viewerZone)
+        if venue == local && sameDay { return nil }
+        let localText = sameDay ? local : "\(local), \(dayOf(viewerZone))"
+        return vi ? "Giờ tại nơi tổ chức · \(localText) giờ của bạn" : "Venue time · \(localText) your time"
+    }
+
     static func monthTitle(_ d: Date, calendar: Calendar, vi: Bool) -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: vi ? "vi_VN" : "en_US")

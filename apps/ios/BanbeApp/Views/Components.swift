@@ -354,6 +354,8 @@ struct InkButton: View {
     /// Why the button is disabled, shown as a caption under it (note 48).
     /// nil = no caption (the original behaviour).
     var disabledReason: String? = nil
+    /// A quiet second line under the title (note 68: the ticket's entry code). nil = one line.
+    var subtitle: String? = nil
     let action: () -> Void
 
     @EnvironmentObject private var app: AppState
@@ -377,10 +379,16 @@ struct InkButton: View {
 
     private var button: some View {
         Button(action: { if enabled { action() } }) {
-            Text(title)
-                .font(font ?? .system(size: 15, weight: .semibold))
+            VStack(spacing: 2) {
+                Text(title)
+                    .font(font ?? .system(size: 15, weight: .semibold))
+                if let subtitle {
+                    Text(subtitle).font(.footnote.monospacedDigit()).opacity(0.7)
+                }
+            }
+                .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 15)
+                .padding(.vertical, subtitle == nil ? 15 : 10)
                 .background(
                     enabled ? app.palette.ink : app.palette.ink.opacity(0.16),
                     in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)

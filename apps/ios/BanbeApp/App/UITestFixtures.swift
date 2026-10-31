@@ -276,6 +276,21 @@ struct UITestFixtureRoot: View {
             // reaches the collapsing nav bar (note 52).
             app.screen = .home
             app.goEvent(UITestFixture.eventKey)
+        case "publicProfile":
+            // Note 68: the signed-in account's own identity card (synthetic data). Interests repeat "Admin" on purpose:
+            // the real banbetestadmin row does, and it used to show two identical chips.
+            let json: [String: Any] = [
+                "success": true, "id": UITestFixture.userID.uuidString.lowercased(), "handle": "fixturehost",
+                "display_name": "Linh Trần", "bio": "Long tables, slow dinners, new friends.",
+                "city": "Hanoi", "interests": ["Admin", "Admin", "Jazz"], "profile_theme": "rose", "organizer_mode": true,
+                "organizer": ["id": "fx-org", "name": "Bếp Nhỏ", "verified": false, "hosting_since_year": 2025,
+                              "event_count": 3, "follower_count": 12, "following": false],
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: json) {
+                app.publicProfile = try? JSONDecoder().decode(PublicProfile.self, from: data)
+            }
+            app.publicProfileLoading = false
+            app.screen = .publicProfile
         default: app.screen = .home
         }
     }

@@ -74,3 +74,24 @@ export async function setupToHome(page) {
   // Wait for Home (page.waitForSelector works outside test context, no expect needed)
   await page.waitForSelector('[data-screen-label="Home"]', { timeout: 8000 });
 }
+
+/**
+ * Note 68 — reach Home signed OUT (read-only guest browsing, note 49): Splash → Language (English) → Appearance
+ * (`theme`) → Welcome "Explore". For layout specs that must not depend on the shared signed-in test account, which the
+ * DOB account gate currently holds. Use with `test.use({ storageState: { cookies: [], origins: [] } })`.
+ * @param {import('@playwright/test').Page} page
+ * @param {'theme-light'|'theme-dark'} theme
+ */
+export async function guestToHome(page, theme = 'theme-light') {
+  await page.goto('/');
+  for (let i = 0; i < 10; i++) {
+    const sc = await page.locator('[data-screen-label]').evaluateAll(els => els.map(e => e.getAttribute('data-screen-label')));
+    if (sc.includes('Home')) return;
+    if (sc.includes('Splash')) await page.locator('[data-screen-label="Splash"]').click().catch(() => {});
+    else if (sc.includes('Language')) await page.getByTestId('lang-en').click().catch(() => {});
+    else if (sc.includes('Appearance')) { await page.getByTestId(theme).click().catch(() => {}); await page.getByTestId('onboarding-continue').click().catch(() => {}); }
+    else if (sc.includes('Welcome')) await page.getByTestId('welcome-explore').click().catch(() => {});
+    await page.waitForTimeout(1200);
+  }
+  await page.waitForSelector('[data-screen-label="Home"]', { timeout: 8000 });
+}
