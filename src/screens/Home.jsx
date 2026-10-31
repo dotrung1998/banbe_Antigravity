@@ -815,22 +815,9 @@ export default function Home() {
     </div>
   );
 
-  return (
-    <>
-    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Home">
-      {/* iOS parity header: wordmark + "Home" title + round glass search
-          button, then a row of three equal glass capsules (language, area,
-          theme). Search lives here again (same openEventSearch action and
-          data-testid as the old floating button). */}
-      {/* Pinned like iOS (HomeView's `header` sits above its ScrollView): stays put while the feed scrolls under it. */}
-      <div data-testid="home-fixed-header" data-reveal="0" style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 8px`, display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
-        <div ref={headerRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: DOCK_HEADER.rowHeight }}>
-          {/* Note 53: the shared dock header — same logo, gap, title and row height as Schedule/Messages/Account. */}
-          <DockHeaderTitle title={T('Nhà', 'Home')} testId="home-title" wordmark={layout.wordmark} showTitle={simpleShell ? false : showTitle} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: HEADER.groupGap, flex: 'none' }} data-testid="home-header-actions">
-          {/* Simple Shell: streak/coins live on Account's top tiles; the mode switch takes their place. */}
-          {simpleShell && <HomeModeSwitch />}
-          {!simpleShell && shortcutsOn && (() => {
+  // The streak/coins capsule (Rewards on). Note 69: Simple Shell shows it beside the search bar on Going out (it was
+  // only in the old header, so Rewards had no way in from Home).
+  const renderRewardCapsule = () => {
             const sum = s.rewardsSummary;
             const lbl = shortcutLabels(T, sum, rewardsV2Enabled);
             const open = () => set({ screen: 'rewards', rewardsBack: 'home' });
@@ -851,7 +838,24 @@ export default function Home() {
                 </div>
               </div>
             );
-          })()}
+  };
+
+  return (
+    <>
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Home">
+      {/* iOS parity header: wordmark + "Home" title + round glass search
+          button, then a row of three equal glass capsules (language, area,
+          theme). Search lives here again (same openEventSearch action and
+          data-testid as the old floating button). */}
+      {/* Pinned like iOS (HomeView's `header` sits above its ScrollView): stays put while the feed scrolls under it. */}
+      <div data-testid="home-fixed-header" data-reveal="0" style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 8px`, display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
+        <div ref={headerRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: DOCK_HEADER.rowHeight }}>
+          {/* Note 53: the shared dock header — same logo, gap, title and row height as Schedule/Messages/Account. */}
+          <DockHeaderTitle title={T('Nhà', 'Home')} testId="home-title" wordmark={layout.wordmark} showTitle={simpleShell ? false : showTitle} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: HEADER.groupGap, flex: 'none' }} data-testid="home-header-actions">
+          {/* Simple Shell: the mode switch takes the capsule's place here; the capsule sits beside the search bar. */}
+          {simpleShell && <HomeModeSwitch />}
+          {!simpleShell && shortcutsOn && renderRewardCapsule()}
           {/* Note 44 web parity: Notifications left the dock (Schedule took its slot), so its bell lives here. */}
           <button
             type="button"
@@ -908,7 +912,14 @@ export default function Home() {
         {!hostView && (
           <div style={{ marginBottom: 4, opacity: s.searchOverlayOpen ? 0 : 1 }}>
             {simpleShell
-              ? <HomeSearchBar onOpen={openSearch} T={T} areaLabel={areaName} onArea={openAreaMenu} everywhere={curArea.key === 'all'} />
+              ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <HomeSearchBar onOpen={openSearch} T={T} areaLabel={areaName} onArea={openAreaMenu} everywhere={curArea.key === 'all'} />
+                  </div>
+                  {shortcutsOn && renderRewardCapsule()}
+                </div>
+              )
               : <HomeSearchBar onOpen={openSearch} T={T} />}
           </div>
         )}

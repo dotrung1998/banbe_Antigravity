@@ -3,7 +3,9 @@
 //      none → "Plan your next event" → Create.
 //   2. Host Action Center (verifications, refunds, holds; the same builder Dashboard uses).
 //   3. Submitted events: pending / needs fixing / live counts → the host dashboard.
-//   4. Up to 3 numbers from Reports, only when that report is already loaded (no fetch from here).
+//   4. Up to 3 numbers from Reports. Note 69: loaded here when no host report is in hand (they used to appear only
+//      after Reports had been opened). Also note 69: an icon shortcut row, a "Coming up" list, one-line plan card, and
+//      each Submitted tile is its own button into the dashboard. Twin of iOS HostHomeSections.
 // Reuses what Dashboard.jsx already loads (myOrgEventKeys, realEventsById, verifications, refundQueue,
 // organizerHoldingSummary, useSubmittedEvents); the only read is get_public_event_fill for the hero's seat count, the
 // same public RPC Home's "Saved, coming up" already calls.
@@ -51,6 +53,23 @@ function SectionHead({ title }) {
   );
 }
 
+const QUICK_PATHS = {
+  plus: <path d="M12 5v14M5 12h14" />,
+  guests: <><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6" /><circle cx="17" cy="9" r="2.6" /><path d="M16 14.6c2.3.1 3.9 1.5 4.5 4.4" /></>,
+  refund: <><path d="M9 7H5V3" /><path d="M5.3 7A8 8 0 1 1 4 12" /></>,
+  camera: <><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z" /><circle cx="12" cy="13" r="3.5" /></>,
+  bulb: <><path d="M9 18h6M10 21h4" /><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z" /></>,
+  store: <><path d="M4 9.5 5.5 4h13L20 9.5" /><path d="M4 9.5a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0" /><path d="M5.5 12v8h13v-8M10 20v-5h4v5" /></>,
+  chart: <path d="M5 20V12M10 20V6M15 20v-9M20 20V9" />,
+};
+function QuickIcon({ name }) {
+  return (
+    <svg aria-hidden="true" width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round">
+      {QUICK_PATHS[name]}
+    </svg>
+  );
+}
+
 const btn = (primary) => ({
   flex: '1 1 0', minHeight: 44, borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 600,
   background: primary ? ink : blockInset, color: primary ? paper : ink, padding: '0 14px',
@@ -60,6 +79,7 @@ export default function HostHome() {
   const {
     state: s, set, T, goCreate, goEvent, goDashboard, goInbox, openAttendance, openVerifications, openReports,
     loadRealEventsById, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadHomeLiveEvents,
+    loadHostHomeKpis, openVerificationsRefunds, openStoryLibraryPicker, goSurveysHosting, openOrganizerProfile,
   } = useBanBe();
 
   useEffect(() => {
@@ -117,12 +137,47 @@ export default function HostHome() {
 
   const submitted = useSubmittedEvents(true);
 
-  // Reports: only a host report that is already loaded (Account › Reports fetched it); never fetched from Home.
+  // Note 69: load the host numbers when nothing host-scoped is in hand (same RPC and range as Reports).
+  const hasHostReport = !!s.reportsData && reportRole(s.reportsData.scope || s.reportsScope) === 'host';
+  useEffect(() => {
+    if (s.myOrganizerId && !hasHostReport && !s.reportsLoading) loadHostHomeKpis(s.myOrganizerId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.myOrganizerId]);
   const kpis = useMemo(() => {
     if (!s.reportsData || reportRole(s.reportsData.scope || s.reportsScope) !== 'host') return [];
     const d = reportDashboard(s.reportsData, 'host', T);
     return [d.primary, ...d.overview].filter(Boolean).slice(0, 3);
   }, [s.reportsData, s.reportsScope, T]);
+
+  // Note 69: what "start from your last event" copies, and the next few events after the hero.
+  const last = mine.filter(e => e.status !== 'cancelled' && Number.isFinite(e.startsAt) && e.startsAt < now)
+    .sort((a, b) => b.startsAt - a.startsAt)[0] || null;
+  const upcoming = mine.filter(e => e.status === 'live' && Number.isFinite(e.startsAt) && e.startsAt > now && e.key !== hero?.key)
+    .sort((a, b) => a.startsAt - b.startsAt).slice(0, 3);
+  const upcomingKeys = upcoming.map(e => e.key).filter(k => !(k in s.eventFill)).join(',');
+  useEffect(() => {
+    if (!upcomingKeys) return undefined;
+    let alive = true;
+    supabase.rpc('get_public_event_fill', { p_event_ids: upcomingKeys.split(',') }).then(({ data, error }) => {
+      if (!alive || error || !Array.isArray(data)) return;
+      set(prev => ({ eventFill: { ...prev.eventFill, ...Object.fromEntries(data.map(r => [r.event_id, { booked: r.booked, capacity: r.capacity }])) } }));
+    }, () => {});
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upcomingKeys]);
+  // Create joins the shortcuts only when a hero event shows (the plan card has its own Create button); the hero has
+  // its own Check-in and Message buttons.
+  const quick = [
+    ...(hero ? [{ id: 'create', short: T('Tạo', 'Create'), title: T('Tạo sự kiện', 'Create event'), icon: 'plus', run: goCreate }] : []),
+    { id: 'guests', short: T('Khách', 'Guests'), title: T('Khách & thanh toán', 'Guests & payments'), icon: 'guests', run: () => openVerifications('home') },
+    { id: 'refunds', short: T('Hoàn tiền', 'Refunds'), title: T('Hoàn tiền', 'Refunds'), icon: 'refund', run: () => openVerificationsRefunds('home') },
+    { id: 'story', short: 'Story', title: T('Đăng story', 'Post a story'), icon: 'camera', run: openStoryLibraryPicker },
+    { id: 'surveys', short: T('Khảo sát', 'Surveys'), title: T('Khảo sát & ý tưởng', 'Surveys & ideas'), icon: 'bulb', run: goSurveysHosting },
+    ...(s.myOrganizerId ? [
+      { id: 'profile', short: T('Hồ sơ', 'Profile'), title: T('Hồ sơ tổ chức', 'Host profile'), icon: 'store', run: () => openOrganizerProfile(s.myOrganizerId, 'home') },
+      { id: 'reports', short: T('Báo cáo', 'Reports'), title: T('Báo cáo', 'Reports'), icon: 'chart', run: () => openReports('host', s.myOrganizerId, 'home') },
+    ] : []),
+  ];
 
   const when = hero && Number.isFinite(hero.startsAt) ? (() => {
     const { weekdayShort, dayMonth, time } = formatVnEventDate(new Date(hero.startsAt), hero.tz);
@@ -158,8 +213,9 @@ export default function HostHome() {
       ) : (
         <Card testId="home-host-plan">
           <h2 style={{ ...display(20), margin: 0 }}>{T('Lên kế hoạch cho sự kiện tiếp theo', 'Plan your next event')}</h2>
-          <p style={{ fontSize: 13.5, color: ink2, margin: '6px 0 14px', lineHeight: 1.45 }}>
-            {T('Tạo sự kiện trong 5 bước. Bạn có thể lưu nháp và quay lại sau.', 'Create an event in 5 steps. You can save a draft and come back later.')}
+          {/* Note 69: one short line; names the event that will be copied when there is one. */}
+          <p data-testid={last ? 'home-host-plan-last' : undefined} style={{ fontSize: 13.5, color: ink2, margin: '6px 0 14px', lineHeight: 1.45, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {last ? T(`Sao chép "${last.name}" · khoảng 5 phút`, `Copy "${last.name}" · about 5 min`) : T('Khoảng 5 phút', 'About 5 minutes')}
           </p>
           <button type="button" className="bb-press" onClick={goCreate} data-testid="home-host-plan-create" style={{ ...btn(true), width: '100%' }}>
             ＋ {T('Tạo sự kiện', 'Create event')}
@@ -167,27 +223,71 @@ export default function HostHome() {
         </Card>
       )}
 
+      {/* Note 69: icon shortcuts. The row scrolls by itself: data-hscroll keeps a drag here from switching tabs. */}
+      <div data-hscroll data-testid="home-host-quick" role="group" aria-label={T('Lối tắt tổ chức', 'Hosting shortcuts')}
+        style={{ display: 'flex', gap: 12, overflowX: 'auto', overscrollBehaviorX: 'contain', padding: '16px 20px 2px', scrollbarWidth: 'none' }}>
+        {quick.map(a => (
+          <button key={a.id} type="button" className="bb-press" onClick={a.run} data-testid={`home-host-quick-${a.id}`} aria-label={a.title}
+            style={{ flex: 'none', width: 64, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: 0, border: 'none', background: 'none', color: ink, cursor: 'pointer', fontFamily: 'inherit' }}>
+            <span aria-hidden="true" style={{ width: 56, height: 56, borderRadius: 18, background: block, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <QuickIcon name={a.icon} />
+            </span>
+            <span aria-hidden="true" style={{ fontSize: 12, fontWeight: 600, color: ink2, whiteSpace: 'nowrap', maxWidth: 64, overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.short}</span>
+          </button>
+        ))}
+      </div>
+
       <div style={{ marginTop: 4 }}>
         <ActionCenter items={actionItems} onSeeAll={() => goDashboard('home')} T={T} />
       </div>
 
+      {upcoming.length > 0 && (
+        <section data-testid="home-host-upcoming" style={{ margin: '16px 20px 0', color: ink }}>
+          <h2 style={{ ...display(17), margin: 0 }}>{T('Sắp tới', 'Coming up')}</h2>
+          <div style={{ marginTop: 10, borderRadius: 14, background: block, overflow: 'hidden' }}>
+            {upcoming.map((e, i) => {
+              const fill = s.eventFill[e.key];
+              const { weekdayShort, dayMonth, time } = formatVnEventDate(new Date(e.startsAt), e.tz);
+              return (
+                <button key={e.key} type="button" onClick={() => goEvent(e.key)} data-testid={`home-host-upcoming-${e.key}`}
+                  style={{ width: '100%', minHeight: 56, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', border: 'none', borderTop: i ? `1px solid ${divider}` : 'none', background: 'none', color: ink, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 14.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+                    <span style={{ display: 'block', fontSize: 12.5, color: ink2 }}>{`${weekdayShort}, ${dayMonth} · ${time}`}</span>
+                  </span>
+                  {fill && fill.capacity > 0 && (
+                    <span style={{ fontSize: 12.5, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}
+                      aria-label={T(`${fill.booked} trên ${fill.capacity} chỗ đã đặt`, `${fill.booked} of ${fill.capacity} seats taken`)}>{fill.booked}/{fill.capacity}</span>
+                  )}
+                  <span aria-hidden="true" style={{ color: ink2 }}>›</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Submitted events and Reports: a heading row, then equal block tiles straight on paper (no wrapping card). */}
-      <section data-testid="home-host-submitted" role="button" tabIndex={0} onClick={() => goDashboard('home')}
-        aria-label={T(`Sự kiện đã gửi: ${submitted.pending.length} đang chờ duyệt, ${submitted.needsFix.length} cần sửa, ${liveCount} đang mở`,
-          `Submitted events: ${submitted.pending.length} pending, ${submitted.needsFix.length} needs fixing, ${liveCount} live`)}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goDashboard('home'); } }}
-        style={{ margin: '16px 20px 0', cursor: 'pointer', color: ink }}>
-        <SectionHead title={T('Sự kiện đã gửi', 'Submitted events')} />
+      {/* Note 69: the heading opens the dashboard; each tile is its own button (Pending / Needs fixing open it with
+          Submitted events expanded). */}
+      <section data-testid="home-host-submitted" style={{ margin: '16px 20px 0', color: ink }}>
+        <button type="button" onClick={() => goDashboard('home')} data-testid="home-host-submitted-open"
+          style={{ display: 'block', width: '100%', padding: 0, border: 'none', background: 'none', color: ink, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', minHeight: 44 }}>
+          <SectionHead title={T('Sự kiện đã gửi', 'Submitted events')} />
+        </button>
         <div style={TILE_GRID}>
           {[
             ['pending', submitted.pending.length, T('Đang chờ duyệt', 'Pending')],
             ['fix', submitted.needsFix.length, T('Cần sửa', 'Needs fixing')],
             ['live', liveCount, T('Đang mở', 'Live')],
           ].map(([k, n, label]) => (
-            <div key={k} data-testid={`home-host-submitted-${k}`} style={TILE}>
+            <button key={k} type="button" data-testid={`home-host-submitted-${k}`} className="bb-press"
+              aria-label={`${label}: ${n}`}
+              onClick={() => { set({ dashboardOpenSubmitted: k !== 'live' }); goDashboard('home'); }}
+              style={{ ...TILE, border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
               <div style={TILE_VALUE}>{n}</div>
               <div style={TILE_LABEL}>{label}</div>
-            </div>
+            </button>
           ))}
         </div>
       </section>

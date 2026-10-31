@@ -64,7 +64,9 @@ export default function Dashboard() {
   const [teamOpen, setTeamOpen] = useState(false);
   // Collapsed by default to save space.
   const [pastOpen, setPastOpen] = useState(false);
-  const [submittedOpen, setSubmittedOpen] = useState(false);
+  // Note 69: opened from Home's Pending / Needs fixing tile, Submitted events starts expanded (the flag is read once).
+  const [submittedOpen, setSubmittedOpen] = useState(() => !!state.dashboardOpenSubmitted);
+  useEffect(() => { if (state.dashboardOpenSubmitted) set({ dashboardOpenSubmitted: false }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [withdrawTargetKey, setWithdrawTargetKey] = useState(null);
   const [withdrawReasonDraft, setWithdrawReasonDraft] = useState('');
   // Event review queue — a real, host-created event isn't in the static

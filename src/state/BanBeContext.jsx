@@ -1345,7 +1345,9 @@ const initialState = {
   // since screen switching is a plain `SCREENS[state.screen]` conditional
   // render, not a persistent tree), silently losing whichever tab a host
   // was actually on.
-  accountTab: 'personal',
+  // Note 69: 'host' by default: Host is the first, selected tab while Hosting is on; without it this resolves to the
+  // first tab that exists (lib/accountTabs.js).
+  accountTab: 'host',
   accountGroupKey: null,
   guideKey: null,
   following: [],
@@ -5647,11 +5649,14 @@ export function BanBeProvider({ children }) {
       const missing = error && (error.code === 'PGRST202' || error.code === '42883');
       return { ok: false, error: data?.error || (missing ? 'NOT_DEPLOYED' : 'NETWORK') };
     }
-    const next = { ...normalizeFlags(s.featureFlags), [key]: enabled };
-    writeCachedFlags(next);
-    set({ featureFlags: next, featureFlagBusy: '' });
+    // From the latest state, not this render's copy: two flips in a row (note 69, "Turn on both") must not undo the first.
+    set(prev => {
+      const next = { ...normalizeFlags(prev.featureFlags), [key]: enabled };
+      writeCachedFlags(next);
+      return { featureFlags: next, featureFlagBusy: '' };
+    });
     return { ok: true };
-  }, [s.featureFlagBusy, s.featureFlags, set]);
+  }, [s.featureFlagBusy, set]);
   // Note 64, migration 202: one audited RPC sets onboarding_v2 + onboarding_v3 together, so exactly one onboarding
   // version is active. The client only mirrors the answer the server accepted.
   const setOnboardingVersion = useCallback(async (version) => {
@@ -6410,6 +6415,8 @@ export function BanBeProvider({ children }) {
         accountType: data.role, organizerMode: confirmed, organizerModeError: '', organizerModeBusy: false,
         ...(!confirmed && HOST_ONLY_SCREENS.has(prev.screen) ? { screen: 'profile', accountTab: 'personal' } : {}),
         ...(!confirmed && prev.accountTab === 'host' ? { accountTab: 'personal' } : {}),
+        // Note 69: turning Hosting on puts Account on the Host tab (first, selected by default).
+        ...(confirmed && !rollback.organizerMode ? { accountTab: 'host' } : {}),
         ...(!confirmed ? { homeView: 'goer' } : {}),
         // First activation: a returning host who already has a photo, or one who finished/skipped
         // setup before, never sees it again.
@@ -7747,6 +7754,14 @@ export function BanBeProvider({ children }) {
   const loadAccountKpis = useCallback(() => {
     fetchAccountKpis(s.reportsScope, s.reportsOrganizerId, s.reportsRangeDays, s.reportsCustomStart, s.reportsCustomEnd);
   }, [fetchAccountKpis, s.reportsScope, s.reportsOrganizerId, s.reportsRangeDays, s.reportsCustomStart, s.reportsCustomEnd]);
+
+  // Note 69: Home › Hosting's "This month" tiles. They used to appear only after Reports had been opened; now Home loads
+  // the host numbers itself (same RPC and range as Reports) when no host report is in hand.
+  const loadHostHomeKpis = useCallback((organizerId) => {
+    if (!organizerId) return;
+    set({ reportsScope: 'host', reportsOrganizerId: organizerId });
+    fetchAccountKpis('host', organizerId, s.reportsRangeDays, s.reportsCustomStart, s.reportsCustomEnd);
+  }, [set, fetchAccountKpis, s.reportsRangeDays, s.reportsCustomStart, s.reportsCustomEnd]);
 
   // Opening this from Cá nhân/Admin needs no organizer id; opening it from
   // Tổ chức always passes the account's real organizer_id — never guessed,
@@ -11519,7 +11534,7 @@ export function BanBeProvider({ children }) {
     loadDisputeChats, toggleDisputeChat, openDisputeChatInInbox, loadRefundDisputeChat, sendRefundDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, backFromEditProfileSaved, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, backFromEditProfileSaved, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadHostHomeKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
     setHomeView, startHosting, closeStartHosting, openDockCreate, closeDockCreate,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
@@ -11559,7 +11574,7 @@ export function BanBeProvider({ children }) {
     loadDisputeChats, toggleDisputeChat, openDisputeChatInInbox, loadRefundDisputeChat, sendRefundDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, backFromEditProfileSaved, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, backFromEditProfileSaved, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadHostHomeKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
     setHomeView, startHosting, closeStartHosting, openDockCreate, closeDockCreate,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,

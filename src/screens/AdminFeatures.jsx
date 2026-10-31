@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { paper, ink, display, fieldGlass, alert } from '../theme.js';
+import { paper, ink, display, fieldGlass, alert, honey, inkButton } from '../theme.js';
 import GlassSwitch from '../components/ui/GlassSwitch.jsx';
 import { flagOn, onboardingVersion } from '../lib/featureFlags.js';
 import { FLAG_CATEGORIES, ONBOARDING_CONTROL, keysOf } from '../lib/featureFlagCategories.js';
@@ -25,6 +25,8 @@ const FLAGS = [
     en: 'Rewards v2: week streak, badge tiers, goals',
     hintVi: 'Chuỗi theo tuần với tuần nghỉ và khôi phục, huy hiệu nhiều cấp, huy hiệu tiếp theo và mục tiêu tháng (migration 192). Mặc định tắt. Cần bật Phần thưởng.',
     hintEn: 'Weekly streak with grace weeks and repair, tiered badges, next badge and a monthly goal (migration 192). Off by default. Needs Rewards on.',
+    // Note 69: on while Rewards is off shows nothing anywhere; the row says so instead of "Visible to everyone".
+    requires: 'rewards',
   },
   {
     key: 'push_enabled',
@@ -137,20 +139,38 @@ const VERSION_HINT = [
   'Version 1: still Welcome screen and the 4 text pages of "How banbe works". Version 2: animated Welcome and swipeable demo screens. Version 3: Version 2 plus a guided tour over the real app right after the first sign-in.',
 ];
 
-function FlagRow({ f, first, s, T, flip }) {
+const flagTitle = (key, T) => { const f = FLAGS.find(x => x.key === key); return f ? T(f.vi, f.en) : key; };
+
+function FlagRow({ f, first, s, T, flip, askRequires }) {
   const on = flagOn(s.featureFlags, f.key);
+  // Note 69: the switch this one needs, when that one is off (iOS twin AdminFeaturesView `requires`).
+  const blockedBy = f.requires && !flagOn(s.featureFlags, f.requires) ? f.requires : null;
   return (
     <div data-testid={`admin-flag-${f.key}`} data-on={on}
       style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', borderTop: first ? 'none' : '1px solid var(--bb-rule)' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 15.5, fontWeight: 600 }}>{T(f.vi, f.en)}</div>
         <div style={{ fontSize: 12.5, lineHeight: 1.45, opacity: 0.7, marginTop: 3 }}>{T(f.hintVi, f.hintEn)}</div>
-        <div data-testid={`admin-flag-${f.key}-state`} style={{ fontSize: 12, fontWeight: 600, marginTop: 6, opacity: on ? 1 : 0.7 }}>
-          {f.stateOn ? (on ? T(...f.stateOn) : T(...f.stateOff))
-            : on ? T('Đang hiện cho mọi người', 'Visible to everyone') : T('Đang ẩn với mọi người', 'Hidden from everyone')}
-        </div>
+        {on && blockedBy ? (
+          <>
+            <div data-testid={`admin-flag-${f.key}-state`} data-blocked="true" style={{ fontSize: 12, fontWeight: 600, marginTop: 6, color: honey }}>
+              {T(`Chưa có tác dụng: hãy bật "${flagTitle(blockedBy, T)}" trước`, `No effect yet: turn on "${flagTitle(blockedBy, T)}" first`)}
+            </div>
+            <button type="button" data-testid={`admin-flag-${f.key}-enable-required`} disabled={!!s.featureFlagBusy}
+              onClick={() => flip(blockedBy, true)}
+              style={{ minHeight: 44, padding: 0, border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer' }}>
+              {T(`Bật "${flagTitle(blockedBy, T)}"`, `Turn on "${flagTitle(blockedBy, T)}"`)}
+            </button>
+          </>
+        ) : (
+          <div data-testid={`admin-flag-${f.key}-state`} style={{ fontSize: 12, fontWeight: 600, marginTop: 6, opacity: on ? 1 : 0.7 }}>
+            {f.stateOn ? (on ? T(...f.stateOn) : T(...f.stateOff))
+              : on ? T('Đang hiện cho mọi người', 'Visible to everyone') : T('Đang ẩn với mọi người', 'Hidden from everyone')}
+          </div>
+        )}
       </div>
-      <GlassSwitch on={on} busy={s.featureFlagBusy === f.key} testId={`admin-flag-${f.key}-switch`} onPress={() => flip(f.key, !on)} />
+      <GlassSwitch on={on} busy={s.featureFlagBusy === f.key} testId={`admin-flag-${f.key}-switch`}
+        onPress={() => (!on && blockedBy ? askRequires(f) : flip(f.key, !on))} />
     </div>
   );
 }
@@ -185,6 +205,8 @@ export default function AdminFeatures() {
   const [error, setError] = useState('');
   // Independent sections, every one collapsed when the screen opens.
   const [open, setOpen] = useState({});
+  // Note 69: a switch turned on while the switch it needs is off ("Also turn on …?").
+  const [pending, setPending] = useState(null);
   const reduce = useReducedMotion();
   if (s.accountType !== 'admin') return null;
 
@@ -244,13 +266,44 @@ export default function AdminFeatures() {
                 {isOpen && cat.flags.map((k, i) => (k === ONBOARDING_CONTROL
                   ? (versionDeployed
                     ? <OnboardingVersionRow key={k} first={i === 0} s={s} T={T} pick={pickVersion} />
-                    : <FlagRow key="onboarding_v2" f={byKey.onboarding_v2} first={i === 0} s={s} T={T} flip={flip} />)
-                  : <FlagRow key={k} f={byKey[k]} first={i === 0} s={s} T={T} flip={flip} />))}
+                    : <FlagRow key="onboarding_v2" f={byKey.onboarding_v2} first={i === 0} s={s} T={T} flip={flip} askRequires={setPending} />)
+                  : <FlagRow key={k} f={byKey[k]} first={i === 0} s={s} T={T} flip={flip} askRequires={setPending} />))}
               </div>
             </section>
           );
         })}
         {error && <p role="alert" data-testid="admin-features-error" style={{ fontSize: 12.5, color: alert, margin: '12px 2px 0' }}>{error}</p>}
+        {pending && (
+          <div onClick={() => setPending(null)} data-testid="admin-flag-requires-dialog"
+            style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(27,25,22,0.32)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}>
+            <div onClick={e => e.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="admin-requires-title"
+              style={{ ...fieldGlass({ padding: 22, borderRadius: 26, maxWidth: 340, width: '100%', background: 'var(--bb-card)' }) }}>
+              <div id="admin-requires-title" style={{ ...display(19, { margin: 0 }) }}>
+                {T(`Bật cả "${flagTitle(pending.requires, T)}"?`, `Also turn on "${flagTitle(pending.requires, T)}"?`)}
+              </div>
+              <p style={{ fontSize: 12.5, lineHeight: 1.55, opacity: 0.8, margin: '8px 0 0' }}>
+                {T(`"${T(pending.vi, pending.en)}" chỉ hiện khi "${flagTitle(pending.requires, T)}" đang bật.`,
+                   `"${T(pending.vi, pending.en)}" only shows while "${flagTitle(pending.requires, T)}" is on.`)}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 18 }}>
+                <button type="button" autoFocus data-testid="admin-flag-requires-both"
+                  onClick={async () => { const f = pending; setPending(null); await flip(f.requires, true); await flip(f.key, true); }}
+                  style={{ ...inkButton({ padding: 13, borderRadius: 16, fontSize: 14 }), border: 'none', fontFamily: 'inherit' }}>
+                  {T('Bật cả hai', 'Turn on both')}
+                </button>
+                <button type="button" data-testid="admin-flag-requires-only"
+                  onClick={() => { const f = pending; setPending(null); flip(f.key, true); }}
+                  style={{ ...fieldGlass({ padding: 13, borderRadius: 16, fontSize: 14 }), border: 'none', color: ink, fontFamily: 'inherit', cursor: 'pointer' }}>
+                  {T('Chỉ bật mục này', 'Only this one')}
+                </button>
+                <button type="button" data-testid="admin-flag-requires-cancel" onClick={() => setPending(null)}
+                  style={{ minHeight: 44, border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer' }}>
+                  {T('Huỷ', 'Cancel')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
