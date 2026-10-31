@@ -357,6 +357,9 @@ struct AccountView: View {
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 20)
         .padding(.top, accountTabs.isEmpty ? 16 : 4)
+        // Personal ends with Sign out, which already clears the dock. Host and Admin end on a group, so they need the
+        // same room or their last row sits under the dock.
+        .padding(.bottom, selectedTab == "personal" ? 0 : BottomTabBar.contentClearance + 16)
         // A tab switch swaps the whole body (and its own scroll anchor).
         .id(modeKey)
         .transition(.opacity)

@@ -141,50 +141,59 @@ struct HostHomeSections: View {
 
     // MARK: Quick actions (note 69)
 
-    private struct QuickAction: Identifiable { let id: String, title: String, icon: String, run: () -> Void }
+    private struct QuickAction: Identifiable { let id: String, short: String, title: String, icon: String, run: () -> Void }
 
     private var quickActionItems: [QuickAction] {
         var out: [QuickAction] = []
         // The plan card already has "Create event"; with a hero event, Create joins the shortcuts instead. The hero
         // has its own Check-in and Message buttons, so they are not repeated here.
         if nextHosted != nil {
-            out.append(QuickAction(id: "create", title: app.T("Tạo sự kiện", "Create event"), icon: "plus") { app.goCreate() })
+            out.append(QuickAction(id: "create", short: app.T("Tạo", "Create"), title: app.T("Tạo sự kiện", "Create event"), icon: "plus") { app.goCreate() })
         }
         out += [
-            QuickAction(id: "guests", title: app.T("Khách & thanh toán", "Guests & payments"), icon: "person.2.badge.gearshape") { app.openVerifications(back: .home) },
-            QuickAction(id: "refunds", title: app.T("Hoàn tiền", "Refunds"), icon: "arrow.uturn.backward.circle") { app.openVerificationsRefunds(back: .home) },
-            QuickAction(id: "story", title: app.T("Đăng story", "Post a story"), icon: "plus.circle") { app.storyLibraryPickerOpen = true },
-            QuickAction(id: "surveys", title: app.T("Khảo sát", "Surveys"), icon: "lightbulb") { app.screen = .surveysHosting },
+            QuickAction(id: "guests", short: app.T("Khách", "Guests"), title: app.T("Khách & thanh toán", "Guests & payments"), icon: "person.2.fill") { app.openVerifications(back: .home) },
+            QuickAction(id: "refunds", short: app.T("Hoàn tiền", "Refunds"), title: app.T("Hoàn tiền", "Refunds"), icon: "arrow.uturn.backward") { app.openVerificationsRefunds(back: .home) },
+            QuickAction(id: "story", short: app.T("Story", "Story"), title: app.T("Đăng story", "Post a story"), icon: "camera.fill") { app.storyLibraryPickerOpen = true },
+            QuickAction(id: "surveys", short: app.T("Khảo sát", "Surveys"), title: app.T("Khảo sát & ý tưởng", "Surveys & ideas"), icon: "lightbulb.fill") { app.screen = .surveysHosting },
         ]
         if let org = app.myOrganizerID {
             out += [
-                QuickAction(id: "profile", title: app.T("Hồ sơ tổ chức", "Host profile"), icon: "storefront") { app.openOrganizerProfile(organizerID: org, back: .home) },
-                QuickAction(id: "reports", title: app.T("Báo cáo", "Reports"), icon: "chart.bar.doc.horizontal") { app.openReports(scope: "host", organizerID: org, back: .home) },
+                QuickAction(id: "profile", short: app.T("Hồ sơ", "Profile"), title: app.T("Hồ sơ tổ chức", "Host profile"), icon: "storefront.fill") { app.openOrganizerProfile(organizerID: org, back: .home) },
+                QuickAction(id: "reports", short: app.T("Báo cáo", "Reports"), title: app.T("Báo cáo", "Reports"), icon: "chart.bar.fill") { app.openReports(scope: "host", organizerID: org, back: .home) },
             ]
         }
         return out
     }
 
+    /// Icon tiles with a one-word label (the full name is what VoiceOver reads). The row scrolls on its own: like
+    /// Going out's chip row, it is excluded from the dock's root swipe, so a drag here never switches screens.
     private var quickActions: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
                 ForEach(quickActionItems) { a in
                     Button { Haptics.light(); a.run() } label: {
-                        Label(a.title, systemImage: a.icon)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                            .padding(.horizontal, 14)
-                            .frame(minHeight: 44)
-                            .foregroundStyle(app.palette.ink)
-                            .background(app.palette.block, in: Capsule())
-                            .contentShape(Capsule())
+                        VStack(spacing: 6) {
+                            Image(systemName: a.icon)
+                                .font(.system(size: 20, weight: .semibold))
+                                .frame(width: 56, height: 56)
+                                .background(app.palette.block, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            Text(a.short)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(app.palette.ink2)
+                                .lineLimit(1).minimumScaleFactor(0.8)
+                        }
+                        .frame(width: 64)
+                        .foregroundStyle(app.palette.ink)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(a.title)
                     .accessibilityIdentifier("home.host.quick.\(a.id)")
                 }
             }
             .padding(.horizontal, 20)
         }
+        .rootSwipeExclusion("homeHostQuickActions")
         .accessibilityElement(children: .contain)
         .accessibilityLabel(app.T("Lối tắt tổ chức", "Hosting shortcuts"))
         .accessibilityIdentifier("home.host.quick")
@@ -307,20 +316,18 @@ struct HostHomeSections: View {
             Text(app.T("Lên kế hoạch cho sự kiện tiếp theo", "Plan your next event"))
                 .font(BanbeTheme.display(20))
                 .accessibilityAddTraits(.isHeader)
-            Text(app.T("Bắt đầu từ sự kiện gần nhất của bạn. Mất khoảng 5 phút.",
-                       "Start from your last event. It takes about 5 minutes."))
-                .font(.subheadline)
-                .foregroundStyle(app.palette.ink2)
-                .fixedSize(horizontal: false, vertical: true)
-            if let last = lastHosted {
-                // Note 69: what "start from your last event" will copy, so the card says something concrete.
-                Text(app.T("Lần trước: \(last.name), \(app.discoveryWhenLabel(last.startDate, timeZone: EventMarket.timeZone(last.timeZoneID)))",
-                           "Last time: \(last.name), \(app.discoveryWhenLabel(last.startDate, timeZone: EventMarket.timeZone(last.timeZoneID)))"))
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(app.palette.ink2)
-                    .lineLimit(2)
-                    .accessibilityIdentifier("home.host.plan.last")
+            // Note 69: one short line. Names the event that will be copied when there is one.
+            Group {
+                if let last = lastHosted {
+                    Text(app.T("Sao chép \"\(last.name)\" · khoảng 5 phút", "Copy \"\(last.name)\" · about 5 min"))
+                        .accessibilityIdentifier("home.host.plan.last")
+                } else {
+                    Text(app.T("Khoảng 5 phút", "About 5 minutes"))
+                }
             }
+            .font(.subheadline)
+            .foregroundStyle(app.palette.ink2)
+            .lineLimit(1)
             InkButton(title: app.T("Tạo sự kiện", "Create event"), cornerRadius: 999) { app.goCreate() }
                 .padding(.top, 4)
                 .accessibilityIdentifier("home.host.plan.create")

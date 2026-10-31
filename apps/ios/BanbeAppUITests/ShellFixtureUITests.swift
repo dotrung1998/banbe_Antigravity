@@ -159,6 +159,10 @@ final class ShellFixtureUITests: XCTestCase {
         XCTAssertLessThan(personal.frame.minX, admin.frame.minX)
         let tools = reveal(app, "account.host.tools")
         XCTAssertTrue(tools.exists, "Hosting tools group on the Host tab")
+        // The last Hosting tools row scrolls fully clear of the dock (it used to stay under it).
+        let last = reveal(app, "account.organizerProfile", swipes: 8)
+        for _ in 0..<3 { app.swipeUp() }
+        XCTAssertLessThanOrEqual(last.frame.maxY, app.frame.maxY - 110, "last row clear of the dock")
         admin.tap()
         XCTAssertTrue(el(app, "account.group.adminReview").waitForExistence(timeout: 5))
         XCTAssertTrue(el(app, "account.adminGuide").exists)
