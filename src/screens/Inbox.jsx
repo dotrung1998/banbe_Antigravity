@@ -5,6 +5,7 @@ import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass } fr
 import { HeaderIconButton } from './Notifications.jsx';
 import DockHeaderTitle, { DOCK_HEADER } from '../components/ui/DockHeaderTitle.jsx';
 import { isActiveDisputeChat } from './ConversationDispute.jsx';
+import EmptyState from '../components/ui/EmptyState.jsx';
 
 // Same 6s poll interval the ordinary conversation list uses, for the same
 // reason — nothing in this app subscribes to Supabase Realtime (03-dispute-
@@ -266,7 +267,7 @@ function FeedbackFlow({ onClose, T }) {
 }
 
 export default function Inbox() {
-  const { state, T, openThread, toggleThreadStar, archiveThread, unarchiveThread, deleteThreadForMe, setInboxView, loadDisputeChats } = useBanBe();
+  const { state, T, openThread, toggleThreadStar, archiveThread, unarchiveThread, deleteThreadForMe, setInboxView, loadDisputeChats, goHome } = useBanBe();
   const s = state;
 
   // Keeps the dispute index fresh — it drives the "Dispute in progress" row
@@ -304,7 +305,6 @@ export default function Inbox() {
     return byView.filter(c => c.name.toLowerCase().includes(q) || c.snippet.toLowerCase().includes(q));
   }, [merged, s.inboxView, query]);
 
-  const empty = T('Chưa có cuộc trò chuyện nào. Nhắn cho người tổ chức từ trang sự kiện.', 'No conversations yet. Message an organizer from an event page.');
   const emptyArchived = T('Chưa có cuộc trò chuyện nào được lưu trữ.', 'No archived conversations yet.');
 
   return (
@@ -371,9 +371,22 @@ export default function Inbox() {
           ))}
         </div>
       ) : (
-        <div style={{ padding: '80px 40px', textAlign: 'center' }}>
-          <p style={{ fontSize: 14, lineHeight: 1.55, color: ink }}>{s.inboxView === 'archived' ? emptyArchived : empty}</p>
-        </div>
+        // Calm Pass phase 2: an empty inbox says how a conversation starts and offers the way there. A search with no
+        // hits or an empty archive stays a plain line (nothing to do there).
+        query.trim() ? (
+          <p data-testid="inbox-empty-search" style={{ padding: '60px 40px', margin: 0, textAlign: 'center', fontSize: 14, lineHeight: 1.55, color: ink }}>
+            {T('Không có cuộc trò chuyện nào khớp.', 'No conversations match.')}
+          </p>
+        ) : s.inboxView === 'archived' ? (
+          <p data-testid="inbox-empty-archived" style={{ padding: '80px 40px', margin: 0, textAlign: 'center', fontSize: 14, lineHeight: 1.55, color: ink }}>{emptyArchived}</p>
+        ) : (
+          <div style={{ padding: '32px 0' }}>
+            <EmptyState scene="explore" testId="inbox-empty"
+              title={T('Chưa có cuộc trò chuyện nào', 'No conversations yet')}
+              message={T('Nhắn cho người tổ chức từ trang sự kiện. Cuộc trò chuyện sẽ hiện ở đây.', 'Message a host from an event page. Your conversations show up here.')}
+              actionLabel={T('Tìm sự kiện', 'Find events')} actionTestId="inbox-empty-find" onAction={goHome} />
+          </div>
+        )
       )}
 
       {settingsOpen && (

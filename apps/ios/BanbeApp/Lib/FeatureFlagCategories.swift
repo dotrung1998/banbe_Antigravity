@@ -21,7 +21,7 @@ enum FeatureFlagCategories {
         Category(key: "notifications", vi: "Thông báo & giữ chân", en: "Notifications & retention", flags: ["push_enabled", "event_reminders", "follow_alerts", "weekly_digest", "live_activity"]),
         Category(key: "events", vi: "Sự kiện & tổng kết", en: "Events & recaps", flags: ["event_recap", "host_recap"]),
         Category(key: "types", vi: "Loại sự kiện", en: "Event types", flags: ["event_type_profiles"]),
-        Category(key: "layout", vi: "Bố cục ứng dụng", en: "App layout", flags: ["simple_shell"]),
+        Category(key: "layout", vi: "Bố cục ứng dụng", en: "App layout", flags: ["simple_shell", "polaroid_cards"]),
         Category(key: "platform", vi: "Nền tảng & đo lường", en: "Platform & measurement", flags: ["app_events", "admin_event_wipe"]),
     ]
 

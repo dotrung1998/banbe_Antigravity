@@ -33,6 +33,8 @@ extension AppState {
     /// Simple Shell (note 66, migration 206): the new Home (mode switch, one hero, Map as a Home view) and the dock
     /// with the centre "+". Off unless an admin turns it on; off renders today's Home and dock unchanged.
     var simpleShellEnabled: Bool { FeatureFlags.isOn(featureFlags, "simple_shell") }
+    /// Migration 208, note 71 (Calm Pass phase 3): Home event cards as polaroids. Off until set.
+    var polaroidCardsEnabled: Bool { FeatureFlags.isOn(featureFlags, "polaroid_cards") }
     /// The dock's tab order for the active layout (RootView's root tab swipe walks it).
     var dockOrder: [Screen] { DockLayout.dockOrder(simpleShell: simpleShellEnabled) }
 

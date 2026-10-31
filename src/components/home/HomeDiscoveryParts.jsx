@@ -4,7 +4,7 @@
 //
 // Card rule from the "4 levels" video (staff variant): the name and numbers come OFF the photo so every card
 // reads the same whatever the host uploaded. On the photo: only small badges (date, Save, Almost full).
-import { ink, display, fieldGlass, cardGlass, CHIP_COLORS, photoChip, lightChip, RADIUS, block } from '../../theme.js';
+import { ink, display, fieldGlass, cardGlass, CHIP_COLORS, photoChip, lightChip, RADIUS, block, mat, matShadow, matSlot, divider } from '../../theme.js';
 import { bg } from '../../data/events.js';
 import { REMINDER_CSS } from '../../lib/eventReminder.js';
 import { setSearchOrigin } from '../../lib/searchOrigin.js';
@@ -175,10 +175,12 @@ export function HomeSearchBar({ onOpen, T, areaLabel, onArea, everywhere = false
 // ---- event card -------------------------------------------------------------------------
 const badgeBase = { fontSize: 10.5, padding: '5px 9px', borderRadius: RADIUS.pill, letterSpacing: '0.03em' };
 
-function Photo({ ev, height, T, radius, compact = false }) {
+function Photo({ ev, height, T, radius, compact = false, slot = null }) {
   if (ev.img) return <div style={bg(ev.img, { width: '100%', height, borderRadius: radius, filter: 'none' })} />;
+  // `slot`: a solid fill for the empty photo inside a polaroid (the glass fill equals the dark mat).
+  const box = slot ? { width: '100%', height, borderRadius: radius, background: slot } : cardGlass({ width: '100%', height, borderRadius: radius });
   return (
-    <div aria-label={compact ? T('Chưa có ảnh', 'No photo yet') : undefined} style={{ ...cardGlass({ width: '100%', height, borderRadius: radius }), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div aria-label={compact ? T('Chưa có ảnh', 'No photo yet') : undefined} style={{ ...box, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {compact
         ? <svg aria-hidden="true" width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} style={{ color: ink, opacity: 0.35 }}><path d="M4 5h16v14H4z" /><path d="M4 15.5l4.5-4.5 4 4 2.5-2.5L20 17.5" /></svg>
         : <span style={{ fontSize: 12, color: ink, opacity: 0.55 }}>{T('Chưa có ảnh', 'No photo yet')}</span>}
@@ -192,15 +194,26 @@ function Photo({ ev, height, T, radius, compact = false }) {
  */
 // `filled` (Simple Shell, note 66 follow-up): the card sits on the `block` fill with 12 padding under the photo, the
 // photo keeps the card's top corners. Off = the card exactly as before.
-export function DiscoveryCard({ ev, onOpen, onToggleSave, T, filled = false }) {
-  const body = (children) => (filled ? <div style={{ padding: '0 12px 12px' }}>{children}</div> : children);
+// `polaroid` (switch polaroid_cards, note 71, Calm Pass): the photo is inset 8px in a `mat` frame (hairline + soft
+// ink-tinted shadow in light, the surface step alone in dark) with the caption below it. No rotation, tape or
+// stickers, so long Vietnamese titles and large text behave exactly as on the plain card. Wins over `filled`.
+const POLAROID_INSET = 8;
+const POLAROID_PHOTO_RADIUS = 8;
+export function DiscoveryCard({ ev, onOpen, onToggleSave, T, filled = false, polaroid = false }) {
+  const framed = polaroid || filled;
+  const body = (children) => (polaroid ? <div style={{ padding: '0 4px 4px' }}>{children}</div>
+    : filled ? <div style={{ padding: '0 12px 12px' }}>{children}</div> : children);
+  const frame = polaroid
+    ? { background: mat, borderRadius: RADIUS.card, padding: POLAROID_INSET, border: `1px solid ${divider}`, boxShadow: matShadow }
+    : filled ? { background: block, borderRadius: RADIUS.card, overflow: 'hidden' } : undefined;
+  const photoRadius = polaroid ? POLAROID_PHOTO_RADIUS : filled ? `${RADIUS.card}px ${RADIUS.card}px 0 0` : RADIUS.card;
   return (
     <div data-testid={`home-event-${ev.key}`} data-zoom-src={ev.key} onClick={onOpen} role="link" tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter') onOpen(); }}
-      style={{ cursor: 'pointer', padding: filled ? '0 20px 16px' : '0 20px 22px' }}>
-      <div data-filled={filled ? 'true' : undefined} style={filled ? { background: block, borderRadius: RADIUS.card, overflow: 'hidden' } : undefined}>
+      style={{ cursor: 'pointer', padding: framed ? '0 20px 16px' : '0 20px 22px' }}>
+      <div data-filled={filled && !polaroid ? 'true' : undefined} data-polaroid={polaroid ? 'true' : undefined} style={frame}>
       <div style={{ position: 'relative', aspectRatio: '16 / 10' }}>
-        <Photo ev={ev} height="100%" T={T} radius={filled ? `${RADIUS.card}px ${RADIUS.card}px 0 0` : RADIUS.card} />
+        <Photo ev={ev} height="100%" T={T} radius={photoRadius} slot={polaroid ? matSlot : null} />
         {ev.dateBadge && <span data-testid="home-card-date" style={lightChip({ ...badgeBase, top: 10, left: 10, cursor: 'inherit', fontWeight: 700 })}>{ev.dateBadge}</span>}
         <span role="button" aria-pressed={ev.saved} data-testid={`home-save-${ev.key}`}
           onClick={(e) => { e.stopPropagation(); onToggleSave(); }}

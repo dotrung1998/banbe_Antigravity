@@ -44,6 +44,8 @@ enum UITestFixture {
     /// Note 66: `-uiFixtureSimpleShell YES` is an admin having turned on `simple_shell` (new Home + centre "+" dock);
     /// `-uiFixtureHostMode YES` (with a `shell.*` fixture) starts in organizer mode (Home shows the host sections).
     static let simpleShell = UserDefaults.standard.bool(forKey: "uiFixtureSimpleShell")
+    /// Note 71: `-uiFixturePolaroid YES` is an admin having turned on `polaroid_cards` (Calm Pass event cards).
+    static let polaroid = UserDefaults.standard.bool(forKey: "uiFixturePolaroid")
     static let hostMode = UserDefaults.standard.bool(forKey: "uiFixtureHostMode")
     /// Simple Shell follow-up: `-uiFixtureGuest YES` (with a `shell.*` fixture) is a signed-out guest browsing.
     static let guest = UserDefaults.standard.bool(forKey: "uiFixtureGuest")
@@ -179,6 +181,7 @@ struct UITestFixtureRoot: View {
         if UITestFixture.onboardingV2 { app.featureFlags["onboarding_v2"] = true }
         if UITestFixture.tourV3 { app.featureFlags["onboarding_v3"] = true }
         if UITestFixture.simpleShell { app.featureFlags["simple_shell"] = true }
+        if UITestFixture.polaroid { app.featureFlags["polaroid_cards"] = true }
         if UITestFixture.eventTypes {
             app.featureFlags["event_type_profiles"] = true
             // The facts the production backfill gave these catalogue events (note 66), as their real rows would.

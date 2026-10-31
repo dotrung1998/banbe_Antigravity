@@ -36,6 +36,12 @@ export const surface3 = 'var(--bb-surface-3)';
 // `blockInset` = anything nested inside a block. Mirror `Palette.block` / `Palette.blockInset`.
 export const block = 'var(--bb-block)';
 export const blockInset = 'var(--bb-block-inset)';
+// Note 71 (Calm Pass, switch polaroid_cards): the polaroid frame of a Home event card and its light-only shadow.
+// Mirror `Palette.mat`.
+export const mat = 'var(--bb-mat)';
+export const matShadow = 'var(--bb-mat-shadow)';
+// The empty photo slot inside a polaroid: field/card fills equal the dark mat, so it would vanish. Mirror `Palette.matSlot`.
+export const matSlot = 'var(--bb-mat-slot)';
 export const ink2 = 'var(--bb-fg-2)';
 export const ink3 = 'var(--bb-fg-3)';
 export const divider = 'var(--bb-divider)';
@@ -92,34 +98,40 @@ const clipBackdropFilter = {
   maskImage: 'radial-gradient(white, black)',
 };
 
+// Reduce Transparency (note 71 phase 4): every recipe reads its fill and blur through a `--bb-rt-*` variable whose
+// fallback is today's glass. index.css sets those variables only under `prefers-reduced-transparency: reduce`, so the
+// surfaces turn opaque there and nothing changes anywhere else. `rt(name, glass)` builds that `var(--bb-rt-name, glass)`.
+const rt = (name, glass) => `var(--bb-rt-${name}, ${glass})`;
+const rtBlur = (glass) => rt('blur', glass);
+
 // Field glass — inputs, list containers, small tiles.
 export const fieldGlass = (extra) => ({
-  background: 'linear-gradient(168deg, var(--bb-white) 0%, rgba(255,255,255,calc(0.16 * var(--bb-sheen, 1))) 42%, rgba(255,255,255,0) 100%), var(--bb-card)',
-  backdropFilter: 'blur(12px) saturate(1.06)', WebkitBackdropFilter: 'blur(12px) saturate(1.06)',
+  background: rt('field', 'linear-gradient(168deg, var(--bb-white) 0%, rgba(255,255,255,calc(0.16 * var(--bb-sheen, 1))) 42%, rgba(255,255,255,0) 100%), var(--bb-card)'),
+  backdropFilter: rtBlur('blur(12px) saturate(1.06)'), WebkitBackdropFilter: rtBlur('blur(12px) saturate(1.06)'),
   boxShadow: 'inset 0 1px 0 var(--bb-white), 0 1px 3px var(--bb-shadow)',
   borderRadius: 12, ...clipBackdropFilter, ...extra,
 });
 
 // Card glass — section cards, stat cards, panels.
 export const cardGlass = (extra) => ({
-  background: 'linear-gradient(168deg, var(--bb-white) 0%, rgba(255,255,255,calc(0.24 * var(--bb-sheen, 1))) 45%, rgba(255,255,255,calc(0.04 * var(--bb-sheen, 1))) 100%), var(--bb-card2)',
-  backdropFilter: 'blur(14px) saturate(1.05)', WebkitBackdropFilter: 'blur(14px) saturate(1.05)',
+  background: rt('card', 'linear-gradient(168deg, var(--bb-white) 0%, rgba(255,255,255,calc(0.24 * var(--bb-sheen, 1))) 45%, rgba(255,255,255,calc(0.04 * var(--bb-sheen, 1))) 100%), var(--bb-card2)'),
+  backdropFilter: rtBlur('blur(14px) saturate(1.05)'), WebkitBackdropFilter: rtBlur('blur(14px) saturate(1.05)'),
   boxShadow: 'inset 0 1px 0 var(--bb-white), 0 1px 4px var(--bb-shadow)',
   borderRadius: 12, ...clipBackdropFilter, ...extra,
 });
 
 // Bar glass — sticky bottom bars.
 export const barGlass = (extra) => ({
-  background: 'linear-gradient(180deg, rgba(var(--bb-bg-rgb),0.35) 0%, rgba(var(--bb-bg-rgb),0.78) 45%, rgba(var(--bb-bg-rgb),0.92) 100%)',
-  backdropFilter: 'blur(16px) saturate(1.04)', WebkitBackdropFilter: 'blur(16px) saturate(1.04)',
+  background: rt('bar', 'linear-gradient(180deg, rgba(var(--bb-bg-rgb),0.35) 0%, rgba(var(--bb-bg-rgb),0.78) 45%, rgba(var(--bb-bg-rgb),0.92) 100%)'),
+  backdropFilter: rtBlur('blur(16px) saturate(1.04)'), WebkitBackdropFilter: rtBlur('blur(16px) saturate(1.04)'),
   ...clipBackdropFilter, ...extra,
 });
 
 // Dock glass — iOS-style translucent capsule (dock + round "+" button):
 // ink-tinted frosted fill, hairline, soft shadow.
 export const dockGlass = (extra) => ({
-  background: 'linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0.04)), rgba(var(--bb-fg-rgb), 0.10)',
-  backdropFilter: 'blur(22px) saturate(1.5)', WebkitBackdropFilter: 'blur(22px) saturate(1.5)',
+  background: rt('dock', 'linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0.04)), rgba(var(--bb-fg-rgb), 0.10)'),
+  backdropFilter: rtBlur('blur(22px) saturate(1.5)'), WebkitBackdropFilter: rtBlur('blur(22px) saturate(1.5)'),
   border: '1px solid rgba(var(--bb-fg-rgb), 0.12)',
   boxShadow: '0 8px 24px rgba(27,25,22,0.18), inset 0 1px 0 rgba(255,255,255,0.45)',
   ...clipBackdropFilter, ...extra,
@@ -127,8 +139,8 @@ export const dockGlass = (extra) => ({
 
 // Ink glass button — primary CTAs.
 export const inkButton = (extra) => ({
-  background: 'linear-gradient(165deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.07) 30%, rgba(255,255,255,0) 55%), var(--bb-button)',
-  color: 'var(--bb-button-text)', backdropFilter: 'blur(22px) saturate(1.7)', WebkitBackdropFilter: 'blur(22px) saturate(1.7)',
+  background: rt('button', 'linear-gradient(165deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.07) 30%, rgba(255,255,255,0) 55%), var(--bb-button)'),
+  color: 'var(--bb-button-text)', backdropFilter: rtBlur('blur(22px) saturate(1.7)'), WebkitBackdropFilter: rtBlur('blur(22px) saturate(1.7)'),
   border: '1px solid rgba(255,255,255,0.3)',
   boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.45), inset 0 -12px 22px rgba(255,255,255,0.08), 0 14px 34px rgba(27,25,22,0.35)',
   borderRadius: 18, textShadow: '0 1px 2px rgba(27,25,22,0.35)', fontSize: 15, fontWeight: 600,
@@ -141,8 +153,8 @@ export const photoPill = (extra) => ({
   // Theme-aware: the pill is paper-coloured (cream in light, near-black in
   // dark) so its `ink` label always contrasts — it used to be hardcoded cream,
   // which made the label vanish in dark mode.
-  background: 'linear-gradient(165deg, rgba(255,255,255,var(--bb-pill-hi)) 0%, rgba(255,255,255,0.12) 34%, rgba(255,255,255,0) 62%), rgba(var(--bb-bg-rgb),0.85)',
-  backdropFilter: 'blur(16px) saturate(1.6)', WebkitBackdropFilter: 'blur(16px) saturate(1.6)',
+  background: rt('pill', 'linear-gradient(165deg, rgba(255,255,255,var(--bb-pill-hi)) 0%, rgba(255,255,255,0.12) 34%, rgba(255,255,255,0) 62%), rgba(var(--bb-bg-rgb),0.85)'),
+  backdropFilter: rtBlur('blur(16px) saturate(1.6)'), WebkitBackdropFilter: rtBlur('blur(16px) saturate(1.6)'),
   border: '1px solid var(--bb-pill-edge)', boxShadow: 'inset 0 1px 1px var(--bb-pill-inset), 0 6px 16px var(--bb-pill-shadow)',
   borderRadius: 11, color: ink, cursor: 'pointer', fontSize: 12, ...clipBackdropFilter, ...extra,
 });

@@ -42,6 +42,13 @@ struct Palette {
     /// dark mode is unchanged. Anything nested inside a block uses `blockInset`. Web `--bb-block` / `--bb-block-inset`.
     let block: Color
     let blockInset: Color
+    /// Polaroid frame of a Home event card (note 71, switch `polaroid_cards`). Aliases an existing step, so no new
+    /// hue: light = surface1 (only 1.04:1 on paper, so the card adds a hairline and a soft ink-tinted shadow), dark =
+    /// surface2 (depth from the step, no shadow). Web `--bb-mat`.
+    let mat: Color
+    /// The empty photo slot inside a polaroid (light field, dark paper): `field` equals the dark mat, so the inset
+    /// would vanish. Web `--bb-mat-slot`.
+    let matSlot: Color
 
     static let light = Palette(
         paper: Color(hex: 0xF7F4EC),
@@ -60,7 +67,9 @@ struct Palette {
         ink3: Color(hex: 0x1B1916).opacity(0.64),
         divider: Color(hex: 0x1B1916).opacity(0.10),
         block: Color(hex: 0xEEE8DA),
-        blockInset: Color(hex: 0xFBF8F1)
+        blockInset: Color(hex: 0xFBF8F1),
+        mat: Color(hex: 0xFBF8F1),
+        matSlot: Color(hex: 0xEEE8DA)
     )
     /// Near-black warm base; depth from the lighter surface steps (tonal elevation), not borders or shadows.
     static let dark = Palette(
@@ -81,7 +90,9 @@ struct Palette {
         ink3: Color(hex: 0xF2EDE1).opacity(0.56),
         divider: Color(hex: 0xF2EDE1).opacity(0.10),
         block: Color(hex: 0x1A1815),
-        blockInset: Color(hex: 0x24211C)
+        blockInset: Color(hex: 0x24211C),
+        mat: Color(hex: 0x24211C),
+        matSlot: Color(hex: 0x0F0E0B)
     )
 }
 
@@ -91,6 +102,12 @@ enum BanbeTheme {
     /// Dark mode swaps in a brighter coral (web's `--bb-alert` dark value) so
     /// error text/chips stay legible on the dark paper; resolved through the
     /// trait collection, so the root `.preferredColorScheme` drives it.
+    /// Controls over a cover photo (Event Detail back / more / share), note 71 phase 4: a fixed deep clay, the same in
+    /// both themes because it sits on the photo. At 0.9 the white glyph keeps >= 4.5:1 on any photo (theme clay at 0.72
+    /// was 2.3:1 light / 1.65:1 dark on a bright cover). Web `--bb-photo-control-rgb`; fixture `photoControl`.
+    static let photoControl = Color(hex: 0x7E4529)
+    static let photoControlAlpha: Double = 0.9
+
     static let alert = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
             ? UIColor(red: 0xE8 / 255, green: 0x71 / 255, blue: 0x5B / 255, alpha: 1)

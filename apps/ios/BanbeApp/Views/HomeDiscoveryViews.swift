@@ -246,11 +246,13 @@ private struct DiscoveryPhoto: View {
     var height: CGFloat? = nil
     let radius: CGFloat
     var compact = false
+    /// Note 71: the empty slot inside a polaroid uses `palette.matSlot` (`field` equals the dark mat).
+    var inPolaroid = false
 
     var body: some View {
         if path.isEmpty {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .fill(app.palette.field)
+                .fill(inPolaroid ? app.palette.matSlot : app.palette.field)
                 .frame(width: width, height: height)
                 .frame(maxWidth: width == nil ? .infinity : nil, maxHeight: height == nil ? .infinity : nil)
                 .overlay {
@@ -295,6 +297,14 @@ struct DiscoveryCard: View {
     /// Simple Shell follow-up (plan item 5): with the switch on the card is a block (`palette.block` fill, 12pt
     /// padding under the photo, card radius) so it reads as one object on paper. OFF: today's unfilled card.
     private var filled: Bool { app.simpleShellEnabled }
+    /// Calm Pass phase 3 (switch `polaroid_cards`, migration 208, note 71): the photo is inset 8pt in a `mat` frame
+    /// (hairline + soft ink-tinted shadow in light, the surface step alone in dark) with the caption below it. No
+    /// rotation, tape or stickers, so long Vietnamese titles and large text behave as on the plain card. Wins over
+    /// `filled`. Web twin: HomeDiscoveryParts.jsx `polaroid`.
+    private var polaroid: Bool { app.polaroidCardsEnabled }
+    private var framed: Bool { polaroid || filled }
+    private static let polaroidInset: CGFloat = 8
+    private static let polaroidPhotoRadius: CGFloat = 8
 
     var body: some View {
         SwipeSafeButton { app.goEvent(model.key) } label: {
@@ -302,7 +312,7 @@ struct DiscoveryCard: View {
                 Color.clear
                     .aspectRatio(16.0 / 10.0, contentMode: .fit)
                     .overlay {
-                        DiscoveryPhoto(path: model.img, radius: BanbeTheme.Radius.card).zoomSource(model.key)
+                        DiscoveryPhoto(path: model.img, radius: polaroid ? Self.polaroidPhotoRadius : BanbeTheme.Radius.card, inPolaroid: polaroid).zoomSource(model.key)
                             .accessibilityIdentifier("card.\(model.key)")
                     }
                     .overlay(alignment: .topLeading) {
@@ -327,17 +337,24 @@ struct DiscoveryCard: View {
                     .overlay(alignment: .bottomLeading) { FillStatusChip(model: model).padding(10) }
 
                 details
-                    .padding(.horizontal, filled ? 12 : 0)
-                    .padding(.bottom, filled ? 12 : 0)
+                    .padding(.horizontal, polaroid ? 4 : filled ? 12 : 0)
+                    .padding(.bottom, polaroid ? 4 : filled ? 12 : 0)
             }
+            .padding(polaroid ? Self.polaroidInset : 0)
             .background {
-                if filled {
-                    RoundedRectangle(cornerRadius: BanbeTheme.Radius.card, style: .continuous).fill(app.palette.block)
+                let shape = RoundedRectangle(cornerRadius: BanbeTheme.Radius.card, style: .continuous)
+                if polaroid {
+                    shape.fill(app.palette.mat)
+                        .overlay(shape.strokeBorder(app.palette.divider, lineWidth: 1))
+                        // Light only (mat is 1.04:1 on paper); dark separates by the surface step.
+                        .shadow(color: app.isDark ? .clear : Color(hex: 0x1B1916).opacity(0.10), radius: 4, y: 2)
+                } else if filled {
+                    shape.fill(app.palette.block)
                 }
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 20)
-            .padding(.bottom, filled ? 16 : 22)
+            .padding(.bottom, framed ? 16 : 22)
         }
         .buttonStyle(.plain)
         // `card.<key>` sits on the photo ONLY (UI tests open events through it, so it must match exactly one element):

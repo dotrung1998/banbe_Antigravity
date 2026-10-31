@@ -87,6 +87,11 @@ struct AdminFeaturesView: View {
              hintVi: "Trang chủ gọn: nút chuyển Đi chơi | Tổ chức luôn hiện, một khối chính ở trên cùng, bản đồ là một kiểu xem của Trang chủ. Thanh dưới có 5 ô với nút \"+\" ở giữa cho mọi người. Mặc định tắt.",
              hintEn: "Simpler Home: an always-visible Going out | Hosting switch, one main block at the top, and the map as a Home view. The dock has 5 slots with a \"+\" in the centre for everyone. Off by default.",
              onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off"),
+        // Migration 208, note 71.
+        Flag(key: "polaroid_cards", vi: "Thẻ sự kiện kiểu polaroid", en: "Polaroid event cards",
+             hintVi: "Thẻ sự kiện trên Trang chủ có khung giấy quanh ảnh và chú thích bên dưới, như ảnh polaroid. Chỉ đổi kiểu xem thẻ, không đổi danh sách. Mặc định tắt.",
+             hintEn: "Home event cards get a paper frame around the photo with the caption below, like a polaroid. Only the cards view changes, not the list. Off by default.",
+             onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off"),
         // TESTING-PHASE (note 54): remove this row with the wipe tool before public release.
         Flag(key: "admin_event_wipe", vi: "Xoá sự kiện thử nghiệm (giai đoạn thử)", en: "Test event wipe (testing phase)",
              hintVi: "Cho admin xoá vĩnh viễn bất kỳ sự kiện nào cùng mọi dữ liệu liên quan, không cần lý do, trong Quản lý sự kiện (chỉ iOS). Chỉ dùng cho dữ liệu thử nghiệm.",

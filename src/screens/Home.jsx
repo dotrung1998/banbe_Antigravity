@@ -118,6 +118,8 @@ export default function Home() {
   // Simple Shell (switch simple_shell, note 66): Going out | Hosting in the header, one hero, one chip row, location in
   // the search bar, map as a Home view. Off = this screen exactly as before.
   const simpleShell = flagOn(s.featureFlags, 'simple_shell');
+  // Calm Pass phase 3 (migration 208, note 71): Home event cards as polaroids. Cards view only; the list is unchanged.
+  const polaroidCards = flagOn(s.featureFlags, 'polaroid_cards');
   // Follow-up (note 66): the Hosting view is `homeView` (session-only), shown only while organizer mode is on
   // (src/lib/homeMode.js). Organizer mode off is always Going out, whatever the restored or deep-linked state.
   const hostView = simpleShell && effectiveHomeView(s.organizerMode, s.homeView) === 'host';
@@ -1115,7 +1117,7 @@ export default function Home() {
       {cards.map((ev, i) => {
         const card = layoutMode === 'list'
           ? <DiscoveryRow key={ev.key} ev={ev} onOpen={() => goEvent(ev.key)} T={T} />
-          : <DiscoveryCard key={ev.key} ev={ev} onOpen={() => goEvent(ev.key)} onToggleSave={() => toggleFav(ev.key)} T={T} filled={simpleShell} />;
+          : <DiscoveryCard key={ev.key} ev={ev} onOpen={() => goEvent(ev.key)} onToggleSave={() => toggleFav(ev.key)} T={T} filled={simpleShell} polaroid={polaroidCards} />;
         if (!simpleShell) return card;
         // Simple Shell: stories (only if any) after the 3rd card, the Pulse ticker (only with items) after the 6th.
         // Fewer cards than that: they follow the last card.
@@ -1138,7 +1140,19 @@ export default function Home() {
         </div>
       )}
 
-      {cards.length === 0 && (
+      {cards.length === 0 && forYouActive && (
+        <div style={{ padding: '20px 0 30px' }}>
+          {/* Calm Pass phase 2: For You plus other filters left nothing. Say it is the combination, not "no events". */}
+          <EmptyState scene="findPlans" testId="home-empty-foryou"
+            title={T('Chưa có sự kiện khớp lựa chọn của bạn', 'No events match your picks yet')}
+            message={T('Các bộ lọc khác đang thu hẹp kết quả Dành cho bạn. Xem tất cả, hoặc chỉnh sở thích của bạn.', 'Your other filters narrow For You down to nothing. See everything, or change what you like.')}
+            actionLabel={T('Xem tất cả sự kiện', 'See all events')} actionTestId="home-empty-foryou-see-all"
+            onAction={() => { clearFilters(); set({ filterForYou: false, homeSort: 'soonest' }); }}
+            secondaryLabel={T('Chỉnh sở thích', 'Edit my picks')} secondaryTestId="home-empty-foryou-prefs" onSecondary={() => openEventPreferences('home')} />
+        </div>
+      )}
+
+      {cards.length === 0 && !forYouActive && (
         <div style={{ padding: '20px 0 30px' }}>
           {/* Note 48 (iOS parity): a cute scene + one clear next step instead of a bare line. */}
           <EmptyState scene="findPlans" testId="home-empty"

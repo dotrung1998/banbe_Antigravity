@@ -56,10 +56,12 @@ const sectionHeading = display(17, { lineHeight: 1.3 });
 const OVERLAY_TOP = 'max(66px, calc(env(safe-area-inset-top, 0px) + 16px))';
 // Scrolled this far, the title has gone under the top edge: the solid nav bar (mockup "02 · Khi cuộn xuống") fades in.
 const COLLAPSE_AT = HERO_H - SHEET_OVERLAP - PINNED_STRIP + 70;
-// Glass over the photo, tinted with the clay accent (white glyph): legible on bright and dark covers alike.
+// Glass over the photo, tinted with a fixed deep clay (white glyph). Note 71 phase 4: the theme clay at 0.72 left the
+// white label at 2.3:1 (light) / 1.65:1 (dark) on a bright cover; --bb-photo-control-rgb at 0.9 with a 0.12 sheen keeps
+// >= 4.5:1 on any photo (tests/fixtures/design-tokens.json `photoControl`).
 const clayGlass = {
-  background: 'linear-gradient(165deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 45%, rgba(255,255,255,0) 70%), rgba(var(--bb-clay-rgb),0.72)',
-  backdropFilter: 'blur(16px) saturate(1.5)', WebkitBackdropFilter: 'blur(16px) saturate(1.5)',
+  background: 'var(--bb-rt-photo-control, linear-gradient(165deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 45%, rgba(255,255,255,0) 70%), rgba(var(--bb-photo-control-rgb),0.9))',
+  backdropFilter: 'var(--bb-rt-blur, blur(16px) saturate(1.5))', WebkitBackdropFilter: 'var(--bb-rt-blur, blur(16px) saturate(1.5))',
   border: '1px solid rgba(255,255,255,0.32)', boxShadow: '0 6px 16px rgba(0,0,0,0.22)', color: '#fff',
 };
 // The same controls once the nav bar is solid: no fill, clay glyphs.

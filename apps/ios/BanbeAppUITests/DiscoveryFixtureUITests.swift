@@ -56,6 +56,61 @@ final class DiscoveryFixtureUITests: XCTestCase {
     }
 
     func testHomeDiscoveryLight() { checkHome(theme: "light") }
+
+    /// Note 71 (Calm Pass phase 3): with `polaroid_cards` on, the card keeps its photo identifier, Save button and
+    /// caption, and both themes render (screenshots for review). Largest accessibility text must not truncate the
+    /// whole caption away: the event is still reachable by name.
+    private func checkPolaroid(theme: String, extra: [String] = []) {
+        let app = launch("home", theme: theme, extra: ["-uiFixturePolaroid", "YES", "-uiFixtureSimpleShell", "YES"] + extra)
+        XCTAssertTrue(el(app, "home.searchBar").waitForExistence(timeout: 20))
+        if el(app, "home.layout.cards").exists { el(app, "home.layout.cards").tap() }
+        XCTAssertTrue(app.buttons["Fixture host supper"].firstMatch.waitForExistence(timeout: 10))
+        let photo = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'card.'")).firstMatch
+        XCTAssertTrue(photo.exists, "card.<key> stays on the photo")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'home.save.'")).firstMatch.exists)
+        Thread.sleep(forTimeInterval: 1.0)
+        shot("home-polaroid-\(theme)\(extra.isEmpty ? "" : "-xxl")")
+    }
+
+    func testPolaroidCardsLight() { checkPolaroid(theme: "light") }
+    func testPolaroidCardsDark() { checkPolaroid(theme: "dark") }
+    func testPolaroidCardsLargestText() {
+        checkPolaroid(theme: "light", extra: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+    }
+
+    /// Note 71 phase 4: Vietnamese (the longest copy) at the largest accessibility text size. The guided Coming up
+    /// state wraps instead of clipping and the screen never scrolls sideways.
+    func testHostHomeVietnameseLargestText() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-uiFixture", "shell.home", "-banbe.lang", "vi", "-banbe.theme", "light", "-uiTesting", "1",
+                                "-banbe.onboarded", "YES", "-uiFixtureSimpleShell", "YES", "-uiFixtureHostMode", "YES",
+                                "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        let upcoming = el(app, "home.host.upcoming")
+        XCTAssertTrue(el(app, "home.modeSwitch").waitForExistence(timeout: 20))
+        for _ in 0..<6 where !upcoming.isHittable { app.swipeUp() }
+        XCTAssertTrue(upcoming.exists)
+        let screen = app.windows.firstMatch.frame
+        XCTAssertGreaterThanOrEqual(upcoming.frame.minX, screen.minX - 1, "no sideways overflow")
+        XCTAssertLessThanOrEqual(upcoming.frame.maxX, screen.maxX + 1, "no sideways overflow")
+        XCTAssertLessThanOrEqual(el(app, "home.modeSwitch").frame.maxX, screen.maxX + 1, "the mode switch fits")
+        Thread.sleep(forTimeInterval: 0.6)
+        shot("host-home-vi-xxxl")
+    }
+
+    /// Note 71 (Calm Pass phase 1): Hosting Home on the fixture host ends in Coming up and the numbers, never blank.
+    func testHostHomeNeverEndsBlank() {
+        for theme in ["light", "dark"] {
+            let app = launch("home", theme: theme, extra: ["-uiFixtureSimpleShell", "YES", "-uiFixtureHostMode", "YES"])
+            XCTAssertTrue(el(app, "home.host.quick").waitForExistence(timeout: 20))
+            XCTAssertTrue(el(app, "home.host.upcoming").waitForExistence(timeout: 5), "Coming up always shows something")
+            Thread.sleep(forTimeInterval: 1.0)
+            app.swipeUp()
+            Thread.sleep(forTimeInterval: 0.6)
+            shot("host-home-\(theme)")
+            app.terminate()
+        }
+    }
     func testHomeDiscoveryDark() { checkHome(theme: "dark") }
 
     /// The fixture's real fill (18 of 20 booked) shows as "Almost full · 2 left"; the quick chip finds it.

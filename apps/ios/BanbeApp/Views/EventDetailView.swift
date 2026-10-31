@@ -1638,15 +1638,18 @@ private struct ControlChrome: ViewModifier {
     let collapsed: Bool
     let clay: Color
     let shape: AnyShape
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {
         content
             .foregroundStyle(collapsed ? clay : .white)
             .background {
                 if !collapsed {
+                    // Note 71 phase 4: a fixed deep clay (not the theme clay, which made the white glyph 1.65:1 in dark
+                    // on a bright cover). Reduce Transparency: fully opaque.
                     ZStack {
-                        shape.fill(.ultraThinMaterial)
-                        shape.fill(clay.opacity(0.72))
+                        if !reduceTransparency { shape.fill(.ultraThinMaterial) }
+                        shape.fill(BanbeTheme.photoControl.opacity(reduceTransparency ? 1 : BanbeTheme.photoControlAlpha))
                     }
                 }
             }

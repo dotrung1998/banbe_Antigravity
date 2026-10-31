@@ -143,3 +143,48 @@ struct MotivatingEmptyState: View {
         .padding(.vertical, 16)
     }
 }
+
+/// Calm Pass guided empty state for ONE section (not a whole screen): a dashed outline, so it can never be mistaken
+/// for real content, one bold line, one sentence and one action. The action is passed in (a Button or a ShareLink);
+/// wrap its label in `InlineEmptyState.actionLabel` so every action looks the same. Web twin:
+/// src/components/ui/InlineEmpty.jsx.
+struct InlineEmptyState<Action: View>: View {
+    let title: String
+    let message: String
+    var identifier: String? = nil
+    @ViewBuilder let action: () -> Action
+
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(message)
+                .font(.footnote)
+                .foregroundStyle(app.palette.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+            action().padding(.top, 8)
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(RoundedRectangle(cornerRadius: BanbeTheme.Radius.card, style: .continuous)
+            .strokeBorder(app.palette.ink.opacity(0.3), style: StrokeStyle(lineWidth: 1.2, dash: [5, 4]))
+            .accessibilityHidden(true))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(identifier ?? "")
+    }
+
+    /// The shared look of the one action: a `block` capsule, 44pt tall, ink text.
+    static func actionLabel(_ title: String, systemImage: String, palette: Palette) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 16)
+            .frame(minHeight: 44)
+            .foregroundStyle(palette.ink)
+            .background(palette.block, in: Capsule())
+            .contentShape(Capsule())
+    }
+}

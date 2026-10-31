@@ -93,15 +93,35 @@ struct InboxView: View {
                 // below: the conversation carrying a live dispute is marked
                 // on its own row, so it's still findable from here.
                 if visibleThreads.isEmpty {
-                    Text(effectiveInboxView == .archived
-                         ? app.T("Chưa có cuộc trò chuyện nào được lưu trữ.", "No archived conversations yet.")
-                         : app.T("Chưa có cuộc trò chuyện nào. Nhắn cho người tổ chức từ trang sự kiện.", "No conversations yet. Message an organizer from an event page."))
-                        .font(.system(size: 14))
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 80)
-                        .foregroundStyle(app.palette.ink)
+                    // Calm Pass phase 2: an empty inbox says how a conversation starts and offers the way there. A
+                    // search with no hits or an empty archive stays a plain line (nothing to do there).
+                    if !query.trimmingCharacters(in: .whitespaces).isEmpty || effectiveInboxView == .archived {
+                        Text(!query.trimmingCharacters(in: .whitespaces).isEmpty
+                             ? app.T("Không có cuộc trò chuyện nào khớp.", "No conversations match.")
+                             : app.T("Chưa có cuộc trò chuyện nào được lưu trữ.", "No archived conversations yet."))
+                            .font(.system(size: 14))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 80)
+                            .foregroundStyle(app.palette.ink)
+                            .accessibilityIdentifier(effectiveInboxView == .archived ? "inbox.empty.archived" : "inbox.empty.search")
+                    } else {
+                        ScrollView {
+                            MotivatingEmptyState(
+                                scene: .explore,
+                                title: app.T("Chưa có cuộc trò chuyện nào", "No conversations yet"),
+                                message: app.T("Nhắn cho người tổ chức từ trang sự kiện. Cuộc trò chuyện sẽ hiện ở đây.",
+                                               "Message a host from an event page. Your conversations show up here."),
+                                actionTitle: app.T("Tìm sự kiện", "Find events"),
+                                actionIcon: "magnifyingglass",
+                                actionID: "inbox.empty.find",
+                                action: { app.goHome() },
+                                identifier: "inbox.empty"
+                            )
+                            .padding(.vertical, 32)
+                        }
+                    }
                     Spacer()
                 } else {
                     List {

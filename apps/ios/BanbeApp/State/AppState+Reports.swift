@@ -156,8 +156,15 @@ extension AppState {
                     pOrganizerId: scope == "host" ? organizerID : nil
                 ))
                 .execute().value
-            // A newer request (range/scope change, retry) superseded this one.
-            guard requestID == reportsRequestSeq, scope == reportsScope else { return }
+            // A newer request (range/scope change, retry) superseded this one: that request owns `reportsLoading`.
+            // A scope that no longer matches (and no newer request) must still clear it, or every later load that
+            // checks `!reportsLoading` (Hosting Home) stays blocked for the session.
+            switch Self.kpiResultDisposition(requestID: requestID, currentSeq: reportsRequestSeq,
+                                             scope: scope, currentScope: reportsScope) {
+            case .superseded: return
+            case .scopeChanged: reportsLoading = false; return
+            case .apply: break
+            }
             guard result.success else {
                 reportsLoading = false
                 reportsError = T("Không thể tải số liệu lúc này. Vui lòng thử lại.", "Couldn't load these numbers right now. Please try again.")
@@ -173,6 +180,28 @@ extension AppState {
             // Any data already on screen stays (shown as stale); only the error is new.
             reportsError = T("Không thể tải số liệu lúc này. Vui lòng thử lại.", "Couldn't load these numbers right now. Please try again.")
         }
+    }
+
+    enum KpiResultDisposition: Equatable { case apply, superseded, scopeChanged }
+
+    /// What a finished `get_account_kpis` response may do. Pure, so the Hosting Home regression is unit-tested.
+    nonisolated static func kpiResultDisposition(requestID: Int, currentSeq: Int, scope: String, currentScope: String) -> KpiResultDisposition {
+        if requestID != currentSeq { return .superseded }
+        return scope == currentScope ? .apply : .scopeChanged
+    }
+
+    /// Hosting Home's numbers (Calm Pass phase 0). Commits the host scope BEFORE fetching, like web
+    /// `loadHostHomeKpis`: Home used to fetch with scope "host" while `reportsScope` was still "personal", so the
+    /// answer was thrown away and "This month" never appeared until Reports had been opened.
+    func prepareHostHomeKpis(organizerID: String) {
+        reportsScope = "host"
+        reportsOrganizerId = organizerID
+    }
+
+    func loadHostHomeKpis(organizerID: String) async {
+        prepareHostHomeKpis(organizerID: organizerID)
+        await fetchAccountKpis(scope: "host", organizerID: organizerID, rangeDays: reportsRangeDays,
+                               customStart: reportsCustomStart, customEnd: reportsCustomEnd)
     }
 
     /// Pull-to-refresh: same parameters, awaited so the indicator tracks it.

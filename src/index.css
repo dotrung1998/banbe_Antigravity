@@ -3,6 +3,26 @@
 }
 
 :root { --bb-glass: 0.82; } /* Liquid Glass opacity, set from Preferences (src/lib/glassOpacity.js) */
+/* Controls over a cover photo (Event Detail back / more / share, note 71 phase 4): a fixed deep clay, the same in both
+   themes because it sits on the photo, not on the page. At 0.9 with a sheen of at most 0.12 the white glyph keeps
+   >= 4.5:1 on any photo, pure white included (theme clay at 0.72 was 2.3:1 light, 1.65:1 dark on a bright cover).
+   Mirrored by BanbeTheme.photoControl; checked in tests/unit/designTokens.test.mjs. */
+:root { --bb-photo-control-rgb: 126, 69, 41; }
+/* Reduce Transparency (note 71 phase 4): the glass recipes in theme.js read these with today's glass as the fallback,
+   so they only take effect here. Declared on the element that carries the theme, so the surface tokens resolve to the
+   right theme. */
+@media (prefers-reduced-transparency: reduce) {
+  [data-bb-theme] {
+    --bb-rt-blur: none;
+    --bb-rt-field: var(--bb-surface-2);
+    --bb-rt-card: var(--bb-surface-2);
+    --bb-rt-bar: var(--bb-bg);
+    --bb-rt-dock: var(--bb-surface-2);
+    --bb-rt-button: var(--bb-ink-deep);
+    --bb-rt-pill: var(--bb-bg);
+    --bb-rt-photo-control: rgb(var(--bb-photo-control-rgb));
+  }
+}
 
 :root, [data-bb-theme="light"] {
   --bb-bg: #F7F4EC;
@@ -65,6 +85,12 @@
      no longer wash out on paper (surface-1 was 1.03:1). Mirrored by Palette.block / .blockInset. */
   --bb-block: #EEE8DA;
   --bb-block-inset: #FBF8F1;
+  /* Polaroid frame (note 71, switch polaroid_cards): aliases surface-1, so no new hue. 1.04:1 on paper, so the card
+     also gets a hairline and a soft ink-tinted shadow. Mirrored by Palette.mat. */
+  --bb-mat: #FBF8F1;
+  /* The empty photo slot inside a polaroid (no photo yet): must differ from the mat. */
+  --bb-mat-slot: #EEE8DA;
+  --bb-mat-shadow: 0 2px 8px rgba(27, 25, 22, 0.10);
   --bb-fg-2: rgba(27,25,22,0.72);
   --bb-fg-3: rgba(27,25,22,0.64);
   --bb-divider: rgba(27,25,22,0.10);
@@ -95,6 +121,10 @@
   /* Dark keeps today's card fill (surface-1), so dark mode does not change. */
   --bb-block: #1A1815;
   --bb-block-inset: #24211C;
+  /* Polaroid frame: surface-2, one step above the block fill; depth from the step, no shadow. */
+  --bb-mat: #24211C;
+  --bb-mat-slot: #0F0E0B;
+  --bb-mat-shadow: none;
   --bb-fg-2: rgba(242,237,225,0.72);
   --bb-fg-3: rgba(242,237,225,0.56);
   /* Fields sit on surface-2 (was #3A352B, where alert text was only 4.03:1). */

@@ -4,18 +4,22 @@
     "paper": "#F7F4EC", "ink": "#1B1916", "field": "#EEE8DA",
     "surface1": "#FBF8F1", "surface2": "#EEE8DA", "surface3": "#E6DFCF",
     "ink2Alpha": 0.72, "ink3Alpha": 0.64, "alert": "#9A3E2D", "clay": "#9C5B3B", "honey": "#8C6014",
-    "block": "#EEE8DA", "blockInset": "#FBF8F1"
+    "block": "#EEE8DA", "blockInset": "#FBF8F1", "mat": "#FBF8F1", "matSlot": "#EEE8DA"
   },
   "dark": {
     "paper": "#0F0E0B", "ink": "#F2EDE1", "field": "#24211C",
     "surface1": "#1A1815", "surface2": "#24211C", "surface3": "#2E2A24",
     "ink2Alpha": 0.72, "ink3Alpha": 0.56, "alert": "#E8715B", "clay": "#D8926C", "honey": "#F2C46D",
-    "block": "#1A1815", "blockInset": "#24211C"
+    "block": "#1A1815", "blockInset": "#24211C", "mat": "#24211C", "matSlot": "#0F0E0B"
   },
   "minContrast": {
-    "ink": 7.0, "ink2": 4.5, "ink3": 4.5, "alert": 4.5, "honey": 4.5
+    "ink": 7.0, "ink2": 4.5, "ink3": 4.5, "alert": 4.5, "honey": 4.5, "clay": 4.5
   },
   "_blockComment": "Note 66 follow-up: block = every card/tile/block on paper (light = surface2 #EEE8DA, dark = surface1 #1A1815 so dark mode is unchanged); blockInset = anything nested inside a block. honey text is checked on honeyOn only (honey on surface3 is 4.17:1 in light, never used as text there).",
+  "_matComment": "Note 71 (Calm Pass phase 3): mat = the polaroid frame of a Home event card. It aliases an existing step (light surface1, dark surface2), so no new hue. In light it is only 1.04:1 against paper, so the card also gets a hairline and a soft ink-tinted shadow; dark separates by the surface step alone. matSlot = the empty photo slot inside the frame (light field, dark paper): the usual placeholder fill equals the dark mat and made the inset vanish. clay text is checked on clayOn only: light clay on block (#EEE8DA) is about 4.3:1, below AA, so clay must not be used as text on block fills.",
+  "_photoControlComment": "Note 71 phase 4: the round controls over a cover photo (Event Detail back / more / share). Fixed in both themes. The white glyph is checked against the fill composited over the worst photos (white, black, mid grey, warm bright) with the sheen at its maximum.",
+  "photoControl": { "hex": "#7E4529", "alpha": 0.9, "maxSheen": 0.12, "minContrast": 4.5, "photos": ["#FFFFFF", "#000000", "#808080", "#E6C878"] },
+  "clayOn": ["paper", "surface1", "mat"],
   "honeyOn": ["paper", "surface1", "surface2", "field", "block", "blockInset"],
   "themeChoice": [
     { "stored": null, "fresh": true, "choice": "system" },

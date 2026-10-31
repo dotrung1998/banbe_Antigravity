@@ -21,6 +21,8 @@ import { supabase } from '../../lib/supabase.js';
 import ActionCenter from '../../screens/ActionCenter.jsx';
 import { ink, paper, ink2, block, blockInset, divider, display, RADIUS } from '../../theme.js';
 import { shortMetricLabel } from '../../lib/reportMetricLabels.js';
+import { comingUpEmptyVariant, kpiSectionState, kpiRangeHeading } from '../../lib/hostHomeEmpty.js';
+import InlineEmpty from '../ui/InlineEmpty.jsx';
 
 const ENDED_AFTER_MS = 12 * 3600000;
 
@@ -79,7 +81,7 @@ export default function HostHome() {
   const {
     state: s, set, T, goCreate, goEvent, goDashboard, goInbox, openAttendance, openVerifications, openReports,
     loadRealEventsById, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadHomeLiveEvents,
-    loadHostHomeKpis, openVerificationsRefunds, openStoryLibraryPicker, goSurveysHosting, openOrganizerProfile,
+    loadHostHomeKpis, openVerificationsRefunds, openStoryLibraryPicker, goSurveysHosting, openOrganizerProfile, shareOrganizerProfile,
   } = useBanBe();
 
   useEffect(() => {
@@ -165,6 +167,17 @@ export default function HostHome() {
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upcomingKeys]);
+  // Calm Pass: "Coming up" never vanishes into blank space; src/lib/hostHomeEmpty.js picks what is true (null = the
+  // list, or the hero, already says it). The numbers section likewise shows loading / error / empty states.
+  const comingUpEmpty = comingUpEmptyVariant({
+    upcoming: upcoming.length, hasHero: !!hero, pending: submitted.pending.length, needsFix: submitted.needsFix.length,
+  });
+  const openSubmitted = () => { set({ dashboardOpenSubmitted: true }); goDashboard('home'); };
+  const kpiState = kpiSectionState({
+    hasOrganizer: !!s.myOrganizerId, loading: !!s.reportsLoading, error: !!s.reportsError, tiles: kpis.length, hasReport: hasHostReport,
+  });
+  const openHostReports = () => openReports('host', s.myOrganizerId, 'home');
+
   // Create joins the shortcuts only when a hero event shows (the plan card has its own Create button); the hero has
   // its own Check-in and Message buttons.
   const quick = [
@@ -241,7 +254,35 @@ export default function HostHome() {
         <ActionCenter items={actionItems} onSeeAll={() => goDashboard('home')} T={T} />
       </div>
 
-      {upcoming.length > 0 && (
+      {comingUpEmpty && (
+        <section data-testid="home-host-upcoming" style={{ margin: '16px 20px 0', color: ink }}>
+          <h2 style={{ ...display(17), margin: '0 0 10px' }}>{T('Sắp tới', 'Coming up')}</h2>
+          {comingUpEmpty === 'needsFix' && (
+            <InlineEmpty testId="home-host-upcoming-empty-needsFix" actionTestId="home-host-upcoming-empty-action"
+              title={submitted.needsFix.length === 1 ? T('Có 1 sự kiện cần sửa', '1 event needs a fix')
+                : T(`Có ${submitted.needsFix.length} sự kiện cần sửa`, `${submitted.needsFix.length} events need a fix`)}
+              message={T('Sửa và gửi lại để duyệt. Sự kiện sẽ hiện ở đây khi được mở.', "Fix it and send it back for review. It shows here once it's live.")}
+              actionLabel={T('Sửa ngay', 'Fix now')} onAction={openSubmitted} />
+          )}
+          {comingUpEmpty === 'pending' && (
+            <InlineEmpty testId="home-host-upcoming-empty-pending" actionTestId="home-host-upcoming-empty-action"
+              title={submitted.pending.length === 1 ? T('1 sự kiện đang chờ duyệt', '1 event is in review')
+                : T(`${submitted.pending.length} sự kiện đang chờ duyệt`, `${submitted.pending.length} events are in review`)}
+              message={T('banbe đang xem xét. Sự kiện sẽ hiện ở đây khi được mở.', "banbe is checking them. They show here once they're live.")}
+              actionLabel={T('Xem sự kiện đã gửi', 'See submitted')} onAction={openSubmitted} />
+          )}
+          {comingUpEmpty === 'quiet' && (
+            // The plan card above already offers Create, so this offers the other useful step.
+            <InlineEmpty testId="home-host-upcoming-empty-quiet" actionTestId="home-host-upcoming-empty-action"
+              title={T('Chưa có lịch sắp tới', 'Nothing scheduled yet')}
+              message={T('Chia sẻ trang tổ chức để khách theo dõi bạn trước sự kiện tiếp theo.', 'Share your host page so guests can follow you before your next event.')}
+              actionLabel={s.myOrganizerId ? T('Chia sẻ trang tổ chức', 'Share host page') : null}
+              onAction={s.myOrganizerId ? () => shareOrganizerProfile(s.myOrganizerId, s.orgRegName) : null} />
+          )}
+        </section>
+      )}
+
+      {!comingUpEmpty && upcoming.length > 0 && (
         <section data-testid="home-host-upcoming" style={{ margin: '16px 20px 0', color: ink }}>
           <h2 style={{ ...display(17), margin: 0 }}>{T('Sắp tới', 'Coming up')}</h2>
           <div style={{ marginTop: 10, borderRadius: 14, background: block, overflow: 'hidden' }}>
@@ -292,23 +333,49 @@ export default function HostHome() {
         </div>
       </section>
 
-      {kpis.length > 0 && (
-        <section data-testid="home-host-kpis" role="button" tabIndex={0} onClick={() => openReports('host', s.myOrganizerId, 'home')}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openReports('host', s.myOrganizerId, 'home'); } }}
-          style={{ margin: '16px 20px 0', cursor: 'pointer', color: ink }}>
-          <SectionHead title={T('Số liệu', 'Reports')} />
-          <div style={TILE_GRID}>
-            {kpis.map(m => {
-              // Short tile label (reportMetricLabels.js); the full label stays in Reports and in the accessible name.
-              const short = shortMetricLabel(m.key, T) || m.title;
-              return (
-                <div key={m.key} data-testid={`home-host-kpi-${m.key}`} style={TILE} aria-label={`${short}: ${m.accessibilityValue}`}>
-                  <div style={{ ...TILE_VALUE, overflowWrap: 'anywhere' }}>{m.valueText}</div>
-                  <div data-testid={`home-host-kpi-${m.key}-label`} style={TILE_LABEL}>{short}</div>
+      {kpiState !== 'hidden' && (
+        <section data-testid="home-host-kpis" style={{ margin: '16px 20px 0', color: ink }}>
+          {/* The heading names the range Reports used (it said "Reports"; iOS said "This month" for the last 30 days). */}
+          <button type="button" onClick={openHostReports} data-testid="home-host-reports"
+            style={{ display: 'block', width: '100%', padding: 0, border: 'none', background: 'none', color: ink, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', minHeight: 44 }}>
+            <SectionHead title={kpiRangeHeading(s.reportsRangeDays, T)} />
+          </button>
+          {kpiState === 'tiles' && (
+            <div style={TILE_GRID} role="button" tabIndex={0} onClick={openHostReports}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openHostReports(); } }}>
+              {kpis.map(m => {
+                // Short tile label (reportMetricLabels.js); the full label stays in Reports and in the accessible name.
+                const short = shortMetricLabel(m.key, T) || m.title;
+                return (
+                  <div key={m.key} data-testid={`home-host-kpi-${m.key}`} style={{ ...TILE, cursor: 'pointer' }} aria-label={`${short}: ${m.accessibilityValue}`}>
+                    <div style={{ ...TILE_VALUE, overflowWrap: 'anywhere' }}>{m.valueText}</div>
+                    <div data-testid={`home-host-kpi-${m.key}-label`} style={TILE_LABEL}>{short}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {kpiState === 'loading' && (
+            <div data-testid="home-host-kpis-loading" style={TILE_GRID} role="status" aria-label={T('Đang tải số liệu', 'Loading numbers')}>
+              {[0, 1, 2].map(i => (
+                <div key={i} aria-hidden="true" style={TILE}>
+                  <div style={{ width: 28, height: 20, borderRadius: 6, background: blockInset }} />
+                  <div style={{ width: '70%', height: 12, borderRadius: 6, background: blockInset, marginTop: 4 }} />
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
+          {kpiState === 'error' && (
+            <InlineEmpty testId="home-host-kpis-error" actionTestId="home-host-kpis-retry"
+              title={T('Chưa tải được số liệu', "Couldn't load your numbers")}
+              message={T('Kiểm tra kết nối rồi thử lại.', 'Check your connection and try again.')}
+              actionLabel={T('Thử lại', 'Retry')} actionIcon="↻" onAction={() => loadHostHomeKpis(s.myOrganizerId)} />
+          )}
+          {kpiState === 'empty' && (
+            <InlineEmpty testId="home-host-kpis-empty"
+              title={T('Chưa có lượt đặt chỗ', 'No bookings in this period')}
+              message={T('Số liệu sẽ hiện ở đây khi khách bắt đầu đặt chỗ.', 'Your numbers show here once guests start booking.')} />
+          )}
         </section>
       )}
       <div aria-hidden="true" style={{ height: 1, margin: '20px 20px 0', background: divider }} />

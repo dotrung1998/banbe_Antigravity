@@ -305,7 +305,30 @@ struct SearchView: View {
             VStack(spacing: 6) {
                 Text(app.T("Không có kết quả cho \"\(query)\"", "Nothing for \"\(query)\"")).font(BanbeTheme.display(17))
                 Text(app.T("Thử một từ ngắn hơn, tên khu vực, hoặc một danh mục.", "Try a shorter word, an area, or a category."))
-                    .font(.system(size: 13)).opacity(0.65)
+                    .font(.system(size: 13)).foregroundStyle(app.palette.ink2)
+                // Calm Pass phase 2: a way forward instead of a dead end. Categories are the real list, not suggestions.
+                HStack(spacing: 8) {
+                    Button { app.pickFilter("all"); app.goHome() } label: {
+                        InlineEmptyState<EmptyView>.actionLabel(app.T("Xem tất cả sự kiện", "See all events"), systemImage: "sparkles", palette: app.palette)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("search.empty.all")
+                    Button { app.searchQuery = "" } label: {
+                        InlineEmptyState<EmptyView>.actionLabel(app.T("Xoá tìm kiếm", "Clear search"), systemImage: "xmark", palette: app.palette)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("search.empty.clear")
+                }
+                .padding(.top, 10)
+                FlowRow(spacing: 8) {
+                    ForEach(HomeDiscovery.categories.filter { $0.key != "all" }, id: \.key) { c in
+                        chip(app.T(c.vi, c.en), icon: CategoryGlyph.symbol(c.key), id: "search.empty.cat.\(c.key)") {
+                            app.pickFilter(c.key)
+                            app.goHome()
+                        }
+                    }
+                }
+                .padding(.top, 12)
             }
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)

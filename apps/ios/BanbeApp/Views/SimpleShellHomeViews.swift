@@ -11,9 +11,14 @@ import SwiftUI
 struct HomeModeSwitch: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .subheadline) private var font: CGFloat = 14
 
     private var hosting: Bool { app.effectiveHomeView == .host }
+    /// Note 71 phase 4: at accessibility text sizes the switch used to keep its natural (fixed) width, grew past the
+    /// screen and pushed the whole Home column off both edges. There it now takes the width it is given, two equal
+    /// segments, and the label shrinks to fit instead. Default sizes are unchanged.
+    private var fitsWidth: Bool { dynamicTypeSize.isAccessibilitySize }
     private var hostLocked: Bool { HomeMode.hostSegmentLocked(organizerMode: app.isSignedIn && app.organizerMode) }
 
     var body: some View {
@@ -23,7 +28,8 @@ struct HomeModeSwitch: View {
         }
         .padding(2)
         .background(app.palette.surface2, in: Capsule())
-        .fixedSize()
+        .fixedSize(horizontal: !fitsWidth, vertical: true)
+        .frame(maxWidth: fitsWidth ? .infinity : nil)
         .disabled(app.organizerModeBusy)
         .animation(Motion.animation(.spring(response: 0.3, dampingFraction: 0.85), reduce: reduceMotion), value: hosting)
         .animation(Motion.fade(.easeOut(duration: 0.2), reduce: reduceMotion), value: hostLocked)
@@ -48,10 +54,11 @@ struct HomeModeSwitch: View {
                 Text(title)
                     .font(.system(size: font, weight: .semibold))
                     .lineLimit(1)
-                    .fixedSize()
+                    .minimumScaleFactor(fitsWidth ? 0.5 : 1)
+                    .fixedSize(horizontal: !fitsWidth, vertical: false)
             }
-            .padding(.horizontal, 14)
-            .frame(minWidth: 44, minHeight: 44)
+            .padding(.horizontal, fitsWidth ? 10 : 14)
+            .frame(minWidth: 44, maxWidth: fitsWidth ? .infinity : nil, minHeight: 44)
             .foregroundStyle(selected ? app.palette.paper : (locked ? app.palette.ink3 : app.palette.ink))
             .background { if selected { Capsule().fill(app.palette.ink) } }
             .contentShape(Capsule())
@@ -84,6 +91,7 @@ struct HomeModeSwitch: View {
 /// already load; the loaders it calls are the Dashboard's own (no new fetching).
 struct HostHomeSections: View {
     @EnvironmentObject private var app: AppState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let actionItems: [ActionCenterItem]
 
     private var nextHosted: CatalogEvent? {
@@ -118,8 +126,7 @@ struct HostHomeSections: View {
         .task(id: app.myOrganizerID) {
             guard let org = app.myOrganizerID, !app.reportsLoading else { return }
             if let r = app.reportsData, r.success, ReportRole(scope: r.scope) == .host { return }
-            await app.fetchAccountKpis(scope: "host", organizerID: org, rangeDays: app.reportsRangeDays,
-                                       customStart: app.reportsCustomStart, customEnd: app.reportsCustomEnd)
+            await app.loadHostHomeKpis(organizerID: org)
         }
     }
 
@@ -177,12 +184,16 @@ struct HostHomeSections: View {
                                 .font(.system(size: 20, weight: .semibold))
                                 .frame(width: 56, height: 56)
                                 .background(app.palette.block, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            Text(a.short)
+                            // Note 71 phase 4: at accessibility sizes the one-word label truncated to "K…"; there the
+                            // tile is wider and the full title wraps (the row scrolls on its own).
+                            Text(dynamicTypeSize.isAccessibilitySize ? a.title : a.short)
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(app.palette.ink2)
-                                .lineLimit(1).minimumScaleFactor(0.8)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1).minimumScaleFactor(0.8)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                         }
-                        .frame(width: 64)
+                        .frame(width: dynamicTypeSize.isAccessibilitySize ? 132 : 64)
                         .foregroundStyle(app.palette.ink)
                         .contentShape(Rectangle())
                     }
@@ -204,7 +215,18 @@ struct HostHomeSections: View {
     @ViewBuilder
     private var upcomingList: some View {
         let list = upcoming
-        if !list.isEmpty {
+        // Calm Pass: the section no longer vanishes when nothing live is ahead (a host with only pending events saw
+        // blank space). Lib/HostHomeEmpty.swift picks what is true; nil means the list (or the hero) says it already.
+        if let variant = HostHomeEmpty.comingUp(upcoming: list.count, hasHero: nextHosted != nil,
+                                                pending: app.myPendingEvents.count, needsFix: app.myNeedsFixEvents.count) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(app.T("Sắp tới", "Coming up")).font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                comingUpEmpty(variant)
+            }
+            .padding(.horizontal, 20)
+            .accessibilityIdentifier("home.host.upcoming")
+        } else if !list.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 Text(app.T("Sắp tới", "Coming up")).font(.headline)
                     .accessibilityAddTraits(.isHeader)
@@ -245,6 +267,65 @@ struct HostHomeSections: View {
                 if !missing.isEmpty { await app.loadPublicEventFill(ids: missing) }
             }
         }
+    }
+
+    @ViewBuilder
+    private func comingUpEmpty(_ variant: HostHomeEmpty.ComingUp) -> some View {
+        let p = app.palette
+        switch variant {
+        case .needsFix:
+            let n = app.myNeedsFixEvents.count
+            InlineEmptyState(
+                title: n == 1 ? app.T("Có 1 sự kiện cần sửa", "1 event needs a fix")
+                              : app.T("Có \(n) sự kiện cần sửa", "\(n) events need a fix"),
+                message: app.T("Sửa và gửi lại để duyệt. Sự kiện sẽ hiện ở đây khi được mở.",
+                               "Fix it and send it back for review. It shows here once it's live."),
+                identifier: "home.host.upcoming.empty.needsFix"
+            ) {
+                Button { openSubmitted() } label: {
+                    InlineEmptyState<EmptyView>.actionLabel(app.T("Sửa ngay", "Fix now"), systemImage: "wrench.and.screwdriver", palette: p)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("home.host.upcoming.empty.action")
+            }
+        case .pending:
+            let n = app.myPendingEvents.count
+            InlineEmptyState(
+                title: n == 1 ? app.T("1 sự kiện đang chờ duyệt", "1 event is in review")
+                              : app.T("\(n) sự kiện đang chờ duyệt", "\(n) events are in review"),
+                message: app.T("banbe đang xem xét. Sự kiện sẽ hiện ở đây khi được mở.",
+                               "banbe is checking them. They show here once they're live."),
+                identifier: "home.host.upcoming.empty.pending"
+            ) {
+                Button { openSubmitted() } label: {
+                    InlineEmptyState<EmptyView>.actionLabel(app.T("Xem sự kiện đã gửi", "See submitted"), systemImage: "clock", palette: p)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("home.host.upcoming.empty.action")
+            }
+        case .quiet:
+            InlineEmptyState(
+                title: app.T("Chưa có lịch sắp tới", "Nothing scheduled yet"),
+                message: app.T("Chia sẻ trang tổ chức để khách theo dõi bạn trước sự kiện tiếp theo.",
+                               "Share your host page so guests can follow you before your next event."),
+                identifier: "home.host.upcoming.empty.quiet"
+            ) {
+                // The plan card above already offers Create, so this offers the other useful step.
+                if let org = app.myOrganizerID, let url = URL(string: "https://banbe.app/org/\(org)") {
+                    ShareLink(item: url) {
+                        InlineEmptyState<EmptyView>.actionLabel(app.T("Chia sẻ trang tổ chức", "Share host page"), systemImage: "square.and.arrow.up", palette: p)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("home.host.upcoming.empty.action")
+                }
+            }
+        }
+    }
+
+    private func openSubmitted() {
+        Haptics.light()
+        app.dashboardOpenSubmitted = true
+        app.goDashboard(back: .home)
     }
 
     // MARK: Hero
@@ -382,27 +463,40 @@ struct HostHomeSections: View {
         .padding(.horizontal, 20)
     }
 
-    // MARK: KPIs (only when Reports already loaded host numbers)
+    // MARK: KPIs
 
+    /// Up to three host numbers, or [] while no host report is in hand.
+    private var kpiMetrics: [ReportMetricPresentation] {
+        guard let report = app.reportsData, report.success, ReportRole(scope: report.scope) == .host else { return [] }
+        let d = ReportsPresentation.dashboard(report, fallbackScope: "host", T: app.T)
+        return Array(([d.primary].compactMap { $0 } + d.overview).prefix(3))
+    }
+
+    /// Calm Pass: the section shows while loading, on error (Retry) and when there are no numbers, instead of
+    /// disappearing. The heading names the range Reports used (it was "This month" but meant the last 30 days).
     @ViewBuilder
     private var kpiTiles: some View {
-        if let report = app.reportsData, report.success, ReportRole(scope: report.scope) == .host {
-            let d = ReportsPresentation.dashboard(report, fallbackScope: "host", T: app.T)
-            let tiles = Array(([d.primary].compactMap { $0 } + d.overview).prefix(3))
-            if !tiles.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text(app.T("Tháng này", "This month")).font(.headline)
-                        Spacer()
-                        Button {
-                            app.openReports(scope: "host", organizerID: app.myOrganizerID, back: .home)
-                        } label: {
-                            Text(app.T("Báo cáo ›", "Reports ›")).font(.subheadline.weight(.semibold))
-                                .frame(minHeight: 44).contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("home.host.reports")
+        let tiles = kpiMetrics
+        let hasHostReport = app.reportsData.map { $0.success && ReportRole(scope: $0.scope) == .host } ?? false
+        let state = HostHomeEmpty.kpiState(hasOrganizer: app.myOrganizerID != nil, loading: app.reportsLoading,
+                                           error: !app.reportsError.isEmpty, tiles: tiles.count, hasReport: hasHostReport)
+        if state != .hidden {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text(HostHomeEmpty.rangeHeading(app.reportsRangeDays, app.T)).font(.headline)
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    Button {
+                        app.openReports(scope: "host", organizerID: app.myOrganizerID, back: .home)
+                    } label: {
+                        Text(app.T("Báo cáo ›", "Reports ›")).font(.subheadline.weight(.semibold))
+                            .frame(minHeight: 44).contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("home.host.reports")
+                }
+                switch state {
+                case .tiles:
                     // Short tile labels (Lib/ReportMetricLabels.swift `short`); the full ones stay in Reports.
                     HostTileGrid(tiles: tiles.map { m in
                         HostTileGrid.Tile(id: m.key, value: m.valueText,
@@ -410,11 +504,41 @@ struct HostHomeSections: View {
                                           accessibilityValue: m.accessibilityValue,
                                           identifier: "home.host.kpi.\(m.key)")
                     })
+                case .loading:
+                    HostTileGrid(tiles: (0..<3).map { HostTileGrid.Tile(id: "loading\($0)", value: "–", label: " ") })
+                        .redacted(reason: .placeholder)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(app.T("Đang tải số liệu", "Loading numbers"))
+                        .accessibilityIdentifier("home.host.kpis.loading")
+                case .error:
+                    InlineEmptyState(
+                        title: app.T("Chưa tải được số liệu", "Couldn't load your numbers"),
+                        message: app.T("Kiểm tra kết nối rồi thử lại.", "Check your connection and try again."),
+                        identifier: "home.host.kpis.error"
+                    ) {
+                        Button {
+                            guard let org = app.myOrganizerID else { return }
+                            Task { await app.loadHostHomeKpis(organizerID: org) }
+                        } label: {
+                            InlineEmptyState<EmptyView>.actionLabel(app.T("Thử lại", "Retry"), systemImage: "arrow.clockwise", palette: app.palette)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("home.host.kpis.retry")
+                    }
+                case .empty:
+                    InlineEmptyState(
+                        title: app.T("Chưa có lượt đặt chỗ", "No bookings in this period"),
+                        message: app.T("Số liệu sẽ hiện ở đây khi khách bắt đầu đặt chỗ.",
+                                       "Your numbers show here once guests start booking."),
+                        identifier: "home.host.kpis.empty"
+                    ) { EmptyView() }
+                case .hidden:
+                    EmptyView()
                 }
-                .padding(.horizontal, 20)
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("home.host.kpis")
             }
+            .padding(.horizontal, 20)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("home.host.kpis")
         }
     }
 }

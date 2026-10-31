@@ -1544,8 +1544,32 @@ struct HomeView: View {
 
     // MARK: Empty / footer
 
-    /// Note 48: a cute scene + one clear next step instead of a bare line.
+    /// Note 48: a cute scene + one clear next step instead of a bare line. Calm Pass phase 2: when For You is on and
+    /// other filters leave nothing, say it is the combination (web twin: Home.jsx `home-empty-foryou`).
+    @ViewBuilder
     private var emptyState: some View {
+        if app.filterForYou && app.hasForYouMatches {
+            MotivatingEmptyState(
+                scene: .findPlans,
+                title: app.T("Chưa có sự kiện khớp lựa chọn của bạn", "No events match your picks yet"),
+                message: app.T("Các bộ lọc khác đang thu hẹp kết quả Dành cho bạn. Xem tất cả, hoặc chỉnh sở thích của bạn.",
+                               "Your other filters narrow For You down to nothing. See everything, or change what you like."),
+                actionTitle: app.T("Xem tất cả sự kiện", "See all events"),
+                actionIcon: "sparkles",
+                actionID: "home.empty.forYou.seeAll",
+                action: { app.clearFilters(); app.filterForYou = false; app.homeSort = "soonest" },
+                secondaryTitle: app.T("Chỉnh sở thích", "Edit my picks"),
+                secondaryID: "home.empty.forYou.prefs",
+                secondaryAction: { app.openEventPreferences(returnTo: .home) },
+                identifier: "home.empty.forYou"
+            )
+            .padding(.vertical, 20)
+        } else {
+            plainEmptyState
+        }
+    }
+
+    private var plainEmptyState: some View {
         let place = app.area == LocationHierarchy.allID ? nil : app.currentAreaLabel
         return MotivatingEmptyState(
             scene: .findPlans,

@@ -624,7 +624,8 @@ struct AccountView: View {
         let saved = app.favorites.count
         return [
             AccountTile(key: "tickets", symbol: "ticket", title: app.T("Vé & đặt chỗ", "Tickets"),
-                        value: app.T("\(going) sắp tới", "\(going) upcoming"),
+                        // Calm Pass phase 2: matches web, never "0 upcoming".
+                        value: going > 0 ? app.T("\(going) sắp tới", "\(going) upcoming") : app.T("Chưa có vé sắp tới", "Nothing upcoming"),
                         badge: AccountBadges.myTicketsActionCount(paymentBookings: app.paymentBookings)) { openGroup("activity") },
             AccountTile(key: "wallet", symbol: "creditcard", title: app.T("Ví & chứng từ", "Wallet"),
                         value: app.T("Hoá đơn, biên nhận, hoàn tiền", "Invoices, receipts, refunds"),

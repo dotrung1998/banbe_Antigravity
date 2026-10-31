@@ -54,14 +54,15 @@ final class DesignTokensTests: XCTestCase {
             let hexes: [(Color, String)] = [(palette.paper, "paper"), (palette.ink, "ink"), (palette.field, "field"),
                                             (palette.surface1, "surface1"), (palette.surface2, "surface2"),
                                             (palette.surface3, "surface3"), (palette.clay, "clay"), (palette.honey, "honey"),
-                                            (palette.block, "block"), (palette.blockInset, "blockInset")]
+                                            (palette.block, "block"), (palette.blockInset, "blockInset"),
+                                            (palette.mat, "mat"), (palette.matSlot, "matSlot")]
             for (color, key) in hexes { assertSame(color, try XCTUnwrap(t[key] as? String), "\(name) \(key)") }
             XCTAssertEqual(rgb(palette.ink2).3, try XCTUnwrap(t["ink2Alpha"] as? Double), accuracy: 0.003, "\(name) ink2")
             XCTAssertEqual(rgb(palette.ink3).3, try XCTUnwrap(t["ink3Alpha"] as? Double), accuracy: 0.003, "\(name) ink3")
 
             let alert = rgb(hex: try XCTUnwrap(t["alert"] as? String))
             for bg in [palette.paper, palette.surface1, palette.surface2, palette.surface3, palette.field,
-                       palette.block, palette.blockInset] {
+                       palette.block, palette.blockInset, palette.mat] {
                 let b = flat(bg, over: bg)
                 XCTAssertGreaterThanOrEqual(ratio(flat(palette.ink, over: bg), b), minContrast["ink"]!, "\(name) ink")
                 XCTAssertGreaterThanOrEqual(ratio(flat(palette.ink2, over: bg), b), minContrast["ink2"]!, "\(name) ink2")
@@ -85,6 +86,12 @@ final class DesignTokensTests: XCTestCase {
                 let bg = try XCTUnwrap(byKey[key], key)
                 XCTAssertGreaterThanOrEqual(ratio(flat(palette.honey, over: bg), flat(bg, over: bg)), minHoney, "\(name) honey on \(key)")
             }
+            // Note 71: clay text keeps AA where it is used as text (fixture `clayOn`; not on light block, 4.33:1).
+            let minClay = try XCTUnwrap((fx["minContrast"] as? [String: Double])?["clay"])
+            for key in try XCTUnwrap(fx["clayOn"] as? [String]) {
+                let bg = try XCTUnwrap(key == "mat" ? palette.mat : byKey[key], key)
+                XCTAssertGreaterThanOrEqual(ratio(flat(palette.clay, over: bg), flat(bg, over: bg)), minClay, "\(name) clay on \(key)")
+            }
         }
         assertSame(Palette.light.block, "#EEE8DA", "light block = surface2")
         assertSame(Palette.dark.block, "#1A1815", "dark block = today's surface1")
@@ -92,6 +99,21 @@ final class DesignTokensTests: XCTestCase {
         XCTAssertEqual(lightBlock.0, lightS2.0, accuracy: 0.003)
         let darkBlock = rgb(Palette.dark.block), darkS1 = rgb(Palette.dark.surface1)
         XCTAssertEqual(darkBlock.0, darkS1.0, accuracy: 0.003)
+    }
+
+    /// Note 71 phase 4: the white glyph on the controls over a cover photo keeps AA over the worst photos (the material
+    /// under the fill is treated as one more photo).
+    func testPhotoControlKeepsContrastOverAnyPhoto() throws {
+        let pc = try XCTUnwrap(try fixture()["photoControl"] as? [String: Any])
+        assertSame(BanbeTheme.photoControl, try XCTUnwrap(pc["hex"] as? String), "photoControl")
+        XCTAssertEqual(BanbeTheme.photoControlAlpha, try XCTUnwrap(pc["alpha"] as? Double), accuracy: 0.001)
+        let minC = try XCTUnwrap(pc["minContrast"] as? Double)
+        let fill = rgb(BanbeTheme.photoControl)
+        for photo in try XCTUnwrap(pc["photos"] as? [String]) {
+            let p = rgb(hex: photo), a = BanbeTheme.photoControlAlpha
+            let bg = (fill.0 * a + p.0 * (1 - a), fill.1 * a + p.1 * (1 - a), fill.2 * a + p.2 * (1 - a))
+            XCTAssertGreaterThanOrEqual(ratio((1, 1, 1), bg), minC, "white on photo control over \(photo)")
+        }
     }
 
     func testThemeChoiceRulesMatchWeb() throws {

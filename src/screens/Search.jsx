@@ -7,7 +7,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { takeSearchOrigin } from '../lib/searchOrigin.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, bg, catalogStartMs } from '../data/events.js';
-import { paper, ink, rule, display, fieldGlass, RADIUS } from '../theme.js';
+import { paper, ink, ink2, rule, display, fieldGlass, RADIUS } from '../theme.js';
+import { inlineEmptyAction } from '../components/ui/InlineEmpty.jsx';
 import { buildEventSearchDoc, matchesSearchQuery, normalizeSearchText } from '../lib/search.js';
 import { buildLocationSearchIndex, searchLocationTree } from '../lib/locationTree.js';
 import { formatVnEventDate } from '../lib/countdown.js';
@@ -219,7 +220,19 @@ export default function Search({ overlay = false }) {
           {total === 0 && (
             <div data-testid="search-empty" style={{ padding: '36px 24px', textAlign: 'center' }}>
               <div style={{ ...display(17) }}>{T(`Không có kết quả cho "${query}"`, `Nothing for "${query}"`)}</div>
-              <div style={{ fontSize: 13, opacity: 0.65, marginTop: 6 }}>{T('Thử một từ ngắn hơn, tên khu vực, hoặc một danh mục.', 'Try a shorter word, an area, or a category.')}</div>
+              <div style={{ fontSize: 13, color: ink2, marginTop: 6 }}>{T('Thử một từ ngắn hơn, tên khu vực, hoặc một danh mục.', 'Try a shorter word, an area, or a category.')}</div>
+              {/* Calm Pass phase 2: a way forward instead of a dead end. Categories are the real list, not suggestions. */}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginTop: 14 }}>
+                <button type="button" className="bb-press" data-testid="search-empty-all" onClick={() => { pickFilter('all'); goHome(); }} style={inlineEmptyAction}>
+                  {T('Xem tất cả sự kiện', 'See all events')}
+                </button>
+                <button type="button" className="bb-press" data-testid="search-empty-clear" onClick={() => setQ('')} style={inlineEmptyAction}>
+                  {T('Xoá tìm kiếm', 'Clear search')}
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 18 }}>
+                {CATEGORY_DEFS.filter(c => c.key !== 'all').map(c => chip(c.key, T(c.vi, c.en), () => { pickFilter(c.key); goHome(); }, `search-empty-cat-${c.key}`, <CategoryGlyph cat={c.key} size={16} />))}
+              </div>
             </div>
           )}
           {eventHits.length > 0 && groupTitle(T('Sự kiện', 'Events'), eventHits.length, 'search-group-events')}
