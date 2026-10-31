@@ -3,7 +3,8 @@ import QRCode from 'qrcode';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { organizerAvatarPublicUrl, publicEventPhotoUrl } from '../lib/mediaUrls.js';
-import { paper, ink, rule, alert, display, cardGlass } from '../theme.js';
+import { paper, ink, ink2, rule, alert, display, cardGlass, surface2, clay, attn, divider, RADIUS, SPACE } from '../theme.js';
+import { CARD_GLOW } from '../lib/profileCard.js';
 import { bg } from '../data/events.js';
 import { SocialLinksEditor } from './SocialLinksEditor.jsx';
 import ProfileShareSheet, { profileShareLinks } from './sheets/ProfileShareSheet.jsx';
@@ -136,39 +137,38 @@ export default function OrganizerProfile() {
           use above their back/share-adjacent rows (an existing spacing
           value, not a new one), giving this row and the card a touch more
           breathing room. */}
-      <div data-testid="organizer-profile-card" style={{ ...cardGlass({ margin: '22px 20px 0', padding: '28px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }) }}>
-        {avatarSrc ? (
-          <img src={avatarSrc} alt="" data-testid="organizer-profile-avatar" style={{ width: 88, height: 88, borderRadius: 20, objectFit: 'cover', border: `3px solid ${paper}` }} />
-        ) : (
-          <div style={{ width: 88, height: 88, borderRadius: 20, background: ink, color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, fontWeight: 700, border: `3px solid ${paper}` }}>
-            {monogram}
+      {/* Same identity card as the personal profile (note 68): left-aligned, full width, ring avatar, name as the
+          largest text, a role line, the about text, then the stats strip inside the card; Follow under it. */}
+      <div data-testid="organizer-profile-card" style={{ margin: `${SPACE.s}px 16px 0`, padding: 20, borderRadius: 20, color: ink, display: 'flex', flexDirection: 'column', gap: SPACE.m,
+        background: `radial-gradient(circle at 100% 0%, rgba(var(--bb-clay-rgb), ${CARD_GLOW}), transparent 60%), ${surface2}`, boxShadow: 'inset 0 0 0 1px rgba(var(--bb-fg-rgb),0.06)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.l }}>
+          <span aria-hidden style={{ flex: 'none', width: 80, height: 80, borderRadius: '50%', padding: 2, background: `linear-gradient(135deg, ${clay}, ${attn})`, boxSizing: 'border-box' }}>
+            <span style={{ display: 'block', width: '100%', height: '100%', borderRadius: '50%', padding: 2, background: paper, boxSizing: 'border-box' }}>
+              {avatarSrc ? (
+                <img src={avatarSrc} alt="" data-testid="organizer-profile-avatar" style={{ display: 'block', width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+              ) : (
+                <span style={{ display: 'flex', width: '100%', height: '100%', borderRadius: '50%', background: ink, color: paper, alignItems: 'center', justifyContent: 'center', fontSize: 26, fontWeight: 600 }}>{monogram}</span>
+              )}
+            </span>
+          </span>
+          <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ ...display(26, { lineHeight: 1.15 }), overflowWrap: 'anywhere' }} data-testid="organizer-profile-name">{org.name}</span>
+            <span style={{ fontSize: 13, color: ink2 }}>{T('Host', 'Host')}{org.verified ? ` · ✓ ${T('Đã xác minh', 'Verified')}` : ''}</span>
+            {/* Derived from the earliest real published (live/ended) event — never the free-text hosting_since column
+                (get_organizer_profile, migration 095); nothing published yet gets an honest line, never a made-up year. */}
+            {!org.hosting_since_year && <span style={{ fontSize: 13, color: ink2 }}>{T('Chưa có sự kiện công khai nào', 'No published events yet')}</span>}
           </div>
-        )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ ...display(21) }} data-testid="organizer-profile-name">{org.name}</span>
-          {org.verified && <span style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.7 }}>✓ {T('Đã xác minh', 'Verified')}</span>}
         </div>
-        {org.about && <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, textAlign: 'center', margin: '4px 0 0' }}>{org.about}</p>}
-        {/* Organizer Team pass (2026-09-27, Stage 3) — a SEPARATE
-            long-form intro; org.about (the short one) is untouched. */}
-        <LongIntroPreview T={T} text={org.intro_long} />
-        <SocialLinksRow links={org.social_links} />
-
-        <div style={{ display: 'flex', gap: 20, marginTop: 10 }}>
-          <Stat value={org.event_count} label={T('Sự kiện', 'Events')} />
-          <Stat value={org.follower_count} label={T('Người theo dõi', 'Followers')} />
+        {org.about && <p style={{ fontSize: 15, lineHeight: 1.45, color: ink, margin: 0 }}>{org.about}</p>}
+        <div data-testid="organizer-profile-stats" style={{ display: 'flex', borderTop: `1px solid ${divider}`, paddingTop: SPACE.m }}>
+          {[[org.event_count ?? 0, T('Sự kiện', 'Events')], [org.follower_count ?? 0, T('Người theo dõi', 'Followers')],
+            ...(org.hosting_since_year ? [[org.hosting_since_year, T('Từ năm', 'Since')]] : [])].map(([v, l], i) => (
+            <div key={l} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2, paddingLeft: i ? SPACE.m : 0, borderLeft: i ? `1px solid ${divider}` : 'none' }}>
+              <span style={{ fontSize: 17, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{v}</span>
+              <span style={{ fontSize: 13, color: ink2 }}>{l}</span>
+            </div>
+          ))}
         </div>
-        {/* Derived from the earliest real published (live/ended) event —
-            never the organizer's own free-text hosting_since column,
-            which nothing ever actually sets (get_organizer_profile,
-            migration 095). An organizer with nothing published yet gets
-            an honest empty line, never a fabricated year. */}
-        <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>
-          {org.hosting_since_year
-            ? T(`Tổ chức từ ${org.hosting_since_year}`, `Hosting since ${org.hosting_since_year}`)
-            : T('Chưa có sự kiện công khai nào', 'No published events yet')}
-        </span>
-
         {!isOwner && s.user?.id && (
           <div
             onClick={() => toggleFollowOrganizer(org.id)}
@@ -176,7 +176,7 @@ export default function OrganizerProfile() {
             role="button"
             aria-pressed={following}
             style={{
-              marginTop: 10, fontSize: 13, fontWeight: 600, padding: '10px 24px', borderRadius: 999, cursor: 'pointer',
+              minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 600, borderRadius: RADIUS.pill, cursor: 'pointer',
               background: following ? 'transparent' : ink, color: following ? ink : paper,
               border: following ? `1px solid ${rule}` : 'none',
             }}
@@ -185,9 +185,18 @@ export default function OrganizerProfile() {
           </div>
         )}
         {!isOwner && s.followWriteError && (
-          <span role="alert" data-testid="organizer-profile-follow-error" style={{ fontSize: 11.5, color: alert, marginTop: 6 }}>{s.followWriteError}</span>
+          <span role="alert" data-testid="organizer-profile-follow-error" style={{ fontSize: 13, color: alert }}>{s.followWriteError}</span>
         )}
       </div>
+
+      {(org.intro_long || (org.social_links || []).length > 0) && (
+        <section style={{ margin: `${SPACE.xl}px 16px 0`, display: 'flex', flexDirection: 'column', gap: SPACE.s, alignItems: 'flex-start' }}>
+          <span style={display(17, { lineHeight: 1.3 })}>{T('Giới thiệu', 'About')}</span>
+          {/* Organizer Team pass (2026-09-27, Stage 3) — a SEPARATE long-form intro; org.about is untouched. */}
+          <LongIntroPreview T={T} text={org.intro_long} />
+          <SocialLinksRow links={org.social_links} />
+        </section>
+      )}
 
       {/* Organizer Team pass (2026-09-27, Stage 2) — a prominent, large
           tappable row using the organizer's own real name (never the
@@ -203,13 +212,13 @@ export default function OrganizerProfile() {
       <div
         onClick={() => openOrganizerTeam(org.id, 'organizerProfile')}
         data-testid="organizer-profile-team-row"
-        style={{ ...cardGlass({ margin: '16px 20px 0', padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+        style={{ margin: `${SPACE.xl}px 16px 0`, padding: `${SPACE.m}px ${SPACE.l}px`, minHeight: 44, boxSizing: 'border-box', borderRadius: RADIUS.card, background: surface2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
       >
-        <span style={{ fontSize: 14, fontWeight: 600, color: ink }}>{T(`Bởi ${org.name} Team`, `By the ${org.name} Team`)}</span>
+        <span style={{ fontSize: 15, fontWeight: 600, color: ink }}>{T(`Bởi ${org.name} Team`, `By the ${org.name} Team`)}</span>
         <span aria-hidden style={{ fontSize: 20, color: ink, opacity: 0.55 }}>›</span>
       </div>
 
-      <div onClick={() => setQrOpen(true)} data-testid="organizer-profile-qr-cta" style={{ margin: '12px 20px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '13px 0', border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer' }}>
+      <div onClick={() => setQrOpen(true)} data-testid="organizer-profile-qr-cta" role="button" style={{ margin: `${SPACE.m}px 16px 0`, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 600, color: ink, background: surface2, borderRadius: RADIUS.pill, cursor: 'pointer' }}>
         {T('Hiển thị mã QR tổ chức', "Show the organizer's QR code")}
       </div>
 
@@ -218,7 +227,7 @@ export default function OrganizerProfile() {
           `org.id === s.myOrganizerId` gates this, never a personal-profile
           check — there's no such concept on this screen. */}
       {isOwner && (
-        <div style={{ margin: '10px 20px 0' }}>
+        <div style={{ margin: `${SPACE.s}px 16px 0` }}>
           {editing ? (
             <div style={{ ...cardGlass({ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }) }} data-testid="organizer-profile-edit-card">
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -272,7 +281,7 @@ export default function OrganizerProfile() {
               {s.orgProfileError && <p style={{ fontSize: 11.5, color: alert, margin: 0 }}>{s.orgProfileError}</p>}
             </div>
           ) : (
-            <div onClick={() => setEditing(true)} data-testid="organizer-profile-edit" style={{ textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '13px 0', border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer' }}>
+            <div onClick={() => setEditing(true)} data-testid="organizer-profile-edit" role="button" style={{ minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 600, color: ink, background: surface2, borderRadius: RADIUS.pill, cursor: 'pointer' }}>
               {T('Chỉnh sửa hồ sơ tổ chức', "Edit organizer profile")}
             </div>
           )}
@@ -380,15 +389,6 @@ export default function OrganizerProfile() {
       {s.profileLinkCopiedFlash && (
         <p style={{ textAlign: 'center', fontSize: 11.5, color: ink, opacity: 0.7, margin: '10px 0 0' }}>{T('Đã sao chép link tổ chức', "Organizer link copied")}</p>
       )}
-    </div>
-  );
-}
-
-function Stat({ value, label }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-      <span style={{ ...display(17) }}>{value}</span>
-      <span style={{ fontSize: 10, color: ink, opacity: 0.7 }}>{label}</span>
     </div>
   );
 }

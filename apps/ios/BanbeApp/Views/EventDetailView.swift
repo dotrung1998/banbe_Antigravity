@@ -78,6 +78,7 @@ struct EventDetailView: View {
     @State private var criteriaScrollRequest = 0
     /// About's "Read more" expanded the description in place (note 68).
     @State private var aboutExpanded = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     // Airbnb-style layout: the photo is a fixed backdrop that fades out while the rounded info sheet scrolls up over it.
     /// 320 (was 400, note 68): with the sheet's overlap, Date / Time / Place, the Host row and the CTA fit a 6.1" phone.
@@ -892,11 +893,14 @@ struct EventDetailView: View {
             // Ngày / Giờ / Địa điểm: three equal tiles; directions is an icon-only button in the place tile's corner. The
             // venue-time note is one quiet line under them, only when this device's clock reads the time differently.
             VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
-                ViewThatFits(in: .horizontal) {
+                // Always side by side, one width and one height each (a long place wraps inside its tile); only the
+                // accessibility text sizes stack them one per row, so nothing clips. (`ViewThatFits` used to fall back
+                // to the stack whenever the place text was wide, e.g. "Quận 3 ▪︎ 9662,6 km away".)
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: BanbeTheme.Space.s) { dateTile; timeTile; placeTile }
+                } else {
                     HStack(alignment: .top, spacing: BanbeTheme.Space.s) { dateTile; timeTile; placeTile }
                         .fixedSize(horizontal: false, vertical: true)
-                    // Accessibility text sizes: one tile per row, never clipped.
-                    VStack(spacing: BanbeTheme.Space.s) { dateTile; timeTile; placeTile }
                 }
                 if let note = venueTimeNote {
                     Text(note).font(.footnote).foregroundStyle(app.palette.ink3)

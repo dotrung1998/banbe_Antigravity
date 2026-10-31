@@ -130,3 +130,12 @@ Pure rules live in `src/lib/profileCard.js` ⇄ `Lib/ProfileCard.swift`. The sha
     A signed-out launch now lands on the guest Welcome screen (notes 44/49), not `screen.home`.
   - The web `event-detail-intro-included.spec.js` fails at `setupToHome` (the DOB gate).
 - **Run `xcodegen generate` after pulling.** There are new Swift files.
+
+## Follow-up (2026-10-31, from the owner's device screenshots)
+- iOS Event Detail tiles stacked one per row on device: `ViewThatFits` fell back to the vertical stack whenever the
+  place text was wide ("Quận 3 ▪︎ 9662,6 km away"). The row is now always side by side with equal sizes (the place
+  wraps inside its tile); only accessibility text sizes stack them (`dynamicTypeSize.isAccessibilitySize`).
+- Host profile (`OrganizerProfile.jsx` / `OrganizerProfileView.swift`) now uses the personal card's design:
+  left-aligned 80pt ring avatar, name at 26, "Host" (+ Verified) line, about text, stats strip inside (Events,
+  Followers, Since), Follow as a 44pt pill in the card, long intro + links moved below under About, Team row / QR /
+  Edit organizer profile as 44pt surface2 rows/pills, 16pt gutter. Test ids unchanged.

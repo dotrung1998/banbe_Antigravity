@@ -61,8 +61,8 @@ struct OrganizerProfileView: View {
                     // and this rounded card: 10pt, the same small-gap value
                     // already used elsewhere in this file (teamRow/editCard
                     // below), not a new token.
-                    card(org)
-                        .padding(.top, 10)
+                    VStack(alignment: .leading, spacing: 0) { card(org) }
+                        .padding(.top, BanbeTheme.Space.s)
 
                     // Organizer Team pass (2026-09-27, Stage 2) — a
                     // prominent, large tappable row using the organizer's
@@ -80,23 +80,28 @@ struct OrganizerProfileView: View {
                         Task { await app.openOrganizerTeam(organizerID: org.id ?? "", back: .organizerProfile) }
                     } label: {
                         HStack {
-                            Text(app.T("Bởi \(org.name ?? "") Team", "By the \(org.name ?? "") Team")).font(.system(size: 14, weight: .semibold))
+                            Text(app.T("Bởi \(org.name ?? "") Team", "By the \(org.name ?? "") Team")).font(.subheadline.weight(.semibold))
                             Spacer()
                             Text("›").font(.system(size: 20)).opacity(0.55)
                         }
                         .foregroundStyle(app.palette.ink)
-                        .padding(16)
-                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .padding(.horizontal, BanbeTheme.Space.l).padding(.vertical, BanbeTheme.Space.m)
+                        .frame(minHeight: 44)
+                        .background(app.palette.surface2, in: RoundedRectangle(cornerRadius: BanbeTheme.Radius.card, style: .continuous))
                     }
                     .buttonStyle(.plain)
-                    .padding(.top, 10)
+                    .padding(.top, BanbeTheme.Space.xl)
                     .accessibilityIdentifier("organizerProfile.teamRow")
 
-                    Button(app.T("Hiển thị mã QR tổ chức", "Show the organizer's QR code")) { qrOpen = true }
-                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
-                        .frame(maxWidth: .infinity).padding(.vertical, 13)
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
-                        .padding(.top, 10)
+                    Button { qrOpen = true } label: {
+                        Text(app.T("Hiển thị mã QR tổ chức", "Show the organizer's QR code"))
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(app.palette.ink)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .background(app.palette.surface2, in: Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .padding(.top, BanbeTheme.Space.m)
                         .accessibilityIdentifier("organizerProfile.qrCta")
 
                     // Owner only — edits organizers.name/about/avatarPath
@@ -224,7 +229,7 @@ struct OrganizerProfileView: View {
                 }
             }
             .foregroundStyle(app.palette.ink)
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 16)
             .padding(.bottom, 30)
         }
         .task {
@@ -293,42 +298,71 @@ struct OrganizerProfileView: View {
         .presentationDetents([.medium])
     }
 
+    /// Same identity card as the personal profile (note 68): left-aligned, full width, ring avatar, name as the
+    /// largest text, a role line, the about text, then the stats strip inside the card; Follow under it.
     @ViewBuilder
     private func card(_ org: OrganizerProfile) -> some View {
-        VStack(spacing: 10) {
-            if let url = organizerAvatarURL {
-                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
-                    .frame(width: 88, height: 88).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(app.palette.paper, lineWidth: 3))
-            } else {
-                RoundedRectangle(cornerRadius: 20).fill(app.palette.ink).frame(width: 88, height: 88)
-                    .overlay(Text(String((org.name ?? "?").prefix(1)).uppercased()).font(.system(size: 32, weight: .bold)).foregroundStyle(app.palette.paper))
-            }
-            HStack(spacing: 8) {
-                Text(org.name ?? "").font(BanbeTheme.display(21)).accessibilityIdentifier("organizerProfile.name")
-                if org.verified == true {
-                    Text("✓ " + app.T("Đã xác minh", "Verified")).font(.system(size: 11, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
+            HStack(alignment: .center, spacing: BanbeTheme.Space.l) {
+                ZStack {
+                    Circle().fill(LinearGradient(colors: [app.palette.clay, BanbeTheme.attn], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    Circle().fill(app.palette.paper).padding(2)
+                    Group {
+                        if let url = organizerAvatarURL {
+                            AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
+                        } else {
+                            ZStack {
+                                app.palette.ink
+                                Text(String((org.name ?? "?").prefix(1)).uppercased())
+                                    .font(.system(size: 26, weight: .semibold)).foregroundStyle(app.palette.paper)
+                            }
+                        }
+                    }
+                    .frame(width: 72, height: 72)
+                    .clipShape(Circle())
                 }
+                .frame(width: 80, height: 80)
+                .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(org.name ?? "").font(BanbeTheme.display(26))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("organizerProfile.name")
+                    Text("Host" + (org.verified == true ? " · ✓ " + app.T("Đã xác minh", "Verified") : ""))
+                        .font(.footnote).foregroundStyle(app.palette.ink2)
+                    // Derived from the earliest real published (live/ended) event — never the free-text
+                    // hosting_since column (get_organizer_profile, migration 095); never a made-up year.
+                    if org.hostingSinceYear == nil {
+                        Text(app.T("Chưa có sự kiện công khai nào", "No published events yet"))
+                            .font(.footnote).foregroundStyle(app.palette.ink2)
+                    }
+                }
+                Spacer(minLength: 0)
             }
             if let about = org.about, !about.isEmpty {
-                Text(about).font(.system(size: 12.5)).multilineTextAlignment(.center).foregroundStyle(app.palette.ink)
+                Text(about).font(.subheadline).fixedSize(horizontal: false, vertical: true)
             }
-            // Organizer Team pass (2026-09-27, Stage 3) — SEPARATE
-            // long-form intro; `about` above is untouched.
-            LongIntroPreview(text: org.introLong)
-            SocialLinksRow(links: org.socialLinks)
-            HStack(spacing: 20) {
-                statView("\(org.eventCount ?? 0)", app.T("Sự kiện", "Events"))
-                statView("\(org.followerCount ?? 0)", app.T("Người theo dõi", "Followers"))
+            VStack(spacing: BanbeTheme.Space.m) {
+                Rectangle().fill(app.palette.divider).frame(height: 1)
+                HStack(spacing: 0) {
+                    let stats: [(String, String)] = [("\(org.eventCount ?? 0)", app.T("Sự kiện", "Events")),
+                                                     ("\(org.followerCount ?? 0)", app.T("Người theo dõi", "Followers"))]
+                        + (org.hostingSinceYear.map { [("\($0)", app.T("Từ năm", "Since"))] } ?? [])
+                    ForEach(Array(stats.enumerated()), id: \.offset) { i, st in
+                        HStack(spacing: 0) {
+                            if i > 0 { Rectangle().fill(app.palette.divider).frame(width: 1).padding(.trailing, BanbeTheme.Space.m) }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(verbatim: st.0).font(.headline.monospacedDigit())
+                                Text(st.1).font(.footnote).foregroundStyle(app.palette.ink2)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.top, 6)
-            // Derived from the earliest real published (live/ended) event —
-            // never the organizer's own free-text hosting_since column,
-            // which nothing ever actually sets (get_organizer_profile,
-            // migration 095).
-            Text(org.hostingSinceYear.map { app.T("Tổ chức từ \($0)", "Hosting since \($0)") }
-                 ?? app.T("Chưa có sự kiện công khai nào", "No published events yet"))
-                .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+            .accessibilityIdentifier("organizerProfile.stats")
 
             if !isOwner, app.userID != nil, let id = org.id {
                 // The canonical follow list (what Account > Following edits) once loaded; the RPC flag until then.
@@ -336,40 +370,55 @@ struct OrganizerProfileView: View {
                 Button {
                     Task { await app.toggleFollowOrganizer(id) }
                 } label: {
-                    if following {
-                        HStack(spacing: 5) {
-                            Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).accessibilityHidden(true)
-                            Text(app.T("Đang theo dõi", "Following"))
+                    Group {
+                        if following {
+                            HStack(spacing: 5) {
+                                Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).accessibilityHidden(true)
+                                Text(app.T("Đang theo dõi", "Following"))
+                            }
+                        } else {
+                            Text(app.T("Theo dõi", "Follow"))
                         }
-                    } else {
-                        Text(app.T("Theo dõi", "Follow"))
                     }
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Capsule())
                 }
-                .font(.system(size: 13, weight: .semibold))
-                .padding(.horizontal, 24).padding(.vertical, 10)
+                .font(.subheadline.weight(.semibold))
                 .background(following ? Color.clear : app.palette.ink, in: Capsule())
                 .foregroundStyle(following ? app.palette.ink : app.palette.paper)
                 .overlay(Capsule().stroke(following ? app.palette.rule : .clear))
-                .padding(.top, 6)
                 .accessibilityAddTraits(following ? .isSelected : [])
                 .accessibilityIdentifier("organizerProfile.follow")
                 if !app.followWriteError.isEmpty {
-                    Text(app.followWriteError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                    Text(app.followWriteError).font(.footnote).foregroundStyle(BanbeTheme.alert)
                         .accessibilityIdentifier("organizerProfile.followError")
                 }
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 28).padding(.horizontal, 22)
-        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background {
+            let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+            ZStack {
+                shape.fill(app.palette.surface2)
+                shape.fill(RadialGradient(colors: [app.palette.clay.opacity(ProfileCard.glow), .clear],
+                                          center: .topTrailing, startRadius: 0, endRadius: 220))
+                shape.strokeBorder(app.palette.ink.opacity(0.06), lineWidth: 1)
+            }
+        }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("organizerProfile.card")
-    }
 
-    @ViewBuilder
-    private func statView(_ value: String, _ label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value).font(BanbeTheme.display(17))
-            Text(label).font(.system(size: 10)).foregroundStyle(app.palette.ink.opacity(0.7))
+        // Moved out of the card, as on the personal profile: the long intro and links under an About heading.
+        if (org.introLong?.isEmpty == false) || !(org.socialLinks ?? []).isEmpty {
+            VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+                Text(app.T("Giới thiệu", "About")).font(BanbeTheme.display(17))
+                // Organizer Team pass (2026-09-27, Stage 3) — SEPARATE long-form intro; `about` is untouched.
+                LongIntroPreview(text: org.introLong)
+                SocialLinksRow(links: org.socialLinks)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, BanbeTheme.Space.xl)
         }
     }
 
@@ -443,19 +492,21 @@ struct OrganizerProfileView: View {
                     Text(app.orgProfileError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                 }
             } else {
-                Button(app.T("Chỉnh sửa hồ sơ tổ chức", "Edit organizer profile")) { editing = true }
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .frame(maxWidth: .infinity).padding(.vertical, 13)
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
-                    .foregroundStyle(app.palette.ink)
-                    .buttonStyle(.plain)
+                Button { editing = true } label: {
+                    Text(app.T("Chỉnh sửa hồ sơ tổ chức", "Edit organizer profile"))
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(app.palette.ink)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(app.palette.surface2, in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(PressableButtonStyle())
                     .accessibilityIdentifier("organizerProfile.edit")
             }
         }
         .foregroundStyle(app.palette.ink)
         .padding(editing ? 16 : 0)
         .background(editing ? AnyView(app.palette.field.clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))) : AnyView(Color.clear))
-        .padding(.top, 10)
+        .padding(.top, BanbeTheme.Space.s)
         .onChange(of: avatarPickerItem) { _, item in
             Task {
                 guard let item, let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
