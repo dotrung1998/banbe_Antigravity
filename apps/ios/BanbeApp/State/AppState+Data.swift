@@ -5295,12 +5295,24 @@ try await SupabaseService.client
                         let details: EventDetailsPayload
                         enum CodingKeys: String, CodingKey { case eventId = "p_event_id", details = "p_details" }
                     }
-                    let primary = createCats.first ?? "supper"
-                    let cleaned = EventTypes.clean(EventTypes.profile(primary), createDetails[primary] ?? [:])
+                    // Note 69 (migration 207): both picked types' facts, the second category and the intro style.
+                    let cleaned = EventTypes.publishDetails(keys: createCats.isEmpty ? ["supper"] : createCats, draft: createDetails,
+                                                            introFont: createIntroFont, introColor: createIntroColor)
                     do {
-                        let _: JSONValue = try await SupabaseService.client
+                        let r: [String: JSONValue] = try await SupabaseService.client
                             .rpc("set_event_details", params: SetDetailsParams(eventId: eventID, details: EventDetailsPayload(cleaned)))
                             .execute().value
+                        // Before migration 207 the server refuses the second type's fields and the 207 keys; fall back
+                        // to the first type's facts alone (exactly what it accepted before), so nothing else is lost.
+                        if case .string(let code)? = r["error"], ["INVALID_DETAILS", "FIELD_NOT_FOR_TYPE"].contains(code),
+                           let primary = createCats.first {
+                            let primaryOnly = EventTypes.clean(EventTypes.profile(primary), createDetails[primary] ?? [:])
+                            if primaryOnly != cleaned {
+                                let _: JSONValue = try await SupabaseService.client
+                                    .rpc("set_event_details", params: SetDetailsParams(eventId: eventID, details: EventDetailsPayload(primaryOnly)))
+                                    .execute().value
+                            }
+                        }
                     } catch {
                         print("set_event_details failed (migration 203 not applied?):", error)
                     }
@@ -5469,7 +5481,20 @@ try await SupabaseService.client
         createChatGreeting = real.chatGreeting ?? ""
         createChatGreetingEn = real.chatGreetingEn ?? ""
         createDetails = [:]
-        if let key = real.catKey, let values = real.details?.values, !values.isEmpty { createDetails[key] = values }
+        if let key = real.catKey, let values = real.details?.values, !values.isEmpty {
+            // Note 69: split what was published back into the draft's shape: the second category joins the picks, its
+            // own fields go under it, the intro style goes to `_style`, the rest stays under the first type.
+            let second = EventTypes.secondCategory(values, primary: key)
+            if let second, !createCats.contains(second) { createCats.append(second) }
+            let keys = [key, second].compactMap { $0 }
+            for (field, value) in values where !EventTypes.extraKeys.contains(field) {
+                let owner = EventTypes.owner(of: field, keys: keys) ?? key
+                createDetails[owner, default: [:]][field] = value
+            }
+            let style = EventTypes.introStyle(values)
+            createIntroFont = style.font ?? "sans"
+            createIntroColor = style.color ?? "ink"
+        }
         createKwDismissed = []
         if real.chatGreeting == nil && real.chatGreetingEn == nil {
             let editID = real.id

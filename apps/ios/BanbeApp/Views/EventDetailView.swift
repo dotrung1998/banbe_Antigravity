@@ -181,7 +181,8 @@ struct EventDetailView: View {
 
     private var event: CatalogEvent { preview?.event ?? app.currentEvent }
     /// Event type profiles (migration 203): only while the switch is on; a type without a profile renders as before.
-    private var typeProfile: EventTypeProfile? { app.eventTypesEnabled ? EventTypes.profile(event.catKey) : nil }
+    /// Note 69: the event's own type plus its second category (details.cat2, migration 207).
+    private var typeProfile: EventTypeProfile? { app.eventTypesEnabled ? EventTypes.eventProfile(catKey: event.catKey, details: event.details) : nil }
     private var typeFacts: [EventTypes.Fact] {
         typeProfile.map { EventTypes.detailFacts($0, event.details, lang: app.isEN ? "en" : "vi") } ?? []
     }

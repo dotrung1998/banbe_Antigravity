@@ -423,8 +423,8 @@ struct CreateEventView: View {
     }
     /// Event types on: the type's required facts (alcohol, minimum age…) still empty.
     private var typeMissing: [String: Bool] {
-        guard let typeProfile, let key = app.createCats.first else { return [:] }
-        return EventTypes.missingDetails(typeProfile, app.createDetails[key] ?? [:])
+        guard let typeProfile, !app.createCats.isEmpty else { return [:] }
+        return EventTypes.missingDetails(typeProfile, EventTypes.mergedDraft(app.createCats, app.createDetails))
     }
     private var photosValid: Bool { galleryItems.count >= minPhotos && galleryItems.count <= maxPhotos }
     private var hasCreateFieldErrors: Bool {
@@ -471,11 +471,11 @@ struct CreateEventView: View {
     private var progress: CreateProgress.Result {
         CreateProgress.compute(missing: missingFields, required: EventTypes.requiredFields(typeProfile ?? .generic("")))
     }
-    /// Event type profiles (switch event_type_profiles, migration 203): the first picked category shapes the form.
-    /// Off, or a type with no profile: everything behaves exactly as before.
+    /// Event type profiles (switch event_type_profiles, migration 203): the picked categories shape the form. Note 69:
+    /// with two picks, both types' fields are asked (EventTypes.combined). Off: everything behaves exactly as before.
     private var typeProfile: EventTypeProfile? {
-        guard app.eventTypesEnabled, let key = app.createCats.first else { return nil }
-        return EventTypes.profile(key)
+        guard app.eventTypesEnabled, !app.createCats.isEmpty else { return nil }
+        return EventTypes.combined(app.createCats)
     }
     private var langCode: String { app.isEN ? "en" : "vi" }
     private func sectionDone(_ section: Section) -> Bool { progress.steps[section.rawValue].done }
@@ -511,7 +511,7 @@ struct CreateEventView: View {
             keywords: draftKeywords, priceVnd: draftPriceVnd, seats: seatsBinding, startsAt: draftStartsAt,
             photos: galleryItems.count, chatGreeting: app.createChatGreeting + app.createChatGreetingEn,
             offsetMin: venueOffsetMin(draftStartsAt),
-            details: app.createCats.first.flatMap { app.createDetails[$0] } ?? [:]
+            details: EventTypes.mergedDraft(app.createCats, app.createDetails)
         ), benchmarks: bench, goal: app.createHostGoal, now: Date(), profile: typeProfile)
     }
     private func recipeCheck(_ id: String) -> EventRecipe.Check? { recipe.first { $0.id == id } }
@@ -1449,7 +1449,7 @@ struct CreateEventView: View {
                     .foregroundStyle(app.palette.ink) }
 
                     guided("included") { includedItemsEditor() }
-                    if let typeProfile, let key = app.createCats.first, !(typeProfile.wizard?.details ?? []).isEmpty {
+                    if let typeProfile, !app.createCats.isEmpty, !(typeProfile.wizard?.details ?? []).isEmpty {
                         Text(app.T("Khách hay hỏi những điều này trước khi đặt chỗ.", "Guests often ask about these before booking."))
                             .font(.footnote).opacity(0.75)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1457,7 +1457,7 @@ struct CreateEventView: View {
                         ForEach(typeProfile.wizard?.details ?? [], id: \.self) { id in
                             if let def = typeProfile.detailFields?[id] {
                                 guided(id) {
-                                    TypeDetailField(typeKey: key, id: id, def: def,
+                                    TypeDetailField(typeKey: EventTypes.owner(of: id, keys: app.createCats) ?? app.createCats[0], id: id, def: def,
                                                     required: EventTypes.requiredFields(typeProfile).contains(id),
                                                     showError: attemptedReview && typeMissing[id] == true)
                                 }
@@ -2230,7 +2230,11 @@ private struct CreateEventReviewSheet: View {
             organizerName: app.orgRegName.trimmingCharacters(in: .whitespaces),
             currency: app.createCurrency,
             timeZoneID: app.createEventTimeZoneID,
-            details: reviewTypeDetails
+            // Note 69: what will be published (both types' facts, the second category, the intro style).
+            details: app.eventTypesEnabled
+                ? EventTypes.publishDetails(keys: app.createCats, draft: app.createDetails,
+                                            introFont: app.createIntroFont, introColor: app.createIntroColor)
+                : [:]
         ))
     }
 
@@ -2239,14 +2243,15 @@ private struct CreateEventReviewSheet: View {
     private var reviewPrimaryType: String { app.createCats.first ?? "supper" }
     private var reviewTypeDetails: EventDetails {
         guard app.eventTypesEnabled else { return [:] }
-        return EventTypes.clean(EventTypes.profile(reviewPrimaryType), app.createDetails[reviewPrimaryType] ?? [:])
+        return EventTypes.clean(EventTypes.combined(app.createCats), EventTypes.mergedDraft(app.createCats, app.createDetails))
     }
     private var reviewTypeFacts: [EventTypes.Fact] {
         guard app.eventTypesEnabled else { return [] }
-        return EventTypes.detailFacts(EventTypes.profile(reviewPrimaryType), reviewTypeDetails, lang: app.isEN ? "en" : "vi")
+        return EventTypes.detailFacts(EventTypes.combined(app.createCats), reviewTypeDetails, lang: app.isEN ? "en" : "vi")
     }
     private var reviewDroppedTypes: [String] {
-        app.eventTypesEnabled ? EventTypes.droppedDetailTypes(primary: reviewPrimaryType, draft: app.createDetails) : []
+        app.eventTypesEnabled ? EventTypes.droppedDetailTypes(primary: reviewPrimaryType, draft: app.createDetails)
+            .filter { !app.createCats.contains($0) } : []
     }
     private func typeName(_ key: String) -> String {
         categories.first { $0.key == key }.map { app.T($0.vi, $0.en) } ?? key

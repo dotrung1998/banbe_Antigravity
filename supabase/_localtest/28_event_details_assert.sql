@@ -78,6 +78,27 @@ BEGIN
 
   -- E5: a direct write cannot bypass the CHECK.
   PERFORM pg_temp.ok((SELECT count(*) FROM pg_constraint WHERE conname = 'events_details_valid') = 1, 'E5 CHECK present');
+  -- E6 (207): a second category adds its fields; intro style keys are allowed on every event.
+  PERFORM pg_temp.as_user(host);
+  UPDATE events SET cat_key = 'supper' WHERE id = 'test_evt_a';
+  PERFORM pg_temp.ok(public.validate_event_details('{"v":1,"cat2":"music","intro_font":"serif","intro_color":"clay"}'), 'E6a 207 keys valid');
+  PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1,"cat2":"karaoke"}'), 'E6b unknown second category');
+  PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1,"intro_color":"#ff0000"}'), 'E6c colour must be a theme token');
+  PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1,"intro_font":"comic"}'), 'E6d unknown font');
+  r := public.set_event_details('test_evt_a', '{"v":1,"lineup":["Trio Hà"]}');
+  PERFORM pg_temp.ok(r->>'error' = 'FIELD_NOT_FOR_TYPE', 'E6e music field without the second category');
+  r := public.set_event_details('test_evt_a', '{"v":1,"cat2":"music","dietary":["vegan"],"lineup":["Trio Hà"],"format":"seated","alcohol":"byo","min_age":"18"}');
+  PERFORM pg_temp.ok((r->>'success')::boolean AND (SELECT details->'lineup'->>0 FROM events WHERE id = 'test_evt_a') = 'Trio Hà', 'E6f supper + music facts together');
+  r := public.set_event_details('test_evt_a', '{"v":1,"cat2":"supper","dietary":["vegan"]}');
+  PERFORM pg_temp.ok(r->>'error' = 'SAME_CATEGORY', 'E6g second category equal to the first');
+  r := public.set_event_details('test_evt_a', '{"v":1,"cat2":"gallery","lineup":["Trio Hà"]}');
+  PERFORM pg_temp.ok(r->>'error' = 'FIELD_NOT_FOR_TYPE', 'E6h only the picked second type''s fields');
+  r := public.set_event_details('test_evt_a', '{"v":1,"intro_font":"rounded","intro_color":"honey"}');
+  PERFORM pg_temp.ok((r->>'success')::boolean AND (SELECT details->>'intro_color' FROM events WHERE id = 'test_evt_a') = 'honey', 'E6i intro style alone');
+  PERFORM pg_temp.as_user(goer);
+  r := public.set_event_details('test_evt_a', '{"v":1,"intro_font":"mono"}');
+  PERFORM pg_temp.ok(r->>'error' = 'EVENT_NOT_FOUND', 'E6j still host only');
+
   RAISE NOTICE 'DETAILS RESULT: ALL PASS';
 END $t$;
 ROLLBACK;

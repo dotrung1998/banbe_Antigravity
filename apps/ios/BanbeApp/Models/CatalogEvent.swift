@@ -388,7 +388,7 @@ extension CatalogEvent {
         let isUrgent = (real.seatsRemaining ?? 99) <= 5
         let isCancelled = real.status == "cancelled"
         var event = CatalogEvent(
-            key: real.id, catKey: real.catKey ?? "all", cat: real.catLabel ?? "", cat2Key: nil, catDisplay: real.catLabel ?? "",
+            key: real.id, catKey: real.catKey ?? "all", cat: real.catLabel ?? "", cat2Key: EventTypes.secondCategory(real.details?.values ?? [:], primary: real.catKey), catDisplay: real.catLabel ?? "",
             name: real.name, img: real.photoURL?.absoluteString ?? "", lat: real.lat, lng: real.lng,
             meta: metaLabel,
             where: whereLabel,
@@ -438,7 +438,7 @@ extension CatalogEvent {
         let seatsLabel = d.seats.map(String.init) ?? ""
         let seatsLongLabel = d.seats.map { "\($0) chỗ trống" } ?? ""
         var event = CatalogEvent(
-            key: draftPreviewKey, catKey: d.catKey ?? "all", cat: d.catLabel, cat2Key: nil, catDisplay: d.catLabel,
+            key: draftPreviewKey, catKey: d.catKey ?? "all", cat: d.catLabel, cat2Key: EventTypes.secondCategory(d.details, primary: d.catKey), catDisplay: d.catLabel,
             name: d.name, img: d.coverPath, lat: d.lat, lng: d.lng,
             meta: metaLabel,
             where: whereLabel,

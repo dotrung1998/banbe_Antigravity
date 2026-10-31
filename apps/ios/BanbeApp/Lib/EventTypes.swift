@@ -2,8 +2,9 @@ import Foundation
 
 /// Event type profiles: what changes per kind of event (supper club, music…) in the create flow, Event Detail
 /// and Home. The data is src/data/eventTypeProfiles.json, bundled as-is (apps/ios/project.yml); this is the
-/// logic on top of it. The first picked category is the PRIMARY type and the only one that shapes anything;
-/// a second pick stays a discovery tag (it is saved as a keyword).
+/// logic on top of it. The first picked category is the PRIMARY type (benchmarks, card line, Home filters). Note 69
+/// (migration 207): a second pick now shapes the form and the detail page too: `combined` merges both types' fields,
+/// required list and facts (shared alcohol / minimum age once). The second key is stored as `details.cat2`.
 /// Web twin: src/lib/eventTypes.js. Shared vectors: tests/fixtures/event-types.json.
 struct EventTypeProfile: Decodable {
     struct Pair: Decodable, Equatable {
@@ -198,6 +199,90 @@ enum EventTypes {
     static var searchAliases: [String: [String]] {
         var out: [String: [String]] = ["all": []]
         for p in all { out[p.key] = p.aliases ?? [] }
+        return out
+    }
+
+    // MARK: Two categories + introduction style (note 69, migration 207)
+
+    /// Keys stored in `events.details` that are not type facts: the second category and the introduction's style.
+    static let extraKeys = ["cat2", "intro_font", "intro_color"]
+    static let introFonts = ["sans", "serif", "rounded", "mono"]
+    static let introColors = ["ink", "ink2", "clay", "honey", "alert"]
+
+    private static func unique(_ a: [String]) -> [String] {
+        var seen = Set<String>()
+        return a.filter { seen.insert($0).inserted }
+    }
+
+    /// One profile for one or two picked categories. One key = that type unchanged. Two = the first type's identity
+    /// (key, card, Home filters, benchmarks) with both types' fields, form blocks, required fields, facts and recipe;
+    /// the shared fields (alcohol, minimum age) appear once, after both types' own fields.
+    static func combined(_ keys: [String]) -> EventTypeProfile {
+        let p = profile(keys.first)
+        guard keys.count > 1, keys[1] != keys[0] else { return p }
+        let q = profile(keys[1])
+        guard isShaped(q) else { return p }
+        let fields = (p.detailFields ?? [:]).merging(q.detailFields ?? [:]) { a, _ in a }
+        var wizard = p.wizard ?? q.wizard
+        if let a = p.wizard, let b = q.wizard {
+            let shared = commonOrder
+            wizard?.details = unique(a.details.filter { !shared.contains($0) } + b.details.filter { !shared.contains($0) }
+                                     + a.details.filter { shared.contains($0) })
+            wizard?.required = unique(a.required + b.required)
+        }
+        let detail: EventTypeProfile.Detail? = (p.detail == nil && q.detail == nil) ? nil
+            : .init(includedTitle: p.detail?.includedTitle ?? q.detail?.includedTitle,
+                    facts: unique((p.detail?.facts ?? []) + (q.detail?.facts ?? [])))
+        let recipe: EventTypeProfile.Recipe? = (p.recipe == nil && q.recipe == nil) ? nil
+            : .init(ingredients: unique((p.recipe?.ingredients ?? []) + (q.recipe?.ingredients ?? [])))
+        return EventTypeProfile(key: p.key, label: p.label, emoji: p.emoji, icon: p.icon, aliases: p.aliases,
+                                keywordSeeds: p.keywordSeeds, wizard: wizard, detailFields: fields, detail: detail,
+                                card: p.card, home: p.home, recipe: recipe)
+    }
+
+    /// The second category stored on a published event (`details.cat2`), when it is a known type other than the first.
+    static func secondCategory(_ details: EventDetails, primary: String?) -> String? {
+        guard case .text(let k)? = details["cat2"], k != primary, all.contains(where: { $0.key == k }) else { return nil }
+        return k
+    }
+
+    /// A published event's profile: its own type plus the second category, if any.
+    static func eventProfile(catKey: String?, details: EventDetails) -> EventTypeProfile {
+        combined([catKey, secondCategory(details, primary: catKey)].compactMap { $0 })
+    }
+
+    /// Which picked type a field's draft value is kept under: the first type that has it as its OWN field, the first
+    /// type for shared fields (alcohol, minimum age).
+    static func owner(of field: String, keys: [String]) -> String? {
+        guard let first = keys.first else { return nil }
+        if commonOrder.contains(field) { return first }
+        return keys.first { k in profile(k).detailFields?[field] != nil } ?? first
+    }
+
+    /// The create form's draft as one set of values for the picked types (each field read from its owner).
+    static func mergedDraft(_ keys: [String], _ draft: [String: EventDetails]) -> EventDetails {
+        let p = combined(keys)
+        var out: EventDetails = [:]
+        for id in (p.detailFields ?? [:]).keys {
+            if let k = owner(of: id, keys: keys), let v = draft[k]?[id] { out[id] = v }
+        }
+        return out
+    }
+
+    /// The introduction's stored style, nil parts when unset or unknown.
+    static func introStyle(_ details: EventDetails) -> (font: String?, color: String?) {
+        var font: String?, color: String?
+        if case .text(let f)? = details["intro_font"], introFonts.contains(f) { font = f }
+        if case .text(let c)? = details["intro_color"], introColors.contains(c) { color = c }
+        return (font, color)
+    }
+
+    /// What `set_event_details` gets for a create draft: both types' facts cleaned, plus `cat2` and the intro style.
+    static func publishDetails(keys: [String], draft: [String: EventDetails], introFont: String?, introColor: String?) -> EventDetails {
+        var out = clean(combined(keys), mergedDraft(keys, draft))
+        if keys.count > 1, keys[1] != keys[0], all.contains(where: { $0.key == keys[1] }) { out["cat2"] = .text(keys[1]) }
+        if let f = introFont, introFonts.contains(f), f != "sans" { out["intro_font"] = .text(f) }
+        if let c = introColor, introColors.contains(c), c != "ink" { out["intro_color"] = .text(c) }
         return out
     }
 

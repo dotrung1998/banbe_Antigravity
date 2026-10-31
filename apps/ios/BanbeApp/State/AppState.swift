@@ -1968,6 +1968,16 @@ final class AppState: ObservableObject {
     /// Event type facts (migration 203), kept PER TYPE (["supper": ["byo": .text("wine")]]) so switching the
     /// category never throws a host's answers away; only the primary type's are published (set_event_details).
     @Published var createDetails: [String: EventDetails] = [:]
+    /// Note 69: the introduction's font and colour (whole text). Kept in the draft map under `_style` (not a type key),
+    /// so drafts and form resets carry it with no extra storage. Published as details.intro_font / intro_color.
+    var createIntroFont: String {
+        get { if case .text(let f)? = createDetails["_style"]?["intro_font"] { return f }; return "sans" }
+        set { createDetails["_style", default: [:]]["intro_font"] = .text(newValue) }
+    }
+    var createIntroColor: String {
+        get { if case .text(let c)? = createDetails["_style"]?["intro_color"] { return c }; return "ink" }
+        set { createDetails["_style", default: [:]]["intro_color"] = .text(newValue) }
+    }
     /// Keyword ideas the host dismissed in this draft (never suggested again for it).
     @Published var createKwDismissed: [String] = []
     // "Bao gồm" item-editing parity fix (2026-09-29) — mirrors web's
