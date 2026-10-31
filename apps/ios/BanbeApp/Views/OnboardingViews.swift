@@ -445,6 +445,45 @@ struct CreateEventView: View {
     /// Review summary, so they can never disagree.
     /// Note 66: required fields that just turned complete (pop their ✓ once); cleared shortly after.
     @State private var freshDone: Set<String> = []
+    /// Note 69: the long field open in the full-screen editor (description, intro, greeting, greetingEn).
+    private struct ExpandedField: Identifiable { let id: String }
+    @State private var expandedField: ExpandedField?
+    /// Note 69: the part open inside Basics / Tickets (step raw value -> part index) and the parts seen so far.
+    @State private var subStep: [Int: Int] = [:]
+    @State private var visitedParts: [Int: Set<Int>] = [:]
+
+    private func partIndex(_ step: Section) -> Int { subStep[step.rawValue] ?? 0 }
+    private var basicsPart: String { CreateSubSteps.basics[safe: partIndex(.basics)]?.id ?? "name" }
+    private var ticketsPart: String { CreateSubSteps.tickets[safe: partIndex(.tickets)]?.id ?? "price" }
+    private var currentParts: [CreateSubSteps.Part] { CreateSubSteps.parts(step: currentStep.rawValue) }
+
+    /// Opens one part of a step (marks it seen) and goes back to the top of the page.
+    private func setPart(_ i: Int, of step: Section, scroll: Bool = true) {
+        let parts = CreateSubSteps.parts(step: step.rawValue)
+        guard parts.indices.contains(i) else { return }
+        if step == currentStep && i != partIndex(step) {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
+        stepForward = i >= partIndex(step)
+        withAnimation(Motion.fade(.easeInOut(duration: 0.22), reduce: reduceMotion)) { subStep[step.rawValue] = i }
+        visitedParts[step.rawValue, default: []].insert(i)
+        if scroll { DispatchQueue.main.async { scrollProxy?.scrollTo("create.top", anchor: .top) } }
+    }
+
+    @ViewBuilder
+    private func subStepBar() -> some View {
+        let parts = currentParts
+        if !parts.isEmpty, !app.createSent {
+            SubStepBar(stepTitle: sectionTitles[currentStep.rawValue],
+                       titles: parts.map { app.T($0.vi, $0.en) },
+                       current: partIndex(currentStep),
+                       done: CreateSubSteps.done(step: currentStep.rawValue, missing: progress.steps[currentStep.rawValue].missing,
+                                                 visited: visitedParts[currentStep.rawValue] ?? [])) { i in
+                setPart(i, of: currentStep)
+            }
+            .padding(.top, 16)
+        }
+    }
     private var doneMarks: CreateDoneMarks {
         let required = Set(EventTypes.requiredFields(typeProfile ?? .generic("")))
         let missing = Set(progress.missing)
@@ -539,6 +578,11 @@ struct CreateEventView: View {
     private func guideTo(_ field: String, hint: String?) {
         guard let index = CreateFieldGuide.step(of: field), let section = Section(rawValue: index) else { return }
         focusedField = nil
+        // Note 69: open the part of Basics / Tickets that holds the field first.
+        if let part = CreateSubSteps.index(of: field, step: index) {
+            subStep[index] = part
+            visitedParts[index, default: []].insert(part)
+        }
         recipeOpen = false
         withAnimation(Motion.fade(.easeInOut(duration: 0.25), reduce: reduceMotion)) { reviewOpen = false }
         if currentStep != section {
@@ -831,17 +875,38 @@ struct CreateEventView: View {
     }
 
     @ViewBuilder
+    private func longTextSheet(_ id: String) -> some View {
+        switch id {
+        case "description":
+            LongTextSheet(title: app.T("Mô tả", "Description"), text: $app.createDesc,
+                          placeholder: app.T("Buổi này có gì?", "What happens?"))
+        case "intro":
+            LongTextSheet(title: app.T("Giới thiệu sự kiện", "Event introduction"), text: $app.createIntro, limit: 4000,
+                          placeholder: app.T("Một buổi tối ấm cúng cho mười bốn người lạ…", "A cozy evening for fourteen strangers…"),
+                          font: IntroStyle.font(app.createIntroFont, size: 17),
+                          color: IntroStyle.color(app.createIntroColor, app.palette))
+        case "greetingEn":
+            LongTextSheet(title: app.T("Lời nhắn mở đầu (Tiếng Anh)", "Opening message (English)"), text: $app.createChatGreetingEn, limit: 500)
+        default:
+            LongTextSheet(title: app.T("Lời nhắn mở đầu (Tiếng Việt)", "Opening message (Vietnamese)"), text: $app.createChatGreeting, limit: 500)
+        }
+    }
+
+    @ViewBuilder
     private func greetingField(label: String, text: Binding<String>, id: String, focusID: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
+            HStack(spacing: 4) {
                 Text(label).font(.system(size: 13, weight: .medium))
                 Spacer()
                 Text("\(text.wrappedValue.count)/500").font(.system(size: 11)).monospacedDigit().opacity(0.6)
+                ExpandFieldButton(fieldName: label, identifier: "create.expand.\(focusID)") { expandedField = ExpandedField(id: focusID) }
+                    .padding(.vertical, -12)
             }
             TextField("", text: text, axis: .vertical)
                 .lineLimit(3...8)
                 .focused($focusedField, equals: focusID)
-                .roundedFormEditor(app: app, minHeight: 80, focused: focusedField == focusID)
+                // Note 69: at least twice the height of the one-line Event name box (the editor adds 10pt top + bottom).
+                .roundedFormEditor(app: app, minHeight: LongText.minBoxHeight - 20, focused: focusedField == focusID)
                 .accessibilityIdentifier(id)
                 .onChange(of: text.wrappedValue) { _, newValue in
                     if newValue.count > 500 { text.wrappedValue = String(newValue.prefix(500)) }
@@ -852,12 +917,16 @@ struct CreateEventView: View {
     @ViewBuilder
     private func introEditor() -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack {
+            HStack(spacing: 4) {
                 FormFieldLabel(icon: "doc.text", text: app.T("Giới thiệu sự kiện", "Event introduction"),
                                trailing: "\(app.createIntro.count)/4000")
                     // Note 53: the counter warms up near the limit (honey) and turns alert at it.
                     .foregroundStyle(app.createIntro.count >= 4000 ? BanbeTheme.alert
                                      : app.createIntro.count >= 3800 ? app.palette.honey : app.palette.ink.opacity(0.8))
+                ExpandFieldButton(fieldName: app.T("Giới thiệu sự kiện", "Event introduction"), identifier: "create.expand.intro") {
+                    expandedField = ExpandedField(id: "intro")
+                }
+                .padding(.vertical, -12)
             }
             Text(app.T("Một đoạn giới thiệu dài hơn, hấp dẫn. Tách dòng trống giữa các đoạn. Không phải quảng cáo giả, không phải \"Bao gồm\".",
                         "A longer, attractive write-up. Leave a blank line between paragraphs. Not fabricated marketing copy, not the same as \"Included\"."))
@@ -870,11 +939,17 @@ struct CreateEventView: View {
                       text: $app.createIntro, axis: .vertical)
                 .lineLimit(5...12)
                 .focused($focusedField, equals: "intro")
+                // Note 69: shown in the chosen style while typing. Set before the editor chrome: the closest font wins.
+                .font(IntroStyle.font(app.createIntroFont))
+                .foregroundStyle(IntroStyle.color(app.createIntroColor, app.palette))
                 .roundedFormEditor(app: app, minHeight: 130, focused: focusedField == "intro")
                 .accessibilityIdentifier("create.intro")
                 .onChange(of: app.createIntro) { _, newValue in
                     if newValue.count > 4000 { app.createIntro = String(newValue.prefix(4000)) }
                 }
+            IntroStylePicker(font: Binding(get: { app.createIntroFont }, set: { app.createIntroFont = $0 }),
+                             color: Binding(get: { app.createIntroColor }, set: { app.createIntroColor = $0 }))
+                .padding(.top, 8)
         }
         .foregroundStyle(app.palette.ink)
     }
@@ -1287,6 +1362,8 @@ struct CreateEventView: View {
     private var createFormBody: some View {
         ScrollViewReader { proxy in
             createFormScroll
+                // Note 69: one long field, full screen (Done, count, Clear all).
+                .sheet(item: $expandedField) { f in longTextSheet(f.id) }
                 // Goal gradient (note 48): a sticky, tappable section bar;
                 // "Host" is already ticked when an organizer profile exists.
                 .safeAreaInset(edge: .top, spacing: 0) {
@@ -1378,6 +1455,7 @@ struct CreateEventView: View {
     private var basicsStepView: AnyView {
         AnyView(Group {
                 group(app.T("Cơ bản", "Basics")) {
+                    if basicsPart == "name" {
                     guided("name") {
                         BanbeField(label: app.T("Tên sự kiện", "Event name"),
                                    placeholder: app.T("Tên sự kiện của bạn", "Your event name"), text: $app.createName,
@@ -1386,15 +1464,22 @@ struct CreateEventView: View {
                                    focus: $focusedField, focusID: "name")
                     }
                     goalPicker()
+                    }
+                    if basicsPart == "story" {
                     guided("description") {
                         BanbeField(label: app.T("Mô tả", "Description"),
                                    placeholder: app.T("Buổi này có gì?", "What happens?"), text: $app.createDesc,
                                    required: true, icon: "text.alignleft", doneField: "description",
+                                   lines: 3...10, onExpand: { expandedField = ExpandedField(id: "description") },
                                    state: !descValid && !app.createSent && attemptedReview ? .error(app.T("Hãy nhập mô tả.", "Please enter a description.")) : .normal,
                                    focus: $focusedField, focusID: "description")
                     }
                     guided("intro") { introEditor() }
+                    }
+                    if basicsPart == "greeting" {
                     guided("greeting") { greetingEditor() }
+                    }
+                    if basicsPart == "categories" {
                     guided("categories") { VStack(alignment: .leading, spacing: 16) {
                     FormFieldLabel(icon: "square.grid.2x2", text: app.T("Hạng mục", "Categories"), required: true,
                                    trailing: app.T("Tối đa 2", "Up to 2"), field: "categories")
@@ -1447,7 +1532,9 @@ struct CreateEventView: View {
                         keywordSuggestions()
                     }
                     .foregroundStyle(app.palette.ink) }
+                    }
 
+                    if basicsPart == "details" {
                     guided("included") { includedItemsEditor() }
                     if let typeProfile, !app.createCats.isEmpty, !(typeProfile.wizard?.details ?? []).isEmpty {
                         Text(app.T("Khách hay hỏi những điều này trước khi đặt chỗ.", "Guests often ask about these before booking."))
@@ -1463,6 +1550,7 @@ struct CreateEventView: View {
                                 }
                             }
                         }
+                    }
                     }
                 }
         })
@@ -1524,8 +1612,8 @@ struct CreateEventView: View {
     private var ticketsStepView: AnyView {
         AnyView(Group {
                 group(app.T("Vé & ai được đặt", "Tickets & who can book")) {
-                    ticketsSection()
-                    if !seatsValid && !app.createSent && attemptedReview {
+                    if ticketsPart == "price" || ticketsPart == "seats" { ticketsSection(part: ticketsPart) }
+                    if ticketsPart == "seats" && !seatsValid && !app.createSent && attemptedReview {
                         Text(app.T("Hãy nhập số chỗ lớn hơn 0.", "Please enter a number of seats greater than 0."))
                             .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
                     }
@@ -1536,6 +1624,7 @@ struct CreateEventView: View {
                     // Deliberately separate from approval mode (not exposed
                     // in this form) and admin review — private is not
                     // auto-approved, per set_event_visibility's own comment.
+                    if ticketsPart == "privacy" {
                     VStack(alignment: .leading, spacing: 6) {
                         FormFieldLabel(icon: "lock", text: app.T("Quyền riêng tư", "Privacy")).padding(.top, 12)
                         HStack(spacing: 8) {
@@ -1560,8 +1649,9 @@ struct CreateEventView: View {
                              : app.T("Ai cũng có thể tìm thấy và đặt sự kiện này.", "Anyone can discover and book this event."))
                             .font(.system(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
                     }
+                    }
 
-                    ReservationCriteriaPicker()
+                    if ticketsPart == "criteria" { ReservationCriteriaPicker() }
                 }
         })
     }
@@ -1657,6 +1747,8 @@ struct CreateEventView: View {
                 if currentStep == .whenWhere || currentStep == .tickets { defaultsNotice() }
 
                 stepNavHeader()
+
+                subStepBar()
 
                 if currentStep == .host { hostStepView.transition(stepTransition) }
                 if currentStep == .basics { basicsStepView.transition(stepTransition) }
@@ -1798,9 +1890,12 @@ struct CreateEventView: View {
         }
     }
 
-    private func goTo(_ section: Section) {
+    /// `part`: which part of Basics / Tickets to open (Next lands on the first, Back on the last); nil keeps the last one open.
+    private func goTo(_ section: Section, part: Int? = nil) {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         stepForward = section.rawValue >= currentStep.rawValue
+        if let part { subStep[section.rawValue] = part }
+        visitedParts[section.rawValue, default: []].insert(partIndex(section))
         withAnimation(Motion.fade(.easeInOut(duration: 0.22), reduce: reduceMotion)) { currentStep = section }
         DispatchQueue.main.async { scrollProxy?.scrollTo("create.top", anchor: .top) }
     }
@@ -1818,6 +1913,11 @@ struct CreateEventView: View {
     private func stepNavFooter() -> some View {
         let next = Section(rawValue: currentStep.rawValue + 1)
         let prev = Section(rawValue: currentStep.rawValue - 1)
+        // Note 69: inside Basics / Tickets, Back / Next walk the parts first.
+        let parts = currentParts
+        let part = partIndex(currentStep)
+        let nextPart: CreateSubSteps.Part? = parts.indices.contains(part + 1) ? parts[part + 1] : nil
+        let hasPrevPart = !parts.isEmpty && part > 0
         return VStack(spacing: 10) {
             if !currentStepGaps.isEmpty {
                 MissingChips(lead: app.T("Còn thiếu ở bước này:", "Still needed here:"), fields: currentStepGaps, label: missingLabel,
@@ -1825,8 +1925,19 @@ struct CreateEventView: View {
                     .accessibilityIdentifier("create.step.gaps")
             }
             HStack(spacing: 10) {
-                if let prev {
-                    Button { goTo(prev) } label: {
+                if hasPrevPart {
+                    Button { setPart(part - 1, of: currentStep) } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(width: 54, height: 52)
+                            .overlay(RoundedRectangle(cornerRadius: 999).stroke(app.palette.rule, lineWidth: 1))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(app.T("Quay lại: ", "Back: ") + app.T(parts[part - 1].vi, parts[part - 1].en))
+                    .accessibilityIdentifier("create.step.back")
+                } else if let prev {
+                    Button { goTo(prev, part: max(CreateSubSteps.parts(step: prev.rawValue).count - 1, 0)) } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 16, weight: .semibold))
                             .frame(width: 54, height: 52)
@@ -1837,11 +1948,16 @@ struct CreateEventView: View {
                     .accessibilityLabel(app.T("Quay lại: ", "Back: ") + sectionTitles[prev.rawValue])
                     .accessibilityIdentifier("create.step.back")
                 }
-                if let next {
+                if let nextPart {
+                    InkButton(title: app.T("Tiếp: ", "Next: ") + app.T(nextPart.vi, nextPart.en), cornerRadius: 999) {
+                        setPart(part + 1, of: currentStep)
+                    }
+                    .accessibilityIdentifier("create.step.next")
+                } else if let next {
                     InkButton(title: currentStep == .host && sectionDone(.host)
                               ? app.T("Ổn rồi · Tiếp: ", "Looks good · Next: ") + sectionTitles[next.rawValue]
                               : app.T("Tiếp: ", "Next: ") + sectionTitles[next.rawValue], cornerRadius: 999) {
-                        goTo(next)
+                        goTo(next, part: 0)
                     }
                     .accessibilityIdentifier("create.step.next")
                 }
@@ -2058,8 +2174,10 @@ struct CreateEventView: View {
 
     /// Price as quick picks + free entry; seats as a stepper with quick picks.
     @ViewBuilder
-    private func ticketsSection() -> some View {
+    /// Note 69: `part` "price" or "seats" (Tickets sub-steps); anything else shows both.
+    private func ticketsSection(part: String = "") -> some View {
         VStack(alignment: .leading, spacing: 10) {
+            if part != "seats" {
             FormFieldLabel(icon: "tag", text: app.T("Giá vé", "Price"),
                            trailing: similarPriceHint == nil ? nil : app.T("Gợi ý", "Suggested"), field: "price")
             if let market = bench?.price {
@@ -2087,9 +2205,11 @@ struct CreateEventView: View {
             Text(priceHint)
                 .font(.system(size: 12)).opacity(0.7)
                 .accessibilityIdentifier("create.priceHint")
+            }
 
+            if part != "price" {
             FormFieldLabel(icon: "person.2", text: app.T("Số chỗ", "Seats"), required: true, field: "seats")
-                .padding(.top, 12)
+                .padding(.top, part == "seats" ? 0 : 12)
             guided("seats") { HStack {
                 CountStepper(value: max(seatsBinding, 0), range: 0...SmartDefaults.seatRange.upperBound,
                              unit: app.T("chỗ", "seats"), identifier: "create.seatsStepper") { newValue in
@@ -2108,6 +2228,8 @@ struct CreateEventView: View {
             RecipeInsight(check: recipeCheck("seats"), line: recipeCheck("seats")?.typicalGuests.map {
                 app.T("Sự kiện tương tự thường đón ~\(EventRecipe.num($0)) khách.", "Similar events usually welcome ~\(EventRecipe.num($0)) guests.")
             }, identifier: "create.seatsInsight")
+            }
+            // Guests × price: changes with either, so it shows under both parts.
             outcomeLine()
         }
         .foregroundStyle(app.palette.ink)

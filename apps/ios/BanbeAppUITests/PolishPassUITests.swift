@@ -56,6 +56,7 @@ final class PolishPassUITests: XCTestCase {
         let app = launchShell("create")
         XCTAssertTrue(el(app, "create.step.next").waitForExistence(timeout: 10))
         el(app, "create.step.next").tap()
+        el(app, "create.substeps.1").tap()   // note 69: the intro is in Basics › Story
         let intro = el(app, "create.intro")
         XCTAssertTrue(intro.waitForExistence(timeout: 5))
         intro.tap()
@@ -88,6 +89,7 @@ final class PolishPassUITests: XCTestCase {
         let app = launchShell("create")
         XCTAssertTrue(el(app, "create.step.next").waitForExistence(timeout: 10))
         el(app, "create.step.next").tap()
+        el(app, "create.substeps.1").tap()   // note 69: the intro is in Basics › Story
         let intro = el(app, "create.intro")
         XCTAssertTrue(intro.waitForExistence(timeout: 5))
         intro.tap()
@@ -101,6 +103,8 @@ final class PolishPassUITests: XCTestCase {
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'create.draft.'")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5), "the saved draft is listed")
         row.tap()
+        let story = el(app, "create.substeps.1")
+        if story.waitForExistence(timeout: 3) { story.tap() }   // note 69: the intro is in Basics › Story
         XCTAssertTrue(el(app, "create.intro").waitForExistence(timeout: 5))
         XCTAssertEqual(el(app, "create.intro").value as? String, "Draft text")
     }
@@ -110,6 +114,7 @@ final class PolishPassUITests: XCTestCase {
         let app = launchShell("create")
         XCTAssertTrue(el(app, "create.step.next").waitForExistence(timeout: 10))
         el(app, "create.step.next").tap()
+        el(app, "create.substeps.1").tap()   // note 69: the intro is in Basics › Story
         let intro = el(app, "create.intro")
         XCTAssertTrue(intro.waitForExistence(timeout: 5))
         intro.tap()
@@ -123,6 +128,7 @@ final class PolishPassUITests: XCTestCase {
         XCTAssertFalse(el(app, "create.recipeMeter").exists, "left Create")
         undo.tap()
         XCTAssertTrue(el(app, "create.recipeMeter").waitForExistence(timeout: 5), "Undo reopens Create")
+        if !el(app, "create.intro").exists, el(app, "create.substeps.1").exists { el(app, "create.substeps.1").tap() }
         XCTAssertEqual(el(app, "create.intro").value as? String, "Hello", "Undo keeps what was typed")
     }
 
@@ -130,6 +136,7 @@ final class PolishPassUITests: XCTestCase {
         let app = launchShell("create")
         XCTAssertTrue(el(app, "create.step.next").waitForExistence(timeout: 10))
         el(app, "create.step.next").tap()
+        el(app, "create.substeps.1").tap()   // note 69: the intro is in Basics › Story
         let intro = el(app, "create.intro")
         XCTAssertTrue(intro.waitForExistence(timeout: 5))
         intro.tap()
@@ -162,6 +169,8 @@ final class PolishPassUITests: XCTestCase {
         el(app, "create.step.back").tap()
         sleep(1)
         XCTAssertEqual(app.state, .runningForeground)
+        // The sub-step bar makes Basics taller: scroll up so "‹ Back" is not under the sticky step bar.
+        for _ in 0..<3 { app.swipeDown() }
         app.buttons["‹ Back"].firstMatch.tap()
         XCTAssertTrue(el(app, "create.undo.button").waitForExistence(timeout: 5), "Undo toast after leaving")
         sleep(2)

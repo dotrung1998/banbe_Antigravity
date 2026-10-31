@@ -67,6 +67,8 @@ final class ReviewRetentionUITests: XCTestCase {
         let app = launch("shell.account")
         // note 66: Settings is a row in Account's More card, below the tiles.
         XCTAssertTrue(el(app, "account.tile.events").waitForExistence(timeout: 10))
+        // Note 69: Settings is in the Personal tab's App group (the fixture opens on Host).
+        el(app, "account.tab.personal").tap()
         let group = el(app, "account.group.preferences")
         for _ in 0..<6 where !group.exists || !group.isHittable { app.swipeUp() }
         group.tap()
@@ -89,8 +91,13 @@ final class ReviewRetentionUITests: XCTestCase {
     func testPriceSliderDrags() {
         let app = launch("shell.create", extra: ["-uiFixtureBench", "YES"])
         XCTAssertTrue(el(app, "create.step.next").waitForExistence(timeout: 10))
-        for _ in 0..<3 { el(app, "create.step.next").tap(); sleep(1) }
         let slider = el(app, "create.priceSlider")
+        // Note 69: Next walks Basics' parts before reaching Tickets › Price.
+        for _ in 0..<10 where !slider.exists {
+            let next = el(app, "create.step.next")
+            for _ in 0..<6 where !next.isHittable { app.swipeUp() }
+            next.tap(); sleep(1)
+        }
         for _ in 0..<6 where !slider.isHittable { app.swipeUp() }
         XCTAssertTrue(slider.waitForExistence(timeout: 5))
         let field = app.textFields.matching(NSPredicate(format: "value CONTAINS '000'")).firstMatch

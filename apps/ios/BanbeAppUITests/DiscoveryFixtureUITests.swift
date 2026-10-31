@@ -251,13 +251,17 @@ final class DiscoveryFixtureUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.8)
         shot("create-recipe-sheet-\(theme)")
         el(app, "create.recipe.close").tap()
-        // Basics → When & where → Tickets.
+        // Basics (its parts, note 69) → When & where → Tickets.
         XCTAssertTrue(el(app, "create.step.next").waitForExistence(timeout: 5))
-        el(app, "create.step.next").tap()
-        Thread.sleep(forTimeInterval: 0.6)
-        shot("create-when-\(theme)")
-        el(app, "create.step.next").tap()
-        XCTAssertTrue(el(app, "create.priceMarket").waitForExistence(timeout: 5), "benchmarks draw the price market")
+        let market = el(app, "create.priceMarket")
+        for _ in 0..<10 where !market.exists {
+            let next = el(app, "create.step.next")
+            for _ in 0..<6 where !next.isHittable { app.swipeUp() }
+            next.tap()
+            Thread.sleep(forTimeInterval: 0.6)
+            if el(app, "create.dateTime").exists { shot("create-when-\(theme)") }
+        }
+        XCTAssertTrue(market.waitForExistence(timeout: 5), "benchmarks draw the price market")
         Thread.sleep(forTimeInterval: 0.6)
         shot("create-tickets-\(theme)")
         app.swipeUp()

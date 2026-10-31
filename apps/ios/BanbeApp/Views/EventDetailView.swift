@@ -1306,9 +1306,12 @@ struct EventDetailView: View {
                             // Paragraph breaks on blank lines, same
                             // convention web's own `introParagraphs`
                             // (EventDetail.jsx) uses for the same field.
+                            // Note 69: the host's chosen font and colour (details.intro_font / intro_color, migration 207).
+                            let style = EventTypes.introStyle(event.details)
                             ForEach(Array(intro.components(separatedBy: "\n\n").enumerated()), id: \.offset) { _, paragraph in
                                 Text(paragraph.trimmingCharacters(in: .whitespacesAndNewlines))
-                                    .font(.system(size: 13.5))
+                                    .font(IntroStyle.font(style.font, size: 13.5))
+                                    .foregroundStyle(IntroStyle.color(style.color, app.palette))
                                     .lineSpacing(5)
                             }
                         }

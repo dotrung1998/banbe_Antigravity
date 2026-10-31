@@ -371,3 +371,273 @@ struct OptionChipsEditor: View {
         }
     }
 }
+
+// MARK: - Long text (note 69)
+
+/// Note 69: long-text fields in Create event are at least twice the height of a one-line field (Event name), and each
+/// has an Expand button that opens the whole text in a sheet with Clear all.
+enum LongText {
+    /// A one-line Create field: 15pt padding top and bottom around a 16pt line.
+    static let singleLineHeight: CGFloat = 52
+    /// The whole box, padding included.
+    static let minBoxHeight: CGFloat = singleLineHeight * 2
+}
+
+/// The small "expand" control in a long field's label row.
+struct ExpandFieldButton: View {
+    @EnvironmentObject private var app: AppState
+    let fieldName: String
+    var identifier: String? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button { Haptics.light(); action() } label: {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(app.palette.ink2)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(app.T("Mở rộng \(fieldName)", "Expand \(fieldName)"))
+        .accessibilityIdentifier(identifier ?? "expand")
+    }
+}
+
+/// The whole text of one long field, full screen: Done, a live count, and Clear all (confirmed, so one stray tap never
+/// wipes a write-up). Edits the same binding as the field, so nothing needs saving.
+struct LongTextSheet: View {
+    @EnvironmentObject private var app: AppState
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    @Binding var text: String
+    /// nil = no cap (the description has none on the server); the count is still shown.
+    var limit: Int? = nil
+    var placeholder: String = ""
+    /// The introduction's chosen look, so the sheet shows the text the way guests will.
+    var font: Font = .system(size: 17)
+    var color: Color? = nil
+    @State private var confirmClear = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        NavigationStack {
+            ZStack(alignment: .topLeading) {
+                if text.isEmpty {
+                    Text(placeholder).font(font).foregroundStyle(app.palette.ink3)
+                        .padding(.horizontal, 21).padding(.vertical, 16)
+                        .accessibilityHidden(true)
+                }
+                TextEditor(text: $text)
+                    .font(font)
+                    .foregroundStyle(color ?? app.palette.ink)
+                    .scrollContentBackground(.hidden)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
+                    .focused($focused)
+                    .accessibilityLabel(title)
+                    .accessibilityIdentifier("longText.editor")
+                    .onChange(of: text) { _, v in if let limit, v.count > limit { text = String(v.prefix(limit)) } }
+            }
+            .background(app.palette.paper)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(app.T("Xong", "Done")) { dismiss() }
+                        .accessibilityIdentifier("longText.done")
+                }
+                // Top bar, not the bottom bar: with the keyboard up a bottom toolbar is hidden under it.
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(role: .destructive) { confirmClear = true } label: {
+                        Text(app.T("Xoá hết", "Clear all"))
+                    }
+                    .disabled(text.isEmpty)
+                    .accessibilityIdentifier("longText.clearAll")
+                }
+            }
+            // The count rides above the keyboard (a safe-area inset moves with it).
+            .safeAreaInset(edge: .bottom) {
+                HStack {
+                    Spacer()
+                    Text(limit.map { "\(text.count)/\($0)" } ?? "\(text.count)").font(.footnote).monospacedDigit()
+                        .foregroundStyle(limit.map { text.count >= $0 } == true ? BanbeTheme.alert : app.palette.ink2)
+                        .accessibilityLabel(limit.map { app.T("\(text.count) trên \($0) ký tự", "\(text.count) of \($0) characters") }
+                                            ?? app.T("\(text.count) ký tự", "\(text.count) characters"))
+                }
+                .padding(.horizontal, 20).padding(.vertical, 8)
+                .background(app.palette.paper)
+            }
+            .confirmationDialog(app.T("Xoá toàn bộ nội dung?", "Clear all text?"), isPresented: $confirmClear, titleVisibility: .visible) {
+                Button(app.T("Xoá hết", "Clear all"), role: .destructive) { text = ""; focused = true }
+                    .accessibilityIdentifier("longText.clearConfirm")
+                Button(app.T("Huỷ", "Cancel"), role: .cancel) {}
+            }
+        }
+        .onAppear { focused = true }
+    }
+}
+
+// MARK: - Introduction style (note 69, migration 207)
+
+/// The introduction's whole-text look: one of four fonts and one of five theme colours (so it reads in light and dark).
+/// Stored as details.intro_font / intro_color; "sans" + "ink" are the defaults and are not stored.
+enum IntroStyle {
+    static func font(_ key: String?, size: CGFloat = 16) -> Font {
+        switch key {
+        case "serif": return .system(size: size, design: .serif)
+        case "rounded": return .system(size: size, design: .rounded)
+        case "mono": return .system(size: size, design: .monospaced)
+        default: return .system(size: size)
+        }
+    }
+
+    static func color(_ key: String?, _ palette: Palette) -> Color {
+        switch key {
+        case "ink2": return palette.ink2
+        case "clay": return palette.clay
+        case "honey": return palette.honey
+        case "alert": return BanbeTheme.alert
+        default: return palette.ink
+        }
+    }
+
+    static func fontName(_ key: String, _ T: (String, String) -> String) -> String {
+        switch key {
+        case "serif": return T("Có chân", "Serif")
+        case "rounded": return T("Tròn", "Rounded")
+        case "mono": return T("Đơn cách", "Mono")
+        default: return T("Mặc định", "Default")
+        }
+    }
+
+    static func colorName(_ key: String, _ T: (String, String) -> String) -> String {
+        switch key {
+        case "ink2": return T("Xám", "Grey")
+        case "clay": return T("Đất nung", "Clay")
+        case "honey": return T("Mật ong", "Honey")
+        case "alert": return T("Đỏ", "Red")
+        default: return T("Mặc định", "Default")
+        }
+    }
+}
+
+/// Font chips and colour swatches under the introduction field.
+struct IntroStylePicker: View {
+    @EnvironmentObject private var app: AppState
+    @Binding var font: String
+    @Binding var color: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(app.T("Kiểu chữ", "Text style")).font(.system(size: 13, weight: .semibold))
+            HStack(spacing: 8) {
+                ForEach(EventTypes.introFonts, id: \.self) { key in
+                    let on = font == key
+                    Button { Haptics.selection(); font = key } label: {
+                        Text("Aa").font(IntroStyle.font(key, size: 17).weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .foregroundStyle(on ? app.palette.paper : app.palette.ink)
+                            .background(on ? app.palette.ink : app.palette.paper, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(on ? .clear : app.palette.rule, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(IntroStyle.fontName(key, app.T))
+                    .accessibilityAddTraits(on ? [.isSelected] : [])
+                    .accessibilityIdentifier("create.introFont.\(key)")
+                }
+            }
+            HStack(spacing: 12) {
+                ForEach(EventTypes.introColors, id: \.self) { key in
+                    let on = color == key
+                    Button { Haptics.selection(); color = key } label: {
+                        Circle().fill(IntroStyle.color(key, app.palette))
+                            .frame(width: 30, height: 30)
+                            .overlay(Circle().stroke(app.palette.rule, lineWidth: 1))
+                            .padding(4)
+                            .overlay(Circle().stroke(on ? app.palette.ink : .clear, lineWidth: 2))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(IntroStyle.colorName(key, app.T))
+                    .accessibilityAddTraits(on ? [.isSelected] : [])
+                    .accessibilityIdentifier("create.introColor.\(key)")
+                }
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("create.introStyle")
+    }
+}
+
+// MARK: - Sub-step bar (note 69)
+
+/// The nested progress inside one Create step (Basics, Tickets). Deliberately unlike `StepProgress`: no ring, no
+/// percentage, small 26pt dots on a thin track, filled clay for the current part, a ✓ for done parts, and only the
+/// current part's name under the bar, so it reads as "inside this step", not as more steps.
+struct SubStepBar: View {
+    @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let stepTitle: String
+    let titles: [String]
+    let current: Int
+    let done: [Bool]
+    var identifier: String = "create.substeps"
+    let onSelect: (Int) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 0) {
+                ForEach(titles.indices, id: \.self) { i in
+                    if i > 0 {
+                        Rectangle()
+                            .fill(i <= current ? app.palette.clay : app.palette.rule)
+                            .frame(height: 2)
+                            .frame(maxWidth: .infinity)
+                    }
+                    dot(i)
+                }
+            }
+            HStack(spacing: 6) {
+                Text(app.T("Phần \(current + 1)/\(titles.count)", "Part \(current + 1) of \(titles.count)"))
+                    .font(.caption.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                Text(titles.indices.contains(current) ? titles[current] : "").font(.subheadline.weight(.semibold))
+            }
+            .accessibilityHidden(true)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .background(app.palette.blockInset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .animation(Motion.animation(.easeInOut(duration: 0.2), reduce: reduceMotion), value: current)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private func dot(_ i: Int) -> some View {
+        let isCurrent = i == current
+        let isDone = done.indices.contains(i) && done[i]
+        return Button { Haptics.selection(); onSelect(i) } label: {
+            ZStack {
+                Circle()
+                    .fill(isCurrent ? app.palette.clay : (isDone ? app.palette.ink : Color.clear))
+                    .overlay(Circle().stroke(isCurrent || isDone ? Color.clear : app.palette.ink3, lineWidth: 1.5))
+                if isDone && !isCurrent {
+                    Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(app.palette.paper)
+                } else {
+                    Text("\(i + 1)").font(.system(size: 12, weight: .bold)).monospacedDigit()
+                        .foregroundStyle(isCurrent ? app.palette.paper : app.palette.ink2)
+                }
+            }
+            .frame(width: 26, height: 26)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, -9)
+        .accessibilityLabel(app.T("\(stepTitle), phần \(i + 1) trên \(titles.count), \(titles[i])",
+                                  "\(stepTitle), part \(i + 1) of \(titles.count), \(titles[i])"))
+        .accessibilityValue(isDone ? app.T("Xong", "Done") : "")
+        .accessibilityAddTraits(isCurrent ? [.isSelected] : [])
+        .accessibilityIdentifier("\(identifier).\(i)")
+    }
+}

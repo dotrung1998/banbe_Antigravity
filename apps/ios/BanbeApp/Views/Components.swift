@@ -555,6 +555,10 @@ struct BanbeField: View {
     var icon: String? = nil
     /// Create-event field id for the ✓ in its label (note 66).
     var doneField: String? = nil
+    /// Note 69: a long text. Grows over these lines and is never shorter than two one-line fields (LongText).
+    var lines: ClosedRange<Int>? = nil
+    /// Note 69: shows the Expand button in the label row (opens the whole text in a sheet).
+    var onExpand: (() -> Void)? = nil
     /// Note 53: error / warning state (border + message under the field).
     var state: FieldState = .normal
     /// Note 53: lets a screen drive focus (Create event's "take me to this field"). Without it the field
@@ -583,7 +587,9 @@ struct BanbeField: View {
     @ViewBuilder
     private var input: some View {
         let field = Group {
-            if secure { SecureField(placeholder, text: $text) } else { TextField(placeholder, text: $text) }
+            if secure { SecureField(placeholder, text: $text) }
+            else if let lines { TextField(placeholder, text: $text, axis: .vertical).lineLimit(lines) }
+            else { TextField(placeholder, text: $text) }
         }
         .textContentType(contentType)
         if let focus, let focusID {
@@ -595,8 +601,18 @@ struct BanbeField: View {
 
     private func iconStyle(_ icon: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let label { FormFieldLabel(icon: icon, text: label, required: required, field: doneField) }
+            if let label {
+                HStack(spacing: 0) {
+                    FormFieldLabel(icon: icon, text: label, required: required, field: doneField)
+                    if let onExpand {
+                        Spacer(minLength: 8)
+                        ExpandFieldButton(fieldName: label, identifier: doneField.map { "create.expand.\($0)" }, action: onExpand)
+                            .padding(.vertical, -12)
+                    }
+                }
+            }
             input
+            .frame(minHeight: lines == nil ? nil : LongText.minBoxHeight - 30, alignment: .topLeading)
             .font(.system(size: 16))
             .keyboardType(keyboard)
             .autocorrectionDisabled()

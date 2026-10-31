@@ -25,6 +25,13 @@ final class EventTypesUITests: XCTestCase {
         add(attachment)
     }
 
+    /// Note 69: opens a part of the current step (Basics › Details is part 4).
+    private func openPart(_ app: XCUIApplication, _ i: Int) {
+        let dot = el(app, "create.substeps.\(i)")
+        for _ in 0..<4 where !dot.isHittable { app.swipeDown() }
+        if dot.waitForExistence(timeout: 5) { dot.tap() }
+    }
+
     private func scroll(_ app: XCUIApplication, to element: XCUIElement, max: Int = 12) {
         var n = 0
         while !(element.exists && element.isHittable) && n < max { app.swipeUp(); n += 1 }
@@ -33,6 +40,7 @@ final class EventTypesUITests: XCTestCase {
     func testSupperClubBasicsShowsItsOwnFields() {
         let app = launch("shell.create")
         XCTAssertTrue(el(app, "create.recipeMeter").waitForExistence(timeout: 10))
+        openPart(app, 4)   // note 69: type facts are in Basics › Details
         let details = el(app, "create.typeField.dietary")
         scroll(app, to: details)
         XCTAssertTrue(details.exists, "the supper club's own fields in Basics")
@@ -53,10 +61,13 @@ final class EventTypesUITests: XCTestCase {
         XCTAssertTrue(el(app, "create.recipeMeter").waitForExistence(timeout: 10))
         // The fixture draft has no address yet: Next to When & where, whose footer names it.
         let gaps = el(app, "create.step.gaps")
-        scroll(app, to: el(app, "create.step.next"), max: 20)
-        el(app, "create.step.next").tap()
-        scroll(app, to: gaps, max: 20)
         let chip = el(app, "create.missing.location")
+        // Note 69: Next walks Basics' parts first, then reaches When & where.
+        for _ in 0..<8 where !chip.exists {
+            scroll(app, to: el(app, "create.step.next"), max: 20)
+            el(app, "create.step.next").tap()
+        }
+        scroll(app, to: gaps, max: 20)
         XCTAssertTrue(chip.waitForExistence(timeout: 5), "the address gap is a chip")
         shot("types-still-needed-chip")
         chip.tap()
@@ -118,9 +129,57 @@ final class EventTypesUITests: XCTestCase {
         }
     }
 
+    /// Note 69: Basics › Story has long fields (2x a one-line box) with Expand → full-screen editor → Clear all (confirmed),
+    /// and the introduction's font / colour; two categories ask both types' facts in Basics › Details.
+    func testLongFieldsExpandClearAndTwoCategories() {
+        let app = launch("shell.create")
+        XCTAssertTrue(el(app, "create.recipeMeter").waitForExistence(timeout: 10))
+        let story = el(app, "create.substeps.1")
+        XCTAssertTrue(story.waitForExistence(timeout: 5), "Basics has its own part bar")
+        let nameHeight = app.textFields["Your event name"].firstMatch.frame.height
+        story.tap()
+        let intro = el(app, "create.intro")
+        XCTAssertTrue(intro.waitForExistence(timeout: 5))
+        let name = app.textFields["Your event name"].firstMatch
+        XCTAssertFalse(name.exists, "one part at a time: the name is in part 1")
+        XCTAssertGreaterThanOrEqual(intro.frame.height, nameHeight * 2, "long field at least twice the Event name field")
+        scroll(app, to: el(app, "create.introFont.serif"))
+        el(app, "create.introFont.serif").tap()
+        el(app, "create.introColor.clay").tap()
+        XCTAssertTrue(el(app, "create.introFont.serif").isSelected && el(app, "create.introColor.clay").isSelected)
+        for _ in 0..<4 where !el(app, "create.expand.intro").isHittable { app.swipeDown() }
+        el(app, "create.expand.intro").tap()
+        let editor = el(app, "longText.editor")
+        XCTAssertTrue(editor.waitForExistence(timeout: 5), "Expand opens the whole text")
+        editor.typeText("Hello there")
+        el(app, "longText.clearAll").tap()
+        // The system dialog drops custom identifiers: its own "Clear all" is the second button with that label.
+        let clears = app.buttons.matching(NSPredicate(format: "label == 'Clear all'"))
+        let deadline = Date().addingTimeInterval(3)
+        while clears.count < 2 && Date() < deadline { usleep(200_000) }
+        XCTAssertGreaterThanOrEqual(clears.count, 2, "Clear all asks first")
+        XCTAssertEqual((editor.value as? String) ?? "", "Hello there", "nothing cleared before confirming")
+        app.buttons.matching(NSPredicate(format: "label == 'Clear all' AND identifier != 'longText.clearAll'")).firstMatch.tap()
+        XCTAssertEqual((editor.value as? String) ?? "", "", "cleared")
+        el(app, "longText.done").tap()
+        XCTAssertTrue(intro.waitForExistence(timeout: 5))
+        // Two categories: Supper club (fixture) + Music → Details asks for dietary AND lineup.
+        el(app, "create.substeps.3").tap()
+        let music = app.buttons["Music"].firstMatch
+        scroll(app, to: music)
+        music.tap()
+        el(app, "create.substeps.4").tap()
+        let lineup = el(app, "create.typeField.lineup")
+        scroll(app, to: lineup, max: 20)
+        XCTAssertTrue(lineup.exists, "the second category's own field")
+        for _ in 0..<20 where !el(app, "create.typeField.dietary").exists { app.swipeDown() }
+        XCTAssertTrue(el(app, "create.typeField.dietary").exists, "the first category's field stays")
+    }
+
     func testPopupCreateFormAsksItsOwnFacts() {
         let app = launch("shell.create", extra: ["-uiFixtureCreateType", "popup"])
         XCTAssertTrue(el(app, "create.recipeMeter").waitForExistence(timeout: 10))
+        openPart(app, 4)
         let brands = el(app, "create.typeField.brands")
         scroll(app, to: brands, max: 20)
         XCTAssertTrue(brands.exists, "a pop-up asks for its brands")
