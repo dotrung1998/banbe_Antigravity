@@ -29,6 +29,19 @@ struct LogomotionView: UIViewRepresentable {
     /// immediately, if Reduce Motion is on and the html/js skipped
     /// straight to a static frame — see that file's own `prefersReducedMotion()`).
     var onComplete: (() -> Void)? = nil
+    /// Note 69: the theme's logo colour. The artwork is black, so on a dark background it was invisible; the html
+    /// recolours it (`?tint=#rrggbb`, light colours only). nil = drawn as authored.
+    var tint: Color? = nil
+
+    /// `#rrggbb` for the html, only for a LIGHT logo colour (a dark theme). A dark one is the artwork's own colour, so
+    /// the animation is left exactly as authored. nil when the colour can't be read.
+    static func hex(_ color: Color) -> String? {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a) else { return nil }
+        guard 0.299 * r + 0.587 * g + 0.114 * b > 0.5 else { return nil }
+        func c(_ v: CGFloat) -> Int { Int((min(max(v, 0), 1) * 255).rounded()) }
+        return String(format: "#%02x%02x%02x", c(r), c(g), c(b))
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(onComplete: onComplete) }
 
@@ -43,7 +56,12 @@ struct LogomotionView: UIViewRepresentable {
         webView.isUserInteractionEnabled = false
         if let folderURL = Bundle.main.url(forResource: "logomotion", withExtension: nil),
            let fileURL = Bundle.main.url(forResource: "logomotion2309", withExtension: "html", subdirectory: "logomotion") {
-            webView.loadFileURL(fileURL, allowingReadAccessTo: folderURL)
+            var url = fileURL
+            if let tint, let hex = Self.hex(tint), var parts = URLComponents(url: fileURL, resolvingAgainstBaseURL: false) {
+                parts.queryItems = [URLQueryItem(name: "tint", value: hex)]
+                url = parts.url ?? fileURL
+            }
+            webView.loadFileURL(url, allowingReadAccessTo: folderURL)
         }
         return webView
     }

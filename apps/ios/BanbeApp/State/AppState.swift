@@ -731,7 +731,9 @@ final class AppState: ObservableObject {
     // lifted out of local `@State` (which reset to "personal" every time
     // AccountView's switch-statement case was re-entered — e.g. after
     // opening the new public-profile link and coming back) into here.
-    @Published var accountTab = "personal"
+    // Note 69: "host" by default — Host is the first, selected tab while Hosting is on; without it this resolves
+    // to the first tab that exists (AccountTabs.resolve).
+    @Published var accountTab = "host"
     // Account IA pass (2026-09-27) — which group AccountGroupView shows:
     // "team" | "activity" | "payments" | "preferences" | "hostOps" |
     // "adminReview". `accountTab` itself is untouched by opening a group.
@@ -2148,6 +2150,9 @@ final class AppState: ObservableObject {
     // preserved scroll position"). Now keyed by `accountTab` so switching
     // tabs and coming back doesn't restore to the wrong tab's old position.
     @Published var accountScrollAnchorIDByTab: [String: String] = [:]
+    /// Note 69: exact scroll offset per Account tab (same mechanism as `homeScrollOffsetY`), so Back from a row lands
+    /// where you were, not on a centred group. Not @Published: it is written on every scroll.
+    var accountScrollOffsetByTab: [String: CGFloat] = [:]
 
     /// Task 1 (11-realtime-map.md follow-up): mirrors `RootView`'s own
     /// edge-swipe-back gesture progress (0 at rest, 1 at full commit) so

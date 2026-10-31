@@ -1622,6 +1622,11 @@ extension AppState {
                 if !confirmed {
                     if Self.hostOnlyScreens.contains(screen) { screen = .profile }
                     if accountTab == "host" { accountTab = "personal" }
+                } else if !rollbackMode {
+                    // Note 69: turning Hosting on puts Account on the Host tab (first, selected by default).
+                    accountTab = "host"
+                    accountScrollAnchorIDByTab["host"] = nil
+                    accountScrollOffsetByTab["host"] = nil
                 }
                 // Simple Shell: off (from any source) puts Home back on Going out, so a cancelled host setup re-locks
                 // the Hosting segment; turning on lands Home on Hosting (Lib/HomeMode.swift).

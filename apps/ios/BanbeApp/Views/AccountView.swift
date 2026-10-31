@@ -55,8 +55,8 @@ struct AccountView: View {
     @State private var highlightedTeamInviteOrganizerId: String?
     @State private var highlightedEventCreditId: UUID?
 
-    // note 66 — the Personal/Host/Admin tabs are gone: the content follows `app.organizerMode`.
-    // `app.accountTab` stays on AppState for compatibility but is never rendered or read here.
+    // Note 69: Personal/Host/Admin tabs again, but which ones exist follows Hosting mode (Lib/AccountTabs.swift).
+    // `app.accountTab` is the selection; a tab that no longer exists falls back to the first one.
 
     private var myStoryGroup: StoryGroup? {
         app.homeStories.first { g in app.myOrganizerIdsCache.contains(g.organizerId) }
@@ -153,6 +153,8 @@ struct AccountView: View {
             app.palette.paper.ignoresSafeArea()
         VStack(alignment: .leading, spacing: 0) {
             accountHeader
+            // Note 69: the tabs (when there are any) are a fixed sibling, like the header; hidden while searching.
+            if !searchOpen && !accountTabs.isEmpty { accountTabBar }
             // Fixed-header pass (2026-10-02) — tabs used to be the FIRST
             // row inside `accountContent`'s own LazyVStack, i.e. inside the
             // scrollable `ScreenScaffold` content: scrolling the Personal/
@@ -162,7 +164,10 @@ struct AccountView: View {
             // comment as `accountHeader` just above) — only the selected
             // tab's own body, inside ScreenScaffold, scrolls now.
             // Search spans every tab, so the tab pills are hidden while it's open.
-            ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: accountScrollAnchorBinding, refreshIndicatorTopPadding: 24, onRefresh: {
+            ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: accountScrollAnchorBinding,
+                           restoreOffsetY: app.accountScrollOffsetByTab[modeKey],
+                           onScrollOffset: { app.accountScrollOffsetByTab[modeKey] = $0 },
+                           refreshIndicatorTopPadding: 24, onRefresh: {
                 guard app.userID != nil else { return }
                 await app.loadPaymentBookings()
                 await app.loadMyRefunds()
@@ -306,60 +311,197 @@ struct AccountView: View {
         .padding(.top, 16)
     }
 
-    /// note 66 (Simple Shell phase 2) — Account has no tabs: its content follows the mode. Goer: profile card,
-    /// four tiles, rewards strip, Action Center, team-invite banner, More, Host-your-first-event, Sign out.
-    /// Host: organizer card, four host tiles, rewards strip, Action Center, More, Sign out. Admin tools are a
-    /// row in More (the 'admin' AccountGroup). Sign out renders once, at the very bottom.
     private var isHostMode: Bool { app.organizerMode && app.canHost }
 
-    /// Keys the scroll anchor and the content identity (was `app.accountTab`).
-    private var modeKey: String { isHostMode ? "host" : "personal" }
+    /// Note 69: the tabs are back, but they follow Hosting mode (Lib/AccountTabs.swift). Empty = one page.
+    private var accountTabs: [String] { AccountTabs.tabs(isAdmin: app.isAdmin, hostMode: isHostMode) }
+    private var selectedTab: String { AccountTabs.resolve(app.accountTab, tabs: accountTabs) }
+
+    /// Keys the scroll anchor and the content identity: one remembered scroll position per tab.
+    private var modeKey: String { selectedTab }
+
+    private var accountTabBar: some View {
+        let adminBadge = AccountBadges.adminModerationCount(accountType: app.accountType, pendingEventsCount: app.pendingEventsCount)
+            + app.adminInvites.filter { $0.status == "pending" }.count
+        let segments: [GlassSegment] = accountTabs.map { key in
+            switch key {
+            case "host":
+                return GlassSegment(id: key, label: app.T("Tổ chức", "Host"), icon: "storefront",
+                                    badge: hostActionItems.count, identifier: "account.tab.host")
+            case "admin":
+                return GlassSegment(id: key, label: app.T("Quản trị", "Admin"), icon: "checkmark.shield",
+                                    badge: adminBadge, identifier: "account.tab.admin")
+            default:
+                return GlassSegment(id: key, label: app.T("Cá nhân", "Personal"), icon: "person.crop.circle",
+                                    badge: 0, identifier: "account.tab.personal")
+            }
+        }
+        return GlassSegmentedControl(segments: segments, selection: selectedTab) { key in
+            guard key != selectedTab else { return }
+            Haptics.selection()
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { app.accountTab = key }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .accessibilityIdentifier("account.tabs")
+    }
 
     private var accountContent: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
-            if isHostMode {
-                hostIdentity
-            } else {
-                personalProfileCard
+            switch selectedTab {
+            case "host": hostTabContent
+            case "admin": adminTabContent
+            default: personalTabContent
             }
-
-            AccountTilesGrid(tiles: isHostMode ? hostTiles : goerTiles)
-                .padding(.top, 16)
-                .id("account-tiles")
-
-            if app.rewardsEnabled { rewardsStrip.padding(.top, 12) }
-
-            // Same canonical Action Center as Home; only when it has items. Goer and host duties are shown
-            // together in both modes so owed money is never hidden behind a mode switch.
-            if !actionItems.isEmpty {
-                ActionCenterView(items: actionItems, onSeeAll: { app.openVerifications(back: .profile) })
-                    .padding(.top, 6)
-            }
-
-            if !isHostMode && !app.myOrganizerInvites.isEmpty { teamInviteBanner }
-
-            sectionHeader(app.T("Thêm", "More"), topPadding: 24)
-                .accessibilityIdentifier("account.section.more")
-            moreCard.padding(.top, 10)
-            if !app.organizerModeError.isEmpty {
-                Text(app.organizerModeError)
-                    .font(.system(size: 12))
-                    .foregroundStyle(BanbeTheme.alert)
-                    .padding(.top, 10)
-            }
-
-            if !isHostMode && !app.canHost { hostFirstEventCard }
-
-            signOutButton
         }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 20)
-        .padding(.top, 16)
-        // A mode switch swaps the whole body (and its own scroll anchor), like a tab switch used to.
+        .padding(.top, accountTabs.isEmpty ? 16 : 4)
+        // A tab switch swaps the whole body (and its own scroll anchor).
         .id(modeKey)
         .transition(.opacity)
         .sheet(isPresented: $shareCardOpen) { shareCardSheet }
         .sheet(isPresented: $eventStoryPickerOpen) { eventStoryPicker }
+    }
+
+    /// Personal: who you are, rewards, your tiles, what you owe, then the labelled groups. Host duties stay here
+    /// while the Host tab is hidden, so owed money is never out of sight.
+    @ViewBuilder
+    private var personalTabContent: some View {
+        personalProfileCard.id("account.personal.card")
+        if app.rewardsEnabled { rewardsStrip.padding(.top, 12).id("account.personal.rewards") }
+        AccountTilesGrid(tiles: goerTiles)
+            .padding(.top, 16)
+            .id("account-tiles")
+        let items = accountTabs.contains("host") ? goerActionItems : actionItems
+        if !items.isEmpty {
+            ActionCenterView(items: items, onSeeAll: { app.openVerifications(back: .profile) })
+                .padding(.top, 6)
+                .id("account.personal.actions")
+        }
+        if !app.myOrganizerInvites.isEmpty { teamInviteBanner.id("account.personal.teamInvite") }
+
+        rowGroup(id: "account.personal.activity", title: app.T("Hoạt động", "Activity")) {
+            moreRow(app.T("Thông báo", "Notifications"), icon: "bell", identifier: "account.notifications",
+                    badge: app.unreadNotifications) { app.goNotifications(back: .profile) }
+            moreDivider()
+            moreRow(app.T("Đang theo dõi", "Following"), icon: "person.crop.circle.badge.checkmark", identifier: "account.following",
+                    trailing: app.followedStatus == .loaded ? "\(app.followedOrgIDs.count)" : nil) { app.screen = .following }
+            moreDivider()
+            moreRow(app.T("Báo cáo", "Reports"), icon: "chart.bar.doc.horizontal", identifier: "account.reportsPersonal") {
+                app.openReports(scope: "personal", back: .profile)
+            }
+        }
+        let hasHandle = !(app.user?.handle ?? "").isEmpty
+        if app.referralLink != nil || hasHandle {
+            rowGroup(id: "account.personal.share", title: app.T("Chia sẻ & mời", "Share & invite")) {
+                if app.referralLink != nil {
+                    moreRow(app.T("Mời bạn bè", "Invite friends"), icon: "person.2", identifier: "account.inviteFriends") { app.shareReferral() }
+                }
+                if app.referralLink != nil && hasHandle { moreDivider() }
+                if hasHandle {
+                    moreRow(app.T("Chia sẻ thẻ của bạn", "Share your card"), icon: "qrcode", identifier: "account.shareProfileCard") {
+                        shareCardForHost = false; shareCardOpen = true
+                    }
+                }
+            }
+        }
+        rowGroup(id: "account.personal.app", title: app.T("Ứng dụng", "App")) {
+            moreRow(app.T("Cài đặt", "Settings"), icon: "gearshape", identifier: "account.group.preferences") { openGroup("preferences") }
+            moreDivider()
+            moreRow(imageCacheClearedAt == nil ? app.T("Xoá bộ nhớ đệm hình ảnh", "Clear image cache")
+                                               : app.T("Đã xoá bộ nhớ đệm hình ảnh", "Image cache cleared"),
+                    icon: "photo.stack", identifier: "account.clearImageCache", chevron: false) {
+                PhotoLoader.clearCache()
+                imageCacheClearedAt = Date()
+            }
+            moreDivider()
+            hostingToggleRow
+        }
+        if !app.organizerModeError.isEmpty {
+            Text(app.organizerModeError)
+                .font(.system(size: 12))
+                .foregroundStyle(BanbeTheme.alert)
+                .padding(.top, 10)
+        }
+        if !app.canHost { hostFirstEventCard.id("account.personal.hostFirst") }
+        signOutButton.id("account.personal.signOut")
+    }
+
+    /// Host (first while Hosting mode is on): the organizer card, host tiles, host duties and the hosting tools.
+    @ViewBuilder
+    private var hostTabContent: some View {
+        hostIdentity
+        AccountTilesGrid(tiles: hostTiles)
+            .padding(.top, 16)
+            .id("account-tiles")
+        if !hostActionItems.isEmpty {
+            ActionCenterView(items: hostActionItems, onSeeAll: { app.openVerifications(back: .profile) })
+                .padding(.top, 6)
+                .id("account.host.actions")
+        }
+        rowGroup(id: "account.host.tools", title: app.T("Công cụ tổ chức", "Hosting tools")) {
+            postStoryRow
+            if app.myOrganizerID != nil {
+                moreDivider()
+                moreRow(app.T("Chia sẻ thẻ tổ chức", "Share host card"), icon: "qrcode", identifier: "account.shareHostCard") {
+                    shareCardForHost = true; shareCardOpen = true
+                }
+            }
+            moreDivider()
+            moreRow(app.T("Khảo sát & ý tưởng sự kiện", "Surveys & event ideas"), icon: "lightbulb", identifier: "account.group.surveys") {
+                app.screen = .surveysHosting
+            }
+            moreDivider()
+            moreRow(app.T("Hồ sơ tổ chức", "Organizer profile"), icon: "storefront", identifier: "account.organizerProfile") {
+                if let id = app.myOrganizerID { app.openOrganizerProfile(organizerID: id, back: .profile) } else { app.hostSetupOpen = true }
+            }
+        }
+    }
+
+    /// Admin: the former "Admin tools" group, shown inline. Each row opens the same screen as before; Back returns
+    /// to this tab.
+    @ViewBuilder
+    private var adminTabContent: some View {
+        rowGroup(id: "account.admin.tools", title: app.T("Quản trị", "Administration"), topPadding: 16) {
+            moreRow(app.T("Duyệt & kiểm duyệt", "Review & moderation"), icon: "exclamationmark.shield", identifier: "account.group.adminReview",
+                    badge: AccountBadges.adminModerationCount(accountType: app.accountType, pendingEventsCount: app.pendingEventsCount)) {
+                openGroup("adminReview")
+            }
+            moreDivider()
+            moreRow(app.T("Đội ngũ quản trị", "Admin team"), icon: "person.3.fill", identifier: "account.group.adminTeam",
+                    badge: app.adminInvites.filter { $0.status == "pending" }.count) {
+                if app.canManageAdmins { Task { await app.loadAdminTeam() } }
+                openGroup("adminTeam")
+            }
+            moreDivider()
+            moreRow(app.T("Số liệu & báo cáo", "Metrics & reports"), icon: "chart.bar.doc.horizontal", identifier: "account.reportsAdmin") {
+                app.openReports(scope: "admin", back: .profile)
+            }
+            moreDivider()
+            moreRow(app.T("Hướng dẫn quản trị", "Admin guide"), icon: "checklist", identifier: "account.adminGuide") {
+                app.accountGroupKey = ""   // Back from the guide lands on Account, not on an old group
+                app.helpGuideKey = "admin"; app.screen = .helpGuide
+            }
+        }
+    }
+
+    /// Note 69: a labelled group of rows (replaces the single "More" list). One scroll anchor per group, so Back from
+    /// any row lands on the group it was opened from.
+    private func rowGroup<Content: View>(id: String, title: String, topPadding: CGFloat = 28,
+                                         @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(app.palette.ink)
+                .accessibilityAddTraits(.isHeader)
+                // On the heading only: on the container it would replace every row's own identifier.
+                .accessibilityIdentifier(id)
+            VStack(spacing: 0, content: content)
+                .background(app.palette.block, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .padding(.top, topPadding)
+        .id(id)
     }
 
     // MARK: Identity
@@ -379,25 +521,36 @@ struct AccountView: View {
                 }
             }
             .frame(width: 64, height: 64)
+            // Note 69: the name gets the full width (up to two lines) and Rename moved under it, so a long name is
+            // never cut off.
             VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(app.displayName).font(BanbeTheme.display(22)).lineLimit(1)
+                Text(app.displayName).font(BanbeTheme.display(22))
+                    .lineLimit(2).minimumScaleFactor(0.85)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(app.isSignedIn ? .isButton : [])
+                    .accessibilityHint(app.isSignedIn ? app.T("Mở hồ sơ cá nhân", "Opens your personal profile") : "")
+                    .accessibilityAction { if app.isSignedIn { openOwnPublicProfile() } }
+                if let handle = app.user?.handle, !handle.isEmpty {
+                    Text("@\(handle)").font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                }
+                HStack(spacing: 10) {
+                    Text(subtitle).font(.system(size: 11)).kerning(0.6)
                     if app.isSignedIn {
+                        // A real button inside the tappable card: it wins over the card's own tap.
                         SwipeSafeButton {
                             app.goEditName()
                         } label: {
                             Label(app.T("Đổi tên", "Rename"), systemImage: "pencil")
                                 .labelStyle(.titleAndIcon)
+                                .frame(minHeight: 32)
+                                .contentShape(Rectangle())
                         }
                         .font(.system(size: 11.5))
                         .foregroundStyle(app.palette.ink.opacity(0.65))
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("account.rename")
                     }
                 }
-                if let handle = app.user?.handle, !handle.isEmpty {
-                    Text("@\(handle)").font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
-                }
-                Text(subtitle).font(.system(size: 11)).kerning(0.6)
             }
             Spacer(minLength: 0)
             if app.isSignedIn {
@@ -425,6 +578,9 @@ struct AccountView: View {
         // Plan item 5: the identity card is a block like the tiles under it (the theme wash sits on top).
         .background(app.palette.block, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+        // Note 69: the whole card opens the public profile, not just the ›. Rename (a real button) still wins.
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .onTapGesture { if app.isSignedIn { Haptics.light(); openOwnPublicProfile() } }
         .padding(.top, 22)
         .accessibilityIdentifier("account.profileCard")
     }
@@ -572,69 +728,7 @@ struct AccountView: View {
         .accessibilityIdentifier("account.teamInviteBanner")
     }
 
-    // MARK: More
-
-    @ViewBuilder
-    private var moreCard: some View {
-        VStack(spacing: 0) {
-            moreRow(app.T("Thông báo", "Notifications"), icon: "bell", identifier: "account.notifications",
-                    badge: app.unreadNotifications) { app.goNotifications(back: .profile) }
-            if isHostMode {
-                moreDivider()
-                postStoryRow
-                if app.myOrganizerID != nil {
-                    moreDivider()
-                    moreRow(app.T("Chia sẻ thẻ tổ chức", "Share host card"), icon: "qrcode", identifier: "account.shareHostCard") {
-                        shareCardForHost = true; shareCardOpen = true
-                    }
-                }
-                moreDivider()
-                moreRow(app.T("Khảo sát & ý tưởng sự kiện", "Surveys & event ideas"), icon: "lightbulb", identifier: "account.group.surveys") {
-                    app.screen = .surveysHosting
-                }
-                moreDivider()
-                moreRow(app.T("Hồ sơ tổ chức", "Organizer profile"), icon: "storefront", identifier: "account.organizerProfile") {
-                    if let id = app.myOrganizerID { app.openOrganizerProfile(organizerID: id, back: .profile) } else { app.hostSetupOpen = true }
-                }
-            } else {
-                moreDivider()
-                moreRow(app.T("Đang theo dõi", "Following"), icon: "person.crop.circle.badge.checkmark", identifier: "account.following",
-                        trailing: app.followedStatus == .loaded ? "\(app.followedOrgIDs.count)" : nil) { app.screen = .following }
-                if app.referralLink != nil {
-                    moreDivider()
-                    moreRow(app.T("Mời bạn bè", "Invite friends"), icon: "person.2", identifier: "account.inviteFriends") { app.shareReferral() }
-                }
-                if let handle = app.user?.handle, !handle.isEmpty {
-                    moreDivider()
-                    moreRow(app.T("Chia sẻ thẻ của bạn", "Share your card"), icon: "qrcode", identifier: "account.shareProfileCard") {
-                        shareCardForHost = false; shareCardOpen = true
-                    }
-                }
-                moreDivider()
-                moreRow(app.T("Báo cáo", "Reports"), icon: "chart.bar.doc.horizontal", identifier: "account.reportsPersonal") {
-                    app.openReports(scope: "personal", back: .profile)
-                }
-            }
-            moreDivider()
-            moreRow(app.T("Cài đặt", "Settings"), icon: "gearshape", identifier: "account.group.preferences") { openGroup("preferences") }
-            moreDivider()
-            moreRow(imageCacheClearedAt == nil ? app.T("Xoá bộ nhớ đệm hình ảnh", "Clear image cache")
-                                               : app.T("Đã xoá bộ nhớ đệm hình ảnh", "Image cache cleared"),
-                    icon: "photo.stack", identifier: "account.clearImageCache", chevron: false) {
-                PhotoLoader.clearCache()
-                imageCacheClearedAt = Date()
-            }
-            moreDivider()
-            hostingToggleRow
-            if app.isAdmin {
-                moreDivider()
-                moreRow(app.T("Công cụ quản trị", "Admin tools"), icon: "checkmark.shield", identifier: "account.adminTools",
-                        badge: AccountBadges.adminModerationCount(accountType: app.accountType, pendingEventsCount: app.pendingEventsCount)
-                            + app.adminInvites.filter { $0.status == "pending" }.count) { openGroup("admin") }
-            }
-        }
-        .background(app.palette.block, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
+    // MARK: Rows
 
     private func moreDivider() -> some View {
         Rectangle().fill(app.palette.divider).frame(height: 1 / UIScreen.main.scale).padding(.leading, 50)

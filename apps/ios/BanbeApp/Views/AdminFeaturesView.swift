@@ -13,11 +13,15 @@ struct AdminFeaturesView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var error = ""
     @State private var expanded: Set<String> = []
+    /// Note 69: a switch that needs another one, turned on while that one is off ("Also turn on …?").
+    @State private var pendingRequires: Flag?
 
     private struct Flag: Identifiable {
         let key: String, vi: String, en: String, hintVi: String, hintEn: String
         var onVi = "Đang hiện cho mọi người", onEn = "Visible to everyone"
         var offVi = "Đang ẩn với mọi người", offEn = "Hidden from everyone"
+        /// Note 69: the switch that must also be on for this one to do anything (Rewards v2 needs Rewards).
+        var requires: String? = nil
         var id: String { key }
     }
     private let flags = [
@@ -27,7 +31,7 @@ struct AdminFeaturesView: View {
         Flag(key: "rewards_v2", vi: "Phần thưởng v2: chuỗi tuần, cấp huy hiệu, mục tiêu", en: "Rewards v2: week streak, badge tiers, goals",
              hintVi: "Chuỗi theo tuần với tuần nghỉ và khôi phục, huy hiệu nhiều cấp, huy hiệu tiếp theo và mục tiêu tháng (migration 192). Mặc định tắt. Cần bật Phần thưởng.",
              hintEn: "Weekly streak with grace weeks and repair, tiered badges, next badge and a monthly goal (migration 192). Off by default. Needs Rewards on.",
-             onVi: "Đang hiện cho mọi người", onEn: "Visible to everyone", offVi: "Đang tắt", offEn: "Off"),
+             onVi: "Đang hiện cho mọi người", onEn: "Visible to everyone", offVi: "Đang tắt", offEn: "Off", requires: "rewards"),
         Flag(key: "push_enabled", vi: "Thông báo đẩy (iPhone)", en: "Push notifications (iPhone)",
              hintVi: "Gửi thông báo đẩy qua Apple cho người đã cho phép, ngoài giờ yên lặng 22:00–07:00. Cần khoá APNs; khi chưa có khoá, hệ thống chỉ chạy thử và không gửi gì (migration 194). Mặc định tắt.",
              hintEn: "Sends push notifications through Apple to people who allowed them, outside quiet hours 22:00–07:00. Needs the APNs key; without it the server only does a dry run and sends nothing (migration 194). Off by default.",
@@ -158,19 +162,40 @@ struct AdminFeaturesView: View {
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
+    private func flagTitle(_ key: String) -> String {
+        flags.first { $0.key == key }.map { app.T($0.vi, $0.en) } ?? key
+    }
+
     private func flagRow(_ f: Flag) -> some View {
         let on = FeatureFlags.isOn(app.featureFlags, f.key)
+        // Note 69: on, but the switch it needs is off, so nobody sees it. Say so instead of "Visible to everyone".
+        let blockedBy = f.requires.flatMap { FeatureFlags.isOn(app.featureFlags, $0) ? nil : $0 }
         return HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(app.T(f.vi, f.en)).font(.system(size: 15.5, weight: .semibold))
                 Text(app.T(f.hintVi, f.hintEn)).font(.system(size: 12.5)).opacity(0.7)
-                Text(on ? app.T(f.onVi, f.onEn) : app.T(f.offVi, f.offEn))
-                    .font(.system(size: 12, weight: .semibold)).opacity(on ? 1 : 0.7).padding(.top, 3)
-                    .accessibilityIdentifier("adminFeatures.\(f.key).state")
+                if on, let parent = blockedBy {
+                    Text(app.T("Chưa có tác dụng: hãy bật \"\(flagTitle(parent))\" trước", "No effect yet: turn on \"\(flagTitle(parent))\" first"))
+                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.honey).padding(.top, 3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("adminFeatures.\(f.key).state")
+                    Button { Task { await flip(parent, to: true) } } label: {
+                        Text(app.T("Bật \"\(flagTitle(parent))\"", "Turn on \"\(flagTitle(parent))\""))
+                            .font(.system(size: 13, weight: .semibold)).underline()
+                            .frame(minHeight: 44).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!app.featureFlagBusy.isEmpty)
+                    .accessibilityIdentifier("adminFeatures.\(f.key).enableRequired")
+                } else {
+                    Text(on ? app.T(f.onVi, f.onEn) : app.T(f.offVi, f.offEn))
+                        .font(.system(size: 12, weight: .semibold)).opacity(on ? 1 : 0.7).padding(.top, 3)
+                        .accessibilityIdentifier("adminFeatures.\(f.key).state")
+                }
             }
             Spacer(minLength: 0)
             GlassSwitch(isOn: on, loading: app.featureFlagBusy == f.key, identifier: "adminFeatures.\(f.key).switch") {
-                Task { await flip(f.key, to: !on) }
+                if !on, blockedBy != nil { pendingRequires = f } else { Task { await flip(f.key, to: !on) } }
             }
         }
         .padding(.horizontal, 18).padding(.vertical, 16)
@@ -248,6 +273,25 @@ struct AdminFeaturesView: View {
                 }
             }
             .padding(.horizontal, 22)
+        }
+        // Note 69: turning on a switch whose required switch is off (Rewards v2 without Rewards) would show nothing.
+        .confirmationDialog(
+            pendingRequires.map { f in app.T("Bật cả \"\(flagTitle(f.requires ?? ""))\"?", "Also turn on \"\(flagTitle(f.requires ?? ""))\"?") } ?? "",
+            isPresented: Binding(get: { pendingRequires != nil }, set: { if !$0 { pendingRequires = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingRequires
+        ) { f in
+            Button(app.T("Bật cả hai", "Turn on both")) {
+                Task {
+                    if let parent = f.requires { await flip(parent, to: true) }
+                    await flip(f.key, to: true)
+                }
+            }
+            Button(app.T("Chỉ bật mục này", "Only this one")) { Task { await flip(f.key, to: true) } }
+            Button(app.T("Huỷ", "Cancel"), role: .cancel) {}
+        } message: { f in
+            Text(app.T("\"\(app.T(f.vi, f.en))\" chỉ hiện khi \"\(flagTitle(f.requires ?? ""))\" đang bật.",
+                       "\"\(app.T(f.vi, f.en))\" only shows while \"\(flagTitle(f.requires ?? ""))\" is on."))
         }
     }
 }

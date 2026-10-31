@@ -223,7 +223,7 @@ struct UITestFixtureRoot: View {
             app.reportsLoadedAt = Date()
         }
         app.accountType = (variant == "account" || variant == "adminFeatures" || variant == "adminManageEvents") ? "admin" : "participant"
-        app.accountTab = "personal"
+        app.accountTab = "host"   // note 69: the default; resolves to the first tab that exists
         // Streak/coins capsule visible: the tightest Home header layout.
         app.rewardsSummary = RewardSummary(balance: 120, streak: 3, activeToday: true)
         app.rewardsSummaryStatus = .loaded

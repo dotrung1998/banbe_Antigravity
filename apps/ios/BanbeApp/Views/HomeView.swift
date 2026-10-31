@@ -636,7 +636,13 @@ struct HomeView: View {
             }
             .frame(minHeight: DockHeaderTitle.rowHeight)
             if !hostHome {
-                simpleSearchBar.padding(.bottom, 12)
+                // Note 69: the streak/coins capsule (Rewards on) was only in the old Home header, so with Simple
+                // Shell Rewards had no way in from Home. It sits beside the search bar on Going out.
+                HStack(spacing: 8) {
+                    simpleSearchBar
+                    if rewardShortcutsVisible { rewardShortcuts(compact: true, height: 44) }
+                }
+                .padding(.bottom, 12)
             }
         }
         .buttonStyle(.plain)

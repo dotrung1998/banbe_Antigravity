@@ -13,7 +13,7 @@ const LOGOMOTION_WIDTH = 280;
 const LOGOMOTION_HEIGHT = Math.round((LOGOMOTION_WIDTH / 1288) * 800);
 
 export default function Splash() {
-  const { state: s, T, dismissSplash, notifyLogomotionComplete } = useBanBe();
+  const { state: s, T, dismissSplash, notifyLogomotionComplete, resolvedTheme } = useBanBe();
   // Owner, 2026-10-24: a greeting under the motion. Signed in: "Welcome back, <given name>" (Vietnamese names put
   // the given name last, English first); signed out: a general welcome. iOS twin: SplashView.greeting.
   const parts = String(s.user?.name || '').trim().split(/\s+/).filter(Boolean);
@@ -51,7 +51,8 @@ export default function Splash() {
       <iframe
         ref={iframeRef}
         title="banbe"
-        src="/logomotion/logomotion2309.html"
+        // Note 69: the artwork is black; in dark mode it is tinted to the wordmark's amber (index.css, iOS palette.logo).
+        src={resolvedTheme === 'dark' ? '/logomotion/logomotion2309.html?tint=%23f6c453' : '/logomotion/logomotion2309.html'}
         scrolling="no"
         data-testid="splash-logomotion"
         style={{

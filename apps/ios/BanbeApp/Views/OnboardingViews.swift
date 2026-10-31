@@ -106,7 +106,7 @@ struct SplashView: View {
         ZStack {
             app.palette.paper.ignoresSafeArea()
             VStack(spacing: 0) {
-                LogomotionView(onComplete: { animationComplete = true })
+                LogomotionView(onComplete: { animationComplete = true }, tint: app.palette.logo)
                     .frame(width: 280, height: 280 * Self.logomotionAspect)
                 // Owner, 2026-10-24: a greeting under the motion. Signed in: "Welcome back, <given name>" (the name
                 // fades in once the account has loaded); signed out: a general welcome. Web twin: Splash.jsx.
