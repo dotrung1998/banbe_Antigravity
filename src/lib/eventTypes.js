@@ -195,7 +195,10 @@ export function missingDetails(profile, raw) {
   return out;
 }
 
-/** [{ id, label, value }] for Event Detail, in the order the profile lists them; empty values are skipped. */
+/**
+ * [{ id, label, value, values? }] for Event Detail, in the order the profile lists them; empty values are skipped. A
+ * multi choice also carries `values` (one label per choice) so a chip fact can show one chip per choice (note 70).
+ */
 export function detailFacts(profile, details, lang) {
   const fields = profile?.detailFields || {};
   const out = [];
@@ -203,12 +206,15 @@ export function detailFacts(profile, details, lang) {
     const def = fields[id];
     const v = details?.[id];
     if (!def || v == null) continue;
-    let value = null;
-    if (def.kind === 'multi' && Array.isArray(v)) value = v.map(x => optionLabel(def, x, lang)).filter(Boolean).join(', ');
+    let value = null, values = null;
+    if (def.kind === 'multi' && Array.isArray(v)) {
+      values = v.map(x => optionLabel(def, x, lang)).filter(Boolean);
+      value = values.join(', ');
+    }
     else if (def.kind === 'enum') value = optionLabel(def, v, lang);
     else if (def.kind === 'text') value = String(v);
     else if (def.kind === 'list' && Array.isArray(v)) value = v.join(', ');
-    if (value) out.push({ id, label: pick(def.label, lang), value });
+    if (value) out.push(values ? { id, label: pick(def.label, lang), value, values } : { id, label: pick(def.label, lang), value });
   }
   return out;
 }

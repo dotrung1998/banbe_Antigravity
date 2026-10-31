@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parsePrice, totalPrice, reserveBarState, clampQty, QTY_PRESETS, MAX_QTY, eventPrice, eventTotal, currencyUnavailable, CURRENCY_UNAVAILABLE_REASON } from '../../src/lib/reserveBar.js';
+import { parsePrice, totalPrice, reserveBarState, clampQty, maxQty, MAX_QTY, eventPrice, eventTotal, currencyUnavailable, CURRENCY_UNAVAILABLE_REASON } from '../../src/lib/reserveBar.js';
 
 // Mirrored by apps/ios/BanbeAppTests/ReserveBarTests.swift — change both together.
 
@@ -74,6 +74,14 @@ test('quantity stays within 1..6 and presets fit the cap', () => {
   assert.equal(clampQty(0), 1);
   assert.equal(clampQty(3), 3);
   assert.equal(clampQty(9), MAX_QTY);
-  assert.deepEqual(QTY_PRESETS, [1, 2, 3]);
-  assert.ok(QTY_PRESETS.every(n => n >= 1 && n <= MAX_QTY));
+  assert.equal(clampQty(5, 3), 3);
+  assert.equal(clampQty(0, 3), 1);
+});
+
+test('maxQty: never more than the seats left (regression: 3 left could pick 6)', () => {
+  assert.equal(maxQty(3), 3);
+  assert.equal(maxQty(10), MAX_QTY);
+  assert.equal(maxQty(null), MAX_QTY);
+  assert.equal(maxQty(0), 1);
+  assert.equal(clampQty(6, maxQty(3)), 3);
 });

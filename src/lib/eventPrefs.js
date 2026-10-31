@@ -190,6 +190,26 @@ export function criteriaSummary(criteria, vi) {
   return [i && (vi ? 'Sở thích: ' : 'Interests: ') + i, g && (vi ? 'Mục tiêu: ' : 'Goals: ') + g].filter(Boolean).join('  ▪︎  ');
 }
 
+// "a", "a or b", "a, b or c" (and/và for an all-of rule).
+const joinWords = (names, word) => names.length <= 1 ? (names[0] || '') : `${names.slice(0, -1).join(', ')} ${word} ${names[names.length - 1]}`;
+
+/**
+ * Who can reserve, in plain words (note 70), or null for Everyone:
+ * "Open to people into Supper club" · "Open to people into Music and Gallery, with the goal: Learn something".
+ * VI: "Dành cho người thích Supper club" · "…, có mục tiêu Học hỏi". The viewer's own result is shown beside it.
+ */
+export function criteriaPlain(criteria, vi) {
+  if (!criteria || criteriaIsEveryone(criteria)) return null;
+  const names = (g, opts) => (g && Array.isArray(g.values) && g.values.length
+    ? joinWords(g.values.map(v => prefLabel(v, opts, vi)), g.rule === 'all' ? (vi ? 'và' : 'and') : (vi ? 'hoặc' : 'or'))
+    : null);
+  const i = names(criteria.interests, INTERESTS);
+  const g = names(criteria.goals, GOALS);
+  if (!i && !g) return null;
+  if (vi) return 'Dành cho người ' + [i && `thích ${i}`, g && `có mục tiêu ${g}`].filter(Boolean).join(', ');
+  return 'Open to people ' + [i && `into ${i}`, g && `with the goal: ${g}`].filter(Boolean).join(', ');
+}
+
 /**
  * Exact guidance lines from a check_my_reservation_eligibility / CRITERIA_NOT_MET
  * payload, e.g. "Interests: Pick at least one: Music, Gallery" / "Goals: Add: Learn".

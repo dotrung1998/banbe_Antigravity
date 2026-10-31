@@ -228,7 +228,8 @@ struct UITestFixtureRoot: View {
         app.rewardsSummary = RewardSummary(balance: 120, streak: 3, activeToday: true)
         app.rewardsSummaryStatus = .loaded
         // Real seat fill for two fixture events: one almost full, one with social proof (note 50).
-        app.eventFill = ["fx-hosted": (booked: 18, capacity: 20), "fx-near": (booked: 6, capacity: 20)]
+        // bepnho mirrors production (capacity 3, nothing booked): "3 of 3 left" with no bar, stepper capped at 3 (note 70).
+        app.eventFill = ["fx-hosted": (booked: 18, capacity: 20), "fx-near": (booked: 6, capacity: 20), "bepnho": (booked: 0, capacity: 3)]
         app.homeFilterSheetOpen = UITestFixture.opensFilters
         if UITestFixture.rewardsSwitch == "off" { app.featureFlags = ["rewards": false] }
         if UITestFixture.seedsPulse {

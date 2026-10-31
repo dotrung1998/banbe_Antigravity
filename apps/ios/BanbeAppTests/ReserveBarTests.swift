@@ -81,7 +81,16 @@ final class ReserveBarTests: XCTestCase {
         XCTAssertEqual(ReserveBar.clampQty(0), 1)
         XCTAssertEqual(ReserveBar.clampQty(3), 3)
         XCTAssertEqual(ReserveBar.clampQty(9), ReserveBar.maxQty)
-        XCTAssertEqual(ReserveBar.presets, [1, 2, 3])
-        XCTAssertTrue(ReserveBar.presets.allSatisfy { (1...ReserveBar.maxQty).contains($0) })
+        XCTAssertEqual(ReserveBar.clampQty(5, max: 3), 3)
+        XCTAssertEqual(ReserveBar.clampQty(0, max: 3), 1)
+    }
+
+    func testCeilingNeverAboveSeatsLeft() {
+        // Regression (note 70): with 3 seats left the stepper could still reach 6.
+        XCTAssertEqual(ReserveBar.qtyCeiling(remaining: 3), 3)
+        XCTAssertEqual(ReserveBar.qtyCeiling(remaining: 10), ReserveBar.maxQty)
+        XCTAssertEqual(ReserveBar.qtyCeiling(remaining: nil), ReserveBar.maxQty)
+        XCTAssertEqual(ReserveBar.qtyCeiling(remaining: 0), 1)
+        XCTAssertEqual(ReserveBar.clampQty(6, max: ReserveBar.qtyCeiling(remaining: 3)), 3)
     }
 }

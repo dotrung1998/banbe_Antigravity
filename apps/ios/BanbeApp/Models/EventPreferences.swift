@@ -197,6 +197,26 @@ struct ReservationCriteria: Codable, Equatable {
         return c
     }
 
+    /// Who can reserve in plain words (note 70), or nil for Everyone. Port of criteriaPlain (src/lib/eventPrefs.js,
+    /// shared tests/fixtures/criteria-plain.json): "Open to people into Supper club" / "Dành cho người thích Supper club".
+    func plain(vi: Bool) -> String? {
+        guard !isEveryone else { return nil }
+        func joinWords(_ names: [String], _ word: String) -> String {
+            guard names.count > 1 else { return names.first ?? "" }
+            return names.dropLast().joined(separator: ", ") + " \(word) " + names[names.count - 1]
+        }
+        func names(_ g: CriteriaGroup?, _ opts: [PrefOption]) -> String? {
+            guard let g, !g.values.isEmpty else { return nil }
+            return joinWords(g.values.map { EventPrefTaxonomy.label($0, in: opts, vi: vi) },
+                             g.rule == "all" ? (vi ? "và" : "and") : (vi ? "hoặc" : "or"))
+        }
+        let i = names(interests, EventPrefTaxonomy.interests)
+        let g = names(goals, EventPrefTaxonomy.goals)
+        if i == nil && g == nil { return nil }
+        if vi { return "Dành cho người " + [i.map { "thích \($0)" }, g.map { "có mục tiêu \($0)" }].compactMap { $0 }.joined(separator: ", ") }
+        return "Open to people " + [i.map { "into \($0)" }, g.map { "with the goal: \($0)" }].compactMap { $0 }.joined(separator: ", ")
+    }
+
     /// Plain-language rule for guests/hosts, e.g. "Any of Music, Gallery · All of Learn".
     func summary(vi: Bool) -> String {
         guard !isEveryone else { return vi ? "Mọi người" : "Everyone" }

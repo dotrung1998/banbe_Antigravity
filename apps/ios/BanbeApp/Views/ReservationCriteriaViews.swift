@@ -33,6 +33,7 @@ extension AppState {
         let r = await checkReservationEligibility(eventKey: eventKey)
         guard self.eventKey == eventKey else { reserveEligibilityChecking = false; return }
         reserveEligibilityBlock = (r?.eligible == false) ? r : nil
+        reserveEligibleKey = r?.eligible == true ? eventKey : nil
         reserveEligibilityChecking = false
     }
 }

@@ -280,7 +280,10 @@ struct EventDetailView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         // Room for the backdrop photo; the sheet below starts `sheetOverlap` up inside it. This
                         // content starts at the safe-area top, and the photo is `topInset` taller than `heroHeight`.
-                        Color.clear.frame(height: topInset + heroHeight - sheetOverlap - pinnedStrip)
+                        // Story-first (note 70): the pills and the title sit on the photo in this band, over the hero's
+                        // bottom scrim; a long title grows the band (minHeight), never clips.
+                        heroTitleBand
+                            .frame(minHeight: topInset + heroHeight - sheetOverlap - pinnedStrip, alignment: .bottomLeading)
                         details
                             .background(
                                 app.palette.paper,
@@ -374,6 +377,8 @@ struct EventDetailView: View {
         // events without ever being torn down, e.g. via `goEvent`).
         .task(id: event.key) { if !isPreview { await app.loadEventPhotos(eventID: event.key) } }
         .task(id: event.key) { if !isPreview { await app.loadEventOrgStats(forEventKey: event.key) } }
+        // This event's own live seat fill, however the screen was reached (note 70).
+        .task(id: event.key) { if !isPreview { await app.loadPublicEventFill(ids: [event.key]) } }
         // Reservation criteria (migration 162): small per-event read; only a
         // restricted event triggers the eligibility pre-check (Everyone = no
         // extra calls/UI). Re-runs when the guest saves new preferences.
@@ -463,14 +468,26 @@ struct EventDetailView: View {
     private var criteriaSection: some View {
         if let c = app.eventCriteriaByKey[event.key], !c.isEveryone {
             VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
-                Text(app.T("Ai được đặt chỗ: ", "Who can reserve: ") + c.summary(vi: !app.isEN))
-                    .font(.footnote.weight(.semibold))
+                // Plain words + this viewer's result (note 70); an unmet result is the card below, with its action.
+                criteriaLine(c.plain(vi: !app.isEN) ?? "")
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("event.criteria.summary")
                 if let block = app.reserveEligibilityBlock {
                     CriteriaUnmetCard(eligibility: block, returnTo: .event, idPrefix: "event")
                 }
             }
         }
+    }
+
+    private func criteriaLine(_ text: String) -> Text {
+        var line = Text(text)
+        if !app.isSignedIn {
+            line = line + Text(" · " + app.T("Đăng nhập để kiểm tra", "Sign in to check")).foregroundColor(app.palette.ink2)
+        } else if app.reserveEligibilityBlock == nil, app.reserveEligibleKey == event.key {
+            line = line + Text(" · " + app.T("✓ Bạn đủ điều kiện", "✓ You qualify")).fontWeight(.semibold)
+        }
+        return line
     }
 
     // BUG 4 fix (2026-09-22 follow-up) — event cover preview, title/date,
@@ -709,7 +726,17 @@ struct EventDetailView: View {
         // Card corners while zoomed in; while dragged, the posed page's own rounding (the page mask no longer covers
         // the photo, see `dragPose`).
         let radius = max(14 * (1 - zoomT), closeStart == nil ? min(sheetRadius, dismissProgress * 120) * dragScale : 0)
-        return ZStack { heroImage }   // no placeholder fill: the card shows through until the photo is ready
+        return ZStack {
+            heroImage   // no placeholder fill: the card shows through until the photo is ready
+            // Bottom scrim under the title on the photo (note 70): the same dark gradient in both themes, so the white
+            // text keeps ≥ 4.5:1 even on a white photo (EventDetailPresentation.heroScrim, unit-tested).
+            LinearGradient(stops: [
+                .init(color: .black.opacity(0), location: EventDetailPresentation.heroScrim.start),
+                .init(color: .black.opacity(EventDetailPresentation.heroScrim.alpha), location: EventDetailPresentation.heroScrim.full),
+                .init(color: .black.opacity(EventDetailPresentation.heroScrim.end), location: 1),
+            ], startPoint: .top, endPoint: .bottom)
+            .opacity(zoomT)
+        }
             .frame(width: f.width, height: f.height)
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
             // Gone once the solid nav bar covers the strip, so it never peeks through the sheet's rounded corners.
@@ -761,18 +788,24 @@ struct EventDetailView: View {
     private var about: EventDetailPresentation.About {
         EventDetailPresentation.aboutSection(desc: event.desc, intro: event.intro, includedCount: event.includedItems?.count ?? 0)
     }
-    /// `where` is "area ▪︎ distance ▪︎ day ▪︎ time"; the date and time have their own tiles, so the place tile keeps
-    /// only the area and, once located, the distance.
+    /// `where` is "area ▪︎ distance ▪︎ day ▪︎ time". Note 70: the tile's value is the area alone (one line); the
+    /// distance replaces the "Place" label, and only when it helps choose (≤ 50 km). A viewer far away saw
+    /// "Bình Thạnh ▪︎ 9662,0 km away" wrap to four lines.
     private var placeLine: String {
-        let parts = app.stripKm(event.where, event: event).components(separatedBy: " ▪︎ ")
-        return app.trStatus(parts.enumerated().filter { $0.offset == 0 || $0.element.contains(" km") }.map(\.element).joined(separator: " ▪︎ "))
+        app.trStatus(event.where.components(separatedBy: " ▪︎ ").first ?? "")
+    }
+    private var placeDistance: String? {
+        guard !isPreview, app.located == true else { return nil }
+        return EventDetailPresentation.distanceLabel(km: haversineKm(from: app.userCoords, to: event), en: app.isEN)
     }
     /// Ngày / Giờ: `when` is "Th 4, 04.11 ▪︎ 20:00" for catalogue and real events alike.
     private var whenParts: (date: String?, time: String?) {
         let parts = event.when.components(separatedBy: " ▪︎ ").filter { !$0.isEmpty }
-        return (parts.first, parts.count > 1 ? parts[1] : nil)
+        // The date in the app's language (note 70: English screens showed "Th 4, 04.11"), from the same text as the time.
+        return (parts.first.map { EventDetailPresentation.dateTileLabel($0, en: app.isEN) }, parts.count > 1 ? parts[1] : nil)
     }
-    /// Capacity and seats still free: the live fill only (never an invented capacity); a draft has every seat free.
+    /// Capacity and seats still free: the live fill only (never an invented capacity; loaded for this event on open,
+    /// note 70); a draft has every seat free.
     private var seatCounts: (capacity: Int?, remaining: Int?) {
         if let preview { return (preview.capacity, preview.capacity) }
         guard let fill = app.eventFill[event.key], fill.capacity > 0 else { return (nil, nil) }
@@ -788,18 +821,79 @@ struct EventDetailView: View {
         switch seat.kind {
         case .going: return (app.T("Bạn sẽ tham gia", "You're going"), app.palette.clay, app.palette.clayBg)
         case .soldOut: return (app.trStatus("Hết chỗ"), app.palette.ink2, app.palette.surface2)
-        case .few: return (app.T("Còn \(seat.left ?? 0) chỗ", "\(seat.left ?? 0) left"), app.palette.honey, app.palette.honeyBg)
-        case .open: return (app.T("Còn \(seat.left ?? 0) chỗ", "\(seat.left ?? 0) left"), app.palette.ink2, app.palette.surface2)
+        case .few: return (seatsLeftText, app.palette.honey, app.palette.honeyBg)
+        case .open: return (seatsLeftText, app.palette.ink2, app.palette.surface2)
         case .unknown:
             let text = app.trStatus(event.seatsLong)
             return text.isEmpty ? nil : (text, app.palette.ink2, app.palette.surface2)
         }
     }
+    /// "3 of 14 left" whenever the capacity is known (note 70), so the count and the bar can't read as a contradiction.
+    private var seatsLeftText: String {
+        let left = seat.left ?? 0
+        if let cap = seatCounts.capacity { return app.T("Còn \(left)/\(cap) chỗ", "\(left) of \(cap) left") }
+        return app.T("Còn \(left) chỗ", "\(left) left")
+    }
+    /// The stepper never offers more than the seats still free (note 70: with 3 left it reached 6).
+    private var qtyMax: Int { ReserveBar.qtyCeiling(remaining: isPreview ? nil : seatCounts.remaining) }
     /// Event type facts: minimum age is a restriction, so it sits beside the category; alcohol + dietary are chips.
     private var facts: EventDetailPresentation.SplitFacts { EventDetailPresentation.splitFacts(typeFacts) }
-    private var includedChips: [String] {
-        if let items = event.includedItems, !items.isEmpty { return items.map(\.label) }
-        return event.included.components(separatedBy: CharacterSet(charactersIn: "▪︎,·")).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    /// "On the menu" / "Included" items as their own section (note 70).
+    private var included: (visible: Bool, items: [String]) {
+        if let items = event.includedItems, !items.isEmpty { return EventDetailPresentation.includedSection(items.map(\.label)) }
+        return EventDetailPresentation.includedSection(event.included.components(separatedBy: CharacterSet(charactersIn: "▪︎,·")))
+    }
+    /// The strip never repeats the cover above it or the same URL twice (note 70); the viewer still pages through all.
+    private var stripList: [PhotoGalleryItem] {
+        EventDetailPresentation.stripPhotos(realPhotos, heroURL: event.img.isEmpty ? nil : event.img) { $0.url }
+    }
+
+    /// Story-first band on the photo (note 70): category / minimum-age / invite pills, then the title with the calendar
+    /// circle, all white over the hero's bottom scrim.
+    private var heroTitleBand: some View {
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+            FlowRow(spacing: BanbeTheme.Space.s) {
+                if !app.trStatus(event.cat).isEmpty {
+                    Text(app.trStatus(event.cat).uppercased())
+                        .font(.footnote.weight(.semibold)).tracking(0.5)
+                        .foregroundStyle(Color(red: 0.106, green: 0.098, blue: 0.086))
+                        .padding(.horizontal, 12).padding(.vertical, 4)
+                        .background(Color.white.opacity(0.92), in: Capsule())
+                        .accessibilityIdentifier("event.category")
+                }
+                if let age = facts.minAge {
+                    Text(age.value)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 11).padding(.vertical, 3)
+                        .overlay(Capsule().stroke(Color.white.opacity(0.85), lineWidth: 1))
+                        .accessibilityLabel("\(age.label) \(age.value)")
+                        .accessibilityIdentifier("event.typeFact.\(age.id)")
+                }
+                if event.inviteOnly {
+                    Text(app.T("Riêng tư · theo lời mời", "Private · invite only"))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 4)
+                        .background(app.palette.clay.opacity(0.85), in: Capsule())
+                        .accessibilityIdentifier("event.inviteChip")
+                }
+            }
+            // Note 46 — the title with the calendar circle (banbe Schedule / Apple Calendar).
+            EventPlanTitleRow(event: event, onPhoto: true)
+                .allowsHitTesting(!isPreview)
+                .opacity(1 - titleProgress)
+                .scaleEffect(1 - 0.3 * titleProgress, anchor: .bottomLeading)
+                .offset(y: -12 * titleProgress)
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: EventTitleFrameKey.self, value: g.frame(in: .global))
+                })
+                .onPreferenceChange(EventTitleFrameKey.self) { titleFrame = $0 }
+        }
+        .padding(.horizontal, 22)
+        .padding(.bottom, BanbeTheme.Space.l)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.heroTitle")
     }
 
     private var details: some View {
@@ -811,47 +905,8 @@ struct EventDetailView: View {
                     .foregroundStyle(app.palette.ink3)
             }
 
-            // Header: category + minimum age + invite pills, the title with the calendar pill, then price and seat status.
+            // Price and one seat status (note 68); the thin bar under them only once a seat is booked (note 70).
             VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
-                FlowRow(spacing: BanbeTheme.Space.s) {
-                    // Category as an ink chip (mockup); minimum age beside it (a restriction, seen first); invite in clay.
-                    if !app.trStatus(event.cat).isEmpty {
-                        Text(app.trStatus(event.cat).uppercased())
-                            .font(.footnote.weight(.semibold)).tracking(0.5)
-                            .foregroundStyle(app.palette.paper)
-                            .padding(.horizontal, 12).padding(.vertical, 4)
-                            .background(app.palette.ink, in: Capsule())
-                            .accessibilityIdentifier("event.category")
-                    }
-                    if let age = facts.minAge {
-                        Text(age.value)
-                            .font(.footnote.weight(.semibold))
-                            .padding(.horizontal, 11).padding(.vertical, 3)
-                            .overlay(Capsule().stroke(app.palette.ink, lineWidth: 1))
-                            .accessibilityLabel("\(age.label) \(age.value)")
-                            .accessibilityIdentifier("event.typeFact.\(age.id)")
-                    }
-                    if event.inviteOnly {
-                        Text(app.T("Riêng tư ▪︎ theo lời mời", "Private ▪︎ invite only"))
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(app.palette.clay)
-                            .padding(.horizontal, 12).padding(.vertical, 4)
-                            .background(app.palette.clayBg, in: Capsule())
-                            .accessibilityIdentifier("event.inviteChip")
-                    }
-                }
-
-                // Note 46 — the title with the calendar pill (banbe Schedule / Apple Calendar).
-                EventPlanTitleRow(event: event)
-                    .allowsHitTesting(!isPreview)
-                    .opacity(1 - titleProgress)
-                    .scaleEffect(1 - 0.3 * titleProgress, anchor: .bottomLeading)
-                    .offset(y: -12 * titleProgress)
-                    .background(GeometryReader { g in
-                        Color.clear.preference(key: EventTitleFrameKey.self, value: g.frame(in: .global))
-                    })
-                    .onPreferenceChange(EventTitleFrameKey.self) { titleFrame = $0 }
-
                 // Price left, one seat status right (note 68); the thin bar under them only while seats are open.
                 if !event.price.isEmpty || seatPill != nil {
                     VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
@@ -909,8 +964,6 @@ struct EventDetailView: View {
                 }
             }
 
-            // The host, once (note 68): avatar, name, real stats, a Message icon button; the row opens the host's page.
-            hostSection.allowsHitTesting(!isPreview)
 
             // What kind of evening it is (event type profiles): alcohol + dietary as icon chips, the type's other facts
             // as an aligned label/value list. Minimum age is the pill in the header.
@@ -918,7 +971,8 @@ struct EventDetailView: View {
                 VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
                     if !facts.chips.isEmpty {
                         FlowRow(spacing: BanbeTheme.Space.s) {
-                            ForEach(facts.chips, id: \.id) { f in
+                            // One chip per choice (note 70); the first of a fact keeps the existing identifier.
+                            ForEach(Array(facts.chips.enumerated()), id: \.offset) { i, f in
                                 Label {
                                     Text(f.value)
                                 } icon: {
@@ -929,7 +983,7 @@ struct EventDetailView: View {
                                 .background(app.palette.surface2, in: Capsule())
                                 .accessibilityElement(children: .ignore)
                                 .accessibilityLabel("\(f.label): \(f.value)")
-                                .accessibilityIdentifier("event.typeFact.\(f.id)")
+                                .accessibilityIdentifier(chipID(i, f))
                             }
                         }
                     }
@@ -952,12 +1006,18 @@ struct EventDetailView: View {
                 .accessibilityIdentifier("event.typeFacts")
             }
 
+            // Who can reserve, in plain words with this viewer's result (note 70); the unmet card keeps its action.
             criteriaSection
                 .id("event.criteria")
+
+            // The host, once (note 68): avatar, name, real stats, a Message icon button; the row opens the host's page.
+            hostSection.allowsHitTesting(!isPreview)
 
             // About (note 68): the description clamped to 3 lines ("Read more" expands it here), then the included
             // line. "More ›" on the heading opens the About & Included sheet. Never a heading with nothing under it.
             if about.visible { aboutSection }
+            // "On the menu" / "Included" as its own section of chips (note 70: it used to run on inside About).
+            if included.visible { includedItemsSection }
 
             // L2 (switch event_recap): a guest who went opens their recap card, where the private feedback lives.
             if barState == .endedAttended, !isPreview, app.eventRecapEnabled, (app.realEventsByID[event.key] ?? nil) != nil {
@@ -975,7 +1035,7 @@ struct EventDetailView: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(app.T("Hình ảnh", "Photos")).font(BanbeTheme.display(17))
                     Spacer()
-                    let photoCount = preview?.photos.count ?? realPhotos.count
+                    let photoCount = preview?.photos.count ?? stripList.count
                     if photoCount > 0 { Text("\(photoCount)").font(.footnote).foregroundStyle(app.palette.ink3) }
                 }
                 // STAGE D (2026-09-25) — real event_photos rows, not the static demo `event.gallery`. A genuinely
@@ -990,7 +1050,7 @@ struct EventDetailView: View {
                 } else if app.eventPhotosLoading {
                     Text(app.T("Đang tải…", "Loading…"))
                         .font(.footnote).foregroundStyle(app.palette.ink3)
-                } else if realPhotos.isEmpty {
+                } else if stripList.isEmpty {
                     Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet."))
                         .font(.footnote).foregroundStyle(app.palette.ink3)
                 } else {
@@ -1004,7 +1064,8 @@ struct EventDetailView: View {
         .padding(.bottom, BanbeTheme.Space.xl + 8)
     }
 
-    /// Ngày / Giờ / Địa điểm tile (note 68): clay icon, the value (what you came for) over a quiet label. All three
+    /// Ngày / Giờ / Địa điểm tile (note 68): clay icon, the value (what you came for) over a quiet label, each on one
+    /// line at standard text sizes (note 70). All three
     /// share one width (each takes `maxWidth: .infinity`) and one height (the row is `fixedSize` vertically); the
     /// Simple Shell surface2 fill (= the light block), no hairline.
     private func tile<Content: View>(_ symbol: String, _ label: String, @ViewBuilder _ content: () -> Content) -> some View {
@@ -1012,8 +1073,8 @@ struct EventDetailView: View {
             Image(systemName: symbol).font(.system(size: 15)).foregroundStyle(app.palette.clay)
                 .padding(.bottom, BanbeTheme.Space.xs)
                 .accessibilityHidden(true)
-            content().font(.subheadline.weight(.semibold))
-            Text(label).font(.footnote).foregroundStyle(app.palette.ink3)
+            content().font(.subheadline.weight(.semibold)).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            Text(label).font(.footnote).foregroundStyle(app.palette.ink3).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -1044,7 +1105,7 @@ struct EventDetailView: View {
     }
 
     private var placeTile: some View {
-        tile("mappin.and.ellipse", app.T("Địa điểm", "Place")) { Text(placeLine).fixedSize(horizontal: false, vertical: true) }
+        tile("mappin.and.ellipse", placeDistance.map { app.T("Cách \($0)", "\($0) away") } ?? app.T("Địa điểm", "Place")) { Text(placeLine) }
             .accessibilityIdentifier("event.fact.where")
             .overlay(alignment: .topTrailing) {
                 if let mapsURL = event.mapsURL {
@@ -1071,7 +1132,8 @@ struct EventDetailView: View {
     }
 
     /// About (note 68): heading ("More ›" opens the About & Included sheet when it has an intro or items), the
-    /// description clamped to 3 lines with "Read more" expanding it in place, then the included line.
+    /// description clamped to 3 lines with "Read more" expanding it in place. The included items are their own
+    /// section below (note 70).
     private var aboutSection: some View {
         VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
             Button { if about.hasSheet { introIncludedSheetOpen = true } } label: {
@@ -1105,20 +1167,51 @@ struct EventDetailView: View {
                     .accessibilityIdentifier("event.readMore")
                 }
             }
-            if !includedChips.isEmpty {
-                let title = typeProfile?.detail?.includedTitle?.text(app.isEN ? "en" : "vi") ?? app.T("Bao gồm", "Included")
-                includedChips.enumerated().reduce(Text(title + ": ").fontWeight(.semibold)) { line, item in
-                    item.offset == 0 ? line + Text(item.element)
-                        : line + Text("  ▪︎  ").foregroundColor(app.palette.clay) + Text(item.element)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(app.palette.ink)
+    }
+
+    /// "On the menu" / "Included" (note 70): heading + one chip per item. When About is hidden, this heading opens the
+    /// About & Included sheet instead (and carries `event.includedSection`).
+    private var includedItemsSection: some View {
+        let opensSheet = !about.visible && about.hasSheet
+        return VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+            Button { if opensSheet { introIncludedSheetOpen = true } } label: {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(typeProfile?.detail?.includedTitle?.text(app.isEN ? "en" : "vi") ?? app.T("Bao gồm", "Included"))
+                        .font(BanbeTheme.display(17))
+                    Spacer()
+                    if opensSheet {
+                        Text(app.T("Xem thêm", "More") + " ›").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.clay)
+                    }
                 }
-                .font(.system(size: 15))
-                .lineSpacing(3)
-                .multilineTextAlignment(.leading)
-                .accessibilityIdentifier("event.includedLine")
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!opensSheet)
+            .accessibilityIdentifier(opensSheet ? "event.includedSection" : "event.includedHeading")
+            FlowRow(spacing: BanbeTheme.Space.s) {
+                ForEach(Array(included.items.enumerated()), id: \.offset) { i, item in
+                    Text(item)
+                        .font(.footnote)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(app.palette.surface2, in: Capsule())
+                        .accessibilityIdentifier("event.includedItem.\(i)")
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(app.palette.ink)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.includedItems")
+    }
+
+    /// A chip's identifier: the first chip of a fact keeps `event.typeFact.<id>`, later ones get `-2`, `-3` (note 70).
+    private func chipID(_ index: Int, _ f: EventTypes.Fact) -> String {
+        let nth = facts.chips.prefix(index).filter { $0.id == f.id }.count
+        return nth == 0 ? "event.typeFact.\(f.id)" : "event.typeFact.\(f.id)-\(nth + 1)"
     }
 
     /// Host subline in the card (real stats only).
@@ -1262,12 +1355,12 @@ struct EventDetailView: View {
     private var photoStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 8) {
-                ForEach(Array(realPhotos.enumerated()), id: \.element.id) { index, photo in
+                ForEach(Array(stripList.enumerated()), id: \.element.id) { index, photo in
                     // GeometryReader so the tap can read `geo.frame(in: .global)`: the origin rect the photo viewer's
                     // dismiss animation shrinks back to.
                     GeometryReader { geo in
                         Button {
-                            app.openPhoto(gallery: realPhotos, index: index, organizer: event.orgName, originRect: geo.frame(in: .global))
+                            app.openPhoto(gallery: realPhotos, index: realPhotos.firstIndex { $0.id == photo.id } ?? 0, organizer: event.orgName, originRect: geo.frame(in: .global))
                         } label: {
                             ZStack(alignment: .topTrailing) {
                                 CatalogPhoto(path: photo.url, height: 166, width: 132, cornerRadius: BanbeTheme.Radius.thumb)
@@ -1355,45 +1448,41 @@ struct EventDetailView: View {
                          blocked: !isPreview && app.reserveEligibilityBlock != nil)
     }
 
-    /// Sticky action area (mockup): seat chips + stepper, the refund promise, and the CTA with the live total — always
-    /// on screen, so the decision can happen wherever the reader is convinced. Reserve opens pre-filled via `app.qty`.
+    /// Sticky action area, ONE row (note 70): the stepper beside the CTA with the live total, then one quiet line with
+    /// the refund promise. Always on screen, so the decision can happen wherever the reader is convinced. Reserve opens
+    /// pre-filled via `app.qty`. At accessibility text sizes the CTA wraps under the stepper.
     private var actionBar: some View {
         let state = barState
         // Preview: what a guest sees on arrival (1 ticket), not whatever the host last picked elsewhere.
-        let qty = isPreview ? 1 : ReserveBar.clampQty(app.qty)
-        return VStack(alignment: .leading, spacing: 10) {
+        let qty = isPreview ? 1 : ReserveBar.clampQty(app.qty, max: qtyMax)
+        return VStack(spacing: 6) {
             if state == .reserve {
-                HStack(spacing: 8) {
-                    HStack(spacing: 6) {
-                        ForEach(ReserveBar.presets, id: \.self) { n in
-                            Button {
-                                app.qty = n
-                                Haptics.light()
-                            } label: { qtyChip(app.T("\(n) vé", n == 1 ? "1 ticket" : "\(n) tickets"), selected: qty == n) }
-                            .buttonStyle(.plain)
-                            .accessibilityAddTraits(qty == n ? .isSelected : [])
-                            .accessibilityIdentifier("event.qty.\(n)")
-                        }
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: BanbeTheme.Space.s) { qtyStepper(qty); ctaButton(state, qty: qty) }
+                } else {
+                    HStack(spacing: BanbeTheme.Space.s) {
+                        qtyStepper(qty)
+                        ctaButton(state, qty: qty)
                     }
-                    Spacer(minLength: 0)
-                    qtyStepper(qty)
                 }
                 Label {
                     Text(event.isOpen && !event.isFree
                          ? app.T("Hoàn tiền tự động 100% nếu sự kiện bị hủy", "Automatic full refund if the event is cancelled")
                          : app.T("Chỗ được giữ 30 phút để bạn xác nhận", "Seats are held for 30 minutes while you confirm"))
-                        .font(.system(size: 12.5))
+                        .font(.footnote)
                         .foregroundStyle(app.palette.ink.opacity(0.8))
                 } icon: {
-                    Image(systemName: "checkmark.shield").font(.system(size: 13)).foregroundStyle(app.palette.clay)
+                    Image(systemName: "checkmark.shield").font(.system(size: 12)).foregroundStyle(app.palette.clay)
                 }
+                .frame(maxWidth: .infinity)
                 .accessibilityIdentifier("event.trustLine")
+            } else {
+                ctaButton(state, qty: qty)
             }
-            ctaButton(state, qty: qty)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
         .background {
             UnevenRoundedRectangle(topLeadingRadius: 22, topTrailingRadius: 22, style: .continuous)
                 .fill(app.palette.paper)
@@ -1402,46 +1491,37 @@ struct EventDetailView: View {
         }
     }
 
-    private func qtyChip(_ text: String, selected: Bool) -> some View {
-        Text(text)
-            .font(.system(size: 14, weight: selected ? .semibold : .medium))
-            .foregroundStyle(selected ? app.palette.paper : app.palette.ink)
-            .padding(.horizontal, 13)
-            .frame(minHeight: 34)
-            .background(selected ? app.palette.ink : app.palette.ink.opacity(0.06), in: Capsule())
-            .contentShape(Capsule())
-            .animation(.easeOut(duration: 0.15), value: selected)
-    }
-
-    /// Compact outlined − n + (mockup); drives the same `app.qty` as the chips, clamped to 1…6.
+    /// Outlined − n + with 44pt buttons; clamped to 1…`qtyMax` (never more than the seats left). VoiceOver reads it as
+    /// one adjustable "Tickets, 1" control.
     private func qtyStepper(_ qty: Int) -> some View {
         HStack(spacing: 0) {
-            Button { app.qty = ReserveBar.clampQty(qty - 1) } label: {
-                Image(systemName: "minus").font(.system(size: 13, weight: .semibold)).frame(width: 34, height: 34).contentShape(Rectangle())
+            Button { app.qty = ReserveBar.clampQty(qty - 1, max: qtyMax); Haptics.light() } label: {
+                Image(systemName: "minus").font(.system(size: 14, weight: .semibold)).frame(width: 44, height: 48).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(qty <= 1)
             .opacity(qty <= 1 ? 0.35 : 1)
             .accessibilityIdentifier("event.qty.minus")
-            Text("\(qty)").font(.system(size: 15, weight: .semibold)).foregroundStyle(app.palette.ink).frame(minWidth: 18)
+            Text("\(qty)").font(.system(size: 16, weight: .semibold)).frame(minWidth: 18)
                 .accessibilityIdentifier("event.qty.value")
-            Button { app.qty = ReserveBar.clampQty(qty + 1) } label: {
-                Image(systemName: "plus").font(.system(size: 13, weight: .semibold)).frame(width: 34, height: 34).contentShape(Rectangle())
+            Button { app.qty = ReserveBar.clampQty(qty + 1, max: qtyMax); Haptics.light() } label: {
+                Image(systemName: "plus").font(.system(size: 14, weight: .semibold)).frame(width: 44, height: 48).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(qty >= ReserveBar.maxQty)
-            .opacity(qty >= ReserveBar.maxQty ? 0.35 : 1)
+            .disabled(qty >= qtyMax)
+            .opacity(qty >= qtyMax ? 0.35 : 1)
             .accessibilityIdentifier("event.qty.plus")
         }
-        .foregroundStyle(app.palette.clay)
-        .overlay(Capsule().stroke(app.palette.clay, lineWidth: 1))
+        .foregroundStyle(app.palette.ink)
+        .overlay(Capsule().stroke(app.palette.rule, lineWidth: 1))
+        .fixedSize()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(app.T("Số vé", "Tickets"))
         .accessibilityValue("\(qty)")
         .accessibilityAdjustableAction { direction in
             switch direction {
-            case .increment: app.qty = ReserveBar.clampQty(qty + 1)
-            case .decrement: app.qty = ReserveBar.clampQty(qty - 1)
+            case .increment: app.qty = ReserveBar.clampQty(qty + 1, max: qtyMax)
+            case .decrement: app.qty = ReserveBar.clampQty(qty - 1, max: qtyMax)
             @unknown default: break
             }
         }
@@ -1464,8 +1544,8 @@ struct EventDetailView: View {
         case .reserve:
             // Outcome + total before the tap: the guest knows what they are about to hold and pay.
             let total = app.trStatus(ReserveBar.totalPrice(amount: event.isFree ? 0 : event.priceVnd, currency: event.currency, qty: qty))
-            InkButton(title: qty == 1 ? app.T("Giữ chỗ ▪︎ ", "Reserve ▪︎ ") + total
-                                      : app.T("Giữ \(qty) chỗ ▪︎ ", "Reserve \(qty) seats ▪︎ ") + total) {
+            InkButton(title: qty == 1 ? app.T("Giữ chỗ · ", "Reserve · ") + total
+                                      : app.T("Giữ \(qty) chỗ · ", "Reserve \(qty) seats · ") + total) {
                 app.goReserve()
             }
             .accessibilityIdentifier("event.actionBar")
@@ -1479,18 +1559,18 @@ struct EventDetailView: View {
             fieldLabel(app.T("Sự kiện đã kết thúc", "This event has ended"))
                 .accessibilityIdentifier("event.actionBar")
         case .soldOut:
-            Button { app.goChat() } label: { fieldLabel(app.T("Hết chỗ ▪︎ nhắn để vào danh sách chờ", "Sold out ▪︎ message for waitlist")) }
+            Button { app.goChat() } label: { fieldLabel(app.T("Hết chỗ · nhắn để vào danh sách chờ", "Sold out · message for waitlist")) }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("event.actionBar")
         case .currencyUnavailable:
             // Paid USD events (migration 195): shown with their price, but booking isn't open yet. Disabled with the
             // reason in place (note 48's disabledReason pattern), never an error after a tap.
-            InkButton(title: app.T("Giữ chỗ ▪︎ ", "Reserve ▪︎ ") + app.trStatus(event.price), enabled: false,
+            InkButton(title: app.T("Giữ chỗ · ", "Reserve · ") + app.trStatus(event.price), enabled: false,
                       disabledReason: app.T("Đặt vé trả phí cho sự kiện tại Mỹ sẽ sớm mở", "Paid booking for US events opens soon")) {}
                 .accessibilityIdentifier("event.actionBar")
         case .blocked:
             // The bar says WHY it can't be used, and tapping scrolls to the full explanation card instead of a dead tap.
-            Button { criteriaScrollRequest += 1 } label: { fieldLabel(app.T("Chưa đủ điều kiện ▪︎ xem lý do", "Not eligible yet ▪︎ see why")) }
+            Button { criteriaScrollRequest += 1 } label: { fieldLabel(app.T("Chưa đủ điều kiện · xem lý do", "Not eligible yet · see why")) }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("event.actionBar")
         }

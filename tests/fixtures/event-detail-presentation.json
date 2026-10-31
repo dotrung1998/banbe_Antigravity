@@ -1,24 +1,463 @@
 {
-  "_comment": "Shared by tests/unit/eventDetailPresentation.test.mjs and apps/ios/BanbeAppTests/EventDetailPresentationTests.swift (note 68). Change both together.",
+  "_comment": "Shared by tests/unit/eventDetailPresentation.test.mjs and apps/ios/BanbeAppTests/EventDetailPresentationTests.swift (notes 68, 70). Change both together.",
   "seatStatus": [
-    { "name": "zero left but not marked sold out reads as sold out, no bar (regression)", "in": { "capacity": 12, "remaining": 0, "soldOut": false, "going": false }, "out": { "kind": "soldOut", "left": 0, "ratio": null } },
-    { "name": "marked sold out", "in": { "capacity": 12, "remaining": 3, "soldOut": true, "going": false }, "out": { "kind": "soldOut", "left": 0, "ratio": null } },
-    { "name": "a ticket wins over sold out", "in": { "capacity": 12, "remaining": 0, "soldOut": true, "going": true }, "out": { "kind": "going", "left": 0, "ratio": null } },
-    { "name": "few left at 20% of capacity", "in": { "capacity": 20, "remaining": 4, "soldOut": false, "going": false }, "out": { "kind": "few", "left": 4, "ratio": 0.8 } },
-    { "name": "small table: 2 left is few", "in": { "capacity": 6, "remaining": 2, "soldOut": false, "going": false }, "out": { "kind": "few", "left": 2, "ratio": 0.6667 } },
-    { "name": "plenty left", "in": { "capacity": 20, "remaining": 15, "soldOut": false, "going": false }, "out": { "kind": "open", "left": 15, "ratio": 0.25 } },
-    { "name": "remaining without capacity: no bar", "in": { "capacity": null, "remaining": 9, "soldOut": false, "going": false }, "out": { "kind": "open", "left": 9, "ratio": null } },
-    { "name": "nothing known", "in": { "capacity": null, "remaining": null, "soldOut": false, "going": false }, "out": { "kind": "unknown", "left": null, "ratio": null } }
+    {
+      "name": "zero left but not marked sold out reads as sold out, no bar (regression)",
+      "in": {
+        "capacity": 12,
+        "remaining": 0,
+        "soldOut": false,
+        "going": false
+      },
+      "out": {
+        "kind": "soldOut",
+        "left": 0,
+        "ratio": null
+      }
+    },
+    {
+      "name": "marked sold out",
+      "in": {
+        "capacity": 12,
+        "remaining": 3,
+        "soldOut": true,
+        "going": false
+      },
+      "out": {
+        "kind": "soldOut",
+        "left": 0,
+        "ratio": null
+      }
+    },
+    {
+      "name": "a ticket wins over sold out",
+      "in": {
+        "capacity": 12,
+        "remaining": 0,
+        "soldOut": true,
+        "going": true
+      },
+      "out": {
+        "kind": "going",
+        "left": 0,
+        "ratio": null
+      }
+    },
+    {
+      "name": "few left at 20% of capacity",
+      "in": {
+        "capacity": 20,
+        "remaining": 4,
+        "soldOut": false,
+        "going": false
+      },
+      "out": {
+        "kind": "few",
+        "left": 4,
+        "ratio": 0.8
+      }
+    },
+    {
+      "name": "small table: 2 left is few",
+      "in": {
+        "capacity": 6,
+        "remaining": 2,
+        "soldOut": false,
+        "going": false
+      },
+      "out": {
+        "kind": "few",
+        "left": 2,
+        "ratio": 0.6667
+      }
+    },
+    {
+      "name": "plenty left",
+      "in": {
+        "capacity": 20,
+        "remaining": 15,
+        "soldOut": false,
+        "going": false
+      },
+      "out": {
+        "kind": "open",
+        "left": 15,
+        "ratio": 0.25
+      }
+    },
+    {
+      "name": "remaining without capacity: no bar",
+      "in": {
+        "capacity": null,
+        "remaining": 9,
+        "soldOut": false,
+        "going": false
+      },
+      "out": {
+        "kind": "open",
+        "left": 9,
+        "ratio": null
+      }
+    },
+    {
+      "name": "nothing known",
+      "in": {
+        "capacity": null,
+        "remaining": null,
+        "soldOut": false,
+        "going": false
+      },
+      "out": {
+        "kind": "unknown",
+        "left": null,
+        "ratio": null
+      }
+    },
+    {
+      "name": "nothing booked yet: no bar beside the count (regression, bepnho 3 of 3 left)",
+      "in": {
+        "capacity": 3,
+        "remaining": 3,
+        "soldOut": false,
+        "going": false
+      },
+      "out": {
+        "kind": "open",
+        "left": 3,
+        "ratio": null
+      }
+    },
+    {
+      "name": "3 of 14 left is few with a mostly full bar",
+      "in": {
+        "capacity": 14,
+        "remaining": 3,
+        "soldOut": false,
+        "going": false
+      },
+      "out": {
+        "kind": "few",
+        "left": 3,
+        "ratio": 0.7857
+      }
+    }
   ],
   "splitFacts": [
-    { "name": "supper club", "in": ["dietary", "alcohol", "min_age", "dress_code"], "out": { "minAge": "min_age", "chips": ["alcohol", "dietary"], "rows": ["dress_code"] } },
-    { "name": "music", "in": ["lineup", "genre", "format", "alcohol", "min_age"], "out": { "minAge": "min_age", "chips": ["alcohol"], "rows": ["lineup", "genre", "format"] } },
-    { "name": "no min age", "in": ["artists", "alcohol"], "out": { "minAge": null, "chips": ["alcohol"], "rows": ["artists"] } }
+    {
+      "name": "supper club",
+      "in": [
+        "dietary",
+        "alcohol",
+        "min_age",
+        "dress_code"
+      ],
+      "out": {
+        "minAge": "min_age",
+        "chips": [
+          "alcohol",
+          "dietary"
+        ],
+        "rows": [
+          "dress_code"
+        ]
+      }
+    },
+    {
+      "name": "music",
+      "in": [
+        "lineup",
+        "genre",
+        "format",
+        "alcohol",
+        "min_age"
+      ],
+      "out": {
+        "minAge": "min_age",
+        "chips": [
+          "alcohol"
+        ],
+        "rows": [
+          "lineup",
+          "genre",
+          "format"
+        ]
+      }
+    },
+    {
+      "name": "no min age",
+      "in": [
+        "artists",
+        "alcohol"
+      ],
+      "out": {
+        "minAge": null,
+        "chips": [
+          "alcohol"
+        ],
+        "rows": [
+          "artists"
+        ]
+      }
+    }
   ],
   "aboutSection": [
-    { "name": "intro only (the old empty About block): the intro's first paragraph is the body", "in": { "desc": "", "intro": "First para.\n\nSecond para.", "includedCount": 0 }, "out": { "visible": true, "body": "First para.", "clampable": false, "hasSheet": true } },
-    { "name": "nothing at all: hidden", "in": { "desc": "  ", "intro": "", "includedCount": 0 }, "out": { "visible": false, "body": "", "clampable": false, "hasSheet": false } },
-    { "name": "blank intro is not an intro", "in": { "desc": "Short.", "intro": " \n ", "includedCount": 0 }, "out": { "visible": true, "body": "Short.", "clampable": false, "hasSheet": false } },
-    { "name": "included items only", "in": { "desc": "", "intro": "", "includedCount": 2 }, "out": { "visible": true, "body": "", "clampable": false, "hasSheet": true } }
+    {
+      "name": "intro only (the old empty About block): the intro's first paragraph is the body",
+      "in": {
+        "desc": "",
+        "intro": "First para.\n\nSecond para.",
+        "includedCount": 0
+      },
+      "out": {
+        "visible": true,
+        "body": "First para.",
+        "clampable": false,
+        "hasSheet": true
+      }
+    },
+    {
+      "name": "nothing at all: hidden",
+      "in": {
+        "desc": "  ",
+        "intro": "",
+        "includedCount": 0
+      },
+      "out": {
+        "visible": false,
+        "body": "",
+        "clampable": false,
+        "hasSheet": false
+      }
+    },
+    {
+      "name": "blank intro is not an intro",
+      "in": {
+        "desc": "Short.",
+        "intro": " \n ",
+        "includedCount": 0
+      },
+      "out": {
+        "visible": true,
+        "body": "Short.",
+        "clampable": false,
+        "hasSheet": false
+      }
+    },
+    {
+      "name": "included items only: About hides (the items have their own section)",
+      "in": {
+        "desc": "",
+        "intro": "",
+        "includedCount": 2
+      },
+      "out": {
+        "visible": false,
+        "body": "",
+        "clampable": false,
+        "hasSheet": true
+      }
+    }
+  ],
+  "splitFactsValues": [
+    {
+      "name": "two dietary choices become two chips (regression)",
+      "in": [
+        {
+          "id": "dietary",
+          "values": [
+            "Vegetarian-friendly",
+            "Can adjust on request"
+          ]
+        },
+        {
+          "id": "alcohol",
+          "values": null
+        }
+      ],
+      "out": {
+        "chips": [
+          [
+            "alcohol",
+            null
+          ],
+          [
+            "dietary",
+            "Vegetarian-friendly"
+          ],
+          [
+            "dietary",
+            "Can adjust on request"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "one choice stays one chip",
+      "in": [
+        {
+          "id": "dietary",
+          "values": [
+            "Vegan"
+          ]
+        }
+      ],
+      "out": {
+        "chips": [
+          [
+            "dietary",
+            "Vegan"
+          ]
+        ]
+      }
+    }
+  ],
+  "includedSection": [
+    {
+      "name": "items",
+      "in": [
+        "5 món",
+        " rượu gạo ",
+        "cà phê"
+      ],
+      "out": {
+        "visible": true,
+        "items": [
+          "5 món",
+          "rượu gạo",
+          "cà phê"
+        ]
+      }
+    },
+    {
+      "name": "blank items only: hidden",
+      "in": [
+        " ",
+        ""
+      ],
+      "out": {
+        "visible": false,
+        "items": []
+      }
+    },
+    {
+      "name": "none",
+      "in": [],
+      "out": {
+        "visible": false,
+        "items": []
+      }
+    }
+  ],
+  "distanceLabel": [
+    {
+      "name": "far away: hidden (regression, 9662 km)",
+      "km": 9662.0,
+      "en": true,
+      "out": null
+    },
+    {
+      "name": "just past the threshold",
+      "km": 50.4,
+      "en": true,
+      "out": null
+    },
+    {
+      "name": "unknown",
+      "km": null,
+      "en": true,
+      "out": null
+    },
+    {
+      "name": "metres",
+      "km": 0.83,
+      "en": true,
+      "out": "850 m"
+    },
+    {
+      "name": "very close",
+      "km": 0.01,
+      "en": false,
+      "out": "50 m"
+    },
+    {
+      "name": "one decimal EN",
+      "km": 2.44,
+      "en": true,
+      "out": "2.4 km"
+    },
+    {
+      "name": "one decimal VI uses a comma",
+      "km": 2.44,
+      "en": false,
+      "out": "2,4 km"
+    },
+    {
+      "name": "whole km",
+      "km": 12.6,
+      "en": true,
+      "out": "13 km"
+    }
+  ],
+  "dateTileLabel": [
+    {
+      "name": "EN (regression: never 'Th 4' on an English screen)",
+      "raw": "Th 4, 04.11",
+      "en": true,
+      "out": "Wed 4 Nov"
+    },
+    {
+      "name": "VI unchanged",
+      "raw": "Th 4, 04.11",
+      "en": false,
+      "out": "Th 4, 04.11"
+    },
+    {
+      "name": "Sunday",
+      "raw": "CN, 15.03",
+      "en": true,
+      "out": "Sun 15 Mar"
+    },
+    {
+      "name": "Saturday",
+      "raw": "Th 7, 31.10",
+      "en": true,
+      "out": "Sat 31 Oct"
+    },
+    {
+      "name": "unrecognised text is kept",
+      "raw": "Hôm nay",
+      "en": true,
+      "out": "Hôm nay"
+    }
+  ],
+  "stripPhotos": [
+    {
+      "name": "drops the cover and repeated URLs (regression)",
+      "hero": "a.jpg",
+      "in": [
+        "a.jpg",
+        "a.jpg",
+        "b.jpg",
+        "c.jpg",
+        "b.jpg"
+      ],
+      "out": [
+        "b.jpg",
+        "c.jpg"
+      ]
+    },
+    {
+      "name": "no hero: only de-duplicates",
+      "hero": null,
+      "in": [
+        "a.jpg",
+        "a.jpg",
+        "b.jpg"
+      ],
+      "out": [
+        "a.jpg",
+        "b.jpg"
+      ]
+    }
   ]
 }

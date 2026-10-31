@@ -210,7 +210,11 @@
         {
           "id": "dietary",
           "label": "Dietary",
-          "value": "Vegetarian-friendly, Halal"
+          "value": "Vegetarian-friendly, Halal",
+          "values": [
+            "Vegetarian-friendly",
+            "Halal"
+          ]
         },
         {
           "id": "alcohol",

@@ -2075,6 +2075,8 @@ final class AppState: ObservableObject {
     /// Guest side: set when the caller doesn't meet the event's criteria
     /// (pre-check or server CRITERIA_NOT_MET). nil = eligible / unknown.
     @Published var reserveEligibilityBlock: ReservationEligibility?
+    /// The event the server last said this viewer qualifies for (Event Detail's "✓ You qualify", note 70).
+    @Published var reserveEligibleKey: String?
     @Published var reserveEligibilityChecking = false
     /// Per-event criteria for the detail screen's "Who can reserve" line.
     @Published var eventCriteriaByKey: [String: ReservationCriteria] = [:]

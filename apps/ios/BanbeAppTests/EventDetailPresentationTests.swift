@@ -2,7 +2,7 @@ import XCTest
 @testable import BanbeApp
 
 /// Mirrors tests/unit/eventDetailPresentation.test.mjs through the shared tests/fixtures/event-detail-presentation.json
-/// (note 68) — change both together.
+/// (notes 68, 70) — change both together.
 final class EventDetailPresentationTests: XCTestCase {
     private func fixture() throws -> [String: Any] {
         var url = URL(fileURLWithPath: #filePath)
@@ -41,6 +41,58 @@ final class EventDetailPresentationTests: XCTestCase {
         }
     }
 
+    func testSplitFactValuesMatchFixture() throws {
+        for c in try XCTUnwrap(fixture()["splitFactsValues"] as? [[String: Any]]) {
+            let name = c["name"] as? String ?? ""
+            let facts = try XCTUnwrap(c["in"] as? [[String: Any]]).map { f -> EventTypes.Fact in
+                let vs = f["values"] as? [String]
+                return EventTypes.Fact(id: f["id"] as! String, label: f["id"] as! String, value: (vs ?? ["x"]).joined(separator: ", "), values: vs)
+            }
+            let want = try XCTUnwrap((c["out"] as? [String: Any])?["chips"] as? [[Any]]).map { "\($0[0] as! String)|\($0[1] as? String ?? "-")" }
+            let got = EventDetailPresentation.splitFacts(facts).chips.map { "\($0.id)|\($0.values == nil ? "-" : $0.value)" }
+            XCTAssertEqual(got, want, name)
+        }
+    }
+
+    func testIncludedSectionMatchesFixture() throws {
+        for c in try XCTUnwrap(fixture()["includedSection"] as? [[String: Any]]) {
+            let name = c["name"] as? String ?? ""
+            let o = try XCTUnwrap(c["out"] as? [String: Any])
+            let out = EventDetailPresentation.includedSection(try XCTUnwrap(c["in"] as? [String]))
+            XCTAssertEqual(out.visible, o["visible"] as? Bool, name)
+            XCTAssertEqual(out.items, o["items"] as? [String], name)
+        }
+    }
+
+    func testDistanceLabelMatchesFixture() throws {
+        for c in try XCTUnwrap(fixture()["distanceLabel"] as? [[String: Any]]) {
+            XCTAssertEqual(EventDetailPresentation.distanceLabel(km: c["km"] as? Double, en: c["en"] as? Bool ?? true),
+                           c["out"] as? String, c["name"] as? String ?? "")
+        }
+    }
+
+    func testDateTileLabelMatchesFixture() throws {
+        for c in try XCTUnwrap(fixture()["dateTileLabel"] as? [[String: Any]]) {
+            XCTAssertEqual(EventDetailPresentation.dateTileLabel(c["raw"] as? String ?? "", en: c["en"] as? Bool ?? true),
+                           c["out"] as? String, c["name"] as? String ?? "")
+        }
+    }
+
+    func testStripPhotosMatchesFixture() throws {
+        for c in try XCTUnwrap(fixture()["stripPhotos"] as? [[String: Any]]) {
+            let out = EventDetailPresentation.stripPhotos(try XCTUnwrap(c["in"] as? [String]), heroURL: c["hero"] as? String) { $0 }
+            XCTAssertEqual(out, c["out"] as? [String], c["name"] as? String ?? "")
+        }
+    }
+
+    func testSupperDietaryWithTwoChoicesIsTwoChips() {
+        let facts = EventTypes.detailFacts(EventTypes.profile("supper"),
+                                           ["alcohol": .text("included"), "min_age": .text("18"), "dietary": .list(["vegetarian", "can_accommodate"])], lang: "en")
+        let dietary = EventDetailPresentation.splitFacts(facts).chips.filter { $0.id == "dietary" }
+        XCTAssertEqual(dietary.count, 2)
+        XCTAssertTrue(dietary.allSatisfy { !$0.value.contains(",") })
+    }
+
     func testAboutSectionMatchesFixture() throws {
         for c in try XCTUnwrap(fixture()["aboutSection"] as? [[String: Any]]) {
             let name = c["name"] as? String ?? ""
@@ -61,5 +113,9 @@ final class EventDetailPresentationTests: XCTestCase {
             XCTAssertEqual(split.minAge?.value, "18+", key)
             XCTAssertTrue(split.chips.contains { $0.id == "alcohol" }, key)
         }
+    }
+
+    func testHeroScrimKeepsWhiteTextReadableOnAWhitePhoto() {
+        XCTAssertGreaterThanOrEqual(EventDetailPresentation.scrimContrast(alpha: EventDetailPresentation.heroScrim.alpha), 4.5)
     }
 }

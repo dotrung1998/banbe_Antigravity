@@ -54,7 +54,9 @@ final class EventTypesTests: XCTestCase {
     func testDetailFacts() throws {
         for c in try group("detailFacts") {
             let got = EventTypes.detailFacts(EventTypes.profile(c["type"] as? String), details(c["details"]), lang: c["lang"] as? String ?? "en")
-            let want = (c["expect"] as? [[String: String]] ?? []).map { EventTypes.Fact(id: $0["id"]!, label: $0["label"]!, value: $0["value"]!) }
+            let want = (c["expect"] as? [[String: Any]] ?? []).map {
+                EventTypes.Fact(id: $0["id"] as! String, label: $0["label"] as! String, value: $0["value"] as! String, values: $0["values"] as? [String])
+            }
             XCTAssertEqual(got, want, c["case"] as? String ?? "?")
         }
     }

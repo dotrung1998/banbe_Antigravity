@@ -1,12 +1,12 @@
 import Foundation
 
-/// Event Detail's sticky action bar: which state it is in, the seat presets, and the total shown in the CTA.
+/// Event Detail's sticky action bar: which state it is in, how many seats the stepper allows, and the total shown in
+/// the CTA. One row since note 70: stepper + "Reserve · total" (the 1·2·3 presets were dropped).
 /// Mirrors src/lib/reserveBar.js (tests: BanbeAppTests/ReserveBarTests.swift and tests/unit/reserveBar.test.mjs)
 /// — change both together.
 enum ReserveBar {
     /// Same cap as Reserve's stepper and `qtyPlus`.
     static let maxQty = 6
-    static let presets = [1, 2, 3]  // "1 vé · 2 vé · 3 vé" (note 52 mockup); the stepper covers 4–6
 
     /// `currencyUnavailable`: a PAID event in a currency banbe can't take bookings in yet (USD, migration 195) —
     /// a clear disabled bar, never an error after tapping.
@@ -51,7 +51,14 @@ enum ReserveBar {
         return .reserve
     }
 
-    static func clampQty(_ n: Int) -> Int { min(maxQty, max(1, n)) }
+    /// The stepper's ceiling: the cap, and never more than the seats still free when they are known (note 70).
+    static func qtyCeiling(remaining: Int?) -> Int {
+        guard let remaining else { return maxQty }
+        return max(1, min(maxQty, remaining))
+    }
+
+    /// 1…max (max defaults to the cap). hold_seats still refuses more than the seats left; this keeps the UI honest.
+    static func clampQty(_ n: Int, max ceiling: Int = maxQty) -> Int { min(Swift.max(1, ceiling), Swift.max(1, n)) }
 
     private static func vnd(_ n: Int) -> String {
         let digits = Array(String(n))

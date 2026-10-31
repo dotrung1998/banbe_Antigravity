@@ -1,6 +1,9 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { setupToHome } from './helpers.js';
+import { guestToHome } from './helpers.js';
+
+// Signed out (read-only guest browsing): the shared signed-in test account is held at the DOB account gate (note 68).
+test.use({ storageState: { cookies: [], origins: [] } });
 
 // Intro/included-presentation pass (2026-09-28) — the "Bao gồm" row is now
 // ONE tappable row + sheet (intro first, Included items below) whenever
@@ -11,7 +14,7 @@ import { setupToHome } from './helpers.js';
 // section. See EventDetail.jsx's own doc comment on this exact change.
 test.describe('Event Detail — intro + Included sheet', () => {
   test('a demo event with a hand-written intro and derived Included items opens the sheet, intro first', async ({ page }) => {
-    await setupToHome(page);
+    await guestToHome(page);
 
     // bepnho — src/data/events.js's own INTRO lookup + includedItems
     // derived from its "5 món ▪︎ rượu gạo ▪︎ cà phê" included string.
@@ -41,11 +44,14 @@ test.describe('Event Detail — intro + Included sheet', () => {
     await expect(sheet).toContainText('cà phê');
 
     await page.getByTestId('event-included-sheet-close').click();
+    // Note 70: the items are also their own section of chips under About, never run-in text with ▪︎.
+    await expect(page.getByTestId('event-included-items')).toContainText('rượu gạo');
+    await expect(page.getByTestId('event-included-line')).toHaveCount(0);
     await expect(sheet).not.toBeVisible();
   });
 
   test('an event with neither intro nor included items shows no broken empty section', async ({ page }) => {
-    await setupToHome(page);
+    await guestToHome(page);
     // Every one of the 21 demo events now has an intro (this pass), so
     // there's no fixture left with genuinely neither — this instead
     // asserts the STRUCTURAL guarantee via the component's own contract:

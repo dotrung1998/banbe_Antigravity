@@ -19,7 +19,8 @@ const CalIcon = ({ added }) => (
 );
 
 /** Title + compact plan pill on one row. Renders just the title for events that can't be planned. */
-export default function EventPlanTitle({ eventKey, title, titleStyle }) {
+// `onPhoto` (note 70): the title sits on the event photo, so the calendar pill is a clay glass pill with a white glyph.
+export default function EventPlanTitle({ eventKey, title, titleStyle, onPhoto = false }) {
   const { state: s, T, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule } = useBanBe();
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState('');
@@ -55,7 +56,8 @@ export default function EventPlanTitle({ eventKey, title, titleStyle }) {
               <button type="button" onClick={() => setOpen(v => !v)} aria-haspopup="menu" aria-expanded={open} data-testid="event-plan-button"
                 aria-label={item ? T(`Trong lịch banbe (${sourceLabel(item.source, T)}). Mở menu`, `In banbe Schedule (${sourceLabel(item.source, T)}). Open menu`) : T('Thêm lịch', 'Add to calendar')}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 12px', borderRadius: 999, cursor: 'pointer', color: clay, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
-                  border: `1px solid ${clay}`, background: 'transparent' }}>
+                  border: `1px solid ${clay}`, background: 'transparent',
+                  ...(onPhoto ? { color: '#fff', border: '1px solid rgba(255,255,255,0.32)', background: 'rgba(var(--bb-clay-rgb),0.82)' } : null) }}>
                 <CalIcon added={!!item} />
                 <span data-testid="event-plan-status">{item ? T('Đã thêm', 'Added') : T('Thêm lịch', 'Add to calendar')}</span>
               </button>

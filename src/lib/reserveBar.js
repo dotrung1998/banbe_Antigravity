@@ -1,4 +1,5 @@
-// Event Detail's sticky action bar: which state it is in, the seat presets, and the total shown in the CTA.
+// Event Detail's sticky action bar: which state it is in, how many seats the stepper allows, and the total shown in
+// the CTA. One row since note 70: stepper + "Reserve · total" (the 1·2·3 presets were dropped).
 // Pure logic so Event Detail and Reserve agree on the total. Mirrored by apps/ios/BanbeApp/Lib/ReserveBar.swift
 // (tests: tests/unit/reserveBar.test.mjs and apps/ios/BanbeAppTests/ReserveBarTests.swift) — change both together.
 //
@@ -8,7 +9,6 @@
 import { formatMoney, parsePriceInput, paidBookingAvailable } from './eventMarket.js';
 
 export const MAX_QTY = 6; // same cap as Reserve's stepper and qtyPlus
-export const QTY_PRESETS = [1, 2, 3]; // "1 vé · 2 vé · 3 vé" (note 52 mockup); the stepper covers 4–6
 
 // Why the bar is disabled for a paid event whose currency cannot be booked yet (owner decision 2026-10-22).
 export const CURRENCY_UNAVAILABLE_REASON = ['Đặt vé trả phí cho sự kiện tại Mỹ sẽ sớm mở', 'Paid booking for US events opens soon'];
@@ -67,7 +67,12 @@ export function reserveBarState({ booking, ticket, cancelled, ended, soldOut, cu
   return 'reserve';
 }
 
-// Presets never offer more than the cap; a value outside the presets (e.g. 3 from the stepper) is still valid.
-export function clampQty(n) {
-  return Math.min(MAX_QTY, Math.max(1, n | 0));
+/** The stepper's ceiling: the cap, and never more than the seats still free when they are known (note 70). */
+export function maxQty(remaining = null) {
+  return remaining != null && Number.isFinite(remaining) ? Math.max(1, Math.min(MAX_QTY, remaining | 0)) : MAX_QTY;
+}
+
+// 1…max (max defaults to the cap). hold_seats still refuses more than the seats left; this keeps the UI honest.
+export function clampQty(n, max = MAX_QTY) {
+  return Math.min(Math.max(1, max | 0), Math.max(1, n | 0));
 }

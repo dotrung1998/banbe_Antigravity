@@ -357,7 +357,8 @@ enum EventTypes {
         return lang == "vi" ? o.vi : o.en
     }
 
-    struct Fact: Equatable { let id: String; let label: String; let value: String }
+    /// `values`: one label per choice for a multi choice, so a chip fact can show one chip per choice (note 70).
+    struct Fact: Equatable { let id: String; let label: String; let value: String; var values: [String]? = nil }
 
     /// Facts for Event Detail, in the order the profile lists them; empty values are skipped.
     static func detailFacts(_ p: EventTypeProfile, _ details: EventDetails, lang: String) -> [Fact] {
@@ -365,15 +366,18 @@ enum EventTypes {
         return (p.detail?.facts ?? []).compactMap { id in
             guard let def = fields[id], let v = details[id] else { return nil }
             let value: String?
+            var values: [String]?
             switch (def.kind, v) {
-            case ("multi", .list(let a)): value = a.compactMap { optionLabel(def, $0, lang) }.joined(separator: ", ")
+            case ("multi", .list(let a)):
+                values = a.compactMap { optionLabel(def, $0, lang) }
+                value = values?.joined(separator: ", ")
             case ("enum", .text(let s)): value = optionLabel(def, s, lang)
             case ("text", .text(let s)): value = s
             case ("list", .list(let a)): value = a.joined(separator: ", ")
             default: value = nil
             }
             guard let value, !value.isEmpty else { return nil }
-            return Fact(id: id, label: def.label.text(lang), value: value)
+            return Fact(id: id, label: def.label.text(lang), value: value, values: values)
         }
     }
 

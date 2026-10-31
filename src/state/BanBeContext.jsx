@@ -36,6 +36,7 @@ import { cleanDetails, profileFor, publishDetails, secondCategory, detailOwner, 
 import { holdLeftCreateDraft, beginCreateDraftRestore, discardLeftCreateDraft } from '../lib/createDraftUndo.js';
 import { normalizeThemeChoice, resolveTheme, systemPrefersDark } from '../lib/themeChoice.js';
 import { homeViewAfterSync, startHostingStep } from '../lib/homeMode.js';
+import { clampQty, maxQty } from '../lib/reserveBar.js';
 
 /** Media-API upload with the current session token. Resolves `{provider:'supabase'}`
  * when the caller must use the legacy path; throws MediaUploadError only after bytes were PUT. */
@@ -2660,6 +2661,16 @@ export function BanBeProvider({ children }) {
         console.warn('get_public_event_fill unavailable (migration 186 not applied?):', fillError.message);
       }
     }
+  }, [set]);
+
+  // One event's live seat fill (migration 186) for Event Detail, which can be opened straight from a link or a story
+  // without Home having loaded it (note 70: the screen then fell back to the never-decremented seats_remaining).
+  // Best-effort like the discovery load above: any error leaves eventFill untouched.
+  const loadEventFill = useCallback(async (eventKey) => {
+    if (!eventKey) return;
+    const { data, error } = await supabase.rpc('get_public_event_fill', { p_event_ids: [eventKey] });
+    if (error || !Array.isArray(data) || !data.length) return;
+    set(prev => ({ eventFill: { ...prev.eventFill, ...Object.fromEntries(data.map(r => [r.event_id, { booked: r.booked, capacity: r.capacity }])) } }));
   }, [set]);
 
   // Dedupe concurrent loadRealEventsById() calls for the same id (e.g. Home
@@ -8604,13 +8615,19 @@ export function BanBeProvider({ children }) {
     const qty = Math.max(1, prev.qty - 1);
     return { qty, attendeeDrafts: resizeDrafts(prev, qty) };
   }), [set]);
+  // The open event's ceiling (src/lib/reserveBar.js maxQty, note 70): the 1–6 cap, never above the seats its live fill
+  // says are still free. hold_seats stays the authority.
+  const qtyCeiling = (prev) => {
+    const f = prev.eventFill?.[prev.eventKey];
+    return maxQty(f?.capacity > 0 ? Math.max(0, f.capacity - f.booked) : null);
+  };
   const qtyPlus = useCallback(() => set(prev => {
-    const qty = Math.min(6, prev.qty + 1);
+    const qty = clampQty(prev.qty + 1, qtyCeiling(prev));
     return { qty, attendeeDrafts: resizeDrafts(prev, qty) };
   }), [set]);
-  // Event Detail's seat presets (1 · 2 · 4): same 1–6 clamp as the stepper, so Reserve opens pre-filled.
+  // Event Detail's stepper: same clamp, so Reserve opens pre-filled.
   const setQty = useCallback((n) => set(prev => {
-    const qty = Math.min(6, Math.max(1, n | 0));
+    const qty = clampQty(n, qtyCeiling(prev));
     return { qty, attendeeDrafts: resizeDrafts(prev, qty) };
   }), [set]);
   const setAttendeeField = useCallback((index, field, value) => set(prev => ({
@@ -11563,7 +11580,7 @@ export function BanBeProvider({ children }) {
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, backFromEditProfileSaved, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadHostHomeKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
-    setHomeView, startHosting, closeStartHosting, openDockCreate, closeDockCreate,
+    setHomeView, startHosting, closeStartHosting, openDockCreate, closeDockCreate, loadEventFill,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
     loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, resolvedTheme, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
@@ -11603,7 +11620,7 @@ export function BanBeProvider({ children }) {
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, backFromEditProfileSaved, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadHostHomeKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
-    setHomeView, startHosting, closeStartHosting, openDockCreate, closeDockCreate,
+    setHomeView, startHosting, closeStartHosting, openDockCreate, closeDockCreate, loadEventFill,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
     loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, resolvedTheme, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,

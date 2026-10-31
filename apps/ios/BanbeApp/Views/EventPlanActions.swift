@@ -28,6 +28,9 @@ struct AppleCalendarMarkStore {
 struct EventPlanTitleRow: View {
     @EnvironmentObject private var app: AppState
     let event: CatalogEvent
+    /// Note 70 (story-first): the title sits on the event photo over a dark scrim, so it is white and the calendar
+    /// circle is a clay disc with a white glyph.
+    var onPhoto = false
     @State private var exportRequest: CalendarExportRequest?
     @State private var message: String?
     @State private var appleMarked = false
@@ -44,6 +47,8 @@ struct EventPlanTitleRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(event.name)
                     .font(BanbeTheme.display(28))
+                    .foregroundStyle(onPhoto ? Color.white : app.palette.ink)
+                    .shadow(color: onPhoto ? .black.opacity(0.35) : .clear, radius: 4, y: 1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if available {
                     planMenu
@@ -51,7 +56,7 @@ struct EventPlanTitleRow: View {
                 }
             }
             if let message {
-                Text(message).font(.footnote).foregroundStyle(app.palette.ink.opacity(0.8))
+                Text(message).font(.footnote).foregroundStyle(onPhoto ? Color.white.opacity(0.9) : app.palette.ink.opacity(0.8))
                     .accessibilityIdentifier("event.plan.message")
             }
         }
@@ -85,10 +90,10 @@ struct EventPlanTitleRow: View {
         Button { planOpen = true } label: {
             Image(systemName: added ? "calendar.badge.checkmark" : "calendar.badge.plus")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(added ? app.palette.paper : app.palette.clay)
+                .foregroundStyle(onPhoto ? Color.white : (added ? app.palette.paper : app.palette.clay))
                 .frame(width: 40, height: 40)
-                .background(added ? app.palette.clay : app.palette.paper, in: Circle())
-                .overlay(Circle().stroke(app.palette.clay, lineWidth: 1))
+                .background(onPhoto ? app.palette.clay.opacity(added ? 1 : 0.85) : (added ? app.palette.clay : app.palette.paper), in: Circle())
+                .overlay(Circle().stroke(onPhoto ? Color.white.opacity(0.32) : app.palette.clay, lineWidth: 1))
                 .frame(width: 44, height: 44)          // 44pt tap target around the 40pt circle
                 .contentShape(Circle())
         }

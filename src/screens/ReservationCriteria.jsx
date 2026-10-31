@@ -7,7 +7,7 @@ import { useEffect } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, fieldSolid, inkButton, alert } from '../theme.js';
 import {
-  INTERESTS, GOALS, everyone, normalizeCriteria, criteriaIsEveryone, criteriaSummary, eligibilityGuidance, evaluateCriteria,
+  INTERESTS, GOALS, everyone, normalizeCriteria, criteriaIsEveryone, criteriaSummary, criteriaPlain, eligibilityGuidance, evaluateCriteria,
 } from '../lib/eventPrefs.js';
 
 const small = { fontSize: 11.5, lineHeight: 1.55, color: ink, opacity: 0.7 };
@@ -139,13 +139,21 @@ export function useReservationCriteria(eventKey, { alwaysCheck = false, isReal =
   return { criteria, restricted, eligibility: elig, blocked: !!elig && elig.eligible === false };
 }
 
-/** "Who can reserve: ..." line for restricted events only. */
-export function WhoCanReserve({ criteria, style }) {
+/**
+ * Who can reserve, in plain words (note 70), restricted events only: "Open to people into Supper club", then this
+ * viewer's result when known: "✓ You qualify", or "Sign in to check" for a guest. An unmet result is the
+ * CriteriaUnmetCard below it (with its action), so no second verdict here. hold_seats stays the authority.
+ */
+export function WhoCanReserve({ criteria, eligibility = null, signedIn = null, style }) {
   const { T, EN } = useBanBe();
-  if (!criteria || criteriaIsEveryone(criteria)) return null;
+  const text = criteriaPlain(criteria, !EN);
+  if (!text) return null;
+  const qualifies = eligibility?.eligible === true;
   return (
-    <div style={{ fontSize: 12.5, color: ink, ...style }} data-testid="event-who-can-reserve">
-      {T('Ai có thể đặt: ', 'Who can reserve: ')}{criteriaSummary(criteria, !EN)}
+    <div style={{ fontSize: 15, lineHeight: 1.45, color: ink, ...style }} data-testid="event-who-can-reserve">
+      {text}
+      {qualifies && <span data-testid="event-criteria-ok" style={{ color: ink, fontWeight: 600, whiteSpace: 'nowrap' }}>{' · '}{T('✓ Bạn đủ điều kiện', '✓ You qualify')}</span>}
+      {signedIn === false && <span data-testid="event-criteria-signin" style={{ color: ink, opacity: 0.7, whiteSpace: 'nowrap' }}>{' · '}{T('Đăng nhập để kiểm tra', 'Sign in to check')}</span>}
     </div>
   );
 }

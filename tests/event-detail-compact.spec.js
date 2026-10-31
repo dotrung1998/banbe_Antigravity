@@ -2,7 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { guestToHome } from './helpers.js';
 
-// Note 68 — the compact Event Detail on a 6.1" phone (390×844): Date / Time / Place, the Host row and the CTA are
+// Notes 68 + 70 — the compact, story-first Event Detail on a 6.1" phone (390×844): Date / Time / Place, the Host row and the CTA are
 // visible without scrolling, the three tiles share one height, the host appears once, and no gap between sections
 // is above 24px.
 // Signed out (read-only guest browsing, note 49): the shared signed-in test account is held at the DOB account gate.
@@ -41,6 +41,29 @@ test.describe('Event Detail — compact layout (note 68)', () => {
       return out;
     });
     for (const g of gaps) expect(g).toBeLessThanOrEqual(24);
+
+    // Note 70 (story-first + one-row bar): the bar is at most 12% of the screen; each tile is one line; the title sits
+    // on the photo; the rules (chips, who can reserve) come before the host; no raw technical copy or heavy separators
+    // and no Vietnamese date on an English screen.
+    const area = await page.getByTestId('event-action-area').boundingBox();
+    expect(area.height, 'booking bar height').toBeLessThanOrEqual(844 * 0.12);
+    await expect(page.getByTestId('event-qty-1')).toHaveCount(0);
+    for (const id of ['event-fact-when', 'event-fact-time', 'event-fact-where']) {
+      const lines = await page.getByTestId(id).evaluate((el) => {
+        const v = el.children[el.children.length - 2];
+        return Math.round(v.getBoundingClientRect().height / parseFloat(getComputedStyle(v).lineHeight));
+      });
+      expect(lines, `${id} value is one line`).toBe(1);
+    }
+    const title = await page.getByTestId('event-hero-title').boundingBox();
+    const sheetTop = (await page.getByTestId('event-fact-seats').boundingBox()).y;
+    expect(title.y + title.height).toBeLessThanOrEqual(sheetTop);
+    const facts = await page.getByTestId('event-type-facts').boundingBox();
+    expect(facts.y).toBeLessThan(host.y);
+    expect(facts.y + facts.height).toBeLessThanOrEqual(bar.y);
+    const text = await page.locator('[data-screen-label="Event"]').innerText();
+    for (const bad of ['Any of:', 'Interests:', '▪', 'km away\n']) expect(text, bad).not.toContain(bad);
+    await expect(page.getByTestId('event-fact-when')).not.toContainText(/^Th \d|CN,/);
 
     await page.screenshot({ path: process.env.SHOT_DIR ? `${process.env.SHOT_DIR}/event-detail-390-${theme}.png` : undefined });
   });
