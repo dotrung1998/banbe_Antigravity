@@ -299,11 +299,13 @@ struct MapExploreView: View {
         }
     }
 
-    /// Pin glyphs only (price pins replace these later); the chips use Home's categories and line icons.
-    private static let pinGlyph: [String: String] = [
-        "supper": "🍽️", "fashion": "👗", "gallery": "🖼️", "music": "🎵", "popup": "🛍️",
-    ]
     @State private var categorySheetOpen = false
+    /// Bounded mode: set once the loaded set turned out incomplete (see `.onChange(of: committedBounds)`).
+    @State private var boundedMode = false
+    private var boundedArea: MapDiscovery.Bounds? {
+        guard boundedMode, let committedBounds else { return nil }
+        return MapDiscovery.padBounds(committedBounds, factor: 1.5)
+    }
     /// Body-text line height, scaled with Dynamic Type.
     @ScaledMetric(relativeTo: .body) private var searchFieldHeight: CGFloat = 24
 
@@ -321,10 +323,13 @@ struct MapExploreView: View {
             // selection's pin and its card stay consistent with each other
             // through any filter change.
             // Pins are exactly the results (committed area + filters): the same list and count the sheet shows.
+            // Phase 4: results grouped for display (price pins, clusters, same-place stacks); they always add up to
+            // the count.
             Map(position: $cameraPosition) {
-                ForEach(visibleEvents.filter { $0.lat != nil && $0.lng != nil }) { ev in
-                    Annotation(ev.name, coordinate: CLLocationCoordinate2D(latitude: ev.lat ?? 0, longitude: ev.lng ?? 0)) {
-                        pin(for: ev)
+                ForEach(markerGroups) { g in
+                    Annotation(g.kind == .pin ? (eventsByID[g.ids[0]]?.name ?? "") : "",
+                               coordinate: CLLocationCoordinate2D(latitude: g.lat, longitude: g.lng)) {
+                        marker(for: g)
                     }
                 }
             }
@@ -658,14 +663,23 @@ struct MapExploreView: View {
             postDismissRevealTask?.cancel()
             app.cancelRootPull()
         }
-        // Freshness: the whole public set again (never a box). Camera, area, filters, selection and list stay put.
+        // Bounded mode (phase 4): only when the public set is larger than the cap. Each committed area then loads its
+        // own events (padded ×1.5, exact count, newest load wins); the "Showing N of M" line stays honest. With the
+        // set complete (production today) this never runs and panning stays network-free.
+        .onChange(of: committedBounds) { _, area in
+            guard !isPreview, area != nil, boundedMode || app.mapEvents.count < app.mapEventsTotal else { return }
+            boundedMode = true
+            Task { await app.loadMapEvents(bounds: boundedArea) }
+        }
+        // Freshness: the whole set again (or this area's, in bounded mode). Camera, area, filters, selection and list
+        // stay put.
         .onReceive(pollTimer) { _ in
             guard !isPreview else { return }
-            Task { await app.loadMapEvents() }
+            Task { await app.loadMapEvents(bounds: boundedArea) }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             guard !isPreview else { return }
-            Task { await app.loadMapEvents() }
+            Task { await app.loadMapEvents(bounds: boundedArea) }
         }
         .onChange(of: app.userCoords) { _, newValue in
             // Only recenters when the compass button itself triggered the
@@ -764,11 +778,11 @@ struct MapExploreView: View {
     private static let legalReserve: Double = 26
 
     /// A camera region that fits `bounds` into the free area above the MID sheet (below the top controls).
-    private func fittedRegion(_ bounds: MapDiscovery.Bounds) -> MKCoordinateRegion {
+    private func fittedRegion(_ bounds: MapDiscovery.Bounds, maxZoom: Double = 14) -> MKCoordinateRegion {
         let w = Double(max(320, mapSize.width)), h = Double(max(560, mapSize.height == 0 ? UIScreen.main.bounds.height : mapSize.height))
         let pad = MapDiscovery.Padding(top: Double(safeTop) + Self.topControlsHeight + 16, bottom: h * 0.45 + Self.legalReserve + 16,
                                        left: 40, right: 40)
-        let cam = MapDiscovery.fitCamera(bounds, width: w, height: h, padding: pad, maxZoom: 14)
+        let cam = MapDiscovery.fitCamera(bounds, width: w, height: h, padding: pad, maxZoom: maxZoom)
         let view = MapDiscovery.viewBounds(center: cam.center, zoom: cam.zoom, width: w, height: h)
         return MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: cam.center.lat, longitude: cam.center.lng),
                                   span: MKCoordinateSpan(latitudeDelta: view.north - view.south, longitudeDelta: view.east - view.west))
@@ -1097,6 +1111,26 @@ struct MapExploreView: View {
                     HStack(alignment: .top) {
                         Text(ev.name).font(.body.weight(.bold)).lineLimit(2)
                         Spacer()
+                        // Several events at this same place: step through them here (zooming can never split a stack).
+                        let stackIDs = stackIDs(of: ev)
+                        if stackIDs.count > 1, let i = stackIDs.firstIndex(of: ev.id) {
+                            HStack(spacing: 0) {
+                                Button { selectedId = stackIDs[(i - 1 + stackIDs.count) % stackIDs.count] } label: {
+                                    Image(systemName: "chevron.left").frame(width: 44, height: 44)
+                                }
+                                .accessibilityLabel(app.T("Sự kiện trước ở đây", "Previous event here"))
+                                .accessibilityIdentifier("map.card.stackPrev")
+                                Text("\(i + 1)/\(stackIDs.count)").font(.footnote).foregroundStyle(app.palette.ink2)
+                                    .accessibilityIdentifier("map.card.stack")
+                                Button { selectedId = stackIDs[(i + 1) % stackIDs.count] } label: {
+                                    Image(systemName: "chevron.right").frame(width: 44, height: 44)
+                                }
+                                .accessibilityLabel(app.T("Sự kiện tiếp theo ở đây", "Next event here"))
+                                .accessibilityIdentifier("map.card.stackNext")
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.vertical, -12)
+                        }
                         Button { selectedId = nil } label: {
                             Text("×").font(.title3).foregroundStyle(app.palette.ink2)
                                 .frame(width: 44, height: 44)
@@ -1210,30 +1244,111 @@ struct MapExploreView: View {
 
     // MARK: - Pins
 
-    /// A pin is a result (committed area + filters): the same list and count the sheet shows. Out-of-filter events
-    /// no longer get passive dots, so nothing on the map disagrees with the list.
+    /// Markers are exactly the results (committed area + filters), grouped for display only (phase 4): each result is
+    /// in one price pin, cluster or same-place stack. A selected event is pulled out of its cluster so it stays
+    /// visible; at the same place it stays in its stack (the card steps through it).
+    private var markerGroups: [MapDiscovery.Group] {
+        let located = visibleEvents.compactMap { ev -> MapDiscovery.GroupPoint? in
+            guard let lat = ev.lat, let lng = ev.lng else { return nil }
+            return MapDiscovery.GroupPoint(id: ev.id, lat: lat, lng: lng)
+        }
+        let sel = located.first { $0.id == selectedId }
+        let selStacked = sel.map { MapDiscovery.sameSpotIDs(located, lat: $0.lat, lng: $0.lng).count > 1 } ?? false
+        let groupable = (sel != nil && !selStacked) ? located.filter { $0.id != selectedId } : located
+        var groups = MapDiscovery.clusterPins(groupable, zoom: cameraZoom)
+        if let sel, !selStacked {
+            groups.append(.init(kind: .pin, ids: [sel.id], lat: sel.lat, lng: sel.lng, bounds: nil))
+        }
+        return groups
+    }
+
+    /// Results at the same place as `ev` (itself included, list order) — the card's ‹ 1/3 › switcher.
+    private func stackIDs(of ev: MapEventRow) -> [String] {
+        guard let lat = ev.lat, let lng = ev.lng else { return [ev.id] }
+        let pts = visibleEvents.compactMap { e in e.lat.flatMap { la in e.lng.map { MapDiscovery.GroupPoint(id: e.id, lat: la, lng: $0) } } }
+        return MapDiscovery.sameSpotIDs(pts, lat: lat, lng: lng)
+    }
+
+    private var eventsByID: [String: MapEventRow] {
+        Dictionary(visibleEvents.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    /// The camera's zoom on a 512 px world basis (as the shared clustering expects): world width / map width.
+    private var cameraZoom: Double {
+        guard let span = currentCameraRegion?.span.longitudeDelta, span > 0 else { return 12 }
+        return log2(360 * Double(max(1, mapSize.width)) / (512 * span))
+    }
+
+    @ViewBuilder
+    private func marker(for g: MapDiscovery.Group) -> some View {
+        if g.kind == .pin, let ev = eventsByID[g.ids[0]] {
+            pin(for: ev)
+        } else {
+            let n = g.ids.count
+            let isSelected = selectedId.map(g.ids.contains) ?? false
+            let stack = g.kind == .stack
+            Text(stack ? "\(n) ≡" : "\(n)")
+                .font(.system(size: 13, weight: .bold))
+                .padding(.horizontal, stack ? 10 : 6)
+                .frame(minWidth: stack ? 30 : 36, minHeight: stack ? 30 : 36)
+                .foregroundStyle(isSelected ? app.palette.paper : app.palette.ink)
+                .background(isSelected ? app.palette.ink : app.palette.paper, in: Capsule())
+                .overlay(Capsule().stroke(app.palette.ink, lineWidth: stack ? 1.5 : 2))
+                .shadow(radius: 4)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(stack ? app.T("\(n) sự kiện cùng địa điểm", "\(n) events at this place")
+                                          : app.T("\(n) sự kiện ở đây, phóng to", "\(n) events here, zoom in"))
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("map.\(g.kind.rawValue).\(g.ids[0])")
+                .accessibilityValue("\(n)")
+                .onTapGesture {
+                    if stack, let first = eventsByID[g.ids[0]] { selectEvent(first) } else { zoomToCluster(g) }
+                }
+        }
+    }
+
+    /// Tap a cluster: zoom in to fit its events (at least one level) — explicit navigation, one new area.
+    private func zoomToCluster(_ g: MapDiscovery.Group) {
+        guard let box = g.bounds else { return }
+        var region = fittedRegion(box, maxZoom: 18)
+        if let span = currentCameraRegion?.span, region.span.longitudeDelta > span.longitudeDelta / 2 {
+            region.span = MKCoordinateSpan(latitudeDelta: span.latitudeDelta / 2, longitudeDelta: span.longitudeDelta / 2)
+        }
+        moveCamera(.cluster, to: region, duration: 0.6)
+    }
+
+    /// Price pin: the event's price per ticket in its own currency ("Free" when 0); selected = ink fill.
     @ViewBuilder
     private func pin(for ev: MapEventRow) -> some View {
         let isSelected = ev.id == selectedId
         let isPopping = ev.id == poppingId
+        let label = ev.priceVnd > 0 ? EventMarket.formatMoneyShort(ev.priceVnd, currency: ev.rowCurrency) : app.T("Miễn phí", "Free")
         ZStack(alignment: .topTrailing) {
-            Text(Self.pinGlyph[ev.catKey ?? ""] ?? "▪︎")
-                .font(.system(size: 14))
-                .frame(width: 30, height: 30)
-                .background(app.palette.paper, in: Circle())
-                .overlay(Circle().stroke(app.palette.ink, lineWidth: isSelected ? 2.5 : 1.5))
+            Text(label)
+                .font(.system(size: 12.5, weight: .semibold))
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .frame(minWidth: 30, minHeight: 30)
+                .foregroundStyle(isSelected ? app.palette.paper : app.palette.ink)
+                .background(isSelected ? app.palette.ink : app.palette.paper, in: Capsule())
+                .overlay(Capsule().stroke(app.palette.ink, lineWidth: 1.5))
                 .shadow(radius: isSelected ? 5 : 3)
             if seatFacts(ev)?.almostFull == true {
                 Circle().fill(Color(red: 0.6, green: 0.24, blue: 0.18)).frame(width: 9, height: 9)
                     .overlay(Circle().stroke(app.palette.paper, lineWidth: 1.5))
+                    .offset(x: 3, y: -3)
             }
         }
         // Selected pin sits slightly larger and settles there; the brief overshoot past that (isPopping) plays once
         // per actual selection change, guarded in selectEvent(_:) — never replayed by a refresh.
-        .scaleEffect(isPopping ? 1.32 : (isSelected ? 1.15 : 1))
+        .scaleEffect(isPopping ? 1.2 : (isSelected ? 1.1 : 1))
         .zIndex(isSelected ? 1 : 0)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(ev.name)
+        .accessibilityLabel("\(ev.name), \(label)")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("map.pin.\(ev.id)")
         .onTapGesture { selectEvent(ev) }
@@ -1590,7 +1705,7 @@ struct MapExploreView: View {
                     .font(.subheadline.weight(.semibold))
                     .accessibilityIdentifier("map.resultCount")
                 if app.mapEventsLoadFailed && !app.mapEvents.isEmpty {
-                    Button { Task { await app.loadMapEvents() } } label: {
+                    Button { Task { await app.loadMapEvents(bounds: boundedArea) } } label: {
                         Text(app.T("Chưa cập nhật được · Thử lại", "Couldn't update · Retry")).font(.footnote).underline()
                             .frame(minHeight: 32)
                     }
@@ -1694,7 +1809,7 @@ struct MapExploreView: View {
                                     case .changed: app.updateRootPull(translationY)
                                     case .ended:
                                         // The same whole-set refresh: camera, area, filters and selection stay put.
-                                        app.endRootPull(trigger: { await app.loadMapEvents() })
+                                        app.endRootPull(trigger: { await app.loadMapEvents(bounds: boundedArea) })
                                     case .cancelled: app.cancelRootPull()
                                     }
                                 }
@@ -1823,7 +1938,7 @@ struct MapExploreView: View {
                     Text(app.T("Chưa tải được sự kiện. Kiểm tra kết nối mạng rồi thử lại.",
                                "Couldn't load events. Check your connection and try again."))
                         .font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
-                    emptyAction(app.T("Thử lại", "Try again"), id: "map.retry") { Task { await app.loadMapEvents() } }
+                    emptyAction(app.T("Thử lại", "Try again"), id: "map.retry") { Task { await app.loadMapEvents(bounds: boundedArea) } }
                 } else if committedBounds != nil && anyInArea && filtersActive {
                     Text(searchQuery.trimmingCharacters(in: .whitespaces).isEmpty
                          ? app.T("Có sự kiện trong vùng này nhưng bộ lọc đang ẩn chúng.", "There are events in this area, but your filters hide them.")

@@ -1385,12 +1385,12 @@ extension AppState {
     /// filters by the committed map area locally — panning never needs the network (web: MAP_EVENT_CAP).
     static let mapEventCap = 500
 
-    func loadMapEvents() async {
+    func loadMapEvents(bounds: MapDiscovery.Bounds? = nil) async {
         mapEventsGeneration += 1
         let generation = mapEventsGeneration
         do {
             let (rows, total): ([MapEventRow], Int) = try await Self.retryingEventColumns { withR2 in
-            let filter = SupabaseService.client
+            var filter = SupabaseService.client
                 .from("events")
                 // Keyword-search fix (migration 108) — re-enabled
                 // 2026-09-29 after confirming (a live, read-only query
@@ -1412,6 +1412,11 @@ extension AppState {
                 // backstop now, but this list should stay honest
                 // client-side too.
                 .eq("visibility", value: "public")
+            // Bounded mode only (the public set is larger than the cap): the committed area, padded, with its own count.
+            if let bounds {
+                filter = filter.gte("lat", value: bounds.south).lte("lat", value: bounds.north)
+                    .gte("lng", value: bounds.west).lte("lng", value: bounds.east)
+            }
             let response: PostgrestResponse<[MapEventRow]> = try await filter
                 .order("starts_at", ascending: true)
                 .limit(Self.mapEventCap)

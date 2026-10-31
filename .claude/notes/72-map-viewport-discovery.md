@@ -1,6 +1,6 @@
-# 72 — Map redesign: layout A, viewport-driven discovery, shared filters (phases 1–3)
+# 72 — Map redesign: layout A, viewport-driven discovery, shared filters, price pins + clusters (phases 1–4)
 
-Status: IMPLEMENTED (web + iOS), tests green; phase 4 (price pins, clustering, same-coordinate stacks) NOT started.
+Status: IMPLEMENTED (web + iOS), tests green, committed (phases 1–3 in 04330f0, phase 4 after it).
 No migration. Run `xcodegen generate` after pulling (new Swift files).
 
 ## What the Map is now
@@ -39,11 +39,24 @@ No migration. Run `xcodegen generate` after pulling (new Swift files).
   - Home → Map: `goMapExplore({ source, filters, query, forYou })` (web) / `goMapExploreFromHome()` (iOS); the
     dock passes nothing. "+N matching events outside this area" explains a lower Map count.
 
+## Phase 4 — markers
+- **Price pins**: `formatMoneyShort` in the event's currency ("900k₫", "$25"), "Miễn phí / Free" at 0; selected =
+  ink fill; almost-full dot from real fill. Emoji glyph pins are gone.
+- **Clusters / stacks** (display only; every result is in exactly one marker, so markers add up to the count):
+  `clusterPins` ⇄ `MapDiscovery.clusterPins` — 64 px screen grid at the camera zoom (512 px world basis), then a
+  merge pass so a grid edge never leaves two overlapping markers (found in testing: two "2" clusters on top of each
+  other). At zoom ≥ 16 only the same place (≈1 m) groups: a **stack**. Cluster tap = 'cluster' move (fit, ≥ +1
+  zoom, commits once); stack tap selects the first, and the card's ‹ 1/3 › steps through (`sameSpot`). A selected
+  event is drawn as its own pin, pulled out of its cluster.
+- **Bounded mode** (dormant today): only when the public set exceeds the cap — each committed area loads its own
+  events (`padBounds` ×1.5, exact count, newest load wins), refresh/pull/retry included; "Showing N of M" stays.
+  Web is e2e-tested with a mocked content-range of 900; iOS has no test for it.
+
 ## Tests
 - Web unit: `tests/unit/mapDiscovery.test.mjs`, `tests/unit/dateWindowsVenue.test.mjs` (suite 689/689).
-- Web e2e: `tests/map-viewport.spec.js` (12 tests, guest mode, all 3 browsers). Test hooks:
+- Web e2e: `tests/map-viewport.spec.js` (16 tests incl. price pins, cluster zoom, stack switcher via a mocked shared venue, bounded mode; guest mode, all 3 browsers). Test hooks:
   `window.__mapExploreCommits`, `window.__mapExploreArea`.
-- iOS: `MapDiscoveryTests`, `DateWindowsVenueTests`, `MapViewportUITests` (DEBUG fixture `-uiFixture shell.map`).
+- iOS: `MapDiscoveryTests`, `DateWindowsVenueTests`, `MapViewportUITests` (7 tests, DEBUG fixture `-uiFixture shell.map`). On iOS, markers under the mid sheet are not in the accessibility snapshot, so after a pinch the UI test checks markers ≤ count (first open checks equality). XCUITest pinch scale must be ≥ 0.4 on a pin.
 
 ## Known gaps
 - `tests/map-explore.spec.js` and `MapExploreSelectionUITests` are stale (Search here, filter-moves-camera, selection

@@ -131,3 +131,74 @@ export function fitCamera(bounds, { width, height }, padding = {}, { tileSize = 
   const lng = lngFromMercX(cx);
   return { center: { lat: latFromMercY(cy), lng: lng > 180 ? lng - 360 : lng }, zoom };
 }
+
+// ---- clustering (phase 4) ----------------------------------------------------------------------------------------
+// Display only: clusters reduce the markers drawn, never the results or the count (every result is in exactly one
+// group). A screen-space grid at the camera's zoom: events in one `cellPx` cell group together. At `maxZoom` and
+// above only events at the SAME place (≈1 m) group — a "stack", which zooming can never split, so tapping it selects
+// the first event and the card steps through the rest.
+export const CLUSTER_CELL_PX = 64;
+export const CLUSTER_MAX_ZOOM = 16;
+const spotKey = (p) => `${Number(p.lat).toFixed(5)},${Number(p.lng).toFixed(5)}`;
+
+/** [{ kind: 'pin'|'cluster'|'stack', ids, lat, lng, bounds }] in first-seen order; ids keep the input order. */
+export function clusterPins(points, zoom, { tileSize = 512, cellPx = CLUSTER_CELL_PX, maxZoom = CLUSTER_MAX_ZOOM } = {}) {
+  const world = tileSize * 2 ** zoom;
+  const groups = new Map();
+  for (const p of points || []) {
+    if (!p || p.lat == null || p.lng == null) continue;
+    const key = zoom >= maxZoom
+      ? `s:${spotKey(p)}`
+      : `g:${Math.floor((mercX(p.lng) * world) / cellPx)}:${Math.floor((mercY(p.lat) * world) / cellPx)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  }
+  // A grid can split close events across a cell edge into two overlapping markers (hard to tap). Below maxZoom,
+  // merge any two groups whose centres are closer than one cell on screen, until none are.
+  let list = [...groups.values()];
+  if (zoom < maxZoom) {
+    const px = (pts) => [
+      (pts.reduce((s, p) => s + mercX(p.lng), 0) / pts.length) * world,
+      (pts.reduce((s, p) => s + mercY(p.lat), 0) / pts.length) * world,
+    ];
+    let merged = true;
+    while (merged) {
+      merged = false;
+      outer: for (let i = 0; i < list.length; i++) {
+        for (let j = i + 1; j < list.length; j++) {
+          const [ax, ay] = px(list[i]), [bx, by] = px(list[j]);
+          if (Math.hypot(ax - bx, ay - by) < cellPx) {
+            list[i] = [...list[i], ...list[j]];
+            list.splice(j, 1);
+            merged = true;
+            break outer;
+          }
+        }
+      }
+    }
+  }
+  return list.map(pts => {
+    const sameSpot = new Set(pts.map(spotKey)).size === 1;
+    return {
+      kind: pts.length === 1 ? 'pin' : sameSpot ? 'stack' : 'cluster',
+      ids: pts.map(p => p.id),
+      lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length,
+      lng: pts.reduce((s, p) => s + p.lng, 0) / pts.length,
+      bounds: boundsOfPoints(pts),
+    };
+  });
+}
+
+/** Events at the same place as `ev` among `list` (itself included, list order) — the card's stack switcher. */
+export function sameSpot(list, ev) {
+  if (!ev || ev.lat == null || ev.lng == null) return ev ? [ev] : [];
+  const k = spotKey(ev);
+  return (list || []).filter(e => e.lat != null && e.lng != null && spotKey(e) === k);
+}
+
+/** `b` grown by `factor` around its centre (bounded-fetch margin when the full set is too large to load). */
+export function padBounds(b, factor = 1.5) {
+  const dLat = ((b.north - b.south) * (factor - 1)) / 2;
+  const dLng = ((b.east - b.west) * (factor - 1)) / 2;
+  return { north: Math.min(85, b.north + dLat), south: Math.max(-85, b.south - dLat), east: b.east + dLng, west: b.west - dLng };
+}

@@ -20,6 +20,13 @@ async function openMap(page) {
 const commits = (page) => page.evaluate(() => window.__mapExploreCommits || 0);
 const area = (page) => page.evaluate(() => window.__mapExploreArea);
 const countText = (page) => page.getByTestId('map-result-count').textContent();
+/** Every result is in exactly one marker: pins count 1, clusters and stacks count their events. */
+const markerTotal = (page) => page.evaluate(() => {
+  const pins = document.querySelectorAll('[data-testid^="map-pin-"]').length;
+  const groups = [...document.querySelectorAll('[data-testid^="map-cluster-"], [data-testid^="map-stack-"]')]
+    .reduce((n, el) => n + Number(el.getAttribute('data-count') || 0), 0);
+  return pins + groups;
+});
 
 /** A real mouse drag on the map canvas (a user gesture). */
 async function dragMap(page, dx, dy) {
@@ -34,13 +41,13 @@ test.describe('Map — viewport-driven discovery', () => {
     await openMap(page);
     const sheetTop = await page.getByTestId('map-sheet').evaluate(e => e.getBoundingClientRect().top);
     expect(sheetTop).toBeGreaterThan(844 * 0.5); // mid: more than half the screen is map
-    const pinTops = await page.locator('[data-testid^="map-pin-"]').evaluateAll(els => els.map(e => e.getBoundingClientRect().top));
+    const pinTops = await page.locator('[data-testid^="map-pin-"], [data-testid^="map-cluster-"], [data-testid^="map-stack-"]').evaluateAll(els => els.map(e => e.getBoundingClientRect().top));
     expect(pinTops.length).toBeGreaterThan(0);
     // Every result pin of the first framing sits in the free area above the mid sheet.
     for (const t of pinTops) expect(t).toBeLessThan(sheetTop);
     // Pins and count are the same list.
     const n = Number((await countText(page)).match(/\d+/)[0]);
-    expect(await page.locator('[data-testid^="map-pin-"]').count()).toBe(n);
+    expect(await markerTotal(page)).toBe(n);
   });
 
   test('a pan keeps the list still while dragging, then commits exactly once after it settles, with no fetch', async ({ page }) => {
@@ -55,7 +62,10 @@ test.describe('Map — viewport-driven discovery', () => {
     expect(await commits(page)).toBe(before);
     expect(await countText(page)).toBe(textBefore);
     await release();
-    await page.waitForTimeout(1200);
+    // Inertia can carry the camera a little after release (WebKit especially): wait for the settle, then make sure
+    // it was exactly ONE commit and stays one.
+    await expect.poll(() => commits(page), { timeout: 5000 }).toBeGreaterThan(before);
+    await page.waitForTimeout(1000);
     expect(await commits(page)).toBe(before + 1);
     const areaAfter = await area(page);
     expect(areaAfter.west).not.toBeCloseTo(areaBefore.west, 6);
@@ -165,7 +175,7 @@ test.describe('Map — viewport-driven discovery', () => {
     await expect(page.getByTestId('map-chip-weekend')).toHaveAttribute('aria-pressed', 'true'); // never silently dropped
     // Pins still equal the count under the filter.
     const n2 = Number((await countText(page)).match(/\d+/)[0]);
-    expect(await page.locator('[data-testid^="map-pin-"]').count()).toBe(n2);
+    expect(await markerTotal(page)).toBe(n2);
   });
 
   test('filter sheet: Close discards the draft; Apply commits it and "Show N" is the resulting list', async ({ page }) => {
@@ -211,6 +221,76 @@ test.describe('Map — viewport-driven discovery', () => {
     await release();
     await page.waitForTimeout(1200);
     await expect(page.getByTestId('map-chip-area')).toContainText(/Vùng bản đồ|Map area/);
+  });
+
+  // ---- phase 4: price pins, clusters, stacks, bounded mode ----
+  test('price pins show the price per ticket of their event', async ({ page }) => {
+    await openMap(page);
+    const pin = page.locator('[data-testid^="map-pin-"]').first();
+    const id = (await pin.getAttribute('data-testid')).replace('map-pin-', '');
+    const pinText = (await pin.textContent()).trim();
+    const rowPrice = await page.getByTestId(`map-list-item-price-${id}`).textContent();
+    expect(pinText).toMatch(/\d|Miễn phí|Free/);
+    if (/Miễn phí|Free/.test(rowPrice)) expect(pinText).toMatch(/Miễn phí|Free/);
+    else expect(rowPrice.replace(/[^\d]/g, '').startsWith(pinText.replace(/[^\d]/g, ''))).toBe(true);
+  });
+
+  test('zoomed out, events cluster; markers still add up to the count; a cluster tap zooms in and commits once', async ({ page }) => {
+    await openMap(page);
+    await page.evaluate(() => window.__mapExploreMapForTests.jumpTo({ zoom: 8 }));
+    const cluster = page.locator('[data-testid^="map-cluster-"]').first();
+    await expect(cluster).toBeVisible({ timeout: 5000 });
+    await page.waitForTimeout(800);
+    const n = Number((await countText(page)).match(/\d+/)[0]);
+    expect(await markerTotal(page)).toBe(n);
+    const z0 = await page.evaluate(() => window.__mapExploreMapForTests.getZoom());
+    const before = await commits(page);
+    await cluster.click();
+    await page.waitForTimeout(1500);
+    expect(await page.evaluate(() => window.__mapExploreMapForTests.getZoom())).toBeGreaterThan(z0);
+    expect(await commits(page)).toBe(before + 1);
+    expect(await markerTotal(page)).toBe(Number((await countText(page)).match(/\d+/)[0]));
+  });
+
+  test('events at the same place stack; the card steps through them', async ({ page }) => {
+    // Move the second event onto the first one's place (mocked response; production has no shared venue yet).
+    let spot = null;
+    await page.route(/\/rest\/v1\/events\?/, async (route) => {
+      const res = await route.fetch();
+      const rows = await res.json();
+      if (Array.isArray(rows) && rows.length > 1 && rows[0].lat != null) {
+        rows[1].lat = rows[0].lat; rows[1].lng = rows[0].lng;
+        spot = [rows[0].lng, rows[0].lat];
+      }
+      await route.fulfill({ response: res, json: rows });
+    });
+    await openMap(page);
+    expect(spot).not.toBeNull();
+    await page.evaluate((c) => window.__mapExploreMapForTests.jumpTo({ center: c, zoom: 17 }), spot);
+    const stack = page.locator('[data-testid^="map-stack-"]').first();
+    await expect(stack).toBeVisible({ timeout: 5000 });
+    expect(await stack.getAttribute('data-count')).toBe('2');
+    await stack.click();
+    await expect(page.getByTestId('map-card-stack')).toContainText('1/2');
+    const first = await page.getByTestId('map-card-title').textContent();
+    await page.click('[data-testid="map-card-stack-next"]');
+    await expect(page.getByTestId('map-card-stack')).toContainText('2/2');
+    await expect(page.getByTestId('map-card-title')).not.toHaveText(first);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('bounded mode only when the set is larger than the cap: honest notice + an area request', async ({ page }) => {
+    let boundedRequests = 0;
+    await page.route(/\/rest\/v1\/events\?/, async (route) => {
+      if (/lat=gte\./.test(route.request().url())) boundedRequests++;
+      const res = await route.fetch();
+      const headers = { ...res.headers(), 'content-range': '0-4/900' };
+      await route.fulfill({ response: res, headers });
+    });
+    await openMap(page);
+    await expect(page.getByTestId('map-incomplete')).toBeVisible();
+    await expect.poll(() => boundedRequests, { timeout: 5000 }).toBeGreaterThan(0);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
   test('rows show venue time and price per ticket, never a far-away distance', async ({ page }) => {

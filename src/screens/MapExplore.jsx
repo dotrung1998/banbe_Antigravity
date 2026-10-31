@@ -9,7 +9,7 @@ import { supabase } from '../lib/supabase.js';
 import { withR2Columns, marketColumnList, detailsColumnList } from '../lib/mediaUrls.js';
 import {
   reasonCommits, referenceRect, boundsForRect, mapResults, selectionAfter, boundsOfPoints, pointsNear, nearestPoint,
-  fitCamera, distanceKm as geoKm,
+  fitCamera, distanceKm as geoKm, clusterPins, sameSpot, padBounds,
 } from '../lib/mapDiscovery.js';
 import { findEvent, isCosmeticCatalogMatch, haversineKm, mapsUrl } from '../data/events.js';
 import { distanceLabel } from '../lib/eventDetailPresentation.js';
@@ -19,7 +19,7 @@ import HomeFilterSheet from './sheets/HomeFilterSheet.jsx';
 import { secondCategory, categoryDefs } from '../lib/eventTypes.js';
 import { CategoryGlyph, CATEGORY_DEFS, CategorySheet } from '../components/home/HomeDiscoveryParts.jsx';
 import { liveEventOverrides } from '../lib/countdown.js';
-import { formatMoney, rowCurrency, rowTimeZone } from '../lib/eventMarket.js';
+import { formatMoney, formatMoneyShort, rowCurrency, rowTimeZone } from '../lib/eventMarket.js';
 import { densityHotspot } from '../lib/densityHotspot.js';
 import { buildEventSearchDoc, matchesSearchQuery } from '../lib/search.js';
 import { prefsIsEmpty } from '../lib/eventPrefs.js';
@@ -50,9 +50,9 @@ const POLL_MS = 60000;
 // set is larger than the cap; the screen then says so honestly instead of presenting a truncated page as complete.
 export const MAP_EVENT_CAP = 500;
 
-async function fetchLiveEvents({ limit = MAP_EVENT_CAP } = {}) {
+async function fetchLiveEvents({ limit = MAP_EVENT_CAP, bounds = null } = {}) {
   const buildQuery = (withR2) => {
-  const q = supabase
+  let q = supabase
     .from('events')
     // Keyword-search fix (migration 108) — re-enabled 2026-09-29, see
     // REAL_EVENT_ROW_COLUMNS's own doc comment (BanBeContext.jsx) for why it
@@ -74,6 +74,8 @@ async function fetchLiveEvents({ limit = MAP_EVENT_CAP } = {}) {
     .eq('visibility', 'public')
     .order('starts_at', { ascending: true })
     .range(0, limit - 1);
+  // Bounded mode only (the public set is larger than the cap): the committed area, padded, with its own count.
+  if (bounds) q = q.gte('lat', bounds.south).lte('lat', bounds.north).gte('lng', bounds.west).lte('lng', bounds.east);
   return q;
   };
   const { data, error, count } = await withR2Columns(buildQuery);
@@ -241,6 +243,8 @@ export default function MapExplore() {
   // found no map and drew nothing until the 5 s poll replaced `events` (device report: no pins on open). This flips
   // once the map exists and re-runs the pin effect.
   const [mapReady, setMapReady] = useState(false);
+  // The camera's zoom after each settle: clustering (display only) follows it; the results never do.
+  const [cameraZoom, setCameraZoom] = useState(null);
   const listRef = useRef(null);
   const listScrollRestoredRef = useRef(false);
   // A return from Event Detail starts from the cached rows, so the list never flashes "Loading".
@@ -323,10 +327,10 @@ export default function MapExplore() {
   // may write the list, so a slow, stale answer can never overwrite a newer, good one. iOS twin: mapEventsGeneration.
   // A failed load keeps the last good rows and raises `loadError` (Retry), never an empty list.
   const loadSeq = useRef(0);
-  const loadLatest = async () => {
+  const loadLatest = async (opts) => {
     const n = ++loadSeq.current;
     try {
-      const res = await fetchLiveEvents();
+      const res = await fetchLiveEvents(opts);
       if (n !== loadSeq.current) return null;
       setDataMeta({ total: res.total, complete: res.complete });
       setLoadError(false);
@@ -682,7 +686,8 @@ export default function MapExplore() {
         if (e?.originalEvent) cameraReasonRef.current = { reason: 'user', t: Date.now() };
         clearTimeout(settleTimerRef.current);
       });
-      map.on('moveend', onCameraSettled);
+      // The live zoom drives clustering (display only); rounded so tiny settles don't redraw every marker.
+      map.on('moveend', () => { setCameraZoom(Math.round(map.getZoom() * 4) / 4); onCameraSettled(); });
       // A tap on the map background (not a pin — those are separate marker
       // DOM elements, never reaches this) clears the selected-event card.
       // This is a genuine click, not `moveend`, so it can never be confused
@@ -690,6 +695,7 @@ export default function MapExplore() {
       map.on('click', () => setSelectedId(null));
       mapRef.current = map;
       setMapReady(true);
+      setCameraZoom(map.getZoom());
       // First open commits its area once, straight away (the camera is already where it was framed). A restore
       // keeps its saved area, so the list it returns to is exactly the one the user left. "Open in Map" carries a
       // camera but no area: it commits the area around that camera.
@@ -716,9 +722,28 @@ export default function MapExplore() {
 
   // ---- freshness: the whole public set again, never a box; camera, area, filters, selection and scroll untouched ----
   const [refreshing, setRefreshing] = useState(false);
+  // Bounded mode (phase 4): only when the whole public set is larger than MAP_EVENT_CAP. Each committed area then
+  // loads its own events (padded ×1.5, exact count, newest request wins); the "Showing N of M" notice stays honest.
+  // With the set complete (production today) this never runs and panning stays network-free.
+  const boundedRef = useRef(false);
+  const committedRef = useRef(committedBounds);
+  committedRef.current = committedBounds;
+  const boundedOpts = () => (boundedRef.current && committedRef.current ? { bounds: padBounds(committedRef.current, 1.5) } : undefined);
+  useEffect(() => {
+    if (dataMeta.complete && !boundedRef.current) return;
+    if (!committedBounds) return;
+    boundedRef.current = true;
+    let live = true;
+    (async () => {
+      const rows = await loadLatest(boundedOpts());
+      if (live && rows) setEvents(rows);
+    })();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [committedBounds]);
   const refresh = useCallback(async () => {
     setRefreshing(true);
-    const fresh = await loadLatest();
+    const fresh = await loadLatest(boundedOpts());
     if (fresh) setEvents(fresh);
     setRefreshing(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -838,76 +863,82 @@ export default function MapExplore() {
     (async () => {
       const MarkerCtor = markerCtorRef.current;
       if (cancelled || !MarkerCtor) { oldMarkers.forEach(m => m.remove()); return; }
-      // Pins are exactly the results (committed area + filters): the same list and count the sheet shows. Rows
-      // without coordinates never get an invented position.
-      for (const ev of visibleEvents) {
-        if (!ev.hasLocation) continue;
-        const isSelected = ev.id === selectedId;
-        // Follow-up (11-realtime-map.md, "first post-return polling cycle
-        // does not reset map state"): a real, confirmed, pre-existing bug —
-        // MapLibre's own `Marker._update()` unconditionally OVERWRITES
-        // `this._element.style.transform` (translate-for-position only, no
-        // scale) every time it's called, which happens synchronously
-        // inside `addTo()` itself, not just on a later `move`. Since every
-        // poll tick rebuilds every marker from scratch (`markersRef.current
-        // .forEach(m => m.remove())` above, then brand-new `el`s here),
-        // whichever pin stays selected got a FRESH element with no ongoing
-        // `banbePinPop` animation (deliberately not replayed — see below) to
-        // paper over this: previously the SAME `el` carried both our own
-        // inline `transform:scale(...)` AND Marker's position transform,
-        // and only the pop keyframe's `fill-mode: both` accidentally kept
-        // the scale visible after the FIRST selection (a running CSS
-        // animation's computed value overrides a later plain inline-style
-        // write to the same property) — the instant a later poll rebuilt
-        // the marker with no animation to replay, Marker's own `_update()`
-        // silently wiped the scale back to identity with nothing left to
-        // mask it. Fixed at the root: the scale/animation/border/shadow
-        // styling now lives on an INNER child div (`pinEl`) that Marker
-        // never touches at all — `el` (the one actually handed to
-        // `new Marker({element: el})`) stays a plain, transform-free
-        // positioning shell, so Marker is free to fully own its own
-        // transform forever without erasing anything of ours.
+      // Markers are exactly the results (committed area + filters), grouped for display only (phase 4): every result
+      // is in exactly one pin, cluster or stack, so the markers always add up to the count. Rows without coordinates
+      // never get an invented position. A selected event is pulled out of its cluster so it stays visible; at the
+      // same place it stays in its stack (the card steps through it).
+      const located = visibleEvents.filter(e => e.hasLocation);
+      const byId = new Map(located.map(e => [e.id, e]));
+      const sel = byId.get(selectedId);
+      const selStacked = !!sel && sameSpot(located, sel).length > 1;
+      const groupable = sel && !selStacked ? located.filter(e => e.id !== sel.id) : located;
+      const zoom = cameraZoom ?? map.getZoom();
+      const groups = clusterPins(groupable, zoom, { tileSize: map.__isMapKit ? 256 : 512 });
+      if (sel && !selStacked) groups.push({ kind: 'pin', ids: [sel.id], lat: sel.lat, lng: sel.lng });
+      for (const g of groups) {
+        const ev = byId.get(g.ids[0]);
+        const isSelected = g.ids.includes(selectedId);
+        // MapLibre's Marker owns the OUTER element's transform (it rewrites it on every update), so all our styling,
+        // scale and animation live on an inner child; the outer shell stays a plain positioning box (not
+        // position:relative, which would shift every marker by half the map width).
         const el = document.createElement('div');
-        // NOT `position:relative`: that overrides maplibre's own `.maplibregl-marker{position:absolute}`,
-        // turning the shell into a full-width in-flow block, so Marker's translate(-50%,-50%) shifted every
-        // pin by half the map width (selected pin landed at the left edge, not the camera centre).
-        // The badge dot anchors to `pinEl` (position:relative below) instead.
         const pinEl = document.createElement('div');
-        pinEl.style.cssText = `width:30px;height:30px;border-radius:50%;background:${paper};border:1.5px solid ${ink};position:relative;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;box-shadow:${isSelected ? `0 0 0 3px ${ink}, ` : ''}0 2px 6px rgba(27,25,22,0.3);transform:scale(${isSelected ? 1.15 : 1});z-index:${isSelected ? 1 : 0};`;
-        pinEl.setAttribute('data-testid', `map-pin-${ev.id}`);
-        // Keyboard + screen reader: a pin is a button named after its event (the list is the full alternative).
+        const key = `${g.kind}:${g.ids.join(',')}`;
+        newKeys.add(key);
+        if (g.kind === 'pin') {
+          // Price pin: the event's price per ticket in its own currency ("Free" when 0); selected = ink fill.
+          const label = ev.priceVnd > 0 ? formatMoneyShort(ev.priceVnd, ev.currency) : T('Miễn phí', 'Free');
+          pinEl.style.cssText = `height:30px;min-width:30px;padding:0 10px;box-sizing:border-box;border-radius:15px;background:${isSelected ? ink : paper};color:${isSelected ? paper : ink};border:1.5px solid ${ink};position:relative;display:flex;align-items:center;justify-content:center;font:600 12.5px/1 'Be Vietnam Pro',sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 2px 6px rgba(27,25,22,0.3);transform:scale(${isSelected ? 1.12 : 1});`;
+          pinEl.setAttribute('data-testid', `map-pin-${ev.id}`);
+          pinEl.setAttribute('aria-label', `${ev.name || ''}, ${label}`);
+          pinEl.textContent = label;
+          if (ev.urgent) {
+            const dot = document.createElement('span');
+            dot.style.cssText = `position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:#9A3E2D;border:1.5px solid ${paper};`;
+            pinEl.appendChild(dot);
+          }
+          const activate = () => selectEvent(ev);
+          pinEl.addEventListener('click', (e) => { e.stopPropagation(); activate(); });
+          pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activate(); } });
+        } else {
+          // Cluster (zoom in) or stack (same place: select the first; the card steps through the rest).
+          const n = g.ids.length;
+          const stack = g.kind === 'stack';
+          pinEl.style.cssText = `height:${stack ? 30 : 36}px;min-width:${stack ? 30 : 36}px;padding:0 ${stack ? 10 : 6}px;box-sizing:border-box;border-radius:18px;background:${isSelected ? ink : paper};color:${isSelected ? paper : ink};border:${stack ? 1.5 : 2}px solid ${ink};display:flex;align-items:center;justify-content:center;gap:4px;font:700 13px/1 'Be Vietnam Pro',sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(27,25,22,0.32);`;
+          pinEl.setAttribute('data-testid', `map-${g.kind}-${g.ids[0]}`);
+          pinEl.setAttribute('data-count', String(n));
+          pinEl.setAttribute('aria-label', stack
+            ? T(`${n} sự kiện cùng địa điểm`, `${n} events at this place`)
+            : T(`${n} sự kiện ở đây, phóng to`, `${n} events here, zoom in`));
+          pinEl.textContent = stack ? `${n} ≡` : String(n);
+          const activate = () => (stack ? selectEvent(byId.get(g.ids[0])) : zoomToCluster(g));
+          pinEl.addEventListener('click', (e) => { e.stopPropagation(); activate(); });
+          pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activate(); } });
+        }
+        // Keyboard + screen reader: every marker is a button (the list is the full alternative).
         pinEl.setAttribute('role', 'button');
         pinEl.setAttribute('tabindex', '0');
-        pinEl.setAttribute('aria-label', ev.name || '');
         if (isSelected) pinEl.setAttribute('aria-pressed', 'true');
-        pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); selectEvent(ev); } });
-        pinEl.textContent = CAT_GLYPH[ev.catKey] || CAT_GLYPH.all;
-        if (ev.urgent || ev.isNew) {
-          const dot = document.createElement('span');
-          dot.style.cssText = `position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:${ev.urgent ? '#9A3E2D' : '#48582F'};border:1.5px solid ${paper};`;
-          pinEl.appendChild(dot);
-        }
-        const pinKey = `${ev.id}:p`;
-        newKeys.add(pinKey);
-        if (isSelected && lastAnimatedPinIdRef.current !== ev.id) {
-          pinEl.style.animation = 'banbePinPop 0.32s cubic-bezier(.22,.61,.36,1) both';
-          lastAnimatedPinIdRef.current = ev.id;
-        } else if (prevKeys.size && !prevKeys.has(pinKey)) {
+        pinEl.style.zIndex = isSelected ? '1' : '0';
+        if (isSelected && lastAnimatedPinIdRef.current !== selectedId) {
+          if (!reduceMotion()) pinEl.style.animation = 'banbePinPop 0.32s cubic-bezier(.22,.61,.36,1) both';
+          lastAnimatedPinIdRef.current = selectedId;
+        } else if (prevKeys.size && !prevKeys.has(key) && !reduceMotion()) {
           pinEl.style.animation = 'banbePinIn 0.3s cubic-bezier(.22,.61,.36,1) both';
         }
-        pinEl.addEventListener('click', (e) => { e.stopPropagation(); selectEvent(ev); });
         el.appendChild(pinEl);
-        const marker = new MarkerCtor({ element: el }).setLngLat([ev.lng, ev.lat]).addTo(map);
-        marker.__key = pinKey; marker.__el = el;
+        const marker = new MarkerCtor({ element: el }).setLngLat([g.lng, g.lat]).addTo(map);
+        marker.__key = key; marker.__el = el;
         markersRef.current.push(marker);
       }
       prevMarkerKeysRef.current = newKeys;
       finishOld();
     })();
     return () => { cancelled = true; };
-    // The `cancelled` guard above keeps an in-flight redraw from a STALE run (rapid filter changes) from painting
-    // markers after a newer run has started.
-  }, [visibleEvents, selectedId, selectEvent, mapReady]);
+    // The `cancelled` guard above keeps an in-flight redraw from a STALE run (rapid filter changes or zooming) from
+    // painting markers after a newer run has started.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleEvents, selectedId, selectEvent, mapReady, cameraZoom]);
 
   // Stage 2 (2026-09-27 nav/discovery pass) — pull-to-refresh, LOCAL to
   // this list (not Shell's/App.jsx's generic one): MapExplore renders as
@@ -946,7 +977,7 @@ export default function MapExplore() {
       setMapPullDist(MAP_PULL_TRIGGER * 0.72);
       try {
         // The same whole-set refresh as the timer: camera, area, filters and selection stay put.
-        const fresh = await loadLatest();
+        const fresh = await loadLatest(boundedOpts());
         if (fresh) setEvents(fresh);
         else throw new Error('refresh failed');
       } catch (err) {
@@ -1090,6 +1121,20 @@ export default function MapExplore() {
     moveCamera('destination', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom: cam.zoom, duration: reduceMotion() ? 0 : 800 }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [curArea.key]);
+  // Tap a cluster: zoom in to fit its events (at least one level), an explicit move that commits its area once.
+  const zoomToCluster = useCallback((g) => {
+    const map = mapRef.current;
+    const el = mapDivRef.current;
+    if (!map || !el || !g.bounds) return;
+    const size = { width: el.clientWidth || 390, height: el.clientHeight || containerH };
+    const cam = fitCamera(g.bounds, size, {
+      top: topControlsBottom + CARD_GAP + 16, bottom: size.height * (1 - SHEET_SNAPS.mid) + ATTRIB_RESERVE + 16, left: 48, right: 48,
+    }, { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 18 });
+    const zoom = Math.max(cam.zoom, map.getZoom() + 1);
+    moveCamera('cluster', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom, duration: reduceMotion() ? 0 : 600 }));
+  }, [containerH, topControlsBottom, moveCamera]);
+  // Events at the selected event's place (the card's ‹ 1/3 › switcher); itself only when it stands alone.
+  const selectedStack = useMemo(() => (selectedEvent ? sameSpot(visibleEvents, selectedEvent) : []), [selectedEvent, visibleEvents]);
   // Distance (km) from the area's centre to the nearest match, for an honest "Show nearest · 1.2 km" hint.
   const nearestKm = useMemo(() => {
     if (!committedBounds || !matchingAnywhere.length) return null;
@@ -1326,7 +1371,20 @@ export default function MapExplore() {
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                <div data-testid="map-card-title" style={{ fontSize: 14, fontWeight: 700, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedEvent.name}</div>
+                <div data-testid="map-card-title" style={{ fontSize: 14, fontWeight: 700, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0 }}>{selectedEvent.name}</div>
+                {/* Several events at this same place: step through them here (zooming can never split a stack). */}
+                {selectedStack.length > 1 && (() => {
+                  const i = selectedStack.findIndex(e => e.id === selectedEvent.id);
+                  const go = (d) => (e) => { e.stopPropagation(); setSelectedId(selectedStack[(i + d + selectedStack.length) % selectedStack.length].id); };
+                  const arrow = { width: 44, height: 44, margin: '-12px 0', border: 'none', background: 'none', color: ink, fontSize: 18, cursor: 'pointer', fontFamily: 'inherit' };
+                  return (
+                    <span data-testid="map-card-stack" style={{ display: 'inline-flex', alignItems: 'center', flex: 'none', fontSize: 12.5, color: ink2 }}>
+                      <button type="button" onClick={go(-1)} aria-label={T('Sự kiện trước ở đây', 'Previous event here')} data-testid="map-card-stack-prev" style={arrow}>‹</button>
+                      <span aria-live="polite">{i + 1}/{selectedStack.length}</span>
+                      <button type="button" onClick={go(1)} aria-label={T('Sự kiện tiếp theo ở đây', 'Next event here')} data-testid="map-card-stack-next" style={arrow}>›</button>
+                    </span>
+                  );
+                })()}
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); clearSelection(); }}

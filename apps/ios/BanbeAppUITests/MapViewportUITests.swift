@@ -12,6 +12,15 @@ final class MapViewportUITests: XCTestCase {
         return app
     }
 
+    /// Every result is in exactly one marker: pins count 1, clusters and stacks their value.
+    private func markerTotal(_ app: XCUIApplication) -> Int {
+        let any = app.descendants(matching: .any)
+        let pins = any.matching(NSPredicate(format: "identifier BEGINSWITH 'map.pin.'")).count
+        let groups = any.matching(NSPredicate(format: "identifier BEGINSWITH 'map.cluster.' OR identifier BEGINSWITH 'map.stack.'"))
+        let grouped = (0..<groups.count).reduce(0) { $0 + (Int(groups.element(boundBy: $1).value as? String ?? "0") ?? 0) }
+        return pins + grouped
+    }
+
     private func count(_ app: XCUIApplication) -> String {
         app.staticTexts["map.resultCount"].label
     }
@@ -30,8 +39,7 @@ final class MapViewportUITests: XCTestCase {
         let text = waitForCount(app)
         let n = Int(text.components(separatedBy: CharacterSet.decimalDigits.inverted).first { !$0.isEmpty } ?? "0") ?? 0
         XCTAssertGreaterThan(n, 0, "first open should frame the relevant events, not an empty part of the world")
-        let pins = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'map.pin.'"))
-        XCTAssertEqual(pins.count, n, "pins and count come from the same results")
+        XCTAssertEqual(markerTotal(app), n, "markers and count come from the same results")
         XCTAssertFalse(app.buttons["map.searchHere"].exists, "results follow the map; no Search here button")
     }
 
@@ -67,8 +75,7 @@ final class MapViewportUITests: XCTestCase {
         sleep(1)
         let text = count(app)
         let n = Int(text.components(separatedBy: CharacterSet.decimalDigits.inverted).first { !$0.isEmpty } ?? "0") ?? 0
-        let pins = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'map.pin.'"))
-        XCTAssertEqual(pins.count, n, "pins and count stay one list under a time filter")
+        XCTAssertEqual(markerTotal(app), n, "markers and count stay one list under a time filter")
         weekend.tap()
         XCTAssertFalse(weekend.isSelected)
     }
@@ -99,6 +106,47 @@ final class MapViewportUITests: XCTestCase {
         sleep(1)
         XCTAssertTrue(count(app).hasPrefix("\(shown) "), "Show N is the resulting list")
         XCTAssertTrue(app.buttons["map.filters"].label.contains("· 1"))
+    }
+
+    // MARK: Phase 4 — price pins, clusters
+
+    func testZoomedOutEventsClusterAndAClusterTapZoomsIn() throws {
+        let app = launch()
+        let before = waitForCount(app)
+        // The MapKit view itself (not the first "other" element, which can be the dock).
+        // SwiftUI's Map isn't an accessibility element of its own; a pinch that starts on a pin still reaches MapKit's
+        // pinch recognizer (it lives on the map, the pin's ancestor).
+        // XCUITest's smallest pinch scale depends on the touched element's size (0.40 for a pin), so 0.5 a few times.
+        for _ in 0..<4 {
+            let anyMarker = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'map.pin.' OR identifier BEGINSWITH 'map.cluster.'")).firstMatch
+            XCTAssertTrue(anyMarker.waitForExistence(timeout: 10))
+            anyMarker.pinch(withScale: 0.5, velocity: -2)
+            sleep(1)
+        }
+        let cluster = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'map.cluster.'")).firstMatch
+        XCTAssertTrue(cluster.waitForExistence(timeout: 10), "nearby events cluster when zoomed out")
+        sleep(2)
+        let text = count(app)
+        let n = Int(text.components(separatedBy: CharacterSet.decimalDigits.inverted).first { !$0.isEmpty } ?? "0") ?? 0
+        // After a pinch some results can sit under the mid sheet (still in the area, by design) and iOS leaves those
+        // out of the accessibility snapshot; markers must never exceed the count (first open checks equality).
+        let shown = markerTotal(app)
+        XCTAssertTrue(shown > 0 && shown <= n, "clusters never add results: \(shown) of \(n)")
+        _ = before
+        cluster.tap()
+        sleep(2)
+        let after = count(app)
+        let m = Int(after.components(separatedBy: CharacterSet.decimalDigits.inverted).first { !$0.isEmpty } ?? "0") ?? 0
+        XCTAssertLessThanOrEqual(markerTotal(app), m)
+    }
+
+    func testPricePinsShowThePricePerTicket() throws {
+        let app = launch()
+        _ = waitForCount(app)
+        let pin = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'map.pin.'")).firstMatch
+        XCTAssertTrue(pin.waitForExistence(timeout: 10))
+        XCTAssertTrue(pin.label.contains("₫") || pin.label.contains("$") || pin.label.contains("Miễn phí") || pin.label.contains("Free"),
+                      "a pin reads its price: \(pin.label)")
     }
 
     func testSelectingAPinRevealsItWithoutANewSearch() throws {

@@ -122,4 +122,80 @@ enum MapDiscovery {
         return Bounds(north: latFromMercY(cy - height / 2 / world), south: latFromMercY(cy + height / 2 / world),
                       east: center.lng + halfLng, west: center.lng - halfLng)
     }
+
+    // MARK: Clustering (phase 4; web twin clusterPins/sameSpot/padBounds in src/lib/mapDiscovery.js)
+    // Display only: every result is in exactly one group, so markers always add up to the count. A screen-space grid
+    // at the camera zoom, then any two groups whose centres are closer than one cell merge (a grid edge must never
+    // leave two overlapping markers). At `clusterMaxZoom` and above only the SAME place (≈1 m) groups — a "stack".
+
+    static let clusterCellPx = 64.0
+    static let clusterMaxZoom = 16.0
+
+    struct GroupPoint { var id: String; var lat: Double; var lng: Double }
+    enum GroupKind: String { case pin, cluster, stack }
+    struct Group: Identifiable {
+        var kind: GroupKind
+        var ids: [String]
+        var lat: Double
+        var lng: Double
+        var bounds: Bounds?
+        var id: String { "\(kind.rawValue):\(ids.joined(separator: ","))" }
+    }
+
+    private static func spotKey(_ lat: Double, _ lng: Double) -> String { String(format: "%.5f,%.5f", lat, lng) }
+
+    static func clusterPins(_ points: [GroupPoint], zoom: Double, tileSize: Double = 512,
+                            cellPx: Double = clusterCellPx, maxZoom: Double = clusterMaxZoom) -> [Group] {
+        let world = tileSize * pow(2, zoom)
+        var order: [String] = []
+        var groups: [String: [GroupPoint]] = [:]
+        for p in points {
+            let key = zoom >= maxZoom
+                ? "s:\(spotKey(p.lat, p.lng))"
+                : "g:\(Int(floor(mercX(p.lng) * world / cellPx))):\(Int(floor(mercY(p.lat) * world / cellPx)))"
+            if groups[key] == nil { order.append(key); groups[key] = [] }
+            groups[key]!.append(p)
+        }
+        var list = order.map { groups[$0]! }
+        if zoom < maxZoom {
+            func px(_ pts: [GroupPoint]) -> (Double, Double) {
+                (pts.map { mercX($0.lng) }.reduce(0, +) / Double(pts.count) * world,
+                 pts.map { mercY($0.lat) }.reduce(0, +) / Double(pts.count) * world)
+            }
+            var merged = true
+            while merged {
+                merged = false
+                outer: for i in list.indices {
+                    for j in list.indices where j > i {
+                        let a = px(list[i]), b = px(list[j])
+                        if hypot(a.0 - b.0, a.1 - b.1) < cellPx {
+                            list[i] += list[j]
+                            list.remove(at: j)
+                            merged = true
+                            break outer
+                        }
+                    }
+                }
+            }
+        }
+        return list.map { pts in
+            let sameSpot = Set(pts.map { spotKey($0.lat, $0.lng) }).count == 1
+            return Group(kind: pts.count == 1 ? .pin : (sameSpot ? .stack : .cluster), ids: pts.map(\.id),
+                         lat: pts.map(\.lat).reduce(0, +) / Double(pts.count),
+                         lng: pts.map(\.lng).reduce(0, +) / Double(pts.count),
+                         bounds: boundsOfPoints(pts.map { Point(lat: $0.lat, lng: $0.lng) }))
+        }
+    }
+
+    /// Indices in `list` at the same place as (lat, lng) — the card's stack switcher.
+    static func sameSpotIDs(_ list: [GroupPoint], lat: Double, lng: Double) -> [String] {
+        let k = spotKey(lat, lng)
+        return list.filter { spotKey($0.lat, $0.lng) == k }.map(\.id)
+    }
+
+    /// `b` grown by `factor` around its centre (bounded-fetch margin when the full set is too large to load).
+    static func padBounds(_ b: Bounds, factor: Double = 1.5) -> Bounds {
+        let dLat = (b.north - b.south) * (factor - 1) / 2, dLng = (b.east - b.west) * (factor - 1) / 2
+        return Bounds(north: min(85, b.north + dLat), south: max(-85, b.south - dLat), east: b.east + dLng, west: b.west - dLng)
+    }
 }

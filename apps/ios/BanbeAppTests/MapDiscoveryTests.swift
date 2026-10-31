@@ -77,6 +77,25 @@ final class MapDiscoveryTests: XCTestCase {
         }
     }
 
+    func testClustersReduceMarkersNeverResults() throws {
+        for c in try XCTUnwrap(fixture()["clusterPins"] as? [[String: Any]]) {
+            let pts = try XCTUnwrap(c["points"] as? [[String: Any]]).map {
+                MapDiscovery.GroupPoint(id: $0["id"] as! String, lat: d($0["lat"])!, lng: d($0["lng"])!)
+            }
+            let got = MapDiscovery.clusterPins(pts, zoom: d(c["zoom"])!)
+            let expect = try XCTUnwrap(c["expect"] as? [[Any]])
+            XCTAssertEqual(got.map(\.kind.rawValue), expect.map { $0[0] as! String }, "\(c["name"] ?? "")")
+            XCTAssertEqual(got.map(\.ids), expect.map { $0[1] as! [String] }, "\(c["name"] ?? "")")
+            XCTAssertEqual(got.reduce(0) { $0 + $1.ids.count }, pts.count, "every result counted once")
+        }
+    }
+
+    func testPadBounds() throws {
+        for c in try XCTUnwrap(fixture()["padBounds"] as? [[String: Any]]) {
+            XCTAssertEqual(MapDiscovery.padBounds(try bounds(c["b"]), factor: d(c["factor"])!), try bounds(c["expect"]))
+        }
+    }
+
     func testFitCameraMatchesTheSharedNumbers() throws {
         for c in try XCTUnwrap(fixture()["fitCamera"] as? [[String: Any]]) {
             let size = try XCTUnwrap(c["size"] as? [String: Any]), p = try XCTUnwrap(c["padding"] as? [String: Any])

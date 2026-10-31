@@ -73,3 +73,19 @@ test('boundsOfPoints ignores rows without coordinates', () => {
   assert.equal(boundsOfPoints([{ lat: null, lng: null }]), null);
   assert.deepEqual(boundsOfPoints([{ lat: 1, lng: 2 }, { lat: 3, lng: 4 }]), { north: 3, south: 1, east: 4, west: 2 });
 });
+
+test('clusters reduce markers, never results: shared cases', async () => {
+  const { clusterPins } = await import('../../src/lib/mapDiscovery.js');
+  for (const c of fx.clusterPins) {
+    const got = clusterPins(c.points, c.zoom).map(g => [g.kind, g.ids]);
+    assert.deepEqual(got, c.expect, c.name);
+    assert.equal(got.reduce((n, g) => n + g[1].length, 0), c.points.length, `${c.name}: every result counted once`);
+  }
+});
+
+test('sameSpot finds the stack of an event; padBounds grows the fetch box', async () => {
+  const { sameSpot, padBounds } = await import('../../src/lib/mapDiscovery.js');
+  const a = { id: 'a', lat: 10.7769, lng: 106.7009 }, b = { id: 'b', lat: 10.7769, lng: 106.7009 }, c = { id: 'c', lat: 10.78, lng: 106.7 };
+  assert.deepEqual(sameSpot([a, c, b], b).map(e => e.id), ['a', 'b']);
+  for (const k of fx.padBounds) assert.deepEqual(padBounds(k.b, k.factor), k.expect, k.name);
+});
