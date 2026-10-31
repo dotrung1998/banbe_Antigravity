@@ -431,12 +431,18 @@ export default function Home() {
     const distanceKm = located && s.userCoords && e.lat != null && e.lng != null ? haversineKm(s.userCoords, e) : null;
     return {
       key: e.key, startsAt, priceVnd, currency: e.isReal ? e.currency : 'VND', catKeys: [e.catKey, e.cat2Key].filter(Boolean),
+      // Real events are judged in their venue zone (Today/Weekend in Los Angeles time for an LA event); the demo
+      // catalogue keeps the fixed Vietnam offset its simulated dates use.
+      tz: e.isReal ? e.tz : undefined,
       booked: fillRow ? fillRow.booked : null, capacity: fillRow ? fillRow.capacity : null,
       soldOut: !!e.soldOut, distanceKm, popularity: pulseScore.get(e.key) ?? null, details: e.details || {}, ev: e,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [feed, s.eventFill, s.homeLiveEvents, located, s.userCoords, pulseScore]);
   const homeFilters = s.homeFilters || DEFAULT_FILTERS;
+  // Home → Map (Map redesign phase 3): the Map opens with Home's applied filters and For You; it frames its own map
+  // area, so its count can differ from Home's (it says so: "+N matching outside this area").
+  const openMapWithContext = () => goMapExplore({ source: 'home', filters: homeFilters, forYou: forYouActive });
   const shownItems = useMemo(() => {
     const filtered = applyDiscoveryFilters(discoveryItems, homeFilters, nowMs);
     // For You keeps its own ranking; any explicit sort overrides it, Soonest keeps the feed's order.
@@ -1105,7 +1111,7 @@ export default function Home() {
           {[['cards', T('Thẻ', 'Cards'), 'M4 4h16v7H4zM4 13h16v7H4z'], ['list', T('Danh sách', 'List'), 'M4 6h16M4 12h16M4 18h16'],
             // Simple Shell: Map is a Home view (it left the dock); this opens the map screen, which keeps its own state.
             ...(simpleShell ? [['map', T('Bản đồ', 'Map'), 'M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5L9 4zM9 4v13.5M15 6.5V20']] : [])].map(([m, lbl, d]) => (
-            <button key={m} type="button" role="radio" aria-checked={layoutMode === m} aria-label={lbl} onClick={() => (m === 'map' ? goMapExplore() : pickLayout(m))} data-testid={`home-layout-${m}`}
+            <button key={m} type="button" role="radio" aria-checked={layoutMode === m} aria-label={lbl} onClick={() => (m === 'map' ? openMapWithContext() : pickLayout(m))} data-testid={`home-layout-${m}`}
               style={{ width: 34, height: 30, borderRadius: 999, border: 'none', cursor: 'pointer', color: ink, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: layoutMode === m ? 'var(--bb-bg)' : 'transparent', boxShadow: layoutMode === m ? '0 1px 3px rgba(27,25,22,0.18)' : 'none' }}>
               <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
@@ -1161,7 +1167,7 @@ export default function Home() {
               ? T('Chưa có buổi nào khớp bộ lọc này. Bỏ lọc để xem mọi buổi vui tuần này nhé!', 'Nothing matches these filters yet. Clear them to see every fun gathering this week!')
               : T(`Chưa có buổi nào ở ${curArea.label} khớp bộ lọc. Xem tất cả hoặc mở bản đồ để tìm quanh bạn nhé!`, `Nothing in ${curArea.label} matches these filters yet. See everything, or open the map to look around you!`)}
             actionLabel={T('Xem tất cả sự kiện', 'See all events')} actionTestId="home-empty-see-all" onAction={() => { clearFilters(); set({ homeSort: 'soonest' }); }}
-            secondaryLabel={T('Tìm trên bản đồ', 'Look on the map')} secondaryTestId="home-empty-map" onSecondary={goMapExplore} />
+            secondaryLabel={T('Tìm trên bản đồ', 'Look on the map')} secondaryTestId="home-empty-map" onSecondary={openMapWithContext} />
         </div>
       )}
 

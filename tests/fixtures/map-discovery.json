@@ -1,0 +1,69 @@
+{
+  "_comment": "Shared by tests/unit/mapDiscovery.test.mjs and apps/ios/BanbeAppTests/MapDiscoveryTests.swift (Map redesign phase 2). Numbers compare with a 1e-6 tolerance.",
+  "reasons": [
+    { "reason": "user", "commits": true },
+    { "reason": "initial", "commits": true },
+    { "reason": "destination", "commits": true },
+    { "reason": "recenter", "commits": true },
+    { "reason": "nearest", "commits": true },
+    { "reason": "cluster", "commits": true },
+    { "reason": "reveal", "commits": false },
+    { "reason": "restore", "commits": false }
+  ],
+  "referenceRect": [
+    { "name": "below the controls, above the peek sheet", "in": { "width": 390, "height": 844, "topInset": 56, "bottomInset": 118 }, "expect": { "top": 56, "bottom": 726, "left": 0, "right": 390 } }
+  ],
+  "boundsForRect": [
+    { "name": "the full rect is the full view",
+      "full": { "north": 10.85, "south": 10.70, "east": 106.78, "west": 106.62 }, "size": { "width": 390, "height": 844 },
+      "rect": { "top": 0, "bottom": 844, "left": 0, "right": 390 },
+      "expect": { "north": 10.85, "south": 10.70, "east": 106.78, "west": 106.62 } },
+    { "name": "the left half ends at the middle longitude",
+      "full": { "north": 10.85, "south": 10.70, "east": 106.78, "west": 106.62 }, "size": { "width": 390, "height": 844 },
+      "rect": { "top": 0, "bottom": 844, "left": 0, "right": 195 },
+      "expect": { "north": 10.85, "south": 10.70, "east": 106.70, "west": 106.62 } },
+    { "name": "controls and peek sheet trimmed (latitude follows Mercator)",
+      "full": { "north": 10.85, "south": 10.70, "east": 106.78, "west": 106.62 }, "size": { "width": 390, "height": 844 },
+      "rect": { "top": 56, "bottom": 700, "left": 0, "right": 390 },
+      "expect": { "north": 10.840049712617063, "south": 10.725597697015893, "east": 106.78, "west": 106.62 } }
+  ],
+  "inBounds": [
+    { "name": "inside", "ev": { "lat": 10.78, "lng": 106.70 }, "b": { "north": 10.85, "south": 10.70, "east": 106.78, "west": 106.62 }, "expect": true },
+    { "name": "north of the box", "ev": { "lat": 10.90, "lng": 106.70 }, "b": { "north": 10.85, "south": 10.70, "east": 106.78, "west": 106.62 }, "expect": false },
+    { "name": "no coordinates", "ev": { "lat": null, "lng": null }, "b": { "north": 10.85, "south": 10.70, "east": 106.78, "west": 106.62 }, "expect": false },
+    { "name": "box across the antimeridian, east side", "ev": { "lat": 0, "lng": 179.5 }, "b": { "north": 5, "south": -5, "east": -179, "west": 179 }, "expect": true },
+    { "name": "box across the antimeridian, west side", "ev": { "lat": 0, "lng": -179.5 }, "b": { "north": 5, "south": -5, "east": -179, "west": 179 }, "expect": true },
+    { "name": "box across the antimeridian, outside", "ev": { "lat": 0, "lng": 170 }, "b": { "north": 5, "south": -5, "east": -179, "west": 179 }, "expect": false }
+  ],
+  "mapResults": [
+    { "name": "no committed area yet = nothing (never the whole world)",
+      "events": [{ "id": "a", "lat": 10.78, "lng": 106.70 }], "bounds": null, "expect": [] },
+    { "name": "only events inside the area; no-location events never count",
+      "events": [{ "id": "a", "lat": 10.78, "lng": 106.70 }, { "id": "hanoi", "lat": 21.03, "lng": 105.85 }, { "id": "noloc", "lat": null, "lng": null }],
+      "bounds": { "north": 10.85, "south": 10.70, "east": 106.78, "west": 106.62 }, "expect": ["a"] }
+  ],
+  "selectionAfter": [
+    { "name": "kept while still a result", "selected": "a", "results": ["a", "b"], "expect": "a" },
+    { "name": "cleared when excluded, never moved to another event", "selected": "a", "results": ["b"], "expect": null },
+    { "name": "nothing selected", "selected": null, "results": ["a"], "expect": null }
+  ],
+  "pointsNear": [
+    { "name": "one city, never the whole inventory", "center": { "lat": 10.78, "lng": 106.70 }, "radiusKm": 25,
+      "points": [{ "id": "q1", "lat": 10.776, "lng": 106.700 }, { "id": "thuduc", "lat": 10.85, "lng": 106.77 }, { "id": "hanoi", "lat": 21.03, "lng": 105.85 }],
+      "expect": ["q1", "thuduc"] }
+  ],
+  "fitCamera": [
+    { "name": "a box fits the area above the mid sheet (centre moves south of the box centre)",
+      "bounds": { "north": 10.81, "south": 10.75, "east": 106.74, "west": 106.66 }, "size": { "width": 390, "height": 844 },
+      "padding": { "top": 68, "bottom": 380, "left": 30, "right": 30 }, "tileSize": 512, "maxZoom": 15,
+      "expect": { "lat": 10.742848415643591, "lng": 106.70, "zoom": 11.502031500349412 } },
+    { "name": "one event gets the closest allowed zoom",
+      "bounds": { "north": 10.8055, "south": 10.8055, "east": 106.7137, "west": 106.7137 }, "size": { "width": 390, "height": 844 },
+      "padding": { "top": 68, "bottom": 380, "left": 30, "right": 30 }, "tileSize": 512, "maxZoom": 15,
+      "expect": { "lat": 10.80221193697128, "lng": 106.7137, "zoom": 15 } },
+    { "name": "a 256 px tile basis is one zoom level higher",
+      "bounds": { "north": 10.81, "south": 10.75, "east": 106.74, "west": 106.66 }, "size": { "width": 390, "height": 844 },
+      "padding": { "top": 68, "bottom": 380, "left": 30, "right": 30 }, "tileSize": 256, "maxZoom": 15,
+      "expect": { "lat": 10.742848415643591, "lng": 106.70, "zoom": 12.502031500349412 } }
+  ]
+}

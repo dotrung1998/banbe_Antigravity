@@ -253,6 +253,7 @@ struct UITestFixtureRoot: View {
         }
         switch variant {
         case "schedule": app.screen = .schedule
+        case "map": app.screen = .mapExplore   // Map redesign: live public events, fixture fill above
         case "inbox": app.screen = .inbox
         case "account", "accountSolo": app.screen = .profile
         case "adminFeatures": app.screen = .adminFeatures

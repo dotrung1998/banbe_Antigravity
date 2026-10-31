@@ -101,6 +101,14 @@ struct MapEventRow: Codable, Identifiable, Hashable {
     var currency: String? = nil
     var rowCurrency: String { EventMarket.rowCurrency(currency) }
     var timeZoneID: String { EventMarket.rowTimeZoneID(tz: tz, countryCode: countryCode, stateProvince: stateProvince) }
+    /// `events.details` (migration 203); its `cat2` is the second category (note 69).
+    var details: EventDetailsPayload? = nil
+    /// Primary + second category, the same pair Home filters on.
+    var catKeys: [String] {
+        [catKey, EventTypes.secondCategory(details?.values ?? [:], primary: catKey)].compactMap { $0 }
+    }
+    /// Same directions link as Event Detail (`CatalogEvent.mapsURL`).
+    var mapsURL: URL? { CatalogEvent.mapsURL(lat: lat, lng: lng) }
     var location: EventLocation {
         EventLocation(countryCode: countryCode, stateProvince: stateProvince, city: city, area: area, neighborhood: neighborhood)
     }
@@ -128,6 +136,7 @@ struct MapEventRow: Codable, Identifiable, Hashable {
         case description
         case intro
         case organizers
+        case details
     }
 }
 
@@ -155,6 +164,12 @@ struct MapExploreState {
     /// For You chip + search text survive Event Detail / Edit preferences round trips.
     var forYou: Bool = false
     var searchQuery: String = ""
+    /// Map redesign phase 2: the committed search area, restored as-is so the list the user returns to is exactly the
+    /// one they left (nil for "Open in Map", which commits the area around its camera).
+    var committedBounds: MapDiscovery.Bounds? = nil
+    /// Phase 3: the Map's whole filter object (Home's shape) and the area chip's context ("area" / "map").
+    var filters: HomeDiscovery.Filters? = nil
+    var areaContext: String = "map"
     /// Task 7 (2026-09-21 follow-up, 11-realtime-map.md) — true only for
     /// `AppState.openEventOnMap(_:)`'s own from-scratch snapshot, whose
     /// `cameraSpanLat`/`cameraSpanLng` (0.01°, a tight single-pin view) are

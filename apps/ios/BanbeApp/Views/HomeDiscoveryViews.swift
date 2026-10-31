@@ -139,6 +139,9 @@ struct HomeCategorySheet: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.dismiss) private var dismiss
     let counts: [String: Int]
+    /// Map passes its own selection and pick handler; Home leaves both nil and uses its filters.
+    var selected: [String]? = nil
+    var onPick: ((String) -> Void)? = nil
 
     var body: some View {
         let byKey = Dictionary(uniqueKeysWithValues: HomeDiscovery.categories.map { ($0.key, $0) })
@@ -147,10 +150,10 @@ struct HomeCategorySheet: View {
             List(keys, id: \.self) { key in
                 if let c = byKey[key] {
                     let n = counts[key] ?? 0
-                    let active = app.homeFilters.cats.contains(key)
+                    let active = (selected ?? app.homeFilters.cats).contains(key)
                     Button {
                         Haptics.selection()
-                        app.pickFilter(key)
+                        if let onPick { onPick(key) } else { app.pickFilter(key) }
                         dismiss()
                     } label: {
                         HStack(spacing: 12) {

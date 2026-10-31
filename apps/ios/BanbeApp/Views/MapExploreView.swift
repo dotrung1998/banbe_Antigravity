@@ -59,13 +59,38 @@ struct FlowLayout: Layout {
 struct MapExploreView: View {
     @EnvironmentObject var app: AppState
     @State private var cameraPosition: MapCameraPosition
-    @State private var lastQueriedRegion: MKCoordinateRegion?
-    /// The 5s live-refresh poll, kept in @State so it is made once per screen: built inline in `body`, a new timer was made on every
-    /// redraw, so a busy map (camera moving, sheet animating) kept restarting it and it could never fire.
-    @State private var pollTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
-    @State private var boundsChanged = false
-    @State private var catFilter: String
-    @State private var openNowOnly: Bool
+    /// Map redesign phase 2: the committed search area (Lib/MapDiscovery.swift). It changes only when the camera
+    /// settles after geographic navigation — never because the sheet moved, a selection was revealed or data refreshed.
+    @State private var committedBounds: MapDiscovery.Bounds?
+    /// Reason of the camera move in progress; none at settle time means the user moved the map.
+    @State private var pendingReason: (reason: MapDiscovery.Reason, at: Date)?
+    @State private var settleTask: Task<Void, Never>?
+    /// True once this screen has framed (or restored) its camera; MapKit's earlier callbacks can report a bogus region
+    /// (seen over Europe before the first centring, 1a33c4b) and must never become the area.
+    @State private var framed: Bool
+    /// The map's full size and the top safe area (the Map ignores the safe area), for the reference rect.
+    @State private var mapSize: CGSize = .zero
+    @State private var safeTop: CGFloat = 0
+    /// The whole public set again every 60 s (was 5 s: every row re-downloaded a dozen times a minute — Supabase
+    /// egress, note 40). Kept in @State so it is made once per screen (built inline, every redraw restarted it).
+    @State private var pollTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+    /// Map redesign phase 3: ONE filter object in Home's shape (date, cats, seatsLeft, price, free, almostFull,
+    /// typeFilters), judged by the same `HomeDiscovery.apply` Home uses — each event in its own venue time zone.
+    /// Seeded from a return snapshot, else Home's hand-off, else nothing. Moving the map never changes it.
+    @State private var filters: HomeDiscovery.Filters
+    @State private var filterSheetOpen = false
+    /// "area" while the map is framed on the picked area (destination), else "map" ("Vùng bản đồ / Map area").
+    @State private var areaContext: String
+    @State private var framedByArea = false
+    /// The category row is single-choice (the Map sheet hides categories, as Home's does in Simple Shell).
+    private var catFilter: String {
+        get { filters.cats.first ?? "all" }
+        nonmutating set { filters.cats = newValue == "all" ? [] : [newValue]; filters.typeFilters = [] }
+    }
+    private var openNowOnly: Bool {
+        get { filters.seatsLeft }
+        nonmutating set { filters.seatsLeft = newValue }
+    }
     @State private var sortByDistance: Bool
     // Home quick event search (2026-09-27) — see `visibleEvents`'s own
     // doc comment. `startFocusedOnSearch` is read once, at construction
@@ -93,7 +118,6 @@ struct MapExploreView: View {
     private let startFocusedOnSearch: Bool
     /// Note 50 — Search's "See on map": the query a fresh open starts with (one-shot, like the focus intent).
     private let seedQuery: String?
-    @State private var initialCenterSet: Bool
     // Defaults to the "tall" snap point (covers most of the screen, leaving
     // a small map strip visible at top) per the ticket's layout spec — not
     // the smallest detent, and not a binary toggle: `.presentationDetents`
@@ -202,16 +226,8 @@ struct MapExploreView: View {
     /// close-swipe reveal (task 2 follow-up), so there is only one place to
     /// tune this going forward, not two that could drift apart.
     private let postDismissRevealDelay: TimeInterval = 0.5
-    // Bug 3 follow-up: `onMapCameraChange`'s callback, before this fix, only
-    // ever wrote `lastQueriedRegion` ONCE (its first call — see the `body`
-    // comment above `.onMapCameraChange`), then froze it forever afterward.
-    // `openEventDetail(_:)` read THAT frozen value for the saved snapshot's
-    // camera, so it always saved wherever the map was at construction time
-    // — NOT wherever `selectEvent(_:)` had since flown the camera to. This
-    // tracks the ACTUAL current camera on every callback, independently of
-    // `lastQueriedRegion`'s own (intentionally-frozen-after-first-call)
-    // "Search here" bookkeeping, so `openEventDetail(_:)` can read the real,
-    // live position instead.
+    // The ACTUAL current camera, updated on every settle, so a snapshot saves where the map really is (including after
+    // a selection reveal), and reveals keep the current zoom.
     @State private var currentCameraRegion: MKCoordinateRegion?
 
     /// Seeds every local `@State` directly from a saved snapshot (or plain
@@ -227,7 +243,7 @@ struct MapExploreView: View {
     /// `.presentationDetents` selection — the sheet's native slide-up-from-
     /// bottom presentation animation then plays directly TO the saved
     /// detent, not to the default one first.
-    init(restored: MapExploreState?, isPreview: Bool = false, startFocusedOnSearch: Bool = false, isActive: Bool = true, seedQuery: String? = nil) {
+    init(restored: MapExploreState?, isPreview: Bool = false, startFocusedOnSearch: Bool = false, isActive: Bool = true, seedQuery: String? = nil, entry: (filters: HomeDiscovery.Filters, forYou: Bool)? = nil) {
         hadRestoredState = restored != nil
         self.seedQuery = seedQuery
         self.isPreview = isPreview
@@ -248,64 +264,48 @@ struct MapExploreView: View {
                 center: CLLocationCoordinate2D(latitude: restored.cameraCenterLat, longitude: restored.cameraCenterLng),
                 span: MKCoordinateSpan(latitudeDelta: restored.cameraSpanLat, longitudeDelta: restored.cameraSpanLng)
             )))
-            _catFilter = State(initialValue: restored.catFilter)
+            _filters = State(initialValue: restored.filters ?? {
+                var f = HomeDiscovery.Filters()
+                f.cats = restored.catFilter == "all" ? [] : [restored.catFilter]
+                f.seatsLeft = restored.openNowOnly
+                return f
+            }())
+            _areaContext = State(initialValue: restored.areaContext)
             _forYouOn = State(initialValue: restored.forYou)
             _searchQuery = State(initialValue: restored.searchQuery)
-            _openNowOnly = State(initialValue: restored.openNowOnly)
             _sortByDistance = State(initialValue: restored.sortByDistance)
             _sheetDetent = State(initialValue: MapExploreView.detent(for: restored.sheetFraction))
             _selectedId = State(initialValue: restored.selectedId)
-            _initialCenterSet = State(initialValue: true) // restored camera counts as already "set"
-            // Root cause fix (11-realtime-map.md follow-up): seeded here,
-            // synchronously, from the SAME restored region `cameraPosition`
-            // uses above — see the non-restored branch's own comment for
-            // why this can no longer be left to `onMapCameraChange`'s first
-            // callback.
-            //
-            // Task 7 fix (2026-09-21 follow-up) — EXCEPT for
-            // `singleEventFocus` (the "Open in Map" entry point):
-            // `cameraSpanLat`/`cameraSpanLng` there is a deliberately tight
-            // 0.01° single-pin view, meant only for the visual camera. Using
-            // that same tight span for the DATA-LOADING bounds meant the
-            // very first freshness poll (`loadMapEvents(bounds:)`) silently
-            // replaced `app.mapEvents` — the full loaded dataset — with just
-            // the one or two events near that tiny box, so every other pin
-            // vanished a few seconds after opening, independent of any
-            // filter tap (a filter tap merely made the already-collapsed
-            // dataset's narrowing visible). Seeds a wide span instead — the
-            // SAME 0.12° default `centerOnDensityHotspot()` uses for a
-            // fresh, non-restored open — so the map still visually zooms in
-            // tight on the pin (`cameraPosition`, unchanged above) while the
-            // underlying query still covers the whole city.
-            let queryRegionSpan = restored.singleEventFocus
-                ? MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12)
-                : MKCoordinateSpan(latitudeDelta: restored.cameraSpanLat, longitudeDelta: restored.cameraSpanLng)
-            _lastQueriedRegion = State(initialValue: MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: restored.cameraCenterLat, longitude: restored.cameraCenterLng),
-                span: queryRegionSpan
-            ))
+            // The restored camera is already framed. A return from Event Detail brings its committed area back as-is
+            // (the first settle is a 'restore', never a new area); "Open in Map" has a camera but no area yet, so its
+            // first settle commits the area around that camera ('initial').
+            _framed = State(initialValue: true)
+            _committedBounds = State(initialValue: restored.committedBounds)
+            _pendingReason = State(initialValue: (restored.committedBounds == nil ? .initial : .restore, Date()))
             _pendingScrollToRestoredSelection = State(initialValue: restored.selectedId != nil)
         } else {
             _cameraPosition = State(initialValue: .automatic)
-            _catFilter = State(initialValue: "all")
-            _forYouOn = State(initialValue: false)
+            // Home's hand-off (filters + For You); the dock tab passes none.
+            _filters = State(initialValue: entry?.filters ?? HomeDiscovery.Filters())
+            _areaContext = State(initialValue: "map")
+            _forYouOn = State(initialValue: entry?.forYou ?? false)
             _searchQuery = State(initialValue: seedQuery ?? "")
-            _openNowOnly = State(initialValue: false)
             _sortByDistance = State(initialValue: false)
-            _sheetDetent = State(initialValue: .fraction(0.72))
+            // Layout A (map first, card peek): a fresh open starts at mid, so the map keeps more than half the screen.
+            _sheetDetent = State(initialValue: .fraction(0.45))
             _selectedId = State(initialValue: nil)
-            _initialCenterSet = State(initialValue: false)
+            _framed = State(initialValue: false)
             _pendingScrollToRestoredSelection = State(initialValue: false)
         }
     }
 
-    private let categories: [(key: String, vi: String, en: String, glyph: String)] = [
-        ("all", "Tất cả", "All", "▪︎"),
-        ("supper", "Supper club", "Supper club", "🍽️"),
-        ("fashion", "Thời trang", "Fashion", "👗"),
-        ("gallery", "Phòng tranh", "Gallery", "🖼️"),
-        ("music", "Nhạc", "Music", "🎵"),
+    /// Pin glyphs only (price pins replace these later); the chips use Home's categories and line icons.
+    private static let pinGlyph: [String: String] = [
+        "supper": "🍽️", "fashion": "👗", "gallery": "🖼️", "music": "🎵", "popup": "🛍️",
     ]
+    @State private var categorySheetOpen = false
+    /// Body-text line height, scaled with Dynamic Type.
+    @ScaledMetric(relativeTo: .body) private var searchFieldHeight: CGFloat = 24
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -320,42 +320,20 @@ struct MapExploreView: View {
             // same baseline `selectedEvent` (below) now also uses, so a
             // selection's pin and its card stay consistent with each other
             // through any filter change.
+            // Pins are exactly the results (committed area + filters): the same list and count the sheet shows.
             Map(position: $cameraPosition) {
-                ForEach(mapEventsWithCoordinates) { ev in
+                ForEach(visibleEvents.filter { $0.lat != nil && $0.lng != nil }) { ev in
                     Annotation(ev.name, coordinate: CLLocationCoordinate2D(latitude: ev.lat ?? 0, longitude: ev.lng ?? 0)) {
                         pin(for: ev)
                     }
                 }
             }
             .mapControls { }
-            .onMapCameraChange { context in
-                // Bug 3 follow-up: tracked on EVERY callback (unlike
-                // `lastQueriedRegion` below, which intentionally freezes
-                // after its first call for "Search here" bookkeeping) so
-                // `openEventDetail(_:)` can save wherever the camera
-                // actually is right now — including after `selectEvent(_:)`
-                // has flown it toward a selected pin — instead of a stale
-                // snapshot from whenever this view was first constructed.
+            // `.onEnd` (the default made explicit): the list stays still while a gesture runs; the area is committed
+            // once the camera settles (MapDiscovery.Reason).
+            .onMapCameraChange(frequency: .onEnd) { context in
                 currentCameraRegion = context.region
-                // Root cause fix (11-realtime-map.md follow-up): this "if
-                // nil, freeze" branch is now only a defensive fallback —
-                // both real init paths (`centerOnDensityHotspot()` and
-                // `init(restored:)`) already seed `lastQueriedRegion`
-                // synchronously and directly, from a region this view
-                // itself chose, specifically because this callback's FIRST
-                // invocation is not reliable enough to freeze forever: it
-                // was observed reporting a region nowhere near Vietnam
-                // before MapKit had caught up to `cameraPosition`, silently
-                // corrupting every later bounded poll/pagination reload.
-                // Owner, 2026-10-24 ("no events until I pull down"): before the first centring has run, MapKit's
-                // callback can still report a bogus region (seen over Europe); freezing THAT made every poll
-                // ask for an empty part of the world and wipe the list. Until then polls stay unbounded.
-                if lastQueriedRegion == nil {
-                    guard initialCenterSet else { return }
-                    lastQueriedRegion = context.region
-                    return
-                }
-                boundsChanged = true
+                cameraSettled(context.rect)
             }
             // A tap that lands on the map background (a pin's own
             // `.onTapGesture` in `pin(for:)` claims taps on the pin itself
@@ -427,17 +405,8 @@ struct MapExploreView: View {
             // top-y) against the full screen width, independent of the
             // other buttons' widths, safe-area insets, or sheet state — no
             // hardcoded offset needed.
-            if boundsChanged {
-                Button(action: searchHere) {
-                    Text(app.T("Tìm ở đây", "Search here"))
-                        .font(.system(size: 12, weight: .semibold))
-                        .padding(.horizontal, 14).padding(.vertical, 8)
-                        .nativeGlassCapsule(interactive: true)
-                }
-                .accessibilityIdentifier("map.searchHere")
-                .foregroundStyle(app.palette.ink)
-                .padding(.top, 8)
-            }
+            // No "Tìm ở đây / Search here": the whole public set is loaded, so the results follow the map by
+            // themselves once it settles.
 
             // Compact in-map preview — never a full-screen modal. Bug 2
             // follow-up: only shown once `sheetPresented` is true — a
@@ -462,29 +431,25 @@ struct MapExploreView: View {
                 .animation(.easeOut(duration: 0.28), value: cardBottomPadding)
             }
         }
-        .onChange(of: mapEventsWithCoordinates.map(\.id)) { _, ids in
-            // Design change (11-realtime-map.md follow-up): this used to
-            // key off `visibleEvents` (the LIST-filtered set) — meaning a
-            // category/open-now filter change, or even re-selecting "Tất
-            // cả", could silently clear an unrelated selection the instant
-            // it didn't match whatever filter was now active. That
-            // coupling is removed entirely, not just patched: this now
-            // reads `mapEventsWithCoordinates` (the same unfiltered
-            // baseline `selectedEvent` and the map's own pins use), so it
-            // only ever clears the selection because the underlying event
-            // is genuinely gone from the loaded data — cancelled, deleted,
-            // or no longer inside whatever bounds a poll/search-here last
-            // queried — never merely because it doesn't match the active
-            // category/open-now filter. No second query: this still only
-            // ever reads data this screen already loaded.
-            //
-            // Guarded on `mapEventsLoading == false`: a restored `selectedId`
-            // (bug 2) is applied before `app.mapEvents` has necessarily
-            // settled from its own reload, and without this guard that
-            // transient "not loaded yet" state was indistinguishable from
-            // "genuinely gone" — the same race the web build hit and fixed
-            // the same way.
-            if !app.mapEventsLoading, let id = selectedId, !ids.contains(id) { selectedId = nil }
+        // The map's full size and top safe area (the Map itself ignores the safe area) for the reference rect.
+        .background(GeometryReader { proxy in
+            Color.clear
+                .onAppear { measure(proxy) }
+                .onChange(of: proxy.size) { _, _ in measure(proxy) }
+        })
+        // Map redesign phase 2 (reverses the earlier "selection survives filters" rule, by the owner's spec): the
+        // selection lives only while its event is a result (area + filters, plus listed no-location matches). A pan
+        // that leaves it outside, or a filter that excludes it, clears it; no other event is opened in its place.
+        // Guarded until data and an area exist, so a restored selection is never cleared before its rows arrive.
+        .onChange(of: selectableIDs) { _, ids in
+            guard !app.mapEventsLoading, committedBounds != nil else { return }
+            let next = MapDiscovery.selectionAfter(selectedId, results: ids)
+            if next != selectedId { selectedId = next }
+        }
+        // Announce the settled count (never every camera frame) for VoiceOver.
+        .onChange(of: visibleEvents.count) { _, n in
+            guard committedBounds != nil else { return }
+            UIAccessibility.post(notification: .announcement, argument: resultCountText(n))
         }
         // Sheet-reveal-timing fix (2026-09-29) — see `isActive`'s own doc
         // comment. Fires exactly once, exactly when a tab-swipe that
@@ -505,35 +470,19 @@ struct MapExploreView: View {
             // peek afterward.
             if let ev = selectedEvent { reapplyCameraOffset(for: ev) }
         }
-        .onChange(of: catFilter) { _, _ in
-            // Task 2b (11-realtime-map.md follow-up): `.onChange` never
-            // fires for the value `init` seeded (only for a later, genuine
-            // change), so this never re-runs on a restored/fresh mount —
-            // only when the user actually taps a different category chip.
+        .onChange(of: filters) { _, _ in
+            // Filters never move the camera (the old category → density-hotspot flight is gone): the area changes
+            // only through the map. B2: a genuine filter change still snaps the sheet to MID. `.onChange` never fires
+            // for the value `init` seeded.
             guard !isPreview else { return }
-            recenterOnFilterDensityHotspot()
-            // B2 (Map filters pass, 2026-09-27) — snaps to MID on a genuine
-            // filter change specifically, never on mount (same `.onChange`
-            // guarantee as `recenterOnFilterDensityHotspot` above), a map
-            // pan/`boundsChanged` (unrelated state), a list scroll, or the
-            // 5s freshness poll (`app.loadMapEvents` never touches `catFilter`).
             withAnimation(.easeOut(duration: 0.28)) { sheetDetent = .fraction(0.45) }
         }
         .onChange(of: app.area) { _, _ in
-            // Same MID-snap a genuine category/"Còn chỗ" change gets; no
-            // camera move, no location request.
+            // Area picker = a DESTINATION (phase 3): fly to that area's mapped events and commit it once; every
+            // filter stays. "Everywhere" or an area with no mapped events leaves the camera where it is (no guessed
+            // geometry, never the whole inventory) and the chip reads "Map area".
             guard !isPreview else { return }
-            withAnimation(.easeOut(duration: 0.28)) { sheetDetent = .fraction(0.45) }
-        }
-        .onChange(of: openNowOnly) { _, _ in
-            // B2 — "Còn chỗ" excludes events the same way the category
-            // chips do, so it gets the same MID-snap; it does NOT get
-            // `recenterOnFilterDensityHotspot()` (that's this ticket's own
-            // "do not change camera position" — the existing camera-fly
-            // behavior above is pre-existing, category-filter-only
-            // behavior this pass doesn't extend to a second filter).
-            guard !isPreview else { return }
-            withAnimation(.easeOut(duration: 0.28)) { sheetDetent = .fraction(0.45) }
+            goToPickedArea()
         }
         .onChange(of: app.mapCloseConfirmed) { _, confirmed in
             // Follow-up bug 1 (11-realtime-map.md): a confirmed close used
@@ -613,6 +562,9 @@ struct MapExploreView: View {
                 .scaleEffect(1 - 0.15 * app.mapCloseSwipeProgress, anchor: .bottom)
                 .offset(y: 70 * app.mapCloseSwipeProgress)
                 .presentationDetents([.fraction(0.12), .fraction(0.45), .fraction(0.72)], selection: $sheetDetent)
+                // Opaque content surface: without this the system sheet is glass at partial detents and the list
+                // sat on the map (device report). Glass stays on the map controls and the dock.
+                .presentationBackground(app.palette.paper)
                 // Follow-up bug 4 (11-realtime-map.md): reverted back to the
                 // SYSTEM's own visible drag indicator. The prior pass's
                 // custom `dragHandle` (a `DragGesture` on a small capsule,
@@ -669,7 +621,7 @@ struct MapExploreView: View {
                 // never early, never behind the outgoing screen.
                 scheduleSheetReveal(after: eventDetailDismissDuration + postDismissRevealDelay)
             } else {
-                centerOnDensityHotspot()
+                frameFirstOpen()
                 // The one-shot FAB intent is consumed unconditionally once
                 // this fresh-open branch runs at all (not by a callback
                 // that fires only once focus actually lands) — the next
@@ -678,6 +630,7 @@ struct MapExploreView: View {
                 // over from this one.
                 if startFocusedOnSearch { app.mapExploreFocusSearch = false }
                 if seedQuery != nil { app.mapExploreSeedQuery = nil }
+                app.mapExploreEntry = nil // the Home hand-off is read once
             }
         }
         .onChange(of: app.mapCloseSwipeCancelled) { _, cancelled in
@@ -705,9 +658,14 @@ struct MapExploreView: View {
             postDismissRevealTask?.cancel()
             app.cancelRootPull()
         }
+        // Freshness: the whole public set again (never a box). Camera, area, filters, selection and list stay put.
         .onReceive(pollTimer) { _ in
             guard !isPreview else { return }
-            Task { await app.loadMapEvents(bounds: lastQueriedRegion.map(boundsOf)) }
+            Task { await app.loadMapEvents() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            guard !isPreview else { return }
+            Task { await app.loadMapEvents() }
         }
         .onChange(of: app.userCoords) { _, newValue in
             // Only recenters when the compass button itself triggered the
@@ -735,17 +693,157 @@ struct MapExploreView: View {
     }
 
     private func reapplyCameraOffset(for ev: MapEventRow) {
+        reveal(ev, duration: 0.3)
+    }
+
+    /// A REVEAL: bring the pin into the free map strip above the card at the CURRENT zoom (it used to zoom to 0.01°).
+    /// Marked 'reveal', so it never redefines the search area, the list or the count.
+    private func reveal(_ ev: MapEventRow, duration: Double) {
         guard let lat = ev.lat, let lng = ev.lng else { return }
-        let zoomSpan = 0.01
-        let visibleFraction = 1 - sheetFraction
-        let desiredScreenFraction = visibleFraction * 0.38
-        let latShift = zoomSpan * (0.5 - desiredScreenFraction)
-        withAnimation(.easeInOut(duration: 0.3)) {
-            cameraPosition = .region(MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: lat - latShift, longitude: lng),
-                span: MKCoordinateSpan(latitudeDelta: zoomSpan, longitudeDelta: zoomSpan)
-            ))
+        let span = currentCameraRegion?.span ?? MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12)
+        // Aim for roughly the upper third of the visible (non-sheet) strip, leaving room for the card above the sheet.
+        let desiredScreenFraction = (1 - sheetFraction) * 0.38
+        let latShift = span.latitudeDelta * (0.5 - desiredScreenFraction)
+        moveCamera(.reveal, to: MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: lat - latShift, longitude: lng), span: span),
+                   duration: duration)
+    }
+
+    // MARK: - Camera reasons → committed area (Lib/MapDiscovery.swift)
+
+    /// Every programmatic move goes through here with its reason; a settle with no fresh reason is the user's.
+    private func moveCamera(_ reason: MapDiscovery.Reason, to region: MKCoordinateRegion, duration: Double = 0.55) {
+        pendingReason = (reason, Date())
+        if reduceMotion || duration == 0 {
+            cameraPosition = .region(region)
+        } else {
+            withAnimation(.easeInOut(duration: duration)) { cameraPosition = .region(region) }
         }
+    }
+
+    private func measure(_ proxy: GeometryProxy) {
+        safeTop = proxy.safeAreaInsets.top
+        mapSize = CGSize(width: proxy.size.width,
+                         height: proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom)
+    }
+
+    /// The camera settled: commit a new area only for geographic navigation, once, after quick settles stop.
+    private func cameraSettled(_ rect: MKMapRect) {
+        guard framed, !isPreview else { return } // MapKit's pre-framing callbacks can report a bogus region
+        let pending = pendingReason
+        let window: TimeInterval = (pending?.reason.commits ?? false) ? 4 : 1.5
+        let fresh = pending.map { Date().timeIntervalSince($0.at) < window } ?? false
+        let reason: MapDiscovery.Reason = fresh ? pending!.reason : .user
+        // A layout-only reason stays in force for its short window (a reveal can end in two settles); a navigation
+        // reason is used once; extra settles just re-arm the single commit.
+        if !fresh || reason.commits { pendingReason = nil }
+        settleTask?.cancel()
+        guard reason.commits else { return }
+        settleTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+            commitArea(rect, reason: reason)
+        }
+    }
+
+    /// The reference rect (below the top controls, above the PEEK sheet) of the settled camera becomes the area.
+    private func commitArea(_ rect: MKMapRect, reason: MapDiscovery.Reason) {
+        let nw = MKMapPoint(x: rect.minX, y: rect.minY).coordinate
+        let se = MKMapPoint(x: rect.maxX, y: rect.maxY).coordinate
+        let full = MapDiscovery.Bounds(north: nw.latitude, south: se.latitude, east: se.longitude, west: nw.longitude)
+        let w = Double(max(1, mapSize.width)), h = Double(max(1, mapSize.height))
+        let ref = MapDiscovery.referenceRect(width: w, height: h, topInset: Double(safeTop) + Self.topControlsHeight,
+                                            bottomInset: h * 0.12 + Self.legalReserve)
+        committedBounds = MapDiscovery.boundsForRect(full, width: w, height: h, rect: ref)
+        // The chip names the picked area only while the map is still framed on it; any other navigation makes the
+        // context "Map area" (Home's selected area itself is never changed by panning).
+        areaContext = (reason == .destination || (reason == .initial && framedByArea)) ? "area" : "map"
+    }
+
+    /// Back/compass row (8 top padding + 38 control + 12 gap) and the strip kept for the Apple Maps legal label.
+    private static let topControlsHeight: Double = 58
+    private static let legalReserve: Double = 26
+
+    /// A camera region that fits `bounds` into the free area above the MID sheet (below the top controls).
+    private func fittedRegion(_ bounds: MapDiscovery.Bounds) -> MKCoordinateRegion {
+        let w = Double(max(320, mapSize.width)), h = Double(max(560, mapSize.height == 0 ? UIScreen.main.bounds.height : mapSize.height))
+        let pad = MapDiscovery.Padding(top: Double(safeTop) + Self.topControlsHeight + 16, bottom: h * 0.45 + Self.legalReserve + 16,
+                                       left: 40, right: 40)
+        let cam = MapDiscovery.fitCamera(bounds, width: w, height: h, padding: pad, maxZoom: 14)
+        let view = MapDiscovery.viewBounds(center: cam.center, zoom: cam.zoom, width: w, height: h)
+        return MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: cam.center.lat, longitude: cam.center.lng),
+                                  span: MKCoordinateSpan(latitudeDelta: view.north - view.south, longitudeDelta: view.east - view.west))
+    }
+
+    /// First open: frame what is relevant above the mid sheet — the selected area's events, else events within 50 km
+    /// of a located viewer, else the densest city of events. Never the viewer's GPS on its own, never the whole
+    /// inventory. No events at all: Ho Chi Minh City, and the empty state says so.
+    private func frameFirstOpen() {
+        guard !framed else { return }
+        framed = true
+        let located = app.mapEvents.filter { $0.lat != nil && $0.lng != nil }
+        let pts = located.map { MapDiscovery.Point(lat: $0.lat!, lng: $0.lng!) }
+        let areaIdx = app.area != LocationHierarchy.allID ? located.indices.filter { app.matchesArea(located[$0]) } : []
+        let me = (app.located == true) ? app.userCoords.map { MapDiscovery.Point(lat: $0.lat, lng: $0.lng) } : nil
+        let nearMe = MapDiscovery.pointsNear(pts, center: me, radiusKm: 50)
+        let hotspot = densityHotspot(pts.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) })
+            .map { MapDiscovery.Point(lat: $0.latitude, lng: $0.longitude) }
+        framedByArea = !areaIdx.isEmpty
+        let frame = !areaIdx.isEmpty ? areaIdx : (!nearMe.isEmpty ? nearMe : MapDiscovery.pointsNear(pts, center: hotspot, radiusKm: 25))
+        if let box = MapDiscovery.boundsOfPoints(frame.map { pts[$0] }) {
+            moveCamera(.initial, to: fittedRegion(box), duration: 0)
+        } else {
+            moveCamera(.initial, to: MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 10.7769, longitude: 106.7009),
+                                                        span: MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12)), duration: 0)
+        }
+    }
+
+    /// "Show nearest": the closest matching events (same filters) anywhere, framed above the mid sheet — explicit
+    /// navigation that commits its area once. Never automatic, never presented as "here".
+    private func showNearest() {
+        let pts = matchingAnywhere.compactMap { ev in ev.lat.flatMap { lat in ev.lng.map { MapDiscovery.Point(lat: lat, lng: $0) } } }
+        let c = currentCameraRegion?.center ?? CLLocationCoordinate2D(latitude: 10.7769, longitude: 106.7009)
+        guard let first = MapDiscovery.nearestPoint(pts, from: .init(lat: c.latitude, lng: c.longitude)),
+              let box = MapDiscovery.boundsOfPoints(MapDiscovery.pointsNear(pts, center: pts[first], radiusKm: 25).map { pts[$0] })
+        else { return }
+        moveCamera(.nearest, to: fittedRegion(box), duration: 0.8)
+    }
+
+    /// Area picked on the Map = a destination: fit that area's mapped events above the mid sheet ('destination').
+    private func goToPickedArea() {
+        guard app.area != LocationHierarchy.allID else { areaContext = "map"; return }
+        let pts = app.mapEvents.filter { $0.lat != nil && $0.lng != nil && app.matchesArea($0) }
+            .map { MapDiscovery.Point(lat: $0.lat!, lng: $0.lng!) }
+        guard let box = MapDiscovery.boundsOfPoints(pts) else { areaContext = "map"; return }
+        moveCamera(.destination, to: fittedRegion(box), duration: 0.8)
+    }
+
+    /// Badge: filters set in the sheet or the time chips (the category row and Seats left show their own state).
+    private var sheetFilterCount: Int {
+        var f = filters
+        f.cats = []; f.seatsLeft = false
+        return HomeDiscovery.activeFilterCount(f)
+    }
+
+    /// The sheet's market: events IN THE MAP AREA after search + For You, before Home's filters — so its pill counts
+    /// and "Show N" are exactly what the list shows after Apply.
+    private var sheetItems: [HomeDiscovery.Item] {
+        guard let committedBounds else { return [] }
+        return searchedEvents.filter { MapDiscovery.inBounds(lat: $0.lat, lng: $0.lng, committedBounds) }.map(discoveryItem)
+    }
+
+    /// Matching events outside this area — explains why the Map can show fewer than Home.
+    private var outsideCount: Int { matchingAnywhere.count - visibleEvents.filter { $0.lat != nil && $0.lng != nil }.count }
+
+    private func clearFilters() {
+        filters = HomeDiscovery.Filters(); searchQuery = ""; forYouOn = false
+    }
+
+    private var filtersActive: Bool {
+        HomeDiscovery.activeFilterCount(filters) > 0 || !searchQuery.trimmingCharacters(in: .whitespaces).isEmpty || forYouActive
+    }
+
+    private func resultCountText(_ n: Int) -> String {
+        app.T("\(n) sự kiện trong vùng bản đồ", n == 1 ? "1 event in this map area" : "\(n) events in this map area")
     }
 
     // MARK: - Bug 2: retained navigation state across Event Detail
@@ -776,7 +874,7 @@ struct MapExploreView: View {
         // "centered on the wrong place" (e.g. a hotspot/user-adjacent
         // region from earlier in this same session), not the selected
         // event.
-        let region = currentCameraRegion ?? lastQueriedRegion
+        let region = currentCameraRegion
         app.mapExploreState = MapExploreState(
             cameraCenterLat: region?.center.latitude ?? 10.7769,
             cameraCenterLng: region?.center.longitude ?? 106.7009,
@@ -788,7 +886,10 @@ struct MapExploreView: View {
             sortByDistance: sortByDistance,
             selectedId: selectedId,
             forYou: forYouActive,
-            searchQuery: searchQuery
+            searchQuery: searchQuery,
+            committedBounds: committedBounds,
+            filters: filters,
+            areaContext: areaContext
         )
     }
 
@@ -873,79 +974,15 @@ struct MapExploreView: View {
         }
     }
 
-    // MARK: - Density-hotspot initial center
-
-    /// Never the user's own GPS position on first load — centers on wherever
-    /// events are actually clustered instead (grid-binning, same algorithm
-    /// as src/lib/densityHotspot.js — see .claude/notes/11-realtime-map.md).
-    private func centerOnDensityHotspot() {
-        guard !initialCenterSet else { return }
-        initialCenterSet = true
-        let points = app.mapEvents.compactMap { ev -> CLLocationCoordinate2D? in
-            guard let lat = ev.lat, let lng = ev.lng else { return nil }
-            return CLLocationCoordinate2D(latitude: lat, longitude: lng)
-        }
-        let center = densityHotspot(points) ?? CLLocationCoordinate2D(latitude: 10.7769, longitude: 106.7009)
-        let region = MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12))
-        cameraPosition = .region(region)
-        // Root cause fix (11-realtime-map.md follow-up): seeded here,
-        // synchronously and directly from the SAME region `cameraPosition`
-        // above just got — not left for `onMapCameraChange`'s own "freeze on
-        // first callback" branch (still below, now just a defensive
-        // fallback) to capture. That first callback is not guaranteed to
-        // reflect this region yet — MapKit's `Map(position:)` was observed,
-        // on a fresh load, reporting an initial callback centered nowhere
-        // near Vietnam (e.g. ~51°N/10°E) before it had caught up to the
-        // `cameraPosition` this method sets — and since `lastQueriedRegion`
-        // is a permanent one-time freeze (by design, for "Search here"
-        // bookkeeping), that bogus region then fed every future poll/
-        // pagination reload's bounds query FOREVER, each legitimately
-        // returning zero rows for a real region that far from Vietnam. That
-        // silently wiped `app.mapEvents` to empty the next time any bounded
-        // reload happened to fire — which a category filter change (via
-        // `recenterOnFilterDensityHotspot()`'s own camera move, below) was
-        // often what finally nudged MapKit into emitting that first
-        // unreliable callback, making it look like "changing the filter
-        // clears everything" when the actual defect was here, in camera-
-        // bounds tracking, unrelated to the selection/filter decoupling
-        // fixed earlier in this same file.
-        lastQueriedRegion = region
-    }
-
-    /// Task 2b (11-realtime-map.md follow-up): reuses the EXACT SAME
-    /// `densityHotspot(_:)` free function `centerOnDensityHotspot()` above
-    /// calls at initial load — scoped here to `visibleEvents` (which
-    /// already reflects the just-changed `catFilter`, plus whichever other
-    /// filters/bounds are active) instead of every loaded event, so the
-    /// camera moves to wherever THIS filter's own results are most
-    /// concentrated, not wherever the previous filter's were. No `initialCenterSet`
-    /// guard here — unlike the initial-load call, this is meant to re-run
-    /// every time the category actually changes.
-    private func recenterOnFilterDensityHotspot() {
-        let points = visibleEvents.compactMap { ev -> CLLocationCoordinate2D? in
-            guard let lat = ev.lat, let lng = ev.lng else { return nil }
-            return CLLocationCoordinate2D(latitude: lat, longitude: lng)
-        }
-        // No matching events for this filter — leave the camera exactly
-        // where it was rather than snapping to a meaningless fallback.
-        guard let center = densityHotspot(points) else { return }
-        withAnimation(.easeInOut(duration: 0.6)) {
-            cameraPosition = .region(MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12)))
-        }
-    }
-
     // MARK: - Pin/list selection: camera zoom + compact in-map preview card
 
-    /// Design change (11-realtime-map.md follow-up): reads
-    /// `mapEventsWithCoordinates` (the full, unfiltered baseline — see its
-    /// own doc comment) instead of `visibleEvents` (the LIST-filtered set)
-    /// — a selection now persists through any category/open-now filter
-    /// change instead of clearing the instant it stops matching whatever
-    /// filter is active.
+    /// The selection, only while it is one of the results (area + filters) or a listed no-location match.
     private var selectedEvent: MapEventRow? {
-        guard let selectedId else { return nil }
-        return mapEventsWithCoordinates.first { $0.id == selectedId }
+        guard let selectedId, selectableIDs.contains(selectedId) else { return nil }
+        return app.mapEvents.first { $0.id == selectedId }
     }
+
+    private var selectableIDs: [String] { (visibleEvents + noLocationMatches).map(\.id) }
 
     /// How much of the screen the bottom sheet currently covers, read back
     /// from `sheetDetent` (a `PresentationDetent` doesn't expose its own
@@ -967,7 +1004,6 @@ struct MapExploreView: View {
     /// toward the visible strip above the sheet, not the screen's raw
     /// geometric center).
     private func selectEvent(_ ev: MapEventRow) {
-        guard let lat = ev.lat, let lng = ev.lng else { return }
         let isNewSelection = selectedId != ev.id
         selectedId = ev.id
 
@@ -1006,21 +1042,10 @@ struct MapExploreView: View {
             withAnimation { sheetDetent = .fraction(0.45) }
         }
 
-        let zoomSpan = 0.01
-        let visibleFraction = 1 - sheetFraction
-        // Aim for roughly the upper third of the visible (non-sheet) strip
-        // rather than its exact middle, leaving room for the preview card
-        // that sits just above the sheet.
-        let desiredScreenFraction = visibleFraction * 0.38
-        let latShift = zoomSpan * (0.5 - desiredScreenFraction)
-        withAnimation(.easeInOut(duration: 0.55)) {
-            cameraPosition = .region(MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: lat - latShift, longitude: lng),
-                span: MKCoordinateSpan(latitudeDelta: zoomSpan, longitudeDelta: zoomSpan)
-            ))
-        }
+        // A reveal at the current zoom (never a new search area); an event without coordinates just gets its card.
+        reveal(ev, duration: 0.55)
 
-        guard isNewSelection else { return }
+        guard isNewSelection, ev.lat != nil else { return }
         // A brief overshoot-then-settle "pop", same easing convention this
         // app already uses for its entrance animations — plays once per
         // actual selection change only (guarded by `isNewSelection` above),
@@ -1041,8 +1066,6 @@ struct MapExploreView: View {
         // drive the same `Countdown.liveEventOverrides` merge every other
         // screen uses directly — no separate reformatting.
         let cosmetic = EventCatalog.find(ev.id)
-        let liveStatus = LiveEventStatus(status: ev.status, startsAt: ev.startsAt, cancelledAt: nil, cancelReason: nil)
-        let cosmeticLive = cosmetic.map { $0.applyingLiveStatus(liveStatus) } ?? cosmetic
         VStack(alignment: .leading, spacing: 10) {
             // Task 4 (11-realtime-map.md follow-up): tapping anywhere in
             // this non-CTA area re-flies the camera back to the selected
@@ -1072,15 +1095,19 @@ struct MapExploreView: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .top) {
-                        Text(ev.name).font(.system(size: 14, weight: .bold)).lineLimit(1)
+                        Text(ev.name).font(.body.weight(.bold)).lineLimit(2)
                         Spacer()
                         Button { selectedId = nil } label: {
-                            Text("×").font(.system(size: 18)).foregroundStyle(app.palette.ink.opacity(0.5))
+                            Text("×").font(.title3).foregroundStyle(app.palette.ink2)
+                                .frame(width: 44, height: 44)
                         }
+                        .padding(.top, -12).padding(.trailing, -12)
+                        .accessibilityLabel(app.T("Bỏ chọn", "Clear selection"))
                         .accessibilityIdentifier("map.card.close")
                     }
-                    Text([cosmeticLive?.when, ev.area].compactMap { $0 }.joined(separator: " ▪︎ "))
-                        .font(.system(size: 11)).opacity(0.65).lineLimit(1)
+                    // Venue date · time, the same source Event Detail reads (starts_at in events.tz).
+                    Text([eventWhen(ev), ev.area].filter { !$0.isEmpty }.joined(separator: " · "))
+                        .font(.subheadline).foregroundStyle(app.palette.ink2).lineLimit(1)
                     HStack {
                         // Map price bug fix (2026-09-29) — same root cause
                         // as web's identical fix (MapExplore.jsx): this was
@@ -1094,43 +1121,47 @@ struct MapExploreView: View {
                         // price, including a genuinely free (0 VND) one.
                         // `> 0`, never a bare truthiness check, so a real 0
                         // correctly reads as "Miễn phí"/Free, not "missing".
-                        Text(ev.priceVnd > 0 ? EventMarket.formatMoney(ev.priceVnd, currency: ev.rowCurrency) : app.T("Miễn phí", "Free"))
-                            .font(.system(size: 13, weight: .semibold))
+                        Text(priceLine(ev)).font(.subheadline.weight(.semibold))
                         Spacer()
-                        Text(isSoldOut(ev) ? app.T("Hết chỗ", "Sold out") : app.T("Còn chỗ", "Available"))
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(isSoldOut(ev) ? BanbeTheme.alert : app.palette.ink)
+                        // Real fill only; no fill row means no seat claim at all.
+                        seatPill(ev, id: "map.card.seats")
                     }
                 }
             }
             .contentShape(Rectangle())
             .onTapGesture { selectEvent(ev) }
             .accessibilityIdentifier("map.card.recenter")
-            Button(action: { openEventDetail(ev.id) }) {
-                Text(app.T("Xem chi tiết", "View details"))
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10))
-                    .foregroundStyle(app.palette.paper)
+            HStack(spacing: 8) {
+                // Directions: the same public venue link Event Detail opens; only with a map location. Separate from
+                // "View details" so selecting never opens anything by itself.
+                if let url = ev.mapsURL {
+                    Link(destination: url) {
+                        Label(app.T("Chỉ đường", "Directions"), systemImage: "location.north.line")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 16)
+                            .frame(minHeight: 44)
+                            .background(app.palette.clayBg, in: RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(app.palette.clay)
+                    }
+                    .accessibilityIdentifier("map.card.directions")
+                }
+                Button(action: { openEventDetail(ev.id) }) {
+                    Text(app.T("Xem chi tiết", "View details"))
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10))
+                        .foregroundStyle(app.palette.paper)
+                }
+                .accessibilityIdentifier("map.card.cta")
             }
-            .accessibilityIdentifier("map.card.cta")
         }
         .padding(12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        // Content surface: opaque for readability over the map (was .regularMaterial).
+        .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14))
         .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
         .padding(.horizontal, 16)
         .foregroundStyle(app.palette.ink)
         .accessibilityIdentifier("map.selectedCard")
-    }
-
-    /// Live `seats_remaining` is this screen's own established
-    /// "real-time-ish" signal (already used for the low-seats pin dot) —
-    /// reused for sold-out too, falling back to the static catalogue's
-    /// flag only when a row has no seats_remaining of its own to check.
-    private func isSoldOut(_ ev: MapEventRow) -> Bool {
-        if let seats = ev.seatsRemaining { return seats <= 0 }
-        return EventCatalog.find(ev.id)?.soldOut ?? false
     }
 
     // MARK: - Compass button (granted / denied / permanently-denied)
@@ -1168,135 +1199,105 @@ struct MapExploreView: View {
         app.locationAuthStatus == .denied || app.locationAuthStatus == .restricted
     }
 
+    /// Explicit geographic navigation: one new search area once it settles.
     private func recenterOnUser() {
         guard let coords = app.userCoords else { return }
-        cameraPosition = .region(MKCoordinateRegion(
+        moveCamera(.recenter, to: MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: coords.lat, longitude: coords.lng),
             span: MKCoordinateSpan(latitudeDelta: 0.03, longitudeDelta: 0.03)
         ))
     }
 
-    // MARK: - Search here (bbox re-query, tap only — never on every pan/zoom)
-
-    private func searchHere() {
-        guard let region = lastQueriedRegion else { return }
-        boundsChanged = false
-        Task { await app.loadMapEvents(bounds: boundsOf(region)) }
-    }
-
-    private func boundsOf(_ region: MKCoordinateRegion) -> (south: Double, north: Double, west: Double, east: Double) {
-        let south = region.center.latitude - region.span.latitudeDelta / 2
-        let north = region.center.latitude + region.span.latitudeDelta / 2
-        let west = region.center.longitude - region.span.longitudeDelta / 2
-        let east = region.center.longitude + region.span.longitudeDelta / 2
-        return (south, north, west, east)
-    }
-
     // MARK: - Pins
 
-    // B1 (Map filters pass, 2026-09-27) — three of these four ARE an
-    // existing app color (Home's own Pulse-ring gradient stops); one
-    // additional muted tone in the same dusty/desaturated family was added
-    // for the 4th non-"all" category, since that trio only has 3 colors —
-    // see web's `CAT_DOT_COLOR` (MapExplore.jsx) for the identical values/
-    // reasoning; kept in sync by hand (this app has no shared cross-
-    // platform color-constant file to import from).
-    private static let categoryDotColor: [String: Color] = [
-        "all": .primary,
-        "supper": Color(red: 0.906, green: 0.788, blue: 0.761),
-        "fashion": Color(red: 0.890, green: 0.812, blue: 0.651),
-        "gallery": Color(red: 0.784, green: 0.796, blue: 0.698),
-        "music": Color(red: 0.718, green: 0.651, blue: 0.780),
-    ]
-
+    /// A pin is a result (committed area + filters): the same list and count the sheet shows. Out-of-filter events
+    /// no longer get passive dots, so nothing on the map disagrees with the list.
     @ViewBuilder
     private func pin(for ev: MapEventRow) -> some View {
-        // B1 — a geolocated event that doesn't currently match the active
-        // filters (`visibleIdSet`, derived from the SAME `visibleEvents`
-        // the list panel shows) gets a small, passive, non-interactive dot
-        // in its own category's color instead of the normal clickable
-        // pin — never rendered as "another selectable matching pin."
-        // Selection itself is untouched: `selectedEvent`/`mapEventsWithCoordinates`
-        // (this pin ForEach's own data source) deliberately stay on the
-        // FULL unfiltered set (see that property's own doc comment), so a
-        // selection whose pin just became a dot still keeps its card.
-        if !visibleIdSet.contains(ev.id) {
-            Circle()
-                .fill(Self.categoryDotColor[ev.catKey ?? "all"] ?? Self.categoryDotColor["all"]!)
-                .frame(width: 9, height: 9)
-                .overlay(Circle().stroke(app.palette.paper, lineWidth: 1))
-                .opacity(0.85)
-                .allowsHitTesting(false)
-                .accessibilityIdentifier("map.dot.\(ev.id)")
-        } else {
-            let isSelected = ev.id == selectedId
-            let isPopping = ev.id == poppingId
-            ZStack(alignment: .topTrailing) {
-                Text(categories.first { $0.key == ev.catKey }?.glyph ?? "▪︎")
-                    .font(.system(size: 14))
-                    .frame(width: 30, height: 30)
-                    .background(app.palette.paper, in: Circle())
-                    .overlay(Circle().stroke(app.palette.ink, lineWidth: isSelected ? 2.5 : 1.5))
-                    .shadow(radius: isSelected ? 5 : 3)
-                if let seats = ev.seatsRemaining, seats <= 5 {
-                    Circle().fill(Color(red: 0.6, green: 0.24, blue: 0.18)).frame(width: 9, height: 9)
-                        .overlay(Circle().stroke(app.palette.paper, lineWidth: 1.5))
-                }
+        let isSelected = ev.id == selectedId
+        let isPopping = ev.id == poppingId
+        ZStack(alignment: .topTrailing) {
+            Text(Self.pinGlyph[ev.catKey ?? ""] ?? "▪︎")
+                .font(.system(size: 14))
+                .frame(width: 30, height: 30)
+                .background(app.palette.paper, in: Circle())
+                .overlay(Circle().stroke(app.palette.ink, lineWidth: isSelected ? 2.5 : 1.5))
+                .shadow(radius: isSelected ? 5 : 3)
+            if seatFacts(ev)?.almostFull == true {
+                Circle().fill(Color(red: 0.6, green: 0.24, blue: 0.18)).frame(width: 9, height: 9)
+                    .overlay(Circle().stroke(app.palette.paper, lineWidth: 1.5))
             }
-            // Selected pin sits slightly larger and settles there; the brief
-            // overshoot past that (isPopping) plays once per actual selection
-            // change, guarded in selectEvent(_:) — never replayed by a poll
-            // refresh while the same pin stays selected.
-            .scaleEffect(isPopping ? 1.32 : (isSelected ? 1.15 : 1))
-            .zIndex(isSelected ? 1 : 0)
-            .accessibilityIdentifier("map.pin.\(ev.id)")
-            .onTapGesture { selectEvent(ev) }
         }
+        // Selected pin sits slightly larger and settles there; the brief overshoot past that (isPopping) plays once
+        // per actual selection change, guarded in selectEvent(_:) — never replayed by a refresh.
+        .scaleEffect(isPopping ? 1.32 : (isSelected ? 1.15 : 1))
+        .zIndex(isSelected ? 1 : 0)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(ev.name)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("map.pin.\(ev.id)")
+        .onTapGesture { selectEvent(ev) }
     }
 
-    /// B1 — the ONE filtered event-id set the list panel (`visibleEvents`)
-    /// and the map's own pins (`pin(for:)`) both key off, so they can
-    /// never disagree about which events currently match the active
-    /// filters.
-    private var visibleIdSet: Set<String> {
-        Set(visibleEvents.map(\.id))
-    }
+    // MARK: - Results
 
-    /// Sweep finding (11-realtime-map.md follow-up): the full, unfiltered
-    /// set of loaded events that have coordinates to place on the map at
-    /// all — the SAME baseline the map's own pins (`body`, above) and
-    /// `selectedEvent`/its clearing effect now use. Only for PINS —
-    /// `visibleEvents` (the LIST panel, below) deliberately does NOT start
-    /// from this any more (Stage 3): a location-less event still belongs
-    /// in the list, just never gets a pin here.
-    private var mapEventsWithCoordinates: [MapEventRow] {
-        app.mapEvents.filter { $0.lat != nil && $0.lng != nil }
-    }
-
-    // MARK: - List
-
-    // Stage 3 (2026-09-27 nav/discovery pass) — this used to start from
-    // `mapEventsWithCoordinates` (the PIN-only, coordinate-filtered set),
-    // so an event missing coordinates was silently dropped from the LIST
-    // too, not just denied a pin — the exact "silently omit them from all
-    // discovery" this ticket warns against. Now starts from the raw,
-    // unfiltered `app.mapEvents`: an event without a location still
-    // belongs in the list (see the "no map location" row tag below),
-    // just never gets a marker on the map itself.
+    /// THE results: inside the committed map area, every filter applied. Pins, list and count all come from this.
     private var visibleEvents: [MapEventRow] {
+        areaBase.filter { inCategory($0, catFilter) }
+    }
+
+    /// Inside the committed area, every filter except the category (for the category counts).
+    private var areaBase: [MapEventRow] {
+        guard let committedBounds else { return [] }
+        return baseEvents.filter { MapDiscovery.inBounds(lat: $0.lat, lng: $0.lng, committedBounds) }
+    }
+
+    /// Matching events with no map location yet: listed apart, never counted as "in this area".
+    private var noLocationMatches: [MapEventRow] {
+        baseEvents.filter { ($0.lat == nil || $0.lng == nil) && inCategory($0, catFilter) }
+    }
+
+    /// Matching events anywhere (for "Show nearest" when this area has none).
+    private var matchingAnywhere: [MapEventRow] {
+        baseEvents.filter { $0.lat != nil && $0.lng != nil && inCategory($0, catFilter) }
+    }
+
+    /// Whether the area has any event at all (so an empty list can say "filters hide them" vs "nothing here").
+    private var anyInArea: Bool {
+        guard let committedBounds else { return false }
+        return app.mapEvents.contains { MapDiscovery.inBounds(lat: $0.lat, lng: $0.lng, committedBounds) }
+    }
+
+    /// A Map event in Home's discovery-item shape, so both run the same `HomeDiscovery.apply` predicate (date in the
+    /// venue's own zone, seats from real fill, price per ticket in one currency, type chips).
+    private func discoveryItem(_ ev: MapEventRow) -> HomeDiscovery.Item {
+        let fill = app.eventFill[ev.id]
+        return HomeDiscovery.Item(key: ev.id, startsAt: ev.startsAt, priceVnd: ev.priceVnd, catKeys: ev.catKeys,
+                                  booked: fill?.booked, capacity: fill?.capacity, soldOut: false, currency: ev.rowCurrency,
+                                  details: ev.details?.values ?? [:], tz: ev.timeZoneID)
+    }
+
+    /// The minute the time filters are judged at (like Home), never per frame.
+    private var nowMinute: Date { Date(timeIntervalSince1970: (Date().timeIntervalSince1970 / 60).rounded(.down) * 60) }
+
+    /// Every filter except the category (so each category chip can say what tapping it would show).
+    private var baseEvents: [MapEventRow] {
+        let searched = searchedEvents
+        var others = filters
+        others.cats = []
+        let keep = Set(HomeDiscovery.apply(searched.map(discoveryItem), others, now: nowMinute).map(\.key))
+        return searched.filter { keep.contains($0.id) }
+    }
+
+    /// Search + For You (the two filters outside Home's filter object), before geography and Home's filters. The area
+    /// picker is a destination for the map now (phase 3), not an extra filter.
+    private var searchedEvents: [MapEventRow] {
         var list = app.mapEvents
-        if catFilter != "all" { list = list.filter { effectiveCatKey($0) == catFilter } }
-        if openNowOnly { list = list.filter { ($0.seatsRemaining ?? 0) > 0 } }
-        // For You — the SAME match set drives pins (visibleIdSet) and this list.
+        // For You — the SAME match set drives pins and this list.
         if forYouActive {
             let order = forYouOrder
             list = list.filter { order[$0.id] != nil }
         }
-        // Location hierarchy (migration 112) — Map previously applied NO
-        // location filter at all (same bug as web's MapExplore.jsx). Now
-        // the same `app.area` node selection Home uses, ANDed with the
-        // filters above. Pure data filter — never touches GPS/permission.
-        if app.area != LocationHierarchy.allID { list = list.filter { app.matchesArea($0) } }
         // Home quick event search (2026-09-27) — a by-name/area/keywords
         // text filter, ANDed with the filters above; never a second search
         // index (same `app.mapEvents` this screen already loads).
@@ -1310,9 +1311,7 @@ struct MapExploreView: View {
         if !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             list = list.filter { SearchMatch.matches(doc: SearchMatch.buildDoc(for: $0), query: searchQuery) }
         }
-        if sortByDistance, let coords = app.userCoords {
-            list.sort { distanceKm(coords, $0) ?? .greatestFiniteMagnitude < distanceKm(coords, $1) ?? .greatestFiniteMagnitude }
-        } else if forYouActive {
+        if forYouActive {
             let order = forYouOrder
             list.sort { (order[$0.id] ?? .max) < (order[$1.id] ?? .max) }
         }
@@ -1350,6 +1349,75 @@ struct MapExploreView: View {
         ev.catKey ?? EventCatalog.find(ev.id)?.catKey
     }
 
+    /// Primary or second category (details.cat2), like Home's catKeys.
+    private func inCategory(_ ev: MapEventRow, _ key: String) -> Bool {
+        if key == "all" { return true }
+        let keys = ev.catKeys.isEmpty ? [effectiveCatKey(ev)].compactMap { $0 } : ev.catKeys
+        return keys.contains(key)
+    }
+
+    /// What tapping each category would show in this map area, with every other active filter applied.
+    private var categoryCountMap: [String: Int] {
+        let base = areaBase
+        return Dictionary(uniqueKeysWithValues: HomeDiscovery.categories.map { c in (c.key, base.filter { inCategory($0, c.key) }.count) })
+    }
+
+    /// Real seat fill (get_public_event_fill) or nil when banbe has none; never the stale `seats_remaining`.
+    private func seatFacts(_ ev: MapEventRow) -> HomeDiscovery.FillBadge? {
+        guard let fill = app.eventFill[ev.id] else { return nil }
+        return HomeDiscovery.fillBadge(booked: fill.booked, capacity: fill.capacity)
+    }
+
+    /// "Th 4, 05.03 · 19:00" in the venue's own zone (events.tz), never the viewer's clock.
+    private func eventWhen(_ ev: MapEventRow) -> String {
+        app.discoveryWhenLabel(ev.startsAt, timeZone: EventMarket.timeZone(ev.timeZoneID))
+    }
+
+    /// Price per ticket in the event's own currency; 0 is genuinely free.
+    private func priceLine(_ ev: MapEventRow) -> String {
+        ev.priceVnd > 0
+            ? "\(EventMarket.formatMoney(ev.priceVnd, currency: ev.rowCurrency)) \(app.T("/ vé", "/ ticket"))"
+            : app.T("Miễn phí", "Free")
+    }
+
+    /// Distance only when it helps choose (≤ 50 km, Event Detail's rule); a viewer abroad saw "9662.0 km".
+    private func nearDistance(_ ev: MapEventRow) -> String? {
+        guard app.located == true, let coords = app.userCoords, let km = distanceKm(coords, ev) else { return nil }
+        return EventDetailPresentation.distanceLabel(km: km, en: app.isEN)
+    }
+
+    @ViewBuilder
+    private func seatPill(_ ev: MapEventRow, id: String) -> some View {
+        if let f = seatFacts(ev) {
+            if f.soldOut {
+                Text(app.T("Hết chỗ", "Sold out")).font(.footnote.weight(.semibold)).foregroundStyle(BanbeTheme.alert)
+                    .accessibilityIdentifier(id)
+            } else if f.almostFull, let left = f.left {
+                Text(app.T("Còn \(left) chỗ", "\(left) left")).font(.footnote.weight(.semibold))
+                    .accessibilityIdentifier(id)
+            }
+        }
+    }
+
+    /// Solid chip on the opaque sheet (glass stays on the map controls). 36pt tall, inside a 44pt hit area.
+    private func chip<Label: View>(active: Bool, muted: Bool = false, id: String, action: @escaping () -> Void, @ViewBuilder label: () -> Label) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) { label() }
+                .font(.subheadline.weight(active ? .semibold : .medium))
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 36)
+                .background(active ? app.palette.ink : app.palette.surface2, in: Capsule())
+                .foregroundStyle(active ? app.palette.paper : app.palette.ink)
+                .opacity(muted ? 0.55 : 1)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityIdentifier(id)
+    }
+
     private var sheetContent: some View {
         VStack(spacing: 0) {
             // Home quick event search (2026-09-27) — a plain text filter,
@@ -1374,8 +1442,9 @@ struct MapExploreView: View {
                 FocusableTextField(
                     text: $searchQuery,
                     isFirstResponder: $searchFieldFocused,
-                    placeholder: app.T("Tìm sự kiện theo tên…", "Search events by name…"),
-                    font: .systemFont(ofSize: 14)
+                    // The matcher covers name, category, area, host and description (Search.swift), not just names.
+                    placeholder: app.T("Tìm theo tên, loại, khu vực, người tổ chức…", "Search name, type, area, host…"),
+                    font: .preferredFont(forTextStyle: .body)
                 )
                 // Confirmed-fix follow-up (2026-09-28) — a plain
                 // `UITextField`'s own default intrinsic height is taller
@@ -1385,7 +1454,8 @@ struct MapExploreView: View {
                 // same `HStack` once swapped in. Pinned back to that
                 // original compact height explicitly, rather than relying
                 // on `UITextField`'s own default sizing.
-                .frame(height: 20)
+                // A UITextField has no intrinsic height cap here; a min height let it fill the sheet.
+                .frame(height: searchFieldHeight)
                 .accessibilityIdentifier("map.searchInput")
                 .onAppear {
                     if startFocusedOnSearch && !hadRestoredState {
@@ -1394,14 +1464,19 @@ struct MapExploreView: View {
                 }
                 if !searchQuery.isEmpty {
                     Button { searchQuery = "" } label: {
-                        Image(systemName: "xmark.circle.fill").font(.system(size: 14)).opacity(0.45)
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 16)).opacity(0.5)
+                            .frame(width: 44, height: 44)
                     }
                     .buttonStyle(.plain)
+                    .padding(.trailing, -12)
+                    .accessibilityLabel(app.T("Xoá tìm kiếm", "Clear search"))
                     .accessibilityIdentifier("map.searchClear")
                 }
             }
-            .padding(.horizontal, 12).padding(.vertical, 9)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, 12)
+            .frame(minHeight: 44)
+            // Solid field on the opaque sheet (was .thinMaterial over the map).
+            .background(app.palette.surface2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             // `.padding(.top, 8)` opens a small, deliberate gap above this
             // row — this file's own established ad-hoc spacing scale
             // (8/10/12/14/16, per .claude/notes/06-design-tokens.md)
@@ -1411,25 +1486,46 @@ struct MapExploreView: View {
             // system drag indicator.
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 10)
 
-            // Two filter rows laid out like Home's: categories on top,
-            // area / open-now / nearby below, each its own horizontally
-            // swipeable row. Chip design is unchanged.
+            // Categories: Home's definitions (eventTypeProfiles.json) and line icons, in a fixed order so the row
+            // never reshuffles. Each count is what tapping it would show with every other filter kept; a selected
+            // category stays even at 0. "All categories" opens Home's A–Z sheet.
+            let counts = categoryCountMap
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(categories, id: \.key) { cat in
-                        Text("\(cat.glyph) \(app.T(cat.vi, cat.en))")
-                            .font(.system(size: 12, weight: catFilter == cat.key ? .bold : .regular))
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                            .nativeGlassCapsule(interactive: true)
-                            .onTapGesture {
-                                if catFilter != cat.key { Haptics.selection() }
-                                catFilter = cat.key
+                    ForEach(HomeDiscovery.categories, id: \.key) { cat in
+                        let active = catFilter == cat.key
+                        let n = counts[cat.key] ?? 0
+                        chip(active: active, muted: n == 0 && !active, id: "map.cat.\(cat.key)") {
+                            if !(active && cat.key == "all") {
+                                Haptics.selection()
+                                catFilter = active ? "all" : cat.key
                             }
+                        } label: {
+                            Image(systemName: CategoryGlyph.symbol(cat.key)).font(.footnote).accessibilityHidden(true)
+                            Text(app.T(cat.vi, cat.en))
+                            Text("\(n)").monospacedDigit().opacity(active ? 0.85 : 0.6)
+                        }
+                        .accessibilityLabel(app.T("\(cat.vi), \(n) sự kiện", "\(cat.en), \(n) events"))
+                    }
+                    chip(active: false, id: "map.cat.showAll") { categorySheetOpen = true } label: {
+                        Text(app.T("Tất cả danh mục", "All categories"))
                     }
                 }
                 .padding(.horizontal, 16)
             }
-            .padding(.top, 8)
+            .rootSwipeExclusion("mapCategories")
+            .sheet(isPresented: $filterSheetOpen) {
+                // Home's sheet as a draft over THIS map area: Close discards, Apply commits atomically.
+                HomeFilterSheet(items: sheetItems, now: nowMinute, onClose: { filterSheetOpen = false },
+                                mapFilters: filters, onApplyMap: { filters = $0 })
+                    .environmentObject(app)
+            }
+            .sheet(isPresented: $categorySheetOpen) {
+                HomeCategorySheet(counts: counts, selected: catFilter == "all" ? [] : [catFilter]) { key in
+                    catFilter = catFilter == key ? "all" : key
+                }
+                .environmentObject(app)
+            }
 
             // For You pinned at the leading edge (never scrolls); only the other chips scroll.
             HStack(spacing: 8) {
@@ -1441,25 +1537,30 @@ struct MapExploreView: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
               HStack(spacing: 8) {
-                Text("\(app.currentAreaLabel) ▾")
-                    .font(.system(size: 11, weight: app.area == LocationHierarchy.allID ? .regular : .bold))
-                    .lineLimit(1)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .nativeGlassCapsule(interactive: true)
-                    .onTapGesture { locationPickerOpen = true }
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityIdentifier("map.area")
-                Text(app.T("Còn chỗ", "Open now"))
-                    .font(.system(size: 11, weight: openNowOnly ? .bold : .regular))
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .nativeGlassCapsule(interactive: true)
-                    .onTapGesture { Haptics.selection(); openNowOnly.toggle() }
-                if app.locationAuthStatus == .authorizedWhenInUse || app.locationAuthStatus == .authorizedAlways {
-                    Text(app.T("Gần bạn", "Nearby"))
-                        .font(.system(size: 11, weight: sortByDistance ? .bold : .regular))
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .nativeGlassCapsule(interactive: true)
-                        .onTapGesture { Haptics.selection(); sortByDistance.toggle() }
+                // The geographic context: the picked area while the map is framed on it, else "Map area".
+                chip(active: false, id: "map.area") { locationPickerOpen = true } label: {
+                    Text("\(areaContext == "area" && app.area != LocationHierarchy.allID ? app.currentAreaLabel : app.T("Vùng bản đồ", "Map area")) ▾")
+                }
+                // Time quick chips apply at once, judged in each event's own venue time zone (HomeDiscovery).
+                ForEach([("tonight", "Tối nay", "Tonight"), ("weekend", "Cuối tuần", "Weekend")], id: \.0) { opt in
+                    chip(active: filters.date == opt.0, id: "map.\(opt.0)") {
+                        Haptics.selection()
+                        filters.date = filters.date == opt.0 ? "any" : opt.0
+                    } label: {
+                        Text(app.T(opt.1, opt.2))
+                    }
+                }
+                // Seats left: real fill only, so hidden until banbe has any. The old English "Open now" read like
+                // opening hours; events have seats, not hours.
+                if openNowOnly || app.mapEvents.contains(where: { app.eventFill[$0.id] != nil }) {
+                    chip(active: openNowOnly, id: "map.openNow") { Haptics.selection(); openNowOnly.toggle() } label: {
+                        Text(app.T("Còn chỗ", "Seats left"))
+                    }
+                }
+                // Everything else (any date, price per ticket, almost full, type chips) in Home's sheet, as a draft.
+                chip(active: sheetFilterCount > 0, id: "map.filters") { filterSheetOpen = true } label: {
+                    Image(systemName: "slider.horizontal.3").font(.footnote).accessibilityHidden(true)
+                    Text(app.T("Bộ lọc", "Filters") + (sheetFilterCount > 0 ? " · \(sheetFilterCount)" : ""))
                 }
               }
               .padding(.leading, hasForYouPrefs ? 0 : 16)
@@ -1482,9 +1583,47 @@ struct MapExploreView: View {
                 .accessibilityIdentifier("map.foryou.editPrefs")
             }
 
+            // The settled result count for THIS map area (the list the pins come from) + honest status notices.
+            HStack(spacing: 8) {
+                Text(committedBounds != nil && !(app.mapEventsLoading && app.mapEvents.isEmpty)
+                     ? resultCountText(visibleEvents.count) : app.T("Đang tải sự kiện…", "Loading events…"))
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier("map.resultCount")
+                if app.mapEventsLoadFailed && !app.mapEvents.isEmpty {
+                    Button { Task { await app.loadMapEvents() } } label: {
+                        Text(app.T("Chưa cập nhật được · Thử lại", "Couldn't update · Retry")).font(.footnote).underline()
+                            .frame(minHeight: 32)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(app.palette.ink2)
+                    .accessibilityIdentifier("map.refreshRetry")
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16).padding(.top, 6)
+            if outsideCount > 0 && !visibleEvents.isEmpty {
+                Text(app.T("+\(outsideCount) sự kiện khớp nằm ngoài vùng này",
+                           "+\(outsideCount) matching event\(outsideCount == 1 ? "" : "s") outside this area"))
+                    .font(.footnote).foregroundStyle(app.palette.ink2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .accessibilityIdentifier("map.outsideCount")
+            }
+            if app.mapEvents.count < app.mapEventsTotal {
+                Text(app.T("Đang hiện \(app.mapEvents.count)/\(app.mapEventsTotal) sự kiện · phóng to để xem kỹ hơn",
+                           "Showing \(app.mapEvents.count) of \(app.mapEventsTotal) events · zoom in for more"))
+                    .font(.footnote).foregroundStyle(app.palette.ink2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .accessibilityIdentifier("map.incomplete")
+            }
+
             ScrollViewReader { proxy in
-                List(visibleEvents) { ev in
-                    HStack(spacing: 12) {
+                List(visibleEvents + noLocationMatches) { ev in
+                    // Mid = cards (photo + three lines); tall = a denser list (small photo, two lines).
+                    let dense = sheetDetent == .fraction(0.72)
+                    let thumb: CGFloat = dense ? 44 : 64
+                    HStack(alignment: dense ? .center : .top, spacing: 12) {
                         // Same left-side thumbnail every other event card in
                         // this app uses (CatalogPhoto -> RemoteImage ->
                         // PhotoLoader) — was missing here entirely (bug 1,
@@ -1498,20 +1637,21 @@ struct MapExploreView: View {
                         // event's own resolved real photo before ever
                         // falling back to the static demo catalogue join.
                         if let url = app.mapEventCoverURLs[ev.id] {
-                            CatalogPhoto(path: url.absoluteString, height: 52, width: 52, cornerRadius: 10).zoomSource(ev.id)
+                            CatalogPhoto(path: url.absoluteString, height: thumb, width: thumb, cornerRadius: 12).zoomSource(ev.id)
                         } else if let path = EventCatalog.find(ev.id)?.img {
-                            CatalogPhoto(path: path, height: 52, width: 52, cornerRadius: 10).zoomSource(ev.id)
+                            CatalogPhoto(path: path, height: thumb, width: thumb, cornerRadius: 12).zoomSource(ev.id)
                         }
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(ev.name).font(.system(size: 14, weight: .semibold))
-                            // Task 3 (11-realtime-map.md follow-up): shown
-                            // whenever location permission is already
-                            // granted, independent of "Gần bạn" — that chip
-                            // still only controls SORTING/filtering by
-                            // distance, unchanged; this is purely about
-                            // whether the km figure is DISPLAYED at all.
-                            Text(ev.area + (sortByDistance || locationGranted ? distanceSuffix(ev) : ""))
-                                .font(.system(size: 11)).opacity(0.6)
+                            Text(ev.name).font(.body.weight(.semibold)).lineLimit(2)
+                            // Venue date · time (the event's own zone), then the area, plus a distance only when it
+                            // helps choose (≤ 50 km); a viewer abroad saw "9662.0 km" on every row.
+                            Text([eventWhen(ev), dense ? ev.area : nil].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+                                .font(.subheadline).foregroundStyle(app.palette.ink2).lineLimit(1)
+                                .accessibilityIdentifier("map.list.when.\(ev.id)")
+                            if !dense {
+                                Text([ev.area, nearDistance(ev)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+                                    .font(.subheadline).foregroundStyle(app.palette.ink2).lineLimit(1)
+                            }
                             // Stage 3 — an honest "no map location" state
                             // for an event with no (or not-yet-confirmed)
                             // coordinates, never a silently-omitted row or
@@ -1522,14 +1662,19 @@ struct MapExploreView: View {
                                     .accessibilityIdentifier("map.list.noLocation.\(ev.id)")
                             }
                         }
-                        Spacer()
+                        Spacer(minLength: 8)
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text(priceLine(ev)).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                .accessibilityIdentifier("map.list.price.\(ev.id)")
+                            seatPill(ev, id: "map.list.seats.\(ev.id)")
+                        }
                     }
+                    .padding(.vertical, dense ? 2 : 6)
                     .id(ev.id)
                     .contentShape(Rectangle())
                     .onTapGesture { selectEvent(ev) }
-                    .onAppear {
-                        if ev.id == visibleEvents.last?.id { Task { await app.loadMapEvents(bounds: lastQueriedRegion.map(boundsOf)) } }
-                    }
+                    .listRowBackground(ev.id == selectedId ? app.palette.ink.opacity(0.05) : Color.clear)
+                    .accessibilityAddTraits(ev.id == selectedId ? [.isButton, .isSelected] : .isButton)
                     // Refresh-indicator fix pass (2026-09-27, follow-up A)
                     // — same `ScaffoldScrollProbe` ScreenScaffold's own
                     // root screens use, anchored to this FIRST row (a real
@@ -1540,7 +1685,7 @@ struct MapExploreView: View {
                     // RootRefreshIndicator's own comment). Reuses the exact
                     // SAME refetch the removed `.refreshable` called.
                     .background(
-                        ev.id == visibleEvents.first?.id
+                        ev.id == (visibleEvents + noLocationMatches).first?.id
                             ? AnyView(ScaffoldScrollProbe(
                                 onChange: { _, _ in },
                                 onPullPhase: { phase, translationY in
@@ -1548,11 +1693,8 @@ struct MapExploreView: View {
                                     case .began: app.beginRootPull()
                                     case .changed: app.updateRootPull(translationY)
                                     case .ended:
-                                        app.endRootPull(trigger: {
-                                            guard let region = lastQueriedRegion else { return }
-                                            boundsChanged = false
-                                            await app.loadMapEvents(bounds: boundsOf(region))
-                                        })
+                                        // The same whole-set refresh: camera, area, filters and selection stay put.
+                                        app.endRootPull(trigger: { await app.loadMapEvents() })
                                     case .cancelled: app.cancelRootPull()
                                     }
                                 }
@@ -1561,11 +1703,14 @@ struct MapExploreView: View {
                     )
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                // The floating dock (its own window) sits over the sheet's bottom: the last row must clear it.
+                .contentMargins(.bottom, BottomTabBar.contentClearance, for: .scrollContent)
                 .overlay { forYouEmptyState }
                 // Pull-to-refresh hold fix (2026-09-29) — see
                 // `AppState.rootPullContentOffset`'s own doc comment.
                 .offset(y: app.rootPullContentOffset)
-                .onChange(of: visibleEvents.map(\.id)) { _, ids in
+                .onChange(of: selectableIDs) { _, ids in
                     // Bug 2 (best-effort list-scroll restore): SwiftUI's
                     // List has no pixel scrollTop to round-trip the way a
                     // web scroll container does, so this restores by
@@ -1613,7 +1758,8 @@ struct MapExploreView: View {
             }
             .padding(.horizontal, 10).padding(.vertical, 5)
             .foregroundStyle(active ? app.palette.paper : app.palette.ink)
-            .nativeGlassCapsule(interactive: true, tint: active ? app.palette.ink : nil)
+            .frame(minHeight: 36)
+            .background(active ? app.palette.ink : app.palette.surface2, in: Capsule())
             .overlay(Capsule().stroke(active ? app.palette.ink : gold.opacity(0.7), lineWidth: 1))
         }
         .buttonStyle(.plain)
@@ -1627,7 +1773,17 @@ struct MapExploreView: View {
         .onChange(of: app.userID) { _, id in forYouAlert.attach(userID: id?.uuidString) }
     }
 
-    /// Loading / empty states while For You is on and the list has nothing to show.
+    private func emptyAction(_ title: String, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 16).frame(minHeight: 44)
+                .background(app.palette.surface2, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
+    }
+
+    /// Loading / empty states while the list has nothing to show (For You's own, then the general ones).
     @ViewBuilder
     private var forYouEmptyState: some View {
         if forYouActive && visibleEvents.isEmpty {
@@ -1655,39 +1811,37 @@ struct MapExploreView: View {
             }
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        } else if visibleEvents.isEmpty {
-            // Without For You the list used to show nothing at all when empty or offline.
+        } else if visibleEvents.isEmpty && noLocationMatches.isEmpty {
+            // Each empty state says WHY, and never silently widens the area or loosens filters: first load · failed
+            // first load · filters hide the events that are here · nothing in this part of the map.
             VStack(spacing: 10) {
-                if app.mapEventsLoading {
+                if app.mapEventsLoading && app.mapEvents.isEmpty {
                     ProgressView()
-                    Text(app.T("Đang tải sự kiện…", "Loading events…")).font(.system(size: 13)).opacity(0.6)
-                } else if app.mapEventsLoadFailed {
-                    Image(systemName: "wifi.exclamationmark").font(.system(size: 22)).opacity(0.6)
+                    Text(app.T("Đang tải sự kiện…", "Loading events…")).font(.subheadline).foregroundStyle(app.palette.ink2)
+                } else if app.mapEventsLoadFailed && app.mapEvents.isEmpty {
+                    Image(systemName: "wifi.exclamationmark").font(.title3).foregroundStyle(app.palette.ink2)
                     Text(app.T("Chưa tải được sự kiện. Kiểm tra kết nối mạng rồi thử lại.",
                                "Couldn't load events. Check your connection and try again."))
-                        .font(.system(size: 13)).opacity(0.7).multilineTextAlignment(.center)
-                    Button {
-                        Task { await app.loadMapEvents(bounds: lastQueriedRegion.map { boundsOf($0) }) }
-                    } label: {
-                        Text(app.T("Thử lại", "Try again")).font(.system(size: 13, weight: .semibold)).underline()
+                        .font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
+                    emptyAction(app.T("Thử lại", "Try again"), id: "map.retry") { Task { await app.loadMapEvents() } }
+                } else if committedBounds != nil && anyInArea && filtersActive {
+                    Text(searchQuery.trimmingCharacters(in: .whitespaces).isEmpty
+                         ? app.T("Có sự kiện trong vùng này nhưng bộ lọc đang ẩn chúng.", "There are events in this area, but your filters hide them.")
+                         : app.T("Không có sự kiện nào trong vùng này khớp với \"\(searchQuery)\".", "No events in this area match \"\(searchQuery)\"."))
+                        .font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
+                    emptyAction(app.T("Xoá bộ lọc", "Clear filters"), id: "map.clearFilters") { clearFilters() }
+                } else if committedBounds != nil {
+                    Text(app.T("Không có sự kiện nào trong vùng bản đồ này.", "No events in this part of the map."))
+                        .font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
+                    if !matchingAnywhere.isEmpty {
+                        emptyAction(app.T("Xem sự kiện gần nhất", "Show nearest events"), id: "map.showNearest") { showNearest() }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("map.retry")
-                } else {
-                    Text(app.T("Không có sự kiện nào trong vùng bản đồ này. Thử thu nhỏ bản đồ hoặc đổi bộ lọc.",
-                               "No events in this part of the map. Try zooming out or changing the filters."))
-                        .font(.system(size: 13)).opacity(0.7).multilineTextAlignment(.center)
                 }
             }
             .accessibilityIdentifier("map.emptyState")
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-    }
-
-    private func distanceSuffix(_ ev: MapEventRow) -> String {
-        guard let coords = app.userCoords, let km = distanceKm(coords, ev) else { return "" }
-        return String(format: " ▪︎ %.1f km", km)
     }
 }
 

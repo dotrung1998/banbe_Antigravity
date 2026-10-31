@@ -133,6 +133,11 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
         // all) for an event with no confirmed coordinates, same honesty
         // rule web's own `mapsUrl(ev)` (src/data/events.js) already
         // applies — never a link that silently opens at 0,0.
+        Self.mapsURL(lat: lat, lng: lng)
+    }
+
+    /// The one directions link (Event Detail and the Map card); nil without confirmed coordinates.
+    static func mapsURL(lat: Double?, lng: Double?) -> URL? {
         guard let lat, let lng else { return nil }
         return URL(string: "https://www.google.com/maps/search/?api=1&query=\(lat),\(lng)")
     }

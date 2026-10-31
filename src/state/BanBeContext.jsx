@@ -1403,6 +1403,7 @@ const initialState = {
   // Explicitly cleared (not just left stale) on an intentional exit via the
   // "← Đóng" button, so reopening the map from Home later starts fresh.
   mapExploreState: null,
+  mapExploreEntry: null,
   // Photo identity/engagement fix (real event_photos.id, not a URL) —
   // canonical, keyed by event_photos.id, shared by EventDetail's/
   // Organizer's photo grids, the full-screen PhotoViewer AND Banbe Pulse's
@@ -6553,7 +6554,13 @@ export function BanBeProvider({ children }) {
     set({ scheduleAddedKeys: scheduleStore.keys(scheduleUid) });
     track('banbe_schedule_remove');
   }, [scheduleUid, set]);
-  const goMapExplore = useCallback(() => set({ screen: 'mapExplore' }), [set]);
+  // Home → Map contract (Map redesign phase 3): an optional context { source, filters, query, forYou } the Map reads
+  // once at open (applied filters, never geography — the Map frames its own area). The dock tab passes its click
+  // event here, so only a plain object with a `source` counts.
+  const goMapExplore = useCallback((ctx) => set({
+    screen: 'mapExplore',
+    mapExploreEntry: ctx && typeof ctx === 'object' && typeof ctx.source === 'string' ? ctx : null,
+  }), [set]);
   const backFromMapExplore = useCallback(() => set({ screen: 'home' }), [set]);
   // Plain setter, not map-specific logic — MapExplore.jsx owns deciding
   // *when* to save (right before its CTA navigates to Event Detail) and

@@ -15,6 +15,14 @@ struct HomeFilterSheet: View {
     let items: [HomeDiscovery.Item]
     let now: Date
     let onClose: () -> Void
+    /// Map mode (Map redesign phase 3): the same draft sheet for the Map. Seeds from the Map's filters and hands the
+    /// draft back on Apply; the map itself is the location and the list is soonest-first, so Location, Sort and
+    /// Category (the Map's own row) are hidden; "Tonight" joins the date pills; price reads per ticket. `items` are
+    /// the events IN THE MAP AREA, so "Show N" is exactly the resulting list.
+    var mapFilters: HomeDiscovery.Filters? = nil
+    var onApplyMap: ((HomeDiscovery.Filters) -> Void)? = nil
+    private var mapMode: Bool { onApplyMap != nil }
+    private var dateOptions: [String] { mapMode ? HomeDiscovery.mapDateOptions : HomeDiscovery.dateOptions }
 
     @State private var draft = HomeDiscovery.Filters.default
     @State private var draftSort = "soonest"
@@ -51,10 +59,12 @@ struct HomeFilterSheet: View {
                     priceSection
                     // Simple Shell follow-up (plan item 2): categories and event-type chips live on Home's own rows
                     // again (one source of truth), so the sheet drops both while the switch is on. OFF: unchanged.
-                    if !app.simpleShellEnabled { categorySection }
+                    if !app.simpleShellEnabled && !mapMode { categorySection }
                     seatsSection
-                    locationSection
-                    sortSection
+                    if !mapMode {
+                        locationSection
+                        sortSection
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
@@ -63,8 +73,12 @@ struct HomeFilterSheet: View {
             VStack(spacing: 8) {
                 InkButton(title: ctaTitle(resultCount, hints.first), cornerRadius: 999) {
                     if resultCount > 0 {
-                        app.homeFilters = draft
-                        app.homeSort = draftSort
+                        if let onApplyMap {
+                            onApplyMap(draft)
+                        } else {
+                            app.homeFilters = draft
+                            app.homeSort = draftSort
+                        }
                         onClose()
                     } else if let hint = hints.first {
                         draft = hint.filters
@@ -72,7 +86,9 @@ struct HomeFilterSheet: View {
                 }
                 .accessibilityIdentifier("home.filter.apply")
                 .accessibilityValue("\(resultCount)")
-                Text(app.T("trên tổng \(items.count) sự kiện", "out of \(items.count) events"))
+                Text(mapMode
+                     ? app.T("trên tổng \(items.count) sự kiện trong vùng bản đồ", "out of \(items.count) event\(items.count == 1 ? "" : "s") in this map area")
+                     : app.T("trên tổng \(items.count) sự kiện", "out of \(items.count) events"))
                     .font(.system(size: 11.5)).opacity(0.55)
             }
             .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 18)
@@ -82,7 +98,7 @@ struct HomeFilterSheet: View {
         .onAppear {
             guard !seeded else { return }
             seeded = true
-            draft = app.homeFilters
+            draft = mapFilters ?? app.homeFilters
             draftSort = app.homeSort
         }
         .sheet(isPresented: $areaOpen) {
@@ -195,11 +211,11 @@ struct HomeFilterSheet: View {
     }()
 
     private var whenSection: some View {
-        let counts = D.optionCounts(items, draft, .date, options: D.dateOptions, now: now)
+        let counts = D.optionCounts(items, draft, .date, options: dateOptions, now: now)
         let picked = draft.date.hasPrefix("on:")
         return section(app.T("Khi nào", "When")) {
             FlowRow(spacing: 8) {
-                ForEach(D.dateOptions, id: \.self) { opt in
+                ForEach(dateOptions, id: \.self) { opt in
                     let label = D.dateLabels[opt] ?? (opt, opt)
                     pill(app.T(label.vi, label.en), active: draft.date == opt, count: opt == "any" ? nil : counts[opt],
                          disabled: opt != "any" && counts[opt] == 0, id: "home.filter.date.\(opt)") { draft.date = opt }
@@ -248,7 +264,7 @@ struct HomeFilterSheet: View {
         let contextLine = [catLabel, areaLabel,
                            paidMedian.map { app.T("trung vị \(shown(Int($0)))", "median \(shown(Int($0)))") }]
             .compactMap { $0 }.joined(separator: " · ")
-        return section(app.T("Giá", "Price"), right: {
+        return section(mapMode ? app.T("Giá mỗi vé", "Price per ticket") : app.T("Giá", "Price"), right: {
             Button {
                 forTwo.toggle()
             } label: {

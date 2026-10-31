@@ -18,7 +18,7 @@ import { CategoryGlyph, CATEGORY_DEFS } from '../../components/home/HomeDiscover
 import AreaSheet from './AreaSheet.jsx';
 
 export const DATE_LABELS = {
-  any: ['Mọi lúc', 'Any time'], today: ['Hôm nay', 'Today'], tomorrow: ['Ngày mai', 'Tomorrow'],
+  any: ['Mọi lúc', 'Any time'], tonight: ['Tối nay', 'Tonight'], today: ['Hôm nay', 'Today'], tomorrow: ['Ngày mai', 'Tomorrow'],
   weekend: ['Cuối tuần này', 'This weekend'], week: ['7 ngày tới', 'Next 7 days'],
 };
 export const SORT_LABELS = {
@@ -60,7 +60,13 @@ const Section = ({ title, right, children }) => (
 // Simple Shell (switch simple_shell, note 66): Sort lives in here (`simpleShell` adds the home-sort-button id to it).
 // Follow-up: categories and the event-type chips are back on Home's own rows (one source of truth), so with the
 // switch on this sheet has no Category / Event style sections. Off = the sheet as before 6028e9e.
-export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel, simpleShell = false }) {
+// `mapMode` (Map redesign phase 3): the same draft sheet for the Map. The map itself is the location, and the list is
+// soonest-first, so Location and Sort are hidden; "Tonight" joins the date pills; price reads per ticket; the counts and
+// the CTA are over the events IN THE MAP AREA (the caller passes those `items`), so "Show N" is the resulting list.
+const MAP_DATE_OPTIONS = ['any', 'tonight', 'today', 'tomorrow', 'weekend', 'week'];
+
+export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel, simpleShell = false, mapMode = false }) {
+  const dateOptions = mapMode ? MAP_DATE_OPTIONS : DATE_OPTIONS;
   const [draft, setDraft] = useState(() => normalizeFilters(filters));
   const [draftSort, setDraftSort] = useState(sort || 'soonest');
   const [forTwo, setForTwo] = useState(false);
@@ -76,7 +82,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
 
   const total = items.length;
   const resultCount = useMemo(() => applyDiscoveryFilters(items, draft, now).length, [items, draft, now]);
-  const dateCounts = useMemo(() => optionCounts(items, draft, 'date', DATE_OPTIONS, now), [items, draft, now]);
+  const dateCounts = useMemo(() => optionCounts(items, draft, 'date', dateOptions, now), [items, draft, now, dateOptions]);
   const catKeys = CATEGORY_DEFS.filter(c => c.key !== 'all').map(c => c.key);
   const catCounts = useMemo(() => optionCounts(items, draft, 'cats', catKeys, now), [items, draft, now]); // eslint-disable-line react-hooks/exhaustive-deps
   const freeCount = useMemo(() => optionCounts(items, draft, 'free', null, now).true, [items, draft, now]);
@@ -132,7 +138,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
         <div style={{ overflowY: 'auto', padding: '0 20px', flex: 1 }}>
           <Section title={T('Khi nào', 'When')}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {DATE_OPTIONS.map(opt => (
+              {dateOptions.map(opt => (
                 <Pill key={opt} active={draft.date === opt} onClick={() => patch({ date: opt })} count={opt === 'any' ? null : dateCounts[opt]}
                   disabled={opt !== 'any' && dateCounts[opt] === 0} testId={`home-filter-date-${opt}`}>
                   {T(...DATE_LABELS[opt])}
@@ -149,7 +155,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
             </div>
           </Section>
 
-          <Section title={T('Giá', 'Price')} right={
+          <Section title={mapMode ? T('Giá mỗi vé', 'Price per ticket') : T('Giá', 'Price')} right={
             <button type="button" onClick={() => setForTwo(v => !v)} aria-pressed={forTwo} data-testid="home-filter-for-two"
               style={{ border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, opacity: forTwo ? 1 : 0.6, cursor: 'pointer', padding: 0 }}>
               {forTwo ? '✓ ' : ''}{T('Giá cho 2 người', 'Price for 2')}
@@ -211,13 +217,16 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
             </div>
           </Section>
 
+          {!mapMode && (
           <Section title={T('Khu vực', 'Location')}>
             <button type="button" onClick={() => setAreaOpen(true)} data-testid="home-filter-area"
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minHeight: 44, border: `1px solid ${rule}`, borderRadius: RADIUS.tile, background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, padding: '0 14px', cursor: 'pointer' }}>
               <span>{areaLabel || T('Mọi nơi', 'Everywhere')}</span><span aria-hidden="true">›</span>
             </button>
           </Section>
+          )}
 
+          {!mapMode && (
           <Section title={T('Sắp xếp', 'Sort by')}>
             <div role={simpleShell ? 'group' : undefined} aria-label={simpleShell ? T('Sắp xếp', 'Sort by') : undefined}
               data-testid={simpleShell ? 'home-sort-button' : undefined} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -229,6 +238,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
             </div>
             {!canSortNearest && <div style={{ fontSize: 11.5, opacity: 0.6, marginTop: 8 }}>{T('Bật vị trí để sắp xếp theo khoảng cách.', 'Turn on location to sort by distance.')}</div>}
           </Section>
+          )}
           <div style={{ height: 12 }} />
         </div>
 
@@ -237,7 +247,11 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
             style={{ ...inkButton({ width: '100%', padding: 15, borderRadius: RADIUS.pill }), border: 'none', fontFamily: 'inherit' }}>
             {cta}
           </button>
-          <div style={{ fontSize: 11.5, opacity: 0.55, textAlign: 'center', marginTop: 8 }}>{T(`trên tổng ${total} sự kiện`, `out of ${total} events`)}</div>
+          <div style={{ fontSize: 11.5, opacity: 0.55, textAlign: 'center', marginTop: 8 }}>
+            {mapMode
+              ? T(`trên tổng ${total} sự kiện trong vùng bản đồ`, `out of ${total} event${total === 1 ? '' : 's'} in this map area`)
+              : T(`trên tổng ${total} sự kiện`, `out of ${total} events`)}
+          </div>
         </div>
       </div>
       {areaOpen && <AreaSheet embedded onDone={() => setAreaOpen(false)} />}

@@ -1403,7 +1403,7 @@ struct HomeView: View {
                 if includeMap {
                     Button {
                         Haptics.selection()
-                        app.goMapExplore()
+                        app.goMapExploreFromHome()
                     } label: {
                         Image(systemName: "map").font(.system(size: 13, weight: .semibold))
                             .frame(width: 36, height: 30)
@@ -1585,7 +1585,7 @@ struct HomeView: View {
             action: { app.clearFilters(); app.homeSort = "soonest" },
             secondaryTitle: app.T("Tìm trên bản đồ", "Look on the map"),
             secondaryID: "home.empty.map",
-            secondaryAction: { app.goMapExplore() },
+            secondaryAction: { app.goMapExploreFromHome() },
             identifier: "home.empty"
         )
         .padding(.vertical, 20)

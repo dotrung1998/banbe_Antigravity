@@ -1413,7 +1413,7 @@ struct RootView: View {
         // in a later `.task` — so the very first frame this switch draws
         // already shows the restored camera/detent/filters/selection
         // instead of flashing the defaults for a frame first.
-        case .mapExplore: MapExploreView(restored: app.mapExploreState, isPreview: isPreview, startFocusedOnSearch: app.mapExploreFocusSearch, isActive: isActive, seedQuery: app.mapExploreSeedQuery)
+        case .mapExplore: MapExploreView(restored: app.mapExploreState, isPreview: isPreview, startFocusedOnSearch: app.mapExploreFocusSearch, isActive: isActive, seedQuery: app.mapExploreSeedQuery, entry: app.mapExploreEntry)
         case .home: HomeView()
         case .profile: AccountView()
         // TASK 2 (2026-09-22 twenty-first follow-up) — see InboxView's own

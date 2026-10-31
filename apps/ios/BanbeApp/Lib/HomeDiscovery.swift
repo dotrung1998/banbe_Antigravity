@@ -10,6 +10,8 @@ import Foundation
 enum HomeDiscovery {
     static let defaultOffsetMin = 420
     static let dateOptions = ["any", "today", "tomorrow", "weekend", "week"]
+    /// The Map's date pills (Map redesign phase 3): Home's plus "Tonight" (judged in each event's venue zone).
+    static let mapDateOptions = ["any", "tonight", "today", "tomorrow", "weekend", "week"]
     static let sortModes = ["soonest", "nearest", "popular", "price"]
 
     static let almostFullSeats = 3
@@ -35,13 +37,17 @@ enum HomeDiscovery {
         var currency: String
         /// events.details (migration 203): what the event-type chips match on. Empty for legacy and demo events.
         var details: EventDetails
+        /// The venue's IANA zone (events.tz, migration 195). With it, date options are judged in THAT zone
+        /// (`dateWindowInZone`); without it, the fixed offset (Vietnam) as before.
+        var tz: String?
 
         init(key: String, startsAt: Date?, priceVnd: Int?, catKeys: [String], booked: Int? = nil, capacity: Int? = nil,
              soldOut: Bool = false, distanceKm: Double? = nil, popularity: Double? = nil, currency: String = "VND",
-             details: EventDetails = [:]) {
+             details: EventDetails = [:], tz: String? = nil) {
             self.key = key; self.startsAt = startsAt; self.priceVnd = priceVnd; self.catKeys = catKeys
             self.booked = booked; self.capacity = capacity; self.soldOut = soldOut
             self.distanceKm = distanceKm; self.popularity = popularity; self.currency = currency; self.details = details
+            self.tz = tz
         }
     }
 
@@ -154,8 +160,50 @@ enum HomeDiscovery {
 
     // MARK: Filtering
 
+    // MARK: Venue-time windows (Map redesign phase 3; web twin dateWindowInZone in src/lib/homeDiscovery.js)
+    // tonight = 17:00 → 04:00 next morning (00:00–04:00 is still the night in progress); weekend = Fri 17:00 → Mon
+    // 00:00; today/tomorrow/on:date = venue calendar days. Every window starts no earlier than `now` (events have no
+    // end time, so an event that already started is never offered as "happening now").
+
+    /// [start, end) for a date option in an IANA zone, or nil for "any"/unknown.
+    static func dateWindowInZone(_ option: String, now: Date, timeZone: TimeZone) -> (start: Date, end: Date)? {
+        guard option != "any" else { return nil }
+        let cal = EventMarket.calendar(timeZone)
+        let p = cal.dateComponents([.year, .month, .day, .hour, .weekday], from: now)
+        guard let y = p.year, let m = p.month, let d = p.day else { return nil }
+        func at(_ dayOffset: Int, from base: (Int, Int, Int), _ hour: Int) -> Date {
+            var c = DateComponents(); c.year = base.0; c.month = base.1; c.day = base.2 + dayOffset; c.hour = hour; c.minute = 0
+            return cal.date(from: c) ?? now
+        }
+        let today = (y, m, d)
+        switch option {
+        case "today": return (now, at(1, from: today, 0))
+        case "tomorrow": return (at(1, from: today, 0), at(2, from: today, 0))
+        case "week": return (now, now.addingTimeInterval(7 * 86_400))
+        case "tonight":
+            let shift = (p.hour ?? 12) < 4 ? -1 : 0
+            return (max(now, at(shift, from: today, 17)), at(shift + 1, from: today, 4))
+        case "weekend":
+            let wd = ((p.weekday ?? 1) - 1 + 6) % 7 // 0 = Monday ... 6 = Sunday
+            let toFriday = 4 - wd
+            return (max(now, at(toFriday, from: today, 17)), at(toFriday + 3, from: today, 0))
+        default:
+            guard option.hasPrefix("on:") else { return nil }
+            let parts = option.dropFirst(3).split(separator: "-").compactMap { Int($0) }
+            guard parts.count == 3 else { return nil }
+            let day = (parts[0], parts[1], parts[2])
+            return (max(now, at(0, from: day, 0)), at(1, from: day, 0))
+        }
+    }
+
+    /// The window an item is judged by: its venue zone when it has one, else the fixed offset.
+    private static func window(for item: Item, _ option: String, now: Date, offsetMin: Int) -> (start: Date, end: Date)? {
+        if let tz = item.tz, let zone = TimeZone(identifier: tz) { return dateWindowInZone(option, now: now, timeZone: zone) }
+        return dateWindow(option, now: now, offsetMin: offsetMin)
+    }
+
     private static func matches(_ item: Item, _ f: Filters, now: Date, offsetMin: Int) -> Bool {
-        if f.date != "any", let w = dateWindow(f.date, now: now, offsetMin: offsetMin) {
+        if f.date != "any", let w = window(for: item, f.date, now: now, offsetMin: offsetMin) {
             guard let s = item.startsAt, s >= w.start, s < w.end else { return false }
         }
         if f.free && item.priceVnd != 0 { return false }
@@ -341,7 +389,7 @@ enum HomeDiscovery {
 
 extension HomeDiscovery {
     static let dateLabels: [String: (vi: String, en: String)] = [
-        "any": ("Mọi lúc", "Any time"), "today": ("Hôm nay", "Today"), "tomorrow": ("Ngày mai", "Tomorrow"),
+        "any": ("Mọi lúc", "Any time"), "tonight": ("Tối nay", "Tonight"), "today": ("Hôm nay", "Today"), "tomorrow": ("Ngày mai", "Tomorrow"),
         "weekend": ("Cuối tuần này", "This weekend"), "week": ("7 ngày tới", "Next 7 days"),
     ]
     static let sortLabels: [String: (vi: String, en: String)] = [

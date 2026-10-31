@@ -20,6 +20,7 @@
 // 420 is the default; pass another offset rather than reading the device zone, so tests are exact.
 
 import { typeFilterDef, matchesHomeFilter } from './eventTypes.js';
+import { zonedParts, wallClockToMs } from './eventMarket.js';
 
 export const DEFAULT_OFFSET_MIN = 420;
 export const DATE_OPTIONS = ['any', 'today', 'tomorrow', 'weekend', 'week'];
@@ -67,6 +68,55 @@ export function dateWindow(option, now, offsetMin = DEFAULT_OFFSET_MIN) {
   return null;
 }
 
+// ---- venue-time windows (Map redesign phase 3) ----------------------------------------------------------------
+// An item that carries its venue zone (`tz`, events.tz, migration 195) is judged in THAT zone, never the viewer's:
+// a Los Angeles "Tonight" is 17:00–04:00 Los Angeles time even for a viewer in Hanoi, DST included. Items without a
+// zone keep the fixed-offset rule above (every launch market is UTC+7, so Vietnam results are unchanged).
+//   tonight  = 17:00 → 04:00 next morning. Between 00:00 and 04:00 it is still the night in progress.
+//   weekend  = Friday 17:00 → Monday 00:00 (the same rule as above).
+//   today / tomorrow / on:date = venue calendar days. Every window starts no earlier than `now`: an event that has
+//   already started is never offered (events have no end time, so "happening now" can't be claimed).
+const pad2 = (n) => String(n).padStart(2, '0');
+const addDays = ([y, m, d], n) => { const t = new Date(Date.UTC(y, m - 1, d + n)); return [t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()]; };
+const ymd = ([y, m, d]) => `${y}-${pad2(m)}-${pad2(d)}`;
+
+/** [start, end) in ms for a date option in an IANA zone, or null for 'any'/unknown. */
+export function dateWindowInZone(option, now, timeZone) {
+  if (!option || option === 'any') return null;
+  const p = zonedParts(now, timeZone);
+  const today = [p.year, p.month, p.day];
+  const at = (day, hhmm) => wallClockToMs(ymd(day), hhmm, timeZone);
+  if (option === 'today') return [now, at(addDays(today, 1), '00:00')];
+  if (option === 'tomorrow') return [at(addDays(today, 1), '00:00'), at(addDays(today, 2), '00:00')];
+  if (option === 'week') return [now, now + 7 * DAY];
+  if (option === 'tonight') {
+    const night = p.hour < 4 ? addDays(today, -1) : today;
+    return [Math.max(now, at(night, '17:00')), at(addDays(night, 1), '04:00')];
+  }
+  if (option === 'weekend') {
+    const wd = (p.weekday + 6) % 7; // 0 = Monday ... 6 = Sunday
+    const friday = addDays(today, 4 - wd);
+    return [Math.max(now, at(friday, '17:00')), at(addDays(friday, 3), '00:00')];
+  }
+  if (typeof option === 'string' && option.startsWith('on:')) {
+    const m = option.slice(3).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    const day = [+m[1], +m[2], +m[3]];
+    return [Math.max(now, at(day, '00:00')), at(addDays(day, 1), '00:00')];
+  }
+  return null;
+}
+
+/** The window an item is judged by: its venue zone when it has one, else the fixed offset. */
+function itemWindow(item, option, now, offsetMin, cache) {
+  if (!item.tz) {
+    if (!cache.has('')) cache.set('', dateWindow(option, now, offsetMin));
+    return cache.get('');
+  }
+  if (!cache.has(item.tz)) cache.set(item.tz, dateWindowInZone(option, now, item.tz));
+  return cache.get(item.tz);
+}
+
 // ---- fill --------------------------------------------------------------------
 export const ALMOST_FULL_SEATS = 3;
 export const ALMOST_FULL_SHARE = 0.2;
@@ -99,9 +149,9 @@ const currencyOf = (item) => (item?.currency === 'USD' ? 'USD' : 'VND');
 // Free is free in any currency; a paid price is only comparable with bounds in its own currency.
 const priceComparable = (item, currency) => item.priceVnd === 0 || (item.priceVnd != null && currencyOf(item) === currency);
 
-function matches(item, f, now, offsetMin) {
+function matches(item, f, now, offsetMin, cache) {
   if (f.date && f.date !== 'any') {
-    const w = dateWindow(f.date, now, offsetMin);
+    const w = itemWindow(item, f.date, now, offsetMin, cache);
     if (w && (item.startsAt == null || item.startsAt < w[0] || item.startsAt >= w[1])) return false;
   }
   if (f.free && item.priceVnd !== 0) return false;
@@ -123,7 +173,8 @@ function matches(item, f, now, offsetMin) {
 
 export function applyDiscoveryFilters(items, filters, now, offsetMin = DEFAULT_OFFSET_MIN) {
   const f = normalizeFilters(filters);
-  return (items || []).filter(it => matches(it, f, now, offsetMin));
+  const cache = new Map(); // one window per zone per call
+  return (items || []).filter(it => matches(it, f, now, offsetMin, cache));
 }
 
 /** Number of non-default filters (the badge on the Filters button). */

@@ -1381,12 +1381,16 @@ extension AppState {
     /// or a poll re-query of the last-searched box); nil bounds is the
     /// initial load, used only to compute the density-hotspot center.
     @MainActor
-    func loadMapEvents(bounds: (south: Double, north: Double, west: Double, east: Double)? = nil) async {
+    /// Map redesign phase 2: the Map loads the WHOLE public live set (up to this many) with an exact count and
+    /// filters by the committed map area locally — panning never needs the network (web: MAP_EVENT_CAP).
+    static let mapEventCap = 500
+
+    func loadMapEvents() async {
         mapEventsGeneration += 1
         let generation = mapEventsGeneration
         do {
-            let rows: [MapEventRow] = try await Self.retryingEventColumns { withR2 in
-            var filter = SupabaseService.client
+            let (rows, total): ([MapEventRow], Int) = try await Self.retryingEventColumns { withR2 in
+            let filter = SupabaseService.client
                 .from("events")
                 // Keyword-search fix (migration 108) — re-enabled
                 // 2026-09-29 after confirming (a live, read-only query
@@ -1398,7 +1402,7 @@ extension AppState {
                 // intro/organizers(name)) so the search document built by
                 // `Search.buildEventSearchDoc` has category/organizer/
                 // description text available regardless of `keywords`.
-                .select(MediaColumns.cols("id, cat_key, cat_label, name, area, city, country_code, state_province, neighborhood, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)" + EventMarketColumns.suffix, "cover_r2_ref", withR2))
+                .select(MediaColumns.cols("id, cat_key, cat_label, name, area, city, country_code, state_province, neighborhood, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)" + EventMarketColumns.suffix + EventDetailsColumns.suffix, "cover_r2_ref", withR2), count: .exact)
                 .eq("status", value: "live")
                 // Strict invite-only events (migration 113) — this query
                 // never filtered visibility at all, the exact same gap
@@ -1408,20 +1412,20 @@ extension AppState {
                 // backstop now, but this list should stay honest
                 // client-side too.
                 .eq("visibility", value: "public")
-            if let bounds {
-                filter = filter
-                    .gte("lat", value: bounds.south).lte("lat", value: bounds.north)
-                    .gte("lng", value: bounds.west).lte("lng", value: bounds.east)
-            }
-            return try await filter
+            let response: PostgrestResponse<[MapEventRow]> = try await filter
                 .order("starts_at", ascending: true)
-                .limit(60)
-                .execute().value
+                .limit(Self.mapEventCap)
+                .execute()
+            return (response.value, response.count ?? response.value.count)
             }
             // A newer load started while this one was in flight: its answer wins, this one is dropped.
             guard generation == mapEventsGeneration else { return }
             mapEvents = rows
+            mapEventsTotal = total
             mapEventsLoadFailed = false
+            // Real seat fill (migration 186) for the Map's seat pill and "Còn chỗ / Seats left";
+            // `seats_remaining` is never decremented (note 50).
+            await loadPublicEventFill(ids: rows.map(\.id))
 
             // Real-cover-photo fix (2026-10-19) — root cause: MapExploreView
             // used to render `EventCatalog.find(ev.id)?.img` unconditionally

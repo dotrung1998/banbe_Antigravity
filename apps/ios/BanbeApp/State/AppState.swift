@@ -560,6 +560,9 @@ final class AppState: ObservableObject {
     var searchEntranceFrom: CGRect?
     /// One-shot query Map applies on its next fresh open ("See on map" from Search).
     @Published var mapExploreSeedQuery: String?
+    /// Home → Map contract (Map redesign phase 3): Home's applied filters + For You, read once by the next fresh Map
+    /// open (filters only — the Map frames its own area). The dock tab never sets it. Web twin: mapExploreEntry.
+    var mapExploreEntry: (filters: HomeDiscovery.Filters, forYou: Bool)?
 
     // MARK: Event preferences + onboarding (migration 162, note 34)
     /// The signed-in user's own declared preferences (nil = never answered).
@@ -2109,6 +2112,9 @@ final class AppState: ObservableObject {
     var mapEventsGeneration = 0
     /// The last Map load failed (offline, server down): the list says so instead of showing nothing.
     @Published var mapEventsLoadFailed = false
+    /// Map redesign phase 2: how many public live events exist (exact count). `mapEvents.count < mapEventsTotal`
+    /// only past `AppState.mapEventCap`; the Map then says it shows a part, never presenting it as complete.
+    @Published var mapEventsTotal = 0
     // Real-cover-photo fix (2026-10-19) — resolved cover-photo URL per
     // event id, keyed by `MapEventRow.id`, populated by `loadMapEvents()`.
     // MapExploreView reads this instead of `EventCatalog.find(ev.id)?.img`,
@@ -3070,7 +3076,12 @@ final class AppState: ObservableObject {
     }
 
     func goHome() { searchOverlayOpen = false; notificationsOverlayOpen = false; screen = .home }
-    func goMapExplore() { screen = .mapExplore }
+    func goMapExplore() { mapExploreEntry = nil; screen = .mapExplore }
+    /// From Home: the Map opens with Home's applied filters and For You (it says when its area shows fewer).
+    func goMapExploreFromHome() {
+        mapExploreEntry = (homeFilters, filterForYou && hasForYouMatches)
+        screen = .mapExplore
+    }
     /// Dock tap on Account starts fresh (search closed); coming BACK from a
     /// search result does not go through here, so its search is kept.
     func goProfile() {

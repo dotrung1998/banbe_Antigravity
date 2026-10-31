@@ -235,14 +235,14 @@ extension AppState {
 
     // MARK: For You on Map
 
-    /// Same ranker, same area rule as Home — fed with Map's loaded rows (public + live only,
-    /// RLS-filtered by `loadMapEvents`). Map rows carry no invite flag because the query is
-    /// `visibility = 'public'`; a sold-out/ended row is not bookable and never matches.
+    /// Same ranker as Home — fed with Map's loaded rows (public + live only, RLS-filtered by `loadMapEvents`). Map
+    /// rows carry no invite flag because the query is `visibility = 'public'`; a sold-out/ended row is not bookable
+    /// and never matches. Map redesign phase 3: no area rule here — on the Map the picked area is a destination, and
+    /// the committed map area narrows For You like every other filter (web: mapForYouSet(events, null, …)).
     var mapForYouMatches: [ForYouMatch] {
         guard let prefs = eventPrefs, !prefs.isEmpty else { return [] }
         let now = Date()
         let cands = mapEvents
-            .filter { area == LocationHierarchy.allID || matchesArea($0) }
             .map { row in
                 ForYou.candidate(
                     key: row.id, catKey: row.catKey, cat2Key: nil, priceVnd: row.priceVnd, isFree: row.priceVnd == 0,

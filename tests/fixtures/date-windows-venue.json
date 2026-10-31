@@ -1,0 +1,36 @@
+{
+  "_comment": "Venue-time date windows (Map redesign phase 3). Shared by tests/unit/dateWindowsVenue.test.mjs and apps/ios/BanbeAppTests/DateWindowsVenueTests.swift. Instants are UTC ISO strings; expectations worked out by hand: Vietnam is UTC+7 with no DST; New York and Los Angeles leave summer time on 2026-11-01 at 02:00 local.",
+  "windows": [
+    { "name": "VN tonight at 20:00 runs to 04:00 venue time",
+      "tz": "Asia/Ho_Chi_Minh", "option": "tonight", "now": "2026-11-04T13:00:00Z",
+      "expect": ["2026-11-04T13:00:00Z", "2026-11-04T21:00:00Z"] },
+    { "name": "VN tonight after midnight is still the night in progress",
+      "tz": "Asia/Ho_Chi_Minh", "option": "tonight", "now": "2026-11-04T18:30:00Z",
+      "expect": ["2026-11-04T18:30:00Z", "2026-11-04T21:00:00Z"] },
+    { "name": "VN tonight in the morning is this evening",
+      "tz": "Asia/Ho_Chi_Minh", "option": "tonight", "now": "2026-11-04T23:00:00Z",
+      "expect": ["2026-11-05T10:00:00Z", "2026-11-05T21:00:00Z"] },
+    { "name": "VN weekend on Saturday starts now, ends Monday 00:00",
+      "tz": "Asia/Ho_Chi_Minh", "option": "weekend", "now": "2026-10-31T05:00:00Z",
+      "expect": ["2026-10-31T05:00:00Z", "2026-11-01T17:00:00Z"] },
+    { "name": "New York weekend across the end of summer time (Fri EDT → Mon EST)",
+      "tz": "America/New_York", "option": "weekend", "now": "2026-10-28T16:00:00Z",
+      "expect": ["2026-10-30T21:00:00Z", "2026-11-02T05:00:00Z"] },
+    { "name": "New York tonight on the night the clocks go back ends 04:00 EST",
+      "tz": "America/New_York", "option": "tonight", "now": "2026-10-31T22:00:00Z",
+      "expect": ["2026-10-31T22:00:00Z", "2026-11-01T09:00:00Z"] },
+    { "name": "VN today runs to venue midnight",
+      "tz": "Asia/Ho_Chi_Minh", "option": "today", "now": "2026-11-04T13:00:00Z",
+      "expect": ["2026-11-04T13:00:00Z", "2026-11-04T17:00:00Z"] }
+  ],
+  "perVenue": {
+    "name": "two events at the same instant: tonight in Los Angeles, Sunday morning in Ho Chi Minh City",
+    "now": "2026-10-31T23:00:00Z",
+    "items": [
+      { "key": "hcmc", "tz": "Asia/Ho_Chi_Minh", "startsAt": "2026-11-01T01:00:00Z" },
+      { "key": "la", "tz": "America/Los_Angeles", "startsAt": "2026-11-01T01:00:00Z" },
+      { "key": "la-started", "tz": "America/Los_Angeles", "startsAt": "2026-10-31T22:00:00Z" }
+    ],
+    "tonight": ["la"]
+  }
+}

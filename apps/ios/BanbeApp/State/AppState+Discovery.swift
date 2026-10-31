@@ -108,7 +108,9 @@ extension AppState {
             catKeys: [e.catKey, e.cat2Key].compactMap { $0 },
             booked: fill?.booked, capacity: fill?.capacity, soldOut: e.soldOut,
             distanceKm: distance, popularity: (scores ?? pulseScores)[e.key], currency: e.currency,
-            details: e.details
+            details: e.details,
+            // Real events are judged in their venue zone; the demo catalogue keeps its fixed Vietnam offset.
+            tz: Self.catalogKeys.contains(e.key) ? nil : e.timeZoneID
         )
     }
 

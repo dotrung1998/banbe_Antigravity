@@ -29,9 +29,13 @@ export function createMapKitMap(mapkit, { container, center, zoom, theme }) {
     colorScheme: theme === 'dark' ? mapkit.Map.ColorSchemes.Dark : mapkit.Map.ColorSchemes.Light,
   });
 
-  const listeners = { moveend: [], click: [] };
+  const listeners = { movestart: [], moveend: [], click: [] };
+  // MapKit JS doesn't say whether a region change came from a gesture: the Map screen treats a start with no
+  // pending programmatic reason as the user's (src/lib/mapDiscovery.js).
+  const onStart = () => listeners.movestart.forEach(fn => fn({}));
   const onEnd = () => listeners.moveend.forEach(fn => fn());
   const onTap = () => listeners.click.forEach(fn => fn());
+  map.addEventListener('region-change-start', onStart);
   map.addEventListener('region-change-end', onEnd);
   map.addEventListener('single-tap', onTap);
 
@@ -67,6 +71,7 @@ export function createMapKitMap(mapkit, { container, center, zoom, theme }) {
     on(type, fn) { (listeners[type] || (listeners[type] = [])).push(fn); },
     addControl() {},
     remove() {
+      map.removeEventListener('region-change-start', onStart);
       map.removeEventListener('region-change-end', onEnd);
       map.removeEventListener('single-tap', onTap);
       map.destroy();
