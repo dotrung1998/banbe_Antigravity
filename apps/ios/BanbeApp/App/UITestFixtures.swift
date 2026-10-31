@@ -45,6 +45,11 @@ enum UITestFixture {
     /// `-uiFixtureHostMode YES` (with a `shell.*` fixture) starts in organizer mode (Home shows the host sections).
     static let simpleShell = UserDefaults.standard.bool(forKey: "uiFixtureSimpleShell")
     static let hostMode = UserDefaults.standard.bool(forKey: "uiFixtureHostMode")
+    /// Simple Shell follow-up: `-uiFixtureGuest YES` (with a `shell.*` fixture) is a signed-out guest browsing.
+    static let guest = UserDefaults.standard.bool(forKey: "uiFixtureGuest")
+    /// `-uiFixtureHostKPIs YES` seeds the host's month numbers (the Host Home KPI tiles read `app.reportsData`);
+    /// `-uiFixtureHostMode YES` seeds them too.
+    static let hostKPIs = UserDefaults.standard.bool(forKey: "uiFixtureHostKPIs")
     /// Note 66: `-uiFixtureEventKey jazzgac` opens that catalogue event with `shell.event`; `-uiFixtureCreateType popup`
     /// makes the `shell.create` draft that type.
     static let eventKey = UserDefaults.standard.string(forKey: "uiFixtureEventKey") ?? "bepnho"
@@ -169,7 +174,7 @@ struct UITestFixtureRoot: View {
 
     private func configure() {
         guard !ready else { return }
-        let signedOut = name.hasPrefix("auth") || name == "routing.signedOut"
+        let signedOut = name.hasPrefix("auth") || name == "routing.signedOut" || (name.hasPrefix("shell") && UITestFixture.guest)
         if !signedOut { app.userID = UITestFixture.userID }
         if UITestFixture.onboardingV2 { app.featureFlags["onboarding_v2"] = true }
         if UITestFixture.tourV3 { app.featureFlags["onboarding_v3"] = true }
@@ -209,7 +214,14 @@ struct UITestFixtureRoot: View {
         BottomTabBarOverlay.shared.updateVisibility(for: .splash)
         configureSchedule()
         let variant = name.split(separator: ".").dropFirst().first.map(String.init) ?? "home"
-        app.organizerMode = variant == "account" || UITestFixture.hostMode
+        app.organizerMode = (variant == "account" || UITestFixture.hostMode) && !UITestFixture.guest
+        // As a sign-in sync would (Lib/HomeMode.swift): organizer mode on opens Home on Hosting.
+        app.homeView = HomeMode.viewAfterSync(prevOrganizerMode: false, prevHomeView: .goer, organizerMode: app.organizerMode)
+        if UITestFixture.hostKPIs || UITestFixture.hostMode {
+            // The host's month numbers, as Reports would have loaded them (Host Home KPI tiles).
+            app.reportsData = Self.report(role: "host", metrics: Self.metrics("host"))
+            app.reportsLoadedAt = Date()
+        }
         app.accountType = (variant == "account" || variant == "adminFeatures" || variant == "adminManageEvents") ? "admin" : "participant"
         app.accountTab = "personal"
         // Streak/coins capsule visible: the tightest Home header layout.

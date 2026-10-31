@@ -1,5 +1,8 @@
 // Simple Shell (switch simple_shell, note 66): the centre "+" INSIDE the dock and its bottom sheet. Shown for everyone.
-// It is a button, not a tab: never selected, skipped by scrub-to-select and by the root swipe (src/lib/dockLayout.js).
+// It is a button, not a tab: never selected and skipped by the root swipe (src/lib/dockLayout.js). A dock drag released
+// over it opens this same sheet (BottomTabBar scrubTarget -> openDockCreate); the open state lives in BanBeContext
+// (`dockCreateOpen`) so both paths share it. "Host an event" is the shared startHosting({ land: 'home' }) (note 66
+// follow-up): guest -> sign-in prompt, organizer mode off -> Start hosting invitation, on -> Home > Hosting.
 //
 // The sheet follows the mode, with only existing features behind every row:
 //   Going out (signed in): Add to my schedule · Invite friends · Host an event. No "Post a story" (stories are host-only).
@@ -10,7 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { useStartHosting } from '../components/home/HomeModeSwitch.jsx';
+import { effectiveHomeView } from '../lib/homeMode.js';
 import { useReducedMotion } from '../lib/useReducedMotion.js';
 import { EVENTS } from '../data/events.js';
 import { ink, paper, ink2, surface2, divider, display, RADIUS } from '../theme.js';
@@ -62,21 +65,22 @@ function SubRow({ children, onClick, testId, icon }) {
   );
 }
 
-export default function DockCreateCenter() {
+export default function DockCreateCenter({ pressed = false }) {
   const {
     state: s, set, T, goCreate, goSchedule, goDashboard, promptSignIn, shareReferral, referralLink, shareEvent,
-    openStoryLibraryPicker, openStoryCameraPicker, loadRealEventsById,
+    openStoryLibraryPicker, openStoryCameraPicker, loadRealEventsById, startHosting, openDockCreate, closeDockCreate,
   } = useBanBe();
-  const startHosting = useStartHosting();
   const reduce = useReducedMotion();
-  const [open, setOpen] = useState(false);
+  const open = !!s.dockCreateOpen;
+  const setOpen = (v) => ((typeof v === 'function' ? v(open) : v) ? openDockCreate() : closeDockCreate());
   const [sub, setSub] = useState(null); // 'story' | 'share' | null
   const [dragY, setDragY] = useState(0);
   const dragRef = useRef(null);
   const buttonRef = useRef(null);
   const sheetRef = useRef(null);
 
-  const mode = !s.user ? 'guest' : s.organizerMode ? 'host' : 'goer';
+  // Follows the Home view (organizer mode on AND Hosting picked), so "Host an event" is there whenever Hosting is not.
+  const mode = !s.user ? 'guest' : effectiveHomeView(!!s.organizerMode, s.homeView) === 'host' ? 'host' : 'goer';
   const hiddenByOverlay = !!(s.storyViewer || s.scanningQr || s.photoViewer || s.chatPhotoViewer || s.reasonPrompt || s.pulseOpen);
 
   const close = (restore = true) => {
@@ -103,6 +107,8 @@ export default function DockCreateCenter() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   useEffect(() => { if (hiddenByOverlay && open) close(false); }, [hiddenByOverlay]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The open state lives in context: never leave it set behind an unmounted dock (it would pop up on the next mount).
+  useEffect(() => () => closeDockCreate(), [closeDockCreate]);
 
   // "Share one of my events": the host's own live, not-yet-ended events (same realEventsById cache Dashboard uses).
   const myKeys = s.myOrgEventKeys || [];
@@ -148,7 +154,7 @@ export default function DockCreateCenter() {
       icon: 'host', testId: 'dock-create-menu-host',
       title: T('Tổ chức sự kiện', 'Host an event'),
       desc: T('Miễn phí. Tắt lúc nào cũng được.', 'Free. Turn it off any time.'),
-      onClick: () => run(startHosting),
+      onClick: () => run(() => startHosting({ land: 'home' })),
     },
   ];
 
@@ -213,7 +219,8 @@ export default function DockCreateCenter() {
   return (
     <>
       <button ref={buttonRef} type="button" onClick={() => setOpen(v => !v)} data-testid="dock-create-button"
-        aria-label={T('Tạo mới', 'Create')} aria-haspopup="dialog" aria-expanded={open} className="bb-press"
+        aria-label={T('Tạo mới', 'Create')} aria-haspopup="dialog" aria-expanded={open}
+        className={pressed ? 'bb-press bb-dock-create-pressed' : 'bb-press'} data-pressed={pressed ? 'true' : undefined}
         style={{
           width: DISC, height: DISC, minWidth: 44, minHeight: 44, borderRadius: '50%', border: 'none', padding: 0, cursor: 'pointer',
           background: ink, color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center',

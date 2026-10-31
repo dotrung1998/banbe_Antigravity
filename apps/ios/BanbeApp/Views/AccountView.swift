@@ -422,6 +422,8 @@ struct AccountView: View {
             ),
             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
+        // Plan item 5: the identity card is a block like the tiles under it (the theme wash sits on top).
+        .background(app.palette.block, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
         .padding(.top, 22)
         .accessibilityIdentifier("account.profileCard")
@@ -535,7 +537,7 @@ struct AccountView: View {
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 16)
             .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-            .background(app.palette.surface1, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(app.palette.block, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -563,7 +565,7 @@ struct AccountView: View {
             }
             .foregroundStyle(app.palette.ink)
             .padding(16)
-            .background(app.palette.surface1, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(app.palette.block, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
         .padding(.top, 12)
@@ -631,7 +633,7 @@ struct AccountView: View {
                             + app.adminInvites.filter { $0.status == "pending" }.count) { openGroup("admin") }
             }
         }
-        .background(app.palette.surface1, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(app.palette.block, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func moreDivider() -> some View {
@@ -741,24 +743,15 @@ struct AccountView: View {
         .id("account-hosting-toggle")
     }
 
-    /// Goer who has never hosted: a compact pitch.
+    /// Goer who has never hosted: a compact pitch (the shared StartHostingCard, also the invitation sheet's body).
+    /// The card IS the invitation here, so its button turns organizer mode on right away and lands on Home > Hosting
+    /// (`confirmStartHosting`, the same path as the sheet's primary action).
     private var hostFirstEventCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("Tổ chức sự kiện đầu tiên", "Host your first event"))
-                .font(BanbeTheme.display(17))
-            Text(app.T("Miễn phí khi banbe còn mới. Không phí đăng, không phí giao dịch.",
-                       "Free while banbe is new. No listing or transaction fees."))
-                .font(.footnote)
-                .foregroundStyle(app.palette.ink2)
-                .fixedSize(horizontal: false, vertical: true)
-            InkButton(title: app.T("Bắt đầu tổ chức ▪︎ miễn phí", "Start hosting ▪︎ free")) {
-                app.toggleOrganizerMode()
-            }
+        StartHostingCard {
+            Task { await app.confirmStartHosting() }
         }
-        .foregroundStyle(app.palette.ink)
         .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(app.palette.surface1, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(app.palette.block, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.top, 16)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("account.hostFirstEvent")
@@ -1398,6 +1391,7 @@ struct AccountView: View {
                 ),
                 in: RoundedRectangle(cornerRadius: 14, style: .continuous)
             )
+            .background(app.palette.block, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
             .overlay {
                 if app.hostReminderPhase != nil { EventReminderHalo(trigger: hostHaloTrigger, cornerRadius: 14) }

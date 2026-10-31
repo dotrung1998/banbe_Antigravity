@@ -1,11 +1,11 @@
-import { ink, ink2, ink3, surface1, divider, alert, display } from '../theme.js';
+import { ink, ink2, ink3, block, divider, alert, display } from '../theme.js';
 import { formatBadgeCount } from '../lib/badges.js';
 import { RowIcon } from './Account.jsx';
 
 // Note 66 (Simple Shell, Phase 2): Account's building blocks after the tabs were removed.
 // - AccountTileGrid / AccountTile: the four big 2x2 tiles at the top (>= 88px tall, whole tile is the target).
 // - MoreList / MoreRow: the single grouped "More" card (52px rows, hairline dividers, chevrons).
-// Both sit on `surface1` with no border, so dark mode reads as depth, not outlines.
+// Both sit on `block` (note 66 follow-up: light #EEE8DA so they read on paper, dark unchanged) with no border.
 
 function Badge({ count, testId }) {
   if (!count) return null;
@@ -32,7 +32,7 @@ export function AccountTile({ tileKey, icon, title, value, badge = 0, onClick, T
       aria-label={parts.join(', ')}
       {...dataAttrs}
       style={{
-        minHeight: 88, minWidth: 0, padding: 14, boxSizing: 'border-box', border: 'none', borderRadius: 14, background: surface1,
+        minHeight: 88, minWidth: 0, padding: 14, boxSizing: 'border-box', border: 'none', borderRadius: 14, background: block,
         display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8,
         textAlign: 'left', cursor: 'pointer', color: ink, font: 'inherit', WebkitTapHighlightColor: 'transparent',
       }}
@@ -70,7 +70,7 @@ export function AccountSectionLabel({ label, testId }) {
 export function MoreList({ children, testId }) {
   const rows = [].concat(children).flat().filter(Boolean);
   return (
-    <div data-testid={testId} style={{ margin: '0 20px', borderRadius: 14, background: surface1, overflow: 'hidden' }}>
+    <div data-testid={testId} style={{ margin: '0 20px', borderRadius: 14, background: block, overflow: 'hidden' }}>
       {rows.map((row, i) => (
         <div key={i} style={{ borderTop: i > 0 ? `1px solid ${divider}` : 'none', position: 'relative' }}>{row}</div>
       ))}
@@ -109,7 +109,7 @@ export function RewardsStrip({ label, ariaLabel, onClick }) {
   return (
     <button
       type="button" onClick={onClick} data-testid="account-rewards" aria-label={ariaLabel || label}
-      style={{ margin: '8px 20px 0', width: 'calc(100% - 40px)', minHeight: 48, padding: '0 16px', boxSizing: 'border-box', border: 'none', borderRadius: 14, background: surface1, color: ink, font: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, cursor: 'pointer', textAlign: 'left' }}
+      style={{ margin: '8px 20px 0', width: 'calc(100% - 40px)', minHeight: 48, padding: '0 16px', boxSizing: 'border-box', border: 'none', borderRadius: 14, background: block, color: ink, font: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, cursor: 'pointer', textAlign: 'left' }}
     >
       <span style={{ ...display(15, { fontVariantNumeric: 'tabular-nums' }) }}>{label}</span>
       <span aria-hidden style={{ fontSize: 17, color: ink3, lineHeight: 1 }}>›</span>

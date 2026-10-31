@@ -11,7 +11,7 @@ struct AccountTile: Identifiable {
     var id: String { key }
 }
 
-/// The 2×2 grid of big tiles at the top of Account. Each tile is ≥ 88pt tall, sits on surface1 with no
+/// The 2×2 grid of big tiles at the top of Account. Each tile is ≥ 88pt tall, sits on palette.block with no
 /// border, and grows with Dynamic Type; at accessibility sizes the grid becomes one column.
 struct AccountTilesGrid: View {
     @EnvironmentObject var app: AppState
@@ -76,7 +76,7 @@ struct AccountTilesGrid: View {
             .multilineTextAlignment(.leading)
             .padding(14)
             .frame(maxWidth: .infinity, minHeight: 88, maxHeight: .infinity, alignment: .topLeading)
-            .background(app.palette.surface1, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(app.palette.block, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)

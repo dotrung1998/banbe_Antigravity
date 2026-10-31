@@ -33,7 +33,7 @@ import SwiftUI
 /// the menu, not the actual rows — and an invisible-but-still-tappable
 /// remnant of it could absorb a later unrelated tap). Back to a tray
 /// (`DockCreateTrayView`, RootView.swift) — a real, previously-working
-/// mechanism — instead: this button only flips `app.dockCreateMenuOpen`,
+/// mechanism — instead: this button only flips `app.dockCreateOpen`,
 /// the MAIN window's RootView reads it and presents the tray itself,
 /// exactly like the original 2026-10-05 pass did before this went to a
 /// Menu. The "+"→"X" morph is restored too, now that there's a real bool
@@ -66,6 +66,9 @@ struct DockCreateButtonView: View {
     @EnvironmentObject private var app: AppState
     @State private var menuOpen = false
     var centred = false
+    /// Simple Shell: a dock scrub is currently over the "+" slot (BottomTabBar passes it): a subtle pressed look.
+    var scrubHover = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if centred {
@@ -114,36 +117,45 @@ struct DockCreateButtonView: View {
     /// Ink disc, paper "+", 48pt (the touch target is the whole disc; the bar slot around it is wider).
     private static let discSize: CGFloat = 48
 
+    /// Simple Shell follow-up (plan item 3): the popover is bound to `app.dockCreateOpen`, so a dock drag released
+    /// over this slot opens the same menu, from the same anchor, as a tap.
     private var centredButton: some View {
         Button {
             Haptics.light()
-            menuOpen = true
+            app.dockCreateOpen = true
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(app.palette.paper)
                 .frame(width: Self.discSize, height: Self.discSize)
                 .background(app.palette.ink, in: Circle())
+                .scaleEffect(scrubHover ? 0.9 : 1)
+                .opacity(scrubHover ? 0.82 : 1)
+                .animation(Motion.animation(.spring(response: 0.22, dampingFraction: 0.7), reduce: reduceMotion), value: scrubHover)
                 .contentShape(Circle())
         }
         .buttonStyle(PressableButtonStyle(haptic: false))
-        .popover(isPresented: $menuOpen, arrowEdge: .bottom) {
-            PopoverMenuList(items: centredMenuItems) { menuOpen = false }
+        .popover(isPresented: $app.dockCreateOpen, arrowEdge: .bottom) {
+            PopoverMenuList(items: centredMenuItems) { app.dockCreateOpen = false }
                 .environmentObject(app)
         }
         .accessibilityIdentifier("dock.createButton")
         .tourTarget("tour.dock.create")
         .accessibilityLabel(app.T("Tạo mới", "Create"))
-        .accessibilityHint(app.organizerMode
+        .accessibilityHint(hostMenu
                            ? app.T("Tạo sự kiện, đăng story hoặc khảo sát", "Create an event, a story or a survey")
                            : app.T("Thêm vào lịch, mời bạn bè hoặc tổ chức sự kiện", "Add to your schedule, invite friends or host an event"))
     }
 
-    /// Host (organizer mode on): Create event first, then Post a story, Share one of my events, New survey.
+    /// Host (Home on Hosting): Create event first, then Post a story, Share one of my events, New survey.
     /// Goer: Add to my schedule, Invite friends, Host an event (no story: stories are host-only, owner decision 3).
     /// Guest: the goer rows, each opening the contextual sign-in prompt.
+    /// The menu follows the Home view (plan items 1 + 4): a host who switched Home to Going out gets the goer rows,
+    /// whose "Host an event" takes them back to Home > Hosting from any tab.
+    private var hostMenu: Bool { app.isSignedIn && app.effectiveHomeView == .host }
+
     private var centredMenuItems: [PopoverMenuItem] {
-        if app.isSignedIn && app.organizerMode {
+        if hostMenu {
             return [
                 PopoverMenuItem(id: "dock.createMenu.event", title: app.T("Tạo sự kiện", "Create event"),
                                 systemImage: "calendar.badge.plus") { app.goCreate() },
@@ -179,9 +191,9 @@ struct DockCreateButtonView: View {
             },
             PopoverMenuItem(id: "dock.createMenu.host", title: app.T("Tổ chức sự kiện", "Host an event"),
                             systemImage: "sparkles") {
-                if guest { return app.promptSignIn(.host) }
-                // Account's "Start hosting" (turns organizer mode on; the server records it).
-                if !app.organizerMode { app.toggleOrganizerMode() }
+                // Plan item 4: the shared start-hosting path. Guest → sign-in prompt; organizer mode off → the
+                // Start hosting invitation; on → lands on Home > Hosting at the top, from whichever tab this ran.
+                app.startHosting(land: .home)
             },
         ]
     }

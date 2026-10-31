@@ -241,3 +241,17 @@ test('breakdowns only from real rows', () => {
   assert.deepEqual(admin.insights[1].segments.map(s => s.count), [0, 1, 0, 0]); // 2.5 days -> "1–3 days"
   assert.equal(dash(personalJSON, en).insights.length, 0);
 });
+
+// Note 66 follow-up: every metric Host Home's KPI tiles can show has a short tile label in both languages.
+import { METRIC_SHORT_LABEL, shortMetricLabel } from '../../src/lib/reportMetricLabels.js';
+import { layoutFor as hostLayoutFor } from '../../src/lib/reportsPresentation.js';
+test('Host Home KPI tiles: a short label exists for every host metric', () => {
+  const host = hostLayoutFor('host');
+  for (const key of [host.primary, ...host.overview]) {
+    const l = METRIC_SHORT_LABEL[key];
+    assert.ok(l && l.vi && l.en, `missing short label for ${key}`);
+    assert.ok(l.en.length <= 20 && l.vi.length <= 20, `short label too long for ${key}`);
+    assert.equal(shortMetricLabel(key, (vi, en) => en), l.en);
+  }
+  assert.equal(shortMetricLabel('nope', (vi) => vi), null);
+});

@@ -213,4 +213,18 @@ final class ReportsPresentationTests: XCTestCase {
         XCTAssertEqual(bare.targetKey, "refunds_overdue")
         XCTAssertEqual(ReportsPresentation.attentionAction(bare, T: en), "Open details")
     }
+
+    /// Plan item 5 regression: every metric the host layout can put on a Host Home KPI tile has a short label in both
+    /// languages (tiles wrap to two lines, never an ellipsis); the full label stays for Reports.
+    func testEveryHostHomeMetricHasAShortLabel() {
+        let layout = ReportsPresentation.layout(for: .host)
+        for key in [layout.primary].compactMap({ $0 }) + layout.overview {
+            let v = ReportMetricLabels.shortLabel(key, vi), e = ReportMetricLabels.shortLabel(key, en)
+            XCTAssertNotNil(v, key)
+            XCTAssertFalse((e ?? "").isEmpty, key)
+            XCTAssertLessThanOrEqual((e ?? "").count, 20, "\(key) short enough for a third of the screen")
+        }
+        XCTAssertEqual(ReportMetricLabels.shortLabel("confirmed_payment_amount", en), "Payments confirmed")
+        XCTAssertEqual(ReportMetricLabels.shortLabel("confirmed_payment_amount", vi), "Tiền đã xác nhận")
+    }
 }

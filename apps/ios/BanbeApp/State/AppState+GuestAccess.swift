@@ -14,6 +14,9 @@ enum GuestPromptContext: String {
 enum AuthResume: Equatable {
     case reserve(eventKey: String)
     case chat(eventKey: String, back: Screen)
+    /// Simple Shell: "Hosting" / "+" > Host an event. After sign-in the invitation opens if organizer mode is
+    /// still off; a host just lands on Home > Hosting.
+    case startHosting
 }
 
 struct GuestPrompt: Identifiable, Equatable {
@@ -53,6 +56,8 @@ extension AppState {
             goReserve()
         case .chat(let key, let back):
             Task { await openChat(for: key, back: back) }
+        case .startHosting:
+            startHosting(land: .home)
         }
     }
 

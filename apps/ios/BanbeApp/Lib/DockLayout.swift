@@ -3,8 +3,9 @@ import Foundation
 /// The dock's slots, pure (note 66, Simple Shell). Switch `simple_shell` OFF = today's five tabs
 /// (home, map, schedule, inbox, profile) with the "+" beside the bar for hosts only. ON = home, schedule,
 /// [create], inbox, profile: Map leaves the dock and becomes a Home view (Home's cards | list | map toggle), and
-/// while Map is showing the dock lights Home. The centre slot is the create button: a real Button, never a tab,
-/// never selected, skipped by scrub-to-select and by the root tab swipe. Web twin: src/screens/BottomTabBar.jsx.
+/// while Map is showing the dock lights Home. The centre slot is the create button: a real Button, never a tab and
+/// never selected, and skipped by the root tab swipe. A scrub released over it opens the "+" menu (`scrubTarget`).
+/// Web twin: src/lib/dockLayout.js; shared scrub cases: tests/fixtures/dock-scrub.json.
 enum DockLayout {
     static let createSlot = "create"
 
@@ -35,11 +36,26 @@ enum DockLayout {
         return tabID(for: screen)
     }
 
-    /// The tab a scrub at slot `index` lands on: nil for the create slot (and out of range), so dragging across the
-    /// "+" never selects it.
+    /// The tab at slot `index`: nil for the create slot (and out of range), so the "+" is never a selected tab.
     static func tab(atSlot index: Int, simpleShell: Bool) -> String? {
         let s = slots(simpleShell: simpleShell)
         guard s.indices.contains(index), s[index] != createSlot else { return nil }
         return s[index]
+    }
+
+    /// What a dock scrub is over (plan item 3): a real tab, or the centre create slot.
+    enum ScrubTarget: Equatable {
+        case tab(String)
+        case create
+    }
+
+    /// The slot under a touch at `fraction` of the bar's width (0 = leading edge, 1 = trailing edge; clamped, so a
+    /// drag past either end reads as that end's slot). Every slot is an equal 1/count slice. Over the centre slot it
+    /// is `.create`: released there, the "+" menu opens (the same menu a tap opens); the selected tab never changes.
+    static func scrubTarget(fraction: Double, simpleShell: Bool) -> ScrubTarget {
+        let s = slots(simpleShell: simpleShell)
+        let f = fraction.isFinite ? min(1, max(0, fraction)) : 0
+        let i = min(s.count - 1, max(0, Int((f * Double(s.count)).rounded(.down))))
+        return s[i] == createSlot ? .create : .tab(s[i])
     }
 }

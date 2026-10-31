@@ -4,7 +4,7 @@
 //
 // Card rule from the "4 levels" video (staff variant): the name and numbers come OFF the photo so every card
 // reads the same whatever the host uploaded. On the photo: only small badges (date, Save, Almost full).
-import { ink, display, fieldGlass, cardGlass, CHIP_COLORS, photoChip, lightChip, RADIUS } from '../../theme.js';
+import { ink, display, fieldGlass, cardGlass, CHIP_COLORS, photoChip, lightChip, RADIUS, block } from '../../theme.js';
 import { bg } from '../../data/events.js';
 import { REMINDER_CSS } from '../../lib/eventReminder.js';
 import { setSearchOrigin } from '../../lib/searchOrigin.js';
@@ -38,7 +38,9 @@ export const CATEGORY_DEFS = categoryDefs({ withAll: true }); // src/data/eventT
  * (All first, then categories with events in the area, most first; src/lib/homeDiscovery.js categoryRowKeys) and
  * `counts` what tapping each one would show. "Show all" at the end opens every category A–Z.
  */
-export function CategoryRow({ values = [], onPick, T, keys = CATEGORY_DEFS.map(c => c.key), counts = null, onShowAll }) {
+// `compact` (Simple Shell, note 66 follow-up): the same row with its vertical padding cut to 8; the horizontal end
+// padding stays so the last tile is never clipped.
+export function CategoryRow({ values = [], onPick, T, keys = CATEGORY_DEFS.map(c => c.key), counts = null, onShowAll, compact = false }) {
   const byKey = Object.fromEntries(CATEGORY_DEFS.map(c => [c.key, c]));
   const tile = (active) => ({
     width: 48, height: 48, borderRadius: RADIUS.tile, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -51,7 +53,7 @@ export function CategoryRow({ values = [], onPick, T, keys = CATEGORY_DEFS.map(c
   const label = { fontSize: 11.5, lineHeight: 1.2, textAlign: 'center', overflowWrap: 'anywhere' };
   return (
     <div data-hscroll="true" data-testid="home-category-row" role="tablist" aria-label={T('Danh mục', 'Categories')}
-      style={{ display: 'flex', gap: 2, overflowX: 'auto', scrollbarWidth: 'none', padding: '12px 12px 4px' }}>
+      style={{ display: 'flex', gap: 2, overflowX: 'auto', scrollbarWidth: 'none', padding: compact ? '8px 12px 8px' : '12px 12px 4px' }}>
       {keys.map(k => {
         const c = byKey[k];
         if (!c) return null;
@@ -188,13 +190,17 @@ function Photo({ ev, height, T, radius, compact = false }) {
  * ev: { key, name, img, dateBadge, priceLabel, isFree, metaLine, fill: {almostFull, left, going, soldOut},
  *       cancelled, saved, going, label ('best' | 'popular' | null) }
  */
-export function DiscoveryCard({ ev, onOpen, onToggleSave, T }) {
+// `filled` (Simple Shell, note 66 follow-up): the card sits on the `block` fill with 12 padding under the photo, the
+// photo keeps the card's top corners. Off = the card exactly as before.
+export function DiscoveryCard({ ev, onOpen, onToggleSave, T, filled = false }) {
+  const body = (children) => (filled ? <div style={{ padding: '0 12px 12px' }}>{children}</div> : children);
   return (
     <div data-testid={`home-event-${ev.key}`} data-zoom-src={ev.key} onClick={onOpen} role="link" tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter') onOpen(); }}
-      style={{ cursor: 'pointer', padding: '0 20px 22px' }}>
+      style={{ cursor: 'pointer', padding: filled ? '0 20px 16px' : '0 20px 22px' }}>
+      <div data-filled={filled ? 'true' : undefined} style={filled ? { background: block, borderRadius: RADIUS.card, overflow: 'hidden' } : undefined}>
       <div style={{ position: 'relative', aspectRatio: '16 / 10' }}>
-        <Photo ev={ev} height="100%" T={T} radius={RADIUS.card} />
+        <Photo ev={ev} height="100%" T={T} radius={filled ? `${RADIUS.card}px ${RADIUS.card}px 0 0` : RADIUS.card} />
         {ev.dateBadge && <span data-testid="home-card-date" style={lightChip({ ...badgeBase, top: 10, left: 10, cursor: 'inherit', fontWeight: 700 })}>{ev.dateBadge}</span>}
         <span role="button" aria-pressed={ev.saved} data-testid={`home-save-${ev.key}`}
           onClick={(e) => { e.stopPropagation(); onToggleSave(); }}
@@ -213,6 +219,7 @@ export function DiscoveryCard({ ev, onOpen, onToggleSave, T }) {
           <span style={photoChip(CHIP_COLORS.going, { ...badgeBase, bottom: 10, left: 10, cursor: 'inherit' })}>{T('Bạn sẽ đến', "You're going")}</span>
         ) : null}
       </div>
+      {body(<>
       {ev.label && (
         <div data-testid={`home-card-label-${ev.label}`} style={{ marginTop: 10, fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 5 }}>
           <span aria-hidden="true" style={{ color: 'var(--bb-honey)' }}>{ev.label === 'best' ? '★' : '✦'}</span>
@@ -229,6 +236,8 @@ export function DiscoveryCard({ ev, onOpen, onToggleSave, T }) {
       {ev.fill?.going != null && !ev.cancelled && (
         <div data-testid="home-card-going" style={{ fontSize: 11.5, color: ink, opacity: 0.6, marginTop: 3 }}>{T(`${ev.fill.going} người sẽ đến`, `${ev.fill.going} going`)}</div>
       )}
+      </>)}
+      </div>
     </div>
   );
 }

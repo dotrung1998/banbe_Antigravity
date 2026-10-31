@@ -438,7 +438,7 @@ final class BottomTabBarOverlay {
     }
 
     /// FIX PASS (2026-09-30, Map-sheet layering) — called from RootView's
-    /// `.onChange(of: app.dockCreateMenuOpen)`. The tray is hosted in THIS
+    /// `.onChange(of: app.dockCreateOpen)`. The tray is hosted in THIS
     /// window — the one thing in this app already proven to paint above a
     /// `.sheet()` at any detent — which is what puts it above MapExplore's
     /// native filter/list sheet.
@@ -522,7 +522,7 @@ final class BottomTabBarOverlay {
             // open tray with its dock/button now hidden underneath (e.g.
             // Pulse opening while the tray was up) would otherwise leave
             // an invisible scrim still intercepting taps.
-            appState?.dockCreateMenuOpen = false
+            appState?.dockCreateOpen = false
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.transitionDuration) { [weak self] in
                 guard let self, self.visibilityToken == token else { return }
                 self.window?.isHidden = true

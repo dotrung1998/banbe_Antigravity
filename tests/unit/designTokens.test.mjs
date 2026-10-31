@@ -23,7 +23,9 @@ function block(selector) {
 }
 const BLOCKS = { light: block(':root, [data-bb-theme="light"] {'), dark: block('[data-bb-theme="dark"] {') };
 const VARS = { paper: '--bb-bg', ink: '--bb-fg', field: '--bb-field', surface1: '--bb-surface-1', surface2: '--bb-surface-2',
-  surface3: '--bb-surface-3', alert: '--bb-alert', clay: '--bb-clay', honey: '--bb-honey' };
+  surface3: '--bb-surface-3', alert: '--bb-alert', clay: '--bb-clay', honey: '--bb-honey',
+  // Note 66 follow-up: block fills.
+  block: '--bb-block', blockInset: '--bb-block-inset' };
 
 for (const theme of ['light', 'dark']) {
   const t = fx[theme];
@@ -36,13 +38,20 @@ for (const theme of ['light', 'dark']) {
   });
   test(`${theme}: text tokens keep WCAG AA on paper and every surface`, () => {
     const ink = hex(t.ink);
-    for (const bgKey of ['paper', 'surface1', 'surface2', 'surface3', 'field']) {
+    for (const bgKey of ['paper', 'surface1', 'surface2', 'surface3', 'field', 'block', 'blockInset']) {
       const bg = hex(t[bgKey]);
       assert.ok(ratio(ink, bg) >= fx.minContrast.ink, `${theme} ink on ${bgKey}`);
       assert.ok(ratio(over(ink, bg, t.ink2Alpha), bg) >= fx.minContrast.ink2, `${theme} ink2 on ${bgKey}`);
       assert.ok(ratio(over(ink, bg, t.ink3Alpha), bg) >= fx.minContrast.ink3, `${theme} ink3 on ${bgKey}`);
       assert.ok(ratio(hex(t.alert), bg) >= fx.minContrast.alert, `${theme} alert on ${bgKey}`);
     }
+    for (const bgKey of fx.honeyOn) {
+      assert.ok(ratio(hex(t.honey), hex(t[bgKey])) >= fx.minContrast.honey, `${theme} honey on ${bgKey}`);
+    }
+  });
+  test(`${theme}: block is the warm beige in light and today's card fill in dark`, () => {
+    assert.equal(t.block, theme === 'light' ? t.surface2 : t.surface1);
+    assert.notEqual(t.block, t.blockInset);
   });
 }
 
@@ -52,4 +61,10 @@ test('theme choice: new installs start on system, saved choices are kept', () =>
 
 test('theme choice: system follows the device', () => {
   for (const c of fx.themeResolve) assert.equal(resolveTheme(c.choice, c.systemDark), c.theme, JSON.stringify(c));
+});
+
+test('theme.js exports block / blockInset as the CSS tokens', () => {
+  const theme = readFileSync(new URL('../../src/theme.js', import.meta.url), 'utf8');
+  assert.match(theme, /export const block = 'var\(--bb-block\)'/);
+  assert.match(theme, /export const blockInset = 'var\(--bb-block-inset\)'/);
 });

@@ -137,3 +137,34 @@ test('prices never mix currencies (migration 195: USD rows carry cents)', () => 
   // Price sort: free first, then VND, then USD.
   assert.deepEqual(keys(sortEvents([usd, vnd, freeUsd], 'price')), ['free-usd', 'vnd', 'usd']);
 });
+
+// Note 66 follow-up: the restored Home category row counts with the SAME predicate the feed renders with. Shared
+// fixture tests/fixtures/event-types.json `categoryRow` (iOS HomeDiscoveryTests mirrors it).
+import { readFileSync } from 'node:fs';
+import { categoryCounts, categoryRowKeys } from '../../src/lib/homeDiscovery.js';
+const catFx = JSON.parse(readFileSync(new URL('../fixtures/event-types.json', import.meta.url), 'utf8')).categoryRow;
+const CAT_KEYS = Object.keys(catFx.counts).filter(k => k !== 'all');
+const catItems = catFx.items.map(i => ({ ...i, startsAt: null, priceVnd: null, booked: null, capacity: null, soldOut: false }));
+
+test('category row: every count equals the results tapping that category renders', () => {
+  for (const f of catFx.parityFilters) {
+    const counts = categoryCounts(catItems, f, CAT_KEYS, 0);
+    for (const k of CAT_KEYS) {
+      assert.equal(counts[k], applyDiscoveryFilters(catItems, { ...f, cats: [k], typeFilters: [] }, 0).length, `${k} with ${JSON.stringify(f)}`);
+    }
+    assert.equal(counts.all, applyDiscoveryFilters(catItems, { ...f, cats: [], typeFilters: [] }, 0).length, `all with ${JSON.stringify(f)}`);
+  }
+});
+
+test('category row: All first, most first, zero-count hidden unless selected', () => {
+  for (const f of catFx.parityFilters) {
+    const counts = categoryCounts(catItems, f, CAT_KEYS, 0);
+    const row = categoryRowKeys(counts, CAT_KEYS, f.cats);
+    assert.equal(row[0], 'all');
+    const rest = row.slice(1);
+    for (const k of rest) assert.ok(counts[k] > 0 || f.cats.includes(k), `${k} shown with 0`);
+    for (const k of CAT_KEYS) if (counts[k] > 0) assert.ok(rest.includes(k), `${k} missing`);
+    const nonSelected = rest.filter(k => counts[k] > 0);
+    for (let i = 1; i < nonSelected.length; i++) assert.ok(counts[nonSelected[i - 1]] >= counts[nonSelected[i]], 'most first');
+  }
+});

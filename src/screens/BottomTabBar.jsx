@@ -3,7 +3,7 @@ import { useBanBe } from '../state/BanBeContext.jsx';
 import { ink, alert, dockGlass, dockHighlight } from '../theme.js';
 import { computeAccountDockBadge } from '../lib/badges.js';
 import { flagOn } from '../lib/featureFlags.js';
-import { dockSlots, dockHighlightFor, CREATE_SLOT } from '../lib/dockLayout.js';
+import { dockSlots, dockHighlightFor, scrubTarget, CREATE_SLOT } from '../lib/dockLayout.js';
 import DockCreateButton from './DockCreateButton.jsx';
 
 // FEATURE follow-up (623ec1e real-device report): Map/Notifications/Inbox
@@ -182,7 +182,7 @@ export const DOCK_GAP = 10;
 export const CREATE_SIZE = BAR_HEIGHT;
 
 export default function BottomTabBar({ collapsed }) {
-  const { state, T, goHome, goProfile, goInbox, goSchedule, goMapExplore } = useBanBe();
+  const { state, T, goHome, goProfile, goInbox, goSchedule, goMapExplore, openDockCreate } = useBanBe();
   const s = state;
 
   // Notifications' badge is s.unreadNotifications (bell inbox, per-account
@@ -205,7 +205,9 @@ export default function BottomTabBar({ collapsed }) {
   const accountBadge = computeAccountDockBadge(s);
   // Simple Shell (switch simple_shell, note 66): Map leaves the dock and the "+" takes the centre slot INSIDE the bar
   // (src/lib/dockLayout.js). Off = the five tabs below, unchanged. The "+" slot is an equal flex slice like a tab, so
-  // the percentage highlight math keeps working; it is never selected and hitTest skips it.
+  // the percentage highlight math keeps working; it is never selected. A drag over it (scrubTarget, note 66 follow-up)
+  // highlights no tab and presses the "+"; releasing there opens the "+" sheet and the bubble goes back to the tab
+  // of the current screen.
   const simpleShell = flagOn(s.featureFlags, 'simple_shell');
   const tabDefs = useMemo(() => [
     { key: 'home', icon: 'home', onClick: goHome, label: T('Trang chính', 'Home'), testId: 'tab-home', badge: 0, badgeCapped: false },
@@ -230,6 +232,8 @@ export default function BottomTabBar({ collapsed }) {
   const draggingRef = useRef(false);
   const activeIndexRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(null);
+  // The finger is over the centre "+" mid-drag (switch simple_shell): no tab highlighted, the "+" looks pressed.
+  const [overCreate, setOverCreate] = useState(false);
 
   // Liquid-glass droplet pass (2026-09-28 follow-up, real-iPhone report) —
   // the drag highlight used to be a SINGLE shape that widened/narrowed
@@ -447,18 +451,27 @@ export default function BottomTabBar({ collapsed }) {
     return ((clientX - box.left) / box.width) * 100;
   };
 
+  // The slot under the finger, the centre "+" included (src/lib/dockLayout.js scrubTarget: equal slot shares across
+  // the first slot's left edge to the last slot's right edge). Off = the same nearest-slot result as before.
   const hitTest = (clientX) => {
     const bar = barRef.current;
     if (!bar) return 0;
     const x = clientX - bar.getBoundingClientRect().left;
-    let closest = 0;
-    let closestDist = Infinity;
-    rectsRef.current.forEach((r, i) => {
-      if (!r || items[i]?.isCreate) return;
-      const dist = Math.abs(r.left + r.width / 2 - x);
-      if (dist < closestDist) { closestDist = dist; closest = i; }
-    });
-    return closest;
+    const rects = rectsRef.current;
+    const first = rects[0];
+    const last = rects[rects.length - 1];
+    if (!first || !last) return 0;
+    const span = last.left + last.width - first.left;
+    const target = scrubTarget(span > 0 ? (x - first.left) / span : 0, simpleShell);
+    const key = target.kind === 'create' ? CREATE_SLOT : target.id;
+    const idx = items.findIndex((it) => it.key === key);
+    return idx === -1 ? 0 : idx;
+  };
+  const isCreateIndex = (idx) => idx != null && !!items[idx]?.isCreate;
+  // The index the highlight rests on for the current screen (null = none, e.g. an event page).
+  const restingIndex = () => {
+    const idx = highlightKey ? items.findIndex((it) => it.key === highlightKey) : -1;
+    return idx === -1 ? null : idx;
   };
 
   const onPointerDown = (e) => {
@@ -474,7 +487,8 @@ export default function BottomTabBar({ collapsed }) {
     anchorIndexRef.current = activeIndexRef.current;
     const idx = hitTest(e.clientX);
     activeIndexRef.current = idx;
-    setActiveIndex(idx);
+    setActiveIndex(isCreateIndex(idx) ? null : idx);
+    setOverCreate(isCreateIndex(idx));
     if (reduceMotionQuery()) {
       placeHighlight(idx, false);
     } else {
@@ -487,7 +501,9 @@ export default function BottomTabBar({ collapsed }) {
     const idx = hitTest(e.clientX);
     if (idx !== activeIndexRef.current) {
       activeIndexRef.current = idx;
-      setActiveIndex(idx);
+      // Over "+": no tab icon is highlighted; the "+" itself looks pressed.
+      setActiveIndex(isCreateIndex(idx) ? null : idx);
+      setOverCreate(isCreateIndex(idx));
     }
     // Reduce Motion: a plain non-bouncy snap between slots, never the
     // continuous stretch/goo (that IS the motion this setting asks to
@@ -537,8 +553,20 @@ export default function BottomTabBar({ collapsed }) {
     // continuous drag placement above never uses this element's normal
     // transition, so without this final call it would stay stretched/
     // off-slot instead of visibly relaxing into the selected tab.
+    setOverCreate(false);
+    if (isCreateIndex(idx)) {
+      // Released over "+": open the "+" sheet (the same open a tap uses); the screen does not change, so the bubble
+      // springs back to the current screen's tab (instant under Reduce Motion, placeHighlight).
+      const back = restingIndex();
+      activeIndexRef.current = back;
+      setActiveIndex(back);
+      if (back != null) placeHighlight(back, true);
+      else if (highlightRef.current) highlightRef.current.style.opacity = '0';
+      openDockCreate();
+      return;
+    }
     placeHighlight(idx, true);
-    if (idx != null && items[idx] && !items[idx].isCreate) items[idx].onClick();
+    if (idx != null && items[idx]) items[idx].onClick();
   };
 
   // Cancelled drag (pointercancel, e.g. an interrupting system gesture)
@@ -551,10 +579,12 @@ export default function BottomTabBar({ collapsed }) {
       setGooVisible(false);
       gooEngagedRef.current = false;
     }
-    const idx = highlightKey ? items.findIndex((it) => it.key === highlightKey) : -1;
-    activeIndexRef.current = idx === -1 ? null : idx;
-    setActiveIndex(idx === -1 ? null : idx);
-    if (idx !== -1) placeHighlight(idx, true);
+    setOverCreate(false);
+    const idx = restingIndex();
+    activeIndexRef.current = idx;
+    setActiveIndex(idx);
+    if (idx != null) placeHighlight(idx, true);
+    else if (highlightRef.current) highlightRef.current.style.opacity = '0';
   };
 
   return (
@@ -664,7 +694,7 @@ export default function BottomTabBar({ collapsed }) {
             onPointerDown={(e) => e.stopPropagation()}
             style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '1 1 0', minWidth: 44, height: '100%', zIndex: 2 }}
           >
-            <DockCreateButton variant="center" />
+            <DockCreateButton variant="center" pressed={overCreate} />
           </div>
         ) : (
           <div
@@ -674,6 +704,7 @@ export default function BottomTabBar({ collapsed }) {
             aria-label={item.label}
             role="tab"
             aria-selected={activeIndex === i}
+            aria-current={activeIndex === i ? 'page' : undefined}
             style={{
               position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center',
               flex: '1 1 0', minWidth: 44, minHeight: 44, height: '100%', zIndex: 1,

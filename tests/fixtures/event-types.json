@@ -1051,6 +1051,38 @@
       "music",
       "popup",
       "supper"
+    ],
+    "_parityComment": "Note 66 follow-up (Simple Shell category row restored): for every filter set below and every category k, categoryCounts(items, f)[k] must equal applyDiscoveryFilters(items, {...f, cats: [k], typeFilters: []}).length, the results that tapping k renders. Same items as above.",
+    "parityFilters": [
+      {
+        "cats": [],
+        "typeFilters": []
+      },
+      {
+        "cats": [
+          "supper"
+        ],
+        "typeFilters": [
+          "alcohol:byo"
+        ]
+      },
+      {
+        "cats": [
+          "music"
+        ],
+        "typeFilters": [
+          "genre:jazz"
+        ],
+        "free": true
+      },
+      {
+        "cats": [
+          "gallery",
+          "supper"
+        ],
+        "typeFilters": [],
+        "seatsLeft": true
+      }
     ]
   }
 }

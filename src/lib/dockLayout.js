@@ -2,8 +2,9 @@
 //
 // Switch `simple_shell` OFF: the dock is unchanged (home, map, schedule, inbox, profile; "+" beside it in organizer
 // mode only). ON: Map leaves the dock (it is a Home view now) and a "+" sits INSIDE the bar in the centre slot:
-// home, schedule, [create], inbox, profile. The "+" is not a tab: it never takes the selected state and is skipped
-// by scrub-to-select and by the root swipe, which walk dockOrder() only.
+// home, schedule, [create], inbox, profile. The "+" is not a tab: it never takes the selected state and the root
+// swipe walks dockOrder() only. Scrub-to-select DOES see it (scrubTarget): releasing a drag over "+" opens the "+"
+// sheet instead of snapping back or landing on a neighbour (note 66 follow-up).
 
 export const CREATE_SLOT = 'create';
 
@@ -32,4 +33,16 @@ export function dockNeighbor(screen, dir, simpleShell) {
   const i = order.indexOf(screen);
   if (i === -1) return null;
   return order[i + dir] || null;
+}
+
+/**
+ * What a dock drag is over. `fraction` = finger x across the bar's slots (0 = left edge of the first slot, 1 = right
+ * edge of the last), clamped. Each slot is an equal share: { kind: 'tab', id } for a tab, { kind: 'create' } for the
+ * centre "+". Shared fixture: tests/fixtures/dock-scrub.json (iOS DockLayout.scrubTarget).
+ */
+export function scrubTarget(fraction, simpleShell) {
+  const slots = dockSlots(simpleShell);
+  const f = Number.isFinite(fraction) ? Math.max(0, Math.min(1, fraction)) : 0;
+  const i = Math.min(slots.length - 1, Math.floor(f * slots.length));
+  return slots[i] === CREATE_SLOT ? { kind: 'create' } : { kind: 'tab', id: slots[i] };
 }

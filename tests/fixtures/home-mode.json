@@ -1,0 +1,32 @@
+{
+  "_comment": "Simple Shell Home view (note 66 follow-up). Read by tests/unit/homeMode.test.mjs (src/lib/homeMode.js) and apps/ios/BanbeAppTests/HomeModeTests.swift (Lib/HomeMode.swift). homeView is session-only; Home shows Hosting only when organizer mode is on AND homeView is host.",
+  "effective": [
+    { "organizerMode": false, "homeView": "host", "expect": "goer" },
+    { "organizerMode": false, "homeView": "goer", "expect": "goer" },
+    { "organizerMode": true, "homeView": "host", "expect": "host" },
+    { "organizerMode": true, "homeView": "goer", "expect": "goer" },
+    { "organizerMode": true, "homeView": null, "expect": "goer" },
+    { "organizerMode": false, "homeView": null, "expect": "goer" }
+  ],
+  "afterSync": [
+    { "prevOrganizerMode": false, "prevHomeView": "goer", "organizerMode": true, "expect": "host" },
+    { "prevOrganizerMode": true, "prevHomeView": "goer", "organizerMode": true, "expect": "goer" },
+    { "prevOrganizerMode": true, "prevHomeView": "host", "organizerMode": true, "expect": "host" },
+    { "prevOrganizerMode": true, "prevHomeView": "host", "organizerMode": false, "expect": "goer" },
+    { "prevOrganizerMode": false, "prevHomeView": "host", "organizerMode": false, "expect": "goer" }
+  ],
+  "signOut": { "homeView": "goer" },
+  "locked": [
+    { "organizerMode": false, "locked": true },
+    { "organizerMode": true, "locked": false }
+  ],
+  "startHosting": [
+    { "signedIn": false, "organizerMode": false, "step": "signIn" },
+    { "signedIn": true, "organizerMode": false, "step": "invite" },
+    { "signedIn": true, "organizerMode": true, "step": "land" }
+  ],
+  "lockedLabel": {
+    "vi": "Tổ chức, đã khoá, chạm hai lần để bắt đầu tổ chức",
+    "en": "Hosting, locked, double-tap to start hosting"
+  }
+}

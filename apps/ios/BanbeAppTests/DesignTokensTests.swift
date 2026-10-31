@@ -53,13 +53,15 @@ final class DesignTokensTests: XCTestCase {
             let t = try XCTUnwrap(fx[name] as? [String: Any])
             let hexes: [(Color, String)] = [(palette.paper, "paper"), (palette.ink, "ink"), (palette.field, "field"),
                                             (palette.surface1, "surface1"), (palette.surface2, "surface2"),
-                                            (palette.surface3, "surface3"), (palette.clay, "clay"), (palette.honey, "honey")]
+                                            (palette.surface3, "surface3"), (palette.clay, "clay"), (palette.honey, "honey"),
+                                            (palette.block, "block"), (palette.blockInset, "blockInset")]
             for (color, key) in hexes { assertSame(color, try XCTUnwrap(t[key] as? String), "\(name) \(key)") }
             XCTAssertEqual(rgb(palette.ink2).3, try XCTUnwrap(t["ink2Alpha"] as? Double), accuracy: 0.003, "\(name) ink2")
             XCTAssertEqual(rgb(palette.ink3).3, try XCTUnwrap(t["ink3Alpha"] as? Double), accuracy: 0.003, "\(name) ink3")
 
             let alert = rgb(hex: try XCTUnwrap(t["alert"] as? String))
-            for bg in [palette.paper, palette.surface1, palette.surface2, palette.surface3, palette.field] {
+            for bg in [palette.paper, palette.surface1, palette.surface2, palette.surface3, palette.field,
+                       palette.block, palette.blockInset] {
                 let b = flat(bg, over: bg)
                 XCTAssertGreaterThanOrEqual(ratio(flat(palette.ink, over: bg), b), minContrast["ink"]!, "\(name) ink")
                 XCTAssertGreaterThanOrEqual(ratio(flat(palette.ink2, over: bg), b), minContrast["ink2"]!, "\(name) ink2")
@@ -67,6 +69,29 @@ final class DesignTokensTests: XCTestCase {
                 XCTAssertGreaterThanOrEqual(ratio(alert, b), minContrast["alert"]!, "\(name) alert")
             }
         }
+    }
+
+    /// Plan item 5: blocks are the warm beige in light (= surface2) and today's card fill in dark (= surface1, so dark
+    /// mode is unchanged); honey text keeps AA on every surface it is used on (fixture `honeyOn`).
+    func testBlockTokensAndHoneyContrast() throws {
+        let fx = try fixture()
+        let minHoney = try XCTUnwrap((fx["minContrast"] as? [String: Double])?["honey"])
+        let honeyOn = try XCTUnwrap(fx["honeyOn"] as? [String])
+        for (name, palette) in [("light", Palette.light), ("dark", Palette.dark)] {
+            let byKey: [String: Color] = ["paper": palette.paper, "surface1": palette.surface1, "surface2": palette.surface2,
+                                          "surface3": palette.surface3, "field": palette.field,
+                                          "block": palette.block, "blockInset": palette.blockInset]
+            for key in honeyOn {
+                let bg = try XCTUnwrap(byKey[key], key)
+                XCTAssertGreaterThanOrEqual(ratio(flat(palette.honey, over: bg), flat(bg, over: bg)), minHoney, "\(name) honey on \(key)")
+            }
+        }
+        assertSame(Palette.light.block, "#EEE8DA", "light block = surface2")
+        assertSame(Palette.dark.block, "#1A1815", "dark block = today's surface1")
+        let lightBlock = rgb(Palette.light.block), lightS2 = rgb(Palette.light.surface2)
+        XCTAssertEqual(lightBlock.0, lightS2.0, accuracy: 0.003)
+        let darkBlock = rgb(Palette.dark.block), darkS1 = rgb(Palette.dark.surface1)
+        XCTAssertEqual(darkBlock.0, darkS1.0, accuracy: 0.003)
     }
 
     func testThemeChoiceRulesMatchWeb() throws {

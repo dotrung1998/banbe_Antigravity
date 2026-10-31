@@ -37,4 +37,22 @@ enum ReportMetricLabels {
     static func label(_ metric: AccountKpiMetric, _ T: (String, String) -> String) -> String {
         T(metric.label, en[metric.key] ?? metric.label)
     }
+
+    /// Simple Shell follow-up (plan item 5): short labels for the Host Home KPI tiles, which wrap to at most two
+    /// lines with no ellipsis. Every metric the host layout can put on Home (ReportsPresentation.layout(.host)
+    /// primary + overview) has one; the full labels above stay in Reports. Mirrors `METRIC_SHORT_LABEL` in
+    /// src/lib/reportMetricLabels.js.
+    static let short: [String: (vi: String, en: String)] = [
+        "confirmed_seats": ("Chỗ đã xác nhận", "Seats confirmed"),
+        "confirmed_payment_amount": ("Tiền đã xác nhận", "Payments confirmed"),
+        "upcoming_events": ("Sắp diễn ra", "Upcoming"),
+        "published_events": ("Đã đăng", "Published"),
+        "check_ins": ("Đã điểm danh", "Checked in"),
+        "refunds_owed": ("Cần hoàn tiền", "Refunds owed"),
+        "refunds_overdue": ("Hoàn tiền trễ", "Refunds late"),
+    ]
+
+    static func shortLabel(_ key: String, _ T: (String, String) -> String) -> String? {
+        short[key].map { T($0.vi, $0.en) }
+    }
 }

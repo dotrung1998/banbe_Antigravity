@@ -41,12 +41,14 @@ export function promptBenefits(context, T) {
 
 /**
  * A guest prompt: { context, returnTo, resume } where resume is null | { type: 'reserve', eventKey } |
- * { type: 'chat', eventKey, back }. `returnTo` is where sign-in comes back to.
+ * { type: 'chat', eventKey, back } | { type: 'host' }. `returnTo` is where sign-in comes back to.
  */
 export function makePrompt(context, { screen, eventKey } = {}) {
   const resume = context === 'reserve' && eventKey ? { type: 'reserve', eventKey }
     : context === 'message' && eventKey ? { type: 'chat', eventKey, back: screen === 'event' ? 'event' : 'home' }
-      : null;
+      // Simple Shell follow-up (note 66): after sign-in, Start hosting carries on (invitation or Home > Hosting).
+      : context === 'host' ? { type: 'host' }
+        : null;
   return { context, returnTo: GUEST_BROWSE_SCREENS.has(screen) ? screen : 'home', resume };
 }
 

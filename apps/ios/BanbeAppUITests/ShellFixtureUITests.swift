@@ -281,4 +281,126 @@ final class ShellFixtureUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1.5)
         XCTAssertEqual(tab.frame.width, expanded, accuracy: 1, "returning to Home must not shrink the dock again")
     }
+
+    // MARK: Simple Shell follow-up (plan items 1, 2, 5) — `-uiFixtureSimpleShell YES`
+
+    private func launchSimple(_ variant: String = "home", host: Bool = false, extra: [String] = [], lang: String = "en") -> XCUIApplication {
+        launch(variant, lang: lang, extra: ["-uiFixtureSimpleShell", "YES"] + (host ? ["-uiFixtureHostMode", "YES"] : []) + extra)
+    }
+
+    private func waitSelected(_ e: XCUIElement, _ selected: Bool = true, timeout: TimeInterval = 5) -> Bool {
+        let p = NSPredicate(format: "isSelected == %@", NSNumber(value: selected))
+        return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: p, object: e)], timeout: timeout) == .completed
+    }
+
+    /// Goer (organizer mode off): Hosting is locked, still reachable, and opens the invitation; Home stays on Going out.
+    func testLockedHostingOpensTheInvitationAndStaysOnGoingOut() {
+        let app = launchSimple()
+        let host = el(app, "home.mode.host"), goer = el(app, "home.mode.goer")
+        XCTAssertTrue(host.waitForExistence(timeout: 20))
+        XCTAssertEqual(host.label, "Hosting, locked")
+        XCTAssertEqual(host.value as? String, "locked")
+        XCTAssertGreaterThanOrEqual(host.frame.height, 44)
+        XCTAssertTrue(goer.isSelected)
+        host.tap()
+        XCTAssertTrue(el(app, "startHosting.sheet").waitForExistence(timeout: 6), "the Start hosting invitation")
+        XCTAssertTrue(el(app, "startHosting.confirm").exists)
+        el(app, "startHosting.close").tap()
+        XCTAssertTrue(el(app, "startHosting.sheet").waitForNonExistence(timeout: 5))
+        XCTAssertTrue(goer.isSelected, "still Going out")
+        XCTAssertFalse(el(app, "home.host.hero").exists)
+        XCTAssertFalse(el(app, "home.host.plan").exists)
+    }
+
+    func testLockedHostingLabelVietnamese() {
+        let app = launchSimple(lang: "vi")
+        let host = el(app, "home.mode.host")
+        XCTAssertTrue(host.waitForExistence(timeout: 20))
+        XCTAssertEqual(host.label, "Tổ chức, đã khoá")
+    }
+
+    /// Confirming the invitation turns hosting on and lands on Home > Hosting (lock gone).
+    func testConfirmingTheInvitationUnlocksHosting() {
+        let app = launchSimple()
+        let host = el(app, "home.mode.host")
+        XCTAssertTrue(host.waitForExistence(timeout: 20))
+        host.tap()
+        let confirm = el(app, "startHosting.confirm")
+        XCTAssertTrue(confirm.waitForExistence(timeout: 6))
+        confirm.tap()
+        XCTAssertTrue(waitSelected(host, timeout: 8))
+        XCTAssertEqual(host.label, "Hosting")
+        XCTAssertTrue(el(app, "home.host.hero").exists || el(app, "home.host.plan").exists)
+    }
+
+    /// Host: Going out ↔ Hosting changes only the view (no invitation, organizer mode stays on).
+    func testHostTogglesGoingOutAndHostingWithoutTheInvitation() {
+        let app = launchSimple(host: true)
+        let host = el(app, "home.mode.host"), goer = el(app, "home.mode.goer")
+        XCTAssertTrue(host.waitForExistence(timeout: 20))
+        XCTAssertTrue(waitSelected(host), "a host opens on Hosting")
+        XCTAssertEqual(host.label, "Hosting")
+        goer.tap()
+        XCTAssertTrue(waitSelected(goer))
+        XCTAssertFalse(el(app, "startHosting.sheet").exists)
+        XCTAssertFalse(el(app, "home.host.hero").exists)
+        XCTAssertTrue(el(app, "home.searchBar").exists, "the goer feed")
+        host.tap()
+        XCTAssertTrue(waitSelected(host))
+        XCTAssertFalse(el(app, "startHosting.sheet").waitForExistence(timeout: 1.5), "no invitation for a host")
+        XCTAssertTrue(el(app, "home.host.hero").exists || el(app, "home.host.plan").exists)
+    }
+
+    func testGuestTappingHostingAsksToSignIn() {
+        let app = launchSimple(extra: ["-uiFixtureGuest", "YES"])
+        let host = el(app, "home.mode.host")
+        XCTAssertTrue(host.waitForExistence(timeout: 20))
+        XCTAssertEqual(host.label, "Hosting, locked")
+        host.tap()
+        XCTAssertTrue(el(app, "guestPrompt").waitForExistence(timeout: 6))
+        XCTAssertFalse(el(app, "startHosting.sheet").exists)
+    }
+
+    /// Item 2: the category row is back under the search bar with its "Show all" sheet; one category shows its type
+    /// chips, All hides them; the Filters sheet no longer repeats categories.
+    func testCategoryRowIsBackWithShowAllAndTypeChips() {
+        let app = launchSimple(extra: ["-uiFixtureEventTypes", "YES"])
+        let all = el(app, "filter.all")
+        XCTAssertTrue(all.waitForExistence(timeout: 20), "category row")
+        XCTAssertTrue(all.isSelected)
+        XCTAssertGreaterThan(all.frame.minY, el(app, "home.searchBar").frame.maxY, "under the search bar")
+        el(app, "home.category.showAll").tap()
+        XCTAssertTrue(el(app, "home.categorySheet").waitForExistence(timeout: 5), "Show all A-Z sheet")
+        el(app, "home.categorySheet.close").tap()
+        XCTAssertTrue(el(app, "home.categorySheet").waitForNonExistence(timeout: 5))
+        let supper = el(app, "filter.supper")
+        XCTAssertTrue(supper.waitForExistence(timeout: 5))
+        supper.tap()
+        let typeChip = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'home.type.'")).firstMatch
+        XCTAssertTrue(typeChip.waitForExistence(timeout: 5), "one category shows its type chips")
+        el(app, "filter.all").tap()
+        XCTAssertTrue(typeChip.waitForNonExistence(timeout: 5), "All hides them")
+        el(app, "home.filtersButton").tap()
+        XCTAssertTrue(el(app, "home.filter.seatsLeft").waitForExistence(timeout: 5))
+        XCTAssertFalse(el(app, "home.filter.cat.supper").exists, "no category section in the Filters sheet")
+    }
+
+    /// Item 5: the three KPI tiles are the same width, at least 88pt tall, and show the short label in full.
+    func testHostKPITilesAreEqualAndShowShortLabels() {
+        let app = launchSimple(host: true)
+        XCTAssertTrue(el(app, "home.mode.host").waitForExistence(timeout: 20))
+        let tiles = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'home.host.kpi.'"))
+        for _ in 0..<5 where !(tiles.count == 3 && tiles.element(boundBy: 2).isHittable) { app.swipeUp() }
+        XCTAssertEqual(tiles.count, 3)
+        let frames = (0..<3).map { tiles.element(boundBy: $0).frame }
+        XCTAssertEqual(frames[0].width, frames[1].width, accuracy: 1)
+        XCTAssertEqual(frames[1].width, frames[2].width, accuracy: 1)
+        XCTAssertEqual(frames[0].minY, frames[2].minY, accuracy: 1, "one row")
+        for f in frames { XCTAssertGreaterThanOrEqual(f.height, 88) }
+        let shortLabels = ["Seats confirmed", "Payments confirmed", "Upcoming", "Published", "Checked in",
+                           "Refunds owed", "Refunds late"]
+        for i in 0..<3 {
+            XCTAssertTrue(shortLabels.contains(tiles.element(boundBy: i).label), tiles.element(boundBy: i).label)
+        }
+    }
 }

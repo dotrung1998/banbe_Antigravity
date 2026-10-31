@@ -36,6 +36,12 @@ struct Palette {
     let ink3: Color
     /// Hairline between rows inside one group (web `--bb-divider`). `rule` stays for input and outline edges.
     let divider: Color
+    /// Block fills (Simple Shell follow-up, plan item 5): every card / tile / block that sits on paper (Home event
+    /// cards, host hero, submitted and KPI tiles, Account tiles, More, identity card). Light = the warm beige of the
+    /// Pending/Live tiles (= surface2) so blocks no longer wash out on paper; dark = today's card fill (surface1), so
+    /// dark mode is unchanged. Anything nested inside a block uses `blockInset`. Web `--bb-block` / `--bb-block-inset`.
+    let block: Color
+    let blockInset: Color
 
     static let light = Palette(
         paper: Color(hex: 0xF7F4EC),
@@ -52,7 +58,9 @@ struct Palette {
         surface3: Color(hex: 0xE6DFCF),
         ink2: Color(hex: 0x1B1916).opacity(0.72),
         ink3: Color(hex: 0x1B1916).opacity(0.64),
-        divider: Color(hex: 0x1B1916).opacity(0.10)
+        divider: Color(hex: 0x1B1916).opacity(0.10),
+        block: Color(hex: 0xEEE8DA),
+        blockInset: Color(hex: 0xFBF8F1)
     )
     /// Near-black warm base; depth from the lighter surface steps (tonal elevation), not borders or shadows.
     static let dark = Palette(
@@ -71,7 +79,9 @@ struct Palette {
         surface3: Color(hex: 0x2E2A24),
         ink2: Color(hex: 0xF2EDE1).opacity(0.72),
         ink3: Color(hex: 0xF2EDE1).opacity(0.56),
-        divider: Color(hex: 0xF2EDE1).opacity(0.10)
+        divider: Color(hex: 0xF2EDE1).opacity(0.10),
+        block: Color(hex: 0x1A1815),
+        blockInset: Color(hex: 0x24211C)
     )
 }
 

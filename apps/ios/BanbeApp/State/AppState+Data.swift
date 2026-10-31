@@ -458,6 +458,7 @@ extension AppState {
             organizerMode = false
             hasHosted = false
             mode = "goer"
+            homeView = .goer
             attending = []
             tickets = [:]
             myOrgEventKeys = []
@@ -591,6 +592,9 @@ extension AppState {
                 let canHostNow = profile.role == "organizer" || (profile.role == "admin" && profile.organizerModeEnabled != false)
                 organizerMode = canHostNow
                 mode = canHostNow ? "host" : "goer"
+                // Simple Shell: a sync turning organizer mode on lands Home on Hosting, off on Going out; an unchanged
+                // mode keeps whatever this session chose (Lib/HomeMode.swift).
+                homeView = HomeMode.viewAfterSync(prevOrganizerMode: oldMode, prevHomeView: homeView, organizerMode: canHostNow)
                 #if DEBUG
                 if oldMode != canHostNow {
                     print("[organizerMode] WRITE source=applySession old=\(oldMode) new=\(canHostNow) role=\(profile.role)")
@@ -707,6 +711,10 @@ extension AppState {
         // TASK 5 (Account badges pass) — admin-only cache; a non-admin (or
         // the next account signing in) must never see a stale prior count.
         pendingEventsCount = 0
+        // Simple Shell: the Home view is session-only.
+        homeView = .goer
+        startHostingInviteOpen = false
+        startHostingAfterInvite = false
     }
 
     /// Which catalogue events this account is actually attending (from real
@@ -1486,7 +1494,8 @@ extension AppState {
     /// all — that field means "eligible to host," permanently true once
     /// real, and organizerMode is a completely separate, freely-togglable
     /// preference on top of it.
-    func applyOrganizerMode(_ enabled: Bool) async {
+    @discardableResult
+    func applyOrganizerMode(_ enabled: Bool) async -> Bool {
         // Account regression fix pass (2026-09-27), Item 3 — this used to
         // `return` here unconditionally for an admin, before ever calling
         // the RPC: no request, no error, just nothing happening — "the
@@ -1505,9 +1514,22 @@ extension AppState {
         // through. The `@Published organizerModeBusy` UI flag below is a
         // separate concern (disabling the switch) and is deliberately set
         // only AFTER yielding — see that yield's own comment.
-        guard !organizerModeInFlight else { return }
+        guard !organizerModeInFlight else { return false }
         organizerModeInFlight = true
         defer { organizerModeInFlight = false }
+        #if DEBUG
+        // UI-test fixtures have no session: the switch succeeds locally (no RPC, no first-activation setup sheet).
+        if UITestFixture.isActive {
+            await Task.yield()
+            let before = organizerMode
+            withAnimation(.easeInOut(duration: 0.2)) {
+                organizerMode = enabled
+                mode = enabled ? "host" : "goer"
+                homeView = HomeMode.viewAfterSync(prevOrganizerMode: before, prevHomeView: homeView, organizerMode: enabled)
+            }
+            return true
+        }
+        #endif
 
         // BUG 1 (2026-10-07 fix pass) — root cause of "one tap produces
         // many 'Publishing changes from within view updates' warnings":
@@ -1601,11 +1623,15 @@ extension AppState {
                     if Self.hostOnlyScreens.contains(screen) { screen = .profile }
                     if accountTab == "host" { accountTab = "personal" }
                 }
+                // Simple Shell: off (from any source) puts Home back on Going out, so a cancelled host setup re-locks
+                // the Hosting segment; turning on lands Home on Hosting (Lib/HomeMode.swift).
+                homeView = HomeMode.viewAfterSync(prevOrganizerMode: rollbackMode, prevHomeView: homeView, organizerMode: confirmed)
             }
             // First activation: a returning host who already has a photo, or one who finished/skipped
             // setup before, never sees the setup sheet again.
             if confirmed, myOrganizerAvatarPath.isEmpty, !hostSetupResolved { hostSetupOpen = true }
             if confirmed, !hostSetupOpen { await ensureOrganizerIfNeeded(modeSettled: true) }
+            return confirmed == enabled
         } catch {
             // Rolling back in silence is what makes the switch look like it
             // "turns itself back off" — always say why it went back.
@@ -1651,7 +1677,47 @@ extension AppState {
                     "We could not change organizer mode right now. Please try again."
                 )
             }
+            return false
         }
+    }
+
+    // MARK: - Start hosting (Simple Shell follow-up, plan items 1 + 4)
+
+    enum StartHostingLanding { case home }
+
+    /// One entry point for "start hosting" (Home's locked Hosting segment, the dock "+" > Host an event, Account's
+    /// Start hosting). Guest: the sign-in prompt first (the invitation opens after sign-in if organizer mode is still
+    /// off). Organizer mode off: the Start hosting invitation; its primary action calls `confirmStartHosting`.
+    /// Already on: land on Home > Hosting at the top. Web twin: BanBeContext `startHosting({ land: 'home' })`.
+    func startHosting(land: StartHostingLanding = .home) {
+        switch HomeMode.startHostingStep(signedIn: isSignedIn, organizerMode: organizerMode) {
+        case .signIn: promptSignIn(.host, resume: .startHosting)
+        case .invite: startHostingInviteOpen = true
+        case .land: landOnHostHome()
+        }
+    }
+
+    /// The invitation's primary action, run from the sheet's `onDismiss` (RootView) so the first-activation
+    /// HostSetupView never opens under a sheet that is still closing. Lands only when the server said yes; on a
+    /// failure `organizerModeError` keeps today's message and nothing navigates.
+    func confirmStartHosting() async {
+        guard isSignedIn else { return }
+        if !organizerMode {
+            guard await applyOrganizerMode(true), organizerMode else {
+                // Failed: the invitation comes back with today's error message (organizerModeError); nothing navigates.
+                if !organizerModeError.isEmpty { startHostingInviteOpen = true }
+                return
+            }
+        }
+        landOnHostHome()
+    }
+
+    private func landOnHostHome() {
+        homeView = .host
+        searchOverlayOpen = false
+        notificationsOverlayOpen = false
+        screen = .home
+        resetHomeScrollToTop()
     }
 
     // MARK: - Display name

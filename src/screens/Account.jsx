@@ -5,7 +5,7 @@ import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { supabase } from '../lib/supabase.js';
 import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
-import { paper, ink, ink2, ink3, surface1, rule, display, fieldGlass, fieldSolid, cardGlass, inkButton, alert } from '../theme.js';
+import { paper, ink, ink2, ink3, block, rule, display, fieldGlass, fieldSolid, cardGlass, inkButton, alert } from '../theme.js';
 import { AttachMenuIcon } from './Chat.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
@@ -20,6 +20,7 @@ import { reminderPhase, REMINDER_CSS } from '../lib/eventReminder.js';
 import { computeAdminModerationCount, computeHostActionCount, computeMyTicketsActionCount, computeMyRefundActionCount } from '../lib/badges.js';
 import { capsuleStreak } from '../lib/rewards.js';
 import { AccountTileGrid, AccountSectionLabel, MoreList, MoreRow, RewardsStrip } from './AccountTiles.jsx';
+import StartHostingCard from '../components/StartHostingCard.jsx';
 
 function organizerAvatarUrl(path, r2Ref, variant = 'thumb') {
   return organizerAvatarPublicUrl(path, r2Ref, variant);
@@ -103,6 +104,7 @@ export function RowIcon({ kind, size = 22, accent }) {
 export default function Account() {
   const {
     state, T, set, goEditName, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
+    startHosting,
     openMyRefunds,
     loadHomeStories, openStoryViewer, openStoryLibraryPicker, openStoryCameraPicker,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadPendingEventsCount,
@@ -377,7 +379,8 @@ export default function Account() {
           <div
             style={{
               ...cardGlass({ margin: 0, padding: `18px ${16 + reserveRight}px 18px ${16 + reserveLeft}px`, display: 'flex', gap: 14, alignItems: 'center' }),
-              background: `linear-gradient(165deg, ${PROFILE_PALETTE_COLORS[s.user?.profileTheme] || PROFILE_PALETTE_COLORS.default}55, transparent 70%)`,
+              // Note 66 follow-up: the theme wash sits on the `block` fill, so the card reads on paper in light mode.
+              background: `linear-gradient(165deg, ${PROFILE_PALETTE_COLORS[s.user?.profileTheme] || PROFILE_PALETTE_COLORS.default}55, transparent 70%), ${block}`,
             }}
             data-testid="account-profile-card"
           >
@@ -449,7 +452,7 @@ export default function Account() {
                   ...cardGlass({ margin: '8px 20px 0', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer' }),
                   position: 'relative', '--bb-rem-r': '12px',
                   // Moss wash, never the personal `profileTheme`, so it always reads as the organization identity.
-                  background: `linear-gradient(165deg, ${PROFILE_PALETTE_COLORS.moss}66, transparent 70%)`,
+                  background: `linear-gradient(165deg, ${PROFILE_PALETTE_COLORS.moss}66, transparent 70%), ${block}`,
                 }}
                 data-testid="org-profile-card"
               >
@@ -520,7 +523,7 @@ export default function Account() {
             onClick={() => openAccountGroup('team')}
             role="button"
             data-testid="account-team-invite-banner"
-            style={{ margin: '8px 20px 0', minHeight: 52, boxSizing: 'border-box', padding: '10px 16px', borderRadius: 14, background: surface1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+            style={{ margin: '8px 20px 0', minHeight: 52, boxSizing: 'border-box', padding: '10px 16px', borderRadius: 14, background: block, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 15, color: ink }}>
               <RowIcon kind="users" accent={ROW_ACCENT_COLORS.team} />{T('Bạn có lời mời Team', 'You have a team invite')}
@@ -572,13 +575,11 @@ export default function Account() {
 
         {/* 8. "Host your first event" — only for an account that has never hosted (goer mode by definition). */}
         {!isOrganizer && !canHost && s.user && (
-          <div data-testid="account-host-first-event" style={{ margin: '16px 20px 0', padding: '16px', borderRadius: 14, background: surface1, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <span style={{ ...display(17, { lineHeight: 1.3 }) }}>{T('Tổ chức sự kiện đầu tiên', 'Host your first event')}</span>
-            <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink2, margin: 0 }}>
-              {T('Miễn phí khi banbe còn mới: không phí đăng, không phí giao dịch.', 'Free while banbe is new: no listing or transaction fees.')}
-            </p>
-            <div role="button" onClick={toggleOrganizerMode} data-testid="account-host-first-event-start" style={{ ...inkButton({ marginTop: 4, borderRadius: 18, padding: 12, fontSize: 14 }) }}>{T('Bắt đầu tổ chức ▪︎ miễn phí', 'Start hosting ▪︎ free')}</div>
-          </div>
+          // The shared Start hosting invitation (StartHostingCard, also the sheet behind Home's locked Hosting segment).
+          // This card IS the invitation, so it turns organizer mode on right away and lands on Home > Hosting.
+          <StartHostingCard canHost={false} busy={s.organizerModeBusy} style={{ margin: '16px 20px 0' }}
+            onStart={() => startHosting({ land: 'home', confirmed: true })}
+            testId="account-host-first-event" ctaTestId="account-host-first-event-start" />
         )}
 
         {/* 9. Sign out / Sign in, both modes. */}

@@ -182,6 +182,8 @@ struct BottomTabBar: View {
     // body falls back to the discrete `activeIndex` (unchanged for a tap
     // and for `syncActiveToScreen()`'s own resting-state placement).
     @State private var dragIndexFloat: CGFloat?
+    /// Simple Shell: the live scrub is over the centre "+" slot (the "+" shows a pressed look; release opens its menu).
+    @State private var overCreate = false
 
     // Motion refinement pass (2026-09-28 follow-up #3, "improve the motion"
     // ticket) — `dragIndexFloat` above is still the RAW, zero-lag truth (it
@@ -270,12 +272,10 @@ struct BottomTabBar: View {
     /// anchor-preference snapshot that could be empty/stale — which made a
     /// tap resolve to no tab at all ("works only intermittently"). Positions
     /// past either end still resolve to that end's tab.
-    private func hitTest(_ x: CGFloat, barWidth: CGFloat) -> String? {
+    private func hitTest(_ x: CGFloat, barWidth: CGFloat) -> DockLayout.ScrubTarget? {
         guard !items.isEmpty, barWidth > 0 else { return nil }
-        let slice = barWidth / CGFloat(slotCount)
-        let i = min(slotCount - 1, max(0, Int(x / slice)))
-        // The Simple Shell create slot is not a tab: nil, so a scrub across the "+" never selects it.
-        return DockLayout.tab(atSlot: i, simpleShell: simpleShell)
+        // Simple Shell follow-up (plan item 3): the centre slot is `.create`, never a tab (Lib/DockLayout.swift).
+        return DockLayout.scrubTarget(fraction: Double(x / barWidth), simpleShell: simpleShell)
     }
 
     // Continuous "index space" position for a raw touch x — 0 at Home's own
@@ -307,9 +307,16 @@ struct BottomTabBar: View {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) { pressScale = 1.18 }
                     }
                 }
-                let id = hitTest(value.location.x, barWidth: barWidth)
-                // Over the Simple Shell "+" slot (nil) the last tab stays lit.
-                if let id, id != activeID { activeID = id }
+                switch hitTest(value.location.x, barWidth: barWidth) {
+                case .tab(let id):
+                    overCreate = false
+                    if id != activeID { activeID = id }
+                case .create:
+                    // Over the Simple Shell "+": no tab is lit, the "+" looks pressed, one selection tick on entry.
+                    if !overCreate { overCreate = true; Haptics.selection() }
+                    activeID = nil
+                case nil: break
+                }
                 dragIndexFloat = indexFloat(for: value.location.x, barWidth: barWidth)
                 if !reduceMotion {
                     // Water-droplet stretch: the faster the swipe, the longer
@@ -320,12 +327,21 @@ struct BottomTabBar: View {
                 }
             }
             .onEnded { value in
-                let id = hitTest(value.location.x, barWidth: barWidth)
+                let target = hitTest(value.location.x, barWidth: barWidth)
+                overCreate = false
+                if case .create = target {
+                    // Released over the Simple Shell "+" (plan item 3): open the same menu a tap opens; the screen
+                    // does not change and the bubble springs back to the current screen's tab (instant under Reduce
+                    // Motion, see the selectionIndexFloat onChange below).
+                    finishTouch()
+                    syncActiveToScreen()
+                    app.dockCreateOpen = true
+                    return
+                }
+                guard case .tab(let id) = target else { finishTouch(); syncActiveToScreen(); return }
                 activeID = id
                 finishTouch()
-                // Released over the Simple Shell "+" slot: no tab change, the highlight goes back to the current one.
-                if id == nil { syncActiveToScreen() }
-                if let id, let item = items.first(where: { $0.id == id }) {
+                if let item = items.first(where: { $0.id == id }) {
                     // No haptic on switching tabs (note 47).
                     // Note 53: a dock tap is a quick cross-fade (RootView reads this), not the push/pop slide that
                     // moved two full screens at once and read as jerky. Edge/tab swipes keep their own motion.
@@ -583,7 +599,7 @@ struct BottomTabBar: View {
         // scrub gesture's view: a tap on it is a plain Button tap, and a scrub never selects it.
         .overlay {
             if simpleShell {
-                DockCreateButtonView(centred: true)
+                DockCreateButtonView(centred: true, scrubHover: overCreate)
             }
         }
         // BUG (2026-10-06 fix pass) — the shrink-on-scroll `.scaleEffect`
@@ -635,14 +651,16 @@ struct BottomTabBar: View {
                     renderIndexFloat = newValue
                 }
             } else {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                withAnimation(Motion.animation(.spring(response: 0.32, dampingFraction: 0.78), reduce: reduceMotion)) {
                     renderIndexFloat = newValue
                 }
             }
         }
         // System-cancelled touch (no `onEnded`): reset so nothing sticks.
         .onChange(of: touchActive) { _, active in
+            // A cancelled drag never opens the "+" menu, wherever it was.
             if !active && isDragging {
+                overCreate = false
                 finishTouch()
                 syncActiveToScreen()
             }

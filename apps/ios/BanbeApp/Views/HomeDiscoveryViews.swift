@@ -49,6 +49,8 @@ struct HomeCategoryRow: View {
     var keys: [String] = HomeDiscovery.categories.map(\.key)
     var counts: [String: Int]? = nil
     var onShowAll: (() -> Void)? = nil
+    /// Simple Shell: the slim version (vertical padding cut to 8); the tiles, counts and end padding are unchanged.
+    var compact = false
     // Today's sizes at the default text size, growing with Dynamic Type; labels wrap instead of clipping.
     @ScaledMetric(relativeTo: .caption) private var labelSize: CGFloat = 11.5
     @ScaledMetric(relativeTo: .caption) private var columnWidth: CGFloat = 60
@@ -125,7 +127,7 @@ struct HomeCategoryRow: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.top, 12).padding(.bottom, 4)
+            .padding(.top, compact ? 8 : 12).padding(.bottom, compact ? 0 : 4)
         }
         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .rootSwipeExclusion("homeCategories")
@@ -290,6 +292,10 @@ struct DiscoveryCard: View {
     @EnvironmentObject private var app: AppState
     let model: DiscoveryCardModel
 
+    /// Simple Shell follow-up (plan item 5): with the switch on the card is a block (`palette.block` fill, 12pt
+    /// padding under the photo, card radius) so it reads as one object on paper. OFF: today's unfilled card.
+    private var filled: Bool { app.simpleShellEnabled }
+
     var body: some View {
         SwipeSafeButton { app.goEvent(model.key) } label: {
             VStack(alignment: .leading, spacing: 0) {
@@ -320,59 +326,73 @@ struct DiscoveryCard: View {
                     }
                     .overlay(alignment: .bottomLeading) { FillStatusChip(model: model).padding(10) }
 
-                if let label = model.label {
-                    HStack(spacing: 5) {
-                        Text(label == "best" ? "★" : "✦").foregroundStyle(app.palette.honey).accessibilityHidden(true)
-                        Text(label == "best" ? app.T("Hợp với bạn nhất", "Best match for you") : app.T("Nổi bật tuần này", "Popular this week"))
-                    }
-                    .font(.system(size: 11, weight: .bold))
-                    .kerning(0.6)
-                    .textCase(.uppercase)
-                    .padding(.top, 10)
-                    .accessibilityIdentifier("home.card.label.\(label)")
-                }
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text(model.name)
-                        .font(BanbeTheme.display(18))
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    Text(model.priceLabel)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(model.isFree ? app.palette.honey : app.palette.ink)
-                        .lineLimit(1).fixedSize()
-                }
-                .padding(.top, model.label == nil ? 10 : 4)
-                if !model.metaLine.isEmpty {
-                    Text(model.metaLine)
-                        .font(.system(size: 12.5))
-                        .opacity(0.68)
-                        .lineLimit(1)
-                        .padding(.top, 3)
-                }
-                if let typeLine = model.typeLine {
-                    Text(typeLine)
-                        .font(.system(size: 12.5))
-                        .opacity(0.8)
-                        .lineLimit(1)
-                        .padding(.top, 3)
-                        .accessibilityIdentifier("home.card.typeLine")
-                }
-                if let going = model.fill.going, !model.cancelled {
-                    Text(app.T("\(going) người sẽ đến", "\(going) going"))
-                        .font(.system(size: 11.5))
-                        .opacity(0.6)
-                        .padding(.top, 3)
-                        .accessibilityIdentifier("home.card.going")
+                details
+                    .padding(.horizontal, filled ? 12 : 0)
+                    .padding(.bottom, filled ? 12 : 0)
+            }
+            .background {
+                if filled {
+                    RoundedRectangle(cornerRadius: BanbeTheme.Radius.card, style: .continuous).fill(app.palette.block)
                 }
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 20)
-            .padding(.bottom, 22)
+            .padding(.bottom, filled ? 16 : 22)
         }
         .buttonStyle(.plain)
         // `card.<key>` sits on the photo ONLY (UI tests open events through it, so it must match exactly one element):
         // set on the whole button it would overwrite the Save / badge identifiers inside, and on the name as well it
         // would match twice.
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let label = model.label {
+                HStack(spacing: 5) {
+                    Text(label == "best" ? "★" : "✦").foregroundStyle(app.palette.honey).accessibilityHidden(true)
+                    Text(label == "best" ? app.T("Hợp với bạn nhất", "Best match for you") : app.T("Nổi bật tuần này", "Popular this week"))
+                }
+                .font(.system(size: 11, weight: .bold))
+                .kerning(0.6)
+                .textCase(.uppercase)
+                .padding(.top, 10)
+                .accessibilityIdentifier("home.card.label.\(label)")
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(model.name)
+                    .font(BanbeTheme.display(18))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text(model.priceLabel)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(model.isFree ? app.palette.honey : app.palette.ink)
+                    .lineLimit(1).fixedSize()
+            }
+            .padding(.top, model.label == nil ? 10 : 4)
+            if !model.metaLine.isEmpty {
+                Text(model.metaLine)
+                    .font(.system(size: 12.5))
+                    .opacity(0.68)
+                    .lineLimit(1)
+                    .padding(.top, 3)
+            }
+            if let typeLine = model.typeLine {
+                Text(typeLine)
+                    .font(.system(size: 12.5))
+                    .opacity(0.8)
+                    .lineLimit(1)
+                    .padding(.top, 3)
+                    .accessibilityIdentifier("home.card.typeLine")
+            }
+            if let going = model.fill.going, !model.cancelled {
+                Text(app.T("\(going) người sẽ đến", "\(going) going"))
+                    .font(.system(size: 11.5))
+                    .opacity(0.6)
+                    .padding(.top, 3)
+                    .accessibilityIdentifier("home.card.going")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

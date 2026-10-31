@@ -623,7 +623,20 @@ final class AppState: ObservableObject {
     // SwiftUI `Menu` was tried here first and reverted — see
     // DockCreateButtonView's own doc comment for the real-device clipping
     // bug that caused.
-    @Published var dockCreateMenuOpen = false
+    // Simple Shell follow-up (plan item 3): the centre "+" popover's presented state. The popover itself is bound
+    // to this, so a dock drag released over "+" can open it (BottomTabBar) exactly like a tap; RootView mirrors it
+    // into BottomTabBarOverlay.setDockCreateTrayOpen so the overlay window lets the menu receive touches.
+    @Published var dockCreateOpen = false
+    /// Simple Shell (plan item 1): which half of Home shows, Going out or Hosting. Session-only (never written to
+    /// UserDefaults or read from a route), reset on sign-out. Home renders through
+    /// `HomeMode.effectiveHomeView(organizerMode:homeView:)`, so organizer mode off always means Going out.
+    @Published var homeView: HomeViewMode = .goer
+    /// The Start hosting invitation sheet (RootView presents it): the locked Hosting segment, "+" > Host an event
+    /// and Account's Start hosting open it while organizer mode is off.
+    @Published var startHostingInviteOpen = false
+    /// Set when the invitation's primary action is tapped; RootView's `onDismiss` runs `startHosting` once the
+    /// sheet has fully closed, so the first-activation HostSetupView never overlaps it.
+    var startHostingAfterInvite = false
     /// Simple Shell "+" (host): "Share one of my events" opens the host's live-event picker (RootView presents it).
     @Published var dockEventStoryPickerOpen = false
     /// Simple Shell "+" (host): "New survey" lands on Surveys & Event Ideas with the create form already open.
@@ -2472,6 +2485,8 @@ final class AppState: ObservableObject {
     var locationTree: [LocationNode] { LocationHierarchy.build(from: locationUniverse) }
     var isSignedIn: Bool { userID != nil }
     var canHost: Bool { organizerMode || accountType == "admin" || hasHosted }
+    /// The Home view actually rendered (Lib/HomeMode.swift).
+    var effectiveHomeView: HomeViewMode { HomeMode.effectiveHomeView(organizerMode: isSignedIn && organizerMode, homeView: homeView) }
     var isAdmin: Bool { accountType == "admin" }
 
     var displayName: String {

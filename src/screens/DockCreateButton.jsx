@@ -24,10 +24,10 @@ import { AttachMenuIcon } from './Chat.jsx';
 // a real bottom tray (below) that rises above the dock and dims the actual
 // screen, which an absolutely-positioned popover anchored to this button
 // alone could never do convincingly.
-export default function DockCreateButton({ variant } = {}) {
+export default function DockCreateButton({ variant, pressed = false } = {}) {
   // Simple Shell (switch simple_shell, note 66): the centre "+" inside the bar, for everyone. Separate component so
-  // the legacy button below (and its hooks) is untouched.
-  if (variant === 'center') return <DockCreateCenter />;
+  // the legacy button below (and its hooks) is untouched. `pressed`: a dock drag is hovering it.
+  if (variant === 'center') return <DockCreateCenter pressed={pressed} />;
   return <LegacyDockCreateButton />;
 }
 

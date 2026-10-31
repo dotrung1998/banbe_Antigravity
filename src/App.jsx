@@ -82,6 +82,7 @@ import Schedule from './screens/Schedule.jsx';
 import Search from './screens/Search.jsx';
 import Welcome from './screens/Welcome.jsx';
 import GuestPromptSheet from './screens/GuestPromptSheet.jsx';
+import { StartHostingSheet } from './components/StartHostingCard.jsx';
 import TeamPage from './screens/TeamPage.jsx';
 import SurveyPublic from './screens/SurveyPublic.jsx';
 import SurveysHosting from './screens/SurveysHosting.jsx';
@@ -838,6 +839,8 @@ function Shell() {
       {/* event onboarding (note 34) — below the gate, above every screen */}
       <EventOnboarding />
       <GuestPromptSheet />
+      {/* Simple Shell follow-up (note 66): the Start hosting invitation (locked Hosting, "+" > Host an event). */}
+      <StartHostingSheet />
       {/* Onboarding v3 tour (note 64): portals itself outside #root and makes #root inert while it runs. */}
       <OnboardingTour />
      </div></div>

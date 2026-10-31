@@ -35,6 +35,7 @@ import { flagOn, normalizeFlags, readCachedFlags, writeCachedFlags } from '../li
 import { cleanDetails, profileFor } from '../lib/eventTypes.js';
 import { holdLeftCreateDraft, beginCreateDraftRestore, discardLeftCreateDraft } from '../lib/createDraftUndo.js';
 import { normalizeThemeChoice, resolveTheme, systemPrefersDark } from '../lib/themeChoice.js';
+import { homeViewAfterSync, startHostingStep } from '../lib/homeMode.js';
 
 /** Media-API upload with the current session token. Resolves `{provider:'supabase'}`
  * when the caller must use the legacy path; throws MediaUploadError only after bytes were PUT. */
@@ -478,6 +479,8 @@ const PRIVATE_STATE_KEYS = [
   'orgRegLinks', 'myOrgEventKeys', 'myOrgEventOrganizerId', 'myOrgPublishedEventCount', 'myOrgHostingSinceYear',
   'ensureOrganizerStatus', 'ensureOrganizerError', 'hostSetupOpen', 'organizerProfile', 'scheduleAddedKeys', 'guestPrompt',
   'eventRecapId', 'hostRecapId', 'createSeedCoverUrl', 'createUndoOffer', 'createDraftId',
+  // Simple Shell follow-up (note 66): the session-only Home view and the Start hosting invitation.
+  'homeView', 'startHostingOpen',
 ];
 const isPublicEventRow = (e) => !!e && e.visibility === 'public' && ['live', 'ended', 'cancelled'].includes(e.status);
 /** The signed-out state patch. Cached events keep only public rows (a private/invite/draft event fetched while
@@ -939,6 +942,14 @@ const initialState = {
   organizerMode: false,
   organizerModeError: '',
   organizerModeBusy: false,
+  // Simple Shell follow-up (note 66, src/lib/homeMode.js): Home's "Going out | Hosting" VIEW, separate from organizer
+  // mode. Session-only: never written to localStorage, never read from a route. Home shows Hosting only when
+  // organizerMode && homeView === 'host'.
+  homeView: 'goer',
+  // The Start hosting invitation sheet (StartHostingSheet) and the centre "+" sheet (DockCreateCenter), lifted here so
+  // a dock drag released over "+" can open the same sheet a tap opens.
+  startHostingOpen: false,
+  dockCreateOpen: false,
   editNameValue: '',
   editNameError: '',
   editNameSaving: false,
@@ -2005,7 +2016,7 @@ export function BanBeProvider({ children }) {
       } else {
         console.info('[organizerMode] WRITE source=syncUser', { new: canHostNow, role });
       }
-      set({
+      set(prev => ({
         // TASK D (2026-10-01 UX foundation pass) — the shareable-profile
         // fields, loaded alongside everything else this same query already
         // fetched rather than a second round trip.
@@ -2017,12 +2028,14 @@ export function BanBeProvider({ children }) {
           introLong: profile?.intro_long || '', socialLinks: profile?.social_links || [],
         },
         ...roleFields,
+        // Simple Shell follow-up (note 66): organizer mode coming on opens Hosting, staying on keeps the pick.
+        ...('organizerMode' in roleFields ? { homeView: homeViewAfterSync(prev.organizerMode, prev.homeView, roleFields.organizerMode) } : {}),
         canManageAdmins: profile?.can_manage_admins === true,
         referralCode: profile?.referral_code || null, sessionChecked: true,
         autoEmailDocuments: profile?.auto_email_documents === true,
         mutedNotificationKinds: profile?.muted_notification_kinds || [],
         authSyncing: false,
-      });
+      }));
 
       // Proof-of-consent bookkeeping (Task 1, migration 055,
       // banbe_User_Policy.md B1/B3). For an 'email'-provider session
@@ -6324,7 +6337,7 @@ export function BanBeProvider({ children }) {
     // submissions from one tap): two rapid calls both reach this line
     // before either's own `set()` has re-rendered, but only the first
     // ever sees the ref still `false`.
-    if (organizerModeBusyRef.current) return;
+    if (organizerModeBusyRef.current) return false;
     organizerModeBusyRef.current = true;
     const wasAdmin = s.accountType === 'admin';
     const rollback = { organizerMode: s.organizerMode, accountType: s.accountType };
@@ -6333,6 +6346,8 @@ export function BanBeProvider({ children }) {
       organizerMode: enabled,
       accountType: wasAdmin ? 'admin' : (enabled ? 'organizer' : 'participant'),
       mode: enabled ? 'host' : 'goer', organizerModeError: '', organizerModeBusy: true,
+      // Simple Shell follow-up (note 66): organizer mode off always means Going out.
+      ...(enabled ? {} : { homeView: 'goer' }),
     });
     // BUG 2 (2026-10-06 fix pass) — full request/response trace, dev
     // console only, never the access token itself (just whether a session
@@ -6364,7 +6379,7 @@ export function BanBeProvider({ children }) {
       const sessionExpired = error.code === 'PGRST301' || error.code === '401';
       console.info('[organizerMode] WRITE source=toggle-rpc-rollback', { old: enabled, new: rollback.organizerMode });
       organizerModeBusyRef.current = false;
-      return set({
+      set({
         ...rollback,
         mode: rollback.organizerMode ? 'host' : 'goer',
         organizerModeBusy: false,
@@ -6374,6 +6389,7 @@ export function BanBeProvider({ children }) {
           ? T('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại rồi thử lại.', 'Your session has expired. Please sign in again and retry.')
           : T('Không thể đổi chế độ tổ chức lúc này. Vui lòng thử lại.', 'We could not change organizer mode right now. Please try again.'),
       });
+      return false;
     }
     organizerModeBusyRef.current = false;
     if (data) {
@@ -6394,13 +6410,15 @@ export function BanBeProvider({ children }) {
         accountType: data.role, organizerMode: confirmed, organizerModeError: '', organizerModeBusy: false,
         ...(!confirmed && HOST_ONLY_SCREENS.has(prev.screen) ? { screen: 'profile', accountTab: 'personal' } : {}),
         ...(!confirmed && prev.accountTab === 'host' ? { accountTab: 'personal' } : {}),
+        ...(!confirmed ? { homeView: 'goer' } : {}),
         // First activation: a returning host who already has a photo, or one who finished/skipped
         // setup before, never sees it again.
         ...(confirmed && !prev.myOrganizerAvatarPath && !hostSetupResolved(prev.user?.id) ? { hostSetupOpen: true } : {}),
       }));
-    } else {
-      set({ organizerModeBusy: false });
+      return confirmed === enabled;
     }
+    set({ organizerModeBusy: false });
+    return false;
   }, [set, s.accountType, s.organizerMode, s.organizerModeBusy, T]);
   const enableOrganizerMode = useCallback(() => applyOrganizerMode(true), [applyOrganizerMode]);
   // TASK B — the actual toggle target is the CURRENT preference
@@ -6421,6 +6439,40 @@ export function BanBeProvider({ children }) {
     if (how === 'cancelled') { applyOrganizerMode(false); return; }
     markHostSetup(s.user?.id, how);
   }, [set, s.user?.id, applyOrganizerMode]);
+
+  // ---- Simple Shell follow-up (note 66): Home view + Start hosting ----
+  /** Going out | Hosting on Home. A view only: organizer mode is never changed here. */
+  const setHomeView = useCallback((view) => set({ homeView: view === 'host' ? 'host' : 'goer' }), [set]);
+  /** Lands on Home > Hosting at the top (the existing homeScrollTopToken, App.jsx). */
+  const landOnHostHome = useCallback(() => set({
+    homeView: 'host', screen: 'home', searchOverlayOpen: false, notificationsOverlayOpen: false, homeScrollTopToken: Date.now(),
+  }), [set]);
+  /**
+   * The one "Start hosting" action (Home's locked Hosting segment, "+" > Host an event, Account's Start hosting).
+   * Guest: the sign-in prompt first. Organizer mode off: the Start hosting invitation (`confirmed` = the caller IS the
+   * invitation, e.g. Account's inline card, so organizer mode turns on right away). On: just land. Lands on Home >
+   * Hosting only after the RPC succeeded; a failure keeps today's error message and stays put.
+   */
+  const startHosting = useCallback(async ({ land = 'home', confirmed = false } = {}) => {
+    // Landing on Home > Hosting is a Simple Shell thing: with the switch off, Account's button keeps its old
+    // behaviour (organizer mode on, stay put).
+    const landHome = land === 'home' && flagOn(s.featureFlags, 'simple_shell');
+    const step = startHostingStep({ signedIn: !!s.user, organizerMode: !!s.organizerMode });
+    if (step === 'signIn') { promptSignIn('host'); return false; }
+    if (step === 'land') { if (landHome) landOnHostHome(); return true; }
+    if (!confirmed) { set({ startHostingOpen: true }); return false; }
+    // The invitation closes BEFORE organizer mode turns on, so the first-activation host setup sheet opens alone.
+    set({ startHostingOpen: false });
+    const ok = await applyOrganizerMode(true);
+    if (ok && landHome) landOnHostHome();
+    // Failed: the invitation comes back with today's error message (organizerModeError) and nothing navigates.
+    else if (!ok) set({ startHostingOpen: true });
+    return ok;
+  }, [set, s.user, s.organizerMode, s.featureFlags, promptSignIn, landOnHostHome, applyOrganizerMode]);
+  const closeStartHosting = useCallback(() => set({ startHostingOpen: false }), [set]);
+  /** The centre "+" sheet: a tap and a dock drag released over "+" open the same sheet. */
+  const openDockCreate = useCallback(() => set({ dockCreateOpen: true }), [set]);
+  const closeDockCreate = useCallback(() => set({ dockCreateOpen: false }), [set]);
 
   // ---- navigation ----
   const goHome = useCallback(() => set({ screen: 'home', searchOverlayOpen: false, notificationsOverlayOpen: false }), [set]);
@@ -9457,6 +9509,13 @@ export function BanBeProvider({ children }) {
     if (!s.user?.id || s.authSyncing || s.screen === 'login' || s.screen === 'policy') return;
     let resume = null;
     try { resume = JSON.parse(sessionStorage.getItem('banbe.authResume.v1') || 'null'); sessionStorage.removeItem('banbe.authResume.v1'); } catch { /* ignore */ }
+    // Simple Shell follow-up (note 66): a guest who tapped Hosting / Host an event. Organizer mode still off after
+    // sign-in: the Start hosting invitation opens; already on: land on Home > Hosting.
+    if (resume?.type === 'host') {
+      if (s.organizerMode) set({ homeView: 'host', screen: 'home', homeScrollTopToken: Date.now() });
+      else set({ startHostingOpen: true });
+      return;
+    }
     if (!resume?.eventKey) return;
     if (resume.type === 'reserve') set({ eventKey: resume.eventKey, screen: 'reserve', attendeeDrafts: makeAttendeeDrafts(s.qty, s.user.name) });
     else if (resume.type === 'chat') openChatFor(resume.eventKey, resume.back || 'event');
@@ -11462,6 +11521,7 @@ export function BanBeProvider({ children }) {
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, backFromEditProfileSaved, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
+    setHomeView, startHosting, closeStartHosting, openDockCreate, closeDockCreate,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
     loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, resolvedTheme, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
@@ -11501,6 +11561,7 @@ export function BanBeProvider({ children }) {
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, backFromEditProfileSaved, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, openReportDetail, closeReportDetail, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, openEventRecap, backFromEventRecap, openHostRecap, backFromHostRecap, runItAgain, goHomeThisWeekend, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, openDeleteAccountStay, closeDeleteAccountStay, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, verifyDeleteAccountReauthDob, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
+    setHomeView, startHosting, closeStartHosting, openDockCreate, closeDockCreate,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
     loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, resolvedTheme, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,

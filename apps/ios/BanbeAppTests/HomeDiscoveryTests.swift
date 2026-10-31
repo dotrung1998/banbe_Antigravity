@@ -108,6 +108,37 @@ final class HomeDiscoveryTests: XCTestCase {
         XCTAssertEqual(D.optionCounts(items, f { $0.date = "weekend" }, .free, now: wed10), ["true": 1])
     }
 
+    /// Plan item 2 (shared with tests/unit/homeDiscovery.test.mjs): the category row's count is exactly what tapping
+    /// that category renders (type chips dropped, every other filter kept), for every category.
+    func testCategoryCountEqualsTheRenderedResultsForEveryCategory() {
+        let keys = D.categories.map(\.key).filter { $0 != "all" }
+        let filterSets: [D.Filters] = [.default, f { $0.free = true }, f { $0.date = "weekend" },
+                                       f { $0.cats = ["music"]; $0.typeFilters = ["dietary:vegan"] }, f { $0.seatsLeft = true }]
+        for filters in filterSets {
+            let counts = D.categoryCounts(items, filters, keys: keys, now: wed10)
+            for k in keys {
+                var g = filters; g.cats = [k]; g.typeFilters = []
+                XCTAssertEqual(counts[k], D.apply(items, g, now: wed10).count, "\(k) \(filters)")
+            }
+            var all = filters; all.cats = []; all.typeFilters = []
+            XCTAssertEqual(counts["all"], D.apply(items, all, now: wed10).count)
+        }
+    }
+
+    func testCategoryRowAllFirstThenMostFirstZeroHiddenUnlessSelectedAndSheetAZ() {
+        let keys = ["music", "supper", "gallery", "popup", "fashion"]
+        let counts = D.categoryCounts(items, .default, keys: keys, now: wed10)
+        let row = D.categoryRowKeys(counts, keys: keys)
+        XCTAssertEqual(row.first, "all")
+        XCTAssertEqual(row, ["all", "music", "supper", "gallery", "popup"])   // 4, 2, 1, 1 (tie keeps order); fashion 0 hidden
+        XCTAssertFalse(row.contains("fashion"))
+        XCTAssertEqual(D.categoryRowKeys(counts, keys: keys, selected: ["fashion"]).last, "fashion")
+        let defs: [(key: String, vi: String, en: String)] = [("music", "Âm nhạc", "Music"), ("gallery", "Triển lãm", "Gallery"),
+                                                              ("supper", "Bữa tối", "Supper club")]
+        XCTAssertEqual(D.categorySheetKeys(defs, lang: "en"), ["gallery", "music", "supper"])
+        XCTAssertEqual(D.categorySheetKeys(defs, lang: "vi"), ["music", "supper", "gallery"])
+    }
+
     func testRelaxationHintsPickTheSingleChangeThatAddsTheMostEvents() {
         let hints = D.relaxationHints(items, f { $0.date = "today"; $0.free = true }, now: wed10)
         // date->any gives 2 (free events), free->off gives 1 (tonight-music): date wins.

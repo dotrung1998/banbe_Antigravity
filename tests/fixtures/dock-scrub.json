@@ -1,0 +1,32 @@
+{
+  "_comment": "Dock scrub target (note 66 follow-up). fraction = finger x across the bar's slots (0 = left edge of the first slot, 1 = right edge of the last), clamped to [0, 1]; slots are equal shares, a boundary belongs to the slot on its right (the last slot keeps 1.0). Read by tests/unit/dockLayout.test.mjs (src/lib/dockLayout.js scrubTarget) and apps/ios/BanbeAppTests/DockLayoutTests.swift (DockLayout.scrubTarget).",
+  "simpleShell": [
+    { "fraction": -0.5, "expect": { "kind": "tab", "id": "home" } },
+    { "fraction": 0.0, "expect": { "kind": "tab", "id": "home" } },
+    { "fraction": 0.1, "expect": { "kind": "tab", "id": "home" } },
+    { "fraction": 0.199, "expect": { "kind": "tab", "id": "home" } },
+    { "fraction": 0.2, "expect": { "kind": "tab", "id": "schedule" } },
+    { "fraction": 0.399, "expect": { "kind": "tab", "id": "schedule" } },
+    { "fraction": 0.4, "expect": { "kind": "create" } },
+    { "fraction": 0.5, "expect": { "kind": "create" } },
+    { "fraction": 0.599, "expect": { "kind": "create" } },
+    { "fraction": 0.6, "expect": { "kind": "tab", "id": "inbox" } },
+    { "fraction": 0.799, "expect": { "kind": "tab", "id": "inbox" } },
+    { "fraction": 0.8, "expect": { "kind": "tab", "id": "profile" } },
+    { "fraction": 1.0, "expect": { "kind": "tab", "id": "profile" } },
+    { "fraction": 1.5, "expect": { "kind": "tab", "id": "profile" } }
+  ],
+  "legacy": [
+    { "fraction": 0.0, "expect": { "kind": "tab", "id": "home" } },
+    { "fraction": 0.2, "expect": { "kind": "tab", "id": "mapExplore" } },
+    { "fraction": 0.5, "expect": { "kind": "tab", "id": "schedule" } },
+    { "fraction": 0.6, "expect": { "kind": "tab", "id": "inbox" } },
+    { "fraction": 0.99, "expect": { "kind": "tab", "id": "profile" } },
+    { "fraction": 1.0, "expect": { "kind": "tab", "id": "profile" } }
+  ],
+  "drags": [
+    { "_comment": "Home to Inbox across the centre: passes over +, lands on Inbox.", "simpleShell": true, "path": [0.1, 0.3, 0.5, 0.7], "release": { "kind": "tab", "id": "inbox" } },
+    { "_comment": "Inbox to Home.", "simpleShell": true, "path": [0.7, 0.5, 0.3, 0.1], "release": { "kind": "tab", "id": "home" } },
+    { "_comment": "Schedule released over +: opens the + sheet, the screen does not change.", "simpleShell": true, "path": [0.3, 0.45, 0.5], "release": { "kind": "create" } }
+  ]
+}

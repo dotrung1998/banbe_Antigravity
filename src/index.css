@@ -60,6 +60,11 @@
   --bb-surface-1: #FBF8F1;
   --bb-surface-2: #EEE8DA;
   --bb-surface-3: #E6DFCF;
+  /* Block fills (Simple Shell follow-up, note 66): every card/tile/block on paper uses --bb-block (the warm beige of
+     the Pending/Live tiles, = surface-2 in light) and anything nested inside a block uses --bb-block-inset, so blocks
+     no longer wash out on paper (surface-1 was 1.03:1). Mirrored by Palette.block / .blockInset. */
+  --bb-block: #EEE8DA;
+  --bb-block-inset: #FBF8F1;
   --bb-fg-2: rgba(27,25,22,0.72);
   --bb-fg-3: rgba(27,25,22,0.64);
   --bb-divider: rgba(27,25,22,0.10);
@@ -87,6 +92,9 @@
   --bb-surface-1: #1A1815;
   --bb-surface-2: #24211C;
   --bb-surface-3: #2E2A24;
+  /* Dark keeps today's card fill (surface-1), so dark mode does not change. */
+  --bb-block: #1A1815;
+  --bb-block-inset: #24211C;
   --bb-fg-2: rgba(242,237,225,0.72);
   --bb-fg-3: rgba(242,237,225,0.56);
   /* Fields sit on surface-2 (was #3A352B, where alert text was only 4.03:1). */
@@ -637,4 +645,20 @@ input::placeholder, textarea::placeholder {
 @keyframes bb-reveal-fade { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   :root[data-reveal="1"] [data-reveal] { animation: bb-reveal-fade .2s ease both; animation-delay: 0ms; }
+}
+
+/* Simple Shell follow-up (note 66): the lock glyph on Home's locked Hosting segment (HomeModeSwitch.jsx). Unlocking
+   fades and scales it out in 0.2s; Reduce Motion keeps only the opacity crossfade. */
+.bb-mode-lock {
+  display: inline-flex; align-items: center; overflow: hidden; max-width: 16px;
+  transition: opacity .2s ease, transform .2s ease, max-width .2s ease;
+}
+.bb-mode-lock[data-shown="false"] { opacity: 0; transform: scale(0.4); max-width: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .bb-mode-lock { transition: opacity .2s linear; transform: none !important; }
+}
+/* The centre "+" while a dock drag hovers it (BottomTabBar.jsx): a subtle pressed look. */
+.bb-dock-create-pressed { transform: scale(0.92); filter: brightness(0.92); transition: transform .12s ease, filter .12s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .bb-dock-create-pressed { transform: none; transition: filter .12s linear; }
 }

@@ -17,21 +17,43 @@ import { useSubmittedEvents } from '../../lib/submittedEvents.jsx';
 import { dashboard as reportDashboard, reportRole } from '../../lib/reportsPresentation.js';
 import { supabase } from '../../lib/supabase.js';
 import ActionCenter from '../../screens/ActionCenter.jsx';
-import { ink, paper, ink2, surface1, surface2, divider, display, RADIUS } from '../../theme.js';
+import { ink, paper, ink2, block, blockInset, divider, display, RADIUS } from '../../theme.js';
+import { shortMetricLabel } from '../../lib/reportMetricLabels.js';
 
 const ENDED_AFTER_MS = 12 * 3600000;
 
+// Note 66 follow-up: every block on paper uses the `block` fill (light #EEE8DA, dark unchanged); anything nested in a
+// block uses `blockInset`, so there is no beige-on-beige.
 function Card({ children, testId, style, ...rest }) {
   return (
-    <section data-testid={testId} style={{ margin: '12px 20px 0', padding: 16, borderRadius: RADIUS.card, background: surface1, color: ink, ...style }} {...rest}>
+    <section data-testid={testId} style={{ margin: '12px 20px 0', padding: 16, borderRadius: RADIUS.card, background: block, color: ink, ...style }} {...rest}>
       {children}
     </section>
   );
 }
 
+// KPI / Submitted tiles: three equal columns, 88 tall, 16 padding, 8 gap; value 20/600, label 13 wrapping (no
+// ellipsis, short labels keep it to 2 lines). Twin of iOS SimpleShellHomeViews' tile grid.
+const TILE_GRID = { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 10 };
+const TILE = {
+  minWidth: 0, minHeight: 88, padding: 16, boxSizing: 'border-box', borderRadius: 12, background: block,
+  display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-start', gap: 4,
+};
+const TILE_VALUE = { fontSize: 20, fontWeight: 600, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums', color: ink };
+const TILE_LABEL = { fontSize: 13, fontWeight: 400, lineHeight: 1.3, color: ink2, overflowWrap: 'break-word', hyphens: 'auto', maxWidth: '100%' };
+
+function SectionHead({ title }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 24 }}>
+      <h2 style={{ ...display(17), margin: 0 }}>{title}</h2>
+      <span aria-hidden="true" style={{ color: ink2, fontSize: 16 }}>›</span>
+    </div>
+  );
+}
+
 const btn = (primary) => ({
   flex: '1 1 0', minHeight: 44, borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 600,
-  background: primary ? ink : surface2, color: primary ? paper : ink, padding: '0 14px',
+  background: primary ? ink : blockInset, color: primary ? paper : ink, padding: '0 14px',
 });
 
 export default function HostHome() {
@@ -120,7 +142,7 @@ export default function HostHome() {
             )}
           </div>
           {booked != null && capacity > 0 && (
-            <div aria-hidden="true" style={{ marginTop: 10, height: 6, borderRadius: 3, background: surface2, overflow: 'hidden' }}>
+            <div aria-hidden="true" style={{ marginTop: 10, height: 6, borderRadius: 3, background: blockInset, overflow: 'hidden' }}>
               <div style={{ width: `${Math.min(100, Math.round((booked / capacity) * 100))}%`, height: '100%', background: ink, borderRadius: 3 }} />
             </div>
           )}
@@ -149,45 +171,45 @@ export default function HostHome() {
         <ActionCenter items={actionItems} onSeeAll={() => goDashboard('home')} T={T} />
       </div>
 
-      <Card testId="home-host-submitted" role="button" tabIndex={0} onClick={() => goDashboard('home')}
+      {/* Submitted events and Reports: a heading row, then equal block tiles straight on paper (no wrapping card). */}
+      <section data-testid="home-host-submitted" role="button" tabIndex={0} onClick={() => goDashboard('home')}
+        aria-label={T(`Sự kiện đã gửi: ${submitted.pending.length} đang chờ duyệt, ${submitted.needsFix.length} cần sửa, ${liveCount} đang mở`,
+          `Submitted events: ${submitted.pending.length} pending, ${submitted.needsFix.length} needs fixing, ${liveCount} live`)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goDashboard('home'); } }}
-        style={{ cursor: 'pointer' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <h2 style={{ ...display(17), margin: 0 }}>{T('Sự kiện đã gửi', 'Submitted events')}</h2>
-          <span aria-hidden="true" style={{ color: ink2, fontSize: 16 }}>›</span>
-        </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        style={{ margin: '16px 20px 0', cursor: 'pointer', color: ink }}>
+        <SectionHead title={T('Sự kiện đã gửi', 'Submitted events')} />
+        <div style={TILE_GRID}>
           {[
             ['pending', submitted.pending.length, T('Đang chờ duyệt', 'Pending')],
             ['fix', submitted.needsFix.length, T('Cần sửa', 'Needs fixing')],
             ['live', liveCount, T('Đang mở', 'Live')],
           ].map(([k, n, label]) => (
-            <div key={k} data-testid={`home-host-submitted-${k}`} style={{ flex: '1 1 0', padding: '10px 12px', borderRadius: 12, background: surface2 }}>
-              <div style={{ ...display(20), fontVariantNumeric: 'tabular-nums' }}>{n}</div>
-              <div style={{ fontSize: 12.5, color: ink2 }}>{label}</div>
+            <div key={k} data-testid={`home-host-submitted-${k}`} style={TILE}>
+              <div style={TILE_VALUE}>{n}</div>
+              <div style={TILE_LABEL}>{label}</div>
             </div>
           ))}
         </div>
-      </Card>
+      </section>
 
       {kpis.length > 0 && (
-        <Card testId="home-host-kpis" role="button" tabIndex={0} onClick={() => openReports('host', s.myOrganizerId, 'home')}
+        <section data-testid="home-host-kpis" role="button" tabIndex={0} onClick={() => openReports('host', s.myOrganizerId, 'home')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openReports('host', s.myOrganizerId, 'home'); } }}
-          style={{ cursor: 'pointer' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-            <h2 style={{ ...display(17), margin: 0 }}>{T('Số liệu', 'Reports')}</h2>
-            <span aria-hidden="true" style={{ color: ink2, fontSize: 16 }}>›</span>
+          style={{ margin: '16px 20px 0', cursor: 'pointer', color: ink }}>
+          <SectionHead title={T('Số liệu', 'Reports')} />
+          <div style={TILE_GRID}>
+            {kpis.map(m => {
+              // Short tile label (reportMetricLabels.js); the full label stays in Reports and in the accessible name.
+              const short = shortMetricLabel(m.key, T) || m.title;
+              return (
+                <div key={m.key} data-testid={`home-host-kpi-${m.key}`} style={TILE} aria-label={`${short}: ${m.accessibilityValue}`}>
+                  <div style={{ ...TILE_VALUE, overflowWrap: 'anywhere' }}>{m.valueText}</div>
+                  <div data-testid={`home-host-kpi-${m.key}-label`} style={TILE_LABEL}>{short}</div>
+                </div>
+              );
+            })}
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            {kpis.map(m => (
-              <div key={m.key} style={{ flex: '1 1 0', minWidth: 0, padding: '10px 12px', borderRadius: 12, background: surface2 }}
-                aria-label={`${m.title}: ${m.accessibilityValue}`}>
-                <div style={{ ...display(20), fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.valueText}</div>
-                <div style={{ fontSize: 12.5, color: ink2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
+        </section>
       )}
       <div aria-hidden="true" style={{ height: 1, margin: '20px 20px 0', background: divider }} />
     </div>

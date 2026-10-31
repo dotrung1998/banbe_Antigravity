@@ -1097,6 +1097,16 @@ struct RootView: View {
         .sheet(item: $app.guestPrompt) { prompt in
             GuestPromptSheet(prompt: prompt).environmentObject(app)
         }
+        // Simple Shell follow-up (plan item 1): the Start hosting invitation. Its primary action only marks the intent;
+        // the switch runs here, after the sheet has fully closed, so the first-activation HostSetupView (a ZStack
+        // layer in this window) never opens underneath a closing sheet.
+        .sheet(isPresented: $app.startHostingInviteOpen, onDismiss: {
+            guard app.startHostingAfterInvite else { return }
+            app.startHostingAfterInvite = false
+            Task { await app.confirmStartHosting() }
+        }) {
+            StartHostingSheet().environmentObject(app)
+        }
         // Simple Shell "+" (host): "Share one of my events" (same picker + beginEventStory as Account's).
         .sheet(isPresented: $app.dockEventStoryPickerOpen) {
             DockEventStoryPickerSheet().environmentObject(app)
@@ -1313,7 +1323,7 @@ struct RootView: View {
         // Pulse above already give that window: this drives the window's
         // own temporary full-screen grow/shrink, never anything about
         // MapExploreView's own sheet/camera/filter/search/selection state.
-        .onChange(of: app.dockCreateMenuOpen) { _, open in
+        .onChange(of: app.dockCreateOpen) { _, open in
             BottomTabBarOverlay.shared.setDockCreateTrayOpen(open)
         }
         // Simple Shell (note 66): the dock's overlay band follows the bar's shape (one bar with the "+" inside).

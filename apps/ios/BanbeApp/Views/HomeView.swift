@@ -607,8 +607,9 @@ struct HomeView: View {
     }
     // MARK: Simple Shell (note 66, switch simple_shell)
 
-    /// Home shows the host sections while the mode switch is on Hosting.
-    private var hostHome: Bool { app.simpleShellEnabled && app.isSignedIn && app.organizerMode }
+    /// Home shows the host sections only when the effective view is Hosting (Lib/HomeMode.swift): organizer mode on
+    /// AND this session chose Hosting. Organizer mode off is always Going out, whatever was chosen before.
+    private var hostHome: Bool { app.simpleShellEnabled && app.effectiveHomeView == .host }
 
     @ViewBuilder
     private var activeHeader: some View {
@@ -711,6 +712,17 @@ struct HomeView: View {
                                  checklistVisible: app.isSignedIn && checklistVisible)
         goerHero(kind, items: items).revealRegion(1)
         if kind == .none, !savedUpcoming.isEmpty { savedUpcomingSection.revealRegion(1) }
+        // Plan item 2: the category quick filter is back (the same row, counts and "Show all" A-Z sheet as switch
+        // OFF), compact, then the selected category's type chips, then the chip row. The Filters sheet no longer
+        // repeats categories or type chips while this is on.
+        HomeCategoryRow(keys: snap.categoryRow, counts: snap.categoryCounts, onShowAll: { categorySheetOpen = true },
+                        compact: true)
+            .revealRegion(2)
+        if !snap.typeChips.isEmpty {
+            typeChipRow(snap)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+                .revealRegion(2)
+        }
         simpleChipRow(snap)
             .dynamicTypeSize(...DynamicTypeSize.accessibility3)
             .revealRegion(2)
@@ -744,7 +756,7 @@ struct HomeView: View {
     }
 
     /// For You first, then Today / This weekend / Free / Almost full (scrolling), then Filters with its count, pinned.
-    /// Categories, event-type chips and Sort live in the Filters sheet.
+    /// Sort lives in the Filters sheet; categories and event-type chips are the rows above this one.
     private func simpleChipRow(_ snap: Snapshot) -> some View {
         HStack(spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {

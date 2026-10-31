@@ -18,6 +18,7 @@ import { HEADER, hitSlop } from '../lib/homeHeaderLayout.js';
 import DockHeaderTitle, { DOCK_HEADER } from '../components/ui/DockHeaderTitle.jsx';
 import HomeModeSwitch from '../components/home/HomeModeSwitch.jsx';
 import HostHome from '../components/home/HostHome.jsx';
+import { effectiveHomeView } from '../lib/homeMode.js';
 import { pickGoerHero } from '../lib/homeHero.js';
 import { checklistVisible } from '../lib/activationChecklist.js';
 import { tickerItems } from '../lib/pulseTicker.js';
@@ -117,7 +118,9 @@ export default function Home() {
   // Simple Shell (switch simple_shell, note 66): Going out | Hosting in the header, one hero, one chip row, location in
   // the search bar, map as a Home view. Off = this screen exactly as before.
   const simpleShell = flagOn(s.featureFlags, 'simple_shell');
-  const hostView = simpleShell && !!s.organizerMode;
+  // Follow-up (note 66): the Hosting view is `homeView` (session-only), shown only while organizer mode is on
+  // (src/lib/homeMode.js). Organizer mode off is always Going out, whatever the restored or deep-linked state.
+  const hostView = simpleShell && effectiveHomeView(s.organizerMode, s.homeView) === 'host';
   // Compact-vertical-list pass — see iOS HomeView.swift's
   // `visibleSurveyDiscoveryCount` for the full reasoning: deliberately
   // SEPARATE from both `s.homeSurveyDiscovery.length` and
@@ -792,6 +795,26 @@ export default function Home() {
     </div>
   );
 
+  // Event-type chips under the category row (exactly one category picked), both layouts.
+  const typeChipRow = typeChips.length > 0 && (
+    <div data-hscroll="true" role="group" aria-label={T('Lọc theo loại sự kiện', 'Filter by event type')} data-testid="home-type-chips"
+      style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', padding: '8px 20px 0' }}>
+      {typeChips.map(c => {
+        const active = (homeFilters.typeFilters || []).includes(c.id);
+        const n = typeCounts[c.id];
+        if (!active && !n) return null;
+        return (
+          <button type="button" key={c.id} onClick={() => toggleTypeFilter(c.id)} aria-pressed={active}
+            data-testid={`home-type-${c.id.replace(':', '-')}`}
+            style={homeCapsule({ fontWeight: active ? 600 : 400, border: 'none', fontFamily: 'inherit', gap: 6, ...(simpleShell ? { minHeight: 44 } : null) }, active)}>
+            {T(c.vi, c.en)}
+            {!active && <span style={{ fontSize: 12, opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>{n}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
     <>
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Home">
@@ -935,13 +958,16 @@ export default function Home() {
       )}
 
       <div data-reveal="2">
-      {!simpleShell && (<>
+      {/* Note 66 follow-up: the category row and its "Show all" A-Z sheet are back on the Simple Shell path too (one
+          compact row under the hero, then the type chips, then the chip row). Same counts/order as before. */}
       <CategoryRow values={homeFilters.cats} onPick={pickFilter} T={T} keys={categoryRow} counts={categoryCountMap}
-        onShowAll={() => setCategorySheetOpen(true)} />
+        onShowAll={() => setCategorySheetOpen(true)} compact={simpleShell} />
       {categorySheetOpen && (
         <CategorySheet keys={categorySheetKeys(categoryDefs(), s.lang === 'en' ? 'en' : 'vi')} counts={categoryCountMap} values={homeFilters.cats} T={T}
           onPick={(k) => { pickFilter(k); setCategorySheetOpen(false); }} onClose={() => setCategorySheetOpen(false)} />
       )}
+      {simpleShell && typeChipRow}
+      {!simpleShell && (<>
 
       {/* Quick row: Filters + Sort open the sheet; For You stays pinned at the leading edge (notes 34/36); the
           one-tap chips scroll (data-hscroll so the root tab swipe ignores them). */}
@@ -994,28 +1020,11 @@ export default function Home() {
           })}
         </div>
       </div>
-      {typeChips.length > 0 && (
-        <div data-hscroll="true" role="group" aria-label={T('Lọc theo loại sự kiện', 'Filter by event type')} data-testid="home-type-chips"
-          style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', padding: '8px 20px 0' }}>
-          {typeChips.map(c => {
-            const active = (homeFilters.typeFilters || []).includes(c.id);
-            const n = typeCounts[c.id];
-            if (!active && !n) return null;
-            return (
-              <button type="button" key={c.id} onClick={() => toggleTypeFilter(c.id)} aria-pressed={active}
-                data-testid={`home-type-${c.id.replace(':', '-')}`}
-                style={homeCapsule({ fontWeight: active ? 600 : 400, border: 'none', fontFamily: 'inherit', gap: 6 }, active)}>
-                {T(c.vi, c.en)}
-                {!active && <span style={{ fontSize: 12, opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>{n}</span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {typeChipRow}
       </>)}
       {simpleShell && (
-        // Simple Shell: ONE chip row. For You first, the one-tap chips, then Filters (categories, type chips and Sort
-        // live in the sheet now). The middle scrolls (data-hscroll so the root tab swipe ignores it).
+        // Simple Shell: ONE chip row. For You first, the one-tap chips, then Filters (Sort and the rest live in the
+        // sheet; categories and type chips are the rows above). The middle scrolls (data-hscroll so the root tab swipe ignores it).
         <div data-testid="home-chip-row" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 0 6px', paddingInlineStart: 20 }}>
           {hasForYou && (
             <ForYouChip
@@ -1094,7 +1103,7 @@ export default function Home() {
       {cards.map((ev, i) => {
         const card = layoutMode === 'list'
           ? <DiscoveryRow key={ev.key} ev={ev} onOpen={() => goEvent(ev.key)} T={T} />
-          : <DiscoveryCard key={ev.key} ev={ev} onOpen={() => goEvent(ev.key)} onToggleSave={() => toggleFav(ev.key)} T={T} />;
+          : <DiscoveryCard key={ev.key} ev={ev} onOpen={() => goEvent(ev.key)} onToggleSave={() => toggleFav(ev.key)} T={T} filled={simpleShell} />;
         if (!simpleShell) return card;
         // Simple Shell: stories (only if any) after the 3rd card, the Pulse ticker (only with items) after the 6th.
         // Fewer cards than that: they follow the last card.
@@ -1349,7 +1358,7 @@ export default function Home() {
         areaLabel={curArea.key === 'all' ? '' : curArea.label}
         onClose={() => set({ homeFilterSheetOpen: false })}
         onApply={(f, sort) => { setHomeFilters(f); set({ homeFilterSheetOpen: false, homeSort: sort }); }}
-        {...(simpleShell ? { simpleShell: true, typeChipsFor: typesOn ? (cat) => homeTypeFilters(profileFor(cat)) : null } : {})}
+        {...(simpleShell ? { simpleShell: true } : {})}
       />
     )}
     </>

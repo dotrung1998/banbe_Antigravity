@@ -40,3 +40,8 @@ test("Login's Back returns to the browse screen, else Welcome", () => {
   assert.equal(loginBackTarget('splash'), 'welcome');
   assert.equal(loginBackTarget(undefined), 'welcome');
 });
+
+test('host prompt resumes Start hosting after sign-in (note 66 follow-up)', () => {
+  assert.deepEqual(makePrompt('host', { screen: 'home' }).resume, { type: 'host' });
+  assert.equal(makePrompt('host', { screen: 'schedule' }).returnTo, 'home');
+});
