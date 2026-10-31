@@ -132,3 +132,69 @@ test.describe('Home › Hosting', () => {
     await expect(page.locator('[data-screen-label="Organizer dashboard"]')).toBeVisible();
   });
 });
+
+test.describe('Create event', () => {
+  async function openCreate(page, cats = ['supper']) {
+    await guestToHome(page);
+    await devSet(page, {
+      user: USER, accountType: 'organizer', organizerMode: true, myOrganizerId: 'org-69', orgRegName: 'Test host',
+      featureFlags: { event_type_profiles: true }, createCats: cats, createDetails: {}, screen: 'create',
+    });
+    await expect(page.getByTestId('create-step-next')).toBeVisible();
+    await page.getByTestId('create-step-next').click();   // Host -> Basics, part 1
+    await expect(page.getByTestId('create-substeps')).toBeVisible();
+  }
+
+  test('Basics has its own part bar; Next walks the parts, then the steps', async ({ page }) => {
+    await openCreate(page);
+    await expect(page.getByTestId('create-substeps').locator('button')).toHaveCount(5);
+    await expect(page.getByTestId('create-substeps-0')).toHaveAttribute('aria-current', 'step');
+    await expect(page.getByTestId('create-name')).toBeVisible();
+    await expect(page.getByTestId('create-intro')).toHaveCount(0);   // one part at a time
+    await expect(page.getByTestId('create-step-next')).toContainText('Story');
+    for (let i = 0; i < 5; i++) await page.getByTestId('create-step-next').click();
+    await expect(page.getByTestId('create-substeps')).toHaveCount(0);   // When & where has no parts…
+    await page.getByTestId('create-step-next').click();               // …Tickets does
+    await expect(page.getByTestId('create-substeps').locator('button')).toHaveCount(4);
+    await expect(page.getByTestId('create-price-input')).toBeVisible();
+    await page.getByTestId('create-step-back').click();
+    await expect(page.getByTestId('create-substeps')).toHaveCount(0);
+    await page.getByTestId('create-step-back').click();               // back into Basics lands on its last part
+    await expect(page.getByTestId('create-substeps-4')).toHaveAttribute('aria-current', 'step');
+  });
+
+  test('long fields are twice a one-line box, expand to full screen, Clear all asks first; intro style', async ({ page }) => {
+    await openCreate(page);
+    const nameH = (await page.getByTestId('create-name').boundingBox()).height;
+    await page.getByTestId('create-substeps-1').click();
+    const desc = page.getByTestId('create-desc');
+    expect((await desc.boundingBox()).height).toBeGreaterThanOrEqual(nameH * 2 - 2);
+    expect((await page.getByTestId('create-intro').boundingBox()).height).toBeGreaterThanOrEqual(nameH * 2 - 2);
+    await page.getByTestId('create-intro-font-serif').click();
+    await page.getByTestId('create-intro-color-clay').click();
+    await expect(page.getByTestId('create-intro-font-serif')).toHaveAttribute('aria-checked', 'true');
+    const family = await page.getByTestId('create-intro').evaluate(el => getComputedStyle(el).fontFamily);
+    expect(family.toLowerCase()).toContain('serif');
+    await shot(page, 'create-story');
+    await page.getByTestId('create-expand-intro').click();
+    const editor = page.getByTestId('create-longtext-editor');
+    await expect(editor).toBeFocused();
+    await editor.fill('Hello there');
+    await page.getByTestId('create-longtext-clear').click();
+    await expect(page.getByRole('alertdialog')).toBeVisible();
+    await expect(editor).toHaveValue('Hello there');   // nothing cleared before confirming
+    await page.getByTestId('create-longtext-clear-confirm').click();
+    await expect(editor).toHaveValue('');
+    await page.getByTestId('create-longtext-done').click();
+    await expect(page.getByTestId('create-intro')).toHaveValue('');
+  });
+
+  test('two categories ask both types\' facts, shared ones once', async ({ page }) => {
+    await openCreate(page, ['supper', 'music']);
+    await page.getByTestId('create-substeps-4').click();
+    await expect(page.getByTestId('create-detail-dietary-vegan')).toBeVisible();
+    await expect(page.getByTestId('create-detail-lineup-add')).toBeVisible();   // the second category's own field
+    await expect(page.getByTestId('create-detail-alcohol-byo')).toHaveCount(1);
+    await shot(page, 'create-details-two-types');
+  });
+});

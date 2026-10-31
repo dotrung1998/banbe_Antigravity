@@ -6,7 +6,7 @@ import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, 
 import { prefsIsEmpty, declaredGoals } from '../lib/eventPrefs.js';
 import { intentTitle, isEventLocalDay } from '../lib/coreLoops.js';
 import { flagOn } from '../lib/featureFlags.js';
-import { profileFor, homeFilters as homeTypeFilters, cardLine, TYPE_KEYS, categoryDefs } from '../lib/eventTypes.js';
+import { profileFor, homeFilters as homeTypeFilters, cardLine, TYPE_KEYS, categoryDefs, secondCategory } from '../lib/eventTypes.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 import { forYouRankEvents } from '../lib/forYou.js';
 import { forYouEventVersion } from '../lib/forYouAlert.js';
@@ -271,7 +271,8 @@ export default function Home() {
         img: e.photoUrl,
         isReal: true,
         catKey: e.catKey,
-        cat2Key: null,
+        // Note 69: the second category (details.cat2, migration 207) also matches Home's category filter.
+        cat2Key: secondCategory(e.details, e.catKey),
         // No static "invite-only" demo concept — a real non-public event
         // (draft/review/invite) is excluded from discovery the same honest
         // way the ticket asks for: it just never enters this array at all

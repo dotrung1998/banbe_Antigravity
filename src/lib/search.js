@@ -16,7 +16,7 @@
 // includes the category (independent of whether keywords happen to be
 // populated) closes that gap structurally, not just for today's data.
 
-import { searchAliases, detailSearchTerms, profileFor } from './eventTypes.js';
+import { searchAliases, detailSearchTerms, eventProfile } from './eventTypes.js';
 
 // Vietnamese diacritics + đ/Đ -> plain ASCII, case-folded, whitespace
 // collapsed. `String.normalize('NFD')` decomposes accented Latin letters
@@ -60,7 +60,7 @@ export function buildEventSearchDoc(event) {
     event.intro,
     ...keywordList,
     // Event type facts (migration 203/204): "jazz", "nhiếp ảnh", a lineup name, "18+", "BYO"…
-    ...detailSearchTerms(profileFor(event.catKey), event.details),
+    ...detailSearchTerms(eventProfile(event.catKey, event.details), event.details),
   ].filter((p) => p != null && String(p).trim() !== '');
   return normalizeSearchText(parts.join(' '));
 }

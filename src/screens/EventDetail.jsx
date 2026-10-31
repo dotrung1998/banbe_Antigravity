@@ -19,7 +19,8 @@ import { shareMarket, shareWhen, shareInviteText, smsInviteHref, ZALO_COPIED } f
 import { track } from '../lib/analytics.js';
 import { nextFromHost, whenLabel } from '../lib/quickWins.js';
 import { flagOn } from '../lib/featureFlags.js';
-import { profileFor, detailFacts } from '../lib/eventTypes.js';
+import { eventProfile, detailFacts, introStyle } from '../lib/eventTypes.js';
+import { introFontFamily, introColorValue } from '../lib/introStyle.js';
 import { seatStatus, splitFacts, aboutSection, ABOUT_LINES } from '../lib/eventDetailPresentation.js';
 
 // Airbnb-style layout (mirrors iOS EventDetailView): the photo is a pinned backdrop that fades out while the
@@ -92,7 +93,8 @@ export default function EventDetail({ preview = null } = {}) {
   const s = state;
   const ev = preview?.ev ?? curEvent;
   // Event type profiles (migration 203): only while the switch is on; a type without a profile renders as before.
-  const typeProfile = flagOn(s.featureFlags, 'event_type_profiles') ? profileFor(ev?.catKey) : null;
+  // Note 69: the event's own type plus its second category (details.cat2, migration 207).
+  const typeProfile = flagOn(s.featureFlags, 'event_type_profiles') ? eventProfile(ev?.catKey, ev?.details) : null;
   const typeFacts = typeProfile ? detailFacts(typeProfile, ev?.details, s.lang === 'en' ? 'en' : 'vi') : [];
   const typeIncludedTitle = typeProfile?.detail?.includedTitle || null;
   // Spread into a guest control's style in preview: visible exactly as guests see it, but does nothing.
@@ -917,8 +919,10 @@ export default function EventDetail({ preview = null } = {}) {
             {introParagraphs.length > 0 && (
               <div data-testid="event-intro-section" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Giới thiệu sự kiện', 'About this event')}</span>
+                {/* Note 69: the host's chosen font and colour (details.intro_font / intro_color, migration 207). */}
                 {introParagraphs.map((p, i) => (
-                  <p key={i} style={{ fontSize: 13.5, lineHeight: 1.6, color: ink, margin: 0, whiteSpace: 'pre-wrap' }}>{p}</p>
+                  <p key={i} data-intro-font={introStyle(ev.details).font || 'sans'}
+                    style={{ fontSize: 13.5, lineHeight: 1.6, color: introColorValue(introStyle(ev.details).color), fontFamily: introFontFamily(introStyle(ev.details).font), margin: 0, whiteSpace: 'pre-wrap' }}>{p}</p>
                 ))}
               </div>
             )}

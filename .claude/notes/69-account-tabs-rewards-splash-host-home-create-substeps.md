@@ -1,6 +1,6 @@
 # 69 — Account tabs by mode, Rewards visibility, dark splash, Hosting Home, Create long fields / two categories / sub-steps
 
-Date: 2026-10-31. Platform: **iOS done; web parity NOT done** (except the splash tint, which is shared).
+Date: 2026-10-31. Platform: **iOS and web** (web parity added the same day, see "Web" below).
 Plan: `~/.claude/plans/please-make-plan-to-quizzical-pike.md`. Commits: babef0d, 8744a62, 20cc64b, 99dcd85, + the Phase 5 commit.
 
 ## 1. Account (Views/AccountView.swift, Lib/AccountTabs.swift)
@@ -65,7 +65,24 @@ Known failing and NOT caused by this work: `GiftTicketPDFTests.testPDFLinksPoint
 calendar links) and `DiscoveryFixtureUITests.testHomeDiscovery{Light,Dark}` ("category tiles include Pop-up", which
 contradicts EventTypesUITests' "a category with no events is not in the row").
 
+## Web (parity, same behaviour)
+- Account.jsx: `src/lib/accountTabs.js` (+ unit test), tablist in the sticky header, `RowGroup` labelled groups, whole
+  card opens the profile (Rename / story ring stop the click), name clamps to 2 lines, Host/Admin end with 40px room.
+  `accountTab` defaults to 'host' and is set when Hosting turns on. Web already restored Account's exact scroll per
+  screen (App.jsx scrollPositions), so no change was needed for Back.
+- AdminFeatures.jsx: `requires`, "No effect yet", "Also turn on …?" dialog. Real bug fixed on the way:
+  `setFeatureFlag` built the new flags from its render's copy, so two flips in a row ("Turn on both") could undo the
+  first locally; it now updates from the latest state.
+- Home.jsx: the capsule is `renderRewardCapsule()`, shown beside the Simple Shell search bar.
+- HostHome.jsx: `loadHostHomeKpis` (BanBeContext), icon shortcuts with `data-hscroll` (the web root swipe skips it),
+  Coming up, one-line plan card, per-status tile buttons; Dashboard reads `dashboardOpenSubmitted` once.
+- Create: `eventTypes.js` combinedProfile / detailOwner / mergedDraft / publishDetails / secondCategory /
+  eventProfile / introStyle (+ unit tests mirroring Swift), `src/lib/createSubSteps.js` (+ tests), `src/lib/introStyle.js`;
+  CreateEvent.jsx LongField / ExpandButton / LongTextSheet / IntroStylePicker / SubStepBar; save with the same pre-207
+  fallback; edit-load splits cat2 / style back; Event Detail intro style + combined facts; search and Home cards read cat2.
+- `tests/note69-web-parity.spec.js` (10 tests, Chromium + WebKit) renders signed-in layouts through the dev-only
+  `window.__banbeDevSet` on top of guest browsing, because `setupToHome` (shared test account) is stuck on the
+  language screen. RPCs it needs are answered with `page.route`.
+
 ## Not done
-- Web parity of 1, 2 (admin `requires` + Home capsule), 4 and 5 (`src/lib/eventTypes.js` combined, CreateEvent.jsx
-  long fields / style / sub-steps, Account.jsx tabs). Shared fixtures for the combined profile not added yet.
-- No real-device check of any of this.
+- No real-device check of any of this. Migration 207 not applied.

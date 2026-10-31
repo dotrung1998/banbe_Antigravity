@@ -9,7 +9,7 @@ import { liveEventOverrides } from '../lib/countdown.js';
 import { supabase } from '../lib/supabase.js';
 import { parseExcelOrZipPackage } from '../lib/excelEventImport.js';
 import { formatMoney, formatMoneyShort, parsePriceInput, priceInputText, priceQuickPicks, todayInZone, wallClockToMs, VN_TIME_ZONE } from '../lib/eventMarket.js';
-import { paper, ink, rule, FACE, display, alert, clay, fieldSolid } from '../theme.js';
+import { paper, ink, ink2, ink3, rule, FACE, display, alert, clay, fieldSolid, blockInset } from '../theme.js';
 import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
 import { loadMapKit } from '../lib/mapkit.js';
 import { CountStepper, StepProgress } from '../components/ui/FormControls.jsx';
@@ -19,7 +19,9 @@ import { useHostBenchmarks } from '../lib/useHostBenchmarks.js';
 import { track } from '../lib/analytics.js';
 import { stepOfField, isTextField } from '../lib/createFieldGuide.js';
 import { computeCreateProgress, missingLabel, newlyCompleted } from '../lib/createProgress.js';
-import { categoryDefs, profileFor, requiredFields, keywordSuggestions, droppedDetailTypes, cleanDetails, detailFacts, localized, missingDetails } from '../lib/eventTypes.js';
+import { categoryDefs, profileFor, requiredFields, keywordSuggestions, droppedDetailTypes, cleanDetails, detailFacts, localized, missingDetails, combinedProfile, mergedDraft, detailOwner, publishDetails, INTRO_FONTS, INTRO_COLORS } from '../lib/eventTypes.js';
+import { subStepParts, partOfField, subStepDone, BASICS_PARTS, TICKETS_PARTS } from '../lib/createSubSteps.js';
+import { introFontFamily, introColorValue, INTRO_FONT_NAMES, INTRO_COLOR_NAMES } from '../lib/introStyle.js';
 import { flagOn } from '../lib/featureFlags.js';
 import RecipeSheet, { RecipeMeter, RecipeList } from './sheets/RecipeSheet.jsx';
 import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
@@ -272,13 +274,17 @@ export default function CreateEvent() {
   // in-progress" to separately exclude before a real upload attempt exists.
   // The venue's market (migration 195): its zone for every date/time check and the price's currency.
   const market = createFormMarket(s);
-  // Event type profiles (switch event_type_profiles, migration 203): the first picked category shapes the form.
+  // Event type profiles (switch event_type_profiles, migration 203): the picked categories shape the form. Note 69:
+  // with two picks, both types' fields are asked (combinedProfile; each value is kept under the type that owns it).
   // Off, or a type with no profile: everything below behaves exactly as before.
   const lang = s.lang === 'en' ? 'en' : 'vi';
   const typesOn = flagOn(s.featureFlags, 'event_type_profiles');
   const typeKey = s.createCats[0] || '';
-  const typeProfile = typesOn && typeKey ? profileFor(typeKey) : null;
-  const typeDetails = (s.createDetails || {})[typeKey] || {};
+  const typeProfile = typesOn && typeKey ? combinedProfile(s.createCats) : null;
+  const typeDetails = typeKey ? mergedDraft(s.createCats, s.createDetails || {}) : {};
+  // Note 69: the introduction's style, kept in the draft map under `_style` (not a type key).
+  const introFont = (s.createDetails || {})._style?.intro_font || 'sans';
+  const introColor = (s.createDetails || {})._style?.intro_color || 'ink';
   const fmtMoney = (v) => formatMoney(v, market.currency);
   const fmtShort = (v) => formatMoneyShort(v, market.currency);
   // Price typed for this currency, in minor units: 0 when empty (free), null when a dollar amount isn't a price.
@@ -355,12 +361,30 @@ export default function CreateEvent() {
   // host can check it; the head start (Host ✓, 20%) still shows. This replaces note 48's "skip Host".
   const [step, setStep] = useState(() => restored?.step ?? 0);
   const topRef = useRef(null);
-  const goTo = (i) => {
+  // Note 69: the part open inside Basics / Tickets (step -> part index) and the parts seen so far.
+  const [subStep, setSubStep] = useState({});
+  const [visitedParts, setVisitedParts] = useState({});
+  const partIndex = (st) => subStep[st] ?? 0;
+  const markVisited = (st, i) => setVisitedParts(v => ({ ...v, [st]: new Set([...(v[st] || []), i]) }));
+  const setPart = (st, i) => {
+    if (i < 0 || i >= subStepParts(st).length) return;
+    document.activeElement?.blur?.();
+    setSubStep(p => ({ ...p, [st]: i }));
+    markVisited(st, i);
+    requestAnimationFrame(() => topRef.current?.scrollIntoView({ block: 'start' }));
+  };
+  /** `part`: which part of Basics / Tickets to open (Next lands on the first, Back on the last); omitted keeps the last one open. */
+  const goTo = (i, part) => {
     if (i < 0 || i >= sections.length) return;
     document.activeElement?.blur?.();
+    if (part != null) setSubStep(p => ({ ...p, [i]: part }));
+    markVisited(i, part ?? partIndex(i));
     setStep(i);
     requestAnimationFrame(() => topRef.current?.scrollIntoView({ block: 'start' }));
   };
+  const basicsPart = BASICS_PARTS[partIndex(1)]?.id || 'name';
+  const ticketsPart = TICKETS_PARTS[partIndex(3)]?.id || 'price';
+  const [expanded, setExpanded] = useState(null); // note 69: the long field open full screen
   // Note 53: take the host to the exact field (a recipe Fix, or Review with gaps): open its step, focus it when it
   // takes typing, centre it, and point at it with the For You halo + a "👇" tip for ~4s. The step is rendered
   // synchronously (flushSync) so the focus happens inside the tap itself: iOS Safari only opens the keyboard for a
@@ -374,7 +398,12 @@ export default function CreateEvent() {
     document.activeElement?.blur?.();
     flushSync(() => { setRecipeOpen(false); setReviewOpen(false); setAttn(null); });
     void document.body.offsetHeight; // a fresh style pass, so the halo replays when the same field is picked again
-    flushSync(() => { setStep(target); setAttn({ field, hint }); });
+    // Note 69: open the part of Basics / Tickets that holds the field first.
+    const part = partOfField(field, target);
+    flushSync(() => {
+      if (part != null) { setSubStep(p => ({ ...p, [target]: part })); markVisited(target, part); }
+      setStep(target); setAttn({ field, hint });
+    });
     const el = document.querySelector(`[data-field="${field}"]`);
     if (el) {
       if (isTextField(field)) el.querySelector('input:not([type="date"]):not([type="time"]):not([type="file"]), textarea')?.focus({ preventScroll: true });
@@ -605,6 +634,22 @@ export default function CreateEvent() {
           </div>
         )}
 
+        {/* Note 69: the nested part bar of Basics / Tickets (styled unlike the main step bar). */}
+        {subStepParts(step).length > 0 && !s.createSent && (
+          <SubStepBar stepTitle={sections[step].title} parts={subStepParts(step)} current={partIndex(step)} T={T}
+            done={subStepDone(step, progress.steps[step].missing, visitedParts[step] || new Set())}
+            onSelect={(i) => setPart(step, i)} />
+        )}
+        {expanded && (
+          <LongTextSheet T={T} onClose={() => setExpanded(null)} {...{
+            description: { title: T('Mô tả', 'Description'), value: s.createDesc, onChange: createDescType, limit: null, testId: 'description' },
+            intro: { title: T('Giới thiệu sự kiện', 'Event introduction'), value: s.createIntro, onChange: createIntroType, limit: 4000, testId: 'intro',
+              style: { fontFamily: introFontFamily(introFont) || FACE, color: introColorValue(introColor) } },
+            greeting: { title: T('Lời nhắn mở đầu (Tiếng Việt)', 'Opening message (Vietnamese)'), value: s.createChatGreeting, onChange: createChatGreetingType, limit: 500, testId: 'greeting' },
+            greetingEn: { title: T('Lời nhắn mở đầu (Tiếng Anh)', 'Opening message (English)'), value: s.createChatGreetingEn, onChange: createChatGreetingEnType, limit: 500, testId: 'greetingEn' },
+          }[expanded]} />
+        )}
+
         {step === 0 && (
           <StepCard title={T('Hồ sơ người tổ chức', 'Organizer profile')} id="create-section-host">
             {sections[0].done && (
@@ -622,6 +667,7 @@ export default function CreateEvent() {
 
         {step === 1 && (
           <StepCard title={T('Cơ bản', 'Basics')} id="create-section-basics">
+            {basicsPart === 'name' && (<>
             <Guided field="name" attn={attn}>
               <BigField icon="sparkles" field="name" label={T('Tên sự kiện', 'Event name')} required value={s.createName} onChange={createNameType} placeholder="Bếp Nhỏ №13" testId="create-name"
                 invalid={attemptedReview && !nameOk} />
@@ -642,29 +688,47 @@ export default function CreateEvent() {
               </div>
               <p style={hintText}>{T('Chỉ bạn thấy. Giúp banbe đưa gợi ý phù hợp hơn.', 'Only you see this. It tunes the tips below to what you want.')}</p>
             </div>
+            </>)}
+            {basicsPart === 'story' && (<>
             <Guided field="description" attn={attn}>
-              <BigField icon="text" field="description" label={T('Mô tả', 'Description')} required value={s.createDesc} onChange={createDescType} placeholder={T('Mười bốn chỗ. Một ga-ra cải tạo…', 'Fourteen seats. A converted garage…')}
-                invalid={attemptedReview && fieldErrors.desc} describedBy="create-desc-error" />
+              {/* Note 69: a long field (at least twice a one-line box) with Expand. */}
+              <LongField icon="text" field="description" label={T('Mô tả', 'Description')} required value={s.createDesc} onChange={createDescType} placeholder={T('Mười bốn chỗ. Một ga-ra cải tạo…', 'Fourteen seats. A converted garage…')}
+                invalid={attemptedReview && fieldErrors.desc} describedBy="create-desc-error" testId="create-desc" onExpand={() => setExpanded('description')} T={T} />
               {attemptedReview && fieldErrors.desc && <p id="create-desc-error" style={errText}>{T('Hãy nhập mô tả.', 'Please enter a description.')}</p>}
             </Guided>
             <Guided field="intro" attn={attn} style={fieldCol}>
-              <FormLabel icon="doc" text={T('Giới thiệu sự kiện', 'Event introduction')} tag={`${s.createIntro.length}/4000`}
-                tagTone={s.createIntro.length >= 4000 ? 'error' : s.createIntro.length >= 3800 ? 'warning' : null} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <FormLabel icon="doc" text={T('Giới thiệu sự kiện', 'Event introduction')} tag={`${s.createIntro.length}/4000`}
+                    tagTone={s.createIntro.length >= 4000 ? 'error' : s.createIntro.length >= 3800 ? 'warning' : null} />
+                </div>
+                <ExpandButton label={T('Giới thiệu sự kiện', 'Event introduction')} testId="create-expand-intro" onClick={() => setExpanded('intro')} T={T} />
+              </div>
               <p style={hintText}>{T('Một đoạn giới thiệu dài hơn, hấp dẫn. Tách dòng trống giữa các đoạn. Không phải quảng cáo giả, không phải "Bao gồm".', 'A longer, attractive write-up. Leave a blank line between paragraphs. Not fabricated marketing copy, not the same as "Included".')}</p>
               <textarea value={s.createIntro} onChange={createIntroType} maxLength={4000} rows={6}
                 placeholder={T('Một buổi tối ấm cúng cho mười bốn người lạ…\n\nMón chính là…', 'A cozy evening for fourteen strangers…\n\nThe main course is…')}
-                data-testid="create-intro" style={{ ...bigInput, resize: 'vertical', lineHeight: 1.5 }} />
+                data-testid="create-intro" style={{ ...longInput, minHeight: 156, fontFamily: introFontFamily(introFont) || FACE, color: introColorValue(introColor) }} />
+              <IntroStylePicker font={introFont} color={introColor} T={T}
+                onFont={(v) => setCreateDetail('_style', 'intro_font', v)} onColor={(v) => setCreateDetail('_style', 'intro_color', v)} />
             </Guided>
+            </>)}
+            {basicsPart === 'greeting' && (
             <Guided field="greeting" attn={attn} style={fieldCol}>
               <FormLabel icon="bubble" text={T('Lời nhắn mở đầu', 'Opening message')} tag={T('Tuỳ chọn', 'Optional')} />
               <p style={hintText}>{T('Hiện như tin nhắn đầu tiên từ bạn khi khách bấm "Nhắn cho người tổ chức", theo ngôn ngữ của khách. Để trống cả hai sẽ dùng lời chào mặc định.', 'Shown as the first message from you when a guest taps "Message host", in the guest\'s language. Leave both blank for a default greeting.')}</p>
-              <div style={subLabel}><span>{T('Tiếng Việt', 'Vietnamese')}</span><span style={{ opacity: 0.6 }}>{s.createChatGreeting.length}/500</span></div>
+              <div style={subLabel}><span>{T('Tiếng Việt', 'Vietnamese')}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><span style={{ opacity: 0.6 }}>{s.createChatGreeting.length}/500</span>
+                  <ExpandButton label={T('Tiếng Việt', 'Vietnamese')} testId="create-expand-greeting" onClick={() => setExpanded('greeting')} T={T} /></span></div>
               <textarea value={s.createChatGreeting} onChange={createChatGreetingType} maxLength={500} rows={3} data-testid="create-chat-greeting"
-                placeholder="Chào bạn! Mình sẽ trả lời sớm nhất có thể…" style={{ ...bigInput, resize: 'vertical', lineHeight: 1.5 }} />
-              <div style={subLabel}><span>{T('Tiếng Anh', 'English')}</span><span style={{ opacity: 0.6 }}>{s.createChatGreetingEn.length}/500</span></div>
+                placeholder="Chào bạn! Mình sẽ trả lời sớm nhất có thể…" style={longInput} />
+              <div style={subLabel}><span>{T('Tiếng Anh', 'English')}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><span style={{ opacity: 0.6 }}>{s.createChatGreetingEn.length}/500</span>
+                  <ExpandButton label={T('Tiếng Anh', 'English')} testId="create-expand-greetingEn" onClick={() => setExpanded('greetingEn')} T={T} /></span></div>
               <textarea value={s.createChatGreetingEn} onChange={createChatGreetingEnType} maxLength={500} rows={3} data-testid="create-chat-greeting-en"
-                placeholder="Hi! Happy to answer any questions, I'll reply as soon as I can." style={{ ...bigInput, resize: 'vertical', lineHeight: 1.5 }} />
+                placeholder="Hi! Happy to answer any questions, I'll reply as soon as I can." style={longInput} />
             </Guided>
+            )}
+            {basicsPart === 'categories' && (<>
             <Guided field="categories" attn={attn} style={fieldCol}>
               <FormLabel icon="grid" field="categories" text={T('Danh mục', 'Categories')} required tag={T('Tối đa 2', 'Up to 2')} />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -708,6 +772,8 @@ export default function CreateEvent() {
                 </div>
               )}
             </Guided>
+            </>)}
+            {basicsPart === 'details' && (<>
             <Guided field="included" attn={attn} style={fieldCol}>
               <FormLabel icon="checklist" field="included" text={typeProfile?.wizard?.includedTitle ? localized(typeProfile.wizard.includedTitle, lang) : T('Bao gồm', 'Included')}
                 required={requiredFields(typeProfile).includes('included')} tag={`${s.createIncludedItems.length}/3`} />
@@ -738,8 +804,9 @@ export default function CreateEvent() {
             {typeProfile?.wizard?.details?.length > 0 && (
               <TypeDetailsEditor profile={typeProfile} values={typeDetails} lang={lang} T={T} attn={attn}
                 showErrors={attemptedReview} required={requiredFields(typeProfile)}
-                onChange={(field, value) => setCreateDetail(typeKey, field, value)} />
+                onChange={(field, value) => setCreateDetail(detailOwner(field, s.createCats) || typeKey, field, value)} />
             )}
+            </>)}
           </StepCard>
         )}
 
@@ -858,6 +925,7 @@ export default function CreateEvent() {
 
         {step === 3 && (
           <StepCard title={T('Vé & ai được đặt', 'Tickets & who can book')} id="create-section-tickets">
+            {ticketsPart === 'price' && (
             <Guided field="price" attn={attn} style={fieldCol}>
               <FormLabel icon="tag" field="price" text={T('Giá vé', 'Price')} tag={similar ? T('Gợi ý', 'Suggested') : null} />
               {bench?.price && <PriceMarket price={bench.price} mine={draftPriceVnd} T={T} catLabel={createCatLabel} currency={market.currency} onChange={(v) => set({ createPrice: priceText(v), createPriceCurrency: market.currency })} />}
@@ -884,6 +952,8 @@ export default function CreateEvent() {
                     : T('Để trống là miễn phí.', 'Leave empty for a free event.')}
               </span>
             </Guided>
+            )}
+            {ticketsPart === 'seats' && (
             <Guided field="seats" attn={attn} style={fieldCol}>
               <FormLabel icon="people" field="seats" text={T('Số chỗ', 'Seats')} required />
               <div style={{ padding: '10px 14px', borderRadius: 14, background: paper, border: `1px solid ${rule}` }}>
@@ -898,6 +968,10 @@ export default function CreateEvent() {
               {attemptedReview && fieldErrors.seats && <p style={errText}>{T('Hãy nhập số chỗ lớn hơn 0.', 'Please enter a number of seats greater than 0.')}</p>}
               <Insight testId="create-seats-insight" check={recipeById.seats} T={T}
                 line={recipeById.seats.typicalGuests != null ? T(`Sự kiện tương tự thường đón ~${recipeById.seats.typicalGuests} khách.`, `Similar events usually welcome ~${recipeById.seats.typicalGuests} guests.`) : null} />
+            </Guided>
+            )}
+            {/* Guests × price: changes with either, so it shows under both parts. */}
+            {(ticketsPart === 'price' || ticketsPart === 'seats') && (<>
               {outcome && (
                 <div data-testid="create-outcome" data-basis={outcome.basis} style={{ ...cardGlass({ padding: '12px 14px' }), fontSize: 13.5, lineHeight: 1.45 }}>
                   <b>{outcome.basis === 'similar'
@@ -908,7 +982,8 @@ export default function CreateEvent() {
                     : T('nếu bán hết chỗ', 'if every seat sells')}{draftPriceVnd > 0 ? T(', trước mọi khoản phí.', ', before any fees.') : '.'}</span>
                 </div>
               )}
-            </Guided>
+            </>)}
+            {ticketsPart === 'privacy' && (
             <div style={fieldCol}>
               <FormLabel icon="lock" text={T('Quyền riêng tư', 'Privacy')} />
               <div style={{ display: 'flex', gap: 8 }}>
@@ -929,7 +1004,8 @@ export default function CreateEvent() {
                   : T('Ai cũng có thể tìm thấy và đặt sự kiện này.', 'Anyone can discover and book this event.')}
               </p>
             </div>
-            <ReservationCriteriaPicker criteria={s.createCriteria} onChange={setCreateCriteria} loadState={s.createCriteriaLoad} />
+            )}
+            {ticketsPart === 'criteria' && <ReservationCriteriaPicker criteria={s.createCriteria} onChange={setCreateCriteria} loadState={s.createCriteriaLoad} />}
           </StepCard>
         )}
 
@@ -1024,18 +1100,30 @@ export default function CreateEvent() {
               <MissingChips testId="create-step-gaps" lead={T('Còn thiếu ở bước này:', 'Still needed here:')} fields={stepGaps}
                 label={MISSING_LABEL} onPick={goToMissing} T={T} />
             )}
-            <div style={{ display: 'flex', gap: 10 }}>
-              {step > 0 && (
-                <button type="button" onClick={() => goTo(step - 1)} data-testid="create-step-back" aria-label={T('Quay lại: ', 'Back: ') + sections[step - 1].title} className="bb-press"
-                  style={{ width: 54, height: 52, flex: 'none', borderRadius: 999, border: `1px solid ${rule}`, background: 'transparent', color: ink, fontSize: 18, cursor: 'pointer' }}>‹</button>
-              )}
-              <button type="button" onClick={() => goTo(step + 1)} data-testid="create-step-next" className="bb-press"
-                style={{ flex: 1, minHeight: 52, borderRadius: 999, border: 'none', background: ink, color: paper, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
-                {step === 0 && sections[0].done
-                  ? T('Ổn rồi · Tiếp: ', 'Looks good · Next: ') + sections[1].title
-                  : T('Tiếp: ', 'Next: ') + sections[step + 1].title}
-              </button>
-            </div>
+            {/* Note 69: inside Basics / Tickets, Back / Next walk the parts first. */}
+            {(() => {
+              const parts = subStepParts(step);
+              const part = partIndex(step);
+              const nextPart = parts[part + 1];
+              const prevPart = part > 0 ? parts[part - 1] : null;
+              const back = prevPart ? () => setPart(step, part - 1) : () => goTo(step - 1, Math.max(subStepParts(step - 1).length - 1, 0));
+              const backLabel = prevPart ? T(prevPart.vi, prevPart.en) : sections[step - 1]?.title;
+              return (
+                <div style={{ display: 'flex', gap: 10 }}>
+                  {(step > 0 || prevPart) && (
+                    <button type="button" onClick={back} data-testid="create-step-back" aria-label={T('Quay lại: ', 'Back: ') + backLabel} className="bb-press"
+                      style={{ width: 54, height: 52, flex: 'none', borderRadius: 999, border: `1px solid ${rule}`, background: 'transparent', color: ink, fontSize: 18, cursor: 'pointer' }}>‹</button>
+                  )}
+                  <button type="button" onClick={() => (nextPart ? setPart(step, part + 1) : goTo(step + 1, 0))} data-testid="create-step-next" className="bb-press"
+                    style={{ flex: 1, minHeight: 52, borderRadius: 999, border: 'none', background: ink, color: paper, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+                    {nextPart ? T('Tiếp: ', 'Next: ') + T(nextPart.vi, nextPart.en)
+                      : step === 0 && sections[0].done
+                        ? T('Ổn rồi · Tiếp: ', 'Looks good · Next: ') + sections[1].title
+                        : T('Tiếp: ', 'Next: ') + sections[step + 1].title}
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1171,9 +1259,11 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
   const lang = s.lang === 'en' ? 'en' : 'vi';
   const typesOn = flagOn(s.featureFlags, 'event_type_profiles');
   const primaryType = s.createCats[0] || 'supper';
-  const typeDetails = typesOn ? cleanDetails(profileFor(primaryType), (s.createDetails || {})[primaryType]) : {};
-  const typeFacts = typesOn ? detailFacts(profileFor(primaryType), typeDetails, lang) : [];
-  const droppedTypes = typesOn ? droppedDetailTypes(primaryType, s.createDetails) : [];
+  // Note 69: both picked types' facts (the second category's are published too, migration 207).
+  const reviewKeys = s.createCats.length ? s.createCats : [primaryType];
+  const typeDetails = typesOn ? cleanDetails(combinedProfile(reviewKeys), mergedDraft(reviewKeys, s.createDetails || {})) : {};
+  const typeFacts = typesOn ? detailFacts(combinedProfile(reviewKeys), typeDetails, lang) : [];
+  const droppedTypes = typesOn ? droppedDetailTypes(primaryType, s.createDetails).filter(k => !reviewKeys.includes(k)) : [];
   const typeName = (k) => { const c = CAT_DEFS.find(x => x.key === k); return c ? T(c.vi, c.en) : k; };
 
   // Public preview (owner, 2026-10-21): the REAL Event Detail, rendered from this draft (src/lib/draftPreview.js).
@@ -1192,7 +1282,8 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
     description: s.createDesc.trim(), intro: s.createIntro.trim(), includedItems,
     inviteOnly: s.createVisibility === 'invite', organizerName: (s.orgRegName || '').trim(),
     coverUrl: coverItem?.url || '',
-    details: typeDetails,
+    // Note 69: what will be published (both types' facts, the second category, the intro style).
+    details: typesOn ? publishDetails({ keys: reviewKeys, draft: s.createDetails || {}, introFont: s.createDetails?._style?.intro_font, introColor: s.createDetails?._style?.intro_color }) : typeDetails,
   });
 
   // Confirm — the ONLY call site that actually submits, available from either tab (the Public preview shows the same
@@ -1445,7 +1536,156 @@ const bigInput = { width: '100%', boxSizing: 'border-box', fontSize: 16, padding
 const fieldCol = { display: 'flex', flexDirection: 'column', gap: 8 };
 const hintText = { fontSize: 12.5, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.7 };
 const errText = { fontSize: 11.5, color: alert, margin: '6px 0 0' };
-const subLabel = { display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 500, color: ink, marginTop: 4 };
+const subLabel = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, fontWeight: 500, color: ink, marginTop: 4 };
+// Note 69: long fields are at least twice the height of a one-line box (Event name, ~52px).
+const LONG_MIN = 104;
+const longInput = { ...bigInput, resize: 'vertical', lineHeight: 1.5, minHeight: LONG_MIN };
+
+/** Note 69: the small "expand" control in a long field's label row (44px target). */
+function ExpandButton({ label, onClick, testId, T }) {
+  return (
+    <button type="button" onClick={onClick} data-testid={testId} aria-label={T(`Mở rộng ${label}`, `Expand ${label}`)} className="bb-press"
+      style={{ flex: 'none', width: 44, height: 44, margin: '-10px -8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'none', color: ink2, cursor: 'pointer' }}>
+      <svg aria-hidden="true" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7" />
+      </svg>
+    </button>
+  );
+}
+
+/** Note 69: a long text field (textarea) with the label row, the Expand button and the error state. */
+function LongField({ icon, label, required, value, onChange, placeholder, testId, invalid, describedBy, field, onExpand, T }) {
+  return (
+    <div style={fieldCol}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div style={{ flex: 1, minWidth: 0 }}><FormLabel icon={icon} text={label} required={required} field={field} /></div>
+        <ExpandButton label={label} testId={`create-expand-${field}`} onClick={onExpand} T={T} />
+      </div>
+      <textarea value={value} onChange={onChange} placeholder={placeholder} data-testid={testId} rows={3} aria-label={label}
+        aria-invalid={invalid ? true : undefined} aria-describedby={invalid && describedBy ? describedBy : undefined} style={longInput} />
+    </div>
+  );
+}
+
+/**
+ * Note 69: one long field, full screen: Done, Clear all (confirmed, so one stray tap never wipes a write-up), and the
+ * count. Edits the same value as the field, so nothing needs saving.
+ */
+function LongTextSheet({ title, value, onChange, limit, style, testId, onClose, T }) {
+  const [confirmClear, setConfirmClear] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => { ref.current?.focus(); }, []);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') (confirmClear ? setConfirmClear(false) : onClose()); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [confirmClear, onClose]);
+  const set = (text) => onChange({ target: { value: limit ? text.slice(0, limit) : text } });
+  return (
+    <div role="dialog" aria-modal="true" aria-label={title} data-testid={`create-longtext-${testId}`}
+      style={{ position: 'fixed', inset: 0, zIndex: 60, background: paper, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 'calc(12px + env(safe-area-inset-top)) 12px 8px' }}>
+        <button type="button" onClick={() => setConfirmClear(true)} disabled={!value} data-testid="create-longtext-clear"
+          style={{ minHeight: 44, padding: '0 10px', border: 'none', background: 'none', color: value ? alert : ink3, fontFamily: 'inherit', fontSize: 15, cursor: value ? 'pointer' : 'default' }}>
+          {T('Xoá hết', 'Clear all')}
+        </button>
+        <span style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+        <button type="button" onClick={onClose} data-testid="create-longtext-done"
+          style={{ minHeight: 44, padding: '0 10px', border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+          {T('Xong', 'Done')}
+        </button>
+      </div>
+      <textarea ref={ref} value={value} onChange={(e) => set(e.target.value)} aria-label={title} data-testid="create-longtext-editor"
+        style={{ flex: 1, margin: '0 16px', padding: 12, border: 'none', outline: 'none', resize: 'none', background: 'transparent', color: ink, fontFamily: FACE, fontSize: 17, lineHeight: 1.55, ...style }} />
+      <div aria-live="polite" style={{ padding: '8px 20px calc(10px + env(safe-area-inset-bottom))', textAlign: 'right', fontSize: 13, fontVariantNumeric: 'tabular-nums', color: limit && value.length >= limit ? alert : ink2 }}>
+        {limit ? `${value.length}/${limit}` : value.length}
+      </div>
+      {confirmClear && (
+        <div onClick={() => setConfirmClear(false)} style={{ position: 'fixed', inset: 0, zIndex: 61, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(27,25,22,0.32)' }}>
+          <div onClick={e => e.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="create-clear-title"
+            style={{ ...cardGlass({ padding: 22, maxWidth: 320, width: '100%' }), background: paper }}>
+            <div id="create-clear-title" style={{ ...display(18), margin: 0 }}>{T('Xoá toàn bộ nội dung?', 'Clear all text?')}</div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+              <button type="button" autoFocus onClick={() => setConfirmClear(false)} data-testid="create-longtext-clear-cancel"
+                style={{ flex: 1, minHeight: 46, borderRadius: 14, border: `1px solid ${rule}`, background: 'transparent', color: ink, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer' }}>{T('Huỷ', 'Cancel')}</button>
+              <button type="button" onClick={() => { set(''); setConfirmClear(false); ref.current?.focus(); }} data-testid="create-longtext-clear-confirm"
+                style={{ flex: 1, minHeight: 46, borderRadius: 14, border: 'none', background: alert, color: '#fff', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>{T('Xoá hết', 'Clear all')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Note 69: font chips and colour swatches under the introduction (whole-text style, theme colours only). */
+function IntroStylePicker({ font, color, onFont, onColor, T }) {
+  return (
+    <div data-testid="create-intro-style" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+      <span id="create-intro-style-label" style={{ fontSize: 13, fontWeight: 600, color: ink }}>{T('Kiểu chữ', 'Text style')}</span>
+      <div role="radiogroup" aria-labelledby="create-intro-style-label" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+        {INTRO_FONTS.map(k => {
+          const on = font === k;
+          return (
+            <button key={k} type="button" role="radio" aria-checked={on} aria-label={T(...INTRO_FONT_NAMES[k])} data-testid={`create-intro-font-${k}`} onClick={() => onFont(k)}
+              style={{ minHeight: 44, borderRadius: 12, border: on ? '1px solid transparent' : `1px solid ${rule}`, background: on ? ink : paper, color: on ? paper : ink,
+                fontFamily: introFontFamily(k) || FACE, fontSize: 17, fontWeight: 600, cursor: 'pointer' }}>Aa</button>
+          );
+        })}
+      </div>
+      <div role="radiogroup" aria-label={T('Màu chữ', 'Text colour')} style={{ display: 'flex', gap: 4 }}>
+        {INTRO_COLORS.map(k => {
+          const on = color === k;
+          return (
+            <button key={k} type="button" role="radio" aria-checked={on} aria-label={T(...INTRO_COLOR_NAMES[k])} data-testid={`create-intro-color-${k}`} onClick={() => onColor(k)}
+              style={{ width: 44, height: 44, padding: 0, border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span aria-hidden style={{ width: 30, height: 30, borderRadius: '50%', background: introColorValue(k), boxShadow: on ? `0 0 0 3px ${paper}, 0 0 0 5px ${ink}` : `inset 0 0 0 1px ${rule}` }} />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Note 69: the nested progress inside one Create step (Basics, Tickets). Deliberately unlike StepProgress: no ring, no
+ * percentage, small numbered dots on a thin track, clay for the current part, a ✓ for done parts, and only the current
+ * part's name under it, so it reads as "inside this step", not as more steps.
+ */
+function SubStepBar({ stepTitle, parts, current, done, onSelect, T }) {
+  return (
+    <nav aria-label={T(`Các phần của ${stepTitle}`, `${stepTitle} parts`)} data-testid="create-substeps"
+      style={{ margin: '16px 0 0', padding: '12px 14px', borderRadius: 14, background: blockInset }}>
+      <ol style={{ display: 'flex', alignItems: 'center', listStyle: 'none', margin: 0, padding: 0 }}>
+        {parts.map((p, i) => {
+          const isCur = i === current;
+          const isDone = !!done[i];
+          return (
+            <li key={p.id} style={{ display: 'flex', alignItems: 'center', flex: i ? 1 : 'none' }}>
+              {i > 0 && <span aria-hidden style={{ flex: 1, height: 2, background: i <= current ? clay : rule }} />}
+              <button type="button" onClick={() => onSelect(i)} data-testid={`create-substeps-${i}`}
+                aria-current={isCur ? 'step' : undefined}
+                aria-label={T(`${stepTitle}, phần ${i + 1} trên ${parts.length}, ${p.vi}${isDone ? ', xong' : ''}`, `${stepTitle}, part ${i + 1} of ${parts.length}, ${p.en}${isDone ? ', done' : ''}`)}
+                style={{ width: 44, height: 44, margin: '0 -9px', padding: 0, border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span aria-hidden style={{ width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box',
+                  fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+                  background: isCur ? clay : isDone ? ink : 'transparent', color: isCur || isDone ? paper : ink2,
+                  border: isCur || isDone ? 'none' : `1.5px solid ${ink3}` }}>
+                  {isDone && !isCur ? '✓' : i + 1}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <div aria-hidden style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginTop: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: ink2 }}>{T(`Phần ${current + 1}/${parts.length}`, `Part ${current + 1} of ${parts.length}`)}</span>
+        <span style={{ fontSize: 14.5, fontWeight: 600, color: ink }}>{T(parts[current]?.vi, parts[current]?.en)}</span>
+      </div>
+    </nav>
+  );
+}
 // One emoji per category everywhere (note 53): shared with the onboarding answers.
 const CAT_EMOJI = CATEGORY_EMOJI;
 

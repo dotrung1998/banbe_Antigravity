@@ -1,7 +1,8 @@
 // Event type profiles: what changes per kind of event (supper club, music…) in the create flow, Event Detail
 // and Home. The data lives in src/data/eventTypeProfiles.json, which iOS bundles as-is; this file is the
-// logic on top of it. The first picked category is the PRIMARY type and the only one that shapes anything;
-// a second pick stays a discovery tag (it is saved as a keyword).
+// logic on top of it. The first picked category is the PRIMARY type (benchmarks, card line, Home filters). Note 69
+// (migration 207): a second pick now shapes the form and the detail page too: `combinedProfile` merges both types'
+// fields, required list and facts (shared alcohol / minimum age once). The second key is stored as `details.cat2`.
 // iOS twin: apps/ios/BanbeApp/Lib/EventTypes.swift. Shared vectors: tests/fixtures/event-types.json.
 // Pure module: no React, no network.
 import PROFILES from '../data/eventTypeProfiles.json' with { type: 'json' };
@@ -44,6 +45,93 @@ export const CATEGORY_EMOJI = Object.fromEntries(EVENT_TYPES.map(t => [t.key, t.
 /** Search synonyms per category key (already accent-free, as the matcher folds accents). */
 export function searchAliases() {
   return { all: [], ...Object.fromEntries(EVENT_TYPES.map(t => [t.key, t.aliases || []])) };
+}
+
+// ---- Two categories + introduction style (note 69, migration 207). Twin of EventTypes.swift. -------------------
+/** Keys stored in `events.details` that are not type facts: the second category and the introduction's style. */
+export const EXTRA_DETAIL_KEYS = ['cat2', 'intro_font', 'intro_color'];
+export const INTRO_FONTS = ['sans', 'serif', 'rounded', 'mono'];
+export const INTRO_COLORS = ['ink', 'ink2', 'clay', 'honey', 'alert'];
+const COMMON_KEYS = Object.keys(COMMON.detailFields || {});
+const uniq = (a) => [...new Set(a)];
+
+/**
+ * One profile for one or two picked categories. One key = that type unchanged. Two = the first type's identity (key,
+ * card, Home filters, benchmarks) with both types' fields, form blocks, required fields, facts and recipe; the shared
+ * fields (alcohol, minimum age) appear once, after both types' own fields.
+ */
+export function combinedProfile(keys) {
+  const p = profileFor(keys?.[0]);
+  if (!keys || keys.length < 2 || keys[1] === keys[0]) return p;
+  const q = profileFor(keys[1]);
+  if (!isShaped(q)) return p;
+  const fields = { ...(q.detailFields || {}), ...(p.detailFields || {}) };
+  let wizard = p.wizard || q.wizard;
+  if (p.wizard && q.wizard) {
+    const own = (w) => (w.details || []).filter(f => !COMMON_KEYS.includes(f));
+    wizard = {
+      ...p.wizard,
+      details: uniq([...own(p.wizard), ...own(q.wizard), ...(p.wizard.details || []).filter(f => COMMON_KEYS.includes(f))]),
+      required: uniq([...p.wizard.required, ...q.wizard.required]),
+    };
+  }
+  const detail = (p.detail || q.detail)
+    ? { ...(p.detail || {}), includedTitle: p.detail?.includedTitle || q.detail?.includedTitle, facts: uniq([...(p.detail?.facts || []), ...(q.detail?.facts || [])]) }
+    : undefined;
+  const recipe = (p.recipe || q.recipe)
+    ? { ...(p.recipe || {}), ingredients: uniq([...(p.recipe?.ingredients || []), ...(q.recipe?.ingredients || [])]) }
+    : undefined;
+  return { ...p, detailFields: fields, wizard, detail, recipe };
+}
+
+/** The second category stored on a published event (`details.cat2`), when it is a known type other than the first. */
+export function secondCategory(details, primary) {
+  const k = details?.cat2;
+  return typeof k === 'string' && k !== primary && BY_KEY[k] ? k : null;
+}
+
+/** A published event's profile: its own type plus the second category, if any. */
+export function eventProfile(catKey, details) {
+  return combinedProfile([catKey, secondCategory(details, catKey)].filter(Boolean));
+}
+
+/**
+ * Which picked type a field's draft value is kept under: the first type that has it as its OWN field, the first type
+ * for shared fields (alcohol, minimum age).
+ */
+export function detailOwner(field, keys) {
+  if (!keys?.length) return null;
+  if (COMMON_KEYS.includes(field)) return keys[0];
+  return keys.find(k => profileFor(k).detailFields?.[field] !== undefined) || keys[0];
+}
+
+/** The create form's draft as one set of values for the picked types (each field read from its owner). */
+export function mergedDraft(keys, draft) {
+  const out = {};
+  for (const id of Object.keys(combinedProfile(keys).detailFields || {})) {
+    const k = detailOwner(id, keys);
+    const v = draft?.[k]?.[id];
+    if (v !== undefined) out[id] = v;
+  }
+  return out;
+}
+
+/** The introduction's stored style; null parts when unset or unknown. */
+export function introStyle(details) {
+  return {
+    font: INTRO_FONTS.includes(details?.intro_font) ? details.intro_font : null,
+    color: INTRO_COLORS.includes(details?.intro_color) ? details.intro_color : null,
+  };
+}
+
+/** What `set_event_details` gets for a create draft: both types' facts cleaned, plus `cat2` and the intro style. */
+export function publishDetails({ keys, draft, introFont, introColor }) {
+  const out = { ...cleanDetails(combinedProfile(keys), mergedDraft(keys, draft)) };
+  delete out.v;
+  if (keys?.length > 1 && keys[1] !== keys[0] && BY_KEY[keys[1]]) out.cat2 = keys[1];
+  if (INTRO_FONTS.includes(introFont) && introFont !== 'sans') out.intro_font = introFont;
+  if (INTRO_COLORS.includes(introColor) && introColor !== 'ink') out.intro_color = introColor;
+  return Object.keys(out).length ? { v: DETAILS_VERSION, ...out } : {};
 }
 
 /** The fields this type requires before Review. */

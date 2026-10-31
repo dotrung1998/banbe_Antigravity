@@ -32,7 +32,7 @@ import { eventDraftDefaults, createDefaultsPatch, createDraftMatchesDefaults } f
 import { notificationRoute, runItAgainDate } from '../lib/coreLoops.js';
 import { DEFAULT_FILTERS as HOME_DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
 import { flagOn, normalizeFlags, readCachedFlags, writeCachedFlags } from '../lib/featureFlags.js';
-import { cleanDetails, profileFor } from '../lib/eventTypes.js';
+import { cleanDetails, profileFor, publishDetails, secondCategory, detailOwner, introStyle, EXTRA_DETAIL_KEYS } from '../lib/eventTypes.js';
 import { holdLeftCreateDraft, beginCreateDraftRestore, discardLeftCreateDraft } from '../lib/createDraftUndo.js';
 import { normalizeThemeChoice, resolveTheme, systemPrefersDark } from '../lib/themeChoice.js';
 import { homeViewAfterSync, startHostingStep } from '../lib/homeMode.js';
@@ -310,7 +310,8 @@ export function shapeRealEventAsCurEvent(real) {
   const hoursSinceStart = startsAt ? Math.max(0, Math.round((Date.now() - startsAt.getTime()) / 3600000)) : null;
   const endedHoursAgo = (real.status === 'ended' || (real.status === 'live' && hoursSinceStart != null && hoursSinceStart >= 12)) ? hoursSinceStart : null;
   return {
-    key: real.key, catKey: real.catKey, cat: real.catLabel || '', cat2Key: null, catDisplay: real.catLabel || '',
+    // Note 69: the second category lives in details.cat2 (migration 207).
+    key: real.key, catKey: real.catKey, cat: real.catLabel || '', cat2Key: secondCategory(real.details, real.catKey), catDisplay: real.catLabel || '',
     name: real.name, img: real.photoUrl || '', lat: real.lat ?? null, lng: real.lng ?? null,
     meta: [real.catLabel, real.area].filter(Boolean).join(' ▪︎ '),
     // Venue/address parity fix (task 2, then reworked per user follow-up
@@ -10530,12 +10531,21 @@ export function BanBeProvider({ children }) {
         });
         if (keywordsError) console.warn('set_event_keywords failed:', keywordsError);
 
-        // Event type facts (migration 203): only the primary type's, cleaned like the server validates. Best-effort
-        // like keywords. Skipped while the switch is off, so nothing changes for anyone until an admin turns it on.
+        // Event type facts (migration 203), cleaned like the server validates. Best-effort like keywords. Skipped while
+        // the switch is off. Note 69 (migration 207): both picked types' facts, the second category and the intro style;
+        // before 207 is applied the server refuses those, so fall back to the first type's facts alone (today's save).
         if (flagOn(s.featureFlags, 'event_type_profiles')) {
-          const primary = s.createCats[0] || 'supper';
-          const details = cleanDetails(profileFor(primary), (s.createDetails || {})[primary]);
-          const { data: detailsRes, error: detailsError } = await supabase.rpc('set_event_details', { p_event_id: eventId, p_details: details });
+          const keys = s.createCats.length ? s.createCats : ['supper'];
+          const style = (s.createDetails || {})._style || {};
+          let details = publishDetails({ keys, draft: s.createDetails, introFont: style.intro_font, introColor: style.intro_color });
+          let { data: detailsRes, error: detailsError } = await supabase.rpc('set_event_details', { p_event_id: eventId, p_details: details });
+          if (!detailsError && ['INVALID_DETAILS', 'FIELD_NOT_FOR_TYPE'].includes(detailsRes?.error)) {
+            const primaryOnly = cleanDetails(profileFor(keys[0]), (s.createDetails || {})[keys[0]]);
+            if (JSON.stringify(primaryOnly) !== JSON.stringify(details)) {
+              details = primaryOnly;
+              ({ data: detailsRes, error: detailsError } = await supabase.rpc('set_event_details', { p_event_id: eventId, p_details: details }));
+            }
+          }
           if (detailsError || detailsRes?.success === false) console.warn('set_event_details failed (migration 203 not applied?):', detailsError || detailsRes?.error);
           else set(prev => (prev.realEventsById[eventId] ? { realEventsById: { ...prev.realEventsById, [eventId]: { ...prev.realEventsById[eventId], details } } } : {}));
         }
@@ -10693,7 +10703,8 @@ export function BanBeProvider({ children }) {
       // truth createBack reads (see its own comment above).
       screen: 'create', createOriginScreen: 'dashboard',
       createEditEventId: eventId, createSent: false, createError: '', createDefaultsSource: null, createAppliedDefaults: null,
-      createName: real.name || '', createCats: real.catKey ? [real.catKey] : [],
+      // Note 69: the second category comes back from details.cat2 (migration 207).
+      createName: real.name || '', createCats: real.catKey ? [real.catKey, secondCategory(real.details, real.catKey)].filter(Boolean) : [],
       createDesc: real.description || '',
       // Address-autocomplete fix pass (2026-09-28) — an event that
       // already has a verified address (migration 105) pre-fills it as
@@ -10735,7 +10746,23 @@ export function BanBeProvider({ children }) {
       createKeywords: Array.isArray(real.keywords) ? real.keywords.join(', ') : '',
       createChatGreeting: real.chatGreeting || '',
       createChatGreetingEn: real.chatGreetingEn || '',
-      createDetails: real.details && Object.keys(real.details).length ? { [real.catKey]: real.details } : {},
+      // Note 69: split what was published back into the draft's shape (second category's fields under it, the intro
+      // style under `_style`, the rest under the first type).
+      createDetails: (() => {
+        const d = real.details || {};
+        if (!Object.keys(d).length) return {};
+        const second = secondCategory(d, real.catKey);
+        const keys = [real.catKey, second].filter(Boolean);
+        const out = {};
+        for (const [field, value] of Object.entries(d)) {
+          if (field === 'v' || EXTRA_DETAIL_KEYS.includes(field)) continue;
+          const owner = detailOwner(field, keys) || real.catKey;
+          out[owner] = { ...(out[owner] || {}), [field]: value };
+        }
+        const st = introStyle(d);
+        if (st.font || st.color) out._style = { ...(st.font ? { intro_font: st.font } : {}), ...(st.color ? { intro_color: st.color } : {}) };
+        return out;
+      })(),
       createKwDismissed: [],
       createCriteriaRetryEventId: null,
     });
