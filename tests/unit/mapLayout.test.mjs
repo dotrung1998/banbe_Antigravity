@@ -39,13 +39,12 @@ test('Map v5: the dock shows only at tall', () => {
 });
 
 // ---- Map v6 (note 74): full height and peek → full ----
-import { snapAfterDrag, tallFraction, snapFractions, TALL_GAP } from '../../src/lib/mapLayout.js';
+import { snapAfterDrag, tallFraction, snapFractions } from '../../src/lib/mapLayout.js';
 
-test('Map v6: full height sits just under the measured top controls; a fraction fallback before measuring', () => {
-  assert.equal(tallFraction(844, 96), (96 + TALL_GAP) / 844);
+test('Map: full height covers the whole screen; mid covers about two thirds', () => {
+  assert.equal(tallFraction(844, 96), 0);
   assert.equal(tallFraction(0, 96), SHEET_SNAPS.tall);
-  assert.equal(tallFraction(844, 0), SHEET_SNAPS.tall);
-  assert.ok(tallFraction(300, 200) <= 0.3); // never swallows a tiny landscape screen
+  assert.ok(Math.abs((1 - SHEET_SNAPS.mid) - 2 / 3) < 0.01);
   const f = snapFractions(844, 96);
   assert.ok(f.tall < f.mid && f.mid < f.peek);
   // The reference rect uses peek, which full height never changes.

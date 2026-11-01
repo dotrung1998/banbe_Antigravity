@@ -271,7 +271,12 @@ struct HomeView: View {
         // shrink-toward-ring transition (see AppState.swift's own comment
         // on storyRingFrames).
         .onPreferenceChange(StoryRingFramePreferenceKey.self) { app.storyRingFrames = $0 }
-        .onPreferenceChange(RootGestureExclusionZonePreferenceKey.self) { app.rootGestureExclusionZones = $0 }
+        .onPreferenceChange(RootGestureExclusionZonePreferenceKey.self) { zones in
+            // Only Home's preference-reported zones are replaced; `rootSwipeExclusion` zones (category row, chips) stay.
+            var z = app.rootGestureExclusionZones
+            z["homeStories"] = nil; z["surveyDiscovery"] = nil
+            app.rootGestureExclusionZones = z.merging(zones) { _, new in new }
+        }
         // Reset-on-account-change — `visibleSurveyDiscoveryCount` is plain
         // local `@State` (HomeView can stay mounted across a sign-out/
         // sign-in within the same session), so a new account must not
@@ -360,15 +365,15 @@ struct HomeView: View {
         guard !didAttemptScrollRestore, !homeWasAtTop, let target = app.homeScrollAnchorID else { return }
         didAttemptScrollRestore = true
         if !app.feed.isEmpty {
-            app.homeScrollAnchorID = nil
+            app.restoreHomeScrollAnchor(nil)
             DispatchQueue.main.async {
-                app.homeScrollAnchorID = target
+                app.restoreHomeScrollAnchor(target)
             }
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                app.homeScrollAnchorID = nil
+                app.restoreHomeScrollAnchor(nil)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    app.homeScrollAnchorID = target
+                    app.restoreHomeScrollAnchor(target)
                 }
             }
         }
@@ -1182,26 +1187,10 @@ struct HomeView: View {
         let topPulse = items.filter { $0.popularity != nil }.max { ($0.popularity ?? 0) < ($1.popularity ?? 0) }?.key
         let cards: [DiscoveryCardModel] = shown.enumerated().compactMap { i, it in
             guard let e = byKey[it.key] else { return nil }
-            var fill = HomeDiscovery.fillBadge(booked: it.booked, capacity: it.capacity)
-            if e.soldOut && fill.left == nil { fill.soldOut = true }
             var label: String?
             if i == 0 && topForYou == e.key { label = "best" }
             else if i == 0 && !forYouActive && topPulse == e.key { label = "popular" }
-            return DiscoveryCardModel(
-                key: e.key, name: e.name, img: e.img,
-                dateBadge: app.discoveryDateBadge(it.startsAt, now: now, timeZone: e.eventTimeZone),
-                priceLabel: it.priceVnd == 0 ? app.T("Miễn phí", "Free") : app.trStatus(e.price),
-                isFree: it.priceVnd == 0,
-                metaLine: app.metaLine(for: e, distanceKm: it.distanceKm),
-                fill: fill, cancelled: e.cancelled,
-                going: app.isGoing(e.key) && !e.cancelled && e.endedHoursAgo == nil,
-                label: label,
-                typeLine: app.eventTypesEnabled && (!AppState.catalogKeys.contains(e.key) || !e.details.isEmpty)
-                    ? EventTypes.cardLine(EventTypes.profile(e.catKey), capacity: it.capacity ?? e.capacity ?? 0,
-                                          details: e.details, lang: app.isEN ? "en" : "vi")
-                    : nil,
-                imgs: app.cardImages(e)
-            )
+            return app.discoveryCardModel(e, item: it, now: now, label: label)
         }
         let badge = HomeDiscovery.activeFilterCount(f)
         // Event type profiles: with exactly one category picked, that type's own chips (counts like the quick chips).

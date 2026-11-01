@@ -701,3 +701,7 @@ input::placeholder, textarea::placeholder {
 /* Map v6 (note 74): sideways photo pager (src/components/PhotoPager.jsx) and the Map peek strip scroll without a bar. */
 .bb-pager-track { scrollbar-width: none; }
 .bb-pager-track::-webkit-scrollbar { display: none; }
+/* Map full height: the floating "Map" pill pops in with a little overshoot (owner 2026-11-01). */
+@keyframes bb-pop-in { 0% { opacity: 0; transform: translateX(-50%) scale(0.6); } 100% { opacity: 1; transform: translateX(-50%) scale(1); } }
+.bb-pop-in { animation: bb-pop-in 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+@media (prefers-reduced-motion: reduce) { .bb-pop-in { animation: none; } }

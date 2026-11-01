@@ -1003,7 +1003,9 @@ final class AppState: ObservableObject {
     // own comment). Home stays mounted underneath StoryViewerView the whole
     // time (RootView.swift's ZStack), so this dictionary keeps updating even
     // while visually covered.
-    @Published var storyRingFrames: [String: CGRect] = [:]
+    // Not @Published (2026-11-01): rewritten on every frame of a Home scroll and only ever read imperatively (a
+    // gesture's start, a tap); publishing it re-rendered every observing view per frame (Home lag / freezes).
+    var storyRingFrames: [String: CGRect] = [:]
     // Survey-strip gesture fix — RootView's own `tabSwipeGesture` (a
     // `.simultaneousGesture` DragGesture spanning the whole root screen
     // stack, Stage 2's root-tab-swipe) only ever special-cases its OWN
@@ -1023,7 +1025,9 @@ final class AppState: ObservableObject {
     // stops rendering (e.g. the survey strip collapsing) cleanly disappears
     // from this dict on the very next preference pass, instead of leaving a
     // stale dead zone behind.
-    @Published var rootGestureExclusionZones: [String: CGRect] = [:]
+    // Not @Published (2026-11-01): rewritten on every frame of a Home scroll and only ever read imperatively (a
+    // gesture's start, a tap); publishing it re-rendered every observing view per frame (Home lag / freezes).
+    var rootGestureExclusionZones: [String: CGRect] = [:]
     /// A control under the finger owns this touch (set at touch-DOWN by
     /// `claimsRootSwipe()`), so the root dock-tab swipe must not start.
     /// Unlike the measured exclusion zones it can't be stale or missing on a
@@ -2150,7 +2154,15 @@ final class AppState: ObservableObject {
     /// `mapExploreState` isn't a plain `@State` either), via
     /// `ScreenScaffold`'s `.scrollPosition(id:)` binding. `nil` means "no
     /// scroll to restore" — top of the feed.
-    @Published var homeScrollAnchorID: String?
+    /// NOT @Published (2026-11-01): with `.scrollPosition(id:, anchor: .center)` it changes every time a card crosses
+    /// the middle of the screen, and publishing it re-rendered the whole app per card (Home's scroll hitches and
+    /// freezes, worst with big photo cards). It is read when Home's body is built (restore after a remount); a
+    /// programmatic restore uses `restoreHomeScrollAnchor(_:)`, which asks for that re-render.
+    var homeScrollAnchorID: String?
+    func restoreHomeScrollAnchor(_ id: String?) {
+        objectWillChange.send()
+        homeScrollAnchorID = id
+    }
     /// Home's raw scroll offset, remembered across tab switches (see ScreenScaffold.restoreOffsetY).
     /// Deliberately NOT @Published — it changes every frame while scrolling.
     var homeScrollOffsetY: CGFloat?
@@ -2477,10 +2489,10 @@ final class AppState: ObservableObject {
     /// Map v6 (note 74): a Home card's pager photos — its cover first, then its public photos, at most 6. An
     /// invite-only event keeps only its cover.
     func cardImages(_ e: CatalogEvent) -> [String] {
-        var out = e.img.isEmpty ? [] : [e.img]
-        guard !e.inviteOnly else { return out }
-        for u in eventGalleryURLs[e.key] ?? [] where !out.contains(u.absoluteString) { out.append(u.absoluteString) }
-        return Array(out.prefix(6))
+        // The live gallery is already cover-first: prepending the bundled `img` showed the same cover twice (a bundled
+        // path and a storage URL never compare equal).
+        if !e.inviteOnly, let g = eventGalleryURLs[e.key], !g.isEmpty { return g.map(\.absoluteString) }
+        return e.img.isEmpty ? [] : [e.img]
     }
 
     var currentAreaLabel: String { LocationHierarchy.shortLabel(for: area, roots: locationTree, T: T) }

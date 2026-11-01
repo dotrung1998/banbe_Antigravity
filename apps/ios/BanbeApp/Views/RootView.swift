@@ -243,7 +243,8 @@ struct RootView: View {
                     // Schedule owns every horizontal swipe (week strip = weeks, list = days), so
                     // the dock swipe never starts there; no measured frame needed (note 48).
                     if app.rootSwipeClaimedByControl || app.screen == .schedule
-                        || app.rootGestureExclusionZones.values.contains(where: { $0.contains(value.startLocation) }) {
+                        || app.rootGestureExclusionZones.values.contains(where: { $0.contains(value.startLocation) })
+                        || PagerSwipeZones.contains(value.startLocation, on: app.screen) {
                         tabSwipeDirection = "vertical"
                         return
                     }

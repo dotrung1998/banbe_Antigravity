@@ -16,10 +16,20 @@ export function effectiveHomeView(organizerMode, homeView) {
  * `homeView` after a profile sync or an organizer-mode change. Organizer mode coming on (off before) opens Hosting;
  * staying on keeps what the person picked; off is always Going out.
  */
-export function homeViewAfterSync(prevOrganizerMode, prevHomeView, organizerMode) {
+export function homeViewAfterSync(prevOrganizerMode, prevHomeView, organizerMode, stored = null) {
   if (!organizerMode) return 'goer';
-  if (!prevOrganizerMode) return 'host';
+  if (!prevOrganizerMode) return stored === 'goer' ? 'goer' : 'host';
   return prevHomeView === 'host' ? 'host' : 'goer';
+}
+
+// The last view the person picked on this device (iOS twin: HomeMode.stored). Written only on an explicit pick, read
+// at session restore (`stored` above) so a reload reopens Going out if that is where they left Home; cleared on sign-out.
+const HOME_VIEW_KEY = 'banbe.homeView';
+export function readStoredHomeView() {
+  try { const v = localStorage.getItem(HOME_VIEW_KEY); return HOME_VIEWS.includes(v) ? v : null; } catch { return null; }
+}
+export function storeHomeView(view) {
+  try { if (view) localStorage.setItem(HOME_VIEW_KEY, view); else localStorage.removeItem(HOME_VIEW_KEY); } catch { /* private browsing */ }
 }
 
 /** The Hosting segment is locked (lock glyph, opens the Start hosting invitation) while organizer mode is off. */

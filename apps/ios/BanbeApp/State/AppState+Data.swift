@@ -594,7 +594,8 @@ extension AppState {
                 mode = canHostNow ? "host" : "goer"
                 // Simple Shell: a sync turning organizer mode on lands Home on Hosting, off on Going out; an unchanged
                 // mode keeps whatever this session chose (Lib/HomeMode.swift).
-                homeView = HomeMode.viewAfterSync(prevOrganizerMode: oldMode, prevHomeView: homeView, organizerMode: canHostNow)
+                homeView = HomeMode.viewAfterSync(prevOrganizerMode: oldMode, prevHomeView: homeView, organizerMode: canHostNow,
+                                                   stored: HomeMode.stored)
                 #if DEBUG
                 if oldMode != canHostNow {
                     print("[organizerMode] WRITE source=applySession old=\(oldMode) new=\(canHostNow) role=\(profile.role)")
@@ -711,8 +712,9 @@ extension AppState {
         // TASK 5 (Account badges pass) — admin-only cache; a non-admin (or
         // the next account signing in) must never see a stale prior count.
         pendingEventsCount = 0
-        // Simple Shell: the Home view is session-only.
+        // Simple Shell: the next account starts from its own pick, not this one's.
         homeView = .goer
+        HomeMode.stored = nil
         startHostingInviteOpen = false
         startHostingAfterInvite = false
     }
@@ -1447,8 +1449,10 @@ extension AppState {
             // once per load, so the view layer never needs the static
             // catalogue at all for a real event's photo.
             let realIds = rows.filter { EventCatalog.find($0.id)?.key != $0.id }.map(\.id)
-            let lists = await photoURLsByEvent(realIds)
-            var urls = lists.compactMapValues(\.first)
+            // Map v6 pager: every row's photos (catalogue events too, their live rows have photos like any other);
+            // the cover fallback below stays real-events-only.
+            let lists = await photoURLsByEvent(rows.map(\.id))
+            var urls = lists.filter { realIds.contains($0.key) }.compactMapValues(\.first)
             var galleries: [String: [URL]] = [:]
             for row in rows {
                 let cover = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref)
@@ -1739,6 +1743,7 @@ extension AppState {
 
     private func landOnHostHome() {
         homeView = .host
+        HomeMode.stored = .host
         searchOverlayOpen = false
         notificationsOverlayOpen = false
         screen = .home
@@ -3584,8 +3589,13 @@ extension AppState {
 
     /// Cover first, then the event's photos, duplicates dropped; at most 6.
     static func gallery(cover: URL?, photos: [URL]) -> [URL] {
+        // Compared by file, not by URL: the cover (`cover_image`) and the same photo's `event_photos` row resolve to
+        // different URLs (Supabase `/object/` vs `/render/image/`, query params), which showed the cover twice. The
+        // last two path components name the file in both Supabase (`<event>/<file>`) and R2 (`<asset>/<variant>`).
         var out: [URL] = []
-        for u in [cover].compactMap({ $0 }) + photos where !out.contains(u) { out.append(u) }
+        var seen = Set<String>()
+        for u in [cover].compactMap({ $0 }) + photos
+        where seen.insert(u.pathComponents.suffix(2).joined(separator: "/").lowercased()).inserted { out.append(u) }
         return Array(out.prefix(6))
     }
 

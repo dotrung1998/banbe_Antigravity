@@ -98,7 +98,7 @@ final class EventTypesUITests: XCTestCase {
         let app = launch("shell.home")
         let row = el(app, "filter.all")
         XCTAssertTrue(row.waitForExistence(timeout: 10))
-        XCTAssertTrue(el(app, "home.categoryCount.all").exists, "every tile carries its live count")
+        XCTAssertFalse(el(app, "home.categoryCount.all").exists, "the row shows no counts (owner 2026-11-01)")
         XCTAssertFalse(el(app, "filter.popup").exists, "a category with no events here is not in the row")
         sleep(1)
         shot("home-category-row")

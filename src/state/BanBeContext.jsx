@@ -35,7 +35,7 @@ import { flagOn, normalizeFlags, readCachedFlags, writeCachedFlags } from '../li
 import { cleanDetails, profileFor, publishDetails, secondCategory, detailOwner, introStyle, EXTRA_DETAIL_KEYS } from '../lib/eventTypes.js';
 import { holdLeftCreateDraft, beginCreateDraftRestore, discardLeftCreateDraft } from '../lib/createDraftUndo.js';
 import { normalizeThemeChoice, resolveTheme, systemPrefersDark } from '../lib/themeChoice.js';
-import { homeViewAfterSync, startHostingStep } from '../lib/homeMode.js';
+import { homeViewAfterSync, readStoredHomeView, startHostingStep, storeHomeView } from '../lib/homeMode.js';
 import { clampQty, maxQty } from '../lib/reserveBar.js';
 import { groupPhotoRows, cardPhotoList, MAX_CARD_PHOTOS } from '../lib/eventPhotoUrls.js';
 
@@ -2048,7 +2048,7 @@ export function BanBeProvider({ children }) {
         },
         ...roleFields,
         // Simple Shell follow-up (note 66): organizer mode coming on opens Hosting, staying on keeps the pick.
-        ...('organizerMode' in roleFields ? { homeView: homeViewAfterSync(prev.organizerMode, prev.homeView, roleFields.organizerMode) } : {}),
+        ...('organizerMode' in roleFields ? { homeView: homeViewAfterSync(prev.organizerMode, prev.homeView, roleFields.organizerMode, readStoredHomeView()) } : {}),
         canManageAdmins: profile?.can_manage_admins === true,
         referralCode: profile?.referral_code || null, sessionChecked: true,
         autoEmailDocuments: profile?.auto_email_documents === true,
@@ -6480,11 +6480,15 @@ export function BanBeProvider({ children }) {
 
   // ---- Simple Shell follow-up (note 66): Home view + Start hosting ----
   /** Going out | Hosting on Home. A view only: organizer mode is never changed here. */
-  const setHomeView = useCallback((view) => set({ homeView: view === 'host' ? 'host' : 'goer' }), [set]);
+  const setHomeView = useCallback((view) => {
+    const v = view === 'host' ? 'host' : 'goer';
+    storeHomeView(v);
+    set({ homeView: v });
+  }, [set]);
   /** Lands on Home > Hosting at the top (the existing homeScrollTopToken, App.jsx). */
-  const landOnHostHome = useCallback(() => set({
+  const landOnHostHome = useCallback(() => { storeHomeView('host'); set({
     homeView: 'host', screen: 'home', searchOverlayOpen: false, notificationsOverlayOpen: false, homeScrollTopToken: Date.now(),
-  }), [set]);
+  }); }, [set]);
   /**
    * The one "Start hosting" action (Home's locked Hosting segment, "+" > Host an event, Account's Start hosting).
    * Guest: the sign-in prompt first. Organizer mode off: the Start hosting invitation (`confirmed` = the caller IS the
@@ -6953,6 +6957,7 @@ export function BanBeProvider({ children }) {
     // render, before that listener has necessarily fired, never shows this
     // account's saves.
     favoritesUidRef.current = null;
+    storeHomeView(null); // the next account starts from its own Home view pick
     set(prev => ({
       // Note 49: the full per-account reset (logout used to miss bookings, tickets, stories, organizer identity…).
       ...signedOutState(prev), ...ORGANIZER_IDENTITY_RESET,

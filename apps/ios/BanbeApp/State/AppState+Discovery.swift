@@ -92,6 +92,28 @@ extension AppState {
         Dictionary(pulseDaily.map { ($0.eventId, $0.score) }, uniquingKeysWith: { a, _ in a })
     }
 
+    /// One Home discovery card (photo pager, date / fill badges, price, meta, type line). Shared by Home and the
+    /// Map's Large cards (owner 2026-11-01: the Map showed less than Home for the same event).
+    func discoveryCardModel(_ e: CatalogEvent, item it: HomeDiscovery.Item, now: Date = Date(), label: String? = nil) -> DiscoveryCardModel {
+        var fill = HomeDiscovery.fillBadge(booked: it.booked, capacity: it.capacity)
+        if e.soldOut && fill.left == nil { fill.soldOut = true }
+        return DiscoveryCardModel(
+            key: e.key, name: e.name, img: e.img,
+            dateBadge: discoveryDateBadge(it.startsAt, now: now, timeZone: e.eventTimeZone),
+            priceLabel: it.priceVnd == 0 ? T("Miễn phí", "Free") : trStatus(e.price),
+            isFree: it.priceVnd == 0,
+            metaLine: metaLine(for: e, distanceKm: it.distanceKm),
+            fill: fill, cancelled: e.cancelled,
+            going: isGoing(e.key) && !e.cancelled && e.endedHoursAgo == nil,
+            label: label,
+            typeLine: eventTypesEnabled && (!AppState.catalogKeys.contains(e.key) || !e.details.isEmpty)
+                ? EventTypes.cardLine(EventTypes.profile(e.catKey), capacity: it.capacity ?? e.capacity ?? 0,
+                                      details: e.details, lang: isEN ? "en" : "vi")
+                : nil,
+            imgs: cardImages(e)
+        )
+    }
+
     func discoveryItem(for e: CatalogEvent, now: Date = Date(), scores: [String: Double]? = nil) -> HomeDiscovery.Item {
         let fill = eventFill[e.key]
         let price: Int?

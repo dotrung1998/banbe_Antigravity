@@ -71,6 +71,11 @@ struct MapExploreView: View {
     /// The map's full size and the top safe area (the Map ignores the safe area), for the reference rect.
     @State private var mapSize: CGSize = .zero
     @State private var safeTop: CGFloat = 0
+    /// 0 at mid (or lower) → 1 at full height, read from the sheet's live height while it is dragged, in 10% steps
+    /// (the Map is not re-rendered every frame). Drives the Airbnb-style hand-off (owner 2026-11-01): the map's back /
+    /// compass shrink away as the sheet's own back / Show map pop in beside a narrower search field, and a paper band
+    /// fills the strip above the full sheet so no map shows there.
+    @State private var fullProgress: CGFloat = 0
     /// The whole public set again every 60 s (was 5 s: every row re-downloaded a dozen times a minute — Supabase
     /// egress, note 40). Kept in @State so it is made once per screen (built inline, every redraw restarted it).
     @State private var pollTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -184,18 +189,24 @@ struct MapExploreView: View {
     /// Screen-only on purpose: reading the key window's safe area here touched UIKit layout during the first body
     /// pass, which re-entered this lazy static and trapped in `dispatch_once` (every Map launch crashed). Top inset:
     /// Face ID phones (≥ 800 pt tall) ~62 pt, home-button phones 20 pt.
-    static let fullHeight: CGFloat = {
-        let screen = UIScreen.main.bounds.height
-        let top: CGFloat = screen >= 800 ? 62 : 20
-        return max(400, screen - top - CGFloat(topControlsHeight) + 4)
-    }()
+    /// Full = the whole screen (owner 2026-11-01: no sliver of map above the list); the system clamps it to the
+    /// tallest sheet. The back arrow and a "Show map" button move into the sheet's search row there (`searchRow`).
+    static let fullHeight: CGFloat = UIScreen.main.bounds.height
     static let peekDetent: PresentationDetent = .height(peekHeight)
-    static let midDetent: PresentationDetent = .fraction(0.45)
+    /// Mid covers about two thirds of the screen (owner 2026-11-01; was 0.45). Snapshots still store it as 0.45.
+    static let midCover: Double = 0.66
+    static let midDetent: PresentationDetent = .fraction(midCover)
     static let tallDetent: PresentationDetent = .height(fullHeight)
+    /// Only live while a swipe past the END of the list lifts the sheet from mid (SheetBottomLift); inactive otherwise.
+    static let liftDetent: PresentationDetent = .custom(SheetLiftDetent.self)
     /// Unique per instance, so a torn-down copy never releases the dock another instance hid.
     @State private var dockToken = "mapExplore.dock." + UUID().uuidString
     /// Sticky filters (note 73 §3): the list is scrolled past its first row, so the header is one compact line.
     @State private var listScrolled = false
+    /// Last list offset seen by `listScrollChanged` (direction of the scroll).
+    @State private var lastListOffset: CGFloat = 0
+    /// Until when a fold change is left alone: folding resizes the list, and that jump must not read as a scroll.
+    @State private var foldSettleUntil = Date.distantPast
     /// Bumped to scroll the list back to its top (row tap = select, compact line tap).
     @State private var listTopToken = 0
     /// Last camera settle; a camera change right after one is MapKit finishing that move, not the user's.
@@ -395,12 +406,14 @@ struct MapExploreView: View {
             // matching size resolves that as a side effect, without
             // introducing any new color value for either button.
             HStack(alignment: .top) {
+                // Arrow only (owner 2026-11-01); the spoken label still says what it does.
                 Button { closeMap() } label: {
-                    Text(app.T("← Đóng", "← Close"))
-                        .font(.system(size: 12, weight: .semibold))
-                        .padding(.horizontal, 14).padding(.vertical, 8)
-                        .nativeGlassCapsule(interactive: true)
+                    Image(systemName: "arrow.left")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 38, height: 38)
+                        .nativeGlass(Circle(), interactive: true)
                 }
+                .accessibilityLabel(app.T("Đóng bản đồ", "Close map"))
                 .accessibilityIdentifier("map.back")
 
                 Spacer()
@@ -417,6 +430,38 @@ struct MapExploreView: View {
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 16)
             .padding(.top, 8)
+            // The city the map is on, centred between back and compass (a city change re-renders it, nothing else).
+            .overlay(alignment: .top) {
+                if let city = mapCityName {
+                    HStack(spacing: 5) {
+                        Image(systemName: "mappin.and.ellipse").font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(app.palette.clay)
+                        Text(city).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    }
+                    .padding(.horizontal, 12).frame(height: 34)
+                    .nativeGlassCapsule(interactive: false)
+                    .padding(.top, 10).padding(.horizontal, 70)
+                    .allowsHitTesting(false)
+                    .accessibilityLabel(app.T("Bản đồ đang ở \(city)", "Map showing \(city)"))
+                    .accessibilityIdentifier("map.city")
+                    .transition(.scale(scale: 0.8).combined(with: .opacity))
+                }
+            }
+            .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.62), value: mapCityName)
+            .scaleEffect(1 - 0.35 * fullProgress, anchor: .top)
+            .opacity(Double(1 - fullProgress))
+            .allowsHitTesting(fullProgress < 0.5)
+            .accessibilityHidden(fullProgress >= 0.5)
+            .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.62), value: fullProgress)
+
+            // The strip above a full-height sheet (system sheets stop under the status bar): paper, not map.
+            app.palette.paper
+                .frame(height: safeTop + 44)
+                .frame(maxWidth: .infinity)
+                .opacity(Double(fullProgress))
+                .ignoresSafeArea(edges: .top)
+                .allowsHitTesting(false)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: fullProgress)
 
             // Deliberately NOT a third child of the HStack above. It used to
             // sit between two Spacers there ([Close] Spacer [SearchHere]
@@ -469,6 +514,8 @@ struct MapExploreView: View {
             withAnimation(.easeOut(duration: 0.26)) { sheetPresented = true }
         }
         .onChange(of: sheetDetent) { _, detent in
+            if detent == Self.tallDetent { fullProgress = 1 }
+            if detent == Self.peekDetent { listScrolled = false; lastListOffset = 0 }
             // Re-applies the region shift (never a re-zoom or the selection pop) when the sheet grows back over a
             // selected pin. Dropping to peek never moves the camera: that is usually the user's own pan in progress.
             if detent != Self.peekDetent, let ev = selectedEvent { reapplyCameraOffset(for: ev) }
@@ -524,6 +571,15 @@ struct MapExploreView: View {
         }
         .sheet(isPresented: $sheetPresented) {
             sheetContent
+                // No hairline / edge shadow on the sheet (owner 2026-11-01): at full height it meets the screen top.
+                .background(SheetEdgeShadowRemover())
+                .background {
+                    GeometryReader { g in
+                        Color.clear
+                            .onAppear { noteSheetHeight(g.size.height) }
+                            .onChange(of: g.size.height) { _, h in noteSheetHeight(h) }
+                    }
+                }
                 // The area picker is an overlay INSIDE this sheet (not a
                 // second nested sheet), so the event list stays in place
                 // underneath it instead of being covered.
@@ -582,7 +638,7 @@ struct MapExploreView: View {
                 // Map v6 (note 74): from peek one upward drag lands at FULL (mid is left out of the set while at peek);
                 // everywhere else all three. A tap on the peek strip still goes to mid.
                 .presentationDetents(sheetDetent == Self.peekDetent ? [Self.peekDetent, Self.tallDetent]
-                                                                    : [Self.peekDetent, Self.midDetent, Self.tallDetent],
+                                                                    : [Self.peekDetent, Self.midDetent, Self.tallDetent, Self.liftDetent],
                                      selection: $sheetDetent)
                 // Opaque content surface: without this the system sheet is glass at partial detents and the list
                 // sat on the map (device report). Glass stays on the map controls and the dock.
@@ -611,10 +667,11 @@ struct MapExploreView: View {
                 // it's the same one, singular, Apple-implemented mechanism
                 // this trick has always relied on. `dragHandle` (the custom
                 // capsule + its gesture) is removed entirely — see below.
-                .presentationDragIndicator(.visible)
-                // Kept — still needed so the List scrolls normally at MID
-                // instead of being claimed by the (now visible, but still
-                // reserved-to-its-own-strip) system resize recognizer.
+                .presentationDragIndicator(sheetDetent == Self.tallDetent ? .hidden : .visible)
+                // Full height hides the grabber (owner 2026-11-01: one seamless surface); the floating Map button
+                // and a pull down at the list's top still bring the map back.
+                // Owner 2026-11-01: the list scrolls first; a pull down at its top moves the sheet with the finger
+                // (the system's own resize). Nothing is moved programmatically mid-gesture (that read as a jump).
                 .presentationContentInteraction(.scrolls)
                 .presentationBackgroundInteraction(.enabled)
                 .interactiveDismissDisabled()
@@ -725,7 +782,7 @@ struct MapExploreView: View {
             let h = Double(mapSize.height > 0 ? mapSize.height : UIScreen.main.bounds.height)
             return Double(Self.peekHeight) / max(1, h)
         }
-        if detent == Self.midDetent { return 0.45 }
+        if detent == Self.midDetent { return Self.midCover }
         let h = Double(mapSize.height > 0 ? mapSize.height : UIScreen.main.bounds.height)
         return min(0.95, Double(Self.fullHeight) / max(1, h))
     }
@@ -824,7 +881,7 @@ struct MapExploreView: View {
     /// A camera region that fits `bounds` into the free area above the MID sheet (below the top controls).
     private func fittedRegion(_ bounds: MapDiscovery.Bounds, maxZoom: Double = 14) -> MKCoordinateRegion {
         let w = Double(max(320, mapSize.width)), h = Double(max(560, mapSize.height == 0 ? UIScreen.main.bounds.height : mapSize.height))
-        let pad = MapDiscovery.Padding(top: Double(safeTop) + Self.topControlsHeight + 16, bottom: h * 0.45 + Self.legalReserve + 16,
+        let pad = MapDiscovery.Padding(top: Double(safeTop) + Self.topControlsHeight + 16, bottom: h * Self.midCover + Self.legalReserve + 16,
                                        left: Self.markerSidePadding, right: Self.markerSidePadding)
         let cam = MapDiscovery.fitCamera(bounds, width: w, height: h, padding: pad, maxZoom: maxZoom)
         let view = MapDiscovery.viewBounds(center: cam.center, zoom: cam.zoom, width: w, height: h)
@@ -1142,10 +1199,10 @@ struct MapExploreView: View {
                         .accessibilityIdentifier("map.selectedRow.close")
                     }
                     // Venue date · time, the same source Event Detail reads (starts_at in events.tz), then the area.
-                    Text([eventWhen(ev), ev.area].filter { !$0.isEmpty }.joined(separator: " · "))
+                    Text([eventWhen(ev), ev.area].filter { !$0.isEmpty }.joined(separator: ", "))
                         .font(.subheadline).foregroundStyle(app.palette.ink2).lineLimit(1)
                     HStack(spacing: 8) {
-                        Text(priceLine(ev)).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        priceView(ev, font: .subheadline.weight(.semibold))
                         // Real fill only; no fill row means no seat claim at all.
                         seatPill(ev, id: "map.selectedRow.seats")
                         Spacer(minLength: 0)
@@ -1595,6 +1652,22 @@ struct MapExploreView: View {
     }
 
     /// Price per ticket in the event's own currency; 0 is genuinely free.
+    /// Price per ticket as the amount + an outlined ticket icon (owner 2026-11-01: "/ ticket" kept getting cut off).
+    /// Never truncated: the row's left column gives way instead. VoiceOver still hears "/ ticket".
+    private func priceView(_ ev: MapEventRow, font: Font) -> some View {
+        HStack(spacing: 4) {
+            if ev.priceVnd > 0 {
+                Text(EventMarket.formatMoney(ev.priceVnd, currency: ev.rowCurrency))
+                Image(systemName: "ticket").fontWeight(.regular).foregroundStyle(app.palette.ink)
+            } else {
+                Text(app.T("Miễn phí", "Free"))
+            }
+        }
+        .font(font).lineLimit(1).fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(priceLine(ev))
+    }
+
     private func priceLine(_ ev: MapEventRow) -> String {
         ev.priceVnd > 0
             ? "\(EventMarket.formatMoney(ev.priceVnd, currency: ev.rowCurrency)) \(app.T("/ vé", "/ ticket"))"
@@ -1656,6 +1729,30 @@ struct MapExploreView: View {
             }
         }
         .foregroundStyle(app.palette.ink)
+        // Full height: a floating "Map" pill above the dock brings the map back (owner 2026-11-01, Airbnb-like).
+        .overlay(alignment: .bottom) {
+            if fullProgress >= 1 && !searchFieldFocused {
+                Button {
+                    Haptics.selection()
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.28)) { sheetDetent = Self.midDetent }
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(app.T("Bản đồ", "Map")).font(.system(size: 15, weight: .semibold))
+                        Image(systemName: "map.fill").font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundStyle(app.palette.paper)
+                    .padding(.horizontal, 20).frame(height: 48)
+                    .background(app.palette.ink, in: Capsule())
+                    .shadow(color: .black.opacity(0.22), radius: 10, y: 4)
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 92)
+                .accessibilityLabel(app.T("Xem bản đồ", "Show map"))
+                .accessibilityIdentifier("map.sheet.showMap")
+                .transition(.scale(scale: 0.6).combined(with: .opacity))
+            }
+        }
+        .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.62), value: fullProgress >= 1)
         .onChange(of: searchFieldFocused) { _, focused in
             // Focus from a tap on the field at mid / full: Cancel returns to that same position.
             if focused, searchOrigin == nil { searchOrigin = sheetDetent }
@@ -1677,8 +1774,20 @@ struct MapExploreView: View {
 
     // MARK: - Active filter summary (peek strip + compact sticky header; MapDiscovery.activeFilterSummary)
 
+    /// The folded header line: the picked category first (owner 2026-11-01), then the other filters; one count.
     private var filterSummary: (tokens: [MapDiscovery.SummaryToken], count: Int) {
-        MapDiscovery.activeFilterSummary(filters, forYou: forYouActive, query: searchQuery)
+        let s = MapDiscovery.activeFilterSummary(filters, forYou: forYouActive, query: searchQuery)
+        guard catFilter != "all", !s.tokens.contains(.cat(catFilter)) else { return s }
+        return ([.cat(catFilter)] + s.tokens, s.count + 1)
+    }
+
+    /// The city the map is centred on (smallest cities.json box holding the centre), for the map pill and full list.
+    private var mapCityName: String? {
+        guard let c = currentCameraRegion?.center else { return nil }
+        let hit = MapDiscovery.cities
+            .filter { c.latitude <= $0.bounds.north && c.latitude >= $0.bounds.south && c.longitude <= $0.bounds.east && c.longitude >= $0.bounds.west }
+            .min { ($0.bounds.north - $0.bounds.south) * ($0.bounds.east - $0.bounds.west) < ($1.bounds.north - $1.bounds.south) * ($1.bounds.east - $1.bounds.west) }
+        return hit.map { app.T($0.vi, $0.en) }
     }
 
     private func summaryLabel(_ t: MapDiscovery.SummaryToken) -> String {
@@ -2035,9 +2144,51 @@ struct MapExploreView: View {
         .background(app.palette.surface2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
+    /// Sheet height → `fullProgress` (0 at mid, 1 at full), rounded to 10% steps so a drag updates it ~10 times.
+    private func noteSheetHeight(_ h: CGFloat) {
+        let screen = UIScreen.main.bounds.height
+        // Full is reached a little before the sheet's top settles (a system sheet stops below the status bar).
+        let mid = screen * CGFloat(Self.midCover), full = screen - safeTop - 60
+        let p = min(1, max(0, (h - mid) / max(1, full - mid)))
+        let q = sheetDetent == Self.tallDetent && p > 0.85 ? 1 : (p * 10).rounded() / 10
+        if q != fullProgress { fullProgress = q }
+    }
+
     private var searchRow: some View {
-        HStack(spacing: 10) {
-            searchField
+        // Full height covers the map, so its two controls sit on either side of a narrower field: back (left) and
+        // "Show map" (right, drops the sheet to mid), which also says the list sits over a map you can return to.
+        // They grow in with the sheet (`fullProgress`) with a little spring, and the field widens back as they go.
+        let p = searchFieldFocused ? 0 : fullProgress
+        let side = 44 * p
+        return HStack(spacing: 10 * p) {
+            if p > 0 {
+                Button { closeMap() } label: {
+                    Image(systemName: "arrow.left").font(.system(size: 15, weight: .semibold))
+                        .frame(width: 38, height: 38)
+                        .background(app.palette.surface2, in: Circle())
+                }
+                .buttonStyle(.plain).frame(width: side, height: 44)
+                .scaleEffect(p).opacity(Double(p))
+                .accessibilityLabel(app.T("Đóng bản đồ", "Close map"))
+                .accessibilityIdentifier("map.sheet.back")
+            }
+            searchField.frame(minWidth: 0, maxWidth: .infinity)
+            if p > 0 {
+                // Same control as the compass over the map (owner 2026-11-01): centre on me, with the map shown.
+                Button {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.28)) { sheetDetent = Self.midDetent }
+                    tapCompass()
+                } label: {
+                    Text("🧭").font(.system(size: 17))
+                        .frame(width: 38, height: 38)
+                        .background(app.palette.surface2, in: Circle())
+                        .opacity(compassOpacity)
+                }
+                .buttonStyle(.plain).frame(width: side, height: 44)
+                .scaleEffect(p).opacity(Double(p))
+                .accessibilityLabel(app.T("Vị trí của tôi", "My location"))
+                .accessibilityIdentifier("map.sheet.locate")
+            }
             // Map v6: Cancel while typing = keyboard down + back to where the sheet was.
             if searchFieldFocused {
                 Button(app.T("Huỷ", "Cancel")) { cancelSearch() }
@@ -2049,6 +2200,7 @@ struct MapExploreView: View {
             }
         }
         .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 10)
+        .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.62), value: p)
     }
 
     /// Categories: Home's definitions (eventTypeProfiles.json) and line icons — the same icons the pins carry — in a
@@ -2056,9 +2208,10 @@ struct MapExploreView: View {
     /// a selected category stays even at 0. "All categories" opens Home's A–Z sheet.
     private var categoryRow: some View {
         let counts = categoryCountMap
-        return ScrollView(.horizontal, showsIndicators: false) {
+        return ScrollViewReader { proxy in ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(HomeDiscovery.categories, id: \.key) { cat in
+                // The picked category moves right after "All" while it is on (owner 2026-11-01).
+                ForEach(orderedCategories, id: \.key) { cat in
                     let active = catFilter == cat.key
                     let n = counts[cat.key] ?? 0
                     chip(active: active, muted: n == 0 && !active, id: "map.cat.\(cat.key)") {
@@ -2072,12 +2225,19 @@ struct MapExploreView: View {
                         Text("\(n)").monospacedDigit().opacity(active ? 0.85 : 0.6)
                     }
                     .accessibilityLabel(app.T("\(cat.vi), \(n) sự kiện", "\(cat.en), \(n) events"))
+                    .id(cat.key)
                 }
                 chip(active: false, id: "map.cat.showAll") { categorySheetOpen = true } label: {
                     Text(app.T("Tất cả danh mục", "All categories"))
                 }
             }
             .padding(.horizontal, 16)
+            .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.75), value: catFilter)
+        }
+        // The picked category moves to the front: scroll back there so it is never left off-screen.
+        .onChange(of: catFilter) { _, _ in
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("all", anchor: .leading) }
+        }
         }
         .rootSwipeExclusion("mapCategories")
     }
@@ -2089,6 +2249,56 @@ struct MapExploreView: View {
         return app.T("Vùng bản đồ", "Map area")
     }
 
+    /// "All", then the picked category, then the rest in their fixed order.
+    private var orderedCategories: [(key: String, vi: String, en: String)] {
+        let all = HomeDiscovery.categories
+        let rank: (String) -> Int = { $0 == "all" ? 0 : $0 == catFilter ? 1 : 2 }
+        return all.enumerated().sorted { (rank($0.element.key), $0.offset) < (rank($1.element.key), $1.offset) }.map(\.element)
+    }
+
+    private var quickChipOrder: [String] {
+        let showSeats = openNowOnly || app.mapEvents.contains(where: { app.eventFill[$0.id] != nil })
+        let all = ["area", "tonight", "weekend"] + (showSeats ? ["seats"] : []) + ["filters"]
+        func on(_ k: String) -> Bool {
+            switch k {
+            case "tonight", "weekend": return filters.date == k
+            case "seats": return openNowOnly
+            case "filters": return sheetFilterCount > 0
+            default: return false
+            }
+        }
+        return all.filter(on) + all.filter { !on($0) }
+    }
+
+    @ViewBuilder
+    private func quickChip(_ key: String) -> some View {
+        switch key {
+        case "area":
+            chip(active: false, id: "map.area") { locationPickerOpen = true } label: {
+                Text("\(areaChipLabel) ▾")
+            }
+        case "tonight", "weekend":
+            // Time quick chips apply at once, judged in each event's own venue time zone (HomeDiscovery).
+            chip(active: filters.date == key, id: "map.\(key)") {
+                Haptics.selection()
+                filters.date = filters.date == key ? "any" : key
+            } label: {
+                Text(key == "tonight" ? app.T("Tối nay", "Tonight") : app.T("Cuối tuần", "Weekend"))
+            }
+        case "seats":
+            // Seats left: real fill only, so hidden until banbe has any.
+            chip(active: openNowOnly, id: "map.openNow") { Haptics.selection(); openNowOnly.toggle() } label: {
+                Text(app.T("Còn chỗ", "Seats left"))
+            }
+        default:
+            // Everything else (any date, price per ticket, almost full, type chips) in Home's sheet, as a draft.
+            chip(active: sheetFilterCount > 0, id: "map.filters") { filterSheetOpen = true } label: {
+                Image(systemName: "slider.horizontal.3").font(.footnote).accessibilityHidden(true)
+                Text(app.T("Bộ lọc", "Filters") + (sheetFilterCount > 0 ? " · \(sheetFilterCount)" : ""))
+            }
+        }
+    }
+
     /// For You pinned at the leading edge (never scrolls); only the other chips scroll.
     private var chipRow: some View {
         HStack(spacing: 8) {
@@ -2098,34 +2308,20 @@ struct MapExploreView: View {
                     .layoutPriority(1)
                     .padding(.leading, 16)
             }
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollViewReader { proxy in ScrollView(.horizontal, showsIndicators: false) {
+                // Active quick filters move right after For You while they are on (owner 2026-11-01).
                 HStack(spacing: 8) {
-                    chip(active: false, id: "map.area") { locationPickerOpen = true } label: {
-                        Text("\(areaChipLabel) ▾")
-                    }
-                    // Time quick chips apply at once, judged in each event's own venue time zone (HomeDiscovery).
-                    ForEach([("tonight", "Tối nay", "Tonight"), ("weekend", "Cuối tuần", "Weekend")], id: \.0) { opt in
-                        chip(active: filters.date == opt.0, id: "map.\(opt.0)") {
-                            Haptics.selection()
-                            filters.date = filters.date == opt.0 ? "any" : opt.0
-                        } label: {
-                            Text(app.T(opt.1, opt.2))
-                        }
-                    }
-                    // Seats left: real fill only, so hidden until banbe has any.
-                    if openNowOnly || app.mapEvents.contains(where: { app.eventFill[$0.id] != nil }) {
-                        chip(active: openNowOnly, id: "map.openNow") { Haptics.selection(); openNowOnly.toggle() } label: {
-                            Text(app.T("Còn chỗ", "Seats left"))
-                        }
-                    }
-                    // Everything else (any date, price per ticket, almost full, type chips) in Home's sheet, as a draft.
-                    chip(active: sheetFilterCount > 0, id: "map.filters") { filterSheetOpen = true } label: {
-                        Image(systemName: "slider.horizontal.3").font(.footnote).accessibilityHidden(true)
-                        Text(app.T("Bộ lọc", "Filters") + (sheetFilterCount > 0 ? " · \(sheetFilterCount)" : ""))
-                    }
+                    ForEach(quickChipOrder, id: \.self) { key in quickChip(key).id(key) }
                 }
+                .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.75), value: quickChipOrder)
                 .padding(.leading, hasForYouPrefs ? 0 : 16)
                 .padding(.trailing, 16)
+            }
+            // The chip that just moved to the front would otherwise stay scrolled out under For You.
+            .onChange(of: quickChipOrder) { _, order in
+                guard let first = order.first else { return }
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo(first, anchor: .leading) }
+            }
             }
         }
         .padding(.top, 8)
@@ -2200,6 +2396,15 @@ struct MapExploreView: View {
 
     private var countBlock: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Full height hides the map, so the city it is on heads the list (the map shows it in a pill).
+            if sheetDetent == Self.tallDetent, let city = mapCityName {
+                Label(city.uppercased(), systemImage: "mappin.and.ellipse")
+                    .font(.system(size: 11.5, weight: .bold)).tracking(0.8)
+                    .foregroundStyle(app.palette.clay)
+                    .padding(.top, 8)
+                    .accessibilityLabel(app.T("Đang xem \(city)", "Showing \(city)"))
+                    .accessibilityIdentifier("map.sheet.city")
+            }
             resultCountRow(showLayout: sheetDetent == Self.tallDetent).padding(.top, 6)
             outsideLine
             if app.mapEvents.count < app.mapEventsTotal {
@@ -2303,11 +2508,20 @@ struct MapExploreView: View {
     /// Collapse the header once the list is past its first row; only when there is enough content left to stay
     /// scrolled after the header shrinks (otherwise the list would bounce back and the header flicker).
     private func listScrollChanged(offset: CGFloat, contentHeight: CGFloat, viewport: CGFloat) {
-        if !listScrolled, offset > 64, contentHeight - viewport > 64 + 160 {
-            listScrolled = true
-        } else if listScrolled, offset < 8 {
-            listScrolled = false
-        }
+        // Owner 2026-11-01: ANY scroll down folds the filters into one line, any scroll up (or the top) brings them
+        // back, whatever is filtered. 12 pt of travel either way; a short pause after each change so the list's
+        // own resize is not mistaken for a scroll (that made the header flicker on short lists).
+        let delta = offset - lastListOffset
+        lastListOffset = offset
+        guard Date() >= foldSettleUntil else { return }
+        let fold: Bool
+        if offset < 8 { fold = false }
+        else if delta > 12, contentHeight > viewport { fold = true }
+        else if delta < -12 { fold = false }
+        else { return }
+        guard fold != listScrolled else { return }
+        foldSettleUntil = Date().addingTimeInterval(0.35)
+        withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.8)) { listScrolled = fold }
     }
 
     private var resultsList: some View {
@@ -2317,22 +2531,28 @@ struct MapExploreView: View {
                 // header) and drives the custom pull-to-refresh — same `ScaffoldScrollProbe` root screens use.
                 Color.clear.frame(height: 1)
                     .id("map.listTop")
+                    // Past the END of the list at mid, the sheet follows the finger up (owner 2026-11-01).
+                    .background(SheetBottomLift(
+                        isMid: { sheetDetent == Self.midDetent },
+                        onBegin: {
+                            var t = Transaction(); t.disablesAnimations = true
+                            withTransaction(t) { sheetDetent = Self.liftDetent }
+                        },
+                        onEnd: { open in
+                            withAnimation(reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.88)) {
+                                sheetDetent = open ? Self.tallDetent : Self.midDetent
+                            }
+                        }
+                    ))
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                     .accessibilityHidden(true)
                     .background(ScaffoldScrollProbe(
                         onChange: { _, _ in },
-                        onPullPhase: { phase, translationY in
-                            switch phase {
-                            case .began: app.beginRootPull()
-                            case .changed: app.updateRootPull(translationY)
-                            case .ended:
-                                // The same whole-set refresh: camera, area, filters and selection stay put.
-                                app.endRootPull(trigger: { await app.loadMapEvents(bounds: boundedArea) })
-                            case .cancelled: app.cancelRootPull()
-                            }
-                        },
+                        // No pull-to-refresh here (the set reloads every 60 s, note 72): a pull at the top moves the
+                        // sheet itself (`.presentationContentInteraction(.resizes)`).
+                        onPullPhase: { _, _ in },
                         onScrollMetrics: { offset, contentHeight, viewport in
                             listScrollChanged(offset: offset, contentHeight: contentHeight, viewport: viewport)
                         }
@@ -2377,10 +2597,14 @@ struct MapExploreView: View {
                     .listRowBackground(Color.clear)
             }
             .environment(\.defaultMinListRowHeight, 0)
+            // Large cards' photos load in the background while the list is still small (peek / mid / compact), so
+            // opening the sheet to full never shows them blurry first.
+            .task(id: listEvents.prefix(8).map(\.id)) { prefetchLargeCardPhotos() }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            // The floating dock (its own window) shows only at tall (note 73 §1); the last row clears it then.
-            .contentMargins(.bottom, dockHidden ? 16 : BottomTabBar.contentClearance, for: .scrollContent)
+            // The floating dock (its own window) shows only at tall (note 73 §1); the last row clears it then, and the
+            // floating "Map" pill above it (owner 2026-11-01), so the last event is fully readable.
+            .contentMargins(.bottom, dockHidden ? 16 : BottomTabBar.contentClearance + (fullProgress >= 1 ? 72 : 0), for: .scrollContent)
             // Pull-to-refresh hold fix (2026-09-29) — see `AppState.rootPullContentOffset`'s own doc comment.
             .offset(y: app.rootPullContentOffset)
             .onChange(of: selectableIDs) { _, ids in
@@ -2392,13 +2616,6 @@ struct MapExploreView: View {
             .onChange(of: listTopToken) { _, _ in
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("map.listTop", anchor: .top) }
             }
-            .overlay(alignment: .top) {
-                if app.rootPullProgress > 0 || app.rootRefreshing {
-                    RootRefreshIndicator(screen: .mapExplore, progress: app.rootPullProgress, refreshing: app.rootRefreshing)
-                        .padding(.top, 10)
-                        .allowsHitTesting(false)
-                }
-            }
         }
     }
 
@@ -2406,7 +2623,32 @@ struct MapExploreView: View {
     /// the top as the selected row, the pin is revealed).
     /// Large card at full height (note 74): Home's discovery card look — the photo pager on top (16:10, swipe
     /// sideways, never switches tabs), then name + price, venue time · area, category. Tap = select.
+    private func prefetchLargeCardPhotos() {
+        let lists: [[String]] = listEvents.prefix(8).map { ev in
+            if let e = app.feed.first(where: { $0.key == ev.id }) { return app.cardImages(e) }
+            return (app.mapEventPhotoURLs[ev.id] ?? app.mapEventCoverURLs[ev.id].map { [$0] } ?? []).map(\.absoluteString)
+        }
+        CardPhotoPrefetch.run(lists)
+    }
+
+    /// Large card at full height: Home's own discovery card for the event (date / fill badges, Save, price, meta, the
+    /// type line, owner 2026-11-01: the Map showed less than Home), with the Map's tap = select. An event Home's
+    /// feed does not hold yet keeps the Map's simpler card.
+    @ViewBuilder
     private func largeCard(_ ev: MapEventRow) -> some View {
+        if let e = app.feed.first(where: { $0.key == ev.id }) {
+            DiscoveryCard(model: app.discoveryCardModel(e, item: app.discoveryItem(for: e)), context: "map",
+                          onTap: { selectEvent(ev) }, outerPadding: false)
+                .accessibilityIdentifier("map.card.\(ev.id)")
+                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 10, trailing: 16))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+        } else {
+            mapLargeCard(ev)
+        }
+    }
+
+    private func mapLargeCard(_ ev: MapEventRow) -> some View {
         var paths = (app.mapEventPhotoURLs[ev.id] ?? app.mapEventCoverURLs[ev.id].map { [$0] } ?? []).map(\.absoluteString)
         if paths.isEmpty, let demo = EventCatalog.find(ev.id), demo.key == ev.id, !demo.img.isEmpty { paths = [demo.img] }
         let catKey = ev.catKeys.first ?? effectiveCatKey(ev) ?? ""
@@ -2430,7 +2672,7 @@ struct MapExploreView: View {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(ev.name).font(BanbeTheme.display(18)).lineLimit(1)
                 Spacer(minLength: 0)
-                Text(priceLine(ev)).font(.system(size: 15, weight: .bold)).lineLimit(1).fixedSize()
+                priceView(ev, font: .system(size: 15, weight: .bold))
             }
             .padding(.top, 10)
             Text([ev.area, nearDistance(ev)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
@@ -2476,7 +2718,7 @@ struct MapExploreView: View {
                 // Venue date · time (the event's own zone), then the area, plus a distance only when it helps choose
                 // (≤ 50 km); a viewer abroad saw "9662.0 km" on every row.
                 Text([eventWhen(ev), dense ? ev.area : nil].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.subheadline).foregroundStyle(app.palette.ink2).lineLimit(1)
+                    .font(.subheadline).foregroundStyle(app.palette.ink2).lineLimit(2)
                     .accessibilityIdentifier("map.list.when.\(ev.id)")
                 if !dense {
                     Text([ev.area, nearDistance(ev)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
@@ -2491,16 +2733,18 @@ struct MapExploreView: View {
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 4) {
-                Text(priceLine(ev)).font(.subheadline.weight(.semibold)).lineLimit(1)
+                priceView(ev, font: .subheadline.weight(.semibold))
                     .accessibilityIdentifier("map.list.price.\(ev.id)")
                 seatPill(ev, id: "map.list.seats.\(ev.id)")
             }
         }
-        .padding(.vertical, dense ? 2 : 6)
         .id(ev.id)
         .contentShape(Rectangle())
         .onTapGesture { selectEvent(ev) }
         .listRowBackground(Color.clear)
+        // No dividers (owner 2026-11-01); even 7 pt above and below each row (14 pt between photos) instead.
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 7, leading: 16, bottom: 7, trailing: 16))
         .accessibilityAddTraits(.isButton)
     }
 
@@ -2608,6 +2852,11 @@ struct MapExploreView: View {
                     if !matchingAnywhere.isEmpty {
                         emptyAction(app.T("Xem sự kiện gần nhất", "Show nearest events"), id: "map.showNearest") { showNearest() }
                     }
+                    // Filters on and nothing here: offer to clear them (owner 2026-11-01), never a dead end.
+                    if filtersActive {
+                        emptyAction(app.T("Xoá \(filterSummary.count) bộ lọc", filterSummary.count == 1 ? "Clear 1 filter" : "Clear \(filterSummary.count) filters"),
+                                    id: "map.clearFiltersEmpty") { clearFilters() }
+                    }
                 }
             }
             .accessibilityIdentifier("map.emptyState")
@@ -2651,5 +2900,138 @@ enum MapRecentSearches {
         list = Array(list.prefix(5))
         UserDefaults.standard.set(list, forKey: key)
         return list
+    }
+}
+
+/// The system sheet draws a soft edge shadow, which read as a horizontal line under the status bar at full height.
+/// SwiftUI has no modifier for it, so this clears shadow / border on the sheet's own container views (the ancestors
+/// of the sheet content up to the window). Purely visual; gestures and detents are untouched.
+private struct SheetEdgeShadowRemover: UIViewRepresentable {
+    final class Probe: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            DispatchQueue.main.async { [weak self] in self?.clear() }
+        }
+        override func layoutSubviews() { super.layoutSubviews(); clear() }
+        func clear() {
+            var v = superview
+            while let view = v, !(view is UIWindow) {
+                if view.layer.shadowOpacity != 0 { view.layer.shadowOpacity = 0 }
+                if view.layer.borderWidth != 0 { view.layer.borderWidth = 0 }
+                v = view.superview
+            }
+        }
+    }
+    func makeUIView(context: Context) -> Probe { let p = Probe(); p.isUserInteractionEnabled = false; return p }
+    func updateUIView(_ uiView: Probe, context: Context) { uiView.clear() }
+}
+
+/// The height of the sheet while a list-end swipe lifts it (nil = the detent is inactive).
+struct SheetLiftDetent: CustomPresentationDetent {
+    @MainActor static var height: CGFloat?
+    static func height(in context: Context) -> CGFloat? {
+        MainActor.assumeIsolated { height.map { min($0, context.maxDetentValue) } }
+    }
+}
+
+/// Owner 2026-11-01: at the END of the Map list (sheet at mid), a further swipe up moves the SHEET with the finger,
+/// like Airbnb. A system sheet only expands from its scroll view's TOP edge, so this drives it directly: once the
+/// list is at its end and the finger keeps going up, the list is held still (its content rides with the sheet) and
+/// the sheet's height follows the finger through `SheetLiftDetent` (re-read every frame via `invalidateDetents`).
+/// On release it springs to full (a flick up or past a third of the way) or back to mid, from where the finger left it.
+private struct SheetBottomLift: UIViewRepresentable {
+    let isMid: () -> Bool
+    let onBegin: () -> Void
+    let onEnd: (Bool) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeUIView(context: Context) -> UIView {
+        let v = Hook(); v.coordinator = context.coordinator; v.isUserInteractionEnabled = false; return v
+    }
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.isMid = isMid; context.coordinator.onBegin = onBegin; context.coordinator.onEnd = onEnd
+    }
+
+    final class Hook: UIView {
+        weak var coordinator: Coordinator?
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            DispatchQueue.main.async { [weak self] in self?.coordinator?.attach(from: self) }
+        }
+    }
+
+    @MainActor final class Coordinator: NSObject {
+        var isMid: () -> Bool = { false }
+        var onBegin: () -> Void = {}
+        var onEnd: (Bool) -> Void = { _ in }
+        private weak var scrollView: UIScrollView?
+        private weak var sheet: UISheetPresentationController?
+        private var latchY: CGFloat?      // finger translation when the list reached its end
+        private var lifting = false
+        private var startHeight: CGFloat = 0
+        private var heldOffset: CGFloat = 0
+
+        func attach(from view: UIView?) {
+            var v = view?.superview
+            while let cur = v, !(cur is UIScrollView) { v = cur.superview }
+            guard let sv = v as? UIScrollView, sv !== scrollView else { return }
+            scrollView = sv
+            sv.panGestureRecognizer.addTarget(self, action: #selector(pan(_:)))
+            var r: UIResponder? = sv
+            while let cur = r {
+                if let vc = cur as? UIViewController {
+                    var top: UIViewController? = vc
+                    while let p = top?.parent { top = p }
+                    sheet = top?.sheetPresentationController
+                    break
+                }
+                r = cur.next
+            }
+        }
+
+        private func maxOffset(_ sv: UIScrollView) -> CGFloat {
+            max(-sv.adjustedContentInset.top, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
+        }
+
+        @objc func pan(_ g: UIPanGestureRecognizer) {
+            guard let sv = scrollView, let sheet else { return }
+            let ty = g.translation(in: sv.window).y
+            switch g.state {
+            case .began:
+                latchY = nil; lifting = false
+            case .changed:
+                if !lifting {
+                    guard isMid() else { return }
+                    if latchY == nil, sv.contentOffset.y >= maxOffset(sv) - 0.5 { latchY = ty; heldOffset = maxOffset(sv) }
+                    guard let l = latchY, l - ty > 2 else {
+                        if let l = latchY, ty > l + 2 { latchY = nil }   // went back down: an ordinary scroll again
+                        return
+                    }
+                    lifting = true
+                    startHeight = sheet.presentedView?.frame.height ?? sv.bounds.height
+                    SheetLiftDetent.height = startHeight
+                    onBegin()
+                }
+                let lift = max(0, (latchY ?? ty) - ty)
+                sv.contentOffset.y = heldOffset           // the content rides with the sheet, no bounce
+                SheetLiftDetent.height = startHeight + lift
+                sheet.invalidateDetents()
+            case .ended, .cancelled, .failed:
+                guard lifting else { latchY = nil; return }
+                lifting = false; latchY = nil
+                let lift = (SheetLiftDetent.height ?? startHeight) - startHeight
+                let vy = g.velocity(in: sv.window).y
+                let maxH = sv.window?.bounds.height ?? UIScreen.main.bounds.height
+                let open = g.state == .ended && (vy < -400 || lift > (maxH - startHeight) / 3)
+                onEnd(open)
+                let sv2 = sv
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    SheetLiftDetent.height = nil
+                    let m = max(-sv2.adjustedContentInset.top, sv2.contentSize.height + sv2.adjustedContentInset.bottom - sv2.bounds.height)
+                    if sv2.contentOffset.y > m { sv2.setContentOffset(CGPoint(x: 0, y: m), animated: true) }
+                }
+            default: break
+            }
+        }
     }
 }

@@ -21,11 +21,21 @@ enum HomeMode {
     }
 
     /// `homeView` after a profile sync or an organizer-mode change: coming on (off before) opens Hosting, staying on
-    /// keeps what the person picked, off is always Going out.
-    static func viewAfterSync(prevOrganizerMode: Bool, prevHomeView: HomeViewMode, organizerMode: Bool) -> HomeViewMode {
+    /// keeps what the person picked, off is always Going out. `stored` (session restore only): the last view the person
+    /// picked on this device, so a relaunch reopens Going out if that is where they left Home.
+    static func viewAfterSync(prevOrganizerMode: Bool, prevHomeView: HomeViewMode, organizerMode: Bool,
+                              stored: HomeViewMode? = nil) -> HomeViewMode {
         if !organizerMode { return .goer }
-        if !prevOrganizerMode { return .host }
+        if !prevOrganizerMode { return stored ?? .host }
         return prevHomeView
+    }
+
+    /// The last Home view the person picked on this device (web twin: localStorage `banbe.homeView`). Written only on
+    /// an explicit pick, cleared on sign-out.
+    private static let storeKey = "banbe.homeView"
+    static var stored: HomeViewMode? {
+        get { UserDefaults.standard.string(forKey: storeKey).flatMap(HomeViewMode.init(rawValue:)) }
+        set { UserDefaults.standard.set(newValue?.rawValue, forKey: storeKey) }
     }
 
     /// The Hosting segment is locked (lock glyph, opens the Start hosting invitation) while organizer mode is off.

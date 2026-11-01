@@ -57,7 +57,8 @@ export function CategoryRow({ values = [], onPick, T, keys = CATEGORY_DEFS.map(c
     transition: 'background 0.15s ease, color 0.15s ease',
   });
   const btn = { flex: 'none', minWidth: 56, maxWidth: 84, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '2px 2px', border: 'none', background: 'none', cursor: 'pointer', color: ink, fontFamily: 'inherit' };
-  const label = { fontSize: 11.5, lineHeight: 1.2, textAlign: 'center', overflowWrap: 'anywhere' };
+  // One line, no count (owner 2026-11-01): "Supper club" wrapped to two lines and the counts made the row noisy.
+  const label = { fontSize: 11.5, lineHeight: 1.2, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' };
   return (
     <div data-hscroll="true" data-testid="home-category-row" role="tablist" aria-label={T('Danh mục', 'Categories')}
       style={{ display: 'flex', gap: 2, overflowX: 'auto', scrollbarWidth: 'none', padding: compact ? '8px 12px 8px' : '12px 12px 4px' }}>
@@ -65,13 +66,11 @@ export function CategoryRow({ values = [], onPick, T, keys = CATEGORY_DEFS.map(c
         const c = byKey[k];
         if (!c) return null;
         const active = c.key === 'all' ? values.length === 0 : values.includes(c.key);
-        const n = counts ? counts[c.key] : null;
         return (
           <button key={c.key} type="button" role="tab" aria-selected={active} onClick={() => onPick(c.key)}
-            data-testid={`home-category-${c.key}`} aria-label={n != null ? `${T(c.vi, c.en)}, ${n}` : T(c.vi, c.en)} style={btn}>
+            data-testid={`home-category-${c.key}`} aria-label={T(c.vi, c.en)} style={btn}>
             <span style={tile(active)}><CategoryGlyph cat={c.key} /></span>
             <span style={{ ...label, fontWeight: active ? 600 : 500, opacity: active ? 1 : 0.8 }}>{T(c.vi, c.en)}</span>
-            {n != null && <span data-testid={`home-category-count-${c.key}`} style={{ fontSize: 11, opacity: 0.55, fontVariantNumeric: 'tabular-nums' }}>{n}</span>}
           </button>
         );
       })}

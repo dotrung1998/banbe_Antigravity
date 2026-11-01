@@ -1,5 +1,5 @@
 import { glassCapsuleInactive } from '../lib/glassOpacity.js';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, bg, agoLabel, haversineKm, catalogStartMs } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
@@ -38,8 +38,7 @@ import ActivationChecklistCard from './ActivationChecklistCard.jsx';
 import { GuestBrowseBanner } from './GuestPromptSheet.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { CategoryRow, CategorySheet, HomeSearchBar, DiscoveryCard, DiscoveryRow, NextUpBanner } from '../components/home/HomeDiscoveryParts.jsx';
-// Map v6 (note 74): the card pager's photos (cover first, max 6). Demo catalogue events page through their own
-// bundled gallery (the same photos Event Detail shows), never extra network images.
+// Map v6 (note 74): the card pager's photos (cover first, max 6).
 import { cardPhotoList } from '../lib/eventPhotoUrls.js';
 import HomeFilterSheet, { DATE_LABELS, RELAX_LABELS, SORT_LABELS } from './sheets/HomeFilterSheet.jsx';
 import SortMenu from './sheets/SortMenu.jsx';
@@ -510,6 +509,14 @@ export default function Home() {
     for (const it of discoveryItems) if (it.popularity != null && (!best || it.popularity > best.popularity)) best = it;
     return best?.key || null;
   }, [discoveryItems]);
+  // A catalogue event pages through its LIVE photos (what iOS shows), never the bundled stock gallery, which put
+  // photos from other places on the card. No live photos yet: just its cover.
+  const realById = s.realEventsById;
+  const cardImgs = useCallback((e) => {
+    if (e.imgs?.length) return e.imgs;
+    const live = realById?.[e.key]?.photoUrls;
+    return live?.length ? cardPhotoList(null, live) : (e.img ? [e.img] : []);
+  }, [realById]);
   const cards = useMemo(() => shownItems.map((it, i) => {
     const e = it.ev;
     const fill = fillBadge(it.booked, it.capacity);
@@ -520,13 +527,13 @@ export default function Home() {
     if (i === 0 && forYouRanked.length && forYouRanked[0].key === e.key) label = 'best';
     else if (i === 0 && !forYouActive && topPulseKey === e.key) label = 'popular';
     return {
-      key: e.key, name: e.name, img: e.img, imgs: e.imgs?.length ? e.imgs : cardPhotoList(e.img, e.gallery), dateBadge: badgeDate(it.startsAt, e.isReal ? e.tz : null),
+      key: e.key, name: e.name, img: e.img, imgs: cardImgs(e), dateBadge: badgeDate(it.startsAt, e.isReal ? e.tz : null),
       priceLabel: it.priceVnd === 0 ? T('Miễn phí', 'Free') : trStatus(e.price), isFree: it.priceVnd === 0,
       metaLine: meta, fill, cancelled: !!e.cancelled, saved: e.saved, going: e.going, label,
       typeLine: typesOn && (e.isReal || Object.keys(e.details || {}).length > 0) ? cardLine(profileFor(e.catKey), { capacity: it.capacity ?? e.capacity, details: e.details }, s.lang === 'en' ? 'en' : 'vi') : null,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [shownItems, forYouRanked, forYouActive, topPulseKey, trStatus, T, typesOn, s.lang]);
+  }), [shownItems, forYouRanked, forYouActive, topPulseKey, trStatus, T, typesOn, s.lang, cardImgs]);
 
   // Retention roadmap P1 ("Cuối tuần này") — reuses the SAME district
   // (curArea) and category (homeFilters.cats) picks already driving the main feed

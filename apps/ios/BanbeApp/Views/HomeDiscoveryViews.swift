@@ -54,9 +54,10 @@ struct HomeCategoryRow: View {
     var onShowAll: (() -> Void)? = nil
     /// Simple Shell: the slim version (vertical padding cut to 8); the tiles, counts and end padding are unchanged.
     var compact = false
-    // Today's sizes at the default text size, growing with Dynamic Type; labels wrap instead of clipping.
+    // Sizes grow with Dynamic Type. One-line labels that shrink to fit and no counts (owner 2026-11-01: "Supper club"
+    // wrapped to two lines and the counts made the row noisy); the Show all sheet keeps its counts.
     @ScaledMetric(relativeTo: .caption) private var labelSize: CGFloat = 11.5
-    @ScaledMetric(relativeTo: .caption) private var columnWidth: CGFloat = 60
+    @ScaledMetric(relativeTo: .caption) private var columnWidth: CGFloat = 66
     @ScaledMetric(relativeTo: .caption) private var tileSize: CGFloat = 48
 
     private func tile(_ symbol: String, active: Bool) -> some View {
@@ -81,7 +82,6 @@ struct HomeCategoryRow: View {
                     if let c = byKey[key] {
                         let cats = app.homeFilters.cats
                         let active = c.key == "all" ? cats.isEmpty : cats.contains(c.key)
-                        let n = counts?[c.key]
                         SwipeSafeButton {
                             if !active { Haptics.selection() }
                             app.pickFilter(c.key)
@@ -90,20 +90,15 @@ struct HomeCategoryRow: View {
                                 tile(CategoryGlyph.symbol(c.key), active: active)
                                 Text(app.T(c.vi, c.en))
                                     .font(.system(size: labelSize, weight: active ? .semibold : .medium))
-                                    .lineLimit(2).multilineTextAlignment(.center).minimumScaleFactor(0.85)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                    .lineLimit(1).minimumScaleFactor(0.75)
                                     .opacity(active ? 1 : 0.8)
-                                if let n {
-                                    Text("\(n)").font(.system(size: labelSize - 0.5)).monospacedDigit().opacity(0.55)
-                                        .accessibilityIdentifier("home.categoryCount.\(c.key)")
-                                }
                             }
                             .frame(width: columnWidth)
                             .foregroundStyle(app.palette.ink)
                         }
                         .buttonStyle(.plain)
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel(n.map { app.T("\(c.vi), \($0) sự kiện", "\(c.en), \($0) events") } ?? app.T(c.vi, c.en))
+                        .accessibilityLabel(app.T(c.vi, c.en))
                         .accessibilityAddTraits(active ? [.isSelected, .isButton] : .isButton)
                         // Same ids as the old text chips (UI tests filter by category through these).
                         .accessibilityIdentifier("filter.\(c.key)")
@@ -299,6 +294,12 @@ private struct FillStatusChip: View {
 struct DiscoveryCard: View {
     @EnvironmentObject private var app: AppState
     let model: DiscoveryCardModel
+    /// Keeps the photo pager's swipe zone apart when the same event shows on Home and the Map.
+    var context = "home"
+    /// What a tap does; nil = open the event (Home). The Map selects instead.
+    var onTap: (() -> Void)? = nil
+    /// Home's own side / bottom margins; off on the Map, whose list rows set their own (16 sides, 6 / 10 apart).
+    var outerPadding = true
 
     /// Simple Shell follow-up (plan item 5): with the switch on the card is a block (`palette.block` fill, 12pt
     /// padding under the photo, card radius) so it reads as one object on paper. OFF: today's unfilled card.
@@ -313,14 +314,14 @@ struct DiscoveryCard: View {
     private static let polaroidPhotoRadius: CGFloat = 8
 
     var body: some View {
-        SwipeSafeButton { app.goEvent(model.key) } label: {
+        SwipeSafeButton { if let onTap { onTap() } else { app.goEvent(model.key) } } label: {
             VStack(alignment: .leading, spacing: 0) {
                 Color.clear
                     .aspectRatio(16.0 / 10.0, contentMode: .fit)
                     .overlay {
                         if model.imgs.count > 1 {
                             // Photos you swipe sideways (note 74); a swipe here never switches dock tabs.
-                            PhotoPager(eventID: model.key, paths: model.imgs, context: "home",
+                            PhotoPager(eventID: model.key, paths: model.imgs, context: context,
                                        cornerRadius: polaroid ? Self.polaroidPhotoRadius : BanbeTheme.Radius.card,
                                        photoIdentifier: "card.\(model.key)",
                                        placeholder: polaroid ? app.palette.matSlot : nil)
@@ -368,8 +369,8 @@ struct DiscoveryCard: View {
                 }
             }
             .foregroundStyle(app.palette.ink)
-            .padding(.horizontal, 20)
-            .padding(.bottom, framed ? 16 : 22)
+            .padding(.horizontal, outerPadding ? 20 : 0)
+            .padding(.bottom, outerPadding ? (framed ? 16 : 22) : 0)
         }
         .buttonStyle(.plain)
         // `card.<key>` sits on the photo ONLY (UI tests open events through it, so it must match exactly one element):

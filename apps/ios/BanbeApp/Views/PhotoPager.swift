@@ -53,6 +53,7 @@ struct PhotoPager: View {
 
     private func pager(size: CGSize) -> some View {
         let n = paths.count
+        if size.width > 0 { CardPhotoPrefetch.measuredWidth = size.width }
         return ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 0) {
                 ForEach(Array(paths.enumerated()), id: \.offset) { i, path in
@@ -89,6 +90,7 @@ struct PhotoPager: View {
             .padding(.horizontal, 7).padding(.vertical, 5)
             .background(Color.black.opacity(0.28), in: Capsule())
             .padding(.bottom, 10)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: current)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
@@ -104,15 +106,17 @@ struct PhotoPager: View {
                 .accessibilityValue("\(current + 1)/\(n)")
                 .accessibilityIdentifier("photoPager.counter.\(eventID)")
         }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: current)
-        .rootSwipeExclusion("pager.\(eventID).\(context)")
-        // Home REPLACES `rootGestureExclusionZones` with its preference-reported zones on every change
-        // (HomeView `.onPreferenceChange`), so a zone written only by `rootSwipeExclusion` is wiped there and a photo
-        // swipe switched Home → Map. Report the zone through the preference as well (Home's story row does the same).
+        // A photo swipe never switches dock tabs. The frame goes to a plain store (PagerSwipeZones), NOT to the
+        // @Published `rootGestureExclusionZones`: publishing it re-rendered the whole app on every frame of a vertical
+        // Home scroll (each visible pager's frame moves), which made Home laggy and, after a photo swipe, froze it
+        // (the modifier and Home's preference handler kept overwriting each other's zones).
         .background {
             GeometryReader { geo in
-                Color.clear.preference(key: RootGestureExclusionZonePreferenceKey.self,
-                                       value: ["pager.\(eventID).\(context)": geo.frame(in: .named("rootGesture"))])
+                let zone = "pager.\(eventID).\(context)"
+                Color.clear
+                    .onAppear { PagerSwipeZones.set(zone, geo.frame(in: .named("rootGesture")), screen: app.screen) }
+                    .onChange(of: geo.frame(in: .named("rootGesture"))) { _, f in PagerSwipeZones.set(zone, f, screen: app.screen) }
+                    .onDisappear { PagerSwipeZones.set(zone, nil) }
             }
         }
         .accessibilityElement(children: .contain)
@@ -122,5 +126,40 @@ struct PhotoPager: View {
     private func go(to i: Int) {
         let next = min(max(i, 0), paths.count - 1)
         if reduceMotion { page = next } else { withAnimation(.easeOut(duration: 0.25)) { page = next } }
+    }
+}
+
+/// Photo pagers' on-screen frames (in the "rootGesture" space), read once by `RootView.tabSwipeGesture` when a drag
+/// starts. Deliberately not observable: frames change on every scroll frame and nothing needs to re-render for it.
+enum PagerSwipeZones {
+    /// Tagged with the screen it was measured on: Home can stay mounted under another tab, and its stale frames must
+    /// not block that tab's swipes.
+    @MainActor private static var zones: [String: (frame: CGRect, screen: Screen)] = [:]
+    @MainActor static func set(_ id: String, _ frame: CGRect?, screen: Screen = .home) {
+        zones[id] = frame.map { ($0, screen) }
+    }
+    @MainActor static func contains(_ point: CGPoint, on screen: Screen) -> Bool {
+        zones.values.contains { $0.screen == screen && $0.frame.contains(point) }
+    }
+}
+
+/// Warms PhotoLoader's cache with card photos at EXACTLY the size the cards decode them (same cache key), so a card
+/// that appears later (the Map sheet opening to full, owner 2026-11-01) paints at once instead of from a blurry
+/// stand-in. A pager decodes at its measured width; a single photo at CatalogPhoto's 420 pt fallback.
+enum CardPhotoPrefetch {
+    @MainActor static var measuredWidth: CGFloat?
+
+    @MainActor static func run(_ lists: [[String]], limit: Int = 8) {
+        let scale = UIScreen.main.scale
+        let pagerPx = (measuredWidth ?? UIScreen.main.bounds.width - 56) * scale
+        let singlePx = 420 * scale
+        let jobs: [(String, CGFloat)] = lists.prefix(limit).flatMap { paths -> [(String, CGFloat)] in
+            paths.count > 1 ? paths.prefix(2).map { ($0, pagerPx) } : paths.prefix(1).map { ($0, singlePx) }
+        }
+        let todo = jobs.filter { !$0.0.isEmpty && PhotoLoader.cached(path: $0.0, maxPixel: $0.1) == nil }
+        guard !todo.isEmpty else { return }
+        Task(priority: .utility) {
+            for (path, px) in todo { _ = await PhotoLoader.load(path: path, maxPixel: px) }
+        }
     }
 }

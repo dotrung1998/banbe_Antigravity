@@ -74,31 +74,27 @@ private struct RootSwipeExclusionModifier: ViewModifier {
     @EnvironmentObject private var app: AppState
     let id: String
     let enabled: Bool
-    @State private var frame: CGRect = .zero
 
+    // No @State for the frame: it changes every scroll frame, and storing it re-rendered this view per frame.
+    // `rootGestureExclusionZones` itself is a plain (unpublished) dictionary.
     func body(content: Content) -> some View {
         content
             .background {
                 GeometryReader { geo in
                     Color.clear
-                        .onAppear { frame = geo.frame(in: .named("rootGesture")); apply() }
-                        .onChange(of: geo.frame(in: .named("rootGesture"))) { _, f in frame = f; apply() }
+                        .onAppear { apply(geo.frame(in: .named("rootGesture"))) }
+                        .onChange(of: geo.frame(in: .named("rootGesture"))) { _, f in apply(f) }
+                        .onChange(of: enabled) { _, _ in apply(geo.frame(in: .named("rootGesture"))) }
                 }
             }
-            .onChange(of: enabled) { _, _ in apply() }
-            .onDisappear {
-                var zones = app.rootGestureExclusionZones
-                zones[id] = nil
-                app.rootGestureExclusionZones = zones
-            }
+            .onDisappear { app.rootGestureExclusionZones[id] = nil }
     }
 
-    private func apply() {
+    private func apply(_ frame: CGRect) {
         guard frame != .zero else { return }
-        var zones = app.rootGestureExclusionZones
-        if enabled { zones[id] = frame } else { zones[id] = nil }
-        if zones != app.rootGestureExclusionZones { app.rootGestureExclusionZones = zones }
+        app.rootGestureExclusionZones[id] = enabled ? frame : nil
     }
+
 }
 
 /// Claims every touch that lands on this view for the view itself: the root

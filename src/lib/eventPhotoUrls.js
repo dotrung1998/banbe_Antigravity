@@ -25,10 +25,24 @@ export function groupPhotoRows(rows, max = MAX_CARD_PHOTOS, { publicOnly = true 
 /** The card's photo list: the cover first, then the event's photos, duplicates and blanks dropped, at most `max`. */
 export function cardPhotoList(cover, urls, max = MAX_CARD_PHOTOS) {
   const out = [];
+  const seen = new Set();
   for (const u of [cover, ...(urls || [])]) {
-    if (!u || out.includes(u)) continue;
+    if (!u) continue;
+    const k = photoFileKey(u);
+    if (seen.has(k)) continue;
+    seen.add(k);
     out.push(u);
     if (out.length >= max) break;
   }
   return out;
+}
+
+/**
+ * The same photo can come back as different URLs (cover_image vs its event_photos row: Supabase `/object/` vs
+ * `/render/image/`, query params). The last two path segments name the file in both Supabase (`<event>/<file>`) and
+ * R2 (`<asset>/<variant>`). iOS twin: AppState+Data.swift `gallery(cover:photos:)`.
+ */
+export function photoFileKey(url) {
+  const path = String(url).split(/[?#]/)[0];
+  return path.split('/').filter(Boolean).slice(-2).join('/').toLowerCase();
 }

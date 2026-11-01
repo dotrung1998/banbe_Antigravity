@@ -82,6 +82,7 @@ struct HomeModeSwitch: View {
         Haptics.selection()
         // Only the Home view changes; organizer mode stays on (owner decision 2026-10-31).
         app.homeView = host ? .host : .goer
+        HomeMode.stored = app.homeView
         app.resetHomeScrollToTop()
     }
 }

@@ -1272,6 +1272,10 @@ struct FocusableTextField: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UITextField {
         let tf = UITextField()
+        // Never wider than offered: a long placeholder pushed the Map sheet's search row (and everything under it)
+        // past both screen edges once buttons sat beside the field.
+        tf.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        tf.setContentHuggingPriority(.defaultLow, for: .horizontal)
         tf.placeholder = placeholder
         tf.font = font
         tf.delegate = context.coordinator

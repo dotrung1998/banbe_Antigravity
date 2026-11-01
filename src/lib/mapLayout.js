@@ -6,7 +6,9 @@
 // Fraction of the height left for the map above the sheet. Peek is tall enough for the count line, the active
 // filter summary and (Map v6, note 74) the search button + quick chips row. Tall is FULL height: its real value is
 // measured (`tallFraction`: just under the Close / compass row); 0.11 is only the fallback before that is known.
-export const SHEET_SNAPS = { tall: 0.11, mid: 0.58, peek: 0.80 };
+// Sheet TOP as a fraction of the screen. Owner 2026-11-01: mid covers about two thirds, full covers the whole screen
+// (no map sliver above it; the back arrow and "Show map" move into the sheet's search row there).
+export const SHEET_SNAPS = { tall: 0, mid: 0.34, peek: 0.80 };
 export const TALL_GAP = 8; // px between the top controls and the full-height sheet
 export const CARD_GAP = 12;
 export const ATTRIB_RESERVE = 26; // strip above the sheet kept free for the required map attribution
@@ -35,8 +37,9 @@ export const dockShown = (snap) => snap === 'tall';
 
 /** Map v6 (note 74): the full-height sheet's top, as a fraction: just under the measured top controls (+ TALL_GAP). */
 export function tallFraction(containerH, topControlsBottom) {
-  if (!(containerH > 0) || !(topControlsBottom > 0)) return SHEET_SNAPS.tall;
-  return Math.min(0.3, Math.max(0.02, (topControlsBottom + TALL_GAP) / containerH));
+  // Full height is the whole screen now (owner 2026-11-01), whatever the top controls measure.
+  void containerH; void topControlsBottom;
+  return SHEET_SNAPS.tall;
 }
 
 // The peek strip (count line + filter summary + search/chips row) needs about this many px; a short screen lowers
