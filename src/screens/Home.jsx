@@ -32,7 +32,7 @@ const HEADER_FIT_STEPS = [
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass, barGlass } from '../theme.js';
 import { BAR_HEIGHT, BAR_BOTTOM_OFFSET, DOCK_MARGIN } from './BottomTabBar.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
-import { formatMoney, zonedParts } from '../lib/eventMarket.js';
+import { formatMoney, cardDateBadge } from '../lib/eventMarket.js';
 import ActionCenter from './ActionCenter.jsx';
 import ActivationChecklistCard from './ActivationChecklistCard.jsx';
 import { GuestBrowseBanner } from './GuestPromptSheet.jsx';
@@ -487,21 +487,7 @@ export default function Home() {
   const pickLayout = (m) => { setLayoutMode(m); try { localStorage.setItem(LAYOUT_KEY, m); } catch { /* per-viewer convenience only */ } };
 
   // Real events read in their venue's zone (migration 195); demo events (no tz) in the browser's, as before.
-  const badgeDate = (ms, tz) => {
-    if (ms == null) return '';
-    const partsOf = (t) => {
-      if (tz) return zonedParts(t, tz);
-      const d = new Date(t);
-      return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(), hour: d.getHours(), minute: d.getMinutes(), weekday: d.getDay() };
-    };
-    const p = partsOf(ms);
-    const wd = T(['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][p.weekday], ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][p.weekday]);
-    const hh = String(p.hour).padStart(2, '0'), mm = String(p.minute).padStart(2, '0');
-    const sameDay = (a, b) => a.year === b.year && a.month === b.month && a.day === b.day;
-    const today = partsOf(Date.now()); const tomorrow = partsOf(Date.now() + 86400000);
-    const day = sameDay(p, today) ? T('HÔM NAY', 'TODAY') : sameDay(p, tomorrow) ? T('MAI', 'TMRW') : `${wd} ${p.day}/${p.month}`;
-    return `${day} · ${hh}:${mm}`;
-  };
+  const badgeDate = (ms, tz) => cardDateBadge(ms, tz, T);
   // Best-match label: the top For You match, only when the user has answers. Without answers the first card
   // is "Popular this week" when it's the area's top Pulse event — never called a "match".
   const topPulseKey = useMemo(() => {

@@ -20,10 +20,10 @@ import { distanceLabel } from '../lib/eventDetailPresentation.js';
 import { whenLabel } from '../lib/quickWins.js';
 import { fillBadge, categorySheetKeys, applyDiscoveryFilters, normalizeFilters, activeFilterCount, DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
 import HomeFilterSheet, { DATE_LABELS } from './sheets/HomeFilterSheet.jsx';
-import { secondCategory, categoryDefs } from '../lib/eventTypes.js';
+import { secondCategory, categoryDefs, cardLine, profileFor } from '../lib/eventTypes.js';
 import { CategoryGlyph, CATEGORY_DEFS, CategorySheet, categoryGlyphMarkup, DiscoveryCard } from '../components/home/HomeDiscoveryParts.jsx';
 import { liveEventOverrides } from '../lib/countdown.js';
-import { formatMoney, formatMoneyShort, rowCurrency, rowTimeZone } from '../lib/eventMarket.js';
+import { formatMoney, formatMoneyShort, rowCurrency, rowTimeZone, cardDateBadge } from '../lib/eventMarket.js';
 import { densityHotspot } from '../lib/densityHotspot.js';
 import { buildEventSearchDoc, matchesSearchQuery } from '../lib/search.js';
 import { prefsIsEmpty } from '../lib/eventPrefs.js';
@@ -31,7 +31,6 @@ import { mapForYouSet, applyForYouFilter } from '../lib/forYou.js';
 import { useForYouAlert } from '../lib/useForYouAlert.js';
 import ForYouChip from './ForYouChip.jsx';
 import { paper, ink, ink2, rule, alert, clay, clayBg, surface2, photoPill, inkButton, RADIUS } from '../theme.js';
-import RootRefreshIndicator from './RootRefreshIndicator.jsx';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 // Category glyph per FILTER_DEFS key — no icon set exists anywhere else in
@@ -1039,49 +1038,57 @@ export default function MapExplore() {
   // it gets its own tiny pointer-gesture pair instead, calling this
   // screen's OWN real refetch (searchHere — current bounds, no camera/
   // selection reset).
-  const [mapPullDist, setMapPullDist] = useState(0);
-  const [mapRefreshing, setMapRefreshing] = useState(false);
-  const [mapRefreshError, setMapRefreshError] = useState('');
-  const mapPullRef = useRef({ active: false, startY: 0, pointerId: null });
-  const MAP_PULL_TRIGGER = 64;
-  const MAP_PULL_MAX = 100;
-  const onListPointerDown = (e) => {
-    if (listRef.current && listRef.current.scrollTop > 0) return;
-    mapPullRef.current = { active: true, startY: e.clientY, pointerId: e.pointerId };
-  };
-  const onListPointerMove = (e) => {
-    const g = mapPullRef.current;
-    if (!g.active || e.pointerId !== g.pointerId) return;
-    const dy = e.clientY - g.startY;
-    if (dy <= 0) { setMapPullDist(0); return; }
-    setMapPullDist(Math.min(MAP_PULL_MAX, dy * 0.5));
-  };
-  const endListPull = async () => {
-    const g = mapPullRef.current;
-    if (!g.active) return;
-    g.active = false;
-    if (mapPullDist >= MAP_PULL_TRIGGER) {
-      setMapRefreshing(true);
-      setMapRefreshError('');
-      setMapPullDist(MAP_PULL_TRIGGER * 0.72);
-      try {
-        // The same whole-set refresh as the timer: camera, area, filters and selection stay put.
-        const fresh = await loadLatest(boundedOpts());
-        if (fresh) setEvents(fresh);
-        else throw new Error('refresh failed');
-      } catch (err) {
-        console.warn('Map pull-to-refresh failed:', err);
-        setMapRefreshError(T('Không thể làm mới. Vui lòng thử lại.', 'Could not refresh. Please try again.'));
-        setTimeout(() => setMapRefreshError(''), 3000);
-      } finally {
-        setMapRefreshing(false);
-        setMapPullDist(0);
-      }
-    } else {
-      setMapPullDist(0);
+  // Large cards' photos load in the background while the list is still small, so opening to full never shows them
+  // half-loaded (iOS parity, CardPhotoPrefetch). The browser cache then serves the cards' own <img>s.
+  const preloadKey = visibleEvents.slice(0, 8).map(e => e.id).join(',');
+  useEffect(() => {
+    for (const ev of visibleEvents.slice(0, 8)) for (const src of (ev.imgs?.length ? ev.imgs : [ev.img]).slice(0, 2)) {
+      if (src) { const im = new Image(); im.decoding = 'async'; im.src = src; }
     }
-  };
-  const cancelListPull = () => { mapPullRef.current.active = false; if (!mapRefreshing) setMapPullDist(0); };
+  }, [preloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // iOS parity (owner 2026-11-01): no pull-to-refresh on the Map list (the set reloads every 60 s). At the list's
+  // TOP a pull down, and at its END (mid) a push up, move the SHEET with the finger instead of over-scrolling the
+  // list; release snaps like a handle drag. Touch listeners are non-passive so the list can be held still.
+  const edgeRef = useRef({});
+  edgeRef.current = { sheetSnap, containerH, fractions };
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return undefined;
+    let g = null;
+    const start = (e) => {
+      const y = e.touches[0].clientY;
+      g = { y0: y, lastY: y, lastT: e.timeStamp, v: 0, active: null, snap: edgeRef.current.sheetSnap,
+        atTop: el.scrollTop <= 0, atEnd: el.scrollTop >= el.scrollHeight - el.clientHeight - 1 };
+    };
+    const move = (e) => {
+      if (!g) return;
+      const y = e.touches[0].clientY, dy = y - g.y0;
+      if (g.active === null) {
+        if ((g.atTop && dy > 4 && g.snap !== 'peek') || (g.atEnd && dy < -4 && g.snap === 'mid')) g.active = true;
+        else if (Math.abs(dy) > 4) g.active = false;
+      }
+      if (!g.active) return;
+      e.preventDefault();
+      const dt = e.timeStamp - g.lastT;
+      if (dt > 0) g.v = 0.6 * ((y - g.lastY) / dt) + 0.4 * g.v;
+      g.lastY = y; g.lastT = e.timeStamp;
+      setDragOffsetVh(dy / (edgeRef.current.containerH || 1));
+    };
+    const end = (e) => {
+      if (g?.active) {
+        const { containerH: H, fractions: f } = edgeRef.current;
+        const v = e.timeStamp - g.lastT > 120 ? 0 : g.v;
+        setSheetSnap(snapAfterDrag(g.snap, g.lastY - g.y0, H, v, f));
+        setDragOffsetVh(0);
+      }
+      g = null;
+    };
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end);
+    el.addEventListener('touchcancel', end);
+    return () => { el.removeEventListener('touchstart', start); el.removeEventListener('touchmove', move); el.removeEventListener('touchend', end); el.removeEventListener('touchcancel', end); };
+  }, []);
 
   // B2 — snaps the sheet to MID exactly when the user actually CHANGES a
   // filter (category or "Còn chỗ"), never on mount, a map pan (`boundsChanged`
@@ -1390,6 +1397,11 @@ export default function MapExplore() {
   const priceLine = (ev) => (ev.priceVnd > 0
     ? `${formatMoney(ev.priceVnd, ev.currency)} ${T('/ vé', '/ ticket')}`
     : T('Miễn phí', 'Free'));
+  // Amount + an outlined ticket icon (iOS parity: "/ ticket" kept getting cut off); the label keeps "/ ticket".
+  const priceTicket = (ev) => (ev.priceVnd > 0 ? (<>
+    {formatMoney(ev.priceVnd, ev.currency)}
+    <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinejoin="round"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5V14a2 2 0 0 0 0-4z" /><path d="M14.5 6v2M14.5 11v2M14.5 16v2" /></svg>
+  </>) : T('Miễn phí', 'Free'));
   const nearDistance = (ev) => (s.located === true && s.userCoords && ev.hasLocation ? distanceLabel(haversineKm(s.userCoords, ev), en) : null);
   // Solid chip (content sits on an opaque sheet; glass is kept for map controls). 36pt tall inside a 44pt row.
   const sectionLabel = { padding: '12px 0 4px', fontSize: 11.5, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: ink2 };
@@ -1447,6 +1459,19 @@ export default function MapExplore() {
   // ---- Map v6 (note 74): search from the peek strip, and what the search shows before you type ----
   // The input is collapsed (but mounted and focusable) at peek and behind the folded summary line.
   const searchCollapsed = !searchActive && (sheetSnap === 'peek' || compactHeader);
+  // Map v6 (note 74): Large photo cards (default) or Compact rows — Home's two-icon switch; session-only on the Map.
+  const layoutSwitch = (
+            <div role="radiogroup" aria-label={T('Kiểu hiển thị', 'Layout')} data-testid="map-layout-switch"
+              style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 999, background: 'rgba(var(--bb-fg-rgb),0.06)', flex: 'none' }}>
+              {[['large', T('Ảnh lớn', 'Large photos'), 'M4 4h16v7H4zM4 13h16v7H4z'], ['compact', T('Danh sách gọn', 'Compact list'), 'M4 6h16M4 12h16M4 18h16']].map(([m, lbl, d]) => (
+                <button key={m} type="button" role="radio" aria-checked={listLayout === m} aria-label={lbl} onClick={() => setListLayout(m)} data-testid={`map-layout-${m}`}
+                  style={{ width: 34, height: 30, borderRadius: 999, border: 'none', cursor: 'pointer', color: ink, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: listLayout === m ? 'var(--bb-bg)' : 'transparent', boxShadow: listLayout === m ? '0 1px 3px rgba(27,25,22,0.18)' : 'none' }}>
+                  <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
+                </button>
+              ))}
+            </div>
+  );
   // 0 at mid (or lower) → 1 at full height, following the sheet while it is dragged. Drives the Airbnb-style hand-off
   // (owner 2026-11-01; iOS twin `fullProgress`): the map's back / compass shrink away as the sheet's own back / Show
   // map pop in beside a narrower search field. The springy curve gives the little "bubble" overshoot.
@@ -1540,10 +1565,12 @@ export default function MapExplore() {
     const cat = CATEGORY_DEFS.find(c => c.key === ev.catKey && c.key !== 'all');
     const free = !(ev.priceVnd > 0);
     return {
-      key: ev.id, name: ev.name, img: ev.img, imgs: ev.imgs, dateBadge: null,
+      // Home's card (iOS parity, owner 2026-11-01): the date chip on the photo, area · category underneath, and the
+      // event type line ("Table for 3 · Vegetarian-friendly · 18+") when the type has one.
+      key: ev.id, name: ev.name, img: ev.img, imgs: ev.imgs, dateBadge: ev.startsAt ? cardDateBadge(Date.parse(ev.startsAt), ev.tz, T) : null,
       priceLabel: free ? T('Miễn phí', 'Free') : formatMoney(ev.priceVnd, ev.currency), isFree: free,
-      metaLine: [eventWhen(ev), ev.area, nearDistance(ev)].filter(Boolean).join(' · '),
-      typeLine: cat ? T(cat.vi, cat.en) : null,
+      metaLine: [ev.area, nearDistance(ev), cat ? T(cat.vi, cat.en) : null].filter(Boolean).join(' · '),
+      typeLine: cardLine(profileFor(ev.catKey), { capacity: ev.capacity, details: ev.details || {} }, en ? 'en' : 'vi') || null,
       fill: f ? { soldOut: f.soldOut, almostFull: f.almostFull, left: f.left } : null,
       saved: isSaved(ev.id),
     };
@@ -1597,7 +1624,6 @@ export default function MapExplore() {
   // Owner 2026-11-01: any scroll down folds the filters into one line, any scroll up (or the top) opens them again,
   // whatever is filtered. A short pause after each change so the list's own resize is not read as a scroll.
   const lastListY = useRef(0);
-  const sheetStepUntil = useRef(0);
   // An active chip moves to the front (CSS order); scroll its row back there so it is never left out of view.
   const catRowRef = useRef(null);
   const chipRowRef = useRef(null);
@@ -1607,14 +1633,6 @@ export default function MapExplore() {
   const foldSettle = useRef(0);
   const onListScroll = (e) => {
     const y = e.currentTarget.scrollTop;
-    // Owner 2026-11-01: pushing past the END of the list at mid opens it to full; pulling past the TOP (iOS Safari
-    // bounce) moves the sheet down a step. Once per 0.6 s so one gesture never skips two steps.
-    const el = e.currentTarget;
-    if (Date.now() >= sheetStepUntil.current) {
-      const step = sheetSnap === 'mid' && y > el.scrollHeight - el.clientHeight + 50 ? 'tall'
-        : y < -60 ? (sheetSnap === 'tall' ? 'mid' : sheetSnap === 'mid' ? 'peek' : null) : null;
-      if (step) { sheetStepUntil.current = Date.now() + 600; setSheetSnap(step); }
-    }
     const dy = y - lastListY.current;
     lastListY.current = y;
     if (Date.now() < foldSettle.current) return;
@@ -1645,7 +1663,7 @@ export default function MapExplore() {
       {/* iOS has no map zoom controls (mapControls {}); the web +/- sits below the compass pill. */}
       <style>{`[data-screen-label="MapExplore"] .maplibregl-ctrl-top-right { top: ${topInset + 56}px; right: 6px; } [data-screen-label="MapExplore"] .bb-noscroll::-webkit-scrollbar { display: none; }
         /* Attribution (required) lives just above the sheet, in the visible map strip. */
-        [data-screen-label="MapExplore"] .maplibregl-ctrl-bottom-right { bottom: ${Math.max(0, Math.round(containerH - sheetTopPx))}px; z-index: 3; max-width: calc(100% - 12px); }
+        [data-screen-label="MapExplore"] .maplibregl-ctrl-bottom-right { display: ${sheetSnap === 'tall' ? 'none' : 'block'}; bottom: ${Math.max(0, Math.round(containerH - sheetTopPx))}px; z-index: 3; max-width: calc(100% - 12px); }
         [data-screen-label="MapExplore"] .maplibregl-ctrl-attrib { font-size: 10px; line-height: 1.3; max-width: 100%; }
         [data-screen-label="MapExplore"] .maplibregl-ctrl-bottom-left { display: none; }
         [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl-group { background: var(--bb-field); box-shadow: 0 0 0 1px var(--bb-rule); }
@@ -1757,7 +1775,7 @@ export default function MapExplore() {
         {/* One 44px header row (it used to be a grabber row plus a separate "List lớn / List nhỏ" row, which pushed
             the first result under the dock at mid): bigger-map button · drag grabber + the settled result count ·
             (full height only, Map v6) the Large / Compact switch · bigger-list button. Only the middle drags. */}
-        <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px 2px' }}>
+        <div style={{ display: sheetSnap === 'tall' ? 'none' : 'flex', alignItems: 'center', padding: '4px 8px 2px' }}>
           <button
             type="button"
             onClick={() => setSheetSnap('peek')}
@@ -1777,12 +1795,6 @@ export default function MapExplore() {
             style={{ flex: 1, minWidth: 0, minHeight: 44, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'grab', touchAction: 'none' }}
           >
             {sheetSnap !== 'tall' && <div style={{ width: 36, height: 4, borderRadius: 2, background: rule }} />}
-            {sheetSnap === 'tall' && mapCity && (
-              <span data-testid="map-sheet-city" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: clay, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <svg aria-hidden="true" width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z" /><circle cx="12" cy="11" r="2" /></svg>
-                {mapCity}
-              </span>
-            )}
             {/* The settled result count for THIS map area — the same list the pins come from. Announced politely
                 (it changes only when the camera settles or a filter changes, never every frame). */}
             <span data-testid="map-result-count" aria-live="polite" style={{ fontSize: 13, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
@@ -1793,18 +1805,6 @@ export default function MapExplore() {
           </div>
           {/* Map v6 (note 74): at full height, Large photo cards (default) or Compact rows — the same two-icon switch
               and look as Home's cards / list toggle; remembered for this session on the Map only. */}
-          {sheetSnap === 'tall' && (
-            <div role="radiogroup" aria-label={T('Kiểu hiển thị', 'Layout')} data-testid="map-layout-switch"
-              style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 999, background: 'rgba(var(--bb-fg-rgb),0.06)', flex: 'none' }}>
-              {[['large', T('Ảnh lớn', 'Large photos'), 'M4 4h16v7H4zM4 13h16v7H4z'], ['compact', T('Danh sách gọn', 'Compact list'), 'M4 6h16M4 12h16M4 18h16']].map(([m, lbl, d]) => (
-                <button key={m} type="button" role="radio" aria-checked={listLayout === m} aria-label={lbl} onClick={() => setListLayout(m)} data-testid={`map-layout-${m}`}
-                  style={{ width: 34, height: 30, borderRadius: 999, border: 'none', cursor: 'pointer', color: ink, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: listLayout === m ? 'var(--bb-bg)' : 'transparent', boxShadow: listLayout === m ? '0 1px 3px rgba(27,25,22,0.18)' : 'none' }}>
-                  <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
-                </button>
-              ))}
-            </div>
-          )}
           <button
             type="button"
             onClick={() => setSheetSnap('tall')}
@@ -2082,36 +2082,34 @@ export default function MapExplore() {
         </div>
         )}
 
+        {/* Full height (iOS parity): the city the map is on, then the count + Large / Compact, under the filters. */}
+        {sheetSnap === 'tall' && !suggestOpen && (
+          <div data-testid="map-full-count" style={{ padding: '2px 16px 6px', flex: 'none' }}>
+            {mapCity && (
+              <div data-testid="map-sheet-city" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: clay, display: 'flex', alignItems: 'center', gap: 4, paddingTop: 4 }}>
+                <svg aria-hidden="true" width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z" /><circle cx="12" cy="11" r="2" /></svg>
+                {mapCity}
+              </div>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 6 }}>
+              <span aria-live="polite" style={{ flex: 1, minWidth: 0, fontSize: 17, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {committedBounds && !(loading && !events.length)
+                  ? T(`${visibleEvents.length} sự kiện trong vùng bản đồ`, `${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'} in this map area`)
+                  : T('Đang tải sự kiện…', 'Loading events…')}
+              </span>
+              {layoutSwitch}
+            </div>
+          </div>
+        )}
         <div
           ref={listRef}
           data-testid="map-list-scroll"
           // The dock is only there at tall (Map v5); below it the list just keeps a small bottom margin.
           // At rest at peek only the strip shows (no half-cut row under it); dragging up reveals the list again.
           aria-hidden={sheetSnap === 'peek' && dragOffsetVh === 0 ? true : undefined}
-          style={{ flex: 1, overflowY: 'auto', padding: `0 16px calc(${dockShown(sheetSnap) ? dockClear + 16 : 24}px + env(safe-area-inset-bottom, 0px))`, position: 'relative', touchAction: 'pan-y', overscrollBehavior: 'contain', opacity: sheetSnap === 'peek' && dragOffsetVh === 0 ? 0 : 1, transition: 'opacity 0.2s ease' }}
+          style={{ flex: 1, overflowY: 'auto', padding: `0 16px calc(${dockShown(sheetSnap) ? dockClear + 16 + (sheetSnap === 'tall' ? 72 : 0) : 24}px + env(safe-area-inset-bottom, 0px))`, position: 'relative', touchAction: 'pan-y', overscrollBehavior: 'contain', opacity: sheetSnap === 'peek' && dragOffsetVh === 0 ? 0 : 1, transition: 'opacity 0.2s ease' }}
           onScroll={onListScroll}
-          onPointerDown={onListPointerDown}
-          onPointerMove={onListPointerMove}
-          onPointerUp={endListPull}
-          onPointerCancel={cancelListPull}
         >
-          {(mapPullDist > 0 || mapRefreshing || mapRefreshError) && (
-            <div
-              data-testid="map-pull-to-refresh-indicator"
-              style={{ position: 'absolute', top: 4, left: 0, right: 0, display: 'flex', justifyContent: 'center', transform: `translateY(${Math.max(0, mapPullDist - 24)}px)`, pointerEvents: 'none' }}
-            >
-              {mapRefreshError ? (
-                <span style={{ fontSize: 11, fontWeight: 600, color: ink, background: paper, borderRadius: 999, padding: '6px 12px', boxShadow: '0 4px 14px rgba(27,25,22,0.16)' }}>{mapRefreshError}</span>
-              ) : (
-                <RootRefreshIndicator
-                  screen="mapExplore"
-                  progress={mapPullDist / MAP_PULL_TRIGGER}
-                  refreshing={mapRefreshing}
-                  label={T('Đang làm mới', 'Refreshing')}
-                />
-              )}
-            </div>
-          )}
           {/* Map v6 (note 74): the search is focused and empty — offer something instead of a blank list. */}
           {suggestOpen ? searchPanel : (<>
           {/* Map v5 (note 73): the selected event is the first item of the list (no floating card over the map):
@@ -2302,7 +2300,7 @@ export default function MapExplore() {
               aria-current={ev.id === selectedId ? 'true' : undefined}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectEvent(ev); } }}
               // Mid = cards (photo + three lines); tall = a denser list (small photo, two lines).
-              style={{ display: 'flex', gap: 12, padding: dense ? '8px 0' : '12px 0', borderBottom: `1px solid ${rule}`, cursor: 'pointer', alignItems: dense ? 'center' : 'flex-start', animation: 'banbeRowIn 0.3s cubic-bezier(.22,.61,.36,1) backwards', background: ev.id === selectedId ? 'rgba(var(--bb-fg-rgb),0.05)' : 'transparent' }}
+              style={{ display: 'flex', gap: 12, padding: '7px 0', cursor: 'pointer', alignItems: dense ? 'center' : 'flex-start', animation: 'banbeRowIn 0.3s cubic-bezier(.22,.61,.36,1) backwards', background: ev.id === selectedId ? 'rgba(var(--bb-fg-rgb),0.05)' : 'transparent' }}
             >
               {ev.img && <div style={{ width: dense ? 44 : 64, height: dense ? 44 : 64, borderRadius: RADIUS.thumb, backgroundImage: `url(${ev.img})`, backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0 }} />}
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -2327,7 +2325,7 @@ export default function MapExplore() {
                 )}
               </div>
               <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                <div data-testid={`map-list-item-price-${ev.id}`} style={{ fontSize: 14, fontWeight: 600, color: ink, whiteSpace: 'nowrap' }}>{priceLine(ev)}</div>
+                <div data-testid={`map-list-item-price-${ev.id}`} aria-label={priceLine(ev)} style={{ fontSize: 14, fontWeight: 600, color: ink, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{priceTicket(ev)}</div>
                 <SeatPill ev={ev} testId={`map-list-item-seats-${ev.id}`} />
               </div>
             </div>

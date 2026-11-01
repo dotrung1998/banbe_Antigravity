@@ -142,3 +142,23 @@ export function todayInZone(timeZone, now = Date.now()) {
   const p = zonedParts(now, timeZone);
   return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
 }
+
+/**
+ * A discovery card's date chip ("THU 5/11 · 02:00", "TODAY · 19:00") in the venue's zone (migration 195); no tz =
+ * the browser's (demo events). Shared by Home's cards and the Map's Large cards.
+ */
+export function cardDateBadge(ms, tz, T) {
+  if (ms == null) return '';
+  const partsOf = (t) => {
+    if (tz) return zonedParts(t, tz);
+    const d = new Date(t);
+    return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(), hour: d.getHours(), minute: d.getMinutes(), weekday: d.getDay() };
+  };
+  const p = partsOf(ms);
+  const wd = T(['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][p.weekday], ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][p.weekday]);
+  const hh = String(p.hour).padStart(2, '0'), mm = String(p.minute).padStart(2, '0');
+  const sameDay = (a, b) => a.year === b.year && a.month === b.month && a.day === b.day;
+  const today = partsOf(Date.now()); const tomorrow = partsOf(Date.now() + 86400000);
+  const day = sameDay(p, today) ? T('HÔM NAY', 'TODAY') : sameDay(p, tomorrow) ? T('MAI', 'TMRW') : `${wd} ${p.day}/${p.month}`;
+  return `${day} · ${hh}:${mm}`;
+}
