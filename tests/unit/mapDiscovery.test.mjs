@@ -89,3 +89,41 @@ test('sameSpot finds the stack of an event; padBounds grows the fetch box', asyn
   assert.deepEqual(sameSpot([a, c, b], b).map(e => e.id), ['a', 'b']);
   for (const k of fx.padBounds) assert.deepEqual(padBounds(k.b, k.factor), k.expect, k.name);
 });
+
+// ---- Map v5 (note 73): cities + the active filter summary (shared with iOS MapDiscoveryTests) ----
+const { cities } = JSON.parse(readFileSync(new URL('../../src/data/cities.json', import.meta.url), 'utf8'));
+
+test('cities.json: unique ids, sane boxes, centre inside its own box', () => {
+  const ids = new Set();
+  for (const c of cities) {
+    assert.ok(!ids.has(c.id), c.id); ids.add(c.id);
+    assert.ok(c.bounds.north > c.bounds.south && c.bounds.east > c.bounds.west, c.id);
+    assert.ok(inBounds(c.center, c.bounds), `${c.id} centre`);
+    assert.ok(['VN', 'US'].includes(c.country), c.id);
+  }
+});
+
+test('cityFor: column names first, then the smallest box that contains the event', async () => {
+  const { cityFor } = await import('../../src/lib/mapDiscovery.js');
+  for (const k of fx.cityFor) assert.equal(cityFor(k.ev, cities), k.expect, k.name);
+});
+
+test('searchCities: accent-free word prefix, most events first, max three', async () => {
+  const { searchCities } = await import('../../src/lib/mapDiscovery.js');
+  for (const k of fx.searchCities) assert.deepEqual(searchCities(k.query, cities, k.counts), k.expect, k.name);
+});
+
+test('cityGroups: one bubble per city when zoomed out, never losing a result', async () => {
+  const { cityGroups, cityFor, clusterPins } = await import('../../src/lib/mapDiscovery.js');
+  for (const k of fx.cityGroups) {
+    const got = cityGroups(k.points, k.zoom, p => cityFor(p, cities), cities);
+    assert.equal(got.reduce((s, g) => s + g.ids.length, 0), k.points.length, `${k.name}: count`);
+    if (k.expect === 'clusterPins') assert.deepEqual(got, clusterPins(k.points, k.zoom), k.name);
+    else assert.deepEqual(got.map(g => ({ kind: g.kind, ...(g.cityId ? { cityId: g.cityId } : {}), ids: g.ids })), k.expect, k.name);
+  }
+});
+
+test('activeFilterSummary: tokens in reading order with the badge count', async () => {
+  const { activeFilterSummary } = await import('../../src/lib/mapDiscovery.js');
+  for (const k of fx.activeFilterSummary) assert.deepEqual(activeFilterSummary(k.filters, k.opts), k.expect, k.name);
+});

@@ -4,8 +4,8 @@ import Foundation
 /// feed's location tree is modelled on iOS. Built to the same spec as
 /// web's `src/state/BanBeContext.jsx` hierarchy (implemented independently):
 ///
-///   Vietnam (VN) → State/Province → legacy "familiar area" (`events.area`)
-///                → neighborhood
+///   Vietnam (VN) → State/Province → City (cities.json, note 74)
+///                → legacy "familiar area" (`events.area`) → neighborhood
 ///   United States (US) → State → City → neighborhood
 ///
 /// VN/US roots are always shown, even with zero events (an honest empty
@@ -22,7 +22,8 @@ import Foundation
 ///   "all"                                   everything
 ///   "c:VN"                                  country
 ///   "c:VN|s:Tỉnh Lâm Đồng"                  state/province
-///   "c:VN|a:Quận 1"                         legacy area (state unknown)
+///   "c:VN|ci:TP. Hồ Chí Minh|a:Quận 1"      legacy area in a city (state unknown)
+///   "c:VN|a:Quận 1"                         legacy area, no city found (and pre-note-74 ids)
 ///   "c:VN|s:Tỉnh Lâm Đồng|a:Da Lat"         legacy area under a state
 ///   "c:VN|a:Quận 1|n:Yentown"               neighborhood
 ///   "c:US|s:California|ci:San Francisco|n:Mission"
@@ -38,11 +39,15 @@ struct EventLocation: Codable, Hashable {
     var city: String?
     var area: String?
     var neighborhood: String?
+    /// Map v6 (note 74): the position, so a row with no city / province column (every HCMC row) still finds its city
+    /// in cities.json (`MapDiscovery.cityFor`'s box rule).
+    var lat: Double? = nil
+    var lng: Double? = nil
 
     enum CodingKeys: String, CodingKey {
         case countryCode = "country_code"
         case stateProvince = "state_province"
-        case city, area, neighborhood
+        case city, area, neighborhood, lat, lng
     }
 }
 
@@ -143,12 +148,23 @@ enum LocationHierarchy {
                 out.append(Segment(kind: .neighborhood, raw: neighborhood))
             }
         } else {
-            // VN (and any other country): State → legacy familiar area
+            // VN (and any other country): State → City → legacy familiar area
             // (raw `events.area`, never presented as a current official
             // administrative unit) → neighborhood.
+            // Map v6 (note 74): the city comes from cities.json (`MapDiscovery.cityFor`: city / province column, else
+            // the smallest city box containing the position), so HCMC rows (no province) get "TP. Hồ Chí Minh". Its
+            // value is the city's `vi` name. Skipped when the province already IS that city ("Thành phố Hà Nội"),
+            // and an area that only repeats the city is dropped.
+            let cities = MapDiscovery.cities
+            let cityID = MapDiscovery.cityFor(.init(city: loc.city, stateProvince: state, countryCode: country,
+                                                    lat: loc.lat, lng: loc.lng), cities: cities)
+            let city = MapDiscovery.city(cityID)
+            let stateIsCity = state.map { MapDiscovery.cityFor(.init(stateProvince: $0, countryCode: country), cities: cities) == cityID } ?? false
+            if let city, !stateIsCity { out.append(Segment(kind: .city, raw: city.vi)) }
             let area = clean(loc.area)
-            if let area, !sameName(area, state) { out.append(Segment(kind: .legacyArea, raw: area)) }
-            if let neighborhood, !sameName(neighborhood, area), !sameName(neighborhood, state) {
+            let areaIsCity = cityID != nil && area.map { MapDiscovery.cityFor(.init(city: $0, countryCode: country), cities: cities) == cityID } ?? false
+            if let area, !sameName(area, state), !areaIsCity { out.append(Segment(kind: .legacyArea, raw: area)) }
+            if let neighborhood, !sameName(neighborhood, area), !sameName(neighborhood, state), !sameName(neighborhood, city?.vi) {
                 out.append(Segment(kind: .neighborhood, raw: neighborhood))
             }
         }
@@ -200,10 +216,30 @@ enum LocationHierarchy {
         return raw
     }
 
+    /// The id with any VN city level removed — how an id looked before note 74.
+    static func withoutCity(_ id: String) -> String {
+        let segs = segments(ofID: id)
+        guard segs.first?.raw != "US" else { return id }
+        return nodeID(segs.filter { $0.kind != .city })
+    }
+
+    /// Map v6 (note 74): like `migrateSelection`, then an id from before the city level (`c:VN|a:Quận 1`, a Home
+    /// hand-off, a restored session) that is not in the tree maps to the ONE node with the same path plus a city.
+    /// Ambiguous or unknown ids pass through unchanged.
+    static func migrateSelection(_ raw: String, roots: [LocationNode]) -> String {
+        let id = migrateSelection(raw)
+        guard id != allID, find(id, in: roots) == nil,
+              !segments(ofID: id).contains(where: { $0.kind == .city }) else { return id }
+        let hits = flatten(roots).filter { $0.id != id && withoutCity($0.id) == id && $0.kind != .city }
+        return hits.count == 1 ? hits[0].id : id
+    }
+
     /// Reverse lookup for stable accessibility identifiers (UI tests keep
-    /// addressing e.g. "area.thaodien"). Only the three 1:1 area keys.
+    /// addressing e.g. "area.thaodien"). Only the three 1:1 area keys; a city
+    /// level in between (note 74) doesn't change the key.
     static func legacyKey(forNodeID id: String) -> String? {
-        ["q1", "thaodien", "binhthanh"].first { legacyKeyMap[$0] == id }
+        let bare = withoutCity(id)
+        return ["q1", "thaodien", "binhthanh"].first { legacyKeyMap[$0] == bare }
     }
 
     // MARK: Tree
@@ -267,6 +303,7 @@ enum LocationHierarchy {
     // MARK: Labels
 
     static func label(kind: LocationNodeKind, raw: String, T: (String, String) -> String) -> String {
+        if kind == .city, let c = MapDiscovery.cities.first(where: { $0.vi == raw }) { return T(c.vi, c.en) }
         guard kind == .country else { return raw }
         switch raw {
         case "VN": return T("Việt Nam", "Vietnam")

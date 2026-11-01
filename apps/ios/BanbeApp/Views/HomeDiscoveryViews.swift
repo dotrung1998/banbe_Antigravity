@@ -24,6 +24,9 @@ struct DiscoveryCardModel: Identifiable, Equatable {
     let label: String?
     /// What kind of evening it is (event type profiles), e.g. "Bàn 8 người · Có món chay · BYO"; nil when none.
     var typeLine: String? = nil
+    /// Map v6 (note 74): the card's photo pager, cover first (`img` stays for the list rows and older callers).
+    /// Empty or one photo = the plain photo.
+    var imgs: [String] = []
 }
 
 /// Line-style category glyphs. SF Symbols at one weight stand in for the web's hand-drawn SVG set
@@ -315,8 +318,17 @@ struct DiscoveryCard: View {
                 Color.clear
                     .aspectRatio(16.0 / 10.0, contentMode: .fit)
                     .overlay {
-                        DiscoveryPhoto(path: model.img, radius: polaroid ? Self.polaroidPhotoRadius : BanbeTheme.Radius.card, inPolaroid: polaroid).zoomSource(model.key)
-                            .accessibilityIdentifier("card.\(model.key)")
+                        if model.imgs.count > 1 {
+                            // Photos you swipe sideways (note 74); a swipe here never switches dock tabs.
+                            PhotoPager(eventID: model.key, paths: model.imgs, context: "home",
+                                       cornerRadius: polaroid ? Self.polaroidPhotoRadius : BanbeTheme.Radius.card,
+                                       photoIdentifier: "card.\(model.key)",
+                                       placeholder: polaroid ? app.palette.matSlot : nil)
+                                .zoomSource(model.key)
+                        } else {
+                            DiscoveryPhoto(path: model.img, radius: polaroid ? Self.polaroidPhotoRadius : BanbeTheme.Radius.card, inPolaroid: polaroid).zoomSource(model.key)
+                                .accessibilityIdentifier("card.\(model.key)")
+                        }
                     }
                     .overlay(alignment: .topLeading) {
                         if !model.dateBadge.isEmpty {

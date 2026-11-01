@@ -38,6 +38,9 @@ import ActivationChecklistCard from './ActivationChecklistCard.jsx';
 import { GuestBrowseBanner } from './GuestPromptSheet.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { CategoryRow, CategorySheet, HomeSearchBar, DiscoveryCard, DiscoveryRow, NextUpBanner } from '../components/home/HomeDiscoveryParts.jsx';
+// Map v6 (note 74): the card pager's photos (cover first, max 6). Demo catalogue events page through their own
+// bundled gallery (the same photos Event Detail shows), never extra network images.
+import { cardPhotoList } from '../lib/eventPhotoUrls.js';
 import HomeFilterSheet, { DATE_LABELS, RELAX_LABELS, SORT_LABELS } from './sheets/HomeFilterSheet.jsx';
 import SortMenu from './sheets/SortMenu.jsx';
 import PulseTicker from '../components/home/PulseTicker.jsx';
@@ -271,6 +274,8 @@ export default function Home() {
         key: e.key,
         name: e.name,
         img: e.photoUrl,
+        // Map v6 (note 74): every public photo for the card pager (cover first, max 6).
+        imgs: e.photoUrls || (e.photoUrl ? [e.photoUrl] : []),
         isReal: true,
         catKey: e.catKey,
         // Note 69: the second category (details.cat2, migration 207) also matches Home's category filter.
@@ -515,7 +520,7 @@ export default function Home() {
     if (i === 0 && forYouRanked.length && forYouRanked[0].key === e.key) label = 'best';
     else if (i === 0 && !forYouActive && topPulseKey === e.key) label = 'popular';
     return {
-      key: e.key, name: e.name, img: e.img, dateBadge: badgeDate(it.startsAt, e.isReal ? e.tz : null),
+      key: e.key, name: e.name, img: e.img, imgs: e.imgs?.length ? e.imgs : cardPhotoList(e.img, e.gallery), dateBadge: badgeDate(it.startsAt, e.isReal ? e.tz : null),
       priceLabel: it.priceVnd === 0 ? T('Miễn phí', 'Free') : trStatus(e.price), isFree: it.priceVnd === 0,
       metaLine: meta, fill, cancelled: !!e.cancelled, saved: e.saved, going: e.going, label,
       typeLine: typesOn && (e.isReal || Object.keys(e.details || {}).length > 0) ? cardLine(profileFor(e.catKey), { capacity: it.capacity ?? e.capacity, details: e.details }, s.lang === 'en' ? 'en' : 'vi') : null,

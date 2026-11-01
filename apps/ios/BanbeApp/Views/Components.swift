@@ -1076,6 +1076,9 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
     var scrollToTopToken: Int = 0
     let onChange: (CGFloat, Bool) -> Void
     var onPullPhase: ((ScaffoldPullPhase, CGFloat) -> Void)? = nil
+    /// Map v5 (note 73): (offset below the top, content height, viewport height) on every scroll — the Map's sticky
+    /// header collapses only when enough content is left to stay scrolled.
+    var onScrollMetrics: ((CGFloat, CGFloat, CGFloat) -> Void)? = nil
 
     func makeUIView(context: Context) -> ProbeView {
         let view = ProbeView()
@@ -1083,6 +1086,7 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
         view.onOffset = onOffset
         view.onChange = onChange
         view.onPullPhase = onPullPhase
+        view.onScrollMetrics = onScrollMetrics
         view.scrollToTopToken = scrollToTopToken
         return view
     }
@@ -1091,6 +1095,7 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
         uiView.onOffset = onOffset
         uiView.onChange = onChange
         uiView.onPullPhase = onPullPhase
+        uiView.onScrollMetrics = onScrollMetrics
         if uiView.scrollToTopToken != scrollToTopToken {
             uiView.scrollToTopToken = scrollToTopToken
             uiView.pinToTop()
@@ -1100,6 +1105,7 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
     final class ProbeView: UIView {
         var onChange: ((CGFloat, Bool) -> Void)?
         var onPullPhase: ((ScaffoldPullPhase, CGFloat) -> Void)?
+        var onScrollMetrics: ((CGFloat, CGFloat, CGFloat) -> Void)?
         var restoreOffsetY: CGFloat?
         var onOffset: ((CGFloat) -> Void)?
         /// True while the saved offset is still being re-applied; live offsets are not reported
@@ -1135,6 +1141,8 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
                         // restored scroll position on returning to a tab used to read as "scrolled down".
                         self?.onChange?(-sv.contentOffset.y, sv.isTracking || sv.isDragging || sv.isDecelerating)
                         if self?.restoring == false { self?.onOffset?(sv.contentOffset.y) }
+                        self?.onScrollMetrics?(sv.contentOffset.y + sv.adjustedContentInset.top, sv.contentSize.height,
+                                               sv.bounds.height - sv.adjustedContentInset.top - sv.adjustedContentInset.bottom)
                     }
                     beginRestoreIfNeeded(scrollView)
                     onChange?(-scrollView.contentOffset.y, false)
@@ -1259,6 +1267,8 @@ struct FocusableTextField: UIViewRepresentable {
     @Binding var isFirstResponder: Bool
     var placeholder: String
     var font: UIFont
+    /// Return key ("Search") pressed — Map v6 saves the query as a recent search (note 74).
+    var onSubmit: (() -> Void)? = nil
 
     func makeUIView(context: Context) -> UITextField {
         let tf = UITextField()
@@ -1307,6 +1317,7 @@ struct FocusableTextField: UIViewRepresentable {
         }
 
         func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            parent.onSubmit?()
             textField.resignFirstResponder()
             return true
         }

@@ -202,3 +202,106 @@ export function padBounds(b, factor = 1.5) {
   const dLng = ((b.east - b.west) * (factor - 1)) / 2;
   return { north: Math.min(85, b.north + dLat), south: Math.max(-85, b.south - dLat), east: b.east + dLng, west: b.west - dLng };
 }
+
+// ---- Map v5 (note 73): cities + the active filter summary ---------------------------------------------------------
+// Cities come from src/data/cities.json (iOS bundles the same file). No database change: an event's city is the one
+// its city / province column names, else the smallest city box that contains its position, else none.
+export const CITY_ZOOM = 9; // below this camera zoom (512 px basis) markers group one bubble per city
+
+/** Lowercase, accents removed (đ → d), punctuation → spaces, single spaces. */
+export function foldText(s) {
+  return String(s ?? '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+const ADMIN_PREFIX = /^(thanh pho|tp|tinh|thi xa|city of)\s+/;
+/** `foldText` without an admin prefix ("Thành phố Hà Nội" → "ha noi"). Map v6: the location tree compares names with it. */
+export const foldName = (s) => foldText(s).replace(ADMIN_PREFIX, '');
+const boxArea = (b) => (b.north - b.south) * Math.abs(b.east - b.west);
+
+/** The city id for `ev` ({ city, stateProvince, countryCode, lat, lng }), or null. */
+export function cityFor(ev, cities) {
+  if (!ev) return null;
+  const list = cities || [];
+  const sameCountry = (c) => !ev.countryCode || ev.countryCode === c.country;
+  for (const raw of [ev.city, ev.stateProvince]) {
+    const n = foldName(raw);
+    if (!n) continue;
+    const hit = list.find(c => sameCountry(c) && (c.names.some(x => foldName(x) === n) || c.aliases.includes(n)));
+    if (hit) return hit.id;
+  }
+  let best = null;
+  for (const c of list) {
+    if (inBounds(ev, c.bounds) && (!best || boxArea(c.bounds) < boxArea(best.bounds))) best = c;
+  }
+  return best ? best.id : null;
+}
+
+/** Cities whose name or alias starts a word with `query` (2+ characters): [{ id, count }], most events first, max `limit`. */
+export function searchCities(query, cities, counts = {}, limit = 3) {
+  const q = foldText(query);
+  if (q.length < 2) return [];
+  const hits = [];
+  for (const c of cities || []) {
+    const keys = [c.vi, c.en, ...c.aliases].map(foldText);
+    const exact = keys.some(k => k.startsWith(q));
+    if (exact || keys.some(k => (' ' + k).includes(' ' + q))) hits.push({ id: c.id, count: counts[c.id] || 0, exact, name: foldText(c.vi) });
+  }
+  hits.sort((a, b) => (b.count - a.count) || (Number(b.exact) - Number(a.exact)) || a.name.localeCompare(b.name));
+  return hits.slice(0, limit).map(({ id, count }) => ({ id, count }));
+}
+
+/**
+ * Markers for `points` at `zoom`. Below CITY_ZOOM every point with a city joins that city's bubble (at the city
+ * centre, tap = fly to its bounds); points with no city fall back to `clusterPins`. At CITY_ZOOM and above it is
+ * exactly `clusterPins`. Every point with coordinates is in exactly one marker, so markers add up to the count.
+ */
+export function cityGroups(points, zoom, cityOf, cities, opts = {}) {
+  if (zoom >= CITY_ZOOM) return clusterPins(points, zoom, opts);
+  const byId = new Map((cities || []).map(c => [c.id, c]));
+  const order = [];
+  const groups = new Map();
+  const rest = [];
+  for (const p of points || []) {
+    if (!p || p.lat == null || p.lng == null) continue;
+    const id = cityOf(p);
+    const c = id && byId.get(id);
+    if (!c) { rest.push(p); continue; }
+    if (!groups.has(id)) { groups.set(id, []); order.push(id); }
+    groups.get(id).push(p);
+  }
+  const out = order.map(id => {
+    const c = byId.get(id);
+    return { kind: 'city', cityId: id, ids: groups.get(id).map(p => p.id), lat: c.center.lat, lng: c.center.lng, bounds: { ...c.bounds } };
+  });
+  return out.concat(clusterPins(rest, zoom, opts));
+}
+
+/**
+ * What is filtered, in reading order, for the peek strip and the compact sticky header. Tokens, not text, so web and
+ * iOS share one fixture and label them in their own language:
+ *   query · cat (each) · forYou · date · free · price · seatsLeft · almostFull · types (n).
+ * `count` is the badge number (each token counts 1, `types` counts n).
+ */
+export function activeFilterSummary(filters, { forYou = false, query = '' } = {}) {
+  const f = filters || {};
+  const tokens = [];
+  const q = String(query || '').trim();
+  if (q) tokens.push({ kind: 'query', text: q });
+  for (const key of f.cats || []) tokens.push({ kind: 'cat', key });
+  if (forYou) tokens.push({ kind: 'forYou' });
+  if (f.date && f.date !== 'any') tokens.push({ kind: 'date', key: f.date });
+  if (f.free) tokens.push({ kind: 'free' });
+  if (f.priceMin != null || f.priceMax != null) {
+    tokens.push({ kind: 'price', min: f.priceMin ?? null, max: f.priceMax ?? null, currency: f.priceCurrency === 'USD' ? 'USD' : 'VND' });
+  }
+  if (f.seatsLeft) tokens.push({ kind: 'seatsLeft' });
+  if (f.almostFull) tokens.push({ kind: 'almostFull' });
+  const types = (f.typeFilters || []).length;
+  if (types) tokens.push({ kind: 'types', n: types });
+  const count = tokens.reduce((s, t) => s + (t.kind === 'types' ? t.n : 1), 0);
+  return { tokens, count };
+}

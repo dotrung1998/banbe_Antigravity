@@ -692,3 +692,12 @@ input::placeholder, textarea::placeholder {
 @media (prefers-reduced-motion: reduce) {
   .bb-dock-create-pressed { transform: none; transition: filter .12s linear; }
 }
+
+/* Map v5 (note 73): the dock slides away on the Map below tall; Reduce Motion = a plain fade. */
+@media (prefers-reduced-motion: reduce) {
+  [data-testid="dock-row"] { transition: opacity 0.2s ease !important; translate: -50% 0 !important; }
+}
+
+/* Map v6 (note 74): sideways photo pager (src/components/PhotoPager.jsx) and the Map peek strip scroll without a bar. */
+.bb-pager-track { scrollbar-width: none; }
+.bb-pager-track::-webkit-scrollbar { display: none; }

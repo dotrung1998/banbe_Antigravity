@@ -132,13 +132,16 @@ enum MapDiscovery {
     static let clusterMaxZoom = 16.0
 
     struct GroupPoint { var id: String; var lat: Double; var lng: Double }
-    enum GroupKind: String { case pin, cluster, stack }
+    /// `city` (Map v5): one bubble per city below `cityZoom` (`cityGroups`).
+    enum GroupKind: String { case pin, cluster, stack, city }
     struct Group: Identifiable {
         var kind: GroupKind
         var ids: [String]
         var lat: Double
         var lng: Double
         var bounds: Bounds?
+        /// Only for `.city`: the cities.json id.
+        var cityId: String? = nil
         var id: String { "\(kind.rawValue):\(ids.joined(separator: ","))" }
     }
 
@@ -197,5 +200,205 @@ enum MapDiscovery {
     static func padBounds(_ b: Bounds, factor: Double = 1.5) -> Bounds {
         let dLat = (b.north - b.south) * (factor - 1) / 2, dLng = (b.east - b.west) * (factor - 1) / 2
         return Bounds(north: min(85, b.north + dLat), south: max(-85, b.south - dLat), east: b.east + dLng, west: b.west - dLng)
+    }
+}
+
+// MARK: - Map v5 (note 73): cities + the active filter summary
+// Web twin: the "Map v5" section at the bottom of src/lib/mapDiscovery.js; shared cases in
+// tests/fixtures/map-discovery.json (cityFor, searchCities, cityGroups, activeFilterSummary). Cities come from
+// src/data/cities.json, bundled as-is (project.yml). No database change: an event's city is the one its city /
+// province column names, else the smallest city box that contains its position, else none.
+extension MapDiscovery.Bounds: Decodable {}
+
+extension MapDiscovery {
+    /// Below this camera zoom (512 px basis, like `clusterPins`) markers group one bubble per city.
+    static let cityZoom = 9.0
+
+    struct City: Decodable, Identifiable {
+        struct Names: Decodable { var vi: String; var en: String }
+        struct Center: Decodable { var lat: Double; var lng: Double }
+        var id: String
+        var country: String
+        var vi: String
+        var en: String
+        var short: Names
+        /// Raw column spellings (matched after folding and dropping an admin prefix).
+        var names: [String]
+        /// Already accent-free.
+        var aliases: [String]
+        var center: Center
+        var bounds: Bounds
+    }
+
+    private struct CitiesFile: Decodable { var cities: [City] }
+
+    static func decodeCities(_ data: Data) throws -> [City] {
+        try JSONDecoder().decode(CitiesFile.self, from: data).cities
+    }
+
+    /// The bundled list (src/data/cities.json). Empty (and an assertion in DEBUG) when the file is missing.
+    static let cities: [City] = {
+        guard let url = Bundle.main.url(forResource: "cities", withExtension: "json"),
+              let data = try? Data(contentsOf: url), let list = try? decodeCities(data) else {
+            assertionFailure("cities.json missing from the bundle — run xcodegen generate")
+            return []
+        }
+        return list
+    }()
+
+    static func city(_ id: String?) -> City? {
+        guard let id else { return nil }
+        return cities.first { $0.id == id }
+    }
+
+    /// Lowercase, accents removed (đ → d), anything but a–z / 0–9 → one space, trimmed. Same as web `foldText`.
+    static func foldText(_ s: String?) -> String {
+        var stripped = String.UnicodeScalarView()
+        for u in (s ?? "").decomposedStringWithCanonicalMapping.unicodeScalars {
+            if (0x300...0x36F).contains(u.value) { continue }
+            if u == "đ" || u == "Đ" { stripped.append("d"); continue }
+            stripped.append(u)
+        }
+        var out = String.UnicodeScalarView()
+        var gap = false
+        for u in String(stripped).lowercased().unicodeScalars {
+            if ("a"..."z").contains(u) || ("0"..."9").contains(u) {
+                if gap && !out.isEmpty { out.append(" ") }
+                gap = false
+                out.append(u)
+            } else {
+                gap = true
+            }
+        }
+        return String(out)
+    }
+
+    /// Web `ADMIN_PREFIX` = /^(thanh pho|tp|tinh|thi xa|city of)\s+/ on folded text (single spaces).
+    private static let adminPrefixes = ["thanh pho", "tp", "tinh", "thi xa", "city of"]
+    private static func foldName(_ s: String?) -> String {
+        let f = foldText(s)
+        for p in adminPrefixes where f.hasPrefix(p + " ") { return String(f.dropFirst(p.count + 1)) }
+        return f
+    }
+    private static func boxArea(_ b: Bounds) -> Double { (b.north - b.south) * abs(b.east - b.west) }
+
+    /// Folded `names` per city id, computed once (the area tree calls `cityFor` for every event on every render).
+    private final class NameIndex: @unchecked Sendable {
+        private var byID: [String: Set<String>] = [:]
+        private let lock = NSLock()
+        func names(_ c: City) -> Set<String> {
+            lock.lock(); defer { lock.unlock() }
+            if let hit = byID[c.id] { return hit }
+            let set = Set(c.names.map { MapDiscovery.foldName($0) })
+            byID[c.id] = set
+            return set
+        }
+    }
+    private static let nameIndex = NameIndex()
+
+    /// What `cityFor` reads from an event.
+    struct Place {
+        var city: String? = nil
+        var stateProvince: String? = nil
+        var countryCode: String? = nil
+        var lat: Double? = nil
+        var lng: Double? = nil
+    }
+
+    /// The city id for an event: its city, then its province column naming a city (same country), else the smallest
+    /// city box containing its position, else nil.
+    static func cityFor(_ ev: Place, cities: [City]) -> String? {
+        let cc = ev.countryCode ?? ""
+        func sameCountry(_ c: City) -> Bool { cc.isEmpty || cc == c.country }
+        for raw in [ev.city, ev.stateProvince] {
+            let n = foldName(raw)
+            if n.isEmpty { continue }
+            if let hit = cities.first(where: { c in sameCountry(c) && (nameIndex.names(c).contains(n) || c.aliases.contains(n)) }) {
+                return hit.id
+            }
+        }
+        var best: City?
+        for c in cities where inBounds(lat: ev.lat, lng: ev.lng, c.bounds) {
+            if best == nil || boxArea(c.bounds) < boxArea(best!.bounds) { best = c }
+        }
+        return best?.id
+    }
+
+    struct CityHit: Equatable { var id: String; var count: Int }
+
+    /// Cities whose name or alias starts a word with `query` (2+ characters), most events first, then a match at the
+    /// start of a name, then by name; at most `limit`.
+    static func searchCities(_ query: String, cities: [City], counts: [String: Int] = [:], limit: Int = 3) -> [CityHit] {
+        let q = foldText(query)
+        guard q.count >= 2 else { return [] }
+        var hits: [(id: String, count: Int, exact: Bool, name: String, order: Int)] = []
+        for c in cities {
+            let keys = ([c.vi, c.en] + c.aliases).map { foldText($0) }
+            let exact = keys.contains { $0.hasPrefix(q) }
+            if exact || keys.contains(where: { (" " + $0).contains(" " + q) }) {
+                hits.append((c.id, counts[c.id] ?? 0, exact, foldText(c.vi), hits.count))
+            }
+        }
+        hits.sort { a, b in
+            if a.count != b.count { return a.count > b.count }
+            if a.exact != b.exact { return a.exact }
+            if a.name != b.name { return a.name < b.name }
+            return a.order < b.order // JS sort is stable
+        }
+        return hits.prefix(limit).map { CityHit(id: $0.id, count: $0.count) }
+    }
+
+    /// Markers for `points` at `zoom`. Below `cityZoom` every point with a city joins that city's bubble (at the city
+    /// centre with the city's bounds; tap = fly there), the rest fall back to `clusterPins`. At `cityZoom` and above it
+    /// is exactly `clusterPins`. Every point is in exactly one marker, so markers add up to the count.
+    static func cityGroups(_ points: [GroupPoint], zoom: Double, cityOf: (GroupPoint) -> String?, cities: [City]) -> [Group] {
+        if zoom >= cityZoom { return clusterPins(points, zoom: zoom) }
+        let byID = Dictionary(cities.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var order: [String] = []
+        var groups: [String: [GroupPoint]] = [:]
+        var rest: [GroupPoint] = []
+        for p in points {
+            guard let id = cityOf(p), byID[id] != nil else { rest.append(p); continue }
+            if groups[id] == nil { groups[id] = []; order.append(id) }
+            groups[id]!.append(p)
+        }
+        let out = order.map { id -> Group in
+            let c = byID[id]!
+            return Group(kind: .city, ids: groups[id]!.map(\.id), lat: c.center.lat, lng: c.center.lng, bounds: c.bounds, cityId: id)
+        }
+        return out + clusterPins(rest, zoom: zoom)
+    }
+
+    /// One piece of the active filter summary (peek strip + compact sticky header); labelled per language by the view.
+    enum SummaryToken: Equatable {
+        case query(String)
+        case cat(String)
+        case forYou
+        case date(String)
+        case free
+        case price(min: Int?, max: Int?, currency: String)
+        case seatsLeft
+        case almostFull
+        case types(Int)
+    }
+
+    /// What is filtered, in reading order: query · cat (each) · forYou · date · free · price · seatsLeft · almostFull ·
+    /// types (n). `count` is the badge number (each token counts 1, `types` counts n).
+    static func activeFilterSummary(_ f: HomeDiscovery.Filters, forYou: Bool = false, query: String = "") -> (tokens: [SummaryToken], count: Int) {
+        var tokens: [SummaryToken] = []
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !q.isEmpty { tokens.append(.query(q)) }
+        for key in f.cats { tokens.append(.cat(key)) }
+        if forYou { tokens.append(.forYou) }
+        if f.date != "any" && !f.date.isEmpty { tokens.append(.date(f.date)) }
+        if f.free { tokens.append(.free) }
+        if f.priceMin != nil || f.priceMax != nil {
+            tokens.append(.price(min: f.priceMin, max: f.priceMax, currency: f.priceCurrency == "USD" ? "USD" : "VND"))
+        }
+        if f.seatsLeft { tokens.append(.seatsLeft) }
+        if f.almostFull { tokens.append(.almostFull) }
+        if !f.typeFilters.isEmpty { tokens.append(.types(f.typeFilters.count)) }
+        let count = tokens.reduce(0) { n, t in if case .types(let k) = t { return n + k } else { return n + 1 } }
+        return (tokens, count)
     }
 }

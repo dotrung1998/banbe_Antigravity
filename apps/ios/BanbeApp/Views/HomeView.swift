@@ -1199,7 +1199,8 @@ struct HomeView: View {
                 typeLine: app.eventTypesEnabled && (!AppState.catalogKeys.contains(e.key) || !e.details.isEmpty)
                     ? EventTypes.cardLine(EventTypes.profile(e.catKey), capacity: it.capacity ?? e.capacity ?? 0,
                                           details: e.details, lang: app.isEN ? "en" : "vi")
-                    : nil
+                    : nil,
+                imgs: app.cardImages(e)
             )
         }
         let badge = HomeDiscovery.activeFilterCount(f)

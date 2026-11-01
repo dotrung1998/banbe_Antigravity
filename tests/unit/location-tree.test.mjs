@@ -83,3 +83,60 @@ test('tree search is accent-insensitive and reveals ancestors only', () => {
   assert.ok(searchLocationTree(tree, index, 'hoa ky').matchIds.has('loc:US'));
   assert.equal(searchLocationTree(tree, index, '   '), null);
 });
+
+// ---- Map v6 (note 74): the VN city level (from src/data/cities.json, no DB change) ----
+import { resolveCitylessId, locationNodeLabel, eventCity, cityOfNode } from '../../src/lib/locationTree.js';
+
+const HCM_Q1 = { key: 'h1', countryCode: 'VN', area: 'Quận 1', lat: 10.776, lng: 106.70 }; // HCMC rows have no state
+const HCM_Q3 = { key: 'h3', countryCode: 'VN', area: 'Quận 3', lat: 10.78, lng: 106.68, neighborhood: 'Phường 6' };
+const HANOI = { key: 'hn', countryCode: 'VN', stateProvince: 'Thành phố Hà Nội', area: 'Hoàn Kiếm', lat: 21.03, lng: 105.85 };
+const DALAT_BY_COLUMN = { key: 'dl', countryCode: 'VN', stateProvince: 'Tỉnh Lâm Đồng', city: 'Đà Lạt', area: 'Đà Lạt' };
+
+test('an HCMC row without a state hangs under the city: loc:VN|c:TP. Hồ Chí Minh|a:Quận 1', () => {
+  assert.deepEqual(eventLocationIds(HCM_Q1), ['loc:VN', 'loc:VN|c:TP. Hồ Chí Minh', 'loc:VN|c:TP. Hồ Chí Minh|a:Quận 1']);
+  assert.deepEqual(eventLocationIds(HCM_Q3).slice(-1), ['loc:VN|c:TP. Hồ Chí Minh|a:Quận 3|n:Phường 6']);
+  assert.equal(eventCity(HCM_Q1).id, 'vn-hcm');
+  const tree = buildLocationTree([HCM_Q1, HCM_Q3]);
+  const city = tree.byId.get('loc:VN|c:TP. Hồ Chí Minh');
+  assert.equal(city.count, 2);
+  assert.deepEqual(city.children.map(n => n.value).sort(), ['Quận 1', 'Quận 3']);
+  assert.ok(eventMatchesLocation(HCM_Q3, 'loc:VN|c:TP. Hồ Chí Minh'));
+});
+
+test('a state that already names the city is not repeated (Thành phố Hà Nội has no Hà Nội under it)', () => {
+  assert.deepEqual(eventLocationIds(HANOI), ['loc:VN', 'loc:VN|s:Thành phố Hà Nội', 'loc:VN|s:Thành phố Hà Nội|a:Hoàn Kiếm']);
+});
+
+test('the city comes from the city column too, and an area equal to the city is skipped', () => {
+  assert.deepEqual(eventLocationIds(DALAT_BY_COLUMN), ['loc:VN', 'loc:VN|s:Tỉnh Lâm Đồng', 'loc:VN|s:Tỉnh Lâm Đồng|c:Đà Lạt']);
+});
+
+test('US keeps its raw city column; rows with no city or position keep the old path', () => {
+  assert.deepEqual(eventLocationIds({ key: 'u', countryCode: 'US', stateProvince: 'California', city: 'San Francisco', lat: 37.77, lng: -122.42 }),
+    ['loc:US', 'loc:US|s:California', 'loc:US|s:California|c:San Francisco']);
+  assert.deepEqual(eventLocationIds(EVENTS[1]), ['loc:VN', 'loc:VN|a:Bình Thạnh']);
+});
+
+test('city node labels follow the language; the search finds the English name', () => {
+  const tree = buildLocationTree([HCM_Q1]);
+  const node = tree.byId.get('loc:VN|c:TP. Hồ Chí Minh');
+  assert.equal(locationNodeLabel(node, 'vi'), 'TP. Hồ Chí Minh');
+  assert.equal(locationNodeLabel(node, 'en'), 'Ho Chi Minh City');
+  assert.equal(locationShortLabel('loc:VN|c:TP. Hồ Chí Minh|a:Quận 1', 'en'), 'Quận 1, Ho Chi Minh City');
+  assert.ok(searchLocationTree(tree, buildLocationSearchIndex(tree), 'ho chi minh city').matchIds.has(node.id));
+  assert.equal(cityOfNode(node.id).id, 'vn-hcm');
+  assert.equal(cityOfNode('loc:VN|c:TP. Hồ Chí Minh|a:Quận 1'), null);
+});
+
+test('a legacy id without the city maps to the one node with the same tail plus a city', () => {
+  const tree = buildLocationTree([HCM_Q1, HCM_Q3, ...EVENTS]);
+  assert.equal(resolveCitylessId('loc:VN|a:Quận 1', tree), 'loc:VN|a:Quận 1'); // EVENTS[3] has no position: the old node still exists
+  const cityOnly = buildLocationTree([HCM_Q1, HCM_Q3]);
+  assert.equal(resolveCitylessId('loc:VN|a:Quận 1', cityOnly), 'loc:VN|c:TP. Hồ Chí Minh|a:Quận 1');
+  assert.equal(resolveCitylessId('loc:VN|a:Quận 3|n:Phường 6', cityOnly), 'loc:VN|c:TP. Hồ Chí Minh|a:Quận 3|n:Phường 6');
+  assert.equal(migrateLegacyAreaKey('q1', cityOnly), 'loc:VN|c:TP. Hồ Chí Minh|a:Quận 1');
+  assert.equal(migrateLegacyAreaKey('loc:VN|a:Nowhere', cityOnly), 'loc:VN|a:Nowhere'); // no match: unchanged, never guessed
+  // Two cities with the same district name: ambiguous, left as is.
+  const twoCities = buildLocationTree([HCM_Q1, { key: 'x', countryCode: 'VN', area: 'Quận 1', lat: 21.03, lng: 105.85 }]);
+  assert.equal(resolveCitylessId('loc:VN|a:Quận 1', twoCities), 'loc:VN|a:Quận 1');
+});

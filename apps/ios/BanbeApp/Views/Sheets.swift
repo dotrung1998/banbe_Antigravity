@@ -204,6 +204,17 @@ private struct GlassPanelModifier: ViewModifier {
     }
 }
 
+/// Accessibility ids of the location pickers (note 74): `area.node.<id>` on a row's name (it selects), with the
+/// legacy keys kept for the three old districts (`area.thaodien`…) and `area.all`; `area.chevron.<id>` expands.
+enum LocationPickerIDs {
+    static func node(_ id: String) -> String {
+        if id == LocationHierarchy.allID { return "area.all" }
+        if let legacy = LocationHierarchy.legacyKey(forNodeID: id) { return "area." + legacy }
+        return "area.node." + id
+    }
+    static func chevron(_ id: String) -> String { "area.chevron." + id }
+}
+
 /// The hierarchical, searchable location list shared by Home's area sheet
 /// and Map Explore's own location picker. Rows are flattened from the tree
 /// so expand/collapse (keyed by stable node ID in `app.areaExpanded`) and
@@ -217,13 +228,11 @@ struct LocationPickerList: View {
 
     private enum Row: Identifiable {
         case node(LocationNode, Int)
-        case allIn(LocationNode, Int)
         case empty(String, Int)
 
         var id: String {
             switch self {
             case .node(let n, _): return "node:" + n.id
-            case .allIn(let n, _): return "all:" + n.id
             case .empty(let parent, _): return "empty:" + parent
             }
         }
@@ -241,7 +250,6 @@ struct LocationPickerList: View {
             guard isExpandable(n) else { continue }
             let expanded = app.areaExpanded.contains(n.id) || (search?.autoExpanded.contains(n.id) ?? false)
             guard expanded else { continue }
-            out.append(.allIn(n, depth + 1))
             if n.children.isEmpty {
                 out.append(.empty(n.id, depth + 1))
             } else {
@@ -253,9 +261,7 @@ struct LocationPickerList: View {
 
     private func countLabel(_ n: Int) -> String { app.T("\(n) sự kiện", n == 1 ? "1 event" : "\(n) events") }
 
-    private func accessibilityID(_ nodeID: String) -> String {
-        "area." + (LocationHierarchy.legacyKey(forNodeID: nodeID) ?? nodeID)
-    }
+    private func accessibilityID(_ nodeID: String) -> String { LocationPickerIDs.node(nodeID) }
 
     var body: some View {
         let roots = app.locationTree
@@ -295,8 +301,6 @@ struct LocationPickerList: View {
                             } else {
                                 selectRow(id: n.id, title: LocationHierarchy.label(n, T: app.T), count: n.openCount, depth: depth, legacy: n.kind == .legacyArea)
                             }
-                        case .allIn(let n, let depth):
-                            selectRow(id: n.id, title: app.T("Tất cả tại \(LocationHierarchy.label(n, T: app.T))", "All in \(LocationHierarchy.label(n, T: app.T))"), count: n.openCount, depth: depth)
                         case .empty(_, let depth):
                             Text(app.T("Chưa có sự kiện nào ở đây.", "No events here yet."))
                                 .font(.system(size: 12.5))
@@ -322,36 +326,50 @@ struct LocationPickerList: View {
         }
     }
 
-    /// A parent node: tapping only expands/collapses — selection lives on
-    /// its own "All in [X]" row (and on its children), so expanding never
-    /// changes what's selected. A dot marks a selection hidden inside.
+    /// Map v6 (note 74), one tap: the NAME selects the node (everything inside it) and closes; only the chevron
+    /// expands / collapses. The "All in X" rows are gone. A dot marks a selection hidden inside.
     private func expandRow(_ n: LocationNode, depth: Int) -> some View {
         let expanded = app.areaExpanded.contains(n.id)
+        let selected = app.area == n.id
         let containsSelection = app.area != LocationHierarchy.allID && LocationHierarchy.matches(leafID: app.area, selection: n.id)
-        return Button {
-            if expanded { app.areaExpanded.remove(n.id) } else { app.areaExpanded.insert(n.id) }
-        } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+        return HStack(spacing: 0) {
+            Button {
+                if expanded { app.areaExpanded.remove(n.id) } else { app.areaExpanded.insert(n.id) }
+            } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
                     .rotationEffect(.degrees(expanded ? 90 : 0))
                     .opacity(0.6)
-                    .frame(width: 12)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(LocationHierarchy.label(n, T: app.T))
-                        .font(.system(size: 14.5, weight: containsSelection ? .semibold : .regular))
-                    if n.kind == .legacyArea { legacyCaption }
-                }
-                if containsSelection { Circle().frame(width: 5, height: 5) }
-                Spacer()
-                Text(countLabel(n.openCount)).font(.system(size: 11))
+                    .frame(width: 32, height: 44)
+                    .contentShape(Rectangle())
             }
-            .padding(.leading, CGFloat(depth) * 16)
-            .padding(.vertical, 13)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .padding(.leading, CGFloat(depth) * 16 - 10)
+            .accessibilityLabel(expanded ? app.T("Thu gọn \(LocationHierarchy.label(n, T: app.T))", "Collapse \(LocationHierarchy.label(n, T: app.T))")
+                                         : app.T("Mở \(LocationHierarchy.label(n, T: app.T))", "Expand \(LocationHierarchy.label(n, T: app.T))"))
+            .accessibilityIdentifier(LocationPickerIDs.chevron(n.id))
+            Button { onPick(n.id) } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(LocationHierarchy.label(n, T: app.T))
+                            .font(.system(size: 14.5, weight: containsSelection ? .semibold : .regular))
+                        if n.kind == .legacyArea { legacyCaption }
+                    }
+                    if containsSelection && !selected { Circle().frame(width: 5, height: 5) }
+                    Spacer()
+                    Text(countLabel(n.openCount)).font(.system(size: 11))
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .opacity(selected ? 1 : 0)
+                        .accessibilityHidden(!selected)
+                }
+                .padding(.vertical, 13)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(accessibilityID(n.id))
+            .accessibilityAddTraits(selected ? .isSelected : [])
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("area.toggle.\(n.id)")
         .overlay(alignment: .bottom) { Divider().overlay(app.palette.rule) }
     }
 
@@ -405,6 +423,8 @@ struct LocationPickerSheet: View {
     /// checkmark and the counts behind update), and the header's "Done" dismisses it, so the filter draft is
     /// never lost. Everywhere else a pick closes the picker, as before.
     var doneMode = false
+    /// Map v5 (note 73): the Map's "Cities" section, shown above the location list in the card.
+    var topContent: AnyView? = nil
 
     var body: some View {
         if doneMode { sheetBody } else { cardBody }
@@ -440,6 +460,7 @@ struct LocationPickerSheet: View {
                     .accessibilityIdentifier("map.area.close")
                 }
             }
+            if let topContent { topContent }
             LocationPickerList { id in
                 app.area = LocationHierarchy.migrateSelection(id)
                 if !doneMode { isPresented = false }
@@ -510,18 +531,15 @@ struct NativeLocationPicker: View {
     /// The list row that shows the current selection: a parent is selected through its own "All in X" row.
     private var selectedRowID: String {
         if app.area == LocationHierarchy.allID { return "allLocations" }
-        if let n = findNode(app.area, in: app.locationTree), isExpandable(n) { return "all:" + n.id }
         return "node:" + app.area
     }
 
     private enum Row: Identifiable {
         case node(LocationNode, Int)
-        case allIn(LocationNode, Int)
         case empty(String, Int)
         var id: String {
             switch self {
             case .node(let n, _): return "node:" + n.id
-            case .allIn(let n, _): return "all:" + n.id
             case .empty(let parent, _): return "empty:" + parent
             }
         }
@@ -536,14 +554,13 @@ struct NativeLocationPicker: View {
             out.append(.node(n, depth))
             guard isExpandable(n) else { continue }
             guard app.areaExpanded.contains(n.id) || (search?.autoExpanded.contains(n.id) ?? false) else { continue }
-            out.append(.allIn(n, depth + 1))
             if n.children.isEmpty { out.append(.empty(n.id, depth + 1)) } else { out.append(contentsOf: rows(n.children, depth: depth + 1, search: search)) }
         }
         return out
     }
 
     private func countLabel(_ n: Int) -> String { app.T("\(n) sự kiện", n == 1 ? "1 event" : "\(n) events") }
-    private func accessibilityID(_ nodeID: String) -> String { "area." + (LocationHierarchy.legacyKey(forNodeID: nodeID) ?? nodeID) }
+    private func accessibilityID(_ nodeID: String) -> String { LocationPickerIDs.node(nodeID) }
     private var currentLabel: String {
         app.area == LocationHierarchy.allID ? app.T("Mọi nơi", "Everywhere") : app.currentAreaLabel
     }
@@ -568,9 +585,6 @@ struct NativeLocationPicker: View {
                         case .node(let n, let depth):
                             if isExpandable(n) { expandRow(n, depth: depth) }
                             else { selectRow(id: n.id, title: LocationHierarchy.label(n, T: app.T), count: n.openCount, depth: depth, legacy: n.kind == .legacyArea) }
-                        case .allIn(let n, let depth):
-                            selectRow(id: n.id, title: app.T("Tất cả tại \(LocationHierarchy.label(n, T: app.T))", "All in \(LocationHierarchy.label(n, T: app.T))"),
-                                      count: n.openCount, depth: depth)
                         case .empty(_, let depth):
                             Text(app.T("Chưa có sự kiện nào ở đây.", "No events here yet."))
                                 .font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.55))
@@ -644,38 +658,58 @@ struct NativeLocationPicker: View {
         }
     }
 
+    /// One tap (note 74): the name selects the node (the sheet stays open in this filter-sheet mode, "Done" closes);
+    /// only the chevron expands / collapses.
     private func expandRow(_ n: LocationNode, depth: Int) -> some View {
         let expanded = app.areaExpanded.contains(n.id)
+        let selected = app.area == n.id
         let containsSelection = app.area != LocationHierarchy.allID && LocationHierarchy.matches(leafID: app.area, selection: n.id)
-        return Button {
-            withAnimation(.easeOut(duration: 0.2)) {
-                if expanded { app.areaExpanded.remove(n.id) } else { app.areaExpanded.insert(n.id) }
-            }
-            // Opening a branch lifts the sheet as high as it goes, to show as many options as possible.
-            if !expanded && detent != .large {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) { detent = .large }
-            }
-        } label: {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(LocationHierarchy.label(n, T: app.T)).fontWeight(containsSelection ? .semibold : .regular)
-                    if n.kind == .legacyArea { legacyCaption }
+        return HStack(spacing: 10) {
+            Button {
+                Haptics.selection()
+                app.area = LocationHierarchy.migrateSelection(n.id)
+            } label: {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(LocationHierarchy.label(n, T: app.T)).fontWeight(containsSelection ? .semibold : .regular)
+                        if n.kind == .legacyArea { legacyCaption }
+                    }
+                    if containsSelection && !selected { Circle().fill(app.palette.clay).frame(width: 6, height: 6) }
+                    Spacer()
+                    Text(countLabel(n.openCount)).font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.55))
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(app.palette.clay)
+                        .opacity(selected ? 1 : 0)
+                        .accessibilityHidden(!selected)
                 }
-                if containsSelection { Circle().fill(app.palette.clay).frame(width: 6, height: 6) }
-                Spacer()
-                Text(countLabel(n.openCount)).font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.55))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(accessibilityID(n.id))
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    if expanded { app.areaExpanded.remove(n.id) } else { app.areaExpanded.insert(n.id) }
+                }
+                // Opening a branch lifts the sheet as high as it goes, to show as many options as possible.
+                if !expanded && detent != .large {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) { detent = .large }
+                }
+            } label: {
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(app.palette.ink.opacity(0.35))
                     .rotationEffect(.degrees(expanded ? 90 : 0))
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
             }
-            .padding(.leading, CGFloat(depth) * 18)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel(expanded ? app.T("Thu gọn", "Collapse") : app.T("Mở rộng", "Expand"))
+            .accessibilityIdentifier(LocationPickerIDs.chevron(n.id))
         }
-        .buttonStyle(.plain)
+        .padding(.leading, CGFloat(depth) * 18)
         .listRowBackground(app.palette.field.opacity(0.55))
-        .accessibilityIdentifier("area.toggle.\(n.id)")
-        .accessibilityValue(expanded ? app.T("Đang mở", "Expanded") : app.T("Đang đóng", "Collapsed"))
     }
 
     private func selectRow(id: String, title: String, count: Int, depth: Int, legacy: Bool = false) -> some View {

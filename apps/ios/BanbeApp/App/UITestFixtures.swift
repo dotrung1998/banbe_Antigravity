@@ -59,6 +59,20 @@ enum UITestFixture {
     /// Stable fake account id so the draft store/relaunch tests have a key.
     static let userID = UUID(uuidString: "00000000-0000-4000-8000-00000000F1F0")!
 
+    /// Map v6 (note 74): three bundled catalogue photos, for the photo pager fixtures (no network).
+    static var demoGallery: [URL] { EventCatalog.all.prefix(3).compactMap { URL(string: $0.img) } }
+
+    /// Every id gets at least the demo gallery after its own photos (cover first), at most 6.
+    static func paddedGalleries(_ ids: [String], _ galleries: [String: [URL]]) -> [String: [URL]] {
+        var out = galleries
+        for id in ids {
+            var g = galleries[id] ?? []
+            for u in demoGallery where !g.contains(u) { g.append(u) }
+            out[id] = Array(g.prefix(6))
+        }
+        return out
+    }
+
     // MARK: Note 54 — Admin > Manage events (in-memory stand-in for migrations 188/189; same rules as the server).
     static var adminManagedEvents: [AdminEventRow] = {
         let now = Date()
@@ -437,6 +451,8 @@ struct UITestFixtureRoot: View {
         app.refreshScheduleAdded()
         // Discover pool (public + live), including the hosted one to prove dedupe.
         app.discoveryEvents = failed ? [] : events.filter { $0.key != "fx-added" || name.hasPrefix("plan") }
+        // Map v6 (note 74): two Home cards with three photos each (the card pager).
+        app.eventGalleryURLs = ["fx-near": UITestFixture.demoGallery, "fx-later": UITestFixture.demoGallery]
         app.discoveryEventsLoadFailed = failed
         app.paymentBookingsLoadFailed = failed
         app.scheduleSelectedDate = day

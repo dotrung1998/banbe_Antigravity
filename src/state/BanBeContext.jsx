@@ -37,6 +37,7 @@ import { holdLeftCreateDraft, beginCreateDraftRestore, discardLeftCreateDraft } 
 import { normalizeThemeChoice, resolveTheme, systemPrefersDark } from '../lib/themeChoice.js';
 import { homeViewAfterSync, startHostingStep } from '../lib/homeMode.js';
 import { clampQty, maxQty } from '../lib/reserveBar.js';
+import { groupPhotoRows, cardPhotoList, MAX_CARD_PHOTOS } from '../lib/eventPhotoUrls.js';
 
 /** Media-API upload with the current session token. Resolves `{provider:'supabase'}`
  * when the caller must use the legacy path; throws MediaUploadError only after bytes were PUT. */
@@ -90,6 +91,12 @@ function shapeRealEvent(row, extra = {}) {
     approval: row.approval || '',
     organizerId: row.organizer_id,
     photoUrl: resolveCoverUrl(row.cover_image, extra.photoUrl, row.cover_r2_ref),
+    // Map v6 (note 74): the card's photo pager — cover first, then up to 5 more public photos (photoUrlsByEvent).
+    // Invite-only / private events stay cover-only.
+    photoUrls: (() => {
+      const cover = resolveCoverUrl(row.cover_image, extra.photoUrl, row.cover_r2_ref);
+      return row.visibility === 'public' ? cardPhotoList(cover, extra.photoUrls) : (cover ? [cover] : []);
+    })(),
     organizerName: extra.organizerName || '',
     // TASK 3 (event creation validation pass) — AdminEvents.jsx's own
     // detailed review section. `organizerType`/`organizerVerified`/
@@ -247,22 +254,29 @@ export async function resolveEventPhotoUrlAsync(storagePath, r2Ref, variant = 'c
   return publicEventPhotoUrl(storagePath, r2Ref, variant);
 }
 
-/** event_photos rows for `eventIds` -> { [event_id]: first public photo URL },
- * same batching + bucket-name-doubling defensive strip loadNotifications'
- * own eventPhotoByEventId uses (see that function's comment). Shared here
- * so loadWeekendEvents, loadRealEventsById and MapExplore's own
- * fetchLiveEvents don't each reimplement it. */
-export async function firstPhotoUrlByEvent(eventIds) {
+/** event_photos rows for `eventIds` -> { [event_id]: up to `max` photo URLs }, in sort_order — ONE batched
+ * `.in('event_id', ids)` query, same bucket-name-doubling defensive strip loadNotifications' own
+ * eventPhotoByEventId uses (see that function's comment). Map v6 (note 74): public paths only by default, so the
+ * card pager never pays for a signed URL; `publicOnly: false` keeps the old first-photo behaviour below. */
+export async function photoUrlsByEvent(eventIds, max = MAX_CARD_PHOTOS, { publicOnly = true } = {}) {
   if (!eventIds.length) return {};
   const { data } = await withR2Columns(withR2 => supabase
     .from('event_photos').select(withR2 ? 'event_id, storage_path, r2_ref, sort_order' : 'event_id, storage_path, sort_order')
     .in('event_id', eventIds).order('sort_order', { ascending: true }));
+  const grouped = groupPhotoRows(data || [], max, { publicOnly });
   const byEvent = {};
-  for (const p of data || []) {
-    if (byEvent[p.event_id]) continue;
-    byEvent[p.event_id] = await resolveEventPhotoUrlAsync(p.storage_path, p.r2_ref, 'card');
-  }
+  await Promise.all(Object.entries(grouped).map(async ([id, rows]) => {
+    const urls = await Promise.all(rows.map(p => resolveEventPhotoUrlAsync(p.storage_path, p.r2_ref, 'card')));
+    byEvent[id] = urls.filter(Boolean);
+  }));
   return byEvent;
+}
+
+/** event_photos rows for `eventIds` -> { [event_id]: first photo URL } (a private one signed), the wrapper
+ * loadWeekendEvents, loadRealEventsById and the host screens keep using. */
+export async function firstPhotoUrlByEvent(eventIds) {
+  const all = await photoUrlsByEvent(eventIds, MAX_CARD_PHOTOS, { publicOnly: false });
+  return Object.fromEntries(Object.entries(all).filter(([, urls]) => urls.length).map(([id, urls]) => [id, urls[0]]));
 }
 
 /** Merges `get_photo_engagement`/ranking-RPC rows into the canonical
@@ -2635,15 +2649,18 @@ export function BanBeProvider({ children }) {
     const events = rows || [];
     const eventIds = events.map(e => e.id);
     const organizerIds = [...new Set(events.map(e => e.organizer_id).filter(Boolean))];
-    const [photoUrlByEvent, orgsRes] = await Promise.all([
-      firstPhotoUrlByEvent(eventIds),
+    // Map v6 (note 74): up to 6 public photos per event for Home's card pager (one batched query; the first is the
+    // old cover fallback).
+    const [photoUrlsById, orgsRes] = await Promise.all([
+      photoUrlsByEvent(eventIds),
       organizerIds.length
         ? supabase.from('organizers').select('id, name').in('id', organizerIds)
         : Promise.resolve({ data: [] }),
     ]);
     const orgNameById = Object.fromEntries((orgsRes.data || []).map(o => [o.id, o.name]));
     const shaped = events.map(e => shapeRealEvent(e, {
-      photoUrl: photoUrlByEvent[e.id],
+      photoUrl: photoUrlsById[e.id]?.[0],
+      photoUrls: photoUrlsById[e.id],
       organizerName: orgNameById[e.organizer_id],
     }));
     set(prev => ({
@@ -6303,7 +6320,8 @@ export function BanBeProvider({ children }) {
   // already reads (Home header/empty-state, Home feed + weekend strip,
   // MapExplore) — `match` is the one shared "event is in the selected node
   // or any of its descendants" check, `label` a short header label.
-  const curAreaKey = migrateLegacyAreaKey(s.area);
+  // Map v6 (note 74): an id from before the VN city level ("loc:VN|a:Quận 1") resolves to its node under the city.
+  const curAreaKey = migrateLegacyAreaKey(s.area, locationTree);
   const curArea = useMemo(() => ({
     key: curAreaKey,
     label: locationShortLabel(curAreaKey, s.lang),

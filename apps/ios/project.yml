@@ -81,6 +81,10 @@ targets:
       # both apps read one file (Lib/EventTypes.swift ⇄ src/lib/eventTypes.js).
       - path: ../../src/data/eventTypeProfiles.json
         buildPhase: resources
+      # Map v5 (note 73): the cities the Map searches, flies to and groups by when zoomed out — the same JSON the
+      # web imports (Lib/MapDiscovery.swift ⇄ src/lib/mapDiscovery.js).
+      - path: ../../src/data/cities.json
+        buildPhase: resources
     resources:
       - BanbeApp/Resources
     dependencies:

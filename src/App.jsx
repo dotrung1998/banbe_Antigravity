@@ -202,10 +202,16 @@ function CreateUndoToast({ offer, aboveDock }) {
 // Room under every docked screen so its last row scrolls clear of the floating dock (was a bare 92).
 const DOCK_CLEARANCE = BAR_HEIGHT + BAR_BOTTOM_OFFSET + 18;
 
-function DockRow({ collapsed, showCreate }) {
+// `hidden` (Map v5, note 73): the Map hides the dock at peek and mid and shows it at tall. It slides down and fades
+// (kept mounted, so it slides back instead of replaying its entrance); hidden = not focusable or tappable.
+function DockRow({ collapsed, showCreate, hidden = false }) {
   return (
     <div
       data-reveal="3"
+      data-testid="dock-row"
+      data-hidden={hidden ? 'true' : undefined}
+      aria-hidden={hidden || undefined}
+      inert={hidden || undefined}
       style={{
         position: 'absolute', left: '50%', bottom: BAR_BOTTOM_OFFSET,
         width: `calc(100% - ${DOCK_MARGIN * 2}px)`,
@@ -246,10 +252,12 @@ function DockRow({ collapsed, showCreate }) {
         // the two now animate/apply completely independently, and this
         // row's real center/size can never again be silently overridden
         // by a completed mount-in animation.
-        translate: '-50% 0',
+        translate: hidden ? '-50% calc(100% + 40px)' : '-50% 0',
         scale: collapsed ? 0.86 : 1,
+        opacity: hidden ? 0 : 1,
+        pointerEvents: hidden ? 'none' : undefined,
         transformOrigin: 'center bottom',
-        transition: 'scale 0.28s cubic-bezier(.22,.61,.36,1)',
+        transition: 'scale 0.28s cubic-bezier(.22,.61,.36,1), translate 0.3s cubic-bezier(.22,.61,.36,1), opacity 0.2s ease',
         // Restores with the existing (previously unused) bottom-up "bbIn"
         // keyframe every time this row remounts — e.g. right after the
         // Khu vực sheet (or any other screen that suppresses the dock)
@@ -821,7 +829,7 @@ function Shell() {
           : T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
       {/* Simple Shell (switch simple_shell): the "+" lives inside the bar (BottomTabBar), so no "+" beside it. */}
-      {showBar && <DockRow collapsed={barCollapsed} showCreate={state.organizerMode && !flagOn(state.featureFlags, 'simple_shell')} />}
+      {showBar && <DockRow collapsed={barCollapsed} hidden={state.screen === 'mapExplore' && !!state.mapDockHidden} showCreate={state.organizerMode && !flagOn(state.featureFlags, 'simple_shell')} />}
       {/* Undo after leaving a new-event draft (BanBeContext createUndoOffer), above the dock when it shows. */}
       {state.createUndoOffer && state.screen !== 'create' && (
         <CreateUndoToast key={state.createUndoOffer.id} offer={state.createUndoOffer} aboveDock={showBar} />

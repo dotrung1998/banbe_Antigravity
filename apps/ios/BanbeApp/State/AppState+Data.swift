@@ -1361,7 +1361,7 @@ extension AppState {
             let rows: [KeyedLiveEventStatus] = try await EventDetailsColumns.retrying {
                 try await SupabaseService.client
                     .from("events")
-                    .select("slug, status, starts_at, cancelled_at, cancel_reason, area, city, country_code, state_province, neighborhood, capacity"
+                    .select("slug, status, starts_at, cancelled_at, cancel_reason, area, city, country_code, state_province, neighborhood, lat, lng, capacity"
                             + EventDetailsColumns.suffix)
                     .in("slug", values: EventCatalog.all.map(\.key))
                     .execute().value
@@ -1447,11 +1447,22 @@ extension AppState {
             // once per load, so the view layer never needs the static
             // catalogue at all for a real event's photo.
             let realIds = rows.filter { EventCatalog.find($0.id)?.key != $0.id }.map(\.id)
-            var urls = await firstPhotoURLByEvent(realIds)
+            let lists = await photoURLsByEvent(realIds)
+            var urls = lists.compactMapValues(\.first)
+            var galleries: [String: [URL]] = [:]
             for row in rows {
-                if let url = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref) { urls[row.id] = url }
+                let cover = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref)
+                if let cover { urls[row.id] = cover }
+                let g = Self.gallery(cover: urls[row.id], photos: lists[row.id] ?? [])
+                if !g.isEmpty { galleries[row.id] = g }
             }
             mapEventCoverURLs = urls
+            #if DEBUG
+            // `-uiFixture shell.map`: live rows, but every event gets a few bundled photos so the Large cards' pager
+            // can be tested (note 74).
+            if UITestFixture.isActive { galleries = UITestFixture.paddedGalleries(rows.map(\.id), galleries) }
+            #endif
+            mapEventPhotoURLs = galleries
         } catch {
             print("Failed to load map events:", error)
             guard generation == mapEventsGeneration else { return }
@@ -3529,8 +3540,15 @@ extension AppState {
     /// reimplement it. Already async, so this uses the real private-
     /// bucket-aware resolver rather than a bare getPublicURL.
     private func firstPhotoURLByEvent(_ eventIds: [String]) async -> [String: URL] {
+        await photoURLsByEvent(eventIds, max: 1).compactMapValues(\.first)
+    }
+
+    /// Map v6 (note 74): up to `max` photos per event in ONE batched `event_photos` query, by sort_order. The first
+    /// photo resolves as before (a private-bucket one through a signed URL); the extra pager photos are public-bucket
+    /// only, and events in `coverOnly` (invite-only) get just their first.
+    func photoURLsByEvent(_ eventIds: [String], max: Int = 6, coverOnly: Set<String> = []) async -> [String: [URL]] {
         guard !eventIds.isEmpty else { return [:] }
-        var byEvent: [String: URL] = [:]
+        var byEvent: [String: [URL]] = [:]
         do {
             let photos: [EventPhotoRow] = try await MediaColumns.retrying { withR2 in
                 try await SupabaseService.client
@@ -3538,15 +3556,37 @@ extension AppState {
                 .in("event_id", values: eventIds)
                 .order("sort_order", ascending: true)
                 .execute().value }
-            for p in photos where byEvent[p.eventId] == nil {
-                if let url = await resolveEventPhotoURL(p.storagePath, r2Ref: p.r2Ref, variant: .card) {
-                    byEvent[p.eventId] = url
+            for p in photos {
+                let have = byEvent[p.eventId] ?? []
+                let cap = coverOnly.contains(p.eventId) ? 1 : max
+                guard have.count < cap else { continue }
+                if !have.isEmpty && p.storagePath.hasPrefix("event-photos-private/") { continue }
+                if let url = await resolveEventPhotoURL(p.storagePath, r2Ref: p.r2Ref, variant: .card), !have.contains(url) {
+                    byEvent[p.eventId] = have + [url]
                 }
             }
         } catch {
-            print("firstPhotoURLByEvent failed:", error)
+            print("photoURLsByEvent failed:", error)
         }
         return byEvent
+    }
+
+    /// Home cards' pager (note 74): each public event's cover + photos; an invite-only event keeps only its cover.
+    private func noteGalleries(_ rows: [RealEventSummary], _ lists: [String: [URL]]) {
+        var next = eventGalleryURLs
+        for row in rows {
+            let cover = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref) ?? lists[row.id]?.first
+            let g = row.visibility == "public" ? Self.gallery(cover: cover, photos: lists[row.id] ?? []) : [cover].compactMap { $0 }
+            next[row.id] = g.isEmpty ? nil : g
+        }
+        if next != eventGalleryURLs { eventGalleryURLs = next }
+    }
+
+    /// Cover first, then the event's photos, duplicates dropped; at most 6.
+    static func gallery(cover: URL?, photos: [URL]) -> [URL] {
+        var out: [URL] = []
+        for u in [cover].compactMap({ $0 }) + photos where !out.contains(u) { out.append(u) }
+        return Array(out.prefix(6))
     }
 
     /// `organizers.name` for a batch of ids, as a lookup dictionary.
@@ -3625,9 +3665,11 @@ try await SupabaseService.client
                 .execute().value }
             let foundIDs = Set(rows.map(\.id))
             let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
-            async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
+            async let photoLists = photoURLsByEvent(rows.map(\.id), coverOnly: Set(rows.filter { $0.visibility != "public" }.map(\.id)))
             async let orgRows = organizerNames(for: organizerIDs)
-            let photos = await photoMap
+            let photoListsByID = await photoLists
+            let photos = photoListsByID.compactMapValues(\.first)
+            noteGalleries(rows, photoListsByID)
             let orgNameByID = await orgRows
             for row in rows {
                 var shaped = row
@@ -3669,13 +3711,15 @@ try await SupabaseService.client
                 .order("starts_at", ascending: true)
                 .execute().value }
             let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
-            async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
+            async let photoLists = photoURLsByEvent(rows.map(\.id), coverOnly: Set(rows.filter { $0.visibility != "public" }.map(\.id)))
             async let orgRows = organizerNames(for: organizerIDs)
             // Anonymous/signed-out visitors have no followed hosts — an
             // empty Set falls every event through to the chronological
             // tiebreak below.
             async let followedIDs = followedOrganizerIDs()
-            let photos = await photoMap
+            let photoListsByID = await photoLists
+            let photos = photoListsByID.compactMapValues(\.first)
+            noteGalleries(rows, photoListsByID)
             let orgNameByID = await orgRows
             let followedOrgIDs = await followedIDs
 
@@ -3722,9 +3766,11 @@ try await SupabaseService.client
                 .limit(300)
                 .execute().value }
             let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
-            async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
+            async let photoLists = photoURLsByEvent(rows.map(\.id), coverOnly: Set(rows.filter { $0.visibility != "public" }.map(\.id)))
             async let orgRows = organizerNames(for: organizerIDs)
-            let photos = await photoMap
+            let photoListsByID = await photoLists
+            let photos = photoListsByID.compactMapValues(\.first)
+            noteGalleries(rows, photoListsByID)
             let orgNameByID = await orgRows
 
             var shaped: [CatalogEvent] = []

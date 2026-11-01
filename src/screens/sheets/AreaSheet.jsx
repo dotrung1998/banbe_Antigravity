@@ -3,8 +3,12 @@ import { createPortal } from 'react-dom';
 import { useBanBe } from '../../state/BanBeContext.jsx';
 import { paper, ink, rule, dockGlass } from '../../theme.js';
 import {
-  LOCATION_ALL, countryLabel, locationAncestorIds, buildLocationSearchIndex, searchLocationTree,
+  LOCATION_ALL, locationNodeLabel, locationAncestorIds, buildLocationSearchIndex, searchLocationTree,
 } from '../../lib/locationTree.js';
+import { searchCities } from '../../lib/mapDiscovery.js';
+import citiesData from '../../data/cities.json';
+
+const CITY_BY_ID = new Map(citiesData.cities.map(c => [c.id, c]));
 
 // Location hierarchy sheet (2026-09-30, migration 112) — replaces the old
 // flat, hardcoded 6-row "Khu vực" list (AREAS in BanBeContext.jsx) with the
@@ -14,11 +18,11 @@ import {
 // invite-only + real live public events).
 //
 // Interaction contract:
-//  - chevron rows expand/collapse independently, keyed by stable node id;
-//    expanding NEVER changes the active filter.
-//  - every expanded node offers "Tất cả tại X" / "All in X" (itself +
-//    descendants, deduped by event id — see buildLocationTree's counts).
-//  - a leaf row selects itself directly.
+//  - Map v6 (note 74), one tap: a row's NAME picks that node (itself +
+//    descendants, deduped by event id — see buildLocationTree's counts);
+//    only its chevron (a separate 44px button) expands/collapses, keyed by
+//    stable node id, and expanding NEVER changes the active filter. The
+//    extra "Tất cả tại X" / "All in X" rows are gone (owner: "double work").
 //  - search filters the ALREADY-BUILT tree client-side (index built once
 //    per tree, not per keystroke) and only OR-s the matches' ancestors into
 //    the expanded set at render time — the manual expand state itself is
@@ -50,13 +54,15 @@ export default function AreaSheet({ embedded = false, onDone }) {
   }); // eslint-disable-line react-hooks/exhaustive-deps
   const tree = locationTree;
 
-  const labelOf = (node) => (node.kind === 'country' ? countryLabel(node.value, lang) : node.value);
+  const labelOf = (node) => locationNodeLabel(node, lang);
   const countLabel = (n) => T(n + ' sự kiện', n + (n === 1 ? ' event' : ' events'));
 
   // Manual expand state: roots that actually have events start open, plus
   // every ancestor of the current selection so it's visible on open.
   const [expanded, setExpanded] = useState(() => {
     const init = new Set(tree.roots.filter(r => r.count > 0).map(r => r.id));
+    // Map v6: a country with a single city opens that city too ("Vietnam › TP. Hồ Chí Minh › Quận 1…" at a glance).
+    for (const r of tree.roots) if (r.count > 0 && r.children.length === 1 && r.children[0].children.length) init.add(r.children[0].id);
     for (const a of locationAncestorIds(tree, curArea.key)) init.add(a);
     return init;
   });
@@ -85,14 +91,20 @@ export default function AreaSheet({ embedded = false, onDone }) {
       const expandable = node.depth === 0 || node.children.length > 0;
       rows.push({ type: 'node', node, expandable, isMatch });
       if (expandable && isExpanded(node.id)) {
-        rows.push({ type: 'all', node });
         if (!node.children.length) rows.push({ type: 'empty', node });
         walk(node.children, insideMatch || isMatch);
       }
     }
   };
   walk(tree.roots, false);
-  const noResults = !!search && search.matchIds.size === 0;
+  // Map v5 (note 73): opened from the Map, a "Cities" section comes first (MapExplore publishes `mapCities`: cities with
+  // events, then the main ones). Picking one flies the map there; Home's area selection is not changed.
+  const mapCityList = s.screen === 'mapExplore' && !embedded && Array.isArray(s.mapCities) ? s.mapCities : [];
+  const cityRows = query.trim()
+    ? searchCities(query, citiesData.cities, Object.fromEntries(mapCityList.map(c => [c.id, c.count])), 5)
+    : mapCityList;
+  const pickCity = (id) => set({ areaAsking: false, mapCityRequest: { id, t: Date.now() } });
+  const noResults = !!search && search.matchIds.size === 0 && cityRows.length === 0;
 
   // A genuine on/off toggle — this used to always call allowLocation(), so
   // once sharing was on there was no way back to off from here.
@@ -106,7 +118,12 @@ export default function AreaSheet({ embedded = false, onDone }) {
     </svg>
   );
   // iOS: leaf rows keep a 12pt blank where the chevron would be.
-  const spacer = <span aria-hidden style={{ width: 12, flex: 'none' }} />;
+  // Map v6: 20 + the 8 gap lines these rows' text up with the tree names (after their 28px chevron column).
+  const spacer = <span aria-hidden style={{ width: 20, flex: 'none' }} />;
+  // Map v6: tree rows are [chevron button | name button]; a leaf keeps the chevron's 44px as a blank.
+  const CHEVRON_W = 36;
+  const treeRow = { display: 'flex', alignItems: 'stretch', borderBottom: `1px solid ${rule}` };
+  const nameBtn = { flex: 1, minWidth: 0, minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14.5, color: ink, textAlign: 'left' };
   const chevron = (open) => (
     <svg aria-hidden width={12} height={12} viewBox="0 0 12 12" fill="none" stroke={ink} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none', opacity: 0.6, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.18s ease' }}>
       <path d="M4 2l4 4-4 4" />
@@ -158,6 +175,26 @@ export default function AreaSheet({ embedded = false, onDone }) {
           {query && <span onClick={() => setQuery('')} data-testid="area-sheet-search-clear" style={{ cursor: 'pointer', color: ink, opacity: 0.5, fontSize: 16, lineHeight: 1 }}>×</span>}
         </div>
         <div data-testid="area-sheet-tree" style={{ display: 'flex', flexDirection: 'column', marginTop: 6, overflowY: 'auto', minHeight: 0, maxHeight: embedded ? '60vh' : 380 }}>
+          {s.screen === 'mapExplore' && !embedded && cityRows.length > 0 && (
+            <div data-testid="area-sheet-cities" style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.6, letterSpacing: '0.04em', textTransform: 'uppercase', padding: '10px 0 2px' }}>{T('Thành phố', 'Cities')}</span>
+              {cityRows.map(({ id, count }) => {
+                const c = CITY_BY_ID.get(id);
+                if (!c) return null;
+                return (
+                  <div key={id} onClick={() => pickCity(id)} data-testid={`area-city:${id}`} role="button" tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickCity(id); } }}
+                    style={rowBase}>
+                    {spacer}
+                    <span style={{ flex: 1 }}>{lang === 'en' ? c.en : c.vi}</span>
+                    <span style={{ fontSize: 11, color: ink }}>{count ? countLabel(count) : T('Chưa có sự kiện', 'No events yet')}</span>
+                    <span aria-hidden style={{ fontSize: 13, color: ink, opacity: 0.6 }}>›</span>
+                  </div>
+                );
+              })}
+              <span style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.6, letterSpacing: '0.04em', textTransform: 'uppercase', padding: '14px 0 2px' }}>{T('Khu vực', 'Areas')}</span>
+            </div>
+          )}
           {!search && (
             <div onClick={() => pickArea(LOCATION_ALL)} data-testid="area-node-all" style={{ ...rowBase, fontWeight: curArea.key === LOCATION_ALL ? 600 : 400 }}>
               {spacer}
@@ -171,21 +208,9 @@ export default function AreaSheet({ embedded = false, onDone }) {
             </div>
           )}
           {rows.map((r) => {
-            const indent = { paddingLeft: r.node.depth * 16 };
-            if (r.type === 'all') {
-              const on = curArea.key === r.node.id;
-              return (
-                <div key={r.node.id + '#all'} onClick={() => pickArea(r.node.id)} data-testid={`area-node-all-in:${r.node.id}`} style={{ ...rowBase, paddingLeft: (r.node.depth + 1) * 16, fontWeight: on ? 600 : 400 }}>
-                  {spacer}
-                  <span style={{ flex: 1 }}>{T('Tất cả tại ', 'All in ')}{labelOf(r.node)}</span>
-                  <span style={{ fontSize: 11, color: ink }}>{countLabel(r.node.count)}</span>
-                  {check(on)}
-                </div>
-              );
-            }
             if (r.type === 'empty') {
               return (
-                <div key={r.node.id + '#empty'} style={{ padding: '11px 0', paddingLeft: (r.node.depth + 1) * 16, fontSize: 12.5, color: ink, opacity: 0.6, borderBottom: `1px solid ${rule}` }}>
+                <div key={r.node.id + '#empty'} style={{ padding: '11px 0', paddingLeft: (r.node.depth + 1) * 16 + CHEVRON_W, fontSize: 12.5, color: ink, opacity: 0.6, borderBottom: `1px solid ${rule}` }}>
                   {T('Chưa có sự kiện nào tại ' + labelOf(r.node) + '.', 'No events in ' + labelOf(r.node) + ' yet.')}
                 </div>
               );
@@ -193,27 +218,32 @@ export default function AreaSheet({ embedded = false, onDone }) {
             const { node, expandable, isMatch } = r;
             const on = curArea.key === node.id;
             const open = expandable && isExpanded(node.id);
+            const label = labelOf(node);
             return (
-              <div
-                key={node.id}
-                onClick={() => (expandable ? toggle(node.id) : pickArea(node.id))}
-                data-testid={`area-node:${node.id}`}
-                aria-expanded={expandable ? open : undefined}
-                style={{ ...rowBase, ...indent, fontWeight: on ? 600 : 400 }}
-              >
-                {expandable ? chevron(open) : spacer}
-                <span style={{ flex: '0 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                  <span>
-                    {labelOf(node)}
+              <div key={node.id} style={{ ...treeRow, paddingLeft: node.depth * 16 }}>
+                {/* Only the chevron browses inside (expanding never picks). 44px tall, the row's full height. */}
+                {expandable ? (
+                  <button type="button" onClick={() => toggle(node.id)} data-testid={`area-chevron:${node.id}`}
+                    aria-expanded={open} aria-label={T(`Xem bên trong ${label}`, `Show what's in ${label}`)}
+                    style={{ width: CHEVRON_W, minHeight: 44, flex: 'none', marginLeft: -8, paddingLeft: 8, border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+                    {chevron(open)}
+                  </button>
+                ) : <span aria-hidden style={{ width: CHEVRON_W - 8, flex: 'none' }} />}
+                {/* The name picks the whole node in one tap (Map v6). */}
+                <button type="button" onClick={() => pickArea(node.id)} data-testid={`area-node:${node.id}`}
+                  aria-pressed={on} aria-label={`${label}, ${countLabel(node.count)}`}
+                  style={{ ...nameBtn, fontWeight: on ? 600 : 400 }}>
+                  <span style={{ flex: '0 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                    <span>{label}</span>
+                    {node.legacy && legacyCaption}
+                    {isMatch && node.depth > 0 && (
+                      <span style={{ fontSize: 11, fontWeight: 400, color: ink, opacity: 0.55 }}>{pathText(node)}</span>
+                    )}
                   </span>
-                  {node.legacy && legacyCaption}
-                  {isMatch && node.depth > 0 && (
-                    <span style={{ fontSize: 11, fontWeight: 400, color: ink, opacity: 0.55 }}>{pathText(node)}</span>
-                  )}
-                </span>
-                {expandable && curArea.key !== LOCATION_ALL && (on || locationAncestorIds(tree, curArea.key).includes(node.id)) && <span aria-hidden style={{ width: 5, height: 5, borderRadius: '50%', background: ink, flex: 'none', alignSelf: 'center' }} />}
-                <span style={{ fontSize: 11, color: ink, fontWeight: 400, marginLeft: 'auto' }}>{countLabel(node.count)}</span>
-                {!expandable && check(on)}
+                  {expandable && !on && curArea.key !== LOCATION_ALL && locationAncestorIds(tree, curArea.key).includes(node.id) && <span aria-hidden style={{ width: 5, height: 5, borderRadius: '50%', background: ink, flex: 'none', alignSelf: 'center' }} />}
+                  <span style={{ fontSize: 11, color: ink, fontWeight: 400, marginLeft: 'auto' }}>{countLabel(node.count)}</span>
+                  {check(on)}
+                </button>
               </div>
             );
           })}

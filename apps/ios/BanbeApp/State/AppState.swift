@@ -470,7 +470,8 @@ final class AppState: ObservableObject {
     // the pure `LocationHierarchy.migrateSelection` instead of breaking.
     @Published var area: String = LocationHierarchy.allID {
         didSet {
-            let migrated = LocationHierarchy.migrateSelection(area)
+            // Map v6: an id from before the city level (`c:VN|a:Quận 1`) maps to the node with the same tail.
+            let migrated = LocationHierarchy.migrateSelection(area, roots: locationTree)
             if migrated != area { area = migrated }
         }
     }
@@ -478,7 +479,8 @@ final class AppState: ObservableObject {
     /// here (not view-local) so it survives the sheet closing/reopening
     /// and is shared by Home's and Map's copies of the picker. Never
     /// touches `area`: expanding is not selecting.
-    @Published var areaExpanded: Set<String> = ["c:VN"]
+    /// Map v6 (note 74): HCMC is a city level under Vietnam now; open it too so its districts stay one tap away.
+    @Published var areaExpanded: Set<String> = ["c:VN", "c:VN|ci:TP. Hồ Chí Minh"]
     /// Live DB location of each demo-catalogue event, keyed by slug —
     /// populated by `loadHomeLiveEvents()` (same rows Map reads).
     @Published var homeEventLocations: [String: EventLocation] = [:]
@@ -2121,6 +2123,12 @@ final class AppState: ObservableObject {
     // which always falls back to the FIRST demo catalogue event's photo
     // for any real (non-demo) event id — see loadMapEvents' own comment.
     @Published var mapEventCoverURLs: [String: URL] = [:]
+    /// Map v6 (note 74): up to 6 photos per Map event, cover first, duplicates dropped (the Large cards' pager).
+    @Published var mapEventPhotoURLs: [String: [URL]] = [:]
+    /// Map v6: the same for Home's discovery events (cover first; invite-only events keep only their cover).
+    @Published var eventGalleryURLs: [String: [URL]] = [:]
+    /// Map v6: the full-height Map list's layout, "large" (photo cards, the default) or "compact". Session only.
+    @Published var mapListLayout = "large"
     /// Mirrors `locationService.authorizationStatus` as a `@Published` so
     /// the compass button's opacity (full vs. the app's 0.16 disabled
     /// token) updates the instant permission changes, granted or revoked.
@@ -2466,6 +2474,15 @@ final class AppState: ObservableObject {
 
     /// Short, disambiguating label for the current location selection
     /// (Home header, empty state, Map chip) — never a full breadcrumb.
+    /// Map v6 (note 74): a Home card's pager photos — its cover first, then its public photos, at most 6. An
+    /// invite-only event keeps only its cover.
+    func cardImages(_ e: CatalogEvent) -> [String] {
+        var out = e.img.isEmpty ? [] : [e.img]
+        guard !e.inviteOnly else { return out }
+        for u in eventGalleryURLs[e.key] ?? [] where !out.contains(u.absoluteString) { out.append(u.absoluteString) }
+        return Array(out.prefix(6))
+    }
+
     var currentAreaLabel: String { LocationHierarchy.shortLabel(for: area, roots: locationTree, T: T) }
 
     /// Location hierarchy — one event's structured location. Real events
@@ -2476,7 +2493,9 @@ final class AppState: ObservableObject {
     func eventLocation(_ e: CatalogEvent) -> EventLocation {
         if let loc = e.location { return loc }
         if let loc = homeEventLocations[e.key] { return loc }
-        return EventLocation(countryCode: "VN", stateProvince: nil, city: nil, area: e.locationLabel, neighborhood: nil)
+        // The bundled catalogue is all Ho Chi Minh City: name the city so its tree path has the city level (note 74).
+        return EventLocation(countryCode: "VN", stateProvince: nil, city: "Hồ Chí Minh", area: e.locationLabel, neighborhood: nil,
+                             lat: e.lat, lng: e.lng)
     }
 
     func matchesArea(_ e: CatalogEvent) -> Bool {

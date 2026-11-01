@@ -11,6 +11,7 @@ import { setSearchOrigin } from '../../lib/searchOrigin.js';
 import { categoryDefs } from '../../lib/eventTypes.js';
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import PhotoPager from '../PhotoPager.jsx';
 
 // ---- category glyphs: one stroke weight, line style, original drawings -------------------
 const GLYPH_PATHS = {
@@ -29,6 +30,12 @@ export function CategoryGlyph({ cat, size = 22, strokeWidth = 1.7 }) {
       {paths.map((d, i) => <path key={i} d={d} />)}
     </svg>
   );
+}
+
+/** The same line icon as markup, for map markers (plain DOM, not React). Map v5 (note 73). */
+export function categoryGlyphMarkup(cat, size = 14, strokeWidth = 2) {
+  const paths = GLYPH_PATHS[cat] || GLYPH_PATHS.all;
+  return `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" style="flex:none">${paths.map(d => `<path d="${d}"/>`).join('')}</svg>`;
 }
 
 export const CATEGORY_DEFS = categoryDefs({ withAll: true }); // src/data/eventTypeProfiles.json
@@ -197,9 +204,12 @@ function Photo({ ev, height, T, radius, compact = false, slot = null }) {
 // `polaroid` (switch polaroid_cards, note 71, Calm Pass): the photo is inset 8px in a `mat` frame (hairline + soft
 // ink-tinted shadow in light, the surface step alone in dark) with the caption below it. No rotation, tape or
 // stickers, so long Vietnamese titles and large text behave exactly as on the plain card. Wins over `filled`.
+const cardPhotos = (ev) => (ev.imgs?.length ? ev.imgs : ev.img ? [ev.img] : []);
 const POLAROID_INSET = 8;
 const POLAROID_PHOTO_RADIUS = 8;
-export function DiscoveryCard({ ev, onOpen, onToggleSave, T, filled = false, polaroid = false }) {
+// Map v6 (note 74): the photo is a sideways PhotoPager over `ev.imgs` (cover first, max 6; one photo = a plain image).
+// The Map's Large cards reuse this card: `testId` / `gutter` / `role` let it keep its own test ids and 16px gutter.
+export function DiscoveryCard({ ev, onOpen, onToggleSave, T, filled = false, polaroid = false, testId, gutter = 20, role = 'link', current }) {
   const framed = polaroid || filled;
   const body = (children) => (polaroid ? <div style={{ padding: '0 4px 4px' }}>{children}</div>
     : filled ? <div style={{ padding: '0 12px 12px' }}>{children}</div> : children);
@@ -208,12 +218,15 @@ export function DiscoveryCard({ ev, onOpen, onToggleSave, T, filled = false, pol
     : filled ? { background: block, borderRadius: RADIUS.card, overflow: 'hidden' } : undefined;
   const photoRadius = polaroid ? POLAROID_PHOTO_RADIUS : filled ? `${RADIUS.card}px ${RADIUS.card}px 0 0` : RADIUS.card;
   return (
-    <div data-testid={`home-event-${ev.key}`} data-zoom-src={ev.key} onClick={onOpen} role="link" tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter') onOpen(); }}
-      style={{ cursor: 'pointer', padding: framed ? '0 20px 16px' : '0 20px 22px' }}>
+    <div data-testid={testId || `home-event-${ev.key}`} data-zoom-src={ev.key} onClick={onOpen} role={role} tabIndex={0}
+      aria-current={current ? 'true' : undefined}
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || (role === 'button' && e.key === ' '))) { e.preventDefault(); onOpen(); } }}
+      style={{ cursor: 'pointer', padding: framed ? `0 ${gutter}px 16px` : `0 ${gutter}px 22px` }}>
       <div data-filled={filled && !polaroid ? 'true' : undefined} data-polaroid={polaroid ? 'true' : undefined} style={frame}>
       <div style={{ position: 'relative', aspectRatio: '16 / 10' }}>
-        <Photo ev={ev} height="100%" T={T} radius={photoRadius} slot={polaroid ? matSlot : null} />
+        {cardPhotos(ev).length
+          ? <PhotoPager id={ev.key} imgs={cardPhotos(ev)} T={T} radius={photoRadius} label={ev.name} onOpen={onOpen} />
+          : <Photo ev={ev} height="100%" T={T} radius={photoRadius} slot={polaroid ? matSlot : null} />}
         {ev.dateBadge && <span data-testid="home-card-date" style={lightChip({ ...badgeBase, top: 10, left: 10, cursor: 'inherit', fontWeight: 700 })}>{ev.dateBadge}</span>}
         <span role="button" aria-pressed={ev.saved} data-testid={`home-save-${ev.key}`}
           onClick={(e) => { e.stopPropagation(); onToggleSave(); }}

@@ -110,7 +110,8 @@ struct MapEventRow: Codable, Identifiable, Hashable {
     /// Same directions link as Event Detail (`CatalogEvent.mapsURL`).
     var mapsURL: URL? { CatalogEvent.mapsURL(lat: lat, lng: lng) }
     var location: EventLocation {
-        EventLocation(countryCode: countryCode, stateProvince: stateProvince, city: city, area: area, neighborhood: neighborhood)
+        EventLocation(countryCode: countryCode, stateProvince: stateProvince, city: city, area: area, neighborhood: neighborhood,
+                      lat: lat, lng: lng)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -170,6 +171,8 @@ struct MapExploreState {
     /// Phase 3: the Map's whole filter object (Home's shape) and the area chip's context ("area" / "map").
     var filters: HomeDiscovery.Filters? = nil
     var areaContext: String = "map"
+    /// Map v5 (note 73): the city the map was flown to while `areaContext` is "city" (web `cityDest`).
+    var cityContextID: String? = nil
     /// Task 7 (2026-09-21 follow-up, 11-realtime-map.md) — true only for
     /// `AppState.openEventOnMap(_:)`'s own from-scratch snapshot, whose
     /// `cameraSpanLat`/`cameraSpanLng` (0.01°, a tight single-pin view) are

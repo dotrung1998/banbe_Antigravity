@@ -319,7 +319,8 @@ struct RealEventSummary: Decodable {
     /// Stored currency, else VND (every row before migration 195).
     var rowCurrency: String { EventMarket.rowCurrency(currency) }
     var location: EventLocation {
-        EventLocation(countryCode: countryCode, stateProvince: stateProvince, city: city, area: area, neighborhood: neighborhood)
+        EventLocation(countryCode: countryCode, stateProvince: stateProvince, city: city, area: area, neighborhood: neighborhood,
+                      lat: lat, lng: lng)
     }
 }
 

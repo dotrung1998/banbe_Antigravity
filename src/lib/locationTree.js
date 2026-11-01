@@ -8,6 +8,12 @@
 // Built from REAL event fields only (never a hand-authored geography DB):
 //   country_code  -> root        (VN / US always shown, even with 0 events)
 //   state_province -> state node (only when the row actually has one)
+//   VN: city       -> Map v6 (note 74): the city from src/data/cities.json
+//                     (`cityFor`: its city / province column, else the
+//                     smallest city box containing its position), so HCMC
+//                     rows with no state_province still sit under
+//                     "TP. Hồ Chí Minh". Skipped when it would repeat the
+//                     state ("Thành phố Hà Nội" › "Hà Nội").
 //   VN: area       -> LEGACY "familiar area" group (the event's own raw
 //                     `area` string, e.g. "Bình Thạnh" — labeled as legacy,
 //                     never presented as a current official admin unit)
@@ -27,6 +33,11 @@
 // node's count is the size of the Set of event ids whose own path passes
 // through it, not the sum of its children's counts.
 import { normalizeSearchText, matchesSearchQuery } from './search.js';
+import { cityFor, foldName } from './mapDiscovery.js';
+import citiesData from '../data/cities.json' with { type: 'json' };
+
+const CITIES = citiesData.cities;
+const CITY_BY_ID = new Map(CITIES.map(c => [c.id, c]));
 
 export const LOCATION_ALL = 'all';
 const UNKNOWN_COUNTRY = '_';
@@ -61,14 +72,36 @@ function unesc(v) {
  * since that whole catalogue is HCMC-only by its own definition).
  */
 export function eventLocationFields(e) {
-  if (!e) return { countryCode: '', stateProvince: '', area: '', city: '', neighborhood: '' };
+  if (!e) return { countryCode: '', stateProvince: '', area: '', city: '', neighborhood: '', lat: null, lng: null };
   return {
     countryCode: clean(e.countryCode).toUpperCase().slice(0, 2),
     stateProvince: clean(e.stateProvince),
     area: clean(e.locationLabel ?? e.area),
     city: clean(e.city),
     neighborhood: clean(e.neighborhood),
+    lat: Number.isFinite(e.lat) ? e.lat : null,
+    lng: Number.isFinite(e.lng) ? e.lng : null,
   };
+}
+
+// True when `raw` names city `c` (any of its spellings / aliases, accents and "Thành phố" ignored).
+function namesCity(raw, c) {
+  const n = foldName(raw);
+  return !!n && (foldName(c.vi) === n || foldName(c.en) === n || c.names.some(x => foldName(x) === n) || c.aliases.includes(n));
+}
+
+/**
+ * Map v6 (note 74): the VN city level of an event, from src/data/cities.json (no DB change). Null when the event
+ * has no known city, or when its state already names that city (no "Hà Nội" under "Thành phố Hà Nội").
+ */
+export function eventCity(e) {
+  const f = eventLocationFields(e);
+  if (f.countryCode !== 'VN') return null;
+  const id = cityFor({ city: f.city, stateProvince: f.stateProvince, countryCode: 'VN', lat: f.lat, lng: f.lng }, CITIES);
+  const c = id ? CITY_BY_ID.get(id) : null;
+  if (!c || c.country !== 'VN') return null;
+  if (f.stateProvince && namesCity(f.stateProvince, c)) return null;
+  return c;
 }
 
 /**
@@ -90,11 +123,14 @@ export function eventLocationPath(e) {
   if (f.stateProvince) push('s', 'state', f.stateProvince);
   if (cc === 'US') {
     if (f.city) push('c', 'city', f.city);
-  } else if (f.area) {
+  } else {
+    // Map v6 (note 74): VN gets the city (its vi name, from cities.json) between the state and the area.
+    const city = cc === 'VN' ? eventCity(e) : null;
+    if (city) push('c', 'city', city.vi);
     // VN (and the "country not set" bucket, whose area strings are this
     // app's own legacy VN district labels): the raw `area` string as a
-    // legacy familiar-area group.
-    push('a', 'area', f.area, true);
+    // legacy familiar-area group — skipped when it just names the city.
+    if (f.area && !(city && namesCity(f.area, city))) push('a', 'area', f.area, true);
   }
   if (f.neighborhood) {
     const parentValue = segs[segs.length - 1].value;
@@ -142,8 +178,23 @@ export function countryLabel(code, lang = 'vi') {
   }
 }
 
-function segLabel(seg, lang) {
-  return seg.kind === 'country' ? countryLabel(seg.value, lang) : seg.value;
+// A VN city node's value is the cities.json vi name; its label follows the language ("Ho Chi Minh City").
+function cityLabel(value, country, lang) {
+  if (lang !== 'en') return value;
+  const c = CITIES.find(x => x.country === country && x.vi === value);
+  return c ? c.en : value;
+}
+
+function segLabel(seg, lang, country) {
+  if (seg.kind === 'country') return countryLabel(seg.value, lang);
+  if (seg.kind === 'city') return cityLabel(seg.value, country, lang);
+  return seg.value;
+}
+
+/** Display label of a tree node (country by language, a VN city by language, everything else its raw value). */
+export function locationNodeLabel(node, lang = 'vi') {
+  const country = parseLocationId(node.id)[0]?.value;
+  return segLabel(node, lang, country);
 }
 
 /** Short header label: the node + its immediate parent ("Bình Thạnh, Việt Nam", "Phường 1, Da Lat") — never a full breadcrumb. */
@@ -152,7 +203,8 @@ export function locationShortLabel(nodeId, lang = 'vi') {
   if (!segs.length) return lang === 'en' ? 'All areas' : 'Tất cả khu vực';
   const last = segs[segs.length - 1];
   const parent = segs[segs.length - 2];
-  return parent ? `${segLabel(last, lang)}, ${segLabel(parent, lang)}` : segLabel(last, lang);
+  const cc = segs[0].value;
+  return parent ? `${segLabel(last, lang, cc)}, ${segLabel(parent, lang, cc)}` : segLabel(last, lang, cc);
 }
 
 /**
@@ -217,6 +269,7 @@ export function buildLocationSearchIndex(tree) {
   for (const node of tree.byId.values()) {
     const texts = [node.value];
     if (node.kind === 'country') texts.push(countryLabel(node.value, 'vi'), countryLabel(node.value, 'en'));
+    if (node.kind === 'city') texts.push(locationNodeLabel(node, 'en'));
     entries.push({ id: node.id, doc: normalizeSearchText(texts.join(' ')) });
   }
   return entries;
@@ -265,9 +318,37 @@ export const LEGACY_AREA_KEY_MAP = {
   other: 'loc:VN',
   danang: 'loc:VN|a:Đà Nẵng',
 };
-export function migrateLegacyAreaKey(key) {
+export function migrateLegacyAreaKey(key, tree = null) {
   if (key == null || key === '') return LOCATION_ALL;
   const k = String(key);
-  if (k === LOCATION_ALL || k.startsWith('loc:')) return k;
-  return Object.prototype.hasOwnProperty.call(LEGACY_AREA_KEY_MAP, k) ? LEGACY_AREA_KEY_MAP[k] : LOCATION_ALL;
+  if (k === LOCATION_ALL) return k;
+  const id = k.startsWith('loc:') ? k
+    : Object.prototype.hasOwnProperty.call(LEGACY_AREA_KEY_MAP, k) ? LEGACY_AREA_KEY_MAP[k] : LOCATION_ALL;
+  return tree ? resolveCitylessId(id, tree) : id;
+}
+
+// Drops the VN city segment ("loc:VN|c:TP. Hồ Chí Minh|a:Quận 1" → "loc:VN|a:Quận 1").
+function withoutVnCity(id) {
+  if (!id.startsWith('loc:VN|')) return id;
+  return id.split('|').filter(p => !p.startsWith('c:')).join('|');
+}
+
+/**
+ * Map v6 (note 74): an id from before the VN city level ("loc:VN|a:Quận 1": a Home hand-off, an open session) maps to
+ * the ONE node in `tree` with the same path plus a city. Unchanged when the id exists, or when no single node fits
+ * (never guessed between two cities).
+ */
+export function resolveCitylessId(id, tree) {
+  if (!id || id === LOCATION_ALL || !tree?.byId || tree.byId.has(id) || !id.startsWith('loc:VN|')) return id;
+  const hits = [];
+  for (const nid of tree.byId.keys()) if (nid !== id && withoutVnCity(nid) === id) hits.push(nid);
+  return hits.length === 1 ? hits[0] : id;
+}
+
+/** The cities.json city a VN city node stands for (null for any other node). */
+export function cityOfNode(nodeId) {
+  const segs = parseLocationId(nodeId);
+  const last = segs[segs.length - 1];
+  if (!last || last.kind !== 'city' || segs[0].value !== 'VN') return null;
+  return CITIES.find(c => c.country === 'VN' && c.vi === last.value) || null;
 }

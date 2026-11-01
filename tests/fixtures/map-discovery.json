@@ -591,5 +591,296 @@
         "west": 105.75
       }
     }
+  ],
+  "cityFor": [
+    {
+      "name": "province column names HCMC",
+      "ev": {
+        "stateProvince": "Thành phố Hồ Chí Minh",
+        "countryCode": "VN"
+      },
+      "expect": "vn-hcm"
+    },
+    {
+      "name": "HCMC row with no province falls back to its position",
+      "ev": {
+        "lat": 10.78,
+        "lng": 106.7,
+        "countryCode": "VN"
+      },
+      "expect": "vn-hcm"
+    },
+    {
+      "name": "a province that is not a city: position finds Da Lat",
+      "ev": {
+        "stateProvince": "Tỉnh Lâm Đồng",
+        "lat": 11.94,
+        "lng": 108.44,
+        "countryCode": "VN"
+      },
+      "expect": "vn-dalat"
+    },
+    {
+      "name": "two boxes contain the point: the smaller one wins",
+      "ev": {
+        "lat": 15.92,
+        "lng": 108.33
+      },
+      "expect": "vn-hoian"
+    },
+    {
+      "name": "US city column",
+      "ev": {
+        "city": "San Francisco",
+        "stateProvince": "California",
+        "countryCode": "US"
+      },
+      "expect": "us-sf"
+    },
+    {
+      "name": "accent-free alias",
+      "ev": {
+        "city": "saigon"
+      },
+      "expect": "vn-hcm"
+    },
+    {
+      "name": "a name from another country does not match",
+      "ev": {
+        "city": "Hue",
+        "countryCode": "US"
+      },
+      "expect": null
+    },
+    {
+      "name": "no location at all",
+      "ev": {},
+      "expect": null
+    }
+  ],
+  "searchCities": [
+    {
+      "name": "Vietnamese prefix with accents, most events first",
+      "query": "đà",
+      "counts": {
+        "vn-dalat": 2,
+        "vn-hcm": 5
+      },
+      "expect": [
+        {
+          "id": "vn-dalat",
+          "count": 2
+        },
+        {
+          "id": "vn-danang",
+          "count": 0
+        }
+      ]
+    },
+    {
+      "name": "alias with a space",
+      "query": "sai gon",
+      "counts": {
+        "vn-hcm": 5
+      },
+      "expect": [
+        {
+          "id": "vn-hcm",
+          "count": 5
+        }
+      ]
+    },
+    {
+      "name": "alias and a word inside another name",
+      "query": "saigon",
+      "counts": {
+        "vn-hcm": 5
+      },
+      "expect": [
+        {
+          "id": "vn-hcm",
+          "count": 5
+        },
+        {
+          "id": "us-littlesaigon",
+          "count": 0
+        }
+      ]
+    },
+    {
+      "name": "one letter is too short",
+      "query": "h",
+      "counts": {},
+      "expect": []
+    },
+    {
+      "name": "ties sort by name, max three",
+      "query": "san",
+      "counts": {},
+      "expect": [
+        {
+          "id": "us-sandiego",
+          "count": 0
+        },
+        {
+          "id": "us-sf",
+          "count": 0
+        },
+        {
+          "id": "us-sanjose",
+          "count": 0
+        }
+      ]
+    }
+  ],
+  "cityGroups": [
+    {
+      "name": "zoomed out: one bubble per city, no-city points stay pins",
+      "zoom": 6,
+      "points": [
+        {
+          "id": "a",
+          "lat": 10.78,
+          "lng": 106.7
+        },
+        {
+          "id": "b",
+          "lat": 10.8,
+          "lng": 106.72
+        },
+        {
+          "id": "c",
+          "lat": 11.94,
+          "lng": 108.44
+        },
+        {
+          "id": "d",
+          "lat": 12.5,
+          "lng": 107.5
+        }
+      ],
+      "expect": [
+        {
+          "kind": "city",
+          "cityId": "vn-hcm",
+          "ids": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "kind": "city",
+          "cityId": "vn-dalat",
+          "ids": [
+            "c"
+          ]
+        },
+        {
+          "kind": "pin",
+          "ids": [
+            "d"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "at city zoom and above it is exactly clusterPins",
+      "zoom": 12,
+      "points": [
+        {
+          "id": "a",
+          "lat": 10.78,
+          "lng": 106.7
+        },
+        {
+          "id": "b",
+          "lat": 10.8,
+          "lng": 106.72
+        },
+        {
+          "id": "c",
+          "lat": 11.94,
+          "lng": 108.44
+        }
+      ],
+      "expect": "clusterPins"
+    }
+  ],
+  "activeFilterSummary": [
+    {
+      "name": "nothing filtered",
+      "filters": {},
+      "opts": {},
+      "expect": {
+        "tokens": [],
+        "count": 0
+      }
+    },
+    {
+      "name": "category, For You and Tonight",
+      "filters": {
+        "cats": [
+          "supper"
+        ],
+        "date": "tonight"
+      },
+      "opts": {
+        "forYou": true
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "cat",
+            "key": "supper"
+          },
+          {
+            "kind": "forYou"
+          },
+          {
+            "kind": "date",
+            "key": "tonight"
+          }
+        ],
+        "count": 3
+      }
+    },
+    {
+      "name": "query, price, seats and type filters (types count each)",
+      "filters": {
+        "typeFilters": [
+          "a",
+          "b"
+        ],
+        "seatsLeft": true,
+        "priceMin": 100000,
+        "priceMax": null,
+        "date": "any"
+      },
+      "opts": {
+        "query": "  bep "
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "query",
+            "text": "bep"
+          },
+          {
+            "kind": "price",
+            "min": 100000,
+            "max": null,
+            "currency": "VND"
+          },
+          {
+            "kind": "seatsLeft"
+          },
+          {
+            "kind": "types",
+            "n": 2
+          }
+        ],
+        "count": 5
+      }
+    }
   ]
 }
