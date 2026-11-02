@@ -1070,6 +1070,14 @@ private struct ScrollPositionIDModifier: ViewModifier {
 // of which are a real user pull.
 enum ScaffoldPullPhase { case began, changed, ended, cancelled }
 
+/// A one-off "scroll to this offset" for `ScaffoldScrollProbe` (Event Detail V8 tabs, note 75): `y` is measured from the
+/// top of the content (the same 0-at-top value `onScrollMetrics` reports); a new `token` triggers it once.
+struct ScaffoldScrollRequest: Equatable {
+    var token: Int
+    var y: CGFloat
+    var animated = true
+}
+
 struct ScaffoldScrollProbe: UIViewRepresentable {
     var restoreOffsetY: CGFloat? = nil
     var onOffset: ((CGFloat) -> Void)? = nil
@@ -1079,6 +1087,8 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
     /// Map v5 (note 73): (offset below the top, content height, viewport height) on every scroll — the Map's sticky
     /// header collapses only when enough content is left to stay scrolled.
     var onScrollMetrics: ((CGFloat, CGFloat, CGFloat) -> Void)? = nil
+    /// Note 75: scrolls the observed scroll view to `y` (clamped to its range) whenever the token changes.
+    var scrollRequest: ScaffoldScrollRequest? = nil
 
     func makeUIView(context: Context) -> ProbeView {
         let view = ProbeView()
@@ -1100,6 +1110,10 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
             uiView.scrollToTopToken = scrollToTopToken
             uiView.pinToTop()
         }
+        if let r = scrollRequest, r.token != uiView.scrollRequestToken {
+            uiView.scrollRequestToken = r.token
+            uiView.scroll(toY: r.y, animated: r.animated)
+        }
     }
 
     final class ProbeView: UIView {
@@ -1112,7 +1126,17 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
         /// then, so the initial layout's offset 0 never overwrites the value being restored.
         private var restoring = false
         var scrollToTopToken = 0
+        var scrollRequestToken = 0
         private var pinGeneration = 0
+
+        /// Content offset for `y` below the content top, clamped between the top and the bottom of the content.
+        func scroll(toY y: CGFloat, animated: Bool) {
+            guard let sv = observedScrollView else { return }
+            restoring = false
+            let top = -sv.adjustedContentInset.top
+            let bottom = max(top, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
+            sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: min(bottom, max(top, y + top))), animated: animated)
+        }
         private weak var observedScrollView: UIScrollView?
         private var observation: NSKeyValueObservation?
         private weak var attachedGesture: UIPanGestureRecognizer?

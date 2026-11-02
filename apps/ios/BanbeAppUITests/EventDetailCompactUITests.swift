@@ -89,4 +89,32 @@ final class EventDetailCompactUITests: XCTestCase {
         XCTAssertTrue(protection.label.contains("banbe reminds them") || app.staticTexts["The host has 1 hour to confirm; banbe reminds them"].exists)
         shot("event-detail-v8-bottom")
     }
+
+    /// V8 tabs (note 75; web twin tests/event-detail-tabs.spec.js): they show with the solid nav bar, the bottom lights the
+    /// last tab, a tapped tab lands its section under the tab row and stays lit, and the collapsed controls keep 44pt.
+    func testTabsFollowTheScroll() {
+        let app = launch(theme: "light")
+        XCTAssertTrue(el(app, "event.fact.when").waitForExistence(timeout: 10))
+        let protection = el(app, "event.protection")
+        for _ in 0..<10 where !(protection.exists && protection.isHittable && protection.frame.maxY < app.windows.firstMatch.frame.maxY - 200) { app.swipeUp() }
+        for _ in 0..<3 { app.swipeUp() }
+        sleep(1)
+        let safe = el(app, "event.tab.safe")
+        XCTAssertTrue(safe.waitForExistence(timeout: 3))
+        XCTAssertTrue(safe.isSelected, "the bottom of the page lights the last tab")
+        for id in ["event.back", "event.more", "event.share", "event.save"] {
+            let f = el(app, id).frame
+            XCTAssertGreaterThanOrEqual(f.width, 44, id)
+            XCTAssertGreaterThanOrEqual(f.height, 44, id)
+        }
+        shot("event-detail-v8-tabs-bottom")
+        el(app, "event.tab.host").tap()
+        sleep(2)
+        XCTAssertTrue(el(app, "event.tab.host").isSelected, "a tapped tab stays lit")
+        let row = el(app, "event.tabs").frame
+        let host = el(app, "event.organizer").frame
+        XCTAssertGreaterThanOrEqual(host.minY, row.maxY - 2)
+        XCTAssertLessThan(host.minY, row.maxY + 140)
+        shot("event-detail-v8-tabs-host")
+    }
 }

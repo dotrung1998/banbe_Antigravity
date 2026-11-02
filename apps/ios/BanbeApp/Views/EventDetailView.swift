@@ -1,26 +1,25 @@
 import SwiftUI
 
-private extension View {
-    /// Live vertical scroll offset (0 at the very top), straight from the scroll view where the system provides it
-    /// (iOS 18+); older systems rely on the preference-key reading set up by the caller.
-    @ViewBuilder func trackingScrollOffset(_ offset: Binding<CGFloat>) -> some View {
-        if #available(iOS 18.0, *) {
-            self.onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, new in offset.wrappedValue = new }
-        } else {
-            self
-        }
-    }
-}
-
 /// The event title's on-screen frame (global), for the title hand-off into the nav bar.
 private struct EventTitleFrameKey: PreferenceKey {
     static var defaultValue: CGRect = .zero
     static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
 }
 
-private struct EventScrollOffsetKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+/// V8 tabs (note 75): each section's top in the scrolled CONTENT's own coordinates. Those only change on layout, never
+/// on scroll, so a preference is safe here (the live offset comes from the KVO probe; a preference stops updating
+/// during a drag, note 06).
+private struct EventSectionTopsKey: PreferenceKey {
+    static var defaultValue: [String: CGFloat] = [:]
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) { value.merge(nextValue()) { $1 } }
+}
+
+private extension View {
+    func eventSectionTop(_ id: String) -> some View {
+        background(GeometryReader { g in
+            Color.clear.preference(key: EventSectionTopsKey.self, value: [id: g.frame(in: .named("eventContent")).minY])
+        })
+    }
 }
 
 /// Create-event "Public preview" (owner, 2026-10-21): the real Event Detail rendered from an unsaved draft, so the
@@ -92,6 +91,15 @@ struct EventDetailView: View {
     /// paper starts where the photo ends at rest. Web `STUB_RISE`.
     private let stubRise: CGFloat = 104
     @State private var scrollOffset: CGFloat = 0
+    /// V8 tabs (note 75): how far the content can scroll, the sections' tops, the lit tab, a tapped tab held until the
+    /// reader scrolls themselves, and the probe's one-off scroll request.
+    @State private var maxScroll: CGFloat = 0
+    @State private var sectionTops: [String: CGFloat] = [:]
+    @State private var activeTab = "overview"
+    @State private var tabLock: String?
+    @State private var tabLockGeneration = 0
+    @State private var scrollRequest: ScaffoldScrollRequest?
+    private let tabRowHeight: CGFloat = 50
     // Drag-down-to-close (only from the very top of the scroll view).
     @State private var dismissDrag: CGFloat = 0
     @State private var isDismissDragging = false
@@ -292,17 +300,23 @@ struct EventDetailView: View {
                         details
                             .background(app.palette.paper)
                     }
-                    .background(GeometryReader { g in
-                        Color.clear.preference(key: EventScrollOffsetKey.self, value: -g.frame(in: .named("eventScroll")).minY)
-                    })
+                    .coordinateSpace(name: "eventContent")
+                    .onPreferenceChange(EventSectionTopsKey.self) { sectionTops = $0 }
                     // Remembers the offset per event and, when coming back (not a fresh open), puts it straight back.
+                    // Note 75: also the live offset on every iOS version (KVO keeps reporting during a drag, note 06) and
+                    // the tabs' scroll-to.
                     .background(ScaffoldScrollProbe(restoreOffsetY: app.eventOpening || isPreview ? nil : app.eventScrollOffsets[event.key],
                                                     onOffset: { [key = event.key, isPreview] y in if !isPreview { app.eventScrollOffsets[key] = y } },
-                                                    onChange: { _, _ in }))
+                                                    onChange: { _, userDriven in if userDriven && tabLock != nil { tabLock = nil } },
+                                                    onScrollMetrics: { y, content, viewport in
+                                                        if scrollOffset != y { scrollOffset = y }
+                                                        let m = max(0, content - viewport)
+                                                        if maxScroll != m { maxScroll = m }
+                                                        spyTabs()
+                                                    },
+                                                    scrollRequest: scrollRequest))
                 }
                 .coordinateSpace(name: "eventScroll")
-                .onPreferenceChange(EventScrollOffsetKey.self) { if #unavailable(iOS 18.0) { scrollOffset = $0 } }
-                .trackingScrollOffset($scrollOffset)
                 .scrollDisabled(isDismissDragging)
                 .simultaneousGesture(dismissGesture, including: isPreview ? .subviews : .all)
                 .onChange(of: criteriaScrollRequest) { _, _ in
@@ -336,6 +350,13 @@ struct EventDetailView: View {
             // Solid nav bar once the title has scrolled away (mockup "02 · Khi cuộn xuống").
             navBar
                 .opacity(contentShown ? 1 : 0)
+                .modifier(dragPose)
+            // V8 tabs (note 75): under the title once the nav bar is solid.
+            tabRow
+                .opacity(contentShown && collapsed ? 1 : 0)
+                .allowsHitTesting(collapsed)
+                .accessibilityHidden(!collapsed)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .modifier(dragPose)
             backShareRow.opacity(contentShown ? 1 : 0)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -550,7 +571,7 @@ struct EventDetailView: View {
     /// Back pill "‹ {where you came from}", then ⋯ / Share / Save discs (mockup). Once the nav bar is solid the back
     /// pill shrinks to its chevron to give the event name room.
     private var backShareRow: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: collapsed ? 0 : 8) {
             Button { if let preview { preview.onBack() } else { closeAnimated() } } label: {
                 HStack(spacing: 3) {
                     Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold))
@@ -560,7 +581,7 @@ struct EventDetailView: View {
                     }
                 }
                 .padding(.leading, 11).padding(.trailing, collapsed ? 11 : 14)
-                .frame(minWidth: 40, minHeight: 40)
+                .frame(minWidth: collapsed ? 44 : 40, minHeight: collapsed ? 44 : 40)
                 .modifier(ControlChrome(collapsed: collapsed, clay: app.palette.clay, shape: AnyShape(Capsule())))
                 .contentShape(Capsule())
             }
@@ -601,15 +622,16 @@ struct EventDetailView: View {
                     .transition(.opacity)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
+        // Collapsed (V8): plain clay glyphs in 44pt hit areas with no gaps, pulled to the edges for the title.
+        .padding(.horizontal, collapsed ? 4 : 16)
+        .padding(.top, collapsed ? 14 : 16)
         .animation(.easeOut(duration: 0.2), value: collapsed)
     }
 
     private func discLabel(_ symbol: String) -> some View {
         Image(systemName: symbol)
             .font(.system(size: 17, weight: .semibold))
-            .frame(width: 40, height: 40)
+            .frame(width: collapsed ? 44 : 40, height: collapsed ? 44 : 40)
             .modifier(ControlChrome(collapsed: collapsed, clay: app.palette.clay, shape: AnyShape(Circle())))
             .contentShape(Circle())
     }
@@ -711,11 +733,81 @@ struct EventDetailView: View {
                 .frame(maxWidth: .infinity, minHeight: 40)
                 .padding(.top, topInset + 16)
         }
-        .frame(height: navBarHeight)
+        .frame(height: navBarHeight + tabRowHeight)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .ignoresSafeArea(edges: .top)
         .allowsHitTesting(false)
         .accessibilityHidden(!collapsed)
+    }
+
+    // MARK: V8 tabs (note 75)
+
+    private var tabIDs: [String] {
+        EventDetailTabs.visible(hasMenu: !cards.isEmpty, hasHost: true, hasPhotos: !stripList.isEmpty || !(preview?.photos.isEmpty ?? true),
+                                hasProtection: hasProtection)
+    }
+    private func tabLabel(_ id: String) -> String {
+        switch id {
+        case "menu": return menuTitle
+        case "host": return app.T("Chủ nhà", "Host")
+        case "photos": return app.T("Ảnh", "Photos")
+        case "safe": return app.T("Bảo vệ", "Protection")
+        default: return app.T("Tổng quan", "Overview")
+        }
+    }
+    /// The offset at which each visible section sits right under the tab row.
+    private var tabTops: [Double] { tabIDs.map { Double((sectionTops[$0] ?? 0) - tabRowHeight - BanbeTheme.Space.m) } }
+
+    private func spyTabs() {
+        if let lock = tabLock { if activeTab != lock { activeTab = lock }; return }
+        let i = EventDetailTabs.active(tops: tabTops, scrollTop: Double(scrollOffset), maxScroll: Double(maxScroll), lead: 24)
+        let ids = tabIDs
+        if ids.indices.contains(i), activeTab != ids[i] { activeTab = ids[i] }
+    }
+
+    private func goTab(_ id: String) {
+        guard let i = tabIDs.firstIndex(of: id) else { return }
+        tabLock = id
+        activeTab = id
+        tabLockGeneration += 1
+        let gen = tabLockGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { if tabLockGeneration == gen { tabLock = nil } }
+        scrollRequest = ScaffoldScrollRequest(token: (scrollRequest?.token ?? 0) + 1, y: max(0, CGFloat(tabTops[i]) + 1),
+                                              animated: !UIAccessibility.isReduceMotionEnabled)
+        Haptics.light()
+    }
+
+    private var tabRow: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(tabIDs, id: \.self) { id in
+                        let on = activeTab == id
+                        Button { goTab(id) } label: {
+                            Text(tabLabel(id))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(on ? app.palette.paper : app.palette.ink)
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: 40)
+                                .background(on ? app.palette.ink : app.palette.block, in: Capsule())
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .id(id)
+                        .accessibilityAddTraits(on ? .isSelected : [])
+                        .accessibilityIdentifier("event.tab.\(id)")
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .onChange(of: activeTab) { _, id in
+                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
+            }
+        }
+        .frame(height: tabRowHeight - 6)
+        .padding(.top, navBarHeight - topInset)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.tabs")
     }
 
     /// The cover photo, full-bleed to the top and side edges, pinned behind the scrolling sheet. It fades to the
@@ -1096,10 +1188,11 @@ struct EventDetailView: View {
                 if about.visible { aboutSection }
             }
             .id("sec.overview")
+            .eventSectionTop("overview")
             // "On the menu" / "Included" (V8): up to 3 cards.
-            if !cards.isEmpty { includedItemsSection.id("sec.menu") }
+            if !cards.isEmpty { includedItemsSection.id("sec.menu").eventSectionTop("menu") }
             // The host, once (note 68): a card with the name, real stats and an outlined Message pill.
-            hostSection.allowsHitTesting(!isPreview).id("sec.host")
+            hostSection.allowsHitTesting(!isPreview).id("sec.host").eventSectionTop("host")
 
             // L2 (switch event_recap): a guest who went opens their recap card, where the private feedback lives.
             if barState == .endedAttended, !isPreview, app.eventRecapEnabled, (app.realEventsByID[event.key] ?? nil) != nil {
@@ -1136,8 +1229,9 @@ struct EventDetailView: View {
                 }
             }
             .id("sec.photos")
+            .eventSectionTop("photos")
             // Protected booking (V8): the escrow steps in plain words; hidden once there is nothing left to protect.
-            if hasProtection { protectionSection.id("sec.safe") }
+            if hasProtection { protectionSection.id("sec.safe").eventSectionTop("safe") }
             }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 22)
