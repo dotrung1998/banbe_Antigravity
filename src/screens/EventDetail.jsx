@@ -9,7 +9,7 @@ import { criteriaIsEveryone } from '../lib/eventPrefs.js';
 import FollowingBadge from '../components/FollowingBadge.jsx';
 import EventPlanTitle from './EventPlanActions.jsx';
 import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
-import { reserveBarState, eventTotal, eventPrice, currencyUnavailable, clampQty, maxQty, CURRENCY_UNAVAILABLE_REASON } from '../lib/reserveBar.js';
+import { reserveBarState, eventTotal, eventPrice, currencyUnavailable, clampQty, maxQty, CURRENCY_UNAVAILABLE_REASON, QTY_PRESETS, presetSelected, presetEnabled } from '../lib/reserveBar.js';
 import GlassMenu, { GlassMenuItem, GlassMenuDivider } from '../components/GlassMenu.jsx';
 import { viewerTimeNote } from '../lib/schedulePresentation.js';
 import { supabase } from '../lib/supabase.js';
@@ -21,14 +21,22 @@ import { nextFromHost, whenLabel } from '../lib/quickWins.js';
 import { flagOn } from '../lib/featureFlags.js';
 import { eventProfile, detailFacts, introStyle } from '../lib/eventTypes.js';
 import { introFontFamily, introColorValue } from '../lib/introStyle.js';
-import { seatStatus, splitFacts, aboutSection, includedSection, distanceLabel, dateTileLabel, stripPhotos, HERO_SCRIM, ABOUT_LINES } from '../lib/eventDetailPresentation.js';
+import { seatStatus, splitFacts, aboutSection, includedSection, distanceLabel, stripPhotos, HERO_SCRIM, ABOUT_LINES, dateBlock, ticketsLeftText, needToKnowRows, menuCards } from '../lib/eventDetailPresentation.js';
+import { daysUntilInZone, countdownChipText } from '../lib/countdown.js';
+import { cityFor } from '../lib/mapDiscovery.js';
+import citiesData from '../data/cities.json';
+import TicketStub from '../components/event/TicketStub.jsx';
 
 // Airbnb-style layout (mirrors iOS EventDetailView): the photo is a pinned backdrop that fades out while the
 // rounded info sheet scrolls up over it; pulling down from the very top closes the screen with a shrink.
 // Story-first (note 70): the category pills and the title sit ON the photo over a bottom scrim (HERO_SCRIM), so the
 // sheet opens straight on price, Date / Time / Place, the house rules and who can reserve.
 // 320 (was 400, note 68): with the sheet's 40 overlap, Date / Time / Place, the Host row and the CTA fit a 6.1" phone.
+// V8 (note 75): the ticket stub rises STUB_RISE into the photo, so the title band above it is that much shorter and the
+// paper starts where the photo ends at rest.
 const HERO_H = 320;
+const STUB_RISE = 104;
+const CITIES = citiesData.cities;
 const SHEET_OVERLAP = 40;
 const SHEET_RADIUS = 46; // the iPhone's own screen-corner curvature
 const PINNED_STRIP = 120; // with the info fully pulled up, this much of the photo stays visible above it
@@ -82,6 +90,10 @@ const Tile = ({ icon, label, action, testId, children }) => (
 // Small icons for the type-fact chips (alcohol, dietary).
 const IconGlass = () => (<svg {...ico} width={15} height={15}><path d="M7 3h10l-1 7a4 4 0 0 1-8 0z" /><path d="M12 14v6M8.5 20.5h7" /></svg>);
 const IconLeaf = () => (<svg {...ico} width={15} height={15}><path d="M5 19c0-8 5-13 14-14 0 9-5 14-13 14z" /><path d="M5 19l7-7" /></svg>);
+const IconInfo = () => (<svg {...ico} width={17} height={17}><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5M12 8h.01" /></svg>);
+const IconAge = ({ text }) => (<span style={{ fontSize: 13, fontWeight: 700 }}>{text}</span>);
+// V8 section headings: small caps over each section (Good to know, About, the menu, Host, Photos, Protection).
+const sectionLabel = { fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: ink3, lineHeight: 1.2 };
 const IconDirections = () => (<svg {...ico} width={15} height={15} strokeWidth={2}><path d="M7 17 17 7M9 7h8v8" /></svg>);
 const pillBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: RADIUS.pill, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' };
 
@@ -385,15 +397,14 @@ export default function EventDetail({ preview = null } = {}) {
 
   // Ngày / Giờ tiles: `when` is "Th 4, 04.11 ▪︎ 20:00" for both catalogue and real events.
   const [whenDateRaw, whenTime] = (ev.when || '').split(' ▪︎ ');
-  // The date in the app's language (note 70: English screens showed "Th 4, 04.11"), from the same text as the time.
-  const whenDate = dateTileLabel(whenDateRaw, s.lang === 'en');
   // Real events show those in the VENUE's zone (migration 195); a viewer elsewhere also gets their own clock.
   const timeNote = ev.tz && ev.startDate ? viewerTimeNote(ev.startDate.getTime(), ev.tz, T(true, false)) : null;
   // One seat status beside the price (note 68): "You're going" for a ticket holder, "Sold out" (also at 0 left), else
   // "N left" (honey when few). The bar only shows while seats are actually open.
   const seat = seatStatus({ capacity, remaining, soldOut: !!ev.soldOut, going: myBookingIsTicket });
   // "3 of 14 left" whenever the capacity is known (note 70), so the count and the bar can't read as a contradiction.
-  const seatsLeftText = capacity ? T(`Còn ${seat.left}/${capacity} chỗ`, `${seat.left} of ${capacity} left`) : T(`Còn ${seat.left} chỗ`, `${seat.left} left`);
+  // V8 (owner decision 5): "Còn N vé" / "N tickets left", no "of M" and no booked bar.
+  const seatsLeftText = ticketsLeftText(seat.left, s.lang === 'en');
   const seatPill = {
     going: { text: T('Bạn sẽ tham gia', "You're going"), fg: clay, bg: clayBg },
     soldOut: { text: trStatus('Hết chỗ'), fg: ink2, bg: surface2 },
@@ -402,13 +413,48 @@ export default function EventDetail({ preview = null } = {}) {
     unknown: evSeatsLong ? { text: evSeatsLong, fg: ink2, bg: block } : null,
   }[seat.kind];
   // Event type facts: minimum age is a restriction, so it sits beside the category; alcohol + dietary are chips.
-  const facts = splitFacts(typeFacts);
-  // Host row subline (real stats only).
-  const hostSubline = [orgStats?.sinceYear ? T(`Tham gia từ ${orgStats.sinceYear}`, `Joined ${orgStats.sinceYear}`) : null,
-    orgStats?.count > 0 ? T(`${orgStats.count} sự kiện`, orgStats.count === 1 ? '1 event' : `${orgStats.count} events`) : null].filter(Boolean).join(' · ');
   const included = includedSection(includedItems.length > 0
     ? includedItems.map(it => it.label)
     : (ev.included || '').split(/\s*(?:▪︎|,|·)\s*/));
+  const facts = splitFacts(typeFacts);
+  // V8 ticket stub (note 75). The date block and the countdown come from the same `when` date text as the time (never
+  // startDate, note 70); the countdown counts days in the venue's zone (note 60), the demo catalogue is Saigon.
+  const en = s.lang === 'en';
+  const stubBlock = dateBlock(whenDateRaw, en);
+  const stubCountdown = ended || ev.cancelled ? null
+    : countdownChipText(daysUntilInZone(whenDateRaw, ev.startDate instanceof Date ? ev.startDate.getTime() : NaN, ev.tz || VN_TIME_ZONE), en);
+  // Under the place: the distance when it helps choose (≤ 50 km), else "Area · city" (src/data/cities.json short name).
+  const realRow = preview ? null : s.realEventsById[ev.key];
+  const cityId = cityFor({ city: realRow?.city ?? ev.city, stateProvince: realRow?.stateProvince ?? ev.stateProvince, countryCode: realRow?.countryCode ?? ev.countryCode, lat: ev.lat, lng: ev.lng }, CITIES);
+  const cityShort = (() => { const c = cityId && CITIES.find(x => x.id === cityId); return c ? (c.short ? T(c.short.vi, c.short.en) : T(c.vi, c.en)) : null; })();
+  const placeSub = evDistance ? T(`Cách ${evDistance}`, `${evDistance} away`) : cityShort ? `${T('Khu vực', 'Area')} · ${cityShort}` : T('Địa điểm', 'Place');
+  // "Good to know" rows (alcohol, each dietary choice, minimum age, other facts); sub-lines only when the host wrote one.
+  const needRows = needToKnowRows(typeFacts, {}, en);
+  // The menu cards: the structured items (label + detail), else the legacy included text as labels. No icons (no data).
+  const cards = menuCards(includedItems.length > 0 ? includedItems : included.items.map(label => ({ label, detail: '' })));
+  // Protection steps: hidden once there is nothing left to protect (owner decision 8).
+  const hasProtection = !['ended', 'endedAttended', 'cancelled', 'ticket', 'pending'].includes(barState);
+  const protectionSteps = isFree ? [
+    [T('Giữ chỗ 30 phút', 'Seat held for 30 min'), T('Chỗ của bạn được giữ trong lúc bạn xác nhận.', 'Your seat is held while you confirm.')],
+    [T('Chủ nhà xác nhận', 'The host confirms'), T('Chủ nhà có 1 giờ để xác nhận; banbe sẽ nhắc nếu chậm', 'The host has 1 hour to confirm; banbe reminds them')],
+    [T('Nhận vé QR', 'Get your QR ticket'), T('Đưa mã QR khi đến nơi.', 'Show the code when you arrive.')],
+    [T('Có sự cố? Có kênh tranh chấp', 'A problem? There is a dispute path'), T('Nếu không tìm thấy buổi tiệc, một cuộc trò chuyện tạm sẽ mở và banbe xử lý nếu cần.', "If you can't find the event, a temporary chat opens and banbe steps in if needed.")],
+  ] : [
+    [T('Giữ chỗ 30 phút', 'Seat held for 30 min'), T('Chỗ của bạn được giữ trong lúc thanh toán.', 'Your seat is held while you pay.')],
+    [T('Chủ nhà xác nhận thanh toán', 'The host confirms your payment'), T('Chủ nhà có 1 giờ để xác nhận; banbe sẽ nhắc nếu chậm', 'The host has 1 hour to confirm; banbe reminds them')],
+    [T('Nhận vé QR', 'Get your QR ticket'), T('Đưa mã QR khi đến nơi.', 'Show the code when you arrive.')],
+    [T('Có sự cố? Có kênh tranh chấp', 'A problem? There is a dispute path'), T('Nếu không tìm thấy buổi tiệc, một cuộc trò chuyện tạm sẽ mở và banbe xử lý nếu cần.', "If you can't find the event, a temporary chat opens and banbe steps in if needed.")],
+  ];
+  const menuTitle = typeIncludedTitle ? T(typeIncludedTitle.vi, typeIncludedTitle.en) : T('Bao gồm', 'Included');
+  // Section anchors for the nav-bar tabs (note 75 phase 3).
+  const secOverviewRef = useRef(null);
+  const secMenuRef = useRef(null);
+  const secHostRef = useRef(null);
+  const secPhotosRef = useRef(null);
+  const secSafeRef = useRef(null);
+  // Host row subline (real stats only).
+  const hostSubline = [orgStats?.sinceYear ? T(`Tham gia từ ${orgStats.sinceYear}`, `Joined ${orgStats.sinceYear}`) : null,
+    orgStats?.count > 0 ? T(`${orgStats.count} sự kiện`, orgStats.count === 1 ? '1 event' : `${orgStats.count} events`) : null].filter(Boolean).join(' · ');
   // "More ›" (opens the About & Included sheet) sits on About when About shows, else on the included section.
   const sheetOnAbout = about.visible;
 
@@ -623,7 +669,7 @@ export default function EventDetail({ preview = null } = {}) {
       <div ref={scrollerRef} data-fade onScroll={onSheetScroll} style={{ position: 'relative', zIndex: 1, flex: 1, minHeight: 0, marginTop: PINNED_STRIP, borderRadius: `${SHEET_RADIUS}px ${SHEET_RADIUS}px 0 0`, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
       {/* Story-first (note 70): the pills and the title sit on the photo, in the band above the sheet. A long title grows
           the band (minHeight), never clips. */}
-      <div data-testid="event-hero-title" style={{ minHeight: HERO_H - SHEET_OVERLAP - PINNED_STRIP, boxSizing: 'border-box', padding: `0 22px ${SPACE.l}px`, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: SPACE.s }}>
+      <div data-testid="event-hero-title" style={{ minHeight: HERO_H - PINNED_STRIP - STUB_RISE, boxSizing: 'border-box', padding: `0 22px ${SPACE.l}px`, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: SPACE.s }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.s, flexWrap: 'wrap' }}>
           {/* Category as a light chip on the photo; minimum age beside it (a restriction, so it is seen first); invite-only in clay. */}
           {evCat && <span data-testid="event-category" style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#1b1916', background: 'rgba(255,255,255,0.92)', padding: '4px 12px', borderRadius: RADIUS.pill }}>{evCat}</span>}
@@ -640,7 +686,16 @@ export default function EventDetail({ preview = null } = {}) {
           <EventPlanTitle eventKey={ev.key} title={ev.name} onPhoto titleStyle={display(26, { lineHeight: 1.2, color: '#fff', textShadow: '0 1px 8px rgba(0,0,0,0.35)' })} />
         </div>
       </div>
-      <div style={{ position: 'relative', zIndex: 1, background: paper, borderRadius: `${SHEET_RADIUS}px ${SHEET_RADIUS}px 0 0`, boxShadow: '0 -4px 14px rgba(0,0,0,0.10)', padding: `${SPACE.xl}px 22px ${SPACE.xl + 8}px`, display: 'flex', flexDirection: 'column', gap: SPACE.xl }}>
+      {/* V8 ticket stub (note 75): half over the photo, half on the page; the paper starts where the photo ends. */}
+      <div data-testid="event-stub-band" style={{ position: 'relative', zIndex: 1, padding: '0 16px', background: `linear-gradient(180deg, transparent ${STUB_RISE}px, ${paper} ${STUB_RISE}px)` }}>
+        <TicketStub block={stubBlock} time={whenTime || null} countdown={stubCountdown}
+          place={evWhere || T('Địa điểm', 'Place')} placeSub={placeSub}
+          mapsUrl={evMapsUrl} onDirections={() => { if (s.located === null) askLocation(); }} directionsLabel={T('Chỉ đường', 'Directions')}
+          price={ev.price ? trStatus(ev.price) : null} perTicket={isFree ? null : T('/ vé', '/ ticket')}
+          seatPill={seatPill} inert={!!preview} />
+        {timeNote && <div data-testid="event-venue-time-note" style={{ fontSize: 13, color: ink3, padding: '10px 6px 0' }}>{timeNote}</div>}
+      </div>
+      <div data-testid="event-sheet" style={{ position: 'relative', zIndex: 1, background: paper, padding: `${SPACE.xl}px 22px ${SPACE.xl + 8}px`, display: 'flex', flexDirection: 'column', gap: SPACE.xl }}>
         {shareStoryMsg && (
           <div style={{ fontSize: 13, color: ink3 }}>{shareStoryMsg}</div>
         )}
@@ -679,82 +734,9 @@ export default function EventDetail({ preview = null } = {}) {
             </div>
           </div>
         )}
-        {/* Price and one seat status (note 68); the thin bar under them only once a seat is booked (note 70). */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE.s }}>
-          {/* Price left, one seat status right (note 68); the thin bar under them only while seats are open. */}
-          {(ev.price || seatPill) && (
-            <div data-testid="event-fact-seats" data-seat={seat.kind} style={{ display: 'flex', flexDirection: 'column', gap: SPACE.s }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.m, flexWrap: 'wrap' }}>
-                {ev.price ? (
-                  <div data-testid="event-price" style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                    <span style={display(26)}>{trStatus(ev.price)}</span>
-                    {!isFree && <span style={{ fontSize: 13, color: ink3 }}>{T('/ vé', '/ ticket')}</span>}
-                  </div>
-                ) : <span />}
-                {seatPill && (
-                  <span data-testid="event-seat-status" style={{ fontSize: 13, fontWeight: 600, color: seatPill.fg, background: seatPill.bg, padding: '6px 12px', borderRadius: RADIUS.pill, whiteSpace: 'nowrap' }}>{seatPill.text}</span>
-                )}
-              </div>
-              {seat.ratio != null && (
-                <div aria-hidden style={{ height: 4, borderRadius: 2, background: 'rgba(var(--bb-fg-rgb),0.08)', overflow: 'hidden' }}>
-                  <div style={{ width: `${Math.max(4, seat.ratio * 100)}%`, height: '100%', borderRadius: 2, background: seat.kind === 'few' ? clay : 'rgba(var(--bb-fg-rgb),0.35)' }} />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        {/* Ngày / Giờ / Địa điểm: three equal one-line tiles; directions is an icon-only link in the place tile's corner;
-            the distance (only when near) replaces the Place label. The venue-time note is one quiet line under them,
-            only when the viewer's clock reads the time differently. */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE.s }}>
-          <div data-testid="event-facts" style={{ display: 'flex', gap: SPACE.s, alignItems: 'stretch' }}>
-            {whenDate && <Tile icon={<IconCalendar />} label={T('Ngày', 'Date')} testId="event-fact-when">{whenDate}</Tile>}
-            {whenTime && <Tile icon={<IconClock />} label={T('Giờ', 'Time')} testId="event-fact-time">{whenTime}</Tile>}
-            <Tile icon={<IconPin />} label={evDistance ? T(`Cách ${evDistance}`, `${evDistance} away`) : T('Địa điểm', 'Place')} testId="event-fact-where"
-              action={evMapsUrl && (
-                <a href={evMapsUrl} target="_blank" rel="noopener noreferrer" data-testid="event-maps-link" aria-label={T('Xem bản đồ', 'Directions')} title={T('Xem bản đồ', 'Directions')}
-                  // Opening directions is the natural moment to also offer to show the distance, if undecided — never
-                  // blocks the click itself (the maps link still opens via the normal href).
-                  onClick={() => { if (s.located === null) askLocation(); }}
-                  style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: clay, background: clayBg }}>
-                  <IconDirections />
-                </a>
-              )}>
-              {evWhere}
-            </Tile>
-          </div>
-          {timeNote && <div data-testid="event-venue-time-note" style={{ fontSize: 13, color: ink3 }}>{timeNote}</div>}
-        </div>
-        {/* What kind of evening it is (event type profiles, switch event_type_profiles): alcohol + dietary as icon chips,
-            the type's other facts as an aligned label/value list. Minimum age is the pill in the header. */}
-        {(facts.chips.length > 0 || facts.rows.length > 0) && (
-          <div data-testid="event-type-facts" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.m }}>
-            {facts.chips.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: SPACE.s }}>
-                {facts.chips.map((f, i) => {
-                  // One chip per choice (note 70); the first of a fact keeps the existing test id.
-                  const nth = facts.chips.slice(0, i).filter(c => c.id === f.id).length;
-                  return (
-                  <span key={`${f.id}-${i}`} data-testid={nth ? `event-type-fact-${f.id}-${nth + 1}` : `event-type-fact-${f.id}`} aria-label={`${f.label}: ${f.value}`}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: ink, background: surface2, padding: '6px 12px', borderRadius: RADIUS.pill }}>
-                    <span style={{ color: clay, display: 'inline-flex' }}>{f.id === 'alcohol' ? <IconGlass /> : <IconLeaf />}</span>{f.value}
-                  </span>
-                  );
-                })}
-              </div>
-            )}
-            {facts.rows.length > 0 && (
-              <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'minmax(84px, max-content) 1fr', columnGap: SPACE.l, rowGap: SPACE.s, alignItems: 'baseline' }}>
-                {facts.rows.map(f => (
-                  <div key={f.id} data-testid={`event-type-fact-${f.id}`} style={{ display: 'contents' }}>
-                    <dt style={{ fontSize: 13, color: ink3 }}>{f.label}</dt>
-                    <dd style={{ margin: 0, fontSize: 15, lineHeight: 1.45, color: ink }}>{f.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            )}
-          </div>
-        )}
+        {/* Overview (V8, note 75): who can reserve, then "Good to know" (alcohol, each dietary choice, minimum age, the
+            type's other facts) as icon rows; a sub-line only when the host wrote one. Then About. */}
+        <div ref={secOverviewRef} data-section="overview" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.xl }}>
         {/* Who can reserve, in plain words with this viewer's result (note 70); the unmet card keeps its action. */}
         {((crit.criteria && !criteriaIsEveryone(crit.criteria)) || (crit.restricted && crit.blocked && !myBooking && !ev.cancelled && !ended)) && (
           <div data-testid="event-criteria" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.m }}>
@@ -764,8 +746,67 @@ export default function EventDetail({ preview = null } = {}) {
             )}
           </div>
         )}
+        {needRows.length > 0 && (
+          <div data-testid="event-type-facts" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.m }}>
+            <span style={sectionLabel}>{T('Cần biết trước khi đến', 'Good to know')}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE.l }}>
+              {needRows.map(r => (
+                <div key={r.key} data-testid={`event-type-fact-${r.key}`} aria-label={r.sub ? `${r.title}. ${r.sub}` : r.title} style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
+                  <span aria-hidden style={{ flex: 'none', width: 40, height: 40, borderRadius: '50%', background: clayBg, color: clay, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {r.icon === 'alcohol' ? <IconGlass /> : r.icon === 'dietary' ? <IconLeaf /> : r.icon === 'age' ? <IconAge text={r.badge} /> : <IconInfo />}
+                  </span>
+                  <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <span style={{ fontSize: 15.5, fontWeight: 600, lineHeight: 1.25, color: ink }}>{r.title}</span>
+                    {r.sub && <span style={{ fontSize: 13, lineHeight: 1.35, color: ink2, overflowWrap: 'anywhere' }}>{r.sub}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* About (note 68): the description clamped to 3 lines ("Read more" expands it here). "More ›" on the heading
+            opens the About & Included sheet (intro first). Never a heading with nothing under it. */}
+        {about.visible && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE.s }}>
+            <div onClick={about.hasSheet ? () => setIncludedSheetOpen(true) : undefined} data-testid="event-included-section" role={about.hasSheet ? 'button' : undefined}
+              aria-label={about.hasSheet ? T('Giới thiệu và bao gồm, xem thêm', 'Introduction and included, view more') : undefined}
+              style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: SPACE.m, cursor: about.hasSheet ? 'pointer' : 'default' }}>
+              <span style={sectionLabel}>{T('Giới thiệu', 'About')}</span>
+              {about.hasSheet && <span style={{ fontSize: 13, fontWeight: 600, color: clay, whiteSpace: 'nowrap' }}>{T('Xem thêm', 'More')} ›</span>}
+            </div>
+            {about.body && (
+              <p data-testid="event-description" style={{ fontSize: 15, lineHeight: 1.55, color: ink, opacity: 0.85, margin: 0, ...(about.clampable && !aboutExpanded ? { display: '-webkit-box', WebkitLineClamp: ABOUT_LINES, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : null) }}>{about.body}</p>
+            )}
+            {about.clampable && !aboutExpanded && (
+              <button type="button" onClick={() => setAboutExpanded(true)} data-testid="event-read-more" style={{ alignSelf: 'flex-start', padding: 0, border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Xem thêm', 'Read more')}</button>
+            )}
+          </div>
+        )}
+        </div>
+        {/* "On the menu" / "Included" (V8, note 75): up to 3 cards, label over the host's detail line. No icons (no data).
+            When About is hidden, this heading opens the About & Included sheet instead. */}
+        {cards.length > 0 && (
+          <div ref={secMenuRef} data-section="menu" data-testid="event-included-items" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.m }}>
+            <div onClick={!sheetOnAbout && about.hasSheet ? () => setIncludedSheetOpen(true) : undefined}
+              data-testid={sheetOnAbout ? undefined : 'event-included-section'} role={!sheetOnAbout && about.hasSheet ? 'button' : undefined}
+              style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: SPACE.m, cursor: !sheetOnAbout && about.hasSheet ? 'pointer' : 'default' }}>
+              <span style={sectionLabel}>{menuTitle}</span>
+              {!sheetOnAbout && about.hasSheet && <span style={{ fontSize: 13, fontWeight: 600, color: clay, whiteSpace: 'nowrap' }}>{T('Xem thêm', 'More')} ›</span>}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cards.length}, minmax(0, 1fr))`, gap: 9 }}>
+              {cards.map((c, i) => (
+                <div key={i} data-testid={`event-included-item-${i}`} style={{ background: block, borderRadius: 15, padding: '14px 8px', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
+                  <b style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.15, color: ink, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere' }}>{c.label}</b>
+                  {c.detail && <small style={{ fontSize: 12, lineHeight: 1.25, color: ink2, maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.detail}</small>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {/* The host, once (note 68): avatar, name, real stats, a Message icon button; the row opens the host's page. */}
-        <div data-testid="event-host-section" style={{ display: 'flex', alignItems: 'center', gap: SPACE.m, ...inert }}>
+        <div ref={secHostRef} data-section="host" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.m }}>
+        <span style={sectionLabel}>{T('Chủ nhà', 'Host')}</span>
+        <div data-testid="event-host-section" style={{ display: 'flex', alignItems: 'center', gap: SPACE.m, background: block, borderRadius: 17, padding: 12, ...inert }}>
           <div onClick={() => openOrganizerOfEvent(ev.key, 'event')} data-testid="event-organizer-row" role="button"
             aria-label={[T('Người tổ chức', 'Host'), ev.orgName, hostSubline, T('Mở trang', 'Opens profile')].filter(Boolean).join(', ')}
             style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: SPACE.m, cursor: 'pointer', minHeight: 44 }}>
@@ -779,49 +820,14 @@ export default function EventDetail({ preview = null } = {}) {
               </span>
               <span data-testid="event-organizer-stats" style={{ fontSize: 13, color: ink3 }}>{hostSubline || T('Người tổ chức', 'Host')}</span>
             </span>
-            <span data-testid="event-organizer-profile" aria-hidden style={{ marginLeft: 'auto', color: ink3, fontSize: 17, flex: 'none' }}>›</span>
           </div>
           {/* Moved here from the retired Organizer screen (merged into the host profile): message the host from the event. */}
           <button type="button" onClick={goChat} data-testid="organizer-message" aria-label={T('Nhắn cho ', 'Message ') + (ev.orgName || '')}
-            style={{ flex: 'none', width: 44, height: 44, borderRadius: '50%', border: 'none', background: clayBg, color: clay, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            <IconChat />
+            style={{ ...pillBtn, flex: 'none', minHeight: 44, padding: '0 14px', border: `1.5px solid ${clay}`, background: 'transparent', color: clay, fontSize: 13.5, fontWeight: 600 }}>
+            <IconChat />{T('Nhắn tin', 'Message')}
           </button>
         </div>
-        {/* About (note 68): the description clamped to 3 lines ("Read more" expands it here). "More ›" on the heading
-            opens the About & Included sheet (intro first). Never a heading with nothing under it. */}
-        {about.visible && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE.s }}>
-            <div onClick={about.hasSheet ? () => setIncludedSheetOpen(true) : undefined} data-testid="event-included-section" role={about.hasSheet ? 'button' : undefined}
-              aria-label={about.hasSheet ? T('Giới thiệu và bao gồm, xem thêm', 'Introduction and included, view more') : undefined}
-              style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: SPACE.m, cursor: about.hasSheet ? 'pointer' : 'default' }}>
-              <span style={sectionHeading}>{T('Giới thiệu', 'About')}</span>
-              {about.hasSheet && <span style={{ fontSize: 13, fontWeight: 600, color: clay, whiteSpace: 'nowrap' }}>{T('Xem thêm', 'More')} ›</span>}
-            </div>
-            {about.body && (
-              <p data-testid="event-description" style={{ fontSize: 15, lineHeight: 1.55, color: ink, opacity: 0.85, margin: 0, ...(about.clampable && !aboutExpanded ? { display: '-webkit-box', WebkitLineClamp: ABOUT_LINES, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : null) }}>{about.body}</p>
-            )}
-            {about.clampable && !aboutExpanded && (
-              <button type="button" onClick={() => setAboutExpanded(true)} data-testid="event-read-more" style={{ alignSelf: 'flex-start', padding: 0, border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Xem thêm', 'Read more')}</button>
-            )}
-          </div>
-        )}
-        {/* "On the menu" / "Included" as its own section of chips (note 70: it used to run on inside About with heavy
-            square separators). When About is hidden, this heading opens the sheet instead. */}
-        {included.visible && (
-          <div data-testid="event-included-items" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.s }}>
-            <div onClick={!sheetOnAbout && about.hasSheet ? () => setIncludedSheetOpen(true) : undefined}
-              data-testid={sheetOnAbout ? undefined : 'event-included-section'} role={!sheetOnAbout && about.hasSheet ? 'button' : undefined}
-              style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: SPACE.m, cursor: !sheetOnAbout && about.hasSheet ? 'pointer' : 'default' }}>
-              <span style={sectionHeading}>{typeIncludedTitle ? T(typeIncludedTitle.vi, typeIncludedTitle.en) : T('Bao gồm', 'Included')}</span>
-              {!sheetOnAbout && about.hasSheet && <span style={{ fontSize: 13, fontWeight: 600, color: clay, whiteSpace: 'nowrap' }}>{T('Xem thêm', 'More')} ›</span>}
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: SPACE.s }}>
-              {included.items.map((label, i) => (
-                <span key={i} data-testid={`event-included-item-${i}`} style={{ fontSize: 13, color: ink, background: surface2, padding: '6px 12px', borderRadius: RADIUS.pill }}>{label}</span>
-              ))}
-            </div>
-          </div>
-        )}
+        </div>
         {/* L2 (switch event_recap): a guest who went opens their recap card, where the private feedback lives. */}
         {barState === 'endedAttended' && !preview && s.realEventsById[ev.key] && flagOn(s.featureFlags, 'event_recap') && (
           <button type="button" onClick={() => openEventRecap(ev.key, 'event')} data-testid="event-open-recap"
@@ -854,21 +860,18 @@ export default function EventDetail({ preview = null } = {}) {
             )}
           </div>
         )}
-        {/* "Hình ảnh": the horizontal photo strip. */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE.s }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-            <span style={sectionHeading}>{T('Hình ảnh', 'Photos')}</span>
-            {stripList.length > 0 && <span style={{ fontSize: 13, color: ink, opacity: 0.6 }}>{stripList.length}</span>}
-          </div>
+        {/* "Hình ảnh · N": the horizontal photo strip (V8 tiles). */}
+        <div ref={secPhotosRef} data-section="photos" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.m }}>
+          <span style={sectionLabel}>{T('Hình ảnh', 'Photos')}{stripList.length > 0 ? ` · ${stripList.length}` : ''}</span>
           {/* STAGE D (2026-09-25) — real event_photos rows, not the static demo `ev.gallery`. A genuinely photo-less
               real event shows plain text, never a fake/demo photo standing in for a real one. */}
           {s.eventPhotosLoading && !preview ? (
             <p style={{ fontSize: 13, color: ink3, margin: 0 }}>{T('Đang tải…', 'Loading…')}</p>
           ) : stripList.length ? (
-            <div data-testid="event-photo-strip" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, ...(preview ? { cursor: 'default' } : null) }}>
+            <div data-testid="event-photo-strip" style={{ display: 'flex', gap: 9, overflowX: 'auto', paddingBottom: 4, margin: '0 -22px', padding: '0 22px 4px', scrollbarWidth: 'none', ...(preview ? { cursor: 'default' } : null) }}>
               {stripList.map((p, i) => (
                 <div key={p.id} onClick={preview ? undefined : (e) => openPhoto(realPhotos, Math.max(0, realPhotos.indexOf(p)), ev.orgName, e.currentTarget.getBoundingClientRect())} data-testid={`event-photo-${i}`} data-photo-thumb={p.id} style={{ position: 'relative', flex: 'none' }}>
-                  <div style={bg(p.url, { width: 132, height: 166, borderRadius: RADIUS.thumb, cursor: 'pointer' })} />
+                  <div style={bg(p.url, { width: 242, height: 172, borderRadius: 16, cursor: 'pointer' })} />
                   {/* A.7 — a liked photo gets a filled heart badge; an unliked one shows none here (the full-screen
                       viewer's own like button is the discoverable way to like it). */}
                   {s.photoEngagement[p.id]?.likedByMe && (
@@ -883,11 +886,48 @@ export default function EventDetail({ preview = null } = {}) {
             <p style={{ fontSize: 13, color: ink3, margin: 0 }}>{T('Chưa có ảnh nào cho sự kiện này.', 'No photos for this event yet.')}</p>
           )}
         </div>
+        {/* Protected booking (V8, note 75): the escrow steps in plain words; hidden once there is nothing left to protect
+            (ended, cancelled, or the viewer already holds a booking: owner decision 8). Step 2 is an SLA with reminders,
+            never an automatic confirm (note 02), so it says exactly that (owner decision 4). */}
+        {hasProtection && (
+          <div ref={secSafeRef} data-section="safe" data-testid="event-protection" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.m }}>
+            <span style={sectionLabel}>{T('Đặt chỗ được bảo vệ', 'Protected booking')}</span>
+            <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}>
+              {protectionSteps.map(([title, sub], i) => (
+                <li key={i} style={{ display: 'flex', gap: 13, position: 'relative', paddingBottom: i < protectionSteps.length - 1 ? 20 : 0 }}>
+                  {i < protectionSteps.length - 1 && <span aria-hidden style={{ position: 'absolute', left: 16, top: 37, bottom: 3, width: 2, background: divider }} />}
+                  <span aria-hidden style={{ flex: 'none', width: 33, height: 33, borderRadius: '50%', background: ink, color: paper, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700 }}>{i + 1}</span>
+                  <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3, paddingTop: 5 }}>
+                    <b style={{ fontSize: 15.5, fontWeight: 700, lineHeight: 1.25, color: ink }}>{title}</b>
+                    <span style={{ fontSize: 13, lineHeight: 1.4, color: ink2 }}>{sub}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
       </div>
       </div>
-      {/* Sticky action area, ONE row (note 70): the stepper beside the CTA with the live total, then one quiet line with
+      {/* Sticky action area, V8 (note 75): the stepper beside the CTA with the live total, then one quiet line with
           the refund promise. Always on screen, so the decision can happen wherever the reader is convinced. */}
       <div data-fade data-testid="event-action-area" aria-hidden={preview ? true : undefined} style={{ touchAction: 'none', overscrollBehavior: 'contain', flex: 'none', position: 'relative', zIndex: 2, background: paper, borderRadius: '22px 22px 0 0', boxShadow: '0 -8px 24px rgba(27,25,22,0.10)', padding: preview ? '10px 16px 8px' : '10px 16px calc(8px + env(safe-area-inset-bottom, 0px))', ...inert }}>
+        {/* V8 (note 75, overrides note 70): 1·2·3 preset chips with their totals above the stepper; one qty for both.
+            qty 1–3 lights its chip, 4+ lights none; a chip above the seats left is disabled like the stepper's +. */}
+        {barState === 'reserve' && (
+          <div data-testid="event-qty-presets" role="group" aria-label={T('Chọn nhanh số vé', 'Quick ticket count')} style={{ display: 'flex', gap: SPACE.s, marginBottom: SPACE.s }}>
+            {QTY_PRESETS.map(n => {
+              const on = presetSelected(qty) === n;
+              const enabled = presetEnabled(n, qtyMax);
+              return (
+                <button key={n} type="button" onClick={() => setQty(n)} disabled={!enabled} aria-pressed={on} data-testid={`event-qty-${n}`}
+                  style={{ flex: '1 1 0', minWidth: 0, minHeight: 44, border: `1.5px solid ${on ? ink : rule}`, background: on ? block : 'transparent', color: ink, borderRadius: 13, padding: '8px 4px', cursor: enabled ? 'pointer' : 'default', opacity: enabled ? 1 : 0.35, fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+                  <b style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.1 }}>{T(`${n} vé`, n === 1 ? '1 ticket' : `${n} tickets`)}</b>
+                  {!isFree && <small style={{ fontSize: 12, color: ink2, lineHeight: 1 }}>{trStatus(eventTotal(ev, n))}</small>}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <div data-testid="event-qty" style={{ display: 'flex', alignItems: 'center', gap: SPACE.s, flexWrap: 'wrap' }}>
         {barState === 'reserve' && (
           <div data-testid="event-qty-stepper" role="group" aria-label={T('Số vé', 'Tickets')} style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', height: 50, borderRadius: RADIUS.pill, border: `1px solid ${rule}`, color: ink }}>
