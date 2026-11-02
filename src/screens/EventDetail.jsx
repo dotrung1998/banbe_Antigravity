@@ -26,6 +26,7 @@ import { daysUntilInZone, countdownChipText } from '../lib/countdown.js';
 import { cityFor } from '../lib/mapDiscovery.js';
 import citiesData from '../data/cities.json';
 import TicketStub from '../components/event/TicketStub.jsx';
+import { visibleTabs, activeTab as pickActiveTab } from '../lib/eventDetailTabs.js';
 
 // Airbnb-style layout (mirrors iOS EventDetailView): the photo is a pinned backdrop that fades out while the
 // rounded info sheet scrolls up over it; pulling down from the very top closes the screen with a shrink.
@@ -452,6 +453,58 @@ export default function EventDetail({ preview = null } = {}) {
   const secHostRef = useRef(null);
   const secPhotosRef = useRef(null);
   const secSafeRef = useRef(null);
+  // V8 tabs (note 75): one per section with content, shown in the collapsed nav bar; the active one follows the scroll
+  // (eventDetailTabs.activeTab). A tapped tab stays lit while the page scrolls to it, until the reader scrolls themselves.
+  const tabIds = visibleTabs({ hasMenu: cards.length > 0, hasHost: true, hasPhotos: stripList.length > 0, hasProtection });
+  const tabRefs = { overview: secOverviewRef, menu: secMenuRef, host: secHostRef, photos: secPhotosRef, safe: secSafeRef };
+  const tabLabel = { overview: T('Tổng quan', 'Overview'), menu: menuTitle, host: T('Chủ nhà', 'Host'), photos: T('Ảnh', 'Photos'), safe: T('Bảo vệ', 'Protection') };
+  const [activeTabId, setActiveTabId] = useState('overview');
+  const activeTabRef = useRef('overview');
+  const tabLockRef = useRef(null);
+  const tabLockTimer = useRef(null);
+  const tabRowRef = useRef(null);
+  const setTab = (id) => { if (id !== activeTabRef.current) { activeTabRef.current = id; setActiveTabId(id); } };
+  // Where each section sits right under the nav bar's tab row, as a scroll offset of the sheet's scroller.
+  const sectionTops = (sc) => {
+    const scTop = sc.getBoundingClientRect().top;
+    const cover = (tabRowRef.current?.getBoundingClientRect().bottom ?? scTop) - scTop;
+    return tabIds.map(id => {
+      const el = tabRefs[id].current;
+      return el ? el.getBoundingClientRect().top - scTop + sc.scrollTop - cover - SPACE.m : 0;
+    });
+  };
+  const spyTabs = (sc) => {
+    if (tabLockRef.current) { setTab(tabLockRef.current); return; }
+    const i = pickActiveTab(sectionTops(sc), sc.scrollTop, sc.scrollHeight - sc.clientHeight, 24);
+    if (i >= 0) setTab(tabIds[i]);
+  };
+  const goTab = (id) => {
+    const sc = scrollerRef.current;
+    const i = tabIds.indexOf(id);
+    if (!sc || i < 0) return;
+    tabLockRef.current = id;
+    setTab(id);
+    clearTimeout(tabLockTimer.current);
+    tabLockTimer.current = setTimeout(() => { tabLockRef.current = null; }, 1100);
+    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    sc.scrollTo({ top: Math.max(0, sectionTops(sc)[i] + 1), behavior: reduce ? 'auto' : 'smooth' });
+  };
+  // The reader's own touch or wheel hands the tabs back to the scroll position.
+  useEffect(() => {
+    const sc = scrollerRef.current;
+    if (!sc) return undefined;
+    const release = () => { tabLockRef.current = null; };
+    ['wheel', 'touchstart', 'pointerdown'].forEach(ev => sc.addEventListener(ev, release, { passive: true }));
+    return () => { ['wheel', 'touchstart', 'pointerdown'].forEach(ev => sc.removeEventListener(ev, release)); clearTimeout(tabLockTimer.current); };
+  }, []);
+  // The lit tab slides to the middle of the tab row.
+  useEffect(() => {
+    const row = tabRowRef.current;
+    const b = row?.querySelector(`[data-tab="${activeTabId}"]`);
+    if (!row || !b) return;
+    const x = b.offsetLeft - (row.clientWidth - b.offsetWidth) / 2;
+    if (Math.abs(row.scrollLeft - x) > 4) row.scrollTo?.({ left: x, behavior: 'smooth' });
+  }, [activeTabId]);
   // Host row subline (real stats only).
   const hostSubline = [orgStats?.sinceYear ? T(`Tham gia từ ${orgStats.sinceYear}`, `Joined ${orgStats.sinceYear}`) : null,
     orgStats?.count > 0 ? T(`${orgStats.count} sự kiện`, orgStats.count === 1 ? '1 event' : `${orgStats.count} events`) : null].filter(Boolean).join(' · ');
@@ -526,6 +579,7 @@ export default function EventDetail({ preview = null } = {}) {
     }
     const c = p > 0.6;
     if (c !== collapsedRef.current) { collapsedRef.current = c; setCollapsed(c); }
+    spyTabs(e.currentTarget);
   };
 
   // Pull down from the very top to close: the screen follows the finger (shrinking, rounding, dimming); a long
@@ -596,8 +650,10 @@ export default function EventDetail({ preview = null } = {}) {
   const orgInitial = (ev.orgName || '').trim().slice(0, 1).toUpperCase();
   const [menuOpen, setMenuOpen] = useState(false);
   // Round controls over the photo; once the nav bar is solid they lose their glass and become plain clay glyphs.
-  const ctl = (extra) => ({ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'background .2s ease, color .2s ease, box-shadow .2s ease, border-color .2s ease', ...(collapsed ? navPlain : clayGlass), ...extra });
-  const disc = (extra) => ctl({ width: 40, borderRadius: 20, ...extra });
+  const ctl = (extra) => ({ height: collapsed ? 44 : 40, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'background .2s ease, color .2s ease, box-shadow .2s ease, border-color .2s ease', ...(collapsed ? navPlain : clayGlass), ...extra });
+  // Collapsed (V8): plain clay glyphs in 44px hit areas with no gaps, pulled to the edges to make room for the title.
+  const disc = (extra) => ctl({ width: collapsed ? 44 : 40, borderRadius: 22, ...extra });
+  const discRight = (i) => (collapsed ? 4 + i * 44 : 16 + i * 48);
 
   return (
     // `absolute, inset 0` (like Chat): fills the app's scroll viewport exactly, whatever the surrounding grid does
@@ -615,21 +671,31 @@ export default function EventDetail({ preview = null } = {}) {
       <div data-fade aria-hidden style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 140, zIndex: 4, pointerEvents: 'none', background: 'linear-gradient(180deg, rgba(12,12,12,0.34) 0%, rgba(12,12,12,0) 100%)', opacity: collapsed ? 0 : 1, transition: 'opacity .2s ease' }} />
       {/* Collapsing nav bar (mockup "02 · Khi cuộn xuống"): once the title has scrolled away, a solid paper bar covers
           the pinned photo strip and repeats the event name, so the reader never loses context. */}
-      <div aria-hidden={!collapsed} data-testid="event-nav-bar" style={{ position: 'fixed', top: 0, left: 0, right: 0, height: PINNED_STRIP, zIndex: 4, pointerEvents: 'none' }}>
+      <div aria-hidden={!collapsed} data-testid="event-nav-bar" style={{ position: 'fixed', top: 0, left: 0, right: 0, height: `calc(${OVERLAY_TOP} + 100px)`, zIndex: 4, pointerEvents: 'none' }}>
         <div ref={navBgRef} style={{ position: 'absolute', inset: 0, background: paper, borderBottom: `1px solid ${softRule}`, opacity: 0 }} />
-        <div style={{ position: 'absolute', top: OVERLAY_TOP, left: 64, right: 164, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'absolute', top: OVERLAY_TOP, left: 56, right: 140, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <span ref={navTitleRef} style={{ ...display(16), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0, transformOrigin: 'center bottom', willChange: 'transform, opacity' }}>{ev.name}</span>
         </div>
       </div>
+      {/* V8 tabs (note 75): under the title once the nav bar is solid; only sections with content get one. */}
+      <div ref={tabRowRef} data-testid="event-tabs" role="navigation" aria-label={T('Các mục', 'Sections')} aria-hidden={!collapsed}
+        style={{ position: 'fixed', top: `calc(${OVERLAY_TOP} + 50px)`, left: 0, right: 0, zIndex: 5, display: 'flex', gap: 7, overflowX: 'auto', scrollbarWidth: 'none', padding: '0 16px 6px', opacity: collapsed ? 1 : 0, pointerEvents: collapsed ? 'auto' : 'none', transition: 'opacity .2s ease' }}>
+        {tabIds.map(id => (
+          <button key={id} type="button" data-tab={id} data-testid={`event-tab-${id}`} aria-current={activeTabId === id ? 'true' : undefined} tabIndex={collapsed ? 0 : -1} onClick={() => goTab(id)}
+            style={{ flex: 'none', minHeight: 40, border: 'none', borderRadius: RADIUS.pill, padding: '0 14px', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer', background: activeTabId === id ? ink : block, color: activeTabId === id ? paper : ink }}>
+            {tabLabel[id]}
+          </button>
+        ))}
+      </div>
       {/* Back pill "‹ {where you came from}" (mockup); collapses to just the chevron in the nav bar to give the title room. */}
       <div data-fade onClick={closeWithShrink} role="button" aria-label={backLabel} data-testid="event-detail-back"
-        style={ctl({ position: 'fixed', top: OVERLAY_TOP, left: 16, zIndex: 5, gap: 2, padding: collapsed ? '0 8px' : '0 14px 0 9px', borderRadius: RADIUS.pill, fontSize: 14, fontWeight: 600, maxWidth: 170 })}>
+        style={ctl({ position: 'fixed', top: OVERLAY_TOP, left: collapsed ? 4 : 16, zIndex: 5, gap: 2, minWidth: 44, padding: collapsed ? '0 12px' : '0 14px 0 9px', borderRadius: RADIUS.pill, fontSize: 14, fontWeight: 600, maxWidth: 170 })}>
         <IconBack />
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: collapsed ? 0 : 130, transition: 'max-width .2s ease' }}>{backLabel}</span>
       </div>
       {/* ⋯ opens the same frosted pop-up as the calendar pill beside the title (GlassMenu), anchored under the disc. */}
       <GlassMenu open={menuOpen} onOpenChange={setMenuOpen} top={48} label={T('Tuỳ chọn sự kiện', 'Event options')}
-        wrapStyle={{ position: 'fixed', top: OVERLAY_TOP, right: 112, zIndex: 6, ...inert }} menuTestId="event-detail-menu"
+        wrapStyle={{ position: 'fixed', top: OVERLAY_TOP, right: discRight(2), zIndex: 6, ...inert }} menuTestId="event-detail-menu"
         trigger={(
           <div data-fade onClick={() => setMenuOpen(o => !o)} role="button" aria-haspopup="menu" aria-label={T('Thêm', 'More')} aria-expanded={menuOpen} data-testid="event-detail-more" style={disc()}><IconMore /></div>
         )}>
@@ -645,9 +711,9 @@ export default function EventDetail({ preview = null } = {}) {
         {inviteMarket === 'VN' && <GlassMenuItem icon={<IconCopy />} onClick={copyZaloInvite} testId="event-copy-zalo">{T('Chép lời mời cho Zalo', 'Copy invite for Zalo')}</GlassMenuItem>}
         {inviteMarket === 'US' && <GlassMenuItem icon={<IconChat />} onClick={textAFriend} testId="event-text-friend">{T('Nhắn tin cho bạn bè', 'Text a friend')}</GlassMenuItem>}
       </GlassMenu>
-      <div data-fade onClick={() => shareEvent(ev)} role="button" aria-label={T('Chia sẻ', 'Share')} data-testid="event-detail-share" style={disc({ position: 'fixed', top: OVERLAY_TOP, right: 64, zIndex: 5, ...inert })}><IconShare /></div>
+      <div data-fade onClick={() => shareEvent(ev)} role="button" aria-label={T('Chia sẻ', 'Share')} data-testid="event-detail-share" style={disc({ position: 'fixed', top: OVERLAY_TOP, right: discRight(1), zIndex: 5, ...inert })}><IconShare /></div>
       {/* Save uses the same isSaved/toggleFav as Home (keys off the real `favorites` table by event id). */}
-      <div data-fade onClick={() => toggleFav(ev.key)} role="button" aria-label={isSaved(ev.key) ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')} aria-pressed={isSaved(ev.key)} data-testid="event-detail-save" style={disc({ position: 'fixed', top: OVERLAY_TOP, right: 16, zIndex: 5, ...inert })}><IconHeart filled={isSaved(ev.key)} /></div>
+      <div data-fade onClick={() => toggleFav(ev.key)} role="button" aria-label={isSaved(ev.key) ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')} aria-pressed={isSaved(ev.key)} data-testid="event-detail-save" style={disc({ position: 'fixed', top: OVERLAY_TOP, right: discRight(0), zIndex: 5, ...inert })}><IconHeart filled={isSaved(ev.key)} /></div>
       {(s.shared || linkCopied || zaloCopied) && (
         <div role="status" data-testid={zaloCopied ? 'event-zalo-copied' : undefined} style={{ position: 'fixed', top: `calc(${OVERLAY_TOP} + 48px)`, right: 16, zIndex: 5, fontSize: 12, color: ink, background: 'rgba(var(--bb-bg-rgb),0.94)', borderRadius: 999, padding: '6px 12px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}>{zaloCopied ? T(ZALO_COPIED.vi, ZALO_COPIED.en) : T('Đã sao chép link', 'Link copied')}</div>
       )}
