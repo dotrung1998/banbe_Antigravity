@@ -56,6 +56,7 @@
         },
         "details": [
           "dietary",
+          "dietary_note",
           "dress_code"
         ]
       },
@@ -98,6 +99,23 @@
               "en": "Can adjust on request"
             }
           ]
+        },
+        "dietary_note": {
+          "kind": "text",
+          "max": 120,
+          "label": {
+            "vi": "Ghi chú về món ăn",
+            "en": "Food note"
+          },
+          "hint": {
+            "vi": "Không bắt buộc. Hiện dưới dòng chế độ ăn trên trang sự kiện.",
+            "en": "Optional. Shown under the dietary line on the event page."
+          },
+          "placeholder": {
+            "vi": "VD: Báo trước để chủ nhà điều chỉnh món",
+            "en": "e.g. Tell the host ahead so dishes can be adjusted"
+          },
+          "subline": true
         },
         "dress_code": {
           "kind": "text",
@@ -985,6 +1003,23 @@
           }
         ]
       },
+      "alcohol_note": {
+        "kind": "text",
+        "max": 120,
+        "label": {
+          "vi": "Ghi chú về đồ uống",
+          "en": "Drinks note"
+        },
+        "hint": {
+          "vi": "Không bắt buộc. Hiện dưới dòng đồ uống trên trang sự kiện.",
+          "en": "Optional. Shown under the drinks line on the event page."
+        },
+        "placeholder": {
+          "vi": "VD: Rượu gạo đã gồm trong giá vé",
+          "en": "e.g. Rice wine is part of the ticket price"
+        },
+        "subline": true
+      },
       "min_age": {
         "kind": "enum",
         "label": {
@@ -1012,6 +1047,25 @@
             "en": "21+"
           }
         ]
+      },
+      "id_required": {
+        "kind": "enum",
+        "label": {
+          "vi": "Giấy tờ tuỳ thân",
+          "en": "Photo ID"
+        },
+        "hint": {
+          "vi": "Không bắt buộc. Chọn nếu khách cần mang giấy tờ để kiểm tra tuổi.",
+          "en": "Optional. Pick it if guests must bring an ID for the age check."
+        },
+        "options": [
+          {
+            "id": "yes",
+            "vi": "Mang giấy tờ tuỳ thân",
+            "en": "Bring a photo ID"
+          }
+        ],
+        "subline": true
       }
     }
   }

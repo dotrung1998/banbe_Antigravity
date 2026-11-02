@@ -385,7 +385,8 @@ enum EventRecipe {
                          source: .tip, fix: Fix(step: Step.basics, field: "greeting")))
 
         // 11. The event type's own facts (what guests ask before booking): required ones, then the optional ones.
-        let fieldIDs = profile?.wizard?.details ?? []
+        // Host-written sub-lines (migration 209, `subline` in the profile) are extras, never a recipe nag.
+        let fieldIDs = (profile?.wizard?.details ?? []).filter { profile?.detailFields?[$0]?.subline != true }
         if let profile, !fieldIDs.isEmpty {
             let required = Set(profile.wizard?.required ?? [])
             func filled(_ id: String) -> Bool {

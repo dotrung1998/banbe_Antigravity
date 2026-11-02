@@ -5367,16 +5367,20 @@ try await SupabaseService.client
                         let r: [String: JSONValue] = try await SupabaseService.client
                             .rpc("set_event_details", params: SetDetailsParams(eventId: eventID, details: EventDetailsPayload(cleaned)))
                             .execute().value
-                        // Before migration 207 the server refuses the second type's fields and the 207 keys; fall back
-                        // to the first type's facts alone (exactly what it accepted before), so nothing else is lost.
-                        if case .string(let code)? = r["error"], ["INVALID_DETAILS", "FIELD_NOT_FOR_TYPE"].contains(code),
-                           let primary = createCats.first {
-                            let primaryOnly = EventTypes.clean(EventTypes.profile(primary), createDetails[primary] ?? [:])
-                            if primaryOnly != cleaned {
-                                let _: JSONValue = try await SupabaseService.client
-                                    .rpc("set_event_details", params: SetDetailsParams(eventId: eventID, details: EventDetailsPayload(primaryOnly)))
-                                    .execute().value
-                            }
+                        // Before migration 209 the server refuses the host-written sub-lines, and before 207 the second
+                        // type's fields and the 207 keys; retry without the sub-lines, then with the first type's facts
+                        // alone (exactly what it accepted before), so nothing else is lost (note 75).
+                        func refused(_ r: [String: JSONValue]) -> Bool {
+                            if case .string(let code)? = r["error"] { return ["INVALID_DETAILS", "FIELD_NOT_FOR_TYPE"].contains(code) }
+                            return false
+                        }
+                        var last = r, sent = cleaned
+                        let primaryOnly = createCats.first.map { EventTypes.clean(EventTypes.profile($0), createDetails[$0] ?? [:]) } ?? [:]
+                        for next in [EventTypes.withoutSublines(cleaned), EventTypes.withoutSublines(primaryOnly)] where refused(last) && next != sent {
+                            sent = next
+                            last = try await SupabaseService.client
+                                .rpc("set_event_details", params: SetDetailsParams(eventId: eventID, details: EventDetailsPayload(next)))
+                                .execute().value
                         }
                     } catch {
                         print("set_event_details failed (migration 203 not applied?):", error)

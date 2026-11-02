@@ -115,3 +115,12 @@ test('category row and Show all sheet', () => {
 test('every detail field has a create-form anchor', () => {
   for (const id of DETAIL_FIELD_IDS) assert.notEqual(stepOfField(id), null, id);
 });
+
+test('209 sub-lines: flagged in the profile, stripped for an older server, read back for Event Detail (note 75)', async () => {
+  const { SUBLINE_DETAIL_KEYS, withoutSublines, detailNotes } = await import('../../src/lib/eventTypes.js');
+  assert.deepEqual([...SUBLINE_DETAIL_KEYS].sort(), ['alcohol_note', 'dietary_note', 'id_required']);
+  assert.deepEqual(withoutSublines({ v: 1, alcohol: 'included', alcohol_note: 'Rice wine', id_required: 'yes' }), { v: 1, alcohol: 'included' });
+  assert.deepEqual(withoutSublines({ v: 1, alcohol_note: 'x' }), {}, 'nothing but notes = nothing to send');
+  assert.deepEqual(detailNotes({ alcohol_note: 'Rice wine', id_required: 'yes' }, 'en'), { alcohol: 'Rice wine', dietary: null, id: 'Bring a photo ID' });
+  assert.deepEqual(detailNotes({}, 'vi'), { alcohol: null, dietary: null, id: null });
+});

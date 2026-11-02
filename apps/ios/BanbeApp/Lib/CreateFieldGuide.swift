@@ -12,6 +12,8 @@ enum CreateFieldGuide {
         // Event type facts (src/data/eventTypeProfiles.json): all in Basics, under Included.
         "dietary": 1, "dress_code": 1, "lineup": 1, "genre": 1, "format": 1, "artists": 1, "medium": 1, "brands": 1,
         "experience": 1, "entry_mode": 1, "price_range": 1, "alcohol": 1, "min_age": 1,
+        // Migration 209 (note 75): optional host-written sub-lines for Event Detail's "Good to know" rows.
+        "alcohol_note": 1, "dietary_note": 1, "id_required": 1,
         "location": 2, "date": 2,
         "price": 3, "seats": 3,
         "photos": 4,

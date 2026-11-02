@@ -31,6 +31,9 @@ struct EventTypeProfile: Decodable {
         let hint: Pair?
         /// list: "{n} artists" on cards instead of the first item.
         let countLabel: Pair?
+        /// Migration 209: a host-written sub-line under an Event Detail "Good to know" row (alcohol_note, dietary_note,
+        /// id_required). Optional, never a recipe ingredient; dropped on save while 209 is not applied.
+        var subline: Bool? = nil
     }
     struct Wizard: Decodable {
         var required: [String]
@@ -102,6 +105,24 @@ enum EventDetailValue: Hashable {
 
 typealias EventDetails = [String: EventDetailValue]
 
+extension EventTypes {
+    /// Migration 209: host-written Event Detail sub-lines (`subline` fields: alcohol_note, dietary_note, id_required).
+    static let sublineKeys: Set<String> = Set(all.flatMap { t in (t.detailFields ?? [:]).filter { $0.value.subline == true }.map(\.key) })
+
+    /// `details` without the 209 keys: what a server without migration 209 accepts. Web twin `withoutSublines`.
+    static func withoutSublines(_ d: EventDetails) -> EventDetails {
+        let out = d.filter { !sublineKeys.contains($0.key) }
+        return out.keys.contains { $0 != "v" } ? out : [:]
+    }
+
+    /// The "Good to know" sub-lines an event's details carry; the photo-ID line in the app's language. Web `detailNotes`.
+    static func detailNotes(_ d: EventDetails, en: Bool) -> EventDetailPresentation.NeedNotes {
+        func text(_ k: String) -> String? { if case .text(let s)? = d[k] { return s }; return nil }
+        let idOption = text("id_required").flatMap { id in profile("supper").detailFields?["id_required"]?.options?.first { $0.id == id } }
+        return .init(alcohol: text("alcohol_note"), dietary: text("dietary_note"), id: idOption.map { en ? $0.en : $0.vi })
+    }
+}
+
 /// `events.details` as stored: {} or {"v": 1, <field>: <list or string>}. Decodes leniently (unknown value
 /// shapes and the version key are skipped), so a row from a newer server never fails to load.
 struct EventDetailsPayload: Codable, Hashable {
@@ -146,7 +167,8 @@ enum EventTypes {
     private struct Common: Decodable { let required: [String]; let detailFields: [String: EventTypeProfile.DetailField] }
     private struct File: Decodable { let version: Int; let common: Common?; let types: [EventTypeProfile] }
     /// The shared fields' order in the form (alcohol, then minimum age), as in the JSON.
-    private static let commonOrder = ["alcohol", "min_age"]
+    /// Migration 209 (note 75): each host-written sub-line sits right after its fact (web keeps the JSON order).
+    private static let commonOrder = ["alcohol", "alcohol_note", "min_age", "id_required"]
 
     /// `common` (alcohol + minimum age) is merged into every type: its fields, its form block and its required list.
     static let all: [EventTypeProfile] = {

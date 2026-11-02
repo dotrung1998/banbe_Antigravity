@@ -189,7 +189,8 @@ export function recipeChecks(draft, benchmarks, goal, now, profile = null) {
   });
 
   // 11. The event type's own facts (what guests ask before booking): required ones, then the optional ones.
-  const fieldIds = profile?.wizard?.details || [];
+  // Host-written sub-lines (migration 209, `subline` in the profile) are extras, never a recipe nag.
+  const fieldIds = (profile?.wizard?.details || []).filter(id => !profile.detailFields?.[id]?.subline);
   if (fieldIds.length) {
     const filled = (id) => { const v = d.details?.[id]; return v != null && (!Array.isArray(v) || v.length > 0) && String(v).trim() !== ''; };
     const required = new Set(profile.wizard.required || []);

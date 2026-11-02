@@ -32,7 +32,7 @@ import { eventDraftDefaults, createDefaultsPatch, createDraftMatchesDefaults } f
 import { notificationRoute, runItAgainDate } from '../lib/coreLoops.js';
 import { DEFAULT_FILTERS as HOME_DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
 import { flagOn, normalizeFlags, readCachedFlags, writeCachedFlags } from '../lib/featureFlags.js';
-import { cleanDetails, profileFor, publishDetails, secondCategory, detailOwner, introStyle, EXTRA_DETAIL_KEYS } from '../lib/eventTypes.js';
+import { cleanDetails, profileFor, publishDetails, secondCategory, detailOwner, introStyle, EXTRA_DETAIL_KEYS, withoutSublines } from '../lib/eventTypes.js';
 import { holdLeftCreateDraft, beginCreateDraftRestore, discardLeftCreateDraft } from '../lib/createDraftUndo.js';
 import { normalizeThemeChoice, resolveTheme, systemPrefersDark } from '../lib/themeChoice.js';
 import { homeViewAfterSync, readStoredHomeView, startHostingStep, storeHomeView } from '../lib/homeMode.js';
@@ -10586,12 +10586,13 @@ export function BanBeProvider({ children }) {
           const style = (s.createDetails || {})._style || {};
           let details = publishDetails({ keys, draft: s.createDetails, introFont: style.intro_font, introColor: style.intro_color });
           let { data: detailsRes, error: detailsError } = await supabase.rpc('set_event_details', { p_event_id: eventId, p_details: details });
-          if (!detailsError && ['INVALID_DETAILS', 'FIELD_NOT_FOR_TYPE'].includes(detailsRes?.error)) {
-            const primaryOnly = cleanDetails(profileFor(keys[0]), (s.createDetails || {})[keys[0]]);
-            if (JSON.stringify(primaryOnly) !== JSON.stringify(details)) {
-              details = primaryOnly;
-              ({ data: detailsRes, error: detailsError } = await supabase.rpc('set_event_details', { p_event_id: eventId, p_details: details }));
-            }
+          // Note 75 (migration 209): the host-written sub-lines are dropped first while 209 is not applied.
+          const refused = () => !detailsError && ['INVALID_DETAILS', 'FIELD_NOT_FOR_TYPE'].includes(detailsRes?.error);
+          for (const next of [withoutSublines(details), withoutSublines(cleanDetails(profileFor(keys[0]), (s.createDetails || {})[keys[0]]))]) {
+            if (!refused()) break;
+            if (JSON.stringify(next) === JSON.stringify(details)) continue;
+            details = next;
+            ({ data: detailsRes, error: detailsError } = await supabase.rpc('set_event_details', { p_event_id: eventId, p_details: details }));
           }
           if (detailsError || detailsRes?.success === false) console.warn('set_event_details failed (migration 203 not applied?):', detailsError || detailsRes?.error);
           else set(prev => (prev.realEventsById[eventId] ? { realEventsById: { ...prev.realEventsById, [eventId]: { ...prev.realEventsById[eventId], details } } } : {}));

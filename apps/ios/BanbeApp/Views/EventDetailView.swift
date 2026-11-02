@@ -953,7 +953,7 @@ struct EventDetailView: View {
         return app.T("Địa điểm", "Place")
     }
     /// "Good to know" rows (alcohol, each dietary choice, minimum age, other facts); a sub-line only when the host wrote one.
-    private var needRows: [EventDetailPresentation.NeedRow] { EventDetailPresentation.needToKnowRows(typeFacts, en: app.isEN) }
+    private var needRows: [EventDetailPresentation.NeedRow] { EventDetailPresentation.needToKnowRows(typeFacts, notes: typeProfile == nil ? .init() : EventTypes.detailNotes(event.details, en: app.isEN), en: app.isEN) }
     /// The menu cards: the structured items (label + detail), else the legacy included text as labels. No icons.
     private var cards: [IncludedItem] {
         if let items = event.includedItems, !items.isEmpty { return EventDetailPresentation.menuCards(items) }

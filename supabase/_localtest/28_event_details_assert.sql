@@ -1,5 +1,5 @@
 -- LOCAL TEST HARNESS ONLY — never deployed, never run against a real project.
--- Migrations 203 + 204: events.details (event type profiles, all five types + alcohol / minimum age). Needs the vectors the runner builds from
+-- Migrations 203 + 204 (+ 207, 209): events.details (event type profiles, all five types + alcohol / minimum age). Needs the vectors the runner builds from
 -- src/data/eventTypeProfiles.json + tests/fixtures/event-types.json (temp tables vec_fields, vec_clean).
 \set ON_ERROR_STOP on
 BEGIN;
@@ -98,6 +98,20 @@ BEGIN
   PERFORM pg_temp.as_user(goer);
   r := public.set_event_details('test_evt_a', '{"v":1,"intro_font":"mono"}');
   PERFORM pg_temp.ok(r->>'error' = 'EVENT_NOT_FOUND', 'E6j still host only');
+
+  -- E7 (209, note 75): optional host-written sub-lines and the photo-ID reminder.
+  PERFORM pg_temp.as_user(host);
+  PERFORM pg_temp.ok(public.validate_event_details('{"v":1,"alcohol":"included","alcohol_note":"Rượu gạo đã gồm","dietary_note":"Báo trước","id_required":"yes"}'), 'E7a 209 keys valid');
+  PERFORM pg_temp.ok(NOT public.validate_event_details(jsonb_build_object('v', 1, 'alcohol_note', repeat('x', 121))), 'E7b note at most 120');
+  PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1,"alcohol_note":"   "}'), 'E7c blank note');
+  PERFORM pg_temp.ok(NOT public.validate_event_details('{"v":1,"id_required":"no"}'), 'E7d id_required is yes or absent');
+  UPDATE events SET cat_key = 'supper' WHERE id = 'test_evt_a';
+  r := public.set_event_details('test_evt_a', '{"v":1,"dietary":["vegan"],"dietary_note":"Báo trước","alcohol":"byo","alcohol_note":"Mang rượu vang","min_age":"18","id_required":"yes"}');
+  PERFORM pg_temp.ok((r->>'success')::boolean AND (SELECT details->>'id_required' FROM events WHERE id = 'test_evt_a') = 'yes', 'E7e supper host writes all three');
+  r := public.set_event_details('test_evt_b', '{"v":1,"dietary_note":"x"}');
+  PERFORM pg_temp.ok(r->>'error' = 'FIELD_NOT_FOR_TYPE', 'E7f dietary note only where dietary exists');
+  r := public.set_event_details('test_evt_b', '{"v":1,"alcohol":"paid","alcohol_note":"Quầy bar mở","id_required":"yes"}');
+  PERFORM pg_temp.ok((r->>'success')::boolean, 'E7g common notes on a music event');
 
   RAISE NOTICE 'DETAILS RESULT: ALL PASS';
 END $t$;

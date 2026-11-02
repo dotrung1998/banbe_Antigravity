@@ -50,6 +50,19 @@ export function searchAliases() {
 // ---- Two categories + introduction style (note 69, migration 207). Twin of EventTypes.swift. -------------------
 /** Keys stored in `events.details` that are not type facts: the second category and the introduction's style. */
 export const EXTRA_DETAIL_KEYS = ['cat2', 'intro_font', 'intro_color'];
+/** Migration 209: host-written Event Detail sub-lines (`subline` fields: alcohol_note, dietary_note, id_required). */
+export const SUBLINE_DETAIL_KEYS = [...new Set(EVENT_TYPES.flatMap(t => Object.entries(t.detailFields || {}).filter(([, d]) => d.subline).map(([k]) => k)))];
+/** `details` without the 209 keys: what a server without migration 209 accepts. */
+export const withoutSublines = (details) => {
+  const out = { ...(details || {}) };
+  for (const k of SUBLINE_DETAIL_KEYS) delete out[k];
+  return Object.keys(out).filter(k => k !== 'v').length ? out : {};
+};
+/** The "Good to know" sub-lines an event's details carry (needToKnowRows `notes`); the photo-ID line in `lang`. */
+export function detailNotes(details, lang) {
+  const idOpt = COMMON.detailFields?.id_required?.options?.find(o => o.id === details?.id_required);
+  return { alcohol: details?.alcohol_note || null, dietary: details?.dietary_note || null, id: idOpt ? (lang === 'vi' ? idOpt.vi : idOpt.en) : null };
+}
 export const INTRO_FONTS = ['sans', 'serif', 'rounded', 'mono'];
 export const INTRO_COLORS = ['ink', 'ink2', 'clay', 'honey', 'alert'];
 const COMMON_KEYS = Object.keys(COMMON.detailFields || {});

@@ -12,7 +12,7 @@ final class EventTypesCombinedTests: XCTestCase {
     func testTwoKeysMergeFieldsWithSharedOnesOnceAtTheEnd() {
         let p = EventTypes.combined(["supper", "music"])
         XCTAssertEqual(p.key, "supper", "the first pick keeps the identity")
-        XCTAssertEqual(p.wizard?.details, ["dietary", "dress_code", "lineup", "genre", "format", "alcohol", "min_age"])
+        XCTAssertEqual(p.wizard?.details, ["dietary", "dietary_note", "dress_code", "lineup", "genre", "format", "alcohol", "alcohol_note", "min_age", "id_required"])
         let required = EventTypes.requiredFields(p)
         XCTAssertTrue(required.contains("included"), "supper still needs Included")
         XCTAssertTrue(required.contains("lineup"), "music adds its lineup")
@@ -61,5 +61,17 @@ final class EventTypesCombinedTests: XCTestCase {
         XCTAssertTrue(EventTypes.eventProfile(catKey: "supper", details: details).wizard?.details.contains("lineup") == true)
         XCTAssertEqual(EventTypes.introStyle(details).color, "clay")
         XCTAssertNil(EventTypes.introStyle(details).font)
+    }
+
+    /// Migration 209 (note 75): host-written sub-lines are flagged in the profile, dropped for an older server and read
+    /// back for Event Detail (web twin in tests/unit/eventTypes.test.mjs).
+    func testSublineKeys() {
+        XCTAssertEqual(EventTypes.sublineKeys, ["alcohol_note", "dietary_note", "id_required"])
+        XCTAssertEqual(EventTypes.withoutSublines(["v": .text("1"), "alcohol": .text("included"), "alcohol_note": .text("Rice wine"), "id_required": .text("yes")]),
+                       ["v": .text("1"), "alcohol": .text("included")])
+        XCTAssertEqual(EventTypes.withoutSublines(["alcohol_note": .text("x")]), [:])
+        let n = EventTypes.detailNotes(["alcohol_note": .text("Rice wine"), "id_required": .text("yes")], en: true)
+        XCTAssertEqual(n, .init(alcohol: "Rice wine", dietary: nil, id: "Bring a photo ID"))
+        XCTAssertEqual(EventTypes.detailNotes([:], en: false), .init())
     }
 }

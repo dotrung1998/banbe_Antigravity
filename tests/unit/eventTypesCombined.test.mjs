@@ -11,7 +11,7 @@ test('one key is that type unchanged', () => {
 test('two keys merge fields, shared ones once at the end', () => {
   const p = combinedProfile(['supper', 'music']);
   assert.equal(p.key, 'supper');
-  assert.deepEqual(p.wizard.details, ['dietary', 'dress_code', 'lineup', 'genre', 'format', 'alcohol', 'min_age']);
+  assert.deepEqual(p.wizard.details, ['dietary', 'dietary_note', 'dress_code', 'lineup', 'genre', 'format', 'alcohol', 'alcohol_note', 'min_age', 'id_required']);
   const req = requiredFields(p);
   assert.ok(req.includes('included') && req.includes('lineup'));
   assert.equal(req.filter(f => f === 'alcohol').length, 1);

@@ -19,7 +19,7 @@ import { shareMarket, shareWhen, shareInviteText, smsInviteHref, ZALO_COPIED } f
 import { track } from '../lib/analytics.js';
 import { nextFromHost, whenLabel } from '../lib/quickWins.js';
 import { flagOn } from '../lib/featureFlags.js';
-import { eventProfile, detailFacts, introStyle } from '../lib/eventTypes.js';
+import { eventProfile, detailFacts, introStyle, detailNotes } from '../lib/eventTypes.js';
 import { introFontFamily, introColorValue } from '../lib/introStyle.js';
 import { seatStatus, splitFacts, aboutSection, includedSection, distanceLabel, stripPhotos, HERO_SCRIM, ABOUT_LINES, dateBlock, ticketsLeftText, needToKnowRows, menuCards } from '../lib/eventDetailPresentation.js';
 import { daysUntilInZone, countdownChipText } from '../lib/countdown.js';
@@ -430,7 +430,7 @@ export default function EventDetail({ preview = null } = {}) {
   const cityShort = (() => { const c = cityId && CITIES.find(x => x.id === cityId); return c ? (c.short ? T(c.short.vi, c.short.en) : T(c.vi, c.en)) : null; })();
   const placeSub = evDistance ? T(`Cách ${evDistance}`, `${evDistance} away`) : cityShort ? `${T('Khu vực', 'Area')} · ${cityShort}` : T('Địa điểm', 'Place');
   // "Good to know" rows (alcohol, each dietary choice, minimum age, other facts); sub-lines only when the host wrote one.
-  const needRows = needToKnowRows(typeFacts, {}, en);
+  const needRows = needToKnowRows(typeFacts, typeProfile ? detailNotes(ev?.details, en ? 'en' : 'vi') : {}, en);
   // The menu cards: the structured items (label + detail), else the legacy included text as labels. No icons (no data).
   const cards = menuCards(includedItems.length > 0 ? includedItems : included.items.map(label => ({ label, detail: '' })));
   // Protection steps: hidden once there is nothing left to protect (owner decision 8).
