@@ -983,7 +983,7 @@ struct CreateEventView: View {
                         .accessibilityIdentifier("create.included.\(index).label")
                         Divider()
                         TextField(
-                            app.T("Mô tả (không bắt buộc)", "Detail (optional)"),
+                            app.T("Dòng ngắn dưới tên, VD: món chính", "Short line under it, e.g. main course"),
                             text: Binding(get: { item.detail }, set: { app.setCreateIncludedItemDetail(index, $0) })
                         )
                         .focused($focusedField, equals: "included.\(index).detail")

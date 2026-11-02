@@ -786,7 +786,7 @@ export default function CreateEvent() {
                       style={{ border: 'none', background: 'none', outline: 'none', fontFamily: FACE, fontSize: 16, fontWeight: 600, color: ink, padding: 0 }} />
                     <div style={{ height: 1, background: rule }} />
                     <input value={it.detail} maxLength={300} onChange={(e) => setCreateIncludedItem(i, 'detail', e.target.value)}
-                      placeholder={T('Mô tả (không bắt buộc)', 'Detail (optional)')} data-testid={`create-included-${i}-detail`} data-bare
+                      placeholder={T('Dòng ngắn dưới tên, VD: món chính', 'Short line under it, e.g. main course')} data-testid={`create-included-${i}-detail`} data-bare
                       style={{ border: 'none', background: 'none', outline: 'none', fontFamily: FACE, fontSize: 15, color: ink, opacity: 0.85, padding: 0 }} />
                   </div>
                   <button type="button" onClick={() => removeCreateIncludedItem(i)} aria-label={T('Xoá mục', 'Remove item')}

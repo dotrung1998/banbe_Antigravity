@@ -1,7 +1,7 @@
 # 75 — Event Detail V8: ticket stub, tabs, 1·2·3 presets back, host-written notes (web + iOS)
 
-Status: IMPLEMENTED (web + iOS), committed on `main` 2026-11-02, NOT pushed. Migration 209 is applied on the local
-harness only, NOT on production. Plan: `~/.claude/plans/pasted-content-id-8996-plan-mode-warm-sedgewick.md`.
+Status: IMPLEMENTED (web + iOS), pushed to `main` 2026-11-02. Migration 209 APPLIED TO PRODUCTION 2026-11-02 22:18:21 UTC
+(owner request; log below). Plan: `~/.claude/plans/pasted-content-id-8996-plan-mode-warm-sedgewick.md`.
 
 **This note supersedes two note-70 decisions:**
 - the one-row bar under 12% of the screen;
@@ -105,6 +105,18 @@ Section headings are small caps.
   - `ReserveButtonRegressionUITests`, which stops at login focus.
 
 ## Open
-- **Applying 209 in production** is the owner's call. Until then, hosts can type notes but the server won't store them; the saves retry without them.
-- **Cards and copy:** the Included `detail` placeholder still says "Detail (optional)", and a long detail is clamped to one line on the menu card.
+- **Cards:** a long Included detail is clamped to one line on the menu card. The create placeholder now says so: "Short line under it, e.g. main course" / "Dòng ngắn dưới tên, VD: món chính".
 - **Not checked:** VI screenshots; Dynamic Type XXXL on the stub; an iOS 17 runtime drag test of the spy.
+
+## Production log (2026-11-02, UTC)
+- **Backup:** `supabase db dump --linked` → `~/banbe-backups/2026-11-02-pre-209/` (schema a74dcc692a5d32b2, data
+  c499ece7d3ac1517; chmod 600, outside the repo, contains personal data).
+- **Remote state before:** everything through 208 applied, except 182–184 (held back on purpose, note 58) and 209.
+- **Push:** a one-file workdir (all migrations except 182–184). `db push --linked --dry-run` listed exactly
+  `20261231000209_209_event_detail_notes.sql`; it was applied at 22:18:21.
+- **Verified read-only (REST, service role):**
+  - `event_details_fields('supper')` = dietary, dietary_note, dress_code, alcohol, alcohol_note, min_age, id_required;
+  - music has the common notes and no `dietary_note`;
+  - `validate_event_details` accepts the three keys and refuses `id_required = "no"`.
+- **Rollback, if needed:** `supabase/rollbacks/20261231000209_209_revert_event_detail_notes.sql`. It refuses while
+  events hold 209 keys.
