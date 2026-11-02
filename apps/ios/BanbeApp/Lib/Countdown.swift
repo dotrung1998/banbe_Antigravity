@@ -175,4 +175,38 @@ enum Countdown {
         let sunEnd = ictCal.date(from: sunEndComponents) ?? now
         return (max(satStart, now), sunEnd)
     }
+
+    // MARK: V8 stub countdown (note 75)
+
+    /// Whole days from today to the event's date, both in the VENUE's zone (note 60), never the device's. Day/month come
+    /// from the same "Th 4, 04.11" text as the date block (the demo rows' seeded `starts_at` can fall on the next day,
+    /// note 70); `start` only picks the year (the candidate nearest to it). Nil when unparseable or already past.
+    /// Web twin `daysUntilInZone` (countdown.js).
+    static func daysUntilInZone(_ whenDateRaw: String, start: Date?, timeZone: TimeZone?, now: Date = Date()) -> Int? {
+        let text = whenDateRaw.trimmingCharacters(in: .whitespaces)
+        guard let m = text.firstMatch(of: #/(\d{1,2})\.(\d{1,2})$/#),
+              let day = Int(m.output.1), let month = Int(m.output.2), (1...12).contains(month), (1...31).contains(day) else { return nil }
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = timeZone ?? TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        func dayStamp(_ y: Int, _ mo: Int, _ d: Int) -> Date? { utc.date(from: DateComponents(year: y, month: mo, day: d)) }
+        let t = cal.dateComponents([.year, .month, .day], from: now)
+        let a = cal.dateComponents([.year, .month, .day], from: start ?? now)
+        guard let y0 = a.year, let anchor = dayStamp(y0, a.month ?? 1, a.day ?? 1),
+              let today = dayStamp(t.year ?? y0, t.month ?? 1, t.day ?? 1) else { return nil }
+        let best = [y0 - 1, y0, y0 + 1].compactMap { dayStamp($0, month, day) }
+            .min { abs($0.timeIntervalSince(anchor)) < abs($1.timeIntervalSince(anchor)) }
+        guard let best else { return nil }
+        let n = Int((best.timeIntervalSince(today) / 86_400).rounded())
+        return n < 0 ? nil : n
+    }
+
+    /// The stub's countdown chip: "Hôm nay" / "Ngày mai" / "Còn N ngày" · "Today" / "Tomorrow" / "In N days".
+    static func countdownChipText(_ days: Int?, en: Bool) -> String? {
+        guard let days, days >= 0 else { return nil }
+        if days == 0 { return en ? "Today" : "Hôm nay" }
+        if days == 1 { return en ? "Tomorrow" : "Ngày mai" }
+        return en ? "In \(days) days" : "Còn \(days) ngày"
+    }
 }

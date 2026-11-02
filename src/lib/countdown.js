@@ -243,3 +243,36 @@ export function liveEventOverrides(liveEvent, staticEv, now = Date.now()) {
   // ended, so as far as this row is concerned, neither has happened.
   return { ...dateOverrides, cancelled: false, cancelledHoursAgo: null, endedHoursAgo: null };
 }
+
+/**
+ * V8 stub countdown (note 75): whole days from today to the event's date, both counted in the VENUE's zone (note 60),
+ * never the device's. The day/month come from the same "Th 4, 04.11" text as the date block, so the two never disagree
+ * (the demo rows' seeded `starts_at` can fall on the next day, note 70); `startMs` only picks the year (the candidate
+ * nearest to it, so a 31.12 event seen in early January still resolves). Null when unparseable or already past.
+ */
+export function daysUntilInZone(whenDateRaw, startMs, timeZone = 'Asia/Ho_Chi_Minh', nowMs = Date.now()) {
+  const m = String(whenDateRaw || '').trim().match(/(\d{1,2})\.(\d{1,2})$/);
+  if (!m) return null;
+  const day = Number(m[1]), month = Number(m[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const zone = timeZone || 'Asia/Ho_Chi_Minh';
+  const today = zonedParts(nowMs, zone);
+  const anchor = Number.isFinite(startMs) ? startMs : nowMs;
+  const y0 = zonedParts(anchor, zone).year;
+  const anchorDay = Date.UTC(y0, zonedParts(anchor, zone).month - 1, zonedParts(anchor, zone).day);
+  let best = null;
+  for (const y of [y0 - 1, y0, y0 + 1]) {
+    const t = Date.UTC(y, month - 1, day);
+    if (!best || Math.abs(t - anchorDay) < Math.abs(best - anchorDay)) best = t;
+  }
+  const n = Math.round((best - Date.UTC(today.year, today.month - 1, today.day)) / 86400000);
+  return n < 0 ? null : n;
+}
+
+/** The stub's countdown chip text, or null: "Hôm nay" / "Ngày mai" / "Còn N ngày" · "Today" / "Tomorrow" / "In N days". */
+export function countdownChipText(days, en = false) {
+  if (days == null || days < 0) return null;
+  if (days === 0) return en ? 'Today' : 'Hôm nay';
+  if (days === 1) return en ? 'Tomorrow' : 'Ngày mai';
+  return en ? `In ${days} days` : `Còn ${days} ngày`;
+}

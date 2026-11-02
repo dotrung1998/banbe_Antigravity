@@ -459,5 +459,201 @@
         "b.jpg"
       ]
     }
+  ],
+  "dateBlock": [
+    {
+      "name": "EN",
+      "raw": "Th 4, 04.11",
+      "en": true,
+      "out": {
+        "month": "NOV",
+        "day": "04",
+        "weekday": "WED"
+      }
+    },
+    {
+      "name": "VI month is THG (owner decision 6)",
+      "raw": "Th 4, 04.11",
+      "en": false,
+      "out": {
+        "month": "THG 11",
+        "day": "04",
+        "weekday": "THỨ TƯ"
+      }
+    },
+    {
+      "name": "Sunday, one-digit day",
+      "raw": "CN, 1.03",
+      "en": false,
+      "out": {
+        "month": "THG 3",
+        "day": "01",
+        "weekday": "CHỦ NHẬT"
+      }
+    },
+    {
+      "name": "unrecognised",
+      "raw": "Hôm nay",
+      "en": true,
+      "out": null
+    }
+  ],
+  "ticketsLeft": [
+    {
+      "left": 3,
+      "en": false,
+      "out": "Còn 3 vé"
+    },
+    {
+      "left": 3,
+      "en": true,
+      "out": "3 tickets left"
+    },
+    {
+      "left": 1,
+      "en": true,
+      "out": "1 ticket left"
+    }
+  ],
+  "needToKnowRows": [
+    {
+      "name": "supper club, two dietary choices, notes set",
+      "facts": [
+        {
+          "id": "dietary",
+          "label": "Dietary",
+          "value": "Vegetarian-friendly, Vegan",
+          "values": [
+            "Vegetarian-friendly",
+            "Vegan"
+          ]
+        },
+        {
+          "id": "alcohol",
+          "label": "Alcohol",
+          "value": "Alcohol included"
+        },
+        {
+          "id": "min_age",
+          "label": "Minimum age",
+          "value": "18+"
+        },
+        {
+          "id": "dress_code",
+          "label": "Dress code",
+          "value": "Smart casual"
+        }
+      ],
+      "notes": {
+        "alcohol": "Rice wine",
+        "dietary": " Tell us ahead ",
+        "id": "Bring a photo ID"
+      },
+      "en": true,
+      "out": [
+        {
+          "key": "alcohol",
+          "icon": "alcohol",
+          "title": "Alcohol included",
+          "sub": "Rice wine"
+        },
+        {
+          "key": "dietary",
+          "icon": "dietary",
+          "title": "Vegetarian-friendly",
+          "sub": "Tell us ahead"
+        },
+        {
+          "key": "dietary-2",
+          "icon": "dietary",
+          "title": "Vegan",
+          "sub": null
+        },
+        {
+          "key": "min_age-row",
+          "icon": "age",
+          "title": "Ages 18 and up",
+          "sub": "Bring a photo ID"
+        },
+        {
+          "key": "dress_code",
+          "icon": "fact",
+          "title": "Dress code",
+          "sub": "Smart casual"
+        }
+      ]
+    },
+    {
+      "name": "no notes = no sub-lines (never invented)",
+      "facts": [
+        {
+          "id": "alcohol",
+          "label": "Đồ uống có cồn",
+          "value": "Đã gồm đồ uống có cồn"
+        },
+        {
+          "id": "min_age",
+          "label": "Độ tuổi tối thiểu",
+          "value": "18+"
+        }
+      ],
+      "notes": {},
+      "en": false,
+      "out": [
+        {
+          "key": "alcohol",
+          "icon": "alcohol",
+          "title": "Đã gồm đồ uống có cồn",
+          "sub": null
+        },
+        {
+          "key": "min_age-row",
+          "icon": "age",
+          "title": "Từ 18 tuổi",
+          "sub": null
+        }
+      ]
+    }
+  ],
+  "menuCards": [
+    {
+      "name": "blanks dropped, max 3, detail kept",
+      "in": [
+        {
+          "label": " 5 món ",
+          "detail": "món chính"
+        },
+        {
+          "label": "",
+          "detail": "x"
+        },
+        {
+          "label": "rượu gạo",
+          "detail": ""
+        },
+        {
+          "label": "cà phê",
+          "detail": "kết thúc bữa"
+        },
+        {
+          "label": "bánh",
+          "detail": ""
+        }
+      ],
+      "out": [
+        {
+          "label": "5 món",
+          "detail": "món chính"
+        },
+        {
+          "label": "rượu gạo",
+          "detail": ""
+        },
+        {
+          "label": "cà phê",
+          "detail": "kết thúc bữa"
+        }
+      ]
+    }
   ]
 }

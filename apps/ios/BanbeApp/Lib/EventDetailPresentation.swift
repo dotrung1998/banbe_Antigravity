@@ -138,4 +138,87 @@ enum EventDetailPresentation {
         let l = 0.2126 * lin(m[0]) + 0.7152 * lin(m[1]) + 0.0722 * lin(m[2])
         return 1.05 / (l + 0.05)
     }
+
+    // MARK: V8 ticket stub (note 75)
+
+    private static let weekdayVILong = ["CHỦ NHẬT", "THỨ HAI", "THỨ BA", "THỨ TƯ", "THỨ NĂM", "THỨ SÁU", "THỨ BẢY"]
+
+    struct DateBlock: Equatable { let month: String; let day: String; let weekday: String }
+
+    /// The stub's date block from the same "Th 4, 04.11" text as the Time (never from startDate, note 70):
+    /// EN NOV / 04 / WED, VI THG 11 / 04 / THỨ TƯ. Nil when unrecognised.
+    static func dateBlock(_ raw: String, en: Bool) -> DateBlock? {
+        let text = raw.trimmingCharacters(in: .whitespaces)
+        guard let m = text.wholeMatch(of: #/(CN|Th ([2-7])),\s*(\d{1,2})\.(\d{1,2})/#) else { return nil }
+        let wd = m.output.1 == "CN" ? 0 : (Int(m.output.2 ?? "") ?? 1) - 1
+        guard let day = Int(m.output.3), let month = Int(m.output.4), (1...12).contains(month), (0...6).contains(wd) else { return nil }
+        return DateBlock(month: en ? monthEN[month - 1].uppercased() : "THG \(month)",
+                         day: String(format: "%02d", day),
+                         weekday: en ? weekdayEN[wd].uppercased() : weekdayVILong[wd])
+    }
+
+    /// The seat chip beside the price (V8, owner decision 5): "Còn N vé" / "N tickets left" (no "of M").
+    static func ticketsLeftText(_ left: Int, en: Bool) -> String {
+        let n = max(0, left)
+        if !en { return "Còn \(n) vé" }
+        return n == 1 ? "1 ticket left" : "\(n) tickets left"
+    }
+
+    enum NeedIcon: String { case alcohol, dietary, age, fact }
+
+    struct NeedRow: Equatable {
+        let id: String
+        /// Identifier suffix: dietary rows keep `dietary`, `dietary-2`…; the age row is `min_age-row`.
+        let key: String
+        let icon: NeedIcon
+        var badge: String? = nil
+        let title: String
+        let sub: String?
+    }
+
+    /// Host-written sub-lines (phase 7); nil or blank = no sub-line (never invented copy).
+    struct NeedNotes: Equatable {
+        var alcohol: String? = nil
+        var dietary: String? = nil
+        var id: String? = nil
+    }
+
+    /// "Good to know" rows in V8 order: alcohol, one row per dietary choice (the dietary note on the first), minimum
+    /// age, then the type's other facts as label over value. Web twin `needToKnowRows`.
+    static func needToKnowRows(_ facts: [EventTypes.Fact], notes: NeedNotes = NeedNotes(), en: Bool) -> [NeedRow] {
+        func clean(_ s: String?) -> String? {
+            let t = (s ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? nil : t
+        }
+        var alcohol: [NeedRow] = [], dietary: [NeedRow] = [], age: [NeedRow] = [], rest: [NeedRow] = []
+        for f in facts {
+            switch f.id {
+            case "alcohol":
+                alcohol.append(NeedRow(id: f.id, key: "alcohol", icon: .alcohol, title: f.value, sub: clean(notes.alcohol)))
+            case "dietary":
+                let vals = (f.values?.isEmpty == false) ? f.values! : [f.value]
+                for (i, v) in vals.enumerated() {
+                    dietary.append(NeedRow(id: f.id, key: i == 0 ? "dietary" : "dietary-\(i + 1)", icon: .dietary, title: v,
+                                           sub: i == 0 ? clean(notes.dietary) : nil))
+                }
+            case pillFact:
+                let n = f.value.filter(\.isNumber)
+                age.append(NeedRow(id: f.id, key: "\(pillFact)-row", icon: .age, badge: f.value,
+                                   title: n.isEmpty ? f.value : (en ? "Ages \(n) and up" : "Từ \(n) tuổi"), sub: clean(notes.id)))
+            default:
+                rest.append(NeedRow(id: f.id, key: f.id, icon: .fact, title: f.label, sub: clean(f.value)))
+            }
+        }
+        return alcohol + dietary + age + rest
+    }
+
+    /// The menu cards (V8): up to 3 included items as label + detail (detail may be empty), blanks dropped. No icons.
+    static let menuMax = 3
+    static func menuCards(_ items: [IncludedItem]) -> [IncludedItem] {
+        Array(items
+            .map { IncludedItem(label: $0.label.trimmingCharacters(in: .whitespacesAndNewlines),
+                                detail: $0.detail.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            .filter { !$0.label.isEmpty }
+            .prefix(menuMax))
+    }
 }

@@ -1,0 +1,88 @@
+{
+  "_comment": "V8 stub countdown in the VENUE zone (note 75, note 60). Shared by tests/unit/countdownZone.test.mjs and apps/ios/BanbeAppTests/CountdownZoneTests.swift.",
+  "daysUntil": [
+    {
+      "name": "bepnho: seeded starts_at falls on the next VN day, the when text wins",
+      "raw": "Th 4, 04.11",
+      "startMs": 1793818800000,
+      "tz": "Asia/Ho_Chi_Minh",
+      "nowMs": 1793613600000,
+      "out": 2
+    },
+    {
+      "name": "00:30 on 4.11 in Vietnam is already the next day there (an LA device still reads 3.11)",
+      "raw": "Th 5, 05.11",
+      "startMs": 1793880000000,
+      "tz": "Asia/Ho_Chi_Minh",
+      "nowMs": 1793727000000,
+      "out": 1
+    },
+    {
+      "name": "same day",
+      "raw": "Th 4, 04.11",
+      "startMs": 1793797200000,
+      "tz": "Asia/Ho_Chi_Minh",
+      "nowMs": 1793757600000,
+      "out": 0
+    },
+    {
+      "name": "US venue: still the evening before in Los Angeles",
+      "raw": "Th 6, 06.11",
+      "startMs": 1794020400000,
+      "tz": "America/Los_Angeles",
+      "nowMs": 1793944800000,
+      "out": 1
+    },
+    {
+      "name": "year rollover",
+      "raw": "Th 5, 31.12",
+      "startMs": 1798718400000,
+      "tz": "Asia/Ho_Chi_Minh",
+      "nowMs": 1798599600000,
+      "out": 1
+    },
+    {
+      "name": "past",
+      "raw": "Th 2, 02.11",
+      "startMs": 1793620800000,
+      "tz": "Asia/Ho_Chi_Minh",
+      "nowMs": 1793707200000,
+      "out": null
+    },
+    {
+      "name": "unparseable",
+      "raw": "Hôm nay",
+      "startMs": null,
+      "tz": "Asia/Ho_Chi_Minh",
+      "nowMs": 1793707200000,
+      "out": null
+    }
+  ],
+  "chipText": [
+    {
+      "days": 0,
+      "en": false,
+      "out": "Hôm nay"
+    },
+    {
+      "days": 1,
+      "en": true,
+      "out": "Tomorrow"
+    },
+    {
+      "days": 2,
+      "en": false,
+      "out": "Còn 2 ngày"
+    },
+    {
+      "days": 5,
+      "en": true,
+      "out": "In 5 days"
+    },
+    {
+      "days": null,
+      "en": true,
+      "out": null
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "_comment": "Event Detail V8 tabs (note 75). Shared by tests/unit/eventDetailTabs.test.mjs and apps/ios/BanbeAppTests/EventDetailTabsTests.swift.",
+  "visibleTabs": [
+    {
+      "name": "everything",
+      "in": {
+        "hasMenu": true,
+        "hasHost": true,
+        "hasPhotos": true,
+        "hasProtection": true
+      },
+      "out": [
+        "overview",
+        "menu",
+        "host",
+        "photos",
+        "safe"
+      ]
+    },
+    {
+      "name": "no menu, no photos, ended (no protection)",
+      "in": {
+        "hasMenu": false,
+        "hasHost": true,
+        "hasPhotos": false,
+        "hasProtection": false
+      },
+      "out": [
+        "overview",
+        "host"
+      ]
+    }
+  ],
+  "activeTab": [
+    {
+      "name": "top",
+      "tops": [
+        0,
+        600,
+        900,
+        1300,
+        1600
+      ],
+      "scrollTop": 0,
+      "maxScroll": 1500,
+      "lead": 24,
+      "out": 0
+    },
+    {
+      "name": "just before menu takes over",
+      "tops": [
+        0,
+        600,
+        900,
+        1300,
+        1600
+      ],
+      "scrollTop": 570,
+      "maxScroll": 1500,
+      "lead": 24,
+      "out": 0
+    },
+    {
+      "name": "menu",
+      "tops": [
+        0,
+        600,
+        900,
+        1300,
+        1600
+      ],
+      "scrollTop": 580,
+      "maxScroll": 1500,
+      "lead": 24,
+      "out": 1
+    },
+    {
+      "name": "host",
+      "tops": [
+        0,
+        600,
+        900,
+        1300,
+        1600
+      ],
+      "scrollTop": 1000,
+      "maxScroll": 1500,
+      "lead": 24,
+      "out": 2
+    },
+    {
+      "name": "unreachable photos gets a spread threshold",
+      "tops": [
+        0,
+        600,
+        900,
+        1300,
+        1600
+      ],
+      "scrollTop": 1400,
+      "maxScroll": 1500,
+      "lead": 24,
+      "out": 3
+    },
+    {
+      "name": "bottom always selects the last tab",
+      "tops": [
+        0,
+        600,
+        900,
+        1300,
+        1600
+      ],
+      "scrollTop": 1499,
+      "maxScroll": 1500,
+      "lead": 24,
+      "out": 4
+    },
+    {
+      "name": "single section",
+      "tops": [
+        0
+      ],
+      "scrollTop": 300,
+      "maxScroll": 300,
+      "lead": 24,
+      "out": 0
+    }
+  ]
+}

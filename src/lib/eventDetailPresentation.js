@@ -133,3 +133,66 @@ export function scrimContrast(alpha, pixel = [255, 255, 255], scrim = [12, 10, 8
   const mixed = pixel.map((c, i) => c * (1 - alpha) + scrim[i] * alpha);
   return (1.05) / (lum(mixed) + 0.05);
 }
+
+// ---- V8 ticket stub (note 75) ----
+
+const WD_VI_LONG = ['CHỦ NHẬT', 'THỨ HAI', 'THỨ BA', 'THỨ TƯ', 'THỨ NĂM', 'THỨ SÁU', 'THỨ BẢY'];
+const WD_EN_UPPER = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+/**
+ * The stub's date block { month, day, weekday } from the same "Th 4, 04.11" text as the Time (so they never disagree;
+ * never from startDate, note 70): EN { 'NOV', '04', 'WED' }, VI { 'THG 11', '04', 'THỨ TƯ' }. Null when unrecognised.
+ */
+export function dateBlock(raw, en = false) {
+  const m = String(raw || '').trim().match(/^(CN|Th ([2-7])),\s*(\d{1,2})\.(\d{1,2})$/);
+  if (!m) return null;
+  const wd = m[1] === 'CN' ? 0 : Number(m[2]) - 1;
+  const month = Number(m[4]);
+  if (month < 1 || month > 12) return null;
+  return {
+    month: en ? MONTH_EN[month - 1].toUpperCase() : `THG ${month}`,
+    day: String(Number(m[3])).padStart(2, '0'),
+    weekday: en ? WD_EN_UPPER[wd] : WD_VI_LONG[wd],
+  };
+}
+
+/** The seat chip beside the price (V8, owner decision 5): "Còn N vé" / "N tickets left" (no "of M"). */
+export function ticketsLeftText(left, en = false) {
+  const n = Math.max(0, Number(left) || 0);
+  if (!en) return `Còn ${n} vé`;
+  return n === 1 ? '1 ticket left' : `${n} tickets left`;
+}
+
+/**
+ * "Good to know" rows from detailFacts() output, in V8 order: alcohol, one row per dietary choice, minimum age, then the
+ * type's other facts (dress code, lineup…) as label over value. `notes` are host-written sub-lines
+ * ({ alcohol, dietary, id }), shown only when set (never invented copy; the dietary note sits on the first dietary row).
+ * Each row: { id, key, icon: 'alcohol'|'dietary'|'age'|'fact', title, sub }. `key` is the test-id suffix: dietary rows
+ * keep `dietary`, `dietary-2`…; the age row is `min_age-row` (the hero pill keeps `min_age`).
+ */
+export function needToKnowRows(facts = [], notes = {}, en = false) {
+  const clean = (t) => { const s = String(t ?? '').trim(); return s || null; };
+  const alcohol = [], dietary = [], age = [], rest = [];
+  for (const f of facts || []) {
+    if (f.id === 'alcohol') alcohol.push({ id: 'alcohol', key: 'alcohol', icon: 'alcohol', title: f.value, sub: clean(notes.alcohol) });
+    else if (f.id === 'dietary') {
+      const vals = Array.isArray(f.values) && f.values.length ? f.values : [f.value];
+      vals.forEach((v, i) => dietary.push({ id: 'dietary', key: i ? `dietary-${i + 1}` : 'dietary', icon: 'dietary', title: v, sub: i ? null : clean(notes.dietary) }));
+    }
+    else if (f.id === PILL_FACT) {
+      const n = String(f.value || '').replace(/\D/g, '');
+      age.push({ id: PILL_FACT, key: `${PILL_FACT}-row`, icon: 'age', badge: f.value, title: n ? (en ? `Ages ${n} and up` : `Từ ${n} tuổi`) : f.value, sub: clean(notes.id) });
+    }
+    else rest.push({ id: f.id, key: f.id, icon: 'fact', title: f.label, sub: clean(f.value) });
+  }
+  return [...alcohol, ...dietary, ...age, ...rest];
+}
+
+/** The menu cards (V8): up to 3 included items as { label, detail } (detail may be ''), blanks dropped. No icons. */
+export const MENU_MAX = 3;
+export function menuCards(items = []) {
+  return (items || [])
+    .map(it => ({ label: String(it?.label ?? '').trim(), detail: String(it?.detail ?? '').trim() }))
+    .filter(it => it.label)
+    .slice(0, MENU_MAX);
+}

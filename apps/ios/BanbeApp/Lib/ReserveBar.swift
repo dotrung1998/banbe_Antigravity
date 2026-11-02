@@ -1,7 +1,7 @@
 import Foundation
 
 /// Event Detail's sticky action bar: which state it is in, how many seats the stepper allows, and the total shown in
-/// the CTA. One row since note 70: stepper + "Reserve · total" (the 1·2·3 presets were dropped).
+/// the CTA. V8 (note 75, overrides note 70): the 1·2·3 preset chips are back above the stepper, both driving ONE qty.
 /// Mirrors src/lib/reserveBar.js (tests: BanbeAppTests/ReserveBarTests.swift and tests/unit/reserveBar.test.mjs)
 /// — change both together.
 enum ReserveBar {
@@ -56,6 +56,15 @@ enum ReserveBar {
         guard let remaining else { return maxQty }
         return max(1, min(maxQty, remaining))
     }
+
+    /// V8 preset chips (note 75): 1·2·3 tickets, each with its own total. They and the stepper share one qty.
+    static let presets = [1, 2, 3]
+
+    /// The chip that is selected for `qty`: the same number for 1…3, none (nil) from 4 up.
+    static func presetSelected(_ qty: Int) -> Int? { presets.contains(qty) ? qty : nil }
+
+    /// A chip can be picked only when the stepper could reach it (never more than the seats left, see qtyCeiling).
+    static func presetEnabled(_ n: Int, max ceiling: Int = maxQty) -> Bool { n >= 1 && n <= ceiling }
 
     /// 1…max (max defaults to the cap). hold_seats still refuses more than the seats left; this keeps the UI honest.
     static func clampQty(_ n: Int, max ceiling: Int = maxQty) -> Int { min(Swift.max(1, ceiling), Swift.max(1, n)) }

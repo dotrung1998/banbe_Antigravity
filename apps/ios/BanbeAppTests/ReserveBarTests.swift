@@ -94,3 +94,20 @@ final class ReserveBarTests: XCTestCase {
         XCTAssertEqual(ReserveBar.clampQty(6, max: ReserveBar.qtyCeiling(remaining: 3)), 3)
     }
 }
+
+extension ReserveBarTests {
+    /// V8 preset chips (note 75): shared vectors in tests/fixtures/reserve-bar-presets.json, same as the web test.
+    func testPresetsShareOneQty() throws {
+        var url = URL(fileURLWithPath: #filePath)
+        for _ in 0..<4 { url.deleteLastPathComponent() }
+        let data = try Data(contentsOf: url.appendingPathComponent("tests/fixtures/reserve-bar-presets.json"))
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(ReserveBar.presets, root["presets"] as? [Int])
+        for c in try XCTUnwrap(root["selected"] as? [[String: Any]]) {
+            XCTAssertEqual(ReserveBar.presetSelected(c["qty"] as? Int ?? 0), c["out"] as? Int, "qty \(c["qty"] ?? "")")
+        }
+        for c in try XCTUnwrap(root["enabled"] as? [[String: Any]]) {
+            XCTAssertEqual(ReserveBar.presetEnabled(c["n"] as? Int ?? 0, max: c["max"] as? Int ?? 0), c["out"] as? Bool)
+        }
+    }
+}

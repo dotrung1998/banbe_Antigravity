@@ -1,5 +1,5 @@
 // Event Detail's sticky action bar: which state it is in, how many seats the stepper allows, and the total shown in
-// the CTA. One row since note 70: stepper + "Reserve · total" (the 1·2·3 presets were dropped).
+// the CTA. V8 (note 75, overrides note 70): the 1·2·3 preset chips are back above the stepper, both driving ONE qty.
 // Pure logic so Event Detail and Reserve agree on the total. Mirrored by apps/ios/BanbeApp/Lib/ReserveBar.swift
 // (tests: tests/unit/reserveBar.test.mjs and apps/ios/BanbeAppTests/ReserveBarTests.swift) — change both together.
 //
@@ -70,6 +70,19 @@ export function reserveBarState({ booking, ticket, cancelled, ended, soldOut, cu
 /** The stepper's ceiling: the cap, and never more than the seats still free when they are known (note 70). */
 export function maxQty(remaining = null) {
   return remaining != null && Number.isFinite(remaining) ? Math.max(1, Math.min(MAX_QTY, remaining | 0)) : MAX_QTY;
+}
+
+// V8 preset chips (note 75): 1·2·3 tickets, each with its own total. They and the stepper share one qty.
+export const QTY_PRESETS = [1, 2, 3];
+
+/** The chip that is selected for `qty`: the same number for 1…3, none (null) from 4 up. */
+export function presetSelected(qty) {
+  return QTY_PRESETS.includes(qty) ? qty : null;
+}
+
+/** A chip can be picked only when the stepper could reach it (never more than the seats left, see maxQty). */
+export function presetEnabled(n, max = MAX_QTY) {
+  return n >= 1 && n <= max;
 }
 
 // 1…max (max defaults to the cap). hold_seats still refuses more than the seats left; this keeps the UI honest.

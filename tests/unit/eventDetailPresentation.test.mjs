@@ -78,3 +78,15 @@ test('hero scrim: white title text keeps 4.5:1 even on a white photo', () => {
   assert.ok(scrimContrast(HERO_SCRIM.alpha) >= 4.5, String(scrimContrast(HERO_SCRIM.alpha)));
   assert.ok(HERO_SCRIM.end >= HERO_SCRIM.alpha && HERO_SCRIM.full > HERO_SCRIM.start);
 });
+
+test('V8 stub: date block, tickets-left chip, good-to-know rows and menu cards (note 75, shared fixture)', async () => {
+  const P = await import('../../src/lib/eventDetailPresentation.js');
+  const F = JSON.parse((await import('node:fs')).readFileSync(new URL('../fixtures/event-detail-presentation.json', import.meta.url), 'utf8'));
+  for (const c of F.dateBlock) assert.deepEqual(P.dateBlock(c.raw, c.en), c.out, c.name);
+  for (const c of F.ticketsLeft) assert.equal(P.ticketsLeftText(c.left, c.en), c.out);
+  for (const c of F.needToKnowRows) {
+    const rows = P.needToKnowRows(c.facts, c.notes, c.en).map(({ key, icon, title, sub }) => ({ key, icon, title, sub }));
+    assert.deepEqual(rows, c.out, c.name);
+  }
+  for (const c of F.menuCards) assert.deepEqual(P.menuCards(c.in), c.out, c.name);
+});

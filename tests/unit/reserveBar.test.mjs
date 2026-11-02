@@ -85,3 +85,11 @@ test('maxQty: never more than the seats left (regression: 3 left could pick 6)',
   assert.equal(maxQty(0), 1);
   assert.equal(clampQty(6, maxQty(3)), 3);
 });
+
+test('V8 preset chips share one qty with the stepper (note 75, shared vectors)', async () => {
+  const { QTY_PRESETS, presetSelected, presetEnabled } = await import('../../src/lib/reserveBar.js');
+  const V = JSON.parse(readFileSync(new URL('../fixtures/reserve-bar-presets.json', import.meta.url), 'utf8'));
+  assert.deepEqual(QTY_PRESETS, V.presets);
+  for (const c of V.selected) assert.equal(presetSelected(c.qty), c.out, `qty ${c.qty}`);
+  for (const c of V.enabled) assert.equal(presetEnabled(c.n, c.max), c.out, `${c.n} of max ${c.max}`);
+});
