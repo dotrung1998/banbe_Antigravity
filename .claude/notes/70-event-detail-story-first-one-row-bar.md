@@ -1,5 +1,8 @@
 # 70 — Event Detail story-first + one-row booking bar (web + iOS)
 
+> SUPERSEDED in part by note 75 (2026-11-02): the one-row bar (≤ 12%) and the removal of the 1·2·3 presets no longer
+> hold; the seat pill reads "N tickets left" (no "of M", no booked bar); tiles became the V8 ticket stub.
+
 Status: IMPLEMENTED (web + iOS), 2026-10-31, not committed. No migration. Checked in Chromium/Firefox/WebKit at 390×844
 and in the iOS simulator (iPhone 17 Pro), light + dark, English. Not device-verified; VI not screenshot-checked.
 
