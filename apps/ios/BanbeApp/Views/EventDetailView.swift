@@ -88,6 +88,9 @@ struct EventDetailView: View {
     private let sheetRadius: CGFloat = 46
     /// With the info fully pulled up, this much of the photo (from the top of the screen) stays visible above it.
     private let pinnedStrip: CGFloat = 120
+    /// V8 (note 75): the ticket stub rises this far into the photo; the title band above it is that much shorter and the
+    /// paper starts where the photo ends at rest. Web `STUB_RISE`.
+    private let stubRise: CGFloat = 104
     @State private var scrollOffset: CGFloat = 0
     // Drag-down-to-close (only from the very top of the scroll view).
     @State private var dismissDrag: CGFloat = 0
@@ -283,13 +286,11 @@ struct EventDetailView: View {
                         // Story-first (note 70): the pills and the title sit on the photo in this band, over the hero's
                         // bottom scrim; a long title grows the band (minHeight), never clips.
                         heroTitleBand
-                            .frame(minHeight: topInset + heroHeight - sheetOverlap - pinnedStrip, alignment: .bottomLeading)
+                            .frame(minHeight: topInset + heroHeight - pinnedStrip - stubRise, alignment: .bottomLeading)
+                        // V8 ticket stub (note 75): half over the photo, half on the page.
+                        stubBand
                         details
-                            .background(
-                                app.palette.paper,
-                                in: UnevenRoundedRectangle(topLeadingRadius: sheetRadius, topTrailingRadius: sheetRadius, style: .continuous)
-                            )
-                            .shadow(color: .black.opacity(0.10), radius: 14, y: -4)
+                            .background(app.palette.paper)
                     }
                     .background(GeometryReader { g in
                         Color.clear.preference(key: EventScrollOffsetKey.self, value: -g.frame(in: .named("eventScroll")).minY)
@@ -828,12 +829,8 @@ struct EventDetailView: View {
             return text.isEmpty ? nil : (text, app.palette.ink2, app.palette.surface2)
         }
     }
-    /// "3 of 14 left" whenever the capacity is known (note 70), so the count and the bar can't read as a contradiction.
-    private var seatsLeftText: String {
-        let left = seat.left ?? 0
-        if let cap = seatCounts.capacity { return app.T("Còn \(left)/\(cap) chỗ", "\(left) of \(cap) left") }
-        return app.T("Còn \(left) chỗ", "\(left) left")
-    }
+    /// V8 (owner decision 5): "Còn N vé" / "N tickets left", no "of M" and no booked bar.
+    private var seatsLeftText: String { EventDetailPresentation.ticketsLeftText(seat.left ?? 0, en: app.isEN) }
     /// The stepper never offers more than the seats still free (note 70: with 3 left it reached 6).
     private var qtyMax: Int { ReserveBar.qtyCeiling(remaining: isPreview ? nil : seatCounts.remaining) }
     /// Event type facts: minimum age is a restriction, so it sits beside the category; alcohol + dietary are chips.
@@ -843,6 +840,188 @@ struct EventDetailView: View {
         if let items = event.includedItems, !items.isEmpty { return EventDetailPresentation.includedSection(items.map(\.label)) }
         return EventDetailPresentation.includedSection(event.included.components(separatedBy: CharacterSet(charactersIn: "▪︎,·")))
     }
+    // MARK: V8 ticket stub (note 75)
+
+    /// The raw "Th 4, 04.11" date text the time is split from (`event.when`, already in the venue's zone).
+    private var rawWhenDate: String? { event.when.components(separatedBy: " ▪︎ ").first(where: { !$0.isEmpty }) }
+    private var stubBlock: EventDetailPresentation.DateBlock? { rawWhenDate.flatMap { EventDetailPresentation.dateBlock($0, en: app.isEN) } }
+    /// Days to go in the VENUE's zone (note 60), from the same date text as the block (never startDate, note 70).
+    private var stubCountdown: String? {
+        guard !ended, !event.cancelled, let raw = rawWhenDate else { return nil }
+        let zone = event.eventTimeZone ?? EventMarket.vnTimeZone
+        return Countdown.countdownChipText(Countdown.daysUntilInZone(raw, start: event.startDate, timeZone: zone), en: app.isEN)
+    }
+    /// Under the place: the distance when it helps choose (≤ 50 km), else "Area · city" (cities.json short name).
+    private var placeSub: String {
+        if let d = placeDistance { return app.T("Cách \(d)", "\(d) away") }
+        let loc = event.location
+        let id = MapDiscovery.cityFor(.init(city: loc?.city, stateProvince: loc?.stateProvince, countryCode: loc?.countryCode,
+                                            lat: event.lat ?? loc?.lat, lng: event.lng ?? loc?.lng), cities: MapDiscovery.cities)
+        if let c = MapDiscovery.city(id) { return app.T("Khu vực", "Area") + " · " + app.T(c.short.vi, c.short.en) }
+        return app.T("Địa điểm", "Place")
+    }
+    /// "Good to know" rows (alcohol, each dietary choice, minimum age, other facts); a sub-line only when the host wrote one.
+    private var needRows: [EventDetailPresentation.NeedRow] { EventDetailPresentation.needToKnowRows(typeFacts, en: app.isEN) }
+    /// The menu cards: the structured items (label + detail), else the legacy included text as labels. No icons.
+    private var cards: [IncludedItem] {
+        if let items = event.includedItems, !items.isEmpty { return EventDetailPresentation.menuCards(items) }
+        return EventDetailPresentation.menuCards(included.items.map { IncludedItem(label: $0, detail: "") })
+    }
+    /// Protection steps: hidden once there is nothing left to protect (owner decision 8).
+    private var hasProtection: Bool { ![.ended, .endedAttended, .cancelled, .ticket, .pending].contains(barState) }
+    private var menuTitle: String { typeProfile?.detail?.includedTitle?.text(app.isEN ? "en" : "vi") ?? app.T("Bao gồm", "Included") }
+    /// Step 2 is an SLA with reminders, never an automatic confirm (note 02), so it says exactly that (owner decision 4).
+    private var protectionSteps: [(String, String)] {
+        let free = event.isFree
+        return [
+            (app.T("Giữ chỗ 30 phút", "Seat held for 30 min"),
+             free ? app.T("Chỗ của bạn được giữ trong lúc bạn xác nhận.", "Your seat is held while you confirm.")
+                  : app.T("Chỗ của bạn được giữ trong lúc thanh toán.", "Your seat is held while you pay.")),
+            (free ? app.T("Chủ nhà xác nhận", "The host confirms") : app.T("Chủ nhà xác nhận thanh toán", "The host confirms your payment"),
+             app.T("Chủ nhà có 1 giờ để xác nhận; banbe sẽ nhắc nếu chậm", "The host has 1 hour to confirm; banbe reminds them")),
+            (app.T("Nhận vé QR", "Get your QR ticket"), app.T("Đưa mã QR khi đến nơi.", "Show the code when you arrive.")),
+            (app.T("Có sự cố? Có kênh tranh chấp", "A problem? There is a dispute path"),
+             app.T("Nếu không tìm thấy buổi tiệc, một cuộc trò chuyện tạm sẽ mở và banbe xử lý nếu cần.",
+                   "If you can't find the event, a temporary chat opens and banbe steps in if needed.")),
+        ]
+    }
+    /// V8 section headings: small caps over each section.
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 12, weight: .bold)).tracking(0.96)
+            .foregroundStyle(app.palette.ink3)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    /// The stub over the photo's lower edge; the paper starts `stubRise` down, where the photo ends at rest.
+    private var stubBand: some View {
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+            ticketStub
+            if let note = venueTimeNote {
+                Text(note).font(.footnote).foregroundStyle(app.palette.ink3)
+                    .padding(.horizontal, 6)
+                    .accessibilityIdentifier("event.fact.venueTime")
+            }
+        }
+        .padding(.horizontal, 16)
+        .background(alignment: .top) {
+            VStack(spacing: 0) { Color.clear.frame(height: stubRise); app.palette.paper }
+        }
+    }
+
+    /// Date block, time + countdown, the place with Directions, the perforation, then price + one seat chip.
+    private var ticketStub: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 0) {
+                if stubBlock != nil || whenParts.time != nil {
+                    HStack(alignment: .center, spacing: BanbeTheme.Space.l) {
+                        if let b = stubBlock {
+                            VStack(spacing: 3) {
+                                Text(b.month).font(.system(size: 12, weight: .bold)).tracking(0.96)
+                                Text(b.day).font(BanbeTheme.display(34).weight(.heavy))
+                                Text(b.weekday).font(.system(size: 11.5, weight: .bold)).tracking(0.7).lineLimit(1).minimumScaleFactor(0.8)
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                            .frame(minWidth: 82)
+                            .background(app.palette.clay, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(whenParts.date ?? "\(b.weekday) \(b.day) \(b.month)")
+                            .accessibilityIdentifier("event.fact.when")
+                        }
+                        VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+                            if let time = whenParts.time {
+                                Text(time).font(BanbeTheme.display(31).weight(.heavy))
+                                    .accessibilityIdentifier("event.fact.time")
+                            }
+                            if let cd = stubCountdown {
+                                Label(cd, systemImage: "clock")
+                                    .font(.system(size: 12.5, weight: .bold))
+                                    .foregroundStyle(app.palette.clay)
+                                    .padding(.horizontal, 12).padding(.vertical, 7)
+                                    .background(app.palette.clayBg, in: Capsule())
+                                    .accessibilityIdentifier("event.countdown")
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 14)
+                }
+                HStack(spacing: 11) {
+                    Image(systemName: "mappin").font(.system(size: 19, weight: .semibold)).foregroundStyle(app.palette.clay)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(placeLine.isEmpty ? app.T("Địa điểm", "Place") : placeLine)
+                            .font(.system(size: 16, weight: .bold)).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                        Text(placeSub).font(.system(size: 12.5)).foregroundStyle(app.palette.ink2)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("event.fact.where")
+                    Spacer(minLength: 0)
+                    if let mapsURL = event.mapsURL {
+                        Button {
+                            // Opening directions is the natural moment to also offer the distance, if never decided.
+                            if app.located == nil { app.askLocation() }
+                            openURL(mapsURL)
+                        } label: {
+                            Label(app.T("Chỉ đường", "Directions"), systemImage: "location")
+                                .font(.system(size: 13.5, weight: .bold))
+                                .foregroundStyle(app.palette.paper)
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: 44)
+                                .background(app.palette.ink, in: Capsule())
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .allowsHitTesting(!isPreview)
+                        .accessibilityIdentifier("event.address")
+                    }
+                }
+                .padding(.leading, 13).padding(.trailing, 10).padding(.vertical, 10)
+                .background(app.palette.surface2, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .padding(.horizontal, 18).padding(.top, (stubBlock == nil && whenParts.time == nil) ? 18 : 0).padding(.bottom, 17)
+            }
+            .background(TicketStubHalf(edge: .top, radius: 20, notch: 12.5).fill(app.palette.surface1))
+            VStack(spacing: 0) {
+                Line().stroke(app.palette.clay.opacity(0.55), style: StrokeStyle(lineWidth: 2, dash: [6, 5]))
+                    .frame(height: 2).padding(.horizontal, 25)
+                    .accessibilityHidden(true)
+                if !event.price.isEmpty || seatPill != nil {
+                    HStack(alignment: .center, spacing: BanbeTheme.Space.m) {
+                        if !event.price.isEmpty {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(app.trStatus(event.price)).font(BanbeTheme.display(27).weight(.heavy))
+                                if !event.isFree { Text(app.T("/ vé", "/ ticket")).font(.system(size: 14)).foregroundStyle(app.palette.ink2) }
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("event.price")
+                        }
+                        Spacer(minLength: 0)
+                        if let pill = seatPill {
+                            Text(pill.text)
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(pill.fg)
+                                .padding(.horizontal, 14).padding(.vertical, 9)
+                                .background(pill.bg, in: Capsule())
+                                .accessibilityIdentifier("event.seatStatus")
+                        }
+                    }
+                    .padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 19)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("event.fact.seats")
+                }
+            }
+            .background(TicketStubHalf(edge: .bottom, radius: 20, notch: 12.5).fill(app.palette.surface1))
+        }
+        .foregroundStyle(app.palette.ink)
+        .compositingGroup()
+        .shadow(color: app.palette.ink.opacity(0.30), radius: 0.6)
+        .shadow(color: .black.opacity(0.22), radius: 9, y: 12)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.ticketStub")
+    }
+
     /// The strip never repeats the cover above it or the same URL twice (note 70); the viewer still pages through all.
     private var stripList: [PhotoGalleryItem] {
         EventDetailPresentation.stripPhotos(realPhotos, heroURL: event.img.isEmpty ? nil : event.img) { $0.url }
@@ -905,119 +1084,22 @@ struct EventDetailView: View {
                     .foregroundStyle(app.palette.ink3)
             }
 
-            // Price and one seat status (note 68); the thin bar under them only once a seat is booked (note 70).
-            VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
-                // Price left, one seat status right (note 68); the thin bar under them only while seats are open.
-                if !event.price.isEmpty || seatPill != nil {
-                    VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
-                        HStack(alignment: .center, spacing: BanbeTheme.Space.m) {
-                            if !event.price.isEmpty {
-                                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                    Text(app.trStatus(event.price)).font(BanbeTheme.display(26))
-                                    if !event.isFree { Text(app.T("/ vé", "/ ticket")).font(.footnote).foregroundStyle(app.palette.ink3) }
-                                }
-                                .accessibilityElement(children: .combine)
-                                .accessibilityIdentifier("event.price")
-                            }
-                            Spacer(minLength: 0)
-                            if let pill = seatPill {
-                                Text(pill.text)
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(pill.fg)
-                                    .padding(.horizontal, 12).padding(.vertical, 6)
-                                    .background(pill.bg, in: Capsule())
-                                    .accessibilityIdentifier("event.seatStatus")
-                            }
-                        }
-                        if let ratio = seat.ratio {
-                            GeometryReader { g in
-                                ZStack(alignment: .leading) {
-                                    Capsule().fill(app.palette.ink.opacity(0.08))
-                                    Capsule().fill(seat.kind == .few ? app.palette.clay : app.palette.ink.opacity(0.35))
-                                        .frame(width: max(4, g.size.width * ratio))
-                                }
-                            }
-                            .frame(height: 4)
-                            .accessibilityHidden(true)
-                        }
-                    }
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("event.fact.seats")
-                }
+            // Overview (V8, note 75): who can reserve, then "Good to know" (alcohol, each dietary choice, minimum age, the
+            // type's other facts) as icon rows, then About.
+            VStack(alignment: .leading, spacing: BanbeTheme.Space.xl) {
+                // Who can reserve, in plain words with this viewer's result (note 70); the unmet card keeps its action.
+                criteriaSection
+                    .id("event.criteria")
+                if !needRows.isEmpty { needToKnowSection }
+                // About (note 68): the description clamped to 3 lines ("Read more" expands it here); "More ›" opens the
+                // About & Included sheet. Never a heading with nothing under it.
+                if about.visible { aboutSection }
             }
-
-            // Ngày / Giờ / Địa điểm: three equal tiles; directions is an icon-only button in the place tile's corner. The
-            // venue-time note is one quiet line under them, only when this device's clock reads the time differently.
-            VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
-                // Always side by side, one width and one height each (a long place wraps inside its tile); only the
-                // accessibility text sizes stack them one per row, so nothing clips. (`ViewThatFits` used to fall back
-                // to the stack whenever the place text was wide, e.g. "Quận 3 ▪︎ 9662,6 km away".)
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(spacing: BanbeTheme.Space.s) { dateTile; timeTile; placeTile }
-                } else {
-                    HStack(alignment: .top, spacing: BanbeTheme.Space.s) { dateTile; timeTile; placeTile }
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if let note = venueTimeNote {
-                    Text(note).font(.footnote).foregroundStyle(app.palette.ink3)
-                        .accessibilityIdentifier("event.fact.venueTime")
-                }
-            }
-
-
-            // What kind of evening it is (event type profiles): alcohol + dietary as icon chips, the type's other facts
-            // as an aligned label/value list. Minimum age is the pill in the header.
-            if !facts.chips.isEmpty || !facts.rows.isEmpty {
-                VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
-                    if !facts.chips.isEmpty {
-                        FlowRow(spacing: BanbeTheme.Space.s) {
-                            // One chip per choice (note 70); the first of a fact keeps the existing identifier.
-                            ForEach(Array(facts.chips.enumerated()), id: \.offset) { i, f in
-                                Label {
-                                    Text(f.value)
-                                } icon: {
-                                    Image(systemName: f.id == "alcohol" ? "wineglass" : "leaf").foregroundStyle(app.palette.clay)
-                                }
-                                .font(.footnote)
-                                .padding(.horizontal, 12).padding(.vertical, 6)
-                                .background(app.palette.surface2, in: Capsule())
-                                .accessibilityElement(children: .ignore)
-                                .accessibilityLabel("\(f.label): \(f.value)")
-                                .accessibilityIdentifier(chipID(i, f))
-                            }
-                        }
-                    }
-                    if !facts.rows.isEmpty {
-                        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: BanbeTheme.Space.l, verticalSpacing: BanbeTheme.Space.s) {
-                            ForEach(facts.rows, id: \.id) { f in
-                                GridRow {
-                                    Text(f.label).font(.footnote).foregroundStyle(app.palette.ink3)
-                                    Text(f.value).font(.subheadline).fixedSize(horizontal: false, vertical: true)
-                                }
-                                .accessibilityElement(children: .combine)
-                                .accessibilityIdentifier("event.typeFact.\(f.id)")
-                            }
-                        }
-                    }
-                }
-                .foregroundStyle(app.palette.ink)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("event.typeFacts")
-            }
-
-            // Who can reserve, in plain words with this viewer's result (note 70); the unmet card keeps its action.
-            criteriaSection
-                .id("event.criteria")
-
-            // The host, once (note 68): avatar, name, real stats, a Message icon button; the row opens the host's page.
-            hostSection.allowsHitTesting(!isPreview)
-
-            // About (note 68): the description clamped to 3 lines ("Read more" expands it here), then the included
-            // line. "More ›" on the heading opens the About & Included sheet. Never a heading with nothing under it.
-            if about.visible { aboutSection }
-            // "On the menu" / "Included" as its own section of chips (note 70: it used to run on inside About).
-            if included.visible { includedItemsSection }
+            .id("sec.overview")
+            // "On the menu" / "Included" (V8): up to 3 cards.
+            if !cards.isEmpty { includedItemsSection.id("sec.menu") }
+            // The host, once (note 68): a card with the name, real stats and an outlined Message pill.
+            hostSection.allowsHitTesting(!isPreview).id("sec.host")
 
             // L2 (switch event_recap): a guest who went opens their recap card, where the private feedback lives.
             if barState == .endedAttended, !isPreview, app.eventRecapEnabled, (app.realEventsByID[event.key] ?? nil) != nil {
@@ -1030,14 +1112,10 @@ struct EventDetailView: View {
                 endedNextSection(orgID)
             }
 
-            VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
-                // "Hình ảnh": the horizontal photo strip.
-                HStack(alignment: .firstTextBaseline) {
-                    Text(app.T("Hình ảnh", "Photos")).font(BanbeTheme.display(17))
-                    Spacer()
-                    let photoCount = preview?.photos.count ?? stripList.count
-                    if photoCount > 0 { Text("\(photoCount)").font(.footnote).foregroundStyle(app.palette.ink3) }
-                }
+            VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
+                // "Hình ảnh · N": the horizontal photo strip (V8 tiles).
+                let photoCount = preview?.photos.count ?? stripList.count
+                sectionLabel(app.T("Hình ảnh", "Photos") + (photoCount > 0 ? " · \(photoCount)" : ""))
                 // STAGE D (2026-09-25) — real event_photos rows, not the static demo `event.gallery`. A genuinely
                 // photo-less real event shows plain text, never a fake/demo photo standing in for a real one.
                 if let preview {
@@ -1057,6 +1135,9 @@ struct EventDetailView: View {
                     photoStrip
                 }
             }
+            .id("sec.photos")
+            // Protected booking (V8): the escrow steps in plain words; hidden once there is nothing left to protect.
+            if hasProtection { protectionSection.id("sec.safe") }
             }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 22)
@@ -1172,40 +1253,122 @@ struct EventDetailView: View {
         .foregroundStyle(app.palette.ink)
     }
 
-    /// "On the menu" / "Included" (note 70): heading + one chip per item. When About is hidden, this heading opens the
-    /// About & Included sheet instead (and carries `event.includedSection`).
+    /// "On the menu" / "Included" (V8, note 75): up to 3 cards, the label over the host's detail line (no icons: no data).
+    /// When About is hidden, this heading opens the About & Included sheet instead (and carries `event.includedSection`).
     private var includedItemsSection: some View {
         let opensSheet = !about.visible && about.hasSheet
-        return VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+        return VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
             Button { if opensSheet { introIncludedSheetOpen = true } } label: {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(typeProfile?.detail?.includedTitle?.text(app.isEN ? "en" : "vi") ?? app.T("Bao gồm", "Included"))
-                        .font(BanbeTheme.display(17))
+                    sectionLabel(menuTitle)
                     Spacer()
                     if opensSheet {
                         Text(app.T("Xem thêm", "More") + " ›").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.clay)
                     }
                 }
-                .frame(minHeight: 44)
+                .frame(minHeight: opensSheet ? 44 : nil)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(!opensSheet)
             .accessibilityIdentifier(opensSheet ? "event.includedSection" : "event.includedHeading")
-            FlowRow(spacing: BanbeTheme.Space.s) {
-                ForEach(Array(included.items.enumerated()), id: \.offset) { i, item in
-                    Text(item)
-                        .font(.footnote)
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(app.palette.surface2, in: Capsule())
-                        .accessibilityIdentifier("event.includedItem.\(i)")
+            HStack(alignment: .top, spacing: 9) {
+                ForEach(Array(cards.enumerated()), id: \.offset) { i, c in
+                    VStack(spacing: 5) {
+                        Text(c.label).font(.system(size: 16, weight: .bold)).multilineTextAlignment(.center)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                        if !c.detail.isEmpty {
+                            Text(c.detail).font(.system(size: 12)).foregroundStyle(app.palette.ink2)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                        }
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(app.palette.block, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("event.includedItem.\(i)")
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(app.palette.ink)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("event.includedItems")
+    }
+
+    /// "Good to know" (V8): icon rows; a sub-line only when the host wrote one (never invented copy). Identifiers keep
+    /// `event.typeFact.<id>` (dietary rows `-2`, `-3`; the age row `min_age-row`, the header pill keeps `min_age`).
+    private var needToKnowSection: some View {
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
+            sectionLabel(app.T("Cần biết trước khi đến", "Good to know"))
+            VStack(alignment: .leading, spacing: BanbeTheme.Space.l) {
+                ForEach(needRows, id: \.key) { r in
+                    HStack(spacing: 13) {
+                        ZStack {
+                            Circle().fill(app.palette.clayBg)
+                            switch r.icon {
+                            case .alcohol: Image(systemName: "wineglass").font(.system(size: 16))
+                            case .dietary: Image(systemName: "leaf").font(.system(size: 16))
+                            case .age: Text(r.badge ?? "").font(.system(size: 13, weight: .bold))
+                            case .fact: Image(systemName: "info.circle").font(.system(size: 16))
+                            }
+                        }
+                        .foregroundStyle(app.palette.clay)
+                        .frame(width: 40, height: 40)
+                        .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(r.title).font(.system(size: 15.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                            if let sub = r.sub {
+                                Text(sub).font(.system(size: 13)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("event.typeFact.\(r.key)")
+                }
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.typeFacts")
+    }
+
+    /// Protected booking (V8): numbered steps joined by a hairline.
+    private var protectionSection: some View {
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
+            sectionLabel(app.T("Đặt chỗ được bảo vệ", "Protected booking"))
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(protectionSteps.enumerated()), id: \.offset) { i, step in
+                    HStack(alignment: .top, spacing: 13) {
+                        Text("\(i + 1)").font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(app.palette.paper)
+                            .frame(width: 33, height: 33)
+                            .background(app.palette.ink, in: Circle())
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(step.0).font(.system(size: 15.5, weight: .bold)).fixedSize(horizontal: false, vertical: true)
+                            Text(step.1).font(.system(size: 13)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.top, 5)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.bottom, i < protectionSteps.count - 1 ? 20 : 0)
+                    .background(alignment: .topLeading) {
+                        if i < protectionSteps.count - 1 {
+                            Rectangle().fill(app.palette.divider).frame(width: 2).padding(.top, 37).padding(.bottom, 3).padding(.leading, 15.5)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.protection")
     }
 
     /// A chip's identifier: the first chip of a fact keeps `event.typeFact.<id>`, later ones get `-2`, `-3` (note 70).
@@ -1290,6 +1453,8 @@ struct EventDetailView: View {
     /// The host, once (note 68): avatar, name (wraps to two lines), real stats, a 44pt Message icon button. The whole
     /// row opens the host's page.
     private var hostSection: some View {
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
+        sectionLabel(app.T("Chủ nhà", "Host"))
         HStack(spacing: BanbeTheme.Space.m) {
             Button { app.openEventOrganizer(eventKey: app.eventKey) } label: {
                 HStack(spacing: BanbeTheme.Space.m) {
@@ -1309,7 +1474,6 @@ struct EventDetailView: View {
                             .accessibilityIdentifier("event.organizerStats")
                     }
                     Spacer(minLength: 0)
-                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink3)
                 }
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
@@ -1322,15 +1486,20 @@ struct EventDetailView: View {
             .accessibilityIdentifier("event.organizer")
             // Moved here from the retired standalone organizer page: message the host straight from the event.
             Button { app.goChat() } label: {
-                Image(systemName: "bubble.left")
-                    .font(.system(size: 15, weight: .semibold))
+                Label(app.T("Nhắn tin", "Message"), systemImage: "bubble.left")
+                    .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(app.palette.clay)
-                    .frame(width: 44, height: 44)
-                    .background(app.palette.clayBg, in: Circle())
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 44)
+                    .overlay(Capsule().stroke(app.palette.clay, lineWidth: 1.5))
+                    .contentShape(Capsule())
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityLabel(app.T("Nhắn cho ", "Message ") + hostName)
             .accessibilityIdentifier("event.messageHost")
+        }
+        .padding(12)
+        .background(app.palette.block, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
         }
         .foregroundStyle(app.palette.ink)
     }
@@ -1354,7 +1523,7 @@ struct EventDetailView: View {
 
     private var photoStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 8) {
+            LazyHStack(spacing: 9) {
                 ForEach(Array(stripList.enumerated()), id: \.element.id) { index, photo in
                     // GeometryReader so the tap can read `geo.frame(in: .global)`: the origin rect the photo viewer's
                     // dismiss animation shrinks back to.
@@ -1363,7 +1532,7 @@ struct EventDetailView: View {
                             app.openPhoto(gallery: realPhotos, index: realPhotos.firstIndex { $0.id == photo.id } ?? 0, organizer: event.orgName, originRect: geo.frame(in: .global))
                         } label: {
                             ZStack(alignment: .topTrailing) {
-                                CatalogPhoto(path: photo.url, height: 166, width: 132, cornerRadius: BanbeTheme.Radius.thumb)
+                                CatalogPhoto(path: photo.url, height: 172, width: 242, cornerRadius: 16)
                                 // A liked photo gets a filled heart badge; an unliked one shows none here (the
                                 // full-screen viewer's like button is the discoverable way, matching web).
                                 if app.photoEngagement[photo.id]?.likedByMe == true {
@@ -1381,7 +1550,7 @@ struct EventDetailView: View {
                         .onChange(of: geo.frame(in: .global)) { _, f in app.photoThumbFrames[photo.id] = f }
                         .onDisappear { app.photoThumbFrames[photo.id] = nil }
                     }
-                    .frame(width: 132, height: 166)
+                    .frame(width: 242, height: 172)
                     .accessibilityIdentifier("event.photo.\(index)")
                 }
             }
@@ -1457,6 +1626,8 @@ struct EventDetailView: View {
         let qty = isPreview ? 1 : ReserveBar.clampQty(app.qty, max: qtyMax)
         return VStack(spacing: 6) {
             if state == .reserve {
+                qtyPresets(qty)
+                    .padding(.bottom, 2)
                 if dynamicTypeSize.isAccessibilitySize {
                     VStack(spacing: BanbeTheme.Space.s) { qtyStepper(qty); ctaButton(state, qty: qty) }
                 } else {
@@ -1489,6 +1660,39 @@ struct EventDetailView: View {
                 .shadow(color: .black.opacity(0.10), radius: 12, y: -4)
                 .ignoresSafeArea(edges: .bottom)
         }
+    }
+
+    /// V8 (note 75, overrides note 70): 1·2·3 preset chips with their totals; they and the stepper share `app.qty`.
+    /// qty 1–3 lights its chip, 4+ lights none; a chip above the seats left is disabled like the stepper's +. Free events
+    /// show the count only (owner decision 7).
+    private func qtyPresets(_ qty: Int) -> some View {
+        HStack(spacing: BanbeTheme.Space.s) {
+            ForEach(ReserveBar.presets, id: \.self) { n in
+                let on = ReserveBar.presetSelected(qty) == n
+                let enabled = ReserveBar.presetEnabled(n, max: qtyMax)
+                Button { app.qty = ReserveBar.clampQty(n, max: qtyMax); Haptics.light() } label: {
+                    VStack(spacing: 3) {
+                        Text(app.T("\(n) vé", n == 1 ? "1 ticket" : "\(n) tickets")).font(.system(size: 15, weight: .bold))
+                        if !event.isFree {
+                            Text(app.trStatus(ReserveBar.totalPrice(amount: event.priceVnd, currency: event.currency, qty: n)))
+                                .font(.system(size: 12)).foregroundStyle(app.palette.ink2)
+                        }
+                    }
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .padding(.vertical, 4)
+                    .background(on ? app.palette.block : .clear, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(on ? app.palette.ink : app.palette.rule, lineWidth: 1.5))
+                    .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(!enabled)
+                .opacity(enabled ? 1 : 0.35)
+                .accessibilityAddTraits(on ? .isSelected : [])
+                .accessibilityIdentifier("event.qty.\(n)")
+            }
+        }
+        .foregroundStyle(app.palette.ink)
     }
 
     /// Outlined − n + with 44pt buttons; clamped to 1…`qtyMax` (never more than the seats left). VoiceOver reads it as
@@ -1655,5 +1859,36 @@ private struct ControlChrome: ViewModifier {
             }
             .overlay { if !collapsed { shape.stroke(Color.white.opacity(0.32), lineWidth: 0.5) } }
             .shadow(color: .black.opacity(collapsed ? 0 : 0.2), radius: 8, y: 3)
+    }
+}
+
+/// One half of the V8 ticket stub (note 75): rounded on its outer edge, with a semicircular notch at both ends of the
+/// perforation edge. Web twin: TicketStub.jsx's radial masks.
+struct TicketStubHalf: Shape {
+    enum Edge { case top, bottom }
+    let edge: Edge
+    let radius: CGFloat
+    let notch: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let body = Path(roundedRect: rect, cornerRadii: edge == .top
+                        ? RectangleCornerRadii(topLeading: radius, bottomLeading: 0, bottomTrailing: 0, topTrailing: radius)
+                        : RectangleCornerRadii(topLeading: 0, bottomLeading: radius, bottomTrailing: radius, topTrailing: 0),
+                        style: .continuous)
+        let y = edge == .top ? rect.maxY : rect.minY
+        var holes = Path()
+        holes.addEllipse(in: CGRect(x: rect.minX - notch, y: y - notch, width: notch * 2, height: notch * 2))
+        holes.addEllipse(in: CGRect(x: rect.maxX - notch, y: y - notch, width: notch * 2, height: notch * 2))
+        return body.subtracting(holes)
+    }
+}
+
+/// A horizontal line through the middle of its frame (the stub's dashed perforation).
+private struct Line: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return p
     }
 }

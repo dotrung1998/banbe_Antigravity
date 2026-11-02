@@ -26,7 +26,9 @@ final class EventDetailCompactUITests: XCTestCase {
         add(attachment)
     }
 
-    func testKeyFactsHostAndCTAAboveTheFold() {
+    /// V8 (note 75): the whole ticket stub is on screen above the sticky bar; the bar is 1·2·3 presets over the stepper
+    /// + CTA (≤ 21% of the screen; note 70's 12% one-row bar is superseded by owner decision), both driving one qty.
+    func testStubAboveTheBarAndPresetsShareOneQty() {
         for theme in ["light", "dark"] {
             let app = launch(theme: theme)
             let when = el(app, "event.fact.when")
@@ -35,38 +37,56 @@ final class EventDetailCompactUITests: XCTestCase {
             let screen = app.windows.firstMatch.frame
             let bar = el(app, "event.actionBar").frame
             XCTAssertTrue(el(app, "event.actionBar").isHittable, "the CTA is on screen")
-            for id in ["event.fact.when", "event.fact.time", "event.fact.where", "event.organizer"] {
+            let presetTop = el(app, "event.qty.1").frame.minY
+            for id in ["event.fact.when", "event.fact.time", "event.fact.where", "event.price", "event.seatStatus"] {
                 let f = el(app, id).frame
                 XCTAssertGreaterThan(f.height, 0, id)
-                XCTAssertLessThanOrEqual(f.maxY, min(screen.maxY, bar.minY) + 1, "\(id) is above the fold and the sticky bar (\(theme))")
+                XCTAssertLessThanOrEqual(f.maxY, presetTop + 1, "\(id) is above the sticky bar (\(theme))")
             }
-            let heights = ["event.fact.when", "event.fact.time", "event.fact.where"].map { el(app, $0).frame.height }
-            XCTAssertLessThanOrEqual((heights.max() ?? 0) - (heights.min() ?? 0), 1, "the three tiles share one height")
-            // The host appears once (regression: a track-record line used to repeat it above the Host card).
-            XCTAssertFalse(el(app, "event.trackRecord").exists)
-            XCTAssertEqual(app.buttons.matching(identifier: "event.organizer").count, 1)
-            // Minimum age is a pill in the header, on the category's row.
+            // Title on the photo, above the stub; minimum age a pill on the category's row.
+            XCTAssertLessThanOrEqual(el(app, "event.heroTitle").frame.maxY, el(app, "event.ticketStub").frame.minY + 1)
             let age = el(app, "event.typeFact.min_age"), cat = el(app, "event.category")
             XCTAssertTrue(age.exists && cat.exists)
             XCTAssertEqual(age.frame.midY, cat.frame.midY, accuracy: 4)
-            // Note 70: one-row bar (≤ 12% of the screen, no 1·2·3 presets), title on the photo above the sheet, the rules
-            // (chips, who can reserve) before the host, one-line place, English date, "N of M left", stepper capped.
-            let area = el(app, "event.trustLine").frame.maxY - min(el(app, "event.qty.minus").frame.minY, bar.minY)
-            XCTAssertLessThanOrEqual(area, screen.height * 0.12, "booking bar height (\(theme))")
-            XCTAssertFalse(el(app, "event.qty.1").exists)
-            XCTAssertLessThanOrEqual(el(app, "event.heroTitle").frame.maxY, el(app, "event.fact.seats").frame.minY + 1)
-            XCTAssertLessThan(el(app, "event.typeFacts").frame.minY, el(app, "event.organizer").frame.minY)
-            XCTAssertTrue(el(app, "event.typeFact.dietary-2").exists, "two dietary choices are two chips")
-            let whenText = el(app, "event.fact.when").label
+            // The host appears once.
+            XCTAssertFalse(el(app, "event.trackRecord").exists)
+            XCTAssertEqual(app.buttons.matching(identifier: "event.organizer").count, 1)
+            // English date block, no far-away distance, V8 seat chip.
+            let whenText = when.label
             XCTAssertFalse(whenText.hasPrefix("Th ") || whenText.contains("Th 4"), "English date: \(whenText)")
             XCTAssertFalse(el(app, "event.fact.where").label.contains("km"), "no far-away distance")
             let seatText = el(app, "event.seatStatus").label
-            XCTAssertTrue(seatText.contains("of 3 left"), seatText)
+            XCTAssertTrue(seatText.contains("tickets left") || seatText.contains("ticket left"), seatText)
+            XCTAssertFalse(seatText.contains(" of "), seatText)
+            // Bar height: from the preset chips to the trust line.
+            let area = el(app, "event.trustLine").frame.maxY - min(presetTop, bar.minY)
+            XCTAssertLessThanOrEqual(area, screen.height * 0.21, "booking bar height (\(theme))")
+            // One qty: a chip sets the stepper, the stepper lights the chip.
+            XCTAssertTrue(el(app, "event.qty.1").isSelected)
+            el(app, "event.qty.2").tap()
+            XCTAssertEqual(el(app, "event.qty.value").label, "2")
+            XCTAssertTrue(el(app, "event.qty.2").isSelected)
+            XCTAssertFalse(el(app, "event.qty.1").isSelected)
+            el(app, "event.qty.plus").tap()
+            XCTAssertTrue(el(app, "event.qty.3").isSelected)
+            // The stepper stops at the seats left (bepnho fixture: 3 of 3).
             let plus = el(app, "event.qty.plus")
             for _ in 0..<5 where plus.isEnabled { plus.tap() }
             XCTAssertEqual(el(app, "event.qty.value").label, "3", "stepper stops at the seats left")
-            shot("event-detail-compact-\(theme)")
+            shot("event-detail-v8-\(theme)")
             app.terminate()
         }
+    }
+
+    /// V8 (note 75): the good-to-know rows keep one row per dietary choice; the protected-booking steps are on the page.
+    func testGoodToKnowAndProtection() {
+        let app = launch(theme: "light")
+        XCTAssertTrue(el(app, "event.fact.when").waitForExistence(timeout: 10))
+        XCTAssertTrue(el(app, "event.typeFact.dietary-2").exists, "two dietary choices are two rows")
+        let protection = el(app, "event.protection")
+        for _ in 0..<8 where !protection.isHittable { app.swipeUp() }
+        XCTAssertTrue(protection.exists)
+        XCTAssertTrue(protection.label.contains("banbe reminds them") || app.staticTexts["The host has 1 hour to confirm; banbe reminds them"].exists)
+        shot("event-detail-v8-bottom")
     }
 }
