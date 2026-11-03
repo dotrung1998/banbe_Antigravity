@@ -1,0 +1,194 @@
+{
+  "_about": "Day-of run-of-show layout vectors (note 76). Read by tests/unit/rosLayout.test.mjs and apps/ios/BanbeAppTests/RosLayoutTests.swift. Times are ISO 8601 with offsets; both sides compare epoch ms. 'base' is the v6 prototype's evening; a case uses 'items' or 'base' plus 'done' (id -> doneAt).",
+  "base": [
+    { "id": "setup", "startsAt": "2026-11-14T16:00:00+07:00", "endsAt": "2026-11-14T17:30:00+07:00" },
+    { "id": "brief", "startsAt": "2026-11-14T17:30:00+07:00", "endsAt": "2026-11-14T18:30:00+07:00" },
+    { "id": "doors", "startsAt": "2026-11-14T18:30:00+07:00", "endsAt": "2026-11-14T19:30:00+07:00" },
+    { "id": "serve", "startsAt": "2026-11-14T19:30:00+07:00", "endsAt": "2026-11-14T22:00:00+07:00" },
+    { "id": "clean", "startsAt": "2026-11-14T22:00:00+07:00", "endsAt": "2026-11-14T22:30:00+07:00" }
+  ],
+  "cases": [
+    {
+      "case": "before anything starts: everything on plan",
+      "now": "2026-11-14T15:00:00+07:00",
+      "expect": {
+        "items": [
+          { "id": "setup", "start": "2026-11-14T16:00:00+07:00", "end": "2026-11-14T17:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "brief", "start": "2026-11-14T17:30:00+07:00", "end": "2026-11-14T18:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "doors", "start": "2026-11-14T18:30:00+07:00", "end": "2026-11-14T19:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "serve", "start": "2026-11-14T19:30:00+07:00", "end": "2026-11-14T22:00:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "clean", "start": "2026-11-14T22:00:00+07:00", "end": "2026-11-14T22:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false }
+        ],
+        "chips": [],
+        "axis": { "start": "2026-11-14T15:30:00+07:00", "end": "2026-11-14T23:00:00+07:00" }
+      }
+    },
+    {
+      "case": "prototype at 17:40: set-up runs +10, briefing squeezed -10, later items untouched",
+      "now": "2026-11-14T17:40:00+07:00",
+      "expect": {
+        "items": [
+          { "id": "setup", "start": "2026-11-14T16:00:00+07:00", "end": "2026-11-14T17:40:00+07:00", "overrunMin": 10, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "brief", "start": "2026-11-14T17:40:00+07:00", "end": "2026-11-14T18:30:00+07:00", "overrunMin": 0, "squeezedMin": 10, "overlap": false, "active": true },
+          { "id": "doors", "start": "2026-11-14T18:30:00+07:00", "end": "2026-11-14T19:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "serve", "start": "2026-11-14T19:30:00+07:00", "end": "2026-11-14T22:00:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "clean", "start": "2026-11-14T22:00:00+07:00", "end": "2026-11-14T22:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false }
+        ],
+        "chips": [
+          { "id": "setup", "kind": "overrun", "minutes": 10 },
+          { "id": "brief", "kind": "squeezed", "minutes": 10 }
+        ],
+        "axis": { "start": "2026-11-14T15:30:00+07:00", "end": "2026-11-14T23:00:00+07:00" }
+      }
+    },
+    {
+      "case": "input order does not matter (same as 17:40, shuffled)",
+      "now": "2026-11-14T17:40:00+07:00",
+      "shuffle": ["clean", "brief", "serve", "setup", "doors"],
+      "expect": {
+        "items": [
+          { "id": "setup", "start": "2026-11-14T16:00:00+07:00", "end": "2026-11-14T17:40:00+07:00", "overrunMin": 10, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "brief", "start": "2026-11-14T17:40:00+07:00", "end": "2026-11-14T18:30:00+07:00", "overrunMin": 0, "squeezedMin": 10, "overlap": false, "active": true },
+          { "id": "doors", "start": "2026-11-14T18:30:00+07:00", "end": "2026-11-14T19:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "serve", "start": "2026-11-14T19:30:00+07:00", "end": "2026-11-14T22:00:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "clean", "start": "2026-11-14T22:00:00+07:00", "end": "2026-11-14T22:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false }
+        ],
+        "chips": [
+          { "id": "setup", "kind": "overrun", "minutes": 10 },
+          { "id": "brief", "kind": "squeezed", "minutes": 10 }
+        ],
+        "axis": { "start": "2026-11-14T15:30:00+07:00", "end": "2026-11-14T23:00:00+07:00" }
+      }
+    },
+    {
+      "case": "ticking freezes the end; the next item may now run",
+      "now": "2026-11-14T18:10:00+07:00",
+      "done": { "setup": "2026-11-14T17:50:00+07:00" },
+      "expect": {
+        "items": [
+          { "id": "setup", "start": "2026-11-14T16:00:00+07:00", "end": "2026-11-14T17:50:00+07:00", "overrunMin": 20, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "brief", "start": "2026-11-14T17:50:00+07:00", "end": "2026-11-14T18:30:00+07:00", "overrunMin": 0, "squeezedMin": 20, "overlap": false, "active": true },
+          { "id": "doors", "start": "2026-11-14T18:30:00+07:00", "end": "2026-11-14T19:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "serve", "start": "2026-11-14T19:30:00+07:00", "end": "2026-11-14T22:00:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "clean", "start": "2026-11-14T22:00:00+07:00", "end": "2026-11-14T22:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false }
+        ],
+        "chips": [
+          { "id": "brief", "kind": "squeezed", "minutes": 20 }
+        ],
+        "axis": { "start": "2026-11-14T15:30:00+07:00", "end": "2026-11-14T23:00:00+07:00" }
+      }
+    },
+    {
+      "case": "a long overrun: next item squeezed to its 10-minute minimum and overlapped, later item overlapped but not moved",
+      "now": "2026-11-14T18:45:00+07:00",
+      "expect": {
+        "items": [
+          { "id": "setup", "start": "2026-11-14T16:00:00+07:00", "end": "2026-11-14T18:45:00+07:00", "overrunMin": 75, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "brief", "start": "2026-11-14T18:20:00+07:00", "end": "2026-11-14T18:30:00+07:00", "overrunMin": 0, "squeezedMin": 50, "overlap": true, "active": false },
+          { "id": "doors", "start": "2026-11-14T18:30:00+07:00", "end": "2026-11-14T19:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": true, "active": true },
+          { "id": "serve", "start": "2026-11-14T19:30:00+07:00", "end": "2026-11-14T22:00:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "clean", "start": "2026-11-14T22:00:00+07:00", "end": "2026-11-14T22:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false }
+        ],
+        "chips": [
+          { "id": "setup", "kind": "overrun", "minutes": 75 },
+          { "id": "brief", "kind": "overlap", "minutes": 0 },
+          { "id": "doors", "kind": "overlap", "minutes": 0 }
+        ],
+        "axis": { "start": "2026-11-14T15:30:00+07:00", "end": "2026-11-14T23:00:00+07:00" }
+      }
+    },
+    {
+      "case": "ticked out of order: the unticked first item still stretches; the early tick keeps its planned end",
+      "now": "2026-11-14T17:45:00+07:00",
+      "done": { "brief": "2026-11-14T17:20:00+07:00" },
+      "expect": {
+        "items": [
+          { "id": "setup", "start": "2026-11-14T16:00:00+07:00", "end": "2026-11-14T17:45:00+07:00", "overrunMin": 15, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "brief", "start": "2026-11-14T17:45:00+07:00", "end": "2026-11-14T18:30:00+07:00", "overrunMin": 0, "squeezedMin": 15, "overlap": false, "active": false },
+          { "id": "doors", "start": "2026-11-14T18:30:00+07:00", "end": "2026-11-14T19:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "serve", "start": "2026-11-14T19:30:00+07:00", "end": "2026-11-14T22:00:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "clean", "start": "2026-11-14T22:00:00+07:00", "end": "2026-11-14T22:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false }
+        ],
+        "chips": [
+          { "id": "setup", "kind": "overrun", "minutes": 15 },
+          { "id": "brief", "kind": "squeezed", "minutes": 15 }
+        ],
+        "axis": { "start": "2026-11-14T15:30:00+07:00", "end": "2026-11-14T23:00:00+07:00" }
+      }
+    },
+    {
+      "case": "editing the running item's end later: no overrun, the next item is squeezed instead",
+      "now": "2026-11-14T17:40:00+07:00",
+      "items": [
+        { "id": "setup", "startsAt": "2026-11-14T16:00:00+07:00", "endsAt": "2026-11-14T18:00:00+07:00" },
+        { "id": "brief", "startsAt": "2026-11-14T17:30:00+07:00", "endsAt": "2026-11-14T18:30:00+07:00" }
+      ],
+      "expect": {
+        "items": [
+          { "id": "setup", "start": "2026-11-14T16:00:00+07:00", "end": "2026-11-14T18:00:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": true },
+          { "id": "brief", "start": "2026-11-14T18:00:00+07:00", "end": "2026-11-14T18:30:00+07:00", "overrunMin": 0, "squeezedMin": 30, "overlap": false, "active": false }
+        ],
+        "chips": [
+          { "id": "brief", "kind": "squeezed", "minutes": 30 }
+        ],
+        "axis": { "start": "2026-11-14T15:30:00+07:00", "end": "2026-11-14T19:00:00+07:00" }
+      }
+    },
+    {
+      "case": "crossing midnight",
+      "now": "2026-11-15T00:40:00+07:00",
+      "items": [
+        { "id": "set", "startsAt": "2026-11-14T22:30:00+07:00", "endsAt": "2026-11-14T23:30:00+07:00", "doneAt": "2026-11-14T23:30:00+07:00" },
+        { "id": "late", "startsAt": "2026-11-14T23:30:00+07:00", "endsAt": "2026-11-15T00:30:00+07:00" }
+      ],
+      "expect": {
+        "items": [
+          { "id": "set", "start": "2026-11-14T22:30:00+07:00", "end": "2026-11-14T23:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "late", "start": "2026-11-14T23:30:00+07:00", "end": "2026-11-15T00:40:00+07:00", "overrunMin": 10, "squeezedMin": 0, "overlap": false, "active": false }
+        ],
+        "chips": [
+          { "id": "late", "kind": "overrun", "minutes": 10 }
+        ],
+        "axis": { "start": "2026-11-14T22:00:00+07:00", "end": "2026-11-15T01:30:00+07:00" }
+      }
+    },
+    {
+      "case": "US daylight saving ends inside an item (America/Los_Angeles, 01:30 PDT to 01:30 PST is 60 real minutes)",
+      "now": "2026-11-01T01:40:00-08:00",
+      "items": [
+        { "id": "dst", "startsAt": "2026-11-01T01:30:00-07:00", "endsAt": "2026-11-01T01:30:00-08:00" }
+      ],
+      "expect": {
+        "items": [
+          { "id": "dst", "start": "2026-11-01T01:30:00-07:00", "end": "2026-11-01T01:40:00-08:00", "overrunMin": 10, "squeezedMin": 0, "overlap": false, "active": false }
+        ],
+        "chips": [
+          { "id": "dst", "kind": "overrun", "minutes": 10 }
+        ],
+        "axis": { "start": "2026-11-01T08:00:00Z", "end": "2026-11-01T10:30:00Z" }
+      }
+    },
+    {
+      "case": "a zero-length item gets the 10-minute minimum",
+      "now": "2026-11-14T15:00:00+07:00",
+      "items": [
+        { "id": "a", "startsAt": "2026-11-14T16:00:00+07:00", "endsAt": "2026-11-14T16:30:00+07:00" },
+        { "id": "z", "startsAt": "2026-11-14T17:00:00+07:00", "endsAt": "2026-11-14T17:00:00+07:00" }
+      ],
+      "expect": {
+        "items": [
+          { "id": "a", "start": "2026-11-14T16:00:00+07:00", "end": "2026-11-14T16:30:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false },
+          { "id": "z", "start": "2026-11-14T17:00:00+07:00", "end": "2026-11-14T17:10:00+07:00", "overrunMin": 0, "squeezedMin": 0, "overlap": false, "active": false }
+        ],
+        "chips": [],
+        "axis": { "start": "2026-11-14T15:30:00+07:00", "end": "2026-11-14T18:00:00+07:00" }
+      }
+    },
+    {
+      "case": "no items",
+      "now": "2026-11-14T17:40:00+07:00",
+      "items": [],
+      "expect": { "items": [], "chips": [], "axis": null }
+    }
+  ]
+}

@@ -9,7 +9,7 @@
 //   everything, which is the behaviour from before flags existed.
 // - Anything that is not a boolean is ignored.
 
-export const FLAG_KEYS = ['rewards', 'rewards_v2', 'push_enabled', 'app_events', 'event_reminders', 'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'intent_foryou', 'live_activity', 'market_share', 'onboarding_v2', 'onboarding_v3', 'event_type_profiles', 'simple_shell', 'polaroid_cards'];
+export const FLAG_KEYS = ['rewards', 'rewards_v2', 'push_enabled', 'app_events', 'event_reminders', 'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'intent_foryou', 'live_activity', 'market_share', 'onboarding_v2', 'onboarding_v3', 'event_type_profiles', 'simple_shell', 'polaroid_cards', 'event_project_hub', 'project_qr_invite', 'project_delegate_checkin', 'project_delegate_payments', 'project_delegate_refunds'];
 // push_enabled (migration 194): real push notifications (iPhone), dark until an admin turns it on.
 // app_events (migration 196): first-party measurement; nothing is sent until an admin turns it on.
 // Migrations 199/200: event_reminders is on unless an admin turns it off; the rest stay dark until set.
@@ -17,7 +17,10 @@ export const FLAG_KEYS = ['rewards', 'rewards_v2', 'push_enabled', 'app_events',
 // event_type_profiles (migration 203): the create form, Event Detail and Home adapt to the event type; dark until set.
 // simple_shell (migration 206, note 66): the simplified Home (Going out | Hosting) and the dock with the centre "+"; dark until set.
 // polaroid_cards (migration 208, note 71): Home event cards as polaroids (Calm Pass); dark until set.
-export const OFF_UNLESS_SET = ['rewards_v2', 'push_enabled', 'app_events', 'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'intent_foryou', 'live_activity', 'market_share', 'onboarding_v2', 'onboarding_v3', 'event_type_profiles', 'simple_shell', 'polaroid_cards'];
+// Event Project Hub (note 76; migrations 210-214): event_project_hub (the hub), project_qr_invite (QR invites),
+// project_delegate_checkin / _payments / _refunds (each money step separately). All dark until set: a missing key
+// must never hand anyone door or money access.
+export const OFF_UNLESS_SET = ['rewards_v2', 'push_enabled', 'app_events', 'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'intent_foryou', 'live_activity', 'market_share', 'onboarding_v2', 'onboarding_v3', 'event_type_profiles', 'simple_shell', 'polaroid_cards', 'event_project_hub', 'project_qr_invite', 'project_delegate_checkin', 'project_delegate_payments', 'project_delegate_refunds'];
 const CACHE_KEY = 'banbe_feature_flags_v1';
 
 /** Keep only known keys with real booleans. Unknown keys from a newer server are ignored, never trusted. */

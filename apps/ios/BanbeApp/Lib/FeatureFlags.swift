@@ -11,7 +11,8 @@ import Foundation
 /// - Anything that is not a boolean, and any key this build does not know, is ignored.
 enum FeatureFlags {
     static let keys = ["rewards", "admin_event_wipe", "rewards_v2", "push_enabled", "app_events",
-                       "event_reminders", "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share", "onboarding_v2", "onboarding_v3", "event_type_profiles", "simple_shell", "polaroid_cards"]
+                       "event_reminders", "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share", "onboarding_v2", "onboarding_v3", "event_type_profiles", "simple_shell", "polaroid_cards",
+                       "event_project_hub", "project_qr_invite", "project_delegate_checkin", "project_delegate_payments", "project_delegate_refunds"]
     /// Flags that are OFF unless the server explicitly says true (a missing key never turns them on). Note 54:
     /// "admin_event_wipe" is a TESTING-PHASE admin tool that must never switch itself on. "rewards_v2" (migration
     /// 192) is a new feature that stays dark until an admin turns it on (same list as src/lib/featureFlags.js).
@@ -19,8 +20,11 @@ enum FeatureFlags {
     /// "app_events" (migration 196): first-party measurement, nothing is sent until an admin turns it on.
     /// Migrations 199/200: "event_reminders" is on unless an admin turns it off; the rest stay dark until set.
     /// "onboarding_v2" (migration 201) + "onboarding_v3" (migration 202): which onboarding runs, see `onboardingVersion`.
+    /// Event Project Hub (note 76, migrations 210-214): the hub, QR invites and each money step separately. All stay
+    /// dark until set: a missing key must never hand anyone door or money access.
     static let offUnlessSet: Set<String> = ["admin_event_wipe", "rewards_v2", "push_enabled", "app_events",
-                                            "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share", "onboarding_v2", "onboarding_v3", "event_type_profiles", "simple_shell", "polaroid_cards"]
+                                            "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share", "onboarding_v2", "onboarding_v3", "event_type_profiles", "simple_shell", "polaroid_cards",
+                                            "event_project_hub", "project_qr_invite", "project_delegate_checkin", "project_delegate_payments", "project_delegate_refunds"]
     static let cacheKey = "banbe.featureFlags.v1"
 
     /// Keep only known keys with real booleans.

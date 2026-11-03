@@ -60,3 +60,14 @@ test('onboardingVersion (migration 202): v3 > v2 > v1, missing = 1', () => {
   assert.equal(onboardingVersion({ onboarding_v2: true, onboarding_v3: true }), 3);
   assert.equal(onboardingVersion(normalizeFlags({ onboarding_v3: 'true' })), 1);
 });
+
+test('Event Project Hub switches (note 76) stay off unless the server says true: a missing key never hands out door or money access', () => {
+  for (const key of ['event_project_hub', 'project_qr_invite', 'project_delegate_checkin', 'project_delegate_payments', 'project_delegate_refunds']) {
+    assert.equal(flagOn({}, key), false, key);
+    assert.equal(flagOn(null, key), false, key);
+    assert.equal(flagOn({ [key]: false }, key), false, key);
+    assert.equal(flagOn({ [key]: 'true' }, key), false, key);
+    assert.equal(flagOn({ [key]: true }, key), true, key);
+    assert.deepEqual(normalizeFlags({ [key]: true }), { [key]: true }, key);
+  }
+});

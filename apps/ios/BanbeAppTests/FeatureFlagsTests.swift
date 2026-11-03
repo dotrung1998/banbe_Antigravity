@@ -65,3 +65,17 @@ final class FeatureFlagsTests: XCTestCase {
         XCTAssertEqual(seen.count, Set(seen).count)
     }
 }
+
+extension FeatureFlagsTests {
+    /// Note 76: the Event Project Hub switches stay off unless the server says true. A missing key must never hand out
+    /// door or money access. Mirrors tests/unit/featureFlags.test.mjs.
+    func testEventProjectSwitchesAreOffUnlessExplicitlyOn() {
+        for key in ["event_project_hub", "project_qr_invite", "project_delegate_checkin", "project_delegate_payments", "project_delegate_refunds"] {
+            XCTAssertTrue(FeatureFlags.keys.contains(key), key)
+            XCTAssertFalse(FeatureFlags.isOn([:], key), key)
+            XCTAssertFalse(FeatureFlags.isOn([key: false], key), key)
+            XCTAssertTrue(FeatureFlags.isOn([key: true], key), key)
+            XCTAssertEqual(FeatureFlags.normalize([key: true]), [key: true], key)
+        }
+    }
+}

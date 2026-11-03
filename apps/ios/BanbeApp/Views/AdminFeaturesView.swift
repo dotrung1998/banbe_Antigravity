@@ -92,6 +92,31 @@ struct AdminFeaturesView: View {
              hintVi: "Thẻ sự kiện trên Trang chủ có khung giấy quanh ảnh và chú thích bên dưới, như ảnh polaroid. Chỉ đổi kiểu xem thẻ, không đổi danh sách. Mặc định tắt.",
              hintEn: "Home event cards get a paper frame around the photo with the caption below, like a polaroid. Only the cards view changes, not the list. Off by default.",
              onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off"),
+        // Note 76, migration 210. Until 210 is applied the server refuses this switch.
+        Flag(key: "event_project_hub", vi: "Dự án sự kiện", en: "Event projects",
+             hintVi: "Host mở một không gian riêng cho đội của từng sự kiện: việc, chủ đề có cấu trúc, đội, lịch chạy ngày diễn ra và kênh trao đổi bên ngoài. Mặc định tắt. Cần migration 210.",
+             hintEn: "Hosts open a private team space per event: tasks, structured topics, team, the event-day run-of-show and outside chat links. Off by default. Needs migration 210.",
+             onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off"),
+        // Note 76: client only (the invite tokens are in migration 210).
+        Flag(key: "project_qr_invite", vi: "Mời vào dự án bằng mã QR", en: "Project invites by QR",
+             hintVi: "Thêm mã QR và lời mời dùng nhiều lần (tối đa 20) vào màn mời thành viên. Mặc định tắt. Cần bật Dự án sự kiện.",
+             hintEn: "Adds a QR code and multi-use invites (up to 20 uses) to the invite screen. Off by default. Needs Event projects on.",
+             onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off", requires: "event_project_hub"),
+        // Note 76, migration 212.
+        Flag(key: "project_delegate_checkin", vi: "Đội được làm cửa", en: "Team can check guests in",
+             hintVi: "Tài chính và người được Host cấp quyền có thể cho khách vào cửa. Chỉ thấy tên khách, không thấy số tiền. Mỗi lần đều được ghi lại. Mặc định tắt. Cần migration 212.",
+             hintEn: "Finance and people the Host grants it can check guests in. They see names only, never amounts. Every action is logged. Off by default. Needs migration 212.",
+             onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off", requires: "event_project_hub"),
+        // Note 76, migration 213.
+        Flag(key: "project_delegate_payments", vi: "Đội được xác nhận thanh toán", en: "Team can confirm payments",
+             hintVi: "Tài chính và người được Host cấp quyền tiền có thể xem số tiền, xem ảnh chuyển khoản của đúng đặt chỗ đang xác nhận và xác nhận đã nhận tiền. Không được từ chối khách. Mỗi lần đều được ghi lại. Mặc định tắt. Cần migration 213.",
+             hintEn: "Finance and people the Host grants money access can see amounts, view the transfer proof of the booking being confirmed and confirm payment. They cannot reject a guest. Every action is logged. Off by default. Needs migration 213.",
+             onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off", requires: "event_project_hub"),
+        // Note 76, migration 214.
+        Flag(key: "project_delegate_refunds", vi: "Đội được xử lý hoàn tiền", en: "Team can handle refunds",
+             hintVi: "Tài chính gửi yêu cầu hoàn tiền để Host duyệt. Host có thể cho Tài chính tự hoàn tiền trong từng dự án. Đổi tài khoản nhận tiền và huỷ sự kiện vẫn chỉ Host làm. Mặc định tắt. Cần migration 214.",
+             hintEn: "Finance sends refunds to the Host for approval. The Host can let Finance refund alone, per project. Changing the payout account and cancelling the event stay with the Host. Off by default. Needs migration 214.",
+             onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off", requires: "event_project_hub"),
         // TESTING-PHASE (note 54): remove this row with the wipe tool before public release.
         Flag(key: "admin_event_wipe", vi: "Xoá sự kiện thử nghiệm (giai đoạn thử)", en: "Test event wipe (testing phase)",
              hintVi: "Cho admin xoá vĩnh viễn bất kỳ sự kiện nào cùng mọi dữ liệu liên quan, không cần lý do, trong Quản lý sự kiện (chỉ iOS). Chỉ dùng cho dữ liệu thử nghiệm.",

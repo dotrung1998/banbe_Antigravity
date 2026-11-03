@@ -85,6 +85,10 @@ targets:
       # web imports (Lib/MapDiscovery.swift ⇄ src/lib/mapDiscovery.js).
       - path: ../../src/data/cities.json
         buildPhase: resources
+      # Event Project Hub (note 76): the limits the web imports and the server enforces
+      # (Lib/ProjectLimits.swift ⇄ src/lib/projectPermissions.js).
+      - path: ../../src/data/projectLimits.json
+        buildPhase: resources
     resources:
       - BanbeApp/Resources
     dependencies:

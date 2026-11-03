@@ -14,6 +14,7 @@ export const FLAG_CATEGORIES = [
   { key: 'events', vi: 'Sự kiện & tổng kết', en: 'Events & recaps', flags: ['event_recap', 'host_recap'] },
   { key: 'types', vi: 'Loại sự kiện', en: 'Event types', flags: ['event_type_profiles'] },
   { key: 'layout', vi: 'Bố cục ứng dụng', en: 'App layout', flags: ['simple_shell', 'polaroid_cards'] },
+  { key: 'projects', vi: 'Dự án sự kiện', en: 'Event projects', flags: ['event_project_hub', 'project_qr_invite', 'project_delegate_checkin', 'project_delegate_payments', 'project_delegate_refunds'] },
   { key: 'platform', vi: 'Nền tảng & đo lường', en: 'Platform & measurement', flags: ['app_events'] },
 ];
 
