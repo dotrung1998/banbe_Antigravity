@@ -1,7 +1,7 @@
 # 76 — Event Project Hub (Hosting): per-event private team workspace
 
-Status: **phase 1 of 13 IMPLEMENTED LOCALLY, not committed.** Pure logic, shared vectors and switches only. No
-migration, no UI, nothing reachable in the app. Plan (approved 2026-11-03):
+Status: **phases 1-2 of 13 done.** Phase 1 (pure logic + switches) committed c731375. Phase 2 = migration 210, tested on
+the throwaway stack only, NOT applied to production. No UI yet, nothing reachable in the app. Plan (approved 2026-11-03):
 `~/.claude/plans/pasted-content-id-234b-plan-mode-composed-koala.md`. Design source of truth for roles, tabs and layout:
 `banbe_hosting_project_hub_v6.html` (owner attachment, not in the repo).
 
@@ -53,6 +53,45 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
   `GiftTicketPDFTests.testPDFLinksPointAtRealDestinations` (see notes 43–48). The 24 new/changed tests are green.
 - Not checked: the admin switch rows on screen (web/iOS), not rendered.
 
-## Next: phase 2 (migration 210, throwaway Postgres only)
-Tables, `project_is_host`, RLS, RPCs, invite tokens, channels sanitizer, read-only/purge columns, and the SQL test
-suite running `project-permissions.json` twice (v1 body, then `owner_only` body swapped in) plus the channel vectors.
+## Phase 2 — migration 210 (LOCAL HARNESS ONLY, NOT applied to production)
+`supabase/migrations/20261231000210_210_event_project_core.sql`, rollback
+`supabase/rollbacks/20261231000210_210_revert_event_project_core.sql`.
+
+- 13 tables (projects, lanes, members, invites, invite attempts, change requests, tasks, posts, votes, replies, seen,
+  run-of-show items, log), SELECT-only RLS through `is_event_project_member()`, and every write as a SECURITY DEFINER
+  RPC. Supabase's default grants on new tables and functions are revoked explicitly. Invites are visible to the Host and
+  their creator only, change requests to the Host and the proposer only, and invite attempts to nobody.
+- **Host = `project_host_ids()`** (v1 `ARRAY[owner_id, user_id]`). `project_is_host()` wraps it. Swapping that one
+  function to owner_id only is the whole switch: the SQL matrix runs twice to prove it.
+- No stored dates: `project_event_end()` = later of midnight after `event_date` in `events.tz` and the last run-of-show
+  end. Read-only = end + 30 d. Moving the event or adding a late item moves everything.
+- RPCs: reads (`get_event_project` with `p_since_version` → `{unchanged}`, posts paging, one post, trash, `get_event_project_ros` poll,
+  `get_my_event_projects`), `start_event_project` (opt-in, client-supplied lane names, de-duplicated), invites (create /
+  list / revoke / `peek_project_invite` / `project_redeem_invite`, 128-bit token + BB-XXXX, 48 h, 1..20 uses, multi-use
+  only with `project_qr_invite`, 10 failures per hour lock, a removed member can rejoin with the new role and no money
+  caps), members (set, remove: unassigns open tasks, leave), lanes and channels (Host applies; Manager proposes through
+  `event_project_change_requests`, the Host approves with an optional reason or declines with a required one; approval
+  re-runs the same checks), tasks, topics (4 types, limits, quiet-only edits, vote toggle, decide = locked decision,
+  delete with a reason), run-of-show (10-minute minimum, within [start − 12 h, start + 24 h], server-clock ticks),
+  trash (restore / purge, keeps the 30 newest).
+- Only "blocked" notifies at once (both Host accounts, never the blocker); joining notifies the inviter. The daily
+  digest and purge jobs come with 211.
+- Bug classes caught while building: (1) `IF NOT (... v_me.role = 'manager' ...)` is NULL for a caller without a member
+  row, and plpgsql SKIPS the refusal. Every permission check is now `NOT coalesce((...), false)`. (2) A missing JSON
+  `primary` key became `null`, not `false` (found by the shared channel fixture).
+- Deviations from the plan: the blocked alert is in 210 (no cron needed), `project_leave` was added, peek requires
+  sign-in (the token waits on the device through signup), and starting lanes come from the client in the Host's language.
+
+### Verified (throwaway real-Supabase stack, `supabase/tests/210_project/run.sh`)
+- The full chain 001→210 applies with 0 failures on a fresh stack. 210 re-applies cleanly, and the rollback removes
+  every table, function and switch.
+- `test_project.py`: **984 checks, 0 failures**. That's the shared `project-permissions.json` (45 project rows × 10
+  actors × both Host definitions, money rows wait for 212-214), all channel vectors, limits == `projectLimits.json`,
+  RLS (outsider, removed member, hub off, anon, direct insert, internal helpers), invites, caps, trash, start, versions,
+  notifications, decisions, structure proposals, run-of-show time rules, read-only, and a lint that organizer
+  owner/second-account columns appear only in `project_host_ids()`.
+- Mutation check: removing the Host-only check from `project_host_write` made 48 checks fail. Restored → green.
+
+## Next: phase 3 (iOS shell)
+`ProjectTabBar` (icon over label, 5 visible, swipe for the 6th), hub screen, Overview with team channels, Tasks, the
+Hosting card "Start a project" and Account "Projects I'm in", against a UI-test fixture (flag off = unreachable).
