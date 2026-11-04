@@ -34,7 +34,7 @@ extension AppState {
 
     func openProject(eventID: String, back: Screen, tab: String = "overview") async {
         projectBackScreen = back
-        if projectEventID != eventID { projectSnapshot = nil }
+        if projectEventID != eventID { projectSnapshot = nil; projectRosVersion = nil; projectDayView = "list" }
         projectEventID = eventID
         projectTab = tab
         projectError = ""
@@ -72,6 +72,7 @@ extension AppState {
             var next = result
             mergeOlderPosts(into: &next)
             projectSnapshot = next
+            projectRosVersion = nil
             projectError = ""
         } catch {
             print("refreshProject failed:", error)
@@ -120,14 +121,14 @@ extension AppState {
 
     /// One write RPC. On success the project refreshes; on a refusal `projectNotice` says why in plain words.
     @discardableResult
-    func projectWrite<P: Encodable>(_ function: String, _ params: P, refresh: Bool = true, post: Bool = false) async -> Bool {
+    func projectWrite<P: Encodable>(_ function: String, _ params: P, refresh: Bool = true, post: Bool = false, ros: Bool = false) async -> Bool {
         projectBusy = true
         defer { projectBusy = false }
         projectNotice = ""
         do {
             let result: ProjectWriteResult = try await SupabaseService.client.rpc(function, params: params).execute().value
             guard result.success else {
-                projectNotice = projectErrorText(result.error, post: post)
+                projectNotice = projectErrorText(result.error, post: post, ros: ros)
                 return false
             }
             if refresh { await refreshProject() }
@@ -304,8 +305,9 @@ extension AppState {
     // MARK: words
 
     /// A refusal code from migration 210 in plain words.
-    func projectErrorText(_ code: String?, post: Bool = false) -> String {
+    func projectErrorText(_ code: String?, post: Bool = false, ros: Bool = false) -> String {
         if post, code == "TITLE_INVALID" { return T("Tiêu đề dài 3 đến 80 ký tự.", "A title is 3 to 80 characters.") }
+        if ros, code == "TITLE_INVALID" { return T("Tên mốc dài 2 đến 40 ký tự.", "An item name is 2 to 40 characters.") }
         switch code {
         case "FEATURE_OFF": return T("Dự án sự kiện đang tạm tắt.", "Event projects are switched off right now.")
         case "NOT_AUTHORIZED": return T("Bạn không có quyền làm việc này trong dự án.", "You can't do this in this project.")
@@ -344,6 +346,10 @@ extension AppState {
         case "LANE_ARCHIVED": return T("Hạng mục của lời mời đã được lưu trữ. Hãy xin một mã mới.", "The invite's lane was archived. Ask for a new one.")
         case "RATE_LIMITED": return T("Nhập sai quá nhiều lần. Hãy thử lại sau một giờ.", "Too many wrong codes. Try again in an hour.")
         case "INVALID_VALUE": return T("Giá trị không hợp lệ.", "That value isn't valid.")
+        case "TIME_INVALID": return T("Kết thúc phải sau bắt đầu ít nhất 10 phút.", "The end must be at least 10 minutes after the start.")
+        case "TIME_OUTSIDE_EVENT": return T("Mốc phải nằm trong khoảng 12 giờ trước đến 24 giờ sau giờ bắt đầu sự kiện.",
+                                            "Items must sit between 12 hours before and 24 hours after the event starts.")
+        case "OWNER_NOT_IN_PROJECT": return T("Người phụ trách không còn trong dự án.", "That person is no longer in the project.")
         default: return T("Chưa lưu được. Hãy thử lại.", "Couldn't save. Try again.")
         }
     }

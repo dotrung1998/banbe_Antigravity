@@ -5,7 +5,11 @@ import SwiftUI
 /// Pull to refresh asks with the project's version, so an unchanged project costs one tiny request.
 struct ProjectHubView: View {
     @EnvironmentObject private var app: AppState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var sheet: ProjectSheet?
+
+    /// Phase 5: live sync (the 15 s run-of-show poll) is on only on the event day, on Day-of, with the app in front.
+    private var live: Bool { app.projectLiveSyncOn(scenePhaseActive: scenePhase == .active) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,6 +18,7 @@ struct ProjectHubView: View {
                 ProjectTabBar(tabs: tabs(snap), selection: app.projectTab) { app.projectTab = $0 }
                 Rectangle().fill(app.palette.divider).frame(height: 1)
                 ZStack(alignment: .bottomTrailing) {
+                  ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
                             banners(snap)
@@ -25,6 +30,10 @@ struct ProjectHubView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .refreshable { await app.refreshProject() }
+                    .environment(\.projectScrollTo, ProjectScrollTo { id in
+                        withAnimation(.snappy(duration: 0.35)) { proxy.scrollTo(id, anchor: .center) }
+                    })
+                  }
                     if app.projectTab == "tasks", canAddTask(snap) { addTaskButton(snap) }
                     if app.projectTab == "topics", app.projectCan("post.question") { newPostButton }
                 }
@@ -37,6 +46,14 @@ struct ProjectHubView: View {
         .foregroundStyle(app.palette.ink)
         .background(app.palette.paper.ignoresSafeArea())
         .sheet(item: $sheet) { ProjectSheetHost(sheet: $0) { sheet = nil } }
+        .task(id: live) {
+            // One small request every 15 s, mostly answered {unchanged}; stops the moment `live` turns false.
+            guard live else { return }
+            while !Task.isCancelled {
+                await app.pollProjectRos()
+                try? await Task.sleep(nanoseconds: UInt64(ProjectLimits.shared.pollSeconds) * 1_000_000_000)
+            }
+        }
         .environment(\.openProjectSheet, OpenProjectSheet { sheet = $0 })
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project.hub")
@@ -54,6 +71,9 @@ struct ProjectHubView: View {
                 .accessibilityAddTraits(.isHeader)
             Menu {
                 Button { Task { await app.refreshProject(full: true) } } label: { Label(app.T("Tải lại", "Refresh"), systemImage: "arrow.clockwise") }
+                if app.projectCan("trash.restore") {
+                    Button { sheet = .trash } label: { Label(app.T("Thùng rác", "Trash"), systemImage: "trash") }
+                }
                 if app.projectSnapshot?.me != nil && app.projectSnapshot?.project?.readOnly == false {
                     Button(role: .destructive) { sheet = .leave } label: {
                         Label(app.T("Rời dự án", "Leave project"), systemImage: "rectangle.portrait.and.arrow.right")
@@ -106,7 +126,7 @@ struct ProjectHubView: View {
         case "team": ProjectTeamTab(snap: snap)
         case "topics": ProjectTopicsTab(snap: snap)
         case "money": ProjectLaterTab(kind: "money")
-        case "dayof": ProjectLaterTab(kind: "dayof")
+        case "dayof": ProjectDayOfTab(snap: snap, live: live)
         default: ProjectOverviewTab(snap: snap)
         }
     }
@@ -193,14 +213,14 @@ struct ProjectHubView: View {
     }
 }
 
-/// The tabs that arrive in later phases (Money & door phase 6, Day-of phase 5).
+/// The tab that arrives in a later phase (Money & door, phase 6).
 struct ProjectLaterTab: View {
     @EnvironmentObject private var app: AppState
     let kind: String
 
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: kind == "money" ? "creditcard" : "calendar")
+            Image(systemName: "creditcard")
                 .font(.system(size: 30)).foregroundStyle(app.palette.clay).accessibilityHidden(true)
             Text(app.T("Sắp có", "Coming soon")).font(BanbeTheme.display(18))
             Text(text).font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
@@ -213,11 +233,7 @@ struct ProjectLaterTab: View {
     }
 
     private var text: String {
-        switch kind {
-        case "money": return app.T("Tiền, hoàn tiền và cửa vào sẽ ở đây. Hiện vẫn làm ở Điểm danh và Xác nhận như trước.",
-                                   "Money, refunds and the door will live here. For now they stay in Check-in and Verifications.")
-        default: return app.T("Lịch chạy chương trình ngày diễn ra, dạng danh sách và lịch giờ.",
-                              "The event-day run-of-show, as a list and as a time grid.")
-        }
+        app.T("Tiền, hoàn tiền và cửa vào sẽ ở đây. Hiện vẫn làm ở Điểm danh và Xác nhận như trước.",
+              "Money, refunds and the door will live here. For now they stay in Check-in and Verifications.")
     }
 }

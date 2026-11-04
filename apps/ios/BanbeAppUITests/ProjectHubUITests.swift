@@ -46,7 +46,7 @@ final class ProjectHubUITests: XCTestCase {
         XCTAssertTrue(el(app, "project.tabs.atEnd").waitForExistence(timeout: 3), "the edge hint goes away at the end")
         attach(app, "project-tabs-at-end")
         el(app, ids[5]).tap()
-        XCTAssertTrue(el(app, "project.later.dayof").waitForExistence(timeout: 5))
+        XCTAssertTrue(el(app, "project.dayofTab").waitForExistence(timeout: 5))
         XCTAssertTrue(el(app, ids[5]).isSelected)
     }
 

@@ -66,6 +66,8 @@ enum UITestFixture {
     /// The v6 prototype's "today" in the event's zone, so due days and countdowns never drift.
     static var projectNow: Date? {
         guard isActive, name == "shell.project" || name == "shell.projectJoin" || projectHub else { return nil }
+        // Phase 5: `-uiFixtureProjectNow 2026-11-14T18:10:00+07:00` puts the clock on the event day.
+        if let s = UserDefaults.standard.string(forKey: "uiFixtureProjectNow"), let d = ISO8601DateFormatter().date(from: s) { return d }
         return ISO8601DateFormatter().date(from: "2026-11-03T10:00:00+07:00")
     }
 
@@ -102,6 +104,8 @@ enum UITestFixture {
     static var projectReplies: [String: [ProjectReply]] = [:]
     /// Phase 4b: invites minted in this run (the first is BB-7K2Q, later ones get other codes).
     static var projectInviteCount = 0
+    /// Phase 5: what the fixture's trash holds (items deleted during the run go here).
+    static var projectTrash: [ProjectTrashItem] = []
     /// Phase 4b: the join screen's camera "sees" this value (`-uiFixtureProjectScan <text>`); the simulator has no camera.
     static let projectScan = UserDefaults.standard.string(forKey: "uiFixtureProjectScan")
     /// Phase 4b: `-uiFixtureProjectQR YES` turns on switch `project_qr_invite`.

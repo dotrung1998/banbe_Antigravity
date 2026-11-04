@@ -1,7 +1,7 @@
 # 76 — Event Project Hub (Hosting): per-event private team workspace
 
-Status: **phases 1-4b of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
-NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
+Status: **phases 1-5 of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
+NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
 `~/.claude/plans/pasted-content-id-234b-plan-mode-composed-koala.md`. Design source of truth for roles, tabs and layout:
 `banbe_hosting_project_hub_v6.html` (owner attachment, not in the repo).
 
@@ -191,6 +191,35 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
   tests, `ProjectInviteLinkTests` (4) and `ProjectTeamTopicsTests` (6) green. Web `projectInviteLink` 5/5.
 - Not checked: a real camera scan, a universal link opening the app (needs the deploy + signing above).
 
-## Next: phase 5 (iOS Day-of)
-Week strip, List, `RosTimeGrid` with an injected clock, the 15 s event-day poll (foreground, Day-of tab, event day only),
-item edit sheet, tick, trash.
+## Phase 5 — iOS Day-of (IMPLEMENTED LOCALLY; no migration)
+- **Tab** (`ProjectDayOfTab.swift`): the event week (7 days ending on the event day, in the event's zone, open tasks
+  due per day, ★ on the day; a tap lists that day's tasks), the event-day card ("Live now · every 15 s" on the day,
+  otherwise when it will be live) with "Join call" for the primary channel, List | Calendar, "Add item" for the Host and
+  Managers. List rows: event-zone time, title (struck through when done), owner, "+N′" while running over, edit (editors)
+  and a 44 pt tick (everyone).
+- **Time grid** (`ProjectRosGrid.swift`): hour lines, blocks placed by `RosLayout` (phase 1, fixture-tested port of
+  v6 layoutDay), now line, legend, "Versus the plan" chips, "Jump to now" (scrolls the hub through the
+  `projectScrollTo` environment hook). Redrawn every 30 s by a TimelineView so an unticked item visibly stretches.
+  Tokens: active = clay, overrun = alert, squeezed = honey, done = inset/ink3 (no moss token). Taller scale at AX sizes.
+- **Sheets** (`ProjectDayOfSheets.swift`): item add/edit (name 2–40, start/end pickers in the event's zone limited to the
+  server window [start − 12 h, start + 24 h], moving the start keeps the length, end ≥ start + 10 min, owner), delete
+  with a reason; Trash (⋯ menu, Host and Managers): tasks, posts, items, archived lanes, Restore; purge for the Host.
+- **Poll** (`AppState+ProjectDayOf.swift`, ProjectHubView `.task(id: live)`): `get_event_project_ros` every 15 s only
+  while the hub is open on Day-of, the app is active (`scenePhase`) and it is the event day in the event's zone. The
+  poll keeps its own `projectRosVersion`, so it never makes a later full refresh answer {unchanged} for other changes.
+- Tick time comes from the server (`project_tick_ros_item`), never the phone.
+- Fixture: `-uiFixtureProjectNow 2026-11-14T18:10:00+07:00` = event day, the first item 40 minutes over and the next
+  squeezed by 40.
+
+### Verified
+- `ProjectDayOfUITests` (7) + `ProjectHubUITests` (11, Day-of placeholder check updated) green; `ProjectDayOfTests` (2) and
+  `RosLayoutTests` green; iOS unit 555 with only the known GiftTicketPDF failure; web unit 899/899. Screenshots reviewed:
+  list (3 Nov), live grid (event day, en dark and vi dark), trash, grid at AX XXXL.
+- **Found while testing:** at AX XXXL the grid's hour labels broke one character per line and the plan chips were cut
+  off. The grid is now capped at `accessibility1` (spatial layout; the List keeps full Dynamic Type and each block reads
+  everything to VoiceOver), hour labels stay on one line, and the chips stack and wrap. The week strip says "1 due", not
+  a bare "1".
+- Not checked: the poll against a real backend (210 not applied), a real event day, iPad.
+
+## Next: phase 6 (iOS Money & door tab, Host)
+Summary + deep links into the existing Verifications / Attendance / payment screens; delegates see the lock card until 9a/9b.

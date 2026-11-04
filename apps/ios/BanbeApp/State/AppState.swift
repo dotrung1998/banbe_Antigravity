@@ -1746,6 +1746,11 @@ final class AppState: ObservableObject {
     @Published var projectPostsExhausted = false
     /// Phase 4: the invites I can still see and revoke (Host: all live ones; Manager: their own).
     @Published var projectInvites: [ProjectInvite] = []
+    /// Phase 5: the version the last run-of-show poll saw. Kept apart from the snapshot's own version, so a poll that
+    /// only refreshes the run-of-show never hides other changes from the next full refresh.
+    var projectRosVersion: Int?
+    /// Phase 5: List or Calendar on the Day-of tab, kept while the hub stays open.
+    @Published var projectDayView = "list"
     /// Phase 4 join screen: the code or token being looked at, and what the server said about it.
     @Published var projectJoinCode = ""
     @Published var projectJoinPeek: ProjectInvitePeek?

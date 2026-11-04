@@ -156,11 +156,11 @@ struct ProjectPost: Decodable, Equatable, Identifiable {
 
 struct ProjectRosItem: Decodable, Equatable, Identifiable {
     let id: String
-    let title: String
-    let ownerId: String?
-    let startsAt: String
-    let endsAt: String
-    let doneAt: String?
+    var title: String
+    var ownerId: String?
+    var startsAt: String
+    var endsAt: String
+    var doneAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title
@@ -357,4 +357,38 @@ struct ProjectRedeemResult: Decodable {
     let role: String?
 
     enum CodingKeys: String, CodingKey { case success, error, role, eventId = "event_id" }
+}
+
+// MARK: - phase 5: day-of and trash
+
+/// `get_event_project_ros`: the event-day poll ({unchanged} when nothing moved).
+struct ProjectRosResult: Decodable {
+    let success: Bool
+    let error: String?
+    let unchanged: Bool?
+    let version: Int?
+    let ros: [ProjectRosItem]?
+}
+
+/// `get_event_project_trash`: deleted tasks, posts and run-of-show items (7 days) and archived lanes.
+struct ProjectTrashResult: Decodable {
+    let success: Bool
+    let error: String?
+    let items: [ProjectTrashItem]?
+}
+
+struct ProjectTrashItem: Decodable, Equatable, Identifiable {
+    let kind: String
+    let itemId: String
+    let title: String
+    let by: String?
+    let reason: String?
+    let at: String?
+    let startsAt: String?
+    var id: String { "\(kind).\(itemId)" }
+
+    enum CodingKeys: String, CodingKey {
+        case kind, title, by, reason, at
+        case itemId = "id", startsAt = "starts_at"
+    }
 }

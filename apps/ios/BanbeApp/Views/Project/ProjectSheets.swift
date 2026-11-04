@@ -15,6 +15,9 @@ enum ProjectSheet: Identifiable, Equatable {
     case compose
     case member(String)
     case invite
+    // Phase 5
+    case rosItem(String?)
+    case trash
 
     var id: String {
         switch self {
@@ -29,6 +32,8 @@ enum ProjectSheet: Identifiable, Equatable {
         case .compose: return "compose"
         case .member(let id): return "member.\(id)"
         case .invite: return "invite"
+        case .rosItem(let id): return "ros.\(id ?? "new")"
+        case .trash: return "trash"
         }
     }
 }
@@ -66,6 +71,8 @@ struct ProjectSheetHost: View {
         case .compose: ProjectComposeSheet(close: close)
         case .member(let id): ProjectMemberSheet(memberID: id, close: close)
         case .invite: ProjectInviteSheet(close: close)
+        case .rosItem(let id): ProjectRosSheet(itemID: id, close: close)
+        case .trash: ProjectTrashSheet(close: close)
         }
     }
 }
