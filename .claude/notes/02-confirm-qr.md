@@ -27,5 +27,8 @@ Manual confirm (organizer tap, bot tap) and QR issuance: WORKING. **Auto-confirm
 `verify_payment()` let any signed-in user confirm any payment by passing `p_actor_kind = 'webhook'` or `'system'`
 (proven on the throwaway stack). Migration 213 removes that bypass and, by owner decision, all automatic confirmation:
 the Telegram bot (`verify_payment_from_bot`, `api/telegram-webhook.js`, `api/_lib/alerts.js`, the escalate-verifications
-cron) and the bank feed (`record_bank_transaction`, `api/payment-webhook.js`). Payments are confirmed only by the event's
-organizer accounts (or an admin) from Verifications / Attendance. Details and follow-ups: note 76, "Before 9b".
+cron) and, at first, the bank feed. **Later the same day the owner asked for the Casso/PayOS bank feed back:**
+`record_bank_transaction` and `api/payment-webhook.js` are kept, and `verify_payment` skips its organizer check only for
+`p_actor_kind = 'webhook'` called with the service-role key (`auth.role() = 'service_role'`), so a signed-in user claiming
+'webhook' is still refused. Otherwise payments are confirmed by the event's organizer accounts (or an admin) from
+Verifications / Attendance. The bank-feed restore was NOT tested (owner: no need). Details: note 76, "Before 9b".

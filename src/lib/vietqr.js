@@ -107,8 +107,8 @@ function tlv(tag, value) {
 /**
  * Vietnamese banks mangle transfer memos: many strip diacritics and
  * punctuation, uppercase the result and truncate it. Sending only what
- * survives that means the reference the organizer sees on their bank statement
- * is the reference banbe shows them.
+ * survives that means the reference we later match on is the reference the
+ * bank actually reports back through the webhook.
  */
 export function sanitizeMemo(memo) {
   return String(memo ?? '')

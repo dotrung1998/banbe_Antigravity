@@ -98,18 +98,24 @@ check('confirming twice is a no-op', j(r.get(1)).get('noop') is True, r.get(1))
 r = tx([(OUT, f"public.confirm_payment('{B}', 'momo')::text")])
 check('confirm_payment (060) still refuses strangers', j(r.get(0)).get('error') == 'NOT_AUTHORIZED', r.get(0))
 
-print('213: automatic confirmation is gone')
-r = tx([('admin', "(SELECT count(*) FROM pg_proc WHERE proname IN ('verify_payment_from_bot', 'record_bank_transaction', 'save_organizer_alert_routing'))"),
+print('213: Telegram confirmation is gone, the bank feed stays')
+r = tx([('admin', "(SELECT count(*) FROM pg_proc WHERE proname IN ('verify_payment_from_bot', 'save_organizer_alert_routing'))"),
         ('admin', "to_regclass('public.v_alert_queue')::text"),
         ('admin', "(SELECT count(*) FROM cron.job WHERE jobname = 'bb_sweep_verification_slas')"),
         ('admin', "to_regclass('public.payment_webhook_events')::text || ',' || to_regclass('public.alert_outbox')::text")])
-check('the Telegram, bank-feed and routing functions are dropped', r.get(0) == '0', r.get(0))
+check('the Telegram and routing functions are dropped', r.get(0) == '0', r.get(0))
+r2 = tx([('admin', "has_function_privilege('authenticated', 'public.record_bank_transaction(text,text,bigint,text,jsonb,boolean)', 'EXECUTE')::text || ',' || has_function_privilege('service_role', 'public.record_bank_transaction(text,text,bigint,text,jsonb,boolean)', 'EXECUTE')::text")])
+check('the Casso/PayOS bank feed is kept, service role only', r2.get(0) == 'false,true', r2.get(0))
 check('the alert queue view is dropped', r.get(1) == 'NULL', r.get(1))
 check('the Telegram reminder sweep is unscheduled', r.get(2) == '0', r.get(2))
 check('history tables are kept', r.get(3) == 'payment_webhook_events,alert_outbox', r.get(3))
 code = open(MIG).read()
 body = code[code.index('CREATE OR REPLACE FUNCTION public.verify_payment('):code.index('$$;', code.index('CREATE OR REPLACE FUNCTION public.verify_payment('))]
-check("verify_payment no longer authorises anyone by p_actor_kind", "v_authorized := true" not in body and "IN ('webhook', 'system') THEN\n" not in body)
+check("verify_payment skips its check only for the bank feed with the service-role key",
+      "v_bank := p_actor_kind = 'webhook' AND coalesce(auth.role(), '') = 'service_role';" in body and "IN ('webhook', 'system') THEN\n" not in body)
+SR = "SELECT set_config('request.jwt.claims', '{\"role\": \"service_role\"}', true);\nSET LOCAL ROLE service_role;\n"
+r = tx([('admin', "!" + SR + "SELECT 1"), ('admin', "(public.verify_payment('" + B + "', 'webhook', 'webhook', '{}'))::text")])
+check('the bank feed (service role, webhook) still confirms', j(r.get(1)).get('success') is True, r.get(1))
 
 print('213: re-apply and rollback')
 r = tx([(OUT, V.format(kind='webhook')), (OWNER, V.format(kind='organizer'))], code + '\n' + code)

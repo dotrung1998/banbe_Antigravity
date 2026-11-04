@@ -104,14 +104,21 @@ DECLARE
   v_receipt payment_documents%ROWTYPE;
   v_receipt_number text;
   v_delegate boolean := false;
+  v_bank boolean := false;
 BEGIN
   SELECT * INTO v_b FROM bookings WHERE id = p_booking FOR UPDATE;
   IF NOT FOUND THEN
     RETURN jsonb_build_object('success', false, 'error', 'BOOKING_NOT_FOUND');
   END IF;
 
-  -- 213: no caller may skip this check any more. p_actor_kind 'webhook'/'system' used to bypass it while EXECUTE was
-  -- granted to every signed-in user, so anyone could confirm anyone's payment. Automatic confirmation is gone.
+  -- 213: p_actor_kind 'webhook'/'system' used to skip this check while EXECUTE was granted to every signed-in user, so
+  -- anyone could confirm anyone's payment. Now the ONLY caller that skips it is the Casso/PayOS bank feed
+  -- (api/payment-webhook.js -> record_bank_transaction), and only with the service-role key: auth.role() comes from the
+  -- verified JWT, which no signed-in user can forge. Telegram ('system') is gone.
+  v_bank := p_actor_kind = 'webhook' AND coalesce(auth.role(), '') = 'service_role';
+  IF v_bank THEN
+    v_authorized := true;
+  ELSE
   IF auth.uid() IS NULL THEN
     RETURN jsonb_build_object('success', false, 'error', 'AUTH_REQUIRED');
   END IF;
@@ -121,6 +128,7 @@ BEGIN
   ) OR EXISTS (
     SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'admin'
   ) INTO v_authorized;
+  END IF;
 
   -- 214 (note 76): a project member with money access, behind switch project_delegate_payments, on TOP of the unchanged
   -- check above, and only for a guest who says they paid and waits for a check (pending_verification).
@@ -172,7 +180,7 @@ BEGIN
   PERFORM log_payment_event(
     p_booking, 'T3_verified', v_from, 'confirmed',
     auth.uid(),
-    CASE WHEN p_actor_kind IN ('webhook', 'system') THEN 'organizer' ELSE p_actor_kind END, NULL, NULL,
+    CASE WHEN v_bank THEN 'webhook' WHEN p_actor_kind IN ('webhook', 'system') THEN 'organizer' ELSE p_actor_kind END, NULL, NULL,
     COALESCE(p_meta, '{}'::jsonb)
       || jsonb_build_object('via', p_via, 'receipt_number', v_receipt_number,
                             'amount_vnd', v_b.total_vnd, 'payment_ref', v_b.payment_ref)
@@ -185,7 +193,7 @@ BEGIN
     VALUES (v_thread_id,
             auth.uid(),
             'Đã xác nhận thanh toán ▪︎ '
-            || 'người tổ chức xác nhận'
+            || CASE WHEN v_bank THEN 'tự động đối soát qua ngân hàng' ELSE 'người tổ chức xác nhận' END
             || COALESCE('. Biên nhận ' || v_receipt_number, '') || '.',
             'system');
   END IF;

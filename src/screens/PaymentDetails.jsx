@@ -700,8 +700,8 @@ export default function PaymentDetails() {
               </span>
             </div>
             <p style={{ fontSize: 11.5, lineHeight: 1.55, color: ink, opacity: 0.7, margin: '8px 2px 0' }}>
-              {T('Ghi đúng mã này để Chủ sự kiện tìm và xác nhận khoản chuyển của bạn nhanh hơn.',
-                 'Use this exact reference so the host can find and confirm your transfer quickly.')}
+              {T('Ghi đúng mã này để khoản chuyển của bạn được xác nhận nhanh, tự động ngay khi tiền tới nếu Chủ sự kiện đã kết nối ngân hàng.',
+                 'Use this exact reference so your transfer is confirmed quickly, automatically the moment the money lands if the host has connected their bank.')}
             </p>
           </div>
 

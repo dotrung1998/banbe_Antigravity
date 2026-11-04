@@ -1,19 +1,22 @@
--- 213 — remove automatic payment confirmation (owner decision 2026-11-04) and close the verify_payment hole.
+-- 213 — close the verify_payment hole and remove Telegram payment confirmation (owner decisions 2026-11-04; the
+-- Casso/PayOS bank feed was first removed too, then restored the same day at the owner's request).
 --
 -- FOUND WHILE PLANNING 9b. verify_payment() (026) skipped its organizer check whenever p_actor_kind was 'webhook' or
 -- 'system', and EXECUTE was granted to every signed-in user, so ANY account could mark ANY guest's payment confirmed
 -- (ticket issued, receipt raised) without paying. Proven on the throwaway stack (note 76, phase 9b). Migration 183 locked
 -- the bank matcher and the Telegram function to the service role but never covered verify_payment itself.
 --
--- The owner no longer wants automatic confirmation at all, so this migration:
---   * redefines verify_payment WITHOUT the bypass (026's body otherwise; every caller must be an organizer account of the
---     event or an admin; p_actor_kind stays in the signature so existing clients keep working),
---   * drops verify_payment_from_bot (Telegram buttons), record_bank_transaction (Casso/PayOS bank feed),
---     save_organizer_alert_routing and the v_alert_queue view (Telegram routing and the alert drain),
+-- This migration:
+--   * redefines verify_payment WITHOUT the open bypass (026's body otherwise): every caller must be an organizer account
+--     of the event or an admin, EXCEPT the Casso/PayOS bank feed, which may skip the check only as p_actor_kind
+--     'webhook' with the service-role key (auth.role() = 'service_role', from the verified JWT),
+--   * keeps record_bank_transaction (bank feed, service-role only since 183) and api/payment-webhook.js,
+--   * drops verify_payment_from_bot (Telegram buttons), save_organizer_alert_routing and the v_alert_queue view
+--     (Telegram routing and the alert drain),
 --   * unschedules bb_sweep_verification_slas, which only queued Telegram reminders/escalations into alert_outbox.
 -- Kept on purpose (history, no behaviour): tables payment_webhook_events and alert_outbox, organizers.telegram_chat_id /
--- alert_phone columns, the sweep function itself. The app code calling these (api/payment-webhook.js,
--- api/telegram-webhook.js, api/_lib/alerts.js, the escalate-verifications cron) is removed in the same change.
+-- alert_phone columns, the sweep function itself. The Telegram app code (api/telegram-webhook.js, api/_lib/alerts.js,
+-- the escalate-verifications cron) is removed; api/payment-webhook.js (Casso/PayOS) is kept.
 --
 -- Production: NOT applied by this pass. Rollback: supabase/rollbacks/20261231000213_213_revert_remove_auto_confirmation.sql
 -- (restores 026's verify_payment WITH the hole; emergency only, and only together with the code).
@@ -33,14 +36,21 @@ DECLARE
   v_thread_id uuid;
   v_receipt payment_documents%ROWTYPE;
   v_receipt_number text;
+  v_bank boolean := false;
 BEGIN
   SELECT * INTO v_b FROM bookings WHERE id = p_booking FOR UPDATE;
   IF NOT FOUND THEN
     RETURN jsonb_build_object('success', false, 'error', 'BOOKING_NOT_FOUND');
   END IF;
 
-  -- 213: no caller may skip this check any more. p_actor_kind 'webhook'/'system' used to bypass it while EXECUTE was
-  -- granted to every signed-in user, so anyone could confirm anyone's payment. Automatic confirmation is gone.
+  -- 213: p_actor_kind 'webhook'/'system' used to skip this check while EXECUTE was granted to every signed-in user, so
+  -- anyone could confirm anyone's payment. Now the ONLY caller that skips it is the Casso/PayOS bank feed
+  -- (api/payment-webhook.js -> record_bank_transaction), and only with the service-role key: auth.role() comes from the
+  -- verified JWT, which no signed-in user can forge. Telegram ('system') is gone.
+  v_bank := p_actor_kind = 'webhook' AND coalesce(auth.role(), '') = 'service_role';
+  IF v_bank THEN
+    v_authorized := true;
+  ELSE
   IF auth.uid() IS NULL THEN
     RETURN jsonb_build_object('success', false, 'error', 'AUTH_REQUIRED');
   END IF;
@@ -50,6 +60,7 @@ BEGIN
   ) OR EXISTS (
     SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'admin'
   ) INTO v_authorized;
+  END IF;
 
   IF NOT v_authorized THEN
     RETURN jsonb_build_object('success', false, 'error', 'NOT_AUTHORIZED');
@@ -95,7 +106,7 @@ BEGIN
   PERFORM log_payment_event(
     p_booking, 'T3_verified', v_from, 'confirmed',
     auth.uid(),
-    CASE WHEN p_actor_kind IN ('webhook', 'system') THEN 'organizer' ELSE p_actor_kind END, NULL, NULL,
+    CASE WHEN v_bank THEN 'webhook' WHEN p_actor_kind IN ('webhook', 'system') THEN 'organizer' ELSE p_actor_kind END, NULL, NULL,
     COALESCE(p_meta, '{}'::jsonb)
       || jsonb_build_object('via', p_via, 'receipt_number', v_receipt_number,
                             'amount_vnd', v_b.total_vnd, 'payment_ref', v_b.payment_ref)
@@ -108,7 +119,7 @@ BEGIN
     VALUES (v_thread_id,
             auth.uid(),
             'Đã xác nhận thanh toán ▪︎ '
-            || 'người tổ chức xác nhận'
+            || CASE WHEN v_bank THEN 'tự động đối soát qua ngân hàng' ELSE 'người tổ chức xác nhận' END
             || COALESCE('. Biên nhận ' || v_receipt_number, '') || '.',
             'system');
   END IF;
@@ -128,7 +139,8 @@ REVOKE EXECUTE ON FUNCTION public.verify_payment(uuid, text, text, jsonb) FROM P
 GRANT EXECUTE ON FUNCTION public.verify_payment(uuid, text, text, jsonb) TO authenticated;
 
 DROP FUNCTION IF EXISTS public.verify_payment_from_bot(uuid, text, boolean, text, text);
-DROP FUNCTION IF EXISTS public.record_bank_transaction(text, text, bigint, text, jsonb, boolean);
+-- record_bank_transaction (026, Casso/PayOS bank feed) is KEPT (owner, 2026-11-04): it stays service-role only (183) and
+-- its verify_payment(.., 'webhook') call is the one allowed skip above.
 DROP VIEW IF EXISTS public.v_alert_queue;
 DO $$
 DECLARE r record;

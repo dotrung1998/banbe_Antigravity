@@ -98,7 +98,7 @@ export default function Confirmed() {
   }, [isPaid, s.booking?.id, s.receiptDoc, loadReceiptStatus]);
 
   // While a booking is sitting unpaid, poll for a phase change — the
-  // organizer confirming, or the guest freezing
+  // organizer confirming, the bank webhook matching, or the guest freezing
   // it from another tab. The guest may already be looking at this exact
   // screen when any of those happen, and shouldn't have to leave and come
   // back via a notification to see it update. Generalised to sync the whole
