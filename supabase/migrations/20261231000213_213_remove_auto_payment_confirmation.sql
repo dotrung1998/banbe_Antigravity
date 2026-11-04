@@ -140,7 +140,10 @@ GRANT EXECUTE ON FUNCTION public.verify_payment(uuid, text, text, jsonb) TO auth
 
 DROP FUNCTION IF EXISTS public.verify_payment_from_bot(uuid, text, boolean, text, text);
 -- record_bank_transaction (026, Casso/PayOS bank feed) is KEPT (owner, 2026-11-04): it stays service-role only (183) and
--- its verify_payment(.., 'webhook') call is the one allowed skip above.
+-- its verify_payment(.., 'webhook') call is the one allowed skip above. 183 (which locked it) is NOT applied in production,
+-- so lock it here too: it trusts p_signature_ok from its caller, so only the service role (api/payment-webhook.js) may call it.
+REVOKE EXECUTE ON FUNCTION public.record_bank_transaction(text, text, bigint, text, jsonb, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.record_bank_transaction(text, text, bigint, text, jsonb, boolean) TO service_role;
 DROP VIEW IF EXISTS public.v_alert_queue;
 DO $$
 DECLARE r record;

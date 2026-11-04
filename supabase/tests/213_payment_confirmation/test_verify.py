@@ -113,9 +113,9 @@ code = open(MIG).read()
 body = code[code.index('CREATE OR REPLACE FUNCTION public.verify_payment('):code.index('$$;', code.index('CREATE OR REPLACE FUNCTION public.verify_payment('))]
 check("verify_payment skips its check only for the bank feed with the service-role key",
       "v_bank := p_actor_kind = 'webhook' AND coalesce(auth.role(), '') = 'service_role';" in body and "IN ('webhook', 'system') THEN\n" not in body)
-SR = "SELECT set_config('request.jwt.claims', '{\"role\": \"service_role\"}', true);\nSET LOCAL ROLE service_role;\n"
-r = tx([('admin', "!" + SR + "SELECT 1"), ('admin', "(public.verify_payment('" + B + "', 'webhook', 'webhook', '{}'))::text")])
-check('the bank feed (service role, webhook) still confirms', j(r.get(1)).get('success') is True, r.get(1))
+SR = "SELECT set_config('request.jwt.claims', '{\"role\": \"service_role\"}', true);\n"
+r = tx([('admin', "(public.verify_payment('" + B + "', 'webhook', 'webhook', '{}'))::text")], SR)
+check('the bank feed (service role, webhook) still confirms', j(r.get(0)).get('success') is True, r.get(0))
 
 print('213: re-apply and rollback')
 r = tx([(OUT, V.format(kind='webhook')), (OWNER, V.format(kind='organizer'))], code + '\n' + code)

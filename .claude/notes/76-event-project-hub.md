@@ -1,7 +1,7 @@
 # 76 — Event Project Hub (Hosting): per-event private team workspace
 
-Status: **phases 1-9c of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
-NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) 9e569c9; phase 7 (migration 211 jobs, throwaway stack only, NOT applied to production) 76e7f3c; phase 8 (web parity) df543fd; phase 9a (delegated check-in, migration 212, throwaway stack only, NOT applied to production) 1cbeeb8; security fix migration 213 (verify_payment hole, automatic confirmation removed) bd36f73; phase 9b (delegated payments, migration 214, throwaway stack only, NOT applied) 70ec4f1; phase 9c (delegated refunds, migration 215, throwaway stack only, NOT applied) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
+Status: **all 12 build phases (1-9c) done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
+APPLIED to production 2026-11-04, see Production log) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) 9e569c9; phase 7 (migration 211 jobs, throwaway stack only, NOT applied to production) 76e7f3c; phase 8 (web parity) df543fd; phase 9a (delegated check-in, migration 212, throwaway stack only, NOT applied to production) 1cbeeb8; security fix migration 213 (verify_payment hole, automatic confirmation removed) bd36f73; phase 9b (delegated payments, migration 214, throwaway stack only, NOT applied) 70ec4f1; phase 9c (delegated refunds, migration 215, throwaway stack only, NOT applied) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
 `~/.claude/plans/pasted-content-id-234b-plan-mode-composed-koala.md`. Design source of truth for roles, tabs and layout:
 `banbe_hosting_project_hub_v6.html` (owner attachment, not in the repo).
 
@@ -484,3 +484,29 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
   (9 new), AX XXXL screenshots checked; web unit 909/909, Playwright `tests/event-project.spec.js` 63/63 (21 × 3, 4 new
   cases), build OK; naming guard green. **Not checked:** RPCs and the receipt upload against a real Supabase (215 is applied
   nowhere), a real device, VoiceOver, clipboard and photo picker by hand, Vietnamese sheet text on screen.
+
+## Production log (2026-11-04, UTC): migrations 210–215 APPLIED (owner: "please apply your created migrations on the production")
+- **Before:** production had every migration through 209 except 182–184 (held back on purpose, unchanged). The audit
+  confirmed the 213 hole was LIVE: `verify_payment` and `mark_refund_sent` were executable even by `anon`.
+- **Change made for production:** 183 (which locked `record_bank_transaction` to the service role) is not in production, so
+  213 now revokes it from PUBLIC/anon/authenticated and grants service_role itself (bank feed trusts `p_signature_ok`).
+- **Local re-run first (throwaway g-db, 213–215 rebuilt):** 210 985/985, 211 38/38, 212 58/58, 213 33/33 (incl. the
+  service-role bank-feed confirm), 214 61/61, 215 112/112.
+- **Backup:** `supabase db dump --linked` → `~/banbe-backups/2026-11-04-pre-210-215/` (schema.sql SHA-256 prefix
+  b6debe9e5679f5d2, data.sql 12dc028d5fade33c; chmod 600, outside the repo, contains personal data).
+- **Dry run:** production SCHEMA restored into a fresh `supabase/postgres:17.6.1.166` container (storage schema copied from
+  the local stack; one harmless restore error, `auth.sessions`); 210 → 215 each applied cleanly in its own transaction.
+- **Applied, one migration per push** (workdir = production's applied set + the target; every dry run listed exactly that
+  one file): 210 at 11:59:22, 211 at 12:00:07, 212 at 12:00:10, 213 at 12:00:13, 214 at 12:00:17, 215 at 12:00:20.
+- **Audit after each:** no new function or table open to anon; RLS on all 17 project/money tables; every project switch
+  false (event_project_hub, project_qr_invite, project_delegate_checkin/payments/refunds); 0 projects; jobs
+  `bb_project_digest` + `bb_project_purge` scheduled (211), `bb_sweep_verification_slas` gone (213); `record_bank_transaction`
+  not executable by authenticated. After 213 `verify_payment` lost its anon grant; after 215 `mark_refund_sent` too.
+- **Functional check (DO block that always ends in RAISE, so nothing persisted):** a stranger (authenticated, random id)
+  calling `verify_payment` on a real confirmed booking with `'webhook'` and with `'system'` → NOT_AUTHORIZED both; anon
+  EXECUTE false. **The hole is closed in production.**
+- **Live API:** recorded as applied in `migration list`; through the live REST API (the key in the live bundle) the new RPCs
+  and `verify_payment` answer 42501 permission denied to anon (known to the schema cache, closed to anon). The OpenAPI root
+  is refused for anon keys ("Invalid API key"), so the memory's OpenAPI check no longer works with the anon key.
+- **Not done:** no switch turned on; the bank feed (Casso/PayOS) was not exercised against production; the web app with the
+  9b/9c UI is in main, but nothing reaches the hub while `event_project_hub` is off.
