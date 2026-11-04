@@ -74,10 +74,9 @@ function RefundDiagnosticsPanel({ s, T }) {
   );
 }
 
-// The organizer's manual-verification queue — the fallback for every payment
-// the bank webhook didn't reconcile on its own (a buyer who mistyped the
-// reference, an account with no Casso/PayOS feed connected, a transfer from
-// a bank that reports slowly).
+// The organizer's verification queue: every payment the organizer has not
+// confirmed yet. Since migration 213 this is the only way a payment is
+// confirmed (the bank feed and the Telegram bot were removed).
 //
 // Ordered oldest-first, deliberately: this is a queue people are waiting in,
 // and the person who has waited longest is the one closest to giving up.

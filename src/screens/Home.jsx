@@ -152,7 +152,7 @@ export default function Home() {
   // a participant (their own bookings) and — separately — as the organizer
   // of events other people are booking. Loaded once signed in, refreshed
   // each time Home mounts (a hold or a verification can settle anywhere:
-  // another tab, the organizer's Telegram bot, the bank webhook).
+  // another tab or another device).
   useEffect(() => {
     if (!s.user?.id) return;
     loadPaymentBookings();

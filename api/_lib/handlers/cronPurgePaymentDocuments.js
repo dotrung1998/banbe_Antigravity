@@ -18,7 +18,7 @@ import { renderEmail, renderEmailText, escapeHtml } from '../emailTemplate.js';
 //  2. The purge itself: hard-deletes (not soft) rows (and their storage
 //     object) past purge_after.
 //
-// Runs daily (vercel.json), same cadence as escalate-verifications.js —
+// Runs daily (vercel.json), daily —
 // this project is on Vercel's Hobby plan, which only permits daily (not
 // hourly) cron schedules and caps the project at 2 cron jobs total (both
 // already spoken for by this pair), which is also why this is one job
@@ -122,7 +122,7 @@ async function sendReminder(admin, row, { urgent }) {
 }
 
 export default async function handler(req, res) {
-  // Same signed-invocation check as escalate-verifications.js — without it
+  // Same signed-invocation check as the other cron jobs — without it
   // this is a free "delete anyone's receipts early" button.
   const secret = process.env.CRON_SECRET;
   const auth = req.headers.authorization || '';

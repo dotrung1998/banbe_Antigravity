@@ -1,8 +1,8 @@
 import SwiftUI
 import PhotosUI
 
-/// The organizer's manual-verification queue — the fallback for whatever the
-/// bank webhook didn't reconcile on its own. Oldest first: this is a queue
+/// The organizer's verification queue: every payment not confirmed yet. Since migration 213 this is the only way a
+/// payment is confirmed (the bank feed and the Telegram bot were removed). Oldest first: this is a queue
 /// people are waiting in, and the longest wait is the closest to giving up.
 struct VerificationsView: View {
     @EnvironmentObject private var app: AppState

@@ -58,7 +58,7 @@ enum VietQR {
     }
 
     /// Strips a memo down to what survives a Vietnamese bank's description
-    /// field, so the reference we encode is the reference the webhook sees.
+    /// field, so the reference we encode is the one the organizer sees on their statement.
     static func sanitizeMemo(_ memo: String) -> String {
         let folded = memo.folding(options: [.diacriticInsensitive], locale: Locale(identifier: "en"))
             .replacingOccurrences(of: "đ", with: "d")

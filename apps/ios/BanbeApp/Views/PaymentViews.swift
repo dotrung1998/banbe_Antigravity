@@ -832,8 +832,8 @@ struct PaymentDetailsView: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("payment.reference")
 
-            Text(app.T("Ghi đúng mã này: hệ thống đối soát tự động dựa vào nó để xác nhận ngay khi tiền tới.",
-                       "Use this exact reference: automatic reconciliation uses it to confirm you the moment the money lands."))
+            Text(app.T("Ghi đúng mã này để Chủ sự kiện tìm và xác nhận khoản chuyển của bạn nhanh hơn.",
+                       "Use this exact reference so the host can find and confirm your transfer quickly."))
                 .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
         }
         .padding(.top, 16)

@@ -1,7 +1,7 @@
 # 76 — Event Project Hub (Hosting): per-event private team workspace
 
 Status: **phases 1-9a of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
-NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) 9e569c9; phase 7 (migration 211 jobs, throwaway stack only, NOT applied to production) 76e7f3c; phase 8 (web parity) df543fd; phase 9a (delegated check-in, migration 212, throwaway stack only, NOT applied to production) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
+NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) 9e569c9; phase 7 (migration 211 jobs, throwaway stack only, NOT applied to production) 76e7f3c; phase 8 (web parity) df543fd; phase 9a (delegated check-in, migration 212, throwaway stack only, NOT applied to production) 1cbeeb8; security fix migration 213 (verify_payment hole, automatic confirmation removed) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
 `~/.claude/plans/pasted-content-id-234b-plan-mode-composed-koala.md`. Design source of truth for roles, tabs and layout:
 `banbe_hosting_project_hub_v6.html` (owner attachment, not in the repo).
 
@@ -336,6 +336,34 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
   16 × 3 browsers = 48/48; unit 906/906; build OK.
 - Not checked: a real event night, a delegate on a real device, the policy text (B4 amendment is a draft for legal review).
 
-## Next: phase 9b (delegated confirm-payment, migration 213)
+## Before 9b — migration 213: the verify_payment hole, and automatic confirmation removed (LOCAL ONLY, NOT applied)
+- **Found while planning 9b:** `verify_payment()` (026, never redefined) skipped its organizer check when
+  `p_actor_kind` was `'webhook'` or `'system'`, and EXECUTE was granted to every signed-in user. Any account could mark any
+  guest's payment confirmed (ticket issued, receipt raised) without paying. Proven on the throwaway stack (rolled back);
+  production NOT queried. 183 had locked `record_bank_transaction` / `verify_payment_from_bot` but not `verify_payment`.
+- **Owner decision (2026-11-04):** fix it first, and remove automatic payment confirmation entirely (Telegram and the bank
+  feed), because it is no longer needed.
+- `supabase/migrations/20261231000213_213_remove_auto_payment_confirmation.sql`: `verify_payment` = 026's body without
+  the bypass (every caller must be an organizer account of the event or an admin; an old client sending `'webhook'` as
+  the owner still works and is logged as `organizer`); drops `verify_payment_from_bot`, `record_bank_transaction`,
+  `save_organizer_alert_routing`, `v_alert_queue`; unschedules `bb_sweep_verification_slas` (it only queued Telegram
+  reminders). Kept: `payment_webhook_events`, `alert_outbox`, `organizers.telegram_chat_id` / `alert_phone`, the sweep
+  function. Rollback `supabase/rollbacks/20261231000213_213_revert_remove_auto_confirmation.sql` restores 026 + 027 + 183
+  ACLs (WITH the hole; emergency only, with the code).
+- **Code removed:** `api/payment-webhook.js`, `api/telegram-webhook.js`, `api/_lib/alerts.js`,
+  `api/_lib/handlers/cronEscalateVerifications.js`, the `escalate-verifications` job in `api/cron.js` and `vercel.json`.
+  The guest's payment hint no longer promises automatic reconciliation (web PaymentDetails, iOS PaymentViews); stale
+  comments updated. `TELEGRAM_*` / Casso / PayOS secrets in Vercel are no longer used (owner may delete them).
+- **Numbering:** delegated confirm-payment is now migration **214** (9b), delegated refunds **215** (9c).
+- **Verified (throwaway stack):** `supabase/tests/213_payment_confirmation/run.sh` 31/31 (strangers refused whatever kind
+  they claim, project members refused, anon cannot call; owner, second account and admin confirm; idempotent; dropped
+  objects gone, history kept; re-apply; rollback brings 026 back, proving the hole existed). 210 985/985, 211 38/38,
+  212 58/58; web unit 906/906, build OK; iOS build OK.
+- **Owner follow-ups:** apply 213 to production through the usual routine (backup, apply, grant audit, check); optionally
+  look for bookings confirmed by a non-organizer (`payment_audit_log` actor_kind 'webhook'/'system' with an actor that is
+  not an organizer account) to see whether the hole was ever used.
+
+## Next: phase 9b (delegated confirm-payment, migration 214)
+
 `get_event_money_view`, `open_payment_proof` + delegate storage policy on `pay-proof` only, `confirm_payment` auth →
 capability + audit; `reject_pending_guest` stays Host-only.

@@ -21,3 +21,11 @@ Manual confirm (organizer tap, bot tap) and QR issuance: WORKING. **Auto-confirm
 ## TODO / open questions
 - Confirm whether "auto-confirm" was ever meant to exist, or if the ticket's stage description is aspirational — if real, needs a new sweep step calling `verify_payment(p_actor_kind='system')` past some deadline.
 - `verify_payment_from_bot` vs `verify_payment` — two RPCs doing the same state transition from different entry points; not unified, not obviously a bug.
+
+
+## 2026-11-04 — automatic confirmation removed; verify_payment hole closed (migration 213, NOT applied)
+`verify_payment()` let any signed-in user confirm any payment by passing `p_actor_kind = 'webhook'` or `'system'`
+(proven on the throwaway stack). Migration 213 removes that bypass and, by owner decision, all automatic confirmation:
+the Telegram bot (`verify_payment_from_bot`, `api/telegram-webhook.js`, `api/_lib/alerts.js`, the escalate-verifications
+cron) and the bank feed (`record_bank_transaction`, `api/payment-webhook.js`). Payments are confirmed only by the event's
+organizer accounts (or an admin) from Verifications / Attendance. Details and follow-ups: note 76, "Before 9b".
