@@ -1,7 +1,7 @@
 # 76 — Event Project Hub (Hosting): per-event private team workspace
 
-Status: **phases 1-6 of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
-NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
+Status: **phases 1-7 of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
+NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) 9e569c9; phase 7 (migration 211 jobs, throwaway stack only, NOT applied to production) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
 `~/.claude/plans/pasted-content-id-234b-plan-mode-composed-koala.md`. Design source of truth for roles, tabs and layout:
 `banbe_hosting_project_hub_v6.html` (owner attachment, not in the repo).
 
@@ -243,6 +243,31 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
 - Not checked: real numbers against a backend (210 not applied), Attendance and the refund section opened from here on a
   device.
 
-## Next: phase 7 (migration 211 jobs)
-Digest at 18:00 in each member's zone, purge (trash 7 d / 30, expired invites, projects past purge_at), read-only, grant
-expiry notice; throwaway stack only.
+## Phase 7 — migration 211 jobs (LOCAL HARNESS ONLY, NOT applied to production)
+- `supabase/migrations/20261231000211_211_event_project_jobs.sql` + rollback `supabase/rollbacks/20261231000211_211_revert_event_project_jobs.sql`.
+- **`send_project_digests(p_now)`**, cron `bb_project_digest` `7 * * * *`: at `digestHour` (18) on each person's own clock
+  (`user_local_zone`, the weekly digest's rule), at most one per person per local day (`event_project_digest_log`),
+  only while `event_project_hub` is on, muted by `project_digest` in `muted_notification_kinds`, silent when nothing.
+  Counts per open project (`project_digest_items`): my open tasks due by tomorrow in the EVENT's zone (late included),
+  posts waiting on me (question to me, proposal I haven't voted on, update/decision I haven't seen; never my own), and
+  for a Host (both organizer accounts) blocked tasks. Read-only projects and cancelled/removed events are skipped. It
+  opens the project with the most waiting (`data.screen = event_project`, already routed on iOS since phase 4).
+- **`purge_project_data(p_now)`**, cron `bb_project_purge` `17 20 * * *` (03:17 in Vietnam): projects 90 days after the
+  event end (everything cascades; the event, bookings, payments and refunds are other tables), trash older than 7 days
+  (an archived lane takes its remaining done tasks/posts, same as the Host's purge in 210), invites expired or revoked
+  over a day ago, invite attempts over a day old, digest log over 14 days.
+- **Read-only** needed no job: `project_guard()` already compares `now()` with `project_read_only_at()`.
+- `project_limits()` gains `digestHour` (the rollback restores 210's body). Kinds `project_digest`, `project_blocked`,
+  `project_joined` added to `notification_kind_policy` as service (never promotional). All three functions revoked from
+  anon/authenticated.
+- **Text is Vietnamese only**, like the weekly digest; 142's `localize_notification_text` has no pattern for it yet, so
+  English readers see Vietnamese until one is added (flag for later).
+- The iOS Topics rules card now names the 18:00 digest.
+
+### Verified (throwaway stack)
+- `supabase/tests/211_project_jobs/run.sh` (reuses the 210 seed): 38/38. A mutation run (no hour check, blocked count
+  for everyone) failed exactly the 3 checks that guard them. The 210 suite: 985/985 after making its rollback check run
+  211's rollback first (rollbacks go newest first).
+- Not checked: pg_cron firing on its own (functions called with an injected `p_now`), push delivery of the digest.
+
+## Next: phase 8 (web parity)

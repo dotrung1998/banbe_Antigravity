@@ -86,7 +86,8 @@ struct ProjectTopicsTab: View {
                                "Posts up to \(l.postBodyMax) characters, replies \(l.replyMax), at most \(l.repliesMax) replies per post."))
                     rule(app.T("Giải quyết xong thì bài khoá lại. Phiếu và “Đã xem” là bộ đếm, không phải tin nhắn.",
                                "Settled posts lock. Votes and “Seen” are counters, not messages."))
-                    rule(app.T("Không báo từng bài. Chỉ việc bị chặn mới báo ngay.", "No alert for each post. Only a blocked task alerts at once."))
+                    rule(app.T("Không báo từng bài: gom vào bản tin lúc \(l.digestHour):00 theo giờ của bạn. Chỉ việc bị chặn mới báo ngay.",
+                               "No alert for each post: they're bundled into a \(l.digestHour):00 digest on your own clock. Only a blocked task alerts at once."))
                     rule(app.T("Kéo xuống để tải bài mới.", "Pull down to load new posts."))
                     if snap.project?.channels.isEmpty == false {
                         rule(app.T("Muốn trò chuyện thêm? Dùng kênh của đội ở Tổng quan.", "Want to talk it through? Use the team channels on Overview."))

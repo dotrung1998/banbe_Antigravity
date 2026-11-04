@@ -16,6 +16,7 @@ import json, os, re, subprocess, sys
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
 MIG = os.path.join(ROOT, 'supabase/migrations/20261231000210_210_event_project_core.sql')
 ROLLBACK = os.path.join(ROOT, 'supabase/rollbacks/20261231000210_210_revert_event_project_core.sql')
+ROLLBACK_211 = os.path.join(ROOT, 'supabase/rollbacks/20261231000211_211_revert_event_project_jobs.sql')
 FX = json.load(open(os.path.join(ROOT, 'tests/fixtures/project-permissions.json')))
 CH = json.load(open(os.path.join(ROOT, 'tests/fixtures/project-channel-links.json')))
 LIMITS = json.load(open(os.path.join(ROOT, 'src/data/projectLimits.json')))
@@ -451,10 +452,11 @@ check('project-snapshot.json has the same keys as get_event_project (top level a
 # migration hygiene
 res, err = transaction([('admin', "1")], setup=open(MIG).read() + '\n')
 check('210 applies twice without error (idempotent)', res.get(0) == '1' and 'ERROR' not in err, err[:300])
-res, err = transaction([('admin', "(SELECT count(*) FROM information_schema.tables WHERE table_name LIKE 'event_project%')"),
+res, err = transaction([('admin', "(SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'event_project%')"),
                         ('admin', "(SELECT count(*) FROM pg_proc WHERE proname LIKE 'project\\_%')"),
                         ('admin', "(SELECT count(*) FROM public.app_feature_flag_defs WHERE key = 'event_project_hub')")],
-                       setup=open(ROLLBACK).read() + '\n')
+                       # Rollbacks run newest first: 211's (safe even where 211 was never applied), then 210's.
+                       setup=open(ROLLBACK_211).read() + '\n' + open(ROLLBACK).read() + '\n')
 check('the rollback removes every table, function and switch of 210', [res.get(i) for i in range(3)] == ['0', '0', '0'] and 'ERROR' not in err,
       f'{res} {err[:300]}')
 src = open(MIG).read()
