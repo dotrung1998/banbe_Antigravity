@@ -30,14 +30,15 @@ function snapshotAs(role) {
   return { ...snap, is_host: false, me: { member_id: mine.member_id, role: mine.role, lane_id: mine.lane_id, cap_money: mine.cap_money, cap_checkin: mine.cap_checkin, grant_expires_at: '2026-11-21T17:00:00+00:00' } };
 }
 
-async function openHub(page, { as, tab = 'overview', now = '2026-11-03T10:00:00+07:00', flags = {}, lang } = {}) {
+async function openHub(page, { as, tab = 'overview', now = '2026-11-03T10:00:00+07:00', flags = {}, lang, refundApproval } = {}) {
   await guestToHome(page);
   if (lang) await devSet(page, { lang });
   await devSet(page, { user: { id: ME, name: 'Test Host', email: 't@example.com', handle: 'banbetest' } });
   await page.waitForTimeout(1500); // a new user reloads the switches; set ours after that answer lands
   await devSet(page, {
-    featureFlags: { event_project_hub: true, ...flags }, projectDemo: true, projectNow: now, projectSnapshot: snapshotAs(as),
-    projectEventId: FX.event.id, projectTab: tab, projectBack: 'home', projectNotice: '', projectError: '', projectInvites: [], projectDoor: null, projectMoney: null, projectPayments: null, screen: 'eventProject',
+    featureFlags: { event_project_hub: true, ...flags }, projectDemo: true, projectNow: now,
+    projectSnapshot: refundApproval ? { ...snapshotAs(as), project: { ...snapshotAs(as).project, refund_approval: refundApproval } } : snapshotAs(as),
+    projectEventId: FX.event.id, projectTab: tab, projectBack: 'home', projectNotice: '', projectError: '', projectInvites: [], projectDoor: null, projectMoney: null, projectPayments: null, projectRefunds: null, screen: 'eventProject',
   });
   await expect(page.getByTestId('project-hub')).toBeVisible();
 }
@@ -221,6 +222,82 @@ test.describe('Event Project Hub (web)', () => {
     await page.getByTestId('project-payments-confirm-pay-1').click();
     await expect(page.getByTestId('project-payments-confirm-pay-1')).toHaveCount(0);
     await expect(page.getByTestId('project-payments-confirmed')).toContainText('5.390.000');
+  });
+
+  test('delegated refunds (9c): Finance records a transfer for Host approval; the row waits for the Host', async ({ page }) => {
+    await openHub(page, { as: 'finance', tab: 'money', flags: { project_delegate_refunds: true, project_delegate_payments: true, project_delegate_checkin: true } });
+    await expect(page.getByTestId('project-refunds')).toBeVisible();
+    const order = await page.locator('[data-testid="project-payments"], [data-testid="project-refunds"], [data-testid="project-door"]').evaluateAll(els => els.map(e => e.dataset.testid));
+    expect(order).toEqual(['project-payments', 'project-refunds', 'project-door']);
+    await expect(page.getByTestId('project-refunds-disputed-ref-2')).toHaveText('Disputed');
+    await expect(page.getByTestId('project-refunds-state-ref-1')).toHaveText(/^Due \w{3} \d{1,2}$/);
+    await shot(page, 'project-refunds');
+    await page.getByTestId('project-refunds-row-ref-2').click();
+    await expect(page.getByTestId('project-refund-no-account')).toBeVisible();
+    await expect(page.getByTestId('project-refund-submit')).toBeDisabled();
+    await page.getByTestId('project-sheet-close').click();
+    await page.getByTestId('project-refunds-row-ref-1').click();
+    await expect(page.getByTestId('project-refund-copy-number-value')).toHaveText('0071000123456');
+    await expect(page.getByTestId('project-refund-submit')).toHaveText('Record transfer for Host approval');
+    await expect(page.getByTestId('project-refund-footer')).toHaveText('The guest is told only after the Host approves.');
+    await page.getByTestId('project-refund-note').fill('Sent at 14:05');
+    await page.getByTestId('project-refund-submit').click();
+    await expect(page.getByTestId('project-refund-sheet')).toHaveCount(0);
+    await expect(page.getByTestId('project-refunds-state-ref-1')).toHaveText('You recorded this · waiting for the Host');
+    await expect(page.locator('button[data-testid="project-refunds-row-ref-1"]')).toHaveCount(0);
+  });
+
+  test('delegated refunds (9c): under finance_alone, Mark refund sent removes the row; no access means no list', async ({ page }) => {
+    await openHub(page, { as: 'finance', tab: 'money', refundApproval: 'finance_alone', flags: { project_delegate_refunds: true } });
+    await page.getByTestId('project-refunds-row-ref-1').click();
+    await expect(page.getByTestId('project-refund-submit')).toHaveText('Mark refund sent');
+    await expect(page.getByTestId('project-refund-footer')).toHaveText('The guest is told right away.');
+    await page.getByTestId('project-refund-submit').click();
+    await expect(page.getByTestId('project-refunds-row-ref-1')).toHaveCount(0);
+    await expect(page.getByTestId('project-refunds-row-ref-2')).toBeVisible();
+    await openHub(page, { as: 'helper', tab: 'money', flags: { project_delegate_refunds: true } });
+    await expect(page.getByTestId('project-money-lock')).toBeVisible();
+    await openHub(page, { as: 'finance', tab: 'money' });
+    await expect(page.getByTestId('project-refunds')).toHaveCount(0);
+  });
+
+  test('Host refunds (9c): approve a team record after a confirm; decline needs a reason; the approval switch asks first', async ({ page }) => {
+    await openHub(page, { tab: 'money', flags: { project_delegate_refunds: true } });
+    await expect(page.getByTestId('project-team-refund-ref-1')).toContainText('Hà recorded the transfer · Receipt attached');
+    await shot(page, 'project-refunds-host');
+    await page.getByTestId('project-team-refund-decline-ref-1').click();
+    await expect(page.getByTestId('project-team-refund-decline-confirm')).toBeDisabled();
+    await page.getByTestId('project-reason').fill('ok');
+    await expect(page.getByTestId('project-team-refund-decline-confirm')).toBeDisabled();
+    await page.getByTestId('project-reason').fill('Wrong amount');
+    await page.getByTestId('project-team-refund-decline-confirm').click();
+    await expect(page.getByTestId('project-team-refunds')).toHaveCount(0);
+
+    await openHub(page, { tab: 'money', flags: { project_delegate_refunds: true } });
+    await page.getByTestId('project-team-refund-approve-ref-1').click();
+    await expect(page.getByTestId('project-team-refund-approve-sheet')).toContainText('The guest will be told the refund was sent.');
+    await page.getByTestId('project-team-refund-approve-confirm').click();
+    await expect(page.getByTestId('project-team-refunds')).toHaveCount(0);
+
+    await expect(page.getByTestId('project-refund-approval-host')).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId('project-refund-approval-alone').click();
+    await expect(page.getByTestId('project-refund-approval-sheet')).toContainText('without you');
+    await page.getByTestId('project-refund-approval-confirm').click();
+    await expect(page.getByTestId('project-refund-approval-alone')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('project-dispute-grants')).toHaveCount(0);
+
+    await openHub(page, { tab: 'money' });
+    await expect(page.getByTestId('project-refund-approval')).toHaveCount(0);
+  });
+
+  test('Host refunds (9c): once team access is over, a disputed refund can go to one money member', async ({ page }) => {
+    await openHub(page, { tab: 'money', now: '2026-11-25T10:00:00+07:00', flags: { project_delegate_refunds: true } });
+    await page.getByTestId('project-dispute-grant-ref-2').click();
+    await expect(page.getByTestId(`project-dispute-grant-who-${MEMBERS.finance}`)).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId('project-dispute-grant-days-14').click();
+    await page.getByTestId('project-dispute-grant-confirm').click();
+    await expect(page.getByTestId('project-dispute-grant-sheet')).toHaveCount(0);
+    await expect(page.getByTestId('project-dispute-granted')).toContainText('Hà can handle the refund to Minh Khang for 14 days.');
   });
 
   test('Day-of: not live before the day; on the day the grid stretches the first item and a tick freezes it', async ({ page }) => {

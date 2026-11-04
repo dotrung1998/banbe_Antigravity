@@ -9,6 +9,8 @@
 import { useBanBe } from './BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { projectCan, dueLabel, daysToGo, moneySummary, projectInviteValue, doorGuests } from '../lib/projectPresentation.js';
+import { flagOn } from '../lib/featureFlags.js';
+import { normalizeProofFile } from '../lib/proofUpload.js';
 import LIMITS from '../data/projectLimits.json' with { type: 'json' };
 
 export const PENDING_PROJECT_INVITE_KEY = 'banbe.pendingProjectInvite';
@@ -64,6 +66,17 @@ export function useEventProject() {
       RATE_LIMITED: T('Nhập sai quá nhiều lần. Hãy thử lại sau một giờ.', 'Too many wrong codes. Try again in an hour.'),
       TIME_INVALID: T('Kết thúc phải sau bắt đầu ít nhất 10 phút.', 'The end must be at least 10 minutes after the start.'),
       TIME_OUTSIDE_EVENT: T('Mốc phải nằm trong khoảng 12 giờ trước đến 24 giờ sau giờ bắt đầu sự kiện.', 'Items must sit between 12 hours before and 24 hours after the event starts.'),
+      // Refunds (phase 9c, migration 215).
+      APPROVAL_REQUIRED: T('Chủ sự kiện cần duyệt khoản hoàn tiền này. Hãy ghi nhận để chủ sự kiện duyệt.', 'The Host needs to approve this refund. Record it for Host approval.'),
+      ALREADY_REQUESTED: T('Khoản hoàn tiền này đã được ghi nhận và đang chờ Chủ sự kiện.', 'This refund is already recorded and waiting for the Host.'),
+      REFUND_DESTINATION_REQUIRED: T('Khách chưa thêm tài khoản nhận hoàn tiền.', "The guest hasn't added a refund account yet."),
+      NO_REQUEST: T('Không còn bản ghi nào chờ duyệt cho khoản này.', 'There is no record waiting for approval on this refund.'),
+      NO_OPEN_DISPUTE: T('Khoản này không còn tranh chấp đang mở.', 'This refund no longer has an open dispute.'),
+      NOT_A_DELEGATE: T('Người này không có quyền tiền trong đội.', "This person doesn't have money access on the team."),
+      INVALID_STATE: T('Khoản hoàn tiền này đã được xử lý.', 'This refund was already handled.'),
+      INVALID_AMOUNT: T('Số tiền hoàn không hợp lệ. Hãy báo Chủ sự kiện.', "The refund amount isn't valid. Tell the Host."),
+      INVALID_PROOF_PATH: T('Không đính kèm được biên lai. Hãy thử lại.', "The receipt couldn't be attached. Try again."),
+      INVALID_VALUE: T('Giá trị không hợp lệ. Hãy thử lại.', "That value isn't valid. Try again."),
     };
     return m[code] || T('Chưa lưu được. Hãy thử lại.', "Couldn't save. Try again.");
   };
@@ -544,6 +557,108 @@ export function useEventProject() {
     return signed?.signedUrl || null;
   };
 
+  // ------------------------------------------------------------------ refunds (phase 9c, migration 215)
+  // A money delegate sends refunds the Host owes: by default the Host approves each record (request_refund_send ->
+  // approve/decline_refund_send); under 'finance_alone' the delegate marks it sent (mark_refund_sent). The Host's own
+  // refund screen stays the full one; here the Host sees the team's records, the approval switch and dispute grants.
+  const refundsFlag = flagOn(s.featureFlags || {}, 'project_delegate_refunds');
+  const refundsAccess = snap?.is_host !== true && (can('refund.request') || can('refund.markSent'));
+  const refundMode = snap?.project?.refund_approval === 'finance_alone' ? 'finance_alone' : 'host';
+  const demoRefunds = () => {
+    const due = (days) => iso(now().getTime() + days * 86400e3);
+    const acct = { bank_name: 'Vietcombank', account_number: '0071000123456', account_holder_name: 'NGUYEN NGOC ANH' };
+    const claims = [
+      { claim_id: 'ref-1', booking_id: 'pay-1', name: 'Ngọc Anh', amount: 980000, status: 'owed', refund_due_at: due(2), dispute_open: false, account: acct,
+        request: snap?.is_host === true ? { id: 'req-1', by: 'Hà', mine: false, note: 'Đã chuyển lúc 14:05', has_proof: true, at: iso(now()) } : null, last_declined: null },
+      { claim_id: 'ref-2', booking_id: 'pay-2', name: 'Minh Khang', amount: 490000, status: 'disputed', refund_due_at: due(-1), dispute_open: true, account: null, request: null, last_declined: null },
+    ];
+    return { success: true, mode: refundMode, host: snap?.is_host === true, claims };
+  };
+  const loadRefunds = async () => {
+    const host = snap?.is_host === true && moneyAccess;
+    if (!refundsAccess && !host) { set({ projectRefunds: null }); return; }
+    if (demo) { if (!s.projectRefunds) set({ projectRefunds: demoRefunds() }); return; }
+    const eventId = s.projectEventId;
+    const { data } = await supabase.rpc('get_event_refund_view', { p_event_id: eventId });
+    if (data?.success) set(prev => (prev.projectEventId !== eventId ? {} : { projectRefunds: data }));
+    else if (!host) set({ projectNotice: errorText(data?.error) });
+  };
+  const patchRefunds = (fn) => set(prev => (prev.projectRefunds ? { projectRefunds: { ...prev.projectRefunds, claims: fn(prev.projectRefunds.claims || []) } } : {}));
+  const refundRpc = async (fn, params) => {
+    set({ projectBusy: true, projectNotice: '' });
+    const { data, error } = await supabase.rpc(fn, params);
+    set({ projectBusy: false });
+    if (error || !data?.success) {
+      set({ projectNotice: data?.error === 'NOT_AUTHORIZED' && snap?.is_host !== true ? T('Quyền hoàn tiền của bạn đã hết hoặc đang tắt.', 'Your refund access has ended or is switched off.') : errorText(data?.error) });
+      await loadRefunds();
+      return null;
+    }
+    await loadRefunds();
+    return data;
+  };
+  /** Delegate: record the transfer for the Host (mode host) or mark it sent (finance_alone). The optional receipt goes to the
+   * claim's own refund-proof folder first (refund_proof_delegate_insert: insert only, so never upsert). */
+  const sendRefund = async (claimId, note = '', file = null) => {
+    const markSent = (s.projectRefunds?.mode || refundMode) === 'finance_alone';
+    const clean = String(note || '').trim().slice(0, 280);
+    if (demo) {
+      patchRefunds(cs => (markSent ? cs.filter(c => c.claim_id !== claimId)
+        : cs.map(c => (c.claim_id === claimId ? { ...c, last_declined: null, request: { id: uuid(), by: personName(userId), mine: true, note: clean || null, has_proof: !!file, at: iso(now()) } } : c))));
+      return true;
+    }
+    let proofPath = null;
+    if (file) {
+      set({ projectBusy: true });
+      try {
+        const { blob, ext, contentType } = await normalizeProofFile(file);
+        proofPath = `${claimId}/team-${Date.now()}.${ext}`;
+        const { error } = await supabase.storage.from('refund-proof').upload(proofPath, blob, { upsert: false, contentType });
+        if (error) throw error;
+      } catch {
+        set({ projectBusy: false, projectNotice: T('Không tải được biên lai lên. Hãy thử lại hoặc gửi không kèm biên lai.', "The receipt didn't upload. Try again or send without it.") });
+        return false;
+      }
+    }
+    return !!(await refundRpc(markSent ? 'mark_refund_sent' : 'request_refund_send', { p_claim_id: claimId, p_note: clean, p_proof_path: proofPath }));
+  };
+  /** Host: approve a team record (approve_refund_send runs mark_refund_sent as the Host; the guest is told). */
+  const approveRefund = async (claimId) => {
+    if (demo) { patchRefunds(cs => cs.filter(c => c.claim_id !== claimId)); return true; }
+    return !!(await refundRpc('approve_refund_send', { p_claim_id: claimId }));
+  };
+  /** Host: decline a team record with a reason the delegate sees. */
+  const declineRefund = async (claimId, reason) => {
+    if (demo) { patchRefunds(cs => cs.map(c => (c.claim_id === claimId ? { ...c, request: null } : c))); return true; }
+    return !!(await refundRpc('decline_refund_send', { p_claim_id: claimId, p_reason: String(reason || '').trim() }));
+  };
+  /** Host: who may send refunds without the Host ('host' | 'finance_alone'). */
+  const setRefundApproval = async (mode) => {
+    if (demo) {
+      patchSnap(p => ({ ...p, project: { ...p.project, refund_approval: mode } }));
+      set(prev => (prev.projectRefunds ? { projectRefunds: { ...prev.projectRefunds, mode } } : {}));
+      return true;
+    }
+    const r = await write('project_set_refund_approval', { p_event_id: s.projectEventId, p_mode: mode });
+    if (r) await loadRefunds();
+    return !!r;
+  };
+  /** Host: let one money member handle one disputed refund for `days` (<= disputeGrantMaxDays). */
+  const extendDisputeGrant = async (claimId, memberUserId, days) => {
+    const d = Math.max(1, Math.min(Number(days) || 7, LIMITS.disputeGrantMaxDays));
+    const until = new Date(now().getTime() + d * 86400e3 - 60e3); // a minute under the cap, so the server's "<= now + max" holds
+    if (demo) return true;
+    const r = await write('project_extend_dispute_grant', { p_event_id: s.projectEventId, p_user_id: memberUserId, p_refund_claim_id: claimId, p_until: until.toISOString() }, { refresh: false });
+    return !!r;
+  };
+  /** "Due Thu 12" in the event's zone. */
+  const refundDueText = (at) => {
+    if (!at) return null;
+    const d = new Date(at);
+    const wd = new Intl.DateTimeFormat(T('vi-VN', 'en-US'), { weekday: 'short', timeZone: tz }).format(d);
+    const day = new Intl.DateTimeFormat('en-US', { day: 'numeric', timeZone: tz }).format(d);
+    return T(`Hạn ${wd}, ngày ${day}`, `Due ${wd} ${day}`);
+  };
+
   return {
     s, snap, set, T, userId, demo, now, tz, can, LIMITS, doorAccess, loadDoor, checkInGuest, paymentsAccess, loadPayments, confirmPayment, openProof,
     errorText, roleName, roleNote, statusName, typeName, personName, laneName, dueText, clock, headcount,
@@ -554,5 +669,6 @@ export function useEventProject() {
     openJoin, peek, join,
     liveSync, pollRos, saveRos, tickRos, deleteRos, loadTrash, restore, purge,
     moneyAccess, loadMoney,
+    refundsFlag, refundsAccess, refundMode, loadRefunds, sendRefund, approveRefund, declineRefund, setRefundApproval, extendDisputeGrant, refundDueText,
   };
 }

@@ -1188,6 +1188,18 @@ extension AppState {
     /// that window any more. Returns whether it succeeded so callers
     /// (AttendanceView's "Hoàn lại lần nữa") know whether to also refresh
     /// their own Refund Center view.
+    /// Uploads a refund transfer receipt (already a JPEG under the size limit, `ProofImage.jpegDataUnderLimit`) into the
+    /// claim's own 'refund-proof' folder and returns its path. Used by the Host's "Mark refund sent" and, since 215, by a
+    /// project refund delegate (policy refund_proof_delegate_insert checks the same folder).
+    func uploadRefundProof(_ jpeg: Data, claimID: String) async throws -> String {
+        _ = try await SupabaseService.client.auth.session
+        let path = "\(claimID.lowercased())/refund-\(Int(Date().timeIntervalSince1970)).jpg"
+        _ = try await SupabaseService.client.storage
+            .from("refund-proof")
+            .upload(path, data: jpeg, options: FileOptions(contentType: "image/jpeg", upsert: true))
+        return path
+    }
+
     @discardableResult
     func markRefundSent(_ claimID: UUID, note: String = "", proofJPEG: Data? = nil) async -> Bool {
         guard refundActionBusy != claimID else { return false } // already in flight — no double-submit
@@ -1201,14 +1213,7 @@ extension AppState {
             // `refund_claims.id::text` (see submitPaymentProof's note on the
             // same uppercase-UUID trap).
             var proofPath: String?
-            if let proofJPEG {
-                _ = try await SupabaseService.client.auth.session
-                let path = "\(claimID.uuidString.lowercased())/refund-\(Int(Date().timeIntervalSince1970)).jpg"
-                _ = try await SupabaseService.client.storage
-                    .from("refund-proof")
-                    .upload(path, data: proofJPEG, options: FileOptions(contentType: "image/jpeg", upsert: true))
-                proofPath = path
-            }
+            if let proofJPEG { proofPath = try await uploadRefundProof(proofJPEG, claimID: claimID.uuidString) }
             let result: MarkRefundSentResult = try await SupabaseService.client
                 .rpc("mark_refund_sent", params: MarkRefundSentParams(claimID: claimID.uuidString, note: note, proofPath: proofPath))
                 .execute().value

@@ -162,3 +162,30 @@ export function doorGuests(rows = []) {
   }
   return order.map(id => map.get(id));
 }
+
+/** Phase 9c (migration 215): what one get_event_refund_view claim offers a refund delegate.
+ * state: 'waiting' (a record waits for the Host: no action), 'noAccount' (the guest has no refund account yet: the
+ * button is off), 'ready'. cta: 'request' (Host approves) or 'markSent' (finance_alone). declined: the Host's reason on my
+ * last record, shown so I can record again. Same as AppState.projectRefundRowState on iOS. */
+export function refundRowState(claim, mode = 'host') {
+  const declined = claim?.last_declined?.reason || null;
+  if (claim?.request) return { state: 'waiting', mine: claim.request.mine === true, cta: null, declined: null };
+  const cta = mode === 'finance_alone' ? 'markSent' : 'request';
+  if (!claim?.account) return { state: 'noAccount', mine: false, cta, declined };
+  return { state: 'ready', mine: false, cta, declined };
+}
+
+/** The Host's "Refunds from the team": claims with a pending record, in the server's order. */
+export const teamRefundRequests = (claims = []) => claims.filter(c => c && c.request);
+
+/** Who can be given one disputed refund: active members holding money access (Finance & door, or the money capability). */
+export const refundDelegates = (snap) => (snap?.members || []).filter(m => m.role === 'finance' || m.cap_money === true);
+
+/** True once the team's money access is over by default: the project is read-only, or the default grant (event end +
+ * grantDays) has passed. A per-member extension is not in the snapshot; the server decides either way. */
+export function teamGrantsOver(snap, now, grantDays = 7) {
+  const t = now instanceof Date ? now.getTime() : (typeof now === 'number' ? now : Date.parse(now));
+  const p = snap?.project || {};
+  if (p.read_only === true || (p.read_only_at && t >= Date.parse(p.read_only_at))) return true;
+  return !!p.event_end_at && t >= Date.parse(p.event_end_at) + grantDays * 86400e3;
+}

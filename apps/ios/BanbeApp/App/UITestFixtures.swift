@@ -354,6 +354,10 @@ struct UITestFixtureRoot: View {
             // Phase 9b: `-uiFixtureProjectPayments YES` turns on delegated payment confirmation.
             if UserDefaults.standard.bool(forKey: "uiFixtureProjectPayments") { app.featureFlags["project_delegate_payments"] = true }
             app.projectSnapshot = UITestFixture.projectSnapshot()
+            // Phase 9c: `-uiFixtureProjectRefunds YES` turns on delegated refunds; `-uiFixtureProjectRefundMode finance_alone`
+            // starts in the "Finance can refund alone" mode (default: the Host approves).
+            if UserDefaults.standard.bool(forKey: "uiFixtureProjectRefunds") { app.featureFlags["project_delegate_refunds"] = true }
+            if let mode = UserDefaults.standard.string(forKey: "uiFixtureProjectRefundMode") { app.projectSnapshot?.project?.refundApproval = mode }
             app.projectEventID = app.projectSnapshot?.event?.id ?? "fx_project"
             app.projectTab = UITestFixture.projectTab
             app.projectBackScreen = .home

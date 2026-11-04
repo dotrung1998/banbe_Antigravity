@@ -82,3 +82,33 @@ test('doorGuests groups the names-only rows by booking (same as iOS)', () => {
   ]);
   assert.deepEqual(g, [{ bookingId: 'b1', names: ['Anh', 'Binh'], party: 2, inside: 1 }, { bookingId: 'b2', names: ['Ha'], party: 3, inside: 0 }]);
 });
+
+test('refundRowState (9c): waiting on a record, no account, ready; the CTA follows the approval mode', () => {
+  const acct = { bank_name: 'VCB', account_number: '1', account_holder_name: 'A' };
+  assert.deepEqual(P.refundRowState({ account: acct, request: null }, 'host'), { state: 'ready', mine: false, cta: 'request', declined: null });
+  assert.deepEqual(P.refundRowState({ account: acct, request: null }, 'finance_alone'), { state: 'ready', mine: false, cta: 'markSent', declined: null });
+  assert.equal(P.refundRowState({ account: acct }).cta, 'request', 'host approval is the default');
+  assert.deepEqual(P.refundRowState({ account: acct, request: { mine: true } }, 'host'), { state: 'waiting', mine: true, cta: null, declined: null });
+  assert.deepEqual(P.refundRowState({ account: acct, request: { mine: false } }, 'finance_alone'), { state: 'waiting', mine: false, cta: null, declined: null });
+  assert.deepEqual(P.refundRowState({ account: null, request: null }, 'host'), { state: 'noAccount', mine: false, cta: 'request', declined: null });
+  const again = P.refundRowState({ account: acct, request: null, last_declined: { reason: 'Wrong amount', at: 'x' } }, 'host');
+  assert.equal(again.state, 'ready', 'a declined record can be recorded again');
+  assert.equal(again.declined, 'Wrong amount');
+});
+
+test('teamRefundRequests and refundDelegates (9c)', () => {
+  assert.deepEqual(P.teamRefundRequests([{ claim_id: 'a', request: null }, { claim_id: 'b', request: { id: 'r' } }, null]).map(c => c.claim_id), ['b']);
+  const snap = snapFile.snapshot;
+  const ids = P.refundDelegates(snap).map(m => m.role);
+  assert.deepEqual(ids, ['finance'], 'only Finance holds money access in the fixture');
+  assert.equal(P.refundDelegates({ members: [{ role: 'helper', cap_money: true }, { role: 'helper', cap_money: false }] }).length, 1);
+  assert.deepEqual(P.refundDelegates(null), []);
+});
+
+test('teamGrantsOver (9c): read-only, or past event end + grantDays', () => {
+  const snap = snapFile.snapshot; // event end 2026-11-14T17:00Z, read-only 2026-12-14T17:00Z
+  assert.equal(P.teamGrantsOver(snap, new Date('2026-11-21T16:59:00Z'), 7), false);
+  assert.equal(P.teamGrantsOver(snap, new Date('2026-11-21T17:00:00Z'), 7), true);
+  assert.equal(P.teamGrantsOver({ project: { read_only: true } }, new Date('2026-01-01T00:00:00Z'), 7), true);
+  assert.equal(P.teamGrantsOver({ project: {} }, new Date(), 7), false);
+});

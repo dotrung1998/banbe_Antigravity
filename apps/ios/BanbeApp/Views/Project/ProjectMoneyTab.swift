@@ -12,14 +12,17 @@ struct ProjectMoneyTab: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if app.projectMoneyAccess { host }
-            else if app.projectPaymentsAccess || app.projectDoorAccess {
+            else if app.projectPaymentsAccess || app.projectRefundsAccess || app.projectDoorAccess {
                 VStack(alignment: .leading, spacing: 28) {
                     if app.projectPaymentsAccess { ProjectPaymentsList() }
+                    if app.projectRefundsAccess { ProjectRefundsList() }
                     if app.projectDoorAccess { ProjectDoorList() }
                 }
             } else { lock }
         }
-        .task { await app.loadProjectMoney(); await app.loadProjectPayments(); await app.loadProjectDoor() }
+        .task {
+            await app.loadProjectMoney(); await app.loadProjectPayments(); await app.loadProjectRefunds(); await app.loadProjectDoor()
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project.moneyTab")
     }
@@ -30,6 +33,7 @@ struct ProjectMoneyTab: View {
     private var host: some View {
         let m = app.projectMoney
         stats(m)
+        if app.projectRefundsHostAccess { ProjectHostRefunds(snap: snap) }
         ProjectSectionHeader(title: app.T("Việc cần làm", "Act on it"))
         VStack(spacing: 0) {
             action(icon: "checkmark.seal", title: app.T("Kiểm tra thanh toán", "Check payments"),

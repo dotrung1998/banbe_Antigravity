@@ -34,7 +34,7 @@ extension AppState {
 
     func openProject(eventID: String, back: Screen, tab: String = "overview") async {
         projectBackScreen = back
-        if projectEventID != eventID { projectSnapshot = nil; projectRosVersion = nil; projectDayView = "list"; projectMoney = nil; projectDoor = nil; projectPayments = nil }
+        if projectEventID != eventID { projectSnapshot = nil; projectRosVersion = nil; projectDayView = "list"; projectMoney = nil; projectDoor = nil; projectPayments = nil; projectRefunds = nil }
         projectEventID = eventID
         projectTab = tab
         projectError = ""
@@ -349,6 +349,17 @@ extension AppState {
         case "TIME_INVALID": return T("Kết thúc phải sau bắt đầu ít nhất 10 phút.", "The end must be at least 10 minutes after the start.")
         case "TIME_OUTSIDE_EVENT": return T("Mốc phải nằm trong khoảng 12 giờ trước đến 24 giờ sau giờ bắt đầu sự kiện.",
                                             "Items must sit between 12 hours before and 24 hours after the event starts.")
+        // Phase 9c: refunds (migration 215).
+        case "APPROVAL_REQUIRED": return T("Chủ sự kiện cần duyệt khoản hoàn này. Hãy ghi nhận để chủ sự kiện duyệt.",
+                                           "The Host needs to approve this refund. Record it for the Host instead.")
+        case "ALREADY_REQUESTED": return T("Khoản hoàn này đã được ghi nhận và đang chờ chủ sự kiện.", "This refund is already recorded and waiting for the Host.")
+        case "REFUND_DESTINATION_REQUIRED": return T("Khách chưa thêm tài khoản nhận hoàn tiền.", "The guest hasn't added a refund account yet.")
+        case "NO_REQUEST": return T("Không còn bản ghi nào chờ duyệt cho khoản này.", "There's no team record waiting for this refund any more.")
+        case "NO_OPEN_DISPUTE": return T("Khiếu nại của khoản này đã đóng.", "The dispute on this refund is closed.")
+        case "NOT_A_DELEGATE": return T("Người này không có quyền tiền trong dự án.", "This person doesn't have money access in the project.")
+        case "INVALID_STATE": return T("Khoản hoàn này đã được xử lý.", "This refund was already handled.")
+        case "INVALID_AMOUNT": return T("Số tiền hoàn không hợp lệ.", "The refund amount isn't valid.")
+        case "INVALID_PROOF_PATH": return T("Không đính kèm được biên lai. Hãy thử lại.", "The receipt couldn't be attached. Try again.")
         case "OWNER_NOT_IN_PROJECT": return T("Người phụ trách không còn trong dự án.", "That person is no longer in the project.")
         default: return T("Chưa lưu được. Hãy thử lại.", "Couldn't save. Try again.")
         }

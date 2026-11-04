@@ -169,7 +169,7 @@ r = tx('', {f'{role}_{fn}': f"has_function_privilege('{role}', 'public.{fn}', 'E
                                                              'project_digest_items(uuid, timestamptz)')})
 check('grants: jobs are server-only', r and all(v == 'false' for v in r.values()), r)
 r = tx('', {'jobs': "(SELECT string_agg(jobname || '=' || schedule, ',' ORDER BY jobname) FROM cron.job WHERE jobname LIKE 'bb_project%')",
-            'kinds': "(SELECT string_agg(kind || ':' || promotional, ',' ORDER BY kind) FROM notification_kind_policy WHERE kind LIKE 'project_%')",
+            'kinds': "(SELECT string_agg(kind || ':' || promotional, ',' ORDER BY kind) FROM notification_kind_policy WHERE kind IN ('project_digest', 'project_blocked', 'project_joined'))",
             'limits': 'public.project_limits()::text'})
 check('cron: hourly digest + daily clean-up', r.get('jobs') == 'bb_project_digest=7 * * * *,bb_project_purge=17 20 * * *', r.get('jobs'))
 check('kinds: three service kinds, none promotional', r.get('kinds') == 'project_blocked:false,project_digest:false,project_joined:false', r.get('kinds'))
@@ -179,7 +179,7 @@ check('limits: every SQL limit matches the JSON', all(LIMITS.get(k) == v for k, 
 
 mig = open(MIG).read()
 r = tx(mig + '\n' + mig, {'jobs': "(SELECT count(*) FROM cron.job WHERE jobname LIKE 'bb_project%')",
-                          'kinds': "(SELECT count(*) FROM notification_kind_policy WHERE kind LIKE 'project_%')"})
+                          'kinds': "(SELECT count(*) FROM notification_kind_policy WHERE kind IN ('project_digest', 'project_blocked', 'project_joined'))"})
 check('re-apply: idempotent', r.get('jobs') == '2' and r.get('kinds') == '3', r)
 
 r = tx(open(ROLLBACK).read(), {'jobs': "(SELECT count(*) FROM cron.job WHERE jobname LIKE 'bb_project%')",

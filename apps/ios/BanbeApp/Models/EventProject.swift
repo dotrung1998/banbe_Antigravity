@@ -29,7 +29,8 @@ struct ProjectSnapshot: Decodable, Equatable {
 struct ProjectInfo: Decodable, Equatable {
     let eventId: String
     var channels: [ProjectChannels.Channel]
-    let refundApproval: String?
+    /// "host" or "finance_alone" (215). A var: the Host's switch updates it in place.
+    var refundApproval: String?
     let eventEndAt: String?
     let readOnlyAt: String?
     let readOnly: Bool

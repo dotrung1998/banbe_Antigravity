@@ -1,7 +1,7 @@
 # 76 — Event Project Hub (Hosting): per-event private team workspace
 
-Status: **phases 1-9b of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
-NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) 9e569c9; phase 7 (migration 211 jobs, throwaway stack only, NOT applied to production) 76e7f3c; phase 8 (web parity) df543fd; phase 9a (delegated check-in, migration 212, throwaway stack only, NOT applied to production) 1cbeeb8; security fix migration 213 (verify_payment hole, automatic confirmation removed) bd36f73; phase 9b (delegated payments, migration 214, throwaway stack only, NOT applied) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
+Status: **phases 1-9c of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
+NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) 9e569c9; phase 7 (migration 211 jobs, throwaway stack only, NOT applied to production) 76e7f3c; phase 8 (web parity) df543fd; phase 9a (delegated check-in, migration 212, throwaway stack only, NOT applied to production) 1cbeeb8; security fix migration 213 (verify_payment hole, automatic confirmation removed) bd36f73; phase 9b (delegated payments, migration 214, throwaway stack only, NOT applied) 70ec4f1; phase 9c (delegated refunds, migration 215, throwaway stack only, NOT applied) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
 `~/.claude/plans/pasted-content-id-234b-plan-mode-composed-koala.md`. Design source of truth for roles, tabs and layout:
 `banbe_hosting_project_hub_v6.html` (owner attachment, not in the repo).
 
@@ -342,7 +342,8 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
   guest's payment confirmed (ticket issued, receipt raised) without paying. Proven on the throwaway stack (rolled back);
   production NOT queried. 183 had locked `record_bank_transaction` / `verify_payment_from_bot` but not `verify_payment`.
 - **Owner decision (2026-11-04):** fix it first, and remove automatic payment confirmation entirely (Telegram and the bank
-  feed), because it is no longer needed.
+  feed), because it is no longer needed. **Same day, later:** the owner asked for the Casso/PayOS bank feed back ("Add
+  again Casso/PayOS, dont need to test"); Telegram stays removed. See the restore line below.
 - `supabase/migrations/20261231000213_213_remove_auto_payment_confirmation.sql`: `verify_payment` = 026's body without
   the bypass (every caller must be an organizer account of the event or an admin; an old client sending `'webhook'` as
   the owner still works and is logged as `organizer`); drops `verify_payment_from_bot`, `record_bank_transaction`,
@@ -353,7 +354,15 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
 - **Code removed:** `api/payment-webhook.js`, `api/telegram-webhook.js`, `api/_lib/alerts.js`,
   `api/_lib/handlers/cronEscalateVerifications.js`, the `escalate-verifications` job in `api/cron.js` and `vercel.json`.
   The guest's payment hint no longer promises automatic reconciliation (web PaymentDetails, iOS PaymentViews); stale
-  comments updated. `TELEGRAM_*` / Casso / PayOS secrets in Vercel are no longer used (owner may delete them).
+  comments updated. `TELEGRAM_*` secrets in Vercel are no longer used (owner may delete them).
+- **Bank feed restored (owner, 2026-11-04, NOT tested at the owner's request):** 213 no longer drops
+  `record_bank_transaction` (service-role only since 183); `api/payment-webhook.js` is back unchanged from before 213
+  (Casso `CASSO_WEBHOOK_SECRET`, PayOS `PAYOS_CHECKSUM_KEY`, generic `BANK_WEBHOOK_SECRET`; keep those Vercel secrets).
+  `verify_payment` (213, and its copies in 214 and 214's rollback) sets `v_bank := p_actor_kind = 'webhook' AND
+  auth.role() = 'service_role'` and skips the organizer check only then; the confirmation is logged as `webhook` with
+  the "tự động đối soát qua ngân hàng" chat line. A signed-in user claiming 'webhook' is checked like anyone else. The
+  guest hint again mentions automatic confirmation, now "if the host has connected their bank". The 213 test file's
+  expectations were updated (bank feed kept, service-role confirm) but the suites were NOT re-run.
 - **Numbering:** delegated confirm-payment is now migration **214** (9b), delegated refunds **215** (9c).
 - **Verified (throwaway stack):** `supabase/tests/213_payment_confirmation/run.sh` 31/31 (strangers refused whatever kind
   they claim, project members refused, anon cannot call; owner, second account and admin confirm; idempotent; dropped
@@ -398,6 +407,80 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
 - Not checked: a real proof image through a real signed URL, a real event, the policy text (the B4 amendment naming
   money delegates and transfer proofs is a draft for legal review).
 
-## Next: phase 9c (delegated refunds, migration 215)
-`request_refund_send`, `approve_refund_send`, `project_set_refund_approval` (Host only, audited), `mark_refund_sent` auth →
-capability honouring `refund_approval`; dispute grants (M5); the "team access ended" notice listing open refunds.
+## Phase 9c — delegated refunds (migration 215; LOCAL HARNESS ONLY, NOT applied; switch `project_delegate_refunds`, OFF)
+- `supabase/migrations/20261231000215_215_delegated_refunds.sql` + rollback `supabase/rollbacks/20261231000215_215_revert_delegated_refunds.sql`
+  (puts 128's `mark_refund_sent`, 211's `purge_project_data` and 214's `project_limits()` back verbatim; drops the new
+  tables, functions, policy and column; keeps `event_money_audit` and its widened action list).
+- **Who:** an active member who is Finance & door or has `cap_money`, with `event_project_hub` + `project_delegate_refunds`
+  on, a live grant and a project that is not read-only (`project_refund_member_ok`). Unlike check-in and payments, a
+  **cancelled** event still counts (cancelling is what creates most refunds); a removed one does not.
+- **Approval mode (N1), `event_projects.refund_approval`:**
+  - `host` (default): the delegate records the transfer with `request_refund_send` (note ≤ 280, optional receipt under
+    `refund-proof/<claim_id>/`). The guest is told nothing yet. Both organizer accounts get `project_refund_request`.
+    The Host runs `approve_refund_send` (which calls `mark_refund_sent` as the Host, with the team's note and receipt) or
+    `decline_refund_send` with a reason (3–140); the person who recorded it gets `project_refund_declined` and may record
+    again. One pending record per claim. A record made before the delegate's grant ended stays approvable.
+  - `finance_alone`: the delegate may call `mark_refund_sent` directly. A delegate calling it under `host` gets
+    `APPROVAL_REQUIRED`. Only the Host switches (`project_set_refund_approval`); each real switch writes one audit row.
+- **`mark_refund_sent`:** every line of 128 kept in order (tested). The delegate is only tried when the organizer check
+  fails; the Host path is unchanged and writes no audit row. A Host marking sent directly closes a waiting team record.
+  128 already accepted claims in `disputed` status (this settles the plan's UNVERIFIED item). Reservation-based claims
+  (`COALESCE(booking_id, reservation_id)`) take the same path everywhere in 215.
+- **Not delegated:** `resend_refund_transfer_info`, the batch runner, every dispute RPC and dispute chat, cancel, payout.
+- **`get_event_refund_view(event)`:** open claims (`owed`/`disputed`) with name, amount, due date, `dispute_open`, the
+  guest's refund account (bank, number, holder: needed to send the money), the waiting record and my last decline reason.
+  Never a refund proof, payment proof, claim note or document. Delegates cannot read `refund-proof` back
+  (`refund_proof_read` unchanged); they can only upload into an open claim's folder (`refund_proof_delegate_insert`).
+- **Dispute grants (M5):** `project_extend_dispute_grant(event, user, claim, until)`, Host only, only while the claim has an
+  open `dispute_threads` row (`resolved_at IS NULL`), `until` ≤ now + `disputeGrantMaxDays` (30) per extension, only for
+  someone who holds (or held, by an earlier dispute grant) money access; never for a removed member. Stored in
+  `event_dispute_refund_grants`, so it outlives the project's read-only date and purge. Covers that claim's refund
+  actions only (request; mark sent under `finance_alone`); not check-in, payments, proofs or chat. Dead the moment the
+  dispute is resolved, the switch goes off or the person is removed. **Found while testing:** `project_limits()` had no
+  `disputeGrantMaxDays` (JSON had it), so the cap was NULL and never enforced; 215 adds it.
+- **"Team access ended" notice:** the daily `purge_project_data` sends both organizer accounts one `project_grants_expired`
+  when every money delegate's grant is over and refunds are still open ("N refunds are back with you"), once per project
+  (`event_projects.grants_expired_notified_at`); silent while nothing is open, so a later claim still triggers it.
+- **Audit actions added:** `refund_decline`, `extend_dispute_grant` (with `refund_request`, `refund_approve`,
+  `refund_mark_sent`, `set_refund_approval` from 212's list).
+- **Notification kinds:** `project_refund_request`, `project_refund_declined`, `project_grants_expired` (service). Deep link
+  `{screen: 'event_project', event_id, tab: 'money'}`.
+
+### Verified (throwaway stack)
+- `supabase/tests/215_delegated_refunds/run.sh`: 112/112 (switch off = no change; every role; list shape without proofs or
+  notes; Host approval flow end to end incl. notices and audit; decline needs a reason; bad records; mode switch Host-only
+  and audited; finance_alone; expired grant, wrong switches, cancelled vs removed events; dispute grants: caps, scope, dies
+  on resolve/expiry/removal/switch off, survives purge, renewal; receipt upload allowed/denied; the notice: once, both
+  accounts, not while a grant is live or the switch is off, silent with nothing open; originals verbatim; grants; re-apply;
+  rollback). Mutation runs: dropping the APPROVAL_REQUIRED rule failed 4 checks; a dispute grant that ignores the open
+  thread failed 1. 210 985/985 (rollbacks 215 → 214 → 212 → 211 → 210), 211 38/38 (its kind checks narrowed to its own
+  three kinds), 212 58/58, 213 31/31, 214 61/61.
+- Not checked: a real receipt upload through the app to real storage, a real event, the policy text (B4 amendment naming
+  refund delegates and the guest's refund account is a draft for legal review).
+
+### Apps (9c)
+- **Delegate ("Refunds to send", Money & door tab, between "Payments to check" and the door list):** shown to non-Hosts
+  allowed `refund.request` or `refund.markSent`. Rows: name, amount, due date in the event zone, "Disputed" pill; states
+  "Waiting for Host" / "You recorded this · waiting for the Host" (no button), "Host declined: <reason>" (can record again),
+  no refund account (button off, reason shown), empty "No refunds to send". Sheet: amount, bank / number / holder each with
+  Copy, optional note (280), "Attach receipt" (uploads to `refund-proof/<claim_id>/`, same image rules as the Host's
+  receipt; only "Receipt attached" is shown back). Button follows the mode: "Record transfer for Host approval" ("The guest
+  is told only after the Host approves.") or "Mark refund sent" ("The guest is told right away.").
+- **Host (below the summary):** "Refunds from the team" card (who recorded it, note, receipt flag; Approve with a
+  confirmation, Decline with a required reason 3–140), "Refund approval" two-option control (confirmation before
+  "Finance can refund alone"; only while `project_delegate_refunds` is on), "Let the team handle this refund" on open
+  disputes (one Finance/money member, 7/14/30 days; end time sent one minute under the 30-day cap).
+- iOS: `State/AppState+ProjectRefunds.swift`, `Views/Project/ProjectRefundsViews.swift`; the Host's receipt upload was
+  pulled out of `markRefundSent` into `uploadRefundProof(_:claimID:)` (same behaviour); fixtures
+  `-uiFixtureProjectRefunds YES` and `-uiFixtureProjectRefundMode finance_alone`; at AX sizes the amount moves under the name.
+- Web: `useEventProject.js` (`refundsAccess`, `loadRefunds`, `sendRefund`, approve/decline/mode/dispute grant, demo data),
+  `ProjectMoney.jsx`, pure helpers `refundRowState`, `teamRefundRequests`, `refundDelegates`, `teamGrantsOver` in
+  `projectPresentation.js`; `projectRefunds` in BanBeContext initial state and the sign-out reset.
+- **Known limits:** the snapshot has no per-member grant end dates, so the dispute hand-off shows when the project is
+  read-only or the default grant (event end + 7 days) has passed; someone whose ONLY access is a dispute grant does not get
+  the list in either app (the server would accept their calls); the Host card loads only while the switch is on; a failed
+  Host refund load on web shows an empty card, not an error.
+- **Verified:** iOS unit 11/11 (`ProjectRefundsTests` 3 new, Money, Door, Permissions, Limits), `ProjectMoneyUITests` 18/18
+  (9 new), AX XXXL screenshots checked; web unit 909/909, Playwright `tests/event-project.spec.js` 63/63 (21 × 3, 4 new
+  cases), build OK; naming guard green. **Not checked:** RPCs and the receipt upload against a real Supabase (215 is applied
+  nowhere), a real device, VoiceOver, clipboard and photo picker by hand, Vietnamese sheet text on screen.
