@@ -1751,6 +1751,8 @@ final class AppState: ObservableObject {
     var projectRosVersion: Int?
     /// Phase 5: List or Calendar on the Day-of tab, kept while the hub stays open.
     @Published var projectDayView = "list"
+    /// Phase 6: the Host's Money & door numbers for the open project (nil until loaded; never loaded for non-Hosts).
+    @Published var projectMoney: ProjectMoneySummary?
     /// Phase 4 join screen: the code or token being looked at, and what the server said about it.
     @Published var projectJoinCode = ""
     @Published var projectJoinPeek: ProjectInvitePeek?

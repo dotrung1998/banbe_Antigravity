@@ -1,7 +1,7 @@
 # 76 — Event Project Hub (Hosting): per-event private team workspace
 
-Status: **phases 1-5 of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
-NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
+Status: **phases 1-6 of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
+NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
 `~/.claude/plans/pasted-content-id-234b-plan-mode-composed-koala.md`. Design source of truth for roles, tabs and layout:
 `banbe_hosting_project_hub_v6.html` (owner attachment, not in the repo).
 
@@ -221,5 +221,28 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
   a bare "1".
 - Not checked: the poll against a real backend (210 not applied), a real event day, iPad.
 
-## Next: phase 6 (iOS Money & door tab, Host)
-Summary + deep links into the existing Verifications / Attendance / payment screens; delegates see the lock card until 9a/9b.
+## Phase 6 — iOS Money & door (IMPLEMENTED LOCALLY; no migration, nothing new on the server)
+- **Host** (`ProjectMoneyTab.swift`, `State/AppState+ProjectMoney.swift`): Confirmed amount (VND; paid USD booking is off),
+  Awaiting a check, Refund asks; "Act on it" rows that open the EXISTING screens with Back returning to the project:
+  Check payments → `openVerifications`, Refunds → `openVerificationsRefunds`, Door check-in → `openAttendance` (with
+  "N/M seats in"); Team access (members holding money/check-in, "takes effect once banbe turns it on"); "payout and
+  cancelling stay with you". The Money tab shows a dot while guests wait or refunds are open (loaded with the project).
+- **Data:** read only, what the Host can already read: the event's `bookings` (RLS) and `get_host_refund_claims`
+  (via `loadRefundCenter`, so only uuid event ids get refund counts). Rules in the pure
+  `AppState.projectMoneySummary` (expired unpaid holds are nobody's seat; an expired hold marked paid still waits for a
+  check; only owed/disputed claims count). Access = `projectCan("money.view")` = the existing organizer-account check.
+- **Everyone else:** the v6 lock card with who has access; a member the Host granted money or check-in is told it isn't
+  on yet (delegation = migrations 212–214, phases 9a–9c). No amounts are ever loaded for them.
+- **Found while testing:** the lock card's id merged into the tab's (only child), now on its title; at AX XXXL the stat
+  tiles and action rows broke words ("Await-ing"), now one tile per line and stacked rows without the chevron.
+
+### Verified
+- `ProjectMoneyUITests` (5: Host numbers + dot, Check payments → Verifications → Back to the tab, helper lock, Finance
+  "not on yet", vi dark + AX XXXL), `ProjectMoneyTests` (1), `ProjectHubUITests` (11) green. iOS unit 556 with only the
+  known GiftTicketPDF failure; web 899/899. Screenshots reviewed.
+- Not checked: real numbers against a backend (210 not applied), Attendance and the refund section opened from here on a
+  device.
+
+## Next: phase 7 (migration 211 jobs)
+Digest at 18:00 in each member's zone, purge (trash 7 d / 30, expired invites, projects past purge_at), read-only, grant
+expiry notice; throwaway stack only.

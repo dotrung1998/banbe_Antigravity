@@ -46,6 +46,8 @@ struct ProjectHubView: View {
         .foregroundStyle(app.palette.ink)
         .background(app.palette.paper.ignoresSafeArea())
         .sheet(item: $sheet) { ProjectSheetHost(sheet: $0) { sheet = nil } }
+        // Phase 6: the Host's money numbers drive the Money tab's dot, so they load with the project.
+        .task(id: app.projectSnapshot?.isHost) { await app.loadProjectMoney() }
         .task(id: live) {
             // One small request every 15 s, mostly answered {unchanged}; stops the moment `live` turns false.
             guard live else { return }
@@ -114,7 +116,7 @@ struct ProjectHubView: View {
             ProjectTab(id: "tasks", label: app.T("Việc", "Tasks"), icon: "checkmark", dot: pendingReview),
             ProjectTab(id: "topics", label: app.T("Chủ đề", "Topics"), icon: "checkmark.square", dot: awaitingPosts),
             ProjectTab(id: "team", label: app.T("Đội", "Team"), icon: "person.2"),
-            ProjectTab(id: "money", label: app.T("Tiền & cổng", "Money & door"), icon: "creditcard"),
+            ProjectTab(id: "money", label: app.T("Tiền & cổng", "Money & door"), icon: "creditcard", dot: app.projectMoney?.needsHost == true),
             ProjectTab(id: "dayof", label: app.T("Ngày G", "Day-of"), icon: "calendar"),
         ]
     }
@@ -125,7 +127,7 @@ struct ProjectHubView: View {
         case "tasks": ProjectTasksTab(snap: snap)
         case "team": ProjectTeamTab(snap: snap)
         case "topics": ProjectTopicsTab(snap: snap)
-        case "money": ProjectLaterTab(kind: "money")
+        case "money": ProjectMoneyTab(snap: snap)
         case "dayof": ProjectDayOfTab(snap: snap, live: live)
         default: ProjectOverviewTab(snap: snap)
         }
@@ -210,30 +212,5 @@ struct ProjectHubView: View {
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("project.failed")
-    }
-}
-
-/// The tab that arrives in a later phase (Money & door, phase 6).
-struct ProjectLaterTab: View {
-    @EnvironmentObject private var app: AppState
-    let kind: String
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "creditcard")
-                .font(.system(size: 30)).foregroundStyle(app.palette.clay).accessibilityHidden(true)
-            Text(app.T("Sắp có", "Coming soon")).font(BanbeTheme.display(18))
-            Text(text).font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
-        }
-        .padding(.vertical, 40).padding(.horizontal, 12)
-        .frame(maxWidth: .infinity)
-        .projectCard()
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("project.later.\(kind)")
-    }
-
-    private var text: String {
-        app.T("Tiền, hoàn tiền và cửa vào sẽ ở đây. Hiện vẫn làm ở Điểm danh và Xác nhận như trước.",
-              "Money, refunds and the door will live here. For now they stay in Check-in and Verifications.")
     }
 }
