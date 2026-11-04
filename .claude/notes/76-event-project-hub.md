@@ -1,7 +1,7 @@
 # 76 — Event Project Hub (Hosting): per-event private team workspace
 
-Status: **phases 1-9a of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
-NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) 9e569c9; phase 7 (migration 211 jobs, throwaway stack only, NOT applied to production) 76e7f3c; phase 8 (web parity) df543fd; phase 9a (delegated check-in, migration 212, throwaway stack only, NOT applied to production) 1cbeeb8; security fix migration 213 (verify_payment hole, automatic confirmation removed) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
+Status: **phases 1-9b of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
+NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) 9e569c9; phase 7 (migration 211 jobs, throwaway stack only, NOT applied to production) 76e7f3c; phase 8 (web parity) df543fd; phase 9a (delegated check-in, migration 212, throwaway stack only, NOT applied to production) 1cbeeb8; security fix migration 213 (verify_payment hole, automatic confirmation removed) bd36f73; phase 9b (delegated payments, migration 214, throwaway stack only, NOT applied) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
 `~/.claude/plans/pasted-content-id-234b-plan-mode-composed-koala.md`. Design source of truth for roles, tabs and layout:
 `banbe_hosting_project_hub_v6.html` (owner attachment, not in the repo).
 
@@ -363,7 +363,41 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
   look for bookings confirmed by a non-organizer (`payment_audit_log` actor_kind 'webhook'/'system' with an actor that is
   not an organizer account) to see whether the hole was ever used.
 
-## Next: phase 9b (delegated confirm-payment, migration 214)
+## Phase 9b — delegated payment confirmation (migration 214; LOCAL HARNESS ONLY, NOT applied; switch `project_delegate_payments`, OFF)
+- `supabase/migrations/20261231000214_214_delegated_payments.sql` + rollback `supabase/rollbacks/20261231000214_214_revert_delegated_payments.sql`
+  (puts 213's `verify_payment` and 060's `confirm_payment` back verbatim; restores 211's `project_limits()`).
+- **Who:** an active member who is Finance & door or has `cap_money`, with `event_project_hub` + `project_delegate_payments`
+  on, a live grant and a project that is not read-only (`project_delegate_ok(.., 'money')` from 212).
+- **`verify_payment` (Verifications' "Money received") and `confirm_payment` (Attendance's accept):** every original line
+  kept in order (tested); a delegate is only tried when the organizer/admin check fails, and ONLY for a booking in
+  `pending_verification` (the guest said they paid). Not for holds, disputes or anything else. One `event_money_audit` row
+  (`confirm_payment`) per delegated confirmation; the Host path writes none. `verified_by` = the delegate.
+- **Not delegated (M3):** `reject_payment` ("Can't find it") and `reject_pending_guest`; refunds (215), cancel, payout.
+- **`get_event_money_view(event)`:** confirmed amount and seats, and the bookings awaiting a check with name, seats, amount,
+  payment reference, when they said they paid, and `has_proof` (a yes/no, never the path). No invoices or receipts.
+- **Transfer proofs (N3, M2):** `open_payment_proof(booking)` (delegates only; the Host keeps `pay_proof_read`) works only
+  for a booking in `pending_verification` with a proof, writes a `proof_open` audit row and returns the path. The new
+  storage policy `pay_proof_read_delegate` (via the boolean-only definer helper `pay_proof_delegate_ok`) lets that delegate
+  read that one object for `proofOpenMinutes` (5) after their audit row, while the booking is still waiting and their
+  delegate rights hold. `payment-documents` is never reachable. The app signs a `proofUrlSeconds` (60) link and shows it
+  with no share/save controls; that part is a UI rule only (a screenshot is always possible).
+- **Apps:** iOS `ProjectPaymentsList` + `ProjectProofSheet`, web `Payments` (ProjectMoney.jsx): "Payments to check" with the
+  confirmed total, per booking amount + reference, "View transfer proof" (only when one exists) and "Money received",
+  above the door list when the person has both. **Bug fixed from 9a:** the tab chose the Host view by `money.view`, which a
+  delegate also passes once 214's switch is on; it now also requires `is_host` (iOS `projectMoneyAccess`, web `moneyAccess`).
 
-`get_event_money_view`, `open_payment_proof` + delegate storage policy on `pay-proof` only, `confirm_payment` auth →
-capability + audit; `reject_pending_guest` stays Host-only.
+### Verified (throwaway stack)
+- `supabase/tests/214_delegated_payments/run.sh`: 61/61 (switch off = no change; every role on/off; view shape without
+  paths or documents; one audit row per confirmation on both RPCs; holds/disputes refused; expired, read-only and wrong-switch
+  refusals; rejects stay with the organizer; proofs: unreadable before opening, readable after, only that booking, never
+  payment-documents, closed after 5 minutes, after settling and when the switch goes off; Host and guest still read via
+  pay_proof_read; originals verbatim; re-apply; rollback keeps 213 closed). Mutation runs: dropping the
+  pending_verification rule failed 2 checks; a proof helper that ignores the audit failed 4. 210 985/985 (rollbacks
+  214 → 212 → 211 → 210), 211 38/38, 212 58/58, 213 31/31.
+- iOS `ProjectMoneyUITests` 9 + unit tests; web `tests/event-project.spec.js` 17 × 3 = 51/51, unit 906/906, build OK.
+- Not checked: a real proof image through a real signed URL, a real event, the policy text (the B4 amendment naming
+  money delegates and transfer proofs is a draft for legal review).
+
+## Next: phase 9c (delegated refunds, migration 215)
+`request_refund_send`, `approve_refund_send`, `project_set_refund_approval` (Host only, audited), `mark_refund_sent` auth →
+capability honouring `refund_approval`; dispute grants (M5); the "team access ended" notice listing open refunds.

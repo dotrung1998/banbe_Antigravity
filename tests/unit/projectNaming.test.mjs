@@ -23,7 +23,8 @@ const FILES = [
   'src/screens/ProjectJoin.jsx', 'src/screens/MyProjects.jsx', 'tests/event-project.spec.js',
   'supabase/migrations/20261231000211_211_event_project_jobs.sql', 'supabase/migrations/20261231000212_212_delegated_checkin.sql',
   'supabase/rollbacks/20261231000212_212_revert_delegated_checkin.sql',
-  'supabase/migrations/20261231000213_213_remove_auto_payment_confirmation.sql', 'supabase/rollbacks/20261231000211_211_revert_event_project_jobs.sql',
+  'supabase/migrations/20261231000213_213_remove_auto_payment_confirmation.sql',
+  'supabase/migrations/20261231000214_214_delegated_payments.sql', 'supabase/rollbacks/20261231000214_214_revert_delegated_payments.sql', 'supabase/rollbacks/20261231000211_211_revert_event_project_jobs.sql',
 ];
 // Folders later phases add; every file inside is checked once they exist.
 const DIRS = ['src/components/project', 'apps/ios/BanbeApp/Views/Project'];

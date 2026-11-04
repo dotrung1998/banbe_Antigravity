@@ -18,6 +18,7 @@ MIG = os.path.join(ROOT, 'supabase/migrations/20261231000210_210_event_project_c
 ROLLBACK = os.path.join(ROOT, 'supabase/rollbacks/20261231000210_210_revert_event_project_core.sql')
 ROLLBACK_211 = os.path.join(ROOT, 'supabase/rollbacks/20261231000211_211_revert_event_project_jobs.sql')
 ROLLBACK_212 = os.path.join(ROOT, 'supabase/rollbacks/20261231000212_212_revert_delegated_checkin.sql')
+ROLLBACK_214 = os.path.join(ROOT, 'supabase/rollbacks/20261231000214_214_revert_delegated_payments.sql')
 FX = json.load(open(os.path.join(ROOT, 'tests/fixtures/project-permissions.json')))
 CH = json.load(open(os.path.join(ROOT, 'tests/fixtures/project-channel-links.json')))
 LIMITS = json.load(open(os.path.join(ROOT, 'src/data/projectLimits.json')))
@@ -456,8 +457,8 @@ check('210 applies twice without error (idempotent)', res.get(0) == '1' and 'ERR
 res, err = transaction([('admin', "(SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'event_project%')"),
                         ('admin', "(SELECT count(*) FROM pg_proc WHERE proname LIKE 'project\\_%')"),
                         ('admin', "(SELECT count(*) FROM public.app_feature_flag_defs WHERE key = 'event_project_hub')")],
-                       # Rollbacks run newest first: 212's and 211's (safe even where they were never applied), then 210's.
-                       setup=open(ROLLBACK_212).read() + '\n' + open(ROLLBACK_211).read() + '\n' + open(ROLLBACK).read() + '\n')
+                       # Rollbacks run newest first: 214's, 212's and 211's (safe even where they were never applied), then 210's.
+                       setup=open(ROLLBACK_214).read() + '\n' + open(ROLLBACK_212).read() + '\n' + open(ROLLBACK_211).read() + '\n' + open(ROLLBACK).read() + '\n')
 check('the rollback removes every table, function and switch of 210', [res.get(i) for i in range(3)] == ['0', '0', '0'] and 'ERROR' not in err,
       f'{res} {err[:300]}')
 src = open(MIG).read()

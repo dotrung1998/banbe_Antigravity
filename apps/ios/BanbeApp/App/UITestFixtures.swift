@@ -351,6 +351,8 @@ struct UITestFixtureRoot: View {
             if UITestFixture.projectQR { app.featureFlags["project_qr_invite"] = true }
             // Phase 9a: `-uiFixtureProjectDoor YES` turns on delegated check-in.
             if UserDefaults.standard.bool(forKey: "uiFixtureProjectDoor") { app.featureFlags["project_delegate_checkin"] = true }
+            // Phase 9b: `-uiFixtureProjectPayments YES` turns on delegated payment confirmation.
+            if UserDefaults.standard.bool(forKey: "uiFixtureProjectPayments") { app.featureFlags["project_delegate_payments"] = true }
             app.projectSnapshot = UITestFixture.projectSnapshot()
             app.projectEventID = app.projectSnapshot?.event?.id ?? "fx_project"
             app.projectTab = UITestFixture.projectTab

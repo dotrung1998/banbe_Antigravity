@@ -33,8 +33,9 @@ private struct ProjectMoneyBooking: Decodable {
 }
 
 extension AppState {
-    /// Money and door are the organizer accounts' own today (the existing RPCs' check, never `project_is_host`).
-    var projectMoneyAccess: Bool { projectCan("money.view") }
+    /// The Host's own Money & door view: the organizer accounts (the existing RPCs' check, never `project_is_host`).
+    /// A delegate with money access passes `money.view` too once 214's switch is on, so this also needs `isHost`.
+    var projectMoneyAccess: Bool { projectSnapshot?.isHost == true && projectCan("money.view") }
 
     /// Pure: the summary from booking rows and refund claims, so the rules can be tested.
     static func projectMoneySummary(bookings: [(qty: Int, status: String, total: Int?, expiresAt: Date?, paidMarkedAt: Date?)],
@@ -125,7 +126,7 @@ struct ProjectDoorGuest: Equatable, Identifiable {
 
 extension AppState {
     /// A team member with check-in access while the switch is on (the Host uses Attendance as before).
-    var projectDoorAccess: Bool { !projectMoneyAccess && projectCan("checkin") }
+    var projectDoorAccess: Bool { projectSnapshot?.isHost != true && projectCan("checkin") }
 
     /// Pure: rows grouped by booking (named attendees count one each; a booking without names counts its party).
     static func projectDoorGuests(_ rows: [ProjectDoorRow]) -> [ProjectDoorGuest] {
@@ -202,6 +203,137 @@ extension AppState {
             print("checkInProjectGuest failed:", error)
             projectNotice = projectErrorText(nil)
             return false
+        }
+    }
+}
+
+// MARK: - phase 9b: delegated payment confirmation (migration 214, switch project_delegate_payments)
+
+/// One booking waiting for a payment check, as `get_event_money_view` returns it (no proof path, no documents).
+struct ProjectAwaitingPayment: Decodable, Equatable, Identifiable {
+    let bookingId: String
+    let name: String
+    let qty: Int
+    let amount: Int
+    let paymentRef: String?
+    let paidMarkedAt: String?
+    let hasProof: Bool
+    var id: String { bookingId }
+    enum CodingKeys: String, CodingKey {
+        case name, qty, amount
+        case bookingId = "booking_id", paymentRef = "payment_ref", paidMarkedAt = "paid_marked_at", hasProof = "has_proof"
+    }
+}
+
+struct ProjectMoneyView: Decodable, Equatable {
+    let success: Bool
+    let error: String?
+    var confirmedAmount: Int?
+    var confirmedSeats: Int?
+    var awaiting: [ProjectAwaitingPayment]?
+    enum CodingKeys: String, CodingKey {
+        case success, error, awaiting
+        case confirmedAmount = "confirmed_amount", confirmedSeats = "confirmed_seats"
+    }
+}
+
+private struct ProjectProofResult: Decodable {
+    let success: Bool
+    let error: String?
+    let bucket: String?
+    let path: String?
+}
+
+extension AppState {
+    /// A team member with money access while the switch is on (the Host keeps the full tab).
+    var projectPaymentsAccess: Bool { projectSnapshot?.isHost != true && projectCan("money.confirm") }
+
+    func loadProjectPayments() async {
+        guard projectPaymentsAccess else { projectPayments = nil; return }
+        #if DEBUG
+        if UITestFixture.isActive {
+            if projectPayments == nil {
+                projectPayments = ProjectMoneyView(success: true, error: nil, confirmedAmount: 4_410_000, confirmedSeats: 9, awaiting: [
+                    ProjectAwaitingPayment(bookingId: "pay-1", name: "Ngọc Anh", qty: 2, amount: 980_000, paymentRef: "BB1A2B", paidMarkedAt: nil, hasProof: true),
+                    ProjectAwaitingPayment(bookingId: "pay-2", name: "Minh Khang", qty: 1, amount: 490_000, paymentRef: "BB3C4D", paidMarkedAt: nil, hasProof: false),
+                ])
+            }
+            return
+        }
+        #endif
+        struct Params: Encodable {
+            let pEventId: String
+            enum CodingKeys: String, CodingKey { case pEventId = "p_event_id" }
+        }
+        do {
+            let r: ProjectMoneyView = try await SupabaseService.client.rpc("get_event_money_view", params: Params(pEventId: projectEventID)).execute().value
+            if r.success { projectPayments = r } else { projectNotice = projectErrorText(r.error) }
+        } catch {
+            print("loadProjectPayments failed:", error)
+        }
+    }
+
+    /// "Money received" for one booking (verify_payment; the server checks access and writes the audit row).
+    @discardableResult
+    func confirmProjectPayment(_ bookingID: String) async -> Bool {
+        #if DEBUG
+        if UITestFixture.isActive {
+            if let i = projectPayments?.awaiting?.firstIndex(where: { $0.bookingId == bookingID }), let row = projectPayments?.awaiting?[i] {
+                projectPayments?.awaiting?.remove(at: i)
+                projectPayments?.confirmedAmount = (projectPayments?.confirmedAmount ?? 0) + row.amount
+                projectPayments?.confirmedSeats = (projectPayments?.confirmedSeats ?? 0) + row.qty
+            }
+            return true
+        }
+        #endif
+        struct Params: Encodable {
+            let pBooking: String; let pVia: String; let pActorKind: String
+            enum CodingKeys: String, CodingKey { case pBooking = "p_booking", pVia = "p_via", pActorKind = "p_actor_kind" }
+        }
+        struct Result: Decodable { let success: Bool; let error: String? }
+        projectBusy = true
+        defer { projectBusy = false }
+        do {
+            let r: Result = try await SupabaseService.client
+                .rpc("verify_payment", params: Params(pBooking: bookingID, pVia: "project_team", pActorKind: "organizer")).execute().value
+            if !r.success {
+                projectNotice = r.error == "NOT_AUTHORIZED" ? T("Quyền tiền của bạn đã hết hoặc đang tắt.", "Your money access has ended or is switched off.")
+                    : projectErrorText(nil)
+            } else { Haptics.success() }
+            await loadProjectPayments()
+            return r.success
+        } catch {
+            print("confirmProjectPayment failed:", error)
+            projectNotice = projectErrorText(nil)
+            return false
+        }
+    }
+
+    /// Opens one booking's transfer proof: the server logs the open first, then a 60-second signed link is made.
+    func openProjectProof(_ bookingID: String) async -> URL? {
+        #if DEBUG
+        if UITestFixture.isActive { return nil }
+        #endif
+        struct Params: Encodable {
+            let pBookingId: String
+            enum CodingKeys: String, CodingKey { case pBookingId = "p_booking_id" }
+        }
+        do {
+            let r: ProjectProofResult = try await SupabaseService.client.rpc("open_payment_proof", params: Params(pBookingId: bookingID)).execute().value
+            guard r.success, let path = r.path else {
+                projectNotice = r.error == "NO_PROOF" ? T("Khách chưa gửi ảnh chuyển khoản.", "The guest hasn't sent a transfer proof.")
+                    : r.error == "NOT_AWAITING" ? T("Khoản này không còn chờ xác nhận.", "This payment is no longer waiting for a check.")
+                    : T("Bạn không mở được ảnh này.", "You can't open this proof.")
+                return nil
+            }
+            let results = try await SupabaseService.client.storage.from(r.bucket ?? "pay-proof")
+                .createSignedURLs(paths: [path], expiresIn: ProjectLimits.shared.proofUrlSeconds)
+            for result in results { if case let .success(p, url) = result, p == path { return url } }
+            return nil
+        } catch {
+            print("openProjectProof failed:", error)
+            projectNotice = projectErrorText(nil)
+            return nil
         }
     }
 }

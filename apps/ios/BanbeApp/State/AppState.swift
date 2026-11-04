@@ -1755,6 +1755,8 @@ final class AppState: ObservableObject {
     @Published var projectMoney: ProjectMoneySummary?
     /// Phase 9a: the names-only door list for a team member with check-in access (nil until loaded).
     @Published var projectDoor: [ProjectDoorGuest]?
+    /// Phase 9b: what a team member with money access sees (amounts awaiting a check; nil until loaded).
+    @Published var projectPayments: ProjectMoneyView?
     /// Phase 4 join screen: the code or token being looked at, and what the server said about it.
     @Published var projectJoinCode = ""
     @Published var projectJoinPeek: ProjectInvitePeek?

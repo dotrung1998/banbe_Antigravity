@@ -11,9 +11,15 @@ struct ProjectMoneyTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if app.projectMoneyAccess { host } else if app.projectDoorAccess { ProjectDoorList() } else { lock }
+            if app.projectMoneyAccess { host }
+            else if app.projectPaymentsAccess || app.projectDoorAccess {
+                VStack(alignment: .leading, spacing: 28) {
+                    if app.projectPaymentsAccess { ProjectPaymentsList() }
+                    if app.projectDoorAccess { ProjectDoorList() }
+                }
+            } else { lock }
         }
-        .task { await app.loadProjectMoney(); await app.loadProjectDoor() }
+        .task { await app.loadProjectMoney(); await app.loadProjectPayments(); await app.loadProjectDoor() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project.moneyTab")
     }
@@ -264,5 +270,122 @@ struct ProjectDoorList: View {
             }
         }
         .padding(.vertical, 8)
+    }
+}
+
+/// Phase 9b (migration 214, switch project_delegate_payments): payments waiting for a check, for a team member with money
+/// access. Amounts and references, the transfer proof of the one booking being checked (view only, each open recorded),
+/// and "Money received". "Can't find it" and rejecting stay with the Host; invoices and receipts are never shown here.
+struct ProjectPaymentsList: View {
+    @EnvironmentObject private var app: AppState
+    @State private var proof: ProofItem?
+
+    struct ProofItem: Identifiable { let id: String; let name: String; let url: URL? }
+
+    var body: some View {
+        let view = app.projectPayments
+        let rows = view?.awaiting ?? []
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(app.T("Thanh toán cần kiểm tra", "Payments to check")).font(BanbeTheme.display(20)).accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("project.payments")
+                if let view {
+                    Text(app.T("Đã xác nhận: ", "Confirmed: ") + EventMarket.formatMoney(view.confirmedAmount ?? 0, currency: "VND")
+                         + app.T(" · \(view.confirmedSeats ?? 0) chỗ", " · \(view.confirmedSeats ?? 0) seats"))
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                        .accessibilityIdentifier("project.payments.confirmed")
+                }
+                Text(app.T("Kiểm tra tài khoản nhận tiền trước khi bấm. “Không thấy tiền” và từ chối vẫn do Chủ sự kiện làm. Mỗi lần xác nhận và mở ảnh đều được ghi lại.",
+                           "Check the receiving account before you tap. “Can't find it” and rejecting stay with the Host. Every confirmation and every proof you open is recorded."))
+                    .font(.footnote).foregroundStyle(app.palette.ink3).fixedSize(horizontal: false, vertical: true)
+            }
+            if view == nil {
+                ProgressView().frame(maxWidth: .infinity)
+            } else if rows.isEmpty {
+                Text(app.T("Không có khoản nào đang chờ.", "Nothing is waiting for a check.")).font(.subheadline).foregroundStyle(app.palette.ink2)
+                    .frame(maxWidth: .infinity).padding(.vertical, 16)
+                    .accessibilityIdentifier("project.payments.empty")
+            } else {
+                ProjectRowsCard(items: rows) { r in row(r) }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("project.payments.list")
+            }
+        }
+        .sheet(item: $proof) { item in ProjectProofSheet(name: item.name, url: item.url) { proof = nil } }
+    }
+
+    private func row(_ r: ProjectAwaitingPayment) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(r.name).font(.body.weight(.semibold))
+                Spacer(minLength: 6)
+                Text(EventMarket.formatMoney(r.amount, currency: "VND")).font(.body.weight(.bold).monospacedDigit())
+            }
+            Text([app.T("\(r.qty) chỗ", r.qty == 1 ? "1 seat" : "\(r.qty) seats"), r.paymentRef.map { app.T("Mã \($0)", "Ref \($0)") }]
+                    .compactMap { $0 }.joined(separator: " · "))
+                .font(.footnote).foregroundStyle(app.palette.ink2)
+            HStack(spacing: 8) {
+                if r.hasProof {
+                    Button {
+                        Task { let url = await app.openProjectProof(r.bookingId); proof = ProofItem(id: r.bookingId, name: r.name, url: url) }
+                    } label: {
+                        Label(app.T("Xem ảnh chuyển khoản", "View transfer proof"), systemImage: "doc.text.magnifyingglass")
+                            .font(.subheadline.weight(.semibold)).padding(.horizontal, 12).frame(minHeight: 44)
+                            .background(app.palette.blockInset, in: Capsule())
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier("project.payments.proof.\(r.bookingId)")
+                }
+                Spacer(minLength: 0)
+                Button { Task { await app.confirmProjectPayment(r.bookingId) } } label: {
+                    Text(app.T("Đã nhận tiền", "Money received")).font(.subheadline.weight(.bold))
+                        .padding(.horizontal, 14).frame(minHeight: 44)
+                        .foregroundStyle(app.palette.paper).background(app.palette.ink, in: Capsule())
+                }
+                .buttonStyle(PressableButtonStyle())
+                .disabled(app.projectBusy)
+                .accessibilityLabel(app.T("Đã nhận tiền của \(r.name)", "Money received from \(r.name)"))
+                .accessibilityIdentifier("project.payments.confirm.\(r.bookingId)")
+            }
+        }
+        .padding(.vertical, 10)
+    }
+}
+
+/// The transfer proof, view only: no share, save or copy controls (a screenshot is always possible; the open is logged).
+struct ProjectProofSheet: View {
+    @EnvironmentObject private var app: AppState
+    let name: String
+    let url: URL?
+    let close: () -> Void
+
+    var body: some View {
+        CardSheet(title: app.T("Ảnh chuyển khoản", "Transfer proof"), closeID: "project.proof.close", fullHeight: true, onClose: close) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(name).font(.headline)
+                Group {
+                    if let url {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image): image.resizable().scaledToFit()
+                            case .failure: Text(app.T("Không tải được ảnh.", "Couldn't load the image.")).foregroundStyle(app.palette.ink2)
+                            default: ProgressView()
+                            }
+                        }
+                    } else {
+                        Text(app.T("Chưa có ảnh để hiển thị.", "No image to show.")).foregroundStyle(app.palette.ink2)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 240)
+                .background(app.palette.blockInset, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .accessibilityIdentifier("project.proof.image")
+                Text(app.T("Chỉ xem. Lần mở này đã được ghi lại cho Chủ sự kiện, và liên kết đóng sau \(ProjectLimits.shared.proofUrlSeconds) giây.",
+                           "View only. This open was recorded for the Host, and the link closes after \(ProjectLimits.shared.proofUrlSeconds) seconds."))
+                    .font(.footnote).foregroundStyle(app.palette.ink3)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project.proof")
     }
 }

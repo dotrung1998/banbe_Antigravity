@@ -37,7 +37,7 @@ async function openHub(page, { as, tab = 'overview', now = '2026-11-03T10:00:00+
   await page.waitForTimeout(1500); // a new user reloads the switches; set ours after that answer lands
   await devSet(page, {
     featureFlags: { event_project_hub: true, ...flags }, projectDemo: true, projectNow: now, projectSnapshot: snapshotAs(as),
-    projectEventId: FX.event.id, projectTab: tab, projectBack: 'home', projectNotice: '', projectError: '', projectInvites: [], projectDoor: null, projectMoney: null, screen: 'eventProject',
+    projectEventId: FX.event.id, projectTab: tab, projectBack: 'home', projectNotice: '', projectError: '', projectInvites: [], projectDoor: null, projectMoney: null, projectPayments: null, screen: 'eventProject',
   });
   await expect(page.getByTestId('project-hub')).toBeVisible();
 }
@@ -206,6 +206,21 @@ test.describe('Event Project Hub (web)', () => {
     await openHub(page, { tab: 'money', flags: { project_delegate_checkin: true } });
     await expect(page.getByTestId('project-money-stats')).toBeVisible();
     await expect(page.getByTestId('project-door')).toHaveCount(0);
+  });
+
+  test('delegated payments (9b): Finance confirms a payment and opens only that proof, next to the door list', async ({ page }) => {
+    await openHub(page, { as: 'finance', tab: 'money', flags: { project_delegate_payments: true, project_delegate_checkin: true } });
+    await expect(page.getByTestId('project-payments')).toBeVisible();
+    await expect(page.getByTestId('project-door')).toBeVisible();
+    await expect(page.getByTestId('project-money-verify')).toHaveCount(0);
+    await expect(page.getByTestId('project-payments-proof-pay-2')).toHaveCount(0);
+    await shot(page, 'project-payments');
+    await page.getByTestId('project-payments-proof-pay-1').click();
+    await expect(page.getByTestId('project-proof')).toBeVisible();
+    await page.getByTestId('project-proof-close').click();
+    await page.getByTestId('project-payments-confirm-pay-1').click();
+    await expect(page.getByTestId('project-payments-confirm-pay-1')).toHaveCount(0);
+    await expect(page.getByTestId('project-payments-confirmed')).toContainText('5.390.000');
   });
 
   test('Day-of: not live before the day; on the day the grid stretches the first item and a tick freezes it', async ({ page }) => {

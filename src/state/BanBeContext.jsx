@@ -500,7 +500,7 @@ const PRIVATE_STATE_KEYS = [
   'homeView', 'startHostingOpen',
   // Event Project Hub (note 76): a team project (names, tasks, posts, channel links, money numbers) is the account's.
   'projectSnapshot', 'projectEventId', 'projectNotice', 'projectBusy', 'projectError', 'myProjects', 'myProjectsLoaded',
-  'projectJoinPeek', 'projectJoinError', 'projectInvites', 'projectMoney', 'projectDoor',
+  'projectJoinPeek', 'projectJoinError', 'projectInvites', 'projectMoney', 'projectDoor', 'projectPayments',
 ];
 const isPublicEventRow = (e) => !!e && e.visibility === 'public' && ['live', 'ended', 'cancelled'].includes(e.status);
 /** The signed-out state patch. Cached events keep only public rows (a private/invite/draft event fetched while
@@ -1388,6 +1388,7 @@ const initialState = {
   projectInvites: [],
   projectMoney: null,
   projectDoor: null,
+  projectPayments: null,
   myProjects: [],
   myProjectsLoaded: false,
   projectJoinCode: '',

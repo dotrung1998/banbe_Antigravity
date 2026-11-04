@@ -85,6 +85,28 @@ final class ProjectMoneyUITests: XCTestCase {
         XCTAssertFalse(el(host, "project.door").exists)
     }
 
+    // Phase 9b: delegated payment confirmation (switch project_delegate_payments).
+    func testFinanceConfirmsAPaymentAndOpensOnlyThatProof() {
+        let app = launch(as: "finance", extra: ["-uiFixtureProjectPayments", "YES", "-uiFixtureProjectDoor", "YES"])
+        XCTAssertTrue(el(app, "project.payments").waitForExistence(timeout: 5))
+        XCTAssertTrue(el(app, "project.door").exists, "Finance also has the door")
+        XCTAssertFalse(el(app, "project.money.verify").exists, "not the Host's screen")
+        XCTAssertFalse(el(app, "project.payments.proof.pay-2").exists, "no proof button without a proof")
+        attach(app, "project-payments-finance")
+        el(app, "project.payments.proof.pay-1").tap()
+        XCTAssertTrue(el(app, "project.proof").waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Share"].exists, "view only")
+        el(app, "project.proof.close").tap()
+        el(app, "project.payments.confirm.pay-1").tap()
+        XCTAssertFalse(el(app, "project.payments.confirm.pay-1").waitForExistence(timeout: 2))
+        XCTAssertTrue(el(app, "project.payments.confirmed").label.contains("5.390.000"), el(app, "project.payments.confirmed").label)
+    }
+
+    func testAHelperWithoutMoneyAccessStillSeesTheLock() {
+        let app = launch(as: "helper", extra: ["-uiFixtureProjectPayments", "YES"])
+        XCTAssertTrue(el(app, "project.money.lock").waitForExistence(timeout: 5), "this helper has no money access in the demo")
+    }
+
     func testVietnameseDarkAndLargestText() {
         let vi = launch(lang: "vi", extra: ["-banbe.theme", "dark"])
         attach(vi, "project-money-vi-dark")

@@ -453,7 +453,8 @@ export function useEventProject() {
   };
 
   // ------------------------------------------------------------------ money (Host)
-  const moneyAccess = can('money.view');
+  // The Host's own view: the organizer accounts. A delegate with money access passes money.view too once 214 is on.
+  const moneyAccess = snap?.is_host === true && can('money.view');
   const loadMoney = async () => {
     if (!moneyAccess) { set({ projectMoney: null }); return; }
     if (demo) { set({ projectMoney: { confirmedSeats: 9, confirmedAmount: 4410000, awaiting: 2, refunds: 1, refundsOverdue: 0, checkedIn: 0, seats: 11 } }); return; }
@@ -473,7 +474,7 @@ export function useEventProject() {
   };
 
   // ------------------------------------------------------------------ door (phase 9a, migration 212)
-  const doorAccess = !moneyAccess && can('checkin');
+  const doorAccess = snap?.is_host !== true && can('checkin');
   const loadDoor = async () => {
     if (!doorAccess) { set({ projectDoor: null }); return; }
     if (demo) {
@@ -501,8 +502,50 @@ export function useEventProject() {
     return !!data?.success;
   };
 
+  // ------------------------------------------------------------------ payments (phase 9b, migration 214)
+  const paymentsAccess = snap?.is_host !== true && can('money.confirm');
+  const loadPayments = async () => {
+    if (!paymentsAccess) { set({ projectPayments: null }); return; }
+    if (demo) {
+      if (!s.projectPayments) set({ projectPayments: { confirmed_amount: 4410000, confirmed_seats: 9, awaiting: [
+        { booking_id: 'pay-1', name: 'Ngọc Anh', qty: 2, amount: 980000, payment_ref: 'BB1A2B', has_proof: true },
+        { booking_id: 'pay-2', name: 'Minh Khang', qty: 1, amount: 490000, payment_ref: 'BB3C4D', has_proof: false }] } });
+      return;
+    }
+    const { data } = await supabase.rpc('get_event_money_view', { p_event_id: s.projectEventId });
+    if (data?.success) set({ projectPayments: data }); else set({ projectNotice: errorText(data?.error) });
+  };
+  /** "Money received" (verify_payment; the server checks access and writes the audit row). */
+  const confirmPayment = async (bookingId) => {
+    if (demo) {
+      set(prev => {
+        const v = prev.projectPayments; const row = v?.awaiting?.find(a => a.booking_id === bookingId);
+        return row ? { projectPayments: { ...v, awaiting: v.awaiting.filter(a => a.booking_id !== bookingId), confirmed_amount: v.confirmed_amount + row.amount, confirmed_seats: v.confirmed_seats + row.qty } } : {};
+      });
+      return true;
+    }
+    set({ projectBusy: true });
+    const { data } = await supabase.rpc('verify_payment', { p_booking: bookingId, p_via: 'project_team', p_actor_kind: 'organizer', p_meta: {} });
+    set({ projectBusy: false });
+    if (!data?.success) set({ projectNotice: data?.error === 'NOT_AUTHORIZED' ? T('Quyền tiền của bạn đã hết hoặc đang tắt.', 'Your money access has ended or is switched off.') : errorText(null) });
+    await loadPayments();
+    return !!data?.success;
+  };
+  /** One booking's transfer proof: the server logs the open first, then a short-lived signed link. */
+  const openProof = async (bookingId) => {
+    if (demo) return null;
+    const { data } = await supabase.rpc('open_payment_proof', { p_booking_id: bookingId });
+    if (!data?.success) {
+      set({ projectNotice: data?.error === 'NO_PROOF' ? T('Khách chưa gửi ảnh chuyển khoản.', "The guest hasn't sent a transfer proof.")
+        : data?.error === 'NOT_AWAITING' ? T('Khoản này không còn chờ xác nhận.', 'This payment is no longer waiting for a check.') : T('Bạn không mở được ảnh này.', "You can't open this proof.") });
+      return null;
+    }
+    const { data: signed } = await supabase.storage.from(data.bucket || 'pay-proof').createSignedUrl(data.path, LIMITS.proofUrlSeconds);
+    return signed?.signedUrl || null;
+  };
+
   return {
-    s, snap, set, T, userId, demo, now, tz, can, LIMITS, doorAccess, loadDoor, checkInGuest,
+    s, snap, set, T, userId, demo, now, tz, can, LIMITS, doorAccess, loadDoor, checkInGuest, paymentsAccess, loadPayments, confirmPayment, openProof,
     errorText, roleName, roleNote, statusName, typeName, personName, laneName, dueText, clock, headcount,
     open, back, refresh, loadMyProjects, startProject, write,
     setTaskStatus, toggleTaskDone, saveTask, deleteTask, saveChannels, addLane, renameLane, archiveLane, proposeChange, reviewChange, leave,

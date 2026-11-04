@@ -10,8 +10,11 @@ import { Card, SectionHeader, Avatar, Tag, Note } from './ProjectUI.jsx';
 export default function ProjectMoney({ p }) {
   const { openVerifications, openVerificationsRefunds, openAttendance } = useBanBe();
   const { snap, T } = p;
-  useEffect(() => { p.loadMoney(); p.loadDoor(); }, [p.s.projectEventId, p.moneyAccess, p.doorAccess]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!p.moneyAccess) return p.doorAccess ? <Door p={p} /> : <Lock p={p} />;
+  useEffect(() => { p.loadMoney(); p.loadPayments(); p.loadDoor(); }, [p.s.projectEventId, p.moneyAccess, p.doorAccess, p.paymentsAccess]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!p.moneyAccess) {
+    if (!p.paymentsAccess && !p.doorAccess) return <Lock p={p} />;
+    return <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>{p.paymentsAccess && <Payments p={p} />}{p.doorAccess && <Door p={p} />}</div>;
+  }
   const m = p.s.projectMoney;
   const holders = (snap.members || []).filter(x => x.cap_money || x.cap_checkin);
   const stat = (value, label, hot, testId) => (
@@ -120,6 +123,61 @@ function Door({ p }) {
             })}
           </Card>
         )}
+    </div>
+  );
+}
+
+/** Phase 9b (migration 214, switch project_delegate_payments): payments waiting for a check, for a team member with money
+ * access. Amounts and references, the proof of the one booking being checked (view only, each open recorded), and
+ * "Money received". "Can't find it" and rejecting stay with the Host; invoices and receipts never appear here. */
+function Payments({ p }) {
+  const { T } = p;
+  const [proof, setProof] = useState(null);
+  const v = p.s.projectPayments;
+  const rows = v?.awaiting || [];
+  return (
+    <div data-testid="project-payments">
+      <h2 style={{ margin: 0, fontSize: 20 }}>{T('Thanh toán cần kiểm tra', 'Payments to check')}</h2>
+      {v && <div data-testid="project-payments-confirmed" style={{ fontWeight: 600, color: ink2, margin: '4px 0' }}>
+        {T('Đã xác nhận: ', 'Confirmed: ')}{formatMoney(v.confirmed_amount || 0, 'VND')}{T(` · ${v.confirmed_seats || 0} chỗ`, ` · ${v.confirmed_seats || 0} seats`)}</div>}
+      <Note>{T('Kiểm tra tài khoản nhận tiền trước khi bấm. “Không thấy tiền” và từ chối vẫn do Chủ sự kiện làm. Mỗi lần xác nhận và mở ảnh đều được ghi lại.', "Check the receiving account before you tap. “Can't find it” and rejecting stay with the Host. Every confirmation and every proof you open is recorded.")}</Note>
+      <div style={{ marginTop: 12 }}>
+        {!v ? <Note>{T('Đang tải…', 'Loading…')}</Note> : rows.length === 0 ? <Note tone="ink2" testId="project-payments-empty">{T('Không có khoản nào đang chờ.', 'Nothing is waiting for a check.')}</Note> : (
+          <Card padding={4} data-testid="project-payments-list">
+            {rows.map((r, i) => (
+              <div key={r.booking_id}>
+                <div style={{ padding: '10px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}><strong>{r.name}</strong><strong style={{ fontVariantNumeric: 'tabular-nums' }}>{formatMoney(r.amount, 'VND')}</strong></div>
+                  <span style={{ fontSize: 13, color: ink2 }}>{[T(`${r.qty} chỗ`, r.qty === 1 ? '1 seat' : `${r.qty} seats`), r.payment_ref ? T(`Mã ${r.payment_ref}`, `Ref ${r.payment_ref}`) : null].filter(Boolean).join(' · ')}</span>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {r.has_proof && <button type="button" data-testid={`project-payments-proof-${r.booking_id}`}
+                      onClick={async () => setProof({ name: r.name, url: await p.openProof(r.booking_id) })}
+                      style={{ minHeight: 44, padding: '0 12px', borderRadius: 999, border: 0, background: 'var(--bb-block-inset)', color: ink, fontWeight: 600, cursor: 'pointer' }}>{T('Xem ảnh chuyển khoản', 'View transfer proof')}</button>}
+                    <button type="button" disabled={p.s.projectBusy} onClick={() => p.confirmPayment(r.booking_id)} data-testid={`project-payments-confirm-${r.booking_id}`}
+                      aria-label={T(`Đã nhận tiền của ${r.name}`, `Money received from ${r.name}`)}
+                      style={{ marginLeft: 'auto', minHeight: 44, padding: '0 14px', borderRadius: 999, border: 0, background: ink, color: 'var(--bb-bg)', fontWeight: 700, cursor: 'pointer' }}>{T('Đã nhận tiền', 'Money received')}</button>
+                  </div>
+                </div>
+                {i < rows.length - 1 && <div style={{ height: 1, background: divider }} />}
+              </div>
+            ))}
+          </Card>
+        )}
+      </div>
+      {proof && (
+        <div onClick={() => setProof(null)} style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(12,12,12,0.6)', display: 'flex', alignItems: 'flex-end' }}>
+          <div role="dialog" aria-modal="true" aria-label={T('Ảnh chuyển khoản', 'Transfer proof')} data-testid="project-proof" onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--bb-bg)', color: ink, width: '100%', borderRadius: '22px 22px 0 0', padding: 20, boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><strong>{proof.name}</strong>
+              <button type="button" onClick={() => setProof(null)} aria-label="Close" data-testid="project-proof-close" style={{ width: 44, height: 44, borderRadius: '50%', border: 0, background: 'var(--bb-block-inset)', color: ink, cursor: 'pointer' }}>✕</button></div>
+            <div style={{ marginTop: 12, minHeight: 240, borderRadius: 16, background: 'var(--bb-block-inset)', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+              {proof.url ? <img src={proof.url} alt={T('Ảnh chuyển khoản', 'Transfer proof')} draggable={false} onContextMenu={e => e.preventDefault()} style={{ maxWidth: '100%', userSelect: 'none' }} />
+                : <span style={{ color: ink2 }}>{T('Chưa có ảnh để hiển thị.', 'No image to show.')}</span>}
+            </div>
+            <div style={{ marginTop: 10 }}><Note>{T(`Chỉ xem. Lần mở này đã được ghi lại cho Chủ sự kiện, và liên kết đóng sau ${p.LIMITS.proofUrlSeconds} giây.`, `View only. This open was recorded for the Host, and the link closes after ${p.LIMITS.proofUrlSeconds} seconds.`)}</Note></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

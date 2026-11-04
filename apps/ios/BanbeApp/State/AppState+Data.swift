@@ -706,6 +706,7 @@ extension AppState {
         projectInvites = []
         projectMoney = nil
         projectDoor = nil
+        projectPayments = nil
         projectJoinPeek = nil
         projectJoinCode = ""
         UserDefaults.standard.removeObject(forKey: Self.pendingProjectInviteKey)
