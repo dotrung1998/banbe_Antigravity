@@ -77,7 +77,7 @@ export const HOST_GUIDE = {
         ['"Escalate to banbe": nhờ quản trị viên quyết định. Chat tranh chấp vẫn mở cho đến khi banbe quyết định.', '"Escalate to banbe": asks admins to decide. The dispute chat stays open until banbe decides.'],
         ['Sự kiện cần duyệt khách: "Accept" hoặc "Reject" yêu cầu. "Cancel booking" trả chỗ về và thông báo cho khách.', 'Approval-required events: "Accept" or "Reject" requests. "Cancel booking" frees the seat and notifies the guest.'],
       ]],
-      ['tip', 'Bạn nên phản hồi trong khoảng 1 giờ. banbe KHÔNG tự xác nhận thay bạn: ghế của khách bị khóa cho tới khi bạn hành động. Quá hạn sẽ có nhắc nhở và leo thang.', 'Aim to respond within about 1 hour. banbe does NOT auto-confirm for you: the guest\'s seat stays locked until you act. Overdue items trigger reminders and escalation.'],
+      ['tip', 'Bạn nên phản hồi trong khoảng 1 giờ. banbe chỉ tự xác nhận khi bạn đã kết nối ngân hàng (Casso hoặc PayOS) và khoản chuyển khớp mã tham chiếu và số tiền. Còn lại, ghế của khách bị khóa cho tới khi bạn hành động.', 'Aim to respond within about 1 hour. banbe confirms automatically only when you have connected your bank (Casso or PayOS) and the transfer matches the reference and amount. Otherwise the guest\'s seat stays locked until you act.'],
     ]},
     { id: 'checkin', vi: 'Soát vé & danh sách khách', en: 'Check-in & the guest list', blocks: [
       ['p', 'Sự kiện bắt đầu trong 24 giờ tới hoặc đang diễn ra được đưa lên đầu Dashboard với viền vàng, nhãn "Sắp diễn ra" / "Đang diễn ra" và nút "Điểm danh". Thẻ Host trong Tài khoản cũng hiện nút "Điểm danh" khi sự kiện đến gần.', 'Events starting within 24 hours or happening now move to the top of the Dashboard with a gold border, a "Starting soon" / "Happening now" tag and a "Check-in" button. The Host card in Account also shows "Check-in" when an event is near.'],
@@ -148,6 +148,68 @@ export const HOST_GUIDE = {
         ['Thành viên team có thể chạy cửa và chat. Chỉ chủ hồ sơ mới sửa sự kiện, hủy sự kiện và quản lý thành viên.', 'Team members can run the door and chat. Only the profile owner edits events, cancels them and manages members.'],
       ]],
     ]},
+    // Event Project Hub (note 76): shown only while the matching switches are on (src/lib/contentFlags.js).
+    { id: 'projects', flag: 'event_project_hub', vi: 'Dự án sự kiện', en: 'Event projects', blocks: [
+      ['p', 'Dự án sự kiện là không gian làm việc riêng cho một sự kiện, nơi bạn và những người giúp bạn chia việc, bàn bạc, lên lịch chạy trong ngày và giữ liên kết của đội. Khách không bao giờ thấy dự án.', 'An event project is a private workspace for one event, where you and the people helping you share tasks, talk things through, plan the run of the day and keep the team\'s links. Guests never see it.'],
+      ['h', 'Bắt đầu dự án', 'Starting a project'],
+      ['ul', [
+        ['Ở Trang chính khi đang Hosting, dưới sự kiện sắp tới, nhấn "Lập dự án cho đội". Khi đã có dự án, chỗ đó hiện "Mở dự án · N việc của bạn".', 'On Home in Hosting, under your next event, tap "Start a team project". Once it exists, the same place shows "Open project · N tasks for you".'],
+        ['Dự án có sáu thẻ: Tổng quan, Việc, Chủ đề, Đội, Tiền & cổng và Ngày G. Màn hình hiện năm thẻ, vuốt thanh thẻ để thấy thẻ thứ sáu.', 'A project has six tabs: Overview, Tasks, Topics, Team, Money & door and Day-of. Five fit on screen. Swipe the tab bar for the sixth.'],
+      ]],
+      ['h', 'Vai trò', 'Roles'],
+      ['ul', [
+        ['Chủ sự kiện: tài khoản tổ chức của sự kiện. Toàn quyền, duyệt hạng mục và kênh, quản lý đội, giữ tiền và tài khoản nhận tiền.', 'Host: the organizer account of the event. Full control. Approves lanes and channels, manages the team, keeps money and the payout account.'],
+        ['Quản lý: điều phối việc và chủ đề, mời Trưởng hạng mục và Hỗ trợ, đề xuất hạng mục mới.', 'Manager: coordinates tasks and topics, invites Lane leads and Helpers, proposes new lanes.'],
+        ['Tài chính & cổng: xác nhận thanh toán, xử lý hoàn tiền và check-in khách, chỉ khi banbe đã bật các quyền này (xem Tiền & cổng bên dưới).', 'Finance & door: confirms payments, handles refunds and checks guests in, only once banbe has turned these on (see Money & door below).'],
+        ['Trưởng hạng mục: phụ trách một hạng mục, tạo, giao và chốt việc trong hạng mục đó.', 'Lane lead: owns one lane and creates, assigns and settles its work.'],
+        ['Hỗ trợ: làm việc được giao, đặt câu hỏi và bỏ phiếu.', 'Helper: does assigned work, asks questions and votes.'],
+      ]],
+      ['p', 'Vai trò làm việc là riêng tư trong dự án. Nó khác với vai trò công khai ở mục Đội ngũ trên trang tổ chức của bạn và không thay đổi mục đó.', 'Working roles are private to the project. They are separate from the public role in the Team section of your organizer page and don\'t change it.'],
+      // The ONE place that contrasts the project role with the organizer-profile team member (plan §5g). Keep it single.
+      ['tip', '"Quản lý" là vai trò chỉ trong một dự án, không giống đồng tổ chức trên hồ sơ người tổ chức của bạn, và không cho quyền vào trang tổ chức hay các sự kiện khác của bạn.', '"Manager" is a role inside one project only. It is not the same as a co-host on your organizer profile, and it gives no access to your organizer page or your other events.'],
+      ['h', 'Việc và hạng mục', 'Tasks and lanes'],
+      ['ul', [
+        ['Việc được chia theo hạng mục (tối đa 10). Bạn thêm hạng mục. Quản lý đề xuất hạng mục, bạn duyệt hoặc từ chối kèm lý do.', 'Work is grouped into lanes (up to 10). You add lanes. A Manager proposes one, and you approve it or decline it with a reason.'],
+        ['Mỗi việc có người làm, hạn theo giờ nơi tổ chức và trạng thái: Cần làm, Đang làm, Bị chặn hoặc Xong. Chủ sự kiện, Quản lý và Trưởng hạng mục đó sửa việc. Người được giao đổi trạng thái.', 'Each task has an owner, a due date in the event\'s time zone and a status: To do, Doing, Blocked or Done. The Host, Managers and that lane\'s lead edit tasks. The person it is assigned to changes the status.'],
+        ['Tổng quan cho thấy mức sẵn sàng, việc bị chặn hoặc trễ, và việc sắp tới.', 'Overview shows how ready you are, what is blocked or late, and what is coming up.'],
+        ['Việc, bài, mốc Ngày G và hạng mục đã lưu trữ bị xoá sẽ nằm trong Thùng rác (menu ⋯) 7 ngày. Chủ sự kiện và Quản lý khôi phục được. Chỉ Chủ sự kiện xoá hẳn.', 'Deleted tasks, posts, Day-of items and archived lanes stay in the Trash (the ⋯ menu) for 7 days. The Host and Managers can restore them. Only the Host deletes them for good.'],
+      ]],
+      ['h', 'Chủ đề', 'Topics'],
+      ['p', 'Có 4 loại bài: Đề xuất, Câu hỏi, Cập nhật, Quyết định. Mọi người bỏ phiếu cho đề xuất, trả lời (tối đa 10 trả lời) và đánh dấu đã xem. "Đang chờ bạn" liệt kê những gì cần bạn trả lời. Mỗi ngày lúc 18:00 giờ của bạn, banbe gửi một bản tóm tắt nếu có việc đang chờ bạn.', 'There are 4 post types: Proposal, Question, Update and Decision. People vote on proposals, reply (up to 10 replies) and mark posts as seen. "Waiting on you" lists what needs your answer. Once a day at 18:00 your time, banbe sends one summary if something is waiting on you.'],
+      ['h', 'Kênh của đội', 'Team channels'],
+      ['p', 'Thêm tối đa 5 liên kết tới nhóm chat hoặc cuộc gọi mà đội bạn đã dùng. Chủ sự kiện thêm và sửa, Quản lý đề xuất, mọi người mở được. Liên kết mở ngoài banbe và banbe không thấy các tin nhắn đó. Ai có liên kết cũng vào được nhóm, nên hãy đổi liên kết khi bạn mời ai đó rời đội.', 'Add up to 5 links to the chat or call groups your team already uses. The Host adds and edits them, Managers suggest, everyone can open them. They open outside banbe, and banbe doesn\'t see those messages. Anyone with a link can join that group, so change the links when you remove someone from the team.'],
+      ['h', 'Mời người vào đội', 'Inviting people'],
+      ['ul', [
+        ['Ở thẻ Đội, nhấn "Mời thành viên". Chủ sự kiện mời được mọi vai trò. Quản lý chỉ mời Trưởng hạng mục và Hỗ trợ.', 'In the Team tab, tap "Invite someone". The Host can invite any role. A Manager invites Lane leads and Helpers only.'],
+        ['Mỗi lời mời là một liên kết và một mã dạng BB-7K2Q, có hiệu lực 48 giờ và dùng một lần. Bạn huỷ được lời mời còn hiệu lực bất cứ lúc nào.', 'Each invite is a link and a code like BB-7K2Q, valid for 48 hours and for one person. You can cancel a live invite at any time.'],
+        ['Với "Mời bằng mã QR", lời mời hiện thành mã QR. Tắt "Chỉ dùng một lần" để tối đa 20 người vào bằng cùng một lời mời. Mã QR chỉ chứa mã mời.', 'With "Invite by QR", the invite shows as a QR code. Turn off "Single use only" to let up to 20 people join with the same invite. The QR holds only the invite code.', 'project_qr_invite'],
+        ['Người được mời nhận vai trò bạn đặt sẵn. Họ chỉ thấy dự án này, không thấy các sự kiện khác của bạn.', 'Invitees get the role you preset. They see this project only, not your other events.'],
+      ]],
+      ['h', 'Ngày G', 'Day-of'],
+      ['ul', [
+        ['Tuần sự kiện với số việc đến hạn mỗi ngày, và lịch chạy trong ngày dạng Danh sách hoặc Lịch (lưới giờ).', 'The event week with the tasks due each day, and the run of the day as a List or a Calendar (time grid).'],
+        ['Chủ sự kiện và Quản lý thêm và sửa mốc, từ 12 giờ trước giờ bắt đầu đến 24 giờ sau. Mọi người tick mốc khi xong. Giờ tick lấy từ máy chủ banbe, không lấy từ điện thoại.', 'The Host and Managers add and edit items, from 12 hours before the start to 24 hours after it. Everyone ticks items when they are done. The tick time comes from banbe\'s server, not the phone.'],
+        ['Vào ngày sự kiện, thẻ tự làm mới mỗi 15 giây khi đang mở. Mốc chạy quá giờ hiện "+N′" và mốc kế tiếp bị rút ngắn trên lưới.', 'On the event day the tab refreshes every 15 seconds while it is open. An item running over shows "+N′" and the next one is squeezed on the grid.'],
+      ]],
+      ['h', 'Tiền & cổng', 'Money & door'],
+      ['ul', [
+        ['Chỉ bạn (tài khoản tổ chức của sự kiện) thấy số tiền: tiền đã xác nhận, thanh toán chờ kiểm tra, yêu cầu hoàn tiền, kèm lối tắt tới Xác minh thanh toán, Hoàn tiền và Điểm danh. Quay lại sẽ về dự án.', 'Only you (the organizer accounts of the event) see amounts: confirmed money, payments waiting for a check and refund asks, with shortcuts to payment checks, refunds and Attendance. Back returns to the project.'],
+        ['Người khác trong đội chỉ thấy ai có quyền, không thấy số tiền nào.', 'Everyone else on the team sees who has access, and no amounts.'],
+        ['Ở thẻ Đội, bạn có thể cho một thành viên quyền tiền hoặc quyền check-in. Tài chính & cổng có cả hai. Quyền chỉ có hiệu lực với những bước banbe đã bật. Rút tiền và huỷ sự kiện luôn do bạn làm.', 'In the Team tab you can give a member money access or check-in access. Finance & door has both. Access only works for the steps banbe has turned on. Payout and cancelling always stay with you.'],
+        ['Check-in: thành viên có quyền check-in thấy danh sách cửa chỉ có tên khách, không có số tiền, mã vé hay ngày sinh, và check-in cả nhóm khách. Mỗi lần check-in đều được ghi lại cho bạn. Huỷ check-in và từ chối khách vẫn do bạn làm.', 'Check-in: a member with check-in access sees a door list with guest names only, no amounts, ticket codes or dates of birth, and checks a party in. Every check-in is recorded for you. Undoing a check-in and turning a guest away stay with you.', 'project_delegate_checkin'],
+        ['Thanh toán: thành viên có quyền tiền thấy "Thanh toán cần kiểm tra" (đặt chỗ mà khách báo đã chuyển tiền) với số tiền và nội dung chuyển khoản, rồi bấm "Đã nhận tiền". "Xem ảnh chuyển khoản" chỉ mở ảnh của đúng đặt chỗ đó, chỉ để xem, và mỗi lần mở đều được ghi lại. Họ không bao giờ thấy hoá đơn hay biên nhận. "Không thấy tiền" vẫn do bạn làm.', 'Payments: a member with money access sees "Payments to check" (bookings where the guest says they paid) with the amount and transfer reference, then taps "Money received". "View transfer proof" opens the proof of that booking only, to view, and every opening is recorded. They never see invoices or receipts. "Can\'t find it" stays with you.', 'project_delegate_payments'],
+        ['Hoàn tiền: "Hoàn tiền cần gửi" liệt kê các khoản hoàn còn mở kèm tài khoản nhận hoàn tiền của khách, để đội chuyển tiền. Mặc định bạn duyệt: thành viên bấm "Ghi nhận để chủ sự kiện duyệt" và khách chỉ được báo sau khi bạn duyệt. Bạn có thể từ chối kèm lý do.', 'Refunds: "Refunds to send" lists open refunds with the guest\'s refund account, so the team can make the transfer. By default you approve: the member taps "Record transfer for Host approval", and the guest is told only after you approve. You can decline with a reason.', 'project_delegate_refunds'],
+        ['Ở "Duyệt hoàn tiền", bạn có thể chọn "Tài chính tự hoàn tiền". Khi đó thành viên bấm "Đánh dấu đã hoàn tiền" và khách được báo ngay.', 'Under "Refund approval" you can choose "Finance can refund alone". The member then taps "Mark refund sent" and the guest is told right away.', 'project_delegate_refunds'],
+        ['Tranh chấp: với một tranh chấp hoàn tiền đang mở, "Giao cho đội xử lý" cho một thành viên có quyền tiền xử lý riêng khoản hoàn đó trong 7, 14 hoặc 30 ngày. Quyền này hết khi tranh chấp đóng. Trò chuyện tranh chấp vẫn chỉ giữa bạn, khách và banbe.', 'Disputes: on an open refund dispute, "Let the team handle this refund" gives one member with money access that one refund for 7, 14 or 30 days. It ends when the dispute closes. The dispute chat stays between you, the guest and banbe.', 'project_delegate_refunds'],
+      ]],
+      ['h', 'Sau sự kiện', 'After the event'],
+      ['ul', [
+        ['Quyền tiền và check-in bạn đã cho đội kết thúc 7 ngày sau sự kiện.', 'Money and check-in access you gave the team ends 7 days after the event.'],
+        ['Nếu còn khoản hoàn tiền mở khi quyền của đội đã hết, bạn nhận một thông báo rằng các khoản đó đã trở về với bạn.', 'If refunds are still open when the team\'s access has ended, you get one notice that those refunds are back with you.', 'project_delegate_refunds'],
+        ['30 ngày sau sự kiện, dự án chuyển sang chỉ xem.', '30 days after the event the project becomes read-only.'],
+        ['90 ngày sau sự kiện, dự án bị xoá cùng mọi thứ bên trong. Bản ghi thao tác tiền và check-in do thành viên đội làm được giữ cùng với đặt chỗ. Đặt chỗ, thanh toán và hoàn tiền không thuộc dự án nên không bị xoá theo.', '90 days after the event the project is deleted with everything in it. Records of money and check-in actions taken by team members are kept with the booking. Bookings, payments and refunds are not part of the project and are not deleted with it.'],
+      ]],
+    ]},
     { id: 'reports', vi: 'Số liệu & báo cáo', en: 'Metrics & reports', blocks: [
       ['p', 'Account > "Số Liệu & Báo Cáo". Chọn 7 ngày / 30 ngày / 90 ngày / "Tuỳ chọn…". Thẻ chính là số chỗ đã xác nhận theo ngày, kèm ngày cao nhất, số ngày có hoạt động và trung bình mỗi ngày.', 'Account > "Metrics & Reports". Pick 7d / 30d / 90d / "Custom…". The main card shows confirmed seats per day, with the peak day, active days and daily average.'],
       ['ul', [
@@ -160,7 +222,7 @@ export const HOST_GUIDE = {
       ['ul', [
         ['Không thể xóa tài khoản khi còn sự kiện đang mở.', 'You cannot delete your account while you own an open event.'],
         ['Thời gian giữ chỗ 30 phút không tùy chỉnh được.', 'The 30-minute hold cannot be customised.'],
-        ['Hãy xác nhận thanh toán nhanh: banbe không tự xác nhận.', 'Confirm payments promptly: banbe never confirms automatically.'],
+        ['Hãy xác nhận thanh toán nhanh. banbe chỉ tự xác nhận khi bạn đã kết nối ngân hàng (Casso hoặc PayOS).', 'Confirm payments promptly. banbe confirms automatically only when you have connected your bank (Casso or PayOS).'],
         ['Không chuyển tiền hộ qua banbe. Mọi giao dịch diễn ra giữa bạn và khách.', 'banbe does not move money. All payments are between you and your guests.'],
         ['Sở thích của khách là riêng tư. Bạn chỉ đặt điều kiện, không thấy câu trả lời của từng người.', 'Guest preferences are private. You set criteria but never see anyone\'s answers.'],
       ]],

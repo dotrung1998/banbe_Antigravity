@@ -103,4 +103,71 @@ final class ContentFlagsTests: XCTestCase {
         }
         XCTAssertTrue(ios.contains("static let version = \"2026-10-06\""), "policy version unchanged (no re-consent)")
     }
+
+    // MARK: Event Project Hub (note 76). Mirrors the project cases in tests/unit/contentFlags.test.mjs.
+    private let projectKeys = ["event_project_hub", "project_qr_invite", "project_delegate_checkin", "project_delegate_payments", "project_delegate_refunds"]
+    private let hub: [String: Bool] = ["event_project_hub": true]
+    private var allProject: [String: Bool] { Dictionary(uniqueKeysWithValues: projectKeys.map { ($0, true) }) }
+
+    func testProjectKeysAreDarkUntilSetAndStepsNeedTheHub() {
+        for k in projectKeys {
+            XCTAssertFalse(ContentFlags.isOn([:], k), "\(k): missing = off")
+            XCTAssertFalse(ContentFlags.isOn([k: false], k))
+        }
+        XCTAssertTrue(ContentFlags.isOn(hub, "event_project_hub"))
+        for k in projectKeys.dropFirst() {
+            XCTAssertFalse(ContentFlags.isOn([k: true], k), "\(k) without the hub stays hidden")
+            XCTAssertFalse(ContentFlags.isOn(hub, k))
+            XCTAssertTrue(ContentFlags.isOn(hub.merging([k: true]) { $1 }, k))
+        }
+    }
+
+    func testProjectsOffRemovesEveryMention() {
+        let en = "(event projects?|event team|Projects I'm in|Finance & door|Lane lead|Day-of|Start a team project|Invite by QR)"
+        let vi = "(dự án|Tài chính & cổng|Trưởng hạng mục|Ngày G|đội sự kiện)"
+        for flags in [[:], allProject.merging(["event_project_hub": false]) { $1 }] {
+            for doc in docs {
+                let f = ContentFlags.filter(doc, flags)
+                XCTAssertFalse(f.sections.contains { $0.id == "projects" }, doc.en)
+                XCTAssertNil(text(f, en: true).range(of: en, options: [.regularExpression, .caseInsensitive]), doc.en)
+                XCTAssertNil(text(f, en: false).range(of: vi, options: [.regularExpression, .caseInsensitive]), doc.vi)
+            }
+        }
+    }
+
+    func testProjectStepsShowOnlyWithTheirSwitch() {
+        let hubOnly = text(ContentFlags.filter(HelpContent.host, hub), en: true)
+        XCTAssertTrue(hubOnly.contains("It is not the same as a co-host on your organizer profile"))
+        for absent in ["Invite by QR", "door list", "View transfer proof", "Refunds to send", "Finance can refund alone"] {
+            XCTAssertFalse(hubOnly.contains(absent), absent)
+        }
+        let refunds = text(ContentFlags.filter(HelpContent.host, hub.merging(["project_delegate_refunds": true]) { $1 }), en: true)
+        XCTAssertTrue(refunds.contains("Finance can refund alone"))
+        XCTAssertFalse(refunds.contains("View transfer proof"))
+        let all = text(ContentFlags.filter(HelpContent.faq, allProject), en: true)
+        XCTAssertTrue(all.contains("Can the team send refunds without me?"))
+        XCTAssertTrue(text(ContentFlags.filter(HelpContent.personal, allProject), en: true).contains("Projects I'm in"))
+    }
+
+    /// The iOS policy carries exactly the web's project passages (B3 line, B4 and B7 rows), still unbumped.
+    func testPolicyProjectTextMatchesTheWeb() throws {
+        var url = URL(fileURLWithPath: #filePath)
+        for _ in 0..<4 { url.deleteLastPathComponent() }
+        let web = try String(contentsOf: url.appendingPathComponent("src/screens/Policy.jsx"), encoding: .utf8)
+        let ios = try String(contentsOf: url.appendingPathComponent("apps/ios/BanbeApp/Views/PolicyView.swift"), encoding: .utf8)
+        let rows = try NSRegularExpression(pattern: "\\{ flag: '(?:event_project_hub|project_[a-z_]+)', cells: \\['((?:[^'\\\\]|\\\\.)*)', '((?:[^'\\\\]|\\\\.)*)'\\] \\}")
+        let found = rows.matches(in: web, range: NSRange(web.startIndex..., in: web)).flatMap { m in
+            [1, 2].map { String(web[Range(m.range(at: $0), in: web)!]).replacingOccurrences(of: "\\'", with: "'") }
+        }
+        XCTAssertEqual(found.count, 10, "4 B4 rows + 1 B7 row")
+        for t in found { XCTAssertTrue(ios.contains(t), "missing on iOS: \(t.prefix(60))") }
+        let b3 = try XCTUnwrap(web.range(of: "{on('event_project_hub') && ("))
+        let chunk = String(web[b3.upperBound...].prefix(2000))
+        let re = try NSRegularExpression(pattern: "(?:vi|en)=\"([^\"]+)\"")
+        let b3Texts = re.matches(in: chunk, range: NSRange(chunk.startIndex..., in: chunk)).prefix(2).map { String(chunk[Range($0.range(at: 1), in: chunk)!]) }
+        XCTAssertEqual(b3Texts.count, 2)
+        for t in b3Texts { XCTAssertTrue(ios.contains(t), "missing on iOS: \(t.prefix(60))") }
+        XCTAssertTrue(ios.contains("DRAFT FOR LEGAL REVIEW"))
+        XCTAssertTrue(ios.contains("static let version = \"2026-10-06\""), "not bumped before legal review")
+    }
 }

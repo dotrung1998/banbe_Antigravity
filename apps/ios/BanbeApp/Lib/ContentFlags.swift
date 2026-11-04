@@ -12,7 +12,13 @@ import Foundation
 ///   app_events     first-party measurement on (migration 196)
 ///   event_reminders, event_recap, host_recap, follow_alerts (199); weekly_digest, live_activity (200)
 ///   event_types    the event_type_profiles switch is on (migration 203/204): alcohol & minimum-age terms (A10)
+///   event_project_hub          the Event Project Hub is on (note 76, migration 210)
+///   project_qr_invite, project_delegate_checkin, project_delegate_payments, project_delegate_refunds
+///                              that switch AND event_project_hub are on (the server needs both, migrations 212-215)
 enum ContentFlags {
+    /// Event Project Hub step keys: shown only while the step's switch and the hub are both on (same rule as the web).
+    static let projectStepKeys: Set<String> = ["project_qr_invite", "project_delegate_checkin", "project_delegate_payments", "project_delegate_refunds"]
+
     static func isOn(_ flags: [String: Bool], _ key: String?) -> Bool {
         guard let key else { return true }
         let rewards = FeatureFlags.isOn(flags, "rewards")
@@ -26,6 +32,9 @@ enum ContentFlags {
         case "event_types": return flags["event_type_profiles"] == true
         // On unless an admin turned it off (migration 199 seeds it ON).
         case "event_reminders": return FeatureFlags.isOn(flags, "event_reminders")
+        case "event_project_hub": return FeatureFlags.isOn(flags, "event_project_hub")
+        case let k where projectStepKeys.contains(k):
+            return FeatureFlags.isOn(flags, "event_project_hub") && FeatureFlags.isOn(flags, k)
         default: return false
         }
     }

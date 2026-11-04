@@ -510,3 +510,23 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
   is refused for anon keys ("Invalid API key"), so the memory's OpenAPI check no longer works with the anon key.
 - **Not done:** no switch turned on; the bank feed (Casso/PayOS) was not exercised against production; the web app with the
   9b/9c UI is in main, but nothing reaches the hub while `event_project_hub` is off.
+
+## Help and policy text (2026-11-04, content keys from note 59; NOT committed)
+- **Content keys** = the five switch names (`src/lib/contentFlags.js` ⇄ `Lib/ContentFlags.swift`): `event_project_hub`, and
+  `project_qr_invite` / `project_delegate_checkin` / `project_delegate_payments` / `project_delegate_refunds`, which also
+  need the hub on. All dark until set, so production shows none of it today.
+- **Help** (`src/data/help/*.js`, iOS regenerated with `node scripts/gen-help-content-ios.mjs`): Host guide section
+  `projects` (roles, tasks, topics, channels, invites, Day-of, Money & door, after the event; QR and each delegated step
+  as keyed list items), Personal guide `projects` (joining, Projects I'm in, leaving), Q&A topic `projects` (4 hub
+  questions + payments + refunds). The ONE sentence contrasting Manager with the organizer-profile team member is a
+  `tip` block in the Host guide; a unit test fails if that word appears anywhere else in help data.
+- **Policy** (Policy.jsx, PolicyView.swift, banbe_User_Policy.md): B3 purpose (8), B4 rows "Event projects" + check-in /
+  payments (transfer proof) / refunds (guest's refund account), B7 retention row. Marked `DRAFT FOR LEGAL REVIEW`.
+  The check-in row also says delegates see only whether a guest meets the minimum age (212's lookup), which the §5f
+  draft did not cover. `POLICY_VERSION` NOT bumped: after legal sign-off change `'2026-10-06'` in `src/lib/policy.js`
+  and `PolicyView.swift` (`static let version`) together, and the version asserts in contentFlags.test.mjs,
+  ContentFlagsTests and both tests/public privacy specs.
+- **Wording to recheck:** the guide says the Host can extend team access up to the read-only date; the RPC
+  (`project_extend_grants`) exists but neither app has a button for it yet.
+- Tests: web unit 916/916, public Playwright `tests/public/privacy-project-switch.spec.js` 3/3 (+ rewards spec 5/5),
+  iOS `ContentFlagsTests` 10/10. `tests/help-legal.spec.js` still fails at `setupToHome` (pre-existing, note 33).

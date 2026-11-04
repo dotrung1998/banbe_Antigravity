@@ -191,7 +191,22 @@ export const PERSONAL_GUIDE = {
         ['Nếu chưa đăng nhập, bạn xác minh email bằng mã 8 chữ số.', 'If you are not signed in, verify your email with an 8-digit code.'],
       ]],
     ]},
-    { id: 'profile', vi: 'Hồ sơ, thẻ chia sẻ & mời bạn bè', en: 'Profile, share card & inviting friends', blocks: [
+    // Event Project Hub (note 76), for people a host invites onto an event team. Only while the switch is on.
+    { id: 'projects', flag: 'event_project_hub', vi: 'Tham gia đội của một sự kiện', en: 'Joining an event team', blocks: [
+      ['p', 'Host có thể mời bạn vào đội làm việc của một sự kiện. Bạn chỉ thấy dự án của sự kiện đó: việc, chủ đề và lịch chạy của đội. Vai trò do người mời đặt sẵn và chỉ đội thấy.', 'A host can invite you onto the working team of one event. You only see that event\'s project: its tasks, topics and run of the day. Your role is set by whoever invited you, and only the team sees it.'],
+      ['ol', [
+        ['Mở liên kết mời, hoặc vào Tài khoản › "Vào đội sự kiện bằng mã mời" và nhập mã dạng BB-7K2Q, rồi nhấn "Kiểm tra".', 'Open the invite link, or go to Account › "Join an event team with a code", enter the code (like BB-7K2Q) and tap "Check".'],
+        ['Xem sự kiện và vai trò, rồi nhấn "Vào đội". Nếu chưa đăng nhập, nhấn "Đăng nhập để vào đội". Mã của bạn được giữ lại.', 'Check the event and the role, then tap "Join the team". If you are signed out, tap "Log in to join". Your code is kept for you.'],
+        ['Trên iPhone, bạn cũng có thể nhấn "Quét mã QR" ở màn hình vào đội để quét mã QR mời.', 'On iPhone you can also tap "Scan a QR code" on the join screen to scan an invite QR.', 'project_qr_invite'],
+      ]],
+      ['ul', [
+        ['Lời mời hết hạn sau 48 giờ. Nếu mã không còn dùng được, hãy xin host một mã mới.', 'Invites expire after 48 hours. If a code no longer works, ask the host for a new one.'],
+        ['Mọi dự án bạn tham gia nằm ở Tài khoản › "Dự án của tôi". Ở đó cũng có "Có mã mời? Vào đội".', 'Every project you are in is under Account › "Projects I\'m in". It also has "Have an invite code? Join a team".'],
+        ['Kênh của đội là liên kết tới ứng dụng chat hoặc gọi bên ngoài. banbe không thấy các tin nhắn đó.', 'Team channels are links to outside chat or call apps. banbe doesn\'t see those messages.'],
+        ['Rời đội bất cứ lúc nào bằng menu ⋯ › "Rời dự án". 30 ngày sau sự kiện, dự án chỉ còn xem được, và bị xoá sau 90 ngày.', 'Leave any time with the ⋯ menu › "Leave project". 30 days after the event the project becomes read-only, and it is deleted after 90 days.'],
+      ]],
+    ]},
+    { id: 'profile', vi:'Hồ sơ, thẻ chia sẻ & mời bạn bè', en: 'Profile, share card & inviting friends', blocks: [
       ['ul', [
         ['Account > "Personal Profile": đổi ảnh, handle, tên hiển thị, giới thiệu, thành phố, sở thích, bảng màu.', 'Account > "Personal Profile": change photo, handle, display name, bio, city, interests, palette.'],
         ['Trang công khai của bạn ở /u/<handle> ai có link cũng xem được.', 'Your public page lives at /u/<handle> and anyone with the link can view it.'],
