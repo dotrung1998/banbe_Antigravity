@@ -8,7 +8,7 @@
 // builds (import.meta.env.DEV is false there).
 import { useBanBe } from './BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
-import { projectCan, dueLabel, daysToGo, moneySummary, projectInviteValue } from '../lib/projectPresentation.js';
+import { projectCan, dueLabel, daysToGo, moneySummary, projectInviteValue, doorGuests } from '../lib/projectPresentation.js';
 import LIMITS from '../data/projectLimits.json' with { type: 'json' };
 
 export const PENDING_PROJECT_INVITE_KEY = 'banbe.pendingProjectInvite';
@@ -472,8 +472,37 @@ export function useEventProject() {
     set(prev => (prev.projectEventId !== eventId ? {} : { projectMoney: moneySummary(rows || [], refunds, new Date()) }));
   };
 
+  // ------------------------------------------------------------------ door (phase 9a, migration 212)
+  const doorAccess = !moneyAccess && can('checkin');
+  const loadDoor = async () => {
+    if (!doorAccess) { set({ projectDoor: null }); return; }
+    if (demo) {
+      if (!s.projectDoor) set({ projectDoor: doorGuests([
+        { booking_id: 'door-1', attendee_id: 'a1', name: 'Ngọc Anh', party: 1, checked_in: false },
+        { booking_id: 'door-1', attendee_id: 'a2', name: 'Quốc Bảo', party: 1, checked_in: false },
+        { booking_id: 'door-2', attendee_id: null, name: 'Thu Hà', party: 2, checked_in: true },
+        { booking_id: 'door-3', attendee_id: null, name: 'Minh Khang', party: 1, checked_in: false }]) });
+      return;
+    }
+    const { data } = await supabase.rpc('get_event_checkin_names', { p_event_id: s.projectEventId });
+    if (data?.success) set({ projectDoor: doorGuests(data.guests || []) }); else set({ projectNotice: errorText(data?.error) });
+  };
+  /** Check a whole party in from the list (check_in_guest 'manual'; the server writes the audit row). */
+  const checkInGuest = async (bookingId) => {
+    if (demo) { set(prev => ({ projectDoor: (prev.projectDoor || []).map(g => (g.bookingId === bookingId ? { ...g, inside: g.party } : g)) })); return true; }
+    set({ projectBusy: true });
+    const { data } = await supabase.rpc('check_in_guest', { p_reservation_id: bookingId, p_source: 'manual' });
+    set({ projectBusy: false });
+    if (!data?.success) {
+      set({ projectNotice: data?.error === 'Guest already checked in' ? T('Khách này đã vào rồi.', 'This guest is already in.')
+        : data?.error === 'Not authorized' ? T('Quyền check-in của bạn đã hết hoặc đang tắt.', 'Your check-in access has ended or is switched off.') : errorText(null) });
+    }
+    await loadDoor();
+    return !!data?.success;
+  };
+
   return {
-    s, snap, set, T, userId, demo, now, tz, can, LIMITS,
+    s, snap, set, T, userId, demo, now, tz, can, LIMITS, doorAccess, loadDoor, checkInGuest,
     errorText, roleName, roleNote, statusName, typeName, personName, laneName, dueText, clock, headcount,
     open, back, refresh, loadMyProjects, startProject, write,
     setTaskStatus, toggleTaskDone, saveTask, deleteTask, saveChannels, addLane, renameLane, archiveLane, proposeChange, reviewChange, leave,

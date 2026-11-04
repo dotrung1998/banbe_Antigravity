@@ -91,3 +91,117 @@ extension AppState {
         }
     }
 }
+
+// MARK: - phase 9a: delegated check-in (migration 212, switch project_delegate_checkin)
+
+/// One row of `get_event_checkin_names`: names and check-in state only (no amounts, codes, tokens or birth dates).
+struct ProjectDoorRow: Decodable, Equatable {
+    let bookingId: String
+    let attendeeId: String?
+    let name: String
+    let party: Int
+    let checkedIn: Bool
+    enum CodingKeys: String, CodingKey {
+        case name, party
+        case bookingId = "booking_id", attendeeId = "attendee_id", checkedIn = "checked_in"
+    }
+}
+
+private struct ProjectDoorResult: Decodable {
+    let success: Bool
+    let error: String?
+    let guests: [ProjectDoorRow]?
+}
+
+/// One booking at the door: its names, how many people, how many are in.
+struct ProjectDoorGuest: Equatable, Identifiable {
+    let bookingId: String
+    var names: [String]
+    var party: Int
+    var inside: Int
+    var id: String { bookingId }
+    var allIn: Bool { inside >= party }
+}
+
+extension AppState {
+    /// A team member with check-in access while the switch is on (the Host uses Attendance as before).
+    var projectDoorAccess: Bool { !projectMoneyAccess && projectCan("checkin") }
+
+    /// Pure: rows grouped by booking (named attendees count one each; a booking without names counts its party).
+    static func projectDoorGuests(_ rows: [ProjectDoorRow]) -> [ProjectDoorGuest] {
+        var order: [String] = []
+        var map: [String: ProjectDoorGuest] = [:]
+        for r in rows {
+            if map[r.bookingId] == nil { order.append(r.bookingId); map[r.bookingId] = ProjectDoorGuest(bookingId: r.bookingId, names: [], party: 0, inside: 0) }
+            map[r.bookingId]!.names.append(r.name)
+            map[r.bookingId]!.party += r.party
+            if r.checkedIn { map[r.bookingId]!.inside += r.party }
+        }
+        return order.compactMap { map[$0] }
+    }
+
+    func loadProjectDoor() async {
+        guard projectDoorAccess else { projectDoor = nil; return }
+        #if DEBUG
+        if UITestFixture.isActive {
+            if projectDoor == nil {
+                projectDoor = Self.projectDoorGuests([
+                    ProjectDoorRow(bookingId: "door-1", attendeeId: "a1", name: "Ngọc Anh", party: 1, checkedIn: false),
+                    ProjectDoorRow(bookingId: "door-1", attendeeId: "a2", name: "Quốc Bảo", party: 1, checkedIn: false),
+                    ProjectDoorRow(bookingId: "door-2", attendeeId: nil, name: "Thu Hà", party: 2, checkedIn: true),
+                    ProjectDoorRow(bookingId: "door-3", attendeeId: nil, name: "Minh Khang", party: 1, checkedIn: false),
+                ])
+            }
+            return
+        }
+        #endif
+        struct Params: Encodable {
+            let pEventId: String
+            enum CodingKeys: String, CodingKey { case pEventId = "p_event_id" }
+        }
+        do {
+            let result: ProjectDoorResult = try await SupabaseService.client
+                .rpc("get_event_checkin_names", params: Params(pEventId: projectEventID)).execute().value
+            if result.success { projectDoor = Self.projectDoorGuests(result.guests ?? []) }
+            else { projectNotice = projectErrorText(result.error) }
+        } catch {
+            print("loadProjectDoor failed:", error)
+        }
+    }
+
+    /// Check a whole party in from the list (check_in_guest 'manual'; the server writes the audit row).
+    @discardableResult
+    func checkInProjectGuest(_ bookingID: String) async -> Bool {
+        #if DEBUG
+        if UITestFixture.isActive {
+            guard let i = projectDoor?.firstIndex(where: { $0.bookingId == bookingID }) else { return false }
+            projectDoor?[i].inside = projectDoor?[i].party ?? 0
+            return true
+        }
+        #endif
+        struct Params: Encodable {
+            let pReservationId: String; let pSource: String
+            enum CodingKeys: String, CodingKey { case pReservationId = "p_reservation_id", pSource = "p_source" }
+        }
+        struct Result: Decodable { let success: Bool; let error: String? }
+        projectBusy = true
+        defer { projectBusy = false }
+        do {
+            let r: Result = try await SupabaseService.client.rpc("check_in_guest", params: Params(pReservationId: bookingID, pSource: "manual")).execute().value
+            guard r.success else {
+                projectNotice = r.error == "Guest already checked in" ? T("Khách này đã vào rồi.", "This guest is already in.")
+                    : r.error == "Not authorized" ? T("Quyền check-in của bạn đã hết hoặc đang tắt.", "Your check-in access has ended or is switched off.")
+                    : projectErrorText(nil)
+                await loadProjectDoor()
+                return false
+            }
+            Haptics.success()
+            await loadProjectDoor()
+            return true
+        } catch {
+            print("checkInProjectGuest failed:", error)
+            projectNotice = projectErrorText(nil)
+            return false
+        }
+    }
+}

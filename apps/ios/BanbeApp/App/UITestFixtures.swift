@@ -349,6 +349,8 @@ struct UITestFixtureRoot: View {
             // Note 76: the Event Project Hub on the shared demo snapshot (nothing reaches Supabase in a fixture).
             app.featureFlags["event_project_hub"] = true
             if UITestFixture.projectQR { app.featureFlags["project_qr_invite"] = true }
+            // Phase 9a: `-uiFixtureProjectDoor YES` turns on delegated check-in.
+            if UserDefaults.standard.bool(forKey: "uiFixtureProjectDoor") { app.featureFlags["project_delegate_checkin"] = true }
             app.projectSnapshot = UITestFixture.projectSnapshot()
             app.projectEventID = app.projectSnapshot?.event?.id ?? "fx_project"
             app.projectTab = UITestFixture.projectTab

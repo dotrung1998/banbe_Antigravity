@@ -11,9 +11,9 @@ struct ProjectMoneyTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if app.projectMoneyAccess { host } else { lock }
+            if app.projectMoneyAccess { host } else if app.projectDoorAccess { ProjectDoorList() } else { lock }
         }
-        .task { await app.loadProjectMoney() }
+        .task { await app.loadProjectMoney(); await app.loadProjectDoor() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project.moneyTab")
     }
@@ -190,5 +190,79 @@ struct ProjectMoneyTab: View {
     private func grantedList(_ me: ProjectMe) -> String {
         [me.capMoney ? app.T("tiền", "money") : nil, me.capCheckin ? "check-in" : nil].compactMap { $0 }
             .joined(separator: app.T(" và ", " and "))
+    }
+}
+
+/// Phase 9a (migration 212, switch project_delegate_checkin): the door for a team member with check-in access. Names and
+/// check-in state only: no amounts, codes or birth dates reach this list. Checking a party in from here admits everyone
+/// in it who isn't in yet; each check-in is recorded for the Host (event_money_audit).
+struct ProjectDoorList: View {
+    @EnvironmentObject private var app: AppState
+    @State private var query = ""
+
+    var body: some View {
+        let guests = app.projectDoor ?? []
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let shown = q.isEmpty ? guests : guests.filter { $0.names.joined(separator: " ").lowercased().contains(q) }
+        let inside = guests.reduce(0) { $0 + min($1.inside, $1.party) }
+        let total = guests.reduce(0) { $0 + $1.party }
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(app.T("Check-in ở cửa", "Door check-in")).font(BanbeTheme.display(20)).accessibilityAddTraits(.isHeader)
+                    // On the title: the list is the tab's only child, so an id on it merges into the tab's own.
+                    .accessibilityIdentifier("project.door")
+                Text(app.T("\(inside)/\(total) người đã vào", "\(inside) of \(total) people in")).font(.subheadline.weight(.semibold))
+                    .foregroundStyle(app.palette.ink2)
+                    .accessibilityIdentifier("project.door.count")
+                Text(app.T("Chỉ có tên khách. Tiền và hoàn tiền vẫn do Chủ sự kiện làm. Mỗi lần check-in đều được ghi lại cho Chủ sự kiện.",
+                           "Names only. Money and refunds stay with the Host. Every check-in is recorded for the Host."))
+                    .font(.footnote).foregroundStyle(app.palette.ink3).fixedSize(horizontal: false, vertical: true)
+            }
+            TextField(app.T("Tìm tên khách", "Search guests"), text: $query)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                .padding(.horizontal, 14).padding(.vertical, 12)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityIdentifier("project.door.search")
+            if app.projectDoor == nil {
+                ProgressView().frame(maxWidth: .infinity)
+            } else if shown.isEmpty {
+                Text(guests.isEmpty ? app.T("Chưa có khách đã xác nhận.", "No confirmed guests yet.") : app.T("Không có tên nào khớp.", "No names match."))
+                    .font(.subheadline).foregroundStyle(app.palette.ink2).frame(maxWidth: .infinity).padding(.vertical, 16)
+            } else {
+                ProjectRowsCard(items: shown) { g in row(g) }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("project.door.list")
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func row(_ g: ProjectDoorGuest) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(g.names.joined(separator: ", ")).font(.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                Text(app.T("\(g.party) người · \(min(g.inside, g.party)) đã vào", g.party == 1 ? "1 person · \(min(g.inside, 1)) in" : "\(g.party) people · \(min(g.inside, g.party)) in"))
+                    .font(.footnote).foregroundStyle(app.palette.ink2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            if g.allIn {
+                Label(app.T("Đã vào", "In"), systemImage: "checkmark.circle.fill").font(.subheadline.weight(.semibold))
+                    .foregroundStyle(app.palette.ink2)
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("project.door.in.\(g.bookingId)")
+            } else {
+                Button { Task { await app.checkInProjectGuest(g.bookingId) } } label: {
+                    Text(app.T("Check-in", "Check in")).font(.subheadline.weight(.bold))
+                        .padding(.horizontal, 14).frame(minHeight: 44)
+                        .foregroundStyle(app.palette.paper).background(app.palette.ink, in: Capsule())
+                }
+                .buttonStyle(PressableButtonStyle())
+                .disabled(app.projectBusy)
+                .accessibilityLabel(app.T("Check-in cho \(g.names.joined(separator: ", "))", "Check in \(g.names.joined(separator: ", "))"))
+                .accessibilityIdentifier("project.door.checkin.\(g.bookingId)")
+            }
+        }
+        .padding(.vertical, 8)
     }
 }

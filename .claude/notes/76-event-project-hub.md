@@ -1,7 +1,7 @@
 # 76 — Event Project Hub (Hosting): per-event private team workspace
 
-Status: **phases 1-8 of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
-NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) 9e569c9; phase 7 (migration 211 jobs, throwaway stack only, NOT applied to production) 76e7f3c; phase 8 (web parity) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
+Status: **phases 1-9a of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
+NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) 9e569c9; phase 7 (migration 211 jobs, throwaway stack only, NOT applied to production) 76e7f3c; phase 8 (web parity) df543fd; phase 9a (delegated check-in, migration 212, throwaway stack only, NOT applied to production) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
 `~/.claude/plans/pasted-content-id-234b-plan-mode-composed-koala.md`. Design source of truth for roles, tabs and layout:
 `banbe_hosting_project_hub_v6.html` (owner attachment, not in the repo).
 
@@ -300,4 +300,42 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
 - Not checked: the web against a real backend (210/211 not applied), keyboard-only navigation of the sheets, screen
   readers on the web.
 
-## Next: phase 9a (delegated check-in, migration 212)
+## Phase 9a — delegated check-in (migration 212; LOCAL HARNESS ONLY, NOT applied; switch `project_delegate_checkin`, OFF)
+- `supabase/migrations/20261231000212_212_delegated_checkin.sql` + rollback `supabase/rollbacks/20261231000212_212_revert_delegated_checkin.sql`
+  (puts 151's `check_in_guest` back verbatim; KEEPS `event_money_audit`, whose rows follow the booking).
+- **Who:** an active member who is Finance & door or has `cap_checkin`, while `event_project_hub` AND
+  `project_delegate_checkin` are on, the grant is live (`grant_expires_at`, default event end + 7 d) and the project is not
+  read-only, on an event that is not cancelled/removed (`project_delegate_ok`). `can_event_capability(event, cap)` = the
+  EXISTING organizer-account check OR admin OR that delegate rule (never `project_is_host`).
+- **`check_in_guest`:** 151's body with every original line kept in order (a test proves it); delegation is only tried
+  when the original check fails, and each delegated admission writes ONE `event_money_audit` row (`checkin`). The Host
+  path writes no audit row and behaves exactly as before.
+- **Names only:** `get_event_checkin_names(event)` = booking id, attendee id, name, party, checked in (no amount, code,
+  token, proof or birth date). **Decision for the owner's review:** the scanner path for delegates is a NEW
+  `project_checkin_lookup(code)` that answers name + `meets_min_age` (from `events.details.min_age`) instead of the date of
+  birth; the Host-only `get_checkin_guest_info` (DOB, rate-limited, logged) is untouched. Policy B4's draft says "names only,
+  no amounts"; it does not cover ages, so the delegate sees a yes/no, never the date.
+- **Not delegated:** `undo_check_in`, `reject_pending_guest`, cancel, payout (unchanged).
+- **Grants:** `project_extend_grants(event, until, member?)` (Host only, never past `read_only_at`, one audit row
+  `extend_grants`). The "team access ended" notice listing open refunds belongs with refunds (9c).
+- **`event_money_audit`:** shared with 213/214. SELECT for the event's organizer accounts and admins only; no client
+  INSERT/UPDATE/DELETE; written by `event_money_audit_add` (server-only).
+- **Apps:** iOS `ProjectDoorList` (in ProjectMoneyTab) and web `Door` (ProjectMoney.jsx): count "N of M people in",
+  search, one Check in per party (`check_in_guest` 'manual' admits everyone in it not yet in), "Names only. Money and
+  refunds stay with the Host. Every check-in is recorded". No delegate scanner UI yet (the RPC is ready).
+- **Found while testing:** the door list's accessibility id merged into the tab's (only child) like the lock card in phase 6;
+  a seed `details` value needs `{"v": 1}`.
+
+### Verified (throwaway stack)
+- `supabase/tests/212_delegated_checkin/run.sh`: 58/58 (switch off = nothing changes, every role on/off, names-only shape,
+  one audit row per person, expired/read-only/cancelled/hub-off refusals, undo not delegated, lookup without a birth date,
+  extension caps, audit table private and append-only, verbatim 151 lines, re-apply, rollback). A mutation run (switch
+  ignored, audit insert removed) failed exactly the 7 checks guarding them. 210: 985/985 (rollbacks now run 212 → 211 →
+  210); 211: 38/38.
+- iOS: `ProjectMoneyUITests` 7 (door list + needs access and switch), `ProjectDoorTests` 1. Web: `tests/event-project.spec.js`
+  16 × 3 browsers = 48/48; unit 906/906; build OK.
+- Not checked: a real event night, a delegate on a real device, the policy text (B4 amendment is a draft for legal review).
+
+## Next: phase 9b (delegated confirm-payment, migration 213)
+`get_event_money_view`, `open_payment_proof` + delegate storage policy on `pay-proof` only, `confirm_payment` auth →
+capability + audit; `reject_pending_guest` stays Host-only.

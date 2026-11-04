@@ -21,7 +21,8 @@ const FILES = [
   'supabase/migrations/20261231000210_210_event_project_core.sql',
   'src/state/useEventProject.js', 'src/lib/projectPresentation.js', 'src/lib/projectRoleMatrix.js', 'src/screens/EventProject.jsx',
   'src/screens/ProjectJoin.jsx', 'src/screens/MyProjects.jsx', 'tests/event-project.spec.js',
-  'supabase/migrations/20261231000211_211_event_project_jobs.sql', 'supabase/rollbacks/20261231000211_211_revert_event_project_jobs.sql',
+  'supabase/migrations/20261231000211_211_event_project_jobs.sql', 'supabase/migrations/20261231000212_212_delegated_checkin.sql',
+  'supabase/rollbacks/20261231000212_212_revert_delegated_checkin.sql', 'supabase/rollbacks/20261231000211_211_revert_event_project_jobs.sql',
 ];
 // Folders later phases add; every file inside is checked once they exist.
 const DIRS = ['src/components/project', 'apps/ios/BanbeApp/Views/Project'];

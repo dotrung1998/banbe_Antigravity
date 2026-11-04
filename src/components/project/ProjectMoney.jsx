@@ -1,7 +1,7 @@
 // Money & door tab of the web Event Project Hub (note 76). The Host sees the numbers and goes to the EXISTING screens
 // (Verifications, its refund section, Attendance); payout and cancelling stay with the Host. Everyone else sees the v6
 // lock card; a member the Host granted money or check-in is told it isn't on yet (phases 9a–9c). Same as iOS ProjectMoneyTab.
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useBanBe } from '../../state/BanBeContext.jsx';
 import { formatMoney } from '../../lib/eventMarket.js';
 import { ink, ink2, ink3, clay, divider, alert } from '../../theme.js';
@@ -10,8 +10,8 @@ import { Card, SectionHeader, Avatar, Tag, Note } from './ProjectUI.jsx';
 export default function ProjectMoney({ p }) {
   const { openVerifications, openVerificationsRefunds, openAttendance } = useBanBe();
   const { snap, T } = p;
-  useEffect(() => { p.loadMoney(); }, [p.s.projectEventId, p.moneyAccess]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!p.moneyAccess) return <Lock p={p} />;
+  useEffect(() => { p.loadMoney(); p.loadDoor(); }, [p.s.projectEventId, p.moneyAccess, p.doorAccess]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!p.moneyAccess) return p.doorAccess ? <Door p={p} /> : <Lock p={p} />;
   const m = p.s.projectMoney;
   const holders = (snap.members || []).filter(x => x.cap_money || x.cap_checkin);
   const stat = (value, label, hot, testId) => (
@@ -80,5 +80,46 @@ function Lock({ p }) {
         : T('Tiền, hoàn tiền và check-in chỉ dành cho người được Chủ sự kiện cấp quyền.', 'Money, refunds and check-in are for people the Host has given access.')}</p>
       <p style={{ margin: '10px 0 0', color: ink3, fontSize: 13 }} aria-label={T('Người có quyền: ', 'People with access: ') + holders.map(u => p.personName(u)).join(', ')}>{holders.map(u => p.personName(u)).join(', ')}</p>
     </Card>
+  );
+}
+
+/** Phase 9a (migration 212, switch project_delegate_checkin): the door for a team member with check-in access. Names and
+ * check-in state only; checking a party in admits everyone in it not yet in; every check-in is recorded for the Host. */
+function Door({ p }) {
+  const { T } = p;
+  const [q, setQ] = useState('');
+  const guests = p.s.projectDoor || [];
+  const query = q.trim().toLowerCase();
+  const shown = query ? guests.filter(g => g.names.join(' ').toLowerCase().includes(query)) : guests;
+  const inside = guests.reduce((a, g) => a + Math.min(g.inside, g.party), 0), total = guests.reduce((a, g) => a + g.party, 0);
+  return (
+    <div data-testid="project-door">
+      <h2 style={{ margin: 0, fontSize: 20 }}>{T('Check-in ở cửa', 'Door check-in')}</h2>
+      <div data-testid="project-door-count" style={{ fontWeight: 600, color: ink2, margin: '4px 0' }}>{T(`${inside}/${total} người đã vào`, `${inside} of ${total} people in`)}</div>
+      <Note>{T('Chỉ có tên khách. Tiền và hoàn tiền vẫn do Chủ sự kiện làm. Mỗi lần check-in đều được ghi lại cho Chủ sự kiện.', 'Names only. Money and refunds stay with the Host. Every check-in is recorded for the Host.')}</Note>
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder={T('Tìm tên khách', 'Search guests')} aria-label={T('Tìm tên khách', 'Search guests')} data-testid="project-door-search"
+        style={{ width: '100%', boxSizing: 'border-box', margin: '12px 0', font: 'inherit', fontSize: 16, padding: '12px 14px', borderRadius: 14, border: 0, background: 'var(--bb-field)', color: ink }} />
+      {p.s.projectDoor == null ? <Note>{T('Đang tải…', 'Loading…')}</Note> : shown.length === 0
+        ? <Note tone="ink2">{guests.length ? T('Không có tên nào khớp.', 'No names match.') : T('Chưa có khách đã xác nhận.', 'No confirmed guests yet.')}</Note> : (
+          <Card padding={4} data-testid="project-door-list">
+            {shown.map((g, i) => {
+              const all = g.inside >= g.party;
+              return (
+                <div key={g.bookingId}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
+                    <span style={{ flex: 1 }}><strong style={{ display: 'block' }}>{g.names.join(', ')}</strong>
+                      <span style={{ fontSize: 13, color: ink2 }}>{T(`${g.party} người · ${Math.min(g.inside, g.party)} đã vào`, `${g.party === 1 ? '1 person' : `${g.party} people`} · ${Math.min(g.inside, g.party)} in`)}</span></span>
+                    {all ? <span data-testid={`project-door-in-${g.bookingId}`} style={{ color: ink2, fontWeight: 600, minHeight: 44, display: 'grid', placeItems: 'center' }}>✓ {T('Đã vào', 'In')}</span>
+                      : <button type="button" disabled={p.s.projectBusy} onClick={() => p.checkInGuest(g.bookingId)} data-testid={`project-door-checkin-${g.bookingId}`}
+                        aria-label={T(`Check-in cho ${g.names.join(', ')}`, `Check in ${g.names.join(', ')}`)}
+                        style={{ minHeight: 44, padding: '0 14px', borderRadius: 999, border: 0, background: ink, color: 'var(--bb-bg)', fontWeight: 700, cursor: 'pointer' }}>{T('Check-in', 'Check in')}</button>}
+                  </div>
+                  {i < shown.length - 1 && <div style={{ height: 1, background: divider }} />}
+                </div>
+              );
+            })}
+          </Card>
+        )}
+    </div>
   );
 }

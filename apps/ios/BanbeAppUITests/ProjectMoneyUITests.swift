@@ -57,6 +57,34 @@ final class ProjectMoneyUITests: XCTestCase {
         XCTAssertFalse(el(app, "project.money.stats").exists, "no amounts until delegation ships")
     }
 
+    // Phase 9a: delegated check-in (switch project_delegate_checkin).
+    func testFinanceChecksGuestsInFromTheNamesOnlyList() {
+        let app = launch(as: "finance", extra: ["-uiFixtureProjectDoor", "YES"])
+        XCTAssertTrue(el(app, "project.door").waitForExistence(timeout: 5))
+        XCTAssertFalse(el(app, "project.money.stats").exists, "still no amounts")
+        XCTAssertEqual(el(app, "project.door.count").label, "2 of 5 people in")
+        attach(app, "project-door-finance")
+        el(app, "project.door.checkin.door-1").tap()
+        XCTAssertTrue(el(app, "project.door.in.door-1").waitForExistence(timeout: 3))
+        XCTAssertEqual(el(app, "project.door.count").label, "4 of 5 people in")
+        let search = el(app, "project.door.search")
+        search.tap(); search.typeText("khang")
+        XCTAssertTrue(el(app, "project.door.checkin.door-3").exists)
+        XCTAssertFalse(el(app, "project.door.in.door-2").exists, "filtered out")
+    }
+
+    func testDelegationNeedsTheAccessAndTheSwitch() {
+        let helper = launch(as: "helper", extra: ["-uiFixtureProjectDoor", "YES"])
+        XCTAssertTrue(el(helper, "project.money.lock").waitForExistence(timeout: 5), "a helper without check-in access")
+        helper.terminate()
+        let finance = launch(as: "finance")
+        XCTAssertTrue(el(finance, "project.money.lockGranted").waitForExistence(timeout: 5), "the switch is off")
+        finance.terminate()
+        let host = launch(extra: ["-uiFixtureProjectDoor", "YES"])
+        XCTAssertTrue(el(host, "project.money.stats").waitForExistence(timeout: 5), "the Host keeps the full tab")
+        XCTAssertFalse(el(host, "project.door").exists)
+    }
+
     func testVietnameseDarkAndLargestText() {
         let vi = launch(lang: "vi", extra: ["-banbe.theme", "dark"])
         attach(vi, "project-money-vi-dark")

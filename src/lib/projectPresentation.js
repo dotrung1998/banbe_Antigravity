@@ -148,3 +148,17 @@ export function moneySummary(bookings, refunds, now) {
   s.refundsOverdue = active.filter(r => r.overdue).length;
   return s;
 }
+
+/** Phase 9a: get_event_checkin_names rows grouped by booking (named attendees count one each; a booking without names
+ * counts its party), first-seen order. Same as AppState.projectDoorGuests on iOS. */
+export function doorGuests(rows = []) {
+  const order = [], map = new Map();
+  for (const r of rows) {
+    if (!map.has(r.booking_id)) { order.push(r.booking_id); map.set(r.booking_id, { bookingId: r.booking_id, names: [], party: 0, inside: 0 }); }
+    const g = map.get(r.booking_id);
+    g.names.push(r.name);
+    g.party += r.party;
+    if (r.checked_in) g.inside += r.party;
+  }
+  return order.map(id => map.get(id));
+}

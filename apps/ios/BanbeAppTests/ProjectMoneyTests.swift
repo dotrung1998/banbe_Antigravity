@@ -27,3 +27,20 @@ final class ProjectMoneyTests: XCTestCase {
         XCTAssertFalse(ProjectMoneySummary().needsHost)
     }
 }
+
+@MainActor
+final class ProjectDoorTests: XCTestCase {
+    func testTheDoorListGroupsNamesByBooking() {
+        let g = AppState.projectDoorGuests([
+            ProjectDoorRow(bookingId: "b1", attendeeId: "a1", name: "Anh", party: 1, checkedIn: true),
+            ProjectDoorRow(bookingId: "b2", attendeeId: nil, name: "Ha", party: 3, checkedIn: false),
+            ProjectDoorRow(bookingId: "b1", attendeeId: "a2", name: "Binh", party: 1, checkedIn: false),
+        ])
+        XCTAssertEqual(g.map(\.bookingId), ["b1", "b2"], "first-seen order")
+        XCTAssertEqual(g[0].names, ["Anh", "Binh"])
+        XCTAssertEqual(g[0].party, 2)
+        XCTAssertEqual(g[0].inside, 1)
+        XCTAssertFalse(g[0].allIn)
+        XCTAssertEqual(g[1].party, 3)
+    }
+}

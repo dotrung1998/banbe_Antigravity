@@ -34,7 +34,7 @@ extension AppState {
 
     func openProject(eventID: String, back: Screen, tab: String = "overview") async {
         projectBackScreen = back
-        if projectEventID != eventID { projectSnapshot = nil; projectRosVersion = nil; projectDayView = "list"; projectMoney = nil }
+        if projectEventID != eventID { projectSnapshot = nil; projectRosVersion = nil; projectDayView = "list"; projectMoney = nil; projectDoor = nil }
         projectEventID = eventID
         projectTab = tab
         projectError = ""

@@ -73,3 +73,12 @@ test('projectInviteValue turns links and typed codes into the bare value', () =>
   assert.equal(P.projectInviteValue('banbe://join/Fx7kQ2mN9pR4sT6vW8yZ1a'), 'Fx7kQ2mN9pR4sT6vW8yZ1a');
   assert.equal(P.projectInviteValue('https://evil.example/join/BB-H3QD'), null);
 });
+
+test('doorGuests groups the names-only rows by booking (same as iOS)', () => {
+  const g = P.doorGuests([
+    { booking_id: 'b1', attendee_id: 'a1', name: 'Anh', party: 1, checked_in: true },
+    { booking_id: 'b2', attendee_id: null, name: 'Ha', party: 3, checked_in: false },
+    { booking_id: 'b1', attendee_id: 'a2', name: 'Binh', party: 1, checked_in: false },
+  ]);
+  assert.deepEqual(g, [{ bookingId: 'b1', names: ['Anh', 'Binh'], party: 2, inside: 1 }, { bookingId: 'b2', names: ['Ha'], party: 3, inside: 0 }]);
+});

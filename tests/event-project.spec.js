@@ -37,7 +37,7 @@ async function openHub(page, { as, tab = 'overview', now = '2026-11-03T10:00:00+
   await page.waitForTimeout(1500); // a new user reloads the switches; set ours after that answer lands
   await devSet(page, {
     featureFlags: { event_project_hub: true, ...flags }, projectDemo: true, projectNow: now, projectSnapshot: snapshotAs(as),
-    projectEventId: FX.event.id, projectTab: tab, projectBack: 'home', projectNotice: '', projectError: '', projectInvites: [], screen: 'eventProject',
+    projectEventId: FX.event.id, projectTab: tab, projectBack: 'home', projectNotice: '', projectError: '', projectInvites: [], projectDoor: null, projectMoney: null, screen: 'eventProject',
   });
   await expect(page.getByTestId('project-hub')).toBeVisible();
 }
@@ -190,6 +190,22 @@ test.describe('Event Project Hub (web)', () => {
     await expect(page.getByTestId('project-money-stats')).toHaveCount(0);
     await openHub(page, { as: 'finance', tab: 'money' });
     await expect(page.getByTestId('project-money-lock-granted')).toBeVisible();
+  });
+
+  test('delegated check-in (9a): Finance checks guests in from the names-only list; needs the access and the switch', async ({ page }) => {
+    await openHub(page, { as: 'finance', tab: 'money', flags: { project_delegate_checkin: true } });
+    await expect(page.getByTestId('project-door')).toBeVisible();
+    await expect(page.getByTestId('project-money-stats')).toHaveCount(0);
+    await expect(page.getByTestId('project-door-count')).toHaveText('2 of 5 people in');
+    await shot(page, 'project-door');
+    await page.getByTestId('project-door-checkin-door-1').click();
+    await expect(page.getByTestId('project-door-in-door-1')).toBeVisible();
+    await expect(page.getByTestId('project-door-count')).toHaveText('4 of 5 people in');
+    await openHub(page, { as: 'helper', tab: 'money', flags: { project_delegate_checkin: true } });
+    await expect(page.getByTestId('project-money-lock')).toBeVisible();
+    await openHub(page, { tab: 'money', flags: { project_delegate_checkin: true } });
+    await expect(page.getByTestId('project-money-stats')).toBeVisible();
+    await expect(page.getByTestId('project-door')).toHaveCount(0);
   });
 
   test('Day-of: not live before the day; on the day the grid stretches the first item and a tick freezes it', async ({ page }) => {
