@@ -92,12 +92,19 @@ import EventPreferences from './screens/EventPreferences.jsx';
 import Following from './screens/Following.jsx';
 import Rewards from './screens/Rewards.jsx';
 import EventOnboarding, { useEventOnboardingActive } from './screens/EventOnboarding.jsx';
+// Event Project Hub (note 76).
+import EventProject from './screens/EventProject.jsx';
+import ProjectJoin from './screens/ProjectJoin.jsx';
+import MyProjects from './screens/MyProjects.jsx';
 
 const SCREENS = {
   splash: Splash,
   langPick: LangPick,
   themePick: ThemePick,
   home: Home,
+  eventProject: EventProject,
+  projectJoin: ProjectJoin,
+  myProjects: MyProjects,
   profile: Account,
   accountGroup: AccountGroup,
   inbox: Inbox,

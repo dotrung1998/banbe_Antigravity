@@ -18,6 +18,7 @@ import ProfileShareSheet, { profileShareLinks } from './sheets/ProfileShareSheet
 import { KeychainFrame, useMyKeychain } from '../components/KeychainCharm.jsx';
 import { pickSoonest, liveEventOverrides } from '../lib/countdown.js';
 import { reminderPhase, REMINDER_CSS } from '../lib/eventReminder.js';
+import { useEventProject } from '../state/useEventProject.js';
 import { computeAdminModerationCount, computeHostActionCount, computeMyTicketsActionCount, computeMyRefundActionCount } from '../lib/badges.js';
 import { capsuleStreak } from '../lib/rewards.js';
 import { AccountTileGrid, MoreList, MoreRow, RewardsStrip } from './AccountTiles.jsx';
@@ -113,6 +114,7 @@ function RowGroup({ title, testId, top = 28, children }) {
 }
 
 export default function Account() {
+  const project = useEventProject();
   const {
     state, T, set, goEditName, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
     startHosting,
@@ -126,6 +128,8 @@ export default function Account() {
     loadMyAdminInvite, loadAdminTeam, openHostSetup, openOrganizerProfile, goNotifications, rewardsEnabled, rewardsV2Enabled, loadRewardsSummary,
   } = useBanBe();
   const s = state;
+  // Note 76: the Projects row needs the list (switch event_project_hub).
+  useEffect(() => { if (s.user?.id && s.featureFlags?.event_project_hub === true) project.loadMyProjects(); }, [s.user?.id, s.featureFlags?.event_project_hub]); // eslint-disable-line react-hooks/exhaustive-deps
   const myKeychain = useMyKeychain();
   const [shareCardFor, setShareCardFor] = useState(null); // 'member' | 'host' | null
   // Account search — restored only when we're coming back from a search result
@@ -304,6 +308,11 @@ export default function Account() {
     <MoreRow key="notifications" icon="bell" label={T('Thông báo', 'Notifications')} testId="account-notifications" onClick={goNotifications}
       badge={s.unreadNotifications || 0} badgeLabel={T(`${s.unreadNotifications || 0} chưa đọc`, `${s.unreadNotifications || 0} unread`)} />
   );
+  // Note 76: "Projects I'm in", or "Join an event team with a code" while I'm in none (switch event_project_hub).
+  const projectsOn = !!s.user?.id && s.featureFlags?.event_project_hub === true;
+  const projectsRow = projectsOn && s.myProjectsLoaded ? (s.myProjects.length > 0
+    ? <MoreRow key="projects" icon="users" label={T("Dự án của tôi", "Projects I'm in")} testId="account-projects" trailing={String(s.myProjects.length)} onClick={() => set({ screen: 'myProjects' })} />
+    : <MoreRow key="projects" icon="users" label={T('Vào đội sự kiện bằng mã mời', 'Join an event team with a code')} testId="account-projects-join" onClick={() => project.openJoin('', 'profile')} />) : null;
   const settingsRow = (
     <MoreRow key="settings" icon="sliders" label={T('Cài đặt', 'Settings')} testId="account-group-preferences" onClick={() => openAccountGroup('preferences')} />
   );
@@ -313,6 +322,7 @@ export default function Account() {
   // Note 69: labelled groups instead of one "More" list.
   const activityRows = [
     notificationsRow,
+    projectsRow,
     <MoreRow key="following" icon="heart" label={T('Đang theo dõi', 'Following')} testId="account-following"
       trailing={s.followedStatus === 'loaded' ? String(s.followedOrgIds.length) : null} onClick={() => set({ screen: 'following' })} />,
     s.user ? (

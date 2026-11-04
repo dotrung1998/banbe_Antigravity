@@ -58,6 +58,7 @@ const STATIC = {
   surveysHosting: '/surveys',
   confirmed: '/ticket',
   refunded: '/refunded',
+  myProjects: '/projects',
 };
 
 const PATH_TO_STATIC = Object.fromEntries(Object.entries(STATIC).map(([screen, path]) => [path, screen]));
@@ -87,6 +88,9 @@ export function screenToPath(st) {
     case 'paymentDetails': return st.paymentBookingId ? `/payment/${enc(st.paymentBookingId)}` : '/payment';
     case 'eventRecap': return st.eventRecapId ? `/event/${enc(st.eventRecapId)}/recap` : '/';
     case 'hostRecap': return st.hostRecapId ? `/host/recap/${enc(st.hostRecapId)}` : '/host/dashboard';
+    // Event Project Hub (note 76): the project lives under its event; an invite link is /join/<token or BB- code>.
+    case 'eventProject': return st.projectEventId ? `/e/${enc(st.projectEventId)}/project` : '/projects';
+    case 'projectJoin': return st.projectJoinCode ? `/join/${enc(st.projectJoinCode)}` : '/join';
     default: return '/';
   }
 }
@@ -141,5 +145,8 @@ export function pathToRoute(pathname) {
   }
   if ((m = path.match(/^\/payment\/([^/]+)$/))) return { screen: 'paymentDetails', params: { paymentBookingId: dec(m[1]), paymentBack: 'profile', paymentProofError: '' } };
   if (path === '/payment') return { screen: 'profile', params: {} };
+  if ((m = path.match(/^\/e\/([^/]+)\/project$/))) return { screen: 'eventProject', params: { projectEventId: dec(m[1]), projectError: '', projectLoading: false } };
+  if ((m = path.match(/^\/join\/([^/]+)$/))) return { screen: 'projectJoin', params: { projectJoinCode: dec(m[1]), projectJoinPeek: null, projectJoinError: '' } };
+  if (path === '/join') return { screen: 'projectJoin', params: { projectJoinPeek: null, projectJoinError: '' } };
   return null;
 }

@@ -19,6 +19,8 @@ const FILES = [
   'apps/ios/BanbeApp/Lib/ProjectRoleMatrix.swift',
   'apps/ios/BanbeApp/Models/EventProject.swift', 'tests/fixtures/project-snapshot.json', 'tests/fixtures/project-presentation.json',
   'supabase/migrations/20261231000210_210_event_project_core.sql',
+  'src/state/useEventProject.js', 'src/lib/projectPresentation.js', 'src/lib/projectRoleMatrix.js', 'src/screens/EventProject.jsx',
+  'src/screens/ProjectJoin.jsx', 'src/screens/MyProjects.jsx', 'tests/event-project.spec.js',
   'supabase/migrations/20261231000211_211_event_project_jobs.sql', 'supabase/rollbacks/20261231000211_211_revert_event_project_jobs.sql',
 ];
 // Folders later phases add; every file inside is checked once they exist.

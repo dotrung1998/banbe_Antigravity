@@ -56,7 +56,9 @@ export default function useUrlSync(goc) {
         const guestOk = (pending.current.screen === 'policy' && screen === 'login' && signedOut)
           // Note 49: a guest's link to Home / Map / an event opens as soon as they reach Welcome or Home;
           // any other link keeps waiting for sign-in.
-          || (signedOut && GUEST_BROWSE_SCREENS.has(pending.current.screen) && (screen === 'welcome' || screen === 'home'));
+          || (signedOut && GUEST_BROWSE_SCREENS.has(pending.current.screen) && (screen === 'welcome' || screen === 'home'))
+          // Note 76: a team invite link opens "Join a team" signed out too (it only asks to log in; nothing is looked up).
+          || (signedOut && pending.current.screen === 'projectJoin' && (screen === 'welcome' || screen === 'home'));
         if ((screen === 'home' && state.user) || guestOk) {
           const route = pending.current;
           pending.current = null;
@@ -79,7 +81,7 @@ export default function useUrlSync(goc) {
   }, [
     state.screen, state.user, state.eventKey, state.accountGroupKey, state.eventListMode, state.publicProfileHandle,
     state.organizerProfileId, state.organizerTeamOrganizerId, state.surveyPublicId, state.documentId,
-    state.attendanceEventKey, state.paymentBookingId, state.sessionChecked,
+    state.attendanceEventKey, state.paymentBookingId, state.sessionChecked, state.projectEventId, state.projectJoinCode,
   ]);
 
   // URL -> state (browser back / forward)

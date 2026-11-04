@@ -474,7 +474,8 @@ if (typeof window !== 'undefined') {
 // Note 49 (web parity of note 48): read-only guest browsing — 'welcome' plus Home, Map and an event
 // (GUEST_BROWSE_SCREENS, lib/guestAccess.js). Everything personal still lands on Login (guard below) or asks first
 // with a contextual prompt (promptSignIn). Public data only: see note 49's audit and migration 185.
-const GUEST_ALLOWED_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy', 'organizerProfile', 'organizerTeam', 'publicProfile', 'surveyPublic', 'welcome', ...GUEST_BROWSE_SCREENS]);
+// 'projectJoin' (note 76): signed out it only shows the code and "Log in to join"; looking the invite up needs an account.
+const GUEST_ALLOWED_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy', 'organizerProfile', 'organizerTeam', 'publicProfile', 'surveyPublic', 'welcome', 'projectJoin', ...GUEST_BROWSE_SCREENS]);
 
 // Note 49: everything that belongs to ONE signed-in account. Reset from initialState on EVERY way a session ends
 // (logout, token expiry / SIGNED_OUT, account deletion), so a guest on a shared browser never sees the previous
@@ -497,6 +498,9 @@ const PRIVATE_STATE_KEYS = [
   'eventRecapId', 'hostRecapId', 'createSeedCoverUrl', 'createUndoOffer', 'createDraftId',
   // Simple Shell follow-up (note 66): the session-only Home view and the Start hosting invitation.
   'homeView', 'startHostingOpen',
+  // Event Project Hub (note 76): a team project (names, tasks, posts, channel links, money numbers) is the account's.
+  'projectSnapshot', 'projectEventId', 'projectNotice', 'projectBusy', 'projectError', 'myProjects', 'myProjectsLoaded',
+  'projectJoinPeek', 'projectJoinError', 'projectInvites', 'projectMoney',
 ];
 const isPublicEventRow = (e) => !!e && e.visibility === 'public' && ['live', 'ended', 'cancelled'].includes(e.status);
 /** The signed-out state patch. Cached events keep only public rows (a private/invite/draft event fetched while
@@ -1371,6 +1375,24 @@ const initialState = {
   // single source every "Following" marker reads; `followedHosts` backs Account > Following.
   followedOrgIds: [],
   followedHosts: [],
+  // Event Project Hub (note 76, src/state/useEventProject.js). One open project at a time.
+  projectSnapshot: null,
+  projectEventId: '',
+  projectTab: 'overview',
+  projectBack: 'home',
+  projectLoading: false,
+  projectError: '',
+  projectNotice: '',
+  projectBusy: false,
+  projectDayView: 'list',
+  projectInvites: [],
+  projectMoney: null,
+  myProjects: [],
+  myProjectsLoaded: false,
+  projectJoinCode: '',
+  projectJoinPeek: null,
+  projectJoinError: '',
+  projectJoinBack: 'home',
   followedStatus: 'idle', // idle | loading | loaded | error
   followedError: '',
   followWriteError: '',
@@ -11380,6 +11402,19 @@ export function BanBeProvider({ children }) {
       // with iOS through tests/fixtures/core-loops.json. A reminder opens the ticket; a recap opens its card only
       // while that switch is on (otherwise the event / the dashboard); a bundled follow alert opens Following; the
       // weekly digest opens Home at "This weekend".
+      // Event Project Hub (note 76): open the project, only if I'm still in it (as Host or member).
+      case 'project_joined':
+      case 'project_blocked':
+      case 'project_digest': {
+        const eventId = n.data?.screen === 'event_project' ? n.data?.event_id : null;
+        if (!eventId) break;
+        const { data } = await supabase.rpc('get_my_event_projects');
+        const projects = data?.projects || [];
+        if (!projects.some(x => x.event_id === eventId)) break;
+        set({ screen: 'eventProject', projectEventId: eventId, projectBack: 'notifications', projectTab: 'overview', projectSnapshot: null,
+              projectError: '', projectNotice: '', myProjects: projects, myProjectsLoaded: true });
+        break;
+      }
       case 'event_reminder_day':
       case 'event_reminder_soon':
       case 'event_recap':

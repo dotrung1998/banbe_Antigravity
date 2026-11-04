@@ -1,7 +1,7 @@
 # 76 — Event Project Hub (Hosting): per-event private team workspace
 
-Status: **phases 1-7 of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
-NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) 9e569c9; phase 7 (migration 211 jobs, throwaway stack only, NOT applied to production) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
+Status: **phases 1-8 of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
+NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) 210f85d; phase 5 (iOS Day-of) b72c199; phase 6 (iOS Money & door, Host) 9e569c9; phase 7 (migration 211 jobs, throwaway stack only, NOT applied to production) 76e7f3c; phase 8 (web parity) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
 `~/.claude/plans/pasted-content-id-234b-plan-mode-composed-koala.md`. Design source of truth for roles, tabs and layout:
 `banbe_hosting_project_hub_v6.html` (owner attachment, not in the repo).
 
@@ -270,4 +270,34 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
   211's rollback first (rollbacks go newest first).
 - Not checked: pg_cron firing on its own (functions called with an injected `p_now`), push delivery of the digest.
 
-## Next: phase 8 (web parity)
+## Phase 8 — web parity (IMPLEMENTED LOCALLY; no server change)
+- **State:** `src/state/useEventProject.js` (hook over BanBeContext's `set`; one function per iOS write, same RPCs, same
+  refusal texts). New context keys (`projectSnapshot`, `projectTab`, `myProjects`, `projectJoin*`, `projectMoney`, ...) in
+  `initialState`, and the account-owned ones in `PRIVATE_STATE_KEYS` so sign-out clears them. Dev-only demo mode
+  (`window.__banbeDevSet({ projectDemo: true, ... })`, ignored outside `import.meta.env.DEV`) makes writes local for tests.
+- **Pure logic:** `src/lib/projectPresentation.js` (twin of ProjectPresentation.swift; `projectCan` from a snapshot,
+  `moneySummary`, `projectInviteValue`) on the shared project-presentation.json vectors; `src/lib/projectRoleMatrix.js`
+  (same rows as ProjectRoleMatrix.swift, a test compares the row ids and checks every cell against `canProject`).
+- **Screens:** `src/screens/EventProject.jsx` (bar, six tabs with exactly five visible: slot width measured from the row,
+  edge fade/chevron, notice, read-only banner, Add task / New post), `src/components/project/` (ProjectUI,
+  ProjectOverviewTasks, ProjectTopics, ProjectTeam with QR invites behind `project_qr_invite` via npm `qrcode`,
+  ProjectMoney linking to the existing Verifications / refunds / Attendance with Back to the project, ProjectDayOf with the
+  `rosLayout` grid, the 15 s poll gated on `document.visibilityState`, item sheet and trash, ProjectSheets),
+  `src/screens/ProjectJoin.jsx`, `src/screens/MyProjects.jsx`.
+- **Routes** (`src/lib/routes.js`): `/e/<event id>/project`, `/join/<token or BB- code>`, `/join`, `/projects`. A signed-out
+  `/join/…` link opens Join after the splash/Welcome (`useUrlSync` guest rule); the code is kept in localStorage and
+  Login returns to Join (`authReturnScreen`).
+- **Entries:** Hosting Home hero row "Start a team project" / "Open project · N tasks for you"; Account Activity row
+  "Projects I'm in" or "Join an event team with a code"; bell routing for `project_joined` / `project_blocked` /
+  `project_digest` after `get_my_event_projects` confirms membership.
+- **Not on web:** an in-app camera scanner for invite QRs (people scan with the phone camera; the link opens Join).
+
+### Verified
+- `tests/event-project.spec.js`: 15 tests × Chromium/Firefox/WebKit = 45 passed twice in a row (one earlier run had a single
+  unrepeated flake). Run WITHOUT the service-role key (`SUPABASE_SERVICE_ROLE_KEY= npx playwright test ...`) so the
+  global setup never touches the shared production test account. Screenshots reviewed (en light, vi dark, grid, QR).
+- Web unit 905/905 (new projectPresentation + projectRoleMatrix tests, naming guard over the new files); `vite build` OK.
+- Not checked: the web against a real backend (210/211 not applied), keyboard-only navigation of the sheets, screen
+  readers on the web.
+
+## Next: phase 9a (delegated check-in, migration 212)

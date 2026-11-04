@@ -23,6 +23,8 @@ import { ink, paper, ink2, block, blockInset, divider, display, RADIUS } from '.
 import { shortMetricLabel } from '../../lib/reportMetricLabels.js';
 import { comingUpEmptyVariant, kpiSectionState, kpiRangeHeading } from '../../lib/hostHomeEmpty.js';
 import InlineEmpty from '../ui/InlineEmpty.jsx';
+import { useEventProject } from '../../state/useEventProject.js';
+import { flagOn } from '../../lib/featureFlags.js';
 
 const ENDED_AFTER_MS = 12 * 3600000;
 
@@ -222,6 +224,7 @@ export default function HostHome() {
               {T('Nhắn khách', 'Message guests')}
             </button>
           </div>
+          <ProjectHeroRow eventKey={hero.key} />
         </Card>
       ) : (
         <Card testId="home-host-plan">
@@ -380,5 +383,25 @@ export default function HostHome() {
       )}
       <div aria-hidden="true" style={{ height: 1, margin: '20px 20px 0', background: divider }} />
     </div>
+  );
+}
+
+/** Note 76: under the next-event hero, opt-in. "Start a team project" until one exists, then "Open project · N tasks for
+ * you". Shown only while switch event_project_hub is on (web twin of the iOS hero row). */
+function ProjectHeroRow({ eventKey }) {
+  const p = useEventProject();
+  const { s, T } = p;
+  const on = flagOn(s.featureFlags || {}, 'event_project_hub') && !!s.user?.id;
+  useEffect(() => { if (on && !s.myProjectsLoaded) p.loadMyProjects(); }, [on]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!on || !s.myProjectsLoaded) return null;
+  const mine = (s.myProjects || []).find(x => x.event_id === eventKey);
+  const label = mine ? T(`Mở dự án · ${mine.my_open_tasks} việc của bạn`, mine.my_open_tasks === 1 ? 'Open project · 1 task for you' : `Open project · ${mine.my_open_tasks} tasks for you`)
+    : T('Lập dự án cho đội', 'Start a team project');
+  return (
+    <button type="button" className="bb-press" data-testid={mine ? 'home-host-project-open' : 'home-host-project-start'} disabled={s.projectBusy}
+      onClick={() => (mine ? p.open(eventKey, 'home') : p.startProject(eventKey, 'home'))}
+      style={{ marginTop: 10, width: '100%', minHeight: 44, borderRadius: 999, border: 0, background: blockInset, color: ink, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+      {mine ? '▤ ' : '＋ '}{label}
+    </button>
   );
 }
