@@ -703,6 +703,10 @@ extension AppState {
         projectNotice = ""
         myProjects = []
         myProjectsLoaded = false
+        projectInvites = []
+        projectJoinPeek = nil
+        projectJoinCode = ""
+        UserDefaults.standard.removeObject(forKey: Self.pendingProjectInviteKey)
         await applySession(nil)
         // Note 44 — lands on the single public welcome screen (one tap to Log
         // in from there), not straight into Login. Still no guest browsing.
@@ -2654,6 +2658,9 @@ extension AppState {
         // with web through tests/fixtures/core-loops.json — see openCoreLoopNotification (AppState+CoreLoops.swift).
         case "event_reminder_day", "event_reminder_soon", "event_recap", "host_event_recap", "follow_alert", "weekly_digest":
             openCoreLoopNotification(notification)
+        // Note 76: team project notifications open the project, only if I'm still in it.
+        case "project_joined", "project_blocked", "project_digest":
+            openProjectFromNotification(notification)
         // "guest_renamed": category B, informational only, no destination
         // by design — falls to default. markNotificationRead() above is
         // the whole "action."

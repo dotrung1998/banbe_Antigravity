@@ -24,6 +24,15 @@ struct MyProjectsView: View {
                     }
                     .padding(.top, 18)
                 }
+                Button { app.openProjectJoinEntry(back: .myProjects) } label: {
+                    Label(app.T("Có mã mời? Vào đội", "Have an invite code? Join a team"), systemImage: "person.badge.plus")
+                        .font(.body.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                        .background(app.palette.blockInset, in: Capsule())
+                }
+                .buttonStyle(PressableButtonStyle())
+                .padding(.top, 18)
+                .accessibilityIdentifier("project.mine.join")
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 20)

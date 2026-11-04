@@ -18,6 +18,7 @@ struct GuestPromptSheet: View {
         case .host: return "sparkles"
         case .schedule: return "calendar.badge.plus"
         case .invite: return "person.2.fill"
+        case .joinProject: return "person.3.fill"
         }
     }
 

@@ -26,6 +26,7 @@ struct ProjectHubView: View {
                     }
                     .refreshable { await app.refreshProject() }
                     if app.projectTab == "tasks", canAddTask(snap) { addTaskButton(snap) }
+                    if app.projectTab == "topics", app.projectCan("post.question") { newPostButton }
                 }
             } else if app.projectLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -102,8 +103,8 @@ struct ProjectHubView: View {
     private func tabBody(_ snap: ProjectSnapshot) -> some View {
         switch app.projectTab {
         case "tasks": ProjectTasksTab(snap: snap)
-        case "team": ProjectTeamPreview(snap: snap)
-        case "topics": ProjectLaterTab(kind: "topics")
+        case "team": ProjectTeamTab(snap: snap)
+        case "topics": ProjectTopicsTab(snap: snap)
         case "money": ProjectLaterTab(kind: "money")
         case "dayof": ProjectLaterTab(kind: "dayof")
         default: ProjectOverviewTab(snap: snap)
@@ -164,6 +165,21 @@ struct ProjectHubView: View {
         .accessibilityIdentifier("project.addTask")
     }
 
+    private var newPostButton: some View {
+        Button { sheet = .compose } label: {
+            Label(app.T("Bài mới", "New post"), systemImage: "plus")
+                .font(.body.weight(.bold))
+                .padding(.horizontal, 20)
+                .frame(minHeight: 56)
+                .foregroundStyle(app.palette.paper)
+                .background(app.palette.ink, in: Capsule())
+                .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .padding(.trailing, 18).padding(.bottom, 22)
+        .accessibilityIdentifier("project.newPost")
+    }
+
     private var failed: some View {
         VStack(spacing: 14) {
             Text(app.projectError.isEmpty ? app.T("Chưa tải được dự án.", "Couldn't load the project.") : app.projectError)
@@ -177,14 +193,14 @@ struct ProjectHubView: View {
     }
 }
 
-/// The tabs that arrive in later phases (Topics phase 4, Money & door phase 6, Day-of phase 5).
+/// The tabs that arrive in later phases (Money & door phase 6, Day-of phase 5).
 struct ProjectLaterTab: View {
     @EnvironmentObject private var app: AppState
     let kind: String
 
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: kind == "money" ? "creditcard" : kind == "dayof" ? "calendar" : "checkmark.square")
+            Image(systemName: kind == "money" ? "creditcard" : "calendar")
                 .font(.system(size: 30)).foregroundStyle(app.palette.clay).accessibilityHidden(true)
             Text(app.T("Sắp có", "Coming soon")).font(BanbeTheme.display(18))
             Text(text).font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
@@ -200,56 +216,8 @@ struct ProjectLaterTab: View {
         switch kind {
         case "money": return app.T("Tiền, hoàn tiền và cửa vào sẽ ở đây. Hiện vẫn làm ở Điểm danh và Xác nhận như trước.",
                                    "Money, refunds and the door will live here. For now they stay in Check-in and Verifications.")
-        case "dayof": return app.T("Lịch chạy chương trình ngày diễn ra, dạng danh sách và lịch giờ.",
-                                   "The event-day run-of-show, as a list and as a time grid.")
-        default: return app.T("Đề xuất, câu hỏi, cập nhật và quyết định của đội, không chat tự do.",
-                              "Team proposals, questions, updates and decisions, with no free chat.")
+        default: return app.T("Lịch chạy chương trình ngày diễn ra, dạng danh sách và lịch giờ.",
+                              "The event-day run-of-show, as a list and as a time grid.")
         }
-    }
-}
-
-/// Phase 3 Team tab: who is in the project, read only (invites and roles arrive in phase 4).
-struct ProjectTeamPreview: View {
-    @EnvironmentObject private var app: AppState
-    let snap: ProjectSnapshot
-
-    var body: some View {
-        let rows: [(id: String, name: String, role: String, sub: String?)] =
-            (snap.hosts ?? []).map { ($0.userId, app.projectPersonName($0.userId), app.projectRoleName("host"), nil) } +
-            (snap.members ?? []).map { m in
-                (m.userId, app.projectPersonName(m.userId), app.projectRoleName(m.role),
-                 m.laneId.flatMap { id in snap.lanes?.first { $0.id == id }?.name })
-            }
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(spacing: 0) {
-                ForEach(Array(rows.enumerated()), id: \.element.id) { i, r in
-                    HStack(spacing: 12) {
-                        Text(String(r.name.prefix(1))).font(.headline)
-                            .frame(width: 42, height: 42)
-                            .background(app.palette.clayBg, in: Circle())
-                            .foregroundStyle(app.palette.clay)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(r.name).font(.body.weight(.semibold))
-                            Text([r.role, r.sub].compactMap { $0 }.joined(separator: " · ")).font(.footnote).foregroundStyle(app.palette.ink2)
-                        }
-                        Spacer()
-                        let open = (snap.tasks ?? []).filter { $0.assigneeId?.lowercased() == r.id.lowercased() && $0.status != "done" }.count
-                        VStack(alignment: .trailing, spacing: 0) {
-                            Text("\(open)").font(.headline.monospacedDigit())
-                            Text(app.T("việc mở", "open")).font(.caption).foregroundStyle(app.palette.ink2)
-                        }
-                    }
-                    .padding(.vertical, 10)
-                    .accessibilityElement(children: .combine)
-                    if i < rows.count - 1 { Rectangle().fill(app.palette.divider).frame(height: 1) }
-                }
-            }
-            .projectCard(padding: 4)
-            Text(app.T("Mời thành viên và đổi vai trò sẽ có trong bản cập nhật tới.", "Inviting people and changing roles arrive in the next update."))
-                .font(.footnote).foregroundStyle(app.palette.ink2).padding(.top, 10)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("project.team")
     }
 }

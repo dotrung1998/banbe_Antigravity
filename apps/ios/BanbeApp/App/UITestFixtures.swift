@@ -65,7 +65,7 @@ enum UITestFixture {
     static let projectHub = UserDefaults.standard.bool(forKey: "uiFixtureProjectHub")
     /// The v6 prototype's "today" in the event's zone, so due days and countdowns never drift.
     static var projectNow: Date? {
-        guard isActive, name == "shell.project" || projectHub else { return nil }
+        guard isActive, name == "shell.project" || name == "shell.projectJoin" || projectHub else { return nil }
         return ISO8601DateFormatter().date(from: "2026-11-03T10:00:00+07:00")
     }
 
@@ -96,6 +96,23 @@ enum UITestFixture {
         }
         guard let json = try? JSONSerialization.data(withJSONObject: snap) else { return nil }
         return try? JSONDecoder().decode(ProjectSnapshot.self, from: json)
+    }
+
+    /// Phase 4: replies written during a fixture run (the snapshot only carries counts).
+    static var projectReplies: [String: [ProjectReply]] = [:]
+    /// Phase 4: `shell.projectJoin` opens "Join a team" on this code (`-uiFixtureProjectJoin BB-7K2Q`; empty = entry).
+    static let projectJoin = UserDefaults.standard.string(forKey: "uiFixtureProjectJoin") ?? ""
+
+    /// What `peek_project_invite` would say: BB-7K2Q is a live Helper invite, BB-XPRD an expired one, anything else not found.
+    static func projectJoinPeek(_ code: String) -> ProjectInvitePeek? {
+        let value = ProjectInviteLink.parse(code).map { inv -> String in
+            switch inv { case .token: return "BB-7K2Q"; case .code(let c): return c }
+        }
+        guard value == "BB-7K2Q" || value == "BB-XPRD" else { return nil }
+        return ProjectInvitePeek(success: true, error: nil, state: value == "BB-7K2Q" ? "ok" : "expired", eventId: "fx_project",
+                                 eventName: "Bếp Nhỏ №13", eventDate: "2026-11-14", startsAt: "2026-11-14T12:00:00+00:00",
+                                 tz: "Asia/Ho_Chi_Minh", organizerName: "Bếp Nhỏ", role: "helper", laneName: nil,
+                                 expiresAt: "2026-11-05T03:00:00+00:00")
     }
 
     /// Stable fake account id so the draft store/relaunch tests have a key.
@@ -327,6 +344,12 @@ struct UITestFixtureRoot: View {
             app.projectBackScreen = .home
             app.myProjectsLoaded = true
             app.screen = .eventProject
+        case "projectJoin":
+            // Note 76 phase 4: "Join a team" from a link or code; with -uiFixtureGuest YES it is the signed-out version.
+            app.featureFlags["event_project_hub"] = true
+            app.myProjectsLoaded = true
+            if UITestFixture.projectJoin.isEmpty { app.openProjectJoinEntry(back: .home) }
+            else { app.openProjectJoin(UITestFixture.projectJoin, back: .home) }
         case "adminManageEvents":
             // Note 54. `-uiFixtureWipe YES` is an admin having turned the TESTING-PHASE wipe switch on.
             if UserDefaults.standard.bool(forKey: "uiFixtureWipe") { app.featureFlags["admin_event_wipe"] = true }

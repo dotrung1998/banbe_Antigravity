@@ -1,7 +1,7 @@
 # 76 — Event Project Hub (Hosting): per-event private team workspace
 
-Status: **phases 1-3 of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
-NOT applied to production) 47c7b7a; phase 3 (iOS shell) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
+Status: **phases 1-4 of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
+NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
 `~/.claude/plans/pasted-content-id-234b-plan-mode-composed-koala.md`. Design source of truth for roles, tabs and layout:
 `banbe_hosting_project_hub_v6.html` (owner attachment, not in the repo).
 
@@ -133,6 +133,40 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
 - Not checked: a real device, real network calls against a project (210 is not applied anywhere but the throwaway
   stack), light mode of the Tasks tab, iPad.
 
-## Next: phase 4 (iOS Topics + Team)
-Topics (4 post types, votes, seen, replies, resolve/decide, edit while quiet, delete with reason), Team (roles,
-capabilities, remove, the v6 code/link invite sheet + join screen + pending token through signup).
+## Phase 4 — iOS Topics, Team, invites, join (IMPLEMENTED LOCALLY; no migration)
+- **Topics** (`Views/Project/ProjectTopicsTab.swift`, `ProjectPostSheets.swift`, `State/AppState+ProjectTopics.swift`):
+  collapsible rules card, lane chips, "Waiting on you" (`ProjectPresentation.awaiting`), all posts newest first with
+  "Show older" (20 a page; `mergeOlderPosts` keeps opened pages through refreshes). Thread sheet: vote bars (tap again
+  takes the vote back), Mark as seen, up to 10 replies, Decide on the leading option (a tie picks the first, as 210 does),
+  Resolve for questions, Edit/Delete while the post is quiet, delete needs a reason. "New post" is two steps: the four
+  types (dimmed with the reason when the role can't post one), then the form; the small-talk line links the team's
+  primary channel. The rules card does NOT mention the 18:00 digest or live sync yet: those come in phases 7 and 5.
+- **Team** (`ProjectTeamTab.swift`, `ProjectTeamSheets.swift`, `State/AppState+ProjectTeam.swift`): members with role,
+  lane, Money/Check-in tags and open-task count; member sheet (Host: role, lane, two access toggles, remove with reason
+  and a "change the channel links" nudge; others read only); invite sheet (Host presets any role, a Manager Lane lead or
+  Helper; single use, 48 h; code card, Copy link, Share); live invites with Cancel; "Who can do what" table; privacy card.
+- **The table is data** (`Lib/ProjectRoleMatrix.swift`); `ProjectTeamTopicsTests` checks every cell against
+  `ProjectPermissions`. Finance's money/check-in cells say ✓ but only take effect once the delegation switches are on;
+  the table's footnote says so and a test proves they're off by default.
+- **Join** (`ProjectJoinView.swift`, screen `.projectJoin`): `banbe://join/<v>` (`handleDeepLink`), `https://(www.)banbe.app/join/<v>`
+  (`handleUniversalLink`; needs `/join/*` in the AASA file, phase 4b), Account's personal row "Join an event team with a
+  code" when I'm in no project, and "Have an invite code?" on Projects I'm in. Signed in: `peek_project_invite` card, then
+  `project_redeem_invite` opens the project. Signed out: the screen is guest-allowed, the code is parked in UserDefaults
+  (`banbe.pendingProjectInvite`, cleared on join and sign-out) and "Log in to join" resumes here through
+  `AuthResume.joinProject`. A sign-in that did not start from this screen does not reopen it (the code pre-fills next time).
+- **Notifications:** `project_joined`, `project_blocked`, `project_digest` open the project from the bell or a push, only
+  after `get_my_event_projects` confirms I'm still in it.
+- **Fixtures:** `shell.project` writes posts/replies/members/invites in memory; `shell.projectJoin` with
+  `-uiFixtureProjectJoin BB-7K2Q` (live Helper invite), `BB-XPRD` (expired), anything else = not found, `-uiFixtureGuest YES`.
+- **Found while testing:** the invite sheet opens at half height, so the new code and buttons were below the fold; it now
+  scrolls them into view.
+
+### Verified
+- `ProjectTeamTopicsUITests` (18) + `ProjectHubUITests` (11) green on the real RootView. Screenshots reviewed: Topics (en
+  dark), Team (vi dark), invite code, resolved thread, helper composer, join (signed in / signed out), Team at AX XXXL.
+- `ProjectTeamTopicsTests` (5) green. Web unit 898/898 (naming guard covers the new files). No SQL change (210 suite as
+  in phase 2).
+- Not checked: a real device, real network calls (210 isn't applied anywhere but the throwaway stack), iPad, light mode.
+
+## Next: phase 4b (QR invite) then 5 (Day-of)
+QR image + single/multi use (≤ 20) behind `project_qr_invite`, scanner branch, AASA `/join/*` (a web deploy).

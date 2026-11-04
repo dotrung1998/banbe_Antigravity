@@ -38,6 +38,8 @@ enum Screen: String {
     case search
     // Note 76 — Event Project Hub (switch event_project_hub): one event's team project, and Account > Projects I'm in.
     case eventProject, myProjects
+    // Note 76 phase 4: "Join a team" from an invite link or a typed code.
+    case projectJoin
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -391,8 +393,9 @@ final class AppState: ObservableObject {
     // Audited: these screens read only anon-visible public data (events
     // `events_select_public` = live/ended/cancelled AND public), and
     // `applySession(nil)` clears every per-account list they could show.
+    // `.projectJoin` (note 76): signed out it only shows the typed code and "Log in to join"; peeking needs an account.
     static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .welcome, .login, .policy, .organizerProfile, .organizerTeam, .publicProfile, .surveyPublic,
-                                                   .home, .mapExplore, .event, .search]
+                                                   .home, .mapExplore, .event, .search, .projectJoin]
     /// Guest-browsable screens a Login "Back" can return to (note 48).
     // `.search` (note 50) only reads the same public events Home/Map do.
     static let guestBrowseScreens: Set<Screen> = [.home, .mapExplore, .event, .search, .organizerProfile, .organizerTeam, .publicProfile]
@@ -1739,6 +1742,16 @@ final class AppState: ObservableObject {
     @Published var projectNotice = ""
     @Published var myProjects: [MyProject] = []
     @Published var myProjectsLoaded = false
+    /// Phase 4: older posts were asked for and none came back (Topics hides "Show older").
+    @Published var projectPostsExhausted = false
+    /// Phase 4: the invites I can still see and revoke (Host: all live ones; Manager: their own).
+    @Published var projectInvites: [ProjectInvite] = []
+    /// Phase 4 join screen: the code or token being looked at, and what the server said about it.
+    @Published var projectJoinCode = ""
+    @Published var projectJoinPeek: ProjectInvitePeek?
+    @Published var projectJoinError = ""
+    @Published var projectJoinLoading = false
+    @Published var projectJoinBack: Screen = .home
     @Published var myEventCredits: [EventCreditInvite] = []
     // iPhone fix pass (2026-09-27), Issue 5 — the confirmed half of the
     // same real-credit model; `myEventCredits` above only ever loaded
@@ -3476,6 +3489,14 @@ final class AppState: ObservableObject {
             handleGiftClaimLink(url)
             return
         }
+        // banbe://join/<token or code> — a team project invite (note 76). The role and lane come from the server.
+        if url.host == "join" {
+            photoViewer = nil
+            pulseOpen = false
+            storyViewer = nil
+            openProjectJoin(url.absoluteString)
+            return
+        }
         // banbe://org/<organizer_id> — a host's own page (the organizer QR).
         if url.host == "org" {
             guard let id = url.pathComponents.filter({ $0 != "/" }).first, !id.isEmpty else { return }
@@ -3965,6 +3986,7 @@ final class AppState: ObservableObject {
         // Note 76: without these two, the edge swipe would fall to `default: break` (the bug noted above).
         case .eventProject: backFromProject()
         case .myProjects: screen = .profile
+        case .projectJoin: screen = projectJoinBack
         // Account IA pass (2026-09-27) — `accountTab` is never touched by
         // AccountGroupView, so returning to `.profile` always lands back
         // on whichever tab was already showing.

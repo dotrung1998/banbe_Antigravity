@@ -69,7 +69,9 @@ extension AppState {
                 return
             }
             if result.unchanged == true { return }
-            projectSnapshot = result
+            var next = result
+            mergeOlderPosts(into: &next)
+            projectSnapshot = next
             projectError = ""
         } catch {
             print("refreshProject failed:", error)
@@ -118,14 +120,14 @@ extension AppState {
 
     /// One write RPC. On success the project refreshes; on a refusal `projectNotice` says why in plain words.
     @discardableResult
-    func projectWrite<P: Encodable>(_ function: String, _ params: P, refresh: Bool = true) async -> Bool {
+    func projectWrite<P: Encodable>(_ function: String, _ params: P, refresh: Bool = true, post: Bool = false) async -> Bool {
         projectBusy = true
         defer { projectBusy = false }
         projectNotice = ""
         do {
             let result: ProjectWriteResult = try await SupabaseService.client.rpc(function, params: params).execute().value
             guard result.success else {
-                projectNotice = projectErrorText(result.error)
+                projectNotice = projectErrorText(result.error, post: post)
                 return false
             }
             if refresh { await refreshProject() }
@@ -302,7 +304,8 @@ extension AppState {
     // MARK: words
 
     /// A refusal code from migration 210 in plain words.
-    func projectErrorText(_ code: String?) -> String {
+    func projectErrorText(_ code: String?, post: Bool = false) -> String {
+        if post, code == "TITLE_INVALID" { return T("Tiêu đề dài 3 đến 80 ký tự.", "A title is 3 to 80 characters.") }
         switch code {
         case "FEATURE_OFF": return T("Dự án sự kiện đang tạm tắt.", "Event projects are switched off right now.")
         case "NOT_AUTHORIZED": return T("Bạn không có quyền làm việc này trong dự án.", "You can't do this in this project.")
@@ -324,6 +327,23 @@ extension AppState {
         case "NOT_PENDING": return T("Đề xuất này đã được xử lý.", "This proposal was already handled.")
         case "RESTORE_LANE_FIRST": return T("Hãy khôi phục hạng mục của mục này trước.", "Restore this item's lane first.")
         case "NOT_A_MEMBER": return T("Bạn không còn trong dự án này.", "You're no longer in this project.")
+        case "AUTH_REQUIRED": return T("Hãy đăng nhập trước.", "Log in first.")
+        case "ADDRESSEE_INVALID": return T("Hãy chọn một người trong dự án để hỏi.", "Pick someone in the project to ask.")
+        case "OPTIONS_INVALID": return T("Đề xuất cần 2 đến 4 lựa chọn, mỗi lựa chọn tối đa 40 ký tự.", "A proposal needs 2 to 4 options of up to 40 characters.")
+        case "BODY_TOO_LONG": return T("Chi tiết tối đa 280 ký tự.", "Details are up to 280 characters.")
+        case "BODY_INVALID": return T("Phản hồi dài 1 đến 140 ký tự.", "A reply is 1 to 140 characters.")
+        case "REPLIES_FULL": return T("Bài đã đủ 10 phản hồi. Hãy chốt hoặc đóng bài.", "This post has 10 replies. Settle or close it.")
+        case "NOT_OPEN": return T("Bài này đã đóng.", "This post is closed.")
+        case "ALREADY_ANSWERED": return T("Đã có người phản hồi nên không sửa được nữa.", "Someone has responded, so it can't be edited now.")
+        case "INVITE_NOT_FOUND": return T("Không tìm thấy mã mời này. Hãy kiểm tra lại.", "This invite code wasn't found. Check it and try again.")
+        case "INVITE_EXPIRED": return T("Lời mời đã hết hạn. Hãy xin một mã mới.", "This invite has expired. Ask for a new one.")
+        case "INVITE_USED": return T("Lời mời đã được dùng hết.", "This invite has already been used.")
+        case "INVITE_REVOKED": return T("Lời mời đã bị huỷ.", "This invite was cancelled.")
+        case "IS_HOST": return T("Bạn là Chủ sự kiện này, không cần lời mời.", "You're the Host of this event, so you don't need an invite.")
+        case "ALREADY_MEMBER": return T("Bạn đã ở trong dự án này.", "You're already in this project.")
+        case "LANE_ARCHIVED": return T("Hạng mục của lời mời đã được lưu trữ. Hãy xin một mã mới.", "The invite's lane was archived. Ask for a new one.")
+        case "RATE_LIMITED": return T("Nhập sai quá nhiều lần. Hãy thử lại sau một giờ.", "Too many wrong codes. Try again in an hour.")
+        case "INVALID_VALUE": return T("Giá trị không hợp lệ.", "That value isn't valid.")
         default: return T("Chưa lưu được. Hãy thử lại.", "Couldn't save. Try again.")
         }
     }

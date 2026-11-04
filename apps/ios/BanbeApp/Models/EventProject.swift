@@ -131,21 +131,21 @@ struct ProjectPost: Decodable, Equatable, Identifiable {
     let id: String
     let laneId: String
     let type: String
-    let title: String
-    let body: String
+    var title: String
+    var body: String
     let authorId: String?
     let addresseeId: String?
     let options: [String]?
     let deadline: String?
-    let state: String
+    var state: String
     let createdAt: String?
-    let editedAt: String?
-    let votes: [Int]?
-    let myVote: Int?
-    let repliesCount: Int
-    let seenCount: Int
-    let seenByMe: Bool
-    let quiet: Bool
+    var editedAt: String?
+    var votes: [Int]?
+    var myVote: Int?
+    var repliesCount: Int
+    var seenCount: Int
+    var seenByMe: Bool
+    var quiet: Bool
 
     enum CodingKeys: String, CodingKey {
         case id, type, title, body, options, deadline, state, votes, quiet
@@ -233,4 +233,128 @@ enum ProjectDates {
         guard let s, !s.isEmpty else { return nil }
         return fractional.date(from: s) ?? plain.date(from: s)
     }
+}
+
+// MARK: - phase 4: topics, invites, join
+
+/// `get_event_project_post`: one post with its replies, who voted what and who has seen it.
+struct ProjectPostDetail: Decodable, Equatable {
+    let success: Bool
+    let error: String?
+    var post: ProjectPost?
+    var replies: [ProjectReply]?
+    var voters: [ProjectVoter]?
+    var seenBy: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case success, error, post, replies, voters
+        case seenBy = "seen_by"
+    }
+}
+
+struct ProjectReply: Decodable, Equatable, Identifiable {
+    let id: String
+    let authorId: String?
+    let body: String
+    let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, body
+        case authorId = "author_id", createdAt = "created_at"
+    }
+}
+
+struct ProjectVoter: Decodable, Equatable {
+    let userId: String
+    let optionIndex: Int
+
+    enum CodingKeys: String, CodingKey { case userId = "user_id", optionIndex = "option_index" }
+}
+
+/// `get_event_project_posts`: an older page of posts.
+struct ProjectPostsPage: Decodable {
+    let success: Bool
+    let error: String?
+    let posts: [ProjectPost]?
+}
+
+/// `project_create_invite` returns one of these; `project_list_invites` a list (with `uses`).
+struct ProjectInvite: Decodable, Equatable, Identifiable {
+    let inviteId: String
+    let token: String
+    let shortCode: String
+    let role: String
+    let laneId: String?
+    let expiresAt: String?
+    let maxUses: Int?
+    let uses: Int?
+    let createdBy: String?
+    var id: String { inviteId }
+
+    enum CodingKeys: String, CodingKey {
+        case token, role, uses
+        case inviteId = "invite_id", shortCode = "short_code", laneId = "lane_id", expiresAt = "expires_at", maxUses = "max_uses"
+        case createdBy = "created_by"
+    }
+}
+
+struct ProjectInviteResult: Decodable {
+    let success: Bool
+    let error: String?
+    let inviteId: String?
+    let token: String?
+    let shortCode: String?
+    let role: String?
+    let laneId: String?
+    let expiresAt: String?
+    let maxUses: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case success, error, token, role
+        case inviteId = "invite_id", shortCode = "short_code", laneId = "lane_id", expiresAt = "expires_at", maxUses = "max_uses"
+    }
+
+    var invite: ProjectInvite? {
+        guard success, let inviteId, let token, let shortCode, let role else { return nil }
+        return ProjectInvite(inviteId: inviteId, token: token, shortCode: shortCode, role: role, laneId: laneId, expiresAt: expiresAt,
+                             maxUses: maxUses, uses: 0, createdBy: nil)
+    }
+}
+
+struct ProjectInviteList: Decodable {
+    let success: Bool
+    let error: String?
+    let invites: [ProjectInvite]?
+}
+
+/// `peek_project_invite`: what a link or typed code points at, before joining. `state` is ok, revoked, expired, used,
+/// event_closed, is_host or already_member.
+struct ProjectInvitePeek: Decodable, Equatable {
+    let success: Bool
+    let error: String?
+    let state: String?
+    let eventId: String?
+    let eventName: String?
+    let eventDate: String?
+    let startsAt: String?
+    let tz: String?
+    let organizerName: String?
+    let role: String?
+    let laneName: String?
+    let expiresAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success, error, state, tz, role
+        case eventId = "event_id", eventName = "event_name", eventDate = "event_date", startsAt = "starts_at"
+        case organizerName = "organizer_name", laneName = "lane_name", expiresAt = "expires_at"
+    }
+}
+
+struct ProjectRedeemResult: Decodable {
+    let success: Bool
+    let error: String?
+    let eventId: String?
+    let role: String?
+
+    enum CodingKeys: String, CodingKey { case success, error, role, eventId = "event_id" }
 }

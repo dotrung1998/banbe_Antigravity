@@ -377,7 +377,8 @@ struct AccountView: View {
         AccountTilesGrid(tiles: goerTiles)
             .padding(.top, 16)
             .id("account-tiles")
-        if app.projectHubEnabled && !app.myProjects.isEmpty { projectsStrip.padding(.top, 12).id("account.personal.projects") }
+        // Note 76 phase 4: with no project yet this row is "Join a team with a code" (an invitee's way in without a link).
+        if app.projectHubEnabled && (app.myProjectsLoaded || !app.myProjects.isEmpty) { projectsStrip.padding(.top, 12).id("account.personal.projects") }
         let items = accountTabs.contains("host") ? goerActionItems : actionItems
         if !items.isEmpty {
             ActionCenterView(items: items, onSeeAll: { app.openVerifications(back: .profile) })
@@ -677,10 +678,13 @@ struct AccountView: View {
     private var projectsStrip: some View {
         let n = app.myProjects.count
         let tasks = app.myProjects.reduce(0) { $0 + $1.myOpenTasks }
-        let text = app.T("Dự án của tôi · \(n)", "Projects I'm in · \(n)")
-        return SwipeSafeButton { app.screen = .myProjects } label: {
+        let text = n == 0 ? app.T("Vào đội sự kiện bằng mã mời", "Join an event team with a code")
+                          : app.T("Dự án của tôi · \(n)", "Projects I'm in · \(n)")
+        return SwipeSafeButton {
+            if n == 0 { app.openProjectJoinEntry(back: .profile) } else { app.screen = .myProjects }
+        } label: {
             HStack(spacing: 10) {
-                Image(systemName: "rectangle.3.group").font(.system(size: 16, weight: .medium)).accessibilityHidden(true)
+                Image(systemName: n == 0 ? "person.badge.plus" : "rectangle.3.group").font(.system(size: 16, weight: .medium)).accessibilityHidden(true)
                 Text(text).font(.subheadline.weight(.semibold))
                 Spacer(minLength: 8)
                 if tasks > 0 {
@@ -700,7 +704,7 @@ struct AccountView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(text + (tasks > 0 ? app.T(", \(tasks) việc của bạn", ", \(tasks) tasks for you") : ""))
         .accessibilityAddTraits(.isButton)
-        .accessibilityIdentifier("account.projects")
+        .accessibilityIdentifier(n == 0 ? "account.projects.join" : "account.projects")
     }
 
     // MARK: Rewards strip

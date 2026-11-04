@@ -15,6 +15,8 @@ const FILES = [
   'apps/ios/BanbeApp/Lib/RosLayout.swift', 'apps/ios/BanbeApp/Lib/ProjectPermissions.swift', 'apps/ios/BanbeApp/Lib/ProjectChannels.swift',
   'apps/ios/BanbeApp/Lib/ProjectInviteLink.swift', 'apps/ios/BanbeApp/Lib/ProjectLimits.swift',
   'apps/ios/BanbeApp/Lib/ProjectPresentation.swift', 'apps/ios/BanbeApp/State/AppState+Project.swift',
+  'apps/ios/BanbeApp/State/AppState+ProjectTopics.swift', 'apps/ios/BanbeApp/State/AppState+ProjectTeam.swift',
+  'apps/ios/BanbeApp/Lib/ProjectRoleMatrix.swift',
   'apps/ios/BanbeApp/Models/EventProject.swift', 'tests/fixtures/project-snapshot.json', 'tests/fixtures/project-presentation.json',
   'supabase/migrations/20261231000210_210_event_project_core.sql',
 ];

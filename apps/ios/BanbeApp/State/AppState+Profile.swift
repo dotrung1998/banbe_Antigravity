@@ -555,6 +555,8 @@ extension AppState {
         case "u": openPublicProfile(handle: parts[1].lowercased(), back: .home)
         case "org": openOrganizerProfile(organizerID: parts[1], back: .home)
         case "surveys": Task { await self.openSurveyPublic(publicID: parts[1], back: .home) }
+        // Note 76: a team project invite (needs "/join/*" in the AASA file, phase 4b).
+        case "join": openProjectJoin(url.absoluteString, back: .home)
         default: break
         }
     }

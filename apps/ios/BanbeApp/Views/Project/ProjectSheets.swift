@@ -10,6 +10,11 @@ enum ProjectSheet: Identifiable, Equatable {
     case manageLane(String)
     case declineChange(String)
     case leave
+    // Phase 4
+    case post(String)
+    case compose
+    case member(String)
+    case invite
 
     var id: String {
         switch self {
@@ -20,6 +25,10 @@ enum ProjectSheet: Identifiable, Equatable {
         case .manageLane(let id): return "lane.\(id)"
         case .declineChange(let id): return "decline.\(id)"
         case .leave: return "leave"
+        case .post(let id): return "post.\(id)"
+        case .compose: return "compose"
+        case .member(let id): return "member.\(id)"
+        case .invite: return "invite"
         }
     }
 }
@@ -53,6 +62,10 @@ struct ProjectSheetHost: View {
         case .manageLane(let id): ProjectManageLaneSheet(laneID: id, close: close)
         case .declineChange(let id): ProjectDeclineSheet(requestID: id, close: close)
         case .leave: ProjectLeaveSheet(close: close)
+        case .post(let id): ProjectPostSheet(postID: id, close: close)
+        case .compose: ProjectComposeSheet(close: close)
+        case .member(let id): ProjectMemberSheet(memberID: id, close: close)
+        case .invite: ProjectInviteSheet(close: close)
         }
     }
 }

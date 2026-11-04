@@ -8,6 +8,8 @@ enum GuestPromptContext: String {
     case save, follow, reserve, message, like
     // Simple Shell (note 66): the Home "Hosting" segment and the dock "+" rows.
     case host, schedule, invite
+    // Note 76 phase 4: a team project invite link or code.
+    case joinProject
 }
 
 /// Work to finish once the guest has signed in from a prompt.
@@ -17,6 +19,8 @@ enum AuthResume: Equatable {
     /// Simple Shell: "Hosting" / "+" > Host an event. After sign-in the invitation opens if organizer mode is
     /// still off; a host just lands on Home > Hosting.
     case startHosting
+    /// Note 76: back to "Join a team" with the parked invite code.
+    case joinProject
 }
 
 struct GuestPrompt: Identifiable, Equatable {
@@ -58,6 +62,8 @@ extension AppState {
             Task { await openChat(for: key, back: back) }
         case .startHosting:
             startHosting(land: .home)
+        case .joinProject:
+            resumeProjectJoin()
         }
     }
 
@@ -94,6 +100,9 @@ extension AppState {
         case .invite:
             return (T("Mời bạn bè", "Invite friends"),
                     T("Đăng nhập để lấy đường dẫn mời của riêng bạn.", "Log in to get your own invite link."))
+        case .joinProject:
+            return (T("Vào đội sự kiện", "Join the event team"),
+                    T("Đăng nhập để nhận lời mời. Mã mời được giữ lại cho bạn.", "Log in to accept the invite. Your code is kept for you."))
         }
     }
 }
