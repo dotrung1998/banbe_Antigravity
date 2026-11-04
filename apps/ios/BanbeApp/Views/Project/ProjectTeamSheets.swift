@@ -159,23 +159,32 @@ struct ProjectMemberSheet: View {
     }
 }
 
-/// Invite someone (v6 invite sheet): preset the role (and the lane for a lane lead), create a code that expires in
-/// 48 hours, then copy or share the link. A Manager presets Lane lead or Helper only.
+/// Invite someone (v6 invite sheet): preset the role (and the lane for a lane lead), get a code that expires in 48 hours,
+/// then copy or share the link. A Manager presets Lane lead or Helper only.
+/// With switch `project_qr_invite` (phase 4b) the sheet also shows a QR of the join link and a "Single use only" toggle
+/// (off = up to 20 people): the invite is minted as soon as the sheet opens and again 400 ms after the role, lane or
+/// toggle last changed, cancelling the one it replaces. The QR carries only the link; the role stays on the server.
 struct ProjectInviteSheet: View {
     @EnvironmentObject private var app: AppState
     let close: () -> Void
 
     @State private var role = "helper"
     @State private var laneID: String?
+    @State private var singleUse = true
     @State private var invite: ProjectInvite?
+    @State private var minting = false
     @State private var copied = false
 
     private var host: Bool { app.projectSnapshot?.isHost == true }
+    private var qr: Bool { FeatureFlags.isOn(app.featureFlags, "project_qr_invite") }
     private var roles: [String] { host ? ProjectPermissions.invitableByHost : ProjectPermissions.invitableByManager }
     private var lanes: [ProjectLane] { (app.projectSnapshot?.lanes ?? []).sorted { $0.position < $1.position } }
+    private var ready: Bool { role != "lane_lead" || laneID != nil }
+    /// What the current invite was made for; a change mints a new one (QR mode).
+    private var mintKey: String { "\(role)|\(laneID ?? "")|\(singleUse)" }
 
     var body: some View {
-        CardSheet(title: app.T("Mời thành viên", "Invite someone"), closeID: "project.sheet.close", onClose: close) {
+        CardSheet(title: app.T("Mời thành viên", "Invite someone"), closeID: "project.sheet.close", fullHeight: qr, onClose: close) {
           ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
@@ -188,7 +197,7 @@ struct ProjectInviteSheet: View {
                             ForEach(roles, id: \.self) { r in
                                 ProjectChip(title: app.projectRoleName(r), selected: role == r, id: "project.invite.role.\(r)") {
                                     role = r
-                                    invite = nil
+                                    if !qr { invite = nil }
                                     if r == "lane_lead", laneID == nil { laneID = lanes.first?.id }
                                 }
                             }
@@ -200,7 +209,10 @@ struct ProjectInviteSheet: View {
                             ProjectFieldLabel(text: app.T("Hạng mục", "Lane"))
                             FlowLayout(spacing: 8, lineSpacing: 8) {
                                 ForEach(lanes) { l in
-                                    ProjectChip(title: l.name, selected: laneID == l.id, id: "project.invite.lane.\(l.id)") { laneID = l.id; invite = nil }
+                                    ProjectChip(title: l.name, selected: laneID == l.id, id: "project.invite.lane.\(l.id)") {
+                                        laneID = l.id
+                                        if !qr { invite = nil }
+                                    }
                                 }
                             }
                         }
@@ -211,11 +223,14 @@ struct ProjectInviteSheet: View {
                             .font(.footnote).foregroundStyle(app.palette.ink3)
                             .accessibilityIdentifier("project.invite.managerNote")
                     }
-                    if let invite { codeCard(invite).id("code") } else {
-                        InkButton(title: app.T("Tạo mã mời", "Create invite code"),
-                                  enabled: (role != "lane_lead" || laneID != nil) && !app.projectBusy, cornerRadius: 999) {
+                    if qr {
+                        qrCard.id("code")
+                    } else if let invite {
+                        codeCard(invite).id("code")
+                    } else {
+                        InkButton(title: app.T("Tạo mã mời", "Create invite code"), enabled: ready && !app.projectBusy, cornerRadius: 999) {
                             Task {
-                                if let inv = await app.createProjectInvite(role: role, laneID: laneID) {
+                                if let inv = await app.createProjectInvite(role: role, laneID: laneID, maxUses: 1) {
                                     Haptics.success()
                                     invite = inv
                                     copied = false
@@ -229,31 +244,105 @@ struct ProjectInviteSheet: View {
             }
             // The sheet opens at half height: bring the new code and its Copy / Share buttons into view.
             .onChange(of: invite?.id) { _, id in
-                guard id != nil else { return }
+                guard id != nil, !qr else { return }
                 withAnimation(.snappy(duration: 0.3)) { proxy.scrollTo("code", anchor: .top) }
             }
           }
         }
+        .task(id: mintKey) { await mintForQR() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project.inviteSheet")
     }
 
-    private func codeCard(_ inv: ProjectInvite) -> some View {
-        let link = ProjectInviteLink.joinURL(token: inv.token) ?? ""
-        return VStack(alignment: .leading, spacing: 18) {
-        VStack(spacing: 6) {
-            Text(app.T("Mã mời (hết hạn sau \(ProjectLimits.shared.inviteHours) giờ, dùng một lần)",
-                       "Invite code (expires in \(ProjectLimits.shared.inviteHours) hours, single use)"))
-                .font(.footnote).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
-            Text(inv.shortCode).font(.system(size: 30, weight: .heavy, design: .monospaced)).tracking(3)
-                .textSelection(.enabled)
-                .accessibilityLabel(inv.shortCode.map { String($0) }.joined(separator: " "))
-                .accessibilityIdentifier("project.invite.code")
+    /// QR mode: wait 400 ms for the choices to settle, mint, then cancel the invite this one replaces.
+    private func mintForQR() async {
+        guard qr, ready else { return }
+        if invite != nil { try? await Task.sleep(nanoseconds: 400_000_000) }
+        guard !Task.isCancelled else { return }
+        minting = true
+        let previous = invite
+        let made = await app.createProjectInvite(role: role, laneID: laneID, maxUses: singleUse ? 1 : ProjectLimits.shared.inviteMaxUses)
+        minting = false
+        guard let made else { return }
+        if Task.isCancelled {
+            // The choices changed while this one was being made: it was never shown, so it goes straight away.
+            await app.revokeProjectInvite(made.id)
+            return
+        }
+        invite = made
+        copied = false
+        if let previous { await app.revokeProjectInvite(previous.id) }
+    }
+
+    @ViewBuilder
+    private var qrCard: some View {
+        let max = ProjectLimits.shared.inviteMaxUses
+        VStack(spacing: 10) {
+            ZStack {
+                if let inv = invite, let link = ProjectInviteLink.joinURL(token: inv.token) {
+                    QRCodeImage(value: link, size: 210)
+                        .opacity(minting ? 0.35 : 1)
+                        .accessibilityLabel(app.T("Mã QR mời vào đội", "Team invite QR code"))
+                        .accessibilityIdentifier("project.invite.qr")
+                } else {
+                    Color.white.frame(width: 210, height: 210)
+                }
+                if minting { ProgressView().tint(.black) }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            if let inv = invite {
+                Text(inv.shortCode).font(.system(size: 22, weight: .heavy, design: .monospaced)).tracking(2)
+                    .foregroundStyle(.black)
+                    .accessibilityLabel(inv.shortCode.map { String($0) }.joined(separator: " "))
+                    .accessibilityIdentifier("project.invite.code")
+            }
+            Text(app.T("Hết hạn sau \(ProjectLimits.shared.inviteHours) giờ · ", "Expires in \(ProjectLimits.shared.inviteHours) hours · ")
+                 + (singleUse ? app.T("dùng một lần", "single use") : app.T("tối đa \(max) người", "up to \(max) people")))
+                .font(.footnote).foregroundStyle(Color.black.opacity(0.65))
+                .accessibilityIdentifier("project.invite.uses")
         }
         .padding(18)
         .frame(maxWidth: .infinity)
-        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        HStack(spacing: 10) {
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        Toggle(isOn: $singleUse) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(app.T("Chỉ dùng một lần", "Single use only")).font(.body.weight(.semibold))
+                Text(app.T("Tắt để tối đa \(max) người quét cùng một mã, ví dụ khi dán ở buổi họp đội.",
+                           "Turn off to let up to \(max) people scan the same code, for example at a team meeting."))
+                    .font(.footnote).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityIdentifier("project.invite.singleUse")
+        if let inv = invite { shareButtons(inv) }
+        Text(app.T("Mã QR chỉ chứa mã mời. Vai trò do banbe giữ, nên sửa liên kết không đổi được vai trò. Đổi lựa chọn sẽ tạo mã mới và huỷ mã cũ.",
+                   "The QR holds only the invite code. banbe keeps the role, so editing the link can't change it. Changing a choice makes a new code and cancels the old one."))
+            .font(.footnote).foregroundStyle(app.palette.ink3)
+    }
+
+    private func codeCard(_ inv: ProjectInvite) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(spacing: 6) {
+                Text(app.T("Mã mời (hết hạn sau \(ProjectLimits.shared.inviteHours) giờ, dùng một lần)",
+                           "Invite code (expires in \(ProjectLimits.shared.inviteHours) hours, single use)"))
+                    .font(.footnote).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
+                Text(inv.shortCode).font(.system(size: 30, weight: .heavy, design: .monospaced)).tracking(3)
+                    .textSelection(.enabled)
+                    .accessibilityLabel(inv.shortCode.map { String($0) }.joined(separator: " "))
+                    .accessibilityIdentifier("project.invite.code")
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            shareButtons(inv)
+            Text(app.T("Đổi vai trò sẽ tạo mã mới. Mã cũ vẫn dùng được cho tới khi hết hạn hoặc bạn huỷ ở thẻ Đội.",
+                       "Changing the role makes a new code. The old one still works until it expires or you cancel it on the Team tab."))
+                .font(.footnote).foregroundStyle(app.palette.ink3)
+        }
+    }
+
+    private func shareButtons(_ inv: ProjectInvite) -> some View {
+        let link = ProjectInviteLink.joinURL(token: inv.token) ?? ""
+        return HStack(spacing: 10) {
             Button {
                 UIPasteboard.general.string = link
                 Haptics.light()
@@ -271,10 +360,6 @@ struct ProjectInviteSheet: View {
                     .frame(maxWidth: .infinity, minHeight: 50).background(app.palette.blockInset, in: Capsule())
             }
             .accessibilityIdentifier("project.invite.share")
-        }
-        Text(app.T("Đổi vai trò sẽ tạo mã mới. Mã cũ vẫn dùng được cho tới khi hết hạn hoặc bạn huỷ ở thẻ Đội.",
-                   "Changing the role makes a new code. The old one still works until it expires or you cancel it on the Team tab."))
-            .font(.footnote).foregroundStyle(app.palette.ink3)
         }
     }
 }

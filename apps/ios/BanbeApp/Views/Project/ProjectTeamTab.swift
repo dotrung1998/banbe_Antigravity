@@ -10,13 +10,15 @@ struct ProjectTeamTab: View {
 
     private var me: String? { app.userID?.uuidString.lowercased() }
     private var canInvite: Bool { app.projectCan("invite.create", .init(role: "helper")) }
+    private var qrInvites: Bool { FeatureFlags.isOn(app.featureFlags, "project_qr_invite") }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             members
             if canInvite {
                 Button { openSheet(.invite) } label: {
-                    Label(app.T("Mời thành viên", "Invite someone"), systemImage: "link")
+                    Label(qrInvites ? app.T("Mời bằng mã QR", "Invite by QR") : app.T("Mời thành viên", "Invite someone"),
+                          systemImage: qrInvites ? "qrcode" : "link")
                         .font(.body.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 50)
                         .background(app.palette.blockInset, in: Capsule())

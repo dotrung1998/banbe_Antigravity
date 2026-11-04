@@ -6,6 +6,7 @@ import SwiftUI
 struct ProjectJoinView: View {
     @EnvironmentObject private var app: AppState
     @FocusState private var focused: Bool
+    @State private var scanning = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,6 +44,13 @@ struct ProjectJoinView: View {
         }
         .foregroundStyle(app.palette.ink)
         .background(app.palette.paper.ignoresSafeArea())
+        .sheet(isPresented: $scanning) {
+            ProjectInviteScanSheet { value in
+                scanning = false
+                app.projectJoinCode = value
+                check()
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project.join")
     }
@@ -69,6 +77,15 @@ struct ProjectJoinView: View {
                     .disabled(app.projectJoinCode.trimmingCharacters(in: .whitespaces).isEmpty || app.projectJoinLoading)
                     .accessibilityIdentifier("project.join.check")
             }
+            Button { scanning = true } label: {
+                Label(app.T("Quét mã QR", "Scan a QR code"), systemImage: "qrcode.viewfinder")
+                    .font(.body.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                    .background(app.palette.blockInset, in: Capsule())
+            }
+            .buttonStyle(PressableButtonStyle())
+            .padding(.top, 4)
+            .accessibilityIdentifier("project.join.scan")
         }
     }
 
@@ -156,6 +173,57 @@ struct ProjectJoinView: View {
         case "is_host": return app.projectErrorText("IS_HOST")
         case "already_member": return app.projectErrorText("ALREADY_MEMBER")
         default: return app.projectErrorText(nil)
+        }
+    }
+}
+
+/// The invitee's camera (phase 4b): reads a team invite QR and hands back the link. Only the full join link counts
+/// (`ProjectInviteLink.joinLink`); any other QR, a ticket included, gets a plain "not a team invite" line.
+struct ProjectInviteScanSheet: View {
+    @EnvironmentObject private var app: AppState
+    @Environment(\.dismiss) private var dismiss
+    let onInvite: (String) -> Void
+    @State private var wrong = false
+    @State private var done = false
+
+    var body: some View {
+        CardSheet(title: app.T("Quét mã mời", "Scan an invite"), closeID: "project.scan.close", fullHeight: true, onClose: { dismiss() }) {
+            VStack(alignment: .leading, spacing: 14) {
+                CameraPreview { code in read(code) }
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(1, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .accessibilityLabel(app.T("Máy ảnh", "Camera"))
+                    .accessibilityIdentifier("project.scan.camera")
+                Text(wrong ? app.T("Mã QR này không phải lời mời vào đội trên banbe.", "That QR isn't a banbe team invite.")
+                           : app.T("Hướng máy ảnh vào mã QR mời mà Chủ sự kiện hoặc Quản lý đưa cho bạn.",
+                                   "Point the camera at the invite QR the Host or a Manager showed you."))
+                    .font(.subheadline)
+                    .foregroundStyle(wrong ? BanbeTheme.alert : app.palette.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("project.scan.hint")
+            }
+        }
+        .task {
+            #if DEBUG
+            if let value = UITestFixture.projectScan {
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                read(value)
+            }
+            #endif
+        }
+    }
+
+    /// The camera fires for every frame the QR is visible: act once.
+    private func read(_ code: String) {
+        guard !done else { return }
+        if ProjectInviteLink.joinLink(code) != nil {
+            done = true
+            Haptics.success()
+            onInvite(code)
+        } else if !wrong {
+            wrong = true
+            Haptics.error()
         }
     }
 }

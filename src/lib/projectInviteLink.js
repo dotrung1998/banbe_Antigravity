@@ -41,6 +41,14 @@ export function parseInvite(input) {
   return valueOf(s);
 }
 
+/** Only the link forms (https://(www.)banbe.app/join/…, banbe://join/…): what a QR scanner may treat as an invite. A bare
+ * token or code is null here, so a ticket QR (a booking id) can never be read as one. */
+export function parseJoinLink(input) {
+  const s = String(input ?? '').trim();
+  const m = s.match(WEB_RE) || s.match(APP_RE);
+  return m ? valueOf(m[1]) : null;
+}
+
 /** The shareable link (and QR content) for a token. */
 export function joinUrl(token) {
   if (!TOKEN_RE.test(String(token ?? ''))) throw new Error('joinUrl: not an invite token');

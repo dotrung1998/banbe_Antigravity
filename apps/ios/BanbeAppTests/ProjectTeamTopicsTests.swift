@@ -86,6 +86,13 @@ final class ProjectTeamTopicsTests: XCTestCase {
         XCTAssertEqual(app.screen, .myProjects)
     }
 
+    func testAPastedOrScannedLinkBecomesTheBareValueTheServerTakes() {
+        XCTAssertEqual(AppState.projectInviteValue("https://www.banbe.app/join/bb-h3qd?src=qr"), "BB-H3QD")
+        XCTAssertEqual(AppState.projectInviteValue("banbe://join/Fx7kQ2mN9pR4sT6vW8yZ1a"), "Fx7kQ2mN9pR4sT6vW8yZ1a")
+        XCTAssertEqual(AppState.projectInviteValue(" bb h3qd "), "BB-H3QD")
+        XCTAssertNil(AppState.projectInviteValue("https://evil.example/join/BB-H3QD"))
+    }
+
     func testSignedOutJoinParksTheCodeUntilSignIn() {
         let app = AppState()
         UserDefaults.standard.removeObject(forKey: AppState.pendingProjectInviteKey)

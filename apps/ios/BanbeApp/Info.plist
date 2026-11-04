@@ -36,7 +36,7 @@
 	<key>MEDIA_R2_READS</key>
 	<string></string>
 	<key>NSCameraUsageDescription</key>
-	<string>banbe uses your camera to scan a guest's ticket QR code at check-in, and to attach a photo to a chat message.</string>
+	<string>banbe uses your camera to scan a guest's ticket QR code at check-in, to scan an event team invite, and to attach a photo to a chat message.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>banbe uses Face ID to unlock the app for a returning signed-in user.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

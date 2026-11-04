@@ -100,6 +100,12 @@ enum UITestFixture {
 
     /// Phase 4: replies written during a fixture run (the snapshot only carries counts).
     static var projectReplies: [String: [ProjectReply]] = [:]
+    /// Phase 4b: invites minted in this run (the first is BB-7K2Q, later ones get other codes).
+    static var projectInviteCount = 0
+    /// Phase 4b: the join screen's camera "sees" this value (`-uiFixtureProjectScan <text>`); the simulator has no camera.
+    static let projectScan = UserDefaults.standard.string(forKey: "uiFixtureProjectScan")
+    /// Phase 4b: `-uiFixtureProjectQR YES` turns on switch `project_qr_invite`.
+    static let projectQR = UserDefaults.standard.bool(forKey: "uiFixtureProjectQR")
     /// Phase 4: `shell.projectJoin` opens "Join a team" on this code (`-uiFixtureProjectJoin BB-7K2Q`; empty = entry).
     static let projectJoin = UserDefaults.standard.string(forKey: "uiFixtureProjectJoin") ?? ""
 
@@ -338,6 +344,7 @@ struct UITestFixtureRoot: View {
         case "project":
             // Note 76: the Event Project Hub on the shared demo snapshot (nothing reaches Supabase in a fixture).
             app.featureFlags["event_project_hub"] = true
+            if UITestFixture.projectQR { app.featureFlags["project_qr_invite"] = true }
             app.projectSnapshot = UITestFixture.projectSnapshot()
             app.projectEventID = app.projectSnapshot?.event?.id ?? "fx_project"
             app.projectTab = UITestFixture.projectTab

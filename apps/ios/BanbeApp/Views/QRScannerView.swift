@@ -199,6 +199,13 @@ struct QRScannerView: View {
     /// Camera callback — fires for every frame the QR is visible.
     private func handle(_ code: String) {
         guard guest == nil, !lookingUp, !confirming else { return }
+        // Note 76: an event team invite QR is not a ticket. Only the full join link is diverted (never a bare value), so a
+        // booking id can't be misread; the join screen then shows what the invite is before anything happens.
+        if ProjectInviteLink.joinLink(code) != nil {
+            app.scanningQr = false
+            app.openProjectJoin(code)
+            return
+        }
         // Same code that just resolved: ignore for a moment.
         if code == lastResolvedCode, Date().timeIntervalSince(lastResolvedAt) < 3 { return }
         lookingUp = true

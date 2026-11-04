@@ -56,6 +56,13 @@ enum ProjectInviteLink {
         return value(s)
     }
 
+    /// Only the link forms (https://(www.)banbe.app/join/…, banbe://join/…): what a QR scanner may treat as an invite.
+    /// A bare token or code is nil here, so a ticket QR (a booking id) can never be read as one.
+    static func joinLink(_ input: String) -> Invite? {
+        let s = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (capture(webRe, s) ?? capture(appRe, s)).flatMap(value)
+    }
+
     /// The shareable link (and QR content) for a token; nil for anything that is not a token.
     static func joinURL(token: String) -> String? { full(tokenRe, token) ? joinURLBase + token : nil }
 }

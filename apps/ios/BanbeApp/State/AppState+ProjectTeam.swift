@@ -10,14 +10,18 @@ extension AppState {
 
     // MARK: invites
 
-    /// Mint an invite for `role` (and the lane, for a lane lead). Single use (multi-use arrives with the QR phase).
-    func createProjectInvite(role: String, laneID: String?) async -> ProjectInvite? {
+    /// Mint an invite for `role` (and the lane, for a lane lead). More than one use needs switch `project_qr_invite`
+    /// (the server refuses it otherwise).
+    func createProjectInvite(role: String, laneID: String?, maxUses: Int = 1) async -> ProjectInvite? {
         #if DEBUG
         if UITestFixture.isActive {
-            let inv = ProjectInvite(inviteId: UUID().uuidString.lowercased(), token: "Fx7kQ2mN9pR4sT6vW8yZ1a", shortCode: "BB-7K2Q",
+            UITestFixture.projectInviteCount += 1
+            let n = UITestFixture.projectInviteCount
+            let inv = ProjectInvite(inviteId: UUID().uuidString.lowercased(), token: "Fx7kQ2mN9pR4sT6vW8yZ1" + (n == 1 ? "a" : "b"),
+                                    shortCode: n == 1 ? "BB-7K2Q" : "BB-M4\(["A", "C", "D", "E", "F", "G", "H", "J"][n % 8])P",
                                     role: role, laneId: role == "lane_lead" ? laneID : nil,
                                     expiresAt: ISO8601DateFormatter().string(from: projectNow.addingTimeInterval(48 * 3600)),
-                                    maxUses: 1, uses: 0, createdBy: userID?.uuidString.lowercased())
+                                    maxUses: maxUses, uses: 0, createdBy: userID?.uuidString.lowercased())
             projectInvites.insert(inv, at: 0)
             return inv
         }
@@ -32,7 +36,7 @@ extension AppState {
         do {
             let result: ProjectInviteResult = try await SupabaseService.client
                 .rpc("project_create_invite", params: Params(pEventId: projectEventID, pRole: role,
-                                                             pLaneId: role == "lane_lead" ? laneID : nil, pMaxUses: 1))
+                                                             pLaneId: role == "lane_lead" ? laneID : nil, pMaxUses: maxUses))
                 .execute().value
             guard let inv = result.invite else {
                 projectNotice = projectErrorText(result.error)
@@ -148,10 +152,15 @@ extension AppState {
     // MARK: join
 
     /// A join link or a typed code. Signed out, the code is parked and the screen asks to log in first.
-    func openProjectJoin(_ input: String, back: Screen? = nil) {
-        let code = ProjectInviteLink.parse(input).map { inv -> String in
+    /// A link, token or typed code -> what the server's peek/redeem accept (a token or a normalised BB- code).
+    static func projectInviteValue(_ input: String) -> String? {
+        ProjectInviteLink.parse(input).map { inv -> String in
             switch inv { case .token(let t): return t; case .code(let c): return c }
-        } ?? input.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    func openProjectJoin(_ input: String, back: Screen? = nil) {
+        let code = Self.projectInviteValue(input) ?? input.trimmingCharacters(in: .whitespacesAndNewlines)
         projectJoinBack = back ?? (screen == .projectJoin ? projectJoinBack : (screen == .login || screen == .welcome ? .home : screen))
         projectJoinCode = code
         projectJoinPeek = nil
@@ -181,13 +190,14 @@ extension AppState {
     }
 
     func peekProjectInvite() async {
-        let code = projectJoinCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !code.isEmpty else { return }
-        guard ProjectInviteLink.parse(code) != nil else {
+        guard !projectJoinCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        // A pasted or scanned link becomes the bare value the server understands (and the field shows it).
+        guard let code = Self.projectInviteValue(projectJoinCode) else {
             projectJoinPeek = nil
             projectJoinError = T("Mã có dạng BB-XXXX (4 ký tự).", "A code looks like BB-XXXX (4 characters).")
             return
         }
+        if projectJoinCode != code { projectJoinCode = code }
         #if DEBUG
         if UITestFixture.isActive {
             projectJoinPeek = UITestFixture.projectJoinPeek(code)
@@ -203,7 +213,7 @@ extension AppState {
         defer { projectJoinLoading = false }
         do {
             let result: ProjectInvitePeek = try await SupabaseService.client.rpc("peek_project_invite", params: Params(pCode: code)).execute().value
-            guard code == projectJoinCode.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+            guard code == Self.projectInviteValue(projectJoinCode) else { return }
             if result.success {
                 projectJoinPeek = result
                 projectJoinError = ""
@@ -219,8 +229,7 @@ extension AppState {
 
     /// Join with the code on screen; on success the new project opens on Overview.
     func joinProject() async {
-        let code = projectJoinCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !code.isEmpty else { return }
+        guard let code = Self.projectInviteValue(projectJoinCode) else { return }
         #if DEBUG
         if UITestFixture.isActive {
             UserDefaults.standard.removeObject(forKey: Self.pendingProjectInviteKey)

@@ -21,6 +21,17 @@ final class ProjectInviteLinkTests: XCTestCase {
         }
     }
 
+    func testJoinLinkOnlyAcceptsLinks() throws {
+        for c in try XCTUnwrap(fixture()["joinLink"] as? [[String: Any]]) {
+            let input = c["in"] as? String ?? ""
+            var want: ProjectInviteLink.Invite?
+            if let e = c["expect"] as? [String: Any] {
+                want = e["kind"] as? String == "token" ? .token(e["token"] as? String ?? "") : .code(e["code"] as? String ?? "")
+            }
+            XCTAssertEqual(ProjectInviteLink.joinLink(input), want, input)
+        }
+    }
+
     func testAlphabet() {
         let a = ProjectInviteLink.codeAlphabet
         XCTAssertEqual(a.count, 31)

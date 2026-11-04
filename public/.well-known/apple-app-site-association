@@ -4,7 +4,7 @@
     "details": [
       {
         "appID": "TEAMID.com.banbe.ios",
-        "paths": ["/u/*"]
+        "paths": ["/u/*", "/join/*"]
       }
     ]
   }

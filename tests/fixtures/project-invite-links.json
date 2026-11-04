@@ -1,5 +1,5 @@
 {
-  "_about": "Event Project Hub invite link vectors (note 76). Read by tests/unit/projectInviteLink.test.mjs and apps/ios/BanbeAppTests/ProjectInviteLinkTests.swift. expect: {kind, token|code} or null.",
+  "_about": "Event Project Hub invite link vectors (note 76). Read by tests/unit/projectInviteLink.test.mjs and apps/ios/BanbeAppTests/ProjectInviteLinkTests.swift. expect: {kind, token|code} or null. joinLink: only the link forms (what a scanner may divert); a bare token or code is null there.",
   "parse": [
     { "in": "https://www.banbe.app/join/Ab3_x-Yz09Kq7LmNoPqRsT", "expect": { "kind": "token", "token": "Ab3_x-Yz09Kq7LmNoPqRsT" } },
     { "in": "https://banbe.app/join/Ab3_x-Yz09Kq7LmNoPqRsT/", "expect": { "kind": "token", "token": "Ab3_x-Yz09Kq7LmNoPqRsT" } },
@@ -31,6 +31,17 @@
     { "in": "banbe://u/linh", "expect": null },
     { "in": "https://www.banbe.app/join/%E0%A4%A", "expect": null },
     { "in": "", "expect": null }
+  ],
+  "joinLink": [
+    { "in": "https://www.banbe.app/join/Ab3_x-Yz09Kq7LmNoPqRsT", "expect": { "kind": "token", "token": "Ab3_x-Yz09Kq7LmNoPqRsT" } },
+    { "in": "banbe://join/BB-H3QD", "expect": { "kind": "code", "code": "BB-H3QD" } },
+    { "in": "https://banbe.app/join/bb-h3qd?src=qr", "expect": { "kind": "code", "code": "BB-H3QD" } },
+    { "in": "Ab3_x-Yz09Kq7LmNoPqRsT", "expect": null },
+    { "in": "BB-H3QD", "expect": null },
+    { "in": "3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f", "expect": null },
+    { "in": "https://www.banbe.app/u/linh", "expect": null },
+    { "in": "https://evil.example/join/BB-H3QD", "expect": null },
+    { "in": "https://www.banbe.app/join/nope", "expect": null }
   ],
   "joinUrl": { "token": "Ab3_x-Yz09Kq7LmNoPqRsT", "url": "https://www.banbe.app/join/Ab3_x-Yz09Kq7LmNoPqRsT" }
 }

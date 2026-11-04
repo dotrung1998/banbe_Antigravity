@@ -1,7 +1,7 @@
 # 76 — Event Project Hub (Hosting): per-event private team workspace
 
-Status: **phases 1-4 of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
-NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
+Status: **phases 1-4b of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
+NOT applied to production) 47c7b7a; phase 3 (iOS shell) f96091d; phase 4 (iOS Topics, Team, invites, join) 2c7cff9; phase 4b (QR invites) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
 `~/.claude/plans/pasted-content-id-234b-plan-mode-composed-koala.md`. Design source of truth for roles, tabs and layout:
 `banbe_hosting_project_hub_v6.html` (owner attachment, not in the repo).
 
@@ -168,5 +168,29 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
   in phase 2).
 - Not checked: a real device, real network calls (210 isn't applied anywhere but the throwaway stack), iPad, light mode.
 
-## Next: phase 4b (QR invite) then 5 (Day-of)
-QR image + single/multi use (≤ 20) behind `project_qr_invite`, scanner branch, AASA `/join/*` (a web deploy).
+## Phase 4b — QR invites (IMPLEMENTED LOCALLY; switch `project_qr_invite`, OFF; no migration)
+- **Invite sheet with the switch on** (`ProjectTeamSheets.swift`): opens full height, mints an invite at once (no Create
+  button) and shows a white QR of the join link + the BB- code + "Expires in 48 hours · single use / up to 20 people", a
+  "Single use only" toggle (off = `max_uses` 20; the server refuses more than 1 use while the switch is off), Copy link,
+  Share, and "The QR holds only the invite code". Changing role, lane or the toggle mints a new invite 400 ms after the
+  last change and cancels the one it replaces; an invite minted after the choices moved on is cancelled unseen. The
+  Team button reads "Invite by QR". Switch off = the phase 4 sheet, unchanged.
+- **Scanning:** the invitee's "Scan a QR code" on the Join screen (`ProjectInviteScanSheet`, reuses `CameraPreview`), and
+  the door scanner (`QRScannerView`) hands an invite QR to the Join screen instead of looking it up as a ticket. Both
+  accept only the full link (`ProjectInviteLink.joinLink` ⇄ web `parseJoinLink`, shared vectors `joinLink` in
+  project-invite-links.json), so a booking id can never be read as an invite. A pasted or scanned link is normalised to
+  the bare token/code before peek/redeem (`AppState.projectInviteValue`): 210's `project_invite_value` takes no URLs.
+- **AASA:** `public/.well-known/apple-app-site-association` now lists `"/join/*"` next to `"/u/*"`. NOT deployed. Until a
+  web deploy (and a build with Associated Domains and the real Team ID; the file still says `TEAMID`), a phone camera
+  opens `https://www.banbe.app/join/…` in the browser, and the web has no `/join` route before phase 8.
+- Camera permission text now also names "to scan an event team invite" (project.yml + Info.plist).
+- `CardSheet` gained `fullHeight` (default false, nothing else changed).
+
+### Verified
+- `ProjectQRInviteUITests` (4, `-uiFixtureProjectQR YES`, `-uiFixtureProjectScan` instead of a camera), the 18 phase 4 UI
+  tests, `ProjectInviteLinkTests` (4) and `ProjectTeamTopicsTests` (6) green. Web `projectInviteLink` 5/5.
+- Not checked: a real camera scan, a universal link opening the app (needs the deploy + signing above).
+
+## Next: phase 5 (iOS Day-of)
+Week strip, List, `RosTimeGrid` with an injected clock, the 15 s event-day poll (foreground, Day-of tab, event day only),
+item edit sheet, tick, trash.

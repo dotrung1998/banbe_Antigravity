@@ -892,6 +892,8 @@ struct CardSheet<Content: View>: View {
     @EnvironmentObject var app: AppState
     let title: String
     var closeID: String = "cardSheet.close"
+    /// Open at full height (a QR or a camera that must be seen whole); the default starts at half height.
+    var fullHeight = false
     let onClose: () -> Void
     @ViewBuilder var content: () -> Content
 
@@ -925,7 +927,7 @@ struct CardSheet<Content: View>: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents(fullHeight ? [.large] : [.medium, .large])
         .presentationDragIndicator(.visible)
     }
 }
