@@ -56,6 +56,48 @@ enum UITestFixture {
     /// makes the `shell.create` draft that type.
     static let eventKey = UserDefaults.standard.string(forKey: "uiFixtureEventKey") ?? "bepnho"
     static let createType = UserDefaults.standard.string(forKey: "uiFixtureCreateType")
+    /// Note 76: `shell.project` opens the Event Project Hub on tests/fixtures/project-snapshot.json (synthetic demo
+    /// data). `-uiFixtureProjectAs manager|lead|helper|finance` views it as that member instead of the Host;
+    /// `-uiFixtureProjectTab tasks` opens on a tab; `-uiFixtureProjectHub YES` turns the switch on for other shells
+    /// (Home's "Start a team project" row).
+    static let projectAs = UserDefaults.standard.string(forKey: "uiFixtureProjectAs")
+    static let projectTab = UserDefaults.standard.string(forKey: "uiFixtureProjectTab") ?? "overview"
+    static let projectHub = UserDefaults.standard.bool(forKey: "uiFixtureProjectHub")
+    /// The v6 prototype's "today" in the event's zone, so due days and countdowns never drift.
+    static var projectNow: Date? {
+        guard isActive, name == "shell.project" || projectHub else { return nil }
+        return ISO8601DateFormatter().date(from: "2026-11-03T10:00:00+07:00")
+    }
+
+    /// The shared snapshot fixture, optionally re-cast so the fixture account is one of the members.
+    static func projectSnapshot() -> ProjectSnapshot? {
+        // apps/ios/BanbeApp/App/UITestFixtures.swift -> the repo root is five levels up.
+        var url = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { url.deleteLastPathComponent() }
+        guard let data = try? Data(contentsOf: url.appendingPathComponent("tests/fixtures/project-snapshot.json")),
+              var text = String(data: data, encoding: .utf8) else { return nil }
+        let me = userID.uuidString.lowercased()
+        let memberIDs = ["manager": "00000000-0000-4000-8000-000000000102", "lead": "00000000-0000-4000-8000-000000000103",
+                         "helper": "00000000-0000-4000-8000-000000000104", "finance": "00000000-0000-4000-8000-000000000106"]
+        if let role = projectAs, let member = memberIDs[role] {
+            // The Host becomes someone else, and the fixture account takes that member's place.
+            text = text.replacingOccurrences(of: me, with: "00000000-0000-4000-8000-0000000001ff")
+                .replacingOccurrences(of: "\"display_name\": \"Bạn\"", with: "\"display_name\": \"Lan\"")
+                .replacingOccurrences(of: member, with: me)
+        }
+        guard let root = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
+              var snap = root["snapshot"] as? [String: Any] else { return nil }
+        if projectAs != nil, let members = snap["members"] as? [[String: Any]],
+           let mine = members.first(where: { ($0["user_id"] as? String) == me }) {
+            snap["is_host"] = false
+            snap["me"] = ["member_id": mine["member_id"] ?? "", "role": mine["role"] ?? "helper", "lane_id": mine["lane_id"] ?? NSNull(),
+                          "cap_money": mine["cap_money"] ?? false, "cap_checkin": mine["cap_checkin"] ?? false,
+                          "grant_expires_at": "2026-11-21T17:00:00+00:00"]
+        }
+        guard let json = try? JSONSerialization.data(withJSONObject: snap) else { return nil }
+        return try? JSONDecoder().decode(ProjectSnapshot.self, from: json)
+    }
+
     /// Stable fake account id so the draft store/relaunch tests have a key.
     static let userID = UUID(uuidString: "00000000-0000-4000-8000-00000000F1F0")!
 
@@ -196,6 +238,7 @@ struct UITestFixtureRoot: View {
         if UITestFixture.tourV3 { app.featureFlags["onboarding_v3"] = true }
         if UITestFixture.simpleShell { app.featureFlags["simple_shell"] = true }
         if UITestFixture.polaroid { app.featureFlags["polaroid_cards"] = true }
+        if UITestFixture.projectHub { app.featureFlags["event_project_hub"] = true; app.myProjectsLoaded = true }
         if UITestFixture.eventTypes {
             app.featureFlags["event_type_profiles"] = true
             // The facts the production backfill gave these catalogue events (note 66), as their real rows would.
@@ -275,6 +318,15 @@ struct UITestFixtureRoot: View {
             app.helpGuideKey = UserDefaults.standard.string(forKey: "uiFixtureGuide") ?? "personal"
             app.screen = .helpGuide
         case "faq": app.screen = .helpFaq
+        case "project":
+            // Note 76: the Event Project Hub on the shared demo snapshot (nothing reaches Supabase in a fixture).
+            app.featureFlags["event_project_hub"] = true
+            app.projectSnapshot = UITestFixture.projectSnapshot()
+            app.projectEventID = app.projectSnapshot?.event?.id ?? "fx_project"
+            app.projectTab = UITestFixture.projectTab
+            app.projectBackScreen = .home
+            app.myProjectsLoaded = true
+            app.screen = .eventProject
         case "adminManageEvents":
             // Note 54. `-uiFixtureWipe YES` is an admin having turned the TESTING-PHASE wipe switch on.
             if UserDefaults.standard.bool(forKey: "uiFixtureWipe") { app.featureFlags["admin_event_wipe"] = true }

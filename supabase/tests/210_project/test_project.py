@@ -436,6 +436,18 @@ run('read-only: a past project refuses writes but stays readable and listed',
     lambda v: err_of(v[0]) == 'READ_ONLY' and j(v[1])['project']['read_only'] is True
     and {p['event_id']: p['read_only'] for p in j(v[2])['projects']} == {'pj_main': False, 'pj_past': True})
 
+# the iOS/web fixture tests/fixtures/project-snapshot.json must have exactly the keys the server returns
+SNAP_FX = json.load(open(os.path.join(ROOT, 'tests/fixtures/project-snapshot.json')))['snapshot']
+res, _ = transaction([(O, "public.get_event_project('pj_main')")])
+real = j(res.get(0)) or {}
+def shape(d):
+    return {k: (sorted(v[0].keys()) if isinstance(v, list) and v and isinstance(v[0], dict) else sorted(v.keys()) if isinstance(v, dict) else None)
+            for k, v in d.items()}
+real_shape, fx_shape = shape(real), shape(SNAP_FX)
+check('project-snapshot.json has the same keys as get_event_project (top level and every nested row)',
+      sorted(real_shape) == sorted(fx_shape) and all(real_shape[k] == fx_shape[k] for k in real_shape if real_shape[k] and fx_shape.get(k)),
+      str({k: (real_shape.get(k), fx_shape.get(k)) for k in set(real_shape) | set(fx_shape) if real_shape.get(k) != fx_shape.get(k)}))
+
 # migration hygiene
 res, err = transaction([('admin', "1")], setup=open(MIG).read() + '\n')
 check('210 applies twice without error (idempotent)', res.get(0) == '1' and 'ERROR' not in err, err[:300])

@@ -697,6 +697,12 @@ extension AppState {
         eventRecapID = nil
         hostRecapID = nil
         createSeedCoverImage = nil
+        // Note 76: a team project (names, tasks, channel links) belongs to the account that just left.
+        projectSnapshot = nil
+        projectEventID = ""
+        projectNotice = ""
+        myProjects = []
+        myProjectsLoaded = false
         await applySession(nil)
         // Note 44 — lands on the single public welcome screen (one tap to Log
         // in from there), not straight into Login. Still no guest browsing.

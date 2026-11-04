@@ -36,6 +36,8 @@ enum Screen: String {
     case schedule
     // Note 50 — the Home search bar opens this (it used to open Map).
     case search
+    // Note 76 — Event Project Hub (switch event_project_hub): one event's team project, and Account > Projects I'm in.
+    case eventProject, myProjects
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -1723,6 +1725,20 @@ final class AppState: ObservableObject {
     @Published var organizerTeamError = ""
     @Published var organizerTeamBackScreen: Screen = .organizerProfile
     @Published var organizerTeamOrganizerId = ""
+    // Note 76 — Event Project Hub. One open project at a time; `projectSnapshot` is the last full answer and
+    // refreshes ask with its version (the server answers {unchanged} when nothing moved).
+    @Published var projectSnapshot: ProjectSnapshot?
+    @Published var projectEventID = ""
+    @Published var projectLoading = false
+    @Published var projectError = ""
+    @Published var projectTab = "overview"
+    @Published var projectBackScreen: Screen = .home
+    /// The write in flight (shown as a busy state on the button that started it).
+    @Published var projectBusy = false
+    /// The last write's refusal, for a toast-style line in the hub.
+    @Published var projectNotice = ""
+    @Published var myProjects: [MyProject] = []
+    @Published var myProjectsLoaded = false
     @Published var myEventCredits: [EventCreditInvite] = []
     // iPhone fix pass (2026-09-27), Issue 5 — the confirmed half of the
     // same real-credit model; `myEventCredits` above only ever loaded
@@ -3946,6 +3962,9 @@ final class AppState: ObservableObject {
         case .surveyPublic: screen = surveyPublicBackScreen
         case .surveysHosting: screen = .profile
         case .reports: backFromReports()
+        // Note 76: without these two, the edge swipe would fall to `default: break` (the bug noted above).
+        case .eventProject: backFromProject()
+        case .myProjects: screen = .profile
         // Account IA pass (2026-09-27) — `accountTab` is never touched by
         // AccountGroupView, so returning to `.profile` always lands back
         // on whichever tab was already showing.

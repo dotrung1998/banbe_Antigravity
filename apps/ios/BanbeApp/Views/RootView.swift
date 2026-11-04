@@ -1466,6 +1466,8 @@ struct RootView: View {
         case .organizerProfile: OrganizerProfileView()
         case .reports: ReportsView()
         case .organizerTeam: OrganizerTeamView()
+        case .eventProject: ProjectHubView()
+        case .myProjects: MyProjectsView()
         case .accountGroup: AccountGroupView()
         case .surveyPublic: SurveyPublicView()
         case .surveysHosting: SurveysHostingView()

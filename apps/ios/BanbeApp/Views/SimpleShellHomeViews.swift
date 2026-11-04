@@ -121,6 +121,7 @@ struct HostHomeSections: View {
         .task {
             await app.loadMyEvents()
             await app.loadMyOrgEventSummaries()
+            if app.projectHubEnabled { await app.loadMyProjects() }
         }
         // Note 69: "This month" used to appear only after Reports had been opened this session. Load the host numbers
         // here when nothing host-scoped is in hand (same RPC and range as Reports).
@@ -363,6 +364,9 @@ struct HostHomeSections: View {
                 heroButton(app.T("Nhắn khách", "Message guests"), icon: "bubble.left.and.bubble.right", primary: false,
                            id: "home.host.message") { app.goInbox() }
             }
+            // Note 76 (switch event_project_hub): the event's private team project. Opt-in: nothing exists until the
+            // Host starts it.
+            if app.projectHubEnabled { projectRow(e) }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -372,6 +376,28 @@ struct HostHomeSections: View {
         .accessibilityIdentifier("home.host.hero")
         .task(id: e.key) {
             if app.eventFill[e.key] == nil { await app.loadPublicEventFill(ids: [e.key]) }
+        }
+    }
+
+    @ViewBuilder
+    private func projectRow(_ e: CatalogEvent) -> some View {
+        if let p = app.myProject(for: e.key) {
+            heroButton(p.myOpenTasks > 0
+                       ? app.T("Mở dự án · \(p.myOpenTasks) việc của bạn", p.myOpenTasks == 1 ? "Open project · 1 task for you" : "Open project · \(p.myOpenTasks) tasks for you")
+                       : app.T("Mở dự án", "Open project"),
+                       icon: "rectangle.3.group", primary: false, id: "home.host.project.open") {
+                Task { await app.openProject(eventID: e.key, back: .home) }
+            }
+        } else if app.myProjectsLoaded {
+            heroButton(app.T("Lập dự án cho đội", "Start a team project"), icon: "rectangle.3.group.bubble", primary: false,
+                       id: "home.host.project.start") {
+                Task { await app.startProject(eventID: e.key, back: .home) }
+            }
+            .disabled(app.projectBusy)
+            if !app.projectNotice.isEmpty {
+                Text(app.projectNotice).font(.footnote).foregroundStyle(BanbeTheme.alert)
+                    .accessibilityIdentifier("home.host.project.notice")
+            }
         }
     }
 

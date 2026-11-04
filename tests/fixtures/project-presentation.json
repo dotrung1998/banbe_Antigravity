@@ -1,0 +1,76 @@
+{
+  "_about": "Event Project Hub presentation vectors (note 76) over tests/fixtures/project-snapshot.json. Read by apps/ios/BanbeAppTests/ProjectPresentationTests.swift (and the web twin in phase 8). 'now' is the v6 prototype's TODAY (3/11) in the event's zone. Task and post ids are written as their two-digit suffix (task 12 = ...000312).",
+  "now": "2026-11-03T10:00:00+07:00",
+  "cases": [
+    {
+      "case": "the Host's view",
+      "me": "00000000-0000-4000-8000-00000000f1f0",
+      "isHost": true,
+      "expect": {
+        "readiness": { "done": 1, "total": 12, "percent": 8 },
+        "lanes": [[1, 3], [0, 3], [0, 1], [0, 2], [0, 1], [0, 2]],
+        "myOpenTasks": [12, 11],
+        "attention": [5, 12],
+        "comingUp": [12, 7, 9, 3],
+        "awaiting": [["laneReview", "00000000-0000-4000-8000-000000000701"], ["vote", "post:4"], ["unseen", "post:2"]],
+        "decisions": [1],
+        "daysToGo": 11,
+        "dayDeltas": { "12": -2, "7": 0, "1": 1, "9": 2, "11": 11 },
+        "dueLabels": { "12": "late:2", "7": "today", "1": "tomorrow", "9": "date:2026-11-05" }
+      }
+    },
+    {
+      "case": "the Manager's view (Linh): no proposal review, a question addressed to her, her own update is not waiting",
+      "me": "00000000-0000-4000-8000-000000000102",
+      "isHost": false,
+      "expect": {
+        "readiness": { "done": 1, "total": 12, "percent": 8 },
+        "lanes": [[1, 3], [0, 3], [0, 1], [0, 2], [0, 1], [0, 2]],
+        "myOpenTasks": [9, 6],
+        "attention": [5, 12],
+        "comingUp": [12, 7, 9, 3],
+        "awaiting": [["vote", "post:4"], ["question", "post:3"]],
+        "decisions": [1],
+        "daysToGo": 11,
+        "dayDeltas": { "12": -2 },
+        "dueLabels": { "12": "late:2" }
+      }
+    },
+    {
+      "case": "the day after the event: days to go is negative, everything open is late",
+      "me": "00000000-0000-4000-8000-00000000f1f0",
+      "isHost": true,
+      "now": "2026-11-15T09:00:00+07:00",
+      "expect": {
+        "readiness": { "done": 1, "total": 12, "percent": 8 },
+        "lanes": [[1, 3], [0, 3], [0, 1], [0, 2], [0, 1], [0, 2]],
+        "myOpenTasks": [12, 11],
+        "attention": [5, 12, 7, 9, 3, 2, 4, 6, 8, 10, 11],
+        "comingUp": [12, 7, 9, 3],
+        "awaiting": [["laneReview", "00000000-0000-4000-8000-000000000701"], ["vote", "post:4"], ["unseen", "post:2"]],
+        "decisions": [1],
+        "daysToGo": -1,
+        "dayDeltas": { "11": -1 },
+        "dueLabels": { "11": "late:1" }
+      }
+    },
+    {
+      "case": "late evening in Vietnam is already tomorrow there (the event's zone decides, not UTC)",
+      "me": "00000000-0000-4000-8000-00000000f1f0",
+      "isHost": true,
+      "now": "2026-11-03T18:30:00Z",
+      "expect": {
+        "readiness": { "done": 1, "total": 12, "percent": 8 },
+        "lanes": [[1, 3], [0, 3], [0, 1], [0, 2], [0, 1], [0, 2]],
+        "myOpenTasks": [12, 11],
+        "attention": [5, 12, 7],
+        "comingUp": [12, 7, 9, 3],
+        "awaiting": [["laneReview", "00000000-0000-4000-8000-000000000701"], ["vote", "post:4"], ["unseen", "post:2"]],
+        "decisions": [1],
+        "daysToGo": 10,
+        "dayDeltas": { "7": -1, "9": 1 },
+        "dueLabels": { "7": "late:1", "9": "tomorrow" }
+      }
+    }
+  ]
+}

@@ -186,6 +186,7 @@ struct AccountView: View {
         }
         .task { if app.userID != nil { await app.loadHomeStories() } }
         .task { if app.userID != nil { await app.loadMyOrganizerMemberships() } }
+        .task { if app.userID != nil && app.projectHubEnabled { await app.loadMyProjects() } }
         // Admin Team pass (2026-10-02) — this account's own pending admin
         // invite (reachable regardless of role) and, for a manage-admins-
         // capable admin, the roster/invites source for the Admin-tab
@@ -376,6 +377,7 @@ struct AccountView: View {
         AccountTilesGrid(tiles: goerTiles)
             .padding(.top, 16)
             .id("account-tiles")
+        if app.projectHubEnabled && !app.myProjects.isEmpty { projectsStrip.padding(.top, 12).id("account.personal.projects") }
         let items = accountTabs.contains("host") ? goerActionItems : actionItems
         if !items.isEmpty {
             ActionCenterView(items: items, onSeeAll: { app.openVerifications(back: .profile) })
@@ -438,6 +440,7 @@ struct AccountView: View {
         AccountTilesGrid(tiles: hostTiles)
             .padding(.top, 16)
             .id("account-tiles")
+        if app.projectHubEnabled && !app.myProjects.isEmpty { projectsStrip.padding(.top, 12).id("account.host.projects") }
         if !hostActionItems.isEmpty {
             ActionCenterView(items: hostActionItems, onSeeAll: { app.openVerifications(back: .profile) })
                 .padding(.top, 6)
@@ -666,6 +669,38 @@ struct AccountView: View {
         } else {
             app.hostSetupOpen = true
         }
+    }
+
+    // MARK: Projects strip (note 76)
+
+    /// Account > Projects I'm in: shown while the switch is on and I am in at least one event project.
+    private var projectsStrip: some View {
+        let n = app.myProjects.count
+        let tasks = app.myProjects.reduce(0) { $0 + $1.myOpenTasks }
+        let text = app.T("Dự án của tôi · \(n)", "Projects I'm in · \(n)")
+        return SwipeSafeButton { app.screen = .myProjects } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "rectangle.3.group").font(.system(size: 16, weight: .medium)).accessibilityHidden(true)
+                Text(text).font(.subheadline.weight(.semibold))
+                Spacer(minLength: 8)
+                if tasks > 0 {
+                    Text(app.T("\(tasks) việc", tasks == 1 ? "1 task" : "\(tasks) tasks")).font(.caption.weight(.bold))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .foregroundStyle(app.palette.clay).background(app.palette.clayBg, in: Capsule())
+                }
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink3)
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .background(app.palette.block, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(text + (tasks > 0 ? app.T(", \(tasks) việc của bạn", ", \(tasks) tasks for you") : ""))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("account.projects")
     }
 
     // MARK: Rewards strip

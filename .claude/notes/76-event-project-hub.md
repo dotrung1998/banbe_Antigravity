@@ -1,7 +1,7 @@
 # 76 — Event Project Hub (Hosting): per-event private team workspace
 
-Status: **phases 1-2 of 13 done.** Phase 1 (pure logic + switches) committed c731375. Phase 2 = migration 210, tested on
-the throwaway stack only, NOT applied to production. No UI yet, nothing reachable in the app. Plan (approved 2026-11-03):
+Status: **phases 1-3 of 13 done.** Phase 1 (pure logic + switches) c731375; phase 2 (migration 210, throwaway stack only,
+NOT applied to production) 47c7b7a; phase 3 (iOS shell) implemented locally. Nothing is reachable while the switch is off. Plan (approved 2026-11-03):
 `~/.claude/plans/pasted-content-id-234b-plan-mode-composed-koala.md`. Design source of truth for roles, tabs and layout:
 `banbe_hosting_project_hub_v6.html` (owner attachment, not in the repo).
 
@@ -92,6 +92,47 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
   owner/second-account columns appear only in `project_host_ids()`.
 - Mutation check: removing the Host-only check from `project_host_write` made 48 checks fail. Restored → green.
 
-## Next: phase 3 (iOS shell)
-`ProjectTabBar` (icon over label, 5 visible, swipe for the 6th), hub screen, Overview with team channels, Tasks, the
-Hosting card "Start a project" and Account "Projects I'm in", against a UI-test fixture (flag off = unreachable).
+## Phase 3 — iOS shell (IMPLEMENTED LOCALLY; reachable only with `event_project_hub` on)
+- **Screens:** `Screen.eventProject` (`Views/Project/ProjectHubView.swift`) and `.myProjects` (`MyProjectsView.swift`),
+  routed in RootView, with edge-swipe back cases in `goBack()` (a missing case is a silent no-op, recorded twice there).
+- **`ProjectTabBar`:** icon over label, exactly 5 slots at rest through `containerRelativeFrame(count: 5)`, view-aligned
+  scrolling, the selected tab scrolled into view. The right-edge fade + chevron follow `.scrollPosition(id:)` (a
+  preference-based first try never reported from inside the ScrollView, so the hint never showed). One-word labels
+  shrink instead of breaking mid-word. VoiceOver: "Tasks, tab 2 of 6, needs attention".
+- **Overview:** proposals banner (Host), team channels card (Host edits, Manager suggests, members open), readiness ring +
+  lane bars, needs attention (blocked, then late), coming up, decision log.
+- **Tasks:** proposals (Host approves in one tap, declines with a required reason; a Manager sees their own with the
+  answer), All | Mine (`GlassSegmentedControl`), add lane (Host) / propose lane (Manager), lanes with a 44 pt tick,
+  floating "Add task", task sheet (edit form for Host / Manager / own-lane lead; status-only detail for the assignee;
+  delete with a reason), lane manage (rename, archive with a reason once no open task is left).
+- **Team** is a read-only roster for now. Topics, Money & door and Day-of show an honest "Coming soon" card
+  (phases 4/6/5).
+- **Entries:** the Hosting Home hero gets "Start a team project" / "Open project · N tasks for you"; Account (both tabs)
+  gets a "Projects I'm in · N" strip. Sign-out clears every project field.
+- **Data:** `Models/EventProject.swift` (timestamps kept as strings, read by `ProjectDates.parse`, fractional or not),
+  `State/AppState+Project.swift` (open/refresh with `p_since_version`, one `projectWrite` path with plain-words refusals,
+  writes for tasks/lanes/channels/proposals/leave; in a DEBUG fixture writes change the in-memory snapshot).
+- **Pure presentation:** `Lib/ProjectPresentation.swift` (readiness, lanes, my tasks, attention, coming up, waiting
+  on me, due labels and countdown in the EVENT's zone) with shared vectors `tests/fixtures/project-presentation.json` over
+  `tests/fixtures/project-snapshot.json`. The snapshot fixture is demo data in the exact RPC shape, and the 210 suite now
+  checks its keys against the live `get_event_project` answer.
+- **Tokens:** the prototype's green "done" has no token here. Done = filled ink check, doing = honey, blocked = alert, to
+  do = ink3 ring, readiness = clay. No new colour was added.
+- **Bugs found while testing:** an `.accessibilityIdentifier` on a container stamped every child with the same id (fixed
+  with `.accessibilityElement(children: .contain)`). The fixture loader climbed 4 folders instead of 5. At the largest text
+  sizes, the banner, channel rows, task tags and the proposal buttons now stack instead of breaking words letter by letter.
+
+### Verified
+- `ProjectHubUITests` (11, on the real RootView with `-uiFixture shell.project`, "now" pinned to 3 Nov in the event's
+  zone): 5 tabs visible and the 6th by swipe with the hint going away, 5 tabs + 44 pt at AX XXXL, opening on Day-of
+  scrolls it into view, VoiceOver labels, Host overview, channel edit (Host) vs suggest (Manager) vs open (helper), tick,
+  refusal for a helper on someone else's task, add task, approve proposal, Vietnamese + dark. Screenshots were reviewed
+  (light/dark, vi/en, AX XXXL).
+- `ProjectPresentationTests` (3) green. Web unit 898/898 (the naming guard also covers the new iOS files and 210). The
+  210 SQL suite: 985/985.
+- Not checked: a real device, real network calls against a project (210 is not applied anywhere but the throwaway
+  stack), light mode of the Tasks tab, iPad.
+
+## Next: phase 4 (iOS Topics + Team)
+Topics (4 post types, votes, seen, replies, resolve/decide, edit while quiet, delete with reason), Team (roles,
+capabilities, remove, the v6 code/link invite sheet + join screen + pending token through signup).
