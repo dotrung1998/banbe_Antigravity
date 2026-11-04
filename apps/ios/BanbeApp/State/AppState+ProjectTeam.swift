@@ -13,10 +13,9 @@ extension AppState {
     /// Mint an invite for `role` (and the lane, for a lane lead). More than one use needs switch `project_qr_invite`
     /// (the server refuses it otherwise).
     func createProjectInvite(role: String, laneID: String?, maxUses: Int = 1) async -> ProjectInvite? {
-        #if DEBUG
-        if UITestFixture.isActive {
-            UITestFixture.projectInviteCount += 1
-            let n = UITestFixture.projectInviteCount
+        if projectOffline {
+            ProjectDemo.inviteCount += 1
+            let n = ProjectDemo.inviteCount
             let inv = ProjectInvite(inviteId: UUID().uuidString.lowercased(), token: "Fx7kQ2mN9pR4sT6vW8yZ1" + (n == 1 ? "a" : "b"),
                                     shortCode: n == 1 ? "BB-7K2Q" : "BB-M4\(["A", "C", "D", "E", "F", "G", "H", "J"][n % 8])P",
                                     role: role, laneId: role == "lane_lead" ? laneID : nil,
@@ -25,7 +24,6 @@ extension AppState {
             projectInvites.insert(inv, at: 0)
             return inv
         }
-        #endif
         struct Params: Encodable {
             let pEventId: String; let pRole: String; let pLaneId: String?; let pMaxUses: Int
             enum CodingKeys: String, CodingKey { case pEventId = "p_event_id", pRole = "p_role", pLaneId = "p_lane_id", pMaxUses = "p_max_uses" }
@@ -52,9 +50,7 @@ extension AppState {
     }
 
     func loadProjectInvites() async {
-        #if DEBUG
-        if UITestFixture.isActive { return }
-        #endif
+        if projectOffline { return }
         guard projectCan("invite.create", .init(role: "helper")) else { projectInvites = []; return }
         struct Params: Encodable {
             let pEventId: String
@@ -71,9 +67,7 @@ extension AppState {
 
     @discardableResult
     func revokeProjectInvite(_ inviteID: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive { projectInvites.removeAll { $0.id == inviteID }; return true }
-        #endif
+        if projectOffline { projectInvites.removeAll { $0.id == inviteID }; return true }
         struct Params: Encodable {
             let pInviteId: String
             enum CodingKeys: String, CodingKey { case pInviteId = "p_invite_id" }
@@ -95,8 +89,7 @@ extension AppState {
 
     @discardableResult
     func setProjectMember(_ memberID: String, role: String, laneID: String?, capMoney: Bool, capCheckin: Bool) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             guard let i = projectSnapshot?.members?.firstIndex(where: { $0.memberId == memberID }), let m = projectSnapshot?.members?[i] else { return false }
             let finance = role == "finance"
             projectSnapshot?.members?[i] = ProjectMember(memberId: m.memberId, userId: m.userId, role: role, laneId: role == "lane_lead" ? laneID : nil,
@@ -104,7 +97,6 @@ extension AppState {
                                                          displayName: m.displayName, handle: m.handle, avatarUrl: m.avatarUrl)
             return true
         }
-        #endif
         struct Params: Encodable {
             let pMemberId: String; let pRole: String; let pLaneId: String?; let pCapMoney: Bool; let pCapCheckin: Bool
             enum CodingKeys: String, CodingKey {
@@ -117,8 +109,7 @@ extension AppState {
 
     @discardableResult
     func removeProjectMember(_ memberID: String, reason: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             if let uid = projectSnapshot?.members?.first(where: { $0.memberId == memberID })?.userId, let tasks = projectSnapshot?.tasks {
                 projectSnapshot?.tasks = tasks.map { t in
                     var t = t
@@ -129,7 +120,6 @@ extension AppState {
             projectSnapshot?.members?.removeAll { $0.memberId == memberID }
             return true
         }
-        #endif
         struct Params: Encodable {
             let pMemberId: String; let pReason: String
             enum CodingKeys: String, CodingKey { case pMemberId = "p_member_id", pReason = "p_reason" }
@@ -198,13 +188,11 @@ extension AppState {
             return
         }
         if projectJoinCode != code { projectJoinCode = code }
-        #if DEBUG
-        if UITestFixture.isActive {
-            projectJoinPeek = UITestFixture.projectJoinPeek(code)
+        if projectOffline {
+            projectJoinPeek = ProjectDemo.joinPeek(code)
             projectJoinError = projectJoinPeek == nil ? projectErrorText("INVITE_NOT_FOUND") : ""
             return
         }
-        #endif
         struct Params: Encodable {
             let pCode: String
             enum CodingKeys: String, CodingKey { case pCode = "p_code" }
@@ -230,13 +218,11 @@ extension AppState {
     /// Join with the code on screen; on success the new project opens on Overview.
     func joinProject() async {
         guard let code = Self.projectInviteValue(projectJoinCode) else { return }
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             UserDefaults.standard.removeObject(forKey: Self.pendingProjectInviteKey)
             fixtureJoined()
             return
         }
-        #endif
         struct Params: Encodable {
             let pCode: String
             enum CodingKeys: String, CodingKey { case pCode = "p_code" }
@@ -259,16 +245,14 @@ extension AppState {
         }
     }
 
-    #if DEBUG
-    /// Fixture: joining lands on the demo project as a Helper.
+    /// Fixture or demo: joining lands on the sample project.
     private func fixtureJoined() {
-        projectSnapshot = UITestFixture.projectSnapshot()
+        projectSnapshot = projectSampleSnapshot()
         projectEventID = projectSnapshot?.event?.id ?? "fx_project"
         projectTab = "overview"
         projectBackScreen = .home
         screen = .eventProject
     }
-    #endif
 
     // MARK: notifications
 

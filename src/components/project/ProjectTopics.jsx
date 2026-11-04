@@ -235,7 +235,7 @@ export function ComposeSheet({ close, p }) {
           );
         })}
         <Note tone="ink2">{T('Muốn nói chuyện bâng quơ? Gặp trực tiếp hoặc dùng kênh của đội. Ở đây chỉ dành cho việc cần chốt.', 'For small talk, meet in person or use the team channel. This is for things that need settling.')}</Note>
-        {primary && <a href={primary.url} target="_blank" rel="noopener noreferrer" data-testid="project-compose-channel" style={{ ...pillButton(false, { display: 'grid', placeItems: 'center', textDecoration: 'none', width: 'auto', padding: '0 16px' }) }}>↗ {primary.label}</a>}
+        {primary && <a href={primary.url} target="_blank" rel="noopener noreferrer" onClick={e => p.demoLinkBlocked(e)} data-testid="project-compose-channel" style={{ ...pillButton(false, { display: 'grid', placeItems: 'center', textDecoration: 'none', width: 'auto', padding: '0 16px' }) }}>↗ {primary.label}</a>}
       </Sheet>
     );
   }

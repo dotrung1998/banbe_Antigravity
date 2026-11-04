@@ -176,6 +176,16 @@ const FLAGS = [
     hintEn: 'Finance sends refunds to the Host for approval. The Host can let Finance refund alone, per project. Changing the payout account and cancelling the event stay with the Host. Off by default. Needs migration 214.',
     requires: 'event_project_hub',
   },
+  {
+    // Note 76, migration 216. Client only; works while Event projects is off.
+    key: 'project_hub_demo',
+    vi: 'Bản demo dự án sự kiện',
+    en: 'Project hub demo',
+    hintVi: 'Quản trị viên thấy mục "Bản demo dự án sự kiện" trong Duyệt & kiểm duyệt, mở dự án trên dữ liệu mẫu để giới thiệu với đồng nghiệp. Không lưu gì, không gửi gì lên máy chủ. Mặc định tắt.',
+    hintEn: 'Admins get a "Project hub demo" row in Review & moderation that opens the hub on sample data to show colleagues. Nothing is saved and nothing reaches the server. Off by default.',
+    stateOn: ['Đang hiện cho quản trị viên', 'Visible to admins'],
+    stateOff: ['Đang ẩn với mọi người', 'Hidden from everyone'],
+  },
 ];
 
 const ERRORS = {

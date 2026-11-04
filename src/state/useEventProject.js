@@ -3,11 +3,17 @@
 // version-checked refresh; the server decides permissions, projectCan() only decides what the UI offers.
 // State lives in BanBeContext (projectSnapshot, projectTab, ...; reset on sign-out with the other private keys).
 //
-// Dev-only demo mode: `window.__banbeDevSet({ projectDemo: true, projectSnapshot })` makes writes change the snapshot in
-// memory, so tests/event-project.spec.js can check real UI changes without a backend. It is ignored in production
-// builds (import.meta.env.DEV is false there).
+// Demo mode (`projectDemo: true`): writes change the snapshot in memory and NOTHING reaches the server (no RPC, no table
+// read, no storage). Two ways in:
+// - dev server only: `window.__banbeDevSet({ projectDemo: true, projectSnapshot })` (tests/event-project.spec.js);
+//   __banbeDevSet does not exist in production builds.
+// - the admin "Project hub demo" (migration 216, switch project_hub_demo): openProjectDemo() below, which only opens
+//   for an admin while the switch is on (projectDemoAllowed). BanBeContext ends it when the hub is left or the gate fails.
+// Whatever the way in, `projectDemo === true` means offline: every server call goes through `db`, which in demo is a
+// stub that refuses without touching the network, on top of the per-function demo branches.
 import { useBanBe } from './BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
+import { projectDemoAllowed, projectDemoState, PROJECT_DEMO_RESET, DEMO_PROJECT_FLAGS } from '../lib/projectDemo.js';
 import { projectCan, dueLabel, daysToGo, moneySummary, projectInviteValue, doorGuests } from '../lib/projectPresentation.js';
 import { flagOn } from '../lib/featureFlags.js';
 import { normalizeProofFile } from '../lib/proofUpload.js';
@@ -19,13 +25,40 @@ const iso = (d) => new Date(d).toISOString();
 const storage = () => { try { return globalThis.localStorage || null; } catch { return null; } };
 
 
+/** Stands in for supabase while in demo: every call answers "refused" and nothing is sent. */
+const DEMO_REFUSAL = { data: null, error: { message: 'DEMO_OFFLINE' } };
+const refusedQuery = () => new Proxy(function refused() {}, {
+  get: (_t, k) => (k === 'then' ? (ok) => Promise.resolve(DEMO_REFUSAL).then(ok) : refusedQuery()),
+  apply: () => refusedQuery(),
+});
+export const demoDb = Object.freeze({
+  rpc: async () => DEMO_REFUSAL,
+  from: () => refusedQuery(),
+  storage: { from: () => ({ upload: async () => DEMO_REFUSAL, createSignedUrl: async () => DEMO_REFUSAL, download: async () => DEMO_REFUSAL, remove: async () => DEMO_REFUSAL }) },
+});
+
+/** The project fixture is loaded only when an admin opens the demo (its own small chunk). */
+const loadDemoFixture = () => import('../../tests/fixtures/project-snapshot.json').then(m => (m.default || m).snapshot);
+
 export function useEventProject() {
   const ctx = useBanBe();
-  const { state: s, set, T } = ctx;
+  const { state: raw, set, T } = ctx;
+  const demo = raw.projectDemo === true;
+  const demoAdmin = demo && raw.projectDemoAdmin === true;
+  // Inside the admin demo every project switch counts as on; nowhere else changes.
+  const s = demoAdmin ? { ...raw, featureFlags: { ...(raw.featureFlags || {}), ...DEMO_PROJECT_FLAGS } } : raw;
+  const db = demo ? demoDb : supabase;
   const snap = s.projectSnapshot;
   const userId = s.user?.id ? String(s.user.id).toLowerCase() : null;
-  const demo = import.meta.env.DEV && s.projectDemo === true;
-  const now = () => (import.meta.env.DEV && s.projectNow ? new Date(s.projectNow) : new Date());
+  const now = () => ((import.meta.env.DEV || demo) && s.projectNow ? new Date(s.projectNow) : new Date());
+  const demoOnly = () => T('Không có trong bản demo.', 'Not available in the demo.');
+  /** Links out of the hub (real screens, outside chat links) open real data, so the demo stops them with a notice. */
+  const demoLinkBlocked = (e) => {
+    if (!demo) return false;
+    e?.preventDefault?.();
+    set({ projectNotice: demoOnly() });
+    return true;
+  };
   const tz = snap?.event?.tz || 'Asia/Ho_Chi_Minh';
 
   const can = (action, target = {}) => projectCan(snap, action, target, { userId, flags: s.featureFlags || {}, now: now() });
@@ -115,7 +148,7 @@ export function useEventProject() {
   const refresh = async (full = false, eventId = s.projectEventId) => {
     if (demo || !eventId) return;
     if (!s.projectSnapshot) set({ projectLoading: true });
-    const { data, error } = await supabase.rpc('get_event_project', { p_event_id: eventId, p_since_version: full ? null : (s.projectSnapshot?.version ?? null) });
+    const { data, error } = await db.rpc('get_event_project', { p_event_id: eventId, p_since_version: full ? null : (s.projectSnapshot?.version ?? null) });
     set(prev => {
       if (prev.projectEventId !== eventId) return {};
       if (error || !data) return { projectLoading: false, projectError: prev.projectSnapshot ? '' : errorText(null) };
@@ -138,7 +171,7 @@ export function useEventProject() {
     set({ screen: 'eventProject', projectEventId: eventId, projectBack: back === 'eventProject' ? s.projectBack : back, projectTab: tab,
           projectNotice: '', projectError: '', ...(same ? {} : { projectSnapshot: null, projectMoney: null, projectDayView: 'list', projectRosVersion: null }) });
     if (!demo) {
-      const { data } = await supabase.rpc('get_event_project', { p_event_id: eventId, p_since_version: null });
+      const { data } = await db.rpc('get_event_project', { p_event_id: eventId, p_since_version: null });
       set(prev => prev.projectEventId !== eventId ? {} : (data?.success ? { projectSnapshot: data, projectError: '', projectLoading: false }
         : { projectError: errorText(data?.error), projectLoading: false }));
     }
@@ -146,9 +179,23 @@ export function useEventProject() {
 
   const back = () => set({ screen: s.projectBack || 'home' });
 
+  // ------------------------------------------------------------------ admin demo (migration 216)
+  const demoAllowed = projectDemoAllowed(raw);
+  /** Open the hub on the sample data as `as` (host | manager | finance | lane_lead | helper); `eventDay` puts the demo
+   * clock on the event day. Only for an admin while project_hub_demo is on; never reads or writes the server. */
+  const openProjectDemo = async ({ as = 'host', eventDay = false } = {}) => {
+    if (!demoAllowed) return false;
+    const fixture = await loadDemoFixture();
+    set(prev => (projectDemoAllowed(prev) ? projectDemoState(fixture, { as, eventDay, userId: prev.user?.id }) : {}));
+    return true;
+  };
+  /** Leave the demo: all demo state cleared, back to Account > Review & moderation. */
+  const exitProjectDemo = () => set({ ...PROJECT_DEMO_RESET, screen: 'accountGroup', accountGroupKey: 'adminReview' });
+
   const loadMyProjects = async () => {
+    if (demo) return; // the demo hub is not a real project and the real list is not read while it is open
     if (!userId || s.featureFlags?.event_project_hub !== true) { set({ myProjects: [], myProjectsLoaded: true }); return; }
-    const { data } = await supabase.rpc('get_my_event_projects');
+    const { data } = await db.rpc('get_my_event_projects');
     set({ myProjects: data?.projects || [], myProjectsLoaded: true });
   };
 
@@ -160,8 +207,9 @@ export function useEventProject() {
 
   /** One write RPC. On success the project refreshes; a refusal lands in projectNotice in plain words. */
   const write = async (fn, params, { refresh: again = true, kind } = {}) => {
+    if (demo) { set({ projectNotice: demoOnly() }); return null; }
     set({ projectBusy: true, projectNotice: '' });
-    const { data, error } = await supabase.rpc(fn, params);
+    const { data, error } = await db.rpc(fn, params);
     set({ projectBusy: false });
     if (error || !data?.success) { set({ projectNotice: errorText(data?.error, kind) }); return null; }
     if (again) await refresh(false);
@@ -207,13 +255,28 @@ export function useEventProject() {
     if (demo) { patchSnap(p => ({ ...p, lanes: [...p.lanes, { id: uuid(), name, position: p.lanes.length }] })); return true; }
     return !!(await write('project_add_lane', { p_event_id: s.projectEventId, p_name: name }));
   };
-  const renameLane = async (laneId, name) => !!(await write('project_rename_lane', { p_lane_id: laneId, p_name: name }));
-  const archiveLane = async (laneId, reason) => !!(await write('project_archive_lane', { p_lane_id: laneId, p_reason: reason }));
+  const renameLane = async (laneId, name) => {
+    if (demo) { patchSnap(p => ({ ...p, lanes: p.lanes.map(l => (l.id === laneId ? { ...l, name } : l)) })); return true; }
+    return !!(await write('project_rename_lane', { p_lane_id: laneId, p_name: name }));
+  };
+  const archiveLane = async (laneId, reason) => {
+    if (demo) {
+      if ((snap?.tasks || []).some(t => t.lane_id === laneId && t.status !== 'done')) { set({ projectNotice: errorText('LANE_HAS_OPEN_TASKS') }); return false; }
+      patchSnap(p => ({ ...p, lanes: p.lanes.filter(l => l.id !== laneId) }));
+      return true;
+    }
+    return !!(await write('project_archive_lane', { p_lane_id: laneId, p_reason: reason }));
+  };
   const proposeChange = async ({ kind, laneId = null, name, url, channel, why }) => {
     const payload = {};
     if (name != null) payload.name = name;
     if (url != null) payload.url = url;
     if (channel != null) payload.channel = channel;
+    if (demo) {
+      patchSnap(p => ({ ...p, change_requests: [...(p.change_requests || []), { id: uuid(), event_id: p.event?.id, kind, lane_id: laneId, payload, why,
+        status: 'pending', proposed_by: userId, proposed_at: iso(now()), decided_by: null, decided_at: null, decision_reason: null }] }));
+      return true;
+    }
     return !!(await write('project_propose_change', { p_event_id: s.projectEventId, p_kind: kind, p_lane_id: laneId, p_payload: payload, p_why: why }));
   };
   const reviewChange = async (requestId, approve, reason = null) => {
@@ -226,6 +289,7 @@ export function useEventProject() {
     return !!(await write('project_review_change', { p_request_id: requestId, p_approve: approve, p_reason: reason }));
   };
   const leave = async () => {
+    if (demo) { set({ projectNotice: demoOnly() }); return; }
     if (await write('project_leave', { p_event_id: s.projectEventId }, { refresh: false })) {
       set({ projectSnapshot: null }); await loadMyProjects(); back();
     }
@@ -237,14 +301,14 @@ export function useEventProject() {
       const post = snap?.posts?.find(p => p.id === postId);
       return post ? { success: true, post, replies: (s.projectDemoReplies || {})[postId] || [], voters: [], seen_by: post.seen_by_me ? [userId] : [] } : null;
     }
-    const { data } = await supabase.rpc('get_event_project_post', { p_post_id: postId });
+    const { data } = await db.rpc('get_event_project_post', { p_post_id: postId });
     if (!data?.success) { set({ projectNotice: errorText(data?.error) }); return null; }
     return data;
   };
   const loadOlderPosts = async () => {
     const oldest = snap?.posts?.[snap.posts.length - 1]?.created_at;
     if (demo || !oldest) { set({ projectPostsExhausted: true }); return; }
-    const { data } = await supabase.rpc('get_event_project_posts', { p_event_id: s.projectEventId, p_before: oldest, p_limit: 20 });
+    const { data } = await db.rpc('get_event_project_posts', { p_event_id: s.projectEventId, p_before: oldest, p_limit: 20 });
     const older = data?.posts || [];
     patchSnap(p => { const ids = new Set(p.posts.map(x => x.id)); return { ...p, posts: [...p.posts, ...older.filter(x => !ids.has(x.id))] }; });
     set({ projectPostsExhausted: older.length < 20 });
@@ -322,7 +386,7 @@ export function useEventProject() {
       return inv;
     }
     set({ projectBusy: true, projectNotice: '' });
-    const { data } = await supabase.rpc('project_create_invite', { p_event_id: s.projectEventId, p_role: role, p_lane_id: role === 'lane_lead' ? laneId : null, p_max_uses: maxUses });
+    const { data } = await db.rpc('project_create_invite', { p_event_id: s.projectEventId, p_role: role, p_lane_id: role === 'lane_lead' ? laneId : null, p_max_uses: maxUses });
     set({ projectBusy: false });
     if (!data?.success) { set({ projectNotice: errorText(data?.error) }); return null; }
     const inv = { ...data, uses: 0, created_by: userId };
@@ -331,7 +395,7 @@ export function useEventProject() {
   };
   const loadInvites = async () => {
     if (demo || !can('invite.create', { role: 'helper' })) return;
-    const { data } = await supabase.rpc('project_list_invites', { p_event_id: s.projectEventId });
+    const { data } = await db.rpc('project_list_invites', { p_event_id: s.projectEventId });
     if (data?.success) set({ projectInvites: data.invites || [] });
   };
   const revokeInvite = async (inviteId) => {
@@ -391,7 +455,7 @@ export function useEventProject() {
       return;
     }
     set({ projectJoinLoading: true });
-    const { data, error } = await supabase.rpc('peek_project_invite', { p_code: code });
+    const { data, error } = await db.rpc('peek_project_invite', { p_code: code });
     set({ projectJoinLoading: false });
     if (error) { set({ projectJoinError: T('Chưa kiểm tra được mã. Hãy thử lại.', "Couldn't check the code. Try again.") }); return; }
     set(data?.success ? { projectJoinPeek: data, projectJoinError: '' } : { projectJoinPeek: null, projectJoinError: errorText(data?.error) });
@@ -401,7 +465,7 @@ export function useEventProject() {
     if (!code) return;
     if (demo) { storage()?.removeItem(PENDING_PROJECT_INVITE_KEY); set({ screen: 'eventProject', projectTab: 'overview', projectBack: 'home' }); return; }
     set({ projectJoinLoading: true });
-    const { data } = await supabase.rpc('project_redeem_invite', { p_code: code });
+    const { data } = await db.rpc('project_redeem_invite', { p_code: code });
     set({ projectJoinLoading: false });
     if (!data?.success) { set({ projectJoinError: errorText(data?.error) }); return; }
     storage()?.removeItem(PENDING_PROJECT_INVITE_KEY);
@@ -413,7 +477,7 @@ export function useEventProject() {
   const liveSync = (visible) => !!visible && s.screen === 'eventProject' && s.projectTab === 'dayof' && daysToGo(snap?.event, now()) === 0;
   const pollRos = async () => {
     if (demo || !s.projectEventId) return;
-    const { data } = await supabase.rpc('get_event_project_ros', { p_event_id: s.projectEventId, p_since_version: s.projectRosVersion ?? snap?.version ?? null });
+    const { data } = await db.rpc('get_event_project_ros', { p_event_id: s.projectEventId, p_since_version: s.projectRosVersion ?? snap?.version ?? null });
     if (!data?.success) return;
     set(prev => (prev.projectEventId !== s.projectEventId ? {} : {
       projectRosVersion: data.version,
@@ -445,7 +509,7 @@ export function useEventProject() {
   };
   const loadTrash = async () => {
     if (demo) return s.projectDemoTrash || [];
-    const { data } = await supabase.rpc('get_event_project_trash', { p_event_id: s.projectEventId });
+    const { data } = await db.rpc('get_event_project_trash', { p_event_id: s.projectEventId });
     if (!data?.success) { set({ projectNotice: errorText(data?.error) }); return []; }
     return data.items || [];
   };
@@ -472,11 +536,11 @@ export function useEventProject() {
     if (!moneyAccess) { set({ projectMoney: null }); return; }
     if (demo) { set({ projectMoney: { confirmedSeats: 9, confirmedAmount: 4410000, awaiting: 2, refunds: 1, refundsOverdue: 0, checkedIn: 0, seats: 11 } }); return; }
     const eventId = s.projectEventId;
-    const { data: rows } = await supabase.from('bookings').select('qty, status, total_vnd, expires_at, paid_marked_at')
+    const { data: rows } = await db.from('bookings').select('qty, status, total_vnd, expires_at, paid_marked_at')
       .eq('event_id', eventId).in('status', ['pending', 'confirmed', 'attended']);
     let refunds = [];
     if (/^[0-9a-f-]{36}$/i.test(eventId)) {
-      const { data } = await supabase.rpc('get_host_refund_claims', { p_event_id: eventId });
+      const { data } = await db.rpc('get_host_refund_claims', { p_event_id: eventId });
       const t = Date.now();
       refunds = (data?.claims || []).map(c => ({
         active: c.status === 'owed' || c.status === 'disputed',
@@ -498,14 +562,14 @@ export function useEventProject() {
         { booking_id: 'door-3', attendee_id: null, name: 'Minh Khang', party: 1, checked_in: false }]) });
       return;
     }
-    const { data } = await supabase.rpc('get_event_checkin_names', { p_event_id: s.projectEventId });
+    const { data } = await db.rpc('get_event_checkin_names', { p_event_id: s.projectEventId });
     if (data?.success) set({ projectDoor: doorGuests(data.guests || []) }); else set({ projectNotice: errorText(data?.error) });
   };
   /** Check a whole party in from the list (check_in_guest 'manual'; the server writes the audit row). */
   const checkInGuest = async (bookingId) => {
     if (demo) { set(prev => ({ projectDoor: (prev.projectDoor || []).map(g => (g.bookingId === bookingId ? { ...g, inside: g.party } : g)) })); return true; }
     set({ projectBusy: true });
-    const { data } = await supabase.rpc('check_in_guest', { p_reservation_id: bookingId, p_source: 'manual' });
+    const { data } = await db.rpc('check_in_guest', { p_reservation_id: bookingId, p_source: 'manual' });
     set({ projectBusy: false });
     if (!data?.success) {
       set({ projectNotice: data?.error === 'Guest already checked in' ? T('Khách này đã vào rồi.', 'This guest is already in.')
@@ -525,7 +589,7 @@ export function useEventProject() {
         { booking_id: 'pay-2', name: 'Minh Khang', qty: 1, amount: 490000, payment_ref: 'BB3C4D', has_proof: false }] } });
       return;
     }
-    const { data } = await supabase.rpc('get_event_money_view', { p_event_id: s.projectEventId });
+    const { data } = await db.rpc('get_event_money_view', { p_event_id: s.projectEventId });
     if (data?.success) set({ projectPayments: data }); else set({ projectNotice: errorText(data?.error) });
   };
   /** "Money received" (verify_payment; the server checks access and writes the audit row). */
@@ -538,7 +602,7 @@ export function useEventProject() {
       return true;
     }
     set({ projectBusy: true });
-    const { data } = await supabase.rpc('verify_payment', { p_booking: bookingId, p_via: 'project_team', p_actor_kind: 'organizer', p_meta: {} });
+    const { data } = await db.rpc('verify_payment', { p_booking: bookingId, p_via: 'project_team', p_actor_kind: 'organizer', p_meta: {} });
     set({ projectBusy: false });
     if (!data?.success) set({ projectNotice: data?.error === 'NOT_AUTHORIZED' ? T('Quyền tiền của bạn đã hết hoặc đang tắt.', 'Your money access has ended or is switched off.') : errorText(null) });
     await loadPayments();
@@ -547,13 +611,13 @@ export function useEventProject() {
   /** One booking's transfer proof: the server logs the open first, then a short-lived signed link. */
   const openProof = async (bookingId) => {
     if (demo) return null;
-    const { data } = await supabase.rpc('open_payment_proof', { p_booking_id: bookingId });
+    const { data } = await db.rpc('open_payment_proof', { p_booking_id: bookingId });
     if (!data?.success) {
       set({ projectNotice: data?.error === 'NO_PROOF' ? T('Khách chưa gửi ảnh chuyển khoản.', "The guest hasn't sent a transfer proof.")
         : data?.error === 'NOT_AWAITING' ? T('Khoản này không còn chờ xác nhận.', 'This payment is no longer waiting for a check.') : T('Bạn không mở được ảnh này.', "You can't open this proof.") });
       return null;
     }
-    const { data: signed } = await supabase.storage.from(data.bucket || 'pay-proof').createSignedUrl(data.path, LIMITS.proofUrlSeconds);
+    const { data: signed } = await db.storage.from(data.bucket || 'pay-proof').createSignedUrl(data.path, LIMITS.proofUrlSeconds);
     return signed?.signedUrl || null;
   };
 
@@ -579,14 +643,15 @@ export function useEventProject() {
     if (!refundsAccess && !host) { set({ projectRefunds: null }); return; }
     if (demo) { if (!s.projectRefunds) set({ projectRefunds: demoRefunds() }); return; }
     const eventId = s.projectEventId;
-    const { data } = await supabase.rpc('get_event_refund_view', { p_event_id: eventId });
+    const { data } = await db.rpc('get_event_refund_view', { p_event_id: eventId });
     if (data?.success) set(prev => (prev.projectEventId !== eventId ? {} : { projectRefunds: data }));
     else if (!host) set({ projectNotice: errorText(data?.error) });
   };
   const patchRefunds = (fn) => set(prev => (prev.projectRefunds ? { projectRefunds: { ...prev.projectRefunds, claims: fn(prev.projectRefunds.claims || []) } } : {}));
   const refundRpc = async (fn, params) => {
+    if (demo) { set({ projectNotice: demoOnly() }); return null; }
     set({ projectBusy: true, projectNotice: '' });
-    const { data, error } = await supabase.rpc(fn, params);
+    const { data, error } = await db.rpc(fn, params);
     set({ projectBusy: false });
     if (error || !data?.success) {
       set({ projectNotice: data?.error === 'NOT_AUTHORIZED' && snap?.is_host !== true ? T('Quyền hoàn tiền của bạn đã hết hoặc đang tắt.', 'Your refund access has ended or is switched off.') : errorText(data?.error) });
@@ -612,7 +677,7 @@ export function useEventProject() {
       try {
         const { blob, ext, contentType } = await normalizeProofFile(file);
         proofPath = `${claimId}/team-${Date.now()}.${ext}`;
-        const { error } = await supabase.storage.from('refund-proof').upload(proofPath, blob, { upsert: false, contentType });
+        const { error } = await db.storage.from('refund-proof').upload(proofPath, blob, { upsert: false, contentType });
         if (error) throw error;
       } catch {
         set({ projectBusy: false, projectNotice: T('Không tải được biên lai lên. Hãy thử lại hoặc gửi không kèm biên lai.', "The receipt didn't upload. Try again or send without it.") });
@@ -662,7 +727,7 @@ export function useEventProject() {
   return {
     s, snap, set, T, userId, demo, now, tz, can, LIMITS, doorAccess, loadDoor, checkInGuest, paymentsAccess, loadPayments, confirmPayment, openProof,
     errorText, roleName, roleNote, statusName, typeName, personName, laneName, dueText, clock, headcount,
-    open, back, refresh, loadMyProjects, startProject, write,
+    open, back, refresh, loadMyProjects, startProject, write, demoAdmin, demoAllowed, demoOnly, demoLinkBlocked, openProjectDemo, exitProjectDemo,
     setTaskStatus, toggleTaskDone, saveTask, deleteTask, saveChannels, addLane, renameLane, archiveLane, proposeChange, reviewChange, leave,
     loadPost, loadOlderPosts, createPost, editPost, vote, markSeen, reply, resolvePost, decide, deletePost,
     createInvite, loadInvites, revokeInvite, setMember, removeMember, inviteShareText, inviteExpiry,

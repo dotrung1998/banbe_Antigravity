@@ -284,6 +284,8 @@ final class AppState: ObservableObject {
             if accountGroupParentKey != nil, [.profile, .home, .schedule, .inbox, .mapExplore].contains(screen) {
                 accountGroupParentKey = nil
             }
+            // Migration 216: the admin demo lives only inside the hub. Leaving it any way (Back, a dock tab, sign-out) ends it.
+            if projectDemo != nil, screen != .eventProject { endProjectDemo() }
         }
     }
     // Bottom tab bar (BottomTabBar.swift) — shrinks a bit while scrolling
@@ -1730,6 +1732,9 @@ final class AppState: ObservableObject {
     @Published var organizerTeamOrganizerId = ""
     // Note 76 — Event Project Hub. One open project at a time; `projectSnapshot` is the last full answer and
     // refreshes ask with its version (the server answers {unchanged} when nothing moved).
+    /// Migration 216: the admin "Project hub demo" while it is open (Lib/ProjectDemo.swift). Set = nothing in the
+    /// project code reaches the server (`projectOffline`).
+    @Published var projectDemo: ProjectDemo.Session?
     @Published var projectSnapshot: ProjectSnapshot?
     @Published var projectEventID = ""
     @Published var projectLoading = false

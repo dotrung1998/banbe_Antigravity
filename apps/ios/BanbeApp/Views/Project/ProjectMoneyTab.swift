@@ -40,18 +40,18 @@ struct ProjectMoneyTab: View {
                    detail: (m?.awaiting ?? 0) > 0 ? app.T("\(m!.awaiting) khách chờ bạn xác nhận", m!.awaiting == 1 ? "1 guest waiting for you" : "\(m!.awaiting) guests waiting for you")
                                                   : app.T("Không ai đang chờ", "Nobody is waiting"),
                    hot: (m?.awaiting ?? 0) > 0, id: "project.money.verify") {
-                app.openVerifications(back: .eventProject)
+                if !app.projectDemoBlocksLink() { app.openVerifications(back: .eventProject) }
             }
             divider
             action(icon: "arrow.uturn.backward.circle", title: app.T("Hoàn tiền", "Refunds"),
                    detail: refundDetail(m), hot: (m?.refunds ?? 0) > 0, id: "project.money.refunds") {
-                app.openVerificationsRefunds(back: .eventProject)
+                if !app.projectDemoBlocksLink() { app.openVerificationsRefunds(back: .eventProject) }
             }
             divider
             action(icon: "qrcode.viewfinder", title: app.T("Check-in ở cửa", "Door check-in"),
                    detail: m.map { app.T("\($0.checkedIn)/\($0.seats) chỗ đã vào", "\($0.checkedIn)/\($0.seats) seats in") } ?? "",
                    hot: false, id: "project.money.door") {
-                app.openAttendance(snap.event?.id ?? app.projectEventID, back: .eventProject)
+                if !app.projectDemoBlocksLink() { app.openAttendance(snap.event?.id ?? app.projectEventID, back: .eventProject) }
             }
         }
         .projectCard(padding: 4)

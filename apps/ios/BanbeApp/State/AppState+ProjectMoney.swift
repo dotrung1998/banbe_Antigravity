@@ -64,13 +64,10 @@ extension AppState {
 
     func loadProjectMoney() async {
         guard projectMoneyAccess else { projectMoney = nil; return }
-        #if DEBUG
-        if UITestFixture.isActive {
-            projectMoney = ProjectMoneySummary(confirmedSeats: 9, confirmedAmount: 4_410_000, awaiting: 2, refunds: 1, refundsOverdue: 0,
-                                               checkedIn: 0, seats: 11)
+        if projectOffline {
+            projectMoney = ProjectDemo.moneySummary
             return
         }
-        #endif
         let eventID = projectEventID
         do {
             let rows: [ProjectMoneyBooking] = try await SupabaseService.client
@@ -143,19 +140,12 @@ extension AppState {
 
     func loadProjectDoor() async {
         guard projectDoorAccess else { projectDoor = nil; return }
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             if projectDoor == nil {
-                projectDoor = Self.projectDoorGuests([
-                    ProjectDoorRow(bookingId: "door-1", attendeeId: "a1", name: "Ngọc Anh", party: 1, checkedIn: false),
-                    ProjectDoorRow(bookingId: "door-1", attendeeId: "a2", name: "Quốc Bảo", party: 1, checkedIn: false),
-                    ProjectDoorRow(bookingId: "door-2", attendeeId: nil, name: "Thu Hà", party: 2, checkedIn: true),
-                    ProjectDoorRow(bookingId: "door-3", attendeeId: nil, name: "Minh Khang", party: 1, checkedIn: false),
-                ])
+                projectDoor = Self.projectDoorGuests(ProjectDemo.doorRows)
             }
             return
         }
-        #endif
         struct Params: Encodable {
             let pEventId: String
             enum CodingKeys: String, CodingKey { case pEventId = "p_event_id" }
@@ -173,13 +163,11 @@ extension AppState {
     /// Check a whole party in from the list (check_in_guest 'manual'; the server writes the audit row).
     @discardableResult
     func checkInProjectGuest(_ bookingID: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             guard let i = projectDoor?.firstIndex(where: { $0.bookingId == bookingID }) else { return false }
             projectDoor?[i].inside = projectDoor?[i].party ?? 0
             return true
         }
-        #endif
         struct Params: Encodable {
             let pReservationId: String; let pSource: String
             enum CodingKeys: String, CodingKey { case pReservationId = "p_reservation_id", pSource = "p_source" }
@@ -250,17 +238,12 @@ extension AppState {
 
     func loadProjectPayments() async {
         guard projectPaymentsAccess else { projectPayments = nil; return }
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             if projectPayments == nil {
-                projectPayments = ProjectMoneyView(success: true, error: nil, confirmedAmount: 4_410_000, confirmedSeats: 9, awaiting: [
-                    ProjectAwaitingPayment(bookingId: "pay-1", name: "Ngọc Anh", qty: 2, amount: 980_000, paymentRef: "BB1A2B", paidMarkedAt: nil, hasProof: true),
-                    ProjectAwaitingPayment(bookingId: "pay-2", name: "Minh Khang", qty: 1, amount: 490_000, paymentRef: "BB3C4D", paidMarkedAt: nil, hasProof: false),
-                ])
+                projectPayments = ProjectDemo.payments
             }
             return
         }
-        #endif
         struct Params: Encodable {
             let pEventId: String
             enum CodingKeys: String, CodingKey { case pEventId = "p_event_id" }
@@ -276,8 +259,7 @@ extension AppState {
     /// "Money received" for one booking (verify_payment; the server checks access and writes the audit row).
     @discardableResult
     func confirmProjectPayment(_ bookingID: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             if let i = projectPayments?.awaiting?.firstIndex(where: { $0.bookingId == bookingID }), let row = projectPayments?.awaiting?[i] {
                 projectPayments?.awaiting?.remove(at: i)
                 projectPayments?.confirmedAmount = (projectPayments?.confirmedAmount ?? 0) + row.amount
@@ -285,7 +267,6 @@ extension AppState {
             }
             return true
         }
-        #endif
         struct Params: Encodable {
             let pBooking: String; let pVia: String; let pActorKind: String
             enum CodingKeys: String, CodingKey { case pBooking = "p_booking", pVia = "p_via", pActorKind = "p_actor_kind" }
@@ -311,9 +292,7 @@ extension AppState {
 
     /// Opens one booking's transfer proof: the server logs the open first, then a 60-second signed link is made.
     func openProjectProof(_ bookingID: String) async -> URL? {
-        #if DEBUG
-        if UITestFixture.isActive { return nil }
-        #endif
+        if projectOffline { return nil }
         struct Params: Encodable {
             let pBookingId: String
             enum CodingKeys: String, CodingKey { case pBookingId = "p_booking_id" }

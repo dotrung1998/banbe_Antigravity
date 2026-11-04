@@ -698,6 +698,9 @@ extension AppState {
         hostRecapID = nil
         createSeedCoverImage = nil
         // Note 76: a team project (names, tasks, channel links) belongs to the account that just left.
+        // Migration 216: so does an open admin demo (no server state to undo; it only lived in memory).
+        projectDemo = nil
+        ProjectDemo.resetStore()
         projectSnapshot = nil
         projectEventID = ""
         projectNotice = ""

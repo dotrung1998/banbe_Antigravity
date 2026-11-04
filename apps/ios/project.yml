@@ -89,6 +89,10 @@ targets:
       # (Lib/ProjectLimits.swift ⇄ src/lib/projectPermissions.js).
       - path: ../../src/data/projectLimits.json
         buildPhase: resources
+      # Admin "Project hub demo" (migration 216, Lib/ProjectDemo.swift): the synthetic sample the hub phases were
+      # tested with, referenced in place so the demo, the UI fixtures and the web tests read one file.
+      - path: ../../tests/fixtures/project-snapshot.json
+        buildPhase: resources
     resources:
       - BanbeApp/Resources
     dependencies:

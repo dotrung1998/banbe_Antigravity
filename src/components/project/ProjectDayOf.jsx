@@ -78,7 +78,7 @@ export default function ProjectDayOf({ p, ui }) {
         <strong style={{ display: 'block' }}>{ui.live ? T('Đang đồng bộ trực tiếp', 'Live now') : T('Chế độ ngày diễn ra', 'Event-day mode')}</strong>
         <span style={{ fontSize: 14, color: ink2 }}>{ui.live ? T(`Cập nhật mỗi ${p.LIMITS.pollSeconds} giây khi bạn mở thẻ này.`, `Updates every ${p.LIMITS.pollSeconds} seconds while this tab is open.`)
           : T(`Chỉ ngày ${eventDay ? fmt(eventDay, { day: 'numeric', month: 'short' }) : ''} mới đồng bộ trực tiếp để cả đội tick cùng lúc. Các ngày khác đồng bộ khi mở.`, `Only on ${eventDay ? fmt(eventDay, { day: 'numeric', month: 'short' }) : ''} does it sync live, so the team can tick together. Other days it syncs when you open it.`)}</span>
-        {call && <div style={{ marginTop: 10 }}><a href={call.url} target="_blank" rel="noopener noreferrer" data-testid="project-dayof-call"
+        {call && <div style={{ marginTop: 10 }}><a href={call.url} target="_blank" rel="noopener noreferrer" onClick={e => p.demoLinkBlocked(e)} data-testid="project-dayof-call"
           style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, padding: '0 14px', borderRadius: 999, background: paper, color: ink, textDecoration: 'none', fontWeight: 600 }}>
           📞 {T('Vào cuộc gọi · ', 'Join call · ')}{call.label || CHANNEL_NAMES[call.platform]}</a></div>}
       </div>

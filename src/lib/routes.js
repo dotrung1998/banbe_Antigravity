@@ -61,6 +61,9 @@ const STATIC = {
   myProjects: '/projects',
 };
 
+/** The admin project hub demo's address. Demo state is memory only, so a reload or a pasted link opens the admin list. */
+export const PROJECT_DEMO_PATH = '/admin/project-demo';
+
 const PATH_TO_STATIC = Object.fromEntries(Object.entries(STATIC).map(([screen, path]) => [path, screen]));
 
 // Screens that are part of the sign-in / onboarding sequence. While a deep
@@ -89,7 +92,8 @@ export function screenToPath(st) {
     case 'eventRecap': return st.eventRecapId ? `/event/${enc(st.eventRecapId)}/recap` : '/';
     case 'hostRecap': return st.hostRecapId ? `/host/recap/${enc(st.hostRecapId)}` : '/host/dashboard';
     // Event Project Hub (note 76): the project lives under its event; an invite link is /join/<token or BB- code>.
-    case 'eventProject': return st.projectEventId ? `/e/${enc(st.projectEventId)}/project` : '/projects';
+    // The admin demo (migration 216) is not a real project: its own path, which on reload lands back on the admin list.
+    case 'eventProject': if (st.projectDemoAdmin) return PROJECT_DEMO_PATH; return st.projectEventId ? `/e/${enc(st.projectEventId)}/project` : '/projects';
     case 'projectJoin': return st.projectJoinCode ? `/join/${enc(st.projectJoinCode)}` : '/join';
     default: return '/';
   }
@@ -145,6 +149,7 @@ export function pathToRoute(pathname) {
   }
   if ((m = path.match(/^\/payment\/([^/]+)$/))) return { screen: 'paymentDetails', params: { paymentBookingId: dec(m[1]), paymentBack: 'profile', paymentProofError: '' } };
   if (path === '/payment') return { screen: 'profile', params: {} };
+  if (path === PROJECT_DEMO_PATH) return { screen: 'accountGroup', params: { accountGroupKey: 'adminReview' } };
   if ((m = path.match(/^\/e\/([^/]+)\/project$/))) return { screen: 'eventProject', params: { projectEventId: dec(m[1]), projectError: '', projectLoading: false } };
   if ((m = path.match(/^\/join\/([^/]+)$/))) return { screen: 'projectJoin', params: { projectJoinCode: dec(m[1]), projectJoinPeek: null, projectJoinError: '' } };
   if (path === '/join') return { screen: 'projectJoin', params: { projectJoinPeek: null, projectJoinError: '' } };

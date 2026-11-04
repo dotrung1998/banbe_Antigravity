@@ -16,6 +16,8 @@ struct AccountGroupView: View {
     @State private var selected: Set<UUID> = []
     @State private var confirmDelete = false
     @State private var pdfShare: PDFShareItem?
+    /// Migration 216: the "View as" picker of the admin Project hub demo.
+    @State private var demoPicker = false
 
     // Kept on AppState (`accountGroupTitle(for:)`) so back-button labels
     // elsewhere can show the same text without drifting from this title.
@@ -103,6 +105,13 @@ struct AccountGroupView: View {
             Button(app.T("Hủy", "Cancel"), role: .cancel) {}
         }
         .sheet(item: $pdfShare) { item in ActivityShareSheet(url: item.url) }
+        .sheet(isPresented: $demoPicker) {
+            ProjectDemoPicker { role, eventDay in
+                demoPicker = false
+                app.startProjectDemo(as: role, eventDay: eventDay)
+            }
+            .presentationDetents([.medium, .large])
+        }
         .sheet(item: $app.importedTicketOpen) { t in
             ImportedTicketView(ticket: t).environmentObject(app)
         }
@@ -749,6 +758,11 @@ struct AccountGroupView: View {
             row(app.T("Sửa ngày sinh", "Birthday corrections"), identifier: "admin.dobCorrections", icon: "calendar.badge.exclamationmark", trailing: "›") { if app.isAdmin { app.screen = .adminDobCorrections } }
             Divider().overlay(app.palette.rule)
             row(app.T("Công tắc tính năng", "Feature switches"), identifier: "admin.features", icon: "switch.2", trailing: "›") { if app.isAdmin { app.screen = .adminFeatures } }
+            // Migration 216: admins only, while switch project_hub_demo is on. Sample data on this device only.
+            if app.projectDemoAvailable {
+                Divider().overlay(app.palette.rule)
+                projectDemoRow
+            }
             Divider().overlay(app.palette.rule)
             // Migration 196: aggregate retention by market, admins only (the server checks too).
             row(app.T("Báo cáo quay lại", "Retention report"), identifier: "admin.retention", icon: "chart.bar.xaxis", trailing: "›") { if app.isAdmin { app.screen = .adminRetention } }
@@ -982,6 +996,29 @@ struct AccountGroupView: View {
     // group-entry card already does — same capsule style `groupCard`
     // (AccountView.swift) uses, capped at "99+" with the full count kept
     // in the accessibility label.
+    private var projectDemoRow: some View {
+        Button { if app.projectDemoAvailable { demoPicker = true } } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "theatermasks")
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 22, height: 22)
+                    .opacity(0.72)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.T("Bản demo dự án sự kiện", "Project hub demo")).font(.system(size: 14))
+                        .accessibilityIdentifier("admin.projectDemo.title")
+                    Text(app.T("Dữ liệu mẫu. Không lưu gì.", "Sample data. Nothing is saved.")).font(.system(size: 12)).opacity(0.65)
+                }
+                Spacer()
+                Text("›").font(.system(size: 13))
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("admin.projectDemo")
+    }
+
     private func row(_ title: String, identifier: String? = nil, icon: String, trailing: String, badge: Int = 0, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {

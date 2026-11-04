@@ -92,7 +92,7 @@ extension AppState {
         return now >= end.addingTimeInterval(TimeInterval(grantDays) * 86_400)
     }
 
-    var projectRefundsSwitchOn: Bool { FeatureFlags.isOn(featureFlags, "project_delegate_refunds") }
+    var projectRefundsSwitchOn: Bool { FeatureFlags.isOn(projectFlags, "project_delegate_refunds") }
 
     /// A team member who may record or mark refunds (the Host keeps the full tab).
     var projectRefundsAccess: Bool {
@@ -112,12 +112,10 @@ extension AppState {
 
     func loadProjectRefunds() async {
         guard projectRefundsAccess || projectRefundsHostAccess else { projectRefunds = nil; return }
-        #if DEBUG
-        if UITestFixture.isActive {
-            if projectRefunds == nil { projectRefunds = Self.fixtureProjectRefunds(host: projectSnapshot?.isHost == true, mode: projectRefundMode) }
+        if projectOffline {
+            if projectRefunds == nil { projectRefunds = ProjectDemo.refunds(host: projectSnapshot?.isHost == true, mode: projectRefundMode) }
             return
         }
-        #endif
         struct Params: Encodable {
             let pEventId: String
             enum CodingKeys: String, CodingKey { case pEventId = "p_event_id" }
@@ -143,8 +141,7 @@ extension AppState {
     func recordProjectRefund(_ claimID: String, note: String, receiptJPEG: Data?) async -> Bool {
         let alone = projectRefundMode == "finance_alone"
         let trimmed = String(note.trimmingCharacters(in: .whitespacesAndNewlines).prefix(280))
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             guard let i = projectRefunds?.claims?.firstIndex(where: { $0.claimId == claimID }) else { return false }
             if alone { projectRefunds?.claims?.remove(at: i) }
             else {
@@ -155,7 +152,6 @@ extension AppState {
             Haptics.success()
             return true
         }
-        #endif
         struct Params: Encodable {
             let pClaimId: String; let pNote: String; let pProofPath: String?
             enum CodingKeys: String, CodingKey { case pClaimId = "p_claim_id", pNote = "p_note", pProofPath = "p_proof_path" }
@@ -182,13 +178,11 @@ extension AppState {
     /// Host: approve a team record (marks the refund sent; the guest is told).
     @discardableResult
     func approveProjectRefund(_ claimID: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             projectRefunds?.claims?.removeAll { $0.claimId == claimID }
             Haptics.success()
             return true
         }
-        #endif
         struct Params: Encodable {
             let pClaimId: String
             enum CodingKeys: String, CodingKey { case pClaimId = "p_claim_id" }
@@ -203,12 +197,10 @@ extension AppState {
         guard (ProjectLimits.shared.reasonMin...ProjectLimits.shared.reasonMax).contains(r.count) else {
             projectNotice = projectErrorText("REASON_REQUIRED"); return false
         }
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             if let i = projectRefunds?.claims?.firstIndex(where: { $0.claimId == claimID }) { projectRefunds?.claims?[i].request = nil }
             return true
         }
-        #endif
         struct Params: Encodable {
             let pClaimId: String; let pReason: String
             enum CodingKeys: String, CodingKey { case pClaimId = "p_claim_id", pReason = "p_reason" }
@@ -219,13 +211,11 @@ extension AppState {
     /// Host: who may tell guests a refund was sent ("host" or "finance_alone").
     @discardableResult
     func setProjectRefundApproval(_ mode: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             projectRefunds?.mode = mode
             projectSnapshot?.project?.refundApproval = mode
             return true
         }
-        #endif
         struct Params: Encodable {
             let pEventId: String; let pMode: String
             enum CodingKeys: String, CodingKey { case pEventId = "p_event_id", pMode = "p_mode" }
@@ -253,9 +243,7 @@ extension AppState {
     @discardableResult
     func extendProjectDisputeGrant(userID: String, claimID: String, days: Int) async -> Bool {
         let d = min(max(days, 1), ProjectLimits.shared.disputeGrantMaxDays)
-        #if DEBUG
-        if UITestFixture.isActive { Haptics.success(); return true }
-        #endif
+        if projectOffline { Haptics.success(); return true }
         struct Params: Encodable {
             let pEventId: String; let pUserId: String; let pRefundClaimId: String; let pUntil: String
             enum CodingKeys: String, CodingKey {
@@ -270,6 +258,7 @@ extension AppState {
     }
 
     private func projectRefundCall<P: Encodable & Sendable>(_ fn: String, _ params: P) async -> Bool {
+        if projectOffline { return true }   // last line of defence: the callers handle offline themselves
         projectBusy = true
         defer { projectBusy = false }
         do {
@@ -301,28 +290,4 @@ extension AppState {
         f.setLocalizedDateFormatFromTemplate("EEE d/M")
         return T("Hạn \(f.string(from: date))", "Due \(f.string(from: date))")
     }
-
-    #if DEBUG
-    /// Synthetic demo claims: one ready with an account, one disputed, one without an account. The Host also sees one
-    /// team record (Hà's) to approve or decline.
-    static func fixtureProjectRefunds(host: Bool, mode: String) -> ProjectRefundView {
-        let account = { (bank: String, number: String, holder: String) in
-            ProjectRefundAccount(bankName: bank, accountNumber: number, accountHolderName: holder)
-        }
-        var claims = [
-            ProjectRefundClaim(claimId: "rf-1", bookingId: "pay-1", name: "Ngọc Anh", amount: 490_000, status: "owed",
-                               refundDueAt: "2026-11-12T10:00:00+07:00", disputeOpen: false,
-                               account: account("Vietcombank", "0071000123456", "NGUYEN NGOC ANH"), request: nil, lastDeclined: nil),
-            ProjectRefundClaim(claimId: "rf-2", bookingId: "pay-2", name: "Minh Khang", amount: 980_000, status: "disputed",
-                               refundDueAt: "2026-11-10T10:00:00+07:00", disputeOpen: true,
-                               account: account("Techcombank", "19033344455566", "TRAN MINH KHANG"), request: nil, lastDeclined: nil),
-            ProjectRefundClaim(claimId: "rf-3", bookingId: "pay-3", name: "Thu Hà", amount: 490_000, status: "owed",
-                               refundDueAt: "2026-11-15T10:00:00+07:00", disputeOpen: false, account: nil, request: nil, lastDeclined: nil),
-        ]
-        if host {
-            claims[0].request = ProjectRefundRequest(id: "rq-1", by: "Hà", mine: false, note: "VCB 8812 lúc 14:05", hasProof: true, at: "2026-11-03T14:05:00+07:00")
-        }
-        return ProjectRefundView(success: true, error: nil, mode: mode, host: host, claims: claims)
-    }
-    #endif
 }

@@ -2,12 +2,98 @@ import Foundation
 
 /// Event Project Hub (note 76): loading a project and its writes. Every write is one RPC (migration 210) followed by a
 /// version-checked refresh; the server decides permissions, `ProjectPermissions` only decides what the UI offers.
-/// In a DEBUG UI fixture nothing reaches Supabase: writes change the in-memory snapshot instead.
+/// In the admin demo (migration 216) and in a DEBUG UI fixture nothing reaches Supabase: `projectOffline` is true and
+/// reads and writes change the in-memory snapshot instead.
 extension AppState {
     var projectHubEnabled: Bool { FeatureFlags.isOn(featureFlags, "event_project_hub") }
 
+    // MARK: demo (migration 216, Lib/ProjectDemo.swift)
+
+    /// True while nothing may reach the server: the admin demo is open, or (DEBUG) a UI fixture runs.
+    var projectOffline: Bool {
+        if projectDemo != nil { return true }
+        #if DEBUG
+        if UITestFixture.isActive { return true }
+        #endif
+        return false
+    }
+
+    /// The switches the project code reads: the real ones, with every project switch on inside the demo only.
+    var projectFlags: [String: Bool] {
+        guard projectDemo != nil else { return featureFlags }
+        var flags = featureFlags
+        for key in ProjectDemo.projectFlags { flags[key] = true }
+        return flags
+    }
+
+    /// The Account entry: admins only, while switch `project_hub_demo` is on.
+    var projectDemoAvailable: Bool { ProjectDemo.available(isAdmin: isAdmin, flags: featureFlags) }
+
+    /// The sample snapshot for the open demo (or, in DEBUG, the fixture's).
+    func projectSampleSnapshot() -> ProjectSnapshot? {
+        if let demo = projectDemo {
+            return ProjectDemo.snapshot(as: demo.role.fixtureKey, me: userID?.uuidString ?? ProjectDemo.sampleUserID)
+        }
+        #if DEBUG
+        if UITestFixture.isActive { return UITestFixture.projectSnapshot() }
+        #endif
+        return nil
+    }
+
+    /// Opens the hub on the sample data. No request is made: every project read and write checks `projectOffline`.
+    func startProjectDemo(as role: ProjectDemo.Role, eventDay: Bool) {
+        guard projectDemoAvailable else { return }
+        clearProjectState()
+        ProjectDemo.resetStore()
+        projectDemo = ProjectDemo.Session(role: role, eventDay: eventDay)
+        guard let snap = projectSampleSnapshot() else { projectDemo = nil; return }
+        projectSnapshot = snap
+        projectEventID = snap.event?.id ?? ProjectDemo.eventID
+        projectTab = eventDay ? "dayof" : "overview"
+        projectBackScreen = screen == .eventProject ? .profile : screen
+        screen = .eventProject
+    }
+
+    /// Leaves the demo and forgets everything it showed or wrote. Leaving the hub any other way (Back, a dock tab,
+    /// signing out) ends it too (AppState.screen's didSet).
+    func endProjectDemo() {
+        guard projectDemo != nil else { return }
+        projectDemo = nil
+        clearProjectState()
+        ProjectDemo.resetStore()
+        if screen == .eventProject { screen = projectBackScreen }
+    }
+
+    /// Everything one open project holds.
+    func clearProjectState() {
+        projectSnapshot = nil
+        projectEventID = ""
+        projectLoading = false
+        projectError = ""
+        projectNotice = ""
+        projectBusy = false
+        projectTab = "overview"
+        projectRosVersion = nil
+        projectDayView = "list"
+        projectPostsExhausted = false
+        projectInvites = []
+        projectMoney = nil
+        projectDoor = nil
+        projectPayments = nil
+        projectRefunds = nil
+    }
+
+    /// In the demo, a link out of the hub (a real screen or an outside app) would show real data: say so instead.
+    /// Returns true when the link is blocked.
+    func projectDemoBlocksLink() -> Bool {
+        guard projectDemo != nil else { return false }
+        projectNotice = T("Không dùng được trong bản demo.", "Not available in the demo.")
+        return true
+    }
+
     /// "Now" for due days and countdowns (a UI fixture pins it, so screenshots and tests never go stale).
     var projectNow: Date {
+        if let demo = projectDemo { return demo.now }
         #if DEBUG
         if let now = UITestFixture.projectNow { return now }
         #endif
@@ -26,7 +112,7 @@ extension AppState {
         var t = target
         t.assigneeId = t.assigneeId?.lowercased(); t.authorId = t.authorId?.lowercased(); t.addresseeId = t.addresseeId?.lowercased()
         return ProjectPermissions.can(action, .init(
-            userId: uid, member: member, organizer: organizer, flags: featureFlags, now: projectNow,
+            userId: uid, member: member, organizer: organizer, flags: projectFlags, now: projectNow,
             readOnlyAt: ProjectDates.parse(snap.project?.readOnlyAt), refundApproval: snap.project?.refundApproval ?? "host", target: t))
     }
 
@@ -43,13 +129,14 @@ extension AppState {
         await refreshProject(full: projectSnapshot == nil)
     }
 
-    func backFromProject() { screen = projectBackScreen }
+    func backFromProject() {
+        if projectDemo != nil { endProjectDemo(); return }
+        screen = projectBackScreen
+    }
 
     /// `full: false` asks with the current version: one tiny answer when nothing moved.
     func refreshProject(full: Bool = false) async {
-        #if DEBUG
-        if UITestFixture.isActive { return }
-        #endif
+        if projectOffline { return }
         guard !projectEventID.isEmpty else { return }
         struct Params: Encodable {
             let pEventId: String
@@ -82,9 +169,7 @@ extension AppState {
     }
 
     func loadMyProjects() async {
-        #if DEBUG
-        if UITestFixture.isActive { myProjectsLoaded = true; return }
-        #endif
+        if projectOffline { myProjectsLoaded = true; return }
         guard projectHubEnabled, userID != nil else { myProjects = []; myProjectsLoaded = true; return }
         do {
             let result: MyProjectsResult = try await SupabaseService.client.rpc("get_my_event_projects").execute().value
@@ -105,6 +190,7 @@ extension AppState {
 
     /// Opt-in: "Start a project" on the Hosting card. Opens the new project on success.
     func startProject(eventID: String, back: Screen) async {
+        if projectOffline { return }
         struct Params: Encodable {
             let pEventId: String
             let pLaneNames: [String]
@@ -122,6 +208,8 @@ extension AppState {
     /// One write RPC. On success the project refreshes; on a refusal `projectNotice` says why in plain words.
     @discardableResult
     func projectWrite<P: Encodable>(_ function: String, _ params: P, refresh: Bool = true, post: Bool = false, ros: Bool = false) async -> Bool {
+        // The last line of defence for the demo and fixtures: every write function also handles offline itself.
+        if projectOffline { return true }
         projectBusy = true
         defer { projectBusy = false }
         projectNotice = ""
@@ -141,9 +229,7 @@ extension AppState {
     }
 
     func setProjectTaskStatus(_ taskID: String, _ status: String) async {
-        #if DEBUG
-        if UITestFixture.isActive { fixtureEditTask(taskID) { $0.status = status }; return }
-        #endif
+        if projectOffline { fixtureEditTask(taskID) { $0.status = status }; return }
         struct Params: Encodable {
             let pTaskId: String; let pStatus: String
             enum CodingKeys: String, CodingKey { case pTaskId = "p_task_id", pStatus = "p_status" }
@@ -154,8 +240,7 @@ extension AppState {
     /// Create (taskID nil) or edit a task.
     @discardableResult
     func saveProjectTask(taskID: String?, laneID: String, title: String, assigneeID: String?, dueDate: String?, status: String?) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             if let taskID {
                 fixtureEditTask(taskID) { $0.title = title; $0.assigneeId = assigneeID; $0.dueDate = dueDate; if let status { $0.status = status } }
             } else {
@@ -165,7 +250,6 @@ extension AppState {
             }
             return true
         }
-        #endif
         struct Params: Encodable {
             let pEventId: String; let pTaskId: String?; let pLaneId: String; let pTitle: String
             let pAssigneeId: String?; let pDueDate: String?; let pStatus: String?
@@ -187,9 +271,7 @@ extension AppState {
 
     @discardableResult
     func deleteProjectTask(_ taskID: String, reason: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive { projectSnapshot?.tasks?.removeAll { $0.id == taskID }; return true }
-        #endif
+        if projectOffline { projectSnapshot?.tasks?.removeAll { $0.id == taskID }; return true }
         struct Params: Encodable {
             let pTaskId: String; let pReason: String
             enum CodingKeys: String, CodingKey { case pTaskId = "p_task_id", pReason = "p_reason" }
@@ -199,9 +281,7 @@ extension AppState {
 
     @discardableResult
     func saveProjectChannels(_ channels: [ProjectChannels.Channel]) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive { projectSnapshot?.project?.channels = channels; return true }
-        #endif
+        if projectOffline { projectSnapshot?.project?.channels = channels; return true }
         struct Params: Encodable {
             let pEventId: String; let pChannels: [ProjectChannels.Channel]
             enum CodingKeys: String, CodingKey { case pEventId = "p_event_id", pChannels = "p_channels" }
@@ -211,13 +291,11 @@ extension AppState {
 
     @discardableResult
     func addProjectLane(_ name: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             let n = projectSnapshot?.lanes?.count ?? 0
             projectSnapshot?.lanes?.append(ProjectLane(id: UUID().uuidString.lowercased(), name: name, position: n))
             return true
         }
-        #endif
         struct Params: Encodable {
             let pEventId: String; let pName: String
             enum CodingKeys: String, CodingKey { case pEventId = "p_event_id", pName = "p_name" }
@@ -227,6 +305,11 @@ extension AppState {
 
     @discardableResult
     func renameProjectLane(_ laneID: String, _ name: String) async -> Bool {
+        if projectOffline {
+            guard let i = projectSnapshot?.lanes?.firstIndex(where: { $0.id == laneID }), let lane = projectSnapshot?.lanes?[i] else { return false }
+            projectSnapshot?.lanes?[i] = ProjectLane(id: lane.id, name: name, position: lane.position)
+            return true
+        }
         struct Params: Encodable {
             let pLaneId: String; let pName: String
             enum CodingKeys: String, CodingKey { case pLaneId = "p_lane_id", pName = "p_name" }
@@ -236,6 +319,13 @@ extension AppState {
 
     @discardableResult
     func archiveProjectLane(_ laneID: String, reason: String) async -> Bool {
+        if projectOffline {
+            if (projectSnapshot?.tasks ?? []).contains(where: { $0.laneId == laneID && $0.status != "done" }) {
+                projectNotice = projectErrorText("LANE_HAS_OPEN_TASKS"); return false
+            }
+            projectSnapshot?.lanes?.removeAll { $0.id == laneID }
+            return true
+        }
         struct Params: Encodable {
             let pLaneId: String; let pReason: String
             enum CodingKeys: String, CodingKey { case pLaneId = "p_lane_id", pReason = "p_reason" }
@@ -247,6 +337,13 @@ extension AppState {
     @discardableResult
     func proposeProjectChange(kind: String, laneID: String? = nil, name: String? = nil, url: String? = nil,
                               channel: ProjectChannels.Channel? = nil, why: String) async -> Bool {
+        if projectOffline {
+            let request = ProjectChangeRequest(id: UUID().uuidString.lowercased(), kind: kind, laneId: laneID,
+                                               payload: ProjectChangePayload(name: name, url: url, channel: channel), why: why,
+                                               status: "pending", proposedBy: userID?.uuidString.lowercased(), decisionReason: nil)
+            projectSnapshot?.changeRequests = (projectSnapshot?.changeRequests ?? []) + [request]
+            return true
+        }
         struct Payload: Encodable {
             let name: String?; let url: String?; let channel: ProjectChannels.Channel?
             func encode(to encoder: Encoder) throws {
@@ -267,15 +364,13 @@ extension AppState {
 
     @discardableResult
     func reviewProjectChange(_ requestID: String, approve: Bool, reason: String?) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             if approve, let r = projectSnapshot?.changeRequests?.first(where: { $0.id == requestID }), r.kind == "lane_add", let name = r.payload.name {
                 _ = await addProjectLane(name)
             }
             projectSnapshot?.changeRequests?.removeAll { $0.id == requestID }
             return true
         }
-        #endif
         struct Params: Encodable {
             let pRequestId: String; let pApprove: Bool; let pReason: String?
             enum CodingKeys: String, CodingKey { case pRequestId = "p_request_id", pApprove = "p_approve", pReason = "p_reason" }
@@ -284,6 +379,10 @@ extension AppState {
     }
 
     func leaveProject() async {
+        if projectOffline {
+            if projectDemo != nil { endProjectDemo() } else { projectSnapshot = nil; backFromProject() }
+            return
+        }
         struct Params: Encodable {
             let pEventId: String
             enum CodingKeys: String, CodingKey { case pEventId = "p_event_id" }
@@ -295,12 +394,10 @@ extension AppState {
         }
     }
 
-    #if DEBUG
     private func fixtureEditTask(_ taskID: String, _ change: (inout ProjectTask) -> Void) {
         guard let i = projectSnapshot?.tasks?.firstIndex(where: { $0.id == taskID }) else { return }
         change(&projectSnapshot!.tasks![i])
     }
-    #endif
 
     // MARK: words
 

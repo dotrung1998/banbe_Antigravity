@@ -176,7 +176,7 @@ struct ProjectInviteSheet: View {
     @State private var copied = false
 
     private var host: Bool { app.projectSnapshot?.isHost == true }
-    private var qr: Bool { FeatureFlags.isOn(app.featureFlags, "project_qr_invite") }
+    private var qr: Bool { FeatureFlags.isOn(app.projectFlags, "project_qr_invite") }
     private var roles: [String] { host ? ProjectPermissions.invitableByHost : ProjectPermissions.invitableByManager }
     private var lanes: [ProjectLane] { (app.projectSnapshot?.lanes ?? []).sorted { $0.position < $1.position } }
     private var ready: Bool { role != "lane_lead" || laneID != nil }

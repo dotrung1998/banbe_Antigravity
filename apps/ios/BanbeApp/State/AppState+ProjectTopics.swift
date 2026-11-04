@@ -6,13 +6,11 @@ import Foundation
 extension AppState {
     /// One post with its replies, voters and who has seen it (the thread sheet).
     func loadProjectPost(_ postID: String) async -> ProjectPostDetail? {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             guard let post = projectSnapshot?.posts?.first(where: { $0.id == postID }) else { return nil }
-            return ProjectPostDetail(success: true, error: nil, post: post, replies: UITestFixture.projectReplies[postID] ?? [],
+            return ProjectPostDetail(success: true, error: nil, post: post, replies: ProjectDemo.replies[postID] ?? [],
                                      voters: [], seenBy: post.seenByMe ? [userID?.uuidString.lowercased() ?? ""] : [])
         }
-        #endif
         struct Params: Encodable {
             let pPostId: String
             enum CodingKeys: String, CodingKey { case pPostId = "p_post_id" }
@@ -31,9 +29,7 @@ extension AppState {
 
     /// The next 20 older posts, kept below the snapshot's own 20 (refreshes keep them, see `mergeOlderPosts`).
     func loadOlderProjectPosts() async {
-        #if DEBUG
-        if UITestFixture.isActive { projectPostsExhausted = true; return }
-        #endif
+        if projectOffline { projectPostsExhausted = true; return }
         guard let oldest = projectSnapshot?.posts?.last?.createdAt else { projectPostsExhausted = true; return }
         struct Params: Encodable {
             let pEventId: String; let pBefore: String; let pLimit: Int
@@ -65,8 +61,7 @@ extension AppState {
     @discardableResult
     func createProjectPost(type: String, laneID: String, title: String, body: String, options: [String]?, addresseeID: String?,
                            deadline: String?) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             let me = userID?.uuidString.lowercased()
             let post = ProjectPost(id: UUID().uuidString.lowercased(), laneId: laneID, type: type, title: title, body: body, authorId: me,
                                    addresseeId: type == "question" ? addresseeID : nil, options: type == "proposal" ? options : nil,
@@ -78,7 +73,6 @@ extension AppState {
             projectSnapshot?.posts = [post] + (projectSnapshot?.posts ?? [])
             return true
         }
-        #endif
         struct Params: Encodable {
             let pEventId: String; let pType: String; let pLaneId: String; let pTitle: String; let pBody: String
             let pOptions: [String]?; let pAddresseeId: String?; let pDeadline: String?
@@ -94,12 +88,10 @@ extension AppState {
 
     @discardableResult
     func editProjectPost(_ postID: String, title: String, body: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             fixtureEditPost(postID) { $0.title = title; $0.body = body; $0.editedAt = ISO8601DateFormatter().string(from: projectNow) }
             return true
         }
-        #endif
         struct Params: Encodable {
             let pPostId: String; let pTitle: String; let pBody: String
             enum CodingKeys: String, CodingKey { case pPostId = "p_post_id", pTitle = "p_title", pBody = "p_body" }
@@ -110,8 +102,7 @@ extension AppState {
     /// One vote each; the same option again takes the vote back.
     @discardableResult
     func voteProjectPost(_ postID: String, option: Int) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             fixtureEditPost(postID) { p in
                 var votes = p.votes ?? []
                 guard votes.indices.contains(option) else { return }
@@ -122,7 +113,6 @@ extension AppState {
             }
             return true
         }
-        #endif
         struct Params: Encodable {
             let pPostId: String; let pOption: Int
             enum CodingKeys: String, CodingKey { case pPostId = "p_post_id", pOption = "p_option" }
@@ -132,15 +122,13 @@ extension AppState {
 
     @discardableResult
     func markProjectPostSeen(_ postID: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             fixtureEditPost(postID) { p in
                 guard !p.seenByMe else { return }
                 p.seenByMe = true; p.seenCount += 1; p.quiet = false
             }
             return true
         }
-        #endif
         struct Params: Encodable {
             let pPostId: String
             enum CodingKeys: String, CodingKey { case pPostId = "p_post_id" }
@@ -150,15 +138,13 @@ extension AppState {
 
     @discardableResult
     func replyProjectPost(_ postID: String, body: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             let reply = ProjectReply(id: UUID().uuidString.lowercased(), authorId: userID?.uuidString.lowercased(), body: body,
                                      createdAt: ISO8601DateFormatter().string(from: projectNow))
-            UITestFixture.projectReplies[postID, default: []].append(reply)
+            ProjectDemo.replies[postID, default: []].append(reply)
             fixtureEditPost(postID) { $0.repliesCount += 1; $0.quiet = false }
             return true
         }
-        #endif
         struct Params: Encodable {
             let pPostId: String; let pBody: String
             enum CodingKeys: String, CodingKey { case pPostId = "p_post_id", pBody = "p_body" }
@@ -169,9 +155,7 @@ extension AppState {
     /// Close a question (or a proposal without deciding): the post locks.
     @discardableResult
     func resolveProjectPost(_ postID: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive { fixtureEditPost(postID) { $0.state = "resolved" }; return true }
-        #endif
+        if projectOffline { fixtureEditPost(postID) { $0.state = "resolved" }; return true }
         struct Params: Encodable {
             let pPostId: String
             enum CodingKeys: String, CodingKey { case pPostId = "p_post_id" }
@@ -182,8 +166,7 @@ extension AppState {
     /// Settle a proposal on the leading option: it resolves and a locked Decision joins the decision log.
     @discardableResult
     func decideProjectProposal(_ postID: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             guard let p = projectSnapshot?.posts?.first(where: { $0.id == postID }), let options = p.options, !options.isEmpty else { return false }
             let votes = p.votes ?? []
             let best = options.indices.max { (votes.indices.contains($0) ? votes[$0] : 0, -$0) < (votes.indices.contains($1) ? votes[$1] : 0, -$1) } ?? 0
@@ -191,7 +174,6 @@ extension AppState {
             return await createProjectPost(type: "decision", laneID: p.laneId, title: options[best], body: p.title, options: nil,
                                            addresseeID: nil, deadline: nil)
         }
-        #endif
         struct Params: Encodable {
             let pPostId: String
             enum CodingKeys: String, CodingKey { case pPostId = "p_post_id" }
@@ -201,9 +183,7 @@ extension AppState {
 
     @discardableResult
     func deleteProjectPost(_ postID: String, reason: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive { projectSnapshot?.posts?.removeAll { $0.id == postID }; return true }
-        #endif
+        if projectOffline { projectSnapshot?.posts?.removeAll { $0.id == postID }; return true }
         struct Params: Encodable {
             let pPostId: String; let pReason: String
             enum CodingKeys: String, CodingKey { case pPostId = "p_post_id", pReason = "p_reason" }
@@ -211,12 +191,10 @@ extension AppState {
         return await projectWrite("project_delete_post", Params(pPostId: postID, pReason: reason), post: true)
     }
 
-    #if DEBUG
     private func fixtureEditPost(_ postID: String, _ change: (inout ProjectPost) -> Void) {
         guard let i = projectSnapshot?.posts?.firstIndex(where: { $0.id == postID }) else { return }
         change(&projectSnapshot!.posts![i])
     }
-    #endif
 
     // MARK: words
 

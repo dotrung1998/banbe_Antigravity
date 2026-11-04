@@ -8,6 +8,8 @@ import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
 import { computeHostActionCount, computeRefundActionCount, computeMyRefundActionCount, formatBadgeCount } from '../lib/badges.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 import { onboardingVersion } from '../lib/featureFlags.js';
+import { projectDemoAllowed } from '../lib/projectDemo.js';
+import ProjectDemoPicker from '../components/project/ProjectDemoPicker.jsx';
 import { giftPdfData } from '../lib/giftTicket.js';
 import { downloadTicketPdfs } from '../lib/ticketPdf.js';
 
@@ -96,6 +98,7 @@ export default function AccountGroup() {
   const [selecting, setSelecting] = useState(false);
   const [selectedTickets, setSelectedTickets] = useState(() => new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [demoPicker, setDemoPicker] = useState(false);
   useEffect(() => { if (key === 'activity') loadMyRefunds?.(); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const ids = (s.paymentBookings || []).filter(b => ['cancelled', 'expired', 'no_show'].includes(b.status)).map(b => b.id);
@@ -150,7 +153,7 @@ export default function AccountGroup() {
     .filter(e => e && e.endedHoursAgo != null).length;
 
   return (
-    <div style={{ animation: 'banbeFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="AccountGroup">
+    <div style={{ position: 'relative', animation: 'banbeFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="AccountGroup">
       <div onClick={() => set(backToAdmin ? { screen: 'accountGroup', accountGroupKey: 'admin', accountGroupBack: null } : { screen: 'profile', accountGroupBack: null })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="account-group-back">
         ‹ {backToAdmin ? T(GROUP_META.admin.vi, GROUP_META.admin.en) : T('Tài khoản', 'Account')}
       </div>
@@ -547,6 +550,21 @@ export default function AccountGroup() {
             <Row icon="alertShield" label={T('Tài Khoản Thử Nghiệm', 'Test Accounts')} trailing="›" testId="admin-test-accounts" onClick={() => set({ screen: 'adminTestAccounts' })} />
             <Row icon="alertShield" label={T('Sửa ngày sinh', 'Birthday corrections')} trailing="›" testId="admin-dob-corrections" onClick={() => set({ screen: 'adminDobCorrections' })} />
             <Row icon="sliders" label={T('Công tắc tính năng', 'Feature switches')} trailing="›" testId="admin-features" onClick={() => set({ screen: 'adminFeatures' })} />
+            {/* Migration 216: admins only, while switch project_hub_demo is on. Opens the hub on sample data, nothing is saved. */}
+            {projectDemoAllowed(s) && (
+              <div onClick={() => setDemoPicker(true)} data-testid="admin-project-demo" role="button" tabIndex={0}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDemoPicker(true); } }}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
+                  <RowIcon kind="users" />
+                  <span>
+                    <span style={{ display: 'block' }} data-testid="admin-project-demo-title">{T('Bản demo dự án sự kiện', 'Project hub demo')}</span>
+                    <span style={{ display: 'block', fontSize: 12, opacity: 0.65, marginTop: 2 }}>{T('Dữ liệu mẫu. Không lưu gì.', 'Sample data. Nothing is saved.')}</span>
+                  </span>
+                </span>
+                <span style={{ fontSize: 13, color: ink }}>›</span>
+              </div>
+            )}
             {/* Migration 196: aggregate retention by market, admins only (the server checks too). */}
             <Row icon="users" label={T('Báo cáo quay lại', 'Retention report')} trailing="›" testId="admin-retention" onClick={() => set({ screen: 'adminRetention' })} border={false} />
           </div>
@@ -729,6 +747,7 @@ export default function AccountGroup() {
           </>
         )}
       </div>
+      {demoPicker && key === 'adminReview' && projectDemoAllowed(s) && <ProjectDemoPicker close={() => setDemoPicker(false)} />}
     </div>
   );
 }

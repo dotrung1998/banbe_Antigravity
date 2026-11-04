@@ -23,6 +23,7 @@ import { isRewardsUnavailable, normalizeSummary } from '../lib/rewards.js';
 import { normalizeForSave as normalizeEventPrefsForSave, isMissingFunctionError as isEventPrefsFnMissing, everyone as everyoneCriteria, normalizeCriteria, criteriaIsEveryone } from '../lib/eventPrefs.js';
 import { hostSetupResolved, markHostSetup } from '../lib/hostSetupFlag.js';
 import { useEnsureOrganizer } from '../lib/useEnsureOrganizer.js';
+import { projectDemoAllowed, PROJECT_DEMO_RESET } from '../lib/projectDemo.js';
 import { loadMapKit } from '../lib/mapkit.js';
 import { mapKitSearch } from '../lib/mapkitAdapter.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
@@ -501,6 +502,8 @@ const PRIVATE_STATE_KEYS = [
   // Event Project Hub (note 76): a team project (names, tasks, posts, channel links, money numbers) is the account's.
   'projectSnapshot', 'projectEventId', 'projectNotice', 'projectBusy', 'projectError', 'myProjects', 'myProjectsLoaded',
   'projectJoinPeek', 'projectJoinError', 'projectInvites', 'projectMoney', 'projectDoor', 'projectPayments', 'projectRefunds',
+  // Admin project hub demo (migration 216, src/lib/projectDemo.js): sign-out leaves the demo too.
+  'projectDemo', 'projectDemoAdmin', 'projectDemoAs', 'projectNow', 'projectDemoTrash', 'projectDemoReplies', 'projectDemoInvites',
 ];
 const isPublicEventRow = (e) => !!e && e.visibility === 'public' && ['live', 'ended', 'cancelled'].includes(e.status);
 /** The signed-out state patch. Cached events keep only public rows (a private/invite/draft event fetched while
@@ -1396,6 +1399,14 @@ const initialState = {
   projectJoinPeek: null,
   projectJoinError: '',
   projectJoinBack: 'home',
+  // Admin project hub demo (migration 216): everything stays on the device while projectDemo is true.
+  projectDemo: false,
+  projectDemoAdmin: false,
+  projectDemoAs: 'host',
+  projectNow: null,
+  projectDemoTrash: [],
+  projectDemoReplies: {},
+  projectDemoInvites: 0,
   followedStatus: 'idle', // idle | loading | loaded | error
   followedError: '',
   followWriteError: '',
@@ -1949,6 +1960,13 @@ export function BanBeProvider({ children }) {
   // Dev server only (stripped from production builds): lets a local browser script put the app on a given screen
   // to measure layout, e.g. the dock headers (note 53). Never reachable in a deployed build.
   useEffect(() => { if (import.meta.env.DEV) window.__banbeDevSet = set; }, [set]);
+
+  // Admin project hub demo (migration 216): the demo ends as soon as the hub is left (Back, browser back, any other
+  // screen) or the gate stops passing (switch turned off, not an admin any more), so its sample data never lingers.
+  useEffect(() => {
+    if (!state.projectDemoAdmin) return;
+    if (state.screen !== 'eventProject' || !projectDemoAllowed(state)) set({ ...PROJECT_DEMO_RESET });
+  }, [state.projectDemoAdmin, state.screen, state.accountType, state.featureFlags, set]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 'system' theme (note 66): follow the device's light/dark setting live.
   useEffect(() => {

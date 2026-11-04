@@ -13,6 +13,7 @@ struct ProjectHubView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if app.projectDemo != nil { demoBanner }
             topBar
             if let snap = app.projectSnapshot {
                 ProjectTabBar(tabs: tabs(snap), selection: app.projectTab) { app.projectTab = $0 }
@@ -45,7 +46,7 @@ struct ProjectHubView: View {
         }
         .foregroundStyle(app.palette.ink)
         .background(app.palette.paper.ignoresSafeArea())
-        .sheet(item: $sheet) { ProjectSheetHost(sheet: $0) { sheet = nil } }
+        .sheet(item: $sheet) { ProjectSheetHost(sheet: $0) { sheet = nil }.projectDemoLinks(app) }
         // Phase 6: the Host's money numbers drive the Money tab's dot, so they load with the project.
         .task(id: app.projectSnapshot?.isHost) { await app.loadProjectMoney() }
         .task(id: live) {
@@ -57,8 +58,34 @@ struct ProjectHubView: View {
             }
         }
         .environment(\.openProjectSheet, OpenProjectSheet { sheet = $0 })
+        .projectDemoLinks(app)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project.hub")
+    }
+
+    // MARK: demo (migration 216)
+
+    /// Always on top while the admin demo is open, so nobody mistakes the sample for a real project.
+    private var demoBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "theatermasks").accessibilityHidden(true)
+            Text(app.T("Bản demo · dữ liệu mẫu · không lưu gì", "Demo · sample data · nothing is saved"))
+                .font(.subheadline.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("project.demoBanner")
+            Button { app.endProjectDemo() } label: {
+                Text(app.T("Thoát demo", "Exit demo"))
+                    .font(.subheadline.weight(.bold))
+                    .padding(.horizontal, 14).frame(minHeight: 44)
+                    .background(app.palette.paper.opacity(0.7), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("project.demoExit")
+        }
+        .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 4)
+        .background(app.palette.honeyBg)
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: bar
@@ -212,5 +239,24 @@ struct ProjectHubView: View {
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("project.failed")
+    }
+}
+
+extension View {
+    /// In the admin demo, links to outside apps (team channels, the call link) would leave the sample: the hub shows
+    /// "Not available in the demo" instead. Outside the demo links open as usual.
+    func projectDemoLinks(_ app: AppState) -> some View {
+        modifier(ProjectDemoLinks(app: app))
+    }
+}
+
+private struct ProjectDemoLinks: ViewModifier {
+    @ObservedObject var app: AppState
+    func body(content: Content) -> some View {
+        if app.projectDemo != nil {
+            content.environment(\.openURL, OpenURLAction { _ in _ = app.projectDemoBlocksLink(); return .handled })
+        } else {
+            content
+        }
     }
 }

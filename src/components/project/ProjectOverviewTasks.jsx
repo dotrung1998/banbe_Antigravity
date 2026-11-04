@@ -97,7 +97,7 @@ export function ChannelsCard({ p, ui }) {
         {channels.length === 0 && <div style={{ padding: '14px 0' }}><Note tone="ink2">{T('Thêm Zalo, Zoom hay Meet để đội nói chuyện thêm khi cần.', 'Add a Zalo group, Zoom or Meet so the team can talk things through.')}</Note></div>}
         {channels.map((c, i) => (
           <div key={c.url}>
-            <a href={c.url} target="_blank" rel="noopener noreferrer" data-testid="project-channel-link"
+            <a href={c.url} target="_blank" rel="noopener noreferrer" onClick={e => p.demoLinkBlocked(e)} data-testid="project-channel-link"
               style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 56, color: ink, textDecoration: 'none' }}>
               <span aria-hidden style={{ width: 36, height: 36, borderRadius: 10, background: clayBg, color: clay, display: 'grid', placeItems: 'center', fontWeight: 800 }}>{(CHANNEL_NAMES[c.platform] || '↗').slice(0, 1)}</span>
               <span style={{ flex: 1, minWidth: 0 }}>

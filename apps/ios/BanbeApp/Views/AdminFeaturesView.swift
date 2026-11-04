@@ -117,6 +117,11 @@ struct AdminFeaturesView: View {
              hintVi: "Tài chính gửi yêu cầu hoàn tiền để Host duyệt. Host có thể cho Tài chính tự hoàn tiền trong từng dự án. Đổi tài khoản nhận tiền và huỷ sự kiện vẫn chỉ Host làm. Mặc định tắt. Cần migration 214.",
              hintEn: "Finance sends refunds to the Host for approval. The Host can let Finance refund alone, per project. Changing the payout account and cancelling the event stay with the Host. Off by default. Needs migration 214.",
              onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off", requires: "event_project_hub"),
+        // Note 76, migration 216. Client only: admins see "Project hub demo" in Account (works while Event projects is off).
+        Flag(key: "project_hub_demo", vi: "Bản demo dự án sự kiện", en: "Project hub demo",
+             hintVi: "Admin thấy mục Bản demo dự án sự kiện trong Tài khoản, mở dự án trên dữ liệu mẫu để giới thiệu cho đồng nghiệp. Không lưu gì, không gửi gì cho ai. Mặc định tắt.",
+             hintEn: "Admins get a Project hub demo entry in Account that opens the hub on sample data, to show colleagues. Nothing is saved or sent to anyone. Off by default.",
+             onVi: "Đang bật cho admin", onEn: "On for admins", offVi: "Đang tắt", offEn: "Off"),
         // TESTING-PHASE (note 54): remove this row with the wipe tool before public release.
         Flag(key: "admin_event_wipe", vi: "Xoá sự kiện thử nghiệm (giai đoạn thử)", en: "Test event wipe (testing phase)",
              hintVi: "Cho admin xoá vĩnh viễn bất kỳ sự kiện nào cùng mọi dữ liệu liên quan, không cần lý do, trong Quản lý sự kiện (chỉ iOS). Chỉ dùng cho dữ liệu thử nghiệm.",

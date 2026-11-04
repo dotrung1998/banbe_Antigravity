@@ -530,3 +530,26 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
   (`project_extend_grants`) exists but neither app has a button for it yet.
 - Tests: web unit 916/916, public Playwright `tests/public/privacy-project-switch.spec.js` 3/3 (+ rewards spec 5/5),
   iOS `ContentFlagsTests` 10/10. `tests/help-legal.spec.js` still fails at `setupToHome` (pre-existing, note 33).
+
+## Admin "Project hub demo" (migration 216, switch `project_hub_demo`, seeded OFF; applied to production 2026-11-04)
+- Owner request (2026-11-04): let an admin show the hub to colleagues on the sample data used for testing. Owner choice:
+  **admins only**. Migration 216 only adds the switch def + flag row (client-only switch); rollback deletes them.
+- Gate (both apps): admin (`accountType == 'admin'`) AND `project_hub_demo` on; missing = off (OFF_UNLESS_SET, category
+  `projects`). Entry: Account › Admin › Review & moderation, under Feature switches: "Project hub demo" / "Bản demo dự án
+  sự kiện", "Sample data. Nothing is saved." → picker (View as Host / Manager / Finance & door / Lane lead / Helper,
+  "Event day" pins the clock to 14 Nov 18:10, otherwise 3 Nov 10:00) → hub on `tests/fixtures/project-snapshot.json`
+  (iOS bundles it via project.yml; web imports it) with the signed-in admin cast as the chosen role.
+- Inside the demo only, all five project switches count as on; a banner "Demo · sample data · nothing is saved" with
+  "Exit demo". Exit, Back, leaving the screen, sign-out or the gate failing ends it and clears all demo state.
+- **Nothing reaches the server:** web routes every call in `useEventProject` through a refusing stand-in client while the
+  demo is on (Playwright counted 0 requests to /rest/v1/rpc/ and /storage/); iOS `projectOffline` guards all 22 project
+  server calls (script-checked) plus the write helpers. Links to real screens and outside apps show "Not available in the
+  demo". iOS demo code is release-compiled (`Lib/ProjectDemo.swift`; Release simulator build OK).
+- Web URL `/admin/project-demo` (a reload lands on the admin list, not a broken hub).
+- Verified: web unit 924/924, `tests/project-demo.spec.js` 5/5, `tests/event-project.spec.js` 21/21 (chromium), build OK;
+  iOS `ProjectDemoTests` 9/9, `ProjectDemoUITests` 4/4, existing project UI tests 82/82, unit 571/573 (the 2 failures are
+  the pre-existing `GiftTicketPDFTests.testPDFLinksPointAtRealDestinations`). Pre-existing web failures checked on a
+  clean HEAD worktree: `note69-web-parity` + `rewards-switch` fail 10 there too.
+- Not checked: real device, a real admin against the live switch, visuals of banner/picker; on iOS a "not available"
+  notice tapped inside a sheet sits behind the sheet until it closes; app-wide background reads (e.g. flag refresh) may
+  still run during a demo (read-only, not project code).

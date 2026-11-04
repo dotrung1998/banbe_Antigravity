@@ -10,7 +10,7 @@ struct ProjectTeamTab: View {
 
     private var me: String? { app.userID?.uuidString.lowercased() }
     private var canInvite: Bool { app.projectCan("invite.create", .init(role: "helper")) }
-    private var qrInvites: Bool { FeatureFlags.isOn(app.featureFlags, "project_qr_invite") }
+    private var qrInvites: Bool { FeatureFlags.isOn(app.projectFlags, "project_qr_invite") }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

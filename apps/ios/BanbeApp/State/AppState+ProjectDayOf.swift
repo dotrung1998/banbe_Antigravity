@@ -15,9 +15,7 @@ extension AppState {
 
     /// One poll: run-of-show only, and a tiny {unchanged} answer when nothing moved.
     func pollProjectRos() async {
-        #if DEBUG
-        if UITestFixture.isActive { return }
-        #endif
+        if projectOffline { return }
         guard !projectEventID.isEmpty else { return }
         struct Params: Encodable {
             let pEventId: String; let pSinceVersion: Int?
@@ -42,8 +40,7 @@ extension AppState {
     @discardableResult
     func saveProjectRosItem(itemID: String?, title: String, ownerID: String?, startsAt: Date, endsAt: Date) async -> Bool {
         let iso = ISO8601DateFormatter()
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             if let itemID, let i = projectSnapshot?.ros?.firstIndex(where: { $0.id == itemID }) {
                 projectSnapshot?.ros?[i].title = title
                 projectSnapshot?.ros?[i].ownerId = ownerID
@@ -57,7 +54,6 @@ extension AppState {
             }
             return true
         }
-        #endif
         struct Params: Encodable {
             let pEventId: String; let pItemId: String?; let pTitle: String; let pOwnerId: String?; let pStartsAt: String; let pEndsAt: String
             enum CodingKeys: String, CodingKey {
@@ -79,13 +75,11 @@ extension AppState {
     /// Tick or untick. Everyone in the project may; the server stamps the time.
     @discardableResult
     func tickProjectRosItem(_ itemID: String, done: Bool) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             guard let i = projectSnapshot?.ros?.firstIndex(where: { $0.id == itemID }) else { return false }
             projectSnapshot?.ros?[i].doneAt = done ? ISO8601DateFormatter().string(from: projectNow) : nil
             return true
         }
-        #endif
         struct Params: Encodable {
             let pItemId: String; let pDone: Bool
             enum CodingKeys: String, CodingKey { case pItemId = "p_item_id", pDone = "p_done" }
@@ -95,17 +89,15 @@ extension AppState {
 
     @discardableResult
     func deleteProjectRosItem(_ itemID: String, reason: String) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
+        if projectOffline {
             if let item = projectSnapshot?.ros?.first(where: { $0.id == itemID }) {
-                UITestFixture.projectTrash.insert(ProjectTrashItem(kind: "ros", itemId: itemID, title: item.title, by: userID?.uuidString.lowercased(),
+                ProjectDemo.trash.insert(ProjectTrashItem(kind: "ros", itemId: itemID, title: item.title, by: userID?.uuidString.lowercased(),
                                                                    reason: reason, at: ISO8601DateFormatter().string(from: projectNow),
                                                                    startsAt: item.startsAt), at: 0)
             }
             projectSnapshot?.ros?.removeAll { $0.id == itemID }
             return true
         }
-        #endif
         struct Params: Encodable {
             let pItemId: String; let pReason: String
             enum CodingKeys: String, CodingKey { case pItemId = "p_item_id", pReason = "p_reason" }
@@ -116,9 +108,7 @@ extension AppState {
     // MARK: trash (Host and Managers; purging is the Host's)
 
     func loadProjectTrash() async -> [ProjectTrashItem] {
-        #if DEBUG
-        if UITestFixture.isActive { return UITestFixture.projectTrash }
-        #endif
+        if projectOffline { return ProjectDemo.trash }
         struct Params: Encodable {
             let pEventId: String
             enum CodingKeys: String, CodingKey { case pEventId = "p_event_id" }
@@ -137,9 +127,8 @@ extension AppState {
 
     @discardableResult
     func restoreProjectItem(_ item: ProjectTrashItem) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive {
-            UITestFixture.projectTrash.removeAll { $0.id == item.id }
+        if projectOffline {
+            ProjectDemo.trash.removeAll { $0.id == item.id }
             if item.kind == "ros", let start = item.startsAt, let s = ProjectDates.parse(start) {
                 let back = ProjectRosItem(id: item.itemId, title: item.title, ownerId: nil, startsAt: start,
                                           endsAt: ISO8601DateFormatter().string(from: s.addingTimeInterval(1800)), doneAt: nil)
@@ -148,7 +137,6 @@ extension AppState {
             }
             return true
         }
-        #endif
         struct Params: Encodable {
             let pKind: String; let pId: String
             enum CodingKeys: String, CodingKey { case pKind = "p_kind", pId = "p_id" }
@@ -158,9 +146,7 @@ extension AppState {
 
     @discardableResult
     func purgeProjectItem(_ item: ProjectTrashItem) async -> Bool {
-        #if DEBUG
-        if UITestFixture.isActive { UITestFixture.projectTrash.removeAll { $0.id == item.id }; return true }
-        #endif
+        if projectOffline { ProjectDemo.trash.removeAll { $0.id == item.id }; return true }
         struct Params: Encodable {
             let pKind: String; let pId: String
             enum CodingKeys: String, CodingKey { case pKind = "p_kind", pId = "p_id" }

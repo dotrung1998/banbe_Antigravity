@@ -46,14 +46,14 @@ export default function ProjectMoney({ p }) {
       <Card padding={4}>
         {row('✔', T('Kiểm tra thanh toán', 'Check payments'),
           (m?.awaiting || 0) > 0 ? T(`${m.awaiting} khách chờ bạn xác nhận`, m.awaiting === 1 ? '1 guest waiting for you' : `${m.awaiting} guests waiting for you`) : T('Không ai đang chờ', 'Nobody is waiting'),
-          (m?.awaiting || 0) > 0, 'project-money-verify', () => openVerifications('eventProject'))}
+          (m?.awaiting || 0) > 0, 'project-money-verify', () => { if (!p.demoLinkBlocked()) openVerifications('eventProject'); })}
         <div style={{ height: 1, background: divider }} />
         {row('↺', T('Hoàn tiền', 'Refunds'),
           (m?.refunds || 0) > 0 ? T(`${m.refunds} yêu cầu đang mở`, m.refunds === 1 ? '1 open request' : `${m.refunds} open requests`) + (m.refundsOverdue ? T(` · ${m.refundsOverdue} quá hạn`, ` · ${m.refundsOverdue} overdue`) : '') : T('Không có yêu cầu hoàn tiền', 'No refund requests'),
-          (m?.refunds || 0) > 0, 'project-money-refunds', () => openVerificationsRefunds('eventProject'))}
+          (m?.refunds || 0) > 0, 'project-money-refunds', () => { if (!p.demoLinkBlocked()) openVerificationsRefunds('eventProject'); })}
         <div style={{ height: 1, background: divider }} />
         {row('▦', T('Check-in ở cửa', 'Door check-in'), m ? T(`${m.checkedIn}/${m.seats} chỗ đã vào`, `${m.checkedIn}/${m.seats} seats in`) : '', false, 'project-money-door',
-          () => openAttendance(snap.event?.id || p.s.projectEventId, 'eventProject'))}
+          () => { if (!p.demoLinkBlocked()) openAttendance(snap.event?.id || p.s.projectEventId, 'eventProject'); })}
       </Card>
       <SectionHeader title={T('Quyền của đội', 'Team access')} />
       <Card data-testid="project-money-team">
@@ -174,7 +174,7 @@ function Payments({ p }) {
               <button type="button" onClick={() => setProof(null)} aria-label="Close" data-testid="project-proof-close" style={{ width: 44, height: 44, borderRadius: '50%', border: 0, background: 'var(--bb-block-inset)', color: ink, cursor: 'pointer' }}>✕</button></div>
             <div style={{ marginTop: 12, minHeight: 240, borderRadius: 16, background: 'var(--bb-block-inset)', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
               {proof.url ? <img src={proof.url} alt={T('Ảnh chuyển khoản', 'Transfer proof')} draggable={false} onContextMenu={e => e.preventDefault()} style={{ maxWidth: '100%', userSelect: 'none' }} />
-                : <span style={{ color: ink2 }}>{T('Chưa có ảnh để hiển thị.', 'No image to show.')}</span>}
+                : <span style={{ color: ink2 }}>{p.demo ? T('Bản demo không có ảnh thật.', 'The demo has no real images.') : T('Chưa có ảnh để hiển thị.', 'No image to show.')}</span>}
             </div>
             <div style={{ marginTop: 10 }}><Note>{T(`Chỉ xem. Lần mở này đã được ghi lại cho Chủ sự kiện, và liên kết đóng sau ${p.LIMITS.proofUrlSeconds} giây.`, `View only. This open was recorded for the Host, and the link closes after ${p.LIMITS.proofUrlSeconds} seconds.`)}</Note></div>
           </div>

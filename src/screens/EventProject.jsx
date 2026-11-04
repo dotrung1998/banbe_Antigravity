@@ -60,7 +60,16 @@ export default function EventProject() {
   return (
     <div data-screen-label="EventProject" data-testid="project-hub"
       style={{ position: 'relative', minHeight: '100%', background: paper, color: ink, animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '58px 12px 4px' }}>
+      {p.demoAdmin && (
+        // Admin project hub demo (migration 216): always on screen while the demo is open.
+        <div data-testid="project-demo-banner" role="status"
+          style={{ position: 'sticky', top: 0, zIndex: 25, display: 'flex', alignItems: 'center', gap: 10, padding: '50px 14px 8px', background: honeyBg, color: ink }}>
+          <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }} data-testid="project-demo-banner-title">{T('Bản demo · dữ liệu mẫu · không lưu gì', 'Demo · sample data · nothing is saved')}</span>
+          <button type="button" onClick={p.exitProjectDemo} data-testid="project-demo-exit"
+            style={pillButton(false, { width: 'auto', minHeight: 44, padding: '0 16px', flex: 'none' })}>{T('Thoát bản demo', 'Exit demo')}</button>
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: p.demoAdmin ? '8px 12px 4px' : '58px 12px 4px' }}>
         <button type="button" onClick={p.back} aria-label={T('Quay lại', 'Back')} data-testid="project-back" style={circle}>‹</button>
         <h1 style={{ flex: 1, margin: 0, fontSize: 17, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{snap?.event?.name || T('Dự án', 'Project')}</h1>
         <div style={{ position: 'relative' }}>

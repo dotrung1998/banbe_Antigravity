@@ -71,59 +71,20 @@ enum UITestFixture {
         return ISO8601DateFormatter().date(from: "2026-11-03T10:00:00+07:00")
     }
 
-    /// The shared snapshot fixture, optionally re-cast so the fixture account is one of the members.
+    /// The shared snapshot fixture (bundled, the same sample the admin demo uses), optionally re-cast so the fixture
+    /// account is one of the members.
     static func projectSnapshot() -> ProjectSnapshot? {
-        // apps/ios/BanbeApp/App/UITestFixtures.swift -> the repo root is five levels up.
-        var url = URL(fileURLWithPath: #filePath)
-        for _ in 0..<5 { url.deleteLastPathComponent() }
-        guard let data = try? Data(contentsOf: url.appendingPathComponent("tests/fixtures/project-snapshot.json")),
-              var text = String(data: data, encoding: .utf8) else { return nil }
-        let me = userID.uuidString.lowercased()
-        let memberIDs = ["manager": "00000000-0000-4000-8000-000000000102", "lead": "00000000-0000-4000-8000-000000000103",
-                         "helper": "00000000-0000-4000-8000-000000000104", "finance": "00000000-0000-4000-8000-000000000106"]
-        if let role = projectAs, let member = memberIDs[role] {
-            // The Host becomes someone else, and the fixture account takes that member's place.
-            text = text.replacingOccurrences(of: me, with: "00000000-0000-4000-8000-0000000001ff")
-                .replacingOccurrences(of: "\"display_name\": \"Bạn\"", with: "\"display_name\": \"Lan\"")
-                .replacingOccurrences(of: member, with: me)
-        }
-        guard let root = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
-              var snap = root["snapshot"] as? [String: Any] else { return nil }
-        if projectAs != nil, let members = snap["members"] as? [[String: Any]],
-           let mine = members.first(where: { ($0["user_id"] as? String) == me }) {
-            snap["is_host"] = false
-            snap["me"] = ["member_id": mine["member_id"] ?? "", "role": mine["role"] ?? "helper", "lane_id": mine["lane_id"] ?? NSNull(),
-                          "cap_money": mine["cap_money"] ?? false, "cap_checkin": mine["cap_checkin"] ?? false,
-                          "grant_expires_at": "2026-11-21T17:00:00+00:00"]
-        }
-        guard let json = try? JSONSerialization.data(withJSONObject: snap) else { return nil }
-        return try? JSONDecoder().decode(ProjectSnapshot.self, from: json)
+        ProjectDemo.snapshot(as: projectAs, me: userID.uuidString)
     }
 
-    /// Phase 4: replies written during a fixture run (the snapshot only carries counts).
-    static var projectReplies: [String: [ProjectReply]] = [:]
-    /// Phase 4b: invites minted in this run (the first is BB-7K2Q, later ones get other codes).
-    static var projectInviteCount = 0
-    /// Phase 5: what the fixture's trash holds (items deleted during the run go here).
-    static var projectTrash: [ProjectTrashItem] = []
     /// Phase 4b: the join screen's camera "sees" this value (`-uiFixtureProjectScan <text>`); the simulator has no camera.
     static let projectScan = UserDefaults.standard.string(forKey: "uiFixtureProjectScan")
     /// Phase 4b: `-uiFixtureProjectQR YES` turns on switch `project_qr_invite`.
     static let projectQR = UserDefaults.standard.bool(forKey: "uiFixtureProjectQR")
     /// Phase 4: `shell.projectJoin` opens "Join a team" on this code (`-uiFixtureProjectJoin BB-7K2Q`; empty = entry).
     static let projectJoin = UserDefaults.standard.string(forKey: "uiFixtureProjectJoin") ?? ""
-
-    /// What `peek_project_invite` would say: BB-7K2Q is a live Helper invite, BB-XPRD an expired one, anything else not found.
-    static func projectJoinPeek(_ code: String) -> ProjectInvitePeek? {
-        let value = ProjectInviteLink.parse(code).map { inv -> String in
-            switch inv { case .token: return "BB-7K2Q"; case .code(let c): return c }
-        }
-        guard value == "BB-7K2Q" || value == "BB-XPRD" else { return nil }
-        return ProjectInvitePeek(success: true, error: nil, state: value == "BB-7K2Q" ? "ok" : "expired", eventId: "fx_project",
-                                 eventName: "Bếp Nhỏ №13", eventDate: "2026-11-14", startsAt: "2026-11-14T12:00:00+00:00",
-                                 tz: "Asia/Ho_Chi_Minh", organizerName: "Bếp Nhỏ", role: "helper", laneName: nil,
-                                 expiresAt: "2026-11-05T03:00:00+00:00")
-    }
+    /// Migration 216: `-uiFixtureProjectDemo YES` is an admin having turned on `project_hub_demo`.
+    static let projectDemo = UserDefaults.standard.bool(forKey: "uiFixtureProjectDemo")
 
     /// Stable fake account id so the draft store/relaunch tests have a key.
     static let userID = UUID(uuidString: "00000000-0000-4000-8000-00000000F1F0")!
@@ -266,6 +227,7 @@ struct UITestFixtureRoot: View {
         if UITestFixture.simpleShell { app.featureFlags["simple_shell"] = true }
         if UITestFixture.polaroid { app.featureFlags["polaroid_cards"] = true }
         if UITestFixture.projectHub { app.featureFlags["event_project_hub"] = true; app.myProjectsLoaded = true }
+        if UITestFixture.projectDemo { app.featureFlags[ProjectDemo.flag] = true }
         if UITestFixture.eventTypes {
             app.featureFlags["event_type_profiles"] = true
             // The facts the production backfill gave these catalogue events (note 66), as their real rows would.
