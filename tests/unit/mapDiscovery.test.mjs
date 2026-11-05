@@ -127,3 +127,36 @@ test('activeFilterSummary: tokens in reading order with the badge count', async 
   const { activeFilterSummary } = await import('../../src/lib/mapDiscovery.js');
   for (const k of fx.activeFilterSummary) assert.deepEqual(activeFilterSummary(k.filters, k.opts), k.expect, k.name);
 });
+
+// ---- Map E+ (note 79): neighbourhood bubbles ----------------------------------------------------------------------
+test('areaKey: one area however it is spelled, per city; no area is its own bucket', async () => {
+  const { areaKey } = await import('../../src/lib/mapDiscovery.js');
+  for (const k of fx.areaKey) assert.deepEqual(areaKey(k.ev, cities), k.expect, k.name);
+});
+
+test('areaGroups: one bubble per area, close ones merge, every point in exactly one, hits counted', async () => {
+  const { areaGroups, areaKey, boundsOfPoints } = await import('../../src/lib/mapDiscovery.js');
+  const { points, cases } = fx.areaGroups;
+  const placed = points.filter((p) => p.lat != null && p.lng != null);
+  for (const k of cases) {
+    const got = areaGroups(points, k.zoom, (p) => areaKey(p, cities), k.hitIds);
+    assert.deepEqual(got.map((g) => ({ keys: g.keys, labels: g.labels, cityId: g.cityId, ids: g.ids, hit: g.hit })), k.expect, k.name);
+    assert.equal(got.reduce((s, g) => s + g.ids.length, 0), placed.length, `${k.name}: count`);
+    for (const g of got) {
+      const members = placed.filter((p) => g.ids.includes(p.id));
+      near(g.lat, members.reduce((s, p) => s + p.lat, 0) / members.length, `${k.name} lat`);
+      near(g.lng, members.reduce((s, p) => s + p.lng, 0) / members.length, `${k.name} lng`);
+      assert.deepEqual(g.bounds, boundsOfPoints(members), `${k.name}: bounds`);
+      assert.equal(g.kind, 'area');
+    }
+  }
+  const all = areaGroups(points, 12, (p) => areaKey(p, cities));
+  assert.deepEqual(all.map((g) => g.hit), all.map((g) => g.ids.length), 'no hit list = everything is a hit');
+});
+
+test('markerLevel and areaPanelCloses follow CITY_ZOOM / AREA_ZOOM', async () => {
+  const { markerLevel, areaPanelCloses, CITY_ZOOM, AREA_ZOOM } = await import('../../src/lib/mapDiscovery.js');
+  assert.deepEqual([CITY_ZOOM, AREA_ZOOM], [9, 13]);
+  for (const k of fx.markerLevel) assert.equal(markerLevel(k.zoom), k.expect, `zoom ${k.zoom}`);
+  for (const k of fx.areaPanelCloses) assert.equal(areaPanelCloses(k.zoom), k.expect, `zoom ${k.zoom}`);
+});

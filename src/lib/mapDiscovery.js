@@ -280,6 +280,90 @@ export function cityGroups(points, zoom, cityOf, cities, opts = {}) {
   return out.concat(clusterPins(rest, zoom, opts));
 }
 
+// ---- Map E+ (note 79): neighbourhood bubbles ------------------------------------------------------------------------
+// Zoom levels (512 px basis): below CITY_ZOOM one bubble per city, from CITY_ZOOM up to AREA_ZOOM one bubble per
+// neighbourhood, from AREA_ZOOM the price pins and clusters. No database change: the neighbourhood is the event's own
+// `area` text (the geocoder's district, shown as a familiar area, never as an official unit, note 20), else its
+// `neighborhood`; its centre and bounds come from the member events' own positions.
+export const AREA_ZOOM = 13;
+export const AREA_MERGE_PX = 56; // two neighbourhood bubbles closer than this on screen become one "N areas" bubble
+export const AREA_PANEL_CLOSE_DELTA = 0.5; // zooming out this far below AREA_ZOOM closes the area panel
+
+/** 'city' | 'area' | 'pin': which marker level the camera zoom shows. */
+export const markerLevel = (zoom) => (zoom < CITY_ZOOM ? 'city' : zoom < AREA_ZOOM ? 'area' : 'pin');
+/** Zooming out below this closes the open area panel (the view stays where it is). */
+export const areaPanelCloses = (zoom) => zoom < AREA_ZOOM - AREA_PANEL_CLOSE_DELTA;
+
+/** "district 1", "Q.1", "Q1" and "Quận 1" are one area; a leading "Quận / Huyện / District" before a name is dropped. */
+function foldArea(raw) {
+  const t = foldName(raw);
+  const m = t.match(/^(?:quan|district|dist|q)\s*(\d+)$/);
+  if (m) return `quan ${m[1]}`;
+  return t.replace(/^(?:quan|huyen|district)\s+(?=\D)/, '');
+}
+
+/**
+ * { key, label, cityId } of an event ({ area, neighborhood, city, stateProvince, countryCode, lat, lng }).
+ * `key` groups the same area spelled differently inside one city; `label` is the text as written (null = no area at
+ * all: the view shows "Other areas").
+ */
+export function areaKey(ev, cities) {
+  const cityId = cityFor(ev, cities);
+  const raw = String(ev?.area ?? '').trim() || String(ev?.neighborhood ?? '').trim();
+  return { key: `${cityId ?? '-'}|${foldArea(raw) || '~'}`, label: raw || null, cityId };
+}
+
+/**
+ * One bubble per neighbourhood for `points` (each with lat, lng, id): [{ kind: 'area', keys, labels, cityId, ids, hit,
+ * lat, lng, bounds }] in first-seen order. `areaOf(point)` is `areaKey`. `hitIds` (array or Set, null = all) are the
+ * ids inside the time window: `hit` counts them. Bubbles of one city whose centres are closer than AREA_MERGE_PX at
+ * `zoom` merge (keys.length > 1: tap zooms in, a single key opens its panel). Every point with coordinates lands in
+ * exactly one bubble, so bubbles add up to the count.
+ */
+export function areaGroups(points, zoom, areaOf, hitIds = null, { tileSize = 512, mergePx = AREA_MERGE_PX } = {}) {
+  const hits = hitIds == null ? null : new Set(hitIds);
+  const world = tileSize * 2 ** zoom;
+  const byKey = new Map();
+  for (const p of points || []) {
+    if (!p || p.lat == null || p.lng == null) continue;
+    const a = areaOf(p);
+    if (!byKey.has(a.key)) byKey.set(a.key, { keys: [a.key], labels: [a.label], cityId: a.cityId, pts: [] });
+    byKey.get(a.key).pts.push(p);
+  }
+  const list = [...byKey.values()];
+  const px = (g) => [
+    (g.pts.reduce((s, p) => s + mercX(p.lng), 0) / g.pts.length) * world,
+    (g.pts.reduce((s, p) => s + mercY(p.lat), 0) / g.pts.length) * world,
+  ];
+  let merged = true;
+  while (merged) {
+    merged = false;
+    outer: for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        if (list[i].cityId !== list[j].cityId) continue;
+        const [ax, ay] = px(list[i]), [bx, by] = px(list[j]);
+        if (Math.hypot(ax - bx, ay - by) < mergePx) {
+          list[i] = { ...list[i], keys: [...list[i].keys, ...list[j].keys], labels: [...list[i].labels, ...list[j].labels], pts: [...list[i].pts, ...list[j].pts] };
+          list.splice(j, 1);
+          merged = true;
+          break outer;
+        }
+      }
+    }
+  }
+  return list.map((g) => ({
+    kind: 'area',
+    keys: g.keys,
+    labels: g.labels,
+    cityId: g.cityId,
+    ids: g.pts.map((p) => p.id),
+    hit: hits ? g.pts.filter((p) => hits.has(p.id)).length : g.pts.length,
+    lat: g.pts.reduce((s, p) => s + p.lat, 0) / g.pts.length,
+    lng: g.pts.reduce((s, p) => s + p.lng, 0) / g.pts.length,
+    bounds: boundsOfPoints(g.pts),
+  }));
+}
+
 /**
  * What is filtered, in reading order, for the peek strip and the compact sticky header. Tokens, not text, so web and
  * iOS share one fixture and label them in their own language:

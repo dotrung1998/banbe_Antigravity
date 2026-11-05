@@ -882,5 +882,621 @@
         "count": 5
       }
     }
+  ],
+  "areaKey": [
+    {
+      "name": "Quận 1",
+      "ev": {
+        "lat": 10.7769,
+        "lng": 106.7009,
+        "area": "Quận 1"
+      },
+      "expect": {
+        "key": "vn-hcm|quan 1",
+        "label": "Quận 1",
+        "cityId": "vn-hcm"
+      }
+    },
+    {
+      "name": "District 1 is the same area",
+      "ev": {
+        "lat": 10.7769,
+        "lng": 106.7009,
+        "area": "District 1"
+      },
+      "expect": {
+        "key": "vn-hcm|quan 1",
+        "label": "District 1",
+        "cityId": "vn-hcm"
+      }
+    },
+    {
+      "name": "Q.1",
+      "ev": {
+        "lat": 10.7769,
+        "lng": 106.7009,
+        "area": "Q.1"
+      },
+      "expect": {
+        "key": "vn-hcm|quan 1",
+        "label": "Q.1",
+        "cityId": "vn-hcm"
+      }
+    },
+    {
+      "name": "Q1",
+      "ev": {
+        "lat": 10.7769,
+        "lng": 106.7009,
+        "area": "Q1"
+      },
+      "expect": {
+        "key": "vn-hcm|quan 1",
+        "label": "Q1",
+        "cityId": "vn-hcm"
+      }
+    },
+    {
+      "name": "Quận 12 is not Quận 1",
+      "ev": {
+        "lat": 10.7769,
+        "lng": 106.7009,
+        "area": "Quận 12"
+      },
+      "expect": {
+        "key": "vn-hcm|quan 12",
+        "label": "Quận 12",
+        "cityId": "vn-hcm"
+      }
+    },
+    {
+      "name": "Quận before a name is dropped",
+      "ev": {
+        "lat": 10.7769,
+        "lng": 106.7009,
+        "area": "Quận Bình Thạnh"
+      },
+      "expect": {
+        "key": "vn-hcm|binh thanh",
+        "label": "Quận Bình Thạnh",
+        "cityId": "vn-hcm"
+      }
+    },
+    {
+      "name": "accents and đ fold",
+      "ev": {
+        "lat": 10.7769,
+        "lng": 106.7009,
+        "area": "Bình Thạnh"
+      },
+      "expect": {
+        "key": "vn-hcm|binh thanh",
+        "label": "Bình Thạnh",
+        "cityId": "vn-hcm"
+      }
+    },
+    {
+      "name": "neighborhood is used when there is no area",
+      "ev": {
+        "lat": 10.7769,
+        "lng": 106.7009,
+        "area": "",
+        "neighborhood": "Thảo Điền"
+      },
+      "expect": {
+        "key": "vn-hcm|thao dien",
+        "label": "Thảo Điền",
+        "cityId": "vn-hcm"
+      }
+    },
+    {
+      "name": "a ward is not stripped",
+      "ev": {
+        "lat": 10.7769,
+        "lng": 106.7009,
+        "area": "Phường Bến Nghé"
+      },
+      "expect": {
+        "key": "vn-hcm|phuong ben nghe",
+        "label": "Phường Bến Nghé",
+        "cityId": "vn-hcm"
+      }
+    },
+    {
+      "name": "no area at all is the other-areas bucket",
+      "ev": {
+        "lat": 10.7769,
+        "lng": 106.7009
+      },
+      "expect": {
+        "key": "vn-hcm|~",
+        "label": null,
+        "cityId": "vn-hcm"
+      }
+    },
+    {
+      "name": "outside every city",
+      "ev": {
+        "area": "Quận 1",
+        "lat": 0,
+        "lng": 0
+      },
+      "expect": {
+        "key": "-|quan 1",
+        "label": "Quận 1",
+        "cityId": null
+      }
+    }
+  ],
+  "areaGroups": {
+    "points": [
+      {
+        "id": "p1",
+        "lat": 10.7769,
+        "lng": 106.7009,
+        "area": "Quận 1"
+      },
+      {
+        "id": "p2",
+        "lat": 10.7731,
+        "lng": 106.7044,
+        "area": "District 1"
+      },
+      {
+        "id": "p3",
+        "lat": 10.784,
+        "lng": 106.686,
+        "area": "Quận 3"
+      },
+      {
+        "id": "p4",
+        "lat": 10.801,
+        "lng": 106.71,
+        "area": "Bình Thạnh"
+      },
+      {
+        "id": "p5",
+        "lat": 10.79,
+        "lng": 106.69
+      },
+      {
+        "id": "p6",
+        "lat": 10.8047,
+        "lng": 106.7355,
+        "area": "",
+        "neighborhood": "Thảo Điền"
+      },
+      {
+        "id": "p7",
+        "lat": 21.0338,
+        "lng": 105.8142,
+        "area": "Ba Đình"
+      },
+      {
+        "id": "p8",
+        "area": "Quận 1"
+      }
+    ],
+    "cases": [
+      {
+        "name": "zoom 12: districts apart stay apart, a close pair merges",
+        "zoom": 12,
+        "hitIds": null,
+        "expect": [
+          {
+            "keys": [
+              "vn-hcm|quan 1"
+            ],
+            "labels": [
+              "Quận 1"
+            ],
+            "cityId": "vn-hcm",
+            "ids": [
+              "p1",
+              "p2"
+            ],
+            "hit": 2
+          },
+          {
+            "keys": [
+              "vn-hcm|quan 3",
+              "vn-hcm|~"
+            ],
+            "labels": [
+              "Quận 3",
+              null
+            ],
+            "cityId": "vn-hcm",
+            "ids": [
+              "p3",
+              "p5"
+            ],
+            "hit": 2
+          },
+          {
+            "keys": [
+              "vn-hcm|binh thanh"
+            ],
+            "labels": [
+              "Bình Thạnh"
+            ],
+            "cityId": "vn-hcm",
+            "ids": [
+              "p4"
+            ],
+            "hit": 1
+          },
+          {
+            "keys": [
+              "vn-hcm|thao dien"
+            ],
+            "labels": [
+              "Thảo Điền"
+            ],
+            "cityId": "vn-hcm",
+            "ids": [
+              "p6"
+            ],
+            "hit": 1
+          },
+          {
+            "keys": [
+              "vn-hanoi|ba dinh"
+            ],
+            "labels": [
+              "Ba Đình"
+            ],
+            "cityId": "vn-hanoi",
+            "ids": [
+              "p7"
+            ],
+            "hit": 1
+          }
+        ]
+      },
+      {
+        "name": "zoom 12 with a time window: hit counts per bubble",
+        "zoom": 12,
+        "hitIds": [
+          "p1",
+          "p3",
+          "p6"
+        ],
+        "expect": [
+          {
+            "keys": [
+              "vn-hcm|quan 1"
+            ],
+            "labels": [
+              "Quận 1"
+            ],
+            "cityId": "vn-hcm",
+            "ids": [
+              "p1",
+              "p2"
+            ],
+            "hit": 1
+          },
+          {
+            "keys": [
+              "vn-hcm|quan 3",
+              "vn-hcm|~"
+            ],
+            "labels": [
+              "Quận 3",
+              null
+            ],
+            "cityId": "vn-hcm",
+            "ids": [
+              "p3",
+              "p5"
+            ],
+            "hit": 1
+          },
+          {
+            "keys": [
+              "vn-hcm|binh thanh"
+            ],
+            "labels": [
+              "Bình Thạnh"
+            ],
+            "cityId": "vn-hcm",
+            "ids": [
+              "p4"
+            ],
+            "hit": 0
+          },
+          {
+            "keys": [
+              "vn-hcm|thao dien"
+            ],
+            "labels": [
+              "Thảo Điền"
+            ],
+            "cityId": "vn-hcm",
+            "ids": [
+              "p6"
+            ],
+            "hit": 1
+          },
+          {
+            "keys": [
+              "vn-hanoi|ba dinh"
+            ],
+            "labels": [
+              "Ba Đình"
+            ],
+            "cityId": "vn-hanoi",
+            "ids": [
+              "p7"
+            ],
+            "hit": 0
+          }
+        ]
+      },
+      {
+        "name": "zoom 10: neighbouring districts of one city merge",
+        "zoom": 10,
+        "hitIds": null,
+        "expect": [
+          {
+            "keys": [
+              "vn-hcm|quan 1",
+              "vn-hcm|quan 3",
+              "vn-hcm|binh thanh",
+              "vn-hcm|~"
+            ],
+            "labels": [
+              "Quận 1",
+              "Quận 3",
+              "Bình Thạnh",
+              null
+            ],
+            "cityId": "vn-hcm",
+            "ids": [
+              "p1",
+              "p2",
+              "p3",
+              "p4",
+              "p5"
+            ],
+            "hit": 5
+          },
+          {
+            "keys": [
+              "vn-hcm|thao dien"
+            ],
+            "labels": [
+              "Thảo Điền"
+            ],
+            "cityId": "vn-hcm",
+            "ids": [
+              "p6"
+            ],
+            "hit": 1
+          },
+          {
+            "keys": [
+              "vn-hanoi|ba dinh"
+            ],
+            "labels": [
+              "Ba Đình"
+            ],
+            "cityId": "vn-hanoi",
+            "ids": [
+              "p7"
+            ],
+            "hit": 1
+          }
+        ]
+      },
+      {
+        "name": "an empty hit list dims everything",
+        "zoom": 12,
+        "hitIds": [],
+        "expect": [
+          {
+            "keys": [
+              "vn-hcm|quan 1"
+            ],
+            "labels": [
+              "Quận 1"
+            ],
+            "cityId": "vn-hcm",
+            "ids": [
+              "p1",
+              "p2"
+            ],
+            "hit": 0
+          },
+          {
+            "keys": [
+              "vn-hcm|quan 3",
+              "vn-hcm|~"
+            ],
+            "labels": [
+              "Quận 3",
+              null
+            ],
+            "cityId": "vn-hcm",
+            "ids": [
+              "p3",
+              "p5"
+            ],
+            "hit": 0
+          },
+          {
+            "keys": [
+              "vn-hcm|binh thanh"
+            ],
+            "labels": [
+              "Bình Thạnh"
+            ],
+            "cityId": "vn-hcm",
+            "ids": [
+              "p4"
+            ],
+            "hit": 0
+          },
+          {
+            "keys": [
+              "vn-hcm|thao dien"
+            ],
+            "labels": [
+              "Thảo Điền"
+            ],
+            "cityId": "vn-hcm",
+            "ids": [
+              "p6"
+            ],
+            "hit": 0
+          },
+          {
+            "keys": [
+              "vn-hanoi|ba dinh"
+            ],
+            "labels": [
+              "Ba Đình"
+            ],
+            "cityId": "vn-hanoi",
+            "ids": [
+              "p7"
+            ],
+            "hit": 0
+          }
+        ]
+      }
+    ]
+  },
+  "markerLevel": [
+    {
+      "zoom": 5,
+      "expect": "city"
+    },
+    {
+      "zoom": 8.99,
+      "expect": "city"
+    },
+    {
+      "zoom": 9,
+      "expect": "area"
+    },
+    {
+      "zoom": 12.99,
+      "expect": "area"
+    },
+    {
+      "zoom": 13,
+      "expect": "pin"
+    },
+    {
+      "zoom": 16,
+      "expect": "pin"
+    }
+  ],
+  "areaPanelCloses": [
+    {
+      "zoom": 11,
+      "expect": true
+    },
+    {
+      "zoom": 12.49,
+      "expect": true
+    },
+    {
+      "zoom": 12.5,
+      "expect": false
+    },
+    {
+      "zoom": 13,
+      "expect": false
+    },
+    {
+      "zoom": 15,
+      "expect": false
+    }
+  ],
+  "pullOutcome": [
+    {
+      "dy": 120,
+      "velocity": 0,
+      "expect": "close"
+    },
+    {
+      "dy": 111,
+      "velocity": 0,
+      "expect": "close"
+    },
+    {
+      "dy": 110,
+      "velocity": 0,
+      "expect": "back"
+    },
+    {
+      "dy": 60,
+      "velocity": 0.7,
+      "expect": "close"
+    },
+    {
+      "dy": 60,
+      "velocity": 0.6,
+      "expect": "back"
+    },
+    {
+      "dy": 50,
+      "velocity": 0.9,
+      "expect": "back"
+    },
+    {
+      "dy": 51,
+      "velocity": 0.61,
+      "expect": "close"
+    },
+    {
+      "dy": 30,
+      "velocity": 2,
+      "expect": "back"
+    },
+    {
+      "dy": 0,
+      "velocity": 0,
+      "expect": "back"
+    }
+  ],
+  "veilOpacity": [
+    {
+      "dy": 0,
+      "expect": 1
+    },
+    {
+      "dy": 65,
+      "expect": 0.5
+    },
+    {
+      "dy": 130,
+      "expect": 0
+    },
+    {
+      "dy": 200,
+      "expect": 0
+    }
+  ],
+  "dim": {
+    "pinOpacity": 0.3,
+    "pinScale": 0.88,
+    "rowOpacity": 0.42,
+    "chipOpacity": 0.5,
+    "zeroBubble": 0.5,
+    "rangeOff": 0.32
+  },
+  "dockVisible": [
+    {
+      "panelOpen": true,
+      "expect": false
+    },
+    {
+      "panelOpen": false,
+      "expect": true
+    }
   ]
 }

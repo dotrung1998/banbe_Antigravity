@@ -73,3 +73,22 @@ export function snapAfterDrag(startSnap, deltaPx, containerH, velocityPxPerMs = 
   }
   return best;
 }
+
+// ---- Map E+ (note 79): dimming, the list pull, the dock --------------------------------------------------------------
+// The sheet constants above go with their consumers when MapExplore moves to the full-screen layout.
+
+/** How the time window dims what is outside it. Opacity / scale are 0 to 1; the same numbers on iOS (MapLayout.swift). */
+export const MAP_DIM = { pinOpacity: 0.3, pinScale: 0.88, rowOpacity: 0.42, chipOpacity: 0.5, zeroBubble: 0.5, rangeOff: 0.32 };
+
+/** Pulling the list down to return to the map. Distances in px, speed in px per ms. */
+export const LIST_PULL = { closePx: 110, flickPxPerMs: 0.6, flickMinPx: 50, veilPx: 130, slopPx: 6 };
+
+/** 'close' for a long pull (or a fast one after `flickMinPx`), else 'back' (the list springs back). */
+export function pullOutcome(dy, velocityPxPerMs = 0) {
+  return dy > LIST_PULL.closePx || (velocityPxPerMs > LIST_PULL.flickPxPerMs && dy > LIST_PULL.flickMinPx) ? 'close' : 'back';
+}
+/** Opacity of the veil over the strip above the list while it is pulled `dy` px: 1 at rest, 0 at `veilPx`. */
+export const veilOpacity = (dy) => Math.max(0, 1 - dy / LIST_PULL.veilPx);
+
+/** The dock shows except while the area panel is open (the list and the map keep a bottom clearance for it). */
+export const dockVisible = (panelOpen) => !panelOpen;

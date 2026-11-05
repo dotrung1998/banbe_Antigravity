@@ -402,3 +402,120 @@ extension MapDiscovery {
         return (tokens, count)
     }
 }
+
+// MARK: - Map E+ (note 79): neighbourhood bubbles
+// Web twin: the "Map E+" section of src/lib/mapDiscovery.js; shared cases in tests/fixtures/map-discovery.json (areaKey,
+// areaGroups, markerLevel, areaPanelCloses). Zoom levels (512 px basis): below `cityZoom` one bubble per city, from
+// `cityZoom` up to `areaZoom` one per neighbourhood, from `areaZoom` the price pins and clusters. No database change:
+// the neighbourhood is the event's own `area` text (the geocoder's district, shown as a familiar area, never as an
+// official unit, note 20), else its `neighborhood`; its centre and bounds come from the member events' own positions.
+extension MapDiscovery {
+    static let areaZoom = 13.0
+    /// Two neighbourhood bubbles closer than this on screen become one "N areas" bubble.
+    static let areaMergePx = 56.0
+    /// Zooming out this far below `areaZoom` closes the area panel.
+    static let areaPanelCloseDelta = 0.5
+
+    enum MarkerLevel: String { case city, area, pin }
+    static func markerLevel(zoom: Double) -> MarkerLevel { zoom < cityZoom ? .city : (zoom < areaZoom ? .area : .pin) }
+    static func areaPanelCloses(zoom: Double) -> Bool { zoom < areaZoom - areaPanelCloseDelta }
+
+    /// "district 1", "Q.1", "Q1" and "Quận 1" are one area; a leading "Quận / Huyện / District" before a name is dropped.
+    private static func foldArea(_ raw: String) -> String {
+        let t = foldName(raw)
+        for prefix in ["quan", "district", "dist", "q"] where t.hasPrefix(prefix) {
+            let rest = t.dropFirst(prefix.count).drop(while: { $0 == " " })
+            if !rest.isEmpty, rest.allSatisfy({ $0.isASCII && $0.isNumber }) { return "quan \(rest)" }
+        }
+        let parts = t.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        if parts.count == 2, ["quan", "huyen", "district"].contains(String(parts[0])),
+           let c = parts[1].first, !(c.isASCII && c.isNumber) { return String(parts[1]) }
+        return t
+    }
+
+    /// What `areaKey` reads from an event.
+    struct AreaPlace {
+        var area: String? = nil
+        var neighborhood: String? = nil
+        var city: String? = nil
+        var stateProvince: String? = nil
+        var countryCode: String? = nil
+        var lat: Double? = nil
+        var lng: Double? = nil
+    }
+    struct AreaKey: Equatable {
+        /// Groups the same area spelled differently inside one city.
+        var key: String
+        /// The text as written; nil = no area at all (the view shows "Other areas").
+        var label: String?
+        var cityId: String?
+    }
+
+    static func areaKey(_ ev: AreaPlace, cities: [City]) -> AreaKey {
+        let cityId = cityFor(Place(city: ev.city, stateProvince: ev.stateProvince, countryCode: ev.countryCode, lat: ev.lat, lng: ev.lng), cities: cities)
+        let trimmedArea = (ev.area ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let raw = trimmedArea.isEmpty ? (ev.neighborhood ?? "").trimmingCharacters(in: .whitespacesAndNewlines) : trimmedArea
+        let folded = foldArea(raw)
+        return AreaKey(key: "\(cityId ?? "-")|\(folded.isEmpty ? "~" : folded)", label: raw.isEmpty ? nil : raw, cityId: cityId)
+    }
+
+    struct AreaGroup: Identifiable {
+        /// More than one key = bubbles of one city that merged (tap zooms in); a single key opens its panel.
+        var keys: [String]
+        var labels: [String?]
+        var cityId: String?
+        var ids: [String]
+        /// How many of `ids` are inside the time window.
+        var hit: Int
+        var lat: Double
+        var lng: Double
+        var bounds: Bounds?
+        var id: String { keys.joined(separator: "+") }
+    }
+
+    /// One bubble per neighbourhood for `points`, in first-seen order. `hitIds` (nil = all) are the ids inside the time
+    /// window. Bubbles of one city whose centres are closer than `mergePx` at `zoom` merge. Every point is in exactly
+    /// one bubble, so bubbles add up to the count.
+    static func areaGroups(_ points: [GroupPoint], zoom: Double, areaOf: (GroupPoint) -> AreaKey, hitIds: Set<String>? = nil,
+                           tileSize: Double = 512, mergePx: Double = areaMergePx) -> [AreaGroup] {
+        struct Work { var keys: [String]; var labels: [String?]; var cityId: String?; var pts: [GroupPoint] }
+        let world = tileSize * pow(2, zoom)
+        var order: [String] = []
+        var byKey: [String: Work] = [:]
+        for p in points {
+            let a = areaOf(p)
+            if byKey[a.key] == nil { order.append(a.key); byKey[a.key] = Work(keys: [a.key], labels: [a.label], cityId: a.cityId, pts: []) }
+            byKey[a.key]!.pts.append(p)
+        }
+        var list = order.map { byKey[$0]! }
+        func px(_ g: Work) -> (Double, Double) {
+            (g.pts.map { mercX($0.lng) }.reduce(0, +) / Double(g.pts.count) * world,
+             g.pts.map { mercY($0.lat) }.reduce(0, +) / Double(g.pts.count) * world)
+        }
+        var merged = true
+        while merged {
+            merged = false
+            outer: for i in list.indices {
+                for j in list.indices where j > i {
+                    if list[i].cityId != list[j].cityId { continue }
+                    let a = px(list[i]), b = px(list[j])
+                    if hypot(a.0 - b.0, a.1 - b.1) < mergePx {
+                        list[i].keys += list[j].keys
+                        list[i].labels += list[j].labels
+                        list[i].pts += list[j].pts
+                        list.remove(at: j)
+                        merged = true
+                        break outer
+                    }
+                }
+            }
+        }
+        return list.map { g in
+            AreaGroup(keys: g.keys, labels: g.labels, cityId: g.cityId, ids: g.pts.map(\.id),
+                      hit: hitIds.map { h in g.pts.filter { h.contains($0.id) }.count } ?? g.pts.count,
+                      lat: g.pts.map(\.lat).reduce(0, +) / Double(g.pts.count),
+                      lng: g.pts.map(\.lng).reduce(0, +) / Double(g.pts.count),
+                      bounds: boundsOfPoints(g.pts.map { Point(lat: $0.lat, lng: $0.lng) }))
+        }
+    }
+}

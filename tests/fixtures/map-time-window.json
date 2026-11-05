@@ -1,0 +1,1451 @@
+{
+ "_comment": "Map E+ (note 79): shared by tests/unit/mapTimeWindow.test.mjs and apps/ios/BanbeAppTests/MapTimeWindowTests.swift. Times are ISO with an offset; `min` is minutes since the service day's 00:00 (00:00-03:59 belongs to the night before).",
+ "eventSlot": [
+  {
+   "name": "VN 19:00",
+   "startsAt": "2026-11-06T19:00:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": {
+    "dayKey": "2026-11-06",
+    "min": 1140
+   }
+  },
+  {
+   "name": "VN 01:30 counts toward the previous day",
+   "startsAt": "2026-11-07T01:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": {
+    "dayKey": "2026-11-06",
+    "min": 1530
+   }
+  },
+  {
+   "name": "VN 03:59 is still the night before",
+   "startsAt": "2026-11-07T03:59:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": {
+    "dayKey": "2026-11-06",
+    "min": 1679
+   }
+  },
+  {
+   "name": "VN 04:00 starts the new day",
+   "startsAt": "2026-11-07T04:00:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": {
+    "dayKey": "2026-11-07",
+    "min": 240
+   }
+  },
+  {
+   "name": "US venue is read in its own zone",
+   "startsAt": "2026-11-07T02:00:00Z",
+   "tz": "America/Los_Angeles",
+   "expect": {
+    "dayKey": "2026-11-06",
+    "min": 1080
+   }
+  },
+  {
+   "name": "US 00:30 is the night before",
+   "startsAt": "2026-11-07T08:30:00Z",
+   "tz": "America/Los_Angeles",
+   "expect": {
+    "dayKey": "2026-11-06",
+    "min": 1470
+   }
+  },
+  {
+   "name": "month rollover",
+   "startsAt": "2026-12-01T01:00:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": {
+    "dayKey": "2026-11-30",
+    "min": 1500
+   }
+  }
+ ],
+ "dayOptions": [
+  {
+   "name": "Friday evening (the mockup's day)",
+   "now": "2026-11-06T18:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": [
+    {
+     "key": "today",
+     "days": [
+      "2026-11-06"
+     ],
+     "vi": [
+      "Hôm nay",
+      "Th 6"
+     ],
+     "en": [
+      "Today",
+      "Fri"
+     ]
+    },
+    {
+     "key": "tomorrow",
+     "days": [
+      "2026-11-07"
+     ],
+     "vi": [
+      "Mai",
+      "Th 7"
+     ],
+     "en": [
+      "Tomorrow",
+      "Sat"
+     ]
+    },
+    {
+     "key": "weekend",
+     "days": [
+      "2026-11-08"
+     ],
+     "vi": [
+      "Chủ nhật",
+      "08.11"
+     ],
+     "en": [
+      "Sunday",
+      "08.11"
+     ]
+    },
+    {
+     "key": "nextWeek",
+     "days": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15"
+     ],
+     "vi": [
+      "Tuần sau",
+      "09.11–15.11"
+     ],
+     "en": [
+      "Next week",
+      "09.11–15.11"
+     ]
+    },
+    {
+     "key": "all",
+     "days": [],
+     "vi": [
+      "Tất cả ngày",
+      ""
+     ],
+     "en": [
+      "All days",
+      ""
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Saturday: the next weekend day is next Saturday",
+   "now": "2026-11-07T10:00:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": [
+    {
+     "key": "today",
+     "days": [
+      "2026-11-07"
+     ],
+     "vi": [
+      "Hôm nay",
+      "Th 7"
+     ],
+     "en": [
+      "Today",
+      "Sat"
+     ]
+    },
+    {
+     "key": "tomorrow",
+     "days": [
+      "2026-11-08"
+     ],
+     "vi": [
+      "Mai",
+      "CN"
+     ],
+     "en": [
+      "Tomorrow",
+      "Sun"
+     ]
+    },
+    {
+     "key": "weekend",
+     "days": [
+      "2026-11-14"
+     ],
+     "vi": [
+      "Thứ Bảy",
+      "14.11"
+     ],
+     "en": [
+      "Saturday",
+      "14.11"
+     ]
+    },
+    {
+     "key": "nextWeek",
+     "days": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15"
+     ],
+     "vi": [
+      "Tuần sau",
+      "09.11–15.11"
+     ],
+     "en": [
+      "Next week",
+      "09.11–15.11"
+     ]
+    },
+    {
+     "key": "all",
+     "days": [],
+     "vi": [
+      "Tất cả ngày",
+      ""
+     ],
+     "en": [
+      "All days",
+      ""
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Sunday: the next weekend day is next Saturday",
+   "now": "2026-11-08T12:00:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": [
+    {
+     "key": "today",
+     "days": [
+      "2026-11-08"
+     ],
+     "vi": [
+      "Hôm nay",
+      "CN"
+     ],
+     "en": [
+      "Today",
+      "Sun"
+     ]
+    },
+    {
+     "key": "tomorrow",
+     "days": [
+      "2026-11-09"
+     ],
+     "vi": [
+      "Mai",
+      "Th 2"
+     ],
+     "en": [
+      "Tomorrow",
+      "Mon"
+     ]
+    },
+    {
+     "key": "weekend",
+     "days": [
+      "2026-11-14"
+     ],
+     "vi": [
+      "Thứ Bảy",
+      "14.11"
+     ],
+     "en": [
+      "Saturday",
+      "14.11"
+     ]
+    },
+    {
+     "key": "nextWeek",
+     "days": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15"
+     ],
+     "vi": [
+      "Tuần sau",
+      "09.11–15.11"
+     ],
+     "en": [
+      "Next week",
+      "09.11–15.11"
+     ]
+    },
+    {
+     "key": "all",
+     "days": [],
+     "vi": [
+      "Tất cả ngày",
+      ""
+     ],
+     "en": [
+      "All days",
+      ""
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Monday: next week starts in 7 days",
+   "now": "2026-11-09T09:00:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": [
+    {
+     "key": "today",
+     "days": [
+      "2026-11-09"
+     ],
+     "vi": [
+      "Hôm nay",
+      "Th 2"
+     ],
+     "en": [
+      "Today",
+      "Mon"
+     ]
+    },
+    {
+     "key": "tomorrow",
+     "days": [
+      "2026-11-10"
+     ],
+     "vi": [
+      "Mai",
+      "Th 3"
+     ],
+     "en": [
+      "Tomorrow",
+      "Tue"
+     ]
+    },
+    {
+     "key": "weekend",
+     "days": [
+      "2026-11-14"
+     ],
+     "vi": [
+      "Thứ Bảy",
+      "14.11"
+     ],
+     "en": [
+      "Saturday",
+      "14.11"
+     ]
+    },
+    {
+     "key": "nextWeek",
+     "days": [
+      "2026-11-16",
+      "2026-11-17",
+      "2026-11-18",
+      "2026-11-19",
+      "2026-11-20",
+      "2026-11-21",
+      "2026-11-22"
+     ],
+     "vi": [
+      "Tuần sau",
+      "16.11–22.11"
+     ],
+     "en": [
+      "Next week",
+      "16.11–22.11"
+     ]
+    },
+    {
+     "key": "all",
+     "days": [],
+     "vi": [
+      "Tất cả ngày",
+      ""
+     ],
+     "en": [
+      "All days",
+      ""
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Thursday: tomorrow is Friday, the weekend day is Saturday",
+   "now": "2026-11-05T09:00:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": [
+    {
+     "key": "today",
+     "days": [
+      "2026-11-05"
+     ],
+     "vi": [
+      "Hôm nay",
+      "Th 5"
+     ],
+     "en": [
+      "Today",
+      "Thu"
+     ]
+    },
+    {
+     "key": "tomorrow",
+     "days": [
+      "2026-11-06"
+     ],
+     "vi": [
+      "Mai",
+      "Th 6"
+     ],
+     "en": [
+      "Tomorrow",
+      "Fri"
+     ]
+    },
+    {
+     "key": "weekend",
+     "days": [
+      "2026-11-07"
+     ],
+     "vi": [
+      "Thứ Bảy",
+      "07.11"
+     ],
+     "en": [
+      "Saturday",
+      "07.11"
+     ]
+    },
+    {
+     "key": "nextWeek",
+     "days": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15"
+     ],
+     "vi": [
+      "Tuần sau",
+      "09.11–15.11"
+     ],
+     "en": [
+      "Next week",
+      "09.11–15.11"
+     ]
+    },
+    {
+     "key": "all",
+     "days": [],
+     "vi": [
+      "Tất cả ngày",
+      ""
+     ],
+     "en": [
+      "All days",
+      ""
+     ]
+    }
+   ]
+  },
+  {
+   "name": "01:30 is still last night, so today is yesterday's date",
+   "now": "2026-11-07T01:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": [
+    {
+     "key": "today",
+     "days": [
+      "2026-11-06"
+     ],
+     "vi": [
+      "Hôm nay",
+      "Th 6"
+     ],
+     "en": [
+      "Today",
+      "Fri"
+     ]
+    },
+    {
+     "key": "tomorrow",
+     "days": [
+      "2026-11-07"
+     ],
+     "vi": [
+      "Mai",
+      "Th 7"
+     ],
+     "en": [
+      "Tomorrow",
+      "Sat"
+     ]
+    },
+    {
+     "key": "weekend",
+     "days": [
+      "2026-11-08"
+     ],
+     "vi": [
+      "Chủ nhật",
+      "08.11"
+     ],
+     "en": [
+      "Sunday",
+      "08.11"
+     ]
+    },
+    {
+     "key": "nextWeek",
+     "days": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15"
+     ],
+     "vi": [
+      "Tuần sau",
+      "09.11–15.11"
+     ],
+     "en": [
+      "Next week",
+      "09.11–15.11"
+     ]
+    },
+    {
+     "key": "all",
+     "days": [],
+     "vi": [
+      "Tất cả ngày",
+      ""
+     ],
+     "en": [
+      "All days",
+      ""
+     ]
+    }
+   ]
+  },
+  {
+   "name": "week across a month end",
+   "now": "2026-11-27T12:00:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": [
+    {
+     "key": "today",
+     "days": [
+      "2026-11-27"
+     ],
+     "vi": [
+      "Hôm nay",
+      "Th 6"
+     ],
+     "en": [
+      "Today",
+      "Fri"
+     ]
+    },
+    {
+     "key": "tomorrow",
+     "days": [
+      "2026-11-28"
+     ],
+     "vi": [
+      "Mai",
+      "Th 7"
+     ],
+     "en": [
+      "Tomorrow",
+      "Sat"
+     ]
+    },
+    {
+     "key": "weekend",
+     "days": [
+      "2026-11-29"
+     ],
+     "vi": [
+      "Chủ nhật",
+      "29.11"
+     ],
+     "en": [
+      "Sunday",
+      "29.11"
+     ]
+    },
+    {
+     "key": "nextWeek",
+     "days": [
+      "2026-11-30",
+      "2026-12-01",
+      "2026-12-02",
+      "2026-12-03",
+      "2026-12-04",
+      "2026-12-05",
+      "2026-12-06"
+     ],
+     "vi": [
+      "Tuần sau",
+      "30.11–06.12"
+     ],
+     "en": [
+      "Next week",
+      "30.11–06.12"
+     ]
+    },
+    {
+     "key": "all",
+     "days": [],
+     "vi": [
+      "Tất cả ngày",
+      ""
+     ],
+     "en": [
+      "All days",
+      ""
+     ]
+    }
+   ]
+  },
+  {
+   "name": "the viewed place's zone decides today",
+   "now": "2026-11-07T04:00:00Z",
+   "tz": "America/Los_Angeles",
+   "expect": [
+    {
+     "key": "today",
+     "days": [
+      "2026-11-06"
+     ],
+     "vi": [
+      "Hôm nay",
+      "Th 6"
+     ],
+     "en": [
+      "Today",
+      "Fri"
+     ]
+    },
+    {
+     "key": "tomorrow",
+     "days": [
+      "2026-11-07"
+     ],
+     "vi": [
+      "Mai",
+      "Th 7"
+     ],
+     "en": [
+      "Tomorrow",
+      "Sat"
+     ]
+    },
+    {
+     "key": "weekend",
+     "days": [
+      "2026-11-08"
+     ],
+     "vi": [
+      "Chủ nhật",
+      "08.11"
+     ],
+     "en": [
+      "Sunday",
+      "08.11"
+     ]
+    },
+    {
+     "key": "nextWeek",
+     "days": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15"
+     ],
+     "vi": [
+      "Tuần sau",
+      "09.11–15.11"
+     ],
+     "en": [
+      "Next week",
+      "09.11–15.11"
+     ]
+    },
+    {
+     "key": "all",
+     "days": [],
+     "vi": [
+      "Tất cả ngày",
+      ""
+     ],
+     "en": [
+      "All days",
+      ""
+     ]
+    }
+   ]
+  }
+ ],
+ "defaultWindow": [
+  {
+   "name": "today from the next full hour",
+   "now": "2026-11-06T18:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "key": "today",
+   "expect": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 19,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "on the hour it keeps that hour",
+   "now": "2026-11-06T18:00:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "key": "today",
+   "expect": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 18,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "morning is clamped to 10:00",
+   "now": "2026-11-06T08:00:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "key": "today",
+   "expect": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 10,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "late evening",
+   "now": "2026-11-06T23:40:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "key": "today",
+   "expect": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 24,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "01:30 is clamped one step before the end",
+   "now": "2026-11-07T01:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "key": "today",
+   "expect": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 25,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "tomorrow starts at 17:00",
+   "now": "2026-11-06T18:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "key": "tomorrow",
+   "expect": {
+    "on": true,
+    "key": "tomorrow",
+    "days": [
+     "2026-11-07"
+    ],
+    "from": 17,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "the weekend day starts at 17:00",
+   "now": "2026-11-06T18:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "key": "weekend",
+   "expect": {
+    "on": true,
+    "key": "weekend",
+    "days": [
+     "2026-11-08"
+    ],
+    "from": 17,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "next week is seven days",
+   "now": "2026-11-06T18:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "key": "nextWeek",
+   "expect": {
+    "on": true,
+    "key": "nextWeek",
+    "days": [
+     "2026-11-09",
+     "2026-11-10",
+     "2026-11-11",
+     "2026-11-12",
+     "2026-11-13",
+     "2026-11-14",
+     "2026-11-15"
+    ],
+    "from": 17,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "all days is off",
+   "now": "2026-11-06T18:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "key": "all",
+   "expect": {
+    "on": false,
+    "key": "all",
+    "days": [],
+    "from": 10,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "an unknown key is off",
+   "now": "2026-11-06T18:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "key": "nope",
+   "expect": {
+    "on": false,
+    "key": "all",
+    "days": [],
+    "from": 10,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  }
+ ],
+ "moveKnob": [
+  {
+   "name": "from moves",
+   "win": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 19,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   },
+   "which": "from",
+   "hour": 21,
+   "expect": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 21,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "from stops one step before to",
+   "win": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 19,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   },
+   "which": "from",
+   "hour": 26,
+   "expect": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 25,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "from is clamped to the slider start",
+   "win": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 19,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   },
+   "which": "from",
+   "hour": 3,
+   "expect": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 10,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "to stops one step after from",
+   "win": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 19,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   },
+   "which": "to",
+   "hour": 19,
+   "expect": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 19,
+    "to": 20,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "to is clamped to the slider end",
+   "win": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 19,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   },
+   "which": "to",
+   "hour": 30,
+   "expect": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 19,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "a fraction rounds to a whole hour",
+   "win": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 19,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   },
+   "which": "from",
+   "hour": 20.4,
+   "expect": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 20,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  }
+ ],
+ "inWindow": {
+  "now": "2026-11-06T18:30:00+07:00",
+  "cases": [
+   {
+    "name": "inside the hours",
+    "startsAt": "2026-11-06T19:00:00+07:00",
+    "tz": "Asia/Ho_Chi_Minh",
+    "win": {
+     "on": true,
+     "key": "today",
+     "days": [
+      "2026-11-06"
+     ],
+     "from": 10,
+     "to": 26,
+     "todayKey": "2026-11-06"
+    },
+    "expect": true
+   },
+   {
+    "name": "from is inclusive",
+    "startsAt": "2026-11-06T19:00:00+07:00",
+    "tz": "Asia/Ho_Chi_Minh",
+    "win": {
+     "on": true,
+     "key": "today",
+     "days": [
+      "2026-11-06"
+     ],
+     "from": 19,
+     "to": 26,
+     "todayKey": "2026-11-06"
+    },
+    "expect": true
+   },
+   {
+    "name": "one minute before from",
+    "startsAt": "2026-11-06T18:59:00+07:00",
+    "tz": "Asia/Ho_Chi_Minh",
+    "win": {
+     "on": true,
+     "key": "today",
+     "days": [
+      "2026-11-06"
+     ],
+     "from": 19,
+     "to": 26,
+     "todayKey": "2026-11-06"
+    },
+    "expect": false
+   },
+   {
+    "name": "to is exclusive: 01:59 is in",
+    "startsAt": "2026-11-07T01:59:00+07:00",
+    "tz": "Asia/Ho_Chi_Minh",
+    "win": {
+     "on": true,
+     "key": "today",
+     "days": [
+      "2026-11-06"
+     ],
+     "from": 10,
+     "to": 26,
+     "todayKey": "2026-11-06"
+    },
+    "expect": true
+   },
+   {
+    "name": "to is exclusive: 02:00 is out",
+    "startsAt": "2026-11-07T02:00:00+07:00",
+    "tz": "Asia/Ho_Chi_Minh",
+    "win": {
+     "on": true,
+     "key": "today",
+     "days": [
+      "2026-11-06"
+     ],
+     "from": 10,
+     "to": 26,
+     "todayKey": "2026-11-06"
+    },
+    "expect": false
+   },
+   {
+    "name": "today's event two hours old is still in",
+    "startsAt": "2026-11-06T16:30:00+07:00",
+    "tz": "Asia/Ho_Chi_Minh",
+    "win": {
+     "on": true,
+     "key": "today",
+     "days": [
+      "2026-11-06"
+     ],
+     "from": 10,
+     "to": 26,
+     "todayKey": "2026-11-06"
+    },
+    "expect": true
+   },
+   {
+    "name": "today's event older than two hours is out",
+    "startsAt": "2026-11-06T16:29:00+07:00",
+    "tz": "Asia/Ho_Chi_Minh",
+    "win": {
+     "on": true,
+     "key": "today",
+     "days": [
+      "2026-11-06"
+     ],
+     "from": 10,
+     "to": 26,
+     "todayKey": "2026-11-06"
+    },
+    "expect": false
+   },
+   {
+    "name": "another day is out",
+    "startsAt": "2026-11-07T19:00:00+07:00",
+    "tz": "Asia/Ho_Chi_Minh",
+    "win": {
+     "on": true,
+     "key": "today",
+     "days": [
+      "2026-11-06"
+     ],
+     "from": 10,
+     "to": 26,
+     "todayKey": "2026-11-06"
+    },
+    "expect": false
+   },
+   {
+    "name": "off means everything is in",
+    "startsAt": "2026-11-12T03:00:00+07:00",
+    "tz": "Asia/Ho_Chi_Minh",
+    "win": {
+     "on": false,
+     "key": "all",
+     "days": [],
+     "from": 10,
+     "to": 26,
+     "todayKey": "2026-11-06"
+    },
+    "expect": true
+   },
+   {
+    "name": "next week: Monday evening is in",
+    "startsAt": "2026-11-09T19:00:00+07:00",
+    "tz": "Asia/Ho_Chi_Minh",
+    "win": {
+     "on": true,
+     "key": "nextWeek",
+     "days": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15"
+     ],
+     "from": 17,
+     "to": 26,
+     "todayKey": "2026-11-06"
+    },
+    "expect": true
+   },
+   {
+    "name": "next week: the Sunday before is out",
+    "startsAt": "2026-11-08T19:00:00+07:00",
+    "tz": "Asia/Ho_Chi_Minh",
+    "win": {
+     "on": true,
+     "key": "nextWeek",
+     "days": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15"
+     ],
+     "from": 17,
+     "to": 26,
+     "todayKey": "2026-11-06"
+    },
+    "expect": false
+   },
+   {
+    "name": "next week: Sunday night 01:00 counts as Saturday",
+    "startsAt": "2026-11-15T01:00:00+07:00",
+    "tz": "Asia/Ho_Chi_Minh",
+    "win": {
+     "on": true,
+     "key": "nextWeek",
+     "days": [
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15"
+     ],
+     "from": 17,
+     "to": 26,
+     "todayKey": "2026-11-06"
+    },
+    "expect": true
+   },
+   {
+    "name": "a US venue is judged in its own zone",
+    "startsAt": "2026-11-07T02:00:00Z",
+    "tz": "America/Los_Angeles",
+    "win": {
+     "on": true,
+     "key": "today",
+     "days": [
+      "2026-11-06"
+     ],
+     "from": 10,
+     "to": 26,
+     "todayKey": "2026-11-06"
+    },
+    "expect": true
+   }
+  ]
+ },
+ "windowFromHomeDate": [
+  {
+   "name": "today",
+   "date": "today",
+   "now": "2026-11-06T18:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 19,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "tonight is 17:00 to 02:00",
+   "date": "tonight",
+   "now": "2026-11-06T18:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 17,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "tomorrow",
+   "date": "tomorrow",
+   "now": "2026-11-06T18:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": {
+    "on": true,
+    "key": "tomorrow",
+    "days": [
+     "2026-11-07"
+    ],
+    "from": 17,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "weekend becomes the weekend day",
+   "date": "weekend",
+   "now": "2026-11-06T18:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": {
+    "on": true,
+    "key": "weekend",
+    "days": [
+     "2026-11-08"
+    ],
+    "from": 17,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "week is all days",
+   "date": "week",
+   "now": "2026-11-06T18:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": {
+    "on": false,
+    "key": "all",
+    "days": [],
+    "from": 10,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "a picked date is all days",
+   "date": "on:2026-11-10",
+   "now": "2026-11-06T18:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": {
+    "on": false,
+    "key": "all",
+    "days": [],
+    "from": 10,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  },
+  {
+   "name": "any is all days",
+   "date": "any",
+   "now": "2026-11-06T18:30:00+07:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "expect": {
+    "on": false,
+    "key": "all",
+    "days": [],
+    "from": 10,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   }
+  }
+ ],
+ "windowSummary": [
+  {
+   "name": "vi",
+   "win": {
+    "on": true,
+    "key": "today",
+    "days": [
+     "2026-11-06"
+    ],
+    "from": 19,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   },
+   "label": "Hôm nay",
+   "en": false,
+   "expect": "Hôm nay · 19:00–02:00"
+  },
+  {
+   "name": "en",
+   "win": {
+    "on": true,
+    "key": "tomorrow",
+    "days": [
+     "2026-11-07"
+    ],
+    "from": 17,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   },
+   "label": "Tomorrow",
+   "en": true,
+   "expect": "Tomorrow · 17:00–02:00"
+  },
+  {
+   "name": "off vi",
+   "win": {
+    "on": false,
+    "key": "all",
+    "days": [],
+    "from": 10,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   },
+   "label": "Tất cả ngày",
+   "en": false,
+   "expect": "Mọi ngày"
+  },
+  {
+   "name": "off en",
+   "win": {
+    "on": false,
+    "key": "all",
+    "days": [],
+    "from": 10,
+    "to": 26,
+    "todayKey": "2026-11-06"
+   },
+   "label": "All days",
+   "en": true,
+   "expect": "Any day"
+  }
+ ],
+ "hourLabel": [
+  {
+   "hour": 10,
+   "expect": "10:00"
+  },
+  {
+   "hour": 19,
+   "expect": "19:00"
+  },
+  {
+   "hour": 24,
+   "expect": "00:00"
+  },
+  {
+   "hour": 26,
+   "expect": "02:00"
+  }
+ ]
+}

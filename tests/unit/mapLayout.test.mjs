@@ -78,3 +78,20 @@ test('Map v6: peek fits the two-row strip on a short screen and stays below mid'
   assert.ok((1 - peekFraction(667)) * 667 >= PEEK_MIN_PX - 0.5);
   assert.ok(peekFraction(390) > SHEET_SNAPS.mid);
 });
+
+// ---- Map E+ (note 79): dimming, the list pull, the dock -------------------------------------------------------------
+import { readFileSync } from 'node:fs';
+import { MAP_DIM, LIST_PULL, pullOutcome, veilOpacity, dockVisible } from '../../src/lib/mapLayout.js';
+const eplus = JSON.parse(readFileSync(new URL('../fixtures/map-discovery.json', import.meta.url), 'utf8'));
+
+test('E+: dim values are the shared ones', () => assert.deepEqual(MAP_DIM, eplus.dim));
+test('E+: a long or fast pull closes the list, a short one springs back', () => {
+  assert.deepEqual(LIST_PULL, { closePx: 110, flickPxPerMs: 0.6, flickMinPx: 50, veilPx: 130, slopPx: 6 });
+  for (const c of eplus.pullOutcome) assert.equal(pullOutcome(c.dy, c.velocity), c.expect, `${c.dy}px @ ${c.velocity}`);
+});
+test('E+: the veil fades with the pull', () => {
+  for (const c of eplus.veilOpacity) assert.ok(Math.abs(veilOpacity(c.dy) - c.expect) < 1e-9, `${c.dy}px`);
+});
+test('E+: the dock hides only while the area panel is open', () => {
+  for (const c of eplus.dockVisible) assert.equal(dockVisible(c.panelOpen), c.expect);
+});
