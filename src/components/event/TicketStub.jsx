@@ -31,10 +31,10 @@ export default function TicketStub({ block, time, countdown, place, placeSub, ma
         {hasTop && (
           <div style={{ display: 'flex', gap: 16, alignItems: 'center', padding: '18px 18px 14px' }}>
             {block && (
-              <div data-testid="event-fact-when" aria-label={`${block.weekday} ${block.day} ${block.month}`}
-                style={{ flex: 'none', alignSelf: 'stretch', minWidth: 100, borderRadius: 16, background: clay, color: '#fff', padding: '14px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, textAlign: 'center' }}>
+              <div data-testid="event-fact-when" className="bb-flip-in" aria-label={`${block.weekday} ${block.day} ${block.month}`}
+                style={{ animationDelay: '360ms', flex: 'none', alignSelf: 'stretch', minWidth: 100, borderRadius: 16, background: clay, color: '#fff', padding: '14px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, textAlign: 'center' }}>
                 <small style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.08em', lineHeight: 1 }}>{block.month}</small>
-                <b className="bb-pop-in" style={{ ...display(46), fontWeight: 800, lineHeight: 1, color: '#fff', animationDelay: '380ms' }}>{block.day}</b>
+                <b style={{ ...display(46), fontWeight: 800, lineHeight: 1, color: '#fff' }}>{block.day}</b>
                 <small style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '0.06em', lineHeight: 1, whiteSpace: 'nowrap' }}>{block.weekday}</small>
               </div>
             )}

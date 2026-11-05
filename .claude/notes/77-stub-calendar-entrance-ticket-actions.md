@@ -1,6 +1,6 @@
 # 77 — Ticket-stub calendar tiles, Event Detail entrance, Confirmed ticket actions (2026-11-05)
 
-Status: IMPLEMENTED LOCALLY (web + iOS), not committed; both build (vite, xcodebuild sim). Not visually/device checked; UI tests not run.
+Status: IMPLEMENTED (web + iOS), committed; both build (vite, xcodebuild sim). Not visually/device checked; UI tests not run.
 
 ## Event Detail
 - The calendar button left the title row. `EventPlanTitleRow` (iOS) / `EventPlanTitle` (web) is now the title alone.
@@ -19,3 +19,8 @@ Status: IMPLEMENTED LOCALLY (web + iOS), not committed; both build (vite, xcodeb
   - Tile 2: Add to calendar (mini calendar page icon, same Google/Apple menu, check when `calAdded`).
   - More: Give a ticket, Download PDF (when not a tile), View/Request Receipt (disabled while sending / after sent).
 - Same ids/testids kept for every action; new `confirmed.more` / `confirmed-more-button`.
+
+## Follow-up (2026-11-05, owner review)
+- Phone calendar icon is now monochrome (iOS 27 dark style): black tile, grey weekday, white day (`MiniCalendarPage`, weekday instead of month).
+- Confirmed tiles compact: icon left of the label, ~56pt tall, radius 16, gaps 10; More pill 44pt.
+- Date block entrance is a calendar flip (rotateX from the top edge, slight overshoot) instead of the day pop: iOS `rotation3DEffect`, web `.bb-flip-in`.

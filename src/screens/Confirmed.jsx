@@ -557,20 +557,20 @@ export default function Confirmed() {
       </div>
       {/* Note 77: the ticket's actions as two tiles (the most used ones) and a "More" menu for the rest. No hairlines:
           the block fills and the gaps separate them. iOS twin: ConfirmedView `actionTile`. */}
-      <div style={{ padding: '8px 22px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+      <div style={{ padding: '8px 22px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
           {showQr && isGifted && (
-            <ActionTile icon={<Icon kind="download" size={19} />} label={pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải lại vé PDF', 'Re-download the PDF')} onClick={() => runDownload([giftPdfOf(s.booking)])} testId="confirmed-gifted-pdf" />
+            <ActionTile icon={<Icon kind="download" size={17} />} label={pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải lại vé PDF', 'Re-download the PDF')} onClick={() => runDownload([giftPdfOf(s.booking)])} testId="confirmed-gifted-pdf" />
           )}
           {showQr && !hasNamed && !isGifted && walletEligible && (
-            <ActionTile icon={<Icon kind="wallet" size={19} />} label={walletBusy ? T('Đang tạo vé Wallet…', 'Preparing Wallet pass…') : T('Thêm vào Apple Wallet', 'Add to Apple Wallet')} onClick={runWallet} dim={walletBusy} testId="confirmed-add-to-wallet" />
+            <ActionTile icon={<Icon kind="wallet" size={17} />} label={walletBusy ? T('Đang tạo vé Wallet…', 'Preparing Wallet pass…') : T('Thêm vào Apple Wallet', 'Add to Apple Wallet')} onClick={runWallet} dim={walletBusy} testId="confirmed-add-to-wallet" />
           )}
           {showQr && !hasNamed && !isGifted && !walletEligible && (
-            <ActionTile icon={<Icon kind="download" size={19} />} label={pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải vé PDF', 'Download PDF')} onClick={() => runDownload([ownPdf()])} testId="confirmed-download-pdf" />
+            <ActionTile icon={<Icon kind="download" size={17} />} label={pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải vé PDF', 'Download PDF')} onClick={() => runDownload([ownPdf()])} testId="confirmed-download-pdf" />
           )}
           {/* Add to calendar: a glass popover that opens out of the tile and closes on a tap anywhere outside it. */}
           <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex' }}>
-            <ActionTile icon={<MiniCalendarPage day={calBlock?.day} month={calBlock?.month} size={42} done={!!s.calAdded} />} bare
+            <ActionTile icon={<MiniCalendarPage day={calBlock?.day} month={calBlock?.weekday} size={36} done={!!s.calAdded} />} bare
               label={calendarLabel} onClick={openCalendarPicker} testId="confirmed-add-to-calendar" />
             {s.calendarPickerFor === ev.key && (
               <>
@@ -593,10 +593,10 @@ export default function Confirmed() {
           </div>
         </div>
         {moreItems.length > 0 && (
-          <GlassMenu open={moreOpen} onOpenChange={setMoreOpen} top={56} width={280} wrapTestId="confirmed-more" menuTestId="confirmed-more-menu"
+          <GlassMenu open={moreOpen} onOpenChange={setMoreOpen} top={52} width={280} wrapTestId="confirmed-more" menuTestId="confirmed-more-menu"
             trigger={(
               <button type="button" className="bb-press" onClick={() => setMoreOpen(v => !v)} aria-haspopup="menu" aria-expanded={moreOpen} data-testid="confirmed-more-button"
-                style={{ width: '100%', minHeight: 48, borderRadius: 999, border: 'none', background: block, color: ink, fontFamily: 'inherit', fontSize: 14.5, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}>
+                style={{ width: '100%', minHeight: 44, borderRadius: 999, border: 'none', background: block, color: ink, fontFamily: 'inherit', fontSize: 14.5, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}>
                 <svg aria-hidden width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
                 {T('Thêm tuỳ chọn', 'More options')}
               </button>
@@ -628,11 +628,11 @@ export default function Confirmed() {
 function ActionTile({ icon, label, onClick, testId, dim = false, bare = false }) {
   return (
     <button type="button" className="bb-press" onClick={onClick} data-testid={testId}
-      style={{ flex: 1, minWidth: 0, minHeight: 124, boxSizing: 'border-box', padding: 16, border: 'none', borderRadius: 20, background: block, color: ink,
-        fontFamily: 'inherit', fontSize: 14.5, fontWeight: 600, lineHeight: 1.3, textAlign: 'left', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 12,
+      style={{ flex: 1, minWidth: 0, minHeight: 56, boxSizing: 'border-box', padding: '10px 12px', border: 'none', borderRadius: 16, background: block, color: ink,
+        fontFamily: 'inherit', fontSize: 14, fontWeight: 600, lineHeight: 1.25, textAlign: 'left', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10,
         cursor: onClick ? 'pointer' : 'default', opacity: dim ? 0.6 : 1 }}>
       {bare ? icon : (
-        <span style={{ flex: 'none', width: 42, height: 42, borderRadius: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', background: clayBg, color: clay }}>{icon}</span>
+        <span style={{ flex: 'none', width: 36, height: 36, borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', background: clayBg, color: clay }}>{icon}</span>
       )}
       <span>{label}</span>
     </button>

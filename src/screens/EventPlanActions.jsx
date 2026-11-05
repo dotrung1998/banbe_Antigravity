@@ -32,11 +32,12 @@ const Check = () => (
 /** A tiny tear-off calendar page (red band with the month, the day below): the "phone calendar" icon on Event Detail
  *  and Confirmed. iOS twin: MiniCalendarPage. */
 export function MiniCalendarPage({ day, month, size = 44, done = false }) {
+  // Monochrome Calendar icon (iOS 27 dark/tinted style): black tile, grey weekday, white day.
   return (
     <span aria-hidden style={{ position: 'relative', flex: 'none', display: 'inline-flex', width: size, height: size }}>
-      <span style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', borderRadius: size * 0.25, overflow: 'hidden', background: '#fff', boxShadow: '0 2px 6px rgba(0,0,0,0.18)' }}>
-        <span style={{ flex: 'none', height: size * 0.3, background: '#ED4539', color: '#fff', fontSize: size * 0.18, fontWeight: 800, letterSpacing: '0.04em', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>{month || ' '}</span>
-        <span style={{ flex: 1, color: '#1C1917', fontSize: size * 0.43, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, fontFamily: 'ui-rounded, system-ui, sans-serif' }}>{day || '+'}</span>
+      <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: size * 0.02, width: '100%', height: '100%', borderRadius: size * 0.25, background: '#121213', boxShadow: '0 2px 6px rgba(0,0,0,0.18), inset 0 0 0 1px rgba(255,255,255,0.22)', fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: 1 }}>
+        <span style={{ color: 'rgba(255,255,255,0.62)', fontSize: size * 0.17, fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase' }}>{month || ' '}</span>
+        <span style={{ color: '#fff', fontSize: size * 0.46, fontWeight: 400 }}>{day || '+'}</span>
       </span>
       {done && <Check />}
     </span>

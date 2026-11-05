@@ -374,8 +374,8 @@ struct ConfirmedView: View {
 
                 // Note 77: the ticket's actions as two tiles (the most used ones) and a "More" menu for the rest.
                 // No hairlines: the block fills and the gaps separate them.
-                VStack(spacing: 12) {
-                    HStack(alignment: .top, spacing: 12) {
+                VStack(spacing: 10) {
+                    HStack(alignment: .top, spacing: 10) {
                         if isPaid, let booking = app.booking, booking.isGifted {
                             Button { downloadGiftPDF(booking) } label: {
                                 actionTile(app.T("Tải lại vé PDF", "Re-download the PDF"), icon: "arrow.down.doc")
@@ -442,7 +442,7 @@ struct ConfirmedView: View {
                                 Text(app.T("Thêm tuỳ chọn", "More options")).font(.system(size: 14.5, weight: .semibold))
                             }
                             .foregroundStyle(app.palette.ink)
-                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .frame(maxWidth: .infinity, minHeight: 44)
                             .background(app.palette.block, in: Capsule())
                             .contentShape(Capsule())
                         }
@@ -738,16 +738,16 @@ struct ConfirmedView: View {
     /// One action tile (note 77): the icon on a soft clay disc (or the mini calendar page when `icon` is nil), the
     /// label under it. Equal height side by side; a block fill instead of divider lines.
     private func actionTile(_ title: String, icon: String?, done: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        HStack(spacing: 10) {
             Group {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(app.palette.clay)
-                        .frame(width: 42, height: 42)
+                        .frame(width: 36, height: 36)
                         .background(app.palette.clayBg, in: Circle())
                 } else {
-                    MiniCalendarPage(day: calendarBlock?.day ?? "", month: calendarBlock?.month ?? "", size: 42)
+                    MiniCalendarPage(day: calendarBlock?.day ?? "", month: calendarBlock?.weekday ?? "", size: 36)
                         .overlay(alignment: .bottomTrailing) {
                             if done {
                                 Image(systemName: "checkmark.circle.fill")
@@ -759,15 +759,16 @@ struct ConfirmedView: View {
                 }
             }
             Text(title)
-                .font(.system(size: 14.5, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .multilineTextAlignment(.leading)
+                .lineLimit(2).minimumScaleFactor(0.85)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(app.palette.ink)
-        .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
-        .padding(16)
-        .background(app.palette.block, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(app.palette.block, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func loadAttendeesIfNeeded() {

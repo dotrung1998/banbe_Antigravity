@@ -763,7 +763,7 @@ export default function EventDetail({ preview = null } = {}) {
           mapsUrl={evMapsUrl} onDirections={() => { if (s.located === null) askLocation(); }} directionsLabel={T('Chỉ đường', 'Directions')}
           price={ev.price ? trStatus(ev.price) : null} perTicket={isFree ? null : T('/ vé', '/ ticket')}
           seatPill={seatPill} inert={!!preview}
-          calendar={<EventPlanButtons eventKey={ev.key} day={stubBlock?.day} month={stubBlock?.month} inert={!!preview} onMessage={setPlanMsg} />} />
+          calendar={<EventPlanButtons eventKey={ev.key} day={stubBlock?.day} month={stubBlock?.weekday} inert={!!preview} onMessage={setPlanMsg} />} />
         {planMsg && <div role="status" data-testid="event-plan-message" style={{ fontSize: 13, color: ink2, padding: '10px 6px 0' }}>{planMsg}</div>}
         {timeNote && <div data-testid="event-venue-time-note" style={{ fontSize: 13, color: ink3, padding: '10px 6px 0' }}>{timeNote}</div>}
       </div>

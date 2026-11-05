@@ -1028,14 +1028,16 @@ struct EventDetailView: View {
                             VStack(spacing: 4) {
                                 Text(b.month).font(.system(size: 13, weight: .bold)).tracking(1.04)
                                 Text(b.day).font(BanbeTheme.display(46).weight(.heavy))
-                                    .scaleEffect(entered || reduceMotion ? 1 : 0.82)
-                                    .animation(reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.6).delay(0.38), value: entered)
                                 Text(b.weekday).font(.system(size: 12.5, weight: .bold)).tracking(0.8).lineLimit(1).minimumScaleFactor(0.8)
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 16).padding(.vertical, 14)
                             .frame(minWidth: 100)
                             .background(app.palette.clay, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            // Note 77: the page flips down from its top edge like a tear-off calendar.
+                            .rotation3DEffect(.degrees(entered || reduceMotion ? 0 : -100), axis: (x: 1, y: 0, z: 0), anchor: .top, perspective: 0.6)
+                            .opacity(entered || reduceMotion ? 1 : 0)
+                            .animation(reduceMotion ? nil : .spring(response: 0.62, dampingFraction: 0.62).delay(0.36), value: entered)
                             .accessibilityElement(children: .ignore)
                             .accessibilityLabel(whenParts.date ?? "\(b.weekday) \(b.day) \(b.month)")
                             .accessibilityIdentifier("event.fact.when")
@@ -1055,7 +1057,7 @@ struct EventDetailView: View {
                             }
                         }
                         Spacer(minLength: 0)
-                        EventPlanButtons(event: event, day: stubBlock?.day ?? "", month: stubBlock?.month ?? "",
+                        EventPlanButtons(event: event, day: stubBlock?.day ?? "", month: stubBlock?.weekday ?? "",
                                          onMessage: { m in withAnimation(.easeOut(duration: 0.2)) { planMessage = m } })
                             .allowsHitTesting(!isPreview)
                             .modifier(EntranceRise(shown: entered, step: 4, x: 14, y: 0, animated: !reduceMotion))

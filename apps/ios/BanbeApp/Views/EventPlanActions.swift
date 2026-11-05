@@ -39,24 +39,24 @@ struct EventPlanTitleRow: View {
 /// icon on Event Detail and Confirmed, so it never looks like the banbe Schedule button.
 struct MiniCalendarPage: View {
     var day: String
+    /// The short weekday (or month) shown above the day, like the Calendar app icon.
     var month: String
     var size: CGFloat = 44
 
     var body: some View {
-        VStack(spacing: 0) {
-            Text(month.isEmpty ? " " : month)
-                .font(.system(size: size * 0.18, weight: .heavy)).tracking(0.4)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, minHeight: size * 0.3)
-                .background(Color(red: 0.93, green: 0.27, blue: 0.23))
+        // Monochrome Calendar icon (iOS 27 dark/tinted style): black tile, grey weekday, white day.
+        VStack(spacing: size * 0.02) {
+            Text(month.isEmpty ? " " : month.uppercased())
+                .font(.system(size: size * 0.17, weight: .semibold)).tracking(0.3)
+                .foregroundStyle(Color.white.opacity(0.62))
             Text(day.isEmpty ? "+" : day)
-                .font(.system(size: size * 0.43, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(red: 0.11, green: 0.1, blue: 0.09))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .font(.system(size: size * 0.46, weight: .regular))
+                .foregroundStyle(.white)
         }
+        .lineLimit(1).minimumScaleFactor(0.6)
         .frame(width: size, height: size)
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous))
+        .background(Color(red: 0.07, green: 0.07, blue: 0.075), in: RoundedRectangle(cornerRadius: size * 0.25, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous).stroke(Color.white.opacity(0.22), lineWidth: 1))
         .shadow(color: .black.opacity(0.18), radius: 3, y: 2)
         .accessibilityHidden(true)
     }
