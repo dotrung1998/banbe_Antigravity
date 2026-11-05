@@ -201,13 +201,11 @@ test.describe('Dashboard organizer-identity scope — real backend E2E', () => {
       const searchInput = page.getByTestId('map-search-input');
       await expect(searchInput).toBeVisible({ timeout: 8000 });
       await searchInput.fill(other.name);
+      // Map E+ (note 79): typing offers "Show N events", which opens the list; a list row opens Event Detail itself.
+      await page.getByTestId('map-search-show-list').click();
       const listItem = page.getByTestId(`map-list-item-${other.id}`);
       await expect(listItem).toBeVisible({ timeout: 8000 });
       await listItem.click();
-      // Clicking a list item only selects it (the bottom preview card,
-      // "Xem chi tiết") — MapExplore.jsx's own openEventDetail() actually
-      // navigates on that CTA, not the list row itself.
-      await page.getByTestId('map-card-cta').click();
       const eventScreen = page.locator('[data-screen-label="Event"]');
       await expect(eventScreen).toBeVisible({ timeout: 8000 });
       await expect(eventScreen.getByText(other.orgName, { exact: false })).toBeVisible();

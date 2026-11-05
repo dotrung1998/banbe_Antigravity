@@ -2,7 +2,7 @@ import { screenHeight } from '../lib/viewport.js';
 import { loadMapStyle } from '../lib/mapStyle.js';
 import { loadMapKit } from '../lib/mapkit.js';
 import { createMapKitMap } from '../lib/mapkitAdapter.js';
-import { SHEET_SNAPS, CARD_GAP, ATTRIB_RESERVE, computeMapLayout, snapAfterSelect, snapAfterUserPan, dockShown, snapAfterDrag, snapFractions, peekFraction } from '../lib/mapLayout.js';
+import { CARD_GAP, ATTRIB_RESERVE, computeMapLayout, bottomStackFraction } from '../lib/mapLayout.js';
 import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useBanBe, resolveCoverUrl, photoUrlsByEvent } from '../state/BanBeContext.jsx';
 import { cardPhotoList } from '../lib/eventPhotoUrls.js';
@@ -19,7 +19,7 @@ import { findEvent, isCosmeticCatalogMatch, haversineKm, mapsUrl } from '../data
 import { distanceLabel } from '../lib/eventDetailPresentation.js';
 import { whenLabel } from '../lib/quickWins.js';
 import { fillBadge, categorySheetKeys, applyDiscoveryFilters, normalizeFilters, activeFilterCount, DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
-import HomeFilterSheet, { DATE_LABELS } from './sheets/HomeFilterSheet.jsx';
+import HomeFilterSheet from './sheets/HomeFilterSheet.jsx';
 import { secondCategory, categoryDefs, cardLine, profileFor } from '../lib/eventTypes.js';
 import { CategoryGlyph, CATEGORY_DEFS, CategorySheet, categoryGlyphMarkup, DiscoveryCard } from '../components/home/HomeDiscoveryParts.jsx';
 import { liveEventOverrides } from '../lib/countdown.js';
@@ -61,6 +61,8 @@ const MAIN_CITY_IDS = ['vn-hcm', 'vn-hanoi', 'vn-danang'];
 // for this session only (module scope: survives Event Detail round trips and reopening the Map, never stored, and
 // separate from Home's own banbe_home_layout_v1).
 let sessionListLayout = 'large';
+// Map E+ (note 79): the row of buttons that sits just above the dock (my location + "List · N").
+const FAB_ROW = 56;
 
 async function fetchLiveEvents({ limit = MAP_EVENT_CAP, bounds = null } = {}) {
   const buildQuery = (withR2) => {
@@ -345,20 +347,10 @@ export default function MapExplore() {
       el.focus();
     }
   }, []);
-  // Task 6 (2026-09-21 follow-up) — "Open in Map"'s own snapshot
-  // (BanBeContext.jsx's openEventOnMap) never sets `sheetSnap` (only
-  // camera/selectedId), so a genuine MapExplore-to-MapExplore restore
-  // (which DOES carry a real `sheetSnap`) is untouched; only the "arrives
-  // with a card already selected, no restored sheet position of its own"
-  // case defaults to 'mid' instead of 'tall', same reasoning as
-  // `selectEvent`'s own snap-down below.
-  // Layout A (map first, card peek): every fresh open starts at mid, so the map keeps more than half the screen.
-  const [sheetSnap, setSheetSnap] = useState(() => restored?.sheetSnap ?? 'mid');
+  // Map E+ (note 79): the list is a layer over the full-screen map. It opens from "List · N", closes with its Map button
+  // or Esc, and starts closed, so a fresh open is the map itself (restored from a return snapshot when there is one).
+  const [listOpen, setListOpen] = useState(() => restored?.listOpen ?? false);
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
-  // Map v5 (note 73) sticky filters: the search + chips fold into one summary line once the list is scrolled or an
-  // event is selected; tapping the line opens them again (`headerOpen`) until the next scroll or selection.
-  const [listScrolled, setListScrolled] = useState(false);
-  const [headerOpen, setHeaderOpen] = useState(false);
   // The city the map was last flown to (search row, area picker or a city bubble): names the area chip while framed.
   const [cityDest, setCityDest] = useState(() => restored?.cityDest ?? null);
   // Owner, 2026-10-24 ("no events on the map until I pull down"): each load takes a number and only the newest one
@@ -383,22 +375,15 @@ export default function MapExplore() {
   // id into the same `events`/`visibleEvents` this screen already loads.
   const [selectedId, setSelectedId] = useState(() => restored?.selectedId ?? null);
   const lastAnimatedPinIdRef = useRef(null);
-  // Hoisted above the sheet-drag section below (which also reads/writes
-  // dragOffsetVh) purely so selectEvent() — defined before that section —
-  // can compute the sheet's current pixel height for the camera padding.
-  const [dragOffsetVh, setDragOffsetVh] = useState(0);
   // The top controls' real bottom edge is measured (ResizeObserver), never guessed.
-  const backRef = useRef(null);
-  const compassRef = useRef(null);
+  const topRef = useRef(null); // search + filter button + chips: the shared top controls
   const rootRef = useRef(null);
   const [topControlsBottom, setTopControlsBottom] = useState(56); // px from the TOP of this screen's own box
   const [containerH, setContainerH] = useState(() => screenHeight());
   const [dockClear, setDockClear] = useState(110); // px the floating dock occupies at the bottom
-  // Map v6 (note 74): tall is FULL height (the sheet's top just under the Close / compass row, measured) and peek
-  // fits the two-row strip. `mapStripFraction` follows the drag continuously: the sheet's `top` and the camera
-  // padding read it.
-  const fractions = snapFractions(containerH, topControlsBottom);
-  const mapStripFraction = Math.min(0.95, Math.max(0.02, fractions[sheetSnap] + dragOffsetVh));
+  // The bottom stack: the dock plus the buttons above it. The camera pads for it; the list and the panel float over the
+  // map and never move it.
+  const stackPx = dockClear + FAB_ROW;
   // Map v6: Large photo cards / Compact rows at full height (see `sessionListLayout`).
   const [listLayout, setListLayoutState] = useState(() => restored?.listLayout ?? sessionListLayout);
   const setListLayout = useCallback((m) => { sessionListLayout = m; setListLayoutState(m); }, []);
@@ -431,7 +416,7 @@ export default function MapExplore() {
 
   // Re-measures whenever the box resizes. ("Tìm ở đây" is gone: results follow the map on their own.)
   useEffect(() => {
-    const els = [backRef.current, compassRef.current].filter(Boolean);
+    const els = [topRef.current].filter(Boolean);
     if (!els.length || !rootRef.current) return undefined;
     const measure = () => {
       const top = rootRef.current.getBoundingClientRect().top;
@@ -444,17 +429,13 @@ export default function MapExplore() {
   }, [containerH]);
 
   // ---- layout geometry (all px, relative to this screen's box) ----
-  // Visible map = [topControlsBottom + gap, sheetTop - attribution strip]; the camera pads to match. Map v5: the
-  // selected event is shown inside the sheet, so nothing floats over the map.
-  const lay = computeMapLayout({ containerH, topControlsBottom, stripFraction: mapStripFraction });
-  const { sheetTopPx } = lay;
+  // Visible map = [topControlsBottom + gap, top of the bottom stack - attribution strip]; the camera pads to match.
+  const lay = computeMapLayout({ containerH, topControlsBottom, stripFraction: bottomStackFraction(containerH, stackPx) });
   const layRef = useRef(lay);
   layRef.current = lay;
   const cameraPadding = () => layRef.current.cameraPadding;
 
-  // Map v5 (note 73): the dock shows only at tall (owner, 2026-11-01: hide fully below it). The shell keeps it mounted
-  // and slides it away; leaving the Map always gives it back.
-  useEffect(() => { set({ mapDockHidden: !dockShown(sheetSnap) }); }, [sheetSnap]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Map E+ (note 79): the dock stays (the area panel will hide it, step 3). Leaving the Map always gives it back.
   useEffect(() => () => set({ mapDockHidden: false }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Basemap follows the app theme (derived Liberty light/dark, src/lib/mapStyle.js); camera,
@@ -495,19 +476,21 @@ export default function MapExplore() {
     apply(map);
   }, []);
   // Geometry the commit needs, read at settle time (the map's own box, the top controls).
-  const geomRef = useRef({ topControlsBottom, containerH });
-  geomRef.current = { topControlsBottom, containerH };
+  const geomRef = useRef({ topControlsBottom, containerH, stackPx });
+  geomRef.current = { topControlsBottom, containerH, stackPx };
+  // Camera padding for a fit: below the top controls, above the bottom stack.
+  const fitPad = (side) => ({ top: geomRef.current.topControlsBottom + CARD_GAP + 16, bottom: geomRef.current.stackPx + ATTRIB_RESERVE + 16, left: side, right: side });
   const commitArea = useCallback((reason = 'initial') => {
     const map = mapRef.current;
     const el = mapDivRef.current;
     if (!map || !el) return;
     const size = { width: el.clientWidth || 390, height: el.clientHeight || geomRef.current.containerH };
-    // The reference rect: below the top controls, above the PEEK sheet — the same at every detent, so moving the
-    // sheet never changes the area, its results or the count.
+    // The reference rect: below the top controls, above the bottom stack — fixed, so opening the list or a panel
+    // never changes the area, its results or the count.
     const rect = referenceRect({
       ...size,
       topInset: geomRef.current.topControlsBottom + CARD_GAP,
-      bottomInset: size.height - (peekFraction(size.height) * size.height - ATTRIB_RESERVE),
+      bottomInset: geomRef.current.stackPx + ATTRIB_RESERVE,
     });
     const next = boundsForRect(boundsToBox(map.getBounds()), size, rect);
     setCommittedBounds(next);
@@ -549,42 +532,9 @@ export default function MapExplore() {
     );
   }, [allowLocation, moveCamera]);
 
-  const flightTargetRef = useRef(null); // {center, zoom} of an in-progress selection flight
-  const flightTimerRef = useRef(null);
-  useEffect(() => () => clearTimeout(flightTimerRef.current), []);
-  // ---- pin/list-row selection: camera zoom + compact in-map preview card ----
-  // Reuses the same `events`/`visibleEvents` this screen already loads —
-  // selecting is just remembering an id, never a second query.
-  const selectEvent = useCallback((ev) => {
-    // Map v6: a search that led to an event is worth remembering; the keyboard goes down.
-    if (searchQueryRef.current.trim()) rememberSearch(searchQueryRef.current);
-    searchInputRef.current?.blur();
-    setSelectedId(ev.id);
-    // Map v5 (note 73): the selected event is the first item of the sheet's list, so the sheet goes to mid (room for
-    // the map above and the row below) and the list scrolls back to its top, where the row is.
-    setSheetSnap(snapAfterSelect());
-    setHeaderOpen(false);
-    listRef.current?.scrollTo?.({ top: 0 });
-    const map = mapRef.current;
-    if (!map) return;
-    // Padding keeps the selected pin between the top controls and the MID sheet it is going to.
-    // Stage 3 — an event with no coordinates (see hasLocation) has
-    // nowhere on the map to fly to; still selects it (the compact card
-    // still shows its real info), just skips the camera move.
-    if (!ev.hasLocation) return;
-    // A REVEAL: bring the pin into the free area above the card at the CURRENT zoom. It never zooms in and never
-    // redefines the search area (the list and count stay what the user was browsing).
-    const target = { center: [ev.lng, ev.lat], zoom: map.getZoom() };
-    flightTargetRef.current = target;
-    clearTimeout(flightTimerRef.current);
-    flightTimerRef.current = setTimeout(() => { flightTargetRef.current = null; }, 1000); // flight 550ms + one retarget ease
-    const g = geomRef.current;
-    const padding = computeMapLayout({ containerH: g.containerH, topControlsBottom: g.topControlsBottom, stripFraction: SHEET_SNAPS.mid }).cameraPadding;
-    moveCamera('reveal', m => m.flyTo({ ...target, padding, duration: reduceMotion() ? 0 : 550 }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const clearSelection = useCallback(() => setSelectedId(null), []);
+  // Map E+ (note 79): a pin opens Event Detail (set below, once the snapshot helper exists). `selectedId` is now only a
+  // highlight, kept for a return snapshot and "Open in Map", which arrive with one event marked.
+  const openDetailRef = useRef(null);
 
   // Once a restored snapshot has been read into `restoredRef` (above), clear
   // context's own copy — it's served its purpose for this mount, and
@@ -634,11 +584,7 @@ export default function MapExplore() {
           : pointsNear(pts, densityHotspot(pts.map(e => ({ lat: e.lat, lng: e.lng }))), 25);
         const box = boundsOfPoints(frame);
         if (box) {
-          const cam = fitCamera(box, size, {
-            top: topControlsBottom + CARD_GAP + 16,
-            bottom: size.height * (1 - SHEET_SNAPS.mid) + ATTRIB_RESERVE + 16,
-            left: 40, right: 40,
-          }, { tileSize: mapkit ? 256 : 512, maxZoom: 14 });
+          const cam = fitCamera(box, size, fitPad(40), { tileSize: mapkit ? 256 : 512, maxZoom: 14 });
           center = cam.center;
           zoom = cam.zoom;
         } else {
@@ -703,12 +649,7 @@ export default function MapExplore() {
       // the user's, even if a programmatic move was still pending.
       map.on('movestart', (e) => {
         // MapKit JS never says whether a move is a gesture: a start with no fresh programmatic reason is the user's.
-        const pending = cameraReasonRef.current;
-        const userMove = !!e?.originalEvent || (map.__isMapKit && !(pending && Date.now() - pending.t < 1500));
         if (e?.originalEvent) cameraReasonRef.current = { reason: 'user', t: Date.now() };
-        // Map v5 (note 73), Airbnb-style: the user's own pan/zoom drops the list from mid to peek, where the strip
-        // keeps the count and the active filters. Selections, restores, clusters and destinations never do.
-        if (userMove) setSheetSnap(snapAfterUserPan);
         clearTimeout(settleTimerRef.current);
       });
       // The live zoom drives clustering (display only); rounded so tiny settles don't redraw every marker.
@@ -985,7 +926,7 @@ export default function MapExplore() {
             dot.style.cssText = `position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:#9A3E2D;border:1.5px solid ${paper};`;
             pinEl.appendChild(dot);
           }
-          const activate = () => selectEvent(ev);
+          const activate = () => openDetailRef.current?.(ev.id);
           pinEl.addEventListener('click', (e) => { e.stopPropagation(); activate(); });
           pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activate(); } });
         } else {
@@ -996,10 +937,10 @@ export default function MapExplore() {
           pinEl.setAttribute('data-testid', `map-${g.kind}-${g.ids[0]}`);
           pinEl.setAttribute('data-count', String(n));
           pinEl.setAttribute('aria-label', stack
-            ? T(`${n} sự kiện cùng địa điểm`, `${n} events at this place`)
+            ? T(`${n} sự kiện cùng địa điểm, mở danh sách`, `${n} events at this place, open the list`)
             : T(`${n} sự kiện ở đây, phóng to`, `${n} events here, zoom in`));
           pinEl.textContent = stack ? `${n} ≡` : String(n);
-          const activate = () => (stack ? selectEvent(byId.get(g.ids[0])) : zoomToCluster(g));
+          const activate = () => (stack ? setListOpen(true) : zoomToCluster(g));
           pinEl.addEventListener('click', (e) => { e.stopPropagation(); activate(); });
           pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activate(); } });
         }
@@ -1026,7 +967,7 @@ export default function MapExplore() {
     // The `cancelled` guard above keeps an in-flight redraw from a STALE run (rapid filter changes or zooming) from
     // painting markers after a newer run has started.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleEvents, selectedId, selectEvent, mapReady, cameraZoom, cityIdById]);
+  }, [visibleEvents, selectedId, mapReady, cameraZoom, cityIdById]);
 
   // Stage 2 (2026-09-27 nav/discovery pass) — pull-to-refresh, LOCAL to
   // this list (not Shell's/App.jsx's generic one): MapExplore renders as
@@ -1046,64 +987,7 @@ export default function MapExplore() {
       if (src) { const im = new Image(); im.decoding = 'async'; im.src = src; }
     }
   }, [preloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  // iOS parity (owner 2026-11-01): no pull-to-refresh on the Map list (the set reloads every 60 s). At the list's
-  // TOP a pull down, and at its END (mid) a push up, move the SHEET with the finger instead of over-scrolling the
-  // list; release snaps like a handle drag. Touch listeners are non-passive so the list can be held still.
-  const edgeRef = useRef({});
-  edgeRef.current = { sheetSnap, containerH, fractions };
-  useEffect(() => {
-    const el = listRef.current;
-    if (!el) return undefined;
-    let g = null;
-    const start = (e) => {
-      const y = e.touches[0].clientY;
-      g = { y0: y, lastY: y, lastT: e.timeStamp, v: 0, active: null, snap: edgeRef.current.sheetSnap,
-        atTop: el.scrollTop <= 0, atEnd: el.scrollTop >= el.scrollHeight - el.clientHeight - 1 };
-    };
-    const move = (e) => {
-      if (!g) return;
-      const y = e.touches[0].clientY, dy = y - g.y0;
-      if (g.active === null) {
-        if ((g.atTop && dy > 4 && g.snap !== 'peek') || (g.atEnd && dy < -4 && g.snap === 'mid')) g.active = true;
-        else if (Math.abs(dy) > 4) g.active = false;
-      }
-      if (!g.active) return;
-      e.preventDefault();
-      const dt = e.timeStamp - g.lastT;
-      if (dt > 0) g.v = 0.6 * ((y - g.lastY) / dt) + 0.4 * g.v;
-      g.lastY = y; g.lastT = e.timeStamp;
-      setDragOffsetVh(dy / (edgeRef.current.containerH || 1));
-    };
-    const end = (e) => {
-      if (g?.active) {
-        const { containerH: H, fractions: f } = edgeRef.current;
-        const v = e.timeStamp - g.lastT > 120 ? 0 : g.v;
-        setSheetSnap(snapAfterDrag(g.snap, g.lastY - g.y0, H, v, f));
-        setDragOffsetVh(0);
-      }
-      g = null;
-    };
-    el.addEventListener('touchstart', start, { passive: true });
-    el.addEventListener('touchmove', move, { passive: false });
-    el.addEventListener('touchend', end);
-    el.addEventListener('touchcancel', end);
-    return () => { el.removeEventListener('touchstart', start); el.removeEventListener('touchmove', move); el.removeEventListener('touchend', end); el.removeEventListener('touchcancel', end); };
-  }, []);
 
-  // B2 — snaps the sheet to MID exactly when the user actually CHANGES a
-  // filter (category or "Còn chỗ"), never on mount, a map pan (`boundsChanged`
-  // has nothing to do with these two), a list scroll, or the 5s freshness
-  // poll (none of those touch `catFilter`/`openNowOnly`). `sortByDistance`
-  // ("Gần bạn") is deliberately excluded — it re-orders the list, it never
-  // excludes an event, so it isn't a "filter" in this ticket's sense.
-  // Mirrors the existing `catFilterMountedRef` pattern immediately below
-  // (same reasoning: `useEffect` has no built-in "skip the mount" the way
-  // iOS's `.onChange` does).
-  const filterChangeMountedRef = useRef(false);
-  useEffect(() => {
-    if (!filterChangeMountedRef.current) { filterChangeMountedRef.current = true; return; }
-    setSheetSnap('mid');
-  }, [filters]);
 
   // Map redesign phase 2 (reverses the earlier "selection survives filters" rule, by the owner's spec): the
   // selection lives only while its event is one of the results — the committed area + filters, plus the listed
@@ -1111,10 +995,6 @@ export default function MapExplore() {
   // event is never opened in its place. Filter changes no longer move the camera either (the old category →
   // density-hotspot flight is gone): the area changes only through the map.
   const selectableIds = useMemo(() => [...visibleEvents, ...noLocationMatches].map(e => e.id), [visibleEvents, noLocationMatches]);
-  const selectedEvent = useMemo(
-    () => (selectedId && selectableIds.includes(selectedId) ? events.find(e => e.id === selectedId) || null : null),
-    [events, selectedId, selectableIds],
-  );
   // Guarded until data and an area exist, so a restored selection is never cleared before its rows arrive.
   useEffect(() => {
     if (loading || !committedBounds) return;
@@ -1133,20 +1013,6 @@ export default function MapExplore() {
     listScrollRestoredRef.current = true;
   }, [visibleEvents, restored]);
 
-  // Bug 1 (camera half): "the selected pin must remain visible ... at all
-  // detents" — re-applies the padding (not the center/zoom, so this never
-  // re-triggers the selection pop or re-centers unnecessarily) whenever the
-  // sheet's snap state itself changes while something stays selected, e.g.
-  // selecting at "tall" then switching to "List nhỏ" afterward.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !selectedEvent) return;
-    // If the selection flight is still running, retarget it (padding-only easeTo would cancel it
-    // mid-air and leave the pin off-centre); otherwise only the padding changes, never the user's camera.
-    // Layout-only: a 'reveal', so following the sheet never redefines the search area.
-    moveCamera('reveal', m => m.easeTo({ ...(flightTargetRef.current || {}), padding: cameraPadding(), duration: reduceMotion() ? 0 : 300 }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sheetSnap, containerH, topControlsBottom]);
 
   // Bug 2: snapshot everything MapExplore itself owns right before handing
   // off to the full-screen Event Detail screen, so returning restores it
@@ -1159,7 +1025,7 @@ export default function MapExplore() {
     setMapExploreState({
       cameraCenter: center ? { lat: center.lat, lng: center.lng } : null,
       cameraZoom: map?.getZoom() ?? null,
-      sheetSnap,
+      listOpen,
       filters, catFilter,
       openNowOnly,
       forYou: forYouOn,
@@ -1172,7 +1038,7 @@ export default function MapExplore() {
       // Map v6: the full-height layout (Large / Compact).
       listLayout,
     });
-  }, [sheetSnap, filters, catFilter, openNowOnly, forYouOn, searchQuery, selectedId, committedBounds, areaContext, cityDest, events, listLayout, setMapExploreState]);
+  }, [listOpen, filters, catFilter, openNowOnly, forYouOn, searchQuery, selectedId, committedBounds, areaContext, cityDest, events, listLayout, setMapExploreState]);
 
   // "Show nearest": the closest matching events (same filters) anywhere, framed above the mid sheet — an explicit
   // geographic move that commits its area once. Never automatic, never presented as "here".
@@ -1186,9 +1052,7 @@ export default function MapExplore() {
     const box = boundsOfPoints(pointsNear(matchingAnywhere, first, 25));
     if (!box) return;
     const size = { width: el.clientWidth || 390, height: el.clientHeight || containerH };
-    const cam = fitCamera(box, size, {
-      top: topControlsBottom + CARD_GAP + 16, bottom: size.height * (1 - SHEET_SNAPS.mid) + ATTRIB_RESERVE + 16, left: 40, right: 40,
-    }, { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 14 });
+    const cam = fitCamera(box, size, fitPad(40), { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 14 });
     moveCamera('nearest', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom: cam.zoom, duration: reduceMotion() ? 0 : 800 }));
   }, [matchingAnywhere, containerH, topControlsBottom, moveCamera]);
   // Area picker = a DESTINATION (phase 3): picking an area on the Map flies to that area's events and commits it once;
@@ -1210,9 +1074,7 @@ export default function MapExplore() {
       return;
     }
     const size = { width: el.clientWidth || 390, height: el.clientHeight || containerH };
-    const cam = fitCamera(box, size, {
-      top: topControlsBottom + CARD_GAP + 16, bottom: size.height * (1 - SHEET_SNAPS.mid) + ATTRIB_RESERVE + 16, left: 40, right: 40,
-    }, { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 14 });
+    const cam = fitCamera(box, size, fitPad(40), { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 14 });
     moveCamera('destination', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom: cam.zoom, duration: reduceMotion() ? 0 : 800 }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [curArea.key]);
@@ -1222,9 +1084,7 @@ export default function MapExplore() {
     const el = mapDivRef.current;
     if (!map || !el || !g.bounds) return;
     const size = { width: el.clientWidth || 390, height: el.clientHeight || containerH };
-    const cam = fitCamera(g.bounds, size, {
-      top: topControlsBottom + CARD_GAP + 16, bottom: size.height * (1 - SHEET_SNAPS.mid) + ATTRIB_RESERVE + 16, left: 48, right: 48,
-    }, { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 18 });
+    const cam = fitCamera(g.bounds, size, fitPad(48), { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 18 });
     const zoom = Math.max(cam.zoom, map.getZoom() + 1);
     moveCamera('cluster', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom, duration: reduceMotion() ? 0 : 600 }));
   }, [containerH, topControlsBottom, moveCamera]);
@@ -1236,16 +1096,13 @@ export default function MapExplore() {
     const c = CITY_BY_ID.get(id);
     if (!map || !el || !c) return;
     const size = { width: el.clientWidth || 390, height: el.clientHeight || containerH };
-    const cam = fitCamera(c.bounds, size, {
-      top: topControlsBottom + CARD_GAP + 16, bottom: size.height * (1 - SHEET_SNAPS.mid) + ATTRIB_RESERVE + 16, left: 24, right: 24,
-    }, { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 13 });
+    const cam = fitCamera(c.bounds, size, fitPad(24), { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 13 });
     // A big city box (HCMC with Cần Giờ) fits below CITY_ZOOM, which would just show the same city bubble again:
     // land at least half a level past it, centred on the city itself.
     const minZoom = CITY_ZOOM + 0.5 + (map.__isMapKit ? 1 : 0);
     if (cam.zoom < minZoom) { cam.zoom = minZoom; cam.center = c.center; }
     setCityDest(id);
     setSelectedId(null);
-    setSheetSnap('mid');
     moveCamera('destination', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom: cam.zoom, duration: reduceMotion() ? 0 : 800 }));
   }, [containerH, topControlsBottom, moveCamera]);
   flyToCityRef.current = flyToCity;
@@ -1264,8 +1121,6 @@ export default function MapExplore() {
     flyToCity(id);
   }, [flyToCity, rememberSearch]);
 
-  // Events at the selected event's place (the card's ‹ 1/3 › switcher); itself only when it stands alone.
-  const selectedStack = useMemo(() => (selectedEvent ? sameSpot(visibleEvents, selectedEvent) : []), [selectedEvent, visibleEvents]);
   // Distance (km) from the area's centre to the nearest match, for an honest "Show nearest · 1.2 km" hint.
   const nearestKm = useMemo(() => {
     if (!committedBounds || !matchingAnywhere.length) return null;
@@ -1282,6 +1137,7 @@ export default function MapExplore() {
     saveSnapshot();
     goEvent(id);
   }, [saveSnapshot, goEvent]);
+  openDetailRef.current = openEventDetail;
   // "Edit preferences": same snapshot/restore as Event Detail, so Back returns to the
   // same camera, sheet, list position and filters.
   const editPreferences = useCallback(() => {
@@ -1319,78 +1175,14 @@ export default function MapExplore() {
     }, 420);
   }, [setMapExploreState, backFromMapExplore]);
 
-  // ---- drag-to-resize bottom sheet (pointer events, translateY, snap on release) ----
-  const sheetRef = useRef(null);
-  const dragState = useRef(null);
-
-  const onHandlePointerDown = (e) => {
-    // Map v6: the release speed matters too (a flick up from peek goes to full), so the last moves are tracked.
-    dragState.current = { startY: e.clientY, startSnap: sheetSnap, lastY: e.clientY, lastT: e.timeStamp || performance.now(), v: 0 };
-    // Capture on the handle itself (`e.currentTarget`, the element this
-    // handler is actually attached to) — capturing on `sheetRef`'s outer
-    // container instead was a real, pre-existing bug: pointer capture
-    // retargets subsequent pointermove/pointerup events to the CAPTURING
-    // element and bubbles from there, so with the sheet (an ancestor of
-    // this handle) as the capture target, those events could never reach
-    // this handle's own onPointerMove/onPointerUp at all — the drag never
-    // progressed past the very first pixel. Confirmed by instrumenting a
-    // real drag end-to-end (the sheet's own `top` never changed no matter
-    // how far or slow the drag), not just inferred from reading the code.
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-  const onHandlePointerMove = (e) => {
-    if (!dragState.current) return;
-    const d = dragState.current;
-    const t = e.timeStamp || performance.now();
-    const dt = t - d.lastT;
-    // px per ms, lightly smoothed so one jittery frame can't fake a flick.
-    if (dt > 0) d.v = 0.6 * ((e.clientY - d.lastY) / dt) + 0.4 * d.v;
-    d.lastY = e.clientY; d.lastT = t;
-    setDragOffsetVh((e.clientY - d.startY) / containerH);
-  };
-  const onHandlePointerUp = (e) => {
-    const d = dragState.current;
-    if (!d) return;
-    const y = e?.clientY ?? d.lastY;
-    // A pause before letting go is not a flick.
-    const v = (e?.timeStamp || performance.now()) - d.lastT > 120 ? 0 : d.v;
-    setSheetSnap(snapAfterDrag(d.startSnap, y - d.startY, containerH, v, fractions));
-    setDragOffsetVh(0);
-    dragState.current = null;
-  };
-
   const compassOpacity = locPermission === 'granted' ? 1 : DISABLED_OPACITY;
-
-  // ANIMATION REQUIREMENT (11-realtime-map.md follow-up): a soft "bubble"
-  // settle for the sheet, but ONLY on a genuine restore — `bubbleIn` starts
-  // `true` exclusively when this mount received a `restored` snapshot (the
-  // same one-shot `restoredRef`/`restored` read used for every other bug 2
-  // field above), and is flipped to `false` exactly once via the effect
-  // below, never touched again by a filter change or the 5s poll. A fresh
-  // (non-restored) open starts at `false` already, so it never bubbles.
-  const [bubbleIn, setBubbleIn] = useState(() => !!restored);
-  useEffect(() => {
-    if (!bubbleIn) return;
-    // Double rAF: the initial (offset) inline style needs to actually
-    // paint on screen for at least one frame before flipping the state
-    // that removes it, or the browser can coalesce both style values into
-    // the same paint and the CSS `transition` below never has a "from"
-    // state to animate away from.
-    const raf1 = requestAnimationFrame(() => {
-      requestAnimationFrame(() => setBubbleIn(false));
-    });
-    return () => cancelAnimationFrame(raf1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Inside the desktop phone frame the frame's own 50pt status bar covers the
   // top of this fixed layer, so iOS's "safe area + 8" top controls start below it.
   const topInset = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(min-width: 700px) and (min-height: 560px) and (hover: hover) and (pointer: fine)').matches) ? 50 : 0;
-  const capsuleGlass = { borderRadius: 999 };
 
   // ---- row/card facts (all from real columns; nothing guessed) ----
   const en = s.lang === 'en';
-  const dense = sheetSnap === 'tall';
   // "Th 4, 05.03 · 19:00" in the venue's own zone (events.tz, migration 195), never the viewer's clock.
   const eventWhen = (ev) => whenLabel(ev.startsAt, ev.tz, en);
   // Price per ticket in the event's own currency; 0 is genuinely free.
@@ -1403,26 +1195,29 @@ export default function MapExplore() {
     <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinejoin="round"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5V14a2 2 0 0 0 0-4z" /><path d="M14.5 6v2M14.5 11v2M14.5 16v2" /></svg>
   </>) : T('Miễn phí', 'Free'));
   const nearDistance = (ev) => (s.located === true && s.userCoords && ev.hasLocation ? distanceLabel(haversineKm(s.userCoords, ev), en) : null);
-  // Solid chip (content sits on an opaque sheet; glass is kept for map controls). 36pt tall inside a 44pt row.
   const sectionLabel = { padding: '12px 0 4px', fontSize: 11.5, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: ink2 };
+  // Solid chip (content sits on an opaque layer). 36pt tall.
   const catChip = (active, muted) => ({
     flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 12px', borderRadius: RADIUS.pill,
     border: active ? `1px solid ${ink}` : '1px solid transparent', background: active ? ink : surface2, color: active ? paper : ink,
     fontSize: 13, fontWeight: active ? 600 : 500, whiteSpace: 'nowrap', cursor: 'pointer', fontFamily: 'inherit', opacity: muted ? 0.55 : 1,
   });
-  // Truthful seat status: sold out / "N left" when few / nothing when banbe has no fill for the event.
-  // Header snap buttons (bigger map / bigger list): 44px icon buttons, filled when that snap is on.
-  const sizeBtn = (on) => ({ width: 44, height: 44, flex: 'none', border: 'none', borderRadius: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: on ? surface2 : 'transparent', color: ink });
+  // Glass chip: the chips sit over the map, like iOS's controls. Active = ink fill.
+  const mapChip = (active, muted) => ({
+    ...photoPill({ position: 'static', borderRadius: RADIUS.pill }),
+    flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 12px', fontSize: 13, fontWeight: active ? 600 : 500,
+    whiteSpace: 'nowrap', fontFamily: 'inherit', opacity: muted ? 0.55 : 1,
+    ...(active ? { background: ink, color: paper, border: `1px solid ${ink}`, backdropFilter: 'none', WebkitBackdropFilter: 'none', boxShadow: 'none' } : null),
+  });
   // Empty-state action: a real 44px button.
   const emptyAction = { display: 'inline-flex', alignItems: 'center', minHeight: 44, marginTop: 8, padding: '0 16px', borderRadius: RADIUS.pill, border: 'none', background: surface2, color: ink, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' };
-  // ---- Map v5 (note 73): the active filter summary (peek strip + compact sticky header), one source ----
-  // The picked category leads the folded line (owner 2026-11-01): "Supper club, Seats left" + a count of 2.
+  // What is filtered (only its count and `tokens` are read now: the empty states say how many filters to clear).
   const summary = (() => {
     const base = activeFilterSummary(filters, { forYou: forYouActive, query: searchQuery });
     if (catFilter === 'all' || base.tokens.some(t => t.kind === 'cat' && t.key === catFilter)) return base;
     return { tokens: [{ kind: 'cat', key: catFilter }, ...base.tokens], count: base.count + 1 };
   })();
-  // The city the map is centred on (smallest cities.json box holding the centre): map pill + full-height list line.
+  // The city the map is centred on (smallest cities.json box holding the centre): the list's header line.
   const mapCity = (() => {
     const b = committedBounds;
     if (!b) return null;
@@ -1435,30 +1230,9 @@ export default function MapExplore() {
     }
     return best ? T(best.vi, best.en) : null;
   })();
-  const tokenLabel = (t) => {
-    switch (t.kind) {
-      case 'query': return `“${t.text}”`;
-      case 'cat': { const c = CATEGORY_DEFS.find(d => d.key === t.key); return c ? T(c.vi, c.en) : t.key; }
-      case 'forYou': return T('Dành cho bạn', 'For You');
-      case 'date': return DATE_LABELS[t.key] ? T(...DATE_LABELS[t.key]) : t.key;
-      case 'free': return T('Miễn phí', 'Free');
-      case 'price': {
-        const m = (v) => formatMoneyShort(v, t.currency);
-        if (t.min != null && t.max != null) return `${m(t.min)}–${m(t.max)}`;
-        return t.min != null ? `≥ ${m(t.min)}` : `≤ ${m(t.max)}`;
-      }
-      case 'seatsLeft': return T('Còn chỗ', 'Seats left');
-      case 'almostFull': return T('Sắp hết chỗ', 'Almost full');
-      case 'types': return T(`+${t.n} bộ lọc`, `+${t.n} filter${t.n === 1 ? '' : 's'}`);
-      default: return '';
-    }
-  };
-  const summaryText = summary.tokens.map(tokenLabel).filter(Boolean).join(', ');
-  // Fold the search + chips into one line once the list is scrolled or an event is selected (more room for the row).
-  const compactHeader = sheetSnap !== 'peek' && !headerOpen && !searchActive && (listScrolled || !!selectedEvent);
-  // ---- Map v6 (note 74): search from the peek strip, and what the search shows before you type ----
-  // The input is collapsed (but mounted and focusable) at peek and behind the folded summary line.
-  const searchCollapsed = !searchActive && (sheetSnap === 'peek' || compactHeader);
+  const countText = committedBounds && !(loading && !events.length)
+    ? T(`${visibleEvents.length} sự kiện trong vùng bản đồ`, `${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'} in this map area`)
+    : T('Đang tải sự kiện…', 'Loading events…');
   // Map v6 (note 74): Large photo cards (default) or Compact rows — Home's two-icon switch; session-only on the Map.
   const layoutSwitch = (
             <div role="radiogroup" aria-label={T('Kiểu hiển thị', 'Layout')} data-testid="map-layout-switch"
@@ -1472,94 +1246,34 @@ export default function MapExplore() {
               ))}
             </div>
   );
-  // 0 at mid (or lower) → 1 at full height, following the sheet while it is dragged. Drives the Airbnb-style hand-off
-  // (owner 2026-11-01; iOS twin `fullProgress`): the map's back / compass shrink away as the sheet's own back / Show
-  // map pop in beside a narrower search field. The springy curve gives the little "bubble" overshoot.
-  const fullP = Math.min(1, Math.max(0, (fractions.mid - ((fractions[sheetSnap] ?? fractions.mid) + dragOffsetVh)) / Math.max(0.01, fractions.mid - fractions.tall)));
-  const sideP = searchActive ? 0 : fullP;
-  const bubble = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
-  const sideBtn = { flex: 'none', width: 40 * sideP, height: 40, margin: `0 ${2 * sideP}px`, borderRadius: 20, border: 'none', background: surface2, color: ink, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, overflow: 'hidden',
-    transform: `scale(${sideP})`, opacity: sideP, pointerEvents: sideP > 0.5 ? 'auto' : 'none', transition: dragOffsetVh ? 'none' : `width 0.32s ${bubble}, margin 0.32s ${bubble}, transform 0.32s ${bubble}, opacity 0.2s ease` };
-  const mapCtlFade = { opacity: 1 - fullP, transform: `scale(${1 - 0.35 * fullP})`, transformOrigin: 'top center', pointerEvents: fullP > 0.5 ? 'none' : undefined,
-    transition: dragOffsetVh ? 'none' : `transform 0.32s ${bubble}, opacity 0.2s ease` };
-  // Focused and empty: Recent · Cities · Quick filters instead of the list ("never a blank search").
+  // Focused and empty: Recent · Cities · Quick filters instead of a blank search.
   const suggestOpen = searchActive && !searchQuery.trim();
-  const openSearch = () => {
-    searchReturnRef.current = sheetSnap;
-    // Synchronously, inside this tap (the input is already mounted): iOS Safari only raises the keyboard for a
-    // focus() in the user gesture — see the long comment at setSearchInputRef.
-    searchInputRef.current?.focus({ preventScroll: true });
-    setSearchActive(true);
-    setHeaderOpen(true);
-    // Full height, not mid: the keyboard covers the lower half, so mid would hide the results.
-    setSheetSnap('tall');
-  };
-  const onSearchFocus = () => {
-    if (searchReturnRef.current == null) searchReturnRef.current = sheetSnap;
-    setSearchActive(true);
-  };
-  const onSearchBlur = () => {
-    setSearchActive(false);
-    searchReturnRef.current = null;
-  };
-  const cancelSearch = () => {
-    const back = searchReturnRef.current;
-    searchInputRef.current?.blur();
-    setSearchActive(false);
-    searchReturnRef.current = null;
-    if (back && back !== sheetSnap) setSheetSnap(back);
-  };
-  // Quick filters (peek strip + the search's "Quick filters"): a tap applies the filter and opens the list to mid,
-  // like tapping the strip (filter changes already lift to mid; For You is not in `filters`, so it is explicit).
-  const quickTap = (fn) => () => {
-    fn();
-    searchInputRef.current?.blur();
-    setSheetSnap('mid');
-  };
-  // The busiest categories in this map area (what tapping each would show), plus the selected one.
-  const topCats = CATEGORY_DEFS
-    .filter(c => c.key !== 'all' && ((categoryCountMap[c.key] ?? 0) > 0 || catFilter === c.key))
-    .sort((a, b) => (categoryCountMap[b.key] ?? 0) - (categoryCountMap[a.key] ?? 0))
-    .slice(0, 3);
-  const quickChips = (prefix, withCats) => (
+  const onSearchFocus = () => setSearchActive(true);
+  const onSearchBlur = () => setSearchActive(false);
+  const cancelSearch = () => { searchInputRef.current?.blur(); setSearchActive(false); };
+  // Quick filters in the search panel: a tap applies the filter (the map shows it at once) and puts the keyboard away.
+  const quickTap = (fn) => () => { fn(); searchInputRef.current?.blur(); };
+  const quickChips = (prefix) => (
     <>
       {hasPrefs && (
         <button type="button" aria-pressed={forYouActive} onClick={quickTap(toggleForYou)} data-testid={`${prefix}-foryou`} style={catChip(forYouActive, false)}>
           <span aria-hidden="true" style={{ color: forYouActive ? paper : 'var(--bb-honey)' }}>★</span>{T('Dành cho bạn', 'For You')}
         </button>
       )}
-      {[['tonight', 'Tối nay', 'Tonight'], ['weekend', 'Cuối tuần', 'Weekend']].map(([opt, vi, en2]) => (
-        <button key={opt} type="button" aria-pressed={filters.date === opt} onClick={quickTap(() => toggleDate(opt))}
-          data-testid={`${prefix}-${opt}`} style={catChip(filters.date === opt, false)}>
-          {T(vi, en2)}
-        </button>
-      ))}
-      {withCats ? topCats.map(c => {
-        const active = catFilter === c.key;
-        const n = categoryCountMap[c.key] ?? 0;
-        return (
-          <button key={c.key} type="button" aria-pressed={active} onClick={quickTap(() => setCatFilter(active ? 'all' : c.key))}
-            aria-label={T(`${c.vi}, ${n} sự kiện`, `${c.en}, ${n} event${n === 1 ? '' : 's'}`)}
-            data-testid={`${prefix}-cat-${c.key}`} style={catChip(active, false)}>
-            <CategoryGlyph cat={c.key} size={15} strokeWidth={1.8} />
-            <span>{T(c.vi, c.en)}</span>
-            <span style={{ fontVariantNumeric: 'tabular-nums', opacity: active ? 0.85 : 0.6 }}>{n}</span>
-          </button>
-        );
-      }) : (anyFillKnown || openNowOnly) && (
+      {(anyFillKnown || openNowOnly) && (
         <button type="button" aria-pressed={openNowOnly} onClick={quickTap(() => setOpenNowOnly(v => !v))} data-testid={`${prefix}-open-now`} style={catChip(openNowOnly, false)}>
           {T('Còn chỗ', 'Seats left')}
         </button>
       )}
-      <button type="button" onClick={() => { searchInputRef.current?.blur(); setFilterSheetOpen(true); }} data-testid={withCats ? 'map-peek-all-filters' : 'map-search-all-filters'} aria-haspopup="dialog"
+      <button type="button" onClick={() => { searchInputRef.current?.blur(); setFilterSheetOpen(true); }} data-testid="map-search-all-filters" aria-haspopup="dialog"
         style={{ ...catChip(sheetFilterCount > 0, false), background: sheetFilterCount > 0 ? ink : 'transparent', border: `1px solid ${sheetFilterCount > 0 ? ink : rule}` }}>
         <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg>
         {T('Tất cả bộ lọc', 'All filters')}{sheetFilterCount > 0 ? ` · ${sheetFilterCount}` : ''}
       </button>
     </>
   );
-  // A Map event in Home's DiscoveryCard shape (Large layout at full height): the photos page sideways, the name and
-  // numbers stay off the photo, venue time · area underneath, the category as the type line.
+  // A Map event in Home's DiscoveryCard shape (Large layout): the photos page sideways, the name and numbers stay off
+  // the photo, venue time · area underneath, the category as the type line.
   const largeCard = (ev) => {
     const f = seatFacts(ev);
     const cat = CATEGORY_DEFS.find(c => c.key === ev.catKey && c.key !== 'all');
@@ -1575,6 +1289,28 @@ export default function MapExplore() {
       saved: isSaved(ev.id),
     };
   };
+  // Cities matching the search text, first ("Đà Lạt · 2 events" → Go), even with no events there. Shown in the search
+  // panel while typing, else at the top of the list (never both: they carry the same test ids).
+  const cityResults = cityMatches.length > 0 ? (
+    <div data-testid="map-city-results">
+      <div style={sectionLabel}>{T('Thành phố', 'Cities')}</div>
+      {cityMatches.map(({ id, count }) => (
+        <button key={id} type="button" onClick={() => goCity(id)} data-testid={`map-city-row-${id}`}
+          style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 12, padding: '10px 0', minHeight: 56, border: 'none', borderBottom: `1px solid ${rule}`, background: 'none', color: ink, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+          <span aria-hidden="true" style={{ width: 36, height: 36, borderRadius: 18, background: clayBg, color: clay, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
+          </span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 15, fontWeight: 600 }}>{cityName(id)}</span>
+            <span style={{ display: 'block', fontSize: 13, color: ink2 }}>
+              {count ? T(`${count} sự kiện`, `${count} event${count === 1 ? '' : 's'}`) : T('Chưa có sự kiện · vẫn có thể đến', 'No events yet · you can still go')}
+            </span>
+          </span>
+          <span style={{ flex: 'none', color: clay, fontSize: 14, fontWeight: 600 }}>{T('Đến', 'Go')}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
   // What the search shows while it is focused and empty: Recent (this device only), Cities (with counts, tap = go
   // there) and the quick filters. mousedown never blurs the input, so a tap here lands before the keyboard closes.
   const suggestRow = { display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 4 };
@@ -1611,40 +1347,15 @@ export default function MapExplore() {
       <div data-testid="map-search-quick">
         <div style={sectionLabel}>{T('Lọc nhanh', 'Quick filters')}</div>
         <div data-hscroll="true" className="bb-noscroll" style={{ ...suggestRow, flexWrap: 'wrap' }}>
-          {quickChips('map-search-chip', false)}
+          {quickChips('map-search-chip')}
         </div>
       </div>
     </div>
   );
-  const expandHeader = () => {
-    setHeaderOpen(true);
-    setListScrolled(false);
-    listRef.current?.scrollTo?.({ top: 0 });
-  };
-  // Owner 2026-11-01: any scroll down folds the filters into one line, any scroll up (or the top) opens them again,
-  // whatever is filtered. A short pause after each change so the list's own resize is not read as a scroll.
-  const lastListY = useRef(0);
   // An active chip moves to the front (CSS order); scroll its row back there so it is never left out of view.
-  const catRowRef = useRef(null);
   const chipRowRef = useRef(null);
-  const activeChipKey = `${filters.date}|${openNowOnly}|${sheetFilterCount}`;
-  useEffect(() => { catRowRef.current?.scrollTo?.({ left: 0, behavior: 'smooth' }); }, [catFilter]);
+  const activeChipKey = `${catFilter}|${openNowOnly}`;
   useEffect(() => { chipRowRef.current?.scrollTo?.({ left: 0, behavior: 'smooth' }); }, [activeChipKey]);
-  const foldSettle = useRef(0);
-  const onListScroll = (e) => {
-    const y = e.currentTarget.scrollTop;
-    const dy = y - lastListY.current;
-    lastListY.current = y;
-    if (Date.now() < foldSettle.current) return;
-    let fold = null;
-    if (y <= 4) fold = false;
-    else if (dy > 12) fold = true;
-    else if (dy < -12) fold = false;
-    if (fold === null || fold === (listScrolled && !headerOpen)) return;
-    foldSettle.current = Date.now() + 350;
-    setListScrolled(fold);
-    if (fold) setHeaderOpen(false);
-  };
   const clearChip = (testId) => (
     <button type="button" onClick={(e) => { e.stopPropagation(); clearFilters(); }} data-testid={testId}
       style={{ flex: 'none', minHeight: 44, padding: '0 10px', border: 'none', background: 'none', color: clay, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -1658,12 +1369,97 @@ export default function MapExplore() {
     if (f.almostFull && f.left != null) return <span data-testid={testId} style={{ fontSize: 12, fontWeight: 600, color: ink }}>{T(`Còn ${f.left} chỗ`, `${f.left} left`)}</span>;
     return null;
   };
+
+  // ---- the list layer ----
+  // Esc closes it; focus goes to its heading when it opens and back to "List · N" when it closes.
+  const listButtonRef = useRef(null);
+  const listHeadingRef = useRef(null);
+  const listWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (listOpen) {
+      listWasOpenRef.current = true;
+      listHeadingRef.current?.focus({ preventScroll: true });
+      const onKey = (e) => { if (e.key === 'Escape') setListOpen(false); };
+      window.addEventListener('keydown', onKey);
+      return () => window.removeEventListener('keydown', onKey);
+    }
+    if (listWasOpenRef.current) listButtonRef.current?.focus({ preventScroll: true });
+    return undefined;
+  }, [listOpen]);
+  const openList = () => { searchInputRef.current?.blur(); setListOpen(true); };
+  // The list's top edge: just under the shared controls.
+  const listTop = Math.round(topControlsBottom + 8);
+  // Why there is nothing to list, each one honest about WHY (never silently widening the area or loosening filters):
+  // first load · failed first load · no events in this area · filters hide the events that are here.
+  const emptyNodes = [
+    forYouActive && visibleEvents.length === 0 && (loading || prefsLoading) && (
+      <div key="fy-load" data-testid="map-foryou-loading" style={{ padding: 20, color: ink, opacity: 0.6, fontSize: 13 }}>{T('Đang tìm sự kiện hợp với bạn…', 'Finding events for you…')}</div>
+    ),
+    forYouActive && visibleEvents.length === 0 && !loading && !prefsLoading && (
+      <div key="fy-empty" data-testid="map-foryou-empty" style={{ padding: 20, color: ink, fontSize: 13 }}>
+        <div style={{ opacity: 0.7 }}>
+          {forYouRanked.length === 0
+            ? T('Chưa có sự kiện nào hợp với sở thích của bạn trong khu vực/vùng bản đồ này.', 'No events match your preferences in this area or map view yet.')
+            : T('Các sự kiện hợp với bạn không khớp bộ lọc hiện tại.', 'Your For You matches don\'t fit the current filters.')}
+        </div>
+        <span onClick={editPreferences} data-testid="map-foryou-empty-edit" role="button" style={{ display: 'inline-block', marginTop: 8, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer' }}>
+          {T('Chỉnh sở thích của bạn', 'Edit preferences')}
+        </span>
+      </div>
+    ),
+    loading && !forYouActive && visibleEvents.length === 0 && (
+      <div key="loading" data-testid="map-loading" style={{ padding: 20, color: ink2, fontSize: 14 }}>{T('Đang tải…', 'Loading…')}</div>
+    ),
+    !loading && loadError && events.length === 0 && (
+      <div key="failed" data-testid="map-load-failed" style={{ padding: 20, color: ink, fontSize: 14 }}>
+        <div style={{ color: ink2 }}>{T('Chưa tải được sự kiện. Kiểm tra kết nối mạng rồi thử lại.', 'Couldn’t load events. Check your connection and try again.')}</div>
+        <button type="button" onClick={refresh} data-testid="map-load-retry" style={emptyAction}>{T('Thử lại', 'Try again')}</button>
+      </div>
+    ),
+    !loading && !forYouActive && visibleEvents.length === 0 && committedBounds && events.length > 0 && cityMatches.length === 0 && (
+      anyInArea && filtersActive ? (
+        <div key="no-results" data-testid="map-search-no-results" style={{ padding: 20, color: ink, fontSize: 14 }}>
+          <div style={{ color: ink2 }}>
+            {searchQuery.trim()
+              ? T(`Không có sự kiện nào trong vùng này khớp với "${searchQuery.trim()}".`, `No events in this area match "${searchQuery.trim()}".`)
+              : T('Có sự kiện trong vùng này nhưng bộ lọc đang ẩn chúng.', 'There are events in this area, but your filters hide them.')}
+          </div>
+          <button type="button" onClick={clearFilters} data-testid="map-clear-filters" style={emptyAction}>{T('Xoá bộ lọc', 'Clear filters')}</button>
+        </div>
+      ) : (
+        <div key="area-empty" data-testid="map-area-empty" style={{ padding: 20, color: ink, fontSize: 14 }}>
+          <div style={{ color: ink2 }}>{T('Không có sự kiện nào trong vùng bản đồ này.', 'No events in this part of the map.')}</div>
+          {matchingAnywhere.length > 0 && (
+            <button type="button" onClick={showNearest} data-testid="map-show-nearest" style={emptyAction}>
+              {nearestKm != null && nearestKm >= 1
+                ? T(`Xem gần nhất · cách ${Math.round(nearestKm)} km`, `Show nearest · ${Math.round(nearestKm)} km away`)
+                : T('Xem sự kiện gần nhất', 'Show nearest events')}
+            </button>
+          )}
+          {/* Filters on and nothing here: offer to clear them (owner 2026-11-01), never a dead end. */}
+          {(filtersActive || catFilter !== 'all') && (
+            <button type="button" onClick={clearFilters} data-testid="map-clear-filters-empty" style={emptyAction}>
+              {T(`Xoá ${summary.count} bộ lọc`, summary.count === 1 ? 'Clear 1 filter' : `Clear ${summary.count} filters`)}
+            </button>
+          )}
+        </div>
+      )
+    ),
+  ].filter(Boolean);
+  // Closed list: the same messages float above the buttons (one place at a time, they share their test ids).
+  const showEmptyCard = !listOpen && !searchActive && emptyNodes.length > 0;
+  const srOnly = { position: 'absolute', width: 1, height: 1, margin: -1, padding: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0 };
+  const forYouCapsule = { ...photoPill({ position: 'static', borderRadius: RADIUS.pill }), display: 'inline-flex', alignItems: 'center', minHeight: 36, padding: '0 12px', fontSize: 13, color: ink, fontWeight: forYouActive ? 700 : 500, whiteSpace: 'nowrap',
+    ...(forYouActive ? { background: ink, color: paper, border: `1px solid ${ink}`, backdropFilter: 'none', WebkitBackdropFilter: 'none', boxShadow: 'none' } : null) };
+  const filterBadge = sheetFilterCount > 0 ? sheetFilterCount : 0;
+
   return (
-    <div ref={rootRef} style={{ position: 'fixed', inset: 0, background: paper }} data-screen-label="MapExplore">
-      {/* iOS has no map zoom controls (mapControls {}); the web +/- sits below the compass pill. */}
-      <style>{`[data-screen-label="MapExplore"] .maplibregl-ctrl-top-right { top: ${topInset + 56}px; right: 6px; } [data-screen-label="MapExplore"] .bb-noscroll::-webkit-scrollbar { display: none; }
-        /* Attribution (required) lives just above the sheet, in the visible map strip. */
-        [data-screen-label="MapExplore"] .maplibregl-ctrl-bottom-right { display: ${sheetSnap === 'tall' ? 'none' : 'block'}; bottom: ${Math.max(0, Math.round(containerH - sheetTopPx))}px; z-index: 3; max-width: calc(100% - 12px); }
+    <div ref={rootRef} data-screen-label="MapExplore"
+      style={{ position: 'fixed', inset: 0, background: paper, opacity: 1 - 0.6 * closingProgress, transform: closingProgress ? `scale(${1 - 0.04 * closingProgress})` : 'none', transition: 'opacity 0.3s ease, transform 0.3s ease' }}>
+      {/* iOS has no map zoom controls (mapControls {}); the web +/- sits below the shared controls. */}
+      <style>{`[data-screen-label="MapExplore"] .maplibregl-ctrl-top-right { top: ${Math.round(topControlsBottom + 12)}px; right: 6px; } [data-screen-label="MapExplore"] .bb-noscroll::-webkit-scrollbar { display: none; }
+        /* Attribution (required) lives just above the bottom stack (the dock and its buttons). */
+        [data-screen-label="MapExplore"] .maplibregl-ctrl-bottom-right { display: block; bottom: ${Math.max(0, Math.round(containerH - lay.sheetTopPx))}px; z-index: 3; max-width: calc(100% - 12px); }
         [data-screen-label="MapExplore"] .maplibregl-ctrl-attrib { font-size: 10px; line-height: 1.3; max-width: 100%; }
         [data-screen-label="MapExplore"] .maplibregl-ctrl-bottom-left { display: none; }
         [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl-group { background: var(--bb-field); box-shadow: 0 0 0 1px var(--bb-rule); }
@@ -1673,226 +1469,23 @@ export default function MapExplore() {
         [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl-attrib a { color: var(--bb-fg); }`}</style>
       <div ref={mapDivRef} style={{ position: 'absolute', inset: 0 }} />
 
-      {/* Follow-up discovery (11-realtime-map.md): maplibre-gl.css gives its
-          own `.maplibregl-ctrl-top-right` an explicit `z-index: 2` — this
-          screen's own floating controls had no z-index at all (defaulting
-          to the same stacking level as the plain map container), so the
-          library's own zoom +/- control (added below, `top-right`) was
-          silently sitting ON TOP of the compass button in that exact
-          corner, intercepting real clicks/taps meant for it. Confirmed via
-          `document.elementFromPoint` at the compass's own center returning
-          the maplibre control's icon, not this button. `zIndex: 3` on all
-          three of this screen's own floating pills — not just the compass —
-          for consistency, since any of them sharing a corner with a future
-          maplibre control would have the identical problem. */}
-      {/* Follow-up (11-realtime-map.md, bug 2): this used to omit
-          `fontWeight` (falling back to the browser default, normal/400)
-          and use a narrower `padding` ('8px 12px') than "Tìm ở đây" below
-          (600/'8px 16px') — same `photoPill()` base (background/color
-          token), so the two never actually differed in color by value,
-          but the lighter weight read as a visibly different tint at a
-          glance. Matched to "Tìm ở đây"'s own padding/fontWeight exactly
-          (fontSize was already 12 by default from `photoPill()`, so no
-          change needed there) — same height, same look, no new token. */}
-      <div ref={backRef} onClick={closeMap} data-testid="map-back" role="button" aria-label={T('Đóng bản đồ', 'Close map')}
-        style={{ ...photoPill({ ...capsuleGlass, borderRadius: '50%' }), top: topInset + 8, left: 16, width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3, ...mapCtlFade }}>
-        {/* Arrow only (owner 2026-11-01); the label still says what it does. */}
-        <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
-      </div>
+      {/* The settled result count for THIS map area: the same list the pins come from. Announced politely (it changes
+          only when the camera settles or a filter changes, never every frame). */}
+      <span data-testid="map-result-count" aria-live="polite" style={srOnly}>{countText}</span>
 
-      <div
-        ref={compassRef}
-        onClick={recenterOnUser}
-        data-testid="map-compass"
-        style={{ ...photoPill({ borderRadius: '50%' }), top: topInset + 8, right: 16, width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, zIndex: 3, ...mapCtlFade, opacity: compassOpacity * (1 - fullP) }}
-      >
-        🧭
-      </div>
-      {/* The city the map is on, centred between back and compass; fades away with them at full height. */}
-      {mapCity && (
-        <div data-testid="map-city" aria-label={T(`Bản đồ đang ở ${mapCity}`, `Map showing ${mapCity}`)}
-          style={{ ...photoPill(capsuleGlass), top: topInset + 10, left: '50%', transform: `translateX(-50%) scale(${1 - 0.35 * fullP})`, transformOrigin: 'top center', opacity: 1 - fullP,
-            maxWidth: 'calc(100% - 140px)', height: 34, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 3,
-            transition: dragOffsetVh ? 'none' : `transform 0.32s ${bubble}, opacity 0.2s ease` }}>
-          <svg aria-hidden="true" width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={clay} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z" /><circle cx="12" cy="11" r="2" /></svg>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{mapCity}</span>
-        </div>
-      )}
-      {/* Full height: a floating "Map" pill above the dock brings the map back (owner 2026-11-01, Airbnb-like). */}
-      {sheetSnap === 'tall' && !searchActive && !dragOffsetVh && (
-        <button type="button" onClick={() => setSheetSnap('mid')} data-testid="map-sheet-map-button" aria-label={T('Xem bản đồ', 'Show map')} className="bb-pop-in"
-          style={{ position: 'absolute', left: '50%', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)', transform: 'translateX(-50%)', zIndex: 6, height: 48, padding: '0 20px', borderRadius: 999, border: 'none',
-            background: ink, color: paper, display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,0.28)' }}>
-          {T('Bản đồ', 'Map')}
-          <svg aria-hidden="true" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14" /></svg>
-        </button>
-      )}
-
-      {/* No "Tìm ở đây / Search here": the whole public set is loaded, so the results follow the map by
-          themselves once it settles. Only an incomplete set (past MAP_EVENT_CAP) says so, below. */}
-
-      <div
-        ref={sheetRef}
-        data-testid="map-sheet"
-        style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0, top: sheetTopPx, zIndex: 4,
-          background: paper, borderRadius: sheetSnap === 'tall' ? 0 : '20px 20px 0 0', boxShadow: '0 -6px 24px rgba(27,25,22,0.18)',
-          display: 'flex', flexDirection: 'column',
-          // Full height reaches the top of the screen: keep the grabber and search row below the status bar.
-          paddingTop: sheetSnap === 'tall' ? 'env(safe-area-inset-top, 0px)' : 0,
-          // ANIMATION REQUIREMENT: the extra `transform` (only non-identity
-          // while `bubbleIn`) is what gives a restore its soft overshoot —
-          // `cubic-bezier(0.34, 1.56, 0.64, 1)` is a standard "back out"
-          // curve (briefly overshoots past 1 before settling), the closest
-          // CSS-easing equivalent of the iOS build's
-          // `.interpolatingSpring` for the same restore-only bubble. `top`
-          // keeps its own existing drag-snap easing, untouched. Task 1
-          // follow-up: `closingProgress` (only ever non-zero while
-          // `closeMap()` is in flight) composes into the SAME transform,
-          // shrinking the sheet down as it closes — see `closeMap()`'s own
-          // comment for why web only has a button trigger for this, not a
-          // live-tracked drag.
-          transform: `translateY(${(bubbleIn ? 14 : 0) + 70 * closingProgress}px) scale(${(bubbleIn ? 0.985 : 1) * (1 - 0.15 * closingProgress)})`,
-          transition: dragState.current
-            ? 'none'
-            : 'top 0.28s cubic-bezier(.22,.61,.36,1), transform 0.42s cubic-bezier(0.34, 1.56, 0.64, 1)',
-        }}
-      >
-        {/* Bug 3: `touchAction: 'none'` used to sit on the WHOLE sheet div
-            above — since touch-action's "used value" for a touch is the
-            intersection of the touched element's own value AND every
-            ancestor's, an ancestor declaring 'none' disables native touch
-            scrolling for every descendant too, including the list further
-            down, regardless of that list's own (default/auto) touch-action.
-            That's what made the list unscrollable at mid: the drag-vs-scroll
-            *pointer handlers* were already correctly scoped to just this
-            handle (never attached to the sheet or the list), only the CSS
-            was too broad. Scoping `touchAction: 'none'` to just this small
-            handle element — the only thing that actually needs to suppress
-            the browser's native pan/scroll to do its own pointer-based
-            drag — leaves the list with its default touch-action, so it
-            scrolls normally at every detent. */}
-        {/* One 44px header row (it used to be a grabber row plus a separate "List lớn / List nhỏ" row, which pushed
-            the first result under the dock at mid): bigger-map button · drag grabber + the settled result count ·
-            (full height only, Map v6) the Large / Compact switch · bigger-list button. Only the middle drags. */}
-        <div style={{ display: sheetSnap === 'tall' ? 'none' : 'flex', alignItems: 'center', padding: '4px 8px 2px' }}>
-          <button
-            type="button"
-            onClick={() => setSheetSnap('peek')}
-            data-testid="map-sheet-list-small"
-            aria-label={T('Bản đồ lớn', 'Bigger map')}
-            aria-pressed={sheetSnap === 'peek'}
-            style={sizeBtn(sheetSnap === 'peek')}
-          >
-            <svg aria-hidden="true" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z" /><path d="M9 4v14M15 6v14" /></svg>
+      {/* The shared controls: back, search, filters, then the chips. They stay over the map and over the list. */}
+      <div ref={topRef} data-testid="map-top" style={{ position: 'absolute', left: 0, right: 0, top: topInset, zIndex: 5, padding: '8px 0 0', display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', pointerEvents: 'auto' }}>
+          <button type="button" onClick={closeMap} data-testid="map-back" aria-label={T('Đóng bản đồ', 'Close map')}
+            style={{ ...photoPill({ position: 'static', borderRadius: '50%' }), flex: 'none', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, color: ink }}>
+            {/* Arrow only (owner 2026-11-01); the label still says what it does. */}
+            <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
           </button>
-          <div
-            onPointerDown={onHandlePointerDown}
-            onPointerMove={onHandlePointerMove}
-            onPointerUp={onHandlePointerUp}
-            onPointerCancel={onHandlePointerUp}
-            data-testid="map-sheet-handle"
-            style={{ flex: 1, minWidth: 0, minHeight: 44, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'grab', touchAction: 'none' }}
-          >
-            {sheetSnap !== 'tall' && <div style={{ width: 36, height: 4, borderRadius: 2, background: rule }} />}
-            {/* The settled result count for THIS map area — the same list the pins come from. Announced politely
-                (it changes only when the camera settles or a filter changes, never every frame). */}
-            <span data-testid="map-result-count" aria-live="polite" style={{ fontSize: 13, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
-              {committedBounds && !(loading && !events.length)
-                ? T(`${visibleEvents.length} sự kiện trong vùng bản đồ`, `${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'} in this map area`)
-                : T('Đang tải sự kiện…', 'Loading events…')}
-            </span>
-          </div>
-          {/* Map v6 (note 74): at full height, Large photo cards (default) or Compact rows — the same two-icon switch
-              and look as Home's cards / list toggle; remembered for this session on the Map only. */}
-          <button
-            type="button"
-            onClick={() => setSheetSnap('tall')}
-            data-testid="map-sheet-list-large"
-            aria-label={T('Danh sách lớn', 'Bigger list')}
-            aria-pressed={sheetSnap === 'tall'}
-            style={sizeBtn(sheetSnap === 'tall')}
-          >
-            <svg aria-hidden="true" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" /></svg>
-          </button>
-        </div>
-
-        {/* Map v5 (note 73): at peek the strip keeps the count (above) + what is filtered; tap = back to mid.
-            Map v6 (note 74): plus one row that earns its space — search, the quick filters and All filters. */}
-        {sheetSnap === 'peek' && (
-          <>
-            <div data-testid="map-peek-summary" role="button" tabIndex={0} onClick={() => setSheetSnap('mid')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSheetSnap('mid'); } }}
-              aria-label={T('Mở danh sách', 'Open the list')}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 16px', minHeight: 36, cursor: 'pointer' }}>
-              <span data-testid="map-peek-summary-text" style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: summary.count ? 600 : 400, color: summary.count ? ink : ink2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {summary.count ? summaryText : T('Chưa lọc gì · vuốt lên để xem danh sách', 'No filters · swipe up for the list')}
-              </span>
-              {outsideCount > 0 && visibleEvents.length > 0 && !summary.count && (
-                <span data-testid="map-outside-count" style={{ flex: 'none', fontSize: 12, color: ink2, paddingInlineEnd: 10 }}>
-                  {T(`+${outsideCount} ngoài vùng`, `+${outsideCount} outside`)}
-                </span>
-              )}
-              {summary.count > 0 && clearChip('map-peek-clear')}
-            </div>
-            <div data-hscroll="true" data-testid="map-peek-strip" className="bb-noscroll"
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px 8px', minHeight: 44, overflowX: 'auto', scrollbarWidth: 'none', flex: 'none' }}>
-              {/* Search: lifts the sheet to full height (the keyboard covers the lower half) and focuses the box in
-                  this same tap, so iOS Safari raises the keyboard (see setSearchInputRef). */}
-              <button type="button" onClick={openSearch} data-testid="map-peek-search" aria-label={T('Tìm kiếm', 'Search')}
-                style={{ flex: 'none', width: 40, height: 40, borderRadius: 20, border: 'none', background: ink, color: paper, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-              </button>
-              {quickChips('map-peek-chip', true)}
-            </div>
-          </>
-        )}
-        {/* Sticky, compact: one line that still says exactly what is filtered (tap = open the search + chips). */}
-        {compactHeader && (
-          <div style={{ padding: '4px 16px 8px' }}>
-            <div data-testid="map-filter-summary" role="button" tabIndex={0} onClick={expandHeader}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); expandHeader(); } }}
-              aria-label={T('Mở tìm kiếm và bộ lọc', 'Open search and filters')}
-              style={{ background: surface2, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, padding: '0 4px 0 12px', minHeight: 44, cursor: 'pointer' }}>
-              <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth={2} strokeLinecap="round" style={{ opacity: 0.6, flex: 'none' }}>
-                {summary.count ? <path d="M4 6h16M7 12h10M10 18h4" /> : <><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></>}
-              </svg>
-              <span data-testid="map-filter-summary-text" style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: summary.count ? 600 : 400, color: summary.count ? ink : ink2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {summary.count ? summaryText : T('Tìm tên, loại, khu vực, thành phố…', 'Search name, type, area, city…')}
-              </span>
-              {summary.count > 0 && (
-                <span data-testid="map-filter-summary-count" aria-label={T(`${summary.count} bộ lọc`, `${summary.count} filters`)}
-                  style={{ flex: 'none', minWidth: 22, height: 22, padding: '0 7px', boxSizing: 'border-box', borderRadius: 11, background: ink, color: paper, fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontVariantNumeric: 'tabular-nums' }}>
-                  {summary.count}
-                </span>
-              )}
-              {summary.count > 0 && clearChip('map-filter-summary-clear')}
-            </div>
-          </div>
-        )}
-        {/* Home quick event search (2026-09-27) — a plain text filter,
-            ANDed with the category/open-now/nearby controls below;
-            reuses this screen's own existing list/filter/event-detail
-            routing rather than a second search surface. Autofocused on
-            arrival from Home's search button (see the mount effect
-            above). */}
-        {/* Map v6 (note 74): the input stays MOUNTED at every snap (collapsed to an invisible 1px box at peek and
-            behind the folded summary, never display:none / visibility:hidden), so the peek search button can focus
-            it synchronously inside its own tap — iOS Safari only raises the keyboard for a focus() in the gesture. */}
-        {/* No safe-area-top padding here: this is a bottom sheet (it added ~47px on a real iPhone). */}
-        <div data-testid="map-search-box" data-collapsed={searchCollapsed ? 'true' : undefined}
-          style={searchCollapsed
-            ? { position: 'absolute', top: 0, left: 0, width: 1, height: 1, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }
-            : { padding: '4px 16px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
-          {/* Full height covers the map, so its controls sit either side of a narrower field: back (left) and
-              "Show map" (right, drops the sheet to mid), which also says this list sits over a map. */}
-          {!searchActive && (
-            <button type="button" onClick={closeMap} tabIndex={sideP > 0.5 ? 0 : -1} aria-hidden={sideP > 0.5 ? undefined : true} data-testid="map-sheet-back" aria-label={T('Đóng bản đồ', 'Close map')} style={sideBtn}>
-              <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
-            </button>
-          )}
-          <div className="bb-focus-ring" style={{ flex: 1, minWidth: 0, background: surface2, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', minHeight: 44 }}>
-            <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.55, flex: 'none' }}>
+          {/* The matcher covers name, category, area, host and description (src/lib/search.js), not just names. The
+              input is always mounted and visible, so a tap focuses it inside the gesture (iOS Safari keyboard rule). */}
+          <div className="bb-focus-ring" data-testid="map-search-box"
+            style={{ ...photoPill({ position: 'static', borderRadius: 22 }), flex: 1, minWidth: 0, height: 44, display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', cursor: 'text', fontSize: 15 }}>
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.55, flex: 'none' }}>
               <circle cx="11" cy="11" r="7" />
               <path d="M21 21l-4.35-4.35" />
             </svg>
@@ -1903,9 +1496,7 @@ export default function MapExplore() {
               onFocus={onSearchFocus}
               onBlur={onSearchBlur}
               onKeyDown={(e) => { if (e.key === 'Enter' && searchQuery.trim()) { rememberSearch(searchQuery); e.currentTarget.blur(); } }}
-              tabIndex={searchCollapsed ? -1 : 0}
               enterKeyHint="search"
-              // The matcher covers name, category, area, host and description (src/lib/search.js), not just names.
               placeholder={T('Tìm tên, loại, khu vực, thành phố…', 'Search name, type, area, city…')}
               aria-label={T('Tìm sự kiện trên bản đồ', 'Search events on the map')}
               data-testid="map-search-input" data-bare
@@ -1913,429 +1504,264 @@ export default function MapExplore() {
             />
             {searchQuery && (
               <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setSearchQuery('')} data-testid="map-search-clear" aria-label={T('Xoá tìm kiếm', 'Clear search')}
-                style={{ width: 44, height: 44, marginInlineEnd: -12, border: 'none', background: 'none', cursor: 'pointer', color: ink2, fontSize: 18, lineHeight: 1, flex: 'none' }}>×</button>
+                style={{ width: 44, height: 44, marginInlineEnd: -14, border: 'none', background: 'none', cursor: 'pointer', color: ink2, fontSize: 18, lineHeight: 1, flex: 'none' }}>×</button>
             )}
           </div>
-          {/* Cancel = keyboard down + the sheet back where the search was opened from. mousedown is kept from
-              blurring the input first (which would unmount this button before its click). */}
-          {searchActive && (
+          {/* Cancel = keyboard down. mousedown is kept from blurring the input first (which would unmount this
+              button before its click). */}
+          {searchActive ? (
             <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={cancelSearch} data-testid="map-search-cancel"
-              style={{ flex: 'none', minHeight: 44, padding: '0 6px 0 10px', border: 'none', background: 'none', color: clay, fontSize: 14.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ flex: 'none', minHeight: 44, padding: '0 4px', border: 'none', background: 'none', color: clay, fontSize: 14.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textShadow: '0 0 6px var(--bb-bg), 0 0 6px var(--bb-bg)' }}>
               {T('Huỷ', 'Cancel')}
             </button>
-          )}
-          {!searchActive && (
-            // Same control as the compass over the map (owner 2026-11-01): centre on me, with the map shown.
-            <button type="button" onClick={() => { setSheetSnap('mid'); recenterOnUser(); }} tabIndex={sideP > 0.5 ? 0 : -1} aria-hidden={sideP > 0.5 ? undefined : true} data-testid="map-sheet-locate" aria-label={T('Vị trí của tôi', 'My location')} style={{ ...sideBtn, fontSize: 17, opacity: sideP * compassOpacity }}>
-              🧭
+          ) : (
+            // Everything else (any date, price per ticket, almost full, type chips) in Home's sheet, as a draft.
+            <button type="button" onClick={() => { searchInputRef.current?.blur(); setFilterSheetOpen(true); }} data-testid="map-chip-filters" aria-haspopup="dialog"
+              aria-label={filterBadge ? T(`Bộ lọc, ${filterBadge} đang bật`, `Filters, ${filterBadge} on`) : T('Bộ lọc', 'Filters')}
+              style={{ ...photoPill({ position: 'relative', borderRadius: '50%' }), flex: 'none', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, color: ink }}>
+              <svg aria-hidden="true" width={19} height={19} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
+              {filterBadge > 0 && (
+                <span aria-hidden="true" style={{ position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 9, background: clay, color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', fontVariantNumeric: 'tabular-nums' }}>{filterBadge}</span>
+              )}
             </button>
           )}
         </div>
-        {!searchCollapsed && !suggestOpen && (<>
-        {/* Categories: Home's own definitions (src/data/eventTypeProfiles.json) and line icons, in a fixed order
-            so the row never reshuffles as results change. Each count is what tapping it would show with every
-            other filter kept; a selected category stays even at 0. "All categories" opens Home's A–Z sheet. */}
-        <div ref={catRowRef} data-hscroll="true" data-testid="map-category-row" role="tablist" aria-label={T('Danh mục', 'Categories')} className="bb-noscroll"
-          style={{ display: 'flex', gap: 8, padding: '0 16px 10px', overflowX: 'auto', flex: 'none', scrollbarWidth: 'none' }}>
-          {CATEGORY_DEFS.map(c => {
-            const active = catFilter === c.key;
-            const n = categoryCountMap[c.key] ?? 0;
-            return (
-              <button
-                key={c.key}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                aria-label={T(`${c.vi}, ${n} sự kiện`, `${c.en}, ${n} event${n === 1 ? '' : 's'}`)}
-                onClick={() => { if (!active || c.key !== 'all') setCatFilter(active ? 'all' : c.key); }}
-                data-testid={`map-cat-${c.key}`}
-                // "All" first, then the picked category, then the rest (owner 2026-11-01).
-                style={{ ...catChip(active, n === 0 && !active), order: c.key === 'all' ? -2 : active ? -1 : 0 }}
-              >
-                <CategoryGlyph cat={c.key} size={16} strokeWidth={1.8} />
-                <span>{T(c.vi, c.en)}</span>
-                <span data-testid={`map-cat-count-${c.key}`} style={{ fontVariantNumeric: 'tabular-nums', opacity: active ? 0.85 : 0.6 }}>{n}</span>
+
+        {/* For You is pinned at the leading edge (never scrolls away); the other chips live in the horizontal
+            scroller, which keeps data-hscroll so the root tab swipe ignores it. Hidden until the account has saved
+            preferences. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingInlineStart: 16, pointerEvents: 'auto' }}>
+          {hasPrefs && (
+            <ForYouChip
+              T={T}
+              active={forYouActive}
+              pending={forYouAlert.pending}
+              animate={forYouAlert.animate}
+              capsuleStyle={forYouCapsule}
+              onClick={toggleForYou}
+            />
+          )}
+          <div ref={chipRowRef} data-hscroll="true" data-testid="map-filter-extra-scroller" className="bb-noscroll"
+            style={{ flex: '1 1 0', minWidth: 0, display: 'flex', gap: 8, paddingInlineEnd: 16, paddingBlock: 2, overflowX: 'auto', scrollbarWidth: 'none' }}>
+            {/* Location hierarchy: opens the same shared area sheet Home uses (AreaSheet.jsx). The geographic context:
+                the picked area while the map is framed on it, else "Map area". */}
+            <button type="button" onClick={openArea} data-testid="map-chip-area" aria-haspopup="dialog" style={{ ...mapChip(false, false), order: -4 }}>
+              {areaContext === 'area' && cityDest ? cityName(cityDest) : areaContext === 'area' && curArea.key !== 'all' ? curArea.label : T('Vùng bản đồ', 'Map area')} ▾
+            </button>
+            {/* Seats left: real fill only (get_public_event_fill), so it is hidden until banbe has any. */}
+            {(anyFillKnown || openNowOnly) && (
+              <button type="button" aria-pressed={openNowOnly} onClick={() => setOpenNowOnly(v => !v)} data-testid="map-chip-open-now"
+                style={{ ...mapChip(openNowOnly, false), order: openNowOnly ? -3 : 0 }}>
+                {T('Còn chỗ', 'Seats left')}
               </button>
-            );
-          })}
-          <button type="button" onClick={() => setCategorySheetOpen(true)} data-testid="map-cat-show-all" aria-haspopup="dialog" style={catChip(false, false)}>
-            {T('Tất cả danh mục', 'All categories')}
-          </button>
-        </div>
-
-        {/* For You is pinned at the leading edge (never scrolls away); only the other chips
-            live in the horizontal scroller, which keeps data-hscroll so the root tab swipe
-            ignores it. Hidden until the account has saved preferences. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 0 10px', paddingInlineStart: 16, flex: 'none' }}>
-        {hasPrefs && (
-          <ForYouChip
-            T={T}
-            active={forYouActive}
-            pending={forYouAlert.pending}
-            animate={forYouAlert.animate}
-            capsuleStyle={{ background: surface2, borderRadius: RADIUS.pill, display: 'inline-flex', alignItems: 'center', minHeight: 36, padding: '0 12px', fontSize: 13, cursor: 'pointer', color: ink, fontWeight: forYouActive ? 700 : 500, border: forYouActive ? `1px solid ${ink}` : '1px solid transparent', whiteSpace: 'nowrap' }}
-            onClick={toggleForYou}
-          />
-        )}
-        <div ref={chipRowRef} data-hscroll="true" data-testid="map-filter-extra-scroller" className="bb-noscroll" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', gap: 8, paddingInlineEnd: 16, overflowX: 'auto', scrollbarWidth: 'none' }}>
-          {/* Location hierarchy — opens the same shared area sheet Home
-              uses (AreaSheet.jsx); shows the current short label. */}
-          <button
-            type="button"
-            onClick={openArea}
-            data-testid="map-chip-area"
-            aria-haspopup="dialog"
-            style={catChip(false, false)}
-          >
-            {/* The geographic context: the picked area while the map is framed on it, else "Map area". */}
-            {areaContext === 'area' && cityDest ? cityName(cityDest) : areaContext === 'area' && curArea.key !== 'all' ? curArea.label : T('Vùng bản đồ', 'Map area')} ▾
-          </button>
-          {/* Time quick chips apply at once, judged in each event's own venue time zone (homeDiscovery). */}
-          {[['tonight', 'Tối nay', 'Tonight'], ['weekend', 'Cuối tuần', 'Weekend']].map(([opt, vi, en]) => (
-            <button key={opt} type="button" aria-pressed={filters.date === opt} onClick={() => toggleDate(opt)}
-              data-testid={`map-chip-${opt}`} style={{ ...catChip(filters.date === opt, false), order: filters.date === opt ? -1 : 0 }}>
-              {T(vi, en)}
-            </button>
-          ))}
-          {/* Seats left: real fill only (get_public_event_fill), so it is hidden until banbe has any. The old
-              English label "Open now" read like opening hours; events have seats, not hours. */}
-          {(anyFillKnown || openNowOnly) && (
-            <button
-              type="button"
-              aria-pressed={openNowOnly}
-              onClick={() => setOpenNowOnly(v => !v)}
-              data-testid="map-chip-open-now"
-              style={{ ...catChip(openNowOnly, false), order: openNowOnly ? -1 : 0 }}
-            >
-              {T('Còn chỗ', 'Seats left')}
-            </button>
-          )}
-          {/* Everything else (any date, price per ticket, almost full, type chips) in Home's sheet, as a draft. */}
-          <button type="button" onClick={() => setFilterSheetOpen(true)} data-testid="map-chip-filters" aria-haspopup="dialog"
-            style={{ ...catChip(sheetFilterCount > 0, false), order: sheetFilterCount > 0 ? -1 : 0 }}>
-            <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg>
-            {T('Bộ lọc', 'Filters')}{sheetFilterCount > 0 ? ` · ${sheetFilterCount}` : ''}
-          </button>
-        </div>
-        </div>
-        {forYouActive && (
-          <div style={{ padding: '0 16px 8px' }}>
-            <span
-              onClick={editPreferences}
-              data-testid="map-foryou-edit-prefs"
-              role="button"
-              style={{ fontSize: 12.5, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', color: ink }}
-            >
-              {T('Chỉnh sở thích của bạn', 'Edit preferences')}
-            </span>
-          </div>
-        )}
-        </>)}
-        {categorySheetOpen && (
-          <CategorySheet
-            keys={categorySheetKeys(categoryDefs(), s.lang === 'en' ? 'en' : 'vi')}
-            counts={categoryCountMap}
-            values={catFilter === 'all' ? [] : [catFilter]}
-            T={T}
-            onPick={(k) => { setCatFilter(catFilter === k ? 'all' : k); setCategorySheetOpen(false); }}
-            onClose={() => setCategorySheetOpen(false)}
-          />
-        )}
-        {filterSheetOpen && (
-          <HomeFilterSheet
-            mapMode
-            simpleShell
-            items={sheetItems}
-            filters={filters}
-            sort="soonest"
-            now={nowMinute * 60000}
-            T={T}
-            canSortNearest={false}
-            onApply={(draft) => { setFilters(normalizeFilters(draft)); setFilterSheetOpen(false); }}
-            onClose={() => setFilterSheetOpen(false)}
-          />
-        )}
-
-        {/* Status notices (only when there is something to say): updating, a failed refresh, an incomplete set. */}
-        {sheetSnap !== 'peek' && !suggestOpen && ((refreshing && events.length > 0) || (loadError && events.length > 0) || !dataMeta.complete || (outsideCount > 0 && visibleEvents.length > 0)) && (
-        <div style={{ padding: '0 16px 6px', display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-          {refreshing && events.length > 0 && <span style={{ fontSize: 12, color: ink2 }}>{T('Đang cập nhật…', 'Updating…')}</span>}
-          {outsideCount > 0 && visibleEvents.length > 0 && (
-            <span data-testid="map-outside-count" style={{ fontSize: 12, color: ink2 }}>
-              {T(`+${outsideCount} sự kiện khớp nằm ngoài vùng này`, `+${outsideCount} matching event${outsideCount === 1 ? '' : 's'} outside this area`)}
-            </span>
-          )}
-          {/* A failed refresh keeps the last good results and says so; Retry reloads the whole set. */}
-          {loadError && events.length > 0 && (
-            <span data-testid="map-refresh-error" role="status" style={{ fontSize: 12, color: ink2 }}>
-              {T('Chưa cập nhật được.', 'Couldn’t update.')}{' '}
-              <button type="button" onClick={refresh} data-testid="map-retry" style={{ border: 'none', background: 'none', padding: 0, minHeight: 32, color: ink, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>
-                {T('Thử lại', 'Retry')}
-              </button>
-            </span>
-          )}
-          {!dataMeta.complete && (
-            <span data-testid="map-incomplete" style={{ fontSize: 12, color: ink2 }}>
-              {T(`Đang hiện ${events.length}/${dataMeta.total} sự kiện · phóng to để xem kỹ hơn`, `Showing ${events.length} of ${dataMeta.total} events · zoom in for more`)}
-            </span>
-          )}
-        </div>
-        )}
-
-        {/* Full height (iOS parity): the city the map is on, then the count + Large / Compact, under the filters. */}
-        {sheetSnap === 'tall' && !suggestOpen && (
-          <div data-testid="map-full-count" style={{ padding: '2px 16px 6px', flex: 'none' }}>
-            {mapCity && (
-              <div data-testid="map-sheet-city" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: clay, display: 'flex', alignItems: 'center', gap: 4, paddingTop: 4 }}>
-                <svg aria-hidden="true" width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z" /><circle cx="12" cy="11" r="2" /></svg>
-                {mapCity}
-              </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 6 }}>
-              <span aria-live="polite" style={{ flex: 1, minWidth: 0, fontSize: 17, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {committedBounds && !(loading && !events.length)
-                  ? T(`${visibleEvents.length} sự kiện trong vùng bản đồ`, `${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'} in this map area`)
-                  : T('Đang tải sự kiện…', 'Loading events…')}
-              </span>
-              {layoutSwitch}
-            </div>
-          </div>
-        )}
-        <div
-          ref={listRef}
-          data-testid="map-list-scroll"
-          // The dock is only there at tall (Map v5); below it the list just keeps a small bottom margin.
-          // At rest at peek only the strip shows (no half-cut row under it); dragging up reveals the list again.
-          aria-hidden={sheetSnap === 'peek' && dragOffsetVh === 0 ? true : undefined}
-          style={{ flex: 1, overflowY: 'auto', padding: `0 16px calc(${dockShown(sheetSnap) ? dockClear + 16 + (sheetSnap === 'tall' ? 72 : 0) : 24}px + env(safe-area-inset-bottom, 0px))`, position: 'relative', touchAction: 'pan-y', overscrollBehavior: 'contain', opacity: sheetSnap === 'peek' && dragOffsetVh === 0 ? 0 : 1, transition: 'opacity 0.2s ease' }}
-          onScroll={onListScroll}
-        >
-          {/* Map v6 (note 74): the search is focused and empty — offer something instead of a blank list. */}
-          {suggestOpen ? searchPanel : (<>
-          {/* Map v5 (note 73): the selected event is the first item of the list (no floating card over the map):
-              photo, venue time, price + seats, then Directions · View details · Share. ‹ 1/3 › steps through a
-              same-place stack; × clears the selection. */}
-          {selectedEvent && (
-            <div data-testid="map-selected-row" style={{ margin: '8px 0 4px', padding: 12, borderRadius: 16, background: surface2, border: `1.5px solid ${ink}`, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div onClick={() => selectEvent(selectedEvent)} data-testid="map-card-recenter" style={{ display: 'flex', gap: 12, cursor: 'pointer' }}>
-                {selectedEvent.img && (
-                  <div data-testid="map-card-photo" style={{ backgroundImage: `url(${selectedEvent.img})`, backgroundSize: 'cover', backgroundPosition: 'center', width: 80, height: 80, borderRadius: 12, flexShrink: 0 }} />
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                    <div data-testid="map-card-title" style={{ fontSize: 16, fontWeight: 700, color: ink, lineHeight: 1.25, flex: 1, minWidth: 0, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{selectedEvent.name}</div>
-                    {/* Several events at this same place: step through them here (zooming can never split a stack). */}
-                    {selectedStack.length > 1 && (() => {
-                      const i = selectedStack.findIndex(e => e.id === selectedEvent.id);
-                      const go = (d) => (e) => { e.stopPropagation(); setSelectedId(selectedStack[(i + d + selectedStack.length) % selectedStack.length].id); };
-                      const arrow = { width: 44, height: 44, margin: '-12px 0', border: 'none', background: 'none', color: ink, fontSize: 18, cursor: 'pointer', fontFamily: 'inherit' };
-                      return (
-                        <span data-testid="map-card-stack" style={{ display: 'inline-flex', alignItems: 'center', flex: 'none', fontSize: 12.5, color: ink2 }}>
-                          <button type="button" onClick={go(-1)} aria-label={T('Sự kiện trước ở đây', 'Previous event here')} data-testid="map-card-stack-prev" style={arrow}>‹</button>
-                          <span aria-live="polite">{i + 1}/{selectedStack.length}</span>
-                          <button type="button" onClick={go(1)} aria-label={T('Sự kiện tiếp theo ở đây', 'Next event here')} data-testid="map-card-stack-next" style={arrow}>›</button>
-                        </span>
-                      );
-                    })()}
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); clearSelection(); }}
-                      data-testid="map-card-close"
-                      aria-label={T('Bỏ chọn', 'Clear selection')}
-                      style={{ width: 44, height: 44, margin: '-12px -12px -12px 0', border: 'none', background: 'none', cursor: 'pointer', color: ink2, fontSize: 20, lineHeight: 1, flex: 'none' }}
-                    >×</button>
-                  </div>
-                  <div data-testid="map-card-when" style={{ fontSize: 13, color: ink2, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {[eventWhen(selectedEvent), selectedEvent.area].filter(Boolean).join(' · ')}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                    <span data-testid="map-card-price" style={{ fontSize: 14, color: ink, fontWeight: 600 }}>{priceLine(selectedEvent)}</span>
-                    <SeatPill ev={selectedEvent} testId="map-card-seats" />
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {/* Directions: the same public venue link Event Detail shows (mapsUrl); only with a map location. */}
-                {mapsUrl(selectedEvent) && (
-                  <a
-                    href={mapsUrl(selectedEvent)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-testid="map-card-directions"
-                    style={{ flex: '0 0 auto', minHeight: 44, padding: '0 14px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: clayBg, color: clay, fontSize: 13.5, fontWeight: 600, textDecoration: 'none' }}
-                  >
-                    <svg aria-hidden="true" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l18-8-8 18-2-8-8-2z" /></svg>
-                    {T('Chỉ đường', 'Directions')}
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => openEventDetail(selectedEvent.id)}
-                  data-testid="map-card-cta"
-                  style={{ ...inkButton({ borderRadius: 999 }), flex: 1, minHeight: 44, padding: '0 12px', fontSize: 13.5, border: 'none', fontFamily: 'inherit', cursor: 'pointer' }}
-                >
-                  {T('Xem chi tiết', 'View details')}
-                </button>
-                {/* Share: the same link and preview Event Detail shares (BanBeContext shareEvent). */}
-                <button
-                  type="button"
-                  onClick={() => shareEvent({ key: selectedEvent.id, name: selectedEvent.name, where: selectedEvent.area || '' })}
-                  data-testid="map-card-share"
-                  aria-label={T('Chia sẻ sự kiện', 'Share event')}
-                  style={{ flex: 'none', width: 44, height: 44, borderRadius: 999, border: 'none', background: paper, color: ink, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                >
-                  <svg aria-hidden="true" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg>
-                </button>
-              </div>
-            </div>
-          )}
-          {selectedEvent && visibleEvents.some(e => e.id !== selectedEvent.id) && (
-            <div data-testid="map-selected-more" style={{ padding: '8px 0 0', fontSize: 12.5, fontWeight: 600, color: ink2 }}>
-              {(() => {
-                const n = visibleEvents.filter(e => e.id !== selectedEvent.id).length;
-                return T(`${n} sự kiện khác trong vùng bản đồ này`, `${n} more in this map area`);
-              })()}
-            </div>
-          )}
-          {/* Map v5 (note 73): cities matching the search, first ("Đà Lạt · 2 events" → Go), even with no events. */}
-          {cityMatches.length > 0 && (
-            <div data-testid="map-city-results">
-              <div style={sectionLabel}>{T('Thành phố', 'Cities')}</div>
-              {cityMatches.map(({ id, count }) => (
-                <button key={id} type="button" onClick={() => goCity(id)} data-testid={`map-city-row-${id}`}
-                  style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 12, padding: '10px 0', minHeight: 56, border: 'none', borderBottom: `1px solid ${rule}`, background: 'none', color: ink, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  <span aria-hidden="true" style={{ width: 36, height: 36, borderRadius: 18, background: clayBg, color: clay, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
-                    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
-                  </span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600 }}>{cityName(id)}</span>
-                    <span style={{ display: 'block', fontSize: 13, color: ink2 }}>
-                      {count ? T(`${count} sự kiện`, `${count} event${count === 1 ? '' : 's'}`) : T('Chưa có sự kiện · vẫn có thể đến', 'No events yet · you can still go')}
-                    </span>
-                  </span>
-                  <span style={{ flex: 'none', color: clay, fontSize: 14, fontWeight: 600 }}>{T('Đến', 'Go')}</span>
-                </button>
-              ))}
-              {visibleEvents.length > 0 && <div style={sectionLabel}>{T('Sự kiện', 'Events')}</div>}
-            </div>
-          )}
-          {forYouActive && visibleEvents.length === 0 && (loading || prefsLoading) && (
-            <div data-testid="map-foryou-loading" style={{ padding: 20, color: ink, opacity: 0.6, fontSize: 13 }}>{T('Đang tìm sự kiện hợp với bạn…', 'Finding events for you…')}</div>
-          )}
-          {forYouActive && visibleEvents.length === 0 && !loading && !prefsLoading && (
-            <div data-testid="map-foryou-empty" style={{ padding: 20, color: ink, fontSize: 13 }}>
-              <div style={{ opacity: 0.7 }}>
-                {forYouRanked.length === 0
-                  ? T('Chưa có sự kiện nào hợp với sở thích của bạn trong khu vực/vùng bản đồ này.', 'No events match your preferences in this area or map view yet.')
-                  : T('Các sự kiện hợp với bạn không khớp bộ lọc hiện tại.', 'Your For You matches don\'t fit the current filters.')}
-              </div>
-              <span onClick={editPreferences} data-testid="map-foryou-empty-edit" role="button" style={{ display: 'inline-block', marginTop: 8, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer' }}>
-                {T('Chỉnh sở thích của bạn', 'Edit preferences')}
-              </span>
-            </div>
-          )}
-          {/* Empty states, each one honest about WHY (never silently widening the area or loosening filters):
-              first load · failed first load · no events in this area · filters hide the events that are here. */}
-          {loading && !forYouActive && visibleEvents.length === 0 && <div data-testid="map-loading" style={{ padding: 20, color: ink2, fontSize: 14 }}>{T('Đang tải…', 'Loading…')}</div>}
-          {!loading && loadError && events.length === 0 && (
-            <div data-testid="map-load-failed" style={{ padding: 20, color: ink, fontSize: 14 }}>
-              <div style={{ color: ink2 }}>{T('Chưa tải được sự kiện. Kiểm tra kết nối mạng rồi thử lại.', 'Couldn’t load events. Check your connection and try again.')}</div>
-              <button type="button" onClick={refresh} data-testid="map-load-retry" style={emptyAction}>{T('Thử lại', 'Try again')}</button>
-            </div>
-          )}
-          {!loading && !forYouActive && visibleEvents.length === 0 && committedBounds && events.length > 0 && (
-            cityMatches.length > 0 ? null : anyInArea && filtersActive ? (
-              <div data-testid="map-search-no-results" style={{ padding: 20, color: ink, fontSize: 14 }}>
-                <div style={{ color: ink2 }}>
-                  {searchQuery.trim()
-                    ? T(`Không có sự kiện nào trong vùng này khớp với "${searchQuery.trim()}".`, `No events in this area match "${searchQuery.trim()}".`)
-                    : T('Có sự kiện trong vùng này nhưng bộ lọc đang ẩn chúng.', 'There are events in this area, but your filters hide them.')}
-                </div>
-                <button type="button" onClick={clearFilters} data-testid="map-clear-filters" style={emptyAction}>{T('Xoá bộ lọc', 'Clear filters')}</button>
-              </div>
-            ) : (
-              <div data-testid="map-area-empty" style={{ padding: 20, color: ink, fontSize: 14 }}>
-                <div style={{ color: ink2 }}>{T('Không có sự kiện nào trong vùng bản đồ này.', 'No events in this part of the map.')}</div>
-                {matchingAnywhere.length > 0 && (
-                  <button type="button" onClick={showNearest} data-testid="map-show-nearest" style={emptyAction}>
-                    {nearestKm != null && nearestKm >= 1
-                      ? T(`Xem gần nhất · cách ${Math.round(nearestKm)} km`, `Show nearest · ${Math.round(nearestKm)} km away`)
-                      : T('Xem sự kiện gần nhất', 'Show nearest events')}
+            {/* Categories: Home's own definitions (src/data/eventTypeProfiles.json) and line icons, in a fixed order so
+                the row never reshuffles as results change. Each count is what tapping it would show with every other
+                filter kept; a selected category stays even at 0. "All categories" opens Home's A–Z sheet. */}
+            <div role="tablist" aria-label={T('Danh mục', 'Categories')} data-testid="map-category-row" style={{ display: 'contents' }}>
+              {CATEGORY_DEFS.map(c => {
+                const active = catFilter === c.key;
+                const n = categoryCountMap[c.key] ?? 0;
+                return (
+                  <button key={c.key} type="button" role="tab" aria-selected={active}
+                    aria-label={T(`${c.vi}, ${n} sự kiện`, `${c.en}, ${n} event${n === 1 ? '' : 's'}`)}
+                    onClick={() => { if (!active || c.key !== 'all') setCatFilter(active ? 'all' : c.key); }}
+                    data-testid={`map-cat-${c.key}`}
+                    // "All" first, then the picked category, then the rest (owner 2026-11-01).
+                    style={{ ...mapChip(active, n === 0 && !active), order: c.key === 'all' ? -2 : active ? -1 : 0 }}>
+                    <CategoryGlyph cat={c.key} size={16} strokeWidth={1.8} />
+                    <span>{T(c.vi, c.en)}</span>
+                    <span data-testid={`map-cat-count-${c.key}`} style={{ fontVariantNumeric: 'tabular-nums', opacity: active ? 0.85 : 0.6 }}>{n}</span>
                   </button>
-                )}
-                {/* Filters on and nothing here: offer to clear them (owner 2026-11-01), never a dead end. */}
-                {(filtersActive || catFilter !== 'all') && (
-                  <button type="button" onClick={clearFilters} data-testid="map-clear-filters-empty" style={emptyAction}>
-                    {T(`Xoá ${summary.count} bộ lọc`, summary.count === 1 ? 'Clear 1 filter' : `Clear ${summary.count} filters`)}
-                  </button>
-                )}
-              </div>
-            )
-          )}
-          {/* The results, then (apart, never counted as "in this area") matching events with no map location. */}
-          {/* The selected event is shown once, at the top; the list continues with the others. */}
-          {(() => {
-            const notSel = (e) => e.id !== selectedEvent?.id;
-            const main = visibleEvents.filter(notSel);
-            // Map v6 (note 74): at full height, Large = Home's photo card with the photo pager (tap = select).
-            const large = sheetSnap === 'tall' && listLayout === 'large';
-            return [...main, ...noLocationMatches.filter(notSel)].map((ev, i) => (
-            <Fragment key={ev.id}>
-            {i === main.length && (
-              <div data-testid="map-no-location-heading" style={{ padding: '16px 0 4px', fontSize: 13, fontWeight: 600, color: ink2 }}>
-                {T(`Chưa có vị trí trên bản đồ (${noLocationMatches.length})`, `No map location yet (${noLocationMatches.length})`)}
-              </div>
-            )}
-            {large ? (
-              <div style={{ paddingTop: i === 0 ? 8 : 0 }}>
-                <DiscoveryCard ev={largeCard(ev)} onOpen={() => selectEvent(ev)} onToggleSave={() => toggleFav(ev.id)} T={T}
-                  testId={`map-list-item-${ev.id}`} role="button" gutter={0} current={ev.id === selectedId} />
-              </div>
-            ) : (
-            <div
-              onClick={() => selectEvent(ev)}
-              data-testid={`map-list-item-${ev.id}`}
-              role="button"
-              tabIndex={0}
-              aria-current={ev.id === selectedId ? 'true' : undefined}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectEvent(ev); } }}
-              // Mid = cards (photo + three lines); tall = a denser list (small photo, two lines).
-              style={{ display: 'flex', gap: 12, padding: '7px 0', cursor: 'pointer', alignItems: dense ? 'center' : 'flex-start', animation: 'banbeRowIn 0.3s cubic-bezier(.22,.61,.36,1) backwards', background: ev.id === selectedId ? 'rgba(var(--bb-fg-rgb),0.05)' : 'transparent' }}
-            >
-              {ev.img && <div style={{ width: dense ? 44 : 64, height: dense ? 44 : 64, borderRadius: RADIUS.thumb, backgroundImage: `url(${ev.img})`, backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0 }} />}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.name}</div>
-                {/* Venue date · time (the event's own zone), then the area, plus a distance only when it helps
-                    choose (≤ 50 km, Event Detail's rule; a viewer abroad saw "9662,0 km" on every row). */}
-                <div data-testid={`map-list-item-when-${ev.id}`} style={{ fontSize: 13, color: ink2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {[eventWhen(ev), dense ? ev.area : null].filter(Boolean).join(' · ')}
-                </div>
-                {!dense && (
-                  <div data-testid={`map-list-item-area-${ev.id}`} style={{ fontSize: 13, color: ink2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {[ev.area, nearDistance(ev)].filter(Boolean).join(' · ')}
-                  </div>
-                )}
-                {/* Stage 3 — an honest "no map location" state for an
-                    event with no (or not-yet-confirmed) coordinates,
-                    never a silently-omitted row or an invented pin. */}
-                {!ev.hasLocation && (
-                  <div data-testid={`map-list-item-no-location-${ev.id}`} style={{ fontSize: 10.5, color: ink, opacity: 0.55, marginTop: 2 }}>
-                    {T('Chưa có vị trí trên bản đồ', 'No map location yet')}
-                  </div>
-                )}
-              </div>
-              <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                <div data-testid={`map-list-item-price-${ev.id}`} aria-label={priceLine(ev)} style={{ fontSize: 14, fontWeight: 600, color: ink, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{priceTicket(ev)}</div>
-                <SeatPill ev={ev} testId={`map-list-item-seats-${ev.id}`} />
-              </div>
+                );
+              })}
             </div>
-            )}
-            </Fragment>
-            ));
-          })()}
-          </>)}
+            <button type="button" onClick={() => setCategorySheetOpen(true)} data-testid="map-cat-show-all" aria-haspopup="dialog" style={{ ...mapChip(false, false), order: 1 }}>
+              {T('Tất cả danh mục', 'All categories')}
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* The bottom stack: my location and "List · N", right above the dock. */}
+      <div style={{ position: 'absolute', right: 16, bottom: dockClear + 12, zIndex: 3, display: 'flex', alignItems: 'center', gap: 8, visibility: listOpen ? 'hidden' : 'visible' }}>
+        <div role="button" tabIndex={0} onClick={recenterOnUser} data-testid="map-compass" aria-label={T('Vị trí của tôi', 'My location')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); recenterOnUser(); } }}
+          style={{ ...photoPill({ position: 'static', borderRadius: '50%' }), width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: compassOpacity }}>
+          🧭
+        </div>
+        <button ref={listButtonRef} type="button" onClick={openList} data-testid="map-list-button"
+          aria-label={T(`Danh sách, ${visibleEvents.length} sự kiện`, `List, ${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'}`)}
+          style={{ height: 44, padding: '0 18px', borderRadius: 999, background: ink, color: paper, fontSize: 14, fontWeight: 600, border: 'none', fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,0.28)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" /></svg>
+          {T('Danh sách', 'List')} · {visibleEvents.length}
+        </button>
+      </div>
+
+      {showEmptyCard && (
+        <div data-testid="map-empty-card" style={{ position: 'absolute', left: 16, right: 16, bottom: dockClear + 12 + 44 + 10, zIndex: 3, maxHeight: '40%', overflowY: 'auto', background: paper, borderRadius: 16, boxShadow: '0 4px 18px rgba(27,25,22,0.16)' }}>
+          {emptyNodes}
+        </div>
+      )}
+
+      {/* Focused search: Recent · Cities · Quick filters while it is empty; cities and "show the list" once typing. */}
+      {searchActive && (
+        <div data-testid="map-search-panel" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: listTop, zIndex: 4, background: paper, overflowY: 'auto', padding: '0 16px 24px' }}>
+          {suggestOpen ? searchPanel : (
+            <div onMouseDown={(e) => { if (e.target.closest('button')) e.preventDefault(); }}>
+              {cityResults}
+              <button type="button" onClick={() => { if (searchQuery.trim()) rememberSearch(searchQuery); openList(); }} data-testid="map-search-show-list"
+                style={{ ...emptyAction, width: '100%', justifyContent: 'center', marginTop: 12, background: ink, color: paper }}>
+                {T(`Xem ${visibleEvents.length} sự kiện`, `Show ${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'}`)}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* The list: a layer that slides up to just under the shared controls. It stays mounted (so its scroll position
+          is kept and restored) and is hidden from tab order and screen readers while closed. */}
+      <section data-testid="map-list-sheet" aria-label={T('Danh sách sự kiện', 'Event list')} aria-hidden={listOpen ? undefined : true}
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: listTop, zIndex: 4, background: paper, display: 'flex', flexDirection: 'column',
+          transform: listOpen ? 'none' : 'translateY(100%)', visibility: listOpen ? 'visible' : 'hidden',
+          transition: reduceMotion() ? 'none' : `transform 0.38s cubic-bezier(.2,.85,.25,1), visibility 0s linear ${listOpen ? 0 : 0.38}s` }}>
+        <div data-testid="map-full-count" style={{ padding: '2px 16px 6px', flex: 'none' }}>
+          {mapCity && (
+            <div data-testid="map-sheet-city" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: clay, display: 'flex', alignItems: 'center', gap: 4, paddingTop: 4 }}>
+              <svg aria-hidden="true" width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z" /><circle cx="12" cy="11" r="2" /></svg>
+              {mapCity}
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 6 }}>
+            <h2 ref={listHeadingRef} tabIndex={-1} data-testid="map-list-count" style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 17, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', outline: 'none' }}>
+              {countText}
+            </h2>
+            {layoutSwitch}
+          </div>
+          {forYouActive && (
+            <span onClick={editPreferences} data-testid="map-foryou-edit-prefs" role="button"
+              style={{ display: 'inline-block', marginTop: 6, fontSize: 12.5, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', color: ink }}>
+              {T('Chỉnh sở thích của bạn', 'Edit preferences')}
+            </span>
+          )}
+        </div>
+
+        {/* Status notices (only when there is something to say): updating, a failed refresh, an incomplete set. */}
+        {((refreshing && events.length > 0) || (loadError && events.length > 0) || !dataMeta.complete || (outsideCount > 0 && visibleEvents.length > 0)) && (
+          <div style={{ padding: '0 16px 6px', display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+            {refreshing && events.length > 0 && <span style={{ fontSize: 12, color: ink2 }}>{T('Đang cập nhật…', 'Updating…')}</span>}
+            {outsideCount > 0 && visibleEvents.length > 0 && (
+              <span data-testid="map-outside-count" style={{ fontSize: 12, color: ink2 }}>
+                {T(`+${outsideCount} sự kiện khớp nằm ngoài vùng này`, `+${outsideCount} matching event${outsideCount === 1 ? '' : 's'} outside this area`)}
+              </span>
+            )}
+            {/* A failed refresh keeps the last good results and says so; Retry reloads the whole set. */}
+            {loadError && events.length > 0 && (
+              <span data-testid="map-refresh-error" role="status" style={{ fontSize: 12, color: ink2 }}>
+                {T('Chưa cập nhật được.', 'Couldn’t update.')}{' '}
+                <button type="button" onClick={refresh} data-testid="map-retry" style={{ border: 'none', background: 'none', padding: 0, minHeight: 32, color: ink, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>
+                  {T('Thử lại', 'Retry')}
+                </button>
+              </span>
+            )}
+            {!dataMeta.complete && (
+              <span data-testid="map-incomplete" style={{ fontSize: 12, color: ink2 }}>
+                {T(`Đang hiện ${events.length}/${dataMeta.total} sự kiện · phóng to để xem kỹ hơn`, `Showing ${events.length} of ${dataMeta.total} events · zoom in for more`)}
+              </span>
+            )}
+          </div>
+        )}
+
+        <div ref={listRef} data-testid="map-list-scroll"
+          style={{ flex: 1, overflowY: 'auto', padding: `0 16px calc(${dockClear + 16 + 72}px + env(safe-area-inset-bottom, 0px))`, position: 'relative', touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
+          {!searchActive && cityResults}
+          {!searchActive && cityResults && visibleEvents.length > 0 && <div style={sectionLabel}>{T('Sự kiện', 'Events')}</div>}
+          {listOpen && emptyNodes}
+          {/* The results, then (apart, never counted as "in this area") matching events with no map location. */}
+          {[...visibleEvents, ...noLocationMatches].map((ev, i) => (
+            <Fragment key={ev.id}>
+              {i === visibleEvents.length && (
+                <div data-testid="map-no-location-heading" style={{ padding: '16px 0 4px', fontSize: 13, fontWeight: 600, color: ink2 }}>
+                  {T(`Chưa có vị trí trên bản đồ (${noLocationMatches.length})`, `No map location yet (${noLocationMatches.length})`)}
+                </div>
+              )}
+              {listLayout === 'large' ? (
+                <div style={{ paddingTop: i === 0 ? 8 : 0 }}>
+                  <DiscoveryCard ev={largeCard(ev)} onOpen={() => openEventDetail(ev.id)} onToggleSave={() => toggleFav(ev.id)} T={T}
+                    testId={`map-list-item-${ev.id}`} role="button" gutter={0} current={ev.id === selectedId} />
+                </div>
+              ) : (
+                <div
+                  onClick={() => openEventDetail(ev.id)}
+                  data-testid={`map-list-item-${ev.id}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-current={ev.id === selectedId ? 'true' : undefined}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEventDetail(ev.id); } }}
+                  style={{ display: 'flex', gap: 12, padding: '7px 0', cursor: 'pointer', alignItems: 'flex-start', animation: 'banbeRowIn 0.3s cubic-bezier(.22,.61,.36,1) backwards', background: ev.id === selectedId ? 'rgba(var(--bb-fg-rgb),0.05)' : 'transparent' }}
+                >
+                  {ev.img && <div style={{ width: 64, height: 64, borderRadius: RADIUS.thumb, backgroundImage: `url(${ev.img})`, backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0 }} />}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.name}</div>
+                    {/* Venue date · time (the event's own zone), then the area, plus a distance only when it helps
+                        choose (≤ 50 km, Event Detail's rule; a viewer abroad saw "9662,0 km" on every row). */}
+                    <div data-testid={`map-list-item-when-${ev.id}`} style={{ fontSize: 13, color: ink2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {eventWhen(ev)}
+                    </div>
+                    <div data-testid={`map-list-item-area-${ev.id}`} style={{ fontSize: 13, color: ink2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {[ev.area, nearDistance(ev)].filter(Boolean).join(' · ')}
+                    </div>
+                    {/* Stage 3: an honest "no map location" state for an event with no (or not-yet-confirmed)
+                        coordinates, never a silently-omitted row or an invented pin. */}
+                    {!ev.hasLocation && (
+                      <div data-testid={`map-list-item-no-location-${ev.id}`} style={{ fontSize: 10.5, color: ink, opacity: 0.55, marginTop: 2 }}>
+                        {T('Chưa có vị trí trên bản đồ', 'No map location yet')}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                    <div data-testid={`map-list-item-price-${ev.id}`} aria-label={priceLine(ev)} style={{ fontSize: 14, fontWeight: 600, color: ink, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{priceTicket(ev)}</div>
+                    <SeatPill ev={ev} testId={`map-list-item-seats-${ev.id}`} />
+                  </div>
+                </div>
+              )}
+            </Fragment>
+          ))}
+        </div>
+
+        {/* Back to the map (also Esc). */}
+        <button type="button" onClick={() => setListOpen(false)} data-testid="map-list-map-button" aria-label={T('Xem bản đồ', 'Show map')}
+          style={{ position: 'absolute', left: '50%', bottom: dockClear + 12, transform: 'translateX(-50%)', height: 44, padding: '0 20px', borderRadius: 999, border: 'none',
+            background: ink, color: paper, display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,0.28)' }}>
+          {T('Bản đồ', 'Map')}
+          <svg aria-hidden="true" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14" /></svg>
+        </button>
+      </section>
+
+      {categorySheetOpen && (
+        <CategorySheet
+          keys={categorySheetKeys(categoryDefs(), s.lang === 'en' ? 'en' : 'vi')}
+          counts={categoryCountMap}
+          values={catFilter === 'all' ? [] : [catFilter]}
+          T={T}
+          onPick={(k) => { setCatFilter(catFilter === k ? 'all' : k); setCategorySheetOpen(false); }}
+          onClose={() => setCategorySheetOpen(false)}
+        />
+      )}
+      {filterSheetOpen && (
+        <HomeFilterSheet
+          mapMode
+          simpleShell
+          items={sheetItems}
+          filters={filters}
+          sort="soonest"
+          now={nowMinute * 60000}
+          T={T}
+          canSortNearest={false}
+          onApply={(draft) => { setFilters(normalizeFilters(draft)); setFilterSheetOpen(false); }}
+          onClose={() => setFilterSheetOpen(false)}
+        />
+      )}
     </div>
   );
 }
