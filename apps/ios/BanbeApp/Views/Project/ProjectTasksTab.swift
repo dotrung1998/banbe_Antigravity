@@ -6,8 +6,11 @@ struct ProjectTasksTab: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.openProjectSheet) private var openSheet
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.projectScrollTo) private var scrollTo
     let snap: ProjectSnapshot
     @State private var mineOnly = false
+    /// The lane just added or approved: scrolled to and briefly highlighted (it lands at the bottom of the list).
+    @State private var newLane: String?
 
     var body: some View {
         let me = app.userID?.uuidString.lowercased()
@@ -37,6 +40,13 @@ struct ProjectTasksTab: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project.tasksTab")
+        .onChange(of: snap.lanes?.count ?? 0) { old, new in
+            guard new > old, let lane = (snap.lanes ?? []).max(by: { $0.position < $1.position }) else { return }
+            mineOnly = false
+            newLane = lane.id
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { scrollTo("project.lane.\(lane.id)") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) { withAnimation(.easeOut(duration: 0.4)) { newLane = nil } }
+        }
     }
 
     // MARK: proposals
@@ -129,6 +139,8 @@ struct ProjectTasksTab: View {
     private func laneSection(_ lane: ProjectLane, _ tasks: [ProjectTask]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
+                Image(systemName: ProjectLanePresets.icon(for: lane.name)).font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(app.palette.clay).accessibilityHidden(true)
                 Text(lane.name.uppercased()).font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(app.palette.ink3)
                     .accessibilityAddTraits(.isHeader)
                 if app.projectCan("lane.manage") {
@@ -152,6 +164,10 @@ struct ProjectTasksTab: View {
             }
         }
         .padding(.top, 10)
+        .padding(.horizontal, newLane == lane.id ? 8 : 0)
+        .padding(.bottom, newLane == lane.id ? 8 : 0)
+        .background(newLane == lane.id ? app.palette.clayBg.opacity(0.6) : .clear, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .id("project.lane.\(lane.id)")
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project.lane.\(lane.id)")
     }

@@ -216,13 +216,15 @@ extension AppState {
         }
     }
 
-    func projectPostIcon(_ type: String) -> String {
+    func projectPostIcon(_ type: String, filled: Bool = false) -> String {
+        let base: String
         switch type {
-        case "proposal": return "chart.bar"
-        case "question": return "questionmark.bubble"
-        case "update": return "info.circle"
-        default: return "flag"
+        case "proposal": base = "chart.bar"
+        case "question": base = "questionmark.bubble"
+        case "update": base = "megaphone"
+        default: base = "checkmark.seal"
         }
+        return filled ? base + ".fill" : base
     }
 
     /// Everyone who can answer, vote or see a post: the Hosts and the active members.

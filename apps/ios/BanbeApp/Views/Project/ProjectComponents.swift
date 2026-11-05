@@ -98,11 +98,15 @@ struct ProjectChip: View {
     let selected: Bool
     var enabled = true
     var id: String? = nil
+    var icon: String? = nil
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(title)
+            HStack(spacing: 6) {
+                if let icon { Image(systemName: icon).font(.system(size: 13, weight: .semibold)).accessibilityHidden(true) }
+                Text(title)
+            }
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
                 .padding(.horizontal, 14)
@@ -214,5 +218,43 @@ extension AppState {
         }
         Haptics.light()
         await setProjectTaskStatus(task.id, task.status == "done" ? "todo" : "done")
+    }
+}
+
+
+/// Ready-made lanes with their icons (2026-11-05). The icon is derived from the lane's name on the client (Vietnamese or
+/// English, any case), so no column or migration is needed; a custom name gets the generic grid icon.
+enum ProjectLanePresets {
+    struct Preset: Identifiable { let vi: String; let en: String; let icon: String; var id: String { en } }
+
+    static let all: [Preset] = [
+        Preset(vi: "Địa điểm", en: "Venue", icon: "mappin.and.ellipse"),
+        Preset(vi: "Thực đơn & đồ uống", en: "Food & drinks", icon: "fork.knife"),
+        Preset(vi: "Nhà cung cấp", en: "Suppliers", icon: "shippingbox"),
+        Preset(vi: "Truyền thông", en: "Marketing", icon: "megaphone"),
+        Preset(vi: "Âm thanh & ánh sáng", en: "Sound & light", icon: "speaker.wave.2"),
+        Preset(vi: "Trang trí", en: "Decor", icon: "sparkles"),
+        Preset(vi: "Khách mời", en: "Guests", icon: "person.2"),
+        Preset(vi: "Vé & cổng", en: "Tickets & door", icon: "ticket"),
+        Preset(vi: "Ngân sách", en: "Budget", icon: "banknote"),
+        Preset(vi: "Hậu cần", en: "Logistics", icon: "car"),
+        Preset(vi: "Tình nguyện viên", en: "Volunteers", icon: "hand.raised"),
+        Preset(vi: "Chụp ảnh & quay phim", en: "Photo & video", icon: "camera"),
+        Preset(vi: "An toàn", en: "Safety", icon: "cross.case"),
+        Preset(vi: "Dọn dẹp", en: "Clean-up", icon: "trash"),
+        Preset(vi: "Giấy phép", en: "Permits", icon: "doc.text"),
+    ]
+    static let customIcon = "square.grid.2x2"
+
+    static func key(_ s: String) -> String {
+        s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "vi"))
+            .replacingOccurrences(of: "đ", with: "d").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    static func preset(named name: String) -> Preset? { let k = key(name); return all.first { key($0.vi) == k || key($0.en) == k } }
+    static func icon(for name: String) -> String { preset(named: name)?.icon ?? customIcon }
+    /// Presets whose Vietnamese or English name contains the query (accent- and case-insensitive).
+    static func search(_ query: String) -> [Preset] {
+        let q = key(query); guard !q.isEmpty else { return all }
+        return all.filter { key($0.vi).contains(q) || key($0.en).contains(q) }
     }
 }

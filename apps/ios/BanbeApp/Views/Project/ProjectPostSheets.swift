@@ -356,9 +356,9 @@ struct ProjectComposeSheet: View {
                     if let d = Calendar.current.date(byAdding: .day, value: 2, to: app.projectNow) { deadline = d }
                 } label: {
                     HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: app.projectPostIcon(t)).font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(app.palette.clay).frame(width: 40, height: 40)
-                            .background(app.palette.clayBg, in: Circle()).accessibilityHidden(true)
+                        Image(systemName: app.projectPostIcon(t, filled: true)).font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(app.projectPostTint(t).fg).frame(width: 40, height: 40)
+                            .background(app.projectPostTint(t).bg, in: Circle()).accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(app.projectPostTypeName(t)).font(.body.weight(.bold))
                             Text(ok ? app.projectPostTypeHint(t) : notAllowedText(t)).font(.subheadline).foregroundStyle(app.palette.ink2)

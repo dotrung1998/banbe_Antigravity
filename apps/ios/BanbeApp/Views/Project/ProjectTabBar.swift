@@ -64,13 +64,13 @@ struct ProjectTabBar: View {
         } label: {
             VStack(spacing: 3) {
                 Image(systemName: tab.icon).font(.system(size: 18, weight: .semibold)).accessibilityHidden(true)
-                // One word shrinks instead of breaking mid-word ("Over-view"); two words may take two lines.
+                // Always one line that shrinks to fit, so every tab is the same height ("Money & door" used to wrap and
+                // stand taller than the rest).
                 Text(tab.label)
                     .font(.caption2.weight(.semibold))
-                    .lineLimit(tab.label.contains(" ") ? 2 : 1).minimumScaleFactor(tab.label.contains(" ") ? 0.7 : 0.55)
-                    .multilineTextAlignment(.center)
+                    .lineLimit(1).minimumScaleFactor(0.55)
             }
-            .frame(maxWidth: .infinity, minHeight: 54)
+            .frame(maxWidth: .infinity, minHeight: 54, maxHeight: 54)
             .padding(.horizontal, 2)
             .foregroundStyle(on ? app.palette.paper : app.palette.ink)
             .background(on ? app.palette.ink : app.palette.block, in: RoundedRectangle(cornerRadius: 14, style: .continuous))

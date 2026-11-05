@@ -112,7 +112,8 @@ struct ProjectTopicsTab: View {
             HStack(spacing: 8) {
                 ProjectChip(title: app.T("Tất cả", "All"), selected: laneFilter == nil, id: "project.topics.lane.all") { laneFilter = nil }
                 ForEach(lanes) { l in
-                    ProjectChip(title: l.name, selected: laneFilter == l.id, id: "project.topics.lane.\(l.id)") { laneFilter = l.id }
+                    ProjectChip(title: l.name, selected: laneFilter == l.id, id: "project.topics.lane.\(l.id)",
+                                icon: ProjectLanePresets.icon(for: l.name)) { laneFilter = l.id }
                 }
             }
         }
@@ -172,15 +173,33 @@ struct ProjectPostCard: View {
     private var laneName: String? { app.projectSnapshot?.lanes?.first { $0.id == post.laneId }?.name }
 }
 
+/// Post type at a glance (2026-11-05): each type has its own hue and filled icon, so Proposal / Question / Update /
+/// Decision read apart without reading the word. Decision is solid ink: it is the final, locked kind.
 struct ProjectTypeTag: View {
     @EnvironmentObject private var app: AppState
     let type: String
     var body: some View {
-        Label(app.projectPostTypeName(type), systemImage: app.projectPostIcon(type))
-            .font(.caption.weight(.bold)).lineLimit(1)
-            .padding(.horizontal, 9).padding(.vertical, 4)
-            .foregroundStyle(app.palette.clay)
-            .background(app.palette.clayBg, in: Capsule())
+        let tint = app.projectPostTint(type)
+        HStack(spacing: 5) {
+            Image(systemName: app.projectPostIcon(type, filled: true)).font(.system(size: 12, weight: .bold)).accessibilityHidden(true)
+            Text(app.projectPostTypeName(type).uppercased()).font(.caption2.weight(.heavy)).tracking(0.6)
+        }
+        .lineLimit(1)
+        .padding(.horizontal, 10).padding(.vertical, 5)
+        .foregroundStyle(tint.fg)
+        .background(tint.bg, in: Capsule())
+    }
+}
+
+extension AppState {
+    /// Text and fill for a post type's tag; tested for >= 4.5:1 in both themes.
+    func projectPostTint(_ type: String) -> (fg: Color, bg: Color) {
+        switch type {
+        case "proposal": return (palette.honey, palette.honeyBg)
+        case "question": return isDark ? (Color(hex: 0x8CC7D4), Color(hex: 0x1E3238)) : (Color(hex: 0x2F6B7A), Color(hex: 0xDCEBEE))
+        case "update": return isDark ? (Color(hex: 0xA9C487), Color(hex: 0x27311C)) : (Color(hex: 0x4E6A30), Color(hex: 0xE2E9D4))
+        default: return (palette.paper, palette.ink)
+        }
     }
 }
 

@@ -561,3 +561,15 @@ same `ProjectHubView` → `ProjectSheetHost`, and every sheet uses the shared `C
 `[.medium, .large]`. All 17 `CardSheet` calls under `Views/Project/` now pass `fullHeight: true` (`[.large]` only; the invite sheet no
 longer depends on `project_qr_invite` for its height). The `CardSheet` default is unchanged, since Reports, Schedule month and Event
 Detail "About & Included" rely on half height. The demo "View as" picker (AccountGroupView) stays at medium. Web: sheets were not reported, unchanged.
+
+## 2026-11-05 (later): hub polish from the owner's demo review (iOS only, owner testing)
+
+- Tab row: every label is one line that shrinks to fit, fixed 54 pt height ("Money & door" wrapped and stood taller).
+- Lanes: ready-made list with icons (`ProjectLanePresets` in ProjectComponents.swift; 15 presets VI/EN), search that ignores
+  accents and case, and "Add as a new lane" for any name not listed. The icon comes from the name on the client (no column, no
+  migration); custom names get a grid icon. Icons also show on the Tasks lane headers and the Topics lane chips.
+- "Approved lane doesn't appear": the code did add it (server `project_apply_lane_add`; demo `addProjectLane`), but at the bottom of
+  Tasks, off screen (and hidden under "Mine" when empty). Tasks now switches to All, scrolls to the new lane and highlights it for ~2.5 s.
+- Post type tags: own hue + filled icon each (Proposal honey/chart, Question teal/bubble, Update moss/megaphone, Decision solid
+  ink/seal), uppercase caption. Same tints in the compose sheet's type list (`AppState.projectPostTint`).
+- Web parity NOT done.

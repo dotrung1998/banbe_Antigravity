@@ -328,25 +328,37 @@ extension AppState {
 
 // MARK: - lanes
 
-/// The Host adds a lane straight away; a Manager proposes one with a reason for the Host.
+/// The Host adds a lane straight away; a Manager proposes one with a reason for the Host. Pick from ready-made lanes
+/// (each with its icon), search them, or add your own name when it isn't listed.
 struct ProjectNewLaneSheet: View {
     @EnvironmentObject private var app: AppState
     let close: () -> Void
     @State private var name = ""
+    @State private var query = ""
     @State private var why = ""
 
     private var direct: Bool { app.projectCan("lane.manage") }
     private var count: Int { app.projectSnapshot?.lanes?.count ?? 0 }
+    private var taken: Set<String> { Set((app.projectSnapshot?.lanes ?? []).map { ProjectLanePresets.key($0.name) }) }
     private var ok: Bool {
         let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (1...24).contains(n.count) && count < 10 && (direct || ProjectReasonField.valid(why))
+        return (1...24).contains(n.count) && count < 10 && !taken.contains(ProjectLanePresets.key(n)) && (direct || ProjectReasonField.valid(why))
+    }
+    private var presets: [ProjectLanePresets.Preset] {
+        ProjectLanePresets.search(query).filter { !taken.contains(ProjectLanePresets.key($0.vi)) && !taken.contains(ProjectLanePresets.key($0.en)) }
+    }
+    /// The typed name, offered as a new lane when it isn't a listed one.
+    private var custom: String? {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty, q.count <= 24, ProjectLanePresets.preset(named: q) == nil, !taken.contains(ProjectLanePresets.key(q)) else { return nil }
+        return q
     }
 
     var body: some View {
         CardSheet(title: direct ? app.T("Thêm hạng mục", "Add a lane") : app.T("Đề xuất hạng mục", "Propose a lane"),
                   closeID: "project.sheet.close", fullHeight: true, onClose: close) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 14) {
                     if !direct {
                         Text(app.T("Chủ sự kiện sẽ duyệt và trả lời kèm lý do. Hạng mục chỉ hiện cho cả đội sau khi được duyệt.",
                                    "The Host reviews it and replies with a reason. The lane appears for the team once approved."))
@@ -354,16 +366,30 @@ struct ProjectNewLaneSheet: View {
                             .background(app.palette.clayBg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .foregroundStyle(app.palette.clay)
                     }
-                    ProjectTextField(label: app.T("Tên hạng mục", "Lane name"), text: $name, limit: 24,
+                    ProjectTextField(label: app.T("Tìm hoặc gõ tên mới", "Search or type a new name"), text: $query, limit: 24,
                                      placeholder: app.T("Ví dụ: Truyền thông", "e.g. Marketing"), id: "project.lane.name")
+                    VStack(spacing: 0) {
+                        if let custom {
+                            option(custom, icon: "plus", sub: app.T("Thêm hạng mục mới", "Add as a new lane"), id: "project.lane.custom")
+                        }
+                        ForEach(presets) { p in
+                            option(app.T(p.vi, p.en), icon: p.icon, sub: nil, id: "project.lane.preset.\(p.id)")
+                        }
+                        if presets.isEmpty && custom == nil {
+                            Text(app.T("Không có hạng mục nào khớp.", "No lane matches.")).font(.subheadline).foregroundStyle(app.palette.ink2)
+                                .frame(maxWidth: .infinity, minHeight: 52)
+                        }
+                    }
+                    .background(app.palette.block, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     if !direct {
                         ProjectTextField(label: app.T("Vì sao cần?", "Why is it needed?"), text: $why, limit: 140,
                                          placeholder: app.T("Một hai câu cho Chủ sự kiện", "A line or two for the Host"), axis: .vertical,
                                          id: "project.lane.why")
                     }
                     Text(app.T("\(count)/10 hạng mục.", "\(count)/10 lanes.")).font(.footnote).foregroundStyle(app.palette.ink3)
-                    InkButton(title: direct ? app.T("Thêm", "Add") : app.T("Gửi đề xuất", "Send proposal"), enabled: ok && !app.projectBusy,
-                              cornerRadius: 999) {
+                    InkButton(title: name.isEmpty ? app.T("Chọn một hạng mục", "Pick a lane")
+                                     : direct ? app.T("Thêm \(name)", "Add \(name)") : app.T("Gửi đề xuất", "Send proposal"),
+                              enabled: ok && !app.projectBusy, cornerRadius: 999) {
                         Task {
                             let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
                             let done = direct ? await app.addProjectLane(n)
@@ -375,6 +401,32 @@ struct ProjectNewLaneSheet: View {
                 }
             }
         }
+    }
+
+    private func option(_ title: String, icon: String, sub: String?, id: String) -> some View {
+        let on = name == title
+        return Button {
+            Haptics.selection()
+            name = title
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon).font(.system(size: 16, weight: .semibold))
+                    .frame(width: 36, height: 36)
+                    .foregroundStyle(on ? app.palette.paper : app.palette.clay)
+                    .background(on ? app.palette.ink : app.palette.clayBg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.body.weight(.semibold)).foregroundStyle(app.palette.ink)
+                    if let sub { Text(sub).font(.footnote).foregroundStyle(app.palette.ink3) }
+                }
+                Spacer(minLength: 0)
+                if on { Image(systemName: "checkmark").font(.body.weight(.bold)).foregroundStyle(app.palette.ink) }
+            }
+            .padding(.horizontal, 12).frame(minHeight: 56)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier(id)
     }
 }
 
