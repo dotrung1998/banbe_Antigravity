@@ -55,7 +55,8 @@ struct HomeFilterSheet: View {
             header
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    whenSection
+                    // Map mode: the day and hours are the Map's own time bar (they dim, never filter), so no date here.
+                    if !mapMode { whenSection }
                     priceSection
                     // Simple Shell follow-up (plan item 2): categories and event-type chips live on Home's own rows
                     // again (one source of truth), so the sheet drops both while the switch is on. OFF: unchanged.
@@ -387,7 +388,7 @@ struct HomeFilterSheet: View {
     }
 }
 
-/// Two-thumb range over [0, maxValue] in `step` increments. Each thumb is its own adjustable element.
+/// Two-thumb price range over [0, maxValue] in `step` increments: `RangeSlider` with Home's price labels.
 struct PriceRangeSlider: View {
     @EnvironmentObject private var app: AppState
     let low: Int
@@ -397,60 +398,9 @@ struct PriceRangeSlider: View {
     let label: (Int) -> String
     let onChange: (Int, Int) -> Void
 
-    private let thumb: CGFloat = 26
-
     var body: some View {
-        GeometryReader { geo in
-            let width = max(geo.size.width - thumb, 1)
-            let x: (Int) -> CGFloat = { v in maxValue > 0 ? CGFloat(v) / CGFloat(maxValue) * width : 0 }
-            let value: (CGFloat) -> Int = { px in
-                guard maxValue > 0 else { return 0 }
-                let raw = Double(min(max(px, 0), width) / width) * Double(maxValue)
-                return min(maxValue, Int((raw / Double(step)).rounded()) * step)
-            }
-            ZStack(alignment: .leading) {
-                Capsule().fill(app.palette.ink.opacity(0.14)).frame(height: 4).padding(.horizontal, thumb / 2)
-                Capsule().fill(app.palette.ink.opacity(0.85))
-                    .frame(width: max(x(high) - x(low), 0), height: 4)
-                    .offset(x: thumb / 2 + x(low))
-                thumbView
-                    .offset(x: x(low))
-                    .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("priceRange")).onChanged { g in
-                        onChange(min(value(g.location.x - thumb / 2), high), high)
-                    })
-                    .accessibilityElement()
-                    .accessibilityLabel(app.T("Giá thấp nhất", "Minimum price"))
-                    .accessibilityValue(label(low))
-                    .accessibilityAdjustableAction { dir in
-                        let next = dir == .increment ? min(low + step, high) : max(low - step, 0)
-                        onChange(next, high)
-                    }
-                    .accessibilityIdentifier("home.filter.priceMin")
-                thumbView
-                    .offset(x: x(high))
-                    .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("priceRange")).onChanged { g in
-                        onChange(low, max(value(g.location.x - thumb / 2), low))
-                    })
-                    .accessibilityElement()
-                    .accessibilityLabel(app.T("Giá cao nhất", "Maximum price"))
-                    .accessibilityValue(label(high))
-                    .accessibilityAdjustableAction { dir in
-                        let next = dir == .increment ? min(high + step, maxValue) : max(high - step, low)
-                        onChange(low, next)
-                    }
-                    .accessibilityIdentifier("home.filter.priceMax")
-            }
-            .coordinateSpace(name: "priceRange")
-        }
-        .frame(height: 30)
-    }
-
-    private var thumbView: some View {
-        Circle()
-            .fill(app.palette.paper)
-            .overlay(Circle().strokeBorder(app.palette.ink.opacity(0.85), lineWidth: 2))
-            .frame(width: thumb, height: thumb)
-            .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
-            .contentShape(Circle().inset(by: -8))
+        RangeSlider(minValue: 0, maxValue: maxValue, step: step, low: low, high: high, label: label,
+                    lowName: app.T("Giá thấp nhất", "Minimum price"), highName: app.T("Giá cao nhất", "Maximum price"),
+                    lowID: "home.filter.priceMin", highID: "home.filter.priceMax", onChange: onChange)
     }
 }

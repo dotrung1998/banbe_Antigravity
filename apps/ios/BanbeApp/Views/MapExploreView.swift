@@ -93,6 +93,13 @@ struct MapExploreView: View {
         get { filters.seatsLeft }
         nonmutating set { filters.seatsLeft = newValue }
     }
+    /// Map E+ (note 79): the day + hour window. Off ("All days") by default; Home's date hand-off or a returning
+    /// snapshot sets it. Not a filter: results never change with it, only what is bold and what is dimmed.
+    @State private var timeWin: MapTimeWindow.Window
+    /// Each loaded event's venue-zone slot (once per load) and the ids inside the window (nil = window off), kept in
+    /// state so a knob step is one set rebuild: no network, no annotation rebuild.
+    @State private var slotByID: [String: MapTimeWindow.Slot] = [:]
+    @State private var hitSet: Set<String>?
     @State private var sortByDistance: Bool
     // Home quick event search (2026-09-27): see `visibleEvents`'s own doc comment. `startFocusedOnSearch` is read once,
     // at construction (mirrors `hadRestoredState`'s own one-shot capture), so a later unrelated re-render can't
@@ -175,12 +182,13 @@ struct MapExploreView: View {
                 center: CLLocationCoordinate2D(latitude: restored.cameraCenterLat, longitude: restored.cameraCenterLng),
                 span: MKCoordinateSpan(latitudeDelta: restored.cameraSpanLat, longitudeDelta: restored.cameraSpanLng)
             )))
-            _filters = State(initialValue: restored.filters ?? {
+            _filters = State(initialValue: Self.withoutDate(restored.filters ?? {
                 var f = HomeDiscovery.Filters()
                 f.cats = restored.catFilter == "all" ? [] : [restored.catFilter]
                 f.seatsLeft = restored.openNowOnly
                 return f
-            }())
+            }()))
+            _timeWin = State(initialValue: restored.timeWin ?? Self.windowFor(date: "any"))
             _areaContext = State(initialValue: restored.areaContext)
             _cityContextID = State(initialValue: restored.cityContextID)
             _forYouOn = State(initialValue: restored.forYou)
@@ -201,7 +209,8 @@ struct MapExploreView: View {
         } else {
             _cameraPosition = State(initialValue: .automatic)
             // Home's hand-off (filters + For You); the dock tab passes none.
-            _filters = State(initialValue: entry?.filters ?? HomeDiscovery.Filters())
+            _filters = State(initialValue: Self.withoutDate(entry?.filters ?? HomeDiscovery.Filters()))
+            _timeWin = State(initialValue: Self.windowFor(date: entry?.filters.date ?? "any"))
             _areaContext = State(initialValue: "map")
             _forYouOn = State(initialValue: entry?.forYou ?? false)
             _searchQuery = State(initialValue: seedQuery ?? "")
@@ -210,6 +219,46 @@ struct MapExploreView: View {
             _framed = State(initialValue: false)
         }
     }
+
+    /// The Map's filters never carry a date: the day and hours are the time bar's (they dim rather than remove).
+    private static func withoutDate(_ f: HomeDiscovery.Filters) -> HomeDiscovery.Filters {
+        var out = f
+        out.date = "any"
+        return out
+    }
+    private static func windowFor(date: String) -> MapTimeWindow.Window {
+        MapTimeWindow.windowFromHomeDate(date, nowMs: Date().timeIntervalSince1970 * 1000, timeZone: EventMarket.vnTimeZone)
+    }
+
+    // MARK: - Time window (note 79)
+
+    private static func hits(_ slots: [String: MapTimeWindow.Slot], _ win: MapTimeWindow.Window) -> Set<String>? {
+        guard win.on else { return nil }
+        let now = Date().timeIntervalSince1970 * 1000
+        return Set(slots.compactMap { MapTimeWindow.inWindow($0.value, win, nowMs: now) ? $0.key : nil })
+    }
+
+    /// Bold = inside the window. Off = everything is.
+    private func isHit(_ id: String) -> Bool { hitSet?.contains(id) ?? true }
+    private func hitCount(_ ids: [String]) -> Int { hitSet.map { h in ids.reduce(0) { $0 + (h.contains($1) ? 1 : 0) } } ?? ids.count }
+    private var windowOn: Bool { hitSet != nil }
+
+    /// The zone of the place being viewed (its events' own zone, Vietnam when none): names "today" for the day menu.
+    private var viewTZ: TimeZone {
+        var tally: [String: Int] = [:]
+        for ev in app.mapEvents { tally[ev.timeZoneID, default: 0] += 1 }
+        return EventMarket.timeZone(tally.max { $0.value < $1.value }?.key)
+    }
+    private var dayOptions: [MapTimeWindow.DayOption] {
+        MapTimeWindow.dayOptions(nowMs: Date().timeIntervalSince1970 * 1000, timeZone: viewTZ, en: app.isEN)
+    }
+    private var dayLabel: String {
+        let opts = dayOptions
+        return (timeWin.on ? opts.first { $0.key == timeWin.key } : nil)?.label ?? opts[4].label
+    }
+    private var outsideWindowText: String { app.T("ngoài khung giờ", "outside time window") }
+    /// In-window events of the results (all of them when the window is off): what "List · N" counts.
+    private var inWindowCount: Int { windowOn ? visibleEvents.filter { isHit($0.id) }.count : visibleEvents.count }
 
     @State private var categorySheetOpen = false
     /// Bounded mode: set once the loaded set turned out incomplete (see `.onChange(of: committedBounds)`).
@@ -312,7 +361,11 @@ struct MapExploreView: View {
         .task(id: app.mapEvents.map(\.id)) {
             var cities: [String: String] = [:]
             var areas: [String: MapDiscovery.AreaKey] = [:]
+            var slots: [String: MapTimeWindow.Slot] = [:]
             for ev in app.mapEvents {
+                if let t = ev.startsAt {
+                    slots[ev.id] = MapTimeWindow.eventSlot(ms: t.timeIntervalSince1970 * 1000, timeZone: EventMarket.timeZone(ev.timeZoneID))
+                }
                 if let id = MapDiscovery.cityFor(.init(city: ev.city, stateProvince: ev.stateProvince, countryCode: ev.countryCode,
                                                        lat: ev.lat, lng: ev.lng), cities: MapDiscovery.cities) {
                     cities[ev.id] = id
@@ -321,7 +374,12 @@ struct MapExploreView: View {
             }
             if cities != cityOfEvent { cityOfEvent = cities }
             if areas != areaOfEvent { areaOfEvent = areas }
+            if slots != slotByID { slotByID = slots }
+            let h = Self.hits(slots, timeWin)
+            if h != hitSet { hitSet = h }
         }
+        // A knob step or a day choice: one set rebuild over the rows already loaded.
+        .onChange(of: timeWin) { _, win in hitSet = Self.hits(slotByID, win) }
         .onChange(of: app.area) { _, _ in
             // Area picker = a DESTINATION (phase 3): fly to that area's mapped events and commit it once; every
             // filter stays. "Everywhere" or an area with no mapped events leaves the camera where it is (no guessed
@@ -393,7 +451,7 @@ struct MapExploreView: View {
         .sheet(isPresented: $filterSheetOpen) {
             // Home's sheet as a draft over THIS map area: Close discards, Apply commits atomically.
             HomeFilterSheet(items: sheetItems, now: nowMinute, onClose: { filterSheetOpen = false },
-                            mapFilters: filters, onApplyMap: { filters = $0 })
+                            mapFilters: filters, onApplyMap: { filters = Self.withoutDate($0) })
                 .environmentObject(app)
         }
         .sheet(isPresented: $categorySheetOpen) {
@@ -467,14 +525,20 @@ struct MapExploreView: View {
         }
     }
 
-    /// The bottom stack above the dock, bottom to top: neighbourhood chips, the time bar's slot (reserved, built in
-    /// step 7), then my location + "List · N". The room for the WHOLE stack is always reserved (`MapStack.reserved`
+    /// The bottom stack above the dock, bottom to top: neighbourhood chips, the time bar, then my location + "List · N". The room for the WHOLE stack is always reserved (`MapStack.reserved`
     /// feeds the reference rect), so what the stack shows never changes the results.
     private var bottomStack: some View {
         ZStack(alignment: .bottom) {
             if showAreaChips {
                 areaChipsRow
                     .padding(.bottom, MapStack.dockClear + MapStack.chipsBottom)
+            }
+            // The day + hours: events inside are bold on the map, the rest dimmed; "All days" turns it off. It rides above
+            // the panel while one is open and is hidden under the list.
+            if !listOpen {
+                timeBar
+                    .padding(.bottom, areaPanel != nil ? panelHeight + 12 : MapStack.dockClear + MapStack.timeBottom)
+                    .animation(panelSpring, value: areaPanel != nil)
             }
             if showEmptyCard {
                 emptyCard
@@ -487,6 +551,12 @@ struct MapExploreView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .ignoresSafeArea(edges: .bottom)
+    }
+
+    private var timeBar: some View {
+        MapTimeBar(win: timeWin, options: dayOptions, dayLabel: dayLabel,
+                   onDay: { key in timeWin = MapTimeWindow.defaultWindow(key: key, nowMs: Date().timeIntervalSince1970 * 1000, timeZone: viewTZ) },
+                   onKnob: { which, hour in timeWin = MapTimeWindow.moveKnob(timeWin, which, hour: Double(hour)) })
     }
 
     private var buttonsRow: some View {
@@ -502,7 +572,7 @@ struct MapExploreView: View {
             .accessibilityLabel(app.T("Vị trí của tôi", "My location"))
             .accessibilityIdentifier("map.compass")
 
-            let n = visibleEvents.count
+            let n = inWindowCount
             Button {
                 Haptics.selection()
                 openList()
@@ -518,7 +588,9 @@ struct MapExploreView: View {
                 .shadow(color: .black.opacity(0.28), radius: 7, y: 3)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(app.T("Danh sách, \(n) sự kiện", n == 1 ? "List, 1 event" : "List, \(n) events"))
+            .accessibilityLabel(windowOn
+                ? app.T("Danh sách, \(n) sự kiện trong khung giờ", n == 1 ? "List, 1 event in the window" : "List, \(n) events in the window")
+                : app.T("Danh sách, \(n) sự kiện", n == 1 ? "List, 1 event" : "List, \(n) events"))
             .accessibilityValue("\(n)")
             .accessibilityIdentifier("map.listButton")
         }
@@ -545,9 +617,11 @@ struct MapExploreView: View {
         }
         let byID = Dictionary(located.map { ($0.0.id, $0.0) }, uniquingKeysWith: { a, _ in a })
         // Never merged (unlike the bubbles): mergePx 0.
-        return MapDiscovery.areaGroups(located.map(\.1), zoom: 12, areaOf: { areaInfo($0.id) }, mergePx: 0)
+        return MapDiscovery.areaGroups(located.map(\.1), zoom: 12, areaOf: { areaInfo($0.id) }, hitIds: hitSet, mergePx: 0)
             .sorted { a, b in
-                a.ids.count != b.ids.count ? a.ids.count > b.ids.count
+                // With a window on, the busiest IN the window come first.
+                if windowOn, a.hit != b.hit { return a.hit > b.hit }
+                return a.ids.count != b.ids.count ? a.ids.count > b.ids.count
                     : ((a.labels.first ?? nil) ?? "~").localizedCompare((b.labels.first ?? nil) ?? "~") == .orderedAscending
             }
             .map { g in
@@ -564,8 +638,8 @@ struct MapExploreView: View {
             HStack(spacing: 8) {
                 ForEach(areaChipItems) { item in
                     let g = item.group
-                    MapAreaChip(name: (g.labels.first ?? nil) ?? app.T("Khu khác", "Other areas"), count: g.ids.count, cats: item.cats,
-                                key: g.keys[0]) {
+                    MapAreaChip(name: (g.labels.first ?? nil) ?? app.T("Khu khác", "Other areas"), count: g.ids.count,
+                                hit: windowOn ? g.hit : nil, cats: item.cats, key: g.keys[0]) {
                         Haptics.selection()
                         openAreaPanel(keys: g.keys, label: (g.labels.first ?? nil), bounds: g.bounds)
                     }
@@ -605,17 +679,24 @@ struct MapExploreView: View {
         return visibleEvents.filter { panel.keys.contains(areaInfo($0.id).key) }
     }
 
+    /// Inside the window first (soonest first, as loaded), then the dimmed ones.
+    private func panelOrdered(_ rows: [MapEventRow]) -> [MapEventRow] {
+        guard windowOn else { return rows }
+        return rows.filter { isHit($0.id) } + rows.filter { !isHit($0.id) }
+    }
+
     @ViewBuilder
     private var areaPanelLayer: some View {
         if let panel = areaPanel {
-            let rows = panelEvents
-            MapAreaPanelView(title: panel.label ?? app.T("Khu khác", "Other areas"), count: rows.count, height: panelHeight,
+            let rows = panelOrdered(panelEvents)
+            let hit = windowOn ? rows.filter { isHit($0.id) }.count : rows.count
+            MapAreaPanelView(title: panel.label ?? app.T("Khu khác", "Other areas"), count: rows.count, hit: windowOn ? hit : nil, height: panelHeight,
                              scrollTo: areaScrollTo,
                              backTitle: app.T("Tất cả khu", "All areas"),
                              emptyText: app.T("Không còn sự kiện ở khu này với bộ lọc hiện tại.", "No events left in this area with the current filters."),
                              onBack: { closeAreaPanel(goBack: true) }) {
                 ForEach(rows) { ev in
-                    compactRow(ev, idPrefix: "map.areaItem").id(ev.id)
+                    compactRow(ev, idPrefix: "map.areaItem", dim: windowOn && !isHit(ev.id)).id(ev.id)
                 }
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
@@ -863,6 +944,10 @@ struct MapExploreView: View {
         HomeDiscovery.activeFilterCount(filters) > 0 || !searchQuery.trimmingCharacters(in: .whitespaces).isEmpty || forYouActive
     }
 
+    private func windowCountText(_ n: Int) -> String {
+        app.T("\(n) sự kiện trong khung giờ", n == 1 ? "1 event in the window" : "\(n) events in the window")
+    }
+
     private func resultCountText(_ n: Int) -> String {
         app.T("\(n) sự kiện trong vùng bản đồ", n == 1 ? "1 event in this map area" : "\(n) events in this map area")
     }
@@ -892,6 +977,7 @@ struct MapExploreView: View {
             searchQuery: searchQuery,
             committedBounds: committedBounds,
             filters: filters,
+            timeWin: timeWin,
             areaContext: areaContext,
             cityContextID: cityContextID,
             listOpen: listOpen,
@@ -1016,7 +1102,7 @@ struct MapExploreView: View {
             let cities = cityOfEvent
             out = MapDiscovery.cityGroups(groupable, zoom: zoom, cityOf: { cities[$0.id] }, cities: MapDiscovery.cities).map(MapMarker.group)
         case .area:
-            out = MapDiscovery.areaGroups(groupable, zoom: zoom, areaOf: { areaInfo($0.id) }).map(MapMarker.area)
+            out = MapDiscovery.areaGroups(groupable, zoom: zoom, areaOf: { areaInfo($0.id) }, hitIds: hitSet).map(MapMarker.area)
         case .pin:
             out = MapDiscovery.clusterPins(groupable, zoom: zoom).map(MapMarker.group)
         }
@@ -1034,7 +1120,7 @@ struct MapExploreView: View {
     @ViewBuilder
     private func marker(for m: MapMarker) -> some View {
         switch m {
-        case .area(let a): MapAreaBubble(app: app, group: a) { tapArea(a) }
+        case .area(let a): MapAreaBubble(app: app, group: a, windowOn: windowOn) { tapArea(a) }
         case .group(let g): groupMarker(g)
         }
     }
@@ -1044,24 +1130,28 @@ struct MapExploreView: View {
         if g.kind == .pin, let ev = eventsByID[g.ids[0]] {
             pin(for: ev)
         } else if g.kind == .city, let city = MapDiscovery.city(g.cityId) {
-            cityBubble(city, count: g.ids.count)
+            cityBubble(city, count: windowOn ? hitCount(g.ids) : g.ids.count, dim: windowOn && hitCount(g.ids) == 0)
         } else {
             let n = g.ids.count
             let isSelected = selectedId.map(g.ids.contains) ?? false
+            let dim = windowOn && hitCount(g.ids) == 0
+            let bold = windowOn && !dim
             let stack = g.kind == .stack
             Text(stack ? "\(n) ≡" : "\(n)")
                 .font(.system(size: 13, weight: .bold))
                 .padding(.horizontal, stack ? 10 : 6)
                 .frame(minWidth: stack ? 30 : 36, minHeight: stack ? 30 : 36)
-                .foregroundStyle(isSelected ? app.palette.paper : app.palette.ink)
-                .background(isSelected ? app.palette.ink : app.palette.paper, in: Capsule())
+                .foregroundStyle(isSelected || bold ? app.palette.paper : app.palette.ink)
+                .background(isSelected || bold ? app.palette.ink : app.palette.paper, in: Capsule())
                 .overlay(Capsule().stroke(app.palette.ink, lineWidth: stack ? 1.5 : 2))
                 .shadow(radius: 4)
+                .modifier(MapDimStyle(dim: dim))
                 .frame(minWidth: 44, minHeight: 44)
                 .contentShape(Rectangle())
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(stack ? app.T("\(n) sự kiện cùng địa điểm, mở khu này", "\(n) events at this place, open this area")
-                                          : app.T("\(n) sự kiện ở đây, phóng to", "\(n) events here, zoom in"))
+                .accessibilityLabel((stack ? app.T("\(n) sự kiện cùng địa điểm, mở khu này", "\(n) events at this place, open this area")
+                                           : app.T("\(n) sự kiện ở đây, phóng to", "\(n) events here, zoom in"))
+                                    + (dim ? ", " + outsideWindowText : ""))
                 .accessibilityAddTraits(.isButton)
                 .accessibilityIdentifier("map.\(g.kind.rawValue).\(g.ids[0])")
                 .accessibilityValue("\(n)")
@@ -1106,7 +1196,7 @@ struct MapExploreView: View {
 
     /// Zoomed out (note 73 §5): "TP.HCM  5" — the city's short name and its result count in an ink badge. Tap = fly to
     /// the city's bounds (a destination, one new area).
-    private func cityBubble(_ city: MapDiscovery.City, count n: Int) -> some View {
+    private func cityBubble(_ city: MapDiscovery.City, count n: Int, dim: Bool = false) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "mappin").font(.system(size: 11, weight: .semibold)).accessibilityHidden(true)
             Text(app.T(city.short.vi, city.short.en)).font(.system(size: 13, weight: .semibold)).lineLimit(1)
@@ -1124,7 +1214,9 @@ struct MapExploreView: View {
         .frame(minHeight: 44)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(app.T("\(city.vi), \(n) sự kiện, đến đó", "\(city.en), \(n) events, go there"))
+        .opacity(dim ? MapDim.zeroBubble : 1)
+        .accessibilityLabel(app.T("\(city.vi), \(n) sự kiện, đến đó", "\(city.en), \(n) events, go there")
+                            + (dim ? ", " + outsideWindowText : ""))
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("map.cityBubble.\(city.id)")
         .accessibilityValue("\(n)")
@@ -1176,6 +1268,8 @@ struct MapExploreView: View {
     @ViewBuilder
     private func pin(for ev: MapEventRow) -> some View {
         let isSelected = ev.id == selectedId
+        let dim = windowOn && !isHit(ev.id)
+        let bold = windowOn && !dim
         let label = ev.priceVnd > 0 ? EventMarket.formatMoneyShort(ev.priceVnd, currency: ev.rowCurrency) : app.T("Miễn phí", "Free")
         // Map v5 (note 73 §2): the category row's own line icon + the price, so the row reads as the pins' legend.
         let catKey = ev.catKeys.first ?? effectiveCatKey(ev) ?? ""
@@ -1190,8 +1284,8 @@ struct MapExploreView: View {
                 .lineLimit(1)
                 .padding(.horizontal, 10)
                 .frame(minWidth: 30, minHeight: 30)
-                .foregroundStyle(isSelected ? app.palette.paper : app.palette.ink)
-                .background(isSelected ? app.palette.ink : app.palette.paper, in: Capsule())
+                .foregroundStyle(isSelected || bold ? app.palette.paper : app.palette.ink)
+                .background(isSelected || bold ? app.palette.ink : app.palette.paper, in: Capsule())
                 .overlay(Capsule().stroke(app.palette.ink, lineWidth: 1.5))
                 .shadow(radius: isSelected ? 5 : 3)
             if seatFacts(ev)?.almostFull == true {
@@ -1220,11 +1314,12 @@ struct MapExploreView: View {
         // Selected pin sits slightly larger and settles there; the brief overshoot past that (isPopping) plays once
         // per actual selection change, guarded in selectEvent(_:) — never replayed by a refresh.
         .scaleEffect(isSelected ? 1.1 : 1)
+        .modifier(MapDimStyle(dim: dim))
         .zIndex(isSelected ? 1 : 0)
         .frame(minHeight: 44)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(ev.name), \(label)")
+        .accessibilityLabel("\(ev.name), \(label)" + (dim ? ", " + outsideWindowText : ""))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("map.pin.\(ev.id)")
         .onTapGesture { Haptics.selection(); openEventDetail(ev.id) }
@@ -1814,7 +1909,22 @@ struct MapExploreView: View {
                 }
             }
 
-            ForEach(located) { ev in listRow(ev) }
+            // Inside the window first (soonest first, as loaded), then a dimmed "outside" group with its own heading.
+            let inside = windowOn ? located.filter { isHit($0.id) } : located
+            let outside = windowOn ? located.filter { !isHit($0.id) } : []
+            ForEach(inside) { ev in listRow(ev) }
+            if !outside.isEmpty {
+                Text(app.T("\(outside.count) sự kiện ngoài khung giờ",
+                           outside.count == 1 ? "1 event outside the window" : "\(outside.count) events outside the window"))
+                    .font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                    .textCase(.uppercase)
+                    .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 4, trailing: 16))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("map.list.outsideHeading")
+                ForEach(outside) { ev in listRow(ev, dim: true) }
+            }
 
             if !noLoc.isEmpty {
                 Text(app.T("Chưa có vị trí trên bản đồ (\(noLoc.count))", "No map location yet (\(noLoc.count))"))
@@ -1856,13 +1966,19 @@ struct MapExploreView: View {
             }
             HStack(spacing: 8) {
                 Text(committedBounds != nil && !(app.mapEventsLoading && app.mapEvents.isEmpty)
-                     ? resultCountText(visibleEvents.count) : app.T("Đang tải sự kiện…", "Loading events…"))
+                     ? (windowOn ? windowCountText(inWindowCount) : resultCountText(visibleEvents.count))
+                     : app.T("Đang tải sự kiện…", "Loading events…"))
                     .font(.system(size: 17, weight: .semibold))
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("map.list.count")
                 layoutSwitch
+            }
+            if windowOn {
+                Text(MapTimeWindow.windowSummary(timeWin, dayLabel: dayLabel, en: app.isEN))
+                    .font(.footnote).foregroundStyle(app.palette.ink2)
+                    .accessibilityIdentifier("map.list.window")
             }
             if app.mapEventsLoading && !app.mapEvents.isEmpty {
                 Text(app.T("Đang cập nhật…", "Updating…")).font(.footnote).foregroundStyle(app.palette.ink2)
@@ -1907,11 +2023,13 @@ struct MapExploreView: View {
 
     /// A result row: Home's large photo card (with its pager) or a compact row. A tap opens Event Detail directly.
     @ViewBuilder
-    private func listRow(_ ev: MapEventRow) -> some View {
+    private func listRow(_ ev: MapEventRow, dim: Bool = false) -> some View {
         if app.mapListLayout == "large" {
             largeCard(ev)
+                .opacity(dim ? MapDim.rowOpacity : 1)
+                .accessibilityHint(dim ? outsideWindowText : "")
         } else {
-            compactRow(ev, idPrefix: "map.listItem")
+            compactRow(ev, idPrefix: "map.listItem", dim: dim)
                 .id(ev.id)
                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                 .listRowSeparator(.hidden)
@@ -2005,7 +2123,7 @@ struct MapExploreView: View {
 
     /// Compact row (the list's Compact layout and the neighbourhood panel): small photo, name, venue date · time, area
     /// (plus a distance only when it helps choose, <= 50 km), price + real seat state. A tap opens Event Detail.
-    private func compactRow(_ ev: MapEventRow, idPrefix: String) -> some View {
+    private func compactRow(_ ev: MapEventRow, idPrefix: String, dim: Bool = false) -> some View {
         HStack(alignment: .center, spacing: 12) {
             // The event's own resolved photo first; the bundled demo catalogue only for a real demo id.
             if let url = app.mapEventCoverURLs[ev.id] {
@@ -2038,8 +2156,10 @@ struct MapExploreView: View {
         .background(selectedId == ev.id ? app.palette.ink.opacity(0.05) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture { openEventDetail(ev.id) }
+        .opacity(dim ? MapDim.rowOpacity : 1)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isButton)
+        .accessibilityHint(dim ? outsideWindowText : "")
         .accessibilityAction { openEventDetail(ev.id) }
         .accessibilityIdentifier("\(idPrefix).\(ev.id)")
     }

@@ -76,6 +76,8 @@ struct MapAreaBubble: View {
     /// Passed in, not an environment object: a MapKit annotation's content does not inherit the environment.
     let app: AppState
     let group: MapDiscovery.AreaGroup
+    /// The Map's time window is on (the count is then `group.hit`).
+    let windowOn: Bool
     let onTap: () -> Void
 
     private var single: Bool { group.keys.count == 1 }
@@ -85,15 +87,17 @@ struct MapAreaBubble: View {
     }
 
     var body: some View {
-        let n = group.ids.count
+        // With a window on the bubble counts what is INSIDE it; none inside = a washed-out, half-faded bubble.
+        let n = windowOn ? group.hit : group.ids.count
+        let dim = windowOn && group.hit == 0
         VStack(spacing: 2) {
             Text("\(n)")
                 .font(.system(size: 22, weight: .semibold))
                 .monospacedDigit()
                 .padding(.horizontal, 10)
                 .frame(minWidth: 52, minHeight: 52)
-                .foregroundStyle(app.palette.paper)
-                .background(app.palette.ink, in: Capsule())
+                .foregroundStyle(dim ? app.palette.ink3 : app.palette.paper)
+                .background(dim ? app.palette.surface2 : app.palette.ink, in: Capsule())
                 .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
             Text(name)
                 .font(.system(size: 12, weight: .bold))
@@ -104,14 +108,29 @@ struct MapAreaBubble: View {
                 .background(app.palette.paper, in: Capsule())
                 .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
         }
+        .opacity(dim ? MapDim.zeroBubble : 1)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(single ? app.T("\(name), \(n) sự kiện, mở khu này", "\(name), \(n) event\(n == 1 ? "" : "s"), open this area")
-                                   : app.T("\(name), \(n) sự kiện, phóng to", "\(name), \(n) event\(n == 1 ? "" : "s"), zoom in"))
+        .accessibilityLabel((single ? app.T("\(name), \(n) sự kiện, mở khu này", "\(name), \(n) event\(n == 1 ? "" : "s"), open this area")
+                                    : app.T("\(name), \(n) sự kiện, phóng to", "\(name), \(n) event\(n == 1 ? "" : "s"), zoom in"))
+                            + (windowOn ? app.T(" trong khung giờ", " in the window") : "")
+                            + (dim ? app.T(", ngoài khung giờ", ", outside time window") : ""))
         .accessibilityAddTraits(.isButton)
         .accessibilityValue("\(n)")
         .accessibilityIdentifier("map.areaBubble.\(group.keys.joined(separator: "+"))")
         .onTapGesture(perform: onTap)
+    }
+}
+
+/// Fades what is outside the Map's time window: pins and clusters to `MapDim.pinOpacity` at `pinScale`, washed to a
+/// near-grey. Style only, so a knob step never changes layout or hit testing.
+struct MapDimStyle: ViewModifier {
+    let dim: Bool
+    func body(content: Content) -> some View {
+        content
+            .saturation(dim ? 0.2 : 1)
+            .opacity(dim ? MapDim.pinOpacity : 1)
+            .scaleEffect(dim ? MapDim.pinScale : 1)
     }
 }
 
@@ -120,35 +139,46 @@ struct MapAreaChip: View {
     @EnvironmentObject private var app: AppState
     let name: String
     let count: Int
+    /// Events inside the time window (nil = no window): the chip then says "N in the window · M other".
+    var hit: Int? = nil
     let cats: [String]
     let key: String
     let action: () -> Void
 
     var body: some View {
+        let inHit = (hit ?? 0) > 0
+        let off = hit == 0
+        let other = count - (hit ?? count)
         Button(action: action) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(name).font(.system(size: 15, weight: .bold)).lineLimit(1)
-                Text(app.T("\(count) sự kiện", count == 1 ? "1 event" : "\(count) events"))
-                    .font(.system(size: 12)).foregroundStyle(app.palette.ink2).lineLimit(1)
+                Text(hit.map { h in
+                        app.T("\(h) trong khung giờ" + (other > 0 ? " · \(other) khác" : ""), "\(h) in the window" + (other > 0 ? " · \(other) other" : ""))
+                     } ?? app.T("\(count) sự kiện", count == 1 ? "1 event" : "\(count) events"))
+                    .font(.system(size: 12)).foregroundStyle(inHit ? app.palette.paper.opacity(0.85) : app.palette.ink2).lineLimit(1)
                 HStack(spacing: 4) {
                     ForEach(Array(cats.prefix(5)), id: \.self) { c in
                         Image(systemName: CategoryGlyph.symbol(c)).font(.system(size: 12, weight: .medium))
                     }
                 }
-                .foregroundStyle(app.palette.ink2)
+                .foregroundStyle(inHit ? app.palette.paper.opacity(0.85) : app.palette.ink2)
                 .padding(.top, 2)
                 .accessibilityHidden(true)
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
             .frame(minWidth: 108, maxWidth: 190, alignment: .leading)
-            .foregroundStyle(app.palette.ink)
-            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .foregroundStyle(inHit ? app.palette.paper : app.palette.ink)
+            .background(inHit ? app.palette.ink : app.palette.paper, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.16), radius: 5, y: 2)
+            .opacity(off ? MapDim.chipOpacity : 1)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(app.T("\(name), \(count) sự kiện, mở khu này", "\(name), \(count) event\(count == 1 ? "" : "s"), open this area"))
-        .accessibilityValue("\(count)")
+        .accessibilityLabel(hit.map { h in
+            app.T("\(name), \(h) trong khung giờ, \(other) ngoài khung giờ, mở khu này",
+                  "\(name), \(h) in the window, \(other) outside it, open this area")
+        } ?? app.T("\(name), \(count) sự kiện, mở khu này", "\(name), \(count) event\(count == 1 ? "" : "s"), open this area"))
+        .accessibilityValue("\(hit ?? count)")
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("map.areaChip.\(key)")
     }
@@ -160,6 +190,8 @@ struct MapAreaPanelView<Rows: View>: View {
     @EnvironmentObject private var app: AppState
     let title: String
     let count: Int
+    /// Events inside the time window (nil = no window): the title then reads "Quận 1 · 2/5".
+    var hit: Int? = nil
     let height: CGFloat
     /// Scrolls this row id to the top once (a stack tap).
     let scrollTo: String?
@@ -171,12 +203,12 @@ struct MapAreaPanelView<Rows: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Text("\(title) · \(count)")
+                Text("\(title) · " + (hit.map { $0 < count ? "\($0)/\(count)" : "\($0)" } ?? "\(count)"))
                     .font(BanbeTheme.display(22))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityAddTraits(.isHeader)
-                    .accessibilityValue("\(count)")
+                    .accessibilityValue("\(hit ?? count)")
                     .accessibilityIdentifier("map.areaPanel.title")
                 Button(action: onBack) {
                     HStack(spacing: 6) {

@@ -170,6 +170,8 @@ struct MapExploreState {
     var committedBounds: MapDiscovery.Bounds? = nil
     /// Phase 3: the Map's whole filter object (Home's shape) and the area chip's context ("area" / "map").
     var filters: HomeDiscovery.Filters? = nil
+    /// Map E+ (note 79): the day + hour window (nil on a snapshot from before it = off).
+    var timeWin: MapTimeWindow.Window? = nil
     var areaContext: String = "map"
     /// Map v5 (note 73): the city the map was flown to while `areaContext` is "city" (web `cityDest`).
     var cityContextID: String? = nil

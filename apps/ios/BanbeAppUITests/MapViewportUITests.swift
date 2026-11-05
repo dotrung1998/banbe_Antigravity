@@ -266,8 +266,11 @@ final class MapViewportUITests: XCTestCase {
         let filters = app.buttons["map.filterButton"]
         XCTAssertTrue(filters.waitForExistence(timeout: 10))
         filters.tap()
-        let week = app.buttons["home.filter.date.week"]
+        // Map E+ (note 79): no date section here; the day and hours are the time bar's. Free is a filter that stays.
+        let week = app.buttons["home.filter.free"]
         XCTAssertTrue(week.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["home.filter.date.week"].exists, "the day and hours are the time bar's")
+        try XCTSkipUnless(week.isEnabled, "no free live event to filter on")
         XCTAssertFalse(app.buttons["home.filter.area"].exists, "the map is the location")
         week.tap()
         app.buttons["home.filter.close"].tap()
@@ -280,7 +283,7 @@ final class MapViewportUITests: XCTestCase {
         week.tap()
         let apply = app.buttons["home.filter.apply"]
         let shown = Int(apply.value as? String ?? "0") ?? 0
-        try XCTSkipIf(shown == 0, "no live event in the next 7 days")
+        try XCTSkipIf(shown == 0, "no free live event")
         apply.tap()
         sleep(1)
         XCTAssertTrue(count(app).hasPrefix("\(shown) "), "Show N is the resulting list")
