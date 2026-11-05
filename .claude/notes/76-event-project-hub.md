@@ -600,3 +600,7 @@ lane (icon, name, done/total). Tap = scroll that lane's heading to the top; the 
 strip keeps it in view. Tracking: each lane section reports its minY (`ProjectLaneTopKey`, coordinate space "projectScroll" on the
 hub ScrollView); the current lane is the last heading at or above 60 pt; updates pause 0.6 s after a tap so the highlight doesn't
 flicker. Also: `import Combine` in ConfirmedView (Xcode warnings from the Timer.publish ticker).
+- Fix (owner report): at the end of the list the last lanes can't scroll up to the top band, so the highlight sat on an earlier lane,
+  and a tap on the last chip was overridden 0.6 s later. Now `ProjectLaneNav.current` uses an end marker (`__end`): once the list
+  is scrolled to the bottom, the current lane is the last heading on screen. A tapped lane keeps the highlight until its heading
+  moves ≥ 8 pt from where the jump left it, i.e. until the person scrolls by hand.

@@ -33,6 +33,10 @@ struct ProjectTasksTab: View {
                 let laneTasks = ProjectPresentation.byDue(tasks.filter { $0.laneId == lane.id })
                 if !(mineOnly && laneTasks.isEmpty) { laneSection(lane, laneTasks) }
             }
+            // End of the lanes: tells the lane navigator when the list is scrolled to the bottom.
+            Color.clear.frame(height: 1).background(GeometryReader { g in
+                Color.clear.preference(key: ProjectLaneTopKey.self, value: [ProjectLaneNav.endKey: g.frame(in: .named(ProjectLaneNav.space)).minY])
+            })
             if (snap.lanes ?? []).isEmpty {
                 Text(app.T("Chưa có hạng mục nào.", "No lanes yet.")).font(.subheadline).foregroundStyle(app.palette.ink2)
                     .projectCard().padding(.top, 14)
@@ -206,6 +210,21 @@ struct ProjectLaneTopKey: PreferenceKey {
 /// you're looking at is filled and kept in view as you scroll.
 struct ProjectLaneNav: View {
     static let space = "projectScroll"
+    static let endKey = "__end"
+
+    /// The lane being looked at. Normally the last heading at or above the top band (60 pt). At the bottom of the list the
+    /// last lanes can't scroll that high, so there it's the last heading that is on screen.
+    static func current(_ tops: [String: CGFloat], viewport: CGFloat) -> String? {
+        var lanes = tops; let end = lanes.removeValue(forKey: endKey)
+        guard !lanes.isEmpty else { return nil }
+        // The hub pads 110 pt under the list; "at the bottom" = the end marker is within that padding of the bottom edge.
+        // Only once the list has actually scrolled (the first heading has passed the top band): a short list that fits on
+        // screen is "at the bottom" from the start and should keep its first lane.
+        if let end, viewport > 0, end <= viewport - 90, (lanes.values.min() ?? 0) <= 60 {
+            if let id = lanes.filter({ $0.value < viewport - 60 }).max(by: { $0.value < $1.value })?.key { return id }
+        }
+        return lanes.filter { $0.value <= 60 }.max { $0.value < $1.value }?.key ?? lanes.min { $0.value < $1.value }?.key
+    }
     @EnvironmentObject private var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let lanes: [ProjectLane]

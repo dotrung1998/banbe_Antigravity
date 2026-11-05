@@ -9,8 +9,12 @@ struct ProjectHubView: View {
     @State private var sheet: ProjectSheet?
     /// Tasks: the lane at the top of the list right now (drives the lane navigator's highlight).
     @State private var currentLane: String?
-    /// While a navigator jump animates, the highlight stays on the tapped lane instead of flickering past the others.
+    /// A tapped lane keeps the highlight until the person scrolls by hand: through the jump animation (`laneJumpUntil`),
+    /// then while its heading stays where the jump left it (`laneTapY`). Needed because the last lanes can't reach the top.
+    @State private var laneTapped: String?
     @State private var laneJumpUntil = Date.distantPast
+    @State private var laneTapY: CGFloat?
+    @State private var scrollHeight: CGFloat = 0
 
     /// Phase 5: live sync (the 15 s run-of-show poll) is on only on the event day, on Day-of, with the app in front.
     private var live: Bool { app.projectLiveSyncOn(scenePhaseActive: scenePhase == .active) }
@@ -28,6 +32,7 @@ struct ProjectHubView: View {
                     if app.projectTab == "tasks", (snap.lanes ?? []).count > 1 {
                         ProjectLaneNav(lanes: snap.lanes ?? [], tasks: snap.tasks ?? [], current: currentLane ?? (snap.lanes ?? []).min { $0.position < $1.position }?.id) { id in
                             currentLane = id
+                            laneTapped = id; laneTapY = nil
                             laneJumpUntil = Date().addingTimeInterval(0.6)
                             withAnimation(.snappy(duration: 0.4)) { proxy.scrollTo("project.lane.\(id)", anchor: .top) }
                         }
@@ -44,11 +49,18 @@ struct ProjectHubView: View {
                     }
                     .refreshable { await app.refreshProject() }
                     .coordinateSpace(name: ProjectLaneNav.space)
+                    .background(GeometryReader { g in Color.clear.onAppear { scrollHeight = g.size.height }
+                        .onChange(of: g.size.height) { _, h in scrollHeight = h } })
                     .onPreferenceChange(ProjectLaneTopKey.self) { tops in
-                        guard Date() >= laneJumpUntil else { return }
-                        // The current lane is the last one whose heading has reached the top of the list.
-                        let id = tops.filter { $0.value <= 60 }.max { $0.value < $1.value }?.key
-                            ?? tops.min { $0.value < $1.value }?.key
+                        if let tapped = laneTapped {
+                            if Date() < laneJumpUntil { return }
+                            guard let y = tops[tapped] else { laneTapped = nil; return }
+                            if let base = laneTapY {
+                                if abs(y - base) < 8 { return }   // still where the jump left it
+                                laneTapped = nil; laneTapY = nil  // the person scrolled: follow the list again
+                            } else { laneTapY = y; return }
+                        }
+                        let id = ProjectLaneNav.current(tops, viewport: scrollHeight)
                         if id != currentLane { currentLane = id }
                     }
                     .environment(\.projectScrollTo, ProjectScrollTo { id in
