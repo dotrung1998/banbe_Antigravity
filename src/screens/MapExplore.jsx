@@ -2,7 +2,9 @@ import { screenHeight } from '../lib/viewport.js';
 import { loadMapStyle } from '../lib/mapStyle.js';
 import { loadMapKit } from '../lib/mapkit.js';
 import { createMapKitMap } from '../lib/mapkitAdapter.js';
-import { CARD_GAP, ATTRIB_RESERVE, computeMapLayout, bottomStackFraction, dockVisible } from '../lib/mapLayout.js';
+import { CARD_GAP, ATTRIB_RESERVE, computeMapLayout, bottomStackFraction, dockVisible, MAP_DIM } from '../lib/mapLayout.js';
+import { eventSlot, inWindow, dayOptions, defaultWindow, moveKnob, windowFromHomeDate, windowSummary } from '../lib/mapTimeWindow.js';
+import MapTimeBar from '../components/map/MapTimeBar.jsx';
 import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useBanBe, resolveCoverUrl, photoUrlsByEvent } from '../state/BanBeContext.jsx';
 import { cardPhotoList } from '../lib/eventPhotoUrls.js';
@@ -24,14 +26,14 @@ import HomeFilterSheet from './sheets/HomeFilterSheet.jsx';
 import { secondCategory, categoryDefs, cardLine, profileFor } from '../lib/eventTypes.js';
 import { CategoryGlyph, CATEGORY_DEFS, CategorySheet, categoryGlyphMarkup, DiscoveryCard } from '../components/home/HomeDiscoveryParts.jsx';
 import { liveEventOverrides } from '../lib/countdown.js';
-import { formatMoney, formatMoneyShort, rowCurrency, rowTimeZone, cardDateBadge } from '../lib/eventMarket.js';
+import { formatMoney, formatMoneyShort, rowCurrency, rowTimeZone, cardDateBadge, VN_TIME_ZONE } from '../lib/eventMarket.js';
 import { densityHotspot } from '../lib/densityHotspot.js';
 import { buildEventSearchDoc, matchesSearchQuery } from '../lib/search.js';
 import { prefsIsEmpty } from '../lib/eventPrefs.js';
 import { mapForYouSet, applyForYouFilter } from '../lib/forYou.js';
 import { useForYouAlert } from '../lib/useForYouAlert.js';
 import ForYouChip from './ForYouChip.jsx';
-import { paper, ink, ink2, rule, alert, clay, clayBg, surface2, photoPill, RADIUS, DISPLAY_FACE, display } from '../theme.js';
+import { paper, ink, ink2, ink3, rule, alert, clay, clayBg, surface2, photoPill, RADIUS, DISPLAY_FACE, display } from '../theme.js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 // Category glyph per FILTER_DEFS key — no icon set exists anywhere else in
@@ -62,11 +64,13 @@ const MAIN_CITY_IDS = ['vn-hcm', 'vn-hanoi', 'vn-danang'];
 // for this session only (module scope: survives Event Detail round trips and reopening the Map, never stored, and
 // separate from Home's own banbe_home_layout_v1).
 let sessionListLayout = 'large';
-// Map E+ (note 79): the row of buttons that sits just above the dock (my location + "List · N").
-const FAB_ROW = 56;
-// Map E+ step 3: the neighbourhood chips above those buttons. Their room is always reserved (even where the chips are
-// hidden), so the camera padding and the reference rect never depend on the zoom level or on an open panel.
-const CHIPS_ROW = 84;
+// Map E+ (note 79): the bottom stack, in px above the dock: the neighbourhood chips, then the time bar, then the buttons
+// (my location + "List · N"). The room for all of it is always reserved, so the camera padding and the reference rect
+// never depend on the zoom level, an open panel or the time window.
+const CHIPS_BOTTOM = 12, CHIPS_H = 84, TIME_H = 58, STACK_GAP = 8, BTN_H = 44;
+const TIME_BOTTOM = CHIPS_BOTTOM + CHIPS_H + STACK_GAP;
+const FAB_BOTTOM = TIME_BOTTOM + TIME_H + 10;
+const STACK_H = FAB_BOTTOM + BTN_H + 4;
 
 async function fetchLiveEvents({ limit = MAP_EVENT_CAP, bounds = null } = {}) {
   const buildQuery = (withR2) => {
@@ -244,6 +248,35 @@ function seatFacts(ev) {
   return fillBadge(ev.booked, ev.capacity);
 }
 
+// Map E+: bold / dimmed state of one marker from the ids inside the window (hitSet null = the window is off). A group is
+// bold when ANY of its events is inside; bubbles show how many ARE; a group with none inside fades (pins and clusters to
+// MAP_DIM.pinOpacity, city and neighbourhood bubbles to MAP_DIM.zeroBubble). Styles only: no layout, no rebuild.
+function styleDim(m, hitSet) {
+  const { pinEl, kind, badge, bub, lbl, selected } = m.__parts;
+  const total = m.__ids.length;
+  const on = !!hitSet;
+  const hit = on ? m.__ids.reduce((n, id) => n + (hitSet.has(id) ? 1 : 0), 0) : total;
+  const dim = on && hit === 0;
+  const bubble = kind === 'area' || kind === 'city';
+  pinEl.setAttribute('data-hit', String(hit));
+  pinEl.setAttribute('data-dim', dim ? 'true' : 'false');
+  pinEl.style.opacity = dim ? String(bubble ? MAP_DIM.zeroBubble : MAP_DIM.pinOpacity) : '';
+  pinEl.style.scale = dim && !bubble ? String(MAP_DIM.pinScale) : '';
+  pinEl.style.filter = dim && !bubble ? 'saturate(0.2)' : '';
+  if (kind === 'area') {
+    bub.textContent = String(on ? hit : total);
+    bub.style.background = dim ? surface2 : ink;
+    bub.style.color = dim ? ink3 : paper;
+  } else if (kind === 'city') {
+    badge.textContent = String(on ? hit : total);
+  } else if (!selected) {
+    pinEl.style.background = on && hit > 0 ? ink : paper;
+    pinEl.style.color = on && hit > 0 ? paper : ink;
+    pinEl.style.fontWeight = on && hit > 0 ? '800' : '';
+  }
+  void lbl;
+}
+
 export default function MapExplore() {
   const { state: s, set, T, resolvedTheme, goEvent, backFromMapExplore, allowLocation, setMapExploreState, curArea, openArea, openEventPreferences, shareEvent, isSaved, toggleFav } = useBanBe();
   // Restored once, at mount, if MapExplore.jsx's own CTA saved a snapshot
@@ -289,12 +322,19 @@ export default function MapExplore() {
   // Moving the map never changes it.
   const entryRef = useRef(restored ? null : s.mapExploreEntry || null);
   const entry = entryRef.current;
-  const [filters, setFilters] = useState(() => normalizeFilters(
-    restored?.filters
+  // Map E+ (note 79): the Map's filters never carry a date (`date` is always 'any'): the day and hours are the time bar's,
+  // and they dim rather than remove. Home's date hand-off becomes the time window below.
+  const [filters, setFilters] = useState(() => normalizeFilters({
+    ...(restored?.filters
     ?? (restored ? { cats: restored.catFilter && restored.catFilter !== 'all' ? [restored.catFilter] : [], seatsLeft: !!restored.openNowOnly } : null)
     ?? entry?.filters
-    ?? DEFAULT_FILTERS,
-  ));
+    ?? DEFAULT_FILTERS),
+    date: 'any',
+  }));
+  // The day + hour window (src/lib/mapTimeWindow.js). Off ("All days") by default; Home's date hand-off or a returning
+  // snapshot sets it. Nothing here is a filter: results never change with it, only what is bold and what is dimmed.
+  const [timeWin, setTimeWin] = useState(() => restored?.timeWin
+    ?? windowFromHomeDate(entry?.filters?.date ?? 'any', Date.now(), VN_TIME_ZONE));
   // The category row is single-choice (Home's sheet hides categories in Simple Shell; the Map sheet does too).
   const catFilter = filters.cats[0] ?? 'all';
   const setCatFilter = useCallback((k) => setFilters(f => normalizeFilters({ ...f, cats: k === 'all' ? [] : [k], typeFilters: [] })), []);
@@ -395,7 +435,7 @@ export default function MapExplore() {
   const [dockClear, setDockClear] = useState(110); // px the floating dock occupies at the bottom
   // The bottom stack: the dock plus the buttons above it. The camera pads for it; the list and the panel float over the
   // map and never move it.
-  const stackPx = dockClear + FAB_ROW + CHIPS_ROW;
+  const stackPx = dockClear + STACK_H;
   // Map v6: Large photo cards / Compact rows at full height (see `sessionListLayout`).
   const [listLayout, setListLayoutState] = useState(() => restored?.listLayout ?? sessionListLayout);
   const setListLayout = useCallback((m) => { sessionListLayout = m; setListLayoutState(m); }, []);
@@ -831,6 +871,30 @@ export default function MapExplore() {
   const cityIdById = useMemo(() => new Map(events.map(e => [e.id, cityFor(e, CITIES)])), [events]);
   // Map E+ (note 79): each loaded event's neighbourhood ({ key, label, cityId }): its own `area` text within its city.
   const areaInfoById = useMemo(() => new Map(events.map(e => [e.id, areaKey(e, CITIES)])), [events]);
+  // Map E+: each event's slot (venue-zone service day + minutes) once per load; the window test is then an integer compare.
+  const slotById = useMemo(() => {
+    const m = new Map();
+    for (const e of events) {
+      const t = e.startsAt ? Date.parse(e.startsAt) : NaN;
+      if (!Number.isNaN(t)) m.set(e.id, eventSlot(t, e.tz || VN_TIME_ZONE));
+    }
+    return m;
+  }, [events]);
+  // The ids inside the window (null = the window is off, everything is). Recomputed per knob step: no network, no markers rebuilt.
+  const hitSet = useMemo(() => {
+    if (!timeWin.on) return null;
+    const out = new Set();
+    for (const e of events) { const sl = slotById.get(e.id); if (sl && inWindow(sl, timeWin, nowMinute * 60000)) out.add(e.id); }
+    return out;
+  }, [events, slotById, timeWin, nowMinute]);
+  const hitSetRef = useRef(hitSet);
+  hitSetRef.current = hitSet;
+  // The zone of the place being viewed (its events' own zone; Vietnam when there are none): names "today" for the day menu.
+  const viewTz = useMemo(() => {
+    const tally = new Map();
+    for (const e of (visibleEvents.length ? visibleEvents : events)) { const z = e.tz || VN_TIME_ZONE; tally.set(z, (tally.get(z) || 0) + 1); }
+    return [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || VN_TIME_ZONE;
+  }, [visibleEvents, events]);
   // Events per city with every filter except the search text and the map area (the text may be the city's name).
   const cityCounts = useMemo(() => {
     const list = applyDiscoveryFilters(applyForYouFilter(events, forYouActive, forYouOrder).map(discoveryItem), filters, nowMinute * 60000);
@@ -857,6 +921,9 @@ export default function MapExplore() {
   const flyToCityRef = useRef(null);
   const cityName = (id) => { const c = CITY_BY_ID.get(id); return c ? (en ? c.en : c.vi) : ''; };
 
+
+  // Map E+: the window restyles the markers that are already there (bold = inside, dimmed = outside); it never rebuilds them.
+  useEffect(() => { for (const m of markersRef.current) if (m.__parts) styleDim(m, hitSet); }, [hitSet]);
 
   // ---- draw/refresh pins whenever the event list or selection changes ----
   useEffect(() => {
@@ -911,6 +978,7 @@ export default function MapExplore() {
         // position:relative, which would shift every marker by half the map width).
         const el = document.createElement('div');
         const pinEl = document.createElement('div');
+        const parts = { pinEl, kind: g.kind, badge: null, bub: null, lbl: null, selected: g.ids.includes(selectedId) };
         const key = `${g.kind}:${g.ids.join(',')}`;
         newKeys.add(key);
         if (g.kind === 'city') {
@@ -925,6 +993,7 @@ export default function MapExplore() {
           const badge = document.createElement('span');
           badge.style.cssText = `min-width:22px;height:22px;padding:0 7px;box-sizing:border-box;border-radius:11px;background:${ink};color:${paper};display:inline-flex;align-items:center;justify-content:center;font:700 12px/1 'Be Vietnam Pro',sans-serif;`;
           badge.textContent = String(n);
+          parts.badge = badge;
           pinEl.appendChild(badge);
           const activate = () => flyToCityRef.current?.(g.cityId);
           pinEl.addEventListener('click', (e) => { e.stopPropagation(); activate(); });
@@ -946,6 +1015,7 @@ export default function MapExplore() {
           const lbl = document.createElement('span');
           lbl.style.cssText = `max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 8px;border-radius:999px;background:${paper};color:${ink};font:700 12px/1.3 'Be Vietnam Pro',sans-serif;box-shadow:0 1px 4px rgba(27,25,22,0.2);`;
           lbl.textContent = name;
+          parts.bub = bub; parts.lbl = lbl;
           pinEl.appendChild(bub);
           pinEl.appendChild(lbl);
           const activate = () => (single ? openAreaRef.current?.(g) : zoomToCluster(g));
@@ -1009,7 +1079,9 @@ export default function MapExplore() {
         }
         el.appendChild(pinEl);
         const marker = new MarkerCtor({ element: el }).setLngLat([g.lng, g.lat]).addTo(map);
-        marker.__key = key; marker.__el = el;
+        marker.__key = key; marker.__el = el; marker.__ids = g.ids; marker.__parts = parts;
+        pinEl.style.transition = 'opacity 0.25s ease, scale 0.18s ease, background-color 0.2s ease';
+        styleDim(marker, hitSetRef.current);
         markersRef.current.push(marker);
       }
       prevMarkerKeysRef.current = newKeys;
@@ -1077,20 +1149,20 @@ export default function MapExplore() {
     setMapExploreState({
       cameraCenter: center ? { lat: center.lat, lng: center.lng } : null,
       cameraZoom: map?.getZoom() ?? null,
-      listOpen, areaPanel, preAreaView: preAreaViewRef.current,
+      listOpen, areaPanel, preAreaView: preAreaViewRef.current, timeWin,
       filters, catFilter,
       openNowOnly,
       forYou: forYouOn,
       searchQuery,
       selectedId,
-      listScrollTop: listRef.current?.scrollTop ?? 0,
+      listScrollTop: listScrollSavedRef.current,
       // Phase 2: the committed area and the rows themselves, so the return shows the same list at once.
       committedBounds, areaContext, cityDest,
       events,
       // Map v6: the full-height layout (Large / Compact).
       listLayout,
     });
-  }, [listOpen, areaPanel, filters, catFilter, openNowOnly, forYouOn, searchQuery, selectedId, committedBounds, areaContext, cityDest, events, listLayout, setMapExploreState]);
+  }, [listOpen, areaPanel, timeWin, filters, catFilter, openNowOnly, forYouOn, searchQuery, selectedId, committedBounds, areaContext, cityDest, events, listLayout, setMapExploreState]);
 
   // "Show nearest": the closest matching events (same filters) anywhere, framed above the mid sheet — an explicit
   // geographic move that commits its area once. Never automatic, never presented as "here".
@@ -1176,7 +1248,8 @@ export default function MapExplore() {
     setListOpen(false);
     searchInputRef.current?.blur();
     const size = { width: el.clientWidth || 390, height: el.clientHeight || geomRef.current.containerH };
-    const pad = { top: geomRef.current.topControlsBottom + CARD_GAP + 16, bottom: Math.round(geomRef.current.containerH * 0.46) + 16, left: 48, right: 48 };
+    // Room under the fit: the panel (46%) and the time bar that rides above it.
+    const pad = { top: geomRef.current.topControlsBottom + CARD_GAP + 16, bottom: Math.round(geomRef.current.containerH * 0.46) + 12 + TIME_H + 16, left: 48, right: 48 };
     const mk = !!map.__isMapKit;
     const duration = reduceMotion() ? 0 : 700;
     if (opts.reveal) {
@@ -1339,6 +1412,16 @@ export default function MapExplore() {
   const countText = committedBounds && !(loading && !events.length)
     ? T(`${visibleEvents.length} sự kiện trong vùng bản đồ`, `${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'} in this map area`)
     : T('Đang tải sự kiện…', 'Loading events…');
+  // Map E+: the time window. `hitCount` is how many of the results are inside it (all of them when it is off).
+  const nowMs = nowMinute * 60000;
+  const dayOpts = dayOptions(nowMs, viewTz, en);
+  const dayLabel = timeWin.on ? (dayOpts.find(o => o.key === timeWin.key)?.label || dayOpts[4].label) : dayOpts[4].label;
+  const isHit = (id) => !hitSet || hitSet.has(id);
+  const hitCount = hitSet ? visibleEvents.reduce((n, e) => n + (hitSet.has(e.id) ? 1 : 0), 0) : visibleEvents.length;
+  const windowLine = windowSummary(timeWin, dayLabel, en);
+  const listHeading = hitSet && committedBounds && !(loading && !events.length)
+    ? T(`${hitCount} sự kiện trong khung giờ`, `${hitCount} event${hitCount === 1 ? '' : 's'} in the window`)
+    : countText;
   // Map v6 (note 74): Large photo cards (default) or Compact rows — Home's two-icon switch; session-only on the Map.
   const layoutSwitch = (
             <div role="radiogroup" aria-label={T('Kiểu hiển thị', 'Layout')} data-testid="map-layout-switch"
@@ -1476,7 +1559,7 @@ export default function MapExplore() {
     return null;
   };
 
-  const compactRow = (ev, prefix) => (
+  const compactRow = (ev, prefix, dim = false) => (
     <div
       onClick={() => openEventDetail(ev.id)}
       data-testid={`${prefix}-${ev.id}`}
@@ -1484,7 +1567,8 @@ export default function MapExplore() {
       tabIndex={0}
       aria-current={ev.id === selectedId ? 'true' : undefined}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEventDetail(ev.id); } }}
-      style={{ display: 'flex', gap: 12, padding: '7px 0', cursor: 'pointer', alignItems: 'flex-start', animation: 'banbeRowIn 0.3s cubic-bezier(.22,.61,.36,1) backwards', background: ev.id === selectedId ? 'rgba(var(--bb-fg-rgb),0.05)' : 'transparent' }}
+      style={{ display: 'flex', gap: 12, padding: '7px 0', cursor: 'pointer', alignItems: 'flex-start', animation: 'banbeRowIn 0.3s cubic-bezier(.22,.61,.36,1) backwards', background: ev.id === selectedId ? 'rgba(var(--bb-fg-rgb),0.05)' : 'transparent', opacity: dim ? MAP_DIM.rowOpacity : 1 }}
+      data-dim={dim ? 'true' : undefined}
     >
       {ev.img && <div style={{ width: 64, height: 64, borderRadius: RADIUS.thumb, backgroundImage: `url(${ev.img})`, backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0 }} />}
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -1521,10 +1605,17 @@ export default function MapExplore() {
       .sort((x, y) => (y.ids.length - x.ids.length) || String(x.labels[0] || '~').localeCompare(String(y.labels[0] || '~')))
       .map(g => ({ ...g, cats: [...new Set(g.ids.map(id => byId.get(id)?.catKey).filter(Boolean))] }));
   }, [visibleEvents, areaInfoById]);
+  // With a window on, the chips say how many of each area's events are inside it and the busiest-in-window come first.
+  const chipsView = useMemo(() => {
+    const withHits = areaChips.map(g => ({ ...g, hit: hitSet ? g.ids.reduce((n, id) => n + (hitSet.has(id) ? 1 : 0), 0) : g.ids.length }));
+    return hitSet ? [...withHits].sort((x, y) => (y.hit - x.hit) || (y.ids.length - x.ids.length)) : withHits;
+  }, [areaChips, hitSet]);
   const panelEvents = useMemo(
     () => (areaPanel ? visibleEvents.filter(e => areaPanel.keys.includes((areaInfoById.get(e.id) || areaKey(e, CITIES)).key)) : []),
     [areaPanel, visibleEvents, areaInfoById],
   );
+  const panelHit = hitSet ? panelEvents.reduce((n, e) => n + (hitSet.has(e.id) ? 1 : 0), 0) : panelEvents.length;
+  const panelOrdered = hitSet ? [...panelEvents.filter(e => hitSet.has(e.id)), ...panelEvents.filter(e => !hitSet.has(e.id))] : panelEvents;
   const areaHeadingRef = useRef(null);
   const panelKey = areaPanel ? areaPanel.keys.join('+') : '';
   useEffect(() => {
@@ -1542,9 +1633,15 @@ export default function MapExplore() {
   const listButtonRef = useRef(null);
   const listHeadingRef = useRef(null);
   const listWasOpenRef = useRef(false);
+  // The rows exist only while the list is open (hundreds of hidden cards would re-render on every time-bar step), so its
+  // scroll position is kept here and put back when it opens again.
+  const listScrollSavedRef = useRef(restored?.listScrollTop ?? 0);
+  const listOpenRef = useRef(listOpen);
+  listOpenRef.current = listOpen;
   useEffect(() => {
     if (listOpen) {
       listWasOpenRef.current = true;
+      if (listRef.current && listScrollSavedRef.current) listRef.current.scrollTop = listScrollSavedRef.current;
       listHeadingRef.current?.focus({ preventScroll: true });
       const onKey = (e) => { if (e.key === 'Escape') setListOpen(false); };
       window.addEventListener('keydown', onKey);
@@ -1639,7 +1736,7 @@ export default function MapExplore() {
 
       {/* The settled result count for THIS map area: the same list the pins come from. Announced politely (it changes
           only when the camera settles or a filter changes, never every frame). */}
-      <span data-testid="map-result-count" aria-live="polite" style={srOnly}>{countText}</span>
+      <span data-testid="map-result-count" data-hit={hitCount} aria-live="polite" style={srOnly}>{countText}</span>
 
       {/* The shared controls: back, search, filters, then the chips. They stay over the map and over the list. */}
       <div ref={topRef} data-testid="map-top" style={{ position: 'absolute', left: 0, right: 0, top: topInset, zIndex: 5, padding: '8px 0 0', display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
@@ -1752,35 +1849,45 @@ export default function MapExplore() {
       </div>
 
       {/* The bottom stack: my location and "List · N", right above the dock. */}
-      <div style={{ position: 'absolute', right: 16, bottom: dockClear + 12, zIndex: 3, display: 'flex', alignItems: 'center', gap: 8, visibility: listOpen || areaPanel ? 'hidden' : 'visible' }}>
+      <div style={{ position: 'absolute', right: 16, bottom: dockClear + FAB_BOTTOM, zIndex: 3, display: 'flex', alignItems: 'center', gap: 8, visibility: listOpen || areaPanel ? 'hidden' : 'visible' }}>
         <div role="button" tabIndex={0} onClick={recenterOnUser} data-testid="map-compass" aria-label={T('Vị trí của tôi', 'My location')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); recenterOnUser(); } }}
           style={{ ...photoPill({ position: 'static', borderRadius: '50%' }), width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: compassOpacity }}>
           🧭
         </div>
         <button ref={listButtonRef} type="button" onClick={openList} data-testid="map-list-button"
-          aria-label={T(`Danh sách, ${visibleEvents.length} sự kiện`, `List, ${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'}`)}
+          aria-label={hitSet
+            ? T(`Danh sách, ${hitCount} sự kiện trong khung giờ`, `List, ${hitCount} event${hitCount === 1 ? '' : 's'} in the window`)
+            : T(`Danh sách, ${visibleEvents.length} sự kiện`, `List, ${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'}`)}
           style={{ height: 44, padding: '0 18px', borderRadius: 999, background: ink, color: paper, fontSize: 14, fontWeight: 600, border: 'none', fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,0.28)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" /></svg>
-          {T('Danh sách', 'List')} · {visibleEvents.length}
+          {T('Danh sách', 'List')} · {hitCount}
         </button>
       </div>
 
       {/* Neighbourhood chips: tap one to fly there and open its panel. Hidden at city level, while the list or a panel is
           open, and while there is nothing to show; their room above the buttons stays reserved. */}
-      {!areaPanel && !listOpen && !searchActive && levelNow !== 'city' && areaChips.length > 0 && (
+      {!areaPanel && !listOpen && !searchActive && levelNow !== 'city' && chipsView.length > 0 && (
         <div data-hscroll="true" data-testid="map-area-chips" className="bb-noscroll" role="group" aria-label={T('Khu vực', 'Areas')}
-          style={{ position: 'absolute', left: 0, right: 0, bottom: dockClear + 12 + 44 + 10, zIndex: 3, display: 'flex', gap: 8, overflowX: 'auto', padding: '2px 16px 4px', scrollbarWidth: 'none' }}>
-          {areaChips.map(g => {
+          style={{ position: 'absolute', left: 0, right: 0, bottom: dockClear + CHIPS_BOTTOM, zIndex: 3, display: 'flex', gap: 8, overflowX: 'auto', padding: '2px 16px 4px', scrollbarWidth: 'none' }}>
+          {chipsView.map(g => {
             const name = g.labels[0] || T('Khu khác', 'Other areas');
             const n = g.ids.length;
+            const inHit = !!hitSet && g.hit > 0;
+            const off = !!hitSet && g.hit === 0;
+            const other = n - g.hit;
+            const sub = hitSet
+              ? T(`${g.hit} trong khung giờ${other ? ` · ${other} khác` : ''}`, `${g.hit} in the window${other ? ` · ${other} other` : ''}`)
+              : T(`${n} sự kiện`, `${n} event${n === 1 ? '' : 's'}`);
             return (
-              <button key={g.keys[0]} type="button" onClick={() => openAreaPanel(g)} data-testid={`map-areachip-${g.keys[0]}`} data-count={n}
-                aria-label={T(`${name}, ${n} sự kiện, mở khu này`, `${name}, ${n} event${n === 1 ? '' : 's'}, open this area`)}
-                style={{ flex: 'none', minWidth: 108, maxWidth: 190, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '8px 12px', borderRadius: 16, border: 'none', background: paper, color: ink, boxShadow: '0 2px 10px rgba(27,25,22,0.16)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+              <button key={g.keys[0]} type="button" onClick={() => openAreaPanel(g)} data-testid={`map-areachip-${g.keys[0]}`} data-count={n} data-hit={g.hit}
+                aria-label={hitSet
+                  ? T(`${name}, ${g.hit} trong khung giờ, ${other} ngoài khung giờ, mở khu này`, `${name}, ${g.hit} in the window, ${other} outside it, open this area`)
+                  : T(`${name}, ${n} sự kiện, mở khu này`, `${name}, ${n} event${n === 1 ? '' : 's'}, open this area`)}
+                style={{ flex: 'none', minWidth: 108, maxWidth: 190, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '8px 12px', borderRadius: 16, border: 'none', background: inHit ? ink : paper, color: inHit ? paper : ink, opacity: off ? MAP_DIM.chipOpacity : 1, boxShadow: '0 2px 10px rgba(27,25,22,0.16)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'opacity 0.25s ease, background-color 0.25s ease' }}>
                 <span style={{ fontSize: 15, fontWeight: 700, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-                <span style={{ fontSize: 12, color: ink2 }}>{T(`${n} sự kiện`, `${n} event${n === 1 ? '' : 's'}`)}</span>
-                <span aria-hidden="true" style={{ display: 'flex', gap: 4, color: ink2, marginTop: 2 }}>
+                <span style={{ fontSize: 12, opacity: inHit ? 0.78 : 1, color: inHit ? 'inherit' : ink2 }}>{sub}</span>
+                <span aria-hidden="true" style={{ display: 'flex', gap: 4, color: inHit ? 'inherit' : ink2, opacity: inHit ? 0.78 : 1, marginTop: 2 }}>
                   {g.cats.slice(0, 5).map(c => <CategoryGlyph key={c} cat={c} size={14} strokeWidth={1.9} />)}
                 </span>
               </button>
@@ -1795,9 +1902,9 @@ export default function MapExplore() {
           style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: panelPx, zIndex: 4, background: paper, borderRadius: '22px 22px 0 0', boxShadow: '0 -4px 20px rgba(27,25,22,0.14)', display: 'flex', flexDirection: 'column',
             animation: reduceMotion() ? 'none' : 'bbAreaPanelIn 0.38s cubic-bezier(.2,.85,.25,1)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '14px 16px 8px', flex: 'none' }}>
-            <h3 ref={areaHeadingRef} tabIndex={-1} data-testid="map-area-title" data-count={panelEvents.length}
+            <h3 ref={areaHeadingRef} tabIndex={-1} data-testid="map-area-title" data-count={panelEvents.length} data-hit={panelHit}
               style={{ margin: 0, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', outline: 'none', ...display(22, { letterSpacing: '-0.02em' }) }}>
-              {(areaPanel.label || T('Khu khác', 'Other areas'))} · {panelEvents.length}
+              {(areaPanel.label || T('Khu khác', 'Other areas'))} · {hitSet ? `${panelHit}${panelEvents.length > panelHit ? `/${panelEvents.length}` : ''}` : panelEvents.length}
             </h3>
             <button type="button" onClick={() => closeAreaPanel(true)} data-testid="map-area-back"
               style={{ ...catChip(false, false), flex: 'none' }}>
@@ -1811,13 +1918,20 @@ export default function MapExplore() {
                 {T('Không còn sự kiện ở khu này với bộ lọc hiện tại.', 'No events left in this area with the current filters.')}
               </div>
             )}
-            {panelEvents.map(ev => <Fragment key={ev.id}>{compactRow(ev, 'map-area-item')}</Fragment>)}
+            {panelOrdered.map(ev => <Fragment key={ev.id}>{compactRow(ev, 'map-area-item', !isHit(ev.id))}</Fragment>)}
           </div>
         </section>
       )}
 
+      {/* The day + hours: events inside are bold on the map, the rest dimmed; "All days" turns it off. It rides above the
+          panel while one is open. */}
+      <MapTimeBar win={timeWin} options={dayOpts} dayLabel={dayLabel} T={T}
+        onDay={(k) => setTimeWin(defaultWindow(k, Date.now(), viewTz))}
+        onKnob={(which, hour) => setTimeWin(cur => moveKnob(cur, which, hour))}
+        style={{ bottom: areaPanel ? panelPx + 12 : dockClear + TIME_BOTTOM, visibility: listOpen ? 'hidden' : 'visible', transition: reduceMotion() ? 'none' : 'bottom 0.38s cubic-bezier(.2,.85,.25,1)' }} />
+
       {showEmptyCard && (
-        <div data-testid="map-empty-card" style={{ position: 'absolute', left: 16, right: 16, bottom: dockClear + 12 + 44 + 10, zIndex: 3, maxHeight: '40%', overflowY: 'auto', background: paper, borderRadius: 16, boxShadow: '0 4px 18px rgba(27,25,22,0.16)' }}>
+        <div data-testid="map-empty-card" style={{ position: 'absolute', left: 16, right: 16, bottom: dockClear + FAB_BOTTOM + BTN_H + 8, zIndex: 3, maxHeight: '40%', overflowY: 'auto', background: paper, borderRadius: 16, boxShadow: '0 4px 18px rgba(27,25,22,0.16)' }}>
           {emptyNodes}
         </div>
       )}
@@ -1852,10 +1966,11 @@ export default function MapExplore() {
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 6 }}>
             <h2 ref={listHeadingRef} tabIndex={-1} data-testid="map-list-count" style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 17, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', outline: 'none' }}>
-              {countText}
+              {listHeading}
             </h2>
             {layoutSwitch}
           </div>
+          {hitSet && <div data-testid="map-list-window" style={{ fontSize: 13, color: ink2, paddingTop: 2 }}>{windowLine}</div>}
           {forYouActive && (
             <span onClick={editPreferences} data-testid="map-foryou-edit-prefs" role="button"
               style={{ display: 'inline-block', marginTop: 6, fontSize: 12.5, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', color: ink }}>
@@ -1890,29 +2005,44 @@ export default function MapExplore() {
           </div>
         )}
 
-        <div ref={listRef} data-testid="map-list-scroll"
+        <div ref={listRef} data-testid="map-list-scroll" onScroll={(e) => { if (listOpenRef.current) listScrollSavedRef.current = e.currentTarget.scrollTop; }}
           style={{ flex: 1, overflowY: 'auto', padding: `0 16px calc(${dockClear + 16 + 72}px + env(safe-area-inset-bottom, 0px))`, position: 'relative', touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
           {!searchActive && cityResults}
           {!searchActive && cityResults && visibleEvents.length > 0 && <div style={sectionLabel}>{T('Sự kiện', 'Events')}</div>}
           {listOpen && emptyNodes}
           {/* The results, then (apart, never counted as "in this area") matching events with no map location. */}
-          {[...visibleEvents, ...noLocationMatches].map((ev, i) => (
-            <Fragment key={ev.id}>
-              {i === visibleEvents.length && (
-                <div data-testid="map-no-location-heading" style={{ padding: '16px 0 4px', fontSize: 13, fontWeight: 600, color: ink2 }}>
-                  {T(`Chưa có vị trí trên bản đồ (${noLocationMatches.length})`, `No map location yet (${noLocationMatches.length})`)}
-                </div>
-              )}
-              {listLayout === 'large' ? (
-                <div style={{ paddingTop: i === 0 ? 8 : 0 }}>
-                  <DiscoveryCard ev={largeCard(ev)} onOpen={() => openEventDetail(ev.id)} onToggleSave={() => toggleFav(ev.id)} T={T}
-                    testId={`map-list-item-${ev.id}`} role="button" gutter={0} current={ev.id === selectedId} />
-                </div>
-              ) : (
-                compactRow(ev, 'map-list-item')
-              )}
-            </Fragment>
-          ))}
+          {listOpen && (() => {
+            // Inside the window first (soonest first, as loaded), then a dimmed "outside" group, then (apart, never counted
+            // as "in this area") matching events with no map location.
+            const inside = hitSet ? visibleEvents.filter(e => hitSet.has(e.id)) : visibleEvents;
+            const outside = hitSet ? visibleEvents.filter(e => !hitSet.has(e.id)) : [];
+            const ordered = [...inside, ...outside, ...noLocationMatches];
+            return ordered.map((ev, i) => {
+              const dim = i >= inside.length && i < inside.length + outside.length;
+              return (
+                <Fragment key={ev.id}>
+                  {i === inside.length && outside.length > 0 && (
+                    <div data-testid="map-list-outside-heading" style={{ padding: '16px 0 4px', fontSize: 12.5, fontWeight: 600, color: ink2, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {T(`${outside.length} sự kiện ngoài khung giờ`, `${outside.length} event${outside.length === 1 ? '' : 's'} outside the window`)}
+                    </div>
+                  )}
+                  {i === inside.length + outside.length && noLocationMatches.length > 0 && (
+                    <div data-testid="map-no-location-heading" style={{ padding: '16px 0 4px', fontSize: 13, fontWeight: 600, color: ink2 }}>
+                      {T(`Chưa có vị trí trên bản đồ (${noLocationMatches.length})`, `No map location yet (${noLocationMatches.length})`)}
+                    </div>
+                  )}
+                  {listLayout === 'large' ? (
+                    <div data-dim={dim ? 'true' : undefined} style={{ paddingTop: i === 0 ? 8 : 0, opacity: dim ? MAP_DIM.rowOpacity : 1 }}>
+                      <DiscoveryCard ev={largeCard(ev)} onOpen={() => openEventDetail(ev.id)} onToggleSave={() => toggleFav(ev.id)} T={T}
+                        testId={`map-list-item-${ev.id}`} role="button" gutter={0} current={ev.id === selectedId} />
+                    </div>
+                  ) : (
+                    compactRow(ev, 'map-list-item', dim)
+                  )}
+                </Fragment>
+              );
+            });
+          })()}
         </div>
 
         {/* Back to the map (also Esc). */}

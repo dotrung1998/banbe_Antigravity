@@ -136,6 +136,8 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
         </div>
 
         <div style={{ overflowY: 'auto', padding: '0 20px', flex: 1 }}>
+          {/* Map E+ (note 79): on the Map the day and hours are the time bar's job (they dim, never remove). */}
+          {!mapMode && (
           <Section title={T('Khi nào', 'When')}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {dateOptions.map(opt => (
@@ -154,6 +156,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
               </label>
             </div>
           </Section>
+          )}
 
           <Section title={mapMode ? T('Giá mỗi vé', 'Price per ticket') : T('Giá', 'Price')} right={
             <button type="button" onClick={() => setForTwo(v => !v)} aria-pressed={forTwo} data-testid="home-filter-for-two"

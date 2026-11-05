@@ -157,6 +157,224 @@ test.describe('Map — full-screen viewport discovery', () => {
     await expect(page.getByTestId('map-area-panel')).toHaveCount(0); // a merged bubble only zooms
   });
 
+  // ---- Map E+ step 4: the day + hours time bar; inside = bold, outside = dimmed, never removed ----
+  /** Two events tomorrow evening (19:00, 23:30 Vietnam time), every other one ten days out, so counts are known. */
+  async function mockStarts(page) {
+    // The app's "today" is the Vietnam service day: the night still counts until 04:00, so shift by 7 h (zone) - 4 h.
+    const vnDay = (plus) => new Date(Date.now() + 3 * 3600e3 + plus * 86400e3).toISOString().slice(0, 10);
+    await page.route(/\/rest\/v1\/events\?/, async (route) => {
+      const res = await route.fetch();
+      const rows = await res.json();
+      if (Array.isArray(rows)) rows.forEach((r, i) => { r.starts_at = i === 0 ? `${vnDay(1)}T19:00:00+07:00` : i === 1 ? `${vnDay(1)}T23:30:00+07:00` : `${vnDay(10)}T12:00:00+07:00`; });
+      await route.fulfill({ response: res, json: rows });
+    });
+  }
+  const pickDay = async (page, key) => { await page.click('[data-testid="map-time-day"]'); await page.click(`[data-testid="map-time-day-${key}"]`); };
+  const dimCount = (page) => page.locator('[data-testid^="map-areabubble-"][data-dim="true"], [data-testid^="map-pin-"][data-dim="true"], [data-testid^="map-cluster-"][data-dim="true"], [data-testid^="map-stack-"][data-dim="true"]').count();
+  const hitTotal = (page) => page.evaluate(() => [...document.querySelectorAll('[data-testid^="map-areabubble-"]')].reduce((n, e) => n + Number(e.getAttribute('data-hit') || 0), 0));
+  const knobX = async (page, hour) => { const b = await page.getByTestId('map-time-range').boundingBox(); return b.x + ((hour - 10) / 16) * b.width; };
+
+  test('the time bar starts on All days: the range is off and nothing is dimmed', async ({ page }) => {
+    await mockStarts(page);
+    await openMap(page);
+    await expect(page.getByTestId('map-time-bar')).toBeVisible();
+    await expect(page.getByTestId('map-time-day')).toContainText(/Tất cả ngày|All days/);
+    await expect(page.getByTestId('map-time-range')).toHaveAttribute('data-on', 'false');
+    expect(await dimCount(page)).toBe(0);
+    await expect(page.getByTestId('map-list-button')).toContainText(String(await countNum(page)));
+    // The time bar rides between the chips and the buttons, clear of both.
+    const t = await page.getByTestId('map-time-bar').boundingBox();
+    const c = await page.getByTestId('map-area-chips').boundingBox();
+    const f = await page.getByTestId('map-list-button').boundingBox();
+    expect(t.y + t.height).toBeLessThanOrEqual(c.y + 1);
+    expect(f.y + f.height).toBeLessThanOrEqual(t.y + 1);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('a day menu opens above the bar with today, tomorrow, the weekend day, next week and all days; the current one is checked', async ({ page }) => {
+    await openMap(page);
+    await page.click('[data-testid="map-time-day"]');
+    const menu = page.getByTestId('map-time-menu');
+    await expect(menu).toBeVisible();
+    const items = menu.getByRole('menuitemradio');
+    await expect(items).toHaveCount(5);
+    await expect(menu.getByTestId('map-time-day-all')).toHaveAttribute('aria-checked', 'true');
+    await expect(menu.getByTestId('map-time-day-weekend')).toContainText(/Thứ Bảy|Chủ nhật|Saturday|Sunday/);
+    const m = await menu.boundingBox(); const b = await page.getByTestId('map-time-day').boundingBox();
+    expect(m.y + m.height).toBeLessThanOrEqual(b.y + 2); // above the button
+    expect(m.x).toBeGreaterThanOrEqual(0);               // and on screen
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+  });
+
+  test('choosing a day dims what is outside it; "List · N" counts what is inside; no fetch, no new area, no marker rebuilt', async ({ page }) => {
+    await mockStarts(page);
+    await openMap(page);
+    const total = await countNum(page);
+    await page.evaluate(() => { window.__tagged = document.querySelector('[data-testid^="map-areabubble-"]'); });
+    const before = await commits(page);
+    let eventsRequests = 0;
+    page.on('request', r => { if (/\/rest\/v1\/events\?/.test(r.url())) eventsRequests++; });
+    await pickDay(page, 'tomorrow');
+    await expect(page.getByTestId('map-time-day')).toContainText(/Mai|Tomorrow/);
+    await expect(page.getByTestId('map-time-range')).toHaveAttribute('data-on', 'true');
+    await expect(page.getByTestId('map-list-button')).toContainText('· 2');
+    expect(await hitTotal(page)).toBe(2);
+    expect(await dimCount(page)).toBeGreaterThan(0);
+    expect(await markerTotal(page)).toBe(total); // dimmed, never removed
+    await expect(page.getByTestId('map-result-count')).toHaveAttribute('data-hit', '2');
+    expect(await page.evaluate(() => document.querySelector('[data-testid^="map-areabubble-"]') === window.__tagged)).toBe(true); // same node
+    await page.waitForTimeout(800);
+    expect(await commits(page)).toBe(before);
+    expect(eventsRequests).toBe(0);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('dragging a knob moves what is inside live: the knob grows and shows its hour while held, nothing is fetched', async ({ page }) => {
+    await mockStarts(page);
+    await openMap(page);
+    await pickDay(page, 'tomorrow'); // 17:00 to 02:00
+    await page.evaluate(() => { window.__tagged = document.querySelector('[data-testid^="map-areabubble-"]'); });
+    const before = await commits(page);
+    let eventsRequests = 0;
+    page.on('request', r => { if (/\/rest\/v1\/events\?/.test(r.url())) eventsRequests++; });
+    const knob = page.getByTestId('map-time-knob-from');
+    await expect(knob).toHaveAttribute('aria-valuenow', '17');
+    const y = (await page.getByTestId('map-time-range').boundingBox()).y + 22;
+    await page.mouse.move(await knobX(page, 17), y);
+    await page.mouse.down();
+    await expect(page.locator('.bb-tknob.act')).toHaveCount(1); // grown only while touched
+    for (let h = 17.5; h <= 20; h += 0.5) await page.mouse.move(await knobX(page, h), y);
+    await expect(knob).toHaveAttribute('aria-valuenow', '20');
+    await expect(knob.locator('.bb-tknob-bubble')).toHaveText('20:00');
+    await expect(page.getByTestId('map-list-button')).toContainText('· 1'); // 19:00 is out, 23:30 still in
+    await page.mouse.up();
+    await expect(page.locator('.bb-tknob.act')).toHaveCount(0);
+    expect(await page.evaluate(() => document.querySelector('[data-testid^="map-areabubble-"]') === window.__tagged)).toBe(true);
+    await page.waitForTimeout(800);
+    expect(await commits(page)).toBe(before);
+    expect(eventsRequests).toBe(0);
+    // A press near the right end moves the NEAREST knob (to), so both stay reachable even a step apart.
+    await page.mouse.click(await knobX(page, 24), y);
+    await expect(page.getByTestId('map-time-knob-to')).toHaveAttribute('aria-valuenow', '24');
+    await expect(page.getByTestId('map-time-knob-from')).toHaveAttribute('aria-valuenow', '20');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('the knobs are sliders for the keyboard: arrows, Page keys, Home and End; each reads its hour aloud', async ({ page }) => {
+    await mockStarts(page);
+    await openMap(page);
+    await pickDay(page, 'tomorrow');
+    const from = page.getByTestId('map-time-knob-from');
+    await from.focus();
+    await expect(from).toHaveAttribute('role', 'slider');
+    await expect(from).toHaveAttribute('aria-valuetext', '17:00');
+    await page.keyboard.press('ArrowRight');
+    await expect(from).toHaveAttribute('aria-valuenow', '18');
+    await expect(from).toHaveAttribute('aria-valuetext', '18:00');
+    await page.keyboard.press('PageUp');
+    await expect(from).toHaveAttribute('aria-valuenow', '22');
+    await page.keyboard.press('Home');
+    await expect(from).toHaveAttribute('aria-valuenow', '10');
+    await page.keyboard.press('End'); // never past the other knob: one step before it
+    await expect(from).toHaveAttribute('aria-valuenow', '25');
+    await expect(page.locator('.bb-tknob.act, .bb-tknob:focus-visible')).toHaveCount(1); // grown while focused
+    await page.keyboard.press('Home');
+    const to = page.getByTestId('map-time-knob-to');
+    await to.focus();
+    await expect(to).toHaveAttribute('aria-valuetext', '02:00'); // 26 = 02:00 the next morning
+    await page.keyboard.press('ArrowLeft');
+    await expect(to).toHaveAttribute('aria-valuenow', '25');
+    await expect(to).toHaveAttribute('aria-valuetext', '01:00');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('"All days" turns the filter off again: nothing is dimmed and the range is inert', async ({ page }) => {
+    await mockStarts(page);
+    await openMap(page);
+    const total = await countNum(page);
+    await pickDay(page, 'tomorrow');
+    expect(await dimCount(page)).toBeGreaterThan(0);
+    await pickDay(page, 'all');
+    await expect(page.getByTestId('map-time-range')).toHaveAttribute('data-on', 'false');
+    expect(await dimCount(page)).toBe(0);
+    await expect(page.getByTestId('map-list-button')).toContainText(`· ${total}`);
+    await expect(page.getByTestId('map-time-knob-from')).toHaveAttribute('aria-disabled', 'true');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('the list puts what is inside the window first and the rest after, dimmed, under its own heading', async ({ page }) => {
+    await mockStarts(page);
+    await openMap(page);
+    const total = await countNum(page);
+    await pickDay(page, 'tomorrow');
+    await openList(page);
+    await expect(page.getByTestId('map-list-count')).toContainText(/2 sự kiện trong khung giờ|2 events in the window/);
+    await expect(page.getByTestId('map-list-window')).toContainText(/17:00.02:00/);
+    const rows = page.locator('[data-testid^="map-list-item-"][role="button"]');
+    expect(await rows.count()).toBe(total);
+    await expect(page.getByTestId('map-list-outside-heading')).toContainText(String(total - 2));
+    // The two inside rows come before the heading, the others after it, and only those are dimmed.
+    const order = await page.getByTestId('map-list-scroll').evaluate((el) => {
+      const heading = el.querySelector('[data-testid="map-list-outside-heading"]');
+      return [...el.querySelectorAll('[data-testid^="map-list-item-"][role="button"]')].map(r => ({
+        before: !!(r.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING),
+        dim: !!r.closest('[data-dim="true"]'),
+      }));
+    });
+    expect(order.filter(o => o.before).length).toBe(2);
+    expect(order.filter(o => o.before).every(o => !o.dim)).toBe(true);
+    expect(order.filter(o => !o.before).every(o => o.dim)).toBe(true);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('the chips say how many of each area are inside the window and the busiest come first; an area with none fades', async ({ page }) => {
+    await mockStarts(page);
+    await openMap(page);
+    await pickDay(page, 'tomorrow');
+    const chips = page.locator('[data-testid^="map-areachip-"]');
+    const hits = await chips.evaluateAll(els => els.map(e => Number(e.getAttribute('data-hit'))));
+    expect(hits.reduce((a, b) => a + b, 0)).toBe(2);
+    expect([...hits].sort((a, b) => b - a)).toEqual(hits);
+    await expect(chips.first()).toContainText(/trong khung giờ|in the window/);
+    const faded = chips.filter({ has: page.locator('xpath=self::*[@data-hit="0"]') });
+    if (await faded.count()) expect(await faded.first().evaluate(e => getComputedStyle(e).opacity)).toBe('0.5');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('the panel puts the area’s in-window events first; its title shows inside / all; the time bar rides above it', async ({ page }) => {
+    await mockStarts(page);
+    await openMap(page);
+    await pickDay(page, 'tomorrow');
+    await openFirstArea(page);
+    const title = page.getByTestId('map-area-title');
+    const all = Number(await title.getAttribute('data-count')); const hit = Number(await title.getAttribute('data-hit'));
+    expect(hit).toBeGreaterThan(0); // the busiest-in-window area comes first
+    if (all > hit) await expect(title).toContainText(`${hit}/${all}`);
+    await expect(page.locator('[data-testid^="map-area-item-"][role="button"][data-dim="true"]')).toHaveCount(all - hit);
+    const bar = await page.getByTestId('map-time-bar').boundingBox();
+    const panel = await page.getByTestId('map-area-panel').boundingBox();
+    expect(bar.y + bar.height).toBeLessThanOrEqual(panel.y + 1);
+    // The window can still be changed from here.
+    await pickDay(page, 'all');
+    await expect(title).toContainText(String(all));
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('the window survives Event Detail and back', async ({ page }) => {
+    await mockStarts(page);
+    await openMap(page);
+    await pickDay(page, 'tomorrow');
+    await openList(page);
+    await listRows(page).first().click();
+    await expect(page.locator('[data-screen-label="EventDetail"], [data-screen-label="Event"]')).toBeVisible();
+    await page.getByTestId('event-detail-back').click();
+    await page.waitForSelector('[data-screen-label="MapExplore"]');
+    await expect(page.getByTestId('map-time-day')).toContainText(/Mai|Tomorrow/);
+    await expect(page.getByTestId('map-time-knob-from')).toHaveAttribute('aria-valuenow', '17');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
   test('a pin opens Event Detail; Back brings the panel, the area and the pan back as they were', async ({ page }) => {
     await openMap(page);
     await openFirstArea(page);
@@ -275,20 +493,23 @@ test.describe('Map — full-screen viewport discovery', () => {
   });
 
   // ---- shared, contextual filters ----
-  test('filter sheet: Close discards the draft; Apply commits it and "Show N" is the resulting list', async ({ page }) => {
+  test('filter sheet: no "When" section (the time bar is the day and hours); Close discards the draft; Apply commits it', async ({ page }) => {
     await openMap(page);
     const text0 = await countText(page);
     await page.click('[data-testid="map-chip-filters"]');
     await expect(page.getByTestId('home-filter-sheet')).toBeVisible();
     await expect(page.getByTestId('home-filter-area')).toHaveCount(0); // the map is the location
-    await expect(page.getByTestId('home-filter-date-tonight')).toBeVisible();
-    await page.click('[data-testid="home-filter-date-week"]');
+    await expect(page.locator('[data-testid^="home-filter-date-"]')).toHaveCount(0); // the time bar is the time
+    const slider = page.getByTestId('home-filter-price-max');
+    test.skip(await slider.count() === 0, 'no priced event in this map area');
+    const tryIt = async () => { await slider.focus(); await page.keyboard.press('Home'); }; // the lowest price: a real draft change
+    await tryIt();
     await page.click('[data-testid="home-filter-close"]');
     expect(await countText(page)).toBe(text0);
     await expect(page.getByTestId('map-chip-filters')).not.toContainText(/\d/); // no badge
 
     await page.click('[data-testid="map-chip-filters"]');
-    await page.click('[data-testid="home-filter-date-week"]');
+    await tryIt();
     const shown = Number(await page.getByTestId('home-filter-apply').getAttribute('data-count'));
     if (shown > 0) {
       await page.click('[data-testid="home-filter-apply"]');
@@ -298,18 +519,27 @@ test.describe('Map — full-screen viewport discovery', () => {
     }
   });
 
-  test('Home hands its filters to the Map (Home "Next 7 days" arrives as an applied Map filter)', async ({ page }) => {
+  test('Home hands its date to the Map as the day (Home "Tomorrow" arrives as Tomorrow on the time bar)', async ({ page }) => {
+    // Home's "Tomorrow" is the calendar day, the Map's is the service day (the night counts until 04:00): put events on both.
+    const cal = (plus) => new Date(Date.now() + 7 * 3600e3 + plus * 86400e3).toISOString().slice(0, 10);
+    await page.route(/\/rest\/v1\/events\?/, async (route) => {
+      const res = await route.fetch();
+      const rows = await res.json();
+      if (Array.isArray(rows)) rows.forEach((r, i) => { r.starts_at = `${cal(1)}T12:00:00+07:00`; if (i % 2) r.starts_at = `${new Date(Date.now() + 3 * 3600e3 + 86400e3).toISOString().slice(0, 10)}T12:00:00+07:00`; });
+      await route.fulfill({ response: res, json: rows });
+    });
     await guestToHome(page);
     await page.click('[data-testid="home-filters-button"]');
-    await page.click('[data-testid="home-filter-date-week"]');
-    const homeCount = Number(await page.getByTestId('home-filter-apply').getAttribute('data-count'));
-    test.skip(homeCount === 0, 'no live event in the next 7 days to hand over');
+    await page.click('[data-testid="home-filter-date-tomorrow"]');
     await page.click('[data-testid="home-filter-apply"]');
     await page.click('[data-testid="home-layout-map"]');
     await page.waitForSelector('[data-screen-label="MapExplore"]');
-    await expect(page.getByTestId('map-chip-filters')).toContainText('1');
+    await expect(page.getByTestId('map-time-day')).toContainText(/Mai|Tomorrow/);
+    await expect(page.getByTestId('map-time-range')).toHaveAttribute('data-on', 'true');
+    await expect(page.getByTestId('map-chip-filters')).not.toContainText(/\d/); // the date is not a Map filter
     await page.click('[data-testid="map-chip-filters"]');
-    await expect(page.getByTestId('home-filter-date-week')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('[data-testid^="home-filter-date-"]')).toHaveCount(0);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
   test('the category chips count what tapping them would show; a pick filters in place and survives a pan', async ({ page }) => {
@@ -345,12 +575,15 @@ test.describe('Map — full-screen viewport discovery', () => {
   test('price pins show the price per ticket of their event, with its category icon', async ({ page }) => {
     await openMap(page);
     await openFirstArea(page);
-    const pin = page.locator('[data-testid^="map-pin-"]').first();
-    test.skip(await pin.count() === 0, 'this area has only clusters or stacks at this zoom');
+    // A pin of THIS area (neighbouring areas' pins can be in view too): the one that has a row in the panel.
+    const ids = (await page.locator('[data-testid^="map-pin-"]').evaluateAll(els => els.map(e => e.getAttribute('data-testid').replace('map-pin-', ''))));
+    let id = null;
+    for (const c of ids) if (await page.getByTestId(`map-area-item-price-${c}`).count()) { id = c; break; }
+    test.skip(id === null, 'this area has only clusters or stacks at this zoom');
+    const pin = page.getByTestId(`map-pin-${id}`);
     // Map v5: the category's line icon sits before the price, and the screen reader hears the category too.
     await expect(pin.locator('svg')).toHaveCount(1);
     expect(await pin.getAttribute('data-cat')).toBeTruthy();
-    const id = (await pin.getAttribute('data-testid')).replace('map-pin-', '');
     const pinText = (await pin.textContent()).trim();
     // The panel's own rows carry the price per ticket.
     const rowPrice = await page.getByTestId(`map-area-item-price-${id}`).textContent();
@@ -560,6 +793,19 @@ test.describe('Map — full-screen viewport discovery', () => {
     await expect(page.getByTestId('map-list-sheet')).toBeVisible();
   });
 
+  test('the list keeps its scroll position when it closes and opens again (its rows only exist while it is open)', async ({ page }) => {
+    await openMap(page);
+    await openList(page);
+    await page.getByTestId('map-list-scroll').evaluate(e => { e.scrollTop = 150; });
+    await page.waitForTimeout(250);
+    const y0 = await page.getByTestId('map-list-scroll').evaluate(e => e.scrollTop);
+    expect(y0).toBeGreaterThan(50);
+    await closeList(page);
+    await expect(page.locator('[data-testid^="map-list-item-"][role="button"]')).toHaveCount(0); // nothing hidden is rendered
+    await openList(page);
+    expect(Math.abs((await page.getByTestId('map-list-scroll').evaluate(e => e.scrollTop)) - y0)).toBeLessThan(3);
+  });
+
   test('the list shows Large photo cards by default; Compact shows rows and is remembered for the session', async ({ page }) => {
     await openMap(page);
     await openList(page);
@@ -586,6 +832,7 @@ test.describe('Map — full-screen viewport discovery', () => {
     await page.click(`[data-testid="photo-pager-next-${id}"]`);
     await expect(counter).toHaveText(/^2\/\d+$/);
     await expect(pager).toHaveAttribute('data-index', '1');
+    await page.waitForTimeout(500); // the page turn has settled before the next gesture starts
     // A horizontal mouse drag and a sideways wheel move the photos, never the screen.
     const b = await pager.boundingBox();
     await page.mouse.move(b.x + b.width * 0.8, b.y + b.height / 2);
