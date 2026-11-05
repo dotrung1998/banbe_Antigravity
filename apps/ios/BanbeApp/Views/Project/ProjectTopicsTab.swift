@@ -8,7 +8,8 @@ struct ProjectTopicsTab: View {
     @Environment(\.openProjectSheet) private var openSheet
     let snap: ProjectSnapshot
     @State private var rulesOpen = false
-    @State private var laneFilter: String?
+    /// Lane filter, owned by the hub so the pinned copy of the chips (shown once these scroll away) shares it.
+    @Binding var laneFilter: String?
     @State private var loadingOlder = false
 
     private var lanes: [ProjectLane] { (snap.lanes ?? []).sorted { $0.position < $1.position } }
@@ -23,7 +24,12 @@ struct ProjectTopicsTab: View {
         let rest = shown.filter { p in !waiting.contains { $0.id == p.id } }
         VStack(alignment: .leading, spacing: 0) {
             rulesCard
-            laneChips.padding(.top, 12)
+            ProjectTopicLaneChips(lanes: lanes, posts: posts, selection: $laneFilter)
+                .padding(.top, 12)
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: ProjectTopicChipsKey.self, value: g.frame(in: .named(ProjectLaneNav.space)).minY)
+                })
+                .id("project.topics.chips")
             if !waiting.isEmpty {
                 ProjectCountHeader(title: app.T("Chờ bạn", "Waiting on you"), count: waiting.count)
                 VStack(spacing: 10) { ForEach(waiting) { ProjectPostCard(post: $0) } }
@@ -107,13 +113,28 @@ struct ProjectTopicsTab: View {
         }
     }
 
-    private var laneChips: some View {
+}
+
+/// Where the Topics lane chips sit in the hub's scroll view; above the top = scrolled away, so the hub pins a copy.
+struct ProjectTopicChipsKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// Topics lane filter: All plus one chip per lane, each with its icon and how many posts it has.
+struct ProjectTopicLaneChips: View {
+    @EnvironmentObject private var app: AppState
+    let lanes: [ProjectLane]
+    let posts: [ProjectPost]
+    @Binding var selection: String?
+
+    var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ProjectChip(title: app.T("Tất cả", "All"), selected: laneFilter == nil, id: "project.topics.lane.all") { laneFilter = nil }
+                ProjectChip(title: app.T("Tất cả", "All"), selected: selection == nil, id: "project.topics.lane.all", count: posts.count) { selection = nil }
                 ForEach(lanes) { l in
-                    ProjectChip(title: l.name, selected: laneFilter == l.id, id: "project.topics.lane.\(l.id)",
-                                icon: ProjectLanePresets.icon(for: l.name)) { laneFilter = l.id }
+                    ProjectChip(title: l.name, selected: selection == l.id, id: "project.topics.lane.\(l.id)",
+                                icon: ProjectLanePresets.icon(for: l.name), count: posts.filter { $0.laneId == l.id }.count) { selection = l.id }
                 }
             }
         }

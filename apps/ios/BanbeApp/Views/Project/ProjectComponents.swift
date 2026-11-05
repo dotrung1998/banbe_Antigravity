@@ -99,6 +99,7 @@ struct ProjectChip: View {
     var enabled = true
     var id: String? = nil
     var icon: String? = nil
+    var count: Int? = nil
     let action: () -> Void
 
     var body: some View {
@@ -106,6 +107,10 @@ struct ProjectChip: View {
             HStack(spacing: 6) {
                 if let icon { Image(systemName: icon).font(.system(size: 13, weight: .semibold)).accessibilityHidden(true) }
                 Text(title)
+                if let count {
+                    Text("\(count)").font(.caption.weight(.bold).monospacedDigit())
+                        .foregroundStyle(selected ? app.palette.paper.opacity(0.7) : app.palette.ink3)
+                }
             }
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)

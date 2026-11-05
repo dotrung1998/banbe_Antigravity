@@ -11,6 +11,9 @@ struct ProjectHubView: View {
     @State private var currentLane: String?
     /// Tasks' All | Mine, shared by the list and the lane navigator.
     @State private var tasksMineOnly = false
+    /// Topics' lane filter, and whether its chips have scrolled off the top (then a copy is pinned there).
+    @State private var topicsLane: String?
+    @State private var topicsChipsPinned = false
     /// A tapped lane keeps the highlight until the person scrolls by hand: through the jump animation (`laneJumpUntil`),
     /// then while its heading stays where the jump left it (`laneTapY`). Needed because the last lanes can't reach the top.
     @State private var laneTapped: String?
@@ -54,6 +57,27 @@ struct ProjectHubView: View {
                     .coordinateSpace(name: ProjectLaneNav.space)
                     .background(GeometryReader { g in Color.clear.onAppear { scrollHeight = g.size.height }
                         .onChange(of: g.size.height) { _, h in scrollHeight = h } })
+                    .onPreferenceChange(ProjectTopicChipsKey.self) { y in
+                        let pinned = app.projectTab == "topics" && y < -4
+                        if pinned != topicsChipsPinned { topicsChipsPinned = pinned }
+                    }
+                    .overlay(alignment: .top) {
+                        if topicsChipsPinned, app.projectTab == "topics" {
+                            ProjectTopicLaneChips(lanes: (snap.lanes ?? []).sorted { $0.position < $1.position }, posts: snap.posts ?? [],
+                                                  selection: Binding(get: { topicsLane }, set: { id in
+                                                      topicsLane = id
+                                                      // Show the filtered list from its start.
+                                                      withAnimation(.snappy(duration: 0.35)) { proxy.scrollTo("project.topics.chips", anchor: .top) }
+                                                  }))
+                                .padding(.horizontal, 18).padding(.vertical, 8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(app.palette.paper)
+                                .overlay(alignment: .bottom) { Rectangle().fill(app.palette.divider).frame(height: 1) }
+                                .transition(.opacity)
+                                .accessibilityIdentifier("project.topics.pinnedChips")
+                        }
+                    }
+                    .animation(.easeOut(duration: 0.15), value: topicsChipsPinned)
                     .onPreferenceChange(ProjectLaneTopKey.self) { tops in
                         if let tapped = laneTapped {
                             if Date() < laneJumpUntil { return }
@@ -81,6 +105,7 @@ struct ProjectHubView: View {
             }
         }
         .onChange(of: tasksMineOnly) { _, _ in currentLane = nil; laneTapped = nil; laneTapY = nil }
+        .onChange(of: app.projectTab) { _, _ in topicsChipsPinned = false }
         .foregroundStyle(app.palette.ink)
         .background(app.palette.paper.ignoresSafeArea())
         .sheet(item: $sheet) { ProjectSheetHost(sheet: $0) { sheet = nil }.projectDemoLinks(app) }
@@ -200,7 +225,7 @@ struct ProjectHubView: View {
         switch app.projectTab {
         case "tasks": ProjectTasksTab(snap: snap, mineOnly: $tasksMineOnly)
         case "team": ProjectTeamTab(snap: snap)
-        case "topics": ProjectTopicsTab(snap: snap)
+        case "topics": ProjectTopicsTab(snap: snap, laneFilter: $topicsLane)
         case "money": ProjectMoneyTab(snap: snap)
         case "dayof": ProjectDayOfTab(snap: snap, live: live)
         default: ProjectOverviewTab(snap: snap)

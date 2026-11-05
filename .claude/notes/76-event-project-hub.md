@@ -611,3 +611,10 @@ flicker. Also: `import Combine` in ConfirmedView (Xcode warnings from the Timer.
   `ProjectLaneNav.current` now uses a reading line: 60 pt from the top for most of the list, sliding down to viewport − 120 over
   the last 60 % of a screen of scrolling, so each tail lane becomes current in order. Replaces the "last visible heading at the
   bottom" rule. A list that fits on screen keeps its first lane.
+
+## 2026-11-05: Topics lane chips pinned + counts (iOS; owner testing)
+
+`ProjectTopicLaneChips` (ProjectTopicsTab.swift): All + one chip per lane with icon and post count (`ProjectChip.count`). The
+filter (`topicsLane`) is owned by ProjectHubView. The in-list chips report their minY (`ProjectTopicChipsKey`); once they scroll
+above the top, the hub overlays a pinned copy at the top of the list (fade). Picking a lane from the pinned copy scrolls back to
+the chips so the filtered list starts from its top. Counts cover loaded posts (the first 20, more with "Show older posts").
