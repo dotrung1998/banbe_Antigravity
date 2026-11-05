@@ -3,6 +3,9 @@
 import { projectPeople } from '../../lib/projectPresentation.js';
 import { paper, ink, ink2, ink3, block, blockInset, divider, fieldSolid, clay, clayBg, honey, honeyBg, alert, display } from '../../theme.js';
 
+/** The element the app scrolls in (App.jsx), not window: sticky strips and scroll listeners hang off it. */
+export const appScroller = () => (typeof document === 'undefined' ? null : document.querySelector('[data-testid="app-scroll-viewport"]'));
+
 export const TOKENS = { paper, ink, ink2, ink3, block, blockInset, divider, fieldSolid, clay, clayBg, honey, honeyBg, alert };
 
 export function Card({ children, padding = 16, style, ...rest }) {
@@ -33,13 +36,50 @@ export const pillButton = (primary = false, extra) => ({
 });
 export const dangerButton = (extra) => pillButton(false, { background: 'color-mix(in srgb, var(--bb-alert) 12%, transparent)', color: alert, ...extra });
 
-export function Chip({ title, selected, onClick, disabled, testId, style }) {
+/** A choice chip; `icon` (lane icon) before the title and `count` after it are optional. */
+export function Chip({ title, selected, onClick, disabled, testId, style, icon, count }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled} aria-pressed={!!selected} data-testid={testId}
-      style={{ minHeight: 40, padding: '0 14px', borderRadius: 999, border: 0, cursor: disabled ? 'default' : 'pointer', whiteSpace: 'nowrap',
+      style={{ minHeight: 40, padding: '0 14px', borderRadius: 999, border: 0, cursor: disabled ? 'default' : 'pointer', whiteSpace: 'nowrap', flex: 'none',
+        display: 'inline-flex', alignItems: 'center', gap: 6,
         fontSize: 14, fontWeight: 600, background: selected ? ink : blockInset, color: selected ? paper : ink, opacity: disabled ? 0.4 : 1, ...style }}>
+      {icon && <span aria-hidden style={{ fontSize: 13 }}>{icon}</span>}
       {title}
+      {count != null && <span style={{ fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: selected ? paper : ink3, opacity: selected ? 0.7 : 1 }}>{count}</span>}
     </button>
+  );
+}
+
+/** A quiet tip that helps keep a project small (lane and task sheets); `firm` turns it honey near a limit. */
+export function Guidance({ text, firm }) {
+  return (
+    <div data-testid="project-guidance" data-firm={firm ? '1' : '0'}
+      style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: 12, borderRadius: 14, fontSize: 14, lineHeight: 1.45,
+        background: firm ? honeyBg : block, color: firm ? honey : ink2 }}>
+      <span aria-hidden style={{ flex: 'none' }}>{firm ? '⚠' : '💡'}</span><span>{text}</span>
+    </div>
+  );
+}
+
+/** A limit reached (red): no more lanes or tasks until something is archived or deleted. */
+export function LimitNote({ children, testId }) {
+  return <div role="status" data-testid={testId} style={{ padding: 12, borderRadius: 14, fontSize: 14, color: alert, background: 'color-mix(in srgb, var(--bb-alert) 12%, transparent)' }}>{children}</div>;
+}
+
+/** Post types (2026-11-05, iOS ProjectTypeTag): each type has its own hue, so they read apart without the word.
+ *  Decision is solid ink: the final, locked kind. Question/Update tints are CSS variables with a dark pair (index.css). */
+export const POST_ICON = { proposal: '📊', question: '❓', update: '📣', decision: '✔\uFE0E' };
+export const postTint = (type) => ({
+  proposal: [honey, honeyBg], question: ['var(--bb-question)', 'var(--bb-question-bg)'], update: ['var(--bb-update)', 'var(--bb-update-bg)'],
+}[type] || [paper, ink]);
+
+export function TypeTag({ type, label }) {
+  const [fg, bg] = postTint(type);
+  return (
+    <span data-testid={`project-type-tag-${type}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap',
+      fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: fg, background: bg }}>
+      <span aria-hidden style={{ fontSize: 11 }}>{POST_ICON[type]}</span>{label}
+    </span>
   );
 }
 
@@ -113,15 +153,17 @@ export function TaskRow({ task, p, showLane = true, onOpen }) {
 /** Bottom sheet over the hub (like the app's other web sheets). */
 export function Sheet({ title, onClose, children, testId, closeTestId = 'project-sheet-close' }) {
   return (
-    <div onClick={onClose} style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
+    // Fixed to the screen (the hub can be taller than it) and always the tallest height, like iOS (all Project Hub
+    // sheets open full height since 2026-11-05).
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', animation: 'banbeFade 0.2s ease both' }}>
       <div role="dialog" aria-modal="true" aria-label={title} data-testid={testId} onClick={(e) => e.stopPropagation()}
-        style={{ background: paper, color: ink, borderRadius: '22px 22px 0 0', maxHeight: '88%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+        style={{ background: paper, color: ink, borderRadius: '22px 22px 0 0', height: '92%', width: '100%', maxWidth: 480, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 6px 20px' }}>
           <strong style={{ fontSize: 16 }}>{title}</strong>
           <button type="button" onClick={onClose} aria-label="Close" data-testid={closeTestId}
             style={{ width: 44, height: 44, borderRadius: '50%', border: 0, background: blockInset, color: ink, cursor: 'pointer', fontSize: 16 }}>✕</button>
         </div>
-        <div style={{ overflowY: 'auto', padding: '8px 20px 30px', display: 'flex', flexDirection: 'column', gap: 16 }}>{children}</div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '8px 20px 30px', display: 'flex', flexDirection: 'column', gap: 16 }}>{children}</div>
       </div>
     </div>
   );

@@ -2,8 +2,9 @@
 // post/compose sheets are in ProjectTopics.jsx, member/invite in ProjectTeam.jsx, run-of-show/trash in ProjectDayOf.jsx.
 import { useState } from 'react';
 import { validateChannel, detectChannelPlatform } from '../../lib/projectChannels.js';
-import { ink2, alert, clay, clayBg } from '../../theme.js';
-import { Sheet, Chip, ChipRow, FieldLabel, TextField, ReasonField, reasonOk, Note, pillButton, dangerButton, linkButton, PeopleChips } from './ProjectUI.jsx';
+import { ink, ink2, ink3, paper, block, blockInset, divider, alert, clay, clayBg, honey } from '../../theme.js';
+import { iconFor, key as laneKey, presetNamed, search as searchPresets } from '../../lib/projectLanePresets.js';
+import { Sheet, Chip, ChipRow, FieldLabel, TextField, ReasonField, reasonOk, Note, Guidance, LimitNote, pillButton, dangerButton, linkButton, PeopleChips } from './ProjectUI.jsx';
 import { changeTitle } from './ProjectOverviewTasks.jsx';
 import { PostSheet, ComposeSheet } from './ProjectTopics.jsx';
 import { MemberSheet, InviteSheet } from './ProjectTeam.jsx';
@@ -20,7 +21,7 @@ export default function ProjectSheetHost({ sheet, close, p, ui }) {
     case 'channels': return <ChannelsSheet close={close} p={p} />;
     case 'channelPropose': return <ChannelProposeSheet close={close} p={p} />;
     case 'post': return <PostSheet postId={sheet.id} close={close} p={p} />;
-    case 'compose': return <ComposeSheet close={close} p={p} />;
+    case 'compose': return <ComposeSheet presetLane={sheet.laneId} close={close} p={p} />;
     case 'member': return <MemberSheet memberId={sheet.id} close={close} p={p} />;
     case 'invite': return <InviteSheet close={close} p={p} />;
     case 'ros': return <RosSheet itemId={sheet.id} close={close} p={p} />;
@@ -73,11 +74,20 @@ function TaskSheet({ taskId, presetLane, close, p }) {
     );
   }
   const dirty = !task || title.trim() !== task.title || laneId !== task.lane_id || (assignee || null) !== (task.assignee_id || null) || (due || null) !== (task.due_date || null) || status !== task.status;
+  const guidance = !task ? p.taskGuidance(laneId || null) : null;
+  const full = !task ? p.taskLimitText(laneId || null) : null;
+  const usage = !task ? p.taskUsage(laneId || null) : null;
   return (
     <Sheet title={sheetTitle} onClose={close} testId="project-task-sheet">
+      {guidance && <Guidance text={guidance.text} firm={guidance.firm} />}
+      {full && <LimitNote testId="project-task-full">{full}</LimitNote>}
       <TextField label={T('Tên việc', 'Title')} value={title} onChange={setTitle} limit={60} placeholder={T('Làm gì?', 'What needs doing?')} testId="project-task-title" />
-      <FieldLabel>{T('Hạng mục', 'Lane')}</FieldLabel>
-      <ChipRow>{lanes.map(l => <Chip key={l.id} title={l.name} selected={laneId === l.id} onClick={() => setLaneId(l.id)} testId={`project-task-lane-${l.id}`} />)}</ChipRow>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <FieldLabel>{T('Hạng mục', 'Lane')}</FieldLabel>
+        <ChipRow>{lanes.map(l => <Chip key={l.id} title={l.name} icon={iconFor(l.name)} selected={laneId === l.id} onClick={() => setLaneId(l.id)} testId={`project-task-lane-${l.id}`} />)}</ChipRow>
+        {/* The limits, always visible while adding (they used to show only once reached). */}
+        {usage && <div data-testid="project-task-usage" style={{ fontSize: 13, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: usage.near ? honey : ink3 }}>◔ {usage.text}</div>}
+      </div>
       <FieldLabel>{T('Người phụ trách', 'Assignee')}</FieldLabel>
       <PeopleChips p={p} value={assignee} onChange={setAssignee} testId="project-task-assignee" />
       <TextField type="date" label={T('Hạn (theo ngày của sự kiện)', 'Due (event day)')} value={due} onChange={setDue} testId="project-task-due" />
@@ -86,7 +96,7 @@ function TaskSheet({ taskId, presetLane, close, p }) {
         <ChipRow>{['todo', 'doing', 'blocked', 'done'].map(st => <Chip key={st} title={p.statusName(st)} selected={status === st} onClick={() => setStatus(st)} testId={`project-task-status-${st}`} />)}</ChipRow>
         {status === 'blocked' && <Note tone="alert">{T('Việc bị chặn báo ngay cho Chủ sự kiện.', 'A blocked task alerts the Host straight away.')}</Note>}
       </>)}
-      <button type="button" data-testid="project-task-save" disabled={!titleOk || !laneId || !dirty || p.s.projectBusy} style={pillButton(true, { opacity: titleOk && dirty ? 1 : 0.4 })}
+      <button type="button" data-testid="project-task-save" disabled={!titleOk || !laneId || !dirty || !!full || p.s.projectBusy} style={pillButton(true, { opacity: titleOk && dirty && !full ? 1 : 0.4 })}
         onClick={async () => { if (await p.saveTask({ taskId: task?.id || null, laneId, title: title.trim(), assigneeId: assignee || null, dueDate: due || null, status: task ? status : null })) close(); }}>
         {task ? T('Lưu thay đổi', 'Save changes') : T('Tạo việc', 'Create task')}
       </button>
@@ -99,22 +109,78 @@ function TaskSheet({ taskId, presetLane, close, p }) {
   );
 }
 
+/** The Host adds a lane straight away; a Manager proposes one with a reason. Pick a ready-made lane (each with its icon),
+ *  search them, or add your own name when it isn't listed (iOS ProjectNewLaneSheet). The project's lanes are listed
+ *  below, greyed, so nobody adds the same one twice. */
 function NewLaneSheet({ close, p }) {
   const { T, snap } = p;
+  const L = p.LIMITS;
   const direct = p.can('lane.manage');
   const [name, setName] = useState('');
+  const [query, setQuery] = useState('');
   const [why, setWhy] = useState('');
-  const n = (snap.lanes || []).length;
-  const ok = name.trim().length >= 1 && name.trim().length <= 24 && n < 10 && (direct || reasonOk(why));
+  const lanes = [...(snap.lanes || [])].sort((a, b) => a.position - b.position);
+  const n = lanes.length;
+  const taken = new Set(lanes.map(l => laneKey(l.name)));
+  const q = laneKey(query);
+  const existing = lanes.filter(l => !q || laneKey(l.name).includes(q));
+  const presets = searchPresets(query).filter(x => !taken.has(laneKey(x.vi)) && !taken.has(laneKey(x.en)));
+  const typed = query.trim();
+  const custom = typed && typed.length <= L.laneNameMax && !presetNamed(typed) && !taken.has(laneKey(typed)) ? typed : null;
+  const picked = name.trim();
+  const ok = picked.length >= 1 && picked.length <= L.laneNameMax && n < L.lanesMax && !taken.has(laneKey(picked)) && (direct || reasonOk(why));
+  const guidance = p.laneGuidance();
+  const option = (title, icon, sub, testId) => {
+    const on = name === title;
+    return (
+      <button key={testId} type="button" onClick={() => setName(title)} aria-pressed={on} data-testid={testId}
+        style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 52, padding: '6px 12px', border: 0, background: 'none', color: ink, textAlign: 'left', cursor: 'pointer' }}>
+        <span aria-hidden style={{ width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', flex: 'none', fontSize: 17,
+          background: on ? ink : clayBg, color: on ? paper : clay }}>{icon}</span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'block', fontWeight: 600 }}>{title}</span>
+          {sub && <span style={{ display: 'block', fontSize: 13, color: ink3 }}>{sub}</span>}
+        </span>
+        {on && <span aria-hidden style={{ fontWeight: 800 }}>✓</span>}
+      </button>
+    );
+  };
+  const rows = [
+    custom && option(custom, '＋', T('Thêm hạng mục mới', 'Add as a new lane'), 'project-lane-custom'),
+    ...presets.map(x => option(T(x.vi, x.en), x.icon, null, `project-lane-preset-${x.en}`)),
+  ].filter(Boolean);
   return (
     <Sheet title={direct ? T('Thêm hạng mục', 'Add a lane') : T('Đề xuất hạng mục', 'Propose a lane')} onClose={close} testId="project-lane-sheet">
       {!direct && <div style={{ padding: 14, borderRadius: 16, background: clayBg, color: clay, fontSize: 14 }}>{T('Chủ sự kiện sẽ duyệt và trả lời kèm lý do. Hạng mục chỉ hiện cho cả đội sau khi được duyệt.', 'The Host reviews it and replies with a reason. The lane appears for the team once approved.')}</div>}
-      <TextField label={T('Tên hạng mục', 'Lane name')} value={name} onChange={setName} limit={24} placeholder={T('Ví dụ: Truyền thông', 'e.g. Marketing')} testId="project-lane-name" />
-      {!direct && <TextField label={T('Vì sao cần?', 'Why is it needed?')} value={why} onChange={setWhy} limit={140} multiline testId="project-lane-why" />}
-      <Note>{T(`${n}/10 hạng mục.`, `${n}/10 lanes.`)}</Note>
+      {guidance && <Guidance text={guidance.text} firm={guidance.firm} />}
+      <TextField label={T('Tìm hoặc gõ tên mới', 'Search or type a new name')} value={query} onChange={setQuery} limit={L.laneNameMax} placeholder={T('Ví dụ: Truyền thông', 'e.g. Marketing')} testId="project-lane-name" />
+      {n >= L.lanesMax && (
+        <LimitNote testId="project-lane-full">{T(`Dự án đã đủ ${L.lanesMax} hạng mục. Hãy lưu trữ một hạng mục trước khi thêm.`, `This project has ${L.lanesMax} lanes, the most allowed. Archive one before adding another.`)}</LimitNote>
+      )}
+      <div data-testid="project-lane-options" style={{ background: block, borderRadius: 18, flex: 'none' }}>
+        {rows.length ? rows.map((r, i) => <div key={i}>{r}{i < rows.length - 1 && <div style={{ height: 1, background: divider, marginLeft: 60 }} />}</div>)
+          : <div style={{ minHeight: 52, display: 'grid', placeItems: 'center', fontSize: 14, color: ink2 }}>{T('Không có hạng mục nào khớp.', 'No lane matches.')}</div>}
+      </div>
+      {existing.length > 0 && (<>
+        <FieldLabel>{T('Đã có trong dự án', 'Already in this project')}</FieldLabel>
+        <div data-testid="project-lane-existing" style={{ background: block, borderRadius: 18, flex: 'none' }}>
+          {existing.map((l, i) => (
+            <div key={l.id}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 52, padding: '0 12px' }}>
+                <span aria-hidden style={{ width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', flex: 'none', fontSize: 17, background: blockInset, color: ink3, filter: 'grayscale(1)', opacity: 0.8 }}>{iconFor(l.name)}</span>
+                <span style={{ flex: 1, minWidth: 0, fontWeight: 600, color: ink2 }}>{l.name}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: ink3 }}>{T('Đã có', 'Added')}</span>
+              </div>
+              {i < existing.length - 1 && <div style={{ height: 1, background: divider, marginLeft: 60 }} />}
+            </div>
+          ))}
+        </div>
+      </>)}
+      {!direct && <TextField label={T('Vì sao cần?', 'Why is it needed?')} value={why} onChange={setWhy} limit={140} multiline placeholder={T('Một hai câu cho Chủ sự kiện', 'A line or two for the Host')} testId="project-lane-why" />}
+      <Note>{T(`${n}/${L.lanesMax} hạng mục.`, `${n}/${L.lanesMax} lanes.`)}</Note>
       <button type="button" disabled={!ok || p.s.projectBusy} data-testid="project-lane-save" style={pillButton(true, { opacity: ok ? 1 : 0.4 })}
-        onClick={async () => { const done = direct ? await p.addLane(name.trim()) : await p.proposeChange({ kind: 'lane_add', name: name.trim(), why: why.trim() }); if (done) close(); }}>
-        {direct ? T('Thêm', 'Add') : T('Gửi đề xuất', 'Send proposal')}
+        onClick={async () => { const done = direct ? await p.addLane(picked) : await p.proposeChange({ kind: 'lane_add', name: picked, why: why.trim() }); if (done) close(); }}>
+        {!picked ? T('Chọn một hạng mục', 'Pick a lane') : direct ? T(`Thêm ${picked}`, `Add ${picked}`) : T('Gửi đề xuất', 'Send proposal')}
       </button>
     </Sheet>
   );

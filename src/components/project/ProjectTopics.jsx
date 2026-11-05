@@ -1,12 +1,11 @@
 // Topics tab of the web Event Project Hub (note 76): structured posts only (Proposal, Question, Update, Decision), no
 // free chat. Same rules as iOS ProjectTopicsTab / ProjectPostSheets: votes and "Seen" are counters, replies are capped
 // at 10 × 140, a settled post locks, the author edits or deletes only while nobody has responded.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { awaiting, ymd } from '../../lib/projectPresentation.js';
-import { ink, ink2, ink3, clay, clayBg, block, blockInset, fieldSolid } from '../../theme.js';
-import { Card, CountHeader, Chip, ChipRow, Tag, Sheet, FieldLabel, TextField, ReasonField, reasonOk, Note, pillButton, dangerButton, linkButton, PeopleChips } from './ProjectUI.jsx';
-
-const ICON = { proposal: '📊', question: '❓', update: 'ℹ', decision: '⚑' };
+import { iconFor } from '../../lib/projectLanePresets.js';
+import { ink, ink2, ink3, paper, clay, clayBg, block, blockInset, fieldSolid, divider, display } from '../../theme.js';
+import { Card, CountHeader, Chip, ChipRow, Tag, TypeTag, POST_ICON, postTint, appScroller, Sheet, FieldLabel, TextField, ReasonField, reasonOk, Note, pillButton, dangerButton, linkButton, PeopleChips } from './ProjectUI.jsx';
 
 export function postMeta(p, post) {
   const L = p.LIMITS;
@@ -25,7 +24,7 @@ function PostCard({ post, p, ui }) {
     <button type="button" onClick={() => ui.openSheet({ kind: 'post', id: post.id })} data-testid={`project-post-${post.id}`}
       style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', padding: 14, borderRadius: 18, border: 0, background: block, color: ink, textAlign: 'left', cursor: 'pointer' }}>
       <span style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-        <Tag>{ICON[post.type]} {p.typeName(post.type)}</Tag>
+        <TypeTag type={post.type} label={p.typeName(post.type)} />
         {post.state !== 'open' && <Tag tone="ink">🔒 {post.state === 'locked' ? p.T('Đã khoá', 'Locked') : p.T('Đã giải quyết', 'Resolved')}</Tag>}
       </span>
       <strong style={{ fontSize: 15.5 }}>{post.title}</strong>
@@ -38,7 +37,29 @@ function PostCard({ post, p, ui }) {
 export default function ProjectTopics({ p, ui }) {
   const { snap, T } = p;
   const [rules, setRules] = useState(false);
-  const [lane, setLane] = useState(null);
+  // The lane filter lives in the hub, so New post can preselect it and glow while it's empty.
+  const lane = ui.topicsLane || null;
+  const setLane = ui.setTopicsLane;
+  const lanes = [...(snap.lanes || [])].sort((a, b) => a.position - b.position);
+  const chipsRef = useRef(null);
+  const [pinned, setPinned] = useState(false);
+  // The chips stick under the top once the rules card has scrolled away (position: sticky); a hairline shows then.
+  useEffect(() => {
+    const sc = appScroller();
+    if (!sc) return undefined;
+    const on = () => {
+      const el = chipsRef.current;
+      if (el) setPinned(el.getBoundingClientRect().top - sc.getBoundingClientRect().top <= (ui.stickyTop || 0) + 0.5 && sc.scrollTop > 0);
+    };
+    on();
+    sc.addEventListener('scroll', on, { passive: true });
+    return () => sc.removeEventListener('scroll', on);
+  }, [ui.stickyTop]);
+  const pick = (id) => {
+    setLane(id);
+    // Show the filtered list from its start.
+    if (pinned) chipsRef.current?.parentElement?.querySelector('[data-topics-list-start]')?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+  };
   const posts = snap.posts || [];
   const shown = posts.filter(x => !lane || x.lane_id === lane);
   const waiting = lane ? [] : awaiting(snap, p.userId).filter(a => a.kind !== 'laneReview').map(a => posts.find(x => x.id === a.id)).filter(Boolean);
@@ -60,10 +81,13 @@ export default function ProjectTopics({ p, ui }) {
           </ul>
         )}
       </Card>
-      <div style={{ marginTop: 12 }}>
+      <div data-topics-list-start style={{ scrollMarginTop: (ui.stickyTop || 0) }} />
+      <div ref={chipsRef} data-testid="project-topics-chips" data-pinned={pinned ? '1' : '0'}
+        style={{ position: 'sticky', top: ui.stickyTop || 0, zIndex: 6, margin: '4px -18px 0', padding: '8px 18px', background: paper,
+          boxShadow: pinned ? `inset 0 -1px 0 ${divider}` : 'none' }}>
         <ChipRow scroll>
-          <Chip title={T('Tất cả', 'All')} selected={!lane} onClick={() => setLane(null)} testId="project-topics-lane-all" />
-          {[...(snap.lanes || [])].sort((a, b) => a.position - b.position).map(l => <Chip key={l.id} title={l.name} selected={lane === l.id} onClick={() => setLane(l.id)} testId={`project-topics-lane-${l.id}`} />)}
+          <Chip title={T('Tất cả', 'All')} selected={!lane} onClick={() => pick(null)} count={posts.length} testId="project-topics-lane-all" />
+          {lanes.map(l => <Chip key={l.id} title={l.name} icon={iconFor(l.name)} count={posts.filter(x => x.lane_id === l.id).length} selected={lane === l.id} onClick={() => pick(l.id)} testId={`project-topics-lane-${l.id}`} />)}
         </ChipRow>
       </div>
       {waiting.length > 0 && (<>
@@ -71,12 +95,29 @@ export default function ProjectTopics({ p, ui }) {
         <div data-testid="project-topics-waiting" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{waiting.map(x => <PostCard key={x.id} post={x} p={p} ui={ui} />)}</div>
       </>)}
       <CountHeader title={T('Tất cả bài', 'All posts')} count={shown.length} />
-      {rest.length ? <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{rest.map(x => <PostCard key={x.id} post={x} p={p} ui={ui} />)}</div>
-        : <Note>{shown.length ? T('Mọi bài đều ở mục Chờ bạn.', 'Every post is in Waiting on you.') : T('Chưa có bài.', 'No posts yet.')}</Note>}
+      {!shown.length ? <EmptyLane p={p} ui={ui} lane={lanes.find(l => l.id === lane)} />
+        : rest.length ? <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{rest.map(x => <PostCard key={x.id} post={x} p={p} ui={ui} />)}</div>
+          : <Note>{T('Mọi bài đều ở mục Chờ bạn.', 'Every post is in Waiting on you.')}</Note>}
       {posts.length >= 20 && !p.s.projectPostsExhausted && (
         <button type="button" onClick={p.loadOlderPosts} data-testid="project-topics-older" style={{ ...linkButton, width: '100%', marginTop: 10 }}>{T('Xem bài cũ hơn', 'Show older posts')}</button>
       )}
     </div>
+  );
+}
+
+/** No posts under this filter yet: say so, suggest what to post, and offer the button (New post glows meanwhile). */
+function EmptyLane({ p, ui, lane }) {
+  const { T } = p;
+  return (
+    <Card data-testid="project-topics-empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center', padding: '22px 16px' }}>
+      <span aria-hidden style={{ width: 56, height: 56, borderRadius: '50%', background: clayBg, color: clay, display: 'grid', placeItems: 'center', fontSize: 26 }}>{lane ? iconFor(lane.name) : '💬'}</span>
+      <h3 style={{ ...display(19, { margin: 0 }) }}>{lane ? T(`Chưa có bài trong ${lane.name}`, `No posts in ${lane.name} yet`) : T('Chưa có bài nào', 'No posts yet')}</h3>
+      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: ink2 }}>{T('Hỏi một người, đề xuất để cả đội bỏ phiếu, hoặc báo một tin. Bài đầu tiên giúp cả đội bắt đầu.', 'Ask someone, put options to a vote, or share an update. The first post gets the team going.')}</p>
+      {p.can('post.question') && (
+        <button type="button" data-testid="project-topics-first-post" onClick={() => ui.openSheet({ kind: 'compose', laneId: lane?.id || null })}
+          style={pillButton(true, { width: 'auto', minHeight: 44, padding: '0 18px', marginTop: 4 })}>✎ {T('Viết bài đầu tiên', 'Write the first post')}</button>
+      )}
+    </Card>
   );
 }
 
@@ -199,7 +240,7 @@ export function PostSheet({ postId, close, p }) {
   );
 }
 
-export function ComposeSheet({ close, p }) {
+export function ComposeSheet({ close, p, presetLane = null }) {
   const { T, snap } = p;
   const L = p.LIMITS;
   const [type, setType] = useState(null);
@@ -227,9 +268,9 @@ export function ComposeSheet({ close, p }) {
             : t === 'proposal' ? T('Hỗ trợ không đăng đề xuất. Hãy hỏi Trưởng hạng mục.', "Helpers don't post proposals. Ask your lane lead.")
               : T('Chốt quyết định do Chủ sự kiện, Quản lý hoặc Trưởng hạng mục làm.', 'Decisions come from the Host, a Manager or a lane lead.');
           return (
-            <button key={t} type="button" disabled={!ok} data-testid={`project-compose-type-${t}`} onClick={() => { setType(t); setLaneId(lanesFor(t)[0]?.id || ''); }}
+            <button key={t} type="button" disabled={!ok} data-testid={`project-compose-type-${t}`} onClick={() => { setType(t); setLaneId(lanesFor(t).find(l => l.id === presetLane)?.id || lanesFor(t)[0]?.id || ''); }}
               style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: 14, borderRadius: 18, border: 0, background: block, color: ink, textAlign: 'left', cursor: ok ? 'pointer' : 'default', opacity: ok ? 1 : 0.5 }}>
-              <span aria-hidden style={{ width: 40, height: 40, borderRadius: '50%', background: clayBg, color: clay, display: 'grid', placeItems: 'center', flex: 'none' }}>{ICON[t]}</span>
+              <span aria-hidden style={{ width: 40, height: 40, borderRadius: '50%', background: postTint(t)[1], color: postTint(t)[0], display: 'grid', placeItems: 'center', flex: 'none' }}>{POST_ICON[t]}</span>
               <span><strong style={{ display: 'block' }}>{p.typeName(t)}</strong><span style={{ fontSize: 14, color: ink2 }}>{hint}</span></span>
             </button>
           );
@@ -246,7 +287,7 @@ export function ComposeSheet({ close, p }) {
   return (
     <Sheet title={p.typeName(type)} onClose={close} testId="project-compose">
       <FieldLabel>{T('Hạng mục', 'Lane')}</FieldLabel>
-      <ChipRow>{lanesFor(type).map(l => <Chip key={l.id} title={l.name} selected={laneId === l.id} onClick={() => setLaneId(l.id)} testId={`project-compose-lane-${l.id}`} />)}</ChipRow>
+      <ChipRow>{lanesFor(type).map(l => <Chip key={l.id} title={l.name} icon={iconFor(l.name)} selected={laneId === l.id} onClick={() => setLaneId(l.id)} testId={`project-compose-lane-${l.id}`} />)}</ChipRow>
       <TextField label={T('Tiêu đề', 'Title')} value={title} onChange={setTitle} limit={L.postTitleMax} placeholder={T('Nói gọn trong một câu', 'Say it in one line')} testId="project-compose-title" />
       <TextField label={T('Chi tiết', 'Details')} value={body} onChange={setBody} limit={L.postBodyMax} multiline placeholder={T('Chỉ thông tin người khác cần để quyết định', 'Only what others need to decide')} testId="project-compose-body" />
       {type === 'proposal' && (<>

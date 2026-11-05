@@ -1,11 +1,12 @@
 // Overview and Tasks tabs of the web Event Project Hub (note 76). Same content and rules as the iOS
 // ProjectOverviewTab / ProjectTasksTab: proposals banner (Host), team channels, readiness + lane bars, needs attention,
 // coming up, decision log; Tasks: lane proposals, All | Mine, lanes with their tasks.
-import { useState } from 'react';
-import { readiness, laneProgress, attention, comingUp, decisions, myOpenTasks } from '../../lib/projectPresentation.js';
+import { useEffect, useRef, useState } from 'react';
+import { readiness, laneProgress, attention, comingUp, decisions, myOpenTasks, currentLane } from '../../lib/projectPresentation.js';
+import { iconFor } from '../../lib/projectLanePresets.js';
 import { CHANNEL_NAMES, channelHost } from '../../lib/projectChannels.js';
-import { ink, ink2, ink3, clay, clayBg, blockInset, divider, alert } from '../../theme.js';
-import { Card, SectionHeader, Chip, ChipRow, Rows, TaskRow, Note, linkButton, pillButton } from './ProjectUI.jsx';
+import { ink, ink2, ink3, paper, clay, clayBg, block, blockInset, divider, alert } from '../../theme.js';
+import { Card, SectionHeader, Chip, ChipRow, Rows, TaskRow, Note, linkButton, pillButton, appScroller } from './ProjectUI.jsx';
 
 export function changeTitle(p, r) {
   const n = r.payload?.name || r.payload?.channel?.label || r.payload?.url || '';
@@ -115,17 +116,49 @@ export function ChannelsCard({ p, ui }) {
   );
 }
 
+/** Scroll the app (not window) so `el` sits `offset` px below the top of the scroller, or centred. */
+function scrollAppTo(el, { offset = 0, center = false } = {}) {
+  const sc = appScroller();
+  if (!sc || !el) return;
+  const y = el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
+  const top = center ? y - sc.clientHeight / 2 + el.offsetHeight / 2 : y - offset;
+  const smooth = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  sc.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
+}
+
 export function ProjectTasks({ p, ui }) {
   const { snap, T } = p;
   const [filter, setFilter] = useState('all');
   const tasks = snap.tasks || [];
   const lanes = [...(snap.lanes || [])].sort((a, b) => a.position - b.position);
   const shown = filter === 'mine' ? myOpenTasks(tasks, p.userId).concat(tasks.filter(t => t.status === 'done' && String(t.assignee_id || '').toLowerCase() === p.userId)) : tasks;
+  // The lanes the list shows (under Mine, only lanes with my tasks): the navigator shows the same lanes and counts.
+  const visible = filter === 'mine' ? lanes.filter(l => shown.some(t => t.lane_id === l.id)) : lanes;
   const requests = snap.change_requests || [];
   const pendingForHost = snap.is_host ? requests.filter(r => r.status === 'pending') : [];
   const mine = snap.is_host ? [] : requests.filter(r => String(r.proposed_by || '').toLowerCase() === p.userId);
+  const root = useRef(null);
+  const heading = (id) => root.current?.querySelector(`[data-lane-section="${id}"]`);
+
+  // A lane just added or approved: switch to All, bring it into view and highlight it briefly (it lands at the bottom).
+  const [newLane, setNewLane] = useState(null);
+  const laneCount = lanes.length;
+  const prevCount = useRef(laneCount);
+  useEffect(() => {
+    const grew = laneCount > prevCount.current;
+    prevCount.current = laneCount;
+    if (!grew) return undefined;
+    const last = lanes[lanes.length - 1];
+    setFilter('all');
+    setNewLane(last.id);
+    const a = setTimeout(() => scrollAppTo(heading(last.id), { center: true }), 350);
+    const b = setTimeout(() => setNewLane(null), 2600);
+    return () => { clearTimeout(a); clearTimeout(b); };
+  }, [laneCount]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
-    <div data-testid="project-tasks-tab">
+    <div ref={root} data-testid="project-tasks-tab">
+      {visible.length > 1 && <LaneNav p={p} ui={ui} lanes={visible} tasks={shown} heading={heading} />}
       {pendingForHost.length > 0 && (<>
         <SectionHeader title={T('Đề xuất chờ duyệt', 'Proposals to review')} />
         <Rows items={pendingForHost} render={r => (
@@ -156,19 +189,17 @@ export function ProjectTasks({ p, ui }) {
           <Chip title={T('Tất cả', 'All')} selected={filter === 'all'} onClick={() => setFilter('all')} testId="project-tasks-all" />
           <Chip title={T('Của tôi', 'Mine')} selected={filter === 'mine'} onClick={() => setFilter('mine')} testId="project-tasks-mine" />
         </ChipRow>
-        {(p.can('lane.manage') || p.can('change.propose')) && (
-          <button type="button" data-testid="project-lane-add" onClick={() => ui.openSheet({ kind: 'newLane' })} style={linkButton}>
-            ＋ {p.can('lane.manage') ? T('Thêm hạng mục', 'Add lane') : T('Đề xuất hạng mục', 'Propose a lane')}
-          </button>
-        )}
       </div>
       {lanes.map(l => {
         const list = shown.filter(t => t.lane_id === l.id);
         if (!list.length && filter === 'mine') return null;
+        const lit = newLane === l.id;
         return (
-          <div key={l.id}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 0 8px', fontSize: 12, fontWeight: 700, letterSpacing: 0.6, color: ink3 }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{l.name.toUpperCase()}
+          <div key={l.id} data-lane-section={l.id} data-testid={`project-lane-${l.id}`} data-highlight={lit ? '1' : '0'}
+            style={{ margin: '0 -8px', padding: '0 8px 8px', borderRadius: 18, transition: 'background-color .4s ease',
+              background: lit ? 'color-mix(in srgb, var(--bb-clay-bg) 60%, transparent)' : 'transparent' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0 8px', fontSize: 12, fontWeight: 700, letterSpacing: 0.6, color: ink3 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span aria-hidden style={{ fontSize: 13, letterSpacing: 0 }}>{iconFor(l.name)}</span>{l.name.toUpperCase()}
                 {p.can('lane.manage') && <button type="button" aria-label={T(`Quản lý ${l.name}`, `Manage ${l.name}`)} onClick={() => ui.openSheet({ kind: 'manageLane', id: l.id })}
                   style={{ width: 36, height: 36, borderRadius: '50%', border: 0, background: blockInset, color: ink, cursor: 'pointer' }}>✎</button>}
               </span>
@@ -179,6 +210,81 @@ export function ProjectTasks({ p, ui }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** Lane navigator over the Tasks list (2026-11-05, iOS ProjectLaneNav): sticky under the top, one chip per lane with
+ *  its icon and done/total. Tap to jump; the lane being looked at is filled ink and kept in view in the strip. */
+function LaneNav({ p, ui, lanes, tasks, heading }) {
+  const { T } = p;
+  const strip = useRef(null);
+  const row = useRef(null);
+  const [current, setCurrent] = useState(lanes[0]?.id);
+  // A tapped lane keeps the highlight until the person scrolls by hand: through the jump (~600 ms), then while its
+  // heading stays where the jump left it (the last lanes can't reach the top).
+  const tap = useRef({ id: null, until: 0, y: null });
+  const ids = lanes.map(l => l.id).join(',');
+
+  useEffect(() => {
+    const sc = appScroller();
+    if (!sc) return undefined;
+    const on = () => {
+      const el = strip.current;
+      if (!el) return;
+      const below = el.getBoundingClientRect().bottom;
+      const tops = {};
+      for (const l of lanes) { const h = heading(l.id); if (h) tops[l.id] = h.getBoundingClientRect().top - below; }
+      const t = tap.current;
+      if (t.id) {
+        if (Date.now() < t.until) return;
+        const y = tops[t.id];
+        if (y == null) t.id = null;
+        else if (t.y == null) { t.y = y; return; }
+        else if (Math.abs(y - t.y) < 8) return;
+        else { t.id = null; t.y = null; }
+      }
+      const id = currentLane(tops, { viewport: sc.getBoundingClientRect().bottom - below, remaining: sc.scrollHeight - sc.scrollTop - sc.clientHeight });
+      if (id) setCurrent(id);
+    };
+    tap.current = { id: null, until: 0, y: null };
+    on();
+    sc.addEventListener('scroll', on, { passive: true });
+    return () => sc.removeEventListener('scroll', on);
+  }, [ids]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep the current chip visible inside the strip (horizontal only; never scrolls the page).
+  useEffect(() => {
+    const r = row.current, chip = r?.querySelector(`[data-nav-lane="${current}"]`);
+    if (r && chip) r.scrollTo?.({ left: chip.offsetLeft - r.clientWidth / 2 + chip.offsetWidth / 2, behavior: 'smooth' });
+  }, [current]);
+
+  const jump = (id) => {
+    setCurrent(id);
+    tap.current = { id, until: Date.now() + 600, y: null };
+    scrollAppTo(heading(id), { offset: (ui.stickyTop || 0) + (strip.current?.offsetHeight || 0) });
+  };
+
+  return (
+    <div ref={strip} data-testid="project-lane-nav" aria-label={T('Đi tới hạng mục', 'Jump to lane')} role="navigation"
+      style={{ position: 'sticky', top: ui.stickyTop || 0, zIndex: 6, margin: '0 -18px 6px', background: paper, boxShadow: `inset 0 -1px 0 ${divider}` }}>
+      <div ref={row} style={{ position: 'relative', display: 'flex', gap: 8, overflowX: 'auto', padding: '10px 18px', scrollbarWidth: 'none' }}>
+        {lanes.map(l => {
+          const on = l.id === current;
+          const mine = tasks.filter(t => t.lane_id === l.id);
+          const done = mine.filter(t => t.status === 'done').length;
+          return (
+            <button key={l.id} type="button" data-nav-lane={l.id} data-testid={`project-lane-nav-${l.id}`} aria-current={on ? 'true' : undefined} onClick={() => jump(l.id)}
+              aria-label={T(`${l.name}, xong ${done} trên ${mine.length}`, `${l.name}, ${done} of ${mine.length} done`)}
+              style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 38, padding: '0 12px', borderRadius: 999, border: 0, cursor: 'pointer', whiteSpace: 'nowrap',
+                fontSize: 14, fontWeight: 600, background: on ? ink : block, color: on ? paper : ink, transition: 'background-color .2s ease, color .2s ease' }}>
+              <span aria-hidden style={{ fontSize: 13 }}>{iconFor(l.name)}</span>
+              {l.name}
+              <span style={{ fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: on ? paper : ink3, opacity: on ? 0.7 : 1 }}>{done}/{mine.length}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

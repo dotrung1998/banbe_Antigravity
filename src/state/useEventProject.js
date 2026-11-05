@@ -233,7 +233,56 @@ export function useEventProject() {
     }
     return setTaskStatus(task.id, task.status === 'done' ? 'todo' : 'done');
   };
+  // Task and lane limits (2026-11-05, iOS AppState+Project): 60 tasks per project, 15 per lane, checked by the apps only.
+  const taskLimitText = (laneId) => {
+    const tasks = snap?.tasks || [];
+    if (tasks.length >= LIMITS.tasksMax) {
+      return T(`Dự án đã đủ ${LIMITS.tasksMax} việc. Hãy xoá hoặc gộp bớt việc đã xong.`, `This project has ${LIMITS.tasksMax} tasks, the most it can hold. Delete or merge some first.`);
+    }
+    if (laneId && tasks.filter(t => t.lane_id === laneId).length >= LIMITS.tasksPerLaneMax) {
+      return T(`Hạng mục này đã đủ ${LIMITS.tasksPerLaneMax} việc. Hãy chia sang hạng mục khác.`, `This lane has ${LIMITS.tasksPerLaneMax} tasks, the most it can hold. Split them into another lane.`);
+    }
+    return null;
+  };
+  /** "4/15 tasks in this lane · 23/60 in the project", always shown while adding; `near` = within 5 of either limit. */
+  const taskUsage = (laneId) => {
+    const tasks = snap?.tasks || [];
+    const total = tasks.length;
+    if (!laneId) return { text: T(`${total}/${LIMITS.tasksMax} việc trong dự án`, `${total}/${LIMITS.tasksMax} tasks in the project`), near: total >= LIMITS.tasksMax - 5 };
+    const inLane = tasks.filter(t => t.lane_id === laneId).length;
+    return {
+      text: T(`${inLane}/${LIMITS.tasksPerLaneMax} việc trong hạng mục này · ${total}/${LIMITS.tasksMax} cả dự án`, `${inLane}/${LIMITS.tasksPerLaneMax} tasks in this lane · ${total}/${LIMITS.tasksMax} in the project`),
+      near: inLane >= LIMITS.tasksPerLaneMax - 5 || total >= LIMITS.tasksMax - 5,
+    };
+  };
+  /** A gentle tip while there's room, a firmer (honey) one as the project fills up; null at the limit. */
+  const laneGuidance = () => {
+    const n = (snap?.lanes || []).length, max = LIMITS.lanesMax;
+    if (n >= max) return null;
+    if (n >= 6) {
+      return { text: T(`Đã có ${n}/${max} hạng mục. Càng nhiều hạng mục, cả đội càng phải theo dõi nhiều chỗ. Thử gộp vào một hạng mục sẵn có trước.`,
+        `${n} of ${max} lanes used. Every extra lane is one more place for the team to check. Try fitting this into an existing lane first.`), firm: true };
+    }
+    return { text: T('Phần lớn sự kiện chỉ cần 4 đến 6 hạng mục. Hãy mở hạng mục mới khi có một phần việc lớn và một người lo riêng.',
+      'Most events run well on 4 to 6 lanes. Open a new one for a big area of work that one person will own.'), firm: false };
+  };
+  const taskGuidance = (laneId) => {
+    if (taskLimitText(laneId)) return null;
+    const tasks = snap?.tasks || [];
+    const inLane = laneId ? tasks.filter(t => t.lane_id === laneId).length : 0;
+    if (inLane >= LIMITS.tasksPerLaneMax - 5) {
+      return { text: T(`Hạng mục này đã có ${inLane}/${LIMITS.tasksPerLaneMax} việc. Hãy hoàn thành hoặc gộp bớt để danh sách dễ theo dõi.`,
+        `This lane has ${inLane} of ${LIMITS.tasksPerLaneMax} tasks. Finish or merge a few so the list stays easy to follow.`), firm: true };
+    }
+    if (tasks.length >= LIMITS.tasksMax - 15) {
+      return { text: T(`Dự án đã có ${tasks.length}/${LIMITS.tasksMax} việc. Chỉ thêm việc thật sự cần cho ngày sự kiện.`,
+        `This project has ${tasks.length} of ${LIMITS.tasksMax} tasks. Add only what the event really needs.`), firm: true };
+    }
+    return { text: T('Một việc là một kết quả rõ ràng, có một người lo. Việc lặt vặt nên gộp chung vào một việc.',
+      'A task is one clear result with one owner. Group small to-dos into a single task.'), firm: false };
+  };
   const saveTask = async ({ taskId = null, laneId, title, assigneeId = null, dueDate = null, status = null }) => {
+    if (!taskId) { const full = taskLimitText(laneId); if (full) { set({ projectNotice: full }); return false; } }
     if (demo) {
       patchSnap(p => ({ ...p, tasks: taskId
         ? p.tasks.map(t => t.id === taskId ? { ...t, lane_id: laneId, title, assignee_id: assigneeId, due_date: dueDate, status: status || t.status } : t)
@@ -728,7 +777,7 @@ export function useEventProject() {
     s, snap, set, T, userId, demo, now, tz, can, LIMITS, doorAccess, loadDoor, checkInGuest, paymentsAccess, loadPayments, confirmPayment, openProof,
     errorText, roleName, roleNote, statusName, typeName, personName, laneName, dueText, clock, headcount,
     open, back, refresh, loadMyProjects, startProject, write, demoAdmin, demoAllowed, demoOnly, demoLinkBlocked, openProjectDemo, exitProjectDemo,
-    setTaskStatus, toggleTaskDone, saveTask, deleteTask, saveChannels, addLane, renameLane, archiveLane, proposeChange, reviewChange, leave,
+    setTaskStatus, toggleTaskDone, saveTask, deleteTask, taskLimitText, taskUsage, laneGuidance, taskGuidance, saveChannels, addLane, renameLane, archiveLane, proposeChange, reviewChange, leave,
     loadPost, loadOlderPosts, createPost, editPost, vote, markSeen, reply, resolvePost, decide, deletePost,
     createInvite, loadInvites, revokeInvite, setMember, removeMember, inviteShareText, inviteExpiry,
     openJoin, peek, join,

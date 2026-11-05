@@ -70,7 +70,8 @@ test.describe('Event Project Hub (web)', () => {
     await page.getByTestId('project-overview-review').click();
     await expect(page.getByTestId(`project-proposal-approve-${REQUEST}`)).toBeVisible();
     await page.getByTestId(`project-proposal-approve-${REQUEST}`).click();
-    await expect(page.getByText('TRUYỀN THÔNG')).toBeVisible();
+    // The approved lane is scrolled to and highlighted (the navigator strip also lists it, so match the section).
+    await expect(page.locator('[data-lane-section][data-highlight="1"]')).toContainText('TRUYỀN THÔNG');
   });
 
   test('a helper cannot edit channels, add tasks or tick someone else’s task', async ({ page }) => {
@@ -88,6 +89,9 @@ test.describe('Event Project Hub (web)', () => {
     await page.getByTestId(`project-task-tick-${TASK02}`).click();
     await expect(page.getByTestId(`project-task-tick-${TASK02}`)).toHaveAttribute('data-status', 'done');
     await page.getByTestId('project-add-task').click();
+    await expect(page.getByTestId('project-add-task-lane')).toBeVisible();
+    await page.getByTestId('project-add-task-task').click();
+    await expect(page.getByTestId('project-task-usage')).toBeVisible();
     await page.getByTestId('project-task-title').fill('Buy ice');
     await page.getByTestId('project-task-save').click();
     await expect(page.getByText('Buy ice')).toBeVisible();

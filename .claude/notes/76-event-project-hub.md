@@ -623,3 +623,15 @@ the chips so the filtered list starts from its top. Counts cover loaded posts (t
 - Empty lane (or no posts at all) in Topics: a card with the lane icon, "No posts in <lane> yet", what to post, and "Write the first
   post" (opens compose with that lane preselected: `ProjectSheet.compose(laneID:)`). Meanwhile the floating New post button wears a
   breathing gold halo (`ProjectAttentionHalo`, BanbeTheme.attn, static under Reduce Motion) and also preselects the filtered lane.
+
+## 2026-11-05: web parity of today's iOS hub changes
+
+Ported to web: one-line 54 px tabs; `src/lib/projectLanePresets.js` (36 presets, emoji icons, key/iconFor/search); new-lane sheet
+(tip, search, custom row, presets, "Already in this project"); task limits (`taskLimitText`/`taskUsage`/guidance in
+useEventProject, create guarded, usage line always visible); "Add task / lane" FAB menu (`project-add-task-task` / `-lane`), lane
+chip removed; lane icons + scroll/highlight a new lane; sticky `LaneNav` with `currentLane(tops, {viewport, remaining})` in
+projectPresentation.js (sliding reading line, tap lock, follows All|Mine); distinct type tags (`--bb-question*`, `--bb-update*` CSS
+vars, dark variants); Topics chips with icons + counts, sticky row, empty-lane card, glowing New post (`.bb-attn-ring`) preselecting
+the lane; project sheets fixed-position at 92% height. Side fix: the hub's `banbeIn` animation fill mode `both` → `backwards`
+(it made sheets size against the whole hub, ~2,900 px). Scroller is `[data-testid="app-scroll-viewport"]`, not window.
+Checks: vite build OK, unit 938/938, Playwright event-project + project-demo (chromium) 26/26 (26/26 before too).

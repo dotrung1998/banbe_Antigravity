@@ -189,3 +189,22 @@ export function teamGrantsOver(snap, now, grantDays = 7) {
   if (p.read_only === true || (p.read_only_at && t >= Date.parse(p.read_only_at))) return true;
   return !!p.event_end_at && t >= Date.parse(p.event_end_at) + grantDays * 86400e3;
 }
+
+/** Tasks lane navigator (2026-11-05, iOS `ProjectLaneNav.current`): the lane being looked at = the last heading above a
+ *  reading line. `tops` = each lane heading's top in px below the navigator strip; `viewport` = visible height below the
+ *  strip; `remaining` = px of scrolling left to the bottom. The line sits 60 px down for most of the list and, over the
+ *  last 60% of a screen of scrolling, slides down toward the bottom, so short lanes at the end each become current in
+ *  order. A list that fits on screen (first heading below the line) keeps its first lane. */
+export function currentLane(tops = {}, { viewport = 0, remaining = null } = {}) {
+  const entries = Object.entries(tops);
+  if (!entries.length) return null;
+  const min = Math.min(...entries.map(([, y]) => y));
+  let line = 60;
+  if (remaining != null && viewport > 0 && min <= 60) {
+    const t = Math.min(1, Math.max(0, 1 - remaining / (viewport * 0.6)));
+    line = 60 + t * Math.max(0, viewport - 60 - 120);
+  }
+  const above = entries.filter(([, y]) => y <= line);
+  const pick = above.length ? above.reduce((a, b) => (b[1] > a[1] ? b : a)) : entries.reduce((a, b) => (b[1] < a[1] ? b : a));
+  return pick[0];
+}
