@@ -179,6 +179,20 @@ struct MapExploreState {
     /// meant ONLY for the visual camera, never for the data-loading query
     /// bounds — see `MapExploreView.init(restored:)`'s own use of this flag.
     var singleEventFocus: Bool = false
+    /// Map E+ (note 79): the list layer was open (and where it was scrolled) and a neighbourhood panel was open (with the
+    /// view it was opened from), so Back from Event Detail returns to exactly that.
+    var listOpen: Bool = false
+    var listOffset: Double = 0
+    var areaPanelKeys: [String]? = nil
+    var areaPanelLabel: String? = nil
+    var preAreaRegion: SavedRegion? = nil
+
+    struct SavedRegion {
+        var centerLat: Double
+        var centerLng: Double
+        var spanLat: Double
+        var spanLng: Double
+    }
 }
 
 /// Address-autocomplete fix pass (2026-09-28) — one candidate from
