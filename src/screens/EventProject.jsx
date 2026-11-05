@@ -74,7 +74,7 @@ export default function EventProject() {
     <div data-screen-label="EventProject" data-testid="project-hub"
       // `backwards`, not `both`: a transform animation that stays in effect makes this div the containing block of the
       // position:fixed sheets, which then sized themselves to the whole (tall) hub instead of the screen.
-      style={{ position: 'relative', minHeight: '100%', background: paper, color: ink, animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) backwards' }}>
+      style={{ position: 'relative', minHeight: '100%', overflowX: 'clip', background: paper, color: ink, animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) backwards' }}>
       {p.demoAdmin && (
         // Admin project hub demo (migration 216): always on screen while the demo is open.
         <div ref={banner} data-testid="project-demo-banner" role="status"

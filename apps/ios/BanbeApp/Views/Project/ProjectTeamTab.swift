@@ -197,32 +197,69 @@ struct ProjectRoleMatrixView: View {
         .padding(.horizontal, 12).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(app.palette.block, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(GeometryReader { g in
+            Color.clear.preference(key: ProjectMatrixBottomKey.self, value: g.frame(in: .named(ProjectLaneNav.space)).maxY)
+        })
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project.team.matrix")
     }
 
-    private var shortNames: [String] {
+    private var shortNames: [String] { ProjectRoleMatrixView.shortNames(app) }
+    private var mine: Int? { ProjectRoleMatrixView.myColumn(app) }
+
+    static func shortNames(_ app: AppState) -> [String] {
         [app.T("Chủ", "Host"), app.T("QL", "Mgr"), app.T("TC", "Fin"), app.T("THM", "Lead"), app.T("HT", "Help")]
+    }
+
+    /// The column of the viewer's own role (Host, Manager, Finance, Lane lead, Helper), drawn bold and tinted.
+    static func myColumn(_ app: AppState) -> Int? {
+        if app.projectSnapshot?.isHost == true { return 0 }
+        switch app.projectSnapshot?.me?.role {
+        case "manager": return 1
+        case "finance": return 2
+        case "lane_lead": return 3
+        case "helper": return 4
+        default: return nil
+        }
+    }
+
+    /// Column names; the viewer's own role is an ink pill. Also used for the copy the hub pins on top while scrolling.
+    static func header(_ app: AppState, mine: Int?) -> some View {
+        HStack(spacing: 4) {
+            ForEach(Array(shortNames(app).enumerated()), id: \.offset) { i, n in
+                Text(n).font(.caption2.weight(i == mine ? .heavy : .bold)).lineLimit(1).minimumScaleFactor(0.7)
+                    .foregroundStyle(i == mine ? app.palette.paper : app.palette.ink3)
+                    .frame(width: 34, height: 22)
+                    .background(i == mine ? app.palette.ink : .clear, in: Capsule())
+            }
+        }
     }
 
     private var table: some View {
         Grid(alignment: .leading, horizontalSpacing: 4, verticalSpacing: 0) {
             GridRow {
                 Color.clear.frame(height: 1).gridCellUnsizedAxes(.vertical)
-                ForEach(shortNames, id: \.self) { n in
-                    Text(n).font(.caption2.weight(.bold)).foregroundStyle(app.palette.ink3).lineLimit(1).minimumScaleFactor(0.7)
-                        .frame(width: 34)
+                ForEach(Array(shortNames.enumerated()), id: \.offset) { i, n in
+                    Text(n).font(.caption2.weight(i == mine ? .heavy : .bold)).lineLimit(1).minimumScaleFactor(0.7)
+                        .foregroundStyle(i == mine ? app.palette.paper : app.palette.ink3)
+                        .frame(width: 34, height: 22)
+                        .background(i == mine ? app.palette.ink : .clear, in: Capsule())
                 }
             }
+            .background(GeometryReader { g in
+                Color.clear.preference(key: ProjectMatrixHeaderKey.self, value: g.frame(in: .named(ProjectLaneNav.space)).minY)
+            })
             .accessibilityHidden(true)
             ForEach(ProjectRoleMatrix.rows) { r in
                 Divider().gridCellUnsizedAxes(.horizontal)
                 GridRow(alignment: .center) {
                     Text(app.T(r.vi, r.en)).font(.footnote).fixedSize(horizontal: false, vertical: true)
                         .padding(.vertical, 7)
-                    ForEach(Array(r.cells.enumerated()), id: \.offset) { _, c in
-                        Text(symbol(c)).font(.footnote.weight(.bold)).foregroundStyle(c == .no ? app.palette.ink3 : app.palette.ink)
-                            .frame(width: 34)
+                    ForEach(Array(r.cells.enumerated()), id: \.offset) { i, c in
+                        Text(symbol(c)).font(i == mine ? .body.weight(.heavy) : .footnote.weight(.bold))
+                            .foregroundStyle(c == .no ? app.palette.ink3 : i == mine ? app.palette.clay : app.palette.ink)
+                            .frame(width: 34).frame(maxHeight: .infinity)
+                            .background(i == mine ? app.palette.clayBg.opacity(0.55) : .clear)
                     }
                 }
                 .accessibilityElement(children: .ignore)
@@ -278,4 +315,16 @@ extension AppState {
         if hours <= 0 { return T("đã hết hạn", "expired") }
         return T("còn \(hours) giờ", hours == 1 ? "1 hour left" : "\(hours) hours left")
     }
+}
+
+
+/// Top of the role table's header row / bottom of the table in the hub's scroll view: while the header has scrolled away
+/// but the table is still on screen, the hub pins a copy of the header. Optional so other views don't overwrite it.
+struct ProjectMatrixHeaderKey: PreferenceKey {
+    static var defaultValue: CGFloat? = nil
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) { value = value ?? nextValue() }
+}
+struct ProjectMatrixBottomKey: PreferenceKey {
+    static var defaultValue: CGFloat? = nil
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) { value = value ?? nextValue() }
 }

@@ -635,3 +635,15 @@ vars, dark variants); Topics chips with icons + counts, sticky row, empty-lane c
 the lane; project sheets fixed-position at 92% height. Side fix: the hub's `banbeIn` animation fill mode `both` → `backwards`
 (it made sheets size against the whole hub, ~2,900 px). Scroller is `[data-testid="app-scroll-viewport"]`, not window.
 Checks: vite build OK, unit 938/938, Playwright event-project + project-demo (chromium) 26/26 (26/26 before too).
+
+## 2026-11-05: Day-of sideways drag + time wrap, Team table header/role (iOS + web)
+
+- Day-of could be dragged sideways (owner screenshot): at large text the List|Calendar control + the fixed-size "Add item"
+  button were wider than the screen, so the hub's vertical ScrollView got wider content and panned horizontally. "Add item"
+  now drops to an icon via ViewThatFits; the hub content is pinned to the screen width (`containerRelativeFrame(.horizontal)`),
+  so no tab can widen the page again. Web: hub root `overflowX: clip`.
+- Run-of-show time no longer wraps ("16:0 / 0"): one line, at least 54 pt wide (web: minWidth 54, nowrap).
+- Team "Who can do what": the viewer's role column is bold, clay and tinted, with its header as an ink pill
+  (`ProjectRoleMatrixView.myColumn`). The header stays visible while reading down: iOS pins a copy at the top of the hub while
+  the header row is above the top and the table is still on screen (`ProjectMatrixHeaderKey`/`ProjectMatrixBottomKey`, optional
+  preference values); web uses `position: sticky` on the thead cells (top = ui.stickyTop).

@@ -96,7 +96,7 @@ export default function ProjectDayOf({ p, ui }) {
             const pl = placed[r.id];
             return (
               <div data-testid={`project-ros-row-${r.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
-                <strong style={{ width: 54, fontVariantNumeric: 'tabular-nums' }}>{p.clock(r.starts_at)}</strong>
+                <strong style={{ minWidth: 54, flex: 'none', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{p.clock(r.starts_at)}</strong>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontWeight: 600, textDecoration: r.done_at ? 'line-through' : 'none', color: r.done_at ? ink2 : ink }}>{r.title}</span>
                   <span style={{ fontSize: 13, color: ink2 }}>{p.clock(r.starts_at)}–{p.clock(r.ends_at)} · {p.personName(r.owner_id)} {pl?.overrun && <Tag tone="alert">+{pl.overrunMin}′</Tag>}</span>

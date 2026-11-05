@@ -7,7 +7,7 @@ import QRCode from 'qrcode';
 import { MATRIX_COLUMNS, MATRIX_ROWS } from '../../lib/projectRoleMatrix.js';
 import { PROJECT_ROLES, INVITABLE_ROLES } from '../../lib/projectPermissions.js';
 import { flagOn } from '../../lib/featureFlags.js';
-import { ink, ink2, ink3, divider, fieldSolid, block, honeyBg } from '../../theme.js';
+import { ink, ink2, ink3, divider, fieldSolid, block, honeyBg, paper, clay, clayBg } from '../../theme.js';
 import { Card, CountHeader, SectionHeader, Chip, ChipRow, Avatar, Tag, Sheet, FieldLabel, ReasonField, reasonOk, Note, pillButton, dangerButton, linkButton } from './ProjectUI.jsx';
 
 export default function ProjectTeam({ p, ui }) {
@@ -69,7 +69,7 @@ export default function ProjectTeam({ p, ui }) {
         </>)}
       </>) : <div style={{ marginTop: 12 }}><Note tone="ink2">{T('Chỉ Chủ sự kiện và Quản lý mời được người.', 'Only the Host and Managers can invite people.')}</Note></div>}
       <SectionHeader title={T('Ai làm được gì', 'Who can do what')} />
-      <Matrix p={p} />
+      <Matrix p={p} ui={ui} />
       <div data-testid="project-team-privacy" style={{ marginTop: 12, padding: 16, borderRadius: 20, background: fieldSolid, fontSize: 14, color: ink2 }}>
         ⓘ {T('Vai trò làm việc là riêng tư trong dự án. Nó khác với vai trò công khai ở trang Team của chủ sự kiện và không thay đổi trang đó.',
           'Working roles are private to the project. They are separate from the public role on the host’s Team page and don’t change it.')}
@@ -80,21 +80,27 @@ export default function ProjectTeam({ p, ui }) {
 
 const SYMBOL = { yes: '✓', no: '–', lane: '•', grant: '+', propose: '✎' };
 
-function Matrix({ p }) {
-  const { T } = p;
+function Matrix({ p, ui }) {
+  const { T, snap } = p;
+  // The viewer's own role column is bold and tinted; the header row sticks under the hub's sticky top while reading down.
+  const mine = snap?.is_host ? 0 : MATRIX_COLUMNS.indexOf(snap?.me?.role ?? '');
+  const head = { position: 'sticky', top: ui?.stickyTop || 0, zIndex: 2, background: block, paddingBlock: 6 };
   const words = { yes: T('có', 'yes'), no: T('không', 'no'), lane: T('chỉ hạng mục của mình', 'own lane only'), grant: T('nếu Chủ sự kiện cấp', 'if the Host grants it'), propose: T('đề xuất', 'proposes') };
   const short = [T('Chủ', 'Host'), T('QL', 'Mgr'), T('TC', 'Fin'), T('THM', 'Lead'), T('HT', 'Help')];
   return (
     <div data-testid="project-team-matrix" style={{ background: block, borderRadius: 20, padding: 12 }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-        <thead><tr><th scope="col" style={{ textAlign: 'left' }}><span style={{ position: 'absolute', left: -9999 }}>{T('Việc', 'Action')}</span></th>
-          {short.map((n, i) => <th key={n} scope="col" title={p.roleName(MATRIX_COLUMNS[i])} style={{ width: 38, fontSize: 11, color: ink3 }}>
-            <abbr title={p.roleName(MATRIX_COLUMNS[i])} style={{ textDecoration: 'none' }}>{n}</abbr></th>)}</tr></thead>
+        <thead data-testid="project-team-matrix-head"><tr><th scope="col" style={{ ...head, textAlign: 'left' }}><span style={{ position: 'absolute', left: -9999 }}>{T('Việc', 'Action')}</span></th>
+          {short.map((n, i) => <th key={n} scope="col" title={p.roleName(MATRIX_COLUMNS[i])} style={{ ...head, width: 38, fontSize: 11, color: i === mine ? paper : ink3 }}>
+            <abbr title={p.roleName(MATRIX_COLUMNS[i])} aria-current={i === mine ? 'true' : undefined}
+              style={{ textDecoration: 'none', display: 'inline-block', minWidth: 32, padding: '3px 0', borderRadius: 999, fontWeight: i === mine ? 900 : 700, background: i === mine ? ink : 'transparent' }}>{n}</abbr></th>)}</tr></thead>
         <tbody>
           {MATRIX_ROWS.map(r => (
             <tr key={r.id} style={{ borderTop: `1px solid ${divider}` }}>
               <th scope="row" style={{ textAlign: 'left', fontWeight: 400, padding: '7px 4px 7px 0' }}>{T(r.vi, r.en)}</th>
-              {r.cells.map((c, i) => <td key={i} aria-label={`${p.roleName(MATRIX_COLUMNS[i])}: ${words[c]}`} style={{ textAlign: 'center', fontWeight: 700, color: c === 'no' ? ink3 : ink }}>{SYMBOL[c]}</td>)}
+              {r.cells.map((c, i) => <td key={i} aria-label={`${p.roleName(MATRIX_COLUMNS[i])}: ${words[c]}`}
+                style={{ textAlign: 'center', fontWeight: i === mine ? 900 : 700, fontSize: i === mine ? 15 : undefined, color: c === 'no' ? ink3 : i === mine ? clay : ink,
+                  background: i === mine ? `color-mix(in srgb, ${clayBg} 55%, transparent)` : undefined }}>{SYMBOL[c]}</td>)}
             </tr>
           ))}
         </tbody>

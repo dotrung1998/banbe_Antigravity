@@ -14,6 +14,9 @@ struct ProjectHubView: View {
     /// Topics' lane filter, and whether its chips have scrolled off the top (then a copy is pinned there).
     @State private var topicsLane: String?
     @State private var topicsChipsPinned = false
+    /// Team: the role table's header row and bottom, to pin its header while the table scrolls.
+    @State private var matrixTop: CGFloat?
+    @State private var matrixBottom: CGFloat?
     /// A tapped lane keeps the highlight until the person scrolls by hand: through the jump animation (`laneJumpUntil`),
     /// then while its heading stays where the jump left it (`laneTapY`). Needed because the last lanes can't reach the top.
     @State private var laneTapped: String?
@@ -52,6 +55,8 @@ struct ProjectHubView: View {
                         .padding(.top, 14)
                         .padding(.bottom, 110)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        // Exactly the screen's width: content can never make the page wider, so it only scrolls vertically.
+                        .containerRelativeFrame(.horizontal)
                     }
                     .refreshable { await app.refreshProject() }
                     .coordinateSpace(name: ProjectLaneNav.space)
@@ -78,6 +83,24 @@ struct ProjectHubView: View {
                         }
                     }
                     .animation(.easeOut(duration: 0.15), value: topicsChipsPinned)
+                    .onPreferenceChange(ProjectMatrixHeaderKey.self) { matrixTop = $0 }
+                    .onPreferenceChange(ProjectMatrixBottomKey.self) { matrixBottom = $0 }
+                    .overlay(alignment: .top) {
+                        // The role table's column names stay on screen while you read down the table.
+                        if app.projectTab == "team", let top = matrixTop, let bottom = matrixBottom, top < 0, bottom > 70 {
+                            HStack(spacing: 0) {
+                                Text(app.T("Ai làm được gì", "Who can do what")).font(.caption.weight(.bold)).foregroundStyle(app.palette.ink3)
+                                Spacer(minLength: 8)
+                                ProjectRoleMatrixView.header(app, mine: ProjectRoleMatrixView.myColumn(app))
+                            }
+                            .padding(.leading, 30).padding(.trailing, 30).padding(.vertical, 8)
+                            .frame(maxWidth: .infinity)
+                            .background(app.palette.paper)
+                            .overlay(alignment: .bottom) { Rectangle().fill(app.palette.divider).frame(height: 1) }
+                            .accessibilityHidden(true)
+                            .accessibilityIdentifier("project.team.pinnedHeader")
+                        }
+                    }
                     .onPreferenceChange(ProjectLaneTopKey.self) { tops in
                         if let tapped = laneTapped {
                             if Date() < laneJumpUntil { return }

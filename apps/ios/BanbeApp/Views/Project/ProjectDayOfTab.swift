@@ -24,13 +24,18 @@ struct ProjectDayOfTab: View {
                     GlassSegment(id: "cal", label: app.T("Lịch", "Calendar"), icon: "calendar.day.timeline.left", identifier: "project.dayof.view.cal"),
                 ], selection: app.projectDayView, height: 44, showsIcons: false) { app.projectDayView = $0 }
                 if editor {
+                    // Icon only when the full label doesn't fit (large text): a fixed-size label used to push the
+                    // whole tab wider than the screen, so it could be dragged sideways.
                     Button { openSheet(.rosItem(nil)) } label: {
-                        Label(app.T("Thêm mốc", "Add item"), systemImage: "plus").font(.subheadline.weight(.bold))
-                            .padding(.horizontal, 14).frame(minHeight: 44)
-                            .foregroundStyle(app.palette.clay).background(app.palette.clayBg, in: Capsule())
+                        ViewThatFits(in: .horizontal) {
+                            Label(app.T("Thêm mốc", "Add item"), systemImage: "plus").padding(.horizontal, 14)
+                            Image(systemName: "plus").frame(width: 44)
+                        }
+                        .font(.subheadline.weight(.bold)).lineLimit(1).frame(minHeight: 44)
+                        .foregroundStyle(app.palette.clay).background(app.palette.clayBg, in: Capsule())
                     }
                     .buttonStyle(PressableButtonStyle())
-                    .fixedSize()
+                    .accessibilityLabel(app.T("Thêm mốc", "Add item"))
                     .accessibilityIdentifier("project.dayof.add")
                 }
             }
@@ -212,7 +217,9 @@ struct ProjectDayOfTab: View {
         let end = ProjectDates.parse(r.endsAt) ?? Date()
         let done = r.doneAt != nil
         return HStack(spacing: 10) {
-            Text(app.projectClock(start)).font(.body.weight(.bold).monospacedDigit()).frame(width: 54, alignment: .leading)
+            // Never wraps ("16:0 / 0" at large text): grows to fit, at least 54 pt so rows line up.
+            Text(app.projectClock(start)).font(.body.weight(.bold).monospacedDigit())
+                .lineLimit(1).fixedSize(horizontal: true, vertical: false).frame(minWidth: 54, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 Text(r.title).font(.body.weight(.semibold))
                     .strikethrough(done, color: app.palette.ink3)
