@@ -1,6 +1,6 @@
 // Event Detail calendar choices — web twin of iOS EventPlanTitleRow / EventPlanButtons (notes 44/45, note 77).
 // The title stands alone; the calendar choices are two tiles inside the ticket stub, each with its own look:
-// - banbe Schedule: a clay square with a calendar glyph and a sparkle (the in-app agenda, not a reservation).
+// - banbe Schedule: an ink square (Directions colours) with a calendar glyph and a sparkle (the in-app agenda, not a reservation).
 //   One tap adds; once added a tap opens a menu with the status and Remove (manual adds only).
 // - Phone calendar: a mini tear-off calendar page (red band, the event's day). A tap opens Google / .ics.
 // Real events only; adding to the banbe Schedule needs an account.
@@ -85,7 +85,7 @@ export function EventPlanButtons({ eventKey, day, month, inert = false, onMessag
           <button type="button" className="bb-press" data-testid="event-plan-button" aria-haspopup={item ? 'menu' : undefined}
             onClick={() => (item ? setSchedOpen(v => !v) : add())}
             aria-label={item ? T(`Trong lịch banbe (${sourceLabel(item.source, T)})`, `In banbe Schedule (${sourceLabel(item.source, T)})`) : T('Thêm vào lịch banbe', 'Add to banbe Schedule')}
-            style={{ ...tileBtn, color: '#fff', borderRadius: 13, background: 'linear-gradient(135deg, var(--bb-clay), rgba(var(--bb-clay-rgb),0.78))', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.18)' }}>
+            style={{ ...tileBtn, color: 'var(--bb-bg)', borderRadius: 13, background: ink }}>
             <CalIcon added={!!item} /><Sparkle />
             <span data-testid="event-plan-status" hidden>{item ? 'added' : 'none'}</span>
           </button>

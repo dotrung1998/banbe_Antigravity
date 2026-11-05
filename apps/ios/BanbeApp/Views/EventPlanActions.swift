@@ -63,7 +63,7 @@ struct MiniCalendarPage: View {
 }
 
 /// Note 77: two calendar tiles inside the ticket stub, each with its own look so they are never confused:
-/// - banbe Schedule: a clay square with a calendar glyph and a sparkle (the in-app agenda, not a reservation).
+/// - banbe Schedule: an ink square (Directions colours) with a calendar glyph and a sparkle (the in-app agenda, not a reservation).
 ///   One tap adds; once added a tap opens Remove.
 /// - Phone calendar: a mini tear-off calendar page (red band, the event's day number). A tap opens the system
 ///   editor with no permission; once marked, a tap offers Add again / Clear mark.
@@ -136,12 +136,10 @@ struct EventPlanButtons: View {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: source != nil ? "calendar.badge.checkmark" : "calendar.badge.plus")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(app.palette.paper)
                     .frame(width: 44, height: 44)
-                    .background(
-                        LinearGradient(colors: [app.palette.clay, app.palette.clay.opacity(0.78)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                        in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(Color.white.opacity(0.18), lineWidth: 1))
+                    // The Directions button's colours (ink fill, paper glyph), like the calendar page beside it.
+                    .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                 Image(systemName: "sparkle")
                     .font(.system(size: 10, weight: .heavy))
                     .foregroundStyle(Color(red: 1, green: 0.85, blue: 0.45))
