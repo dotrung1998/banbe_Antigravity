@@ -29,7 +29,9 @@ struct BanbeApp: App {
     /// (`-uiFixture <name>`, App/UITestFixtures.swift); otherwise the real app.
     @ViewBuilder private var rootView: some View {
         #if DEBUG
-        if let fixture = UITestFixture.name {
+        if UITestFixture.name == "spike.mapList" {
+            MapListOverlaySpike() // Map E+ plan step 0: stand-alone pull-down spike, no app state needed
+        } else if let fixture = UITestFixture.name {
             UITestFixtureRoot(name: fixture)
         } else {
             RootView()
