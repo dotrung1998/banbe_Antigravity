@@ -33,12 +33,19 @@ const commits = (page) => page.evaluate(() => window.__mapExploreCommits || 0);
 const area = (page) => page.evaluate(() => window.__mapExploreArea);
 const countText = (page) => page.getByTestId('map-result-count').textContent();
 const countNum = async (page) => Number((await countText(page)).match(/\d+/)[0]);
+/** Tap the first neighbourhood chip: the map flies there at pin level and its panel opens. */
+async function openFirstArea(page) {
+  await page.locator('[data-testid^="map-areachip-"]').first().click();
+  await expect(page.getByTestId('map-area-panel')).toBeVisible();
+  await expect(page.locator('[data-testid^="map-pin-"], [data-testid^="map-cluster-"], [data-testid^="map-stack-"]').first()).toBeVisible({ timeout: 8000 });
+  await page.waitForTimeout(900); // the flight and the panel's slide-in have settled
+}
 const listRows = (page) => page.locator('[data-testid^="map-list-item-"][role="button"]');
 /** Every result is in exactly one marker: pins count 1, clusters and stacks count their events. */
 const markerTotal = (page) => page.evaluate(() => {
   const pins = document.querySelectorAll('[data-testid^="map-pin-"]').length;
   // Map v5: zoomed out, city bubbles (map-city-vn-… / map-city-us-…) count their events too.
-  const groups = [...document.querySelectorAll('[data-testid^="map-cluster-"], [data-testid^="map-stack-"], [data-testid^="map-city-vn-"], [data-testid^="map-city-us-"]')]
+  const groups = [...document.querySelectorAll('[data-testid^="map-areabubble-"], [data-testid^="map-cluster-"], [data-testid^="map-stack-"], [data-testid^="map-city-vn-"], [data-testid^="map-city-us-"]')]
     .reduce((n, el) => n + Number(el.getAttribute('data-count') || 0), 0);
   return pins + groups;
 });
@@ -52,19 +59,122 @@ async function dragMap(page, dx, dy) {
 }
 
 test.describe('Map — full-screen viewport discovery', () => {
-  test('opens full screen with pins framed between the controls and the buttons and a settled count', async ({ page }) => {
+  test('opens full screen at the neighbourhood level: one bubble per area, framed between the controls and the buttons', async ({ page }) => {
     await openMap(page);
     await expect(page.getByTestId('map-list-sheet')).toBeHidden(); // a fresh open is the map itself
+    await expect(page.getByTestId('map-area-panel')).toHaveCount(0);
     const topBottom = await page.getByTestId('map-top').evaluate(e => e.getBoundingClientRect().bottom);
     const stackTop = await page.getByTestId('map-list-button').evaluate(e => e.getBoundingClientRect().top);
-    const pins = await page.locator('[data-testid^="map-pin-"], [data-testid^="map-cluster-"], [data-testid^="map-stack-"]').evaluateAll(els => els.map(e => { const r = e.getBoundingClientRect(); return [r.top, r.bottom]; }));
-    expect(pins.length).toBeGreaterThan(0);
-    // Every pin of the first framing sits in the free area: under the shared controls, above the buttons.
-    for (const [t, b] of pins) { expect(t).toBeGreaterThan(topBottom - 4); expect(b).toBeLessThan(stackTop + 4); }
-    // Pins and count are the same list; "List · N" says the same N.
+    const bubbles = page.locator('[data-testid^="map-areabubble-"]');
+    await expect(bubbles.first()).toBeVisible();
+    expect(await page.locator('[data-testid^="map-pin-"]').count()).toBe(0); // not street level yet
+    const rects = await bubbles.evaluateAll(els => els.map(e => { const r = e.getBoundingClientRect(); return [r.top, r.bottom]; }));
+    // Every bubble of the first framing sits in the free area: under the shared controls, above the buttons.
+    for (const [t, b] of rects) { expect(t).toBeGreaterThan(topBottom - 4); expect(b).toBeLessThan(stackTop + 4); }
+    // Bubbles, count and "List · N" are the same list.
     const n = await countNum(page);
     expect(await markerTotal(page)).toBe(n);
     await expect(page.getByTestId('map-list-button')).toContainText(String(n));
+  });
+
+  // ---- Map E+ step 3: neighbourhood bubbles, chips and the panel ----
+  test('a bubble opens its neighbourhood: the map flies in to pins, the panel lists its events, the dock steps aside', async ({ page }) => {
+    await openMap(page);
+    const bubble = page.locator('[data-testid^="map-areabubble-"][data-areas="1"]').first();
+    const n = Number(await bubble.getAttribute('data-count'));
+    const before = await commits(page);
+    await bubble.click();
+    const panel = page.getByTestId('map-area-panel');
+    await expect(panel).toBeVisible();
+    await expect(page.getByTestId('map-area-title')).toHaveAttribute('data-count', String(n));
+    await expect(page.locator('[data-testid^="map-area-item-"][role="button"]')).toHaveCount(n);
+    await expect(page.getByTestId('dock-row')).toHaveAttribute('data-hidden', 'true');
+    await expect(page.getByTestId('map-list-button')).toBeHidden(); // the buttons and chips give way to the panel
+    await expect(page.getByTestId('map-area-chips')).toHaveCount(0);
+    await expect(page.locator('[data-testid^="map-pin-"], [data-testid^="map-cluster-"], [data-testid^="map-stack-"]').first()).toBeVisible({ timeout: 8000 });
+    expect(await page.evaluate(() => window.__mapExploreMapForTests.getZoom())).toBeGreaterThanOrEqual(13.5);
+    await expect.poll(() => commits(page), { timeout: 5000 }).toBe(before + 1); // a flight commits once, like a cluster tap
+    // The panel is about 46% of the screen and sits at the bottom.
+    const box = await panel.boundingBox();
+    expect(Math.abs(box.height - 844 * 0.46)).toBeLessThan(6);
+    expect(Math.abs(box.y + box.height - 844)).toBeLessThan(2);
+  });
+
+  test('zooming out closes the panel and the view stays; the dock comes back', async ({ page }) => {
+    await openMap(page);
+    await openFirstArea(page);
+    const before = await commits(page);
+    await page.evaluate(() => window.__mapExploreMapForTests.jumpTo({ zoom: 11 })); // a user zooms out (a gesture-less move counts as the user's)
+    await expect(page.getByTestId('map-area-panel')).toHaveCount(0);
+    await expect(page.getByTestId('dock-row')).not.toHaveAttribute('data-hidden', 'true');
+    await expect(page.locator('[data-testid^="map-areabubble-"]').first()).toBeVisible({ timeout: 5000 });
+    expect(await page.evaluate(() => window.__mapExploreMapForTests.getZoom())).toBeLessThan(12); // it did not fly back
+    await expect.poll(() => commits(page), { timeout: 5000 }).toBe(before + 1);
+  });
+
+  test('"All areas" and Esc close the panel and fly back to where it was opened from', async ({ page }) => {
+    await openMap(page);
+    const z0 = await page.evaluate(() => window.__mapExploreMapForTests.getZoom());
+    await openFirstArea(page);
+    await page.click('[data-testid="map-area-back"]');
+    await expect(page.getByTestId('map-area-panel')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.__mapExploreMapForTests.getZoom()), { timeout: 5000 }).toBeCloseTo(z0, 0);
+    await expect(page.locator('[data-testid^="map-areabubble-"]').first()).toBeVisible();
+    await expect(page.getByTestId('map-area-chips')).toBeVisible();
+    await openFirstArea(page);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('map-area-panel')).toHaveCount(0);
+  });
+
+  test('the neighbourhood chips list each area with its count, most events first; one tap opens it', async ({ page }) => {
+    await openMap(page);
+    const chips = page.locator('[data-testid^="map-areachip-"]');
+    await expect(chips.first()).toBeVisible();
+    const counts = (await chips.evaluateAll(els => els.map(e => Number(e.getAttribute('data-count')))));
+    expect(counts.reduce((a, b) => a + b, 0)).toBe(await countNum(page)); // every result is in exactly one chip
+    expect([...counts].sort((a, b) => b - a)).toEqual(counts);
+    // The chips never move the results: opening and closing the list keeps them where they are.
+    const first = await chips.first().getAttribute('data-testid');
+    await openList(page);
+    await expect(page.getByTestId('map-area-chips')).toHaveCount(0);
+    await closeList(page);
+    await expect(page.getByTestId(first)).toBeVisible();
+    await page.getByTestId(first).click();
+    await expect(page.getByTestId('map-area-panel')).toBeVisible();
+  });
+
+  test('bubbles that overlap at this zoom merge into one "N areas" bubble; a tap zooms in to tell them apart', async ({ page }) => {
+    await openMap(page);
+    await page.evaluate(() => window.__mapExploreMapForTests.jumpTo({ zoom: 9.6 }));
+    await page.waitForTimeout(800);
+    expect(await markerTotal(page)).toBe(await countNum(page)); // merging never loses a result
+    const merged = page.locator('[data-testid^="map-areabubble-"]:not([data-areas="1"])').first();
+    test.skip(await merged.count() === 0, 'only one neighbourhood in this map area, nothing overlaps');
+    const z0 = await page.evaluate(() => window.__mapExploreMapForTests.getZoom());
+    await merged.click();
+    await page.waitForTimeout(1500);
+    expect(await page.evaluate(() => window.__mapExploreMapForTests.getZoom())).toBeGreaterThan(z0);
+    await expect(page.getByTestId('map-area-panel')).toHaveCount(0); // a merged bubble only zooms
+  });
+
+  test('a pin opens Event Detail; Back brings the panel, the area and the pan back as they were', async ({ page }) => {
+    await openMap(page);
+    await openFirstArea(page);
+    const areaBefore = await area(page);
+    const commitsBefore = await commits(page);
+    const title = await page.getByTestId('map-area-title').textContent();
+    const pin = page.locator('[data-testid^="map-pin-"]').first();
+    test.skip(await pin.count() === 0, 'this area has only clusters or stacks at this zoom');
+    await pin.click();
+    await expect(page.locator('[data-screen-label="EventDetail"], [data-screen-label="Event"]')).toBeVisible();
+    await page.getByTestId('event-detail-back').click();
+    await page.waitForSelector('[data-screen-label="MapExplore"]');
+    await expect(page.getByTestId('map-area-panel')).toBeVisible();
+    await expect(page.getByTestId('map-area-title')).toHaveText(title);
+    await expect(page.getByTestId('map-loading')).toHaveCount(0);
+    await page.waitForTimeout(1500);
+    expect(await commits(page)).toBe(commitsBefore); // restored as saved: no re-framing, no new commit
+    expect(await area(page)).toEqual(areaBefore);
   });
 
   test('a pan keeps the count still while dragging, then commits exactly once after it settles, with no fetch', async ({ page }) => {
@@ -122,34 +232,6 @@ test.describe('Map — full-screen viewport discovery', () => {
     await openList(page);
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('map-list-sheet')).toBeHidden();
-  });
-
-  test('a pin opens Event Detail; Back restores the area, the count and the pan', async ({ page }) => {
-    await openMap(page);
-    // A user pan first, so a restore that re-framed or re-committed would be visible.
-    const release = await dragMap(page, -60, 40);
-    await release();
-    await page.waitForTimeout(1200);
-    const areaBefore = await area(page);
-    const textBefore = await countText(page);
-    const commitsBefore = await commits(page);
-    const centerBefore = await page.evaluate(() => { const c = window.__mapExploreMapForTests.getCenter(); return [c.lng, c.lat]; });
-    const pin = page.locator('[data-testid^="map-pin-"]').first();
-    test.skip(await pin.count() === 0, 'no single pin in the panned area');
-    await pin.click();
-    await expect(page.locator('[data-screen-label="EventDetail"], [data-screen-label="Event"]')).toBeVisible();
-    await page.getByTestId('event-detail-back').click();
-    await page.waitForSelector('[data-screen-label="MapExplore"]');
-    // The first frame already has the results: never "Loading".
-    await expect(page.getByTestId('map-loading')).toHaveCount(0);
-    expect(await countText(page)).toBe(textBefore);
-    await page.waitForTimeout(1500);
-    // The saved area came back as-is: no re-framing, no new commit.
-    expect(await commits(page)).toBe(commitsBefore);
-    expect(await area(page)).toEqual(areaBefore);
-    const centerAfter = await page.evaluate(() => { const c = window.__mapExploreMapForTests.getCenter(); return [c.lng, c.lat]; });
-    expect(centerAfter[0]).toBeCloseTo(centerBefore[0], 4);
-    expect(centerAfter[1]).toBeCloseTo(centerBefore[1], 4);
   });
 
   test('a list row opens Event Detail; Back brings the list back open in its layout', async ({ page }) => {
@@ -262,26 +344,39 @@ test.describe('Map — full-screen viewport discovery', () => {
   // ---- price pins, clusters, stacks, bounded mode ----
   test('price pins show the price per ticket of their event, with its category icon', async ({ page }) => {
     await openMap(page);
+    await openFirstArea(page);
     const pin = page.locator('[data-testid^="map-pin-"]').first();
+    test.skip(await pin.count() === 0, 'this area has only clusters or stacks at this zoom');
     // Map v5: the category's line icon sits before the price, and the screen reader hears the category too.
     await expect(pin.locator('svg')).toHaveCount(1);
     expect(await pin.getAttribute('data-cat')).toBeTruthy();
     const id = (await pin.getAttribute('data-testid')).replace('map-pin-', '');
     const pinText = (await pin.textContent()).trim();
-    await openList(page);
-    await page.click('[data-testid="map-layout-compact"]'); // the price test ids live on the compact rows
-    const rowPrice = await page.getByTestId(`map-list-item-price-${id}`).textContent();
+    // The panel's own rows carry the price per ticket.
+    const rowPrice = await page.getByTestId(`map-area-item-price-${id}`).textContent();
     expect(pinText).toMatch(/\d|Miễn phí|Free/);
     if (/Miễn phí|Free/.test(rowPrice)) expect(pinText).toMatch(/Miễn phí|Free/);
     else expect(rowPrice.replace(/[^\d]/g, '').startsWith(pinText.replace(/[^\d]/g, ''))).toBe(true);
   });
 
-  test('zoomed out, events cluster; markers still add up to the count; a cluster tap zooms in and commits once', async ({ page }) => {
+  test('close events cluster; markers still add up to the count; a cluster tap zooms in and commits once', async ({ page }) => {
+    // Put the second event ~45 m from the first (mocked response; production has no two events this close yet).
+    let spot = null;
+    await page.route(/\/rest\/v1\/events\?/, async (route) => {
+      const res = await route.fetch();
+      const rows = await res.json();
+      if (Array.isArray(rows) && rows.length > 1 && rows[0].lat != null) {
+        rows[1].lat = rows[0].lat + 0.0004; rows[1].lng = rows[0].lng;
+        spot = [rows[0].lng, rows[0].lat];
+      }
+      await route.fulfill({ response: res, json: rows });
+    });
     await openMap(page);
-    // Zoom 9 = the closest city-scale zoom: below it markers become city bubbles (Map v5), at it grid clusters.
-    await page.evaluate(() => window.__mapExploreMapForTests.jumpTo({ zoom: 9 }));
+    expect(spot).not.toBeNull();
+    await page.evaluate((c) => window.__mapExploreMapForTests.jumpTo({ center: c, zoom: 14 }), spot);
     const cluster = page.locator('[data-testid^="map-cluster-"]').first();
     await expect(cluster).toBeVisible({ timeout: 5000 });
+    expect(await cluster.getAttribute('data-count')).toBe('2');
     await page.waitForTimeout(800);
     expect(await markerTotal(page)).toBe(await countNum(page));
     const z0 = await page.evaluate(() => window.__mapExploreMapForTests.getZoom());
@@ -291,9 +386,10 @@ test.describe('Map — full-screen viewport discovery', () => {
     expect(await page.evaluate(() => window.__mapExploreMapForTests.getZoom())).toBeGreaterThan(z0);
     expect(await commits(page)).toBe(before + 1);
     expect(await markerTotal(page)).toBe(await countNum(page));
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
-  test('events at the same place stack; tapping the stack opens the list (the area panel takes over in step 3)', async ({ page }) => {
+  test('events at the same place stack; tapping the stack opens its neighbourhood panel at those events', async ({ page }) => {
     // Move the second event onto the first one's place (mocked response; production has no shared venue yet).
     let spot = null;
     await page.route(/\/rest\/v1\/events\?/, async (route) => {
@@ -312,7 +408,9 @@ test.describe('Map — full-screen viewport discovery', () => {
     await expect(stack).toBeVisible({ timeout: 5000 });
     expect(await stack.getAttribute('data-count')).toBe('2');
     await stack.click();
-    await expect(page.getByTestId('map-list-sheet')).toBeVisible();
+    await expect(page.getByTestId('map-area-panel')).toBeVisible();
+    expect(await page.locator('[data-testid^="map-area-item-"][role="button"]').count()).toBeGreaterThanOrEqual(2);
+    await expect(page.getByTestId('map-list-sheet')).toBeHidden();
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 

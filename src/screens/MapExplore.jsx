@@ -2,7 +2,7 @@ import { screenHeight } from '../lib/viewport.js';
 import { loadMapStyle } from '../lib/mapStyle.js';
 import { loadMapKit } from '../lib/mapkit.js';
 import { createMapKitMap } from '../lib/mapkitAdapter.js';
-import { CARD_GAP, ATTRIB_RESERVE, computeMapLayout, bottomStackFraction } from '../lib/mapLayout.js';
+import { CARD_GAP, ATTRIB_RESERVE, computeMapLayout, bottomStackFraction, dockVisible } from '../lib/mapLayout.js';
 import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useBanBe, resolveCoverUrl, photoUrlsByEvent } from '../state/BanBeContext.jsx';
 import { cardPhotoList } from '../lib/eventPhotoUrls.js';
@@ -12,6 +12,7 @@ import { withR2Columns, marketColumnList, detailsColumnList } from '../lib/media
 import {
   reasonCommits, referenceRect, boundsForRect, mapResults, selectionAfter, boundsOfPoints, pointsNear, nearestPoint,
   fitCamera, distanceKm as geoKm, sameSpot, padBounds, cityFor, searchCities, cityGroups, activeFilterSummary, CITY_ZOOM,
+  clusterPins, areaKey, areaGroups, markerLevel, areaPanelCloses, AREA_ZOOM,
 } from '../lib/mapDiscovery.js';
 import citiesData from '../data/cities.json';
 import { cityOfNode } from '../lib/locationTree.js';
@@ -30,7 +31,7 @@ import { prefsIsEmpty } from '../lib/eventPrefs.js';
 import { mapForYouSet, applyForYouFilter } from '../lib/forYou.js';
 import { useForYouAlert } from '../lib/useForYouAlert.js';
 import ForYouChip from './ForYouChip.jsx';
-import { paper, ink, ink2, rule, alert, clay, clayBg, surface2, photoPill, inkButton, RADIUS } from '../theme.js';
+import { paper, ink, ink2, rule, alert, clay, clayBg, surface2, photoPill, RADIUS, DISPLAY_FACE, display } from '../theme.js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 // Category glyph per FILTER_DEFS key — no icon set exists anywhere else in
@@ -63,6 +64,9 @@ const MAIN_CITY_IDS = ['vn-hcm', 'vn-hanoi', 'vn-danang'];
 let sessionListLayout = 'large';
 // Map E+ (note 79): the row of buttons that sits just above the dock (my location + "List · N").
 const FAB_ROW = 56;
+// Map E+ step 3: the neighbourhood chips above those buttons. Their room is always reserved (even where the chips are
+// hidden), so the camera padding and the reference rect never depend on the zoom level or on an open panel.
+const CHIPS_ROW = 84;
 
 async function fetchLiveEvents({ limit = MAP_EVENT_CAP, bounds = null } = {}) {
   const buildQuery = (withR2) => {
@@ -350,6 +354,14 @@ export default function MapExplore() {
   // Map E+ (note 79): the list is a layer over the full-screen map. It opens from "List · N", closes with its Map button
   // or Esc, and starts closed, so a fresh open is the map itself (restored from a return snapshot when there is one).
   const [listOpen, setListOpen] = useState(() => restored?.listOpen ?? false);
+  // The open neighbourhood ({ keys, label }) and its panel; the view it was opened from, to go back to. A pin, a list
+  // row or the Back button from Event Detail returns with the panel as it was.
+  const [areaPanel, setAreaPanel] = useState(() => restored?.areaPanel ?? null);
+  const areaPanelRef = useRef(areaPanel);
+  areaPanelRef.current = areaPanel;
+  const areaOpenedAtRef = useRef(0);
+  const preAreaViewRef = useRef(restored?.preAreaView ?? null);
+  const areaScrollToRef = useRef(null);
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
   // The city the map was last flown to (search row, area picker or a city bubble): names the area chip while framed.
   const [cityDest, setCityDest] = useState(() => restored?.cityDest ?? null);
@@ -383,7 +395,7 @@ export default function MapExplore() {
   const [dockClear, setDockClear] = useState(110); // px the floating dock occupies at the bottom
   // The bottom stack: the dock plus the buttons above it. The camera pads for it; the list and the panel float over the
   // map and never move it.
-  const stackPx = dockClear + FAB_ROW;
+  const stackPx = dockClear + FAB_ROW + CHIPS_ROW;
   // Map v6: Large photo cards / Compact rows at full height (see `sessionListLayout`).
   const [listLayout, setListLayoutState] = useState(() => restored?.listLayout ?? sessionListLayout);
   const setListLayout = useCallback((m) => { sessionListLayout = m; setListLayoutState(m); }, []);
@@ -435,7 +447,8 @@ export default function MapExplore() {
   layRef.current = lay;
   const cameraPadding = () => layRef.current.cameraPadding;
 
-  // Map E+ (note 79): the dock stays (the area panel will hide it, step 3). Leaving the Map always gives it back.
+  // Map E+ (note 79): the dock stays, except while a neighbourhood panel is open. Leaving the Map always gives it back.
+  useEffect(() => { set({ mapDockHidden: !dockVisible(!!areaPanel) }); }, [!!areaPanel]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => set({ mapDockHidden: false }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Basemap follows the app theme (derived Liberty light/dark, src/lib/mapStyle.js); camera,
@@ -535,6 +548,8 @@ export default function MapExplore() {
   // Map E+ (note 79): a pin opens Event Detail (set below, once the snapshot helper exists). `selectedId` is now only a
   // highlight, kept for a return snapshot and "Open in Map", which arrive with one event marked.
   const openDetailRef = useRef(null);
+  const openAreaRef = useRef(null);
+  const openAreaForEventRef = useRef(null);
 
   // Once a restored snapshot has been read into `restoredRef` (above), clear
   // context's own copy — it's served its purpose for this mount, and
@@ -584,7 +599,8 @@ export default function MapExplore() {
           : pointsNear(pts, densityHotspot(pts.map(e => ({ lat: e.lat, lng: e.lng }))), 25);
         const box = boundsOfPoints(frame);
         if (box) {
-          const cam = fitCamera(box, size, fitPad(40), { tileSize: mapkit ? 256 : 512, maxZoom: 14 });
+          // Map E+: a fresh open is the neighbourhood level (one bubble per area), not a street-level close-up.
+          const cam = fitCamera(box, size, fitPad(40), { tileSize: mapkit ? 256 : 512, maxZoom: AREA_ZOOM - 0.6 + (mapkit ? 1 : 0) });
           center = cam.center;
           zoom = cam.zoom;
         } else {
@@ -653,7 +669,13 @@ export default function MapExplore() {
         clearTimeout(settleTimerRef.current);
       });
       // The live zoom drives clustering (display only); rounded so tiny settles don't redraw every marker.
-      map.on('moveend', () => { setCameraZoom(Math.round(map.getZoom() * 4) / 4); onCameraSettled(); });
+      map.on('moveend', () => {
+        const z = map.getZoom();
+        setCameraZoom(Math.round(z * 4) / 4);
+        // Zooming out of the neighbourhood closes its panel; the view stays where it is. Not while it is still flying in.
+        if (areaPanelRef.current && Date.now() - areaOpenedAtRef.current > 1500 && areaPanelCloses(map.__isMapKit ? z - 1 : z)) setAreaPanel(null);
+        onCameraSettled();
+      });
       // A tap on the map background (not a pin — those are separate marker
       // DOM elements, never reaches this) clears the selected-event card.
       // This is a genuine click, not `moveend`, so it can never be confused
@@ -807,6 +829,8 @@ export default function MapExplore() {
   // ---- Map v5 (note 73): cities ----
   // Each loaded event's city (its city / province column, else the smallest city box around it; no DB change).
   const cityIdById = useMemo(() => new Map(events.map(e => [e.id, cityFor(e, CITIES)])), [events]);
+  // Map E+ (note 79): each loaded event's neighbourhood ({ key, label, cityId }): its own `area` text within its city.
+  const areaInfoById = useMemo(() => new Map(events.map(e => [e.id, areaKey(e, CITIES)])), [events]);
   // Events per city with every filter except the search text and the map area (the text may be the city's name).
   const cityCounts = useMemo(() => {
     const list = applyDiscoveryFilters(applyForYouFilter(events, forYouActive, forYouOrder).map(discoveryItem), filters, nowMinute * 60000);
@@ -864,14 +888,20 @@ export default function MapExplore() {
       // same place it stays in its stack (the card steps through it).
       const located = visibleEvents.filter(e => e.hasLocation);
       const byId = new Map(located.map(e => [e.id, e]));
-      const sel = byId.get(selectedId);
+      const zoom = cameraZoom ?? map.getZoom();
+      // MapKit's zoom is one level above the 512 px basis the grouping uses (same world size).
+      const zoom512 = map.__isMapKit ? zoom - 1 : zoom;
+      // Map E+: zoomed out one bubble per city (Map v5), closer in one per neighbourhood, closer still the price pins,
+      // clusters and stacks. Every result is in exactly one marker, so the markers always add up to the count.
+      const level = markerLevel(zoom512);
+      // A highlighted event (restored from Event Detail / "Open in Map") is pulled out of its cluster at pin level so it
+      // stays visible; at the same place it stays in its stack.
+      const sel = level === 'pin' ? byId.get(selectedId) : null;
       const selStacked = !!sel && sameSpot(located, sel).length > 1;
       const groupable = sel && !selStacked ? located.filter(e => e.id !== sel.id) : located;
-      const zoom = cameraZoom ?? map.getZoom();
-      // Zoomed out, one bubble per city (Map v5); closer in, pins/clusters/stacks. MapKit's zoom is one level above
-      // the 512 px basis the grouping uses (same world size).
-      const zoom512 = map.__isMapKit ? zoom - 1 : zoom;
-      const groups = cityGroups(groupable, zoom512, p => cityIdById.get(p.id), CITIES);
+      const groups = level === 'city' ? cityGroups(groupable, zoom512, p => cityIdById.get(p.id), CITIES)
+        : level === 'area' ? areaGroups(groupable, zoom512, p => areaInfoById.get(p.id) || areaKey(p, CITIES))
+        : clusterPins(groupable, zoom512);
       if (sel && !selStacked) groups.push({ kind: 'pin', ids: [sel.id], lat: sel.lat, lng: sel.lng });
       for (const g of groups) {
         const ev = byId.get(g.ids[0]);
@@ -897,6 +927,28 @@ export default function MapExplore() {
           badge.textContent = String(n);
           pinEl.appendChild(badge);
           const activate = () => flyToCityRef.current?.(g.cityId);
+          pinEl.addEventListener('click', (e) => { e.stopPropagation(); activate(); });
+          pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activate(); } });
+        } else if (g.kind === 'area') {
+          // Neighbourhood bubble: the count in an ink pill, the area's name under it. One key opens its panel; several
+          // (bubbles that overlap at this zoom) zoom in to tell them apart.
+          const n = g.ids.length;
+          const single = g.keys.length === 1;
+          const name = single ? (g.labels[0] || T('Khu khác', 'Other areas')) : T(`${g.keys.length} khu`, `${g.keys.length} areas`);
+          pinEl.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;';
+          pinEl.setAttribute('data-testid', `map-areabubble-${g.keys.join('+')}`);
+          pinEl.setAttribute('data-count', String(n));
+          pinEl.setAttribute('data-areas', String(g.keys.length));
+          pinEl.setAttribute('aria-label', T(`${name}, ${n} sự kiện, ${single ? 'mở khu này' : 'phóng to'}`, `${name}, ${n} event${n === 1 ? '' : 's'}, ${single ? 'open this area' : 'zoom in'}`));
+          const bub = document.createElement('span');
+          bub.style.cssText = `min-width:52px;height:52px;padding:0 10px;box-sizing:border-box;border-radius:26px;background:${ink};color:${paper};display:flex;align-items:center;justify-content:center;font:600 22px/1 ${DISPLAY_FACE};box-shadow:0 3px 10px rgba(27,25,22,0.35);`;
+          bub.textContent = String(n);
+          const lbl = document.createElement('span');
+          lbl.style.cssText = `max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 8px;border-radius:999px;background:${paper};color:${ink};font:700 12px/1.3 'Be Vietnam Pro',sans-serif;box-shadow:0 1px 4px rgba(27,25,22,0.2);`;
+          lbl.textContent = name;
+          pinEl.appendChild(bub);
+          pinEl.appendChild(lbl);
+          const activate = () => (single ? openAreaRef.current?.(g) : zoomToCluster(g));
           pinEl.addEventListener('click', (e) => { e.stopPropagation(); activate(); });
           pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activate(); } });
         } else if (g.kind === 'pin') {
@@ -937,10 +989,10 @@ export default function MapExplore() {
           pinEl.setAttribute('data-testid', `map-${g.kind}-${g.ids[0]}`);
           pinEl.setAttribute('data-count', String(n));
           pinEl.setAttribute('aria-label', stack
-            ? T(`${n} sự kiện cùng địa điểm, mở danh sách`, `${n} events at this place, open the list`)
+            ? T(`${n} sự kiện cùng địa điểm, mở khu này`, `${n} events at this place, open this area`)
             : T(`${n} sự kiện ở đây, phóng to`, `${n} events here, zoom in`));
           pinEl.textContent = stack ? `${n} ≡` : String(n);
-          const activate = () => (stack ? setListOpen(true) : zoomToCluster(g));
+          const activate = () => (stack ? openAreaForEventRef.current?.(byId.get(g.ids[0])) : zoomToCluster(g));
           pinEl.addEventListener('click', (e) => { e.stopPropagation(); activate(); });
           pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activate(); } });
         }
@@ -967,7 +1019,7 @@ export default function MapExplore() {
     // The `cancelled` guard above keeps an in-flight redraw from a STALE run (rapid filter changes or zooming) from
     // painting markers after a newer run has started.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleEvents, selectedId, mapReady, cameraZoom, cityIdById]);
+  }, [visibleEvents, selectedId, mapReady, cameraZoom, cityIdById, areaInfoById]);
 
   // Stage 2 (2026-09-27 nav/discovery pass) — pull-to-refresh, LOCAL to
   // this list (not Shell's/App.jsx's generic one): MapExplore renders as
@@ -1025,7 +1077,7 @@ export default function MapExplore() {
     setMapExploreState({
       cameraCenter: center ? { lat: center.lat, lng: center.lng } : null,
       cameraZoom: map?.getZoom() ?? null,
-      listOpen,
+      listOpen, areaPanel, preAreaView: preAreaViewRef.current,
       filters, catFilter,
       openNowOnly,
       forYou: forYouOn,
@@ -1038,7 +1090,7 @@ export default function MapExplore() {
       // Map v6: the full-height layout (Large / Compact).
       listLayout,
     });
-  }, [listOpen, filters, catFilter, openNowOnly, forYouOn, searchQuery, selectedId, committedBounds, areaContext, cityDest, events, listLayout, setMapExploreState]);
+  }, [listOpen, areaPanel, filters, catFilter, openNowOnly, forYouOn, searchQuery, selectedId, committedBounds, areaContext, cityDest, events, listLayout, setMapExploreState]);
 
   // "Show nearest": the closest matching events (same filters) anywhere, framed above the mid sheet — an explicit
   // geographic move that commits its area once. Never automatic, never presented as "here".
@@ -1106,6 +1158,60 @@ export default function MapExplore() {
     moveCamera('destination', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom: cam.zoom, duration: reduceMotion() ? 0 : 800 }));
   }, [containerH, topControlsBottom, moveCamera]);
   flyToCityRef.current = flyToCity;
+  // ---- Map E+: the neighbourhood panel ----
+  const panelPx = Math.round(containerH * 0.46);
+  // Open a neighbourhood ({ keys, labels, bounds }): fly so its events fill the free band above the panel, at pin level,
+  // and show its events in the panel. With `reveal` (a stack tap, already zoomed in) the camera only centres that point.
+  const openAreaPanel = useCallback((g, opts = {}) => {
+    const map = mapRef.current;
+    const el = mapDivRef.current;
+    if (!map || !el) return;
+    if (!areaPanelRef.current) {
+      const c = map.getCenter();
+      preAreaViewRef.current = { center: { lat: c.lat, lng: c.lng }, zoom: map.getZoom() };
+    }
+    areaOpenedAtRef.current = Date.now();
+    areaScrollToRef.current = opts.scrollTo || null;
+    setAreaPanel({ keys: g.keys, label: g.labels?.[0] || null });
+    setListOpen(false);
+    searchInputRef.current?.blur();
+    const size = { width: el.clientWidth || 390, height: el.clientHeight || geomRef.current.containerH };
+    const pad = { top: geomRef.current.topControlsBottom + CARD_GAP + 16, bottom: Math.round(geomRef.current.containerH * 0.46) + 16, left: 48, right: 48 };
+    const mk = !!map.__isMapKit;
+    const duration = reduceMotion() ? 0 : 700;
+    if (opts.reveal) {
+      const z = map.getZoom();
+      const cam = fitCamera({ north: opts.reveal.lat, south: opts.reveal.lat, east: opts.reveal.lng, west: opts.reveal.lng }, size, pad, { tileSize: mk ? 256 : 512, maxZoom: z, minZoom: z });
+      moveCamera('reveal', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom: z, duration }));
+    } else if (g.bounds) {
+      const cam = fitCamera(g.bounds, size, pad, { tileSize: mk ? 256 : 512, maxZoom: 17 });
+      const zoom = Math.max(cam.zoom, AREA_ZOOM + 0.5 + (mk ? 1 : 0));
+      moveCamera('cluster', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom, duration }));
+    }
+  }, [moveCamera]);
+  // Back ("All areas", Esc): close the panel and, with `goBack`, return to the view it was opened from.
+  const closeAreaPanel = useCallback((goBack) => {
+    setAreaPanel(null);
+    const v = preAreaViewRef.current;
+    preAreaViewRef.current = null;
+    if (goBack && v) moveCamera('cluster', m => m.flyTo({ center: [v.center.lng, v.center.lat], zoom: v.zoom, duration: reduceMotion() ? 0 : 700 }));
+  }, [moveCamera]);
+  openAreaRef.current = openAreaPanel;
+  openAreaForEventRef.current = (ev) => {
+    if (!ev) return;
+    // The events at this place may be named for slightly different areas (free text): the panel lists all of them.
+    const stack = sameSpot(visibleEvents, ev);
+    const infos = (stack.length ? stack : [ev]).map(e => areaInfoById.get(e.id) || areaKey(e, CITIES));
+    const keys = [...new Set([(areaInfoById.get(ev.id) || areaKey(ev, CITIES)).key, ...infos.map(i => i.key)])];
+    const first = areaInfoById.get(ev.id) || areaKey(ev, CITIES);
+    openAreaPanel({ keys, labels: [first.label] }, { reveal: ev, scrollTo: ev.id });
+  };
+  useEffect(() => {
+    if (!areaPanel) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') closeAreaPanel(true); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [areaPanel, closeAreaPanel]);
   // A city picked in the area sheet (AreaSheet.jsx) arrives as a one-shot request.
   useEffect(() => {
     const req = s.mapCityRequest;
@@ -1370,6 +1476,67 @@ export default function MapExplore() {
     return null;
   };
 
+  const compactRow = (ev, prefix) => (
+    <div
+      onClick={() => openEventDetail(ev.id)}
+      data-testid={`${prefix}-${ev.id}`}
+      role="button"
+      tabIndex={0}
+      aria-current={ev.id === selectedId ? 'true' : undefined}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEventDetail(ev.id); } }}
+      style={{ display: 'flex', gap: 12, padding: '7px 0', cursor: 'pointer', alignItems: 'flex-start', animation: 'banbeRowIn 0.3s cubic-bezier(.22,.61,.36,1) backwards', background: ev.id === selectedId ? 'rgba(var(--bb-fg-rgb),0.05)' : 'transparent' }}
+    >
+      {ev.img && <div style={{ width: 64, height: 64, borderRadius: RADIUS.thumb, backgroundImage: `url(${ev.img})`, backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0 }} />}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.name}</div>
+        {/* Venue date · time (the event's own zone), then the area, plus a distance only when it helps
+            choose (≤ 50 km, Event Detail's rule; a viewer abroad saw "9662,0 km" on every row). */}
+        <div data-testid={`${prefix}-when-${ev.id}`} style={{ fontSize: 13, color: ink2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {eventWhen(ev)}
+        </div>
+        <div data-testid={`${prefix}-area-${ev.id}`} style={{ fontSize: 13, color: ink2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {[ev.area, nearDistance(ev)].filter(Boolean).join(' · ')}
+        </div>
+        {/* Stage 3: an honest "no map location" state for an event with no (or not-yet-confirmed)
+            coordinates, never a silently-omitted row or an invented pin. */}
+        {!ev.hasLocation && (
+          <div data-testid={`${prefix}-no-location-${ev.id}`} style={{ fontSize: 10.5, color: ink, opacity: 0.55, marginTop: 2 }}>
+            {T('Chưa có vị trí trên bản đồ', 'No map location yet')}
+          </div>
+        )}
+      </div>
+      <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+        <div data-testid={`${prefix}-price-${ev.id}`} aria-label={priceLine(ev)} style={{ fontSize: 14, fontWeight: 600, color: ink, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{priceTicket(ev)}</div>
+        <SeatPill ev={ev} testId={`${prefix}-seats-${ev.id}`} />
+      </div>
+    </div>
+  );
+
+  // ---- Map E+: neighbourhood chips and the open panel ----
+  // One chip per neighbourhood with results in the map area (never merged, unlike the bubbles), most events first.
+  const areaChips = useMemo(() => {
+    const located = visibleEvents.filter(e => e.hasLocation);
+    const byId = new Map(located.map(e => [e.id, e]));
+    return areaGroups(located, 12, p => areaInfoById.get(p.id) || areaKey(p, CITIES), null, { mergePx: 0 })
+      .sort((x, y) => (y.ids.length - x.ids.length) || String(x.labels[0] || '~').localeCompare(String(y.labels[0] || '~')))
+      .map(g => ({ ...g, cats: [...new Set(g.ids.map(id => byId.get(id)?.catKey).filter(Boolean))] }));
+  }, [visibleEvents, areaInfoById]);
+  const panelEvents = useMemo(
+    () => (areaPanel ? visibleEvents.filter(e => areaPanel.keys.includes((areaInfoById.get(e.id) || areaKey(e, CITIES)).key)) : []),
+    [areaPanel, visibleEvents, areaInfoById],
+  );
+  const areaHeadingRef = useRef(null);
+  const panelKey = areaPanel ? areaPanel.keys.join('+') : '';
+  useEffect(() => {
+    if (!areaPanel) return;
+    areaHeadingRef.current?.focus({ preventScroll: true });
+    const id = areaScrollToRef.current;
+    areaScrollToRef.current = null;
+    if (id) requestAnimationFrame(() => document.querySelector(`[data-testid="map-area-item-${id}"]`)?.scrollIntoView?.({ block: 'nearest' }));
+  }, [panelKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const zoomNow = cameraZoom == null ? null : (mapRef.current?.__isMapKit ? cameraZoom - 1 : cameraZoom);
+  const levelNow = zoomNow == null ? 'area' : markerLevel(zoomNow);
+
   // ---- the list layer ----
   // Esc closes it; focus goes to its heading when it opens and back to "List · N" when it closes.
   const listButtonRef = useRef(null);
@@ -1447,7 +1614,7 @@ export default function MapExplore() {
     ),
   ].filter(Boolean);
   // Closed list: the same messages float above the buttons (one place at a time, they share their test ids).
-  const showEmptyCard = !listOpen && !searchActive && emptyNodes.length > 0;
+  const showEmptyCard = !listOpen && !searchActive && !areaPanel && emptyNodes.length > 0;
   const srOnly = { position: 'absolute', width: 1, height: 1, margin: -1, padding: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0 };
   const forYouCapsule = { ...photoPill({ position: 'static', borderRadius: RADIUS.pill }), display: 'inline-flex', alignItems: 'center', minHeight: 36, padding: '0 12px', fontSize: 13, color: ink, fontWeight: forYouActive ? 700 : 500, whiteSpace: 'nowrap',
     ...(forYouActive ? { background: ink, color: paper, border: `1px solid ${ink}`, backdropFilter: 'none', WebkitBackdropFilter: 'none', boxShadow: 'none' } : null) };
@@ -1458,6 +1625,7 @@ export default function MapExplore() {
       style={{ position: 'fixed', inset: 0, background: paper, opacity: 1 - 0.6 * closingProgress, transform: closingProgress ? `scale(${1 - 0.04 * closingProgress})` : 'none', transition: 'opacity 0.3s ease, transform 0.3s ease' }}>
       {/* iOS has no map zoom controls (mapControls {}); the web +/- sits below the shared controls. */}
       <style>{`[data-screen-label="MapExplore"] .maplibregl-ctrl-top-right { top: ${Math.round(topControlsBottom + 12)}px; right: 6px; } [data-screen-label="MapExplore"] .bb-noscroll::-webkit-scrollbar { display: none; }
+        @keyframes bbAreaPanelIn { from { transform: translateY(100%); } to { transform: none; } }
         /* Attribution (required) lives just above the bottom stack (the dock and its buttons). */
         [data-screen-label="MapExplore"] .maplibregl-ctrl-bottom-right { display: block; bottom: ${Math.max(0, Math.round(containerH - lay.sheetTopPx))}px; z-index: 3; max-width: calc(100% - 12px); }
         [data-screen-label="MapExplore"] .maplibregl-ctrl-attrib { font-size: 10px; line-height: 1.3; max-width: 100%; }
@@ -1584,7 +1752,7 @@ export default function MapExplore() {
       </div>
 
       {/* The bottom stack: my location and "List · N", right above the dock. */}
-      <div style={{ position: 'absolute', right: 16, bottom: dockClear + 12, zIndex: 3, display: 'flex', alignItems: 'center', gap: 8, visibility: listOpen ? 'hidden' : 'visible' }}>
+      <div style={{ position: 'absolute', right: 16, bottom: dockClear + 12, zIndex: 3, display: 'flex', alignItems: 'center', gap: 8, visibility: listOpen || areaPanel ? 'hidden' : 'visible' }}>
         <div role="button" tabIndex={0} onClick={recenterOnUser} data-testid="map-compass" aria-label={T('Vị trí của tôi', 'My location')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); recenterOnUser(); } }}
           style={{ ...photoPill({ position: 'static', borderRadius: '50%' }), width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: compassOpacity }}>
@@ -1597,6 +1765,56 @@ export default function MapExplore() {
           {T('Danh sách', 'List')} · {visibleEvents.length}
         </button>
       </div>
+
+      {/* Neighbourhood chips: tap one to fly there and open its panel. Hidden at city level, while the list or a panel is
+          open, and while there is nothing to show; their room above the buttons stays reserved. */}
+      {!areaPanel && !listOpen && !searchActive && levelNow !== 'city' && areaChips.length > 0 && (
+        <div data-hscroll="true" data-testid="map-area-chips" className="bb-noscroll" role="group" aria-label={T('Khu vực', 'Areas')}
+          style={{ position: 'absolute', left: 0, right: 0, bottom: dockClear + 12 + 44 + 10, zIndex: 3, display: 'flex', gap: 8, overflowX: 'auto', padding: '2px 16px 4px', scrollbarWidth: 'none' }}>
+          {areaChips.map(g => {
+            const name = g.labels[0] || T('Khu khác', 'Other areas');
+            const n = g.ids.length;
+            return (
+              <button key={g.keys[0]} type="button" onClick={() => openAreaPanel(g)} data-testid={`map-areachip-${g.keys[0]}`} data-count={n}
+                aria-label={T(`${name}, ${n} sự kiện, mở khu này`, `${name}, ${n} event${n === 1 ? '' : 's'}, open this area`)}
+                style={{ flex: 'none', minWidth: 108, maxWidth: 190, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '8px 12px', borderRadius: 16, border: 'none', background: paper, color: ink, boxShadow: '0 2px 10px rgba(27,25,22,0.16)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                <span style={{ fontSize: 15, fontWeight: 700, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                <span style={{ fontSize: 12, color: ink2 }}>{T(`${n} sự kiện`, `${n} event${n === 1 ? '' : 's'}`)}</span>
+                <span aria-hidden="true" style={{ display: 'flex', gap: 4, color: ink2, marginTop: 2 }}>
+                  {g.cats.slice(0, 5).map(c => <CategoryGlyph key={c} cat={c} size={14} strokeWidth={1.9} />)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* The neighbourhood panel: its events, over the lower part of the map, with the dock out of the way. */}
+      {areaPanel && (
+        <section data-testid="map-area-panel" aria-label={T('Sự kiện trong khu này', 'Events in this area')}
+          style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: panelPx, zIndex: 4, background: paper, borderRadius: '22px 22px 0 0', boxShadow: '0 -4px 20px rgba(27,25,22,0.14)', display: 'flex', flexDirection: 'column',
+            animation: reduceMotion() ? 'none' : 'bbAreaPanelIn 0.38s cubic-bezier(.2,.85,.25,1)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '14px 16px 8px', flex: 'none' }}>
+            <h3 ref={areaHeadingRef} tabIndex={-1} data-testid="map-area-title" data-count={panelEvents.length}
+              style={{ margin: 0, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', outline: 'none', ...display(22, { letterSpacing: '-0.02em' }) }}>
+              {(areaPanel.label || T('Khu khác', 'Other areas'))} · {panelEvents.length}
+            </h3>
+            <button type="button" onClick={() => closeAreaPanel(true)} data-testid="map-area-back"
+              style={{ ...catChip(false, false), flex: 'none' }}>
+              <svg aria-hidden="true" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
+              {T('Tất cả khu', 'All areas')}
+            </button>
+          </div>
+          <div data-testid="map-area-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 16px calc(24px + env(safe-area-inset-bottom, 0px))', overscrollBehavior: 'contain', touchAction: 'pan-y' }}>
+            {panelEvents.length === 0 && (
+              <div data-testid="map-area-panel-empty" style={{ padding: '20px 0', textAlign: 'center', color: ink2, fontSize: 14 }}>
+                {T('Không còn sự kiện ở khu này với bộ lọc hiện tại.', 'No events left in this area with the current filters.')}
+              </div>
+            )}
+            {panelEvents.map(ev => <Fragment key={ev.id}>{compactRow(ev, 'map-area-item')}</Fragment>)}
+          </div>
+        </section>
+      )}
 
       {showEmptyCard && (
         <div data-testid="map-empty-card" style={{ position: 'absolute', left: 16, right: 16, bottom: dockClear + 12 + 44 + 10, zIndex: 3, maxHeight: '40%', overflowY: 'auto', background: paper, borderRadius: 16, boxShadow: '0 4px 18px rgba(27,25,22,0.16)' }}>
@@ -1691,39 +1909,7 @@ export default function MapExplore() {
                     testId={`map-list-item-${ev.id}`} role="button" gutter={0} current={ev.id === selectedId} />
                 </div>
               ) : (
-                <div
-                  onClick={() => openEventDetail(ev.id)}
-                  data-testid={`map-list-item-${ev.id}`}
-                  role="button"
-                  tabIndex={0}
-                  aria-current={ev.id === selectedId ? 'true' : undefined}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEventDetail(ev.id); } }}
-                  style={{ display: 'flex', gap: 12, padding: '7px 0', cursor: 'pointer', alignItems: 'flex-start', animation: 'banbeRowIn 0.3s cubic-bezier(.22,.61,.36,1) backwards', background: ev.id === selectedId ? 'rgba(var(--bb-fg-rgb),0.05)' : 'transparent' }}
-                >
-                  {ev.img && <div style={{ width: 64, height: 64, borderRadius: RADIUS.thumb, backgroundImage: `url(${ev.img})`, backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0 }} />}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.name}</div>
-                    {/* Venue date · time (the event's own zone), then the area, plus a distance only when it helps
-                        choose (≤ 50 km, Event Detail's rule; a viewer abroad saw "9662,0 km" on every row). */}
-                    <div data-testid={`map-list-item-when-${ev.id}`} style={{ fontSize: 13, color: ink2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {eventWhen(ev)}
-                    </div>
-                    <div data-testid={`map-list-item-area-${ev.id}`} style={{ fontSize: 13, color: ink2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {[ev.area, nearDistance(ev)].filter(Boolean).join(' · ')}
-                    </div>
-                    {/* Stage 3: an honest "no map location" state for an event with no (or not-yet-confirmed)
-                        coordinates, never a silently-omitted row or an invented pin. */}
-                    {!ev.hasLocation && (
-                      <div data-testid={`map-list-item-no-location-${ev.id}`} style={{ fontSize: 10.5, color: ink, opacity: 0.55, marginTop: 2 }}>
-                        {T('Chưa có vị trí trên bản đồ', 'No map location yet')}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                    <div data-testid={`map-list-item-price-${ev.id}`} aria-label={priceLine(ev)} style={{ fontSize: 14, fontWeight: 600, color: ink, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{priceTicket(ev)}</div>
-                    <SeatPill ev={ev} testId={`map-list-item-seats-${ev.id}`} />
-                  </div>
-                </div>
+                compactRow(ev, 'map-list-item')
               )}
             </Fragment>
           ))}
