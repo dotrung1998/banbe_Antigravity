@@ -6,7 +6,7 @@
 // Real events only; adding to the banbe Schedule needs an account.
 import { useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { ink2 } from '../theme.js';
+import { ink, ink2 } from '../theme.js';
 import GlassMenu, { GlassMenuItem } from '../components/GlassMenu.jsx';
 import { sourceLabel, canAdd } from '../lib/schedulePresentation.js';
 import { calendarDraft, downloadIcs, googleCalendarUrl } from '../lib/calendarExport.js';
@@ -32,12 +32,12 @@ const Check = () => (
 /** A tiny tear-off calendar page (red band with the month, the day below): the "phone calendar" icon on Event Detail
  *  and Confirmed. iOS twin: MiniCalendarPage. */
 export function MiniCalendarPage({ day, month, size = 44, done = false }) {
-  // Monochrome Calendar icon (iOS 27 dark/tinted style): black tile, grey weekday, white day.
+  // Monochrome Calendar icon (iOS 27 style) in the Directions button's colours: ink tile, paper text.
   return (
     <span aria-hidden style={{ position: 'relative', flex: 'none', display: 'inline-flex', width: size, height: size }}>
-      <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: size * 0.02, width: '100%', height: '100%', borderRadius: size * 0.25, background: '#121213', boxShadow: '0 2px 6px rgba(0,0,0,0.18), inset 0 0 0 1px rgba(255,255,255,0.22)', fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: 1 }}>
-        <span style={{ color: 'rgba(255,255,255,0.62)', fontSize: size * 0.17, fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase' }}>{month || ' '}</span>
-        <span style={{ color: '#fff', fontSize: size * 0.46, fontWeight: 400 }}>{day || '+'}</span>
+      <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: size * 0.02, width: '100%', height: '100%', borderRadius: size * 0.25, background: ink, color: 'var(--bb-bg)', boxShadow: '0 2px 6px rgba(0,0,0,0.18)', fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: 1 }}>
+        <span style={{ opacity: 0.62, fontSize: size * 0.17, fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase' }}>{month || ' '}</span>
+        <span style={{ fontSize: size * 0.46, fontWeight: 400 }}>{day || '+'}</span>
       </span>
       {done && <Check />}
     </span>

@@ -38,25 +38,25 @@ struct EventPlanTitleRow: View {
 /// Note 77: a tiny tear-off calendar page (red band with the month, the day number below): the "phone calendar"
 /// icon on Event Detail and Confirmed, so it never looks like the banbe Schedule button.
 struct MiniCalendarPage: View {
+    @EnvironmentObject private var app: AppState
     var day: String
     /// The short weekday (or month) shown above the day, like the Calendar app icon.
     var month: String
     var size: CGFloat = 44
 
     var body: some View {
-        // Monochrome Calendar icon (iOS 27 dark/tinted style): black tile, grey weekday, white day.
+        // Monochrome Calendar icon (iOS 27 style) in the Directions button's colours: ink tile, paper text.
         VStack(spacing: size * 0.02) {
             Text(month.isEmpty ? " " : month.uppercased())
                 .font(.system(size: size * 0.17, weight: .semibold)).tracking(0.3)
-                .foregroundStyle(Color.white.opacity(0.62))
+                .foregroundStyle(app.palette.paper.opacity(0.62))
             Text(day.isEmpty ? "+" : day)
                 .font(.system(size: size * 0.46, weight: .regular))
-                .foregroundStyle(.white)
+                .foregroundStyle(app.palette.paper)
         }
         .lineLimit(1).minimumScaleFactor(0.6)
         .frame(width: size, height: size)
-        .background(Color(red: 0.07, green: 0.07, blue: 0.075), in: RoundedRectangle(cornerRadius: size * 0.25, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous).stroke(Color.white.opacity(0.22), lineWidth: 1))
+        .background(app.palette.ink, in: RoundedRectangle(cornerRadius: size * 0.25, style: .continuous))
         .shadow(color: .black.opacity(0.18), radius: 3, y: 2)
         .accessibilityHidden(true)
     }
