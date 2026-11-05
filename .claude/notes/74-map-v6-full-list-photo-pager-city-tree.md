@@ -1,5 +1,7 @@
 # 74 — Map v6: city in the area tree + one tap, full-height list with photo cards, peek → full, a useful peek strip
 
+SUPERSEDED (2026-11-06) by note 79 for the bottom sheet, peek strip, selection-in-sheet and Tonight/Weekend chips; data, matcher and filter sections still apply.
+
 Status: IMPLEMENTED (web + iOS), not committed. No migration, no DB change. Builds on notes 72 and 73; everything
 there still holds unless changed below.
 Plan: owner device review of Map v5, 2026-11-01 (four screenshots), plan `idempotent-hugging-nygaard.md`; mockup

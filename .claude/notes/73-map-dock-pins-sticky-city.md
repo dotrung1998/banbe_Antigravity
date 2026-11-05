@@ -1,5 +1,7 @@
 # 73 — Map v5: dock on demand, category pins, selection in the sheet, sticky filters, pan → peek, cities
 
+SUPERSEDED (2026-11-06) by note 79 for the bottom sheet, peek strip, selection-in-sheet and Tonight/Weekend chips; data, matcher and filter sections still apply.
+
 Status: IMPLEMENTED (web + iOS), not committed. No migration. Run `xcodegen generate` after pulling (new bundled
 resource `src/data/cities.json`). Builds on note 72; everything there still holds unless changed below.
 Plan: owner request 2026-11-01 (screenshots + Airbnb/Uber/Corner Maps references); mockup published as the

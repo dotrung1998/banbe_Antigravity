@@ -1,5 +1,7 @@
 # 72 — Map redesign: layout A, viewport-driven discovery, shared filters, price pins + clusters (phases 1–4)
 
+SUPERSEDED (2026-11-06) by note 79 for the bottom sheet, peek strip, selection-in-sheet and Tonight/Weekend chips; data, matcher and filter sections still apply.
+
 Status: IMPLEMENTED (web + iOS), tests green, committed (phases 1–3 in 04330f0, phase 4 after it).
 No migration. Run `xcodegen generate` after pulling (new Swift files).
 
