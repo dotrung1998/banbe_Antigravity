@@ -45,6 +45,11 @@ struct RootView: View {
     // recognizing the same touch).
     @State private var tabSwipeTranslation: CGFloat = 0
     @State private var tabSwipeDirection: String?
+    /// The "vertical" (hands-off) lock for the current drag, outside observed state: as `tabSwipeDirection = "vertical"`
+    /// it was written at the start and end of every scroll, re-rendering RootView and Home twice per swipe (2026-11-05,
+    /// note 47). `tabSwipeDirection` now only ever holds "horizontal", the one value the body reads.
+    private final class SwipeLock { var vertical = false }
+    @State private var swipeLock = SwipeLock()
     // Root-tab-swipe fix pass (2026-09-27, follow-up B) — real cause of
     // "destination screen blank/partly missing during the drag, then
     // slides in AGAIN from the left after release": only `app.screen`'s
@@ -194,12 +199,12 @@ struct RootView: View {
         DragGesture(minimumDistance: 6, coordinateSpace: .named("rootGesture"))
             .onChanged { value in
                 guard BottomTabBar.visibleScreens.contains(app.screen) else { return }
-                if tabSwipeDirection == nil {
+                if tabSwipeDirection == nil && !swipeLock.vertical {
                     let dx = value.translation.width
                     let dy = value.translation.height
                     if abs(dx) < 6 && abs(dy) < 6 { return }
                     if abs(dy) >= abs(dx) {
-                        tabSwipeDirection = "vertical"
+                        swipeLock.vertical = true
                         return
                     }
                     // Row-swipe-vs-tab-swipe fix pass (2026-09-28, third
@@ -220,11 +225,11 @@ struct RootView: View {
                     // of the canvas), mirroring the web equivalent's own
                     // EDGE_RESERVE_PX/Map-specific narrowing exactly.
                     if startX < edgeSwipeZoneWidth {
-                        tabSwipeDirection = "vertical"
+                        swipeLock.vertical = true
                         return
                     }
                     if app.screen == .mapExplore && startX < width - edgeSwipeZoneWidth {
-                        tabSwipeDirection = "vertical"
+                        swipeLock.vertical = true
                         return
                     }
                     // Survey-strip gesture fix — same shape as the removed
@@ -245,7 +250,7 @@ struct RootView: View {
                     if app.rootSwipeClaimedByControl || app.screen == .schedule
                         || app.rootGestureExclusionZones.values.contains(where: { $0.contains(value.startLocation) })
                         || PagerSwipeZones.contains(value.startLocation, on: app.screen) {
-                        tabSwipeDirection = "vertical"
+                        swipeLock.vertical = true
                         return
                     }
                     tabSwipeDirection = "horizontal"
@@ -268,7 +273,8 @@ struct RootView: View {
             }
             .onEnded { value in
                 guard tabSwipeDirection == "horizontal" else {
-                    tabSwipeDirection = nil
+                    swipeLock.vertical = false
+                    if tabSwipeDirection != nil { tabSwipeDirection = nil }
                     return
                 }
                 let idx = app.dockOrder.firstIndex(of: app.screen)
@@ -317,6 +323,7 @@ struct RootView: View {
                 }
                 tabSwipeTranslation = 0
                 tabSwipeDirection = nil
+                swipeLock.vertical = false
                 tabSwipeCommittingTarget = nil
             }
         }
@@ -1282,6 +1289,7 @@ struct RootView: View {
             // `app.isRootSwipeActive` stuck true just the same — on
             // WHATEVER screen is current at the time, not just Home.
             tabSwipeDirection = nil
+            swipeLock.vertical = false
             tabSwipeTranslation = 0
         }
         // Task 1 (2026-09-22 follow-up, 07-notifications.md) — StoryViewer

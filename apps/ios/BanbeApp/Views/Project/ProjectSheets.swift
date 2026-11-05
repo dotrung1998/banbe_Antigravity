@@ -180,7 +180,7 @@ struct ProjectTaskSheet: View {
 
     var body: some View {
         CardSheet(title: taskID == nil ? app.T("Việc mới", "New task") : (editable ? app.T("Sửa việc", "Edit task") : app.T("Việc", "Task")),
-                  closeID: "project.sheet.close", onClose: close) {
+                  closeID: "project.sheet.close", fullHeight: true, onClose: close) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     if deleting { deleteForm } else if editable { form } else if let task { detail(task) }
@@ -344,7 +344,7 @@ struct ProjectNewLaneSheet: View {
 
     var body: some View {
         CardSheet(title: direct ? app.T("Thêm hạng mục", "Add a lane") : app.T("Đề xuất hạng mục", "Propose a lane"),
-                  closeID: "project.sheet.close", onClose: close) {
+                  closeID: "project.sheet.close", fullHeight: true, onClose: close) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if !direct {
@@ -390,7 +390,7 @@ struct ProjectManageLaneSheet: View {
     private var openTasks: Int { (app.projectSnapshot?.tasks ?? []).filter { $0.laneId == laneID && $0.status != "done" }.count }
 
     var body: some View {
-        CardSheet(title: app.T("Quản lý hạng mục", "Manage lane"), closeID: "project.sheet.close", onClose: close) {
+        CardSheet(title: app.T("Quản lý hạng mục", "Manage lane"), closeID: "project.sheet.close", fullHeight: true, onClose: close) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     ProjectTextField(label: app.T("Tên hạng mục", "Lane name"), text: $name, limit: 24, id: "project.lane.rename")
@@ -438,7 +438,7 @@ struct ProjectDeclineSheet: View {
     @State private var reason = ""
 
     var body: some View {
-        CardSheet(title: app.T("Từ chối đề xuất", "Decline proposal"), closeID: "project.sheet.close", onClose: close) {
+        CardSheet(title: app.T("Từ chối đề xuất", "Decline proposal"), closeID: "project.sheet.close", fullHeight: true, onClose: close) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if let r = app.projectSnapshot?.changeRequests?.first(where: { $0.id == requestID }) {
@@ -472,7 +472,7 @@ struct ProjectLeaveSheet: View {
     let close: () -> Void
 
     var body: some View {
-        CardSheet(title: app.T("Rời dự án", "Leave project"), closeID: "project.sheet.close", onClose: close) {
+        CardSheet(title: app.T("Rời dự án", "Leave project"), closeID: "project.sheet.close", fullHeight: true, onClose: close) {
             VStack(alignment: .leading, spacing: 16) {
                 Text(app.T("Việc đang giao cho bạn sẽ thành chưa giao. Bạn cần lời mời mới để vào lại.",
                            "Tasks given to you become unassigned. You'll need a new invite to come back."))

@@ -82,4 +82,22 @@ final class DockLayoutTests: XCTestCase {
         XCTAssertNil(DockLayout.tab(atSlot: 5, simpleShell: true))
         XCTAssertNil(DockLayout.tab(atSlot: -1, simpleShell: false))
     }
+
+    /// Dock shrink-on-scroll hysteresis, shared with the web (tests/fixtures/dock-collapse.json).
+    func testDockCollapseMatchesTheSharedFixture() throws {
+        var url = URL(fileURLWithPath: #filePath)
+        for _ in 0..<4 { url.deleteLastPathComponent() }
+        let data = try Data(contentsOf: url.appendingPathComponent("tests/fixtures/dock-collapse.json"))
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(root["threshold"] as? Double, DockCollapse.threshold)
+        for c in try XCTUnwrap(root["cases"] as? [[String: Any]]) {
+            let name = c["name"] as? String ?? ""
+            var state = (collapsed: false, travel: 0.0)
+            for step in try XCTUnwrap(c["steps"] as? [[Any]]) {
+                let offset = try XCTUnwrap(step[0] as? Double), delta = try XCTUnwrap(step[1] as? Double)
+                state = DockCollapse.next(collapsed: state.collapsed, travel: state.travel, offsetY: offset, delta: delta)
+                XCTAssertEqual(state.collapsed, step[2] as? Bool, "\(name) at offset \(offset)")
+            }
+        }
+    }
 }

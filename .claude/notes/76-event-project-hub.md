@@ -553,3 +553,11 @@ Switches: `event_project_hub`, `project_qr_invite`, `project_delegate_checkin`, 
 - Not checked: real device, a real admin against the live switch, visuals of banner/picker; on iOS a "not available"
   notice tapped inside a sheet sits behind the sheet until it closes; app-wide background reads (e.g. flag refresh) may
   still run during a demo (read-only, not project code).
+
+## 2026-11-05: Project Hub sheets open at full height (iOS)
+
+Owner asked whether the half-height pop-ups in the Project Hub demo are demo-only. They were not: the demo and production render the
+same `ProjectHubView` → `ProjectSheetHost`, and every sheet uses the shared `CardSheet` (Views/Sheets.swift), whose default is
+`[.medium, .large]`. All 17 `CardSheet` calls under `Views/Project/` now pass `fullHeight: true` (`[.large]` only; the invite sheet no
+longer depends on `project_qr_invite` for its height). The `CardSheet` default is unchanged, since Reports, Schedule month and Event
+Detail "About & Included" rely on half height. The demo "View as" picker (AccountGroupView) stays at medium. Web: sheets were not reported, unchanged.

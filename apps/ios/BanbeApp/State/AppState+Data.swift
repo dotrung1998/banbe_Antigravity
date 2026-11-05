@@ -1608,7 +1608,7 @@ extension AppState {
         // the layout instantly. Wrapping the mutation itself in
         // `withAnimation` — the same "animate at the state-mutation site"
         // convention `BottomTabBarOverlay`'s `dockVisible`/
-        // `bottomBarCollapsed` already use in this codebase, not a new,
+        // `DockChrome.collapsed` already use in this codebase, not a new,
         // second mechanism — lets `ScreenScaffold`'s existing
         // `scrollPositionID` anchor (AccountView's own
         // `$app.accountScrollAnchorID`) track the reflow smoothly instead

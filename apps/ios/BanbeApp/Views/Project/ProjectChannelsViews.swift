@@ -123,7 +123,7 @@ struct ProjectChannelsSheet: View {
 
     var body: some View {
         CardSheet(title: hostMode ? app.T("Kênh trao đổi", "Team channels") : app.T("Đề xuất kênh", "Suggest a channel"),
-                  closeID: "project.sheet.close", onClose: close) {
+                  closeID: "project.sheet.close", fullHeight: true, onClose: close) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if hostMode { editor } else { proposal }

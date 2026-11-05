@@ -59,3 +59,21 @@ enum DockLayout {
         return s[i] == createSlot ? .create : .tab(s[i])
     }
 }
+
+/// Dock shrink-on-scroll decision, pure (2026-11-05, note 47). `offsetY` is 0 at the top and more negative further
+/// down; `delta` is the change since the last sample (negative = scrolling down). `travel` is the signed run in the
+/// current direction: it restarts when the direction reverses, so the dock flips only after `threshold` points one
+/// way. Always full size near the top. Shared fixture: tests/fixtures/dock-collapse.json (web `dockCollapseStep`).
+enum DockCollapse {
+    static let threshold = 24.0
+
+    static func next(collapsed: Bool, travel: Double, offsetY: Double, delta: Double) -> (collapsed: Bool, travel: Double) {
+        if offsetY >= -4 { return (false, 0) }
+        if delta == 0 { return (collapsed, travel) }
+        let run = (delta < 0) == (travel < 0) && travel != 0 ? travel + delta : delta
+        let t = min(threshold, max(-threshold, run))
+        if t <= -threshold { return (true, t) }
+        if t >= threshold { return (false, t) }
+        return (collapsed, t)
+    }
+}

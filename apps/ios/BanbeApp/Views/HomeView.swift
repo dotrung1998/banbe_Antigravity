@@ -107,6 +107,9 @@ struct HomeView: View {
         // showed straight through it. Matches InboxView's own
         // `ZStack { app.palette.paper.ignoresSafeArea(); VStack { header; ... } }`
         // shape exactly, which never had this bug.
+        #if DEBUG
+        let _ = { if UITestFixture.isActive { UITestFixture.homeBodies += 1 } }()
+        #endif
         let snap = makeSnapshot()
         ZStack {
             app.palette.paper.ignoresSafeArea()
@@ -1182,8 +1185,9 @@ struct HomeView: View {
         let hints = shown.count < 3 ? HomeDiscovery.relaxationHints(items, f, now: now) : []
         // Best-match label: the top For You match, only when the user has answers. Without answers the first
         // card is "Popular this week" when it's the area's top Pulse event — never called a "match".
-        let topForYou = app.forYouMatches.first?.key
-        let forYouActive = app.filterForYou && app.hasForYouMatches
+        let forYou = app.forYouMatches   // computed (ForYou.rank): read once per pass
+        let topForYou = forYou.first?.key
+        let forYouActive = app.filterForYou && !forYou.isEmpty
         let topPulse = items.filter { $0.popularity != nil }.max { ($0.popularity ?? 0) < ($1.popularity ?? 0) }?.key
         let cards: [DiscoveryCardModel] = shown.enumerated().compactMap { i, it in
             guard let e = byKey[it.key] else { return nil }

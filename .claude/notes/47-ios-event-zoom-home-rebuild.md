@@ -52,3 +52,36 @@ Root cause: `noteScaffoldScroll` treated every `contentOffset` change as a user 
 - New `testDockStaysExpandedWhenReturningToTheTabThatShrankIt`: **fails without the fix** (dock 13.4 vs 15.6pt) and passes with it.
 - Whole suite: 11/14 pass. The same 3 pre-existing failures as above. Unit tests: unchanged (only the pre-existing GiftTicketPDF failure).
 - Not verifiable in the simulator: whether the haptics feel right (simulator has no Taptic Engine), and the drag-close and dock behaviour on device.
+
+## 2026-11-05: Home stutter when reversing scroll direction (iOS + web)
+
+Owner report: Home feels laggy when switching between swiping down and up, "as if it reloads on every gesture".
+
+Root cause (iOS): the dock's shrink flag was `@Published var bottomBarCollapsed` on `AppState`. Every direction flip wrote it inside a
+spring animation, so every view holding `@EnvironmentObject app` re-rendered mid-gesture: all of Home's cards, pagers, Pulse, RootView.
+Each Home body pass also re-runs `makeSnapshot()` (feed filter/sort/counts, For You ranking). The flip had no hysteresis (4 pt), so a
+finger wobble or an end-of-list bounce flipped it again. Second trigger: `@Published var now` ticked every second via a default-mode
+Timer, which pauses while the finger is down and fires right as it lifts, so a full re-render landed between swipes.
+
+Fix:
+- Flag moved to `DockChrome.shared.collapsed` (BottomTabBar.swift), observed only by `DockRow`. `AppState.bottomBarCollapsed` removed.
+- Hysteresis: pure `DockCollapse.next` (Lib/DockLayout.swift) ⇄ web `dockCollapseStep` (src/lib/dockLayout.js). Flips only after 24 pt
+  of travel one way; a reversal restarts the run; always full size near the top. Shared fixture `tests/fixtures/dock-collapse.json`.
+- `AppState.now` is no longer `@Published`. Its only reader, ConfirmedView, runs its own 1 s `Timer.publish` (PaymentViews pattern)
+  for its countdowns and the hold-lapse forfeit.
+- `makeSnapshot` reads the computed `forYouMatches` once instead of twice.
+- Web: `barCollapsed` moved out of Shell state into `dockCollapseStore` (`useSyncExternalStore`, only `LiveDockRow` subscribes), so a
+  flip no longer re-renders every mounted screen.
+
+Tests: `DockLayoutTests.testDockCollapseMatchesTheSharedFixture`, `tests/unit/dockCollapse.test.mjs`, and UI test
+`ShellFixtureUITests.testScrollingHomeUpAndDownDoesNotRerenderHome` using the new DEBUG counter `fixture.homeBodies` (Home body passes;
+6 alternating swipes must add ≤ 2).
+
+- Third trigger, found by the new test (12 Home body passes over 6 swipes after the two fixes above; `_printChanges` showed
+  "@self changed", i.e. the parent): `RootView` wrote `tabSwipeDirection = "vertical"` at the start and `nil` at the end of every
+  vertical swipe. The vertical lock now lives in a non-observed `SwipeLock` box; `tabSwipeDirection` only ever holds "horizontal",
+  the one value the body reads. After this the test passes (≤ 2), along with the dock, edge-swipe-back, Schedule swipe and
+  drag-close UI tests.
+
+Still open: Home's other `forYouMatches` reads (about 6 per body pass) are still computed per read. They're cheap enough now that body
+passes only happen on real changes. Smoothness on a real device: owner to confirm.

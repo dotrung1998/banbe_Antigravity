@@ -313,6 +313,26 @@ final class ShellFixtureUITests: XCTestCase {
         XCTAssertEqual(tab.frame.width, expanded, accuracy: 1, "returning to Home must not shrink the dock again")
     }
 
+    /// Reversing the scroll direction on Home must not re-render Home (2026-11-05): the dock's shrink flag used to
+    /// live on AppState, so every flip rebuilt every card mid-gesture, which read as Home "reloading" on each swipe.
+    func testScrollingHomeUpAndDownDoesNotRerenderHome() {
+        let app = launch("home")
+        XCTAssertTrue(el(app, "home.title").waitForExistence(timeout: 20))
+        let bodies = el(app, "fixture.homeBodies")
+        XCTAssertTrue(bodies.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 2.0)   // let the launch loads settle
+        let before = Int(bodies.label) ?? 0
+        let w = app.windows.firstMatch
+        for i in 0..<6 {
+            let (from, to) = i % 2 == 0 ? (0.7, 0.4) : (0.4, 0.7)
+            w.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: from))
+                .press(forDuration: 0.05, thenDragTo: w.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: to)))
+        }
+        Thread.sleep(forTimeInterval: 1.0)
+        let after = Int(bodies.label) ?? 0
+        XCTAssertLessThanOrEqual(after - before, 2, "Home re-rendered \(after - before) times while scrolling")
+    }
+
     // MARK: Simple Shell follow-up (plan items 1, 2, 5) — `-uiFixtureSimpleShell YES`
 
     private func launchSimple(_ variant: String = "home", host: Bool = false, extra: [String] = [], lang: String = "en") -> XCUIApplication {

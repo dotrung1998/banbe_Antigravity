@@ -1,13 +1,13 @@
 import PhoneStatusBar from './components/PhoneFrame.jsx';
 import { ImportSheet, ImportedTicketSheet } from './screens/sheets/TicketImportSheet.jsx';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { BanBeProvider, useBanBe } from './state/BanBeContext.jsx';
 import useUrlSync from './lib/useUrlSync.js';
 import useKeepFocusedVisible from './lib/useKeepFocusedVisible.js';
 import useSignInReveal from './lib/useSignInReveal.js';
 import OnboardingTour from './components/tour/OnboardingTour.jsx';
 import { CREATE_UNDO_MS } from './lib/createDraftUndo.js';
-import { dockOrder } from './lib/dockLayout.js';
+import { dockOrder, dockCollapseStep, dockCollapseStore } from './lib/dockLayout.js';
 import { flagOn } from './lib/featureFlags.js';
 import BottomTabBar, { showsBottomBar, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET, BAR_HEIGHT } from './screens/BottomTabBar.jsx';
 import { paper, ink, rule } from './theme.js';
@@ -211,6 +211,12 @@ const DOCK_CLEARANCE = BAR_HEIGHT + BAR_BOTTOM_OFFSET + 18;
 
 // `hidden` (Map v5, note 73): the Map hides the dock at peek and mid and shows it at tall. It slides down and fades
 // (kept mounted, so it slides back instead of replaying its entrance); hidden = not focusable or tappable.
+/** The dock, subscribed on its own to the scroll-driven collapsed flag (dockCollapseStore). */
+function LiveDockRow(props) {
+  const collapsed = useSyncExternalStore(dockCollapseStore.subscribe, dockCollapseStore.get);
+  return <DockRow collapsed={collapsed} {...props} />;
+}
+
 function DockRow({ collapsed, showCreate, hidden = false }) {
   return (
     <div
@@ -298,14 +304,17 @@ function Shell() {
   const lastScrollTop = useRef(0);
   const scrollRaf = useRef(null);
   const pendingScrollTop = useRef(0);
-  const [barCollapsed, setBarCollapsed] = useState(false);
+  // The dock's collapsed flag lives in dockCollapseStore (only the dock subscribes), not Shell state: as state here it
+  // re-rendered every mounted screen on each scroll-direction flip (2026-11-05, note 47).
+  const dockTravel = useRef(0);
   // Note 48 (iOS parity): moving to another section — a screen, an Account tab, the Inbox view or a
   // Schedule mode (announced by that screen via the 'bb:section-change' event) — puts the dock back
   // at full size, and scroll events in the next moment can't shrink it straight back.
   const dockCollapseSuppressedUntil = useRef(0);
   const resetDockForNewSection = useCallback(() => {
     dockCollapseSuppressedUntil.current = Date.now() + 600;
-    setBarCollapsed(false);
+    dockTravel.current = 0;
+    dockCollapseStore.set(false);
   }, []);
   useEffect(() => { resetDockForNewSection(); }, [state.accountTab, state.inboxView, resetDockForNewSection]);
   useEffect(() => {
@@ -625,7 +634,8 @@ function Shell() {
     lastScrollTop.current = target;
     if (scrollRaf.current) { cancelAnimationFrame(scrollRaf.current); scrollRaf.current = null; }
     dockCollapseSuppressedUntil.current = Date.now() + 600;
-    setBarCollapsed(false);
+    dockTravel.current = 0;
+    dockCollapseStore.set(false);
 
     // Home task 3 (2026-09-21 follow-up) — this synchronous restore alone
     // wasn't enough for Home specifically: `loadHomeLiveEvents()`
@@ -708,9 +718,10 @@ function Shell() {
       // unusually large jump between two coalesced rAF frames.
       const scrollingDown = latestTop - lastScrollTop.current;
       if (Date.now() < dockCollapseSuppressedUntil.current) { lastScrollTop.current = latestTop; return; }
-      if (latestTop <= 4) setBarCollapsed(false);
-      else if (scrollingDown > 4) setBarCollapsed(true);
-      else if (scrollingDown < -4) setBarCollapsed(false);
+      // Hysteresis (dockCollapseStep): flips only after a run of travel one way.
+      const step = dockCollapseStep({ collapsed: dockCollapseStore.get(), travel: dockTravel.current }, -latestTop, -scrollingDown);
+      dockTravel.current = step.travel;
+      dockCollapseStore.set(step.collapsed);
       lastScrollTop.current = latestTop;
     });
   };
@@ -836,7 +847,7 @@ function Shell() {
           : T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
       {/* Simple Shell (switch simple_shell): the "+" lives inside the bar (BottomTabBar), so no "+" beside it. */}
-      {showBar && <DockRow collapsed={barCollapsed} hidden={state.screen === 'mapExplore' && !!state.mapDockHidden} showCreate={state.organizerMode && !flagOn(state.featureFlags, 'simple_shell')} />}
+      {showBar && <LiveDockRow hidden={state.screen === 'mapExplore' && !!state.mapDockHidden} showCreate={state.organizerMode && !flagOn(state.featureFlags, 'simple_shell')} />}
       {/* Undo after leaving a new-event draft (BanBeContext createUndoOffer), above the dock when it shows. */}
       {state.createUndoOffer && state.screen !== 'create' && (
         <CreateUndoToast key={state.createUndoOffer.id} offer={state.createUndoOffer} aboveDock={showBar} />

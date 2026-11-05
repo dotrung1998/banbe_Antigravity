@@ -12,6 +12,9 @@ import SwiftUI
 struct ConfirmedView: View {
     @EnvironmentObject var app: AppState
     @State private var pollTask: Task<Void, Never>?
+    /// This screen's own 1-second tick for its countdowns (AppState.now no longer publishes app-wide; PaymentViews twin).
+    @State private var now = Date()
+    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     // Bug 1 (15-organizer-checkin.md follow-up): a separate poll from
     // `pollTask` above — different stop condition (runs until a receipt is
     // actually found, not until the payment phase changes) — matching this
@@ -80,10 +83,10 @@ struct ConfirmedView: View {
     }
     private var holdDeadline: Date? { app.booking?.holdExpiresAt ?? app.holdDeadline }
     private var countdown: String {
-        Countdown.format(Countdown.secondsUntil(holdDeadline, now: app.now))
+        Countdown.format(Countdown.secondsUntil(holdDeadline, now: now))
     }
     private var verifySecondsLeft: TimeInterval {
-        Countdown.secondsUntil(app.booking?.verifyDueAt, now: app.now)
+        Countdown.secondsUntil(app.booking?.verifyDueAt, now: now)
     }
     private var verifyOverdue: Bool { app.booking?.verifyDueAt != nil && verifySecondsLeft == 0 }
     private var guestName: String {
@@ -476,15 +479,16 @@ struct ConfirmedView: View {
         }
         .onDisappear { pollTask?.cancel(); receiptPollTask?.cancel(); doorPollTask?.cancel() }
         .onChange(of: app.receiptDoc) { _, _ in startReceiptPollingIfNeeded() }
-        // app.now ticks every second app-wide, which is what drives
+        // `ticker` ticks every second, which is what drives
         // `countdown` above — the moment it notices this screen's own
         // deadline has passed while still 'holding', forfeit immediately
         // rather than leave the ticket sitting stale until the next poll or
         // the minutely server sweep gets to it. Self-guards against firing
         // twice: forfeitExpiredHold flips booking.paymentState to .expired,
         // so `isHolding` (derived from `phase`) is false on the very next tick.
-        .onChange(of: app.now) { _, _ in
-            if isHolding, let deadline = holdDeadline, Countdown.secondsUntil(deadline, now: app.now) == 0,
+        .onReceive(ticker) { tick in
+            now = tick
+            if isHolding, let deadline = holdDeadline, Countdown.secondsUntil(deadline, now: tick) == 0,
                let current = app.booking {
                 app.forfeitExpiredHold(current)
             }

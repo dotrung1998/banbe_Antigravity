@@ -129,3 +129,10 @@ How the list moves) before the build.
 - Stale suites, not caused by v6 (need a rewrite): iOS `NavigationUITests` (expects Home first; signed-out launch opens
   Welcome since notes 44/48/49; `header.account` no longer exists), web specs using `setupToHome` (helpers.js: no
   Welcome step) and `home-quick-controls.spec.js` (Simple Shell Home controls).
+
+## 2026-11-05: Map design options prototype (decision pending)
+
+`docs/prototypes/map-options.html` (self-contained, offline SVG map of HCMC, 16 demo events from `src/data/events.js`, app tokens)
+simulates five Map designs on an iPhone for the owner to choose from: A current v6 sheet, B card carousel synced with pins, C
+time-first (day + start-time scrubber, time pins, out-of-window pins fade), D list-first with a Map toggle (NN/g recommends list as the
+mobile default), E neighbourhood-first (district count bubbles → pins + list). Published as a private artifact. Not wired into the app.

@@ -46,3 +46,39 @@ export function scrubTarget(fraction, simpleShell) {
   const i = Math.min(slots.length - 1, Math.floor(f * slots.length));
   return slots[i] === CREATE_SLOT ? { kind: 'create' } : { kind: 'tab', id: slots[i] };
 }
+
+export const DOCK_COLLAPSE_THRESHOLD = 24;
+
+/**
+ * Dock shrink-on-scroll decision (2026-11-05, note 47). `offsetY` is 0 at the top and more negative further down
+ * (so web passes -scrollTop); `delta` is the change since the last sample (negative = scrolling down). `travel` is
+ * the signed run in the current direction: it restarts when the direction reverses, so the dock flips only after
+ * DOCK_COLLAPSE_THRESHOLD px one way, and a finger wobble or an end-of-list bounce no longer toggles it. Always full
+ * size near the top. Shared fixture: tests/fixtures/dock-collapse.json (iOS DockCollapse.next).
+ */
+export function dockCollapseStep({ collapsed, travel }, offsetY, delta) {
+  const T = DOCK_COLLAPSE_THRESHOLD;
+  if (offsetY >= -4) return { collapsed: false, travel: 0 };
+  if (delta === 0) return { collapsed, travel };
+  const run = travel !== 0 && (delta < 0) === (travel < 0) ? travel + delta : delta;
+  const t = Math.min(T, Math.max(-T, run));
+  if (t <= -T) return { collapsed: true, travel: t };
+  if (t >= T) return { collapsed: false, travel: t };
+  return { collapsed, travel: t };
+}
+
+/**
+ * The dock's collapsed flag as a tiny external store (useSyncExternalStore), so a scroll-direction flip re-renders
+ * only the dock, not the Shell and every mounted screen (it used to be Shell state).
+ */
+let dockCollapsed = false;
+const dockListeners = new Set();
+export const dockCollapseStore = {
+  get: () => dockCollapsed,
+  set(v) {
+    if (v === dockCollapsed) return;
+    dockCollapsed = v;
+    dockListeners.forEach((l) => l());
+  },
+  subscribe(l) { dockListeners.add(l); return () => dockListeners.delete(l); },
+};

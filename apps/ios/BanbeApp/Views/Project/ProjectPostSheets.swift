@@ -19,7 +19,7 @@ struct ProjectPostSheet: View {
     private var post: ProjectPost? { app.projectSnapshot?.posts?.first { $0.id == postID } ?? detail?.post }
 
     var body: some View {
-        CardSheet(title: post.map { app.projectPostTypeName($0.type) } ?? app.T("Bài", "Post"), closeID: "project.sheet.close", onClose: close) {
+        CardSheet(title: post.map { app.projectPostTypeName($0.type) } ?? app.T("Bài", "Post"), closeID: "project.sheet.close", fullHeight: true, onClose: close) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     if let post {
@@ -325,7 +325,7 @@ struct ProjectComposeSheet: View {
 
     var body: some View {
         CardSheet(title: type.map { app.projectPostTypeName($0) } ?? app.T("Bạn muốn đăng gì?", "What do you want to post?"),
-                  closeID: "project.sheet.close", onClose: close) {
+                  closeID: "project.sheet.close", fullHeight: true, onClose: close) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if let type { form(type) } else { picker }

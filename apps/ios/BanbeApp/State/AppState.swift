@@ -288,12 +288,9 @@ final class AppState: ObservableObject {
             if projectDemo != nil, screen != .eventProject { endProjectDemo() }
         }
     }
-    // Bottom tab bar (BottomTabBar.swift) — shrinks a bit while scrolling
-    // down, same idea as iOS 26's `.tabBarMinimizeBehavior(.onScrollDown)`,
-    // hand-rolled because this app's deployment target is iOS 17. Driven by
-    // ScreenScaffold's own scroll-offset tracking via noteScaffoldScroll(),
-    // and reset to false on every screen change (see RootView).
-    @Published var bottomBarCollapsed: Bool = false
+    // The dock's shrink-on-scroll flag lives in `DockChrome.shared` (BottomTabBar.swift), not here: a
+    // `@Published` flag on AppState re-rendered every screen (all of Home's cards) on each scroll-direction
+    // flip, which read as Home "reloading" mid-gesture (2026-11-05, note 47). Driven by noteScaffoldScroll().
     // Refresh-indicator fix pass (2026-09-27, follow-up A) — shared pull-
     // to-refresh state for whichever of the five root tabs is currently on
     // screen (ScreenScaffold's own custom pull mechanism, replacing plain
@@ -865,7 +862,10 @@ final class AppState: ObservableObject {
     @Published var eventPhotoUploadBusy: [String: Bool] = [:]
     @Published var eventPhotoUploaded: [String: Bool] = [:]
     @Published var eventPhotoUploadError = ""
-    @Published var now = Date()
+    /// Last tick of the 1-second timer. Not `@Published`: a global publish every second re-rendered the whole app
+    /// right as a scroll gesture ended (the timer pauses while a finger is down). Countdown screens run their own
+    /// tick (ConfirmedView, PaymentDetailsView, HomeView); `forfeitLapsedHoldIfNeeded` covers every other screen.
+    var now = Date()
     @Published var reserveError = ""
     @Published var loading = false
     /// UID whose `applySession` run (favorites, tickets, profile data) has
@@ -3013,7 +3013,7 @@ final class AppState: ObservableObject {
     ///
     /// BUG 1 follow-up (64f2719 real-device report): the PreferenceKey this
     /// feeds fires on every scroll frame (up to ProMotion's 120Hz), and this
-    /// used to mutate `bottomBarCollapsed` unanimated on every single one —
+    /// used to mutate the dock's collapse flag unanimated on every single one —
     /// a rapid back-and-forth scroll could flip the flag several times a
     /// frame, each flip snapping the bar's size with no interpolation at
     /// all, which is what actually read as "laggy" rather than smooth.
@@ -3024,6 +3024,7 @@ final class AppState: ObservableObject {
     /// same animation mid-flight against itself.
     private var lastScaffoldScrollUpdate = Date.distantPast
     private var dockCollapseSuppressedUntil = Date.distantPast
+    private var dockCollapseTravel: CGFloat = 0
 
     /// Refresh-indicator fix pass (2026-09-27, follow-up A) — the one
     /// trigger point `ScreenScaffold`'s custom pull gesture and
@@ -3114,8 +3115,9 @@ final class AppState: ObservableObject {
     func resetDockSizeForNewSection() {
         dockCollapseSuppressedUntil = Date().addingTimeInterval(0.6)
         lastScaffoldScrollOffset = 0
-        guard bottomBarCollapsed else { return }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { bottomBarCollapsed = false }
+        dockCollapseTravel = 0
+        guard DockChrome.shared.collapsed else { return }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { DockChrome.shared.collapsed = false }
     }
 
     func noteScaffoldScroll(_ offsetY: CGFloat, userDriven: Bool) {
@@ -3128,28 +3130,19 @@ final class AppState: ObservableObject {
         guard now.timeIntervalSince(lastScaffoldScrollUpdate) > 0.033 else { return }
         lastScaffoldScrollUpdate = now
 
-        // BUG 3 follow-up (623ec1e real-device report): re-verified this
-        // sign convention against the spec ("scrolling further down the
-        // page shrinks the bar; scrolling back toward the top restores
-        // it") rather than assuming it needed flipping. `offsetY` gets MORE
-        // NEGATIVE the further down the page you scroll (see doc comment
-        // above), so a negative `delta` here already means "scrolled
-        // further down" — that's the `shouldCollapse = true` branch below,
-        // which was already correct, not inverted. Tightened the trigger
-        // from 6pt to 4pt to match the web fix's own threshold change and
-        // register a real scroll more reliably.
+        // `offsetY` gets more negative the further down the page, so a negative `delta` = scrolling down.
         let delta = offsetY - lastScaffoldScrollOffset
         lastScaffoldScrollOffset = offsetY
 
-        let shouldCollapse: Bool
-        if offsetY >= -4 { shouldCollapse = false }
-        else if delta < -4 { shouldCollapse = true }
-        else if delta > 4 { shouldCollapse = false }
-        else { return }
-
-        guard shouldCollapse != bottomBarCollapsed else { return }
+        // Hysteresis (DockCollapse): flips only after a run of travel in one direction, so a finger reversal or a
+        // bounce at the end of the list no longer toggles the dock back and forth.
+        let chrome = DockChrome.shared
+        let step = DockCollapse.next(collapsed: chrome.collapsed, travel: Double(dockCollapseTravel),
+                                     offsetY: Double(offsetY), delta: Double(delta))
+        dockCollapseTravel = CGFloat(step.travel)
+        guard step.collapsed != chrome.collapsed else { return }
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-            bottomBarCollapsed = shouldCollapse
+            chrome.collapsed = step.collapsed
         }
     }
 

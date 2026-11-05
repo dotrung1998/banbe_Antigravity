@@ -33,7 +33,7 @@ struct ProjectRosSheet: View {
     private var timeOK: Bool { end.timeIntervalSince(start) >= Double(limits.rosMinMinutes) * 60 }
 
     var body: some View {
-        CardSheet(title: itemID == nil ? app.T("Thêm mốc", "Add item") : app.T("Sửa mốc", "Edit item"), closeID: "project.sheet.close", onClose: close) {
+        CardSheet(title: itemID == nil ? app.T("Thêm mốc", "Add item") : app.T("Sửa mốc", "Edit item"), closeID: "project.sheet.close", fullHeight: true, onClose: close) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     if deleting { deleteForm } else { form }
@@ -142,7 +142,7 @@ struct ProjectTrashSheet: View {
     @State private var loaded = false
 
     var body: some View {
-        CardSheet(title: app.T("Thùng rác", "Trash"), closeID: "project.sheet.close", onClose: close) {
+        CardSheet(title: app.T("Thùng rác", "Trash"), closeID: "project.sheet.close", fullHeight: true, onClose: close) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     Text(app.T("Mục bị xoá được giữ \(ProjectLimits.shared.trashDays) ngày (tối đa \(ProjectLimits.shared.trashMax) mục) rồi tự dọn. Mọi thao tác đều ghi người làm và lý do.",

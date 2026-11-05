@@ -408,7 +408,7 @@ struct ProjectRefundDeclineSheet: View {
         let lim = ProjectLimits.shared
         let n = reason.trimmingCharacters(in: .whitespacesAndNewlines).count
         let ok = (lim.reasonMin...lim.reasonMax).contains(n)
-        CardSheet(title: app.T("Từ chối khoản hoàn", "Decline this refund"), closeID: "project.refundDecline.close", onClose: close) {
+        CardSheet(title: app.T("Từ chối khoản hoàn", "Decline this refund"), closeID: "project.refundDecline.close", fullHeight: true, onClose: close) {
             VStack(alignment: .leading, spacing: 12) {
                 Text(app.T("\(claim.name) · \(EventMarket.formatMoney(claim.amount, currency: "VND"))",
                            "\(claim.name) · \(EventMarket.formatMoney(claim.amount, currency: "VND"))")).font(.headline)

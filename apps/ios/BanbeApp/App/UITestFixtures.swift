@@ -17,6 +17,8 @@ enum UITestFixture {
     /// How many times a HomeView has appeared (HomeView's own onAppear bumps it). The shell fixture shows it as
     /// `fixture.homeMounts`, so a test can prove the Home under Event Detail is the same live instance (note 47).
     static var homeMounts = 0
+    /// `fixture.homeBodies`: Home body evaluations, so a test can prove scrolling doesn't re-render Home (note 47).
+    static var homeBodies = 0
     /// `-uiFixtureMonth YES` opens Schedule's month sheet at launch (screenshots).
     static let opensMonth = UserDefaults.standard.bool(forKey: "uiFixtureMonth")
     /// Note 50 — `-uiFixtureFilters YES` opens Home's filter sheet; `-uiFixtureSearch <q>` pre-fills Search;
@@ -197,9 +199,11 @@ struct UITestFixtureRoot: View {
                         .overlay(alignment: .topLeading) {
                             // Re-read a few times a second: the counter is a plain static, not observable state.
                             TimelineView(.periodic(from: .now, by: 0.25)) { _ in
-                                Text("\(UITestFixture.homeMounts)")
-                                    .font(.system(size: 1)).opacity(0.01)
-                                    .accessibilityIdentifier("fixture.homeMounts")
+                                VStack(spacing: 0) {
+                                    Text("\(UITestFixture.homeMounts)").accessibilityIdentifier("fixture.homeMounts")
+                                    Text("\(UITestFixture.homeBodies)").accessibilityIdentifier("fixture.homeBodies")
+                                }
+                                .font(.system(size: 1)).opacity(0.01)
                             }
                             .allowsHitTesting(false)
                         }

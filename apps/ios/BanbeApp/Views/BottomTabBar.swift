@@ -4,7 +4,7 @@ import SwiftUI
 /// Deployment target is iOS 17 (apps/ios/project.yml: deploymentTarget.iOS
 /// = "17.0"), so the native iOS 26 `.tabBarMinimizeBehavior(.onScrollDown)`
 /// isn't available; this hand-rolls the same "shrink on scroll down,
-/// restore on scroll up" behavior off AppState.bottomBarCollapsed (see
+/// restore on scroll up" behavior off DockChrome.collapsed (see
 /// ScreenScaffold's scroll-offset tracking / AppState.noteScaffoldScroll(),
 /// which now throttles + animates that mutation — see its own doc comment).
 /// Same four destinations as the old header row (Map/Notifications/Inbox/
@@ -13,6 +13,14 @@ import SwiftUI
 /// keeps its original ring+shoulders mark — all four still avoid the
 /// classic IG/FB/Twitter shapes (filled house, paper plane, magnifying
 /// glass) while reading as this app's own icon family.
+/// The dock's shrink-on-scroll flag. Kept off AppState so a scroll-direction flip redraws only the dock: on AppState
+/// it re-rendered every screen observing it (all of Home's cards) mid-gesture (2026-11-05, note 47).
+@MainActor
+final class DockChrome: ObservableObject {
+    static let shared = DockChrome()
+    @Published var collapsed = false
+}
+
 struct BottomTabBar: View {
     @EnvironmentObject var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -704,6 +712,7 @@ struct BottomTabBar: View {
 /// two controls, visually one group," per this ticket's own ask.
 struct DockRow: View {
     @EnvironmentObject var app: AppState
+    @ObservedObject private var chrome = DockChrome.shared
 
     var body: some View {
         HStack(alignment: .center, spacing: BottomTabBar.dockGap) {
@@ -720,7 +729,7 @@ struct DockRow: View {
         // former call site, this file) — both controls shrink/expand
         // together on scroll instead of only the dock visibly resizing
         // while the "+" stayed full size beside it.
-        .scaleEffect(app.bottomBarCollapsed ? 0.86 : 1, anchor: .bottom)
+        .scaleEffect(chrome.collapsed ? 0.86 : 1, anchor: .bottom)
         // BUG FIX (dock-jump-on-tray-open pass) — this used to be
         // `.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)`,
         // which made DockRow greedily fill however much height its

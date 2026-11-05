@@ -911,7 +911,7 @@ struct ScreenScaffold<Content: View>: View {
     // iOS 26 `.tabBarMinimizeBehavior(.onScrollDown)` isn't available —
     // this is the hand-rolled equivalent: screens that show the bottom tab
     // bar (BottomTabBar.swift) opt in here so their own ScrollView's offset
-    // drives AppState.bottomBarCollapsed, mirroring src/App.jsx's Shell
+    // drives DockChrome.collapsed, mirroring src/App.jsx's Shell
     // (which reads the same signal off its own scroll listener).
     var tracksBottomBarScroll = false
     // Home task 3 (2026-09-21 follow-up) — web's App.jsx Shell has one
@@ -1054,7 +1054,7 @@ private struct ScrollPositionIDModifier: ViewModifier {
 /// sometimes not even then. This is exactly why the wiring (present and
 /// correct end-to-end: `tracksBottomBarScroll` on Home/Inbox/Notifications/
 /// Account → this probe → `AppState.noteScaffoldScroll()` →
-/// `bottomBarCollapsed` → `BottomTabBar`'s `.scaleEffect`) looked completely
+/// `DockChrome.collapsed` → `BottomTabBar`'s `.scaleEffect`) looked completely
 /// fine on inspection while still doing nothing live on a real device.
 /// KVO on `UIScrollView.contentOffset` does not have this limitation — the
 /// change notification fires synchronously as the property mutates,
