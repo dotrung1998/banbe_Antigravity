@@ -604,3 +604,6 @@ flicker. Also: `import Combine` in ConfirmedView (Xcode warnings from the Timer.
   and a tap on the last chip was overridden 0.6 s later. Now `ProjectLaneNav.current` uses an end marker (`__end`): once the list
   is scrolled to the bottom, the current lane is the last heading on screen. A tapped lane keeps the highlight until its heading
   moves ≥ 8 pt from where the jump left it, i.e. until the person scrolls by hand.
+- Fix (owner report): All | Mine lived as @State inside ProjectTasksTab, so the navigator still listed lanes the Mine list hides
+  (tapping them did nothing). Now `tasksMineOnly` is owned by ProjectHubView and passed as a binding; under Mine the navigator shows
+  only lanes with my tasks and counts only my tasks (`navLanes`); switching resets the highlight.

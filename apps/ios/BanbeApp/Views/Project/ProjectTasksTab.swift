@@ -8,7 +8,8 @@ struct ProjectTasksTab: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.projectScrollTo) private var scrollTo
     let snap: ProjectSnapshot
-    @State private var mineOnly = false
+    /// All | Mine, owned by the hub so the lane navigator shows the same lanes and counts as the list.
+    @Binding var mineOnly: Bool
     /// The lane just added or approved: scrolled to and briefly highlighted (it lands at the bottom of the list).
     @State private var newLane: String?
 

@@ -9,6 +9,8 @@ struct ProjectHubView: View {
     @State private var sheet: ProjectSheet?
     /// Tasks: the lane at the top of the list right now (drives the lane navigator's highlight).
     @State private var currentLane: String?
+    /// Tasks' All | Mine, shared by the list and the lane navigator.
+    @State private var tasksMineOnly = false
     /// A tapped lane keeps the highlight until the person scrolls by hand: through the jump animation (`laneJumpUntil`),
     /// then while its heading stays where the jump left it (`laneTapY`). Needed because the last lanes can't reach the top.
     @State private var laneTapped: String?
@@ -29,8 +31,9 @@ struct ProjectHubView: View {
                 ZStack(alignment: .bottomTrailing) {
                   ScrollViewReader { proxy in
                    VStack(spacing: 0) {
-                    if app.projectTab == "tasks", (snap.lanes ?? []).count > 1 {
-                        ProjectLaneNav(lanes: snap.lanes ?? [], tasks: snap.tasks ?? [], current: currentLane ?? (snap.lanes ?? []).min { $0.position < $1.position }?.id) { id in
+                    let nav = navLanes(snap)
+                    if app.projectTab == "tasks", nav.lanes.count > 1 {
+                        ProjectLaneNav(lanes: nav.lanes, tasks: nav.tasks, current: currentLane ?? nav.lanes.min { $0.position < $1.position }?.id) { id in
                             currentLane = id
                             laneTapped = id; laneTapY = nil
                             laneJumpUntil = Date().addingTimeInterval(0.6)
@@ -77,6 +80,7 @@ struct ProjectHubView: View {
                 failed
             }
         }
+        .onChange(of: tasksMineOnly) { _, _ in currentLane = nil; laneTapped = nil; laneTapY = nil }
         .foregroundStyle(app.palette.ink)
         .background(app.palette.paper.ignoresSafeArea())
         .sheet(item: $sheet) { ProjectSheetHost(sheet: $0) { sheet = nil }.projectDemoLinks(app) }
@@ -165,6 +169,16 @@ struct ProjectHubView: View {
         .accessibilityIdentifier(id)
     }
 
+    /// The lanes and tasks the Tasks list is showing: under Mine, only my tasks and the lanes that have some (the list
+    /// hides the others, so the navigator must too).
+    private func navLanes(_ snap: ProjectSnapshot) -> (lanes: [ProjectLane], tasks: [ProjectTask]) {
+        guard tasksMineOnly else { return (snap.lanes ?? [], snap.tasks ?? []) }
+        let me = app.userID?.uuidString.lowercased()
+        let mine = (snap.tasks ?? []).filter { $0.assigneeId?.lowercased() == me }
+        let ids = Set(mine.map(\.laneId))
+        return ((snap.lanes ?? []).filter { ids.contains($0.id) }, mine)
+    }
+
     // MARK: tabs
 
     private func tabs(_ snap: ProjectSnapshot) -> [ProjectTab] {
@@ -184,7 +198,7 @@ struct ProjectHubView: View {
     @ViewBuilder
     private func tabBody(_ snap: ProjectSnapshot) -> some View {
         switch app.projectTab {
-        case "tasks": ProjectTasksTab(snap: snap)
+        case "tasks": ProjectTasksTab(snap: snap, mineOnly: $tasksMineOnly)
         case "team": ProjectTeamTab(snap: snap)
         case "topics": ProjectTopicsTab(snap: snap)
         case "money": ProjectMoneyTab(snap: snap)
