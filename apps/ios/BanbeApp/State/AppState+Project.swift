@@ -303,6 +303,20 @@ extension AppState {
         return nil
     }
 
+    /// How much of the task limits is used, always shown in the new-task form and the Add menu: "4/15 in this lane · 23/60 in
+    /// the project". `near` = within 5 of either limit.
+    func projectTaskUsage(laneID: String?) -> (text: String, near: Bool) {
+        let tasks = projectSnapshot?.tasks ?? [], l = ProjectLimits.shared
+        let total = tasks.count
+        guard let laneID, !laneID.isEmpty else {
+            return (T("\(total)/\(l.tasksMax) việc trong dự án", "\(total)/\(l.tasksMax) tasks in the project"), total >= l.tasksMax - 5)
+        }
+        let inLane = tasks.filter { $0.laneId == laneID }.count
+        return (T("\(inLane)/\(l.tasksPerLaneMax) việc trong hạng mục này · \(total)/\(l.tasksMax) cả dự án",
+                  "\(inLane)/\(l.tasksPerLaneMax) tasks in this lane · \(total)/\(l.tasksMax) in the project"),
+                inLane >= l.tasksPerLaneMax - 5 || total >= l.tasksMax - 5)
+    }
+
     /// Guidance before the limit (2026-11-05): a gentle tip while there's room, a firmer nudge as the project fills up.
     /// `firm` = close to the limit. Nil once at the limit (the limit message takes over).
     func projectLaneGuidance() -> (text: String, firm: Bool)? {

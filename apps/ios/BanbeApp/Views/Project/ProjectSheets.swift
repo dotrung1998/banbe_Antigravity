@@ -219,6 +219,14 @@ struct ProjectTaskSheet: View {
             FlowLayout(spacing: 8, lineSpacing: 8) {
                 ForEach(allowedLanes) { l in ProjectChip(title: l.name, selected: laneID == l.id, id: "project.task.lane.\(l.id)") { laneID = l.id } }
             }
+            if task == nil {
+                // The limits, always visible while adding (they only used to show once reached).
+                let usage = app.projectTaskUsage(laneID: laneID)
+                Label(usage.text, systemImage: "gauge.with.dots.needle.33percent")
+                    .font(.footnote.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(usage.near ? app.palette.honey : app.palette.ink3)
+                    .accessibilityIdentifier("project.task.usage")
+            }
         }
         VStack(alignment: .leading, spacing: 8) {
             ProjectFieldLabel(text: app.T("Người phụ trách", "Assignee"))

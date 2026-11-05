@@ -281,7 +281,7 @@ struct ProjectHubView: View {
             if canAddTask(snap) {
                 Button { sheet = .newTask(laneID: lead) } label: {
                     Label(app.T("Việc mới", "New task"), systemImage: "checkmark.circle")
-                    if let taskFull { Text(taskFull) }
+                    Text(taskFull ?? app.projectTaskUsage(laneID: lead).text)
                 }
                 .disabled(taskFull != nil)
                 .accessibilityIdentifier("project.addTask.task")
