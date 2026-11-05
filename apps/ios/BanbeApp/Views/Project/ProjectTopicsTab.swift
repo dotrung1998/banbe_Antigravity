@@ -37,8 +37,10 @@ struct ProjectTopicsTab: View {
                     .accessibilityIdentifier("project.topics.waiting")
             }
             ProjectCountHeader(title: app.T("Tất cả bài", "All posts"), count: shown.count)
-            if rest.isEmpty {
-                Text(shown.isEmpty ? app.T("Chưa có bài.", "No posts yet.") : app.T("Mọi bài đều ở mục Chờ bạn.", "Every post is in Waiting on you."))
+            if shown.isEmpty {
+                emptyLane
+            } else if rest.isEmpty {
+                Text(app.T("Mọi bài đều ở mục Chờ bạn.", "Every post is in Waiting on you."))
                     .font(.subheadline).foregroundStyle(app.palette.ink2)
                     .frame(maxWidth: .infinity).padding(.vertical, 20)
             } else {
@@ -106,6 +108,38 @@ struct ProjectTopicsTab: View {
         .projectCard(padding: 6)
     }
 
+    /// No posts here yet: say so, suggest what to post, and offer the button (the floating New post glows meanwhile).
+    private var emptyLane: some View {
+        let lane = lanes.first { $0.id == laneFilter }
+        return VStack(spacing: 10) {
+            Image(systemName: lane.map { ProjectLanePresets.icon(for: $0.name) } ?? "text.bubble")
+                .font(.system(size: 26, weight: .semibold)).foregroundStyle(app.palette.clay)
+                .frame(width: 56, height: 56).background(app.palette.clayBg, in: Circle())
+                .accessibilityHidden(true)
+            Text(lane.map { app.T("Chưa có bài trong \($0.name)", "No posts in \($0.name) yet") } ?? app.T("Chưa có bài nào", "No posts yet"))
+                .font(BanbeTheme.display(19)).multilineTextAlignment(.center)
+            Text(app.T("Hỏi một người, đề xuất để cả đội bỏ phiếu, hoặc báo một tin. Bài đầu tiên giúp cả đội bắt đầu.",
+                       "Ask someone, put options to a vote, or share an update. The first post gets the team going."))
+                .font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            if app.projectCan("post.question") {
+                Button { openSheet(.compose(laneID: laneFilter)) } label: {
+                    Label(app.T("Viết bài đầu tiên", "Write the first post"), systemImage: "square.and.pencil")
+                        .font(.body.weight(.bold)).padding(.horizontal, 18).frame(minHeight: 44)
+                        .foregroundStyle(app.palette.paper).background(app.palette.ink, in: Capsule())
+                }
+                .buttonStyle(PressableButtonStyle())
+                .padding(.top, 4)
+                .accessibilityIdentifier("project.topics.firstPost")
+            }
+        }
+        .padding(.vertical, 22).padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .projectCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project.topics.empty")
+    }
+
     private func rule(_ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(app.palette.clay).accessibilityHidden(true)
@@ -117,8 +151,10 @@ struct ProjectTopicsTab: View {
 
 /// Where the Topics lane chips sit in the hub's scroll view; above the top = scrolled away, so the hub pins a copy.
 struct ProjectTopicChipsKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+    // Optional: every other view in the list reports the default, which must not overwrite the chips' real position
+    // (with a plain 0 default the pinned copy never appeared).
+    static var defaultValue: CGFloat? = nil
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) { value = value ?? nextValue() }
 }
 
 /// Topics lane filter: All plus one chip per lane, each with its icon and how many posts it has.

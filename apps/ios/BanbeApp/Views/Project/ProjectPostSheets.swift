@@ -307,6 +307,7 @@ struct ProjectPostSheet: View {
 /// step 2 is the form for that type. One write on Post.
 struct ProjectComposeSheet: View {
     @EnvironmentObject private var app: AppState
+    var presetLane: String? = nil
     let close: () -> Void
 
     @State private var type: String?
@@ -352,7 +353,7 @@ struct ProjectComposeSheet: View {
                 let ok = allowed(t)
                 Button {
                     type = t
-                    laneID = lanes.first?.id ?? ""
+                    laneID = presetLane.flatMap { id in lanes.first { $0.id == id }?.id } ?? lanes.first?.id ?? ""
                     if let d = Calendar.current.date(byAdding: .day, value: 2, to: app.projectNow) { deadline = d }
                 } label: {
                     HStack(alignment: .top, spacing: 12) {

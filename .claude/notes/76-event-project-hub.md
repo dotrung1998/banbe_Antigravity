@@ -618,3 +618,8 @@ flicker. Also: `import Combine` in ConfirmedView (Xcode warnings from the Timer.
 filter (`topicsLane`) is owned by ProjectHubView. The in-list chips report their minY (`ProjectTopicChipsKey`); once they scroll
 above the top, the hub overlays a pinned copy at the top of the list (fade). Picking a lane from the pinned copy scrolls back to
 the chips so the filtered list starts from its top. Counts cover loaded posts (the first 20, more with "Show older posts").
+- Fix: the pinned Topics chips never appeared. `ProjectTopicChipsKey` had a plain `CGFloat = 0` default with `value = nextValue()`,
+  so every other view in the list reported 0 and overwrote the chips' real minY. Now `CGFloat?` (nil default, first value wins).
+- Empty lane (or no posts at all) in Topics: a card with the lane icon, "No posts in <lane> yet", what to post, and "Write the first
+  post" (opens compose with that lane preselected: `ProjectSheet.compose(laneID:)`). Meanwhile the floating New post button wears a
+  breathing gold halo (`ProjectAttentionHalo`, BanbeTheme.attn, static under Reduce Motion) and also preselects the filtered lane.

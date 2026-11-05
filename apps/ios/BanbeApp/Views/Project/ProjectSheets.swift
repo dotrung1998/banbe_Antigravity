@@ -12,7 +12,8 @@ enum ProjectSheet: Identifiable, Equatable {
     case leave
     // Phase 4
     case post(String)
-    case compose
+    /// New post; `laneID` preselects the lane (the Topics filter that was open).
+    case compose(laneID: String?)
     case member(String)
     case invite
     // Phase 5
@@ -68,7 +69,7 @@ struct ProjectSheetHost: View {
         case .declineChange(let id): ProjectDeclineSheet(requestID: id, close: close)
         case .leave: ProjectLeaveSheet(close: close)
         case .post(let id): ProjectPostSheet(postID: id, close: close)
-        case .compose: ProjectComposeSheet(close: close)
+        case .compose(let lane): ProjectComposeSheet(presetLane: lane, close: close)
         case .member(let id): ProjectMemberSheet(memberID: id, close: close)
         case .invite: ProjectInviteSheet(close: close)
         case .rosItem(let id): ProjectRosSheet(itemID: id, close: close)

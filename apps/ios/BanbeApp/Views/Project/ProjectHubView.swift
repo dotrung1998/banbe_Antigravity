@@ -58,7 +58,7 @@ struct ProjectHubView: View {
                     .background(GeometryReader { g in Color.clear.onAppear { scrollHeight = g.size.height }
                         .onChange(of: g.size.height) { _, h in scrollHeight = h } })
                     .onPreferenceChange(ProjectTopicChipsKey.self) { y in
-                        let pinned = app.projectTab == "topics" && y < -4
+                        let pinned = app.projectTab == "topics" && (y ?? 0) < -4
                         if pinned != topicsChipsPinned { topicsChipsPinned = pinned }
                     }
                     .overlay(alignment: .top) {
@@ -96,7 +96,7 @@ struct ProjectHubView: View {
                    }
                   }
                     if app.projectTab == "tasks", canAddTask(snap) || canLane { addTaskButton(snap) }
-                    if app.projectTab == "topics", app.projectCan("post.question") { newPostButton }
+                    if app.projectTab == "topics", app.projectCan("post.question") { newPostButton(snap) }
                 }
             } else if app.projectLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -310,15 +310,18 @@ struct ProjectHubView: View {
         .accessibilityIdentifier("project.addTask")
     }
 
-    private var newPostButton: some View {
-        Button { sheet = .compose } label: {
+    /// New post; glows (gold halo, like the For You attention alert) while the open Topics filter has no posts.
+    private func newPostButton(_ snap: ProjectSnapshot) -> some View {
+        let empty = !(snap.posts ?? []).contains { topicsLane == nil || $0.laneId == topicsLane }
+        return Button { sheet = .compose(laneID: topicsLane) } label: {
             Label(app.T("Bài mới", "New post"), systemImage: "plus")
                 .font(.body.weight(.bold))
                 .padding(.horizontal, 20)
                 .frame(minHeight: 56)
                 .foregroundStyle(app.palette.paper)
                 .background(app.palette.ink, in: Capsule())
-                .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
+                .overlay { if empty { ProjectAttentionHalo() } }
+                .shadow(color: empty ? BanbeTheme.attn.opacity(0.45) : .black.opacity(0.25), radius: empty ? 16 : 12, y: 6)
         }
         .buttonStyle(PressableButtonStyle())
         .padding(.trailing, 18).padding(.bottom, 22)
@@ -354,5 +357,24 @@ private struct ProjectDemoLinks: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+
+/// Gold ring that breathes around a button the person should press next (still under Reduce Motion).
+struct ProjectAttentionHalo: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var on = false
+    var body: some View {
+        Capsule().strokeBorder(BanbeTheme.attn, lineWidth: 2.5)
+            .padding(-4)
+            .opacity(reduceMotion ? 1 : (on ? 1 : 0.35))
+            .scaleEffect(reduceMotion ? 1 : (on ? 1.04 : 1))
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { on = true }
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
