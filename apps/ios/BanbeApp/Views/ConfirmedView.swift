@@ -372,36 +372,24 @@ struct ConfirmedView: View {
                     .padding(.bottom, 24)
                 }
 
-                VStack(spacing: 0) {
-                    if isPaid, let booking = app.booking, booking.isGifted {
-                            footerButton(app.T("Tải lại vé PDF", "Re-download the PDF"), icon: "arrow.down.doc") {
-                                downloadGiftPDF(booking)
+                // Note 77: the ticket's actions as two tiles (the most used ones) and a "More" menu for the rest.
+                // No hairlines: the block fills and the gaps separate them.
+                VStack(spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        if isPaid, let booking = app.booking, booking.isGifted {
+                            Button { downloadGiftPDF(booking) } label: {
+                                actionTile(app.T("Tải lại vé PDF", "Re-download the PDF"), icon: "arrow.down.doc")
                             }
+                            .buttonStyle(PressableButtonStyle())
                             .accessibilityIdentifier("confirmed.giftedPDF")
-                        } else if isPaid && !hasNamedAttendees {
-                            footerButton(app.T("Tặng vé cho bạn bè", "Give a ticket to a friend"), icon: "gift") {
-                                giveTicket()
+                        } else if isPaid, app.booking != nil, !hasNamedAttendees {
+                            Button { walletDesignOpen = true } label: {
+                                actionTile(app.T("Thêm vào Apple Wallet", "Add to Apple Wallet"), icon: "wallet.bifold.fill")
                             }
-                            .accessibilityIdentifier("confirmed.giveTicket")
+                            .buttonStyle(PressableButtonStyle())
+                            .accessibilityIdentifier("confirmed.addToWallet")
                         }
-                    // Wallet and the single-PDF row carry the BOOKING-level
-                    // credential, which the door refuses for a named-attendee
-                    // booking — those get per-attendee downloads above instead.
-                    if isPaid, let booking = app.booking, !booking.isGifted, !hasNamedAttendees {
-                        footerButton(app.T("Thêm vào Apple Wallet", "Add to Apple Wallet"), icon: "wallet.bifold") {
-                            walletDesignOpen = true
-                        }
-                        .accessibilityIdentifier("confirmed.addToWallet")
-                        footerButton(app.T("Tải vé PDF", "Download PDF"), icon: "arrow.down.doc") {
-                            downloadOwnPDF(booking)
-                        }
-                        .accessibilityIdentifier("confirmed.downloadPDF")
-                    }
-                    // A Menu, like Messages' "Settings" button: iOS expands it out
-                    // of the row as a glass popover and dismisses it on a tap
-                    // anywhere outside.
-                    VStack(spacing: 0) {
-                        Divider().overlay(app.palette.rule)
+                        // A Menu, like Messages' "Settings" button: iOS expands it as a glass popover.
                         Menu {
                             Button { app.addToCalendarGoogle(event) } label: {
                                 Label("Google Calendar", systemImage: "globe")
@@ -419,14 +407,12 @@ struct ConfirmedView: View {
                             }
                             .accessibilityIdentifier("confirmed.calendar.apple")
                         } label: {
-                            footerRow(app.calAdded ? app.T("Đã thêm vào lịch", "Added to calendar")
-                                                   : app.T("Thêm vào lịch", "Add to calendar"),
-                                      icon: app.calAdded ? "calendar.badge.checkmark" : "calendar.badge.plus",
-                                      chip: true)
+                            actionTile(app.calAdded ? app.T("Đã thêm vào lịch", "Added to calendar") : app.T("Thêm vào lịch", "Add to calendar"),
+                                       icon: nil, done: app.calAdded)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("confirmed.addToCalendar")
                     }
-                    .accessibilityIdentifier("confirmed.addToCalendar")
                     .sheet(item: $appleCalendarRequest) { req in
                         SystemEventEditor(draft: req.draft) { result in
                             appleCalendarRequest = nil
@@ -435,30 +421,42 @@ struct ConfirmedView: View {
                         }
                         .ignoresSafeArea()
                     }
-                    if !app.calendarError.isEmpty {
-                        Text(app.calendarError)
+                    if hasMoreActions {
+                        Menu {
+                            if isPaid, let booking = app.booking, !booking.isGifted, !hasNamedAttendees {
+                                Button { giveTicket() } label: { Label(app.T("Tặng vé cho bạn bè", "Give a ticket to a friend"), systemImage: "gift") }
+                                    .accessibilityIdentifier("confirmed.giveTicket")
+                                Button { downloadOwnPDF(booking) } label: { Label(app.T("Tải vé PDF", "Download PDF"), systemImage: "arrow.down.doc") }
+                                    .accessibilityIdentifier("confirmed.downloadPDF")
+                            }
+                            // Receipts are organizer-uploaded (08-payment-documents.md), so this screen can't assume
+                            // one exists yet; `receiptChecked` tells "haven't looked" from "looked, none yet".
+                            if isPaid && app.receiptChecked {
+                                Button { receiptButtonTapped() } label: { Label(receiptButtonLabel, systemImage: "doc.text") }
+                                    .disabled(app.receiptRequestSending)
+                                    .accessibilityIdentifier("confirmed.viewReceipt")
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "ellipsis").font(.system(size: 15, weight: .bold))
+                                Text(app.T("Thêm tuỳ chọn", "More options")).font(.system(size: 14.5, weight: .semibold))
+                            }
+                            .foregroundStyle(app.palette.ink)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .background(app.palette.block, in: Capsule())
+                            .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("confirmed.more")
+                    }
+                    ForEach([app.calendarError, app.receiptRequestError].filter { !$0.isEmpty }, id: \.self) { err in
+                        Text(err)
                             .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 22).padding(.top, 8)
-                    }
-                    // 15-organizer-checkin.md follow-up: receipts are
-                    // organizer-uploaded now (08-payment-documents.md), not
-                    // auto-issued the moment a booking is confirmed — this
-                    // screen can't assume one exists yet. `receiptChecked`
-                    // distinguishes "haven't looked" from "looked, none
-                    // yet" (both mean nil `receiptDoc`).
-                    if isPaid && app.receiptChecked {
-                        footerButton(receiptButtonLabel, icon: "doc.text") { receiptButtonTapped() }
-                            .opacity(app.receiptRequestSending ? 0.6 : 1)
-                            .accessibilityIdentifier("confirmed.viewReceipt")
-                        if !app.receiptRequestError.isEmpty {
-                            Text(app.receiptRequestError)
-                                .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 22).padding(.top, 8)
-                        }
                     }
                 }
+                .padding(.horizontal, 22)
+                .padding(.top, 8)
             }
         }
         .sheet(isPresented: $walletDesignOpen) {
@@ -726,39 +724,50 @@ struct ConfirmedView: View {
         }
     }
 
-    /// One footer row: a fixed-width icon column (so every icon and label lines
-    /// up down the page), the title, and a quiet trailing chevron. `chip` puts
-    /// the icon on the soft round `field` disc the Messages "Settings" button
-    /// uses; the other rows keep a bare icon in the same column.
-    private func footerButton(_ title: String, icon: String, chip: Bool = false, action: @escaping () -> Void) -> some View {
-        VStack(spacing: 0) {
-            Divider().overlay(app.palette.rule)
-            Button(action: action) { footerRow(title, icon: icon, chip: chip) }
-                .buttonStyle(.plain)
-        }
+    /// Whether anything is left for the "More" menu (note 77).
+    private var hasMoreActions: Bool {
+        (isPaid && app.booking.map { !$0.isGifted } == true && !hasNamedAttendees) || (isPaid && app.receiptChecked)
     }
 
-    /// The row itself. Every icon sits in the SAME 34pt frame at the SAME size,
-    /// so icons and labels line up whether or not a row has the soft disc.
-    private func footerRow(_ title: String, icon: String, chip: Bool = false) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 16))
-                .frame(width: 34, height: 34)
-                .background(chip ? app.palette.field : Color.clear, in: Circle())
+    /// The day / month for the calendar tile's mini page (same date text as Event Detail's stub).
+    private var calendarBlock: EventDetailPresentation.DateBlock? {
+        event.when.components(separatedBy: " ▪︎ ").first(where: { !$0.isEmpty })
+            .flatMap { EventDetailPresentation.dateBlock($0, en: app.isEN) }
+    }
+
+    /// One action tile (note 77): the icon on a soft clay disc (or the mini calendar page when `icon` is nil), the
+    /// label under it. Equal height side by side; a block fill instead of divider lines.
+    private func actionTile(_ title: String, icon: String?, done: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Group {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(app.palette.clay)
+                        .frame(width: 42, height: 42)
+                        .background(app.palette.clayBg, in: Circle())
+                } else {
+                    MiniCalendarPage(day: calendarBlock?.day ?? "", month: calendarBlock?.month ?? "", size: 42)
+                        .overlay(alignment: .bottomTrailing) {
+                            if done {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(.white, Color(red: 0.2, green: 0.62, blue: 0.36))
+                                    .offset(x: 5, y: 5)
+                            }
+                        }
+                }
+            }
             Text(title)
-                .font(.system(size: 13.5))
+                .font(.system(size: 14.5, weight: .semibold))
                 .multilineTextAlignment(.leading)
-            Spacer(minLength: 8)
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
-                .opacity(0.35)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(app.palette.ink)
-        .padding(.horizontal, 30)
-        .padding(.vertical, 10)
-        .frame(minHeight: 54)
-        .contentShape(Rectangle())
+        .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
+        .padding(16)
+        .background(app.palette.block, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     private func loadAttendeesIfNeeded() {

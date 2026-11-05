@@ -171,30 +171,24 @@ final class PublicEntryScheduleUITests: XCTestCase {
 
     func testAddToBanbeScheduleThenNoDuplicate() {
         let app = launch("plan")
-        XCTAssertTrue(el(app, "event.plan.button").waitForExistence(timeout: 10))
-        el(app, "event.plan.button").tap()
-        XCTAssertTrue(el(app, "event.schedule.add").waitForExistence(timeout: 5))
-        el(app, "event.schedule.add").tap()
-        // Menu closed; the compact button (note 53: icon only) now SAYS it's in the schedule, and the menu offers
-        // Remove instead of Add.
-        let added = NSPredicate(format: "label CONTAINS 'banbe Schedule'")
-        expectation(for: added, evaluatedWith: el(app, "event.plan.button"))
+        // Note 77: the banbe tile adds in one tap, then says it's in the schedule and offers Remove.
+        let tile = el(app, "event.plan.schedule")
+        XCTAssertTrue(tile.waitForExistence(timeout: 10))
+        tile.tap()
+        expectation(for: NSPredicate(format: "label BEGINSWITH 'In banbe Schedule'"), evaluatedWith: tile)
         waitForExpectations(timeout: 5)
-        el(app, "event.plan.button").tap()
+        tile.tap()
         XCTAssertTrue(el(app, "event.schedule.remove").waitForExistence(timeout: 5))
         XCTAssertFalse(el(app, "event.schedule.add").exists, "no second add once it's there")
         el(app, "event.schedule.remove").tap()
-        let cleared = NSPredicate(format: "label == 'Add to calendar'")
-        expectation(for: cleared, evaluatedWith: el(app, "event.plan.button"))
+        expectation(for: NSPredicate(format: "label == 'Add to banbe Schedule'"), evaluatedWith: tile)
         waitForExpectations(timeout: 5)
     }
 
     func testAppleCalendarEditorPresentsAndCancelIsHonest() {
         let app = launch("plan")
-        XCTAssertTrue(el(app, "event.plan.button").waitForExistence(timeout: 10))
-        el(app, "event.plan.button").tap()
-        XCTAssertTrue(el(app, "event.appleCalendar").waitForExistence(timeout: 5))
-        el(app, "event.appleCalendar").tap()
+        XCTAssertTrue(el(app, "event.plan.calendar").waitForExistence(timeout: 10))
+        el(app, "event.plan.calendar").tap()
         let cancel = app.buttons["Cancel"].firstMatch
         XCTAssertTrue(cancel.waitForExistence(timeout: 10), "system event editor should present")
         cancel.tap()

@@ -113,6 +113,12 @@ struct EventDetailView: View {
     @State private var presented = false
     /// The page itself (background, info sheet, buttons): fades in after the photo starts growing, out before it shrinks.
     @State private var contentShown = false
+    /// Note 77: the staggered rise-in of the page's parts on a fresh open (pills, title, stub, date, calendar tiles,
+    /// details, bar). Already true when coming back, in preview and with Reduce Motion.
+    @State private var entered = false
+    /// Status line from the stub's calendar tiles ("Added to your banbe Schedule…"), shown under the stub.
+    @State private var planMessage: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Where the cover photo actually was on screen the moment a close began (drag pose included). The close then
     /// runs from here straight into the card — the same path as the Back button — instead of unwinding the drag
     /// pose on top of the shrink, which made the photo dip below the card until the screen switched (note 47).
@@ -297,8 +303,10 @@ struct EventDetailView: View {
                             .frame(minHeight: topInset + heroHeight - pinnedStrip - stubRise, alignment: .bottomLeading)
                         // V8 ticket stub (note 75): half over the photo, half on the page.
                         stubBand
+                            .modifier(EntranceRise(shown: entered, step: 2, y: 22, scale: 0.97, animated: !reduceMotion))
                         details
                             .background(app.palette.paper)
+                            .modifier(EntranceRise(shown: entered, step: 5, y: 26, animated: !reduceMotion))
                     }
                     .coordinateSpace(name: "eventContent")
                     .onPreferenceChange(EventSectionTopsKey.self) { sectionTops = $0 }
@@ -335,6 +343,7 @@ struct EventDetailView: View {
                     }
                 } else {
                     actionBar
+                        .modifier(EntranceRise(shown: entered, step: 6, y: 40, animated: !reduceMotion))
                 }
             }
             .opacity(contentShown ? 1 : 0)
@@ -379,12 +388,13 @@ struct EventDetailView: View {
             // same scroll position — no grow-in, no fade, no pop.
             guard app.eventOpening, !isPreview else {
                 var t = Transaction(); t.disablesAnimations = true
-                withTransaction(t) { presented = true; contentShown = true }
+                withTransaction(t) { presented = true; contentShown = true; entered = true }
                 return
             }
             DispatchQueue.main.async {
                 withAnimation(.spring(response: 0.6, dampingFraction: 0.9)) { presented = true }
                 withAnimation(.easeOut(duration: 0.36).delay(zoomOrigin == nil ? 0 : 0.2)) { contentShown = true }
+                entered = true
             }
         }
         .onDisappear { if app.eventDismissProgress != 0 { app.eventDismissProgress = 0 } }
@@ -989,6 +999,12 @@ struct EventDetailView: View {
     private var stubBand: some View {
         VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
             ticketStub
+            if let planMessage {
+                Text(planMessage).font(.footnote).foregroundStyle(app.palette.ink2)
+                    .padding(.horizontal, 6)
+                    .transition(.opacity)
+                    .accessibilityIdentifier("event.plan.message")
+            }
             if let note = venueTimeNote {
                 Text(note).font(.footnote).foregroundStyle(app.palette.ink3)
                     .padding(.horizontal, 6)
@@ -1008,14 +1024,17 @@ struct EventDetailView: View {
                 if stubBlock != nil || whenParts.time != nil {
                     HStack(alignment: .center, spacing: BanbeTheme.Space.l) {
                         if let b = stubBlock {
-                            VStack(spacing: 3) {
-                                Text(b.month).font(.system(size: 12, weight: .bold)).tracking(0.96)
-                                Text(b.day).font(BanbeTheme.display(34).weight(.heavy))
-                                Text(b.weekday).font(.system(size: 11.5, weight: .bold)).tracking(0.7).lineLimit(1).minimumScaleFactor(0.8)
+                            // Note 77: a bigger block so the row has no empty right half.
+                            VStack(spacing: 4) {
+                                Text(b.month).font(.system(size: 13, weight: .bold)).tracking(1.04)
+                                Text(b.day).font(BanbeTheme.display(46).weight(.heavy))
+                                    .scaleEffect(entered || reduceMotion ? 1 : 0.82)
+                                    .animation(reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.6).delay(0.38), value: entered)
+                                Text(b.weekday).font(.system(size: 12.5, weight: .bold)).tracking(0.8).lineLimit(1).minimumScaleFactor(0.8)
                             }
                             .foregroundStyle(.white)
-                            .padding(.horizontal, 14).padding(.vertical, 12)
-                            .frame(minWidth: 82)
+                            .padding(.horizontal, 16).padding(.vertical, 14)
+                            .frame(minWidth: 100)
                             .background(app.palette.clay, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .accessibilityElement(children: .ignore)
                             .accessibilityLabel(whenParts.date ?? "\(b.weekday) \(b.day) \(b.month)")
@@ -1036,6 +1055,10 @@ struct EventDetailView: View {
                             }
                         }
                         Spacer(minLength: 0)
+                        EventPlanButtons(event: event, day: stubBlock?.day ?? "", month: stubBlock?.month ?? "",
+                                         onMessage: { m in withAnimation(.easeOut(duration: 0.2)) { planMessage = m } })
+                            .allowsHitTesting(!isPreview)
+                            .modifier(EntranceRise(shown: entered, step: 4, x: 14, y: 0, animated: !reduceMotion))
                     }
                     .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 14)
                 }
@@ -1122,7 +1145,7 @@ struct EventDetailView: View {
     /// Story-first band on the photo (note 70): category / minimum-age / invite pills, then the title with the calendar
     /// circle, all white over the hero's bottom scrim.
     private var heroTitleBand: some View {
-        VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
             FlowRow(spacing: BanbeTheme.Space.s) {
                 if !app.trStatus(event.cat).isEmpty {
                     Text(app.trStatus(event.cat).uppercased())
@@ -1150,9 +1173,10 @@ struct EventDetailView: View {
                         .accessibilityIdentifier("event.inviteChip")
                 }
             }
-            // Note 46 — the title with the calendar circle (banbe Schedule / Apple Calendar).
+            .modifier(EntranceRise(shown: entered, step: 0, y: 12, animated: !reduceMotion))
+            // Note 77: the title alone; the calendar choices live in the ticket stub.
             EventPlanTitleRow(event: event, onPhoto: true)
-                .allowsHitTesting(!isPreview)
+                .modifier(EntranceRise(shown: entered, step: 1, y: 14, animated: !reduceMotion))
                 .opacity(1 - titleProgress)
                 .scaleEffect(1 - 0.3 * titleProgress, anchor: .bottomLeading)
                 .offset(y: -12 * titleProgress)
@@ -1162,7 +1186,7 @@ struct EventDetailView: View {
                 .onPreferenceChange(EventTitleFrameKey.self) { titleFrame = $0 }
         }
         .padding(.horizontal, 22)
-        .padding(.bottom, BanbeTheme.Space.l)
+        .padding(.bottom, 20)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("event.heroTitle")
     }
@@ -1984,5 +2008,24 @@ private struct Line: Shape {
         p.move(to: CGPoint(x: rect.minX, y: rect.midY))
         p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
         return p
+    }
+}
+
+/// Note 77: one part of Event Detail rising into place on a fresh open, `step` × 70 ms after the page fades in.
+/// Without animation (Reduce Motion) it only follows `shown`, which is already true then.
+struct EntranceRise: ViewModifier {
+    let shown: Bool
+    let step: Int
+    var x: CGFloat = 0
+    var y: CGFloat = 16
+    var scale: CGFloat = 1
+    var animated = true
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(x: shown ? 0 : x, y: shown ? 0 : y)
+            .scaleEffect(shown ? 1 : scale, anchor: .top)
+            .animation(animated ? .spring(response: 0.5, dampingFraction: 0.86).delay(0.16 + Double(step) * 0.07) : nil, value: shown)
     }
 }

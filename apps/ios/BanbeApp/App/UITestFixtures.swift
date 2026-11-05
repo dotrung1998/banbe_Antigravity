@@ -430,7 +430,7 @@ struct UITestFixtureRoot: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Fixture event \(app.eventKey)").accessibilityIdentifier("fixture.event.\(app.eventKey)")
-                        if let e = app.resolvedEvent(for: app.eventKey) { EventPlanTitleRow(event: e) }
+                        if let e = app.resolvedEvent(for: app.eventKey) { EventPlanTitleRow(event: e); EventPlanButtons(event: e, day: "22", month: "NOV", axis: .horizontal) }
                         Button("Back to schedule") { app.screen = .schedule }.accessibilityIdentifier("fixture.backToSchedule")
                     }
                     .padding(20)

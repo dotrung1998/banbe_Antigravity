@@ -3,7 +3,10 @@ import QRCode from 'qrcode';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
-import { paper, ink, rule, display, cardGlass, alert } from '../theme.js';
+import { paper, ink, rule, display, cardGlass, alert, block, clay, clayBg } from '../theme.js';
+import GlassMenu, { GlassMenuItem, glassMenuSurface } from '../components/GlassMenu.jsx';
+import { MiniCalendarPage } from './EventPlanActions.jsx';
+import { dateBlock } from '../lib/eventDetailPresentation.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 import BanbeLoadingVisual from './BanbeLoadingVisual.jsx';
 import { downloadTicketPdfs, googleCalendarUrl } from '../lib/ticketPdf.js';
@@ -261,6 +264,8 @@ export default function Confirmed() {
     reloadGiftedSeats(id);
   };
   const walletEligible = isAppleWalletBrowser();
+  const [moreOpen, setMoreOpen] = useState(false);
+  const calBlock = dateBlock((ev.when || '').split(' ▪︎ ')[0], s.lang === 'en');
   const runWallet = async () => {
     if (walletBusy || !s.booking?.id) return;
     setWalletBusy(true); setWalletMsg('');
@@ -303,6 +308,21 @@ export default function Confirmed() {
   const showQr = isPaid;
   const calendarLabel = s.calAdded ? T('Đã thêm vào lịch', 'Added to calendar') : T('Thêm vào lịch', 'Add to calendar');
 
+  // Note 77: whatever is not one of the two tiles goes in "More".
+  const moreItems = [
+    showQr && !hasNamed && !isGifted && { testId: 'confirmed-give-ticket', icon: 'gift', label: T('Tặng vé cho bạn bè', 'Give a ticket to a friend'), onClick: () => setGiftOpen(true) },
+    showQr && !hasNamed && !isGifted && walletEligible && { testId: 'confirmed-download-pdf', icon: 'download', label: pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải vé PDF', 'Download PDF'), onClick: () => runDownload([ownPdf()]) },
+    // Receipts are organizer-uploaded (08-payment-documents.md): `receiptDoc` is undefined while the check runs.
+    showQr && s.receiptDoc !== undefined && {
+      testId: 'confirmed-view-receipt', icon: 'doc',
+      label: s.receiptDoc ? T('Xem Receipt', 'View Receipt')
+        : s.receiptRequestSending ? T('Đang gửi yêu cầu…', 'Sending request…')
+        : s.receiptRequestSent ? T('Đã gửi yêu cầu ▪︎ Đang chờ người tổ chức', 'Request sent ▪︎ waiting on the organizer')
+        : T('Yêu cầu Receipt', 'Request Receipt'),
+      disabled: s.receiptRequestSending || (!s.receiptDoc && s.receiptRequestSent),
+      onClick: () => { if (s.receiptDoc) openDocumentFromNotification(s.receiptDoc.id, 'confirmed'); else requestReceipt(s.booking.id); },
+    },
+  ].filter(Boolean);
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Confirmed">
       {/* Back, top-left — where the thumb and the OS convention expect it. */}
@@ -535,79 +555,63 @@ export default function Confirmed() {
           <BanbeLoadingVisual size={190} />
         </div>
       </div>
-      {showQr && isGifted && (
-        <FooterRow icon="download" label={pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải lại vé PDF', 'Re-download the PDF')} onClick={() => runDownload([giftPdfOf(s.booking)])} testId="confirmed-gifted-pdf" />
-      )}
-      {showQr && !hasNamed && !isGifted && (
-        <FooterRow icon="gift" label={T('Tặng vé cho bạn bè', 'Give a ticket to a friend')} onClick={() => setGiftOpen(true)} testId="confirmed-give-ticket" />
-      )}
-      {showQr && !hasNamed && !isGifted && walletEligible && (
-        <FooterRow icon="wallet" label={walletBusy ? T('Đang tạo vé Wallet…', 'Preparing Wallet pass…') : T('Thêm vào Apple Wallet', 'Add to Apple Wallet')} onClick={runWallet} dim={walletBusy} testId="confirmed-add-to-wallet" />
-      )}
-      {showQr && !hasNamed && !isGifted && walletEligible && walletMsg && (
-        <p style={{ fontSize: 11, color: alert, textAlign: 'center', margin: '8px 22px 0' }} data-testid="confirmed-wallet-error">{walletMsg}</p>
-      )}
-      {showQr && !hasNamed && !isGifted && (
-        <FooterRow icon="download" label={pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải vé PDF', 'Download PDF')} onClick={() => runDownload([ownPdf()])} testId="confirmed-download-pdf" />
-      )}
-      {/* Add to calendar: a glass popover that opens out of the row (like the
-          iOS Menu) and closes on a tap anywhere outside it. */}
-      <div style={{ position: 'relative' }}>
-        <FooterRow
-          icon={s.calAdded ? 'calendarCheck' : 'calendarPlus'} chip
-          label={calendarLabel} onClick={openCalendarPicker} testId="confirmed-add-to-calendar"
-        />
-        {s.calendarPickerFor === ev.key && (
-          <>
-            <div onClick={closeCalendarPicker} style={{ position: 'fixed', inset: 0, zIndex: 49 }} data-testid="calendar-pick-scrim" />
-            <div
-              role="menu"
-              style={{
-                position: 'absolute', left: 22, right: 22, bottom: 'calc(100% - 6px)', zIndex: 50, transformOrigin: 'bottom center',
-                animation: 'bbPopIn 0.2s cubic-bezier(.22,.61,.36,1) both',
-                borderRadius: 22, padding: 8, overflow: 'hidden',
-                background: 'rgba(250,248,244,0.72)', backdropFilter: 'blur(24px) saturate(170%)', WebkitBackdropFilter: 'blur(24px) saturate(170%)',
-                border: '1px solid rgba(255,255,255,0.55)', boxShadow: '0 18px 40px rgba(27,25,22,0.22), inset 0 1px 0 rgba(255,255,255,0.7)',
-              }}
-            >
-              <div role="menuitem" onClick={() => addToCalendarGoogle(ev)} data-testid="calendar-pick-google"
-                   style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', borderRadius: 16, cursor: 'pointer', fontSize: 14, color: ink }}>
-                <Icon kind="globe" size={18} /> Google Calendar
-              </div>
-              <div role="menuitem" onClick={() => addToCalendarICS(ev)} data-testid="calendar-pick-apple"
-                   style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', borderRadius: 16, cursor: 'pointer', fontSize: 14, color: ink }}>
-                <Icon kind="calendar" size={18} />
-                <span>{T('Lịch Apple ▪︎ Ứng dụng khác', 'Apple Calendar ▪︎ Other apps')}
-                  <span style={{ display: 'block', fontSize: 11, opacity: 0.6, marginTop: 2 }}>{T('Tải file .ics', 'Downloads an .ics file')}</span>
-                </span>
-              </div>
-            </div>
-          </>
+      {/* Note 77: the ticket's actions as two tiles (the most used ones) and a "More" menu for the rest. No hairlines:
+          the block fills and the gaps separate them. iOS twin: ConfirmedView `actionTile`. */}
+      <div style={{ padding: '8px 22px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+          {showQr && isGifted && (
+            <ActionTile icon={<Icon kind="download" size={19} />} label={pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải lại vé PDF', 'Re-download the PDF')} onClick={() => runDownload([giftPdfOf(s.booking)])} testId="confirmed-gifted-pdf" />
+          )}
+          {showQr && !hasNamed && !isGifted && walletEligible && (
+            <ActionTile icon={<Icon kind="wallet" size={19} />} label={walletBusy ? T('Đang tạo vé Wallet…', 'Preparing Wallet pass…') : T('Thêm vào Apple Wallet', 'Add to Apple Wallet')} onClick={runWallet} dim={walletBusy} testId="confirmed-add-to-wallet" />
+          )}
+          {showQr && !hasNamed && !isGifted && !walletEligible && (
+            <ActionTile icon={<Icon kind="download" size={19} />} label={pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải vé PDF', 'Download PDF')} onClick={() => runDownload([ownPdf()])} testId="confirmed-download-pdf" />
+          )}
+          {/* Add to calendar: a glass popover that opens out of the tile and closes on a tap anywhere outside it. */}
+          <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex' }}>
+            <ActionTile icon={<MiniCalendarPage day={calBlock?.day} month={calBlock?.month} size={42} done={!!s.calAdded} />} bare
+              label={calendarLabel} onClick={openCalendarPicker} testId="confirmed-add-to-calendar" />
+            {s.calendarPickerFor === ev.key && (
+              <>
+                <div onClick={closeCalendarPicker} style={{ position: 'fixed', inset: 0, zIndex: 49 }} data-testid="calendar-pick-scrim" />
+                <div role="menu" style={{ position: 'absolute', right: 0, width: 260, bottom: 'calc(100% + 6px)', zIndex: 50, transformOrigin: 'bottom right', animation: 'bbPopIn 0.2s cubic-bezier(.22,.61,.36,1) both', borderRadius: 22, padding: 8, overflow: 'hidden', ...glassMenuSurface }}>
+                  <div role="menuitem" onClick={() => addToCalendarGoogle(ev)} data-testid="calendar-pick-google"
+                       style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', borderRadius: 16, cursor: 'pointer', fontSize: 14, color: ink }}>
+                    <Icon kind="globe" size={18} /> Google Calendar
+                  </div>
+                  <div role="menuitem" onClick={() => addToCalendarICS(ev)} data-testid="calendar-pick-apple"
+                       style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', borderRadius: 16, cursor: 'pointer', fontSize: 14, color: ink }}>
+                    <Icon kind="calendar" size={18} />
+                    <span>{T('Lịch Apple ▪︎ Ứng dụng khác', 'Apple Calendar ▪︎ Other apps')}
+                      <span style={{ display: 'block', fontSize: 11, opacity: 0.6, marginTop: 2 }}>{T('Tải file .ics', 'Downloads an .ics file')}</span>
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+        {moreItems.length > 0 && (
+          <GlassMenu open={moreOpen} onOpenChange={setMoreOpen} top={56} width={280} wrapTestId="confirmed-more" menuTestId="confirmed-more-menu"
+            trigger={(
+              <button type="button" className="bb-press" onClick={() => setMoreOpen(v => !v)} aria-haspopup="menu" aria-expanded={moreOpen} data-testid="confirmed-more-button"
+                style={{ width: '100%', minHeight: 48, borderRadius: 999, border: 'none', background: block, color: ink, fontFamily: 'inherit', fontSize: 14.5, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}>
+                <svg aria-hidden width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
+                {T('Thêm tuỳ chọn', 'More options')}
+              </button>
+            )}>
+            {moreItems.map(it => (
+              <GlassMenuItem key={it.testId} testId={it.testId} disabled={it.disabled} onClick={() => { setMoreOpen(false); it.onClick?.(); }}>
+                <Icon kind={it.icon} size={17} /> {it.label}
+              </GlassMenuItem>
+            ))}
+          </GlassMenu>
         )}
+        {[walletMsg && showQr && !hasNamed && !isGifted && walletEligible ? walletMsg : '', s.receiptRequestError].filter(Boolean).map(m => (
+          <p key={m} style={{ fontSize: 11, color: alert, textAlign: 'center', margin: 0 }}>{m}</p>
+        ))}
       </div>
-      {/* Receipts are organizer-uploaded (08-payment-documents.md), so this
-          screen can't assume one exists. `receiptDoc` is `undefined` while
-          the check is in flight, a real row once found, `false` once absent. */}
-      {showQr && s.receiptDoc !== undefined && (
-        <FooterRow
-          icon="doc" testId="confirmed-view-receipt"
-          label={s.receiptDoc
-            ? T('Xem Receipt', 'View Receipt')
-            : s.receiptRequestSending
-            ? T('Đang gửi yêu cầu…', 'Sending request…')
-            : s.receiptRequestSent
-            ? T('Đã gửi yêu cầu ▪︎ Đang chờ người tổ chức', 'Request sent ▪︎ waiting on the organizer')
-            : T('Yêu cầu Receipt', 'Request Receipt')}
-          dim={s.receiptRequestSending}
-          onClick={(s.receiptDoc || !s.receiptRequestSent) ? () => {
-            if (s.receiptDoc) openDocumentFromNotification(s.receiptDoc.id, 'confirmed');
-            else requestReceipt(s.booking.id);
-          } : undefined}
-        />
-      )}
-      {s.receiptRequestError && (
-        <p style={{ fontSize: 11, color: alert, textAlign: 'center', margin: '8px 22px 0' }}>{s.receiptRequestError}</p>
-      )}
       <div style={{ height: 34 }} />
       {giftOpen && s.booking?.id && (
         <GiftTicketSheet
@@ -619,24 +623,19 @@ export default function Confirmed() {
   );
 }
 
-// One footer row: a fixed-width icon column (so every icon and label lines up
-// down the page), the label, and a quiet chevron. `chip` puts the icon on the
-// soft round disc the iOS Settings button uses.
-function FooterRow({ icon, label, onClick, testId, chip = false, dim = false }) {
+// One action tile (note 77): the icon on a soft clay disc (or the mini calendar page), the label under it. Equal
+// height side by side; a block fill instead of divider lines.
+function ActionTile({ icon, label, onClick, testId, dim = false, bare = false }) {
   return (
-    <div
-      onClick={onClick} data-testid={testId}
-      style={{
-        borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 14,
-        padding: '10px 30px', minHeight: 54, boxSizing: 'border-box', cursor: onClick ? 'pointer' : 'default', opacity: dim ? 0.6 : 1,
-      }}
-    >
-      <span style={{ flex: 'none', width: 34, height: 34, borderRadius: 17, display: 'flex', alignItems: 'center', justifyContent: 'center', background: chip ? 'var(--bb-field)' : 'transparent' }}>
-        <Icon kind={icon} size={16} />
-      </span>
-      <span style={{ flex: 1, minWidth: 0 }}>{label}</span>
-      <svg width="8" height="13" viewBox="0 0 8 13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35, flex: 'none' }}><path d="m1.5 1.5 5 5-5 5" /></svg>
-    </div>
+    <button type="button" className="bb-press" onClick={onClick} data-testid={testId}
+      style={{ flex: 1, minWidth: 0, minHeight: 124, boxSizing: 'border-box', padding: 16, border: 'none', borderRadius: 20, background: block, color: ink,
+        fontFamily: 'inherit', fontSize: 14.5, fontWeight: 600, lineHeight: 1.3, textAlign: 'left', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 12,
+        cursor: onClick ? 'pointer' : 'default', opacity: dim ? 0.6 : 1 }}>
+      {bare ? icon : (
+        <span style={{ flex: 'none', width: 42, height: 42, borderRadius: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', background: clayBg, color: clay }}>{icon}</span>
+      )}
+      <span>{label}</span>
+    </button>
   );
 }
 

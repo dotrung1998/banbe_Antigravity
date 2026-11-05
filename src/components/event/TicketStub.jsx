@@ -21,24 +21,24 @@ const IconDirections = () => (<svg {...ico} width={15} height={15}><path d="m3 1
 /**
  * block: { month, day, weekday } | null; time: "20:00" | null; countdown: text | null; place: area; placeSub: line under
  * it; mapsUrl / onDirections / directionsLabel: the Directions button (hidden without a URL); price + perTicket ("/ vé");
- * seatPill: { text, fg, bg } | null. `inert` (create preview) keeps every control visible but inactive.
+ * seatPill: { text, fg, bg } | null; calendar: the two calendar tiles (note 77) at the row's end. `inert` (create preview) keeps every control visible but inactive.
  */
-export default function TicketStub({ block, time, countdown, place, placeSub, mapsUrl, onDirections, directionsLabel, price, perTicket, seatPill, inert }) {
+export default function TicketStub({ block, time, countdown, place, placeSub, mapsUrl, onDirections, directionsLabel, price, perTicket, seatPill, calendar, inert }) {
   const hasTop = block || time;
   return (
     <div data-testid="event-ticket-stub" style={{ position: 'relative', filter: 'drop-shadow(0 0 0.6px rgba(var(--bb-fg-rgb),0.30)) drop-shadow(0 12px 18px rgba(0,0,0,0.22))' }}>
       <div style={{ ...half('100%'), borderRadius: `${RADIUS_STUB}px ${RADIUS_STUB}px 0 0`, paddingBottom: 1 }}>
         {hasTop && (
-          <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', padding: '18px 18px 14px' }}>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', padding: '18px 18px 14px' }}>
             {block && (
               <div data-testid="event-fact-when" aria-label={`${block.weekday} ${block.day} ${block.month}`}
-                style={{ flex: 'none', minWidth: 82, borderRadius: 14, background: clay, color: '#fff', padding: '12px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, textAlign: 'center' }}>
-                <small style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', lineHeight: 1 }}>{block.month}</small>
-                <b style={{ ...display(34), fontWeight: 800, lineHeight: 1, color: '#fff' }}>{block.day}</b>
-                <small style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '0.06em', lineHeight: 1, whiteSpace: 'nowrap' }}>{block.weekday}</small>
+                style={{ flex: 'none', alignSelf: 'stretch', minWidth: 100, borderRadius: 16, background: clay, color: '#fff', padding: '14px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, textAlign: 'center' }}>
+                <small style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.08em', lineHeight: 1 }}>{block.month}</small>
+                <b className="bb-pop-in" style={{ ...display(46), fontWeight: 800, lineHeight: 1, color: '#fff', animationDelay: '380ms' }}>{block.day}</b>
+                <small style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '0.06em', lineHeight: 1, whiteSpace: 'nowrap' }}>{block.weekday}</small>
               </div>
             )}
-            <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
               {time && <span data-testid="event-fact-time" style={{ ...display(31), fontWeight: 800, lineHeight: 1, letterSpacing: '-0.02em', color: ink }}>{time}</span>}
               {countdown && (
                 <span data-testid="event-countdown" style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 5, borderRadius: RADIUS.pill, background: clayBg, color: clay, fontSize: 12.5, fontWeight: 700, padding: '7px 12px', whiteSpace: 'nowrap' }}>
@@ -46,6 +46,7 @@ export default function TicketStub({ block, time, countdown, place, placeSub, ma
                 </span>
               )}
             </div>
+            {calendar && <div className="bb-rise-in" style={{ flex: 'none', animationDelay: '440ms', '--bb-rise-x': '14px', '--bb-rise-y': '0px' }}>{calendar}</div>}
           </div>
         )}
         <div data-testid="event-fact-where" style={{ margin: hasTop ? '0 18px 17px' : '18px 18px 17px', background: surface2, borderRadius: 15, padding: '10px 10px 10px 13px', display: 'flex', alignItems: 'center', gap: 11 }}>

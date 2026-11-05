@@ -1,82 +1,113 @@
-// Event Detail "plan" control — web twin of iOS EventPlanTitleRow (notes 44/45, compact 2026-10-18): one small
-// glass pill beside the event title (calendar icon + "Added" / "Discover") that opens a frosted menu with
-// the banbe Schedule status, Add / Remove (manual adds only), Add to calendar (.ics) and Google Calendar.
-// Compact, so the title row is only as tall as the title — no gap above the location line.
+// Event Detail calendar choices — web twin of iOS EventPlanTitleRow / EventPlanButtons (notes 44/45, note 77).
+// The title stands alone; the calendar choices are two tiles inside the ticket stub, each with its own look:
+// - banbe Schedule: a clay square with a calendar glyph and a sparkle (the in-app agenda, not a reservation).
+//   One tap adds; once added a tap opens a menu with the status and Remove (manual adds only).
+// - Phone calendar: a mini tear-off calendar page (red band, the event's day). A tap opens Google / .ics.
 // Real events only; adding to the banbe Schedule needs an account.
 import { useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { ink, clay } from '../theme.js';
-import GlassMenu, { GlassMenuItem, GlassMenuDivider } from '../components/GlassMenu.jsx';
+import { ink2 } from '../theme.js';
+import GlassMenu, { GlassMenuItem } from '../components/GlassMenu.jsx';
 import { sourceLabel, canAdd } from '../lib/schedulePresentation.js';
 import { calendarDraft, downloadIcs, googleCalendarUrl } from '../lib/calendarExport.js';
 import { track } from '../lib/analytics.js';
 
 const CalIcon = ({ added }) => (
-  <svg aria-hidden width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg aria-hidden width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17M8 3v4M16 3v4" />
     {added ? <path d="M9 14.6l2 2 4-4" /> : <path d="M12 12.3v5M9.5 14.8h5" />}
   </svg>
 );
+const Sparkle = () => (
+  <svg aria-hidden width="11" height="11" viewBox="0 0 24 24" style={{ position: 'absolute', top: -4, right: -4 }}>
+    <path d="M12 0c.8 6.4 4.6 10.6 12 12-7.4 1.4-11.2 5.6-12 12-.8-6.4-4.6-10.6-12-12C7.4 10.6 11.2 6.4 12 0Z" fill="#FFD973" />
+  </svg>
+);
+const Check = () => (
+  <svg aria-hidden width="15" height="15" viewBox="0 0 24 24" style={{ position: 'absolute', right: -5, bottom: -5 }}>
+    <circle cx="12" cy="12" r="11" fill="#339E5C" stroke="#fff" strokeWidth="2" /><path d="m7.5 12.3 3 3 6-6" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 
-/** Title + compact plan pill on one row. Renders just the title for events that can't be planned. */
-// `onPhoto` (note 70): the title sits on the event photo, so the calendar pill is a clay glass pill with a white glyph.
-export default function EventPlanTitle({ eventKey, title, titleStyle, onPhoto = false }) {
+/** A tiny tear-off calendar page (red band with the month, the day below): the "phone calendar" icon on Event Detail
+ *  and Confirmed. iOS twin: MiniCalendarPage. */
+export function MiniCalendarPage({ day, month, size = 44, done = false }) {
+  return (
+    <span aria-hidden style={{ position: 'relative', flex: 'none', display: 'inline-flex', width: size, height: size }}>
+      <span style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', borderRadius: size * 0.25, overflow: 'hidden', background: '#fff', boxShadow: '0 2px 6px rgba(0,0,0,0.18)' }}>
+        <span style={{ flex: 'none', height: size * 0.3, background: '#ED4539', color: '#fff', fontSize: size * 0.18, fontWeight: 800, letterSpacing: '0.04em', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>{month || ' '}</span>
+        <span style={{ flex: 1, color: '#1C1917', fontSize: size * 0.43, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, fontFamily: 'ui-rounded, system-ui, sans-serif' }}>{day || '+'}</span>
+      </span>
+      {done && <Check />}
+    </span>
+  );
+}
+
+/** The event title alone (note 77: the calendar choices moved into the ticket stub). */
+export default function EventPlanTitle({ title, titleStyle }) {
+  return <h1 style={{ ...titleStyle, margin: 0 }}>{title}</h1>;
+}
+
+const tileBtn = { position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, padding: 0, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit' };
+const caption = { fontSize: 10, fontWeight: 600, color: ink2, lineHeight: 1, whiteSpace: 'nowrap' };
+
+/** The two calendar tiles. `onMessage(text | '')` gets the status line (the stub shows it full width). */
+export function EventPlanButtons({ eventKey, day, month, inert = false, onMessage }) {
   const { state: s, T, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule } = useBanBe();
-  const [open, setOpen] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [schedOpen, setSchedOpen] = useState(false);
+  const [calOpen, setCalOpen] = useState(false);
   const real = s.realEventsById?.[eventKey];
   const info = scheduleInfoFor(real);
-
   const available = info && info.start && !info.cancelled;
-  const item = info ? scheduleSnapshot.mine.items.find(i => i.id === eventKey) : null;
-  const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 6000); };
-  const draft = available ? calendarDraft({ title: info.title, start: info.start, end: info.end, location: info.location, eventKey: info.key, origin: window.location.origin }, T) : null;
+  if (!available) return null;
+  const item = scheduleSnapshot.mine.items.find(i => i.id === eventKey);
+  const flash = (m) => { onMessage?.(m); if (m) setTimeout(() => onMessage?.(''), 6000); };
+  const draft = calendarDraft({ title: info.title, start: info.start, end: info.end, location: info.location, eventKey: info.key, origin: window.location.origin }, T);
 
   const add = () => {
+    if (!s.user || !canAdd(info)) { flash(T('Sự kiện này không thêm vào lịch được.', "This event can't be added.")); return; }
     const r = addToBanbeSchedule(eventKey);
     flash(r === 'added' ? T('Đã thêm vào lịch banbe trên trình duyệt này. Đây chưa phải đặt chỗ.', "Added to your banbe Schedule in this browser. This isn't a reservation.")
       : r === 'ineligible' ? T('Sự kiện này không thêm vào lịch được.', "This event can't be added.") : '');
   };
   const ics = () => {
     track('system_calendar_editor_opened');
-    if (!draft) return;
     downloadIcs(draft, `banbe-${info.key}.ics`, { uid: info.key });
     flash(T('Đã tải file lịch (.ics). Mở file để thêm vào ứng dụng lịch của bạn.', 'Calendar file (.ics) downloaded. Open it to add the event to your calendar app.'));
   };
-  const google = () => { if (draft) window.open(googleCalendarUrl(draft), '_blank', 'noopener'); };
+  const google = () => window.open(googleCalendarUrl(draft), '_blank', 'noopener');
 
   return (
-    <div style={{ margin: '8px 0 6px' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        <h1 style={{ ...titleStyle, margin: 0, flex: 1, minWidth: 0 }}>{title}</h1>
-        {available && (
-          <GlassMenu open={open} onOpenChange={setOpen} wrapStyle={{ flex: 'none', marginTop: 2 }} wrapTestId="event-plan" menuTestId="event-plan-menu"
+    <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', ...(inert ? { pointerEvents: 'none' } : null) }} data-testid="event-plan">
+      <GlassMenu open={schedOpen} onOpenChange={setSchedOpen} top={50} wrapStyle={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }} menuTestId="event-plan-menu"
+        trigger={(
+          <button type="button" className="bb-press" data-testid="event-plan-button" aria-haspopup={item ? 'menu' : undefined}
+            onClick={() => (item ? setSchedOpen(v => !v) : add())}
+            aria-label={item ? T(`Trong lịch banbe (${sourceLabel(item.source, T)})`, `In banbe Schedule (${sourceLabel(item.source, T)})`) : T('Thêm vào lịch banbe', 'Add to banbe Schedule')}
+            style={{ ...tileBtn, color: '#fff', borderRadius: 13, background: 'linear-gradient(135deg, var(--bb-clay), rgba(var(--bb-clay-rgb),0.78))', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.18)' }}>
+            <CalIcon added={!!item} /><Sparkle />
+            <span data-testid="event-plan-status" hidden>{item ? 'added' : 'none'}</span>
+          </button>
+        )}>
+        {item && <GlassMenuItem disabled testId="event-plan-in-mine">{`✓ ${T('Trong lịch của tôi', 'In My schedule')} · ${sourceLabel(item.source, T)}`}</GlassMenuItem>}
+        {item?.source === 'added' && <GlassMenuItem danger onClick={() => { removeFromBanbeSchedule(eventKey); setSchedOpen(false); flash(''); }} testId="event-plan-remove">{`⊖ ${T('Bỏ khỏi lịch banbe', 'Remove from banbe Schedule')}`}</GlassMenuItem>}
+      </GlassMenu>
+      <span style={{ ...caption, marginTop: -5 }}>banbe</span>
+      {!info.ended && (
+        <>
+          <GlassMenu open={calOpen} onOpenChange={setCalOpen} top={50} menuTestId="event-plan-cal-menu"
             trigger={(
-              // Outlined clay pill (note 52 mockup): reads as a secondary action next to the title, not a second CTA.
-              <button type="button" onClick={() => setOpen(v => !v)} aria-haspopup="menu" aria-expanded={open} data-testid="event-plan-button"
-                aria-label={item ? T(`Trong lịch banbe (${sourceLabel(item.source, T)}). Mở menu`, `In banbe Schedule (${sourceLabel(item.source, T)}). Open menu`) : T('Thêm lịch', 'Add to calendar')}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 12px', borderRadius: 999, cursor: 'pointer', color: clay, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
-                  border: `1px solid ${clay}`, background: 'transparent',
-                  ...(onPhoto ? { color: '#fff', border: '1px solid rgba(255,255,255,0.32)', background: 'rgba(var(--bb-clay-rgb),0.82)' } : null) }}>
-                <CalIcon added={!!item} />
-                <span data-testid="event-plan-status">{item ? T('Đã thêm', 'Added') : T('Thêm lịch', 'Add to calendar')}</span>
+              <button type="button" className="bb-press" data-testid="event-plan-calendar" aria-haspopup="menu" aria-expanded={calOpen}
+                onClick={() => setCalOpen(v => !v)} aria-label={T('Thêm vào lịch điện thoại', 'Add to your calendar')} style={tileBtn}>
+                <MiniCalendarPage day={day} month={month} />
               </button>
             )}>
-            {item
-              ? <GlassMenuItem disabled testId="event-plan-in-mine">{`✓ ${T('Trong lịch của tôi', 'In My schedule')} · ${sourceLabel(item.source, T)}`}</GlassMenuItem>
-              : s.user && canAdd(info) && <GlassMenuItem onClick={add} testId="event-plan-add">{`＋ ${T('Thêm vào lịch banbe', 'Add to banbe Schedule')}`}</GlassMenuItem>}
-            {item?.source === 'added' && <GlassMenuItem danger onClick={() => removeFromBanbeSchedule(eventKey)} testId="event-plan-remove">{`⊖ ${T('Bỏ khỏi lịch banbe', 'Remove from banbe Schedule')}`}</GlassMenuItem>}
-            {!info.ended && (
-              <>
-                {(item || (s.user && canAdd(info))) && <GlassMenuDivider />}
-                <GlassMenuItem onClick={ics} testId={`calendar-ics-${info.key}`}>{`📅 ${T('Thêm vào lịch (.ics)', 'Add to calendar (.ics)')}`}</GlassMenuItem>
-                <GlassMenuItem onClick={google} testId={`calendar-google-${info.key}`}>{`${T('Google Lịch', 'Google Calendar')} ↗`}</GlassMenuItem>
-              </>
-            )}
+            <GlassMenuItem onClick={() => { ics(); setCalOpen(false); }} testId={`calendar-ics-${info.key}`}>{`📅 ${T('Lịch Apple · ứng dụng khác (.ics)', 'Apple Calendar · other apps (.ics)')}`}</GlassMenuItem>
+            <GlassMenuItem onClick={() => { google(); setCalOpen(false); }} testId={`calendar-google-${info.key}`}>{`${T('Google Lịch', 'Google Calendar')} ↗`}</GlassMenuItem>
           </GlassMenu>
-        )}
-      </div>
-      {msg && <p role="status" style={{ fontSize: 12, opacity: 0.75, margin: '4px 0 0', color: ink }}>{msg}</p>}
+          <span style={{ ...caption, marginTop: -5 }}>{T('Lịch', 'Calendar')}</span>
+        </>
+      )}
     </div>
   );
 }

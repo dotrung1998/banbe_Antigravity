@@ -7,7 +7,7 @@ import { isBookingTicket } from '../lib/bookingTicket.js';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
 import { criteriaIsEveryone } from '../lib/eventPrefs.js';
 import FollowingBadge from '../components/FollowingBadge.jsx';
-import EventPlanTitle from './EventPlanActions.jsx';
+import EventPlanTitle, { EventPlanButtons } from './EventPlanActions.jsx';
 import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
 import { reserveBarState, eventTotal, eventPrice, currencyUnavailable, clampQty, maxQty, CURRENCY_UNAVAILABLE_REASON, QTY_PRESETS, presetSelected, presetEnabled } from '../lib/reserveBar.js';
 import GlassMenu, { GlassMenuItem, GlassMenuDivider } from '../components/GlassMenu.jsx';
@@ -515,6 +515,7 @@ export default function EventDetail({ preview = null } = {}) {
   const [collapsed, setCollapsed] = useState(false);
   const collapsedRef = useRef(false);
   const titleWrapRef = useRef(null);
+  const [planMsg, setPlanMsg] = useState('');
   const navBgRef = useRef(null);
   const navTitleRef = useRef(null);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -658,7 +659,8 @@ export default function EventDetail({ preview = null } = {}) {
   return (
     // `absolute, inset 0` (like Chat): fills the app's scroll viewport exactly, whatever the surrounding grid does
     // with percentage heights, so the sheet below scrolls INSIDE this screen instead of the page growing.
-    <div style={{ position: 'absolute', inset: 0 }} data-screen-label="Event">
+    // Note 77: the parts rise in one after another on a fresh open; not when coming back, nor in the create preview.
+    <div className={(preview || returnRef.current != null) ? 'bb-no-entrance' : undefined} style={{ position: 'absolute', inset: 0 }} data-screen-label="Event">
       <div ref={dimRef} aria-hidden style={{ position: 'fixed', inset: 0, background: 'rgb(12,12,12)', opacity: 0, pointerEvents: 'none', zIndex: 0 }} />
     <div ref={cardRef} style={{ animation: (zoomRef.current || returnRef.current != null) ? undefined : 'banbeEventIn 0.55s cubic-bezier(.34,1.2,.5,1) backwards', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
       <div data-fade aria-hidden style={{ position: 'absolute', inset: 0, background: paper, zIndex: -1 }} />
@@ -735,8 +737,8 @@ export default function EventDetail({ preview = null } = {}) {
       <div ref={scrollerRef} data-fade onScroll={onSheetScroll} style={{ position: 'relative', zIndex: 1, flex: 1, minHeight: 0, marginTop: PINNED_STRIP, borderRadius: `${SHEET_RADIUS}px ${SHEET_RADIUS}px 0 0`, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
       {/* Story-first (note 70): the pills and the title sit on the photo, in the band above the sheet. A long title grows
           the band (minHeight), never clips. */}
-      <div data-testid="event-hero-title" style={{ minHeight: HERO_H - PINNED_STRIP - STUB_RISE, boxSizing: 'border-box', padding: `0 22px ${SPACE.l}px`, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: SPACE.s }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.s, flexWrap: 'wrap' }}>
+      <div data-testid="event-hero-title" style={{ minHeight: HERO_H - PINNED_STRIP - STUB_RISE, boxSizing: 'border-box', padding: '0 22px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: SPACE.m }}>
+        <div className="bb-rise-in" style={{ display: 'flex', alignItems: 'center', gap: SPACE.s, flexWrap: 'wrap', animationDelay: '160ms', '--bb-rise-y': '12px' }}>
           {/* Category as a light chip on the photo; minimum age beside it (a restriction, so it is seen first); invite-only in clay. */}
           {evCat && <span data-testid="event-category" style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#1b1916', background: 'rgba(255,255,255,0.92)', padding: '4px 12px', borderRadius: RADIUS.pill }}>{evCat}</span>}
           {facts.minAge && (
@@ -747,21 +749,25 @@ export default function EventDetail({ preview = null } = {}) {
             <span data-testid="event-invite-chip" style={{ fontSize: 13, fontWeight: 600, color: '#fff', background: 'rgba(var(--bb-clay-rgb),0.85)', padding: '4px 12px', borderRadius: RADIUS.pill }}>{T('Riêng tư · theo lời mời', 'Private · invite only')}</span>
           )}
         </div>
-        {/* Title + the calendar pill on one row (iOS EventPlanTitleRow), white over the scrim. */}
-        <div ref={titleWrapRef} style={{ transformOrigin: 'left bottom', willChange: 'transform, opacity', ...inert }}>
-          <EventPlanTitle eventKey={ev.key} title={ev.name} onPhoto titleStyle={display(26, { lineHeight: 1.2, color: '#fff', textShadow: '0 1px 8px rgba(0,0,0,0.35)' })} />
+        {/* The title alone (note 77: the calendar choices live in the ticket stub), white over the scrim. */}
+        <div ref={titleWrapRef} style={{ transformOrigin: 'left bottom', willChange: 'transform, opacity' }}>
+          <div className="bb-rise-in" style={{ animationDelay: '230ms', '--bb-rise-y': '14px' }}>
+            <EventPlanTitle title={ev.name} titleStyle={display(26, { lineHeight: 1.2, color: '#fff', textShadow: '0 1px 8px rgba(0,0,0,0.35)' })} />
+          </div>
         </div>
       </div>
       {/* V8 ticket stub (note 75): half over the photo, half on the page; the paper starts where the photo ends. */}
-      <div data-testid="event-stub-band" style={{ position: 'relative', zIndex: 1, padding: '0 16px', background: `linear-gradient(180deg, transparent ${STUB_RISE}px, ${paper} ${STUB_RISE}px)` }}>
+      <div data-testid="event-stub-band" className="bb-rise-in" style={{ animationDelay: '300ms', '--bb-rise-y': '22px', '--bb-rise-scale': 0.97, position: 'relative', zIndex: 1, padding: '0 16px', background: `linear-gradient(180deg, transparent ${STUB_RISE}px, ${paper} ${STUB_RISE}px)` }}>
         <TicketStub block={stubBlock} time={whenTime || null} countdown={stubCountdown}
           place={evWhere || T('Địa điểm', 'Place')} placeSub={placeSub}
           mapsUrl={evMapsUrl} onDirections={() => { if (s.located === null) askLocation(); }} directionsLabel={T('Chỉ đường', 'Directions')}
           price={ev.price ? trStatus(ev.price) : null} perTicket={isFree ? null : T('/ vé', '/ ticket')}
-          seatPill={seatPill} inert={!!preview} />
+          seatPill={seatPill} inert={!!preview}
+          calendar={<EventPlanButtons eventKey={ev.key} day={stubBlock?.day} month={stubBlock?.month} inert={!!preview} onMessage={setPlanMsg} />} />
+        {planMsg && <div role="status" data-testid="event-plan-message" style={{ fontSize: 13, color: ink2, padding: '10px 6px 0' }}>{planMsg}</div>}
         {timeNote && <div data-testid="event-venue-time-note" style={{ fontSize: 13, color: ink3, padding: '10px 6px 0' }}>{timeNote}</div>}
       </div>
-      <div data-testid="event-sheet" style={{ position: 'relative', zIndex: 1, background: paper, padding: `${SPACE.xl}px 22px ${SPACE.xl + 8}px`, display: 'flex', flexDirection: 'column', gap: SPACE.xl }}>
+      <div data-testid="event-sheet" className="bb-rise-in" style={{ animationDelay: '510ms', '--bb-rise-y': '26px', position: 'relative', zIndex: 1, background: paper, padding: `${SPACE.xl}px 22px ${SPACE.xl + 8}px`, display: 'flex', flexDirection: 'column', gap: SPACE.xl }}>
         {shareStoryMsg && (
           <div style={{ fontSize: 13, color: ink3 }}>{shareStoryMsg}</div>
         )}
@@ -976,7 +982,7 @@ export default function EventDetail({ preview = null } = {}) {
       </div>
       {/* Sticky action area, V8 (note 75): the stepper beside the CTA with the live total, then one quiet line with
           the refund promise. Always on screen, so the decision can happen wherever the reader is convinced. */}
-      <div data-fade data-testid="event-action-area" aria-hidden={preview ? true : undefined} style={{ touchAction: 'none', overscrollBehavior: 'contain', flex: 'none', position: 'relative', zIndex: 2, background: paper, borderRadius: '22px 22px 0 0', boxShadow: '0 -8px 24px rgba(27,25,22,0.10)', padding: preview ? '10px 16px 8px' : '10px 16px calc(8px + env(safe-area-inset-bottom, 0px))', ...inert }}>
+      <div data-fade data-testid="event-action-area" className="bb-rise-in" aria-hidden={preview ? true : undefined} style={{ touchAction: 'none', overscrollBehavior: 'contain', flex: 'none', position: 'relative', zIndex: 2, background: paper, borderRadius: '22px 22px 0 0', boxShadow: '0 -8px 24px rgba(27,25,22,0.10)', animationDelay: '580ms', '--bb-rise-y': '40px', padding: preview ? '10px 16px 8px' : '10px 16px calc(8px + env(safe-area-inset-bottom, 0px))', ...inert }}>
         {/* V8 (note 75, overrides note 70): 1·2·3 preset chips with their totals above the stepper; one qty for both.
             qty 1–3 lights its chip, 4+ lights none; a chip above the seats left is disabled like the stepper's +. */}
         {barState === 'reserve' && (
