@@ -180,7 +180,7 @@ struct ProjectTaskSheet: View {
 
     var body: some View {
         CardSheet(title: taskID == nil ? app.T("Việc mới", "New task") : (editable ? app.T("Sửa việc", "Edit task") : app.T("Việc", "Task")),
-                  closeID: "project.sheet.close", fullHeight: true, onClose: close) {
+                  closeID: "project.sheet.close", fullHeight: true, edgeToEdgeScroll: true, onClose: close) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     if deleting { deleteForm } else if editable { form } else if let task { detail(task) }

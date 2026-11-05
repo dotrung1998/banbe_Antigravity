@@ -325,7 +325,7 @@ struct ProjectComposeSheet: View {
 
     var body: some View {
         CardSheet(title: type.map { app.projectPostTypeName($0) } ?? app.T("Bạn muốn đăng gì?", "What do you want to post?"),
-                  closeID: "project.sheet.close", fullHeight: true, onClose: close) {
+                  closeID: "project.sheet.close", fullHeight: true, edgeToEdgeScroll: true, onClose: close) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if let type { form(type) } else { picker }

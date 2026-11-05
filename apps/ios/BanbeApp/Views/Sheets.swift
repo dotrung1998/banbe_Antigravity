@@ -894,6 +894,9 @@ struct CardSheet<Content: View>: View {
     var closeID: String = "cardSheet.close"
     /// Open at full height (a QR or a camera that must be seen whole); the default starts at half height.
     var fullHeight = false
+    /// Content is a ScrollView that should reach the sheet's sides, with the 20 pt margin inside it. Without this a
+    /// control at the right edge is clipped by the scroll view (the iOS 26 switch knob grows past its track when touched).
+    var edgeToEdgeScroll = false
     let onClose: () -> Void
     @ViewBuilder var content: () -> Content
 
@@ -901,7 +904,9 @@ struct CardSheet<Content: View>: View {
         NavigationStack {
             content()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(20)
+                .contentMargins(.horizontal, edgeToEdgeScroll ? 20 : 0, for: .scrollContent)
+                .padding(.vertical, 20)
+                .padding(.horizontal, edgeToEdgeScroll ? 0 : 20)
                 .foregroundStyle(app.palette.ink)
             .background(app.palette.paper.ignoresSafeArea())
             .navigationTitle(title)

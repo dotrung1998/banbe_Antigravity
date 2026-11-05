@@ -26,7 +26,7 @@ struct ProjectMemberSheet: View {
     }
 
     var body: some View {
-        CardSheet(title: member.map { app.projectPersonName($0.userId) } ?? app.T("Thành viên", "Member"), closeID: "project.sheet.close", fullHeight: true, onClose: close) {
+        CardSheet(title: member.map { app.projectPersonName($0.userId) } ?? app.T("Thành viên", "Member"), closeID: "project.sheet.close", fullHeight: true, edgeToEdgeScroll: true, onClose: close) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     if let m = member {
@@ -184,7 +184,7 @@ struct ProjectInviteSheet: View {
     private var mintKey: String { "\(role)|\(laneID ?? "")|\(singleUse)" }
 
     var body: some View {
-        CardSheet(title: app.T("Mời thành viên", "Invite someone"), closeID: "project.sheet.close", fullHeight: true, onClose: close) {
+        CardSheet(title: app.T("Mời thành viên", "Invite someone"), closeID: "project.sheet.close", fullHeight: true, edgeToEdgeScroll: true, onClose: close) {
           ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
