@@ -303,6 +303,35 @@ extension AppState {
         return nil
     }
 
+    /// Guidance before the limit (2026-11-05): a gentle tip while there's room, a firmer nudge as the project fills up.
+    /// `firm` = close to the limit. Nil once at the limit (the limit message takes over).
+    func projectLaneGuidance() -> (text: String, firm: Bool)? {
+        let n = projectSnapshot?.lanes?.count ?? 0, max = ProjectLimits.shared.lanesMax
+        if n >= max { return nil }
+        if n >= 6 {
+            return (T("Đã có \(n)/\(max) hạng mục. Càng nhiều hạng mục, cả đội càng phải theo dõi nhiều chỗ. Thử gộp vào một hạng mục sẵn có trước.",
+                      "\(n) of \(max) lanes used. Every extra lane is one more place for the team to check. Try fitting this into an existing lane first."), true)
+        }
+        return (T("Phần lớn sự kiện chỉ cần 4 đến 6 hạng mục. Hãy mở hạng mục mới khi có một phần việc lớn và một người lo riêng.",
+                  "Most events run well on 4 to 6 lanes. Open a new one for a big area of work that one person will own."), false)
+    }
+
+    func projectTaskGuidance(laneID: String?) -> (text: String, firm: Bool)? {
+        if projectTaskLimitText(laneID: laneID) != nil { return nil }
+        let tasks = projectSnapshot?.tasks ?? [], l = ProjectLimits.shared
+        let inLane = laneID.map { id in tasks.filter { $0.laneId == id }.count } ?? 0
+        if inLane >= l.tasksPerLaneMax - 5 {
+            return (T("Hạng mục này đã có \(inLane)/\(l.tasksPerLaneMax) việc. Hãy hoàn thành hoặc gộp bớt để danh sách dễ theo dõi.",
+                      "This lane has \(inLane) of \(l.tasksPerLaneMax) tasks. Finish or merge a few so the list stays easy to follow."), true)
+        }
+        if tasks.count >= l.tasksMax - 15 {
+            return (T("Dự án đã có \(tasks.count)/\(l.tasksMax) việc. Chỉ thêm việc thật sự cần cho ngày sự kiện.",
+                      "This project has \(tasks.count) of \(l.tasksMax) tasks. Add only what the event really needs."), true)
+        }
+        return (T("Một việc là một kết quả rõ ràng, có một người lo. Việc lặt vặt nên gộp chung vào một việc.",
+                  "A task is one clear result with one owner. Group small to-dos into a single task."), false)
+    }
+
     @discardableResult
     func addProjectLane(_ name: String) async -> Bool {
         if projectOffline {

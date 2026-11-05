@@ -583,3 +583,12 @@ Detail "About & Included" rely on half height. The demo "View as" picker (Accoun
 - Limits: lanes stay at 10 (server-enforced since 210). NEW tasksPerLaneMax 15 and tasksMax 60 in src/data/projectLimits.json
   (+ ProjectLimits fallback). Checked in `saveProjectTask` on create (`projectTaskLimitText`), NOT by the server yet. A server check
   needs a small migration on `project_save_task`. Web does not read the new keys yet.
+
+## 2026-11-05: guidance before the limits (iOS; owner testing)
+
+`ProjectGuidance` tip (ProjectComponents.swift) at the top of the lane sheet and in the new-task form, text from
+`AppState.projectLaneGuidance()` / `projectTaskGuidance(laneID:)`:
+- Lanes: under 6 = gentle tip ("most events run well on 4 to 6 lanes…"); 6-9 = honey nudge with "n of 10" and "fit it into an existing lane first".
+- Tasks: gentle "one clear result, one owner; group small to-dos"; honey nudge from 10/15 in the lane or 45/60 in the project.
+- At the limit the tip is replaced by the red limit message (the task form now shows it before saving too).
+Web not done.

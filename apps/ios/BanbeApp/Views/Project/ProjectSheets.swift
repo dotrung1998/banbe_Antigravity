@@ -205,6 +205,12 @@ struct ProjectTaskSheet: View {
 
     @ViewBuilder
     private var form: some View {
+        if task == nil, let g = app.projectTaskGuidance(laneID: laneID.isEmpty ? nil : laneID) { ProjectGuidance(text: g.text, firm: g.firm) }
+        if task == nil, let full = app.projectTaskLimitText(laneID: laneID.isEmpty ? nil : laneID) {
+            Text(full).font(.subheadline).padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundStyle(BanbeTheme.alert)
+                .background(BanbeTheme.alert.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
         ProjectTextField(label: app.T("Tên việc", "Title"), text: $title, limit: 60, placeholder: app.T("Làm gì?", "What needs doing?"),
                          id: "project.task.title")
         VStack(alignment: .leading, spacing: 8) {
@@ -372,6 +378,7 @@ struct ProjectNewLaneSheet: View {
                             .background(app.palette.clayBg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .foregroundStyle(app.palette.clay)
                     }
+                    if let g = app.projectLaneGuidance() { ProjectGuidance(text: g.text, firm: g.firm) }
                     ProjectTextField(label: app.T("Tìm hoặc gõ tên mới", "Search or type a new name"), text: $query, limit: 24,
                                      placeholder: app.T("Ví dụ: Truyền thông", "e.g. Marketing"), id: "project.lane.name")
                     if count >= ProjectLimits.shared.lanesMax {

@@ -285,3 +285,24 @@ enum ProjectLanePresets {
         return all.filter { key($0.vi).contains(q) || key($0.en).contains(q) }
     }
 }
+
+
+/// A quiet tip that helps people keep a project small (lane and task sheets). `firm` turns it honey when near a limit.
+struct ProjectGuidance: View {
+    @EnvironmentObject private var app: AppState
+    let text: String
+    let firm: Bool
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: firm ? "exclamationmark.circle.fill" : "lightbulb")
+                .font(.system(size: 15, weight: .semibold)).padding(.top, 1).accessibilityHidden(true)
+            Text(text).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(firm ? app.palette.honey : app.palette.ink2)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(firm ? app.palette.honeyBg : app.palette.block, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("project.guidance")
+    }
+}
