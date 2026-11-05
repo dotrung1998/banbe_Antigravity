@@ -156,6 +156,9 @@ struct ProjectTasksTab: View {
         .padding(.horizontal, newLane == lane.id ? 8 : 0)
         .padding(.bottom, newLane == lane.id ? 8 : 0)
         .background(newLane == lane.id ? app.palette.clayBg.opacity(0.6) : .clear, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(GeometryReader { g in
+            Color.clear.preference(key: ProjectLaneTopKey.self, value: [lane.id: g.frame(in: .named(ProjectLaneNav.space)).minY])
+        })
         .id("project.lane.\(lane.id)")
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project.lane.\(lane.id)")
@@ -189,5 +192,71 @@ extension AppState {
         case "channel_edit": return T("Sửa kênh: \(r.payload.channel?.label ?? "")", "Edit channel: \(r.payload.channel?.label ?? "")")
         default: return T("Gỡ một kênh", "Remove a channel")
         }
+    }
+}
+
+
+/// Where each lane's heading sits in the hub's scroll view (Tasks), so the navigator knows which lane is on screen.
+struct ProjectLaneTopKey: PreferenceKey {
+    static var defaultValue: [String: CGFloat] = [:]
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) { value.merge(nextValue()) { $1 } }
+}
+
+/// Lane navigator over the Tasks list (2026-11-05): one chip per lane with its icon and done/total. Tap to jump; the lane
+/// you're looking at is filled and kept in view as you scroll.
+struct ProjectLaneNav: View {
+    static let space = "projectScroll"
+    @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let lanes: [ProjectLane]
+    let tasks: [ProjectTask]
+    let current: String?
+    let jump: (String) -> Void
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(lanes.sorted { $0.position < $1.position }) { lane in chip(lane).id(lane.id) }
+                }
+                .padding(.horizontal, 18).padding(.vertical, 10)
+            }
+            .onChange(of: current) { _, id in
+                guard let id else { return }
+                if reduceMotion { proxy.scrollTo(id, anchor: .center) }
+                else { withAnimation(.snappy(duration: 0.3)) { proxy.scrollTo(id, anchor: .center) } }
+            }
+        }
+        .background(app.palette.paper)
+        .overlay(alignment: .bottom) { Rectangle().fill(app.palette.divider).frame(height: 1) }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(app.T("Đi tới hạng mục", "Jump to lane"))
+        .accessibilityIdentifier("project.laneNav")
+    }
+
+    private func chip(_ lane: ProjectLane) -> some View {
+        let on = lane.id == current
+        let mine = tasks.filter { $0.laneId == lane.id }
+        let done = mine.filter { $0.status == "done" }.count
+        return Button {
+            Haptics.selection()
+            jump(lane.id)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: ProjectLanePresets.icon(for: lane.name)).font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(on ? app.palette.paper : app.palette.clay)
+                Text(lane.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                Text("\(done)/\(mine.count)").font(.caption.weight(.bold).monospacedDigit())
+                    .foregroundStyle(on ? app.palette.paper.opacity(0.7) : app.palette.ink3)
+            }
+            .padding(.horizontal, 12).frame(minHeight: 38)
+            .foregroundStyle(on ? app.palette.paper : app.palette.ink)
+            .background(on ? app.palette.ink : app.palette.block, in: Capsule())
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: on)
+        }
+        .buttonStyle(PressableButtonStyle(haptic: false))
+        .accessibilityLabel(app.T("\(lane.name), xong \(done) trên \(mine.count)", "\(lane.name), \(done) of \(mine.count) done"))
+        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("project.laneNav.\(lane.id)")
     }
 }

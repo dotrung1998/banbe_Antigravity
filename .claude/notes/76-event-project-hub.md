@@ -592,3 +592,11 @@ Detail "About & Included" rely on half height. The demo "View as" picker (Accoun
 - Tasks: gentle "one clear result, one owner; group small to-dos"; honey nudge from 10/15 in the lane or 45/60 in the project.
 - At the limit the tip is replaced by the red limit message (the task form now shows it before saving too).
 Web not done.
+
+## 2026-11-05: lane navigator on Tasks (iOS; owner testing)
+
+`ProjectLaneNav` (ProjectTasksTab.swift) sits pinned between the tab row and the Tasks list when there are 2+ lanes: one chip per
+lane (icon, name, done/total). Tap = scroll that lane's heading to the top; the lane at the top of the list is filled ink and the
+strip keeps it in view. Tracking: each lane section reports its minY (`ProjectLaneTopKey`, coordinate space "projectScroll" on the
+hub ScrollView); the current lane is the last heading at or above 60 pt; updates pause 0.6 s after a tap so the highlight doesn't
+flicker. Also: `import Combine` in ConfirmedView (Xcode warnings from the Timer.publish ticker).

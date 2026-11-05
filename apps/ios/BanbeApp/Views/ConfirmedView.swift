@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// Port of src/screens/Confirmed.jsx — the ticket: hold countdown while the
 /// booking is still pending, the entry code, and a real scannable QR of the

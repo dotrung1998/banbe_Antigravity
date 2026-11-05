@@ -7,6 +7,10 @@ struct ProjectHubView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.scenePhase) private var scenePhase
     @State private var sheet: ProjectSheet?
+    /// Tasks: the lane at the top of the list right now (drives the lane navigator's highlight).
+    @State private var currentLane: String?
+    /// While a navigator jump animates, the highlight stays on the tapped lane instead of flickering past the others.
+    @State private var laneJumpUntil = Date.distantPast
 
     /// Phase 5: live sync (the 15 s run-of-show poll) is on only on the event day, on Day-of, with the app in front.
     private var live: Bool { app.projectLiveSyncOn(scenePhaseActive: scenePhase == .active) }
@@ -20,6 +24,14 @@ struct ProjectHubView: View {
                 Rectangle().fill(app.palette.divider).frame(height: 1)
                 ZStack(alignment: .bottomTrailing) {
                   ScrollViewReader { proxy in
+                   VStack(spacing: 0) {
+                    if app.projectTab == "tasks", (snap.lanes ?? []).count > 1 {
+                        ProjectLaneNav(lanes: snap.lanes ?? [], tasks: snap.tasks ?? [], current: currentLane ?? (snap.lanes ?? []).min { $0.position < $1.position }?.id) { id in
+                            currentLane = id
+                            laneJumpUntil = Date().addingTimeInterval(0.6)
+                            withAnimation(.snappy(duration: 0.4)) { proxy.scrollTo("project.lane.\(id)", anchor: .top) }
+                        }
+                    }
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
                             banners(snap)
@@ -31,9 +43,18 @@ struct ProjectHubView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .refreshable { await app.refreshProject() }
+                    .coordinateSpace(name: ProjectLaneNav.space)
+                    .onPreferenceChange(ProjectLaneTopKey.self) { tops in
+                        guard Date() >= laneJumpUntil else { return }
+                        // The current lane is the last one whose heading has reached the top of the list.
+                        let id = tops.filter { $0.value <= 60 }.max { $0.value < $1.value }?.key
+                            ?? tops.min { $0.value < $1.value }?.key
+                        if id != currentLane { currentLane = id }
+                    }
                     .environment(\.projectScrollTo, ProjectScrollTo { id in
                         withAnimation(.snappy(duration: 0.35)) { proxy.scrollTo(id, anchor: .center) }
                     })
+                   }
                   }
                     if app.projectTab == "tasks", canAddTask(snap) || canLane { addTaskButton(snap) }
                     if app.projectTab == "topics", app.projectCan("post.question") { newPostButton }
