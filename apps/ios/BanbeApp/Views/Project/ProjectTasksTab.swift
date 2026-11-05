@@ -213,19 +213,23 @@ struct ProjectLaneNav: View {
     static let space = "projectScroll"
     static let endKey = "__end"
 
-    /// The lane being looked at. Normally the last heading at or above the top band (60 pt). At the bottom of the list the
-    /// last lanes can't scroll that high, so there it's the last heading that is on screen.
+    /// The lane being looked at: the last heading above a reading line. The line sits near the top (60 pt) for most of
+    /// the list, and over the last stretch of scrolling slides down the screen, so lanes too short to reach the top still
+    /// each become current in order before the end (they used to be skipped). A list that fits on screen keeps its first lane.
     static func current(_ tops: [String: CGFloat], viewport: CGFloat) -> String? {
         var lanes = tops; let end = lanes.removeValue(forKey: endKey)
         guard !lanes.isEmpty else { return nil }
-        // The hub pads 110 pt under the list; "at the bottom" = the end marker is within that padding of the bottom edge.
-        // Only once the list has actually scrolled (the first heading has passed the top band): a short list that fits on
-        // screen is "at the bottom" from the start and should keep its first lane.
-        if let end, viewport > 0, end <= viewport - 90, (lanes.values.min() ?? 0) <= 60 {
-            if let id = lanes.filter({ $0.value < viewport - 60 }).max(by: { $0.value < $1.value })?.key { return id }
+        var line: CGFloat = 60
+        if let end, viewport > 0, (lanes.values.min() ?? 0) <= 60 {
+            // The hub pads 110 pt under the list, so the end marker rests at viewport - 111 when scrolled to the bottom.
+            let remaining = max(0, end - (viewport - 111))
+            let span = viewport * 0.6
+            let t = min(1, max(0, 1 - remaining / span))
+            line = 60 + t * max(0, viewport - 60 - 120)
         }
-        return lanes.filter { $0.value <= 60 }.max { $0.value < $1.value }?.key ?? lanes.min { $0.value < $1.value }?.key
+        return lanes.filter { $0.value <= line }.max { $0.value < $1.value }?.key ?? lanes.min { $0.value < $1.value }?.key
     }
+
     @EnvironmentObject private var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let lanes: [ProjectLane]

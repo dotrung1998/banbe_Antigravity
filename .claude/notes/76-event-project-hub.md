@@ -607,3 +607,7 @@ flicker. Also: `import Combine` in ConfirmedView (Xcode warnings from the Timer.
 - Fix (owner report): All | Mine lived as @State inside ProjectTasksTab, so the navigator still listed lanes the Mine list hides
   (tapping them did nothing). Now `tasksMineOnly` is owned by ProjectHubView and passed as a binding; under Mine the navigator shows
   only lanes with my tasks and counts only my tasks (`navLanes`); switching resets the highlight.
+- Fix (owner report): short lanes near the end were skipped (the highlight jumped from "Khách & vé" straight to the last lane).
+  `ProjectLaneNav.current` now uses a reading line: 60 pt from the top for most of the list, sliding down to viewport − 120 over
+  the last 60 % of a screen of scrolling, so each tail lane becomes current in order. Replaces the "last visible heading at the
+  bottom" rule. A list that fits on screen keeps its first lane.
