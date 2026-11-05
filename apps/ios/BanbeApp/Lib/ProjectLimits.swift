@@ -5,6 +5,8 @@ import Foundation
 /// enforces the same numbers. `ProjectLimitsTests` checks the bundled copy against the repo file.
 struct ProjectLimits: Decodable, Equatable {
     let lanesMax: Int, laneNameMax: Int, changeWhyMax: Int
+    /// Tasks per lane / per project (2026-11-05): keeps a project focused; checked by the app, not yet by the server.
+    let tasksPerLaneMax: Int, tasksMax: Int
     let reasonMin: Int, reasonMax: Int
     let taskTitleMin: Int, taskTitleMax: Int
     let postTitleMin: Int, postTitleMax: Int, postBodyMax: Int, replyMax: Int, repliesMax: Int
@@ -29,7 +31,7 @@ struct ProjectLimits: Decodable, Equatable {
 
     /// Same numbers as the JSON, only used if the bundle is broken (a release build must still refuse safely).
     static let fallback = ProjectLimits(
-        lanesMax: 10, laneNameMax: 24, changeWhyMax: 140, reasonMin: 3, reasonMax: 140, taskTitleMin: 3, taskTitleMax: 60,
+        lanesMax: 10, laneNameMax: 24, changeWhyMax: 140, tasksPerLaneMax: 15, tasksMax: 60, reasonMin: 3, reasonMax: 140, taskTitleMin: 3, taskTitleMax: 60,
         postTitleMin: 3, postTitleMax: 80, postBodyMax: 280, replyMax: 140, repliesMax: 10,
         proposalOptionsMin: 2, proposalOptionsMax: 4, proposalOptionMax: 40,
         rosTitleMin: 2, rosTitleMax: 40, rosMinMinutes: 10, rosWindowBeforeStartHours: 12, rosWindowAfterStartHours: 24,

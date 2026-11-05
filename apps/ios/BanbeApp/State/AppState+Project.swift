@@ -240,6 +240,7 @@ extension AppState {
     /// Create (taskID nil) or edit a task.
     @discardableResult
     func saveProjectTask(taskID: String?, laneID: String, title: String, assigneeID: String?, dueDate: String?, status: String?) async -> Bool {
+        if taskID == nil, let full = projectTaskLimitText(laneID: laneID) { projectNotice = full; return false }
         if projectOffline {
             if let taskID {
                 fixtureEditTask(taskID) { $0.title = title; $0.assigneeId = assigneeID; $0.dueDate = dueDate; if let status { $0.status = status } }
@@ -287,6 +288,19 @@ extension AppState {
             enum CodingKeys: String, CodingKey { case pEventId = "p_event_id", pChannels = "p_channels" }
         }
         return await projectWrite("project_set_channels", Params(pEventId: projectEventID, pChannels: channels))
+    }
+
+    /// Why no more tasks can be added (to this lane, or to the project), or nil while there's room. Limits keep a project
+    /// focused: 15 tasks a lane and 60 in all is plenty for one event (projectLimits.json).
+    func projectTaskLimitText(laneID: String?) -> String? {
+        let tasks = projectSnapshot?.tasks ?? [], l = ProjectLimits.shared
+        if tasks.count >= l.tasksMax {
+            return T("Dự án đã đủ \(l.tasksMax) việc. Hãy xoá hoặc gộp bớt việc đã xong.", "This project has \(l.tasksMax) tasks, the most it can hold. Delete or merge some first.")
+        }
+        if let laneID, tasks.filter({ $0.laneId == laneID }).count >= l.tasksPerLaneMax {
+            return T("Hạng mục này đã đủ \(l.tasksPerLaneMax) việc. Hãy chia sang hạng mục khác.", "This lane has \(l.tasksPerLaneMax) tasks, the most it can hold. Split them into another lane.")
+        }
+        return nil
     }
 
     @discardableResult

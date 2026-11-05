@@ -35,7 +35,7 @@ struct ProjectHubView: View {
                         withAnimation(.snappy(duration: 0.35)) { proxy.scrollTo(id, anchor: .center) }
                     })
                   }
-                    if app.projectTab == "tasks", canAddTask(snap) { addTaskButton(snap) }
+                    if app.projectTab == "tasks", canAddTask(snap) || canLane { addTaskButton(snap) }
                     if app.projectTab == "topics", app.projectCan("post.question") { newPostButton }
                 }
             } else if app.projectLoading {
@@ -197,11 +197,35 @@ struct ProjectHubView: View {
         return app.projectCan("task.manage", .init(laneId: lead)) && !(snap.lanes ?? []).isEmpty
     }
 
+    /// Adding a lane, or proposing one (a Manager), is allowed.
+    private var canLane: Bool { app.projectCan("lane.manage") || app.projectCan("change.propose") }
+
+    /// "Add task / lane": one button, then a choice. Each choice says why when it's at its limit.
     private func addTaskButton(_ snap: ProjectSnapshot) -> some View {
-        Button {
-            sheet = .newTask(laneID: snap.me?.role == "lane_lead" ? snap.me?.laneId : nil)
+        let lead = snap.me?.role == "lane_lead" ? snap.me?.laneId : nil
+        let taskFull = app.projectTaskLimitText(laneID: lead)
+        let lanesFull = (snap.lanes ?? []).count >= ProjectLimits.shared.lanesMax
+        return Menu {
+            if canAddTask(snap) {
+                Button { sheet = .newTask(laneID: lead) } label: {
+                    Label(app.T("Việc mới", "New task"), systemImage: "checkmark.circle")
+                    if let taskFull { Text(taskFull) }
+                }
+                .disabled(taskFull != nil)
+                .accessibilityIdentifier("project.addTask.task")
+            }
+            if canLane {
+                Button { sheet = .newLane } label: {
+                    Label(app.projectCan("lane.manage") ? app.T("Hạng mục mới", "New lane") : app.T("Đề xuất hạng mục", "Propose a lane"),
+                          systemImage: "square.grid.2x2")
+                    Text(lanesFull ? app.T("Đã đủ \(ProjectLimits.shared.lanesMax) hạng mục", "\(ProjectLimits.shared.lanesMax) lanes, the most allowed")
+                                   : app.T("\((snap.lanes ?? []).count)/\(ProjectLimits.shared.lanesMax) hạng mục", "\((snap.lanes ?? []).count)/\(ProjectLimits.shared.lanesMax) lanes"))
+                }
+                .disabled(lanesFull)
+                .accessibilityIdentifier("project.addTask.lane")
+            }
         } label: {
-            Label(app.T("Thêm việc", "Add task"), systemImage: "plus")
+            Label(app.T("Thêm việc / hạng mục", "Add task / lane"), systemImage: "plus")
                 .font(.body.weight(.bold))
                 .padding(.horizontal, 20)
                 .frame(minHeight: 56)
@@ -209,7 +233,7 @@ struct ProjectHubView: View {
                 .background(app.palette.ink, in: Capsule())
                 .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
         }
-        .buttonStyle(PressableButtonStyle())
+        .menuOrder(.fixed)
         .padding(.trailing, 18).padding(.bottom, 22)
         .accessibilityIdentifier("project.addTask")
     }

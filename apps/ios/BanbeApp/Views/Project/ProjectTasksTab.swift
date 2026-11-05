@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Tasks (v6 prototype): lane proposals (the Host reviews; a Manager sees their own), All | Mine, add or propose a lane,
-/// then every lane with its tasks. The "Add task" button floats over the list (ProjectHubView).
+/// then every lane with its tasks. The "Add task / lane" button floats over the list (ProjectHubView).
 struct ProjectTasksTab: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.openProjectSheet) private var openSheet
@@ -23,9 +23,9 @@ struct ProjectTasksTab: View {
             ], selection: mineOnly ? "mine" : "all", height: 44, showsIcons: false) { mineOnly = $0 == "mine" }
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
-                    VStack(alignment: .leading, spacing: 10) { seg; laneButton }
+                    seg
                 } else {
-                    HStack(spacing: 10) { seg.frame(maxWidth: 200); Spacer(minLength: 0); laneButton }
+                    HStack(spacing: 10) { seg.frame(maxWidth: 200); Spacer(minLength: 0) }
                 }
             }
             .padding(.bottom, 4)
@@ -125,17 +125,6 @@ struct ProjectTasksTab: View {
 
     // MARK: lanes
 
-    @ViewBuilder
-    private var laneButton: some View {
-        if app.projectCan("lane.manage") {
-            Button { openSheet(.newLane) } label: { chipLabel(app.T("Hạng mục", "Lane"), icon: "plus") }
-                .accessibilityIdentifier("project.lane.add")
-        } else if app.projectCan("change.propose") {
-            Button { openSheet(.newLane) } label: { chipLabel(app.T("Đề xuất hạng mục", "Propose lane"), icon: "plus") }
-                .accessibilityIdentifier("project.lane.propose")
-        }
-    }
-
     private func laneSection(_ lane: ProjectLane, _ tasks: [ProjectTask]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
@@ -180,15 +169,6 @@ struct ProjectTasksTab: View {
         }
         .foregroundStyle(app.palette.ink3)
         .padding(.bottom, 6)
-    }
-
-    private func chipLabel(_ title: String, icon: String) -> some View {
-        Label(title, systemImage: icon)
-            .font(.subheadline.weight(.semibold))
-            .lineLimit(1)
-            .padding(.horizontal, 14).frame(minHeight: 44)
-            .foregroundStyle(app.palette.clay)
-            .background(app.palette.clayBg, in: Capsule())
     }
 
     private func tag(_ text: String, fg: Color, bg: Color) -> some View {

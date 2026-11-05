@@ -1,6 +1,8 @@
 {
-  "_about": "Event Project Hub limits (note 76). One file for web (src/lib/projectPermissions.js) and iOS (bundled by apps/ios/project.yml, read by Lib/ProjectPermissions.swift). The server (migration 210) enforces the same numbers; change all three together.",
+  "_about": "Event Project Hub limits (note 76). One file for web (src/lib/projectPermissions.js) and iOS (bundled by apps/ios/project.yml, read by Lib/ProjectPermissions.swift). The server (migration 210) enforces the same numbers; change all three together. tasksPerLaneMax / tasksMax (2026-11-05) are checked by the apps only, not yet by the server.",
   "lanesMax": 10,
+  "tasksPerLaneMax": 15,
+  "tasksMax": 60,
   "laneNameMax": 24,
   "changeWhyMax": 140,
   "reasonMin": 3,

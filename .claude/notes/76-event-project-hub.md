@@ -573,3 +573,13 @@ Detail "About & Included" rely on half height. The demo "View as" picker (Accoun
 - Post type tags: own hue + filled icon each (Proposal honey/chart, Question teal/bubble, Update moss/megaphone, Decision solid
   ink/seal), uppercase caption. Same tints in the compose sheet's type list (`AppState.projectPostTint`).
 - Web parity NOT done.
+
+## 2026-11-05 (later still): lanes round 2 (iOS; owner testing)
+
+- Lane picker: 36 presets grouped by theme (place, food & drink, programme, people, getting the word out, money & running it). Under the
+  choices, "Already in this project" lists the project's lanes (greyed, "Added", same search).
+- One floating "Add task / lane" button (ProjectHubView) opens a menu: New task / New lane (Manager: Propose a lane). Each item is
+  disabled with the reason at its limit. The separate "+ Lane" chip on Tasks is gone. The button now also shows when there are no lanes yet.
+- Limits: lanes stay at 10 (server-enforced since 210). NEW tasksPerLaneMax 15 and tasksMax 60 in src/data/projectLimits.json
+  (+ ProjectLimits fallback). Checked in `saveProjectTask` on create (`projectTaskLimitText`), NOT by the server yet. A server check
+  needs a small migration on `project_save_task`. Web does not read the new keys yet.

@@ -228,21 +228,48 @@ enum ProjectLanePresets {
     struct Preset: Identifiable { let vi: String; let en: String; let icon: String; var id: String { en } }
 
     static let all: [Preset] = [
+        // Place and set-up
         Preset(vi: "Địa điểm", en: "Venue", icon: "mappin.and.ellipse"),
-        Preset(vi: "Thực đơn & đồ uống", en: "Food & drinks", icon: "fork.knife"),
-        Preset(vi: "Nhà cung cấp", en: "Suppliers", icon: "shippingbox"),
-        Preset(vi: "Truyền thông", en: "Marketing", icon: "megaphone"),
-        Preset(vi: "Âm thanh & ánh sáng", en: "Sound & light", icon: "speaker.wave.2"),
+        Preset(vi: "Bàn ghế & bố trí", en: "Seating & layout", icon: "chair"),
         Preset(vi: "Trang trí", en: "Decor", icon: "sparkles"),
+        Preset(vi: "Hoa", en: "Flowers", icon: "camera.macro"),
+        Preset(vi: "Âm thanh & ánh sáng", en: "Sound & light", icon: "speaker.wave.2"),
+        Preset(vi: "Sân khấu", en: "Stage", icon: "theatermasks"),
+        Preset(vi: "Điện & thiết bị", en: "Power & equipment", icon: "powerplug"),
+        Preset(vi: "Giấy phép", en: "Permits", icon: "doc.text"),
+        Preset(vi: "An toàn", en: "Safety", icon: "cross.case"),
+        // Food and drink
+        Preset(vi: "Thực đơn & đồ uống", en: "Food & drinks", icon: "fork.knife"),
+        Preset(vi: "Bếp", en: "Kitchen", icon: "frying.pan"),
+        Preset(vi: "Quầy bar", en: "Bar", icon: "wineglass"),
+        Preset(vi: "Cà phê & trà", en: "Coffee & tea", icon: "cup.and.saucer"),
+        Preset(vi: "Bánh & tráng miệng", en: "Cake & dessert", icon: "birthday.cake"),
+        // Programme
+        Preset(vi: "Chương trình", en: "Programme", icon: "list.bullet.rectangle"),
+        Preset(vi: "Nghệ sĩ & diễn giả", en: "Artists & speakers", icon: "music.mic"),
+        Preset(vi: "DJ & nhạc", en: "DJ & music", icon: "music.note"),
+        Preset(vi: "Workshop", en: "Workshop", icon: "paintpalette"),
+        Preset(vi: "Trò chơi & hoạt động", en: "Games & activities", icon: "gamecontroller"),
+        Preset(vi: "Trẻ em", en: "Kids", icon: "figure.and.child.holdinghands"),
+        // People
         Preset(vi: "Khách mời", en: "Guests", icon: "person.2"),
         Preset(vi: "Vé & cổng", en: "Tickets & door", icon: "ticket"),
+        Preset(vi: "Tình nguyện viên", en: "Volunteers", icon: "hand.raised"),
+        Preset(vi: "Nhà tài trợ", en: "Sponsors", icon: "star"),
+        Preset(vi: "Đối tác", en: "Partners", icon: "person.2.wave.2"),
+        Preset(vi: "Nhà cung cấp", en: "Suppliers", icon: "shippingbox"),
+        // Getting the word out
+        Preset(vi: "Truyền thông", en: "Marketing", icon: "megaphone"),
+        Preset(vi: "Mạng xã hội", en: "Social media", icon: "bubble.left.and.bubble.right"),
+        Preset(vi: "Thiết kế", en: "Design", icon: "pencil.and.ruler"),
+        Preset(vi: "Chụp ảnh & quay phim", en: "Photo & video", icon: "camera"),
+        Preset(vi: "Báo chí", en: "Press", icon: "newspaper"),
+        // Money and running it
         Preset(vi: "Ngân sách", en: "Budget", icon: "banknote"),
         Preset(vi: "Hậu cần", en: "Logistics", icon: "car"),
-        Preset(vi: "Tình nguyện viên", en: "Volunteers", icon: "hand.raised"),
-        Preset(vi: "Chụp ảnh & quay phim", en: "Photo & video", icon: "camera"),
-        Preset(vi: "An toàn", en: "Safety", icon: "cross.case"),
+        Preset(vi: "Đi lại & chỗ ở", en: "Travel & stay", icon: "bed.double"),
+        Preset(vi: "Quà tặng", en: "Gifts & merch", icon: "gift"),
         Preset(vi: "Dọn dẹp", en: "Clean-up", icon: "trash"),
-        Preset(vi: "Giấy phép", en: "Permits", icon: "doc.text"),
     ]
     static let customIcon = "square.grid.2x2"
 

@@ -340,6 +340,12 @@ struct ProjectNewLaneSheet: View {
     private var direct: Bool { app.projectCan("lane.manage") }
     private var count: Int { app.projectSnapshot?.lanes?.count ?? 0 }
     private var taken: Set<String> { Set((app.projectSnapshot?.lanes ?? []).map { ProjectLanePresets.key($0.name) }) }
+    /// The project's lanes, shown (not pickable) under the choices, filtered by the same search.
+    private var existing: [ProjectLane] {
+        let q = ProjectLanePresets.key(query)
+        return (app.projectSnapshot?.lanes ?? []).sorted { $0.position < $1.position }
+            .filter { q.isEmpty || ProjectLanePresets.key($0.name).contains(q) }
+    }
     private var ok: Bool {
         let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
         return (1...24).contains(n.count) && count < 10 && !taken.contains(ProjectLanePresets.key(n)) && (direct || ProjectReasonField.valid(why))
@@ -368,6 +374,13 @@ struct ProjectNewLaneSheet: View {
                     }
                     ProjectTextField(label: app.T("Tìm hoặc gõ tên mới", "Search or type a new name"), text: $query, limit: 24,
                                      placeholder: app.T("Ví dụ: Truyền thông", "e.g. Marketing"), id: "project.lane.name")
+                    if count >= ProjectLimits.shared.lanesMax {
+                        Text(app.T("Dự án đã đủ \(ProjectLimits.shared.lanesMax) hạng mục. Hãy lưu trữ một hạng mục trước khi thêm.",
+                                   "This project has \(ProjectLimits.shared.lanesMax) lanes, the most allowed. Archive one before adding another."))
+                            .font(.subheadline).padding(14)
+                            .background(BanbeTheme.alert.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .foregroundStyle(BanbeTheme.alert)
+                    }
                     VStack(spacing: 0) {
                         if let custom {
                             option(custom, icon: "plus", sub: app.T("Thêm hạng mục mới", "Add as a new lane"), id: "project.lane.custom")
@@ -381,6 +394,25 @@ struct ProjectNewLaneSheet: View {
                         }
                     }
                     .background(app.palette.block, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    if !existing.isEmpty {
+                        Text(app.T("Đã có trong dự án", "Already in this project").uppercased())
+                            .font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(app.palette.ink3)
+                        VStack(spacing: 0) {
+                            ForEach(existing) { l in
+                                HStack(spacing: 12) {
+                                    Image(systemName: ProjectLanePresets.icon(for: l.name)).font(.system(size: 16, weight: .semibold))
+                                        .frame(width: 36, height: 36).foregroundStyle(app.palette.ink3)
+                                        .background(app.palette.blockInset, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    Text(l.name).font(.body.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                                    Spacer(minLength: 0)
+                                    Text(app.T("Đã có", "Added")).font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink3)
+                                }
+                                .padding(.horizontal, 12).frame(minHeight: 52)
+                                .accessibilityElement(children: .combine)
+                            }
+                        }
+                        .background(app.palette.block, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
                     if !direct {
                         ProjectTextField(label: app.T("Vì sao cần?", "Why is it needed?"), text: $why, limit: 140,
                                          placeholder: app.T("Một hai câu cho Chủ sự kiện", "A line or two for the Host"), axis: .vertical,
