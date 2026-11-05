@@ -738,3 +738,7 @@ input::placeholder, textarea::placeholder {
 .bb-tknob:focus-visible::before { outline: 2px solid var(--bb-clay); outline-offset: 2px; }
 .bb-tknob-bubble { position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); background: var(--bb-fg); color: var(--bb-bg); font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 8px; white-space: nowrap; pointer-events: none; font-variant-numeric: tabular-nums; transition: opacity .15s; }
 @media (prefers-reduced-motion: reduce) { .bb-tknob::before, .bb-tknob-bubble { transition: none; } }
+
+/* Map E+ list sheet (note 79): while a pull is in progress the sheet and its veil follow the finger with no easing, and the
+   page text is not selected. */
+.bb-pulling { transition: none !important; user-select: none; -webkit-user-select: none; }

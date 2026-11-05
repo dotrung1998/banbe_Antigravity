@@ -3,13 +3,14 @@
 // The knobs are small at rest and grow only while touched (or focused). A press anywhere on the range picks the NEAREST
 // knob, so both stay reachable even a step apart (two stacked native range inputs cannot do that: the top one's thumb
 // covers the other). Each knob is a real slider for the keyboard and for screen readers.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import GlassMenu, { GlassMenuItem } from '../GlassMenu.jsx';
 import { RANGE_MIN, RANGE_MAX, RANGE_STEP, hourLabel } from '../../lib/mapTimeWindow.js';
 import { MAP_DIM } from '../../lib/mapLayout.js';
 import { ink, ink2, ink3, paper, photoPill } from '../../theme.js';
 
 const TICKS = [10, 14, 18, 22, 26];
+const TICKS_NARROW = [10, 18, 26]; // a 320 px screen leaves the range ~130 px: five labels would touch
 const SPAN = RANGE_MAX - RANGE_MIN;
 const pct = (h) => ((h - RANGE_MIN) / SPAN) * 100;
 
@@ -19,6 +20,14 @@ export default function MapTimeBar({ win, options, dayLabel, onDay, onKnob, T, s
   const [dragging, setDragging] = useState(false);
   const ruler = useRef(null);
   const dragKnob = useRef(null);
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const el = ruler.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => setNarrow(el.getBoundingClientRect().width < 170));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const on = win.on;
   const currentKey = on ? win.key : 'all';
 
@@ -90,7 +99,7 @@ export default function MapTimeBar({ win, options, dayLabel, onDay, onKnob, T, s
           style={{ position: 'relative', flex: 1, height: 44, margin: '0 10px 0 8px', touchAction: 'none', cursor: on ? 'pointer' : 'default', opacity: on ? 1 : MAP_DIM.rangeOff, pointerEvents: on ? 'auto' : 'none', transition: 'opacity 0.2s ease' }}>
           <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 14, height: 6, borderRadius: 3, background: 'rgba(var(--bb-fg-rgb),0.12)' }} />
           <div aria-hidden="true" style={{ position: 'absolute', top: 14, height: 6, borderRadius: 3, background: ink, left: `${pct(win.from)}%`, right: `${100 - pct(win.to)}%` }} />
-          {TICKS.map(h => (
+          {(narrow ? TICKS_NARROW : TICKS).map(h => (
             <span key={h} aria-hidden="true" style={{ position: 'absolute', top: 30, left: `${pct(h)}%`, transform: 'translateX(-50%)', fontSize: 10, color: ink3, fontVariantNumeric: 'tabular-nums' }}>{hourLabel(h)}</span>
           ))}
           {knob('from')}

@@ -5,6 +5,7 @@ import { createMapKitMap } from '../lib/mapkitAdapter.js';
 import { CARD_GAP, ATTRIB_RESERVE, computeMapLayout, bottomStackFraction, dockVisible, MAP_DIM } from '../lib/mapLayout.js';
 import { eventSlot, inWindow, dayOptions, defaultWindow, moveKnob, windowFromHomeDate, windowSummary } from '../lib/mapTimeWindow.js';
 import MapTimeBar from '../components/map/MapTimeBar.jsx';
+import MapListSheet from '../components/map/MapListSheet.jsx';
 import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useBanBe, resolveCoverUrl, photoUrlsByEvent } from '../state/BanBeContext.jsx';
 import { cardPhotoList } from '../lib/eventPhotoUrls.js';
@@ -1951,12 +1952,10 @@ export default function MapExplore() {
         </div>
       )}
 
-      {/* The list: a layer that slides up to just under the shared controls. It stays mounted (so its scroll position
-          is kept and restored) and is hidden from tab order and screen readers while closed. */}
-      <section data-testid="map-list-sheet" aria-label={T('Danh sách sự kiện', 'Event list')} aria-hidden={listOpen ? undefined : true}
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: listTop, zIndex: 4, background: paper, display: 'flex', flexDirection: 'column',
-          transform: listOpen ? 'none' : 'translateY(100%)', visibility: listOpen ? 'visible' : 'hidden',
-          transition: reduceMotion() ? 'none' : `transform 0.38s cubic-bezier(.2,.85,.25,1), visibility 0s linear ${listOpen ? 0 : 0.38}s` }}>
+      {/* The list: a layer that slides up to just under the shared controls, with a veil over the strip above it. A pull down
+          from its top (finger, mouse or wheel), its Map button and Esc all return to the map. Its rows exist only while it
+          is open; it is hidden from tab order and screen readers while closed. */}
+      <MapListSheet open={listOpen} onClose={() => setListOpen(false)} top={listTop} scrollRef={listRef} mapButtonBottom={dockClear + 12} T={T}>
         <div data-testid="map-full-count" style={{ padding: '2px 16px 6px', flex: 'none' }}>
           {mapCity && (
             <div data-testid="map-sheet-city" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: clay, display: 'flex', alignItems: 'center', gap: 4, paddingTop: 4 }}>
@@ -2044,15 +2043,7 @@ export default function MapExplore() {
             });
           })()}
         </div>
-
-        {/* Back to the map (also Esc). */}
-        <button type="button" onClick={() => setListOpen(false)} data-testid="map-list-map-button" aria-label={T('Xem bản đồ', 'Show map')}
-          style={{ position: 'absolute', left: '50%', bottom: dockClear + 12, transform: 'translateX(-50%)', height: 44, padding: '0 20px', borderRadius: 999, border: 'none',
-            background: ink, color: paper, display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,0.28)' }}>
-          {T('Bản đồ', 'Map')}
-          <svg aria-hidden="true" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14" /></svg>
-        </button>
-      </section>
+      </MapListSheet>
 
       {categorySheetOpen && (
         <CategorySheet
