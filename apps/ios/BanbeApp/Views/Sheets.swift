@@ -432,7 +432,7 @@ struct LocationPickerSheet: View {
 
     /// Filter-sheet mode: a standard iOS sheet (see `NativeLocationPicker`).
     private var sheetBody: some View {
-        NativeLocationPicker(isPresented: $isPresented, startsExpanded: app.area != LocationHierarchy.allID)
+        NativeLocationPicker(isPresented: $isPresented, startsExpanded: true, topContent: topContent)
     }
 
     private var cardBody: some View {
@@ -513,11 +513,21 @@ struct NativeLocationPicker: View {
     @State private var query = ""
     /// "All locations" selected: opens at half height with every country collapsed. A location already picked: opens
     /// at full height with its branch expanded and its row scrolled into view. Expanding anything goes full height.
-    @State private var detent: PresentationDetent
+    @State private var detent: PresentationDetent = .large
+    /// The Map's "Cities" chips, shown above the list.
+    var topContent: AnyView? = nil
 
-    init(isPresented: Binding<Bool>, startsExpanded: Bool) {
+    init(isPresented: Binding<Bool>, startsExpanded: Bool, topContent: AnyView? = nil) {
         _isPresented = isPresented
-        _detent = State(initialValue: startsExpanded ? .large : .medium)
+        self.topContent = topContent
+    }
+
+    @ViewBuilder private var doneButton: some View {
+        if #available(iOS 26.0, *) {
+            Button(role: .confirm) { Haptics.selection(); isPresented = false }
+        } else {
+            Button(app.T("Xong", "Done")) { Haptics.selection(); isPresented = false }.fontWeight(.semibold)
+        }
     }
 
     private func findNode(_ id: String, in nodes: [LocationNode]) -> LocationNode? {
@@ -572,6 +582,13 @@ struct NativeLocationPicker: View {
         NavigationStack {
             ScrollViewReader { proxy in
             List {
+                if search == nil, let topContent {
+                    Section {
+                        topContent
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
+                    }
+                }
                 if search == nil {
                     Section {
                         selectRow(id: LocationHierarchy.allID, title: app.T("Tất cả khu vực", "All locations"),
@@ -610,6 +627,7 @@ struct NativeLocationPicker: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .listSectionSpacing(.compact)
             .scrollContentBackground(.hidden)
             .background(app.palette.paper)
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
@@ -635,25 +653,26 @@ struct NativeLocationPicker: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(app.T("Xong", "Done")) { Haptics.selection(); isPresented = false }
-                        .fontWeight(.semibold)
+                    doneButton
                         .accessibilityIdentifier("home.filter.area.done")
                 }
             }
         }
         .tint(app.palette.ink)
         .foregroundStyle(app.palette.ink)
-        .presentationDetents([.medium, .large], selection: $detent)
+        // Always the highest position, so every option is in view; the dock is hidden under it.
+        .presentationDetents([.large], selection: $detent)
         .presentationDragIndicator(.visible)
         .presentationBackground(app.palette.paper)
+        .hidesDock("locationPicker")
         .onAppear {
             if app.area == LocationHierarchy.allID {
                 // "All locations": always the same clean start — every country collapsed.
                 app.areaExpanded.removeAll()
             } else {
                 // The picked location's branch open (and the node itself, if it is a parent shown via "All in X").
-                app.areaExpanded.formUnion(LocationHierarchy.ancestorIDs(of: app.area))
-                app.areaExpanded.insert(app.area)
+                // Only the path TO the pick is open; a picked city is not left fully expanded on return.
+                app.areaExpanded = Set(LocationHierarchy.ancestorIDs(of: app.area))
             }
         }
     }
@@ -854,7 +873,7 @@ struct ReasonSheetView: View {
                                 Text(app.T(reason.vi, reason.en))
                                     .font(.system(size: 14.5))
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.vertical, 13)
+                                    .padding(.vertical, 8)
                                     .opacity(app.reasonPromptBusy ? 0.5 : 1)
                                     .contentShape(Rectangle())
                             }

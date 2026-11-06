@@ -305,7 +305,8 @@ struct HomeView: View {
         }
         // Note 50 — every filter in one sheet over the results; edits a draft until "Show N events".
         .sheet(isPresented: $app.homeFilterSheetOpen) {
-            HomeFilterSheet(items: makeSnapshot().items, now: Date(), onClose: { app.homeFilterSheetOpen = false })
+            HomeFilterSheet(items: makeSnapshot().items, now: Date(), onClose: { app.homeFilterSheetOpen = false },
+                            forYou: (app.eventPrefs?.isEmpty ?? true) ? nil : Binding(get: { app.filterForYou }, set: { app.filterForYou = $0 }))
             .environmentObject(app)
         }
         .sheet(isPresented: $categorySheetOpen) {
@@ -1145,7 +1146,7 @@ struct HomeView: View {
 
     private static let quickChips: [(key: String, vi: String, en: String)] = [
         ("today", "Hôm nay", "Today"), ("weekend", "Cuối tuần này", "This weekend"),
-        ("free", "Miễn phí", "Free"), ("almostFull", "Sắp hết chỗ", "Almost full"),
+        ("free", "Miễn phí", "Free"), ("seatsLeft", "Còn chỗ", "Seats left"), ("almostFull", "Sắp hết chỗ", "Almost full"),
     ]
 
     private func quickActive(_ key: String, _ f: HomeDiscovery.Filters) -> Bool {
@@ -1153,6 +1154,7 @@ struct HomeView: View {
         case "today": return f.date == "today"
         case "weekend": return f.date == "weekend"
         case "free": return f.free
+        case "seatsLeft": return f.seatsLeft
         default: return f.almostFull
         }
     }
@@ -1163,6 +1165,7 @@ struct HomeView: View {
         case "today": f.date = f.date == "today" ? "any" : "today"
         case "weekend": f.date = f.date == "weekend" ? "any" : "weekend"
         case "free": f.free.toggle(); f.priceMin = nil; f.priceMax = nil
+        case "seatsLeft": f.seatsLeft.toggle()
         default: f.almostFull.toggle()
         }
         app.setHomeFilters(f)
@@ -1181,6 +1184,7 @@ struct HomeView: View {
         let shown = app.homeSort != "soonest" ? HomeDiscovery.sort(filtered, mode: app.homeSort) : filtered
         var quick = HomeDiscovery.optionCounts(items, f, .date, options: ["today", "weekend"], now: now)
         quick["free"] = HomeDiscovery.optionCounts(items, f, .free, now: now)["true"]
+        quick["seatsLeft"] = HomeDiscovery.optionCounts(items, f, .seatsLeft, now: now)["true"]
         quick["almostFull"] = HomeDiscovery.optionCounts(items, f, .almostFull, now: now)["true"]
         let hints = shown.count < 3 ? HomeDiscovery.relaxationHints(items, f, now: now) : []
         // Best-match label: the top For You match, only when the user has answers. Without answers the first

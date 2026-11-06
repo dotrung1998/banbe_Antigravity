@@ -5,6 +5,7 @@ import SwiftUI
 struct PreferencesView: View {
     @EnvironmentObject var app: AppState
     @AppStorage(Haptics.defaultsKey) private var hapticsEnabled = true
+    @AppStorage(MapSurfaceStyle.defaultsKey) private var mapSurface = MapSurfaceStyle.glass.rawValue
 
     var body: some View {
         ScreenScaffold {
@@ -25,6 +26,21 @@ struct PreferencesView: View {
                     .font(.system(size: 13.5))
                     .lineSpacing(3)
                     .padding(.top, 10)
+
+                section(app.T("Giao diện bản đồ", "Map controls")) {
+                    choice(title: app.T("Kính (Liquid Glass)", "Glass (Liquid Glass)"),
+                           subtitle: app.T("Trong suốt, theo hệ thống", "Translucent, follows the system"),
+                           active: mapSurface == MapSurfaceStyle.glass.rawValue) {
+                        mapSurface = MapSurfaceStyle.glass.rawValue
+                    }
+                    .accessibilityIdentifier("pref.map.glass")
+                    choice(title: app.T("Màu tĩnh", "Static colour"),
+                           subtitle: app.T("Nền đặc, dễ đọc hơn", "Solid surfaces, easier to read"),
+                           active: mapSurface == MapSurfaceStyle.solid.rawValue) {
+                        mapSurface = MapSurfaceStyle.solid.rawValue
+                    }
+                    .accessibilityIdentifier("pref.map.solid")
+                }
 
                 section(app.T("Ngôn ngữ", "Language")) {
                     choice(title: "Tiếng Việt", subtitle: app.T("Mặc định", "Vietnamese"),

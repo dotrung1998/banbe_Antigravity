@@ -198,6 +198,7 @@ extension AppState {
 
     /// "See on map": Map opens fresh with the query already applied (no keyboard).
     func seeSearchOnMap(_ query: String) {
+        crossFadeIntoMap()
         mapExploreState = nil
         mapExploreSeedQuery = query
         screen = .mapExplore

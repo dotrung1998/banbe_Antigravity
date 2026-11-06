@@ -566,6 +566,15 @@ final class AppState: ObservableObject {
     /// Set by `openSearch(from:)` when Search is opened from Home's bar: Search's own field starts there and glides
     /// up into its header. nil = no entrance motion (opened from anywhere else).
     var searchEntranceFrom: CGRect?
+    // The persistent search bar (Views/PersistentSearchBar.swift), hosted once in RootView for Search and Map.
+    @Published var searchBarFocused = false
+    /// True while the bar sits over Home's own bar (entrance / exit glide); driven by the open screen.
+    @Published var searchBarAtHome = false
+    /// The Map's own query (Search's is `searchQuery`).
+    @Published var mapSearchText = ""
+    @Published var searchBarHandlers: SearchBarHandlers?
+    /// Where the Map's search field starts its entrance glide (Home's bar); nil = no glide.
+    var mapEntranceFrom: CGRect?
     /// One-shot query Map applies on its next fresh open ("See on map" from Search).
     @Published var mapExploreSeedQuery: String?
     /// Home → Map contract (Map redesign phase 3): Home's applied filters + For You, read once by the next fresh Map
@@ -2324,8 +2333,23 @@ final class AppState: ObservableObject {
     /// see that flag's own doc comment for why a real dismiss is needed
     /// instead of just the content transform), clears the snapshot, and
     /// performs the actual navigation after the animation's own duration.
-    func confirmMapExploreClose() {
+    /// True while the map dissolves into Home (back button): a longer cross-fade so the search bar can glide down
+    /// onto Home's bar while the map content turns into Home's.
+    @Published var mapDissolveToHome = false
+
+    func confirmMapExploreClose(dissolveToHome: Bool = false) {
         guard screen == .mapExplore else { return }
+        if dissolveToHome {
+            mapDissolveToHome = true
+            dockTabSwitch = true
+            mapExploreState = nil
+            goBack()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                self.mapDissolveToHome = false
+                self.dockTabSwitch = false
+            }
+            return
+        }
         withAnimation(.easeOut(duration: 0.22)) { mapCloseSwipeProgress = 1 }
         mapCloseConfirmed = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
@@ -3125,6 +3149,12 @@ final class AppState: ObservableObject {
     }
 
     func noteScaffoldScroll(_ offsetY: CGFloat, userDriven: Bool) {
+        // The dock never hides while scrolling Account (and its sub-screens).
+        if screen == .profile || screen == .accountGroup {
+            lastScaffoldScrollOffset = offsetY
+            if DockChrome.shared.collapsed { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { DockChrome.shared.collapsed = false } }
+            return
+        }
         guard Date() >= dockCollapseSuppressedUntil else { lastScaffoldScrollOffset = offsetY; return }
         // Note 47: the dock only shrinks while the user is scrolling a screen down. Programmatic moves (a tab's
         // scroll position restored when you come back to it, first layout) just re-baseline, so returning to the
@@ -3151,9 +3181,18 @@ final class AppState: ObservableObject {
     }
 
     func goHome() { searchOverlayOpen = false; notificationsOverlayOpen = false; screen = .home }
+    /// Home / Search → Map is a quick cross-fade (the same one a dock tap uses), not a push to another page: the
+    /// search bar stays where it is and the map fills in around it.
+    func crossFadeIntoMap() {
+        dockTabSwitch = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.dockTabSwitch = false }
+    }
     func goMapExplore() { mapExploreEntry = nil; screen = .mapExplore }
     /// From Home: the Map opens with Home's applied filters and For You (it says when its area shows fewer).
     func goMapExploreFromHome() {
+        crossFadeIntoMap()
+        // Home's own bar: the map's search field glides up from it. (Not set from other screens.)
+        mapEntranceFrom = screen == .home && homeSearchBarFrame.width > 0 ? homeSearchBarFrame : nil
         mapExploreEntry = (homeFilters, filterForYou && hasForYouMatches)
         screen = .mapExplore
     }

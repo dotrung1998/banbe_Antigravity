@@ -116,7 +116,11 @@ struct MapExploreView: View {
     // Map search-focus fix (2026-09-28, fifth pass): plain `@State`, not `@FocusState`. See `FocusableTextField`'s own
     // doc comment (Components.swift) for the confirmed reason: `@FocusState` cannot deliver programmatic focus to this
     // field on a real device, while `FocusableTextField`'s direct `becomeFirstResponder()` can.
-    @State private var searchFieldFocused = false
+    /// The persistent bar's focus (the field itself lives in RootView, see PersistentSearchBar).
+    private var searchFieldFocused: Bool {
+        get { app.searchBarFocused }
+        nonmutating set { app.searchBarFocused = newValue }
+    }
     private let startFocusedOnSearch: Bool
     /// Note 50: Search's "See on map": the query a fresh open starts with (one-shot, like the focus intent).
     private let seedQuery: String?
@@ -412,6 +416,28 @@ struct MapExploreView: View {
                 app.mapExploreEntry = nil // the Home hand-off is read once
             }
         }
+        // The persistent search bar: this screen's handlers, query and entrance/exit glide.
+        .onAppear {
+            app.mapSearchText = searchQuery
+            registerSearchBar()
+            if startFocusedOnSearch && !hadRestoredState { searchFieldFocused = true }
+            if app.mapEntranceFrom != nil && !reduceMotion {
+                app.searchBarAtHome = true
+                DispatchQueue.main.async { app.searchBarAtHome = false }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { app.mapEntranceFrom = nil }
+            } else {
+                app.mapEntranceFrom = nil
+                app.searchBarAtHome = false
+            }
+        }
+        .onDisappear {
+            if app.searchBarHandlers?.owner == "map" { app.searchBarHandlers = nil }
+            searchFieldFocused = false
+        }
+        .onChange(of: searchQuery) { _, q in if app.mapSearchText != q { app.mapSearchText = q } }
+        .onChange(of: app.mapSearchText) { _, q in if searchQuery != q { searchQuery = q } }
+        .onChange(of: sheetFilterCount) { _, _ in registerSearchBar() }
+        .onChange(of: app.lang) { _, _ in registerSearchBar() }
         .onChange(of: app.mapCloseSwipeCancelled) { _, cancelled in
             // An interrupted left-edge swipe never navigates anywhere: the progress springs back by itself.
             guard cancelled else { return }
@@ -451,7 +477,13 @@ struct MapExploreView: View {
         .sheet(isPresented: $filterSheetOpen) {
             // Home's sheet as a draft over THIS map area: Close discards, Apply commits atomically.
             HomeFilterSheet(items: sheetItems, now: nowMinute, onClose: { filterSheetOpen = false },
-                            mapFilters: filters, onApplyMap: { filters = Self.withoutDate($0) })
+                            mapFilters: sheetSeed,
+                            onApplyMap: { applied in
+                                // The sheet's When pills drive the map's day window (dim/bold, never a filter).
+                                if applied.date != sheetSeed.date { timeWin = Self.windowFor(date: applied.date) }
+                                filters = Self.withoutDate(applied)
+                            },
+                            forYou: hasForYouPrefs ? Binding(get: { forYouOn }, set: { forYouOn = $0 }) : nil)
                 .environmentObject(app)
         }
         .sheet(isPresented: $categorySheetOpen) {
@@ -460,14 +492,10 @@ struct MapExploreView: View {
             }
             .environmentObject(app)
         }
-        // The area picker is an overlay over the whole screen (not a second nested sheet), so the map stays in place
-        // underneath it.
-        .overlay {
-            if locationPickerOpen {
-                LocationPickerSheet(isPresented: $locationPickerOpen, topContent: AnyView(areaPickerCities))
-                    .environmentObject(app)
-                    .transition(.opacity)
-            }
+        // The area picker is a bottom sheet at its highest position (dock hidden), cities on top.
+        .sheet(isPresented: $locationPickerOpen) {
+            LocationPickerSheet(isPresented: $locationPickerOpen, doneMode: true, topContent: AnyView(areaPickerCities))
+                .environmentObject(app)
         }
         .animation(.easeOut(duration: 0.2), value: locationPickerOpen)
     }
@@ -515,12 +543,7 @@ struct MapExploreView: View {
     }
 
     private var topControls: some View {
-        MapTopControls(query: $searchQuery, focused: $searchFieldFocused, filterBadge: sheetFilterCount,
-                       autofocus: startFocusedOnSearch && !hadRestoredState,
-                       onBack: { closeMap() },
-                       onFilters: { searchFieldFocused = false; filterSheetOpen = true },
-                       onSubmit: { rememberSearch() },
-                       onCancel: { searchFieldFocused = false }) {
+        MapTopControls {
             chipRow
         }
     }
@@ -529,22 +552,23 @@ struct MapExploreView: View {
     /// feeds the reference rect), so what the stack shows never changes the results.
     private var bottomStack: some View {
         ZStack(alignment: .bottom) {
-            if showAreaChips {
+            if showAreaChips && !emptyOnly {
                 areaChipsRow
                     .padding(.bottom, MapStack.dockClear + MapStack.chipsBottom)
             }
             // The day + hours: events inside are bold on the map, the rest dimmed; "All days" turns it off. It rides above
             // the panel while one is open and is hidden under the list.
-            if !listOpen {
+            if !listOpen && !emptyOnly {
                 timeBar
                     .padding(.bottom, areaPanel != nil ? panelHeight + 12 : MapStack.dockClear + MapStack.timeBottom)
                     .animation(panelSpring, value: areaPanel != nil)
             }
             if showEmptyCard {
                 emptyCard
-                    .padding(.bottom, MapStack.dockClear + MapStack.fabBottom + MapStack.buttonHeight + 8)
+                    .padding(.bottom, emptyOnly ? MapStack.dockClear + MapStack.fabBottom
+                                                : MapStack.dockClear + MapStack.fabBottom + MapStack.buttonHeight + 8)
             }
-            if !listOpen && areaPanel == nil {
+            if !listOpen && areaPanel == nil && !emptyOnly {
                 buttonsRow
                     .padding(.bottom, MapStack.dockClear + MapStack.fabBottom)
             }
@@ -565,7 +589,7 @@ struct MapExploreView: View {
                 Text("🧭")
                     .font(.system(size: 18))
                     .frame(width: 44, height: 44)
-                    .nativeGlass(Circle(), interactive: true)
+                    .mapSurface(Circle(), interactive: true)
                     .opacity(compassOpacity)
             }
             .buttonStyle(.plain)
@@ -656,6 +680,14 @@ struct MapExploreView: View {
     /// Closed list: the same empty-state messages float above the buttons (one place at a time).
     private var showEmptyCard: Bool {
         !listOpen && !searchFieldFocused && areaPanel == nil && hasEmptyState
+    }
+
+    /// The plain "nothing in this part of the map" card with a way out: the controls under it stay hidden until the
+    /// person taps "Show nearest events".
+    private var emptyOnly: Bool {
+        guard showEmptyCard, !(forYouActive && visibleEvents.isEmpty), committedBounds != nil,
+              !(app.mapEventsLoading && app.mapEvents.isEmpty), !(app.mapEventsLoadFailed && app.mapEvents.isEmpty) else { return false }
+        return (anyInArea && filtersActive) || !matchingAnywhere.isEmpty
     }
 
     private var hasEmptyState: Bool {
@@ -919,11 +951,17 @@ struct MapExploreView: View {
         moveCamera(.destination, to: fittedRegion(box), duration: 0.8)
     }
 
-    /// Badge: filters set in the sheet or the time chips (the category row and Seats left show their own state).
-    private var sheetFilterCount: Int {
+    /// The sheet's draft: the filters, with the day window shown as its When pill.
+    private var sheetSeed: HomeDiscovery.Filters {
         var f = filters
-        f.cats = []; f.seatsLeft = false
-        return HomeDiscovery.activeFilterCount(f)
+        f.date = timeWin.on && ["today", "tomorrow", "weekend"].contains(timeWin.key) ? timeWin.key : "any"
+        return f
+    }
+
+    /// Badge: every selected filter (sheet, category, Seats left) plus For You.
+    private var sheetFilterCount: Int {
+        HomeDiscovery.activeFilterCount(filters) + (forYouActive ? 1 : 0) + (timeWin.on ? 1 : 0)
+            + (areaContext == "map" ? 0 : 1)
     }
 
     /// The sheet's market: events IN THE MAP AREA after search + For You, before Home's filters — so its pill counts
@@ -1030,6 +1068,27 @@ struct MapExploreView: View {
     /// actual navigation for both triggers now.
     private func closeMap() {
         app.confirmMapExploreClose()
+    }
+
+    private func registerSearchBar() {
+        app.searchBarHandlers = SearchBarHandlers(
+            owner: "map",
+            placeholder: app.T("Tìm tên, loại, khu vực, thành phố…", "Search name, type, area, city…"),
+            back: { backFromMap() },
+            submit: { rememberSearch() },
+            cancel: { searchFieldFocused = false },
+            filters: { searchFieldFocused = false; filterSheetOpen = true },
+            badge: sheetFilterCount)
+    }
+
+    /// Back to Home: the bar glides down onto Home's own bar (the reverse of the entrance), then the map closes.
+    private func backFromMap() {
+        let home = app.homeSearchBarFrame
+        guard !reduceMotion, home.width > 0, app.backTargetScreen == .home else { closeMap(); return }
+        searchFieldFocused = false
+        // The bar glides down onto Home's bar while the map dissolves into Home (one motion, not exit-then-enter).
+        app.searchBarAtHome = true
+        app.confirmMapExploreClose(dissolveToHome: true)
     }
 
     // MARK: - Compass button (granted / denied / permanently-denied)
@@ -1296,17 +1355,19 @@ struct MapExploreView: View {
         }
         // Street level (zoom ≥ 15): the event name under the pin, one line, truncated; drawn as an overlay so the pin
         // keeps its anchor.
-        .overlay(alignment: .bottom) {
-            if cameraZoom >= 15 {
+        .overlay(alignment: .top) {
+            if cameraZoom >= 15 || isSelected {
                 Text(ev.name)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11.5, weight: .bold))
                     .lineLimit(1).truncationMode(.tail)
-                    .frame(maxWidth: 120)
+                    .frame(maxWidth: 130)
                     .fixedSize(horizontal: false, vertical: true)
                     .foregroundStyle(app.palette.ink)
-                    .shadow(color: app.palette.paper, radius: 1.5)
-                    .shadow(color: app.palette.paper, radius: 1.5)
-                    .alignmentGuide(.bottom) { d in d[.top] - 3 }
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(app.palette.paper, in: Capsule())
+                    .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+                    .fixedSize()
+                    .offset(y: 36)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }
@@ -1632,9 +1693,10 @@ struct MapExploreView: View {
             if typing { typingResults } else { searchSuggestions }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(app.palette.paper)
         .foregroundStyle(app.palette.ink)
         .padding(.top, controlsBottomResolved)
+        // The paper runs up behind the shared controls too, so the top matches the panel below.
+        .background(app.palette.paper)
         .ignoresSafeArea()
     }
 
@@ -1667,62 +1729,91 @@ struct MapExploreView: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
-    /// For You pinned at the leading edge (never scrolls); only the other chips scroll: the area picker, Seats left
-    /// (real fill only, so hidden until banbe has any), the categories with counts, "All categories".
+    /// One scrolling row: For You first, then every selected filter (Seats left, the picked category), then the area
+    /// picker, the unselected Seats left, and the categories with counts, "All categories".
     private var chipRow: some View {
         let showSeats = openNowOnly || app.mapEvents.contains(where: { app.eventFill[$0.id] != nil })
         let counts = categoryCountMap
-        return HStack(spacing: 8) {
-            if hasForYouPrefs {
-                forYouChip
-                    .fixedSize(horizontal: true, vertical: false)
-                    .layoutPriority(1)
-                    .padding(.leading, 16)
-            }
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        // The geographic context: the city flown to, the picked area while framed on it, else "Map area".
-                        glassChip(active: false, id: "map.area") { searchFieldFocused = false; locationPickerOpen = true } label: {
-                            Text("\(areaChipLabel) ▾")
-                        }
-                        .id("map.chip.area")
-                        if showSeats {
-                            glassChip(active: openNowOnly, id: "map.openNow") { Haptics.selection(); openNowOnly.toggle() } label: {
-                                Text(app.T("Còn chỗ", "Seats left"))
-                            }
-                        }
-                        // Home's definitions and line icons, in a fixed order so the row never reshuffles; each count is
-                        // what tapping it would show with every other filter kept; a picked one stays even at 0.
-                        ForEach(orderedCategories, id: \.key) { cat in
-                            let active = catFilter == cat.key
-                            let n = counts[cat.key] ?? 0
-                            glassChip(active: active, muted: n == 0 && !active, id: "map.cat.\(cat.key)") {
-                                if !(active && cat.key == "all") {
-                                    Haptics.selection()
-                                    catFilter = active ? "all" : cat.key
-                                }
-                            } label: {
-                                Image(systemName: CategoryGlyph.symbol(cat.key)).font(.footnote).accessibilityHidden(true)
-                                Text(app.T(cat.vi, cat.en))
-                                Text("\(n)").monospacedDigit().opacity(active ? 0.85 : 0.6)
-                            }
-                            .accessibilityLabel(app.T("\(cat.vi), \(n) sự kiện", "\(cat.en), \(n) events"))
-                        }
-                        glassChip(active: false, id: "map.cat.showAll") { searchFieldFocused = false; categorySheetOpen = true } label: {
-                            Text(app.T("Tất cả danh mục", "All categories"))
-                        }
+        let picked = orderedCategories.first { $0.key == catFilter && catFilter != "all" }
+        let rest = orderedCategories.filter { !($0.key == catFilter && catFilter != "all") }
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    Color.clear.frame(width: 0, height: 1).id("map.chip.start")
+                    if hasForYouPrefs { forYouChip.fixedSize(horizontal: true, vertical: false) }
+                    if showSeats && openNowOnly { seatsChip }
+                    if filters.free { freeChip }
+                    if filters.almostFull { almostFullChip }
+                    if let picked { categoryChip(picked, counts: counts) }
+                    // The geographic context: follows the view (city, then area), else "Map area".
+                    glassChip(active: false, id: "map.area") { searchFieldFocused = false; locationPickerOpen = true } label: {
+                        Text("\(areaChipLabel) ▾")
                     }
-                    .padding(.leading, hasForYouPrefs ? 0 : 16).padding(.trailing, 16)
-                    .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.75), value: catFilter)
+                    .id("map.chip.area")
+                    if showSeats && !openNowOnly { seatsChip }
+                    // The same quick filters as Home (its Today / This weekend are this map's day bar).
+                    if !filters.free { freeChip }
+                    if !filters.almostFull { almostFullChip }
+                    ForEach(rest, id: \.key) { cat in categoryChip(cat, counts: counts) }
+                    glassChip(active: false, id: "map.cat.showAll") { searchFieldFocused = false; categorySheetOpen = true } label: {
+                        Text(app.T("Tất cả danh mục", "All categories"))
+                    }
                 }
-                // The picked category moves to the front: scroll back there so it is never left off-screen.
-                .onChange(of: catFilter) { _, _ in
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("map.chip.area", anchor: .leading) }
-                }
+                .padding(.horizontal, 16)
+                .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.75), value: catFilter)
+                .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.75), value: openNowOnly)
             }
-            .rootSwipeExclusion("mapChips")
+            // A picked filter moves to the front: scroll back there so it is never left off-screen.
+            .onChange(of: catFilter) { _, _ in
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("map.chip.start", anchor: .leading) }
+            }
+            .onChange(of: filters.free) { _, _ in
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("map.chip.start", anchor: .leading) }
+            }
+            .onChange(of: filters.almostFull) { _, _ in
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("map.chip.start", anchor: .leading) }
+            }
+            .onChange(of: openNowOnly) { _, _ in
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("map.chip.start", anchor: .leading) }
+            }
         }
+        .rootSwipeExclusion("mapChips")
+    }
+
+    private var freeChip: some View {
+        glassChip(active: filters.free, id: "map.quick.free") {
+            Haptics.selection(); filters.free.toggle(); filters.priceMin = nil; filters.priceMax = nil
+        } label: { Text(app.T("Miễn phí", "Free")) }
+    }
+
+    private var almostFullChip: some View {
+        glassChip(active: filters.almostFull, id: "map.quick.almostFull") {
+            Haptics.selection(); filters.almostFull.toggle()
+        } label: { Text(app.T("Sắp hết chỗ", "Almost full")) }
+    }
+
+    private var seatsChip: some View {
+        glassChip(active: openNowOnly, id: "map.openNow") { Haptics.selection(); openNowOnly.toggle() } label: {
+            Text(app.T("Còn chỗ", "Seats left"))
+        }
+    }
+
+    /// Home's definitions and line icons; each count is what tapping it would show with every other filter kept; a
+    /// picked one stays even at 0.
+    private func categoryChip(_ cat: (key: String, vi: String, en: String), counts: [String: Int]) -> some View {
+        let active = catFilter == cat.key
+        let n = counts[cat.key] ?? 0
+        return glassChip(active: active, muted: n == 0 && !active, id: "map.cat.\(cat.key)") {
+            if !(active && cat.key == "all") {
+                Haptics.selection()
+                catFilter = active ? "all" : cat.key
+            }
+        } label: {
+            Image(systemName: CategoryGlyph.symbol(cat.key)).font(.footnote).accessibilityHidden(true)
+            Text(app.T(cat.vi, cat.en))
+            Text("\(n)").monospacedDigit().opacity(active ? 0.85 : 0.6)
+        }
+        .accessibilityLabel(app.T("\(cat.vi), \(n) sự kiện", "\(cat.en), \(n) events"))
     }
 
     /// A chip over the map: glass at rest, ink when on. 36 pt tall inside a 44 pt hit area.
@@ -1748,7 +1839,30 @@ struct MapExploreView: View {
     private var areaChipLabel: String {
         if areaContext == "city", let c = MapDiscovery.city(cityContextID) { return app.T(c.vi, c.en) }
         if areaContext == "area" && app.area != LocationHierarchy.allID { return app.currentAreaLabel }
+        if let live = viewAreaLabel { return live }
         return app.T("Vùng bản đồ", "Map area")
+    }
+
+    /// Follows the view: the city under the map centre, or (zoomed in to neighbourhood level) the nearest
+    /// neighbourhood's name among the loaded events.
+    private var viewAreaLabel: String? {
+        guard let r = currentCameraRegion else { return nil }
+        let lat = r.center.latitude, lng = r.center.longitude
+        var city: MapDiscovery.City?
+        for c in MapDiscovery.cities where MapDiscovery.inBounds(lat: lat, lng: lng, c.bounds) {
+            if city == nil || (c.bounds.north - c.bounds.south) < (city!.bounds.north - city!.bounds.south) { city = c }
+        }
+        if cameraZoom >= MapDiscovery.areaZoom {
+            var best: (d: Double, label: String)?
+            for ev in app.mapEvents {
+                guard let elat = ev.lat, let elng = ev.lng, let label = areaOfEvent[ev.id]?.label else { continue }
+                let d = hypot(elat - lat, (elng - lng) * cos(lat * .pi / 180))
+                if best == nil || d < best!.d { best = (d, label) }
+            }
+            if let best, best.d <= max(r.span.latitudeDelta, 0.01) * 0.75 { return best.label }
+        }
+        if let city { return app.T(city.vi, city.en) }
+        return nil
     }
 
     /// "All", then the picked category, then the rest in their fixed order.
@@ -2205,6 +2319,16 @@ struct MapExploreView: View {
         .onChange(of: app.userID) { _, id in forYouAlert.attach(userID: id?.uuidString) }
     }
 
+    private func emptyIcon(_ symbol: String) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(LinearGradient(colors: [app.palette.ink.opacity(0.10), app.palette.ink.opacity(0.03)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+            Image(systemName: symbol).font(.system(size: 24, weight: .semibold)).symbolRenderingMode(.hierarchical)
+        }
+        .frame(width: 56, height: 56).accessibilityHidden(true)
+    }
+
     private func emptyAction(_ title: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title).font(.subheadline.weight(.semibold))
@@ -2257,16 +2381,27 @@ struct MapExploreView: View {
                         .font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
                     emptyAction(app.T("Thử lại", "Try again"), id: "map.retry") { Task { await app.loadMapEvents(bounds: boundedArea) } }
                 } else if committedBounds != nil && anyInArea && filtersActive {
-                    Text(searchQuery.trimmingCharacters(in: .whitespaces).isEmpty
-                         ? app.T("Có sự kiện trong vùng này nhưng bộ lọc đang ẩn chúng.", "There are events in this area, but your filters hide them.")
-                         : app.T("Không có sự kiện nào trong vùng này khớp với \"\(searchQuery)\".", "No events in this area match \"\(searchQuery)\"."))
+                    let query = searchQuery.trimmingCharacters(in: .whitespaces)
+                    emptyIcon("line.3.horizontal.decrease.circle")
+                    Text(app.T("Bộ lọc đang ẩn sự kiện", "Your filters hide the events"))
+                        .font(.system(.headline, design: .rounded)).multilineTextAlignment(.center)
+                    Text(query.isEmpty
+                         ? app.T("Có sự kiện trong vùng này, nhưng không khớp bộ lọc hiện tại.", "There are events in this area, but none match your current filters.")
+                         : app.T("Không có sự kiện nào trong vùng này khớp với \"\(query)\".", "No events in this area match \"\(query)\"."))
                         .font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
-                    emptyAction(app.T("Xoá bộ lọc", "Clear filters"), id: "map.clearFilters") { clearFilters() }
+                    InkButton(title: app.T("Xoá bộ lọc", "Clear filters"), font: .subheadline.weight(.semibold)) { clearFilters() }
+                        .accessibilityIdentifier("map.clearFilters")
+                        .padding(.top, 4)
                 } else if committedBounds != nil {
-                    Text(app.T("Không có sự kiện nào trong vùng bản đồ này.", "No events in this part of the map."))
+                    emptyIcon("mappin.slash")
+                    Text(app.T("Chưa có sự kiện ở khu vực này", "No events in this area"))
+                        .font(.system(.headline, design: .rounded)).multilineTextAlignment(.center)
+                    Text(app.T("Kéo bản đồ sang nơi khác hoặc xem các sự kiện gần bạn nhất.", "Move the map, or see the events nearest to you."))
                         .font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
                     if !matchingAnywhere.isEmpty {
-                        emptyAction(app.T("Xem sự kiện gần nhất", "Show nearest events"), id: "map.showNearest") { showNearest() }
+                        InkButton(title: app.T("Xem sự kiện gần nhất", "Show nearest events"), font: .subheadline.weight(.semibold)) { showNearest() }
+                            .accessibilityIdentifier("map.showNearest")
+                            .padding(.top, 4)
                     }
                     // Filters on and nothing here: offer to clear them (owner 2026-11-01), never a dead end.
                     if filtersActive {

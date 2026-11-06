@@ -21,6 +21,10 @@ struct HomeFilterSheet: View {
     /// the events IN THE MAP AREA, so "Show N" is exactly the resulting list.
     var mapFilters: HomeDiscovery.Filters? = nil
     var onApplyMap: ((HomeDiscovery.Filters) -> Void)? = nil
+    /// Map mode: the Map's own live controls (For You, area, day + hours), shown first so this one sheet has every filter.
+    var mapExtras: AnyView? = nil
+    /// For You on/off for this screen (Home's or the Map's own); nil hides the row. Shown in both modes.
+    var forYou: Binding<Bool>? = nil
     private var mapMode: Bool { onApplyMap != nil }
     private var dateOptions: [String] { mapMode ? HomeDiscovery.mapDateOptions : HomeDiscovery.dateOptions }
 
@@ -51,26 +55,24 @@ struct HomeFilterSheet: View {
     var body: some View {
         let resultCount = D.apply(items, draft, now: now).count
         let hints = resultCount == 0 ? D.relaxationHints(items, draft, now: now, limit: 1) : []
+        NavigationStack {
         VStack(spacing: 0) {
-            header
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     // Map mode: the day and hours are the Map's own time bar (they dim, never filter), so no date here.
-                    if !mapMode { whenSection }
+                    quickRows
+                    if let mapExtras { mapExtras }
+                    whenSection
                     priceSection
                     // Simple Shell follow-up (plan item 2): categories and event-type chips live on Home's own rows
                     // again (one source of truth), so the sheet drops both while the switch is on. OFF: unchanged.
-                    if !app.simpleShellEnabled && !mapMode { categorySection }
+                    categorySection
                     seatsSection
-                    if !mapMode {
-                        locationSection
-                        sortSection
-                    }
+                    if !mapMode { sortSection }
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
             }
-            Divider().overlay(app.palette.rule)
             VStack(spacing: 8) {
                 InkButton(title: ctaTitle(resultCount, hints.first), cornerRadius: 999) {
                     if resultCount > 0 {
@@ -94,7 +96,32 @@ struct HomeFilterSheet: View {
             }
             .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 18)
         }
+        .background(app.palette.paper.ignoresSafeArea())
+        .navigationTitle(app.T("Bộ lọc", "Filters"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button(app.T("Đặt lại", "Reset")) {
+                    Haptics.selection()
+                    draft = .default
+                    draftSort = "soonest"
+                    forYou?.wrappedValue = false
+                }
+                .accessibilityIdentifier("home.filter.reset")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                closeButton
+                    .accessibilityLabel(app.T("Đóng", "Close"))
+                    .accessibilityIdentifier("home.filter.close")
+            }
+        }
+        }
+        .tint(app.palette.ink)
         .foregroundStyle(app.palette.ink)
+        // The location sheet slides over this one: it recedes (blurred, dimmed) behind it.
+        .blur(radius: areaOpen ? 3 : 0)
+        .opacity(areaOpen ? 0.55 : 1)
+        .animation(.easeInOut(duration: 0.25), value: areaOpen)
         .background(app.palette.paper.ignoresSafeArea())
         .onAppear {
             guard !seeded else { return }
@@ -106,7 +133,7 @@ struct HomeFilterSheet: View {
             LocationPickerSheet(isPresented: $areaOpen, doneMode: true)
                 .environmentObject(app)
         }
-        .presentationDetents([.fraction(0.88), .large])
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .hidesDock("homeFilterSheet")
         .accessibilityElement(children: .contain)
@@ -121,36 +148,6 @@ struct HomeFilterSheet: View {
         return app.T("Không có sự kiện", "No events")
     }
 
-    private var header: some View {
-        HStack {
-            Button(app.T("Đặt lại", "Reset")) {
-                Haptics.selection()
-                draft = .default
-                draftSort = "soonest"
-            }
-            .font(.system(size: 14))
-            .opacity(0.75)
-            .frame(minWidth: 44, minHeight: 44)
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("home.filter.reset")
-            Spacer()
-            Text(app.T("Bộ lọc", "Filters")).font(BanbeTheme.display(17)).accessibilityAddTraits(.isHeader)
-            Spacer()
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .semibold))
-                    .frame(width: 36, height: 36)
-                    .background(app.palette.ink.opacity(0.07), in: Circle())
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(app.T("Đóng", "Close"))
-            .accessibilityIdentifier("home.filter.close")
-        }
-        .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 4)
-        .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
-    }
 
     // MARK: Pieces
 
@@ -193,9 +190,8 @@ struct HomeFilterSheet: View {
             }
             content()
         }
-        .padding(.vertical, 18)
+        .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
     }
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         section(title, right: { EmptyView() }, content: content)
@@ -221,8 +217,11 @@ struct HomeFilterSheet: View {
                     pill(app.T(label.vi, label.en), active: draft.date == opt, count: opt == "any" ? nil : counts[opt],
                          disabled: opt != "any" && counts[opt] == 0, id: "home.filter.date.\(opt)") { draft.date = opt }
                 }
-                pill(picked ? pickedLabel : app.T("Chọn ngày", "Pick a date"), active: picked, icon: "calendar",
-                     id: "home.filter.date.pick") { datePickerOpen.toggle() }
+                // The Map's day window has no single custom date, so "Pick a date" is Home's alone.
+                if !mapMode {
+                    pill(picked ? pickedLabel : app.T("Chọn ngày", "Pick a date"), active: picked, icon: "calendar",
+                         id: "home.filter.date.pick") { datePickerOpen.toggle() }
+                }
             }
             if datePickerOpen {
                 DatePicker("", selection: $pickedDate, in: Calendar.current.startOfDay(for: now)..., displayedComponents: .date)
@@ -265,7 +264,7 @@ struct HomeFilterSheet: View {
         let contextLine = [catLabel, areaLabel,
                            paidMedian.map { app.T("trung vị \(shown(Int($0)))", "median \(shown(Int($0)))") }]
             .compactMap { $0 }.joined(separator: " · ")
-        return section(mapMode ? app.T("Giá mỗi vé", "Price per ticket") : app.T("Giá", "Price"), right: {
+        return section(app.T("Giá", "Price"), right: {
             Button {
                 forTwo.toggle()
             } label: {
@@ -352,23 +351,39 @@ struct HomeFilterSheet: View {
         }
     }
 
-    private var locationSection: some View {
-        section(app.T("Khu vực", "Location")) {
+    /// iOS 26+: the system close button (Liquid Glass circle with the X); earlier: a plain X.
+    @ViewBuilder private var closeButton: some View {
+        if #available(iOS 26.0, *) {
+            Button(role: .close, action: onClose)
+        } else {
+            Button(action: onClose) { Image(systemName: "xmark").fontWeight(.semibold) }
+        }
+    }
+
+    /// For You and Location: the same two rows on Home and on the Map.
+    private var quickRows: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let forYou {
+                Toggle(isOn: forYou) {
+                    Label(app.T("Dành cho bạn", "For You"), systemImage: "star.fill").font(.subheadline.weight(.semibold))
+                }
+                .tint(app.palette.ink)
+                .frame(minHeight: 48)
+                .accessibilityIdentifier("home.filter.foryou")
+            }
             Button { Haptics.selection(); areaOpen = true } label: {
                 HStack {
-                    Text(areaLabel ?? app.T("Mọi nơi", "Everywhere"))
+                    Label(app.T("Khu vực", "Location"), systemImage: "mappin.and.ellipse").font(.subheadline.weight(.semibold))
                     Spacer()
-                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).opacity(0.5)
+                    Text(areaLabel ?? app.T("Mọi nơi", "Everywhere")).font(.subheadline).foregroundStyle(app.palette.ink2)
+                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink3)
                 }
-                .font(.system(size: 14))
-                .padding(.horizontal, 14)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .overlay(RoundedRectangle(cornerRadius: BanbeTheme.Radius.tile, style: .continuous).strokeBorder(app.palette.rule))
-                .contentShape(Rectangle())
+                .frame(minHeight: 48).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("home.filter.area")
         }
+        .padding(.top, 4)
     }
 
     private var sortSection: some View {

@@ -218,7 +218,7 @@ struct HomeSearchBar: View {
             .padding(.leading, 16)
             .padding(.trailing, 16 + trailingInset)
             .frame(maxWidth: .infinity, minHeight: 46)
-            .background { Color.clear.nativeGlassCapsule(interactive: true) }
+            .mapSurfaceCapsule(interactive: true)   // glass or static colour, the same in-app setting as the Map
             .contentShape(Capsule())
         }
         // Hidden while the Search overlay is open: its own field IS this bar, lifted into its header (and set back

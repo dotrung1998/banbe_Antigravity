@@ -723,6 +723,7 @@ struct RootView: View {
                         ? nil
                         : ((app.screen == .event || app.screen == .organizerProfile || app.eventClosing) ? .spring(response: 0.55, dampingFraction: 0.88)
                            : (app.screen == .welcome || app.screen == .login) ? AuthMotion.animation(reduceMotion: reduceMotion)
+                           : app.mapDissolveToHome ? .easeInOut(duration: 0.42)
                            : app.dockTabSwitch ? .easeOut(duration: 0.16)
                            : .easeInOut(duration: 0.28)),
                         value: app.screen)
@@ -792,6 +793,8 @@ struct RootView: View {
             if app.searchOverlayOpen && app.screen == .home {
                 SearchView(isOverlay: true).transition(.identity)
             }
+            // The one search bar for Search and Map, above both.
+            PersistentSearchBar().zIndex(3)
             // Notifications over Home (AppState.notificationsOverlayOpen): slides in from the right over the live Home.
             if app.notificationsOverlayOpen && app.screen == .home {
                 NotificationsView(isOverlay: true)

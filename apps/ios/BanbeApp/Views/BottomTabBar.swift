@@ -229,6 +229,8 @@ struct BottomTabBar: View {
     // layout/alignment case, not anything glass- or drag-related).
     @State private var dragStartX: CGFloat?
     @State private var stretchScaleX: CGFloat = 1
+    @State private var holdWork: DispatchWorkItem?
+    @State private var dwellWork: DispatchWorkItem?
     @State private var pressScale: CGFloat = 1
     @GestureState private var touchActive = false
     @State private var stretchAnchor: UnitPoint = .center
@@ -308,56 +310,88 @@ struct BottomTabBar: View {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .updating($touchActive) { _, state, _ in state = true }
             .onChanged { value in
+                // Touch-down arms a hold: after 0.35 s the dock glows and sliding over an item selects it.
+                // A plain swipe across the dock does nothing any more.
+                if holdWork == nil && !isDragging {
+                    let work = DispatchWorkItem { beginHold(at: value.location.x, barWidth: barWidth) }
+                    holdWork = work
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+                }
                 if !isDragging {
-                    isDragging = true
-                    dragStartX = value.location.x
-                    if !reduceMotion {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) { pressScale = 1.18 }
-                    }
-                }
-                switch hitTest(value.location.x, barWidth: barWidth) {
-                case .tab(let id):
-                    overCreate = false
-                    if id != activeID { activeID = id }
-                case .create:
-                    // Over the Simple Shell "+": no tab is lit, the "+" looks pressed, one selection tick on entry.
-                    if !overCreate { overCreate = true; Haptics.selection() }
-                    activeID = nil
-                case nil: break
-                }
-                dragIndexFloat = indexFloat(for: value.location.x, barWidth: barWidth)
-                if !reduceMotion {
-                    // Water-droplet stretch: the faster the swipe, the longer
-                    // (and, in the lens below, slimmer) the pill gets.
-                    withAnimation(.interactiveSpring(response: 0.16, dampingFraction: 0.7)) {
-                        stretchScaleX = 1 + min(1.2, abs(value.velocity.width) / 1200)
-                    }
-                }
-            }
-            .onEnded { value in
-                let target = hitTest(value.location.x, barWidth: barWidth)
-                overCreate = false
-                if case .create = target {
-                    // Released over the Simple Shell "+" (plan item 3): open the same menu a tap opens; the screen
-                    // does not change and the bubble springs back to the current screen's tab (instant under Reduce
-                    // Motion, see the selectionIndexFloat onChange below).
-                    finishTouch()
-                    syncActiveToScreen()
-                    app.dockCreateOpen = true
+                    if hypot(value.translation.width, value.translation.height) > 12 { cancelHold() }
                     return
                 }
-                guard case .tab(let id) = target else { finishTouch(); syncActiveToScreen(); return }
-                activeID = id
-                finishTouch()
-                if let item = items.first(where: { $0.id == id }) {
-                    // No haptic on switching tabs (note 47).
-                    // Note 53: a dock tap is a quick cross-fade (RootView reads this), not the push/pop slide that
-                    // moved two full screens at once and read as jerky. Edge/tab swipes keep their own motion.
-                    app.dockTabSwitch = true
-                    item.action()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { app.dockTabSwitch = false }
-                }
+                hover(at: value.location.x, barWidth: barWidth)
             }
+            .onEnded { value in
+                let moved = hypot(value.translation.width, value.translation.height) > 12
+                let wasHolding = isDragging
+                cancelHold()
+                if !wasHolding && moved { return } // a swipe, not a tap
+                activate(hitTest(value.location.x, barWidth: barWidth))
+            }
+    }
+
+    private func beginHold(at x: CGFloat, barWidth: CGFloat) {
+        guard touchActive else { return }
+        isDragging = true
+        dragStartX = x
+        Haptics.selection()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) { pressScale = reduceMotion ? 1 : 1.12 }
+        hover(at: x, barWidth: barWidth)
+    }
+
+    /// Finger moved while holding: light the item under it, and activate it after a short dwell.
+    private func hover(at x: CGFloat, barWidth: CGFloat) {
+        let target = hitTest(x, barWidth: barWidth)
+        switch target {
+        case .tab(let id):
+            overCreate = false
+            if id != activeID {
+                activeID = id
+                Haptics.selection()
+                scheduleDwell(target)
+            }
+        case .create:
+            if !overCreate { overCreate = true; Haptics.selection(); scheduleDwell(target) }
+            activeID = nil
+        case nil: break
+        }
+        dragIndexFloat = indexFloat(for: x, barWidth: barWidth)
+    }
+
+    private func scheduleDwell(_ target: DockLayout.ScrubTarget?) {
+        dwellWork?.cancel()
+        let work = DispatchWorkItem {
+            guard isDragging else { return }
+            activate(target)
+        }
+        dwellWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
+    }
+
+    private func cancelHold() {
+        holdWork?.cancel(); holdWork = nil
+        dwellWork?.cancel(); dwellWork = nil
+    }
+
+    private func activate(_ target: DockLayout.ScrubTarget?) {
+        cancelHold()
+        overCreate = false
+        if case .create = target {
+            finishTouch(); syncActiveToScreen()
+            app.dockCreateOpen = true
+            return
+        }
+        guard case .tab(let id) = target else { finishTouch(); syncActiveToScreen(); return }
+        activeID = id
+        finishTouch()
+        if let item = items.first(where: { $0.id == id }) {
+            // Note 53: a dock tap is a quick cross-fade (RootView reads this).
+            app.dockTabSwitch = true
+            item.action()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { app.dockTabSwitch = false }
+        }
     }
 
     private func tabID(for screen: Screen) -> String? {
@@ -375,6 +409,8 @@ struct BottomTabBar: View {
     /// springs the pill back to rest size. Also run when the system cancels
     /// the gesture (no `onEnded`), so `isDragging` can never get stuck.
     private func finishTouch() {
+        holdWork?.cancel(); holdWork = nil
+        dwellWork?.cancel(); dwellWork = nil
         dragIndexFloat = nil
         isDragging = false
         dragStartX = nil
@@ -501,66 +537,15 @@ struct BottomTabBar: View {
                 let shapeHeight = barHeight - 14
                 let x = min(geo.size.width - shapeWidth / 2, max(shapeWidth / 2, center))
 
-                if #available(iOS 26.0, *), !reduceMotion {
-                    // Real Apple Liquid Glass — `Glass.regular.interactive()`
-                    // (an interactive glass responds to touch with its own
-                    // system-drawn highlight/press feedback) applied via
-                    // `.glassEffect(_:in:)`, both real SwiftUICore API
-                    // confirmed present in this SDK (see doc comment above).
-                    // `GlassEffectContainer` is Apple's documented wrapper
-                    // for correct compositing/blending of glass content —
-                    // used here even though there's only one shape, per
-                    // Apple's own guidance to always host glassEffect
-                    // content inside one.
-                    //
-                    // Honest limitation (per this ticket's own instruction
-                    // to state one rather than fake it): this is a single
-                    // shape gliding continuously between tabs, not a
-                    // droplet/elastic-neck morph. Real `glassEffect`'s fluid
-                    // shape-blending (via `glassEffectID`/
-                    // `glassEffectUnion`) is designed for MULTIPLE
-                    // concurrently-visible glass shapes merging into and
-                    // separating from each other — it isn't the right tool
-                    // for "one shape sliding along a track," so no such
-                    // merge/split geometry is attempted here. What IS real:
-                    // genuine system glass material (specular highlight,
-                    // refraction, `.interactive()` touch response) instead
-                    // of a hand-tinted, blurred capsule standing in for it.
-                    // Directional stretch cue (this pass) — `.scaleEffect`
-                    // applied ON TOP of the real `glassEffect`-decorated
-                    // view below, not a separate shape drawn instead of or
-                    // over it: an ordinary SwiftUI transform of the actual
-                    // glass view, since real `glassEffect`'s API surface has
-                    // no native directional-stretch/morph primitive (see the
-                    // `strings`-verification note above `dragStartX`). Order
-                    // matters: `.scaleEffect` sits BEFORE `.position()` so it
-                    // scales the shape in its own local space (about
-                    // `stretchAnchor`) rather than distorting where its
-                    // center lands on the bar.
-                    GlassEffectContainer {
-                        Capsule()
-                            .fill(.clear)
-                            .frame(width: shapeWidth, height: shapeHeight)
-                            .glassEffect(.regular.interactive(), in: Capsule())
-                            .scaleEffect(x: stretchScaleX * (1 + (pressScale - 1) * 1.8), y: (1 + (pressScale - 1) * 3.2) / (1 + (stretchScaleX - 1) * 1.6), anchor: .center)
-                            .position(x: x, y: barHeight / 2)
-                    }
+                Capsule()
+                    .fill(isDragging ? app.palette.clay.opacity(0.28) : app.palette.ink.opacity(0.12))
+                    .overlay(Capsule().strokeBorder(app.palette.clay.opacity(isDragging ? 0.9 : 0), lineWidth: 1.5))
+                    .shadow(color: app.palette.clay.opacity(isDragging ? 0.65 : 0), radius: isDragging ? 12 : 0)
+                    .frame(width: shapeWidth, height: shapeHeight)
+                    .scaleEffect(pressScale)
+                    .position(x: x, y: barHeight / 2)
+                    .animation(.easeOut(duration: 0.2), value: isDragging)
                     .allowsHitTesting(false)
-                } else {
-                    // Fallback for Reduce Motion and for any OS below the
-                    // Liquid Glass minimum (deployment target here is still
-                    // iOS 17) — a plain translucent capsule, the same
-                    // `dockHighlight`-equivalent styling this bar used
-                    // before any of the glass/droplet passes. No bulge, no
-                    // blur-as-goo trick: a simple, non-animated-feeling
-                    // highlight that never crashes and never renders
-                    // nothing.
-                    Capsule()
-                        .fill(app.palette.ink.opacity(0.12))
-                        .frame(width: shapeWidth, height: shapeHeight)
-                        .position(x: x, y: barHeight / 2)
-                        .allowsHitTesting(false)
-                }
             }
 
             HStack(spacing: 0) {
@@ -590,17 +575,8 @@ struct BottomTabBar: View {
                     .onChange(of: proxy.size) { _, _ in resolveFrames(anchors, proxy) }
             }
         }
-        .background {
-            if #available(iOS 26.0, *), !reduceMotion {
-                GlassEffectContainer {
-                    Capsule()
-                        .fill(.clear)
-                        .glassEffect(.regular, in: Capsule())
-                }
-            } else {
-                Capsule().fill(.regularMaterial)
-            }
-        }
+        // Static surface that follows light/dark (no glass).
+        .background(app.palette.surface1, in: Capsule())
         .overlay(Capsule().strokeBorder(app.palette.ink.opacity(0.06)))
         .shadow(color: .black.opacity(0.16), radius: 14, x: 0, y: 6)
         // Simple Shell (note 66): the "+" inside the bar, in the centre slot. An overlay, so it is NOT inside the
@@ -729,7 +705,10 @@ struct DockRow: View {
         // former call site, this file) — both controls shrink/expand
         // together on scroll instead of only the dock visibly resizing
         // while the "+" stayed full size beside it.
-        .scaleEffect(chrome.collapsed ? 0.86 : 1, anchor: .bottom)
+        // Scrolling down slides the dock out of view; scrolling up slides it back. No shrinking.
+        .offset(y: chrome.collapsed ? 140 : 0)
+        .opacity(chrome.collapsed ? 0 : 1)
+        .allowsHitTesting(!chrome.collapsed)
         // BUG FIX (dock-jump-on-tray-open pass) — this used to be
         // `.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)`,
         // which made DockRow greedily fill however much height its

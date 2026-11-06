@@ -36,7 +36,7 @@ struct MapTimeBar: View {
         }
         .padding(.leading, 8).padding(.trailing, 14)
         .frame(height: MapStack.timeHeight)
-        .nativeGlassCapsule(interactive: false)
+        .mapSurfaceCapsule()
         .padding(.horizontal, 14)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(app.T("Khung giờ", "Time window"))

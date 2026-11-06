@@ -6,12 +6,17 @@ import SwiftUI
 // grouped Events · Hosts · Areas, each with its count. "See on map" carries the query to Map.
 // Search never counts toward the streak (note 36).
 struct SearchView: View {
+    @State private var categorySheetOpen = false
     @EnvironmentObject private var app: AppState
     /// Shown over Home (RootView) instead of as its own screen.
     let isOverlay: Bool
     init(isOverlay: Bool = false) { self.isOverlay = isOverlay }
 
-    @State private var focused = false
+    /// The persistent bar's focus (the field itself lives in RootView, see PersistentSearchBar).
+    private var focused: Bool {
+        get { app.searchBarFocused }
+        nonmutating set { app.searchBarFocused = newValue }
+    }
     /// Entrance from Home's search bar: false = the field still sits where Home's bar was, true = in the header.
     @State private var arrived = false
     /// Exit back to Home: the field glides down onto Home's search bar before the screen switches.
@@ -74,6 +79,9 @@ struct SearchView: View {
         // As an overlay the paper fades in over the live Home instead of a whole new page appearing (no white flash).
         .background(app.palette.paper.ignoresSafeArea().opacity(isOverlay && atHomeBar ? 0 : 1))
         .hidesDock("search")
+        .onChange(of: atHomeBar) { _, v in app.searchBarAtHome = v }
+        .onDisappear { if app.searchBarHandlers?.owner == "search" { app.searchBarHandlers = nil } }
+        .onChange(of: app.lang) { _, _ in registerSearchBar() }
         .overlay {
             // UI tests look for the Search "screen" whether it is an overlay or a screen.
             if isOverlay { Color.clear.frame(width: 0, height: 0).accessibilityIdentifier("screen.search") }
@@ -83,6 +91,7 @@ struct SearchView: View {
             if app.pulseDaily.isEmpty { await app.loadPulse(period: .daily) }
         }
         .onAppear {
+            registerSearchBar()
             guard entering else { focused = app.searchQuery.isEmpty; return }
             DispatchQueue.main.async {
                 withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) { arrived = true }
@@ -92,6 +101,13 @@ struct SearchView: View {
                 app.searchEntranceFrom = nil
                 focused = app.searchQuery.isEmpty
             }
+        }
+        .sheet(isPresented: $categorySheetOpen) {
+            HomeCategorySheet(counts: [:], selected: [], onPick: { key in
+                app.pickFilter(key)
+                app.goHome()
+            })
+            .environmentObject(app)
         }
     }
 
@@ -139,47 +155,8 @@ struct SearchView: View {
     }
 
     private var header: some View {
-        HStack(spacing: atHomeBar ? 0 : 10) {
-            Button {
-                focused = false
-                close()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 17, weight: .semibold))
-                    .frame(width: 40, height: 40)
-                    .background(app.palette.ink.opacity(0.07), in: Circle())
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            // While entering, the back button takes no width, so the field starts as wide as Home's bar.
-            .frame(width: atHomeBar ? 0 : nil)
-            .opacity(atHomeBar ? 0 : 1)
-            .clipped()
-            .accessibilityLabel(app.T("Quay lại", "Back"))
-            .accessibilityIdentifier("search.back")
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").font(.system(size: 15, weight: .semibold)).opacity(0.6)
-                FocusableTextField(text: $app.searchQuery, isFirstResponder: $focused,
-                                   placeholder: app.T("Tìm sự kiện, host, khu vực, vibe…", "Search events, hosts, areas, vibes…"),
-                                   font: .systemFont(ofSize: 15))
-                    .frame(height: 44)
-                    .accessibilityLabel(app.T("Tìm kiếm", "Search"))
-                    .accessibilityIdentifier("search.input")
-                if !app.searchQuery.isEmpty {
-                    Button { app.searchQuery = "" } label: {
-                        Image(systemName: "xmark.circle.fill").font(.system(size: 15)).opacity(0.45)
-                            .frame(width: 32, height: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(app.T("Xoá", "Clear"))
-                }
-            }
-            .padding(.horizontal, 14)
-            .background { Color.clear.nativeGlassCapsule(interactive: false) }
-            // Entrance: starts over Home's search bar and glides up into the header as the back button slides in.
-            .offset(y: atHomeBar ? entranceOffsetY : 0)
-        }
+        // The field, back button and clear button are the persistent bar (RootView); this keeps its room.
+        Color.clear.frame(height: 44).allowsHitTesting(false)
         .padding(.horizontal, atHomeBar ? 20 : 16).padding(.top, 8).padding(.bottom, 10)
         .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1).opacity(atHomeBar ? 0 : 1) }
         .onChange(of: focused) { was, now in if was && !now { commit() } }
@@ -288,6 +265,15 @@ struct SearchView: View {
         }.prefix(5))
     }
 
+    private func registerSearchBar() {
+        app.searchBarAtHome = atHomeBar
+        app.searchBarHandlers = SearchBarHandlers(
+            owner: "search",
+            placeholder: app.T("Tìm sự kiện, host, khu vực, vibe…", "Search events, hosts, areas, vibes…"),
+            back: { focused = false; close() },
+            submit: { commit() })
+    }
+
     private func commit() {
         recent = RecentSearches.push(recent, app.searchQuery)
         RecentSearches.save(recent)
@@ -321,18 +307,21 @@ struct SearchView: View {
                 }
                 .padding(.top, 10)
                 FlowRow(spacing: 8) {
-                    ForEach(HomeDiscovery.categories.filter { $0.key != "all" }, id: \.key) { c in
+                    ForEach(HomeDiscovery.categories.filter { $0.key != "all" }.prefix(4), id: \.key) { c in
                         chip(app.T(c.vi, c.en), icon: CategoryGlyph.symbol(c.key), id: "search.empty.cat.\(c.key)") {
                             app.pickFilter(c.key)
                             app.goHome()
                         }
+                    }
+                    chip(app.T("Tất cả danh mục", "Show all"), icon: "square.grid.2x2", id: "search.empty.cat.showAll") {
+                        categorySheetOpen = true
                     }
                 }
                 .padding(.top, 12)
             }
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 24).padding(.vertical, 36)
+            .padding(.horizontal, 24).padding(.top, 28).padding(.bottom, 4)
             .accessibilityIdentifier("search.empty")
         }
         if !events.isEmpty {
@@ -412,7 +401,7 @@ struct SearchView: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 20).padding(.vertical, 18)
+        .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 18)
         .accessibilityIdentifier("search.seeOnMap")
     }
 

@@ -65,7 +65,7 @@ struct MapChipBackground: ViewModifier {
         if active {
             content.background(ink, in: Capsule())
         } else {
-            content.nativeGlassCapsule(interactive: false)
+            content.mapSurfaceCapsule()
         }
     }
 }
