@@ -129,15 +129,15 @@ export default function AreaSheet({ embedded = false, onDone }) {
       <path d="M4 2l4 4-4 4" />
     </svg>
   );
-  const rowBase = { display: 'flex', alignItems: 'baseline', gap: 8, padding: '13px 0', borderBottom: `1px solid ${rule}`, cursor: 'pointer', fontSize: 14.5, color: ink };
+  const rowBase = { display: 'flex', alignItems: 'baseline', gap: 8, padding: embedded ? '9px 0' : '13px 0', borderBottom: `1px solid ${rule}`, cursor: 'pointer', fontSize: 14.5, color: ink };
   const legacyCaption = (
     <span style={{ fontSize: 10.5, fontWeight: 400, color: ink, opacity: 0.55 }}>{T('khu vực quen thuộc', 'familiar area')}</span>
   );
 
-  const embeddedBackdrop = { position: 'fixed', inset: 0, zIndex: 2300, background: 'rgba(12,12,12,0.4)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: leaving ? 'banbeFade 0.22s ease reverse both' : 'banbeFade 0.2s ease both' };
+  const embeddedBackdrop = { position: 'fixed', inset: 0, zIndex: 2300, background: 'rgba(12,12,12,0.4)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: leaving ? 'banbeFade 0.22s ease reverse both' : 'banbeFade 0.2s ease both' };
   const centeredBackdrop = { position: 'absolute', inset: 0, zIndex: 21, background: 'rgba(12,12,12,0.32)', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '4px 16px 86px', boxSizing: 'border-box', animation: 'banbeFade 0.2s ease both' };
   const centeredCard = { ...dockGlass({ borderRadius: 26, background: 'color-mix(in srgb, var(--bb-bg) 92%, transparent)', border: '1px solid var(--bb-rule, rgba(var(--bb-fg-rgb), 0.12))' }), position: 'relative', padding: '22px 24px 16px', display: 'flex', flexDirection: 'column', maxHeight: '100%', minHeight: 0, boxSizing: 'border-box', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' };
-  const embeddedCard = { background: paper, color: ink, borderRadius: '22px 22px 0 0', position: 'relative', padding: '18px 22px 26px', display: 'flex', flexDirection: 'column', maxHeight: '86%', minHeight: 0, boxSizing: 'border-box', animation: leaving ? 'banbeSheetOut 0.22s cubic-bezier(.4,0,1,1) both' : 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' };
+  const embeddedCard = { background: paper, color: ink, borderRadius: '22px 22px 0 0', position: 'relative', padding: '18px 22px 26px', display: 'flex', flexDirection: 'column', maxHeight: '94%', height: '94%', minHeight: 0, boxSizing: 'border-box', animation: leaving ? 'banbeSheetOut 0.22s cubic-bezier(.4,0,1,1) both' : 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' };
 
   const sheet = (
     <div onClick={closeArea} data-testid={embedded ? 'filter-area-backdrop' : undefined} style={embedded ? embeddedBackdrop : centeredBackdrop}>

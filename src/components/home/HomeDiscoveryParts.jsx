@@ -111,11 +111,11 @@ export function CategorySheet({ keys, counts, values = [], onPick, onClose, T })
           {keys.map(k => {
             const c = byKey[k];
             if (!c) return null;
-            const n = counts?.[k] ?? 0;
+            const n = counts ? (counts[k] ?? 0) : null; // no counts (Search): no number shown
             const active = values.includes(k);
             return (
               <button key={k} type="button" role="listitem" onClick={() => onPick(k)} data-testid={`home-category-sheet-${k}`} aria-pressed={active}
-                aria-label={T(`${c.vi}, ${n} sự kiện`, `${c.en}, ${n} event${n === 1 ? '' : 's'}`)}
+                aria-label={n == null ? T(c.vi, c.en) : T(`${c.vi}, ${n} sự kiện`, `${c.en}, ${n} event${n === 1 ? '' : 's'}`)}
                 style={{ width: '100%', minHeight: 52, display: 'flex', alignItems: 'center', gap: 12, padding: '6px 8px', border: 'none', borderRadius: 14,
                   background: active ? 'rgba(var(--bb-fg-rgb),0.08)' : 'transparent', color: ink, fontFamily: 'inherit', cursor: 'pointer', opacity: n === 0 ? 0.45 : 1, textAlign: 'left' }}>
                 <span style={{ width: 40, height: 40, flex: 'none', borderRadius: RADIUS.tile, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(var(--bb-fg-rgb), 0.06)' }}>
@@ -141,7 +141,7 @@ export function HomeSearchBar({ onOpen, T, areaLabel, onArea, everywhere = false
   if (onArea) {
     const placeholder = everywhere ? T('Tìm sự kiện ở mọi nơi', 'Find events anywhere') : T(`Tìm sự kiện gần ${areaLabel}`, `Find events near ${areaLabel}`);
     return (
-      <div style={{ ...fieldGlass({ borderRadius: RADIUS.pill }), height: 46, width: '100%', display: 'flex', alignItems: 'center', boxSizing: 'border-box', paddingInlineEnd: 4 }}>
+      <div className="bb-mapsurf bb-searchbar" style={{ ...fieldGlass({ borderRadius: RADIUS.pill }), height: 46, width: '100%', display: 'flex', alignItems: 'center', boxSizing: 'border-box', paddingInlineEnd: 4 }}>
         <button type="button" onClick={(e) => { setSearchOrigin(e.currentTarget.getBoundingClientRect()); onOpen(); }} data-testid="home-search-bar"
           aria-label={placeholder}
           style={{ flex: '1 1 auto', minWidth: 0, height: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '0 6px 0 16px', border: 'none', background: 'none', cursor: 'text', color: ink, fontFamily: 'inherit', textAlign: 'left' }}>
@@ -165,7 +165,7 @@ export function HomeSearchBar({ onOpen, T, areaLabel, onArea, everywhere = false
   }
   return (
     // Remembers where the bar is so Search can glide its own field up from here (src/lib/searchOrigin.js).
-    <button type="button" onClick={(e) => { setSearchOrigin(e.currentTarget.getBoundingClientRect()); onOpen(); }} data-testid="home-search-bar"
+    <button type="button" className="bb-mapsurf bb-searchbar" onClick={(e) => { setSearchOrigin(e.currentTarget.getBoundingClientRect()); onOpen(); }} data-testid="home-search-bar"
       aria-label={T('Tìm sự kiện, host, khu vực', 'Search events, hosts, areas')}
       style={{ ...fieldGlass({ borderRadius: RADIUS.pill }), height: 46, width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px', border: 'none', cursor: 'text', color: ink, fontFamily: 'inherit', textAlign: 'left' }}>
       <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7, flex: 'none' }}>

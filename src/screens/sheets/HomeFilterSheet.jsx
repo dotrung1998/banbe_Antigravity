@@ -48,7 +48,7 @@ function Pill({ active, onClick, children, count, testId, disabled }) {
 }
 
 const Section = ({ title, right, children }) => (
-  <div style={{ padding: '18px 0', borderBottom: `1px solid ${rule}` }}>
+  <div style={{ padding: '14px 0' }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
       <span style={{ ...display(17) }}>{title}</span>
       {right}
@@ -63,9 +63,9 @@ const Section = ({ title, right, children }) => (
 // `mapMode` (Map redesign phase 3): the same draft sheet for the Map. The map itself is the location, and the list is
 // soonest-first, so Location and Sort are hidden; "Tonight" joins the date pills; price reads per ticket; the counts and
 // the CTA are over the events IN THE MAP AREA (the caller passes those `items`), so "Show N" is the resulting list.
-const MAP_DATE_OPTIONS = ['any', 'tonight', 'today', 'tomorrow', 'weekend', 'week'];
+const MAP_DATE_OPTIONS = ['any', 'today', 'tomorrow', 'weekend'];
 
-export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel, simpleShell = false, mapMode = false }) {
+export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel, simpleShell = false, mapMode = false, forYou = null }) {
   const dateOptions = mapMode ? MAP_DATE_OPTIONS : DATE_OPTIONS;
   const [draft, setDraft] = useState(() => normalizeFilters(filters));
   const [draftSort, setDraftSort] = useState(sort || 'soonest');
@@ -125,9 +125,9 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
     <div onClick={onClose} data-testid="home-filter-backdrop"
       style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(12,12,12,0.45)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
       <div role="dialog" aria-modal="true" aria-label={T('Bộ lọc', 'Filters')} onClick={(e) => e.stopPropagation()} data-testid="home-filter-sheet"
-        style={{ background: paper, color: ink, borderRadius: '22px 22px 0 0', maxHeight: '88%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+        style={{ background: paper, color: ink, borderRadius: '22px 22px 0 0', maxHeight: '88%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both', filter: areaOpen ? 'blur(6px) brightness(0.8)' : 'none', transition: 'filter 0.25s ease' }}>
         {/* Reset on the left, close (×) on the right; equal side columns keep the title centred. */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '10px 14px 8px', borderBottom: `1px solid ${rule}` }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '10px 14px 8px' }}>
           <button type="button" onClick={() => { setDraft(normalizeFilters(DEFAULT_FILTERS)); setDraftSort('soonest'); }} data-testid="home-filter-reset"
             style={{ justifySelf: 'start', border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, opacity: 0.75, cursor: 'pointer', padding: '8px 6px' }}>{T('Đặt lại', 'Reset')}</button>
           <span style={{ ...display(17), textAlign: 'center' }}>{T('Bộ lọc', 'Filters')}</span>
@@ -136,8 +136,24 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
         </div>
 
         <div style={{ overflowY: 'auto', padding: '0 20px', flex: 1 }}>
-          {/* Map E+ (note 79): on the Map the day and hours are the time bar's job (they dim, never remove). */}
-          {!mapMode && (
+          {forYou && (
+            <Section title={T('Dành cho bạn', 'For You')} right={
+              <button type="button" role="switch" aria-checked={forYou.on} onClick={() => forYou.set(!forYou.on)} data-testid="home-filter-for-you"
+                style={{ width: 46, height: 28, borderRadius: 14, border: 'none', padding: 3, cursor: 'pointer', background: forYou.on ? 'var(--bb-clay)' : 'rgba(var(--bb-fg-rgb),0.2)', display: 'flex', justifyContent: forYou.on ? 'flex-end' : 'flex-start' }}>
+                <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#fff', display: 'block' }} />
+              </button>
+            }>
+              <div style={{ fontSize: 12.5, opacity: 0.65 }}>{T('Chỉ hiện sự kiện hợp với sở thích của bạn.', 'Only events that match your preferences.')}</div>
+            </Section>
+          )}
+          <Section title={T('Khu vực', 'Location')}>
+            <button type="button" onClick={() => setAreaOpen(true)} data-testid="home-filter-area"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minHeight: 44, border: `1px solid ${rule}`, borderRadius: RADIUS.tile, background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, padding: '0 14px', cursor: 'pointer' }}>
+              <span>{areaLabel || T('Mọi nơi', 'Everywhere')}</span><span aria-hidden="true">›</span>
+            </button>
+          </Section>
+
+          {/* On the Map these pills drive the day window (the time bar): they dim, never remove. */}
           <Section title={T('Khi nào', 'When')}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {dateOptions.map(opt => (
@@ -146,17 +162,16 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
                   {T(...DATE_LABELS[opt])}
                 </Pill>
               ))}
-              <label style={{ position: 'relative', display: 'inline-flex' }}>
+              {!mapMode && (<label style={{ position: 'relative', display: 'inline-flex' }}>
                 <Pill active={draft.date.startsWith('on:')} testId="home-filter-date-pick" onClick={() => {}}>
                   {draft.date.startsWith('on:') ? draft.date.slice(3).split('-').reverse().slice(0, 2).join('/') : T('Chọn ngày', 'Pick a date')}
                 </Pill>
                 <input type="date" aria-label={T('Chọn ngày', 'Pick a date')} data-testid="home-filter-date-input"
                   onChange={(e) => patch({ date: e.target.value ? `on:${e.target.value}` : 'any' })}
                   style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
-              </label>
+              </label>)}
             </div>
           </Section>
-          )}
 
           <Section title={mapMode ? T('Giá mỗi vé', 'Price per ticket') : T('Giá', 'Price')} right={
             <button type="button" onClick={() => setForTwo(v => !v)} aria-pressed={forTwo} data-testid="home-filter-for-two"
@@ -197,21 +212,19 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
             </div>
           </Section>
 
-          {!simpleShell && (
           <Section title={T('Danh mục', 'Category')}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {CATEGORY_DEFS.filter(c => c.key !== 'all').map(c => {
                 const on = draft.cats.includes(c.key);
                 return (
                   <Pill key={c.key} active={on} count={catCounts[c.key]} disabled={!on && catCounts[c.key] === 0} testId={`home-filter-cat-${c.key}`}
-                    onClick={() => patch({ cats: on ? draft.cats.filter(k => k !== c.key) : [...draft.cats, c.key] })}>
+                    onClick={() => patch({ cats: mapMode ? (on ? [] : [c.key]) : on ? draft.cats.filter(k => k !== c.key) : [...draft.cats, c.key], ...(mapMode ? { typeFilters: [] } : null) })}>
                     <CategoryGlyph cat={c.key} size={16} />{T(c.vi, c.en)}
                   </Pill>
                 );
               })}
             </div>
           </Section>
-          )}
 
           <Section title={T('Chỗ ngồi', 'Seats')}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -219,15 +232,6 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
               <Pill active={draft.almostFull} onClick={() => patch({ almostFull: !draft.almostFull })} count={almostCount} disabled={!draft.almostFull && almostCount === 0} testId="home-filter-almost-full">{T('Sắp hết chỗ', 'Almost full')}</Pill>
             </div>
           </Section>
-
-          {!mapMode && (
-          <Section title={T('Khu vực', 'Location')}>
-            <button type="button" onClick={() => setAreaOpen(true)} data-testid="home-filter-area"
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minHeight: 44, border: `1px solid ${rule}`, borderRadius: RADIUS.tile, background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, padding: '0 14px', cursor: 'pointer' }}>
-              <span>{areaLabel || T('Mọi nơi', 'Everywhere')}</span><span aria-hidden="true">›</span>
-            </button>
-          </Section>
-          )}
 
           {!mapMode && (
           <Section title={T('Sắp xếp', 'Sort by')}>
@@ -245,7 +249,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
           <div style={{ height: 12 }} />
         </div>
 
-        <div style={{ padding: '12px 20px 26px', borderTop: `1px solid ${rule}` }}>
+        <div style={{ padding: '12px 20px 26px' }}>
           <button type="button" onClick={onCta} data-testid="home-filter-apply" data-count={resultCount}
             style={{ ...inkButton({ width: '100%', padding: 15, borderRadius: RADIUS.pill }), border: 'none', fontFamily: 'inherit' }}>
             {cta}
@@ -258,6 +262,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
         </div>
       </div>
       {areaOpen && <AreaSheet embedded onDone={() => setAreaOpen(false)} />}
+      {/* While the full-height location sheet is up, this sheet stays mounted behind it, blurred and dimmed. */}
     </div>,
     target,
   );

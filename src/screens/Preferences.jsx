@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { getGlassOpacity, setGlassOpacity, glassCapsuleInactive } from '../lib/glassOpacity.js';
+import { getMapSurface, setMapSurface } from '../lib/mapSurface.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 
 export default function Preferences() {
+  const [mapSurface, setMapSurfaceState] = useState(getMapSurface);
   const { state, T, set, pickTheme, toggleAutoEmailDocuments } = useBanBe();
   const options = [
     { key: 'vi', title: 'Tiếng Việt', subtitle: T('Mặc định', 'Vietnamese') },
@@ -36,6 +38,11 @@ export default function Preferences() {
 
         <Section title={T('Liquid Glass', 'Liquid Glass')}>
           <GlassCard T={T} />
+        </Section>
+
+        <Section title={T('Giao diện bản đồ', 'Map controls')}>
+          <Choice active={mapSurface === 'glass'} testId="pref-map-glass" title={T('Kính (Liquid Glass)', 'Glass (Liquid Glass)')} subtitle={T('Trong suốt, theo hệ thống', 'Translucent, follows the system')} onClick={() => setMapSurfaceState(setMapSurface('glass'))} />
+          <Choice active={mapSurface === 'solid'} testId="pref-map-solid" title={T('Màu tĩnh', 'Static colour')} subtitle={T('Nền đặc, dễ đọc hơn', 'Solid surfaces, easier to read')} onClick={() => setMapSurfaceState(setMapSurface('solid'))} />
         </Section>
 
         <Section title={T('Chứng từ thanh toán', 'Payment documents')}>

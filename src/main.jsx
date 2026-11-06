@@ -1,3 +1,4 @@
+import { applyMapSurface } from './lib/mapSurface.js'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
@@ -16,6 +17,7 @@ const Root = publicPath === '/privacy' ? PublicPolicy
   : App
 
 applyGlassOpacity()
+applyMapSurface()
 installZoomOrigin()
 
 createRoot(document.getElementById('root')).render(

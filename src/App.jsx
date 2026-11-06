@@ -213,7 +213,10 @@ const DOCK_CLEARANCE = BAR_HEIGHT + BAR_BOTTOM_OFFSET + 18;
 // (kept mounted, so it slides back instead of replaying its entrance); hidden = not focusable or tappable.
 /** The dock, subscribed on its own to the scroll-driven collapsed flag (dockCollapseStore). */
 function LiveDockRow(props) {
-  const collapsed = useSyncExternalStore(dockCollapseStore.subscribe, dockCollapseStore.get);
+  const scrolledDown = useSyncExternalStore(dockCollapseStore.subscribe, dockCollapseStore.get);
+  const screen = useBanBe().state.screen;
+  // Mirrors iOS: scrolling down slides the dock away, scrolling up brings it back; never while on Account screens.
+  const collapsed = scrolledDown && screen !== 'profile' && screen !== 'accountGroup';
   return <DockRow collapsed={collapsed} {...props} />;
 }
 
@@ -224,7 +227,7 @@ function DockRow({ collapsed, showCreate, hidden = false }) {
       data-testid="dock-row"
       data-hidden={hidden ? 'true' : undefined}
       aria-hidden={hidden || undefined}
-      inert={hidden || undefined}
+      inert={hidden || collapsed || undefined}
       style={{
         position: 'absolute', left: '50%', bottom: BAR_BOTTOM_OFFSET,
         width: `calc(100% - ${DOCK_MARGIN * 2}px)`,
@@ -265,10 +268,9 @@ function DockRow({ collapsed, showCreate, hidden = false }) {
         // the two now animate/apply completely independently, and this
         // row's real center/size can never again be silently overridden
         // by a completed mount-in animation.
-        translate: hidden ? '-50% calc(100% + 40px)' : '-50% 0',
-        scale: collapsed ? 0.86 : 1,
-        opacity: hidden ? 0 : 1,
-        pointerEvents: hidden ? 'none' : undefined,
+        translate: hidden || collapsed ? '-50% calc(100% + 40px)' : '-50% 0',
+        opacity: hidden || collapsed ? 0 : 1,
+        pointerEvents: hidden || collapsed ? 'none' : undefined,
         transformOrigin: 'center bottom',
         transition: 'scale 0.28s cubic-bezier(.22,.61,.36,1), translate 0.3s cubic-bezier(.22,.61,.36,1), opacity 0.2s ease',
         // Restores with the existing (previously unused) bottom-up "bbIn"

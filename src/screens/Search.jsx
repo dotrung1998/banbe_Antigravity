@@ -13,7 +13,8 @@ import { buildEventSearchDoc, matchesSearchQuery, normalizeSearchText } from '..
 import { buildLocationSearchIndex, searchLocationTree } from '../lib/locationTree.js';
 import { formatVnEventDate } from '../lib/countdown.js';
 import { formatMoney } from '../lib/eventMarket.js';
-import { CategoryGlyph, CATEGORY_DEFS } from '../components/home/HomeDiscoveryParts.jsx';
+import { CategoryGlyph, CATEGORY_DEFS, CategorySheet } from '../components/home/HomeDiscoveryParts.jsx';
+import { categorySheetKeys } from '../lib/homeDiscovery.js';
 
 const RECENT_KEY = 'banbe_recent_searches_v1';
 const RECENT_MAX = 8;
@@ -36,6 +37,9 @@ export default function Search({ overlay = false }) {
   // As an overlay, "leaving" just closes it (Home is already there underneath).
   const leave = overlay ? () => set({ searchOverlayOpen: false }) : goHome;
   const [recent, setRecent] = useState(readRecent);
+  const [catSheetOpen, setCatSheetOpen] = useState(false);
+  // "See on map": the page fades out while the map fades in (no hard cut).
+  const [leavingToMap, setLeavingToMap] = useState(false);
   const inputRef = useRef(null);
 
   // Entrance from Home's search bar: the field starts where Home's bar was and glides up into the header while the
@@ -166,7 +170,7 @@ export default function Search({ overlay = false }) {
 
   return (
     <div ref={rootRef} data-screen-label="Search"
-      style={overlay
+      style={leavingToMap ? { position: overlay ? 'fixed' : 'relative', inset: overlay ? 0 : undefined, zIndex: overlay ? 45 : undefined, minHeight: '100%', background: paper, color: ink, opacity: 0, transition: 'opacity 0.22s ease', pointerEvents: 'none' } : overlay
         ? { position: 'fixed', inset: 0, zIndex: 45, overflowY: 'auto', color: ink, paddingBottom: 120, animation: origin ? undefined : 'banbeFade 0.2s ease both' }
         : { minHeight: '100%', background: paper, color: ink, paddingBottom: 120, animation: origin ? undefined : 'banbeIn 0.25s ease both' }}>
       {overlay && <div data-search-backdrop aria-hidden style={{ position: 'fixed', inset: 0, background: paper, zIndex: -1 }} />}
@@ -185,7 +189,7 @@ export default function Search({ overlay = false }) {
         <div data-testid="search-idle">
           {recent.length > 0 && (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '18px 20px 10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 20px 6px' }}>
                 <span style={{ ...display(16) }}>{T('Tìm gần đây', 'Recent')}</span>
                 <button type="button" onClick={() => { setRecent([]); writeRecent([]); }} data-testid="search-recent-clear"
                   style={{ border: 'none', background: 'none', color: ink, opacity: 0.6, fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer' }}>{T('Xoá', 'Clear')}</button>
@@ -195,9 +199,10 @@ export default function Search({ overlay = false }) {
               </div>
             </div>
           )}
-          <div style={{ padding: '18px 20px 10px' }}><span style={{ ...display(16) }}>{T('Danh mục', 'Categories')}</span></div>
+          <div style={{ padding: '12px 20px 6px' }}><span style={{ ...display(16) }}>{T('Danh mục', 'Categories')}</span></div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '0 20px' }}>
-            {CATEGORY_DEFS.filter(c => c.key !== 'all').map(c => chip(c.key, T(c.vi, c.en), () => { pickFilter(c.key); goHome(); }, `search-cat-${c.key}`, <CategoryGlyph cat={c.key} size={16} />))}
+            {CATEGORY_DEFS.filter(c => c.key !== 'all').slice(0, 4).map(c => chip(c.key, T(c.vi, c.en), () => { pickFilter(c.key); goHome(); }, `search-cat-${c.key}`, <CategoryGlyph cat={c.key} size={16} />))}
+            {chip('show-all', T('Xem tất cả', 'Show all'), () => setCatSheetOpen(true), 'search-cat-show-all')}
           </div>
           {(s.pulseDaily || []).length > 0 && (
             <>
@@ -231,7 +236,8 @@ export default function Search({ overlay = false }) {
                 </button>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 18 }}>
-                {CATEGORY_DEFS.filter(c => c.key !== 'all').map(c => chip(c.key, T(c.vi, c.en), () => { pickFilter(c.key); goHome(); }, `search-empty-cat-${c.key}`, <CategoryGlyph cat={c.key} size={16} />))}
+                {CATEGORY_DEFS.filter(c => c.key !== 'all').slice(0, 4).map(c => chip(c.key, T(c.vi, c.en), () => { pickFilter(c.key); goHome(); }, `search-empty-cat-${c.key}`, <CategoryGlyph cat={c.key} size={16} />))}
+                {chip('show-all', T('Xem tất cả', 'Show all'), () => setCatSheetOpen(true), 'search-empty-cat-show-all')}
               </div>
             </div>
           )}
@@ -280,12 +286,23 @@ export default function Search({ overlay = false }) {
           ))}
           <div style={{ padding: '18px 20px' }}>
             <button type="button" data-testid="search-see-on-map"
-              onClick={() => { commit(); set({ screen: 'mapExplore', mapExploreState: { focusSearch: false, searchQuery: query } }); }}
+              onClick={() => {
+                commit();
+                const go = () => set({ screen: 'mapExplore', mapExploreState: { focusSearch: false, searchQuery: query } });
+                const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+                if (reduce) { go(); return; }
+                setLeavingToMap(true);
+                setTimeout(go, 220);
+              }}
               style={{ border: `1px solid ${rule}`, borderRadius: RADIUS.pill, background: 'none', color: ink, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, height: 40, padding: '0 16px', cursor: 'pointer' }}>
               {T('Xem trên bản đồ', 'See on map')} ›
             </button>
           </div>
         </div>
+      )}
+      {catSheetOpen && (
+        <CategorySheet keys={categorySheetKeys(CATEGORY_DEFS, s.lang === 'en' ? 'en' : 'vi')} counts={null} values={[]} T={T}
+          onPick={(k) => { setCatSheetOpen(false); pickFilter(k); goHome(); }} onClose={() => setCatSheetOpen(false)} />
       )}
     </div>
   );

@@ -3,6 +3,17 @@
 }
 
 :root { --bb-glass: 0.82; } /* Liquid Glass opacity, set from Preferences (src/lib/glassOpacity.js) */
+/* Map controls: Glass | Static colour (src/lib/mapSurface.js). photoPill reads these through its --bb-rt-* fallbacks, so
+   scoping them to .bb-mapsurf turns every map control and Home's search bar solid without touching the others. */
+:root[data-map-surface="solid"] .bb-mapsurf {
+  --bb-rt-pill: var(--bb-surface-1);
+  --bb-rt-blur: none;
+  --bb-pill-edge: rgba(var(--bb-fg-rgb), 0.08);
+  --bb-pill-inset: transparent;
+  --bb-pill-shadow: rgba(0, 0, 0, 0.16);
+  --bb-rt-field: var(--bb-surface-1);
+}
+:root[data-map-surface="solid"] .bb-searchbar { box-shadow: 0 0 0 1px rgba(var(--bb-fg-rgb), 0.08), 0 2px 6px rgba(0, 0, 0, 0.16) !important; }
 /* Controls over a cover photo (Event Detail back / more / share, note 71 phase 4): a fixed deep clay, the same in both
    themes because it sits on the photo, not on the page. At 0.9 with a sheen of at most 0.12 the white glyph keeps
    >= 4.5:1 on any photo, pure white included (theme clay at 0.72 was 2.3:1 light, 1.65:1 dark on a bright cover).

@@ -59,6 +59,7 @@ const QUICK_CHIPS = [
   { key: 'today', vi: 'Hôm nay', en: 'Today', apply: f => ({ ...f, date: f.date === 'today' ? 'any' : 'today' }), on: f => f.date === 'today', dim: 'date' },
   { key: 'weekend', vi: 'Cuối tuần này', en: 'This weekend', apply: f => ({ ...f, date: f.date === 'weekend' ? 'any' : 'weekend' }), on: f => f.date === 'weekend', dim: 'date' },
   { key: 'free', vi: 'Miễn phí', en: 'Free', apply: f => ({ ...f, free: !f.free, priceMin: null, priceMax: null }), on: f => f.free, dim: 'free' },
+  { key: 'seatsLeft', vi: 'Còn chỗ', en: 'Seats left', apply: f => ({ ...f, seatsLeft: !f.seatsLeft }), on: f => f.seatsLeft, dim: 'seatsLeft' },
   { key: 'almostFull', vi: 'Sắp hết chỗ', en: 'Almost full', apply: f => ({ ...f, almostFull: !f.almostFull }), on: f => f.almostFull, dim: 'almostFull' },
 ];
 const LAYOUT_KEY = 'banbe_home_layout_v1';
@@ -457,6 +458,7 @@ export default function Home() {
     ...optionCounts(discoveryItems, homeFilters, 'date', ['today', 'weekend'], nowMs),
     free: optionCounts(discoveryItems, homeFilters, 'free', null, nowMs).true,
     almostFull: optionCounts(discoveryItems, homeFilters, 'almostFull', null, nowMs).true,
+    seatsLeft: optionCounts(discoveryItems, homeFilters, 'seatsLeft', null, nowMs).true,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [discoveryItems, homeFilters, Math.floor(nowMs / 60000)]);
   const relaxHints = useMemo(() => (shownItems.length < 3 ? relaxationHints(discoveryItems, homeFilters, nowMs) : []),
@@ -1386,6 +1388,7 @@ export default function Home() {
         items={discoveryItems} filters={homeFilters} sort={s.homeSort} now={nowMs} T={T}
         canSortNearest={!!(located && s.userCoords)}
         areaLabel={curArea.key === 'all' ? '' : curArea.label}
+        forYou={hasForYou ? { on: !!s.filterForYou, set: (v) => set({ filterForYou: v }) } : null}
         onClose={() => set({ homeFilterSheetOpen: false })}
         onApply={(f, sort) => { setHomeFilters(f); set({ homeFilterSheetOpen: false, homeSort: sort }); }}
         {...(simpleShell ? { simpleShell: true } : {})}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { ink, alert, dockGlass, dockHighlight } from '../theme.js';
+import { ink, alert } from '../theme.js';
 import { computeAccountDockBadge } from '../lib/badges.js';
 import { flagOn } from '../lib/featureFlags.js';
 import { dockSlots, dockHighlightFor, scrubTarget, CREATE_SLOT } from '../lib/dockLayout.js';
@@ -474,117 +474,83 @@ export default function BottomTabBar({ collapsed }) {
     return idx === -1 ? null : idx;
   };
 
-  const onPointerDown = (e) => {
-    measure();
-    barRef.current?.setPointerCapture?.(e.pointerId);
-    draggingRef.current = true;
-    gooEngagedRef.current = false;
-    pointerStartRef.current = { x: e.clientX, y: e.clientY };
-    // Captured BEFORE this gesture's own hitTest overwrites
-    // `activeIndexRef` — the tab that was selected going into this press,
-    // i.e. where the droplet's neck anchors if this turns into a real
-    // drag (see the goo-layer comment above `gooLayerRef`).
-    anchorIndexRef.current = activeIndexRef.current;
-    const idx = hitTest(e.clientX);
+  // Mirrors iOS (2efc0e8): a plain tap activates; press-and-hold (~350 ms) makes the dock glow, sliding over an item
+  // lights it and dwelling ~450 ms (or releasing) activates it. A plain swipe across the dock does nothing.
+  const holdTimerRef = useRef(null);
+  const dwellTimerRef = useRef(null);
+  const holdingRef = useRef(false);
+  const [holding, setHolding] = useState(false);
+  const clearTimers = () => {
+    clearTimeout(holdTimerRef.current); holdTimerRef.current = null;
+    clearTimeout(dwellTimerRef.current); dwellTimerRef.current = null;
+  };
+  const showAt = (idx) => {
     activeIndexRef.current = idx;
     setActiveIndex(isCreateIndex(idx) ? null : idx);
     setOverCreate(isCreateIndex(idx));
-    if (reduceMotionQuery()) {
-      placeHighlight(idx, false);
-    } else {
-      placeHighlightLive(percentForClientX(e.clientX));
-    }
+    if (!isCreateIndex(idx)) placeHighlight(idx, true);
+    else if (highlightRef.current) highlightRef.current.style.opacity = '0';
   };
-
-  const onPointerMove = (e) => {
-    if (!draggingRef.current) return;
-    const idx = hitTest(e.clientX);
-    if (idx !== activeIndexRef.current) {
-      activeIndexRef.current = idx;
-      // Over "+": no tab icon is highlighted; the "+" itself looks pressed.
-      setActiveIndex(isCreateIndex(idx) ? null : idx);
-      setOverCreate(isCreateIndex(idx));
-    }
-    // Reduce Motion: a plain non-bouncy snap between slots, never the
-    // continuous stretch/goo (that IS the motion this setting asks to
-    // avoid) — falls straight through to the pre-existing discrete path.
-    if (reduceMotionQuery()) {
-      placeHighlight(idx, true);
-      return;
-    }
-    const dx = e.clientX - pointerStartRef.current.x;
-    const dy = e.clientY - pointerStartRef.current.y;
-    const movedEnough = Math.hypot(dx, dy) > DRAG_MOVE_THRESHOLD;
-    if (movedEnough) {
-      if (!gooEngagedRef.current) {
-        gooEngagedRef.current = true;
-        placeAnchorBlob(anchorIndexRef.current != null ? anchorIndexRef.current : idx);
-        setGooVisible(true);
-        // Hand off from the single-shape bulge to the two-blob droplet —
-        // hidden, not unmounted, so it's already correctly positioned and
-        // just needs an opacity fade back in once the gesture settles.
-        if (highlightRef.current) highlightRef.current.style.opacity = '0';
-      }
-      placeDragBlob(percentForClientX(e.clientX));
-    } else {
-      placeHighlightLive(percentForClientX(e.clientX));
-    }
-  };
-
-  // BUG 1 fix: no longer hides the highlight on release — it stays exactly
-  // where the drag landed (the tab being navigated to), so it reads as
-  // "this is now the active tab" instead of flashing away. If the tapped
-  // tab is already the current screen, `state.screen` won't change and the
-  // effect above won't refire, which is fine: the highlight is already
-  // sitting in the right place from the drag/tap itself.
-  const endDrag = () => {
-    if (!draggingRef.current) return;
-    draggingRef.current = false;
-    const idx = activeIndexRef.current;
-    if (gooEngagedRef.current) {
-      // Droplet fully detaches and merges into the destination tab: fade
-      // the two-blob layer out while the classic single-shape highlight
-      // (already hidden, mid-drag) crossfades back in via `placeHighlight`
-      // below — a settle, not a hard cut.
-      setGooVisible(false);
-      gooEngagedRef.current = false;
-    }
-    // Settles the SAME blob smoothly into the existing at-rest look — the
-    // continuous drag placement above never uses this element's normal
-    // transition, so without this final call it would stay stretched/
-    // off-slot instead of visibly relaxing into the selected tab.
-    setOverCreate(false);
-    if (isCreateIndex(idx)) {
-      // Released over "+": open the "+" sheet (the same open a tap uses); the screen does not change, so the bubble
-      // springs back to the current screen's tab (instant under Reduce Motion, placeHighlight).
-      const back = restingIndex();
-      activeIndexRef.current = back;
-      setActiveIndex(back);
-      if (back != null) placeHighlight(back, true);
-      else if (highlightRef.current) highlightRef.current.style.opacity = '0';
-      openDockCreate();
-      return;
-    }
-    placeHighlight(idx, true);
-    if (idx != null && items[idx]) items[idx].onClick();
-  };
-
-  // Cancelled drag (pointercancel, e.g. an interrupting system gesture)
-  // returns to the tab that was actually active before the drag started —
-  // never commits a navigation.
-  const cancelDrag = () => {
-    if (!draggingRef.current) return;
-    draggingRef.current = false;
-    if (gooEngagedRef.current) {
-      setGooVisible(false);
-      gooEngagedRef.current = false;
-    }
-    setOverCreate(false);
+  const restore = () => {
+    holdingRef.current = false; setHolding(false); setOverCreate(false);
     const idx = restingIndex();
     activeIndexRef.current = idx;
     setActiveIndex(idx);
     if (idx != null) placeHighlight(idx, true);
     else if (highlightRef.current) highlightRef.current.style.opacity = '0';
+  };
+  const activate = (idx) => {
+    clearTimers();
+    draggingRef.current = false;
+    holdingRef.current = false; setHolding(false); setOverCreate(false);
+    if (isCreateIndex(idx)) { restore(); openDockCreate(); return; }
+    if (idx != null && items[idx]) { showAt(idx); items[idx].onClick(); } else restore();
+  };
+  const scheduleDwell = (idx) => {
+    clearTimeout(dwellTimerRef.current);
+    dwellTimerRef.current = setTimeout(() => { if (holdingRef.current) activate(idx); }, 450);
+  };
+
+  const onPointerDown = (e) => {
+    measure();
+    barRef.current?.setPointerCapture?.(e.pointerId);
+    draggingRef.current = true;
+    pointerStartRef.current = { x: e.clientX, y: e.clientY };
+    clearTimers();
+    const x = e.clientX;
+    holdTimerRef.current = setTimeout(() => {
+      holdTimerRef.current = null;
+      holdingRef.current = true; setHolding(true);
+      showAt(hitTest(x));
+    }, 350);
+  };
+
+  const onPointerMove = (e) => {
+    if (!draggingRef.current) return;
+    if (!holdingRef.current) {
+      const moved = Math.hypot(e.clientX - pointerStartRef.current.x, e.clientY - pointerStartRef.current.y) > 12;
+      if (moved) clearTimers();
+      return;
+    }
+    const idx = hitTest(e.clientX);
+    if (idx !== activeIndexRef.current) { showAt(idx); scheduleDwell(idx); }
+  };
+
+  const endDrag = (e) => {
+    if (!draggingRef.current) return;
+    const wasHolding = holdingRef.current;
+    const moved = Math.hypot(e.clientX - pointerStartRef.current.x, e.clientY - pointerStartRef.current.y) > 12;
+    clearTimers();
+    draggingRef.current = false;
+    if (!wasHolding && moved) { restore(); return; } // a swipe, not a tap
+    activate(hitTest(e.clientX));
+  };
+
+  const cancelDrag = () => {
+    if (!draggingRef.current) return;
+    clearTimers();
+    draggingRef.current = false;
+    restore();
   };
 
   return (
@@ -596,7 +562,10 @@ export default function BottomTabBar({ collapsed }) {
       onPointerUp={endDrag}
       onPointerCancel={cancelDrag}
       style={{
-        ...dockGlass({}),
+        // Static surface that follows light/dark (no glass), like iOS.
+        background: 'var(--bb-surface-1)',
+        border: '1px solid rgba(var(--bb-fg-rgb), 0.06)',
+        boxShadow: '0 6px 14px rgba(0,0,0,0.16)',
         position: 'relative',
         // TASK 1 (2026-10-05 fix pass) — flex child of DockRow (App.jsx)
         // now, not a self-positioned/self-sized element — `flex: 1 1 auto`
@@ -681,7 +650,10 @@ export default function BottomTabBar({ collapsed }) {
             // each tab item's own `zIndex: 1` below is what keeps this
             // element BEHIND the icons regardless of DOM order.
             background: 'linear-gradient(180deg, #FFFFFF, rgba(255,255,255,0.9))', opacity: 0, pointerEvents: 'none', zIndex: 0,
-            boxShadow: '0 2px 8px rgba(27,25,22,0.18), 0 0 0 1px rgba(var(--bb-fg-rgb), 0.06)',
+            // Glows while the dock is held (iOS: clay halo).
+            boxShadow: holding
+              ? '0 0 14px rgba(var(--bb-clay-rgb, 190,110,70), 0.65), 0 0 0 1.5px rgba(var(--bb-clay-rgb, 190,110,70), 0.9)'
+              : '0 2px 8px rgba(27,25,22,0.18), 0 0 0 1px rgba(var(--bb-fg-rgb), 0.06)',
             willChange: 'transform',
           }}
         />

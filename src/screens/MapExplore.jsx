@@ -15,7 +15,7 @@ import { withR2Columns, marketColumnList, detailsColumnList } from '../lib/media
 import {
   reasonCommits, referenceRect, boundsForRect, mapResults, selectionAfter, boundsOfPoints, pointsNear, nearestPoint,
   fitCamera, distanceKm as geoKm, sameSpot, padBounds, cityFor, searchCities, cityGroups, activeFilterSummary, CITY_ZOOM,
-  clusterPins, areaKey, areaGroups, markerLevel, areaPanelCloses, AREA_ZOOM,
+  clusterPins, areaKey, areaGroups, markerLevel, areaPanelCloses, AREA_ZOOM, inBounds,
 } from '../lib/mapDiscovery.js';
 import citiesData from '../data/cities.json';
 import { cityOfNode } from '../lib/locationTree.js';
@@ -1040,7 +1040,7 @@ export default function MapExplore() {
           if (zoom512 >= 15 || isSelected) {
             const name = document.createElement('span');
             name.setAttribute('data-testid', `map-pinname-${ev.id}`);
-            name.style.cssText = `position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 11.5px/1.2 'Be Vietnam Pro',sans-serif;color:${ink};text-shadow:0 0 3px ${paper},0 0 3px ${paper},0 0 2px ${paper};pointer-events:none;`;
+            name.style.cssText = `position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 11.5px/1.2 'Be Vietnam Pro',sans-serif;color:${ink};background:${paper};padding:2px 8px;border-radius:999px;box-shadow:0 1px 2px rgba(27,25,22,0.2);pointer-events:none;`;
             name.textContent = ev.name || '';
             pinEl.appendChild(name);
           }
@@ -1390,7 +1390,15 @@ export default function MapExplore() {
     ...(active ? { background: ink, color: paper, border: `1px solid ${ink}`, backdropFilter: 'none', WebkitBackdropFilter: 'none', boxShadow: 'none' } : null),
   });
   // Empty-state action: a real 44px button.
+  const emptyBox = { padding: '20px 20px 18px', color: ink, fontSize: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 6 };
+  const emptyTitle = { fontSize: 16, fontWeight: 700, fontFamily: DISPLAY_FACE };
+  const emptyIcon = (d) => (
+    <span aria-hidden="true" style={{ width: 56, height: 56, borderRadius: 18, background: 'linear-gradient(135deg, rgba(var(--bb-fg-rgb),0.10), rgba(var(--bb-fg-rgb),0.03))', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
+      <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
+    </span>
+  );
   const emptyAction = { display: 'inline-flex', alignItems: 'center', minHeight: 44, marginTop: 8, padding: '0 16px', borderRadius: RADIUS.pill, border: 'none', background: surface2, color: ink, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' };
+  const emptyActionInk = { ...emptyAction, background: ink, color: paper, marginTop: 6 };
   // What is filtered (only its count and `tokens` are read now: the empty states say how many filters to clear).
   const summary = (() => {
     const base = activeFilterSummary(filters, { forYou: forYouActive, query: searchQuery });
@@ -1544,7 +1552,7 @@ export default function MapExplore() {
   );
   // An active chip moves to the front (CSS order); scroll its row back there so it is never left out of view.
   const chipRowRef = useRef(null);
-  const activeChipKey = `${catFilter}|${openNowOnly}`;
+  const activeChipKey = `${catFilter}|${openNowOnly}|${filters.free}|${filters.almostFull}`;
   useEffect(() => { chipRowRef.current?.scrollTo?.({ left: 0, behavior: 'smooth' }); }, [activeChipKey]);
   const clearChip = (testId) => (
     <button type="button" onClick={(e) => { e.stopPropagation(); clearFilters(); }} data-testid={testId}
@@ -1683,19 +1691,23 @@ export default function MapExplore() {
     ),
     !loading && !forYouActive && visibleEvents.length === 0 && committedBounds && events.length > 0 && cityMatches.length === 0 && (
       anyInArea && filtersActive ? (
-        <div key="no-results" data-testid="map-search-no-results" style={{ padding: 20, color: ink, fontSize: 14 }}>
+        <div key="no-results" data-testid="map-search-no-results" style={emptyBox}>
+          {emptyIcon('M4 6h16M7 12h10M10 18h4')}
+          <div style={emptyTitle}>{T('Bộ lọc đang ẩn sự kiện', 'Your filters hide the events')}</div>
           <div style={{ color: ink2 }}>
             {searchQuery.trim()
               ? T(`Không có sự kiện nào trong vùng này khớp với "${searchQuery.trim()}".`, `No events in this area match "${searchQuery.trim()}".`)
-              : T('Có sự kiện trong vùng này nhưng bộ lọc đang ẩn chúng.', 'There are events in this area, but your filters hide them.')}
+              : T('Có sự kiện trong vùng này, nhưng không khớp bộ lọc hiện tại.', 'There are events in this area, but none match your current filters.')}
           </div>
-          <button type="button" onClick={clearFilters} data-testid="map-clear-filters" style={emptyAction}>{T('Xoá bộ lọc', 'Clear filters')}</button>
+          <button type="button" onClick={clearFilters} data-testid="map-clear-filters" style={emptyActionInk}>{T('Xoá bộ lọc', 'Clear filters')}</button>
         </div>
       ) : (
-        <div key="area-empty" data-testid="map-area-empty" style={{ padding: 20, color: ink, fontSize: 14 }}>
-          <div style={{ color: ink2 }}>{T('Không có sự kiện nào trong vùng bản đồ này.', 'No events in this part of the map.')}</div>
+        <div key="area-empty" data-testid="map-area-empty" style={emptyBox}>
+          {emptyIcon('M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21zM4 4l16 16')}
+          <div style={emptyTitle}>{T('Chưa có sự kiện ở khu vực này', 'No events in this area')}</div>
+          <div style={{ color: ink2 }}>{T('Kéo bản đồ sang nơi khác hoặc xem các sự kiện gần bạn nhất.', 'Move the map, or see the events nearest to you.')}</div>
           {matchingAnywhere.length > 0 && (
-            <button type="button" onClick={showNearest} data-testid="map-show-nearest" style={emptyAction}>
+            <button type="button" onClick={showNearest} data-testid="map-show-nearest" style={emptyActionInk}>
               {nearestKm != null && nearestKm >= 1
                 ? T(`Xem gần nhất · cách ${Math.round(nearestKm)} km`, `Show nearest · ${Math.round(nearestKm)} km away`)
                 : T('Xem sự kiện gần nhất', 'Show nearest events')}
@@ -1703,7 +1715,7 @@ export default function MapExplore() {
           )}
           {/* Filters on and nothing here: offer to clear them (owner 2026-11-01), never a dead end. */}
           {(filtersActive || catFilter !== 'all') && (
-            <button type="button" onClick={clearFilters} data-testid="map-clear-filters-empty" style={emptyAction}>
+            <button type="button" onClick={clearFilters} data-testid="map-clear-filters-empty" style={emptyActionInk}>
               {T(`Xoá ${summary.count} bộ lọc`, summary.count === 1 ? 'Clear 1 filter' : `Clear ${summary.count} filters`)}
             </button>
           )}
@@ -1713,13 +1725,77 @@ export default function MapExplore() {
   ].filter(Boolean);
   // Closed list: the same messages float above the buttons (one place at a time, they share their test ids).
   const showEmptyCard = !listOpen && !searchActive && !areaPanel && emptyNodes.length > 0;
+  // Plain "nothing here" card with a way out: while it shows, the list button, the time bar and the area chips are hidden.
+  const emptyOnly = showEmptyCard && !(forYouActive && visibleEvents.length === 0) && !!committedBounds
+    && !(loading && events.length === 0) && !(loadError && events.length === 0)
+    && ((anyInArea && filtersActive) || matchingAnywhere.length > 0);
   const srOnly = { position: 'absolute', width: 1, height: 1, margin: -1, padding: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0 };
   const forYouCapsule = { ...photoPill({ position: 'static', borderRadius: RADIUS.pill }), display: 'inline-flex', alignItems: 'center', minHeight: 36, padding: '0 12px', fontSize: 13, color: ink, fontWeight: forYouActive ? 700 : 500, whiteSpace: 'nowrap',
     ...(forYouActive ? { background: ink, color: paper, border: `1px solid ${ink}`, backdropFilter: 'none', WebkitBackdropFilter: 'none', boxShadow: 'none' } : null) };
-  const filterBadge = sheetFilterCount > 0 ? sheetFilterCount : 0;
+  // Badge: every selected filter (sheet, category, Seats left, Free, Almost full) + For You + the day window + a picked area.
+  // The sheet's draft: the filters, with the day window shown as its When pill.
+  const sheetSeed = { ...filters, date: timeWin?.on && ['today', 'tomorrow', 'weekend'].includes(timeWin.key) ? timeWin.key : 'any' };
+  const filterBadge = activeFilterCount(filters) + (forYouActive ? 1 : 0) + (timeWin?.on ? 1 : 0) + (areaContext === 'map' ? 0 : 1);
+  const pickedCategory = catFilter !== 'all' ? CATEGORY_DEFS.find(c => c.key === catFilter) : null;
+  const categoryChipEl = (c) => {
+    const active = catFilter === c.key;
+    const n = categoryCountMap[c.key] ?? 0;
+    return (
+      <button key={c.key} type="button" role="tab" aria-selected={active}
+        aria-label={T(`${c.vi}, ${n} sự kiện`, `${c.en}, ${n} event${n === 1 ? '' : 's'}`)}
+        onClick={() => { if (!active || c.key !== 'all') setCatFilter(active ? 'all' : c.key); }}
+        data-testid={`map-cat-${c.key}`}
+        style={mapChip(active, n === 0 && !active)}>
+        <CategoryGlyph cat={c.key} size={16} strokeWidth={1.8} />
+        <span>{T(c.vi, c.en)}</span>
+        <span data-testid={`map-cat-count-${c.key}`} style={{ fontVariantNumeric: 'tabular-nums', opacity: active ? 0.85 : 0.6 }}>{n}</span>
+      </button>
+    );
+  };
+  const seatsChip = (
+    <button key="seats" type="button" aria-pressed={openNowOnly} onClick={() => setOpenNowOnly(v => !v)} data-testid="map-chip-open-now" style={mapChip(openNowOnly, false)}>
+      {T('Còn chỗ', 'Seats left')}
+    </button>
+  );
+  const freeChip = (
+    <button key="free" type="button" aria-pressed={filters.free} data-testid="map-quick-free"
+      onClick={() => setFilters(f => normalizeFilters({ ...f, free: !f.free, priceMin: null, priceMax: null }))} style={mapChip(filters.free, false)}>
+      {T('Miễn phí', 'Free')}
+    </button>
+  );
+  const almostFullChip = (
+    <button key="almost" type="button" aria-pressed={filters.almostFull} data-testid="map-quick-almost-full"
+      onClick={() => setFilters(f => normalizeFilters({ ...f, almostFull: !f.almostFull }))} style={mapChip(filters.almostFull, false)}>
+      {T('Sắp hết chỗ', 'Almost full')}
+    </button>
+  );
+  // The area chip follows the view: the city under the map centre, or (at neighbourhood zoom) the nearest event area name.
+  const viewAreaLabel = (() => {
+    const b = committedBounds;
+    if (!b) return null;
+    const lat = (b.north + b.south) / 2;
+    const lng = b.west <= b.east ? (b.west + b.east) / 2 : (((b.west + b.east + 360) / 2 + 180) % 360) - 180;
+    const here = { lat, lng };
+    let city = null;
+    for (const c of CITIES) if (inBounds(here, c.bounds) && (!city || (c.bounds.north - c.bounds.south) < (city.bounds.north - city.bounds.south))) city = c;
+    if ((cameraZoom ?? 0) >= AREA_ZOOM) {
+      let best = null;
+      for (const e of events) {
+        if (e.lat == null || e.lng == null) continue;
+        const label = areaInfoById.get(e.id)?.label;
+        if (!label) continue;
+        const d = Math.hypot(e.lat - lat, (e.lng - lng) * Math.cos(lat * Math.PI / 180));
+        if (!best || d < best.d) best = { d, label };
+      }
+      if (best && best.d <= Math.max(b.north - b.south, 0.01) * 0.75) return best.label;
+    }
+    return city ? (en ? city.en : city.vi) : null;
+  })();
+  const areaChipLabel = viewAreaLabel
+    || (areaContext === 'area' && cityDest ? cityName(cityDest) : areaContext === 'area' && curArea.key !== 'all' ? curArea.label : T('Vùng bản đồ', 'Map area'));
 
   return (
-    <div ref={rootRef} data-screen-label="MapExplore"
+    <div ref={rootRef} data-screen-label="MapExplore" className="bb-mapsurf"
       style={{ position: 'fixed', inset: 0, background: paper, opacity: 1 - 0.6 * closingProgress, transform: closingProgress ? `scale(${1 - 0.04 * closingProgress})` : 'none', transition: 'opacity 0.3s ease, transform 0.3s ease' }}>
       {/* iOS has no map zoom controls (mapControls {}); the web +/- sits below the shared controls. */}
       <style>{`[data-screen-label="MapExplore"] .maplibregl-ctrl-top-right { top: ${Math.round(topControlsBottom + 12)}px; right: 6px; } [data-screen-label="MapExplore"] .bb-noscroll::-webkit-scrollbar { display: none; }
@@ -1793,10 +1869,11 @@ export default function MapExplore() {
           )}
         </div>
 
-        {/* For You is pinned at the leading edge (never scrolls away); the other chips live in the horizontal
-            scroller, which keeps data-hscroll so the root tab swipe ignores it. Hidden until the account has saved
-            preferences. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingInlineStart: 16, pointerEvents: 'auto' }}>
+        {/* ONE scrolling row (iOS parity): For You first, then every selected filter (Seats left, Free, Almost full, the
+            picked category), then the area chip, the unselected quick filters, the other categories and "All
+            categories". The row keeps data-hscroll so the root tab swipe ignores it. */}
+        <div ref={chipRowRef} data-hscroll="true" data-testid="map-filter-extra-scroller" className="bb-noscroll"
+          style={{ display: 'flex', gap: 8, padding: '2px 16px', overflowX: 'auto', scrollbarWidth: 'none', pointerEvents: 'auto' }}>
           {hasPrefs && (
             <ForYouChip
               T={T}
@@ -1807,45 +1884,23 @@ export default function MapExplore() {
               onClick={toggleForYou}
             />
           )}
-          <div ref={chipRowRef} data-hscroll="true" data-testid="map-filter-extra-scroller" className="bb-noscroll"
-            style={{ flex: '1 1 0', minWidth: 0, display: 'flex', gap: 8, paddingInlineEnd: 16, paddingBlock: 2, overflowX: 'auto', scrollbarWidth: 'none' }}>
-            {/* Location hierarchy: opens the same shared area sheet Home uses (AreaSheet.jsx). The geographic context:
-                the picked area while the map is framed on it, else "Map area". */}
-            <button type="button" onClick={openArea} data-testid="map-chip-area" aria-haspopup="dialog" style={{ ...mapChip(false, false), order: -4 }}>
-              {areaContext === 'area' && cityDest ? cityName(cityDest) : areaContext === 'area' && curArea.key !== 'all' ? curArea.label : T('Vùng bản đồ', 'Map area')} ▾
-            </button>
-            {/* Seats left: real fill only (get_public_event_fill), so it is hidden until banbe has any. */}
-            {(anyFillKnown || openNowOnly) && (
-              <button type="button" aria-pressed={openNowOnly} onClick={() => setOpenNowOnly(v => !v)} data-testid="map-chip-open-now"
-                style={{ ...mapChip(openNowOnly, false), order: openNowOnly ? -3 : 0 }}>
-                {T('Còn chỗ', 'Seats left')}
-              </button>
-            )}
-            {/* Categories: Home's own definitions (src/data/eventTypeProfiles.json) and line icons, in a fixed order so
-                the row never reshuffles as results change. Each count is what tapping it would show with every other
-                filter kept; a selected category stays even at 0. "All categories" opens Home's A–Z sheet. */}
-            <div role="tablist" aria-label={T('Danh mục', 'Categories')} data-testid="map-category-row" style={{ display: 'contents' }}>
-              {CATEGORY_DEFS.map(c => {
-                const active = catFilter === c.key;
-                const n = categoryCountMap[c.key] ?? 0;
-                return (
-                  <button key={c.key} type="button" role="tab" aria-selected={active}
-                    aria-label={T(`${c.vi}, ${n} sự kiện`, `${c.en}, ${n} event${n === 1 ? '' : 's'}`)}
-                    onClick={() => { if (!active || c.key !== 'all') setCatFilter(active ? 'all' : c.key); }}
-                    data-testid={`map-cat-${c.key}`}
-                    // "All" first, then the picked category, then the rest (owner 2026-11-01).
-                    style={{ ...mapChip(active, n === 0 && !active), order: c.key === 'all' ? -2 : active ? -1 : 0 }}>
-                    <CategoryGlyph cat={c.key} size={16} strokeWidth={1.8} />
-                    <span>{T(c.vi, c.en)}</span>
-                    <span data-testid={`map-cat-count-${c.key}`} style={{ fontVariantNumeric: 'tabular-nums', opacity: active ? 0.85 : 0.6 }}>{n}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <button type="button" onClick={() => setCategorySheetOpen(true)} data-testid="map-cat-show-all" aria-haspopup="dialog" style={{ ...mapChip(false, false), order: 1 }}>
-              {T('Tất cả danh mục', 'All categories')}
-            </button>
+          {anyFillKnown && openNowOnly && seatsChip}
+          {filters.free && freeChip}
+          {filters.almostFull && almostFullChip}
+          {pickedCategory && categoryChipEl(pickedCategory)}
+          {/* Location hierarchy: opens the same shared area sheet Home uses (AreaSheet.jsx). The label follows the view. */}
+          <button type="button" onClick={openArea} data-testid="map-chip-area" aria-haspopup="dialog" style={mapChip(false, false)}>
+            {areaChipLabel} ▾
+          </button>
+          {anyFillKnown && !openNowOnly && seatsChip}
+          {!filters.free && freeChip}
+          {!filters.almostFull && almostFullChip}
+          <div role="tablist" aria-label={T('Danh mục', 'Categories')} data-testid="map-category-row" style={{ display: 'contents' }}>
+            {CATEGORY_DEFS.filter(c => c !== pickedCategory).map(categoryChipEl)}
           </div>
+          <button type="button" onClick={() => setCategorySheetOpen(true)} data-testid="map-cat-show-all" aria-haspopup="dialog" style={mapChip(false, false)}>
+            {T('Tất cả danh mục', 'All categories')}
+          </button>
         </div>
       </div>
 
@@ -1856,11 +1911,11 @@ export default function MapExplore() {
           style={{ ...photoPill({ position: 'static', borderRadius: '50%' }), width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: compassOpacity }}>
           🧭
         </div>
-        <button ref={listButtonRef} type="button" onClick={openList} data-testid="map-list-button"
+        <button ref={listButtonRef} type="button" onClick={openList} data-testid="map-list-button" aria-hidden={emptyOnly || undefined} tabIndex={emptyOnly ? -1 : undefined}
           aria-label={hitSet
             ? T(`Danh sách, ${hitCount} sự kiện trong khung giờ`, `List, ${hitCount} event${hitCount === 1 ? '' : 's'} in the window`)
             : T(`Danh sách, ${visibleEvents.length} sự kiện`, `List, ${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'}`)}
-          style={{ height: 44, padding: '0 18px', borderRadius: 999, background: ink, color: paper, fontSize: 14, fontWeight: 600, border: 'none', fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,0.28)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          style={{ height: 44, padding: '0 18px', borderRadius: 999, background: ink, color: paper, fontSize: 14, fontWeight: 600, border: 'none', fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,0.28)', display: emptyOnly ? 'none' : 'inline-flex', alignItems: 'center', gap: 8 }}>
           <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" /></svg>
           {T('Danh sách', 'List')} · {hitCount}
         </button>
@@ -1868,7 +1923,7 @@ export default function MapExplore() {
 
       {/* Neighbourhood chips: tap one to fly there and open its panel. Hidden at city level, while the list or a panel is
           open, and while there is nothing to show; their room above the buttons stays reserved. */}
-      {!areaPanel && !listOpen && !searchActive && levelNow !== 'city' && chipsView.length > 0 && (
+      {!areaPanel && !listOpen && !searchActive && !emptyOnly && levelNow !== 'city' && chipsView.length > 0 && (
         <div data-hscroll="true" data-testid="map-area-chips" className="bb-noscroll" role="group" aria-label={T('Khu vực', 'Areas')}
           style={{ position: 'absolute', left: 0, right: 0, bottom: dockClear + CHIPS_BOTTOM, zIndex: 3, display: 'flex', gap: 8, overflowX: 'auto', padding: '2px 16px 4px', scrollbarWidth: 'none' }}>
           {chipsView.map(g => {
@@ -1929,17 +1984,17 @@ export default function MapExplore() {
       <MapTimeBar win={timeWin} options={dayOpts} dayLabel={dayLabel} T={T}
         onDay={(k) => setTimeWin(defaultWindow(k, Date.now(), viewTz))}
         onKnob={(which, hour) => setTimeWin(cur => moveKnob(cur, which, hour))}
-        style={{ bottom: areaPanel ? panelPx + 12 : dockClear + TIME_BOTTOM, visibility: listOpen ? 'hidden' : 'visible', transition: reduceMotion() ? 'none' : 'bottom 0.38s cubic-bezier(.2,.85,.25,1)' }} />
+        style={{ bottom: areaPanel ? panelPx + 12 : dockClear + TIME_BOTTOM, visibility: listOpen || emptyOnly ? 'hidden' : 'visible', transition: reduceMotion() ? 'none' : 'bottom 0.38s cubic-bezier(.2,.85,.25,1)' }} />
 
       {showEmptyCard && (
-        <div data-testid="map-empty-card" style={{ position: 'absolute', left: 16, right: 16, bottom: dockClear + FAB_BOTTOM + BTN_H + 8, zIndex: 3, maxHeight: '40%', overflowY: 'auto', background: paper, borderRadius: 16, boxShadow: '0 4px 18px rgba(27,25,22,0.16)' }}>
+        <div data-testid="map-empty-card" style={{ position: 'absolute', left: 16, right: 16, bottom: dockClear + FAB_BOTTOM + (emptyOnly ? 0 : BTN_H + 8), zIndex: 3, maxHeight: '40%', overflowY: 'auto', background: paper, borderRadius: 16, boxShadow: '0 4px 18px rgba(27,25,22,0.16)' }}>
           {emptyNodes}
         </div>
       )}
 
       {/* Focused search: Recent · Cities · Quick filters while it is empty; cities and "show the list" once typing. */}
       {searchActive && (
-        <div data-testid="map-search-panel" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: listTop, zIndex: 4, background: paper, overflowY: 'auto', padding: '0 16px 24px' }}>
+        <div data-testid="map-search-panel" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0, zIndex: 4, background: paper, overflowY: 'auto', padding: `${listTop}px 16px 24px` }}>
           {suggestOpen ? searchPanel : (
             <div onMouseDown={(e) => { if (e.target.closest('button')) e.preventDefault(); }}>
               {cityResults}
@@ -2058,14 +2113,20 @@ export default function MapExplore() {
       {filterSheetOpen && (
         <HomeFilterSheet
           mapMode
-          simpleShell
           items={sheetItems}
-          filters={filters}
+          filters={sheetSeed}
           sort="soonest"
           now={nowMinute * 60000}
           T={T}
           canSortNearest={false}
-          onApply={(draft) => { setFilters(normalizeFilters(draft)); setFilterSheetOpen(false); }}
+          areaLabel={areaChipLabel}
+          forYou={hasPrefs ? { on: forYouActive, set: setForYouOn } : null}
+          onApply={(draft) => {
+            // The sheet's When pills drive the day window (dim/bold, never a filter).
+            if (draft.date !== sheetSeed.date) setTimeWin(windowFromHomeDate(draft.date, Date.now(), VN_TIME_ZONE));
+            setFilters(normalizeFilters({ ...draft, date: 'any' }));
+            setFilterSheetOpen(false);
+          }}
           onClose={() => setFilterSheetOpen(false)}
         />
       )}
