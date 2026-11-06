@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>banbe · Ticket A + What's next + Event sheet</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Jost:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#F7F4EC;--ink:#1B1916;--ink2:rgba(27,25,22,.68);--ink3:rgba(27,25,22,.5);--rule:rgba(27,25,22,.16);--block:#EEE8DA;--inset:#E6DFCD;--btn:#1B1916;--btntext:#F7F4EC;--page:#E4DED0;
+--mist:#34545E;--clay:#B5654A;--moss:#485834;--honey:#8C6014;--plum:#6B4E7C;--alert:#9A3E2D;--neutral:#6A6355}
+body.dark{--paper:#14120E;--ink:#F2EDE1;--ink2:rgba(242,237,225,.72);--ink3:rgba(242,237,225,.55);--rule:rgba(242,237,225,.2);--block:#1E1B16;--inset:#2A2620;--btn:#F2EDE1;--btntext:#14120E;--page:#0B0A08;
+--mist:#8FB5C2;--clay:#E09A7C;--moss:#9DB37E;--honey:#E0B04A;--plum:#BBA2D0;--alert:#E58A78;--neutral:#A89F8C}
+*{box-sizing:border-box;margin:0}
+body{font-family:'Be Vietnam Pro',system-ui,sans-serif;background:var(--page);color:var(--ink);min-height:100vh;display:flex;gap:40px;padding:28px;justify-content:center;align-items:flex-start}
+.panel{width:360px;flex:none;position:sticky;top:28px}
+.panel h1{font-family:Jost,sans-serif;font-weight:600;font-size:24px;letter-spacing:-.02em}
+.sub{font-size:13px;color:var(--ink2);line-height:1.5;margin:6px 0 4px}
+.lbl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin:16px 0 8px;font-weight:600}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{border:1px solid var(--rule);background:transparent;color:var(--ink);border-radius:999px;padding:7px 12px;font:inherit;font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:7px}
+.seg button .sw{width:9px;height:9px;border-radius:50%}
+.seg button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.why{margin-top:16px;font-size:12.5px;line-height:1.55;color:var(--ink2);background:var(--block);border-radius:14px;padding:12px 14px}
+.why b{color:var(--ink)}
+.phone{width:425px;height:884px;border-radius:68px;background:#0b0b0c;padding:16px;position:relative;box-shadow:0 0 0 2px #3a3a3d inset,0 40px 80px rgba(0,0,0,.35)}
+.screen{width:393px;height:852px;border-radius:54px;overflow:hidden;background:var(--paper);position:relative}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:122px;height:36px;border-radius:20px;background:#000;z-index:80}
+.status{position:absolute;top:0;left:0;right:0;height:54px;display:flex;justify-content:space-between;align-items:center;padding:6px 34px 0 44px;font-weight:600;font-size:16px;z-index:70;pointer-events:none}
+.home{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:var(--ink);z-index:80}
+.scroll{position:absolute;inset:0;overflow-y:auto;padding:58px 0 34px;scrollbar-width:none}.scroll::-webkit-scrollbar{display:none}
+.pad{padding:0 22px}
+.display{font-family:Jost,'Be Vietnam Pro',sans-serif;font-weight:600;letter-spacing:-.02em}
+.back{display:flex;align-items:center;gap:6px;font-size:15px;padding:10px 22px 0}
+.small{font-size:12px;color:var(--ink2)}
+.card{background:var(--block)}
+.code{font-family:ui-monospace,Menlo,monospace;font-weight:600;letter-spacing:.14em}
+.btn{border:0;border-radius:16px;padding:13px 10px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:var(--block);color:var(--ink)}
+.btn.ghost{background:transparent;border:1px solid var(--rule)}
+.btn.pri{background:var(--btn);color:var(--btntext)}
+.ico{width:19px;height:19px;flex:none}
+.tile{background:var(--inset);border-radius:14px;padding:9px 12px;flex:1;min-width:0}
+.tile .k{font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em;font-weight:600}.tile .v{font-size:14px;font-weight:600;margin-top:3px}
+.qr{background:#fff;border-radius:14px;padding:10px;position:relative;display:inline-block;line-height:0}
+.qr svg{display:block;transition:filter .3s}.qr.lock svg{filter:blur(7px) opacity(.5)}
+.qr .ov{position:absolute;inset:0;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;line-height:1.3;font-size:13px;font-weight:600;padding:12px}
+.notch{position:absolute;top:-11px;width:22px;height:22px;border-radius:50%;background:var(--paper)}
+.next{--t:var(--mist);position:relative;display:flex;align-items:center;gap:10px;width:100%;border:0;font:inherit;text-align:left;cursor:pointer;color:var(--ink);padding:9px 12px;border-radius:14px;background:color-mix(in srgb,var(--t) 13%,transparent);transition:background .2s}
+.next .ic{width:26px;height:26px;border-radius:50%;background:var(--t);color:var(--paper);display:flex;align-items:center;justify-content:center;flex:none}
+.next .ic svg{width:15px;height:15px}
+.next .tx{flex:1;min-width:0;line-height:1.25}
+.next .h{font-size:13px;font-weight:600;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.next .s{font-size:12px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.next .tail{font-variant-numeric:tabular-nums;font-weight:600;font-size:13px;color:var(--t);flex:none}
+.next .cv{width:8px;color:var(--t);flex:none;transition:transform .2s}
+.next.open .cv{transform:rotate(90deg)}
+.next.solid{background:var(--t)}.next.solid .ic{background:var(--paper);color:var(--t)}.next.solid .h,.next.solid .tail,.next.solid .cv{color:var(--paper)}.next.solid .s{color:var(--paper);opacity:.85}
+.more{display:grid;grid-template-rows:0fr;transition:grid-template-rows .25s}.more.open{grid-template-rows:1fr}
+.more>div{overflow:hidden}
+.more p{font-size:12.5px;line-height:1.5;color:var(--ink2);padding:8px 4px 2px}
+.more .lnk{font-size:12.5px;font-weight:600;color:var(--t);padding:2px 4px 0;display:inline-flex;gap:4px;align-items:center}
+.dotp{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--t);margin-right:6px}
+/* tappable event header */
+.evt{cursor:pointer;border-radius:16px;padding:8px;margin:0 -0px;transition:background .15s,transform .15s}
+.evt:active{background:color-mix(in srgb,var(--ink) 7%,transparent);transform:scale(.99)}
+.evlink{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:var(--ink);background:var(--inset);border-radius:999px;padding:5px 6px 5px 11px;flex:none}
+.evlink svg{width:7px;height:11px}
+/* event sheet */
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .25s;z-index:60}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;height:86%;background:var(--paper);border-radius:30px 30px 0 0;z-index:65;transform:translateY(102%);transition:transform .38s cubic-bezier(.22,.61,.36,1);display:flex;flex-direction:column;box-shadow:0 -12px 40px rgba(0,0,0,.25)}
+.sheet.on{transform:none}
+.sheet .grab{width:40px;height:5px;border-radius:3px;background:var(--rule);margin:9px auto 0}
+.sheet .sc{flex:1;overflow-y:auto;padding:10px 22px 24px;scrollbar-width:none}.sheet .sc::-webkit-scrollbar{display:none}
+.xbtn{position:absolute;right:16px;top:16px;width:32px;height:32px;border-radius:50%;background:var(--block);border:0;color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--block);border-radius:999px;padding:7px 12px;font-size:12.5px}
+.sec{margin-top:20px}.sec .t{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);font-weight:600;margin-bottom:8px}
+.sheetbar{padding:12px 22px 30px;border-top:1px solid var(--rule);background:var(--paper);display:flex;gap:10px}
+.fade{animation:in .3s both}@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media(max-width:900px){body{flex-direction:column;align-items:center}.panel{position:static}}
+</style></head><body>
+<div class="panel">
+ <h1>Ticket A + What's next</h1>
+ <div class="sub"><b>Mới:</b> bấm vào tên sự kiện (hoặc nút "Xem sự kiện ›") để mở sheet chi tiết sự kiện, ngay trên vé. Trong sheet có nút sang trang sự kiện đầy đủ. Dòng "What's next" vẫn bấm để mở thêm giải thích.</div>
+ <div class="lbl">Trường hợp (8)</div><div class="seg" id="cases"></div>
+ <div class="lbl">Theme · Ngôn ngữ</div><div class="seg" id="prefs"></div>
+ <div class="why" id="why"></div>
+</div>
+<div id="stage"><div id="scaler" style="transform-origin:top center"><div class="phone"><div class="screen" id="screen">
+ <div class="island"></div><div class="status"><span>1:19</span><span style="font-size:12px">●●●● 100%</span></div>
+ <div class="scroll" id="content"></div>
+ <div class="scrim" id="scrim"></div>
+ <div class="sheet" id="sheet"></div>
+ <div class="home"></div></div></div></div></div>
+<script>
+const S={c:'upcoming',lang:'vi',dark:false,open:false,sheet:false};
+const T=(a,b)=>S.lang==='vi'?a:b;
+const P={
+ clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+ cal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>',
+ door:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21M3.5 21h17"/><circle cx="14.5" cy="12.5" r=".9" fill="currentColor"/></svg>',
+ check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+ card:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="3" y="6" width="18" height="12" rx="3"/><path d="M3 10.5h18"/></svg>',
+ hour:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h10M7 20.5h10M8 3.5c0 5 8 5 8 8.5s-8 3.5-8 8.5M16 3.5c0 5-8 5-8 8.5s8 3.5 8 8.5"/></svg>',
+ flag:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>',
+ x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+ cv:'<svg viewBox="0 0 10 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m2 1.5 6 6.5-6 6.5"/></svg>',
+ pin:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.4"/></svg>',
+ wal:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18a2 2 0 0 1 2 2v1"/><rect x="3.5" y="7.5" width="17" height="12" rx="3"/><circle cx="16.5" cy="13.5" r="1.1" fill="currentColor"/></svg>',
+ cal2:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>',
+ more:'<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>',
+ msg:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 3.5V17H6.5A2.5 2.5 0 0 1 4 14.5Z"/></svg>',
+ back:'<svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5 2 8l6 6.5"/></svg>'
+};
+const C={
+ upcoming:{tone:'mist',lab:['Sắp diễn ra','Upcoming'],ic:'cal',h:['Còn 3 ngày nữa','3 days to go'],s:['Thứ Tư 28/10 · 20:00','Wed 28 Oct · 20:00'],tail:'3d',d:['Vé đã sẵn sàng. Bạn chưa cần làm gì thêm; mã QR sẽ dùng để vào cửa vào ngày diễn ra.','Your ticket is ready. Nothing more to do; the QR is what you show at the door.'],l:['Thêm vào lịch','Add to calendar'],qr:'ok'},
+ today:{tone:'clay',lab:['Hôm nay','Tonight'],ic:'clock',h:['Tối nay lúc 20:00','Tonight at 20:00'],s:['Nên đến trước 19:45','Aim to arrive by 19:45'],tail:'5h',d:['Cửa mở từ 17:00. Mở sẵn trang này và tăng độ sáng màn hình để quét nhanh hơn.','Doors open from 17:00. Keep this page open and raise your screen brightness.'],l:['Chỉ đường','Directions'],qr:'ok'},
+ door:{tone:'moss',lab:['Cửa đã mở','Doors open'],ic:'door',h:['Cửa đã mở','Doors are open'],s:['Đưa QR cho host','Show the QR to your host'],tail:'',d:['Nếu QR không quét được, đọc mã 1B1 59C cho host. Mã có hiệu lực đến 24 giờ sau giờ bắt đầu.','If the QR won\'t scan, read out 1B1 59C. The code works until 24h after the start.'],l:['Chỉ đường','Directions'],qr:'ok'},
+ in:{tone:'moss',lab:['Đã check-in','Checked in'],ic:'check',solid:true,h:['Bạn đã vào cửa','You\'re in'],s:['Check-in lúc 19:52','Checked in at 19:52'],tail:'',d:['Chúc bạn một buổi vui! Sau sự kiện, bạn có thể xem biên nhận và nhắn host.','Enjoy the evening! Afterwards you can view the receipt and message the host.'],l:['Xem biên nhận','View receipt'],qr:'in'},
+ hold:{tone:'honey',lab:['Đang giữ chỗ','Holding'],ic:'hour',h:['Chuyển khoản trước khi hết giờ','Pay before time runs out'],s:['Chỗ sẽ được mở lại cho người khác','The seat is released after that'],tail:'24:12',d:['Chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn. QR sẽ mở khi host xác nhận.','Pay the organizer directly. Your QR unlocks once the host confirms.'],l:['Xem thông tin chuyển khoản','See payment details'],qr:'lock'},
+ verify:{tone:'plum',lab:['Chờ host','Awaiting host'],ic:'card',h:['Host đang kiểm tra chuyển khoản','Host is checking your transfer'],s:['Chỗ đã khoá · không còn đếm ngược','Seat locked · no countdown'],tail:'~1h',d:['Host thường phản hồi trong 1 giờ. Chúng tôi sẽ báo ngay khi có vé.','Hosts usually reply within an hour. We\'ll notify you the moment it\'s confirmed.'],l:['Nhắn host','Message host'],qr:'lock'},
+ past:{tone:'neutral',lab:['Đã kết thúc','Ended'],ic:'flag',h:['Sự kiện đã kết thúc','Event ended'],s:['Vé không còn dùng để vào cửa','Ticket no longer valid for entry'],tail:'',d:['Cảm ơn bạn đã tham gia. Biên nhận vẫn xem được trong mục Thêm tùy chọn.','Thanks for coming. Your receipt stays available under More options.'],l:['Xem biên nhận','View receipt'],qr:'past'},
+ cancel:{tone:'alert',lab:['Host đã hủy','Cancelled'],ic:'x',h:['Host đã hủy sự kiện','Host cancelled this event'],s:['Host chịu trách nhiệm hoàn tiền','Host is responsible for your refund'],tail:'',d:['Vé này không còn hiệu lực. Theo dõi trạng thái hoàn tiền; nếu quá hạn, bạn có thể mở tranh chấp.','This ticket is void. Track your refund; if it\'s overdue you can open a dispute.'],l:['Theo dõi hoàn tiền','Track refund'],qr:'void'}
+};
+const WHY={
+ upcoming:'Mist (xanh khói): trung tính, "mọi thứ ổn, chờ ngày diễn ra".',
+ today:'Clay (cam đất): ấm hơn để tăng cảm giác sắp tới giờ, cùng họ màu với accent của Event Detail.',
+ door:'Moss (xanh rêu): đang ở thời điểm hành động, "sẵn sàng quét".',
+ in:'Moss đặc: dải duy nhất được tô đặc, vì đây là khoảnh khắc thành công; QR cũng chuyển thành dấu ✓.',
+ hold:'Honey (hổ phách) + đồng hồ đếm ngược: cần hành động. QR bị làm mờ vì chưa có vé thật.',
+ verify:'Plum (tím mận): khác hẳn honey để người dùng không nhầm "tôi phải trả tiền" với "tôi đang chờ host". <b>Màu mới</b>, chưa có trong token của repo.',
+ past:'Neutral (xám ấm): tắt tiếng, vì không còn gì phải làm. Sheet vẫn xem được để nhớ lại sự kiện.',
+ cancel:'Alert (đỏ gạch): chỉ dùng cho trường hợp thật sự sai/huỷ, đúng ngữ nghĩa token <b>alert</b> trong repo.'
+};
+function rng(s){return()=>{s=(s*1664525+1013904223)%4294967296;return s/4294967296}}
+function qrSvg(z){const n=25,r=rng(1159),m=[];for(let y=0;y<n;y++){m[y]=[];for(let x=0;x<n;x++)m[y][x]=r()>.52}
+ const f=(ox,oy)=>{for(let y=-1;y<8;y++)for(let x=-1;x<8;x++){const X=ox+x,Y=oy+y;if(X<0||Y<0||X>=n||Y>=n)continue;m[Y][X]=(x>=0&&x<7&&y>=0&&y<7)&&(x==0||x==6||y==0||y==6||(x>=2&&x<=4&&y>=2&&y<=4))}};
+ f(0,0);f(n-7,0);f(0,n-7);let d='';for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(m[y][x])d+=`M${x} ${y}h1v1h-1z`;
+ return `<svg width="${z}" height="${z}" viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges"><path d="${d}" fill="#111"/></svg>`}
+function qr(z,c){let cls='qr',ov='';
+ if(c.qr==='lock'){cls+=' lock';ov=`<div class="ov" style="color:#4E483A"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>${T('QR sẽ mở khi host xác nhận','QR unlocks when the host confirms')}</div>`}
+ if(c.qr==='past'||c.qr==='void'){cls+=' lock';ov=`<div class="ov" style="color:#4E483A">${c.qr==='void'?T('Vé không còn hiệu lực','Ticket void'):T('Đã kết thúc','Ended')}</div>`}
+ if(c.qr==='in'){ov=`<div class="ov" style="background:rgba(72,88,52,.95);color:#fff"><div style="width:48px;height:48px;border-radius:50%;background:#fff;color:#485834;display:flex;align-items:center;justify-content:center"><div style="width:26px">${P.check}</div></div>${T('Bạn đã check-in','You\'re in')}</div>`}
+ return `<div class="${cls}">${qrSvg(z)}${ov}</div>`}
+function sheetHtml(c){
+ const ended=S.c==='past'||S.c==='cancel';
+ return `<button class="xbtn" id="xs" aria-label="Close"><span style="width:14px;display:block">${P.x}</span></button><div class="grab"></div>
+ <div class="sc">
+  <div style="height:130px;border-radius:20px;margin-top:14px;background:linear-gradient(135deg,color-mix(in srgb,var(--clay) 28%,var(--paper)),color-mix(in srgb,var(--mist) 22%,var(--paper)));display:flex;align-items:center;justify-content:center"><svg width="150" height="86" viewBox="0 0 330 190"><g stroke="#2a2620" stroke-width="2.4" stroke-linejoin="round"><path d="M18 40 120 60 150 150Z" fill="#FBF8F0"/><path d="M312 40 210 60 180 150Z" fill="#FBF8F0"/><path d="M18 40 120 60 160 52 58 30Z" fill="#3E9A6A"/><path d="M58 30 160 52 165 66 120 60Z" fill="#D8483B"/><path d="M312 40 210 60 170 52 272 30Z" fill="#2B9DB8"/><path d="M272 30 170 52 165 66 210 60Z" fill="#F2A81D"/></g></svg></div>
+  <div class="small" style="margin-top:14px;font-weight:600;color:var(--clay)">${T('Chi tiết sự kiện','Event details')}</div>
+  <h2 class="display" style="font-size:27px;line-height:1.12;margin-top:2px">Nói Chuyện: Giấy</h2>
+  <div style="display:flex;gap:8px;margin-top:14px"><div class="tile"><div class="k">${T('Ngày','Date')}</div><div class="v">${T('Thứ Tư 28/10','Wed 28 Oct')}</div></div><div class="tile"><div class="k">${T('Giờ','Time')}</div><div class="v">20:00</div></div><div class="tile"><div class="k">${T('Địa điểm','Place')}</div><div class="v">Quận 1</div></div></div>
+  <div class="sec"><div class="t">${T('Giới thiệu','About')}</div><p style="font-size:14px;line-height:1.55">${T('Một buổi nói chuyện nhỏ quanh chất liệu giấy: làm, gấp, giữ và bỏ đi. (Nội dung mẫu, sẽ lấy từ mô tả sự kiện.)','A small talk about paper: making, folding, keeping and letting go. (Sample copy; will come from the event description.)')}</p></div>
+  <div class="sec"><div class="t">${T('Bao gồm','Included')}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><span class="chip">☕ ${T('Một đồ uống','One drink')}</span><span class="chip">📄 ${T('Bộ giấy thử','Paper kit')}</span><span class="chip">🎟 16+</span></div></div>
+  <div class="sec"><div class="t">Host</div><div class="card" style="border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px"><div style="width:38px;height:38px;border-radius:50%;background:var(--clay);color:var(--paper);display:flex;align-items:center;justify-content:center;font-weight:600">B</div><div style="flex:1"><div style="font-size:14px;font-weight:600">banbe host</div><div class="small">${T('Nhắn host nếu cần biết thêm','Message the host with questions')}</div></div><button class="btn" style="width:auto;padding:9px 12px;background:var(--inset)">${P.msg}</button></div></div>
+  <div class="sec"><div class="t">${T('Địa điểm','Location')}</div><div class="card" style="border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px"><span style="color:var(--clay)">${P.pin}</span><div style="flex:1"><div style="font-size:14px;font-weight:600">Quận 1, TP.HCM</div><div class="small">${T('Địa chỉ chính xác nằm ở lời nhắn của host','Exact address is in the host\'s note')}</div></div></div></div>
+  <div class="sec"><div class="t">${T('Hoàn tiền','Refunds')}</div><p style="font-size:13px;line-height:1.55;color:var(--ink2)">${T('banbe không thu tiền. Nếu host hủy sự kiện, host chịu trách nhiệm hoàn tiền cho bạn.','banbe doesn\'t collect money. If the host cancels, they are responsible for your refund.')}</p></div>
+ </div>
+ <div class="sheetbar"><button class="btn pri" id="openev">${ended?T('Xem trang sự kiện','View event page'):T('Mở trang sự kiện đầy đủ','Open full event page')} ›</button><button class="btn" style="width:56px;flex:none">${P.pin}</button></div>`}
+function render(){
+ document.body.classList.toggle('dark',S.dark);const c=C[S.c];
+ const locked=['lock','past','void'].includes(c.qr);
+ const nextStrip=`<button class="next ${c.solid?'solid':''} ${S.open?'open':''}" style="--t:var(--${c.tone})" id="nx"><span class="ic">${P[c.ic]}</span><span class="tx"><div class="h">${T(...c.h)}</div><div class="s">${T(...c.s)}</div></span>${c.tail?`<span class="tail">${c.tail}</span>`:''}<span class="cv">${P.cv}</span></button>
+ <div class="more ${S.open?'open':''}" style="--t:var(--${c.tone})"><div><p>${T(...c.d)}</p><span class="lnk">${T(...c.l)} ›</span></div></div>`;
+ const code=locked?'••• •••':'1B1 59C';
+ document.getElementById('content').innerHTML=`<div class="back">${P.back}<span>${T('Thông báo','Notifications')}</span></div>
+ <div class="pad fade" style="padding-top:12px"><div style="display:flex;justify-content:space-between;align-items:center"><span class="display" style="font-size:15px;opacity:.7">banbe</span><span style="font-size:11.5px;font-weight:600;color:var(--${c.tone});display:flex;align-items:center"><span class="dotp" style="--t:var(--${c.tone})"></span>${T(...c.lab)}</span></div>
+ <div style="margin-top:12px;position:relative;filter:drop-shadow(0 10px 24px rgba(27,25,22,.12))">
+  <div class="card" style="border-radius:24px 24px 0 0;padding:12px 12px 18px"><div style="margin-bottom:8px">${nextStrip}</div>
+   <div class="evt" id="evt" role="button" tabindex="0"><div style="display:flex;justify-content:space-between;align-items:center"><div class="small" style="font-weight:600;letter-spacing:.04em;text-transform:uppercase;font-size:10.5px;color:var(--ink3)">${T('Vé của','Ticket for')} Trung</div><span class="evlink">${T('Xem sự kiện','View event')}<span style="width:20px;height:20px;border-radius:50%;background:var(--ink);color:var(--paper);display:flex;align-items:center;justify-content:center">${P.cv}</span></span></div>
+   <h2 class="display" style="font-size:29px;line-height:1.1;margin-top:6px">Nói Chuyện: Giấy</h2>
+   <div style="display:flex;gap:8px;margin-top:14px"><div class="tile"><div class="k">${T('Ngày','Date')}</div><div class="v">28 ${T('tháng 10','Oct')}</div></div><div class="tile"><div class="k">${T('Giờ','Time')}</div><div class="v">20:00</div></div><div class="tile"><div class="k">${T('Khu vực','Area')}</div><div class="v">Quận 1</div></div></div></div></div>
+  <div style="position:relative;height:0;background:var(--block)"><div class="notch" style="left:-11px"></div><div class="notch" style="right:-11px"></div></div>
+  <div class="card" style="border-radius:0 0 24px 24px;padding:0 20px 22px;display:flex;flex-direction:column;align-items:center"><div style="border-top:2px dashed var(--rule);align-self:stretch;margin:0 -2px 20px"></div>${qr(200,c)}
+   <div class="small" style="margin-top:14px;font-size:11px;letter-spacing:.08em;text-transform:uppercase">${T('Mã vào cửa','Entry code')}</div><div class="code" style="font-size:29px;margin-top:2px;${locked?'opacity:.35':''}">${code}</div></div></div>
+ <div style="display:flex;gap:10px;margin-top:16px"><button class="btn">${P.wal}Wallet</button><button class="btn">${P.cal2}${T('Lịch','Calendar')}</button><button class="btn" style="width:56px;flex:none">${P.pin}</button></div>
+ <button class="btn ghost" style="margin-top:10px">${P.more}${T('Thêm tùy chọn','More options')}</button>
+ <p style="font-size:12px;line-height:1.5;color:var(--ink3);margin-top:16px;text-align:center">${T('banbe không thu tiền. Nếu host hủy, host chịu trách nhiệm hoàn tiền.','banbe doesn\'t collect money. If the host cancels, they handle your refund.')}</p></div>`;
+ document.getElementById('sheet').innerHTML=sheetHtml(c);
+ document.getElementById('sheet').classList.toggle('on',S.sheet);document.getElementById('scrim').classList.toggle('on',S.sheet);
+ document.getElementById('nx').onclick=()=>{S.open=!S.open;document.getElementById('nx').classList.toggle('open',S.open);document.querySelector('.more').classList.toggle('open',S.open)};
+ const setSheet=v=>{S.sheet=v;document.getElementById('sheet').classList.toggle('on',v);document.getElementById('scrim').classList.toggle('on',v)};
+ document.getElementById('evt').onclick=()=>setSheet(true);
+ document.getElementById('evt').onkeydown=e=>{if(e.key==='Enter')setSheet(true)};
+ document.getElementById('scrim').onclick=()=>setSheet(false);
+ document.getElementById('xs').onclick=()=>setSheet(false);
+ document.getElementById('openev').onclick=()=>setSheet(false);
+ document.getElementById('why').innerHTML='<b>'+T(...c.lab)+':</b> '+WHY[S.c];
+ document.getElementById('cases').innerHTML=Object.entries(C).map(([k,v])=>`<button class="${S.c===k?'on':''}" data-c="${k}"><span class="sw" style="background:var(--${v.tone})"></span>${T(...v.lab)}</button>`).join('');
+ document.getElementById('prefs').innerHTML=`<button class="${!S.dark?'on':''}" data-d="0">Light</button><button class="${S.dark?'on':''}" data-d="1">Dark</button><button class="${S.lang==='vi'?'on':''}" data-l="vi">Tiếng Việt</button><button class="${S.lang==='en'?'on':''}" data-l="en">English</button>`;
+}
+document.addEventListener('click',e=>{const b=e.target.closest('.seg button');if(!b)return;
+ if(b.dataset.c){S.c=b.dataset.c;S.open=false;S.sheet=false}else if(b.dataset.d)S.dark=b.dataset.d==='1';else if(b.dataset.l)S.lang=b.dataset.l;render()});
+function fit(){const sc=Math.min(1,(innerHeight-40)/884),e=document.getElementById('scaler');e.style.transform=`scale(${sc})`;e.style.marginBottom=(884*sc-884)+'px';e.parentElement.style.width=(425*sc)+'px'}
+addEventListener('resize',fit);fit();render();
+</script></body></html>
