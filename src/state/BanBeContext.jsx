@@ -9870,7 +9870,7 @@ export function BanBeProvider({ children }) {
   }, [s.chatPhotoViewer, s.user, T, closeChatForward]);
 
   const chatOnKey = useCallback((e) => { if (e.key === 'Enter') chatSend(); }, [chatSend]);
-  const chatBackFn = useCallback(() => set(prev => ({ screen: prev.chatBack === 'inbox' || prev.chatBack === 'notifications' || prev.chatBack === 'paymentDetails' ? prev.chatBack : 'event' })), [set]);
+  const chatBackFn = useCallback(() => set(prev => ({ screen: prev.chatBack === 'inbox' || prev.chatBack === 'notifications' || prev.chatBack === 'paymentDetails' || prev.chatBack === 'confirmed' ? prev.chatBack : 'event' })), [set]);
 
   // A real, permanent delete, own messages only — RLS (messages_delete_own,
   // migration 054) scopes this to `sender_id = auth.uid()`, which a system

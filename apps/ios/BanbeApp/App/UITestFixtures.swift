@@ -58,6 +58,15 @@ enum UITestFixture {
     /// makes the `shell.create` draft that type.
     static let eventKey = UserDefaults.standard.string(forKey: "uiFixtureEventKey") ?? "bepnho"
     static let createType = UserDefaults.standard.string(forKey: "uiFixtureCreateType")
+    /// Note 78: `shell.confirmed` is the ticket screen on a synthetic booking. `-uiFixtureTicket` picks the case
+    /// (upcoming, today, checkedIn, holding, awaiting, review, expired, ended, cancelled, bookingCancelled);
+    /// `-uiFixtureAttendees 3` gives it that many named tickets; `-uiFixtureScanned 1` marks the first N as already
+    /// scanned; `-uiFixtureScanAfter 2` has the door scan the next open ticket every 2s after the first 2s (so a test can
+    /// watch a stub tear off and the pager move on).
+    static let ticketCase = UserDefaults.standard.string(forKey: "uiFixtureTicket") ?? "upcoming"
+    static let ticketAttendees = UserDefaults.standard.integer(forKey: "uiFixtureAttendees")
+    static let ticketScanned = UserDefaults.standard.integer(forKey: "uiFixtureScanned")
+    static let ticketScanAfter = UserDefaults.standard.double(forKey: "uiFixtureScanAfter")
     /// Note 76: `shell.project` opens the Event Project Hub on tests/fixtures/project-snapshot.json (synthetic demo
     /// data). `-uiFixtureProjectAs manager|lead|helper|finance` views it as that member instead of the Host;
     /// `-uiFixtureProjectTab tasks` opens on a tab; `-uiFixtureProjectHub YES` turns the switch on for other shells
@@ -256,6 +265,60 @@ struct UITestFixtureRoot: View {
         ready = true
     }
 
+    // MARK: ticket (note 78)
+
+    /// The ticket screen on a synthetic booking for the bepnho catalogue event, in one of the cases of
+    /// Lib/TicketStatus.swift. The event's own status/start time are set the way a live read would set them.
+    private func configureConfirmed() {
+        // case: (payment_state, booking status, event status, hours from now until the start)
+        let table: [String: (pay: PaymentPhase, status: String, event: String, startHours: Double)] = [
+            "upcoming": (.confirmed, "confirmed", "live", 72), "today": (.confirmed, "confirmed", "live", 2),
+            "checkedIn": (.confirmed, "attended", "live", 1), "holding": (.holding, "pending", "live", 72),
+            "awaiting": (.pendingVerification, "pending", "live", 72), "review": (.disputed, "confirmed", "live", 72),
+            "expired": (.expired, "expired", "live", 72), "ended": (.confirmed, "confirmed", "ended", -13),
+            "cancelled": (.confirmed, "confirmed", "cancelled", 72), "bookingCancelled": (.cancelled, "cancelled", "live", 72),
+        ]
+        let c = table[UITestFixture.ticketCase] ?? table["upcoming"]!
+        let now = Date()
+        let start = now.addingTimeInterval(c.startHours * 3600)
+        app.accountType = "participant"
+        app.eventKey = "bepnho"
+        app.liveEventStatus = LiveEventStatus(status: c.event, startsAt: start, cancelledAt: c.event == "cancelled" ? now : nil,
+                                              cancelReason: nil, details: nil, capacity: nil)
+        let bookingID = UUID()
+        app.booking = Booking(id: bookingID, eventId: "bepnho", userId: nil, qty: max(1, UITestFixture.ticketAttendees), totalVnd: 0,
+                              code: "1B159C", status: c.status, expiresAt: nil, paidMarkedAt: c.pay == .confirmed ? now : nil,
+                              cancelledAt: nil, cancelReason: nil, createdAt: now,
+                              paymentState: c.pay,
+                              holdExpiresAt: c.pay == .holding ? now.addingTimeInterval(20 * 60) : nil,
+                              verifyDueAt: c.pay == .pendingVerification ? now.addingTimeInterval(3600) : nil,
+                              admissionToken: UUID())
+        let names = ["Linh", "Minh", "An", "Bình", "Chi"]
+        app.bookingAttendees = (0..<min(UITestFixture.ticketAttendees, names.count)).map { i in
+            BookingAttendee(id: UUID(), bookingId: bookingID, seatNo: i + 1, name: names[i], dateOfBirth: "1995-01-01",
+                            admissionToken: UUID(), ticketCode: "1B159\(i + 1)",
+                            checkedInAt: i < UITestFixture.ticketScanned ? now.addingTimeInterval(-600) : nil,
+                            claimCode: nil, claimedAt: nil)
+        }
+        app.confirmedBack = .home
+        app.receiptChecked = true
+        app.screen = .confirmed
+        // Simulated door: scan the next open ticket every `scanAfter` seconds, starting after the first interval.
+        let every = UITestFixture.ticketScanAfter
+        if every > 0 {
+            for step in 0..<app.bookingAttendees.count {
+                DispatchQueue.main.asyncAfter(deadline: .now() + every * Double(step + 1)) { [app] in
+                    guard let i = app.bookingAttendees.firstIndex(where: { $0.checkedInAt == nil }) else { return }
+                    let a = app.bookingAttendees[i]
+                    app.bookingAttendees[i] = BookingAttendee(id: a.id, bookingId: a.bookingId, seatNo: a.seatNo, name: a.name,
+                                                              dateOfBirth: a.dateOfBirth, admissionToken: a.admissionToken,
+                                                              ticketCode: a.ticketCode, checkedInAt: Date(),
+                                                              claimCode: a.claimCode, claimedAt: a.claimedAt)
+                }
+            }
+        }
+    }
+
     // MARK: shell (real RootView)
 
     /// `shell.home` / `shell.schedule` / `shell.account` / `shell.accountSolo`
@@ -350,6 +413,8 @@ struct UITestFixtureRoot: View {
             app.organizerMode = true
             app.screen = .home
             app.goCreate()
+        case "confirmed":
+            configureConfirmed()
         case "event":
             // Event Detail on a long catalogue event (included items, photos, long description), so scrolling
             // reaches the collapsing nav bar (note 52).

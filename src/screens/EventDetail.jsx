@@ -257,6 +257,8 @@ export default function EventDetail({ preview = null } = {}) {
     // never had an entry for it, so the pill fell through to the 'banbe'
     // default and *said* Home while *going* to the map.
     mapExplore: T('Bản đồ', 'Map'),
+    // Note 78: opened from the ticket's Event details sheet; Back returns to that same ticket.
+    confirmed: T('Vé', 'Ticket'),
   };
   // BUG 3 fix (2026-09-22 follow-up) — an event opened from a story has
   // exactly one consistent origin: StoryViewer, not whichever screen

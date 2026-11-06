@@ -26,6 +26,12 @@ export const honeyBg = 'var(--bb-honey-bg)';
 // of `alert`/`honey`, never an error colour and never the primary CTA. Mirrors `Palette.clay` / `Palette.clayBg`.
 export const clay = 'var(--bb-clay)';
 export const clayBg = 'var(--bb-clay-bg)';
+// Ticket "What's next" strip tones (note 78). plum is the only new colour (awaiting host); mist and moss are role
+// names for the existing Project Hub Question teal / Update moss, so the strip never hard-codes a hex. Mirrors
+// `Palette.plum` / `.question` / `.update`.
+export const plum = 'var(--bb-plum)';
+export const mist = 'var(--bb-question)';
+export const moss = 'var(--bb-update)';
 // Simple Shell surfaces (note 66): three steps of depth per theme instead of borders. surface1 = cards and rows,
 // surface2 = fields, chips and sheets, surface3 = pressed states and popovers. ink2/ink3 = secondary/tertiary text
 // (ink3 stays >= 4.5:1 on every surface), divider = hairline inside a group. Mirror `Palette` in BanbeTheme.swift.

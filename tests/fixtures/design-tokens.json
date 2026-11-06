@@ -4,13 +4,15 @@
     "paper": "#F7F4EC", "ink": "#1B1916", "field": "#EEE8DA",
     "surface1": "#FBF8F1", "surface2": "#EEE8DA", "surface3": "#E6DFCF",
     "ink2Alpha": 0.72, "ink3Alpha": 0.64, "alert": "#9A3E2D", "clay": "#9C5B3B", "honey": "#8C6014",
-    "block": "#EEE8DA", "blockInset": "#FBF8F1", "mat": "#FBF8F1", "matSlot": "#EEE8DA"
+    "block": "#EEE8DA", "blockInset": "#FBF8F1", "mat": "#FBF8F1", "matSlot": "#EEE8DA",
+    "plum": "#6B4E7C", "question": "#2F6B7A", "update": "#4E6A30"
   },
   "dark": {
     "paper": "#0F0E0B", "ink": "#F2EDE1", "field": "#24211C",
     "surface1": "#1A1815", "surface2": "#24211C", "surface3": "#2E2A24",
     "ink2Alpha": 0.72, "ink3Alpha": 0.56, "alert": "#E8715B", "clay": "#D8926C", "honey": "#F2C46D",
-    "block": "#1A1815", "blockInset": "#24211C", "mat": "#24211C", "matSlot": "#0F0E0B"
+    "block": "#1A1815", "blockInset": "#24211C", "mat": "#24211C", "matSlot": "#0F0E0B",
+    "plum": "#BBA2D0", "question": "#8CC7D4", "update": "#A9C487"
   },
   "minContrast": {
     "ink": 7.0, "ink2": 4.5, "ink3": 4.5, "alert": 4.5, "honey": 4.5, "clay": 4.5
@@ -19,6 +21,9 @@
   "_matComment": "Note 71 (Calm Pass phase 3): mat = the polaroid frame of a Home event card. It aliases an existing step (light surface1, dark surface2), so no new hue. In light it is only 1.04:1 against paper, so the card also gets a hairline and a soft ink-tinted shadow; dark separates by the surface step alone. matSlot = the empty photo slot inside the frame (light field, dark paper): the usual placeholder fill equals the dark mat and made the inset vanish. clay text is checked on clayOn only: light clay on block (#EEE8DA) is about 4.3:1, below AA, so clay must not be used as text on block fills.",
   "_photoControlComment": "Note 71 phase 4: the round controls over a cover photo (Event Detail back / more / share). Fixed in both themes. The white glyph is checked against the fill composited over the worst photos (white, black, mid grey, warm bright) with the sheen at its maximum.",
   "photoControl": { "hex": "#7E4529", "alpha": 0.9, "maxSheen": 0.12, "minContrast": 4.5, "photos": ["#FFFFFF", "#000000", "#808080", "#E6C878"] },
+  "_stripComment": "Note 78, ticket strip: a tone paints the icon disc (paper glyph on it >= glyphOnDisc), the disc must stand out from its 13% tint over block (>= discOnTint), and ALL strip text is ink on that tint (>= minContrast.ink). Tone-coloured text is not used: clay, honey, moss, mist and ink3 fail 4.5:1 on their own tint in light. ink3 is ink at ink3Alpha.",
+  "stripTones": ["alert", "honey", "plum", "clay", "update", "question", "ink3"],
+  "stripContrast": { "glyphOnDisc": 4.5, "discOnTint": 3.0, "tintAlpha": 0.13 },
   "clayOn": ["paper", "surface1", "mat"],
   "honeyOn": ["paper", "surface1", "surface2", "field", "block", "blockInset"],
   "themeChoice": [

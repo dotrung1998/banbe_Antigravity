@@ -866,6 +866,8 @@ struct BackLink: View {
 struct QRCodeImage: View {
     let value: String
     var size: CGFloat = 76
+    /// Quiet zone around the code (the paper ticket draws it larger, note 78); other callers keep the default.
+    var padding: CGFloat = 4
 
     var body: some View {
         ZStack {
@@ -875,7 +877,7 @@ struct QRCodeImage: View {
                     .interpolation(.none)
                     .resizable()
                     .scaledToFit()
-                    .padding(4)
+                    .padding(padding)
             }
         }
         .frame(width: size, height: size)

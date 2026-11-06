@@ -23,6 +23,12 @@ struct Palette {
     /// Mirrors web's `clay`/`clayBg` (theme.js, index.css `--bb-clay*`) value-for-value in both themes.
     let clay: Color
     let clayBg: Color
+    /// Ticket "What's next" strip tones (note 78). `plum` (awaiting host) is new; `question` (mist, upcoming) and
+    /// `update` (moss, checked in) already existed on web as `--bb-question` / `--bb-update` (Project Hub tags).
+    /// Mirrors theme.js `plum` / `mist` / `moss` value-for-value. The strip's tint is the tone at 13% over `block`.
+    let plum: Color
+    let question: Color
+    let update: Color
     /// Wordmark tint — ink on light, bright amber on dark.
     let logo: Color
     /// Simple Shell surfaces (note 66): depth comes from three surface steps, not borders. surface1 = cards and
@@ -59,6 +65,9 @@ struct Palette {
         honeyBg: Color(hex: 0xF0E2BE),
         clay: Color(hex: 0x9C5B3B),
         clayBg: Color(hex: 0xEFE0D2),
+        plum: Color(hex: 0x6B4E7C),
+        question: Color(hex: 0x2F6B7A),
+        update: Color(hex: 0x4E6A30),
         logo: Color(hex: 0x1B1916),
         surface1: Color(hex: 0xFBF8F1),
         surface2: Color(hex: 0xEEE8DA),
@@ -82,6 +91,9 @@ struct Palette {
         honeyBg: Color(hex: 0x3D3016),
         clay: Color(hex: 0xD8926C),
         clayBg: Color(hex: 0x3B2A20),
+        plum: Color(hex: 0xBBA2D0),
+        question: Color(hex: 0x8CC7D4),
+        update: Color(hex: 0xA9C487),
         logo: Color(hex: 0xF6C453),
         surface1: Color(hex: 0x1A1815),
         surface2: Color(hex: 0x24211C),

@@ -1,0 +1,425 @@
+{
+  "cases": [
+    {
+      "case": "cancelled event beats a paid ticket",
+      "in": {
+        "paymentState": "confirmed",
+        "eventCancelled": true,
+        "isPaid": true,
+        "daysUntil": 3
+      },
+      "expect": {
+        "key": "cancelled",
+        "tone": "alert",
+        "qr": "void"
+      }
+    },
+    {
+      "case": "cancelled event beats holding",
+      "in": {
+        "paymentState": "holding",
+        "eventCancelled": true
+      },
+      "expect": {
+        "key": "cancelled",
+        "tone": "alert",
+        "qr": "void"
+      }
+    },
+    {
+      "case": "booking cancelled is not 'awaiting payment'",
+      "in": {
+        "paymentState": "cancelled"
+      },
+      "expect": {
+        "key": "cancelled",
+        "tone": "alert",
+        "qr": "void"
+      }
+    },
+    {
+      "case": "hold expired",
+      "in": {
+        "paymentState": "expired"
+      },
+      "expect": {
+        "key": "expired",
+        "tone": "alert",
+        "qr": "void"
+      }
+    },
+    {
+      "case": "disputed beats holding-like data",
+      "in": {
+        "paymentState": "disputed",
+        "isPaid": false
+      },
+      "expect": {
+        "key": "review",
+        "tone": "honey",
+        "qr": "lock"
+      }
+    },
+    {
+      "case": "holding",
+      "in": {
+        "paymentState": "holding"
+      },
+      "expect": {
+        "key": "holding",
+        "tone": "honey",
+        "qr": "lock"
+      }
+    },
+    {
+      "case": "awaiting host",
+      "in": {
+        "paymentState": "pending_verification"
+      },
+      "expect": {
+        "key": "awaiting",
+        "tone": "plum",
+        "qr": "lock"
+      }
+    },
+    {
+      "case": "ended beats checked in",
+      "in": {
+        "paymentState": "confirmed",
+        "isPaid": true,
+        "checkedIn": true,
+        "endedHoursAgo": 2
+      },
+      "expect": {
+        "key": "ended",
+        "tone": "ink3",
+        "qr": "past"
+      }
+    },
+    {
+      "case": "ended at exactly 0 hours ago is still ended",
+      "in": {
+        "paymentState": "confirmed",
+        "isPaid": true,
+        "endedHoursAgo": 0
+      },
+      "expect": {
+        "key": "ended",
+        "tone": "ink3",
+        "qr": "past"
+      }
+    },
+    {
+      "case": "checked in beats today",
+      "in": {
+        "paymentState": "confirmed",
+        "isPaid": true,
+        "checkedIn": true,
+        "daysUntil": 0
+      },
+      "expect": {
+        "key": "checkedIn",
+        "tone": "moss",
+        "qr": "in"
+      }
+    },
+    {
+      "case": "today",
+      "in": {
+        "paymentState": "confirmed",
+        "isPaid": true,
+        "daysUntil": 0
+      },
+      "expect": {
+        "key": "today",
+        "tone": "clay",
+        "qr": "ok"
+      }
+    },
+    {
+      "case": "tomorrow is upcoming",
+      "in": {
+        "paymentState": "confirmed",
+        "isPaid": true,
+        "daysUntil": 1
+      },
+      "expect": {
+        "key": "upcoming",
+        "tone": "mist",
+        "qr": "ok"
+      }
+    },
+    {
+      "case": "unknown day count is upcoming",
+      "in": {
+        "paymentState": "confirmed",
+        "isPaid": true,
+        "daysUntil": null
+      },
+      "expect": {
+        "key": "upcoming",
+        "tone": "mist",
+        "qr": "ok"
+      }
+    },
+    {
+      "case": "attended booking without payment_state still reads as paid (caller sets isPaid)",
+      "in": {
+        "paymentState": null,
+        "isPaid": true,
+        "checkedIn": true
+      },
+      "expect": {
+        "key": "checkedIn",
+        "tone": "moss",
+        "qr": "in"
+      }
+    },
+    {
+      "case": "no booking, nothing to explain",
+      "in": {},
+      "expect": null
+    },
+    {
+      "case": "unpaid with no phase gets no strip",
+      "in": {
+        "paymentState": null,
+        "isPaid": false,
+        "daysUntil": 0
+      },
+      "expect": null
+    }
+  ],
+  "qrShowsToken": {
+    "ok": true,
+    "in": true,
+    "lock": false,
+    "void": false,
+    "past": false,
+    "": false
+  },
+  "entryCode": [
+    {
+      "in": "1B159C",
+      "out": "1B1 59C"
+    },
+    {
+      "in": " 1B159C ",
+      "out": "1B1 59C"
+    },
+    {
+      "in": "AB12C",
+      "out": "AB12C"
+    },
+    {
+      "in": "ABCD1234",
+      "out": "ABCD1234"
+    },
+    {
+      "in": "",
+      "out": ""
+    }
+  ],
+  "distance": [
+    {
+      "km": 2.4,
+      "located": true,
+      "en": true,
+      "out": "2.4 km"
+    },
+    {
+      "km": 2.4,
+      "located": true,
+      "en": false,
+      "out": "2,4 km"
+    },
+    {
+      "km": 50,
+      "located": true,
+      "en": true,
+      "out": "50 km"
+    },
+    {
+      "km": 50.5,
+      "located": true,
+      "en": true,
+      "out": null
+    },
+    {
+      "km": 9662,
+      "located": true,
+      "en": true,
+      "out": null
+    },
+    {
+      "km": 2.4,
+      "located": false,
+      "en": true,
+      "out": null
+    },
+    {
+      "km": 2.4,
+      "located": null,
+      "en": true,
+      "out": null
+    },
+    {
+      "km": null,
+      "located": true,
+      "en": true,
+      "out": null
+    }
+  ],
+  "doorWatch": [
+    {
+      "case": "single ticket, in the window, not checked in",
+      "in": {
+        "checkedIn": false,
+        "startMs": 0,
+        "nowMs": 7200000
+      },
+      "expect": true
+    },
+    {
+      "case": "single ticket, checked in",
+      "in": {
+        "checkedIn": true,
+        "startMs": 0,
+        "nowMs": 7200000
+      },
+      "expect": false
+    },
+    {
+      "case": "exactly 3h before the start is still outside",
+      "in": {
+        "checkedIn": false,
+        "startMs": 0,
+        "nowMs": -10800000
+      },
+      "expect": false
+    },
+    {
+      "case": "1ms inside the opening edge",
+      "in": {
+        "checkedIn": false,
+        "startMs": 0,
+        "nowMs": -10799999
+      },
+      "expect": true
+    },
+    {
+      "case": "1ms inside the closing edge",
+      "in": {
+        "checkedIn": false,
+        "startMs": 0,
+        "nowMs": 43199999
+      },
+      "expect": true
+    },
+    {
+      "case": "exactly 12h after the start is outside",
+      "in": {
+        "checkedIn": false,
+        "startMs": 0,
+        "nowMs": 43200000
+      },
+      "expect": false
+    },
+    {
+      "case": "no start time known",
+      "in": {
+        "checkedIn": false,
+        "startMs": null,
+        "nowMs": 0
+      },
+      "expect": false
+    },
+    {
+      "case": "named: first of three scanned, the rest still open",
+      "in": {
+        "namedScans": [
+          true,
+          false,
+          false
+        ],
+        "checkedIn": true,
+        "startMs": 0,
+        "nowMs": 3600000
+      },
+      "expect": true
+    },
+    {
+      "case": "named: last open one scanned, so done",
+      "in": {
+        "namedScans": [
+          true,
+          true,
+          true
+        ],
+        "checkedIn": true,
+        "startMs": 0,
+        "nowMs": 3600000
+      },
+      "expect": false
+    },
+    {
+      "case": "named: some open but the window has closed",
+      "in": {
+        "namedScans": [
+          true,
+          false
+        ],
+        "checkedIn": true,
+        "startMs": 0,
+        "nowMs": 46800000
+      },
+      "expect": false
+    },
+    {
+      "case": "named: none scanned yet, before the window opens",
+      "in": {
+        "namedScans": [
+          false,
+          false
+        ],
+        "checkedIn": false,
+        "startMs": 0,
+        "nowMs": -14400000
+      },
+      "expect": false
+    },
+    {
+      "case": "named: the booking reading attended does not end it while a ticket is open",
+      "in": {
+        "namedScans": [
+          true,
+          false
+        ],
+        "checkedIn": true,
+        "startMs": 0,
+        "nowMs": 7200000
+      },
+      "expect": true
+    },
+    {
+      "case": "empty named list falls back to the booking rule (not checked in)",
+      "in": {
+        "namedScans": [],
+        "checkedIn": false,
+        "startMs": 0,
+        "nowMs": 7200000
+      },
+      "expect": true
+    },
+    {
+      "case": "empty named list falls back to the booking rule (checked in)",
+      "in": {
+        "namedScans": [],
+        "checkedIn": true,
+        "startMs": 0,
+        "nowMs": 7200000
+      },
+      "expect": false
+    }
+  ]
+}

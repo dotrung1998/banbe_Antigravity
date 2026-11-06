@@ -2950,6 +2950,9 @@ extension AppState {
 
     /// Reads this account's named tickets for one booking (RLS: buyer only).
     func loadBookingAttendees(_ bookingID: UUID) async {
+        #if DEBUG
+        if UITestFixture.isActive { return }   // fixtures keep their seeded attendees (shell.confirmed)
+        #endif
         do {
             let rows: [BookingAttendee] = try await SupabaseService.client
                 .from("booking_attendees").select()
@@ -4328,7 +4331,8 @@ try await SupabaseService.client
     /// AppState or a main-actor hop.
     nonisolated static func resolveChatBackTarget(_ chatBack: Screen) -> Screen {
         switch chatBack {
-        case .inbox, .notifications, .paymentDetails, .profile, .dashboard:
+        // .confirmed: "Message host" from the ticket's Event details sheet or strip returns to that same ticket (note 78).
+        case .inbox, .notifications, .paymentDetails, .profile, .dashboard, .confirmed:
             return chatBack
         default: return .event
         }

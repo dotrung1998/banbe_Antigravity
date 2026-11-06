@@ -249,6 +249,8 @@ struct EventDetailView: View {
         // went to the map, which read as wrong regardless of the real
         // destination being correct.
         case .mapExplore: return app.T("Bản đồ", "Map")
+        // Note 78: opened from the ticket's Event details sheet; Back returns to that same ticket.
+        case .confirmed: return app.T("Vé", "Ticket")
         default: return "banbe"
         }
     }

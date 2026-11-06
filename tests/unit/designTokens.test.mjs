@@ -27,7 +27,9 @@ const VARS = { paper: '--bb-bg', ink: '--bb-fg', field: '--bb-field', surface1: 
   // Note 66 follow-up: block fills.
   block: '--bb-block', blockInset: '--bb-block-inset',
   // Note 71: the polaroid frame.
-  mat: '--bb-mat', matSlot: '--bb-mat-slot' };
+  mat: '--bb-mat', matSlot: '--bb-mat-slot',
+  // Note 78: ticket strip tones (plum is new; question/update are the Project Hub tag colours).
+  plum: '--bb-plum', question: '--bb-question', update: '--bb-update' };
 
 for (const theme of ['light', 'dark']) {
   const t = fx[theme];
@@ -52,6 +54,17 @@ for (const theme of ['light', 'dark']) {
     }
     for (const bgKey of fx.honeyOn) {
       assert.ok(ratio(hex(t.honey), hex(t[bgKey])) >= fx.minContrast.honey, `${theme} honey on ${bgKey}`);
+    }
+  });
+  test(`${theme}: ticket strip tones keep their disc, glyph and ink text readable`, () => {
+    const { glyphOnDisc, discOnTint, tintAlpha } = fx.stripContrast;
+    const block = hex(t.block), ink = hex(t.ink), paper = hex(t.paper);
+    for (const tone of fx.stripTones) {
+      const disc = tone === 'ink3' ? over(ink, block, t.ink3Alpha) : hex(t[tone]);
+      const tint = over(disc, block, tintAlpha);
+      assert.ok(ratio(paper, disc) >= glyphOnDisc, `${theme} ${tone}: paper glyph on disc ${ratio(paper, disc).toFixed(2)}`);
+      assert.ok(ratio(disc, tint) >= discOnTint, `${theme} ${tone}: disc on tint ${ratio(disc, tint).toFixed(2)}`);
+      assert.ok(ratio(ink, tint) >= fx.minContrast.ink, `${theme} ${tone}: ink on tint ${ratio(ink, tint).toFixed(2)}`);
     }
   });
   test(`${theme}: block is the warm beige in light and today's card fill in dark`, () => {
@@ -83,6 +96,13 @@ test('theme choice: new installs start on system, saved choices are kept', () =>
 
 test('theme choice: system follows the device', () => {
   for (const c of fx.themeResolve) assert.equal(resolveTheme(c.choice, c.systemDark), c.theme, JSON.stringify(c));
+});
+
+test('theme.js exports the strip tones as CSS tokens', () => {
+  const theme = readFileSync(new URL('../../src/theme.js', import.meta.url), 'utf8');
+  assert.match(theme, /export const plum = 'var\(--bb-plum\)'/);
+  assert.match(theme, /export const mist = 'var\(--bb-question\)'/);
+  assert.match(theme, /export const moss = 'var\(--bb-update\)'/);
 });
 
 test('theme.js exports block / blockInset as the CSS tokens', () => {

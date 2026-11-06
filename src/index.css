@@ -102,6 +102,8 @@
   --bb-question-bg: #DCEBEE;
   --bb-update: #4E6A30;
   --bb-update-bg: #E2E9D4;
+  /* Ticket strip, awaiting host (note 78): the one tone that had no token. Tint is derived (13% over block). */
+  --bb-plum: #6B4E7C;
 }
 
 [data-bb-theme="dark"] {
@@ -159,6 +161,7 @@
   --bb-question-bg: #1E3238;
   --bb-update: #A9C487;
   --bb-update-bg: #27311C;
+  --bb-plum: #BBA2D0;
 }
 
 html, body {
@@ -520,6 +523,14 @@ input::placeholder, textarea::placeholder {
   }
 }
 
+/* Ticket stub tear (note 78): the stub drops and tilts off its perforation, then settles torn and dimmed. */
+@keyframes bbTear {
+  0% { transform: none; opacity: 1; }
+  35% { transform: translateY(12px) rotate(-3.5deg); opacity: 0.9; }
+  100% { transform: translateY(6px) rotate(-1.5deg); opacity: 0.6; }
+}
+.bb-snap { scrollbar-width: none; }
+.bb-snap::-webkit-scrollbar { display: none; }
 @keyframes bbPopIn {
   from { opacity: 0; transform: translateY(8px) scale(0.94); }
   to { opacity: 1; transform: translateY(0) scale(1); }

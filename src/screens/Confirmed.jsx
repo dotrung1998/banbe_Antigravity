@@ -1,28 +1,32 @@
 import { useEffect, useRef, useState } from 'react';
-import QRCode from 'qrcode';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
-import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
-import { paper, ink, rule, display, cardGlass, alert, block, clay, clayBg } from '../theme.js';
+import { formatCountdown, msUntil, useTicking, daysUntilInZone } from '../lib/countdown.js';
+import { paper, ink, ink2, ink3, display, cardGlass, alert, block, clay, clayBg, honey, plum, moss, mist } from '../theme.js';
 import GlassMenu, { GlassMenuItem, glassMenuSurface } from '../components/GlassMenu.jsx';
 import { MiniCalendarPage } from './EventPlanActions.jsx';
-import { dateBlock } from '../lib/eventDetailPresentation.js';
+import { dateBlock, dateTileLabel, aboutSection, includedSection } from '../lib/eventDetailPresentation.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
-import BanbeLoadingVisual from './BanbeLoadingVisual.jsx';
 import { downloadTicketPdfs, googleCalendarUrl } from '../lib/ticketPdf.js';
 import GiftTicketSheet from './sheets/GiftTicketSheet.jsx';
 import { giftPdfData, isAppleWalletBrowser, addToAppleWallet, walletErrorMessage } from '../lib/giftTicket.js';
 import { BookingJourneyProgress } from '../components/ui/FormControls.jsx';
 import { track, ticketDayBucket } from '../lib/analytics.js';
-import { rowTimeZone } from '../lib/eventMarket.js';
-import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
-import { claimOnce, typicalWaitText, isCheckedIn } from '../lib/quickWins.js';
-import { mapsUrl } from '../data/events.js';
+import { rowTimeZone, VN_TIME_ZONE } from '../lib/eventMarket.js';
+import { typicalWaitText, isCheckedIn } from '../lib/quickWins.js';
+import { mapsUrl, haversineKm } from '../data/events.js';
+import { ticketCase, formatEntryCode, ticketQrShowsToken, doorWatchOpen, inDoorWindow, showDistance } from '../lib/ticketStatus.js';
+import { ticketCopy } from '../lib/ticketCopy.js';
+import PaperTicket from '../components/ticket/PaperTicket.jsx';
+import WhatsNextStrip from '../components/ticket/WhatsNextStrip.jsx';
+import TicketQr from '../components/ticket/TicketQr.jsx';
+import TicketStubPager from '../components/ticket/TicketStubPager.jsx';
+import EventDetailsSheet from './sheets/EventDetailsSheet.jsx';
 
 export default function Confirmed() {
   const {
-    state, T, trStatus, stripKm, set, curEvent: ev, backFromConfirmed, openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, openPaymentDetails, forfeitExpiredHold, goReserve,
-    loadReceiptStatus, requestReceipt, openDocumentFromNotification, loadBookingAttendees,
+    state, T, trStatus, set, curEvent: ev, backFromConfirmed, openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, openPaymentDetails, forfeitExpiredHold, goReserve,
+    loadReceiptStatus, requestReceipt, openDocumentFromNotification, loadBookingAttendees, loadMyRefunds, openMyRefunds, openChatFor, goEvent,
   } = useBanBe();
   const s = state;
 
@@ -39,9 +43,9 @@ export default function Confirmed() {
   const isPaid = isBookingTicket(s.booking) || (s.booking?.status === 'attended' && s.booking?.payment_state === 'confirmed');
   const isHolding = phase === 'holding';
   const isPendingVerification = phase === 'pending_verification';
-  const isDisputed = phase === 'disputed';
   const isExpired = phase === 'expired';
-  const awaitingPayment = !!s.booking && !isPaid && !isExpired;
+  // Only a hold or a transfer the host has not confirmed yet is still payable; cancelled / disputed / expired are not.
+  const showPayButton = !!s.booking?.id && (isHolding || isPendingVerification);
 
   // The countdown only ticks while there is something to actually count
   // down — PHASE 2 shows an SLA reassurance number that ticks too, so both
@@ -137,9 +141,9 @@ export default function Confirmed() {
   useEffect(() => { if (s.booking?.id) loadBookingAttendees(s.booking.id); }, [s.booking?.id, loadBookingAttendees]);
   const attendees = (s.bookingAttendees || []).filter(a => a.booking_id === s.booking?.id);
   const hasNamed = attendees.length > 0;
-  const [selected, setSelected] = useState(() => new Set());
+  const [stubIdx, setStubIdx] = useState(0); // which attendee stub the pager shows (drives "Download this ticket")
   const [pdfBusy, setPdfBusy] = useState(false);
-  useEffect(() => { setSelected(new Set()); }, [s.booking?.id]);
+  useEffect(() => { setStubIdx(0); }, [s.booking?.id]);
   const [giftOpen, setGiftOpen] = useState(false);
   const [walletBusy, setWalletBusy] = useState(false);
   const [walletMsg, setWalletMsg] = useState('');
@@ -158,39 +162,33 @@ export default function Confirmed() {
     }
     return () => { live = false; };
   }, [isPaid, s.booking?.id]);
-  const toggleSel = (id) => setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  // Phase 1 quick wins (src/lib/quickWins.js). Q1: the first time this device shows a confirmed ticket for a booking,
-  // a short reveal; Q4: the first time it sees that booking checked in, "You're in". Each once per booking per device
-  // (claimOnce), confetti hidden and the card only fading in under reduced motion, announced through aria-live.
+  // Checked in at the door (booking 'attended', or one of its named tickets scanned). The strip says so; there is no separate
+  // celebration card any more (note 78): the ticket stays calm and the strip carries the moment.
   const checkedIn = isPaid && isCheckedIn(s.booking, attendees);
-  const [moment, setMoment] = useState(null); // { kind: 'ticket' | 'checkIn', bookingId }
-  useEffect(() => {
-    const id = s.booking?.id;
-    if (!isPaid || !id) return;
-    if (checkedIn) {
-      claimOnce('ticketReveal', id); // a ticket first seen at the door goes straight to the check-in moment
-      if (claimOnce('checkIn', id)) setMoment({ kind: 'checkIn', bookingId: id });
-    } else if (claimOnce('ticketReveal', id)) {
-      setMoment({ kind: 'ticket', bookingId: id });
-    }
-  }, [isPaid, checkedIn, s.booking?.id]);
-  const shownMoment = moment && moment.bookingId === s.booking?.id ? moment.kind : null;
   const reduceMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   // While the event is about to start or under way, the ticket screen watches for the door scan (same 6s convention
   // as the polls above); it stops once checked in. Outside that window nothing is polled.
   const startMs = ev?.startDate instanceof Date ? ev.startDate.getTime() : NaN;
-  const nearDoor = Number.isFinite(startMs) && Date.now() > startMs - 3 * 3600000 && Date.now() < startMs + 12 * 3600000;
+  // Named tickets (migration 151) are scanned one by one (note 78): the booking only counts as checked in once ALL of them
+  // are, and the door watch keeps going while any is still open and the door window lasts (src/lib/ticketStatus.js,
+  // shared vectors). A booking without named tickets keeps the old rule and the old poll exactly.
+  const pendingScans = hasNamed && attendees.some(a => !a.checked_in_at);
+  const stripCheckedIn = isPaid && (hasNamed ? !pendingScans : checkedIn);
+  const watchDoor = isPaid && doorWatchOpen({ namedScans: hasNamed ? attendees.map(a => !!a.checked_in_at) : null, checkedIn, startMs, nowMs: Date.now() });
   useEffect(() => {
-    if (!isPaid || checkedIn || !nearDoor || !s.booking?.id) return undefined;
+    if (!watchDoor || !s.booking?.id) return undefined;
     const bookingId = s.booking.id;
     const id = setInterval(async () => {
+      // Named tickets: the window can close while this screen stays open, so stop at that very tick (the gate above only
+      // runs when the effect starts). Single tickets are not touched.
+      if (hasNamed && !inDoorWindow(startMs, Date.now())) { clearInterval(id); return; }
       const { data } = await supabase.from('bookings').select('*').eq('id', bookingId).maybeSingle();
       if (data && data.status !== s.booking?.status) set(prev => (prev.booking?.id === bookingId ? { booking: data } : {}));
       if (hasNamed) loadBookingAttendees(bookingId);
     }, 6000);
     return () => clearInterval(id);
-  }, [isPaid, checkedIn, nearDoor, s.booking?.id, s.booking?.status, hasNamed, set, loadBookingAttendees]);
+  }, [watchDoor, startMs, s.booking?.id, s.booking?.status, hasNamed, set, loadBookingAttendees]);
 
   // Q2 honest waiting: this host's typical confirmation time (get_host_confirmation_time, migration 198), asked once
   // per screen open; below 5 confirmations, on error or before the migration exists, nothing extra is shown.
@@ -206,8 +204,8 @@ export default function Confirmed() {
     return () => { live = false; };
   }, [isPendingVerification, s.booking?.id, s.booking?.event_id]);
 
-  // Q1 "Next": the venue (with directions when the event has a pin) and the host's own note to guests, if they wrote
-  // one (events.chat_greeting, migration 156; never the built-in default). Read once per ticket.
+  // The host's own note to guests and the exact address, if they wrote them (events.chat_greeting, migration 156; never the
+  // built-in default). Read once per ticket, for a paid ticket only; shown in the Event details sheet.
   const [hostNote, setHostNote] = useState({ vi: '', en: '', address: '' });
   useEffect(() => {
     const eventId = s.booking?.event_id;
@@ -223,8 +221,57 @@ export default function Confirmed() {
     return () => { live = false; };
   }, [isPaid, s.booking?.event_id]);
   const noteText = s.lang === 'en' ? (hostNote.en || hostNote.vi) : (hostNote.vi || hostNote.en);
-  const placeText = hostNote.address || trStatus(stripKm(ev.where, ev));
   const directionsUrl = mapsUrl(ev);
+
+  // Note 78: which "What's next" case this booking is in (src/lib/ticketStatus.js), its approved copy, and its tone.
+  const en = s.lang === 'en';
+  const [whenDateRaw, whenTime] = (ev.when || '').split(' ▪︎ ');
+  const areaText = trStatus((ev.where || '').split(' ▪︎ ')[0] || '');
+  // The booking row's own status can say cancelled/expired even when payment_state has not caught up.
+  const caseState = s.booking?.status === 'cancelled' ? 'cancelled' : s.booking?.status === 'expired' ? 'expired' : phase;
+  const daysUntil = daysUntilInZone(whenDateRaw, startMs, ev.tz || VN_TIME_ZONE);
+  const tCase = s.booking
+    ? ticketCase({ paymentState: caseState, eventCancelled: !!ev.cancelled, endedHoursAgo: ev.endedHoursAgo ?? null, isPaid, checkedIn: stripCheckedIn, daysUntil })
+    : null;
+  // "Track refund" only when this booking really has an open refund claim (loaded on demand for a cancelled ticket).
+  useEffect(() => {
+    if (tCase?.key === 'cancelled' && s.booking?.id && s.user?.id) loadMyRefunds();
+  }, [tCase?.key, s.booking?.id, s.user?.id, loadMyRefunds]);
+  const hasRefund = (s.myRefunds || []).some(c => c.bookingId === s.booking?.id);
+  const copy = tCase ? ticketCopy(tCase.key, {
+    en, eventCancelled: !!ev.cancelled, dateText: dateTileLabel(whenDateRaw, en), timeText: whenTime || '', areaText, daysUntil,
+    typicalWait, verifyOverdue, hasReceipt: !!s.receiptDoc, hasRefund, hasDirections: !!directionsUrl,
+  }) : null;
+  const toneColor = { alert, honey, plum, ink3, moss, clay, mist }[tCase?.tone] || ink3;
+  const msToStart = Number.isFinite(startMs) ? startMs - Date.now() : NaN;
+  const stripTail = tCase?.key === 'holding' ? { text: holdCountdown, id: 'confirmed-hold-countdown' }
+    : tCase?.key === 'awaiting' && !verifyOverdue && s.booking?.verify_due_at ? { text: verifyCountdown, id: 'confirmed-verify-countdown' }
+    : tCase?.key === 'today' && msToStart > 0 ? { text: msToStart >= 3600000 ? `${Math.floor(msToStart / 3600000)}h` : `${Math.max(1, Math.floor(msToStart / 60000))}m`, id: 'confirmed-today-countdown' }
+    : null;
+  const stripAction = {
+    refunds: () => openMyRefunds('confirmed'),
+    reserve: goReserve,
+    pay: () => openPaymentDetails(s.booking.id, 'confirmed'),
+    chat: () => openChatFor(ev.key, 'confirmed'),
+    receipt: () => openDocumentFromNotification(s.receiptDoc.id, 'confirmed'),
+    // The picker is anchored on the calendar tile, so bring that tile into view.
+    calendar: () => { openCalendarPicker(); setTimeout(() => document.querySelector('[data-testid="confirmed-add-to-calendar"]')?.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' }), 0); },
+  };
+  // A cancelled / ended / unconfirmed ticket never draws the real QR (TicketQr); an unmapped state is treated as void.
+  const qrMode = tCase?.qr || 'void';
+  const qrShows = ticketQrShowsToken(qrMode);
+  const qrLabel = { ok: T('Mã QR vé', 'Ticket QR'), in: T('Bạn đã check-in', 'Checked in'), lock: T('QR sẽ mở khi host xác nhận', 'QR unlocks when the host confirms'), past: T('Đã kết thúc', 'Ended'), void: T('Vé không còn hiệu lực', 'Ticket void') }[qrMode];
+  const [policyOpen, setPolicyOpen] = useState(false);
+  // Event details sheet (note 78). It closes before the full Event Detail opens, so coming Back lands on the same ticket
+  // with the sheet closed (goEvent records 'confirmed' as the back target; the booking in state is not touched).
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsOpener = useRef(null); // the control that opened the sheet, so focus can go back to it
+  const includedItems = ev.includedItems || [];
+  const detailsAbout = aboutSection({ desc: ev.desc, intro: ev.intro, includedCount: includedItems.length });
+  const detailsIncluded = includedSection(includedItems.length > 0 ? includedItems.map(it => it.label) : (ev.included || '').split(/\s*(?:▪︎|,|·)\s*/));
+  // Distance only when it helps choose: the viewer is located and within 50 km (never "9662 km away").
+  const detailsDistance = showDistance(s.located === true ? haversineKm(s.userCoords, ev) : null, s.located, en);
+  const eventOver = !!ev.cancelled || ev.endedHoursAgo != null;
 
   const eventStart = ev.startDate || new Date();
   const calUrl = googleCalendarUrl({
@@ -273,37 +320,12 @@ export default function Confirmed() {
     setWalletBusy(false);
     if (code) setWalletMsg(walletErrorMessage(code, T));
   };
-  const ageOf = (iso) => {
-    if (!iso) return null;
-    const d = new Date(iso); const n = new Date();
-    let age = n.getFullYear() - d.getFullYear();
-    if (n.getMonth() < d.getMonth() || (n.getMonth() === d.getMonth() && n.getDate() < d.getDate())) age -= 1;
-    return age;
-  };
-
   // formName used to be a free-typed, never-persisted Reserve.jsx field —
   // s.user.name (real profiles.display_name, 01-hold-payment.md's
   // 2026-09-17 follow-up #6) is the actual identity now.
   const name = (s.user?.name || '').trim() || T('Bạn', 'You');
-  const confirmEyebrow = isPaid
-    ? T('Đã xác nhận', 'Confirmed')
-    : isHolding ? T('Đang giữ chỗ cho bạn', 'Holding your spot')
-    : isPendingVerification ? T('Đang chờ xác nhận', 'Awaiting confirmation')
-    : isDisputed ? T('Đang được xem xét', 'Under review')
-    : isExpired ? T('Đã hết hạn giữ chỗ', 'Hold expired')
-    : T('Đang chờ thanh toán', 'Awaiting payment');
-  const confirmHeading = isPaid
-    ? name + T(', vé của bạn đã sẵn sàng.', ', your ticket is ready.')
-    : isHolding
-      ? name + T(', chỗ của bạn đang được giữ.', ', your spot is being held.')
-      : isPendingVerification
-        ? name + T(', chỗ của bạn đã được khoá.', ', your seat is locked.')
-        : isExpired
-          ? name + T(', chỗ giữ đã hết hạn và đã được mở lại.', ", your hold expired and the seat's been released.")
-          : name + T(', hoàn tất thanh toán để nhận vé.', ', complete payment to get your ticket.');
-  const confirmNote = isExpired
-    ? T('Bạn chưa chuyển khoản trước khi hết giờ giữ chỗ, nên chỗ đã được mở lại cho người khác. Bạn có thể giữ chỗ lại nếu vẫn còn chỗ trống.', "You didn't complete payment before the hold ran out, so the seat was released back. You can reserve again if there's still room.")
-    : T('banbe không thu tiền. Hãy chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn. Nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.', 'banbe does not collect money. Pay the organizer directly using the instructions in chat. If they cancel, they are responsible for your refund.');
+  // The policy paragraph, wording unchanged (note 78 only changes how it is displayed: collapsed under the ticket).
+  const policyNote = T('banbe không thu tiền. Hãy chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn. Nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.', 'banbe does not collect money. Pay the organizer directly using the instructions in chat. If they cancel, they are responsible for your refund.');
 
   const showQr = isPaid;
   const calendarLabel = s.calAdded ? T('Đã thêm vào lịch', 'Added to calendar') : T('Thêm vào lịch', 'Add to calendar');
@@ -312,6 +334,9 @@ export default function Confirmed() {
   const moreItems = [
     showQr && !hasNamed && !isGifted && { testId: 'confirmed-give-ticket', icon: 'gift', label: T('Tặng vé cho bạn bè', 'Give a ticket to a friend'), onClick: () => setGiftOpen(true) },
     showQr && !hasNamed && !isGifted && walletEligible && { testId: 'confirmed-download-pdf', icon: 'download', label: pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải vé PDF', 'Download PDF'), onClick: () => runDownload([ownPdf()]) },
+    // Named tickets (note 78): the stub being shown, and all of them. The old per-row buttons and "Download selected" are gone.
+    showQr && hasNamed && attendees[Math.min(stubIdx, attendees.length - 1)] && { testId: 'confirmed-download-current', icon: 'download', label: pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải vé này', 'Download this ticket'), onClick: () => runDownload([attendeePdf(attendees[Math.min(stubIdx, attendees.length - 1)])]) },
+    showQr && hasNamed && attendees.length > 1 && { testId: 'confirmed-download-all', icon: 'download', label: T('Tải tất cả', 'Download all'), onClick: () => runDownload(attendees.map(attendeePdf)) },
     // Receipts are organizer-uploaded (08-payment-documents.md): `receiptDoc` is undefined while the check runs.
     showQr && s.receiptDoc !== undefined && {
       testId: 'confirmed-view-receipt', icon: 'doc',
@@ -332,178 +357,71 @@ export default function Confirmed() {
           : s.confirmedBack === 'accountGroup' ? T('Tài khoản', 'Account')
           : T('Quay lại', 'Back')}
       </div>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px 30px 0' }}>
-        {/* Note 48 (iOS parity): Event ✓ → Hold → Pay → Ticket; hidden once the booking left the happy path. */}
-        {/* Only while the booking is still on its way: once the ticket is issued it disappears (finished checkout). */}
-        {s.booking && !isExpired && !isDisputed && !isPaid && (
-          <div style={{ marginBottom: 18 }}><BookingJourneyProgress current={isPendingVerification ? 3 : 2} T={T} /></div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '16px 22px 0' }}>
+        {/* Note 48 (iOS parity): Event ✓ → Hold → Pay → Ticket; only while the booking is still on its way to a ticket. */}
+        {s.booking && (isHolding || isPendingVerification) && (
+          <div style={{ marginBottom: 14 }}><BookingJourneyProgress current={isPendingVerification ? 3 : 2} T={T} /></div>
         )}
-        <span style={{ fontSize: 11.5, color: ink }}>{confirmEyebrow}</span>
-        <h2 style={{ ...display(27, { lineHeight: 1.35, margin: '12px 0 0' }) }}>{confirmHeading}</h2>
-        <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '18px 0 0' }}>{confirmNote}</p>
-
-        {/* PHASE 1: the buyer's own clock is running. */}
-        {isHolding && (
-          <>
-            <div style={{ ...cardGlass({ marginTop: 22, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid="confirmed-hold-countdown">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Giữ chỗ còn', 'Hold expires in')}</span>
-                <span style={{ fontSize: 11.5, color: ink }}>{T('Trả trước khi hết giờ để xác nhận', 'Pay before it runs out to confirm')}</span>
-              </div>
-              <span style={{ ...display(30, { fontVariantNumeric: 'tabular-nums' }) }}>{holdCountdown}</span>
-            </div>
-            <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.5, color: ink }}>{T('Chuyển khoản trực tiếp cho người tổ chức trước khi hết giờ để xác nhận.', 'Pay the organizer directly before the timer ends to confirm.')}</div>
-          </>
-        )}
-
-        {/* PHASE 2: the buyer's clock is GONE — replaced by a reassurance
-            countdown for the organizer's own response window, framed so it
-            never reads as a threat to the seat itself. */}
-        {isPendingVerification && (
-          <div style={{ ...cardGlass({ marginTop: 22, padding: '16px 18px' }) }} data-testid="confirmed-verify-countdown">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>
-                  {T('Chỗ đã khoá ▪︎ không còn đếm ngược cho bạn', 'Seat locked ▪︎ no countdown against you')}
-                </span>
-                <span style={{ fontSize: 11.5, color: ink, opacity: 0.75 }}>
-                  {verifyOverdue
-                    ? T('Người tổ chức đang xử lý, có thể mất thêm chút thời gian', "The organizer is on it, may take a little longer")
-                    : T('Người tổ chức thường phản hồi trong', "The organizer typically responds within")}
-                </span>
-              </div>
-              {!verifyOverdue && s.booking?.verify_due_at && (
-                <span style={{ ...display(24, { fontVariantNumeric: 'tabular-nums', flex: 'none' }) }}>{verifyCountdown}</span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {isPendingVerification && (
-          <div style={{ ...cardGlass({ marginTop: 12, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 6 }) }} data-testid="confirmed-what-next">
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: ink }}>{T('Tiếp theo là gì', 'What happens next')}</span>
-            <span style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.8 }}>
-              {T('Host kiểm tra khoản chuyển khoản và xác nhận. Chúng tôi sẽ báo cho bạn.', "The host checks the transfer and confirms. We'll notify you.")}
+        {/* Wordmark and the one-word status, in the tone of the case. */}
+        {copy && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '0 6px 12px' }}>
+            <span style={{ ...display(15, { opacity: 0.7 }) }}>banbe</span>
+            <span data-testid="confirmed-status" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 600, color: ink }}>
+              <span aria-hidden style={{ width: 7, height: 7, borderRadius: '50%', background: toneColor }} />{copy.label}
             </span>
-            {typicalWait && (
-              <span style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.8 }} data-testid="confirmed-typical-wait">{T(typicalWait.vi, typicalWait.en)}</span>
+          </div>
+        )}
+        {s.booking && (
+          <PaperTicket
+            onOpenDetails={(el) => { detailsOpener.current = el; setDetailsOpen(true); }} viewLabel={T('Xem sự kiện', 'View event')}
+            holderLabel={T('Vé của ', 'Ticket for ') + (isGifted ? s.booking.recipient_name : name)}
+            title={ev.name}
+            tiles={[
+              { key: 'date', label: T('Ngày', 'Date'), value: dateTileLabel(whenDateRaw, en) },
+              { key: 'time', label: T('Giờ', 'Time'), value: whenTime || '' },
+              { key: 'area', label: T('Khu vực', 'Area'), value: areaText },
+            ]}
+            strip={copy && (
+              <WhatsNextStrip key={tCase.key} caseKey={tCase.key} tone={toneColor} solid={tCase.key === 'checkedIn'}
+                heading={copy.heading} sub={copy.sub} tail={stripTail?.text} tailTestId={stripTail?.id}
+                detail={copy.detail} reduceMotion={reduceMotion}
+                link={copy.link && (copy.link.kind === 'directions' ? { ...copy.link, href: directionsUrl } : copy.link)}
+                onLink={copy.link ? stripAction[copy.link.kind] : undefined} />
+            )}>
+            {isPaid && hasNamed ? (
+              <TicketStubPager attendees={attendees} qrMode={qrMode} qrLabel={qrLabel} reduceMotion={reduceMotion} onActive={setStubIdx} T={T} />
+            ) : isPaid && isGifted ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }} data-testid="confirmed-gifted">
+                <span style={{ fontSize: 11, fontWeight: 600, color: ink2 }}>{T('Đã tặng', 'Gifted')}</span>
+                <span style={{ fontSize: 17, fontWeight: 600, color: ink, overflowWrap: 'anywhere' }}>{s.booking.recipient_name}</span>
+              </div>
+            ) : (
+              <>
+                <TicketQr mode={qrMode} value={s.booking.admission_token || s.booking.id} size={220} pad={10} label={qrLabel} />
+                {s.booking.code && (
+                  <>
+                    <span style={{ marginTop: 16, fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: ink3 }}>{T('Mã vào cửa', 'Entry code')}</span>
+                    {/* A locked / void / ended ticket shows a mask, never the real code. */}
+                    <span data-testid="confirmed-entry-code" style={{ marginTop: 4, fontSize: 29, fontWeight: 600, letterSpacing: '0.14em', fontFamily: 'ui-monospace, Menlo, monospace', color: ink, opacity: qrShows ? 1 : 0.35, whiteSpace: 'nowrap' }}>
+                      {qrShows ? formatEntryCode(s.booking.code) : '••• •••'}
+                    </span>
+                  </>
+                )}
+                {qrShows && <span style={{ marginTop: 8, fontSize: 11.5, color: ink2 }}>{T('Đưa mã này ở cửa', 'Show this code at the door')}</span>}
+              </>
             )}
-          </div>
+          </PaperTicket>
         )}
-
-        {isDisputed && (
-          <div style={{ ...cardGlass({ marginTop: 22, padding: '16px 18px' }) }} data-testid="confirmed-disputed">
-            <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{T('banbe đang xem xét', 'banbe is reviewing this')}</span>
-            <p style={{ fontSize: 12, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
-              {T('Chỗ của bạn vẫn được giữ trong lúc chờ xem xét.', 'Your seat stays held while this is reviewed.')}
-            </p>
-          </div>
-        )}
-
-        {isExpired && (
-          <div
-            onClick={goReserve}
-            style={{ ...cardGlass({ marginTop: 22, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, cursor: 'pointer' }) }}
-            data-testid="confirmed-expired-reserve"
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-              <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{T('Giữ chỗ lại', 'Reserve again')}</span>
-              <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink, opacity: 0.7 }}>{T('Nếu vẫn còn chỗ trống.', 'If there’s still room.')}</span>
-            </div>
-            <span style={{ fontSize: 17, color: ink, flex: 'none', lineHeight: 1 }}>›</span>
-          </div>
-        )}
-
-        {awaitingPayment && s.booking?.id && (
-          <div
-            onClick={() => openPaymentDetails(s.booking.id, 'confirmed')}
-            style={{ ...cardGlass({ marginTop: (isHolding || isPendingVerification || isDisputed) ? 12 : 22, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, cursor: 'pointer' }) }}
-            data-testid="confirmed-pay"
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-              <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{T('Xem thông tin chuyển khoản', 'See payment details')}</span>
-              <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink, opacity: 0.7 }}>{T('Số tài khoản, số tiền và nội dung cần ghi.', 'Account number, amount and the reference to use.')}</span>
-            </div>
-            <span style={{ fontSize: 17, color: ink, flex: 'none', lineHeight: 1 }}>›</span>
-          </div>
-        )}
-        {/* Q1/Q4 moment: a short peak, then the calm ticket below. Polite, so it never interrupts a screen reader. */}
-        <div role="status" aria-live="polite" style={{ position: 'relative' }}>
-          {shownMoment && (
-            <div key={shownMoment} data-testid={shownMoment === 'ticket' ? 'confirmed-ticket-reveal' : 'confirmed-checkin-moment'}
-              style={{ ...cardGlass({ marginTop: 22, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 12, position: 'relative' }), animation: reduceMotion ? 'banbeFade 0.4s ease both' : 'bbPopIn 0.42s cubic-bezier(.22,.61,.36,1) both' }}>
-              <ConfettiBurst top={18} />
-              <span aria-hidden style={{ fontSize: 26, lineHeight: 1, flex: 'none' }}>{shownMoment === 'ticket' ? '🎟️' : '✓'}</span>
-              <span style={{ ...display(18, { lineHeight: 1.3 }) }}>
-                {shownMoment === 'ticket' ? T('Vé của bạn đã sẵn sàng', 'Your ticket is ready') : T('Bạn đã vào cửa. Chúc bạn vui!', "You're in. Enjoy tonight!")}
-              </span>
-            </div>
-          )}
-        </div>
-        {isPaid && hasNamed ? (
-          <div style={{ marginTop: 28, borderTop: `1px solid ${rule}`, paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }} data-testid="confirmed-attendee-tickets">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
-              <span style={{ ...display(17) }}>{ev.name}</span>
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.65, flex: 'none' }}>{attendees.length} {T('vé', attendees.length === 1 ? 'ticket' : 'tickets')}</span>
-            </div>
-            <span style={{ fontSize: 12, color: ink }}>{trStatus(stripKm(ev.where, ev))}</span>
-            <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{T('Mỗi người có mã QR riêng. Đưa mã của chính họ ở cửa.', 'Each person has their own QR. Show their own code at the door.')}</span>
-            {attendees.map(a => {
-              const on = selected.has(a.id);
-              const age = ageOf(a.date_of_birth);
-              return (
-                <div key={a.id} style={{ ...cardGlass({ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12 }) }} data-testid={`confirmed-attendee-${a.seat_no}`}>
-                  <span onClick={() => toggleSel(a.id)} role="checkbox" aria-checked={on} data-testid={`confirmed-attendee-select-${a.seat_no}`}
-                    style={{ flex: 'none', width: 22, height: 22, borderRadius: 11, border: `1.5px solid ${ink}`, background: on ? ink : 'transparent', color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, cursor: 'pointer' }}>{on ? '✓' : ''}</span>
-                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
-                    {age != null && <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{T(`${age} tuổi`, `Age ${age}`)}</span>}
-                    <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: '0.08em', color: ink }}>{a.ticket_code}</span>
-                    {a.checked_in_at && <span style={{ fontSize: 10.5, fontWeight: 700, color: alert }}>{T('Đã vào cửa', 'Checked in')}</span>}
-                  </div>
-                  <QrCode value={a.admission_token} size={72} />
-                  <span onClick={() => runDownload([attendeePdf(a)])} title={T('Tải vé PDF', 'Download PDF')} data-testid={`confirmed-attendee-download-${a.seat_no}`}
-                    style={{ flex: 'none', width: 34, height: 34, borderRadius: 17, background: 'var(--bb-field)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: pdfBusy ? 0.5 : 1 }}>
-                    <Icon kind="download" size={16} />
-                  </span>
-                </div>
-              );
-            })}
-            <div style={{ display: 'flex', gap: 10 }}>
-              <span onClick={() => runDownload(attendees.filter(a => selected.has(a.id)).map(attendeePdf))} data-testid="confirmed-download-selected"
-                style={{ ...cardGlass({ flex: 1, padding: '12px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, cursor: selected.size ? 'pointer' : 'default', opacity: selected.size ? 1 : 0.45 }) }}>
-                {T(`Tải đã chọn (${selected.size})`, `Download selected (${selected.size})`)}
-              </span>
-              <span onClick={() => runDownload(attendees.map(attendeePdf))} data-testid="confirmed-download-all"
-                style={{ ...cardGlass({ flex: 1, padding: '12px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, cursor: 'pointer' }) }}>
-                {T('Tải tất cả', 'Download all')}
-              </span>
-            </div>
-            {pdfBusy && <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{T('Đang tạo PDF…', 'Preparing PDF…')}</span>}
-          </div>
-        ) : (
-        <div style={{ marginTop: 28, borderTop: `1px solid ${rule}`, paddingTop: 14, display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'center' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-            <span style={{ ...display(17) }}>{ev.name}</span>
-            <span style={{ fontSize: 12, color: ink }}>{trStatus(stripKm(ev.where, ev))}</span>
-            {showQr && !isGifted && s.booking?.code && <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.12em', color: ink }}>{T('Mã vào cửa: ', 'Entry code: ')}{s.booking.code}</span>}
-            {!showQr && (
-              <span style={{ fontSize: 11.5, color: ink }}>
-                {isExpired
-                  ? T('Chỗ này đã được mở lại.', 'This seat has been released.')
-                  : T('Vé sẽ hiện ở đây sau khi thanh toán được xác nhận.', 'Your ticket appears here once payment is confirmed.')}
-              </span>
-            )}
-            {showQr && !isGifted && <span style={{ fontSize: 10.5, color: ink }}>{T('Đưa mã này ở cửa', 'Show this code at the door')}</span>}
-          </div>
-          {showQr && isGifted && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, textAlign: 'right', minWidth: 0 }} data-testid="confirmed-gifted">
-              <span style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Đã tặng', 'Gifted')}</span>
-              <span style={{ fontSize: 15, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.booking.recipient_name}</span>
-            </div>
-          )}
-          {showQr && !isGifted && <QrCode value={s.booking.admission_token || s.booking.id} />}
-        </div>
+        {/* Money first: while a hold or an unconfirmed transfer is open, the payment details stay one tap away. */}
+        {showPayButton && (
+          <button type="button" className="bb-press" onClick={() => openPaymentDetails(s.booking.id, 'confirmed')} data-testid="confirmed-pay"
+            style={{ marginTop: 14, width: '100%', boxSizing: 'border-box', minHeight: 52, padding: '10px 18px', border: 'none', borderRadius: 16, background: ink, color: paper, fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, textAlign: 'left' }}>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+              <span style={{ fontSize: 14.5, fontWeight: 600 }}>{T('Xem thông tin chuyển khoản', 'See payment details')}</span>
+              <span style={{ fontSize: 11.5, lineHeight: 1.4 }}>{T('Số tài khoản, số tiền và nội dung cần ghi.', 'Account number, amount and the reference to use.')}</span>
+            </span>
+            <span aria-hidden style={{ fontSize: 17, flex: 'none', lineHeight: 1 }}>›</span>
+          </button>
         )}
         {isPaid && giftedSeats.length > 0 && !isGifted && (
           <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="confirmed-gifted-seats">
@@ -521,39 +439,7 @@ export default function Confirmed() {
             ))}
           </div>
         )}
-        {/* Real-device follow-up (2026-09-27) — fills the empty space below
-            the ticket row (this container's own `flex:1` absorbs whatever
-            room is left over after the fixed-size content above it) with
-            the same shared Banbe loading GIF, at half its previous pixel
-            size (public/banbe-loading.gif was resized 380x297 -> 190x148,
-            not just displayed smaller) per this follow-up's own request. */}
-        {/* Q1 calm ending: where to go and what the host said. Calendar and "Give a ticket" are the rows below. */}
-        {isPaid && !isGifted && (
-          <div style={{ marginTop: 22, display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="confirmed-next">
-            <span style={{ ...display(17) }}>{T('Tiếp theo', 'Next')}</span>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Địa điểm', 'Place')}</span>
-                <span style={{ fontSize: 13, lineHeight: 1.45, color: ink, overflowWrap: 'anywhere' }}>{placeText}</span>
-              </div>
-              {directionsUrl && (
-                <a href={directionsUrl} target="_blank" rel="noopener noreferrer" data-testid="confirmed-directions"
-                  style={{ flex: 'none', fontSize: 12.5, fontWeight: 600, color: ink, textDecoration: 'none', padding: '8px 12px', borderRadius: 999, background: 'var(--bb-field)' }}>
-                  {T('Chỉ đường', 'Directions')} ↗
-                </a>
-              )}
-            </div>
-            {noteText && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }} data-testid="confirmed-host-note">
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Lời nhắn từ host', 'Note from the host')}</span>
-                <span style={{ fontSize: 13, lineHeight: 1.5, color: ink, whiteSpace: 'pre-wrap' }}>{noteText}</span>
-              </div>
-            )}
-          </div>
-        )}
-        <div style={{ flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 20, paddingBottom: 24 }}>
-          <BanbeLoadingVisual size={190} />
-        </div>
+        <div style={{ height: 20, flex: 'none' }} />
       </div>
       {/* Note 77: the ticket's actions as two tiles (the most used ones) and a "More" menu for the rest. No hairlines:
           the block fills and the gaps separate them. iOS twin: ConfirmedView `actionTile`. */}
@@ -612,7 +498,35 @@ export default function Confirmed() {
           <p key={m} style={{ fontSize: 11, color: alert, textAlign: 'center', margin: 0 }}>{m}</p>
         ))}
       </div>
+      {/* Note 78: the policy paragraph is unchanged and only collapsed. Hidden for an expired hold, as before (the strip explains it). */}
+      {s.booking && !isExpired && (
+        <div style={{ padding: '6px 22px 0', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <button type="button" onClick={() => setPolicyOpen(v => !v)} aria-expanded={policyOpen} aria-controls="confirmed-policy" data-testid="confirmed-policy-toggle"
+            style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 8px', border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, color: ink2, cursor: 'pointer' }}>
+            {T('Về tiền và hoàn tiền', 'About money and refunds')}
+            <svg aria-hidden width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+              style={{ transform: policyOpen ? 'rotate(90deg)' : 'none', transition: reduceMotion ? 'none' : 'transform .2s' }}><path d="M1.5 1.5 6.5 7l-5 5.5" /></svg>
+          </button>
+          {policyOpen && <p id="confirmed-policy" data-testid="confirmed-policy-text" style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '4px 0 0' }}>{policyNote}</p>}
+        </div>
+      )}
       <div style={{ height: 34 }} />
+      {detailsOpen && (
+        <EventDetailsSheet
+          title={ev.name} cover={ev.img || null} reduceMotion={reduceMotion} returnFocusTo={detailsOpener.current} T={T}
+          tiles={[
+            { key: 'date', label: T('Ngày', 'Date'), value: dateTileLabel(whenDateRaw, en) },
+            { key: 'time', label: T('Giờ', 'Time'), value: whenTime || '' },
+            { key: 'place', label: T('Địa điểm', 'Place'), value: areaText },
+          ]}
+          about={detailsAbout} included={detailsIncluded} orgName={ev.orgName || ''}
+          place={hostNote.address || areaText} hostNote={noteText} distance={detailsDistance} directionsUrl={directionsUrl}
+          policyNote={isExpired ? '' : policyNote} over={eventOver}
+          onMessage={() => { setDetailsOpen(false); openChatFor(ev.key, 'confirmed'); }}
+          onOpenEvent={() => { setDetailsOpen(false); goEvent(ev.key); }}
+          onClose={() => setDetailsOpen(false)}
+        />
+      )}
       {giftOpen && s.booking?.id && (
         <GiftTicketSheet
           bookingId={s.booking.id} seats={s.booking.qty || 1} eventName={ev.name} pdfBase={pdfBase}
@@ -654,33 +568,5 @@ function Icon({ kind, size = 16 }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {ICON_PATHS[kind]}
     </svg>
-  );
-}
-
-function QrCode({ value, size = 76 }) {
-  const [src, setSrc] = useState(null);
-  useEffect(() => {
-    let active = true;
-    QRCode.toDataURL(value, { margin: 1, width: Math.max(152, size * 2), color: { dark: '#000000', light: '#FFFFFF' } })
-      .then(url => { if (active) setSrc(url); })
-      .catch(() => {});
-    return () => { active = false; };
-  }, [value]);
-
-  // A4 (Pulse/loading UX pass, 2026-09-27) — "the currently blank region
-  // beneath 'View Your Ticket' ONLY when ticket content is actually
-  // loading": `QRCode.toDataURL` above is async — `src` is genuinely null
-  // for one tick while it resolves, and this exact block used to render
-  // nothing at all during that gap (an honest-but-blank region, reached by
-  // tapping "Xem vé của bạn" on Event Detail). Now shows the shared Banbe
-  // loading GIF for that gap instead of a blank box. iOS's own QR
-  // (`QRCodeImage` in Components.swift) generates synchronously via
-  // CoreImage inside `body` — no equivalent async gap exists there, so no
-  // iOS change was needed for this specific item (confirmed by reading
-  // that component, not assumed).
-  return (
-    <div style={{ flex: 'none', width: size, height: size, background: '#FFFFFF', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      {src ? <img src={src} alt="QR" style={{ width: '100%', height: '100%', display: 'block' }} /> : <BanbeLoadingVisual size={40} />}
-    </div>
   );
 }

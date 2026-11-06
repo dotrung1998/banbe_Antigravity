@@ -149,6 +149,9 @@ extension AppState {
     // already exists before deciding whether tapping it opens that file or
     // sends a request instead.
     func loadReceiptStatus(bookingID: UUID) async {
+        #if DEBUG
+        if UITestFixture.isActive { return }   // fixtures never reach the server (shell.confirmed)
+        #endif
         do {
             let docs: [PaymentDocument] = try await SupabaseService.client
                 .from("payment_documents").select("*")

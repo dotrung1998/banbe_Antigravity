@@ -55,7 +55,8 @@ final class DesignTokensTests: XCTestCase {
                                             (palette.surface1, "surface1"), (palette.surface2, "surface2"),
                                             (palette.surface3, "surface3"), (palette.clay, "clay"), (palette.honey, "honey"),
                                             (palette.block, "block"), (palette.blockInset, "blockInset"),
-                                            (palette.mat, "mat"), (palette.matSlot, "matSlot")]
+                                            (palette.mat, "mat"), (palette.matSlot, "matSlot"),
+                                            (palette.plum, "plum"), (palette.question, "question"), (palette.update, "update")]
             for (color, key) in hexes { assertSame(color, try XCTUnwrap(t[key] as? String), "\(name) \(key)") }
             XCTAssertEqual(rgb(palette.ink2).3, try XCTUnwrap(t["ink2Alpha"] as? Double), accuracy: 0.003, "\(name) ink2")
             XCTAssertEqual(rgb(palette.ink3).3, try XCTUnwrap(t["ink3Alpha"] as? Double), accuracy: 0.003, "\(name) ink3")
@@ -68,6 +69,31 @@ final class DesignTokensTests: XCTestCase {
                 XCTAssertGreaterThanOrEqual(ratio(flat(palette.ink2, over: bg), b), minContrast["ink2"]!, "\(name) ink2")
                 XCTAssertGreaterThanOrEqual(ratio(flat(palette.ink3, over: bg), b), minContrast["ink3"]!, "\(name) ink3")
                 XCTAssertGreaterThanOrEqual(ratio(alert, b), minContrast["alert"]!, "\(name) alert")
+            }
+        }
+    }
+
+    /// Note 78: mirrors the web strip-tone test. A tone paints the icon disc, the disc stands out from its 13% tint
+    /// over block, the paper glyph reads on the disc, and all strip text is ink on that tint.
+    func testTicketStripTonesStayReadable() throws {
+        let fx = try fixture()
+        let c = try XCTUnwrap(fx["stripContrast"] as? [String: Double])
+        let tones = try XCTUnwrap(fx["stripTones"] as? [String])
+        XCTAssertEqual(tones.count, 7)
+        for (name, p) in [("light", Palette.light), ("dark", Palette.dark)] {
+            let t = try XCTUnwrap(fx[name] as? [String: Any])
+            let byTone: [String: Color] = ["honey": p.honey, "plum": p.plum, "clay": p.clay,
+                                           "update": p.update, "question": p.question, "ink3": p.ink3]
+            let block = flat(p.block, over: p.block)
+            for tone in tones {
+                let disc = tone == "alert" ? rgb(hex: try XCTUnwrap(t["alert"] as? String))
+                                           : flat(try XCTUnwrap(byTone[tone], tone), over: p.block)
+                let tint = (disc.0 * c["tintAlpha"]! + block.0 * (1 - c["tintAlpha"]!),
+                            disc.1 * c["tintAlpha"]! + block.1 * (1 - c["tintAlpha"]!),
+                            disc.2 * c["tintAlpha"]! + block.2 * (1 - c["tintAlpha"]!))
+                XCTAssertGreaterThanOrEqual(ratio(flat(p.paper, over: p.paper), disc), c["glyphOnDisc"]!, "\(name) \(tone) glyph on disc")
+                XCTAssertGreaterThanOrEqual(ratio(disc, tint), c["discOnTint"]!, "\(name) \(tone) disc on tint")
+                XCTAssertGreaterThanOrEqual(ratio(flat(p.ink, over: p.block), tint), try XCTUnwrap((fx["minContrast"] as? [String: Double])?["ink"]), "\(name) \(tone) ink on tint")
             }
         }
     }

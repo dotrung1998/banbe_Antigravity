@@ -166,6 +166,7 @@ export default function Chat() {
   const messageById = Object.fromEntries(s.chatMessages.map(m => [m.id, m]));
   const chatBackLabel = s.chatBack === 'inbox' ? T('Tin nhắn', 'Messages')
     : s.chatBack === 'notifications' ? T('Thông báo', 'Notifications')
+    : s.chatBack === 'confirmed' ? T('Vé', 'Ticket')
     : ev.orgName;
   // Task 3b — the OTHER participant's own name (host name for a guest,
   // guest name for an organizer), set once at openThread()/openChatFor()

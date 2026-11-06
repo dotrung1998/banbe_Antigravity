@@ -720,7 +720,7 @@ struct ChatView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 1) {
-                Button("‹ " + (app.chatBack == .inbox ? app.T("Tin nhắn", "Messages") : app.chatBack == .notifications ? app.T("Thông báo", "Notifications") : event.orgName)) {
+                Button("‹ " + (app.chatBack == .inbox ? app.T("Tin nhắn", "Messages") : app.chatBack == .notifications ? app.T("Thông báo", "Notifications") : app.chatBack == .confirmed ? app.T("Vé", "Ticket") : event.orgName)) {
                     app.chatBackAction()
                 }
                 .font(.system(size: 11))
