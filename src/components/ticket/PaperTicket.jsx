@@ -38,7 +38,7 @@ export default function PaperTicket({ strip, holderLabel, title, tiles, onOpenDe
             {shown.map(t => (
               <div key={t.key} data-testid={`confirmed-tile-${t.key}`} style={{ flex: '1 1 96px', minWidth: 0, boxSizing: 'border-box', background: blockInset, borderRadius: 14, padding: '9px 12px' }}>
                 <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: ink3 }}>{t.label}</div>
-                <div style={{ marginTop: 2, fontSize: 14, fontWeight: 600, lineHeight: 1.3, color: ink, overflowWrap: 'anywhere' }}>{t.value}</div>
+                <div style={{ marginTop: 2, fontSize: 14, fontWeight: 600, lineHeight: 1.3, color: ink, ...(t.key === 'date' ? { whiteSpace: 'nowrap' } : { overflowWrap: 'anywhere' }) }}>{t.value}</div>
               </div>
             ))}
           </div>

@@ -23,6 +23,7 @@ enum FeatureFlagCategories {
         Category(key: "types", vi: "Loại sự kiện", en: "Event types", flags: ["event_type_profiles"]),
         Category(key: "layout", vi: "Bố cục ứng dụng", en: "App layout", flags: ["simple_shell", "polaroid_cards"]),
         Category(key: "projects", vi: "Dự án sự kiện", en: "Event projects", flags: ["event_project_hub", "project_qr_invite", "project_delegate_checkin", "project_delegate_payments", "project_delegate_refunds", "project_hub_demo"]),
+        Category(key: "tickets", vi: "Vé", en: "Tickets", flags: ["ticket_demo"]),
         Category(key: "platform", vi: "Nền tảng & đo lường", en: "Platform & measurement", flags: ["app_events", "admin_event_wipe"]),
     ]
 

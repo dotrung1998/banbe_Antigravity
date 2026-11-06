@@ -97,10 +97,13 @@ struct PaperTicketView<Strip: View, Stub: View>: View {
         let cells = ForEach(shown) { t in
             VStack(alignment: .leading, spacing: 2) {
                 Text(t.label.uppercased()).font(.caption2.weight(.semibold)).tracking(0.6).foregroundStyle(app.palette.ink3)
+                // The date stays on one line (it shrinks a little instead of wrapping); the others may wrap.
                 Text(t.value).font(.subheadline.weight(.semibold)).foregroundStyle(app.palette.ink)
+                    .lineLimit(t.id == "date" && !typeSize.isAccessibilitySize ? 1 : nil)
+                    .minimumScaleFactor(t.id == "date" ? 0.7 : 1)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: typeSize.isAccessibilitySize ? nil : .infinity, alignment: .topLeading)
             .padding(.horizontal, 12).padding(.vertical, 9)
             .background(app.palette.blockInset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .accessibilityElement(children: .combine)
@@ -113,19 +116,32 @@ struct PaperTicketView<Strip: View, Stub: View>: View {
         }
     }
 
-    /// A dashed rule on the ticket fill, with a notch cut out of each edge in the page colour.
+    /// Twin of the web perforation: a 2pt dashed rule on the ticket fill with a 22pt notch cut out of each edge in the
+    /// page colour, centred on the rule. The notches overlay the card edge (half outside), like the web.
     private var perforation: some View {
-        ZStack {
-            app.palette.block
-            Rectangle().stroke(app.palette.rule, style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
-                .frame(height: 0).padding(.horizontal, 16)
-            HStack {
+        app.palette.block
+            .frame(height: 2)
+            .overlay(
+                // A real horizontal line: a zero-height stroked Rectangle draws nothing.
+                PerforationLine().stroke(app.palette.rule, style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                    .frame(height: 2).padding(.horizontal, 16)
+            )
+            .overlay(alignment: .leading) {
                 Circle().fill(app.palette.paper).frame(width: 22, height: 22).offset(x: -11)
-                Spacer()
+            }
+            .overlay(alignment: .trailing) {
                 Circle().fill(app.palette.paper).frame(width: 22, height: 22).offset(x: 11)
             }
-        }
-        .frame(height: 1)
-        .accessibilityHidden(true)
+            .zIndex(1)
+            .accessibilityHidden(true)
+    }
+}
+
+private struct PerforationLine: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return p
     }
 }

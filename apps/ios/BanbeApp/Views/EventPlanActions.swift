@@ -43,20 +43,22 @@ struct MiniCalendarPage: View {
     /// The short weekday (or month) shown above the day, like the Calendar app icon.
     var month: String
     var size: CGFloat = 44
+    /// The ticket's calendar tile is white with black text in both themes; Event Detail keeps the ink tile.
+    var fixedLight = false
 
     var body: some View {
         // Monochrome Calendar icon (iOS 27 style) in the Directions button's colours: ink tile, paper text.
         VStack(spacing: size * 0.02) {
             Text(month.isEmpty ? " " : month.uppercased())
                 .font(.system(size: size * 0.17, weight: .semibold)).tracking(0.3)
-                .foregroundStyle(app.palette.paper.opacity(0.62))
+                .foregroundStyle(fixedLight ? Color.black.opacity(0.62) : app.palette.paper.opacity(0.62))
             Text(day.isEmpty ? "+" : day)
                 .font(.system(size: size * 0.46, weight: .regular))
-                .foregroundStyle(app.palette.paper)
+                .foregroundStyle(fixedLight ? Color.black : app.palette.paper)
         }
         .lineLimit(1).minimumScaleFactor(0.6)
         .frame(width: size, height: size)
-        .background(app.palette.ink, in: RoundedRectangle(cornerRadius: size * 0.25, style: .continuous))
+        .background(fixedLight ? Color.white : app.palette.ink, in: RoundedRectangle(cornerRadius: size * 0.25, style: .continuous))
         .shadow(color: .black.opacity(0.18), radius: 3, y: 2)
         .accessibilityHidden(true)
     }

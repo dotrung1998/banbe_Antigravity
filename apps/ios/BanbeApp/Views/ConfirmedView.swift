@@ -26,6 +26,16 @@ struct ConfirmedView: View {
     /// Note 44: Apple Calendar goes through the system editor (no access request).
     @State private var appleCalendarRequest: CalendarExportRequest?
     @State private var walletDesignOpen = false
+    /// Migration 217: the admin Ticket demo. No read, poll or write reaches the server; writes say so instead.
+    @State private var demoNotice: String?
+    private var demo: Bool { app.ticketDemo != nil }
+    /// True (and says so on the banner) when `demo` blocks the action about to run.
+    private func demoBlocked() -> Bool {
+        guard demo else { return false }
+        demoNotice = app.T("Không có trong bản demo.", "Not available in the demo.")
+        Task { @MainActor in try? await Task.sleep(nanoseconds: 3_000_000_000); demoNotice = nil }
+        return true
+    }
     /// ticket_opened is counted once per confirmed ticket shown (migration 196).
     @State private var ticketOpenedFor: UUID?
     // Q2: this host's typical confirmation time, asked once per screen open.
@@ -89,7 +99,9 @@ struct ConfirmedView: View {
     private var verifyOverdue: Bool { app.booking?.verifyDueAt != nil && verifySecondsLeft == 0 }
     private var guestName: String {
         let typed = app.formName.trimmingCharacters(in: .whitespaces)
-        return typed.isEmpty ? app.T("Bạn", "You") : typed
+        if !typed.isEmpty { return typed }
+        let profile = (app.user?.displayName ?? "").trimmingCharacters(in: .whitespaces)
+        return profile.isEmpty ? app.T("Bạn", "You") : profile
     }
 
     // MARK: Note 78: the case, its copy and its tone
@@ -186,6 +198,7 @@ struct ConfirmedView: View {
 
     private func runLink(_ link: TicketCopy.Link?) {
         guard let link, let booking = app.booking else { return }
+        if link.kind != .calendar, link.kind != .directions, demoBlocked() { return }
         switch link.kind {
         case .refunds: app.openMyRefunds(back: .confirmed)
         case .reserve: app.goReserve()
@@ -227,6 +240,22 @@ struct ConfirmedView: View {
                 }
                 .padding(.horizontal, 30)
                 .padding(.top, 8)
+
+                if demo {
+                    HStack {
+                        Text(demoNotice ?? app.T("Demo · dữ liệu mẫu · không lưu gì", "Demo · sample data · nothing is saved"))
+                            .font(.footnote)
+                        Spacer(minLength: 8)
+                        Button(app.T("Thoát demo", "Exit demo")) { app.endTicketDemo(goBack: true) }
+                            .font(.footnote.weight(.bold)).frame(minHeight: 44)
+                            .accessibilityIdentifier("confirmed.demo.exit")
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(.horizontal, 12)
+                    .background(app.palette.block, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, 22).padding(.top, 6)
+                    .accessibilityIdentifier("confirmed.demo.banner")
+                }
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
@@ -297,9 +326,9 @@ struct ConfirmedView: View {
         }
         // Q6: a confirmed ticket on screen is the moment a reminder is useful (once per account per device, switch on).
         .sheet(isPresented: $app.pushAskPresented) { PushAskSheet().environmentObject(app) }
-        .onAppear { startPollingIfNeeded(); refreshReceiptStatusIfNeeded(); loadAttendeesIfNeeded(); app.offerPushAskIfAppropriate(hasConfirmedTicket: isPaid); trackTicketOpened(); quickWinsRefresh(); loadRefundsIfNeeded() }
+        .onAppear { startPollingIfNeeded(); refreshReceiptStatusIfNeeded(); loadAttendeesIfNeeded(); if !demo { app.offerPushAskIfAppropriate(hasConfirmedTicket: isPaid) }; trackTicketOpened(); quickWinsRefresh(); loadRefundsIfNeeded() }
         .onChange(of: app.booking?.id) { _, _ in stubIndex = 0; startPollingIfNeeded(); refreshReceiptStatusIfNeeded(); loadAttendeesIfNeeded(); trackTicketOpened(); quickWinsRefresh(); loadRefundsIfNeeded() }
-        .onChange(of: isPaid) { _, paid in refreshReceiptStatusIfNeeded(); app.offerPushAskIfAppropriate(hasConfirmedTicket: paid); trackTicketOpened(); quickWinsRefresh() }
+        .onChange(of: isPaid) { _, paid in refreshReceiptStatusIfNeeded(); if !demo { app.offerPushAskIfAppropriate(hasConfirmedTicket: paid) }; trackTicketOpened(); quickWinsRefresh() }
         .onChange(of: checkedIn) { _, _ in quickWinsRefresh() }
         .onChange(of: pendingScans) { _, _ in quickWinsRefresh() }
         .onChange(of: isPendingVerification) { _, _ in quickWinsRefresh() }
@@ -318,7 +347,7 @@ struct ConfirmedView: View {
         // so `isHolding` (derived from `phase`) is false on the very next tick.
         .onReceive(ticker) { tick in
             now = tick
-            if isHolding, let deadline = holdDeadline, Countdown.secondsUntil(deadline, now: tick) == 0,
+            if !demo, isHolding, let deadline = holdDeadline, Countdown.secondsUntil(deadline, now: tick) == 0,
                let current = app.booking {
                 app.forfeitExpiredHold(current)
             }
@@ -334,19 +363,43 @@ struct ConfirmedView: View {
         // No hairlines: the block fills and the gaps separate them.
         VStack(spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
-                if isPaid, let booking = app.booking, booking.isGifted {
-                    Button { downloadGiftPDF(booking) } label: {
-                        actionTile(app.T("Tải lại vé PDF", "Re-download the PDF"), icon: "arrow.down.doc")
+                // The ticket's status picks the two tiles (note 79 follow-up; web twin: Confirmed.jsx `actionable`).
+                if actionable, let booking = app.booking {
+                    if booking.isGifted {
+                        Button { downloadGiftPDF(booking) } label: {
+                            actionTile(app.T("Tải lại vé PDF", "Re-download the PDF"), icon: "arrow.down.doc")
+                        }
+                        .buttonStyle(PressableButtonStyle())
+                        .accessibilityIdentifier("confirmed.giftedPDF")
+                    } else if hasNamedAttendees {
+                        if let current = attendees[safe: min(stubIndex, attendees.count - 1)] {
+                            Button { downloadAttendees([current]) } label: {
+                                actionTile(app.T("Tải vé này", "Download this ticket"), icon: "arrow.down.doc")
+                            }
+                            .buttonStyle(PressableButtonStyle())
+                            .accessibilityIdentifier("confirmed.downloadCurrent")
+                        }
+                    } else if walletPrimary {
+                        Button { if !demoBlocked() { walletDesignOpen = true } } label: {
+                            actionTile(app.T("Thêm vào Apple Wallet", "Add to Apple Wallet"), icon: "wallet.bifold.fill")
+                        }
+                        .buttonStyle(PressableButtonStyle())
+                        .accessibilityIdentifier("confirmed.addToWallet")
+                    } else {
+                        Button { downloadOwnPDF(booking) } label: {
+                            actionTile(app.T("Tải vé PDF", "Download PDF"), icon: "arrow.down.doc")
+                        }
+                        .buttonStyle(PressableButtonStyle())
+                        .accessibilityIdentifier("confirmed.downloadPDF")
                     }
-                    .buttonStyle(PressableButtonStyle())
-                    .accessibilityIdentifier("confirmed.giftedPDF")
-                } else if isPaid, app.booking != nil, !hasNamedAttendees {
-                    Button { walletDesignOpen = true } label: {
-                        actionTile(app.T("Thêm vào Apple Wallet", "Add to Apple Wallet"), icon: "wallet.bifold.fill")
+                    if ticketOver && app.receiptChecked {
+                        Button { receiptButtonTapped() } label: { actionTile(receiptButtonLabel, icon: "doc.text") }
+                            .buttonStyle(PressableButtonStyle())
+                            .disabled(app.receiptRequestSending)
+                            .accessibilityIdentifier("confirmed.viewReceipt")
                     }
-                    .buttonStyle(PressableButtonStyle())
-                    .accessibilityIdentifier("confirmed.addToWallet")
                 }
+                if showCalendar {
                 // A Menu, like Messages' "Settings" button: iOS expands it as a glass popover.
                 Menu {
                     Button { app.addToCalendarGoogle(event) } label: {
@@ -363,6 +416,7 @@ struct ConfirmedView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("confirmed.addToCalendar")
+                }
             }
             .sheet(item: $appleCalendarRequest) { req in
                 SystemEventEditor(draft: req.draft) { result in
@@ -374,24 +428,20 @@ struct ConfirmedView: View {
             }
             if hasMoreActions {
                 Menu {
-                    if isPaid, let booking = app.booking, !booking.isGifted, !hasNamedAttendees {
+                    if ticketLive, let booking = app.booking, !booking.isGifted, !hasNamedAttendees {
                         Button { giveTicket() } label: { Label(app.T("Tặng vé cho bạn bè", "Give a ticket to a friend"), systemImage: "gift") }
                             .accessibilityIdentifier("confirmed.giveTicket")
-                        Button { downloadOwnPDF(booking) } label: { Label(app.T("Tải vé PDF", "Download PDF"), systemImage: "arrow.down.doc") }
-                            .accessibilityIdentifier("confirmed.downloadPDF")
-                    }
-                    // Named tickets: the stub being shown, and all of them (the old per-row buttons are gone).
-                    if isPaid, hasNamedAttendees, let current = attendees[safe: min(stubIndex, attendees.count - 1)] {
-                        Button { downloadAttendees([current]) } label: { Label(app.T("Tải vé này", "Download this ticket"), systemImage: "arrow.down.doc") }
-                            .accessibilityIdentifier("confirmed.downloadCurrent")
-                        if attendees.count > 1 {
-                            Button { downloadAttendees(attendees) } label: { Label(app.T("Tải tất cả", "Download all"), systemImage: "arrow.down.doc.fill") }
-                                .accessibilityIdentifier("confirmed.downloadAll")
+                        if walletPrimary {
+                            Button { downloadOwnPDF(booking) } label: { Label(app.T("Tải vé PDF", "Download PDF"), systemImage: "arrow.down.doc") }
+                                .accessibilityIdentifier("confirmed.downloadPDF")
                         }
                     }
-                    // Receipts are organizer-uploaded (08-payment-documents.md), so this screen can't assume
-                    // one exists yet; `receiptChecked` tells "haven't looked" from "looked, none yet".
-                    if isPaid && app.receiptChecked {
+                    if actionable, hasNamedAttendees, attendees.count > 1 {
+                        Button { downloadAttendees(attendees) } label: { Label(app.T("Tải tất cả", "Download all"), systemImage: "arrow.down.doc.fill") }
+                            .accessibilityIdentifier("confirmed.downloadAll")
+                    }
+                    // Receipts are organizer-uploaded (08-payment-documents.md); once the event is over the receipt is a tile.
+                    if actionable && !ticketOver && app.receiptChecked {
                         Button { receiptButtonTapped() } label: { Label(receiptButtonLabel, systemImage: "doc.text") }
                             .disabled(app.receiptRequestSending)
                             .accessibilityIdentifier("confirmed.viewReceipt")
@@ -425,7 +475,7 @@ struct ConfirmedView: View {
 
     private func statusHeader(_ label: String, _ tone: String) -> some View {
         HStack {
-            Text("banbe").font(BanbeTheme.display(15)).opacity(0.7)
+            BanbeLogo(kind: .wordmark, width: 56).opacity(0.7).accessibilityLabel("banbe")
             Spacer()
             HStack(spacing: 6) {
                 Circle().fill(toneColor(tone)).frame(width: 7, height: 7).accessibilityHidden(true)
@@ -489,6 +539,7 @@ struct ConfirmedView: View {
 
     private func payButton(_ bookingID: UUID) -> some View {
         Button {
+            if demoBlocked() { return }
             app.openPaymentDetails(bookingID, back: .confirmed)
         } label: {
             HStack(spacing: 12) {
@@ -543,6 +594,7 @@ struct ConfirmedView: View {
     private func runDetailsAction() {
         let action = detailsAction
         detailsAction = nil
+        if action != nil, demoBlocked() { return }
         switch action {
         case .openEvent: app.goEvent(event.key)
         case .message: Task { await app.openChat(for: event.key, back: .confirmed) }
@@ -561,7 +613,7 @@ struct ConfirmedView: View {
 
     /// "Track refund" only when this booking really has an open refund claim (loaded on demand for a cancelled ticket).
     private func loadRefundsIfNeeded() {
-        guard ticketCase?.key == .cancelled, app.booking?.id != nil else { return }
+        guard !demo, ticketCase?.key == .cancelled, app.booking?.id != nil else { return }
         Task { await app.loadMyRefunds() }
     }
 
@@ -574,7 +626,7 @@ struct ConfirmedView: View {
     /// PHASE 1 -> PHASE 2 shows up live here too.
     private func startPollingIfNeeded() {
         pollTask?.cancel()
-        guard let bookingID = app.booking?.id, phase != .confirmed, phase != .expired else { return }
+        guard !demo, let bookingID = app.booking?.id, phase != .confirmed, phase != .expired else { return }
         let phaseAtStart = phase
         pollTask = Task { @MainActor in
             while !Task.isCancelled {
@@ -621,6 +673,7 @@ struct ConfirmedView: View {
     }
 
     private func receiptButtonTapped() {
+        if demoBlocked() { return }
         if let doc = app.receiptDoc {
             Task { await app.openDocumentFromNotification(doc.id, backTo: .confirmed) }
         } else if !app.receiptRequestSent, let bookingID = app.booking?.id {
@@ -640,7 +693,7 @@ struct ConfirmedView: View {
 
     /// Q2: get_host_confirmation_time once per screen open; nothing extra on error or below 5 confirmations.
     private func loadTypicalWaitIfNeeded() {
-        guard isPendingVerification, let booking = app.booking, waitAskedFor != booking.id else { return }
+        guard !demo, isPendingVerification, let booking = app.booking, waitAskedFor != booking.id else { return }
         waitAskedFor = booking.id
         let eventID = booking.eventId
         Task { @MainActor in
@@ -651,7 +704,7 @@ struct ConfirmedView: View {
     }
 
     private func loadNextInfoIfNeeded() {
-        guard isPaid, let booking = app.booking, nextInfoFor != booking.id else { return }
+        guard !demo, isPaid, let booking = app.booking, nextInfoFor != booking.id else { return }
         nextInfoFor = booking.id
         nextInfo = AppState.TicketNextInfo()
         let eventID = booking.eventId
@@ -667,7 +720,7 @@ struct ConfirmedView: View {
     /// and the window lasts, and stops the moment all are scanned or the window ends (TicketStatus.doorWatchOpen).
     private func startDoorPollIfNeeded() {
         doorPollTask?.cancel()
-        guard isPaid, let bookingID = app.booking?.id, let start = event.startDate else { return }
+        guard !demo, isPaid, let bookingID = app.booking?.id, let start = event.startDate else { return }
         let named = hasNamedAttendees
         guard TicketStatus.doorWatchOpen(namedScans: named ? attendees.map { $0.checkedInAt != nil } : nil,
                                          checkedIn: checkedIn, start: start, now: Date()) else { return }
@@ -696,13 +749,14 @@ struct ConfirmedView: View {
 
     /// ticket_opened: the event's day vs today in the venue's zone (same rule as web Confirmed.jsx).
     private func trackTicketOpened() {
-        guard isPaid, let bookingID = app.booking?.id, ticketOpenedFor != bookingID, let start = event.startDate else { return }
+        guard !demo, isPaid, let bookingID = app.booking?.id, ticketOpenedFor != bookingID, let start = event.startDate else { return }
         ticketOpenedFor = bookingID
         let bucket = AppEventRules.ticketDayBucket(start: start, now: Date(), timeZone: EventMarket.timeZone(event.timeZoneID))
         Analytics.track(.ticketOpened(dayBucket: bucket))
     }
 
     private func refreshReceiptStatusIfNeeded() {
+        if demo { return }   // the sample ticket has no receipt to look up
         guard isPaid, let bookingID = app.booking?.id else {
             app.receiptDoc = nil
             app.receiptChecked = false
@@ -730,8 +784,19 @@ struct ConfirmedView: View {
 
     /// Whether anything is left for the "More" menu (note 77; named tickets add their PDFs, note 78).
     private var hasMoreActions: Bool {
-        (isPaid && app.booking.map { !$0.isGifted } == true) || (isPaid && app.receiptChecked)
+        guard actionable else { return false }
+        if hasNamedAttendees { return attendees.count > 1 || (!ticketOver && app.receiptChecked) }
+        return (ticketLive && app.booking.map { !$0.isGifted } == true) || (!ticketOver && app.receiptChecked)
     }
+
+    // Status-driven actions (web twin: Confirmed.jsx). Over = ended or checked in; nothing at all once cancelled / expired / in review.
+    private var ticketKey: TicketStatus.Key? { ticketCase?.key }
+    private var ticketLive: Bool { ticketKey == .upcoming || ticketKey == .today }
+    private var ticketOver: Bool { ticketKey == .ended || ticketKey == .checkedIn }
+    private var ticketDead: Bool { ticketKey == .cancelled || ticketKey == .expired || ticketKey == .review }
+    private var actionable: Bool { isPaid && !ticketDead }
+    private var showCalendar: Bool { !ticketOver && !ticketDead }
+    private var walletPrimary: Bool { ticketLive && !hasNamedAttendees && !(app.booking?.isGifted ?? false) }
 
     /// The day / month for the calendar tile's mini page (same date text as Event Detail's stub).
     private var calendarBlock: EventDetailPresentation.DateBlock? {
@@ -751,7 +816,7 @@ struct ConfirmedView: View {
                         .frame(width: 36, height: 36)
                         .background(app.palette.clayBg, in: Circle())
                 } else {
-                    MiniCalendarPage(day: calendarBlock?.day ?? "", month: calendarBlock?.weekday ?? "", size: 36)
+                    MiniCalendarPage(day: calendarBlock?.day ?? "", month: calendarBlock?.weekday ?? "", size: 36, fixedLight: true)
                         .overlay(alignment: .bottomTrailing) {
                             if done {
                                 Image(systemName: "checkmark.circle.fill")
@@ -776,7 +841,7 @@ struct ConfirmedView: View {
     }
 
     private func loadAttendeesIfNeeded() {
-        guard let id = app.booking?.id, !app.bookingAttendees.contains(where: { $0.bookingId == id }) else { return }
+        guard !demo, let id = app.booking?.id, !app.bookingAttendees.contains(where: { $0.bookingId == id }) else { return }
         Task { await app.loadBookingAttendees(id) }
     }
 
@@ -802,6 +867,7 @@ struct ConfirmedView: View {
     /// PDF, instead of sharing a link to a destination this deployment does not
     /// serve.
     private func giveTicket() {
+        if demoBlocked() { return }
         guard let booking = app.booking else { return }
         app.openGiftForm(GiftTicketContext(booking: booking, eventName: event.name))
     }

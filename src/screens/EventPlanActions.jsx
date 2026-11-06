@@ -31,11 +31,11 @@ const Check = () => (
 
 /** A tiny tear-off calendar page (red band with the month, the day below): the "phone calendar" icon on Event Detail
  *  and Confirmed. iOS twin: MiniCalendarPage. */
-export function MiniCalendarPage({ day, month, size = 44, done = false }) {
+export function MiniCalendarPage({ day, month, size = 44, done = false, fixedLight = false }) {
   // Monochrome Calendar icon (iOS 27 style) in the Directions button's colours: ink tile, paper text.
   return (
     <span aria-hidden style={{ position: 'relative', flex: 'none', display: 'inline-flex', width: size, height: size }}>
-      <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: size * 0.02, width: '100%', height: '100%', borderRadius: size * 0.25, background: ink, color: 'var(--bb-bg)', boxShadow: '0 2px 6px rgba(0,0,0,0.18)', fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: 1 }}>
+      <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: size * 0.02, width: '100%', height: '100%', borderRadius: size * 0.25, background: fixedLight ? '#fff' : ink, color: fixedLight ? '#000' : 'var(--bb-bg)', boxShadow: '0 2px 6px rgba(0,0,0,0.18)', fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: 1 }}>
         <span style={{ opacity: 0.62, fontSize: size * 0.17, fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase' }}>{month || ' '}</span>
         <span style={{ fontSize: size * 0.46, fontWeight: 400 }}>{day || '+'}</span>
       </span>

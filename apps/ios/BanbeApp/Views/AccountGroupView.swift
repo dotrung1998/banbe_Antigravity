@@ -18,6 +18,7 @@ struct AccountGroupView: View {
     @State private var pdfShare: PDFShareItem?
     /// Migration 216: the "View as" picker of the admin Project hub demo.
     @State private var demoPicker = false
+    @State private var ticketDemoPicker = false
 
     // Kept on AppState (`accountGroupTitle(for:)`) so back-button labels
     // elsewhere can show the same text without drifting from this title.
@@ -111,6 +112,13 @@ struct AccountGroupView: View {
                 app.startProjectDemo(as: role, eventDay: eventDay)
             }
             .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $ticketDemoPicker) {
+            TicketDemoPicker { key, variant in
+                ticketDemoPicker = false
+                app.startTicketDemo(key, variant: variant)
+            }
+            .presentationDetents([.large])
         }
         .sheet(item: $app.importedTicketOpen) { t in
             ImportedTicketView(ticket: t).environmentObject(app)
@@ -763,6 +771,11 @@ struct AccountGroupView: View {
                 Divider().overlay(app.palette.rule)
                 projectDemoRow
             }
+            // Migration 217: admins only, while switch ticket_demo is on. Sample bookings on this device only.
+            if app.ticketDemoAvailable {
+                Divider().overlay(app.palette.rule)
+                ticketDemoRow
+            }
             Divider().overlay(app.palette.rule)
             // Migration 196: aggregate retention by market, admins only (the server checks too).
             row(app.T("Báo cáo quay lại", "Retention report"), identifier: "admin.retention", icon: "chart.bar.xaxis", trailing: "›") { if app.isAdmin { app.screen = .adminRetention } }
@@ -996,6 +1009,25 @@ struct AccountGroupView: View {
     // group-entry card already does — same capsule style `groupCard`
     // (AccountView.swift) uses, capped at "99+" with the full count kept
     // in the accessibility label.
+    private var ticketDemoRow: some View {
+        Button { if app.ticketDemoAvailable { ticketDemoPicker = true } } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "ticket").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.T("Bản demo vé", "Ticket demo")).font(.system(size: 14))
+                    Text(app.T("Dữ liệu mẫu. Không lưu gì.", "Sample data. Nothing is saved.")).font(.system(size: 12)).opacity(0.65)
+                }
+                Spacer()
+                Text("›").font(.system(size: 13))
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("admin.ticketDemo")
+    }
+
     private var projectDemoRow: some View {
         Button { if app.projectDemoAvailable { demoPicker = true } } label: {
             HStack(spacing: 12) {

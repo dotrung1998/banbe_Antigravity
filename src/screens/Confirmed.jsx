@@ -17,6 +17,7 @@ import { typicalWaitText, isCheckedIn } from '../lib/quickWins.js';
 import { mapsUrl, haversineKm } from '../data/events.js';
 import { ticketCase, formatEntryCode, ticketQrShowsToken, doorWatchOpen, inDoorWindow, showDistance } from '../lib/ticketStatus.js';
 import { ticketCopy } from '../lib/ticketCopy.js';
+import { TICKET_DEMO_RESET } from '../lib/ticketDemo.js';
 import PaperTicket from '../components/ticket/PaperTicket.jsx';
 import WhatsNextStrip from '../components/ticket/WhatsNextStrip.jsx';
 import TicketQr from '../components/ticket/TicketQr.jsx';
@@ -25,10 +26,31 @@ import EventDetailsSheet from './sheets/EventDetailsSheet.jsx';
 
 export default function Confirmed() {
   const {
-    state, T, trStatus, set, curEvent: ev, backFromConfirmed, openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, openPaymentDetails, forfeitExpiredHold, goReserve,
-    loadReceiptStatus, requestReceipt, openDocumentFromNotification, loadBookingAttendees, loadMyRefunds, openMyRefunds, openChatFor, goEvent,
+    state, T, trStatus, set, curEvent: ev, backFromConfirmed: realBack, openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS,
+    openPaymentDetails: realOpenPay, forfeitExpiredHold: realForfeit, goReserve: realReserve,
+    loadReceiptStatus: realLoadReceipt, requestReceipt: realRequestReceipt, openDocumentFromNotification: realOpenDoc, loadBookingAttendees: realLoadAttendees,
+    loadMyRefunds: realLoadRefunds, openMyRefunds: realOpenRefunds, openChatFor: realOpenChat, goEvent: realGoEvent,
   } = useBanBe();
   const s = state;
+  // Admin ticket demo (migration 217): sample booking, nothing reaches the server. Reads and polls are skipped, actions that
+  // would write or leave the screen say "Not available in the demo". iOS twin: ConfirmedView `demoBlocked`.
+  const demo = !!s.ticketDemo;
+  const [demoNotice, setDemoNotice] = useState('');
+  const blocked = () => { setDemoNotice(T('Không có trong bản demo.', 'Not available in the demo.')); setTimeout(() => setDemoNotice(''), 3000); };
+  const g = (fn) => (demo ? blocked : fn);
+  const quiet = (fn) => (demo ? () => {} : fn);
+  const openPaymentDetails = g(realOpenPay);
+  const goReserve = g(realReserve);
+  const requestReceipt = g(realRequestReceipt);
+  const openDocumentFromNotification = g(realOpenDoc);
+  const openMyRefunds = g(realOpenRefunds);
+  const openChatFor = g(realOpenChat);
+  const goEvent = g(realGoEvent);
+  const forfeitExpiredHold = quiet(realForfeit);
+  const loadReceiptStatus = quiet(realLoadReceipt);
+  const loadBookingAttendees = quiet(realLoadAttendees);
+  const loadMyRefunds = quiet(realLoadRefunds);
+  const backFromConfirmed = demo ? () => set({ ...TICKET_DEMO_RESET, eventKey: s.ticketDemoPrev || s.eventKey, ticketDemoPrev: null, screen: 'accountGroup', accountGroupKey: 'adminReview' }) : realBack;
 
   // payment_state is the source of truth for every phase distinction below;
   // paid_marked_at/status only exist as a fallback for a booking fetched
@@ -98,7 +120,7 @@ export default function Confirmed() {
   // 41340ee; PaymentDetails' 6s poll). Stops once a receipt is actually
   // found — nothing left to poll for once it exists.
   useEffect(() => {
-    if (!isPaid || !s.booking?.id || s.receiptDoc) return undefined;
+    if (demo || !isPaid || !s.booking?.id || s.receiptDoc) return undefined;
     const bookingId = s.booking.id;
     const id = setInterval(() => loadReceiptStatus(bookingId), 6000);
     return () => clearInterval(id);
@@ -111,7 +133,7 @@ export default function Confirmed() {
   // back via a notification to see it update. Generalised to sync the whole
   // row (not just paid_marked_at) so PHASE 1 -> PHASE 2 shows up live too.
   useEffect(() => {
-    if (!s.booking?.id || phase === 'confirmed' || phase === 'expired') return undefined;
+    if (demo || !s.booking?.id || phase === 'confirmed' || phase === 'expired') return undefined;
     const bookingId = s.booking.id;
     let active = true;
     const id = setInterval(async () => {
@@ -156,7 +178,7 @@ export default function Confirmed() {
   useEffect(() => {
     let live = true;
     setGiftedSeats([]);
-    if (isPaid && s.booking?.id) {
+    if (!demo && isPaid && s.booking?.id) {
       supabase.from('bookings').select('*').eq('original_booking_id', s.booking.id).not('recipient_name', 'is', null).order('gifted_at', { ascending: true })
         .then(({ data }) => { if (live) setGiftedSeats(data || []); });
     }
@@ -177,7 +199,7 @@ export default function Confirmed() {
   const stripCheckedIn = isPaid && (hasNamed ? !pendingScans : checkedIn);
   const watchDoor = isPaid && doorWatchOpen({ namedScans: hasNamed ? attendees.map(a => !!a.checked_in_at) : null, checkedIn, startMs, nowMs: Date.now() });
   useEffect(() => {
-    if (!watchDoor || !s.booking?.id) return undefined;
+    if (demo || !watchDoor || !s.booking?.id) return undefined;
     const bookingId = s.booking.id;
     const id = setInterval(async () => {
       // Named tickets: the window can close while this screen stays open, so stop at that very tick (the gate above only
@@ -196,7 +218,7 @@ export default function Confirmed() {
   const waitAskedFor = useRef(null);
   useEffect(() => {
     const eventId = s.booking?.event_id;
-    if (!isPendingVerification || !eventId || waitAskedFor.current === s.booking.id) return undefined;
+    if (demo || !isPendingVerification || !eventId || waitAskedFor.current === s.booking.id) return undefined;
     waitAskedFor.current = s.booking.id;
     let live = true;
     supabase.rpc('get_host_confirmation_time', { p_event_id: eventId })
@@ -210,7 +232,7 @@ export default function Confirmed() {
   useEffect(() => {
     const eventId = s.booking?.event_id;
     setHostNote({ vi: '', en: '', address: '' });
-    if (!isPaid || !eventId) return undefined;
+    if (demo || !isPaid || !eventId) return undefined;
     let live = true;
     (async () => {
       let res = await supabase.from('events').select('address_line, chat_greeting, chat_greeting_en').eq('id', eventId).maybeSingle();
@@ -314,6 +336,7 @@ export default function Confirmed() {
   const [moreOpen, setMoreOpen] = useState(false);
   const calBlock = dateBlock((ev.when || '').split(' ▪︎ ')[0], s.lang === 'en');
   const runWallet = async () => {
+    if (demo) { blocked(); return; }
     if (walletBusy || !s.booking?.id) return;
     setWalletBusy(true); setWalletMsg('');
     const code = await addToAppleWallet(s.booking.id);
@@ -330,15 +353,16 @@ export default function Confirmed() {
   const showQr = isPaid;
   const calendarLabel = s.calAdded ? T('Đã thêm vào lịch', 'Added to calendar') : T('Thêm vào lịch', 'Add to calendar');
 
-  // Note 77: whatever is not one of the two tiles goes in "More".
-  const moreItems = [
-    showQr && !hasNamed && !isGifted && { testId: 'confirmed-give-ticket', icon: 'gift', label: T('Tặng vé cho bạn bè', 'Give a ticket to a friend'), onClick: () => setGiftOpen(true) },
-    showQr && !hasNamed && !isGifted && walletEligible && { testId: 'confirmed-download-pdf', icon: 'download', label: pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải vé PDF', 'Download PDF'), onClick: () => runDownload([ownPdf()]) },
-    // Named tickets (note 78): the stub being shown, and all of them. The old per-row buttons and "Download selected" are gone.
-    showQr && hasNamed && attendees[Math.min(stubIdx, attendees.length - 1)] && { testId: 'confirmed-download-current', icon: 'download', label: pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải vé này', 'Download this ticket'), onClick: () => runDownload([attendeePdf(attendees[Math.min(stubIdx, attendees.length - 1)])]) },
-    showQr && hasNamed && attendees.length > 1 && { testId: 'confirmed-download-all', icon: 'download', label: T('Tải tất cả', 'Download all'), onClick: () => runDownload(attendees.map(attendeePdf)) },
-    // Receipts are organizer-uploaded (08-payment-documents.md): `receiptDoc` is undefined while the check runs.
-    showQr && s.receiptDoc !== undefined && {
+  // Ticket status decides the buttons (the two tiles are the most useful actions for that status, "More" holds the rest):
+  // upcoming/today: Wallet or PDF + calendar, More = give / PDF / receipt; ended or checked in: PDF + receipt, no calendar, no
+  // gifting; holding / awaiting: calendar only; cancelled / expired / under review: nothing. iOS twin: ConfirmedView `actionsArea`.
+  const tKey = tCase?.key || null;
+  const live = tKey === 'upcoming' || tKey === 'today';
+  const over = tKey === 'ended' || tKey === 'checkedIn';
+  const actionable = showQr && !['cancelled', 'expired', 'review'].includes(tKey);
+  const showCal = !over && !['cancelled', 'expired', 'review'].includes(tKey);
+  const curAttendee = hasNamed ? attendees[Math.min(stubIdx, attendees.length - 1)] : null;
+  const receiptItem = s.receiptDoc !== undefined && {
       testId: 'confirmed-view-receipt', icon: 'doc',
       label: s.receiptDoc ? T('Xem Receipt', 'View Receipt')
         : s.receiptRequestSending ? T('Đang gửi yêu cầu…', 'Sending request…')
@@ -346,11 +370,25 @@ export default function Confirmed() {
         : T('Yêu cầu Receipt', 'Request Receipt'),
       disabled: s.receiptRequestSending || (!s.receiptDoc && s.receiptRequestSent),
       onClick: () => { if (s.receiptDoc) openDocumentFromNotification(s.receiptDoc.id, 'confirmed'); else requestReceipt(s.booking.id); },
-    },
+    };
+  const receiptReady = actionable && over && !!receiptItem;
+  const walletPrimary = live && !hasNamed && !isGifted && walletEligible;
+  const pdfLabel = pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải vé PDF', 'Download PDF');
+  const moreItems = [
+    live && !hasNamed && !isGifted && { testId: 'confirmed-give-ticket', icon: 'gift', label: T('Tặng vé cho bạn bè', 'Give a ticket to a friend'), onClick: () => (demo ? blocked() : setGiftOpen(true)) },
+    walletPrimary && { testId: 'confirmed-download-pdf', icon: 'download', label: pdfLabel, onClick: () => runDownload([ownPdf()]) },
+    actionable && hasNamed && attendees.length > 1 && { testId: 'confirmed-download-all', icon: 'download', label: T('Tải tất cả', 'Download all'), onClick: () => runDownload(attendees.map(attendeePdf)) },
+    actionable && !over && receiptItem,
   ].filter(Boolean);
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Confirmed">
       {/* Back, top-left — where the thumb and the OS convention expect it. */}
+      {demo && (
+        <div data-testid="ticket-demo-banner" style={{ margin: '10px 22px 0', padding: '8px 12px', borderRadius: 12, background: block, color: ink, fontSize: 12.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span>{demoNotice || T('Demo · dữ liệu mẫu · không lưu gì', 'Demo · sample data · nothing is saved')}</span>
+          <button type="button" onClick={backFromConfirmed} data-testid="ticket-demo-exit" style={{ border: 'none', background: 'none', color: ink, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', minHeight: 44 }}>{T('Thoát demo', 'Exit demo')}</button>
+        </div>
+      )}
       <div onClick={backFromConfirmed} data-testid="confirmed-back" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '14px 30px 0', fontSize: 14, color: ink, cursor: 'pointer', alignSelf: 'flex-start' }}>
         <svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 1.5 2 8l6 6.5" /></svg>
         {s.confirmedBack === 'notifications' ? T('Thông báo', 'Notifications')
@@ -365,7 +403,7 @@ export default function Confirmed() {
         {/* Wordmark and the one-word status, in the tone of the case. */}
         {copy && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '0 6px 12px' }}>
-            <span style={{ ...display(15, { opacity: 0.7 }) }}>banbe</span>
+            <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 56, height: 'auto', display: 'block', flex: 'none', opacity: 0.7 }} />
             <span data-testid="confirmed-status" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 600, color: ink }}>
               <span aria-hidden style={{ width: 7, height: 7, borderRadius: '50%', background: toneColor }} />{copy.label}
             </span>
@@ -445,18 +483,24 @@ export default function Confirmed() {
           the block fills and the gaps separate them. iOS twin: ConfirmedView `actionTile`. */}
       <div style={{ padding: '8px 22px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
-          {showQr && isGifted && (
+          {actionable && isGifted && (
             <ActionTile icon={<Icon kind="download" size={17} />} label={pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải lại vé PDF', 'Re-download the PDF')} onClick={() => runDownload([giftPdfOf(s.booking)])} testId="confirmed-gifted-pdf" />
           )}
-          {showQr && !hasNamed && !isGifted && walletEligible && (
+          {actionable && hasNamed && curAttendee && (
+            <ActionTile icon={<Icon kind="download" size={17} />} label={pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải vé này', 'Download this ticket')} onClick={() => runDownload([attendeePdf(curAttendee)])} testId="confirmed-download-current" />
+          )}
+          {walletPrimary && (
             <ActionTile icon={<Icon kind="wallet" size={17} />} label={walletBusy ? T('Đang tạo vé Wallet…', 'Preparing Wallet pass…') : T('Thêm vào Apple Wallet', 'Add to Apple Wallet')} onClick={runWallet} dim={walletBusy} testId="confirmed-add-to-wallet" />
           )}
-          {showQr && !hasNamed && !isGifted && !walletEligible && (
-            <ActionTile icon={<Icon kind="download" size={17} />} label={pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải vé PDF', 'Download PDF')} onClick={() => runDownload([ownPdf()])} testId="confirmed-download-pdf" />
+          {actionable && !hasNamed && !isGifted && !walletPrimary && (
+            <ActionTile icon={<Icon kind="download" size={17} />} label={pdfLabel} onClick={() => runDownload([ownPdf()])} testId="confirmed-download-pdf" />
+          )}
+          {receiptReady && (
+            <ActionTile icon={<Icon kind="doc" size={17} />} label={receiptItem.label} onClick={receiptItem.disabled ? undefined : receiptItem.onClick} dim={receiptItem.disabled} testId="confirmed-view-receipt" />
           )}
           {/* Add to calendar: a glass popover that opens out of the tile and closes on a tap anywhere outside it. */}
-          <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex' }}>
-            <ActionTile icon={<MiniCalendarPage day={calBlock?.day} month={calBlock?.weekday} size={36} done={!!s.calAdded} />} bare
+          {showCal && <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex' }}>
+            <ActionTile icon={<MiniCalendarPage day={calBlock?.day} month={calBlock?.weekday} size={36} done={!!s.calAdded} fixedLight />} bare
               label={calendarLabel} onClick={openCalendarPicker} testId="confirmed-add-to-calendar" />
             {s.calendarPickerFor === ev.key && (
               <>
@@ -476,7 +520,7 @@ export default function Confirmed() {
                 </div>
               </>
             )}
-          </div>
+          </div>}
         </div>
         {moreItems.length > 0 && (
           <GlassMenu open={moreOpen} onOpenChange={setMoreOpen} top={52} width={280} wrapTestId="confirmed-more" menuTestId="confirmed-more-menu"

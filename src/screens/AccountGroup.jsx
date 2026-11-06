@@ -10,6 +10,8 @@ import { isBookingTicket } from '../lib/bookingTicket.js';
 import { onboardingVersion } from '../lib/featureFlags.js';
 import { projectDemoAllowed } from '../lib/projectDemo.js';
 import ProjectDemoPicker from '../components/project/ProjectDemoPicker.jsx';
+import TicketDemoPicker from '../components/project/TicketDemoPicker.jsx';
+import { ticketDemoAllowed } from '../lib/ticketDemo.js';
 import { giftPdfData } from '../lib/giftTicket.js';
 import { downloadTicketPdfs } from '../lib/ticketPdf.js';
 
@@ -99,6 +101,7 @@ export default function AccountGroup() {
   const [selectedTickets, setSelectedTickets] = useState(() => new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [demoPicker, setDemoPicker] = useState(false);
+  const [ticketDemoPicker, setTicketDemoPicker] = useState(false);
   useEffect(() => { if (key === 'activity') loadMyRefunds?.(); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const ids = (s.paymentBookings || []).filter(b => ['cancelled', 'expired', 'no_show'].includes(b.status)).map(b => b.id);
@@ -565,6 +568,21 @@ export default function AccountGroup() {
                 <span style={{ fontSize: 13, color: ink }}>›</span>
               </div>
             )}
+            {/* Migration 217: admins only, while switch ticket_demo is on. Opens the ticket screen on a sample booking. */}
+            {ticketDemoAllowed(s) && (
+              <div onClick={() => setTicketDemoPicker(true)} data-testid="admin-ticket-demo" role="button" tabIndex={0}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTicketDemoPicker(true); } }}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
+                  <RowIcon kind="users" />
+                  <span>
+                    <span style={{ display: 'block' }}>{T('Bản demo vé', 'Ticket demo')}</span>
+                    <span style={{ display: 'block', fontSize: 12, opacity: 0.65, marginTop: 2 }}>{T('Dữ liệu mẫu. Không lưu gì.', 'Sample data. Nothing is saved.')}</span>
+                  </span>
+                </span>
+                <span style={{ fontSize: 13, color: ink }}>›</span>
+              </div>
+            )}
             {/* Migration 196: aggregate retention by market, admins only (the server checks too). */}
             <Row icon="users" label={T('Báo cáo quay lại', 'Retention report')} trailing="›" testId="admin-retention" onClick={() => set({ screen: 'adminRetention' })} border={false} />
           </div>
@@ -747,6 +765,7 @@ export default function AccountGroup() {
           </>
         )}
       </div>
+      {ticketDemoPicker && key === 'adminReview' && ticketDemoAllowed(s) && <TicketDemoPicker close={() => setTicketDemoPicker(false)} />}
       {demoPicker && key === 'adminReview' && projectDemoAllowed(s) && <ProjectDemoPicker close={() => setDemoPicker(false)} />}
     </div>
   );

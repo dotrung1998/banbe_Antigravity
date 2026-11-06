@@ -286,6 +286,8 @@ final class AppState: ObservableObject {
             }
             // Migration 216: the admin demo lives only inside the hub. Leaving it any way (Back, a dock tab, sign-out) ends it.
             if projectDemo != nil, screen != .eventProject { endProjectDemo() }
+            // Migration 217: the ticket demo lives only on the ticket screen.
+            if ticketDemo != nil, screen != .confirmed { endTicketDemo() }
         }
     }
     // The dock's shrink-on-scroll flag lives in `DockChrome.shared` (BottomTabBar.swift), not here: a
@@ -1735,6 +1737,8 @@ final class AppState: ObservableObject {
     /// Migration 216: the admin "Project hub demo" while it is open (Lib/ProjectDemo.swift). Set = nothing in the
     /// project code reaches the server (`projectOffline`).
     @Published var projectDemo: ProjectDemo.Session?
+    /// Migration 217: the admin "Ticket demo" while it is open (Lib/TicketDemo.swift). Set = ConfirmedView reads and writes nothing.
+    @Published var ticketDemo: TicketDemo.Session?
     @Published var projectSnapshot: ProjectSnapshot?
     @Published var projectEventID = ""
     @Published var projectLoading = false

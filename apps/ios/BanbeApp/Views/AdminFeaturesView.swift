@@ -122,6 +122,11 @@ struct AdminFeaturesView: View {
              hintVi: "Admin thấy mục Bản demo dự án sự kiện trong Tài khoản, mở dự án trên dữ liệu mẫu để giới thiệu cho đồng nghiệp. Không lưu gì, không gửi gì cho ai. Mặc định tắt.",
              hintEn: "Admins get a Project hub demo entry in Account that opens the hub on sample data, to show colleagues. Nothing is saved or sent to anyone. Off by default.",
              onVi: "Đang bật cho admin", onEn: "On for admins", offVi: "Đang tắt", offEn: "Off"),
+        // Migration 217. Client only: admins see "Ticket demo" in Account.
+        Flag(key: "ticket_demo", vi: "Bản demo vé", en: "Ticket demo",
+             hintVi: "Admin thấy mục Bản demo vé trong Tài khoản, mở màn hình vé trên dữ liệu mẫu ở mọi trạng thái (giữ chỗ, thanh toán, xem xét, vé, đã kết thúc, đã huỷ). Không lưu gì, không gửi gì cho ai. Mặc định tắt.",
+             hintEn: "Admins get a Ticket demo entry in Account that opens the ticket screen on sample data in every status (hold, pay, review, ticket, ended, cancelled). Nothing is saved or sent to anyone. Off by default.",
+             onVi: "Đang bật cho admin", onEn: "On for admins", offVi: "Đang tắt", offEn: "Off"),
         // TESTING-PHASE (note 54): remove this row with the wipe tool before public release.
         Flag(key: "admin_event_wipe", vi: "Xoá sự kiện thử nghiệm (giai đoạn thử)", en: "Test event wipe (testing phase)",
              hintVi: "Cho admin xoá vĩnh viễn bất kỳ sự kiện nào cùng mọi dữ liệu liên quan, không cần lý do, trong Quản lý sự kiện (chỉ iOS). Chỉ dùng cho dữ liệu thử nghiệm.",

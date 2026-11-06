@@ -24,6 +24,7 @@ import { normalizeForSave as normalizeEventPrefsForSave, isMissingFunctionError 
 import { hostSetupResolved, markHostSetup } from '../lib/hostSetupFlag.js';
 import { useEnsureOrganizer } from '../lib/useEnsureOrganizer.js';
 import { projectDemoAllowed, PROJECT_DEMO_RESET } from '../lib/projectDemo.js';
+import { ticketDemoAllowed, TICKET_DEMO_RESET } from '../lib/ticketDemo.js';
 import { loadMapKit } from '../lib/mapkit.js';
 import { mapKitSearch } from '../lib/mapkitAdapter.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
@@ -504,6 +505,8 @@ const PRIVATE_STATE_KEYS = [
   'projectJoinPeek', 'projectJoinError', 'projectInvites', 'projectMoney', 'projectDoor', 'projectPayments', 'projectRefunds',
   // Admin project hub demo (migration 216, src/lib/projectDemo.js): sign-out leaves the demo too.
   'projectDemo', 'projectDemoAdmin', 'projectDemoAs', 'projectNow', 'projectDemoTrash', 'projectDemoReplies', 'projectDemoInvites',
+  // Admin ticket demo (migration 217, src/lib/ticketDemo.js): sign-out leaves it too.
+  'ticketDemo', 'ticketDemoPrev',
 ];
 const isPublicEventRow = (e) => !!e && e.visibility === 'public' && ['live', 'ended', 'cancelled'].includes(e.status);
 /** The signed-out state patch. Cached events keep only public rows (a private/invite/draft event fetched while
@@ -1407,6 +1410,9 @@ const initialState = {
   projectDemoTrash: [],
   projectDemoReplies: {},
   projectDemoInvites: 0,
+  // Admin ticket demo (migration 217): sample booking on the ticket screen while true; nothing reaches the server.
+  ticketDemo: false,
+  ticketDemoPrev: null,
   followedStatus: 'idle', // idle | loading | loaded | error
   followedError: '',
   followWriteError: '',
@@ -1968,6 +1974,12 @@ export function BanBeProvider({ children }) {
     if (state.screen !== 'eventProject' || !projectDemoAllowed(state)) set({ ...PROJECT_DEMO_RESET });
   }, [state.projectDemoAdmin, state.screen, state.accountType, state.featureFlags, set]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Admin ticket demo (migration 217): ends when the ticket screen is left or the gate stops passing; the real event is restored.
+  useEffect(() => {
+    if (!state.ticketDemo) return;
+    if (state.screen !== 'confirmed' || !ticketDemoAllowed(state)) set({ ...TICKET_DEMO_RESET, eventKey: state.ticketDemoPrev || state.eventKey, ticketDemoPrev: null });
+  }, [state.ticketDemo, state.screen, state.accountType, state.featureFlags, set]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 'system' theme (note 66): follow the device's light/dark setting live.
   useEffect(() => {
     let mq;
@@ -2261,7 +2273,7 @@ export function BanBeProvider({ children }) {
   }, [s.sessionChecked, s.user, s.authSyncing, s.screen, set]);
 
   useEffect(() => {
-    if (!s.user?.id) return;
+    if (!s.user?.id || s.ticketDemo) return;
     let active = true;
     (async () => {
       const { data: event } = await supabase.from('events').select('id').eq('slug', s.eventKey).maybeSingle();
@@ -2273,7 +2285,7 @@ export function BanBeProvider({ children }) {
       if (active) set({ booking: booking || null, holdDeadline: booking?.expires_at ? new Date(booking.expires_at).getTime() : null });
     })();
     return () => { active = false; };
-  }, [set, s.user?.id, s.eventKey]);
+  }, [set, s.user?.id, s.eventKey, s.ticketDemo]);
 
   // The real events row's own status/starts_at for whichever event is
   // currently open — unlike the booking fetch above, this runs for every
@@ -2284,6 +2296,7 @@ export function BanBeProvider({ children }) {
   // pure client-side preview (e.g. the create-event flow) that has no row
   // and falls back to the static catalogue untouched.
   useEffect(() => {
+    if (s.ticketDemo) return undefined; // the demo ticket carries its own sample event status
     let active = true;
     (async () => {
       const { data } = await withR2Columns(() => supabase.from('events')
@@ -2292,7 +2305,7 @@ export function BanBeProvider({ children }) {
       if (active) set({ liveEvent: data || null });
     })();
     return () => { active = false; };
-  }, [set, s.eventKey]);
+  }, [set, s.eventKey, s.ticketDemo]);
 
   // 2026-09-21 follow-up — the batched counterpart of the single-event
   // fetch just above, for Home's "Sự kiện của bạn" strip (real 48h-after-

@@ -186,6 +186,16 @@ const FLAGS = [
     stateOn: ['Đang hiện cho quản trị viên', 'Visible to admins'],
     stateOff: ['Đang ẩn với mọi người', 'Hidden from everyone'],
   },
+  {
+    // Migration 217. Client only.
+    key: 'ticket_demo',
+    vi: 'Bản demo vé',
+    en: 'Ticket demo',
+    hintVi: 'Quản trị viên thấy mục "Bản demo vé" trong Duyệt & kiểm duyệt, mở màn hình vé trên dữ liệu mẫu ở mọi trạng thái (giữ chỗ, thanh toán, xem xét, vé, đã kết thúc, đã huỷ). Không lưu gì, không gửi gì lên máy chủ. Mặc định tắt.',
+    hintEn: 'Admins get a "Ticket demo" row in Review & moderation that opens the ticket screen on sample data in every status (hold, pay, review, ticket, ended, cancelled). Nothing is saved and nothing reaches the server. Off by default.',
+    stateOn: ['Đang hiện cho quản trị viên', 'Visible to admins'],
+    stateOff: ['Đang ẩn với mọi người', 'Hidden from everyone'],
+  },
 ];
 
 const ERRORS = {

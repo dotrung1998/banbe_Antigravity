@@ -1327,6 +1327,7 @@ extension AppState {
     /// The signed-in user's latest booking for whichever event is open —
     /// drives the ticket bar, hold countdown and Confirmed screen.
     func loadBookingForCurrentEvent() async {
+        guard ticketDemo == nil else { return }   // the ticket demo carries its own sample booking
         guard let uid = userID else { booking = nil; holdDeadline = nil; return }
         do {
             let rows: [Booking] = try await SupabaseService.client
@@ -1354,6 +1355,7 @@ extension AppState {
     /// those too; only a client-side-only preview has no row, and
     /// `applyingLiveStatus` leaves the bundled catalogue untouched then.
     func loadLiveEventStatus() async {
+        guard ticketDemo == nil else { return }
         do {
             let key = eventKey
             let rows: [LiveEventStatus] = try await EventDetailsColumns.retrying {
