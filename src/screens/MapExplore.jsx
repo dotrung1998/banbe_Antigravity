@@ -992,13 +992,13 @@ export default function MapExplore() {
           // City bubble (zoomed out): "TP.HCM  5"; tap = fly to that city.
           const c = CITY_BY_ID.get(g.cityId);
           const n = g.ids.length;
-          pinEl.style.cssText = `height:34px;padding:0 6px 0 12px;box-sizing:border-box;border-radius:17px;background:${paper};color:${ink};border:1.5px solid ${ink};display:flex;align-items:center;gap:8px;font:700 13px/1 'Be Vietnam Pro',sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 2px 8px rgba(27,25,22,0.32);`;
+          pinEl.style.cssText = `min-height:40px;padding:0 8px 0 16px;box-sizing:border-box;border-radius:20px;background:${ink};color:${paper};border:2px solid ${paper};display:flex;align-items:center;gap:9px;font:700 15px/1 'Be Vietnam Pro',sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 3px 12px rgba(27,25,22,0.38);`;
           pinEl.setAttribute('data-testid', `map-city-${g.cityId}`);
           pinEl.setAttribute('data-count', String(n));
           pinEl.setAttribute('aria-label', T(`${c.vi}, ${n} sự kiện, phóng tới`, `${c.en}, ${n} event${n === 1 ? '' : 's'}, go there`));
           pinEl.textContent = en ? c.short.en : c.short.vi;
           const badge = document.createElement('span');
-          badge.style.cssText = `min-width:22px;height:22px;padding:0 7px;box-sizing:border-box;border-radius:11px;background:${ink};color:${paper};display:inline-flex;align-items:center;justify-content:center;font:700 12px/1 'Be Vietnam Pro',sans-serif;`;
+          badge.style.cssText = `min-width:24px;height:24px;padding:0 7px;box-sizing:border-box;border-radius:12px;background:${paper};color:${ink};display:inline-flex;align-items:center;justify-content:center;font:700 13px/1 'Be Vietnam Pro',sans-serif;`;
           badge.textContent = String(n);
           parts.badge = badge;
           pinEl.appendChild(badge);
@@ -1735,6 +1735,8 @@ export default function MapExplore() {
   const emptyOnly = showEmptyCard && !(forYouActive && visibleEvents.length === 0) && !!committedBounds
     && !(loading && events.length === 0) && !(loadError && events.length === 0)
     && ((anyInArea && filtersActive) || matchingAnywhere.length > 0);
+  const chipsShown = !areaPanel && !listOpen && !searchActive && !emptyOnly && levelNow !== 'city' && chipsView.length > 0;
+  const stackDrop = (chipsShown && !emptyOnly) || areaPanel ? 0 : CHIPS_H + STACK_GAP;
   const srOnly = { position: 'absolute', width: 1, height: 1, margin: -1, padding: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0 };
   const forYouCapsule = { ...photoPill({ position: 'static', borderRadius: RADIUS.pill }), display: 'inline-flex', alignItems: 'center', minHeight: 36, padding: '0 12px', fontSize: 13, color: ink, fontWeight: forYouActive ? 700 : 500, whiteSpace: 'nowrap',
     ...(forYouActive ? { background: ink, color: paper, border: `1px solid ${ink}`, backdropFilter: 'none', WebkitBackdropFilter: 'none', boxShadow: 'none' } : null) };
@@ -1874,7 +1876,7 @@ export default function MapExplore() {
       </div>
 
       {/* The bottom stack: my location and "List · N", right above the dock. */}
-      <div style={{ position: 'absolute', right: 16, bottom: dockClear + FAB_BOTTOM, zIndex: 3, display: 'flex', alignItems: 'center', gap: 8, visibility: listOpen || areaPanel ? 'hidden' : 'visible' }}>
+      <div style={{ position: 'absolute', right: 16, bottom: dockClear + FAB_BOTTOM - stackDrop, transition: reduceMotion() ? 'none' : 'bottom 0.25s ease', zIndex: 3, display: 'flex', alignItems: 'center', gap: 8, visibility: listOpen || areaPanel ? 'hidden' : 'visible' }}>
         <div role="button" tabIndex={0} onClick={recenterOnUser} data-testid="map-compass" aria-label={T('Vị trí của tôi', 'My location')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); recenterOnUser(); } }}
           style={{ ...photoPill({ position: 'static', borderRadius: '50%' }), width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: compassOpacity }}>
@@ -1890,6 +1892,7 @@ export default function MapExplore() {
         </button>
       </div>
 
+      {/* (stackDrop: with no neighbourhood chips the time bar and buttons settle into their room, no gap above the dock.) */}
       {/* Neighbourhood chips: tap one to fly there and open its panel. Hidden at city level, while the list or a panel is
           open, and while there is nothing to show; their room above the buttons stays reserved. */}
       {!areaPanel && !listOpen && !searchActive && !emptyOnly && levelNow !== 'city' && chipsView.length > 0 && (
@@ -1953,10 +1956,10 @@ export default function MapExplore() {
       <MapTimeBar win={timeWin} options={dayOpts} dayLabel={dayLabel} T={T}
         onDay={(k) => setTimeWin(defaultWindow(k, Date.now(), viewTz))}
         onKnob={(which, hour) => setTimeWin(cur => moveKnob(cur, which, hour))}
-        style={{ bottom: areaPanel ? panelPx + 12 : dockClear + TIME_BOTTOM, visibility: listOpen || emptyOnly ? 'hidden' : 'visible', transition: reduceMotion() ? 'none' : 'bottom 0.38s cubic-bezier(.2,.85,.25,1)' }} />
+        style={{ bottom: areaPanel ? panelPx + 12 : dockClear + TIME_BOTTOM - stackDrop, visibility: listOpen || emptyOnly ? 'hidden' : 'visible', transition: reduceMotion() ? 'none' : 'bottom 0.38s cubic-bezier(.2,.85,.25,1)' }} />
 
       {showEmptyCard && (
-        <div data-testid="map-empty-card" style={{ position: 'absolute', left: 16, right: 16, bottom: dockClear + FAB_BOTTOM + (emptyOnly ? 0 : BTN_H + 8), zIndex: 3, maxHeight: '40%', overflowY: 'auto', background: paper, borderRadius: 16, boxShadow: '0 4px 18px rgba(27,25,22,0.16)' }}>
+        <div data-testid="map-empty-card" style={{ position: 'absolute', left: 16, right: 16, bottom: dockClear + FAB_BOTTOM - stackDrop + (emptyOnly ? 0 : BTN_H + 8), zIndex: 3, maxHeight: '40%', overflowY: 'auto', background: paper, borderRadius: 16, boxShadow: '0 4px 18px rgba(27,25,22,0.16)' }}>
           {emptyNodes}
         </div>
       )}

@@ -221,7 +221,7 @@ export default function Search({ overlay = false }) {
       {query && (
         <div data-testid="search-results" data-count={total}>
           {total === 0 && (
-            <div data-testid="search-empty" style={{ padding: '36px 24px', textAlign: 'center' }}>
+            <div data-testid="search-empty" style={{ padding: '28px 24px 0', textAlign: 'center' }}>
               <div style={{ ...display(17) }}>{T(`Không có kết quả cho "${query}"`, `Nothing for "${query}"`)}</div>
               <div style={{ fontSize: 13, color: ink2, marginTop: 6 }}>{T('Thử một từ ngắn hơn, tên khu vực, hoặc một danh mục.', 'Try a shorter word, an area, or a category.')}</div>
               {/* Calm Pass phase 2: a way forward instead of a dead end. Categories are the real list, not suggestions. */}
@@ -282,7 +282,7 @@ export default function Search({ overlay = false }) {
               <span aria-hidden="true" style={{ opacity: 0.4 }}>›</span>
             </button>
           ))}
-          <div style={{ padding: '18px 20px' }}>
+          <div style={{ padding: total === 0 ? '10px 20px 18px' : '6px 20px 18px', display: 'flex', justifyContent: total === 0 ? 'center' : 'flex-start' }}>
             <button type="button" data-testid="search-see-on-map"
               onMouseDown={(e) => e.preventDefault()} /* keep the bar focused: the keyboard carries over to Map */
               onClick={() => {

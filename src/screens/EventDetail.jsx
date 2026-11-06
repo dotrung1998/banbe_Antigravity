@@ -467,13 +467,19 @@ export default function EventDetail({ preview = null } = {}) {
   const tabRowRef = useRef(null);
   const setTab = (id) => { if (id !== activeTabRef.current) { activeTabRef.current = id; setActiveTabId(id); } };
   // Where each section sits right under the nav bar's tab row, as a scroll offset of the sheet's scroller.
+  const topsCache = useRef({ key: '', tops: null });
   const sectionTops = (sc) => {
+    // Section tops do not depend on the scroll offset: cached per content/viewport size so a scroll frame reads no layout.
+    const ck = `${sc.scrollHeight}x${sc.clientHeight}`;
+    if (topsCache.current.key === ck && topsCache.current.tops) return topsCache.current.tops;
     const scTop = sc.getBoundingClientRect().top;
     const cover = (tabRowRef.current?.getBoundingClientRect().bottom ?? scTop) - scTop;
-    return tabIds.map(id => {
+    const tops = tabIds.map(id => {
       const el = tabRefs[id].current;
       return el ? el.getBoundingClientRect().top - scTop + sc.scrollTop - cover - SPACE.m : 0;
     });
+    topsCache.current = { key: ck, tops };
+    return tops;
   };
   const spyTabs = (sc) => {
     if (tabLockRef.current) { setTab(tabLockRef.current); return; }
@@ -560,6 +566,14 @@ export default function EventDetail({ preview = null } = {}) {
     const lead = 36; // starts this far before the title reaches the bar
     return Math.min(1, Math.max(0, (t - (top - lead)) / (w.offsetHeight + lead)));
   };
+  // Native scroll events can outpace the display: run the work once per frame (the latest offset wins).
+  const scrollRaf = useRef(0);
+  const onSheetScrollRaf = (e) => {
+    const sc = e.currentTarget;
+    if (scrollRaf.current) return;
+    scrollRaf.current = requestAnimationFrame(() => { scrollRaf.current = 0; onSheetScroll({ currentTarget: sc }); });
+  };
+  useEffect(() => () => { if (scrollRaf.current) cancelAnimationFrame(scrollRaf.current); }, []);
   const onSheetScroll = (e) => {
     const t = Math.max(0, e.currentTarget.scrollTop);
     if (!preview) lastVisit = { key: ev.key, scrollTop: t };
@@ -723,9 +737,9 @@ export default function EventDetail({ preview = null } = {}) {
       )}
       {/* The photo is pinned behind everything; the scrolling sheet starts PINNED_STRIP down the screen (rounded top),
           so a band of the photo stays visible above the info however far it is pulled up. */}
-      <div ref={heroRef} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: HERO_H, zIndex: 0, pointerEvents: 'none' }}>
+      <div ref={heroRef} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: HERO_H, zIndex: 0, pointerEvents: 'none', willChange: 'opacity' }}>
         {ev.img ? (
-          <div ref={heroImgRef} style={bg(ev.img, { width: '100%', height: '100%', borderRadius: 0 })} />
+          <div ref={heroImgRef} style={bg(ev.img, { width: '100%', height: '100%', borderRadius: 0, willChange: 'transform' })} />
         ) : (
           // A real event with no photo yet (or one still loading/
           // unavailable) — an honest neutral block, never a wrong demo
@@ -735,8 +749,10 @@ export default function EventDetail({ preview = null } = {}) {
         {/* Bottom scrim under the title on the photo (note 70): the same dark gradient in both themes, so white text keeps
             ≥ 4.5:1 even on a white photo (HERO_SCRIM, unit-tested). */}
         <div aria-hidden data-testid="event-hero-scrim" style={{ position: 'absolute', inset: 0, background: `linear-gradient(180deg, rgba(12,10,8,0) ${HERO_SCRIM.start * 100}%, rgba(12,10,8,${HERO_SCRIM.alpha}) ${HERO_SCRIM.full * 100}%, rgba(12,10,8,${HERO_SCRIM.end}) 100%)` }} />
+        {/* The photo's foot melts into the page so the ticket floats over one surface (no hard photo/paper edge). */}
+        <div aria-hidden style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 110, background: 'linear-gradient(180deg, rgba(var(--bb-bg-rgb),0), var(--bb-bg))', pointerEvents: 'none' }} />
       </div>
-      <div ref={scrollerRef} data-fade onScroll={onSheetScroll} style={{ position: 'relative', zIndex: 1, flex: 1, minHeight: 0, marginTop: PINNED_STRIP, borderRadius: `${SHEET_RADIUS}px ${SHEET_RADIUS}px 0 0`, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
+      <div ref={scrollerRef} data-fade onScroll={onSheetScrollRaf} style={{ position: 'relative', zIndex: 1, flex: 1, minHeight: 0, marginTop: PINNED_STRIP, borderRadius: `${SHEET_RADIUS}px ${SHEET_RADIUS}px 0 0`, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
       {/* Story-first (note 70): the pills and the title sit on the photo, in the band above the sheet. A long title grows
           the band (minHeight), never clips. */}
       <div data-testid="event-hero-title" style={{ minHeight: HERO_H - PINNED_STRIP - STUB_RISE, boxSizing: 'border-box', padding: '0 22px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: SPACE.m }}>
@@ -759,7 +775,7 @@ export default function EventDetail({ preview = null } = {}) {
         </div>
       </div>
       {/* V8 ticket stub (note 75): half over the photo, half on the page; the paper starts where the photo ends. */}
-      <div data-testid="event-stub-band" className="bb-rise-in" style={{ animationDelay: '300ms', '--bb-rise-y': '22px', '--bb-rise-scale': 0.97, position: 'relative', zIndex: 1, padding: '0 16px', background: `linear-gradient(180deg, transparent ${STUB_RISE}px, ${paper} ${STUB_RISE}px)` }}>
+      <div data-testid="event-stub-band" className="bb-rise-in" style={{ animationDelay: '300ms', '--bb-rise-y': '22px', '--bb-rise-scale': 0.97, position: 'relative', zIndex: 1, padding: '0 16px', background: `linear-gradient(180deg, transparent ${STUB_RISE - 8}px, ${paper} ${STUB_RISE + 44}px)` }}>
         <TicketStub block={stubBlock} time={whenTime || null} countdown={stubCountdown}
           place={evWhere || T('Địa điểm', 'Place')} placeSub={placeSub}
           mapsUrl={evMapsUrl} onDirections={() => { if (s.located === null) askLocation(); }} directionsLabel={T('Chỉ đường', 'Directions')}
