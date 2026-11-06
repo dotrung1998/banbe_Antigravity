@@ -462,6 +462,9 @@ final class BottomTabBarOverlay {
         guard dockCreateTrayOpen != open else { return }
         dockCreateTrayOpen = open
         window?.trayOpen = open
+        // The "+" create sheet is presented by RootView; the dock window sits above it, so the dock steps aside
+        // while it is open (and comes back when it closes). See `othersHideDock` for why this must not close it.
+        applyVisibility()
     }
 
     /// Notification banner fix pass (2026-09-30 third) — additive sibling to
@@ -484,7 +487,8 @@ final class BottomTabBarOverlay {
     }
 
     private func applyVisibility() {
-        let shouldShow = !(appLocked || forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || surveyModalOpen || onboardingOpen || shareCardOpen || !openSheets.isEmpty)
+        let othersHideDock = appLocked || forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || surveyModalOpen || onboardingOpen || shareCardOpen || !openSheets.isEmpty
+        let shouldShow = !(othersHideDock || dockCreateTrayOpen)
             && BottomTabBar.visibleScreens.contains(currentScreen)
         guard shouldShow != lastShown else { return }
         lastShown = shouldShow
@@ -522,7 +526,8 @@ final class BottomTabBarOverlay {
             // open tray with its dock/button now hidden underneath (e.g.
             // Pulse opening while the tray was up) would otherwise leave
             // an invisible scrim still intercepting taps.
-            appState?.dockCreateOpen = false
+            // Not when the create sheet itself is the only reason the dock is hidden: that would close it at once.
+            if othersHideDock { appState?.dockCreateOpen = false }
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.transitionDuration) { [weak self] in
                 guard let self, self.visibilityToken == token else { return }
                 self.window?.isHidden = true

@@ -79,7 +79,7 @@ final class SimpleShellDockUITests: XCTestCase {
         XCTAssertTrue(plus.waitForExistence(timeout: 20))
         plus.tap()
         XCTAssertTrue(el(app, "dock.createMenu.host").waitForExistence(timeout: 5))
-        XCTAssertTrue(el(app, "dock.createMenu.schedule").exists)
+        XCTAssertTrue(el(app, "dock.createMenu.weekend").exists)
     }
 
     // MARK: Item 4 — "+" > Host an event from every tab

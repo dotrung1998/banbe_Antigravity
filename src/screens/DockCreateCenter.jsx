@@ -5,7 +5,7 @@
 // follow-up): guest -> sign-in prompt, organizer mode off -> Start hosting invitation, on -> Home > Hosting.
 //
 // The sheet follows the mode, with only existing features behind every row:
-//   Going out (signed in): Add to my schedule · Invite friends · Host an event. No "Post a story" (stories are host-only).
+//   Going out (signed in): This weekend · Invite friends · Host an event. No "Post a story" (stories are host-only).
 //   Hosting: Create event (primary) · Post a story (library / camera) · Share one of my events · New survey.
 //   Guest: the Going out rows; each opens the contextual sign-in prompt.
 // Focus moves into the sheet and stays there (Tab wraps), Escape / scrim / drag-down close it, focus returns to the "+".
@@ -67,7 +67,7 @@ function SubRow({ children, onClick, testId, icon }) {
 
 export default function DockCreateCenter({ pressed = false }) {
   const {
-    state: s, set, T, goCreate, goSchedule, goDashboard, promptSignIn, shareReferral, referralLink, shareEvent,
+    state: s, set, T, goCreate, goHomeThisWeekend, goDashboard, promptSignIn, shareReferral, referralLink, shareEvent,
     openStoryLibraryPicker, openStoryCameraPicker, loadRealEventsById, startHosting, openDockCreate, closeDockCreate,
   } = useBanBe();
   const reduce = useReducedMotion();
@@ -139,10 +139,10 @@ export default function DockCreateCenter({ pressed = false }) {
 
   const goerRows = [
     {
-      icon: 'schedule', testId: 'dock-create-menu-schedule',
-      title: T('Thêm vào lịch của tôi', 'Add to my schedule'),
-      desc: T('Lưu kế hoạch và xem theo ngày.', 'Keep your plans, day by day.'),
-      onClick: () => run(() => (mode === 'guest' ? promptSignIn('schedule') : goSchedule())),
+      icon: 'schedule', testId: 'dock-create-menu-weekend',
+      title: T('Tuần này', 'This weekend'),
+      desc: T('Sự kiện cuối tuần quanh bạn.', 'Events happening this weekend.'),
+      onClick: () => run(() => (mode === 'guest' ? promptSignIn('schedule') : goHomeThisWeekend())),
     },
     {
       icon: 'invite', testId: 'dock-create-menu-invite',

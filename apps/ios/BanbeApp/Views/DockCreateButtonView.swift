@@ -135,66 +135,150 @@ struct DockCreateButtonView: View {
                 .contentShape(Circle())
         }
         .buttonStyle(PressableButtonStyle(haptic: false))
-        .popover(isPresented: $app.dockCreateOpen, arrowEdge: .bottom) {
-            PopoverMenuList(items: centredMenuItems) { app.dockCreateOpen = false }
-                .environmentObject(app)
-        }
+        // The menu is a bottom sheet presented by RootView (DockCreateSheet), like the web one.
         .accessibilityIdentifier("dock.createButton")
         .tourTarget("tour.dock.create")
         .accessibilityLabel(app.T("Tạo mới", "Create"))
         .accessibilityHint(hostMenu
                            ? app.T("Tạo sự kiện, đăng story hoặc khảo sát", "Create an event, a story or a survey")
-                           : app.T("Thêm vào lịch, mời bạn bè hoặc tổ chức sự kiện", "Add to your schedule, invite friends or host an event"))
+                           : app.T("Xem tuần này, mời bạn bè hoặc tổ chức sự kiện", "See this weekend, invite friends or host an event"))
     }
 
-    /// Host (Home on Hosting): Create event first, then Post a story, Share one of my events, New survey.
-    /// Goer: Add to my schedule, Invite friends, Host an event (no story: stories are host-only, owner decision 3).
-    /// Guest: the goer rows, each opening the contextual sign-in prompt.
-    /// The menu follows the Home view (plan items 1 + 4): a host who switched Home to Going out gets the goer rows,
-    /// whose "Host an event" takes them back to Home > Hosting from any tab.
+    private var hostMenu: Bool { app.isSignedIn && app.effectiveHomeView == .host }
+}
+
+/// The centre "+" menu as a bottom sheet, the same content as web's DockCreateCenter.jsx: title, icon tile + title +
+/// one-line description per row.
+///   Host (Home on Hosting): Create event (primary) · Post a story (library / camera) · Share one of my events · New survey.
+///   Goer: This weekend · Invite friends · Host an event (stories are host-only). Guest: the same rows, each opening the
+///   contextual sign-in prompt. "Host an event" is the shared startHosting path.
+struct DockCreateSheet: View {
+    @EnvironmentObject private var app: AppState
+    @State private var storyOpen = false
+
     private var hostMenu: Bool { app.isSignedIn && app.effectiveHomeView == .host }
 
-    private var centredMenuItems: [PopoverMenuItem] {
-        if hostMenu {
-            return [
-                PopoverMenuItem(id: "dock.createMenu.event", title: app.T("Tạo sự kiện", "Create event"),
-                                systemImage: "calendar.badge.plus") { app.goCreate() },
-                // Same pipeline AccountView's "Đăng story" uses (storyLibraryPickerOpen / storyCameraOpen -> publishStory()).
-                PopoverMenuItem(id: "dock.createMenu.story.library", title: app.T("Đăng story từ Thư viện ảnh", "Post a story from Photos"),
-                                systemImage: "photo.on.rectangle") { app.storyLibraryPickerOpen = true },
-                PopoverMenuItem(id: "dock.createMenu.story.camera", title: app.T("Đăng story bằng Camera", "Post a story with Camera"),
-                                systemImage: "camera") { app.storyCameraOpen = true },
-                // Same picker + beginEventStory as Account's "Share one of my events" (presented by RootView).
-                PopoverMenuItem(id: "dock.createMenu.story.event", title: app.T("Chia sẻ một sự kiện của tôi", "Share one of my events"),
-                                systemImage: "calendar") { app.dockEventStoryPickerOpen = true },
-                PopoverMenuItem(id: "dock.createMenu.survey", title: app.T("Khảo sát mới", "New survey"),
-                                systemImage: "list.bullet.clipboard") {
-                    app.surveysHostingTab = "active"
-                    app.surveyCreateRequested = true
-                    app.screen = .surveysHosting
-                },
-            ]
+    /// Close the sheet first, then act once it is gone (the action may present another sheet or change screen).
+    private func run(_ action: @escaping () -> Void) {
+        app.dockCreateOpen = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { action() }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(hostMenu ? app.T("Tạo mới", "Create") : app.T("Bạn muốn làm gì?", "What would you like to do?"))
+                    .font(BanbeTheme.display(22))
+                    .foregroundStyle(app.palette.ink)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 8)
+                Button { app.dockCreateOpen = false } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(app.palette.ink)
+                        .frame(width: 36, height: 36)
+                        .background(app.palette.ink.opacity(0.08), in: Circle())
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(app.T("Đóng", "Close"))
+                .accessibilityIdentifier("dock.createMenu.close")
+            }
+            .padding(.horizontal, 6).padding(.bottom, 2)
+            if hostMenu { hostRows } else { goerRows }
         }
+        .padding(.horizontal, 12).padding(.top, 20).padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(app.palette.paper.ignoresSafeArea())
+        .presentationDetents([.height(hostMenu ? (storyOpen ? 450 : 390) : 330)])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(22)
+        .presentationBackground(app.palette.paper)
+    }
+
+    @ViewBuilder private var goerRows: some View {
         let guest = !app.isSignedIn
-        return [
-            PopoverMenuItem(id: "dock.createMenu.schedule", title: app.T("Thêm vào lịch của tôi", "Add to my schedule"),
-                            systemImage: "calendar.badge.plus") {
-                // Note 44: plans are added from Schedule's Discover list (device-local "Add to banbe Schedule").
-                if guest { return app.promptSignIn(.schedule) }
-                app.scheduleMode = .discover
-                app.goSchedule()
-            },
-            PopoverMenuItem(id: "dock.createMenu.invite", title: app.T("Mời bạn bè", "Invite friends"),
-                            systemImage: "person.2", disabled: !guest && app.referralLink == nil) {
-                if guest { return app.promptSignIn(.invite) }
-                app.shareReferral()
-            },
-            PopoverMenuItem(id: "dock.createMenu.host", title: app.T("Tổ chức sự kiện", "Host an event"),
-                            systemImage: "sparkles") {
-                // Plan item 4: the shared start-hosting path. Guest → sign-in prompt; organizer mode off → the
-                // Start hosting invitation; on → lands on Home > Hosting at the top, from whichever tab this ran.
-                app.startHosting(land: .home)
-            },
-        ]
+        row("dock.createMenu.weekend", "calendar", app.T("Tuần này", "This weekend"),
+            app.T("Sự kiện cuối tuần quanh bạn.", "Events happening this weekend.")) {
+            if guest { app.promptSignIn(.schedule) } else { app.goHomeThisWeekend() }
+        }
+        row("dock.createMenu.invite", "envelope", app.T("Mời bạn bè", "Invite friends"),
+            app.T("Gửi link mời của riêng bạn.", "Send your own invite link.")) {
+            if guest { app.promptSignIn(.invite) } else if app.referralLink != nil { app.shareReferral() } else { app.screen = .profile }
+        }
+        row("dock.createMenu.host", "star", app.T("Tổ chức sự kiện", "Host an event"),
+            app.T("Miễn phí. Tắt lúc nào cũng được.", "Free. Turn it off any time.")) {
+            app.startHosting(land: .home)
+        }
+    }
+
+    @ViewBuilder private var hostRows: some View {
+        row("dock.createMenu.event", "plus", app.T("Tạo sự kiện", "Create event"),
+            app.T("5 bước, có thể lưu nháp.", "5 steps, save a draft any time."), primary: true) { app.goCreate() }
+        row("dock.createMenu.story", "camera", app.T("Đăng story", "Post a story"),
+            app.T("Ảnh từ thư viện hoặc camera.", "A photo from your library or camera."), expanded: storyOpen, closes: false) {
+            withAnimation(.easeOut(duration: 0.2)) { storyOpen.toggle() }
+        }
+        if storyOpen {
+            subRow("dock.createMenu.story.library", "photo.on.rectangle", app.T("Thư viện ảnh", "Photo library")) { app.storyLibraryPickerOpen = true }
+            subRow("dock.createMenu.story.camera", "camera", app.T("Camera", "Camera")) { app.storyCameraOpen = true }
+        }
+        row("dock.createMenu.story.event", "square.and.arrow.up", app.T("Chia sẻ một sự kiện của tôi", "Share one of my events"),
+            app.T("Gửi link sự kiện đang mở.", "Send the link to a live event.")) { app.dockEventStoryPickerOpen = true }
+        row("dock.createMenu.survey", "list.bullet.clipboard", app.T("Khảo sát mới", "New survey"),
+            app.T("Hỏi khách muốn gì cho buổi tới.", "Ask guests what they want next.")) {
+            app.surveysHostingTab = "active"
+            app.surveyCreateRequested = true
+            app.screen = .surveysHosting
+        }
+    }
+
+    private func row(_ id: String, _ icon: String, _ title: String, _ desc: String, primary: Bool = false,
+                     expanded: Bool? = nil, closes: Bool = true, action: @escaping () -> Void) -> some View {
+        Button {
+            if closes { run(action) } else { action() }
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .frame(width: 40, height: 40)
+                    .background(primary ? app.palette.paper.opacity(0.16) : app.palette.ink.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 16, weight: .semibold))
+                    Text(desc).font(.system(size: 13)).opacity(primary ? 0.8 : 1)
+                        .foregroundStyle(primary ? app.palette.paper : app.palette.ink.opacity(0.62))
+                }
+                Spacer(minLength: 0)
+                if let expanded {
+                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
+                        .rotationEffect(.degrees(expanded ? 90 : 0)).accessibilityHidden(true)
+                }
+            }
+            .foregroundStyle(primary ? app.palette.paper : app.palette.ink)
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: primary ? 64 : 56, alignment: .leading)
+            .background(primary ? app.palette.ink : Color.clear, in: RoundedRectangle(cornerRadius: 16))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
+    }
+
+    private func subRow(_ id: String, _ icon: String, _ title: String, action: @escaping () -> Void) -> some View {
+        Button { run(action) } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon).font(.system(size: 15)).frame(width: 22).accessibilityHidden(true)
+                Text(title).font(.system(size: 14.5))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.leading, 76).padding(.trailing, 12)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
     }
 }

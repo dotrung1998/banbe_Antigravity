@@ -1118,6 +1118,10 @@ struct RootView: View {
         }) {
             StartHostingSheet().environmentObject(app)
         }
+        // Simple Shell "+": the create menu as a bottom sheet (same content as web's DockCreateCenter).
+        .sheet(isPresented: $app.dockCreateOpen) {
+            DockCreateSheet().environmentObject(app)
+        }
         // Simple Shell "+" (host): "Share one of my events" (same picker + beginEventStory as Account's).
         .sheet(isPresented: $app.dockEventStoryPickerOpen) {
             DockEventStoryPickerSheet().environmentObject(app)
@@ -1336,6 +1340,7 @@ struct RootView: View {
         // own temporary full-screen grow/shrink, never anything about
         // MapExploreView's own sheet/camera/filter/search/selection state.
         .onChange(of: app.dockCreateOpen) { _, open in
+            // The create sheet is a modal: hide the dock window above it (it used to float over the rows).
             BottomTabBarOverlay.shared.setDockCreateTrayOpen(open)
         }
         // Simple Shell (note 66): the dock's overlay band follows the bar's shape (one bar with the "+" inside).
