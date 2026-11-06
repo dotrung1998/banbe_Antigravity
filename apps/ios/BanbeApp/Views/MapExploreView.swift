@@ -551,7 +551,10 @@ struct MapExploreView: View {
     /// The bottom stack above the dock, bottom to top: neighbourhood chips, the time bar, then my location + "List · N". The room for the WHOLE stack is always reserved (`MapStack.reserved`
     /// feeds the reference rect), so what the stack shows never changes the results.
     private var bottomStack: some View {
-        ZStack(alignment: .bottom) {
+        // With no neighbourhood chips (city level, nothing to list) the time bar and the buttons settle into the room
+        // they would have taken, instead of leaving a gap above the dock. The reserved room (reference rect) is unchanged.
+        let drop: CGFloat = showAreaChips && !emptyOnly ? 0 : MapStack.chipsHeight + MapStack.gap
+        return ZStack(alignment: .bottom) {
             if showAreaChips && !emptyOnly {
                 areaChipsRow
                     .padding(.bottom, MapStack.dockClear + MapStack.chipsBottom)
@@ -560,21 +563,22 @@ struct MapExploreView: View {
             // the panel while one is open and is hidden under the list.
             if !listOpen && !emptyOnly {
                 timeBar
-                    .padding(.bottom, areaPanel != nil ? panelHeight + 12 : MapStack.dockClear + MapStack.timeBottom)
+                    .padding(.bottom, areaPanel != nil ? panelHeight + 12 : MapStack.dockClear + MapStack.timeBottom - drop)
                     .animation(panelSpring, value: areaPanel != nil)
             }
             if showEmptyCard {
                 emptyCard
-                    .padding(.bottom, emptyOnly ? MapStack.dockClear + MapStack.fabBottom
-                                                : MapStack.dockClear + MapStack.fabBottom + MapStack.buttonHeight + 8)
+                    .padding(.bottom, emptyOnly ? MapStack.dockClear + MapStack.fabBottom - drop
+                                                : MapStack.dockClear + MapStack.fabBottom - drop + MapStack.buttonHeight + 8)
             }
             if !listOpen && areaPanel == nil && !emptyOnly {
                 buttonsRow
-                    .padding(.bottom, MapStack.dockClear + MapStack.fabBottom)
+                    .padding(.bottom, MapStack.dockClear + MapStack.fabBottom - drop)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .ignoresSafeArea(edges: .bottom)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: drop)
     }
 
     private var timeBar: some View {
@@ -1256,20 +1260,21 @@ struct MapExploreView: View {
     /// Zoomed out (note 73 §5): "TP.HCM  5" — the city's short name and its result count in an ink badge. Tap = fly to
     /// the city's bounds (a destination, one new area).
     private func cityBubble(_ city: MapDiscovery.City, count n: Int, dim: Bool = false) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "mappin").font(.system(size: 11, weight: .semibold)).accessibilityHidden(true)
-            Text(app.T(city.short.vi, city.short.en)).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-            Text("\(n)").font(.system(size: 12, weight: .bold)).monospacedDigit()
-                .padding(.horizontal, 6).frame(minWidth: 20, minHeight: 20)
-                .background(app.palette.ink, in: Capsule())
-                .foregroundStyle(app.palette.paper)
+        // Zoomed out: the same ink pills as the neighbourhood bubbles, a little larger so a lone city still reads on a
+        // continent-sized map: its name, then the event count in a paper badge.
+        HStack(spacing: 8) {
+            Text(app.T(city.short.vi, city.short.en)).font(.system(size: 15, weight: .bold)).lineLimit(1)
+            Text("\(n)").font(.system(size: 13, weight: .bold)).monospacedDigit()
+                .padding(.horizontal, 7).frame(minWidth: 24, minHeight: 24)
+                .background(app.palette.paper, in: Capsule())
+                .foregroundStyle(app.palette.ink)
         }
-        .padding(.leading, 10).padding(.trailing, 5)
-        .frame(minHeight: 32)
-        .foregroundStyle(app.palette.ink)
-        .background(app.palette.paper, in: Capsule())
-        .overlay(Capsule().stroke(app.palette.ink, lineWidth: 1.5))
-        .shadow(radius: 4)
+        .padding(.leading, 14).padding(.trailing, 7)
+        .frame(minHeight: 40)
+        .foregroundStyle(app.palette.paper)
+        .background(app.palette.ink, in: Capsule())
+        .overlay(Capsule().stroke(app.palette.paper.opacity(0.9), lineWidth: 2))
+        .shadow(color: .black.opacity(0.28), radius: 6, y: 3)
         .frame(minHeight: 44)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)

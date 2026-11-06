@@ -90,7 +90,11 @@ struct EventDetailView: View {
     /// V8 (note 75): the ticket stub rises this far into the photo; the title band above it is that much shorter and the
     /// paper starts where the photo ends at rest. Web `STUB_RISE`.
     private let stubRise: CGFloat = 104
+    /// Only the part of the offset the photo parallax/fade and the title hand-off read (clamped past the hero), so a
+    /// scroll frame below the hero no longer re-renders this whole page; the raw offset (tab spy) is kept apart.
     @State private var scrollOffset: CGFloat = 0
+    private final class RawOffset { var y: CGFloat = 0 }
+    @State private var raw = RawOffset()
     /// V8 tabs (note 75): how far the content can scroll, the sections' tops, the lit tab, a tapped tab held until the
     /// reader scrolls themselves, and the probe's one-off scroll request.
     @State private var maxScroll: CGFloat = 0
@@ -319,7 +323,9 @@ struct EventDetailView: View {
                                                     onOffset: { [key = event.key, isPreview] y in if !isPreview { app.eventScrollOffsets[key] = y } },
                                                     onChange: { _, userDriven in if userDriven && tabLock != nil { tabLock = nil } },
                                                     onScrollMetrics: { y, content, viewport in
-                                                        if scrollOffset != y { scrollOffset = y }
+                                                        raw.y = y
+                                                        let capped = min(y, topInset + heroHeight + 2)
+                                                        if scrollOffset != capped { scrollOffset = capped }
                                                         let m = max(0, content - viewport)
                                                         if maxScroll != m { maxScroll = m }
                                                         spyTabs()
@@ -772,7 +778,7 @@ struct EventDetailView: View {
 
     private func spyTabs() {
         if let lock = tabLock { if activeTab != lock { activeTab = lock }; return }
-        let i = EventDetailTabs.active(tops: tabTops, scrollTop: Double(scrollOffset), maxScroll: Double(maxScroll), lead: 24)
+        let i = EventDetailTabs.active(tops: tabTops, scrollTop: Double(raw.y), maxScroll: Double(maxScroll), lead: 24)
         let ids = tabIDs
         if ids.indices.contains(i), activeTab != ids[i] { activeTab = ids[i] }
     }
@@ -841,6 +847,11 @@ struct EventDetailView: View {
                 .init(color: .black.opacity(EventDetailPresentation.heroScrim.end), location: 1),
             ], startPoint: .top, endPoint: .bottom)
             .opacity(zoomT)
+            // The photo's foot melts into the page so the ticket floats over one surface (no hard photo/paper edge).
+            LinearGradient(colors: [app.palette.paper.opacity(0), app.palette.paper], startPoint: .top, endPoint: .bottom)
+                .frame(height: 110)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .opacity(zoomT)
         }
             .frame(width: f.width, height: f.height)
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
@@ -1015,7 +1026,13 @@ struct EventDetailView: View {
         }
         .padding(.horizontal, 16)
         .background(alignment: .top) {
-            VStack(spacing: 0) { Color.clear.frame(height: stubRise); app.palette.paper }
+            // No hard edge under the ticket: the paper fades in below it so the stub floats.
+            VStack(spacing: 0) {
+                Color.clear.frame(height: stubRise - 8)
+                LinearGradient(colors: [app.palette.paper.opacity(0), app.palette.paper], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 52)
+                app.palette.paper
+            }
         }
     }
 
