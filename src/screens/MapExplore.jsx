@@ -6,7 +6,8 @@ import { CARD_GAP, ATTRIB_RESERVE, computeMapLayout, bottomStackFraction, dockVi
 import { eventSlot, inWindow, dayOptions, defaultWindow, moveKnob, windowFromHomeDate, windowSummary } from '../lib/mapTimeWindow.js';
 import MapTimeBar from '../components/map/MapTimeBar.jsx';
 import MapListSheet from '../components/map/MapListSheet.jsx';
-import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { searchBarStore, useSearchBar } from '../lib/searchBarStore.js';
 import { useBanBe, resolveCoverUrl, photoUrlsByEvent } from '../state/BanBeContext.jsx';
 import { cardPhotoList } from '../lib/eventPhotoUrls.js';
 import { addRecentSearch, loadRecentSearches, saveRecentSearches } from '../lib/mapRecentSearches.js';
@@ -346,15 +347,21 @@ export default function MapExplore() {
   // Home quick event search (2026-09-27) — a by-name/area text filter,
   // ANDed with the existing category/open-now/nearby filters above (never
   // a separate search index — same `events` this screen already loads).
-  const [searchQuery, setSearchQuery] = useState(() => restored?.searchQuery ?? entry?.query ?? '');
+  // The text is edited by the ONE persistent search bar (hosted in App.jsx); the map's own query lives in its store
+  // (iOS `mapSearchText`). Seeded silently on first render, announced to the bar from a layout effect below.
+  useState(() => { searchBarStore.seedMapQuery(restored?.searchQuery ?? entry?.query ?? ''); });
+  const searchQuery = useSearchBar(b => b.mapQuery);
+  const setSearchQuery = searchBarStore.setMapQuery;
   // For You (34/35 notes): local to Map (never touches Home's own `filterForYou`),
   // matching comes from the shared forYouRankEvents so both surfaces score alike.
   const [forYouOn, setForYouOn] = useState(() => restored?.forYou ?? !!entry?.forYou);
-  const searchInputRef = useRef(null);
+  // Shim over the persistent bar's input so the existing blur() calls keep working.
+  const searchInputRef = useRef({ blur: () => searchBarStore.blur(), focus: () => searchBarStore.focus() });
   // Map v6 (note 74): search mode. True while the search input has focus; while it is also empty, the sheet shows
   // Recent / Cities / Quick filters instead of the list ("never a blank search"). `searchReturnRef` is the snap the
   // search was opened from, so Cancel puts the sheet back there.
-  const [searchActive, setSearchActive] = useState(false);
+  const barFocused = useSearchBar(b => b.focused);
+  const searchActive = barFocused;
   const searchReturnRef = useRef(null);
   const searchQueryRef = useRef('');
   searchQueryRef.current = searchQuery;
@@ -384,13 +391,12 @@ export default function MapExplore() {
   // real device's user-gesture trust intact. Guarded by a ref (not state)
   // so it fires exactly once per mount, never re-focusing on an unrelated
   // re-render.
-  const searchAutofocusAppliedRef = useRef(false);
-  const setSearchInputRef = useCallback((el) => {
-    searchInputRef.current = el;
-    if (el && restoredRef.current?.focusSearch && !searchAutofocusAppliedRef.current) {
-      searchAutofocusAppliedRef.current = true;
-      el.focus();
-    }
+  const initialQueryRef = useRef(restored?.searchQuery ?? entry?.query ?? '');
+  useLayoutEffect(() => {
+    searchBarStore.setMapQuery(initialQueryRef.current); // re-applied here too: StrictMode's mount/unmount/mount would otherwise lose the seed
+    searchBarStore.notify();
+    if (restoredRef.current?.focusSearch) searchBarStore.focus();
+    return () => { searchBarStore.setMapQuery(''); searchBarStore.clear('map'); };
   }, []);
   // Map E+ (note 79): the list is a layer over the full-screen map. It opens from "List · N", closes with its Map button
   // or Esc, and starts closed, so a fresh open is the map itself (restored from a return snapshot when there is one).
@@ -1344,6 +1350,8 @@ export default function MapExplore() {
   // back") clears the snapshot — reopening the map later from Home should
   // start fresh, not silently resume a session from an unrelated visit.
   const closeMap = useCallback(() => {
+    searchBarStore.blur();
+    searchBarStore.setAtHome(true); // the persistent bar glides back down onto Home's own bar
     setClosingProgress(1);
     // Matches the sheet's own `transform` transition duration (0.42s, the
     // same bounce curve the restore-only bubble already uses) so the
@@ -1446,9 +1454,7 @@ export default function MapExplore() {
   );
   // Focused and empty: Recent · Cities · Quick filters instead of a blank search.
   const suggestOpen = searchActive && !searchQuery.trim();
-  const onSearchFocus = () => setSearchActive(true);
-  const onSearchBlur = () => setSearchActive(false);
-  const cancelSearch = () => { searchInputRef.current?.blur(); setSearchActive(false); };
+  const cancelSearch = () => { searchBarStore.blur(); };
   // Quick filters in the search panel: a tap applies the filter (the map shows it at once) and puts the keyboard away.
   const quickTap = (fn) => () => { fn(); searchInputRef.current?.blur(); };
   const quickChips = (prefix) => (
@@ -1794,6 +1800,16 @@ export default function MapExplore() {
   const areaChipLabel = viewAreaLabel
     || (areaContext === 'area' && cityDest ? cityName(cityDest) : areaContext === 'area' && curArea.key !== 'all' ? curArea.label : T('Vùng bản đồ', 'Map area'));
 
+  // Register with the persistent bar (re-registered each render so the callbacks are current; only the owner clears).
+  useLayoutEffect(() => {
+    searchBarStore.register({
+      owner: 'map', placeholder: T('Tìm tên, loại, khu vực, thành phố…', 'Search name, type, area, city…'),
+      back: closeMap, cancel: cancelSearch, badge: filterBadge, hasFilters: true, hidden: filterSheetOpen,
+      submit: (text) => { if (String(text || '').trim()) rememberSearch(text); },
+      filters: () => { searchBarStore.blur(); setFilterSheetOpen(true); },
+    });
+  });
+
   return (
     <div ref={rootRef} data-screen-label="MapExplore" className="bb-mapsurf"
       style={{ position: 'fixed', inset: 0, background: paper, opacity: 1 - 0.6 * closingProgress, transform: closingProgress ? `scale(${1 - 0.04 * closingProgress})` : 'none', transition: 'opacity 0.3s ease, transform 0.3s ease' }}>
@@ -1818,55 +1834,8 @@ export default function MapExplore() {
       {/* The shared controls: back, search, filters, then the chips. They stay over the map and over the list. */}
       <div ref={topRef} data-testid="map-top" style={{ position: 'absolute', left: 0, right: 0, top: topInset, zIndex: 5, padding: '8px 0 0', display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', pointerEvents: 'auto' }}>
-          <button type="button" onClick={closeMap} data-testid="map-back" aria-label={T('Đóng bản đồ', 'Close map')}
-            style={{ ...photoPill({ position: 'static', borderRadius: '50%' }), flex: 'none', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, color: ink }}>
-            {/* Arrow only (owner 2026-11-01); the label still says what it does. */}
-            <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
-          </button>
-          {/* The matcher covers name, category, area, host and description (src/lib/search.js), not just names. The
-              input is always mounted and visible, so a tap focuses it inside the gesture (iOS Safari keyboard rule). */}
-          <div className="bb-focus-ring" data-testid="map-search-box"
-            style={{ ...photoPill({ position: 'static', borderRadius: 22 }), flex: 1, minWidth: 0, height: 44, display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', cursor: 'text', fontSize: 15 }}>
-            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.55, flex: 'none' }}>
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.35-4.35" />
-            </svg>
-            <input
-              ref={setSearchInputRef}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={onSearchFocus}
-              onBlur={onSearchBlur}
-              onKeyDown={(e) => { if (e.key === 'Enter' && searchQuery.trim()) { rememberSearch(searchQuery); e.currentTarget.blur(); } }}
-              enterKeyHint="search"
-              placeholder={T('Tìm tên, loại, khu vực, thành phố…', 'Search name, type, area, city…')}
-              aria-label={T('Tìm sự kiện trên bản đồ', 'Search events on the map')}
-              data-testid="map-search-input" data-bare
-              style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, color: ink, fontFamily: "'Be Vietnam Pro', sans-serif" }}
-            />
-            {searchQuery && (
-              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setSearchQuery('')} data-testid="map-search-clear" aria-label={T('Xoá tìm kiếm', 'Clear search')}
-                style={{ width: 44, height: 44, marginInlineEnd: -14, border: 'none', background: 'none', cursor: 'pointer', color: ink2, fontSize: 18, lineHeight: 1, flex: 'none' }}>×</button>
-            )}
-          </div>
-          {/* Cancel = keyboard down. mousedown is kept from blurring the input first (which would unmount this
-              button before its click). */}
-          {searchActive ? (
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={cancelSearch} data-testid="map-search-cancel"
-              style={{ flex: 'none', minHeight: 44, padding: '0 4px', border: 'none', background: 'none', color: clay, fontSize: 14.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textShadow: '0 0 6px var(--bb-bg), 0 0 6px var(--bb-bg)' }}>
-              {T('Huỷ', 'Cancel')}
-            </button>
-          ) : (
-            // Everything else (any date, price per ticket, almost full, type chips) in Home's sheet, as a draft.
-            <button type="button" onClick={() => { searchInputRef.current?.blur(); setFilterSheetOpen(true); }} data-testid="map-chip-filters" aria-haspopup="dialog"
-              aria-label={filterBadge ? T(`Bộ lọc, ${filterBadge} đang bật`, `Filters, ${filterBadge} on`) : T('Bộ lọc', 'Filters')}
-              style={{ ...photoPill({ position: 'relative', borderRadius: '50%' }), flex: 'none', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, color: ink }}>
-              <svg aria-hidden="true" width={19} height={19} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
-              {filterBadge > 0 && (
-                <span aria-hidden="true" style={{ position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 9, background: clay, color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', fontVariantNumeric: 'tabular-nums' }}>{filterBadge}</span>
-              )}
-            </button>
-          )}
+          {/* Empty 44px row: the persistent search bar (App.jsx) draws back, field and filters here. */}
+          <div data-search-bar-slot aria-hidden style={{ height: 44, flex: 1 }} />
         </div>
 
         {/* ONE scrolling row (iOS parity): For You first, then every selected filter (Seats left, Free, Almost full, the

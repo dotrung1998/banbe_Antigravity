@@ -5,6 +5,8 @@
 // iOS twin: Views/SearchView.swift. Search never counts toward the streak (note 36).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { takeSearchOrigin } from '../lib/searchOrigin.js';
+import { searchBarStore, useSearchBar } from '../lib/searchBarStore.js';
+import { searchBarTop } from '../components/PersistentSearchBar.jsx';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, bg, catalogStartMs } from '../data/events.js';
 import { paper, ink, ink2, rule, display, fieldGlass, RADIUS } from '../theme.js';
@@ -33,31 +35,28 @@ export default function Search({ overlay = false }) {
   const {
     state: s, set, T, goEvent, goHome, loadDiscoveryEvents, loadPulse, openOrganizerProfile, pickArea, locationTree, pickFilter,
   } = useBanBe();
-  const [q, setQ] = useState(s.searchQuery || '');
+  // The text lives in the ONE persistent bar's store (the bar is hosted in App.jsx and edits it directly). Seeded from
+  // the global query on first render (silent: the bar re-reads on its own commit).
+  useState(() => { searchBarStore.seedSearchQuery(s.searchQuery || ''); });
+  const q = useSearchBar(b => b.searchQuery);
+  const setQ = searchBarStore.setSearchQuery;
   // As an overlay, "leaving" just closes it (Home is already there underneath).
   const leave = overlay ? () => set({ searchOverlayOpen: false }) : goHome;
   const [recent, setRecent] = useState(readRecent);
   const [catSheetOpen, setCatSheetOpen] = useState(false);
   // "See on map": the page fades out while the map fades in (no hard cut).
   const [leavingToMap, setLeavingToMap] = useState(false);
-  const inputRef = useRef(null);
 
   // Entrance from Home's search bar: the field starts where Home's bar was and glides up into the header while the
   // back button grows in and the rest of the page fades in. No origin (opened from elsewhere) = the usual fade-in.
   const [origin] = useState(() => takeSearchOrigin());
   const rootRef = useRef(null);
   const headerRef = useRef(null);
-  const backRef = useRef(null);
-  const formRef = useRef(null);
   useLayoutEffect(() => {
-    const f = formRef.current;
     const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!origin || !f?.animate || reduce) return;
-    const r = f.getBoundingClientRect();
+    if (!origin || reduce) return;
     const ease = 'cubic-bezier(.22,.9,.3,1)';
     const dur = 420;
-    backRef.current?.animate([{ width: '0px', marginRight: '-10px', opacity: 0 }, { width: '40px', marginRight: '0px', opacity: 1 }], { duration: dur, easing: ease });
-    f.animate([{ transform: `translateY(${origin.top + (origin.height - r.height) / 2 - r.top}px)` }, { transform: 'none' }], { duration: dur, easing: ease });
     // Overlay: the paper fades in over the live Home, the header's own fill with it, and the results drop in from the top.
     rootRef.current?.querySelectorAll(':scope > [data-search-backdrop]').forEach(el => {
       el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: 'ease-out' });
@@ -76,17 +75,14 @@ export default function Search({ overlay = false }) {
   // rest fades, then Home takes over.
   const closingRef = useRef(false);
   const close = () => {
-    const f = formRef.current;
     const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!origin || !f?.animate || reduce) { leave(); return; }
+    if (!origin || reduce) { leave(); return; }
     if (closingRef.current) return;
     closingRef.current = true;
-    inputRef.current?.blur();
-    const r = f.getBoundingClientRect();
+    searchBarStore.blur();
+    searchBarStore.setAtHome(true); // the persistent bar glides back down onto Home's own bar while the page fades
     const ease = 'cubic-bezier(.4,0,.2,1)';
-    const dur = 320;
-    backRef.current?.animate([{ width: '40px', marginRight: '0px', opacity: 1 }, { width: '0px', marginRight: '-10px', opacity: 0 }], { duration: dur, easing: ease, fill: 'forwards' });
-    f.animate([{ transform: 'none' }, { transform: `translateY(${origin.top + (origin.height - r.height) / 2 - r.top}px)` }], { duration: dur, easing: ease, fill: 'forwards' });
+    const dur = 420;
     rootRef.current?.querySelectorAll(':scope > :not([data-search-header]):not([data-search-backdrop])').forEach(el => {
       el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: overlay ? 'translateY(-24px)' : 'none' }], { duration: 200, easing: 'ease-in', fill: 'forwards' });
     });
@@ -99,14 +95,22 @@ export default function Search({ overlay = false }) {
   };
   // The keyboard comes up once the field has (nearly) landed, not on top of the glide.
   useEffect(() => {
-    if (!origin) { inputRef.current?.focus(); return undefined; }
-    const t = setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 320);
+    if (!origin) { searchBarStore.focus(); return undefined; }
+    const t = setTimeout(() => searchBarStore.focus(), 320);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => { if (!(s.discoveryEvents || []).length) loadDiscoveryEvents(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!(s.pulseDaily || []).length) loadPulse('daily'); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { set({ searchQuery: q }); }, [q, set]);
+  // Register with the persistent bar (re-registered each render so its callbacks are current; only owner clears).
+  const commitRef = useRef(null);
+  commitRef.current = (text) => { const next = pushRecent(recent, text); setRecent(next); writeRecent(next); };
+  useLayoutEffect(() => {
+    searchBarStore.register({ owner: 'search', placeholder: T('Tìm sự kiện, host, khu vực, vibe…', 'Search events, hosts, areas, vibes…'),
+      back: close, submit: (text) => commitRef.current?.(text ?? ''), cancel: () => {}, filters: null, badge: 0, hasFilters: false });
+  });
+  useLayoutEffect(() => () => searchBarStore.clear('search'), []);
 
   // One searchable list: real public events + the demo catalogue, upcoming only, same doc builder as Map.
   const docs = useMemo(() => {
@@ -174,15 +178,9 @@ export default function Search({ overlay = false }) {
         ? { position: 'fixed', inset: 0, zIndex: 45, overflowY: 'auto', color: ink, paddingBottom: 120, animation: origin ? undefined : 'banbeFade 0.2s ease both' }
         : { minHeight: '100%', background: paper, color: ink, paddingBottom: 120, animation: origin ? undefined : 'banbeIn 0.25s ease both' }}>
       {overlay && <div data-search-backdrop aria-hidden style={{ position: 'fixed', inset: 0, background: paper, zIndex: -1 }} />}
-      <div ref={headerRef} data-search-header style={{ padding: '58px 16px 10px', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: paper, zIndex: 2, borderBottom: `1px solid ${rule}` }}>
-        <button ref={backRef} type="button" onClick={close} aria-label={T('Quay lại', 'Back')} data-testid="search-back"
-          style={{ overflow: 'hidden', width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'rgba(var(--bb-fg-rgb),0.07)', color: ink, fontSize: 20, cursor: 'pointer', flex: 'none' }}>‹</button>
-        <form ref={formRef} onSubmit={(e) => { e.preventDefault(); commit(); inputRef.current?.blur(); }} style={{ flex: 1, display: 'flex' }}>
-          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} type="search" enterKeyHint="search" data-testid="search-input"
-            placeholder={T('Tìm sự kiện, host, khu vực, vibe…', 'Search events, hosts, areas, vibes…')}
-            aria-label={T('Tìm kiếm', 'Search')}
-            style={{ ...fieldGlass({ borderRadius: RADIUS.pill }), flex: 1, height: 44, border: 'none', padding: '0 16px', fontSize: 15, color: ink, fontFamily: 'inherit', outline: 'none' }} />
-        </form>
+      <div ref={headerRef} data-search-header style={{ padding: `${searchBarTop()}px 16px 10px`, display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: paper, zIndex: 2, borderBottom: `1px solid ${rule}` }}>
+        {/* The persistent search bar (App.jsx) draws here: back + field. */}
+        <div data-search-bar-slot aria-hidden style={{ height: 44, flex: 1 }} />
       </div>
 
       {!query && (
@@ -286,9 +284,10 @@ export default function Search({ overlay = false }) {
           ))}
           <div style={{ padding: '18px 20px' }}>
             <button type="button" data-testid="search-see-on-map"
+              onMouseDown={(e) => e.preventDefault()} /* keep the bar focused: the keyboard carries over to Map */
               onClick={() => {
                 commit();
-                const go = () => set({ screen: 'mapExplore', mapExploreState: { focusSearch: false, searchQuery: query } });
+                const go = () => { searchBarStore.setMapQuery(query); set({ screen: 'mapExplore', mapExploreState: { focusSearch: false, searchQuery: query } }); };
                 const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
                 if (reduce) { go(); return; }
                 setLeavingToMap(true);

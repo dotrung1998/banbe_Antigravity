@@ -80,6 +80,7 @@ import OrganizerProfile from './screens/OrganizerProfile.jsx';
 import Reports from './screens/Reports.jsx';
 import Schedule from './screens/Schedule.jsx';
 import Search from './screens/Search.jsx';
+import PersistentSearchBar from './components/PersistentSearchBar.jsx';
 import Welcome from './screens/Welcome.jsx';
 import GuestPromptSheet from './screens/GuestPromptSheet.jsx';
 import { StartHostingSheet } from './components/StartHostingCard.jsx';
@@ -737,6 +738,8 @@ function Shell() {
          within the phone instead of spanning the whole window. */}
      <div className="bb-device"><div className="bb-screen">
       <PhoneStatusBar />
+      {/* ONE search bar for Search + Map (hosted once so it survives Search -> Map; drawn above both by z-index). */}
+      <PersistentSearchBar />
       <div
         ref={scrollRef}
         data-testid="app-scroll-viewport"
