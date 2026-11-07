@@ -1,0 +1,27 @@
+{
+  "_comment": "Shared parity vectors for the Rewards v2 client logic. Read by tests/unit/rewardsV2.test.mjs AND apps/ios/BanbeAppTests/RewardsV2Tests.swift; both must produce the `expect` values. Payload shapes follow migration 192.",
+  "week_streak": [
+    { "name": "this week done", "raw": { "unit": "week", "current": 3, "longest": 5, "this_week_active": true, "week_start": "2026-10-19", "grace_held": 1, "grace_max": 2, "grace_every": 4, "grace_used": 0, "next_grace_in": 2, "repair": null, "repaired": 0, "timezone": "Asia/Ho_Chi_Minh" },
+      "expect": { "status": "✓ This week counts", "grace": "Grace weeks: 1/2 ▪︎ next after 2 more active weeks" } },
+    { "name": "open week, grace held", "raw": { "unit": "week", "current": 4, "longest": 4, "this_week_active": false, "week_start": "2026-10-19", "grace_held": 1, "grace_max": 2, "grace_every": 4, "grace_used": 0, "next_grace_in": 4, "repair": null, "repaired": 0, "timezone": "Asia/Ho_Chi_Minh" },
+      "expect": { "status": "This week is still open", "grace": "Grace weeks: 1/2 ▪︎ next after 4 more active weeks" } },
+    { "name": "repair offered", "raw": { "unit": "week", "current": 0, "longest": 6, "this_week_active": false, "week_start": "2026-10-19", "grace_held": 0, "grace_max": 2, "grace_every": 4, "grace_used": 1, "next_grace_in": 4, "repair": { "weeks": 6, "until": "2026-10-25" }, "repaired": 0, "timezone": "Asia/Ho_Chi_Minh" },
+      "expect": { "status": "Bring back your 6-week streak", "grace": "Grace weeks: 0/2 ▪︎ next after 4 more active weeks" } },
+    { "name": "fresh start", "raw": { "unit": "week", "current": 0, "longest": 0, "this_week_active": false, "week_start": "2026-10-19", "grace_held": 0, "grace_max": 2, "grace_every": 4, "grace_used": 0, "next_grace_in": 4, "repair": null, "repaired": 0, "timezone": "Asia/Ho_Chi_Minh" },
+      "expect": { "status": "Start a streak this week", "grace": "Grace weeks: 0/2 ▪︎ next after 4 more active weeks" } },
+    { "name": "grace full", "raw": { "unit": "week", "current": 12, "longest": 12, "this_week_active": true, "week_start": "2026-10-19", "grace_held": 2, "grace_max": 2, "grace_every": 4, "grace_used": 0, "next_grace_in": null, "repair": null, "repaired": 0, "timezone": "Asia/Ho_Chi_Minh" },
+      "expect": { "status": "✓ This week counts", "grace": "Grace weeks: 2/2 ▪︎ full" } }
+  ],
+  "next_badge": [
+    { "nb": { "code": "regular", "family": "outings", "tier": 2, "progress": 4, "target": 5, "remaining": 1, "title_en": "Regular", "title_vi": "Thường xuyên" }, "expect": "One event away from “Regular”" },
+    { "nb": { "code": "explorer_6", "family": "explorer", "tier": 2, "progress": 4, "target": 6, "remaining": 2, "title_en": "Adventurer", "title_vi": "Nhà thám hiểm" }, "expect": "2 new categories to “Adventurer”" },
+    { "nb": { "code": "months_3", "family": "months", "tier": 1, "progress": 2, "target": 3, "remaining": 1, "title_en": "Three months out", "title_vi": "Ba tháng ra ngoài" }, "expect": "1 more month with an event to “Three months out”" },
+    { "nb": { "code": "ready_to_explore", "family": "start", "tier": 1, "progress": 0, "target": 1, "remaining": 1, "title_en": "Ready to explore", "title_vi": "Sẵn sàng khám phá" }, "expect": "Answer the preference questions to earn “Ready to explore”" }
+  ],
+  "goal": [
+    { "raw": { "target": null, "progress": 1, "month": "2026-10-01" }, "expect": "Pick how many events you want to go to each month. No coins, just for you." },
+    { "raw": { "target": 2, "progress": 1, "month": "2026-10-01" }, "expect": "1 of 2 events this month ▪︎ 1 to go" },
+    { "raw": { "target": 2, "progress": 3, "month": "2026-10-01" }, "expect": "Goal met for this month (3/2) ✓" },
+    { "raw": { "target": 3, "progress": 0, "month": "2026-10-01" }, "expect": "Pick how many events you want to go to each month. No coins, just for you." }
+  ]
+}

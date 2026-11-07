@@ -1,0 +1,27 @@
+{
+  "comingUp": [
+    { "name": "upcoming events listed: no empty state", "in": { "upcoming": 2, "hasHero": false, "pending": 1, "needsFix": 1 }, "expect": null },
+    { "name": "needs fixing beats pending", "in": { "upcoming": 0, "hasHero": false, "pending": 2, "needsFix": 1 }, "expect": "needsFix" },
+    { "name": "only pending (the screenshot: 2 pending, 0 live)", "in": { "upcoming": 0, "hasHero": false, "pending": 2, "needsFix": 0 }, "expect": "pending" },
+    { "name": "nothing at all", "in": { "upcoming": 0, "hasHero": false, "pending": 0, "needsFix": 0 }, "expect": "quiet" },
+    { "name": "hero shows the next event: no quiet filler", "in": { "upcoming": 0, "hasHero": true, "pending": 0, "needsFix": 0 }, "expect": null },
+    { "name": "hero but an event waits for review", "in": { "upcoming": 0, "hasHero": true, "pending": 1, "needsFix": 0 }, "expect": "pending" },
+    { "name": "hero but an event needs fixing", "in": { "upcoming": 0, "hasHero": true, "pending": 0, "needsFix": 3 }, "expect": "needsFix" }
+  ],
+  "kpis": [
+    { "name": "no organizer: hidden", "in": { "hasOrganizer": false, "loading": false, "error": false, "tiles": 0, "hasReport": false }, "expect": "hidden" },
+    { "name": "tiles in hand", "in": { "hasOrganizer": true, "loading": false, "error": false, "tiles": 3, "hasReport": true }, "expect": "tiles" },
+    { "name": "stale tiles stay while reloading", "in": { "hasOrganizer": true, "loading": true, "error": false, "tiles": 3, "hasReport": true }, "expect": "tiles" },
+    { "name": "stale tiles stay after a failed refresh", "in": { "hasOrganizer": true, "loading": false, "error": true, "tiles": 3, "hasReport": true }, "expect": "tiles" },
+    { "name": "first load", "in": { "hasOrganizer": true, "loading": true, "error": false, "tiles": 0, "hasReport": false }, "expect": "loading" },
+    { "name": "failed with nothing to show", "in": { "hasOrganizer": true, "loading": false, "error": true, "tiles": 0, "hasReport": false }, "expect": "error" },
+    { "name": "loaded but no numbers", "in": { "hasOrganizer": true, "loading": false, "error": false, "tiles": 0, "hasReport": true }, "expect": "empty" },
+    { "name": "not requested yet", "in": { "hasOrganizer": true, "loading": false, "error": false, "tiles": 0, "hasReport": false }, "expect": "loading" }
+  ],
+  "rangeHeading": [
+    { "range": "7", "en": "Last 7 days", "vi": "7 ngày qua" },
+    { "range": "30", "en": "Last 30 days", "vi": "30 ngày qua" },
+    { "range": "90", "en": "Last 90 days", "vi": "90 ngày qua" },
+    { "range": "custom", "en": "Your chosen dates", "vi": "Khoảng ngày đã chọn" }
+  ]
+}

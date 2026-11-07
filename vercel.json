@@ -1,0 +1,82 @@
+{
+  "framework": "vite",
+  "buildCommand": "vite build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/mapkit-token",
+      "destination": "/api/calendar?op=mapkit-token"
+    },
+    {
+      "source": "/api/geocode",
+      "destination": "/api/calendar?op=geocode"
+    },
+    {
+      "source": "/api/wallet-pass",
+      "destination": "/api/wallet?op=pass"
+    },
+    {
+      "source": "/api/wallet-refresh",
+      "destination": "/api/wallet?op=refresh"
+    },
+    {
+      "source": "/api/wallet/:path+",
+      "destination": "/api/wallet?op=ws&path=:path+"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/.well-known/apple-app-site-association",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron?job=purge-payment-documents",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron?job=wallet-pass-sweep",
+      "schedule": "30 10 * * *"
+    },
+    {
+      "path": "/api/cron?job=media-sweep",
+      "schedule": "45 10 * * *"
+    }
+  ],
+  "images": {
+    "sizes": [
+      640,
+      1200
+    ],
+    "minimumCacheTTL": 86400,
+    "formats": [
+      "image/webp"
+    ],
+    "remotePatterns": [
+      {
+        "protocol": "https",
+        "hostname": "ukchdgdnwytretvqjjqu.supabase.co",
+        "pathname": "/storage/v1/object/public/event-photos/**"
+      }
+    ]
+  }
+}

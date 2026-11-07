@@ -1,0 +1,478 @@
+{
+ "_about": "Synthetic Event Project Hub snapshot in the exact get_event_project (migration 210) shape: the Host view of the v6 prototype evening. Used by the iOS UI fixture (shell.project), Swift/JS presentation tests and the 210 SQL shape check. Names are demo data.",
+ "snapshot": {
+  "success": true,
+  "unchanged": false,
+  "version": 42,
+  "project": {
+   "event_id": "fx_project",
+   "started_at": "2026-10-28T10:00:00+00:00",
+   "refund_approval": "host",
+   "channels": [
+    {
+     "platform": "zalo",
+     "label": "Nhóm bếp",
+     "url": "https://zalo.me/g/bepnho13",
+     "primary": true
+    },
+    {
+     "platform": "meet",
+     "label": "Google Meet",
+     "url": "https://meet.google.com/abc-defg-hij",
+     "primary": false
+    }
+   ],
+   "event_end_at": "2026-11-14T17:00:00+00:00",
+   "read_only_at": "2026-12-14T17:00:00+00:00",
+   "read_only": false
+  },
+  "event": {
+   "id": "fx_project",
+   "name": "Bếp Nhỏ №13",
+   "event_date": "2026-11-14",
+   "event_time": "19:00:00",
+   "starts_at": "2026-11-14T12:00:00+00:00",
+   "tz": "Asia/Ho_Chi_Minh",
+   "status": "live"
+  },
+  "is_host": true,
+  "me": null,
+  "hosts": [
+   {
+    "user_id": "00000000-0000-4000-8000-00000000f1f0",
+    "display_name": "Bạn",
+    "handle": "ban",
+    "avatar_url": null
+   }
+  ],
+  "members": [
+   {
+    "member_id": "00000000-0000-4000-8000-000000000602",
+    "user_id": "00000000-0000-4000-8000-000000000102",
+    "role": "manager",
+    "lane_id": null,
+    "cap_money": false,
+    "cap_checkin": false,
+    "joined_at": "2026-10-28T10:00:00+00:00",
+    "display_name": "Linh",
+    "handle": "linh",
+    "avatar_url": null
+   },
+   {
+    "member_id": "00000000-0000-4000-8000-000000000603",
+    "user_id": "00000000-0000-4000-8000-000000000103",
+    "role": "lane_lead",
+    "lane_id": "00000000-0000-4000-8000-000000000202",
+    "cap_money": false,
+    "cap_checkin": false,
+    "joined_at": "2026-10-28T10:00:00+00:00",
+    "display_name": "Minh",
+    "handle": "minh",
+    "avatar_url": null
+   },
+   {
+    "member_id": "00000000-0000-4000-8000-000000000604",
+    "user_id": "00000000-0000-4000-8000-000000000104",
+    "role": "helper",
+    "lane_id": null,
+    "cap_money": false,
+    "cap_checkin": false,
+    "joined_at": "2026-10-28T10:00:00+00:00",
+    "display_name": "An",
+    "handle": "an",
+    "avatar_url": null
+   },
+   {
+    "member_id": "00000000-0000-4000-8000-000000000605",
+    "user_id": "00000000-0000-4000-8000-000000000105",
+    "role": "helper",
+    "lane_id": null,
+    "cap_money": false,
+    "cap_checkin": false,
+    "joined_at": "2026-10-28T10:00:00+00:00",
+    "display_name": "Trang",
+    "handle": "trang",
+    "avatar_url": null
+   },
+   {
+    "member_id": "00000000-0000-4000-8000-000000000606",
+    "user_id": "00000000-0000-4000-8000-000000000106",
+    "role": "finance",
+    "lane_id": null,
+    "cap_money": true,
+    "cap_checkin": true,
+    "joined_at": "2026-10-28T10:00:00+00:00",
+    "display_name": "Hà",
+    "handle": "ha",
+    "avatar_url": null
+   }
+  ],
+  "lanes": [
+   {
+    "id": "00000000-0000-4000-8000-000000000201",
+    "name": "Địa điểm",
+    "position": 0
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000202",
+    "name": "Thực đơn & đồ uống",
+    "position": 1
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000203",
+    "name": "Ngân sách",
+    "position": 2
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000204",
+    "name": "Khách & vé",
+    "position": 3
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000205",
+    "name": "Nhà cung cấp",
+    "position": 4
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000206",
+    "name": "Ngày diễn ra",
+    "position": 5
+   }
+  ],
+  "tasks": [
+   {
+    "id": "00000000-0000-4000-8000-000000000301",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000201",
+    "title": "Chốt quyền sử dụng ga-ra",
+    "assignee_id": "00000000-0000-4000-8000-000000000105",
+    "due_date": "2026-11-04",
+    "status": "done",
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000302",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000201",
+    "title": "Kiểm tra điện và thông gió",
+    "assignee_id": "00000000-0000-4000-8000-000000000105",
+    "due_date": "2026-11-08",
+    "status": "todo",
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000303",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000202",
+    "title": "Chốt thực đơn 5 món",
+    "assignee_id": "00000000-0000-4000-8000-000000000103",
+    "due_date": "2026-11-06",
+    "status": "doing",
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000304",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000202",
+    "title": "Đặt rượu gạo",
+    "assignee_id": "00000000-0000-4000-8000-000000000103",
+    "due_date": "2026-11-09",
+    "status": "todo",
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000305",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000202",
+    "title": "Thử món chay",
+    "assignee_id": "00000000-0000-4000-8000-000000000103",
+    "due_date": "2026-11-07",
+    "status": "blocked",
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000306",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000203",
+    "title": "Cập nhật chi phí thực tế",
+    "assignee_id": "00000000-0000-4000-8000-000000000102",
+    "due_date": "2026-11-10",
+    "status": "todo",
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000307",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000204",
+    "title": "Xác nhận khách đã thanh toán",
+    "assignee_id": "00000000-0000-4000-8000-000000000106",
+    "due_date": "2026-11-03",
+    "status": "doing",
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000308",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000204",
+    "title": "Nhắc khách: 18+ và ăn chay",
+    "assignee_id": "00000000-0000-4000-8000-000000000104",
+    "due_date": "2026-11-11",
+    "status": "todo",
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000309",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000205",
+    "title": "Thuê bàn ghế cho 14 chỗ",
+    "assignee_id": "00000000-0000-4000-8000-000000000102",
+    "due_date": "2026-11-05",
+    "status": "doing",
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000310",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000206",
+    "title": "In thứ tự chương trình",
+    "assignee_id": "00000000-0000-4000-8000-000000000104",
+    "due_date": "2026-11-13",
+    "status": "todo",
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000311",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000206",
+    "title": "Họp nhanh với đội 17:30",
+    "assignee_id": "00000000-0000-4000-8000-00000000f1f0",
+    "due_date": "2026-11-14",
+    "status": "todo",
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000312",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000201",
+    "title": "Gửi sơ đồ chỗ ngồi",
+    "assignee_id": "00000000-0000-4000-8000-00000000f1f0",
+    "due_date": "2026-11-01",
+    "status": "todo",
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   }
+  ],
+  "posts": [
+   {
+    "id": "00000000-0000-4000-8000-000000000404",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000202",
+    "type": "proposal",
+    "title": "Món thứ 3: cá kho hay nấm kho?",
+    "body": "Cần chốt trước thứ 5 để đặt nguyên liệu.",
+    "author_id": "00000000-0000-4000-8000-000000000103",
+    "addressee_id": null,
+    "options": [
+     "Cá kho",
+     "Nấm kho"
+    ],
+    "deadline": "2026-11-05",
+    "state": "open",
+    "source_post_id": null,
+    "created_at": "2026-11-04T03:00:00+00:00",
+    "edited_at": null,
+    "resolved_at": null,
+    "resolved_by": null,
+    "votes": [
+     2,
+     2
+    ],
+    "my_vote": null,
+    "replies_count": 1,
+    "seen_count": 0,
+    "seen_by_me": false,
+    "quiet": false
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000403",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000201",
+    "type": "question",
+    "title": "Ga-ra có ổ điện cho bếp từ thứ hai không?",
+    "body": "Mình thấy một ổ gần cửa.",
+    "author_id": "00000000-0000-4000-8000-000000000105",
+    "addressee_id": "00000000-0000-4000-8000-000000000102",
+    "options": null,
+    "deadline": null,
+    "state": "open",
+    "source_post_id": null,
+    "created_at": "2026-11-03T03:00:00+00:00",
+    "edited_at": null,
+    "resolved_at": null,
+    "resolved_by": null,
+    "votes": null,
+    "my_vote": null,
+    "replies_count": 0,
+    "seen_count": 0,
+    "seen_by_me": false,
+    "quiet": true
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000402",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000205",
+    "type": "update",
+    "title": "Đã đặt cọc bàn ghế",
+    "body": "Giao ngày 13/11 buổi chiều.",
+    "author_id": "00000000-0000-4000-8000-000000000102",
+    "addressee_id": null,
+    "options": null,
+    "deadline": null,
+    "state": "open",
+    "source_post_id": null,
+    "created_at": "2026-11-02T03:00:00+00:00",
+    "edited_at": null,
+    "resolved_at": null,
+    "resolved_by": null,
+    "votes": null,
+    "my_vote": null,
+    "replies_count": 0,
+    "seen_count": 2,
+    "seen_by_me": false,
+    "quiet": false
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000401",
+    "event_id": "fx_project",
+    "lane_id": "00000000-0000-4000-8000-000000000204",
+    "type": "decision",
+    "title": "Tối đa 14 khách, không thêm bàn",
+    "body": "Áp dụng cho sự kiện này.",
+    "author_id": "00000000-0000-4000-8000-00000000f1f0",
+    "addressee_id": null,
+    "options": null,
+    "deadline": null,
+    "state": "locked",
+    "source_post_id": null,
+    "created_at": "2026-11-01T03:00:00+00:00",
+    "edited_at": null,
+    "resolved_at": null,
+    "resolved_by": null,
+    "votes": null,
+    "my_vote": null,
+    "replies_count": 0,
+    "seen_count": 2,
+    "seen_by_me": true,
+    "quiet": false
+   }
+  ],
+  "ros": [
+   {
+    "id": "00000000-0000-4000-8000-000000000501",
+    "event_id": "fx_project",
+    "title": "Dựng bếp và bàn",
+    "owner_id": "00000000-0000-4000-8000-000000000103",
+    "starts_at": "2026-11-14T09:00:00+00:00",
+    "ends_at": "2026-11-14T10:30:00+00:00",
+    "done_at": null,
+    "done_by": null,
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000502",
+    "event_id": "fx_project",
+    "title": "Họp nhanh với đội",
+    "owner_id": "00000000-0000-4000-8000-00000000f1f0",
+    "starts_at": "2026-11-14T10:30:00+00:00",
+    "ends_at": "2026-11-14T11:30:00+00:00",
+    "done_at": null,
+    "done_by": null,
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000503",
+    "event_id": "fx_project",
+    "title": "Mở cửa đón khách",
+    "owner_id": "00000000-0000-4000-8000-000000000104",
+    "starts_at": "2026-11-14T11:30:00+00:00",
+    "ends_at": "2026-11-14T12:30:00+00:00",
+    "done_at": null,
+    "done_by": null,
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000504",
+    "event_id": "fx_project",
+    "title": "Phục vụ 5 món",
+    "owner_id": "00000000-0000-4000-8000-000000000103",
+    "starts_at": "2026-11-14T12:30:00+00:00",
+    "ends_at": "2026-11-14T15:00:00+00:00",
+    "done_at": null,
+    "done_by": null,
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000505",
+    "event_id": "fx_project",
+    "title": "Dọn dẹp và chụp ảnh chung",
+    "owner_id": "00000000-0000-4000-8000-000000000102",
+    "starts_at": "2026-11-14T15:00:00+00:00",
+    "ends_at": "2026-11-14T15:30:00+00:00",
+    "done_at": null,
+    "done_by": null,
+    "created_by": "00000000-0000-4000-8000-00000000f1f0",
+    "created_at": "2026-10-28T10:00:00+00:00",
+    "updated_at": "2026-10-28T10:00:00+00:00"
+   }
+  ],
+  "change_requests": [
+   {
+    "id": "00000000-0000-4000-8000-000000000701",
+    "event_id": "fx_project",
+    "kind": "lane_add",
+    "lane_id": null,
+    "payload": {
+     "name": "Truyền thông"
+    },
+    "why": "Cần người lo ảnh và bài đăng trước ngày diễn ra.",
+    "status": "pending",
+    "proposed_by": "00000000-0000-4000-8000-000000000102",
+    "proposed_at": "2026-11-02T03:00:00+00:00",
+    "decided_by": null,
+    "decided_at": null,
+    "decision_reason": null
+   }
+  ]
+ }
+}

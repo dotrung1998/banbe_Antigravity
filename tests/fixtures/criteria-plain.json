@@ -1,0 +1,84 @@
+{
+  "_comment": "criteriaPlain (note 70): who can reserve in plain words. Shared by tests/unit/criteriaPlain.test.mjs and apps/ios/BanbeAppTests/CriteriaPlainTests.swift. Change both together.",
+  "cases": [
+    {
+      "name": "everyone: hidden",
+      "criteria": {
+        "version": 1,
+        "mode": "everyone"
+      },
+      "en": null,
+      "vi": null
+    },
+    {
+      "name": "one interest (regression: no 'Interests: Any of:')",
+      "criteria": {
+        "version": 1,
+        "mode": "declared",
+        "interests": {
+          "rule": "any",
+          "values": [
+            "supper"
+          ]
+        }
+      },
+      "en": "Open to people into Supper club",
+      "vi": "Dành cho người thích Supper club"
+    },
+    {
+      "name": "any of three",
+      "criteria": {
+        "version": 1,
+        "mode": "declared",
+        "interests": {
+          "rule": "any",
+          "values": [
+            "music",
+            "gallery",
+            "popup"
+          ]
+        }
+      },
+      "en": "Open to people into Music, Gallery or Pop-up",
+      "vi": "Dành cho người thích Nhạc, Phòng tranh hoặc Pop-up"
+    },
+    {
+      "name": "all of two plus a goal",
+      "criteria": {
+        "version": 1,
+        "mode": "declared",
+        "interests": {
+          "rule": "all",
+          "values": [
+            "music",
+            "gallery"
+          ]
+        },
+        "goals": {
+          "rule": "any",
+          "values": [
+            "learn"
+          ]
+        }
+      },
+      "en": "Open to people into Music and Gallery, with the goal: Learn something",
+      "vi": "Dành cho người thích Nhạc và Phòng tranh, có mục tiêu Học hỏi"
+    },
+    {
+      "name": "goals only",
+      "criteria": {
+        "version": 1,
+        "mode": "declared",
+        "goals": {
+          "rule": "any",
+          "values": [
+            "meet_people",
+            "networking"
+          ]
+        }
+      },
+      "en": "Open to people with the goal: Meet people or Professional networking",
+      "vi": "Dành cho người có mục tiêu Gặp gỡ mọi người hoặc Kết nối nghề nghiệp"
+    }
+  ]
+}

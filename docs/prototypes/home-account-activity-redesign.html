@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>banbe Home, Activity, Account</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Prototype only. Colours are the app's real tokens (src/index.css). Nothing here is wired to the codebase. */
+:root{
+  --bg:#F7F4EC; --fg:#1B1916; --fg2:rgba(27,25,22,.72); --fg3:rgba(27,25,22,.64);
+  --rule:rgba(27,25,22,.16); --divider:rgba(27,25,22,.10); --block:#EEE8DA;
+  --alert:#9A3E2D; --onalert:#fff; --clay:#9C5B3B; --moss:#4E6A30; --honey:#8C6014; --plum:#6B4E7C;
+  --bar:#FFFFFF; --stage:#E4DED0;
+}
+:root[data-theme="dark"]{
+  --bg:#0F0E0B; --fg:#F2EDE1; --fg2:rgba(242,237,225,.72); --fg3:rgba(242,237,225,.56);
+  --rule:rgba(242,237,225,.18); --divider:rgba(242,237,225,.10); --block:#1A1815;
+  --alert:#E8715B; --onalert:#0F0E0B; --clay:#D8926C; --moss:#A9C487; --honey:#F2C46D; --plum:#BBA2D0;
+  --bar:#141310; --stage:#050504;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:'Be Vietnam Pro',system-ui,sans-serif;background:var(--stage);color:var(--fg);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.stage{min-height:100%;display:flex;gap:40px;justify-content:center;align-items:flex-start;padding:32px 16px}
+
+/* ---------- side panel ---------- */
+.panel{width:360px;flex:none;color:var(--fg);position:sticky;top:32px}
+.panel h1{font-weight:300;font-size:28px;letter-spacing:-.01em;margin:0 0 4px}
+.panel .lede{font-size:13px;color:var(--fg2);line-height:1.5;margin:0 0 20px}
+.ctl{margin-bottom:16px}
+.ctl label{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg3);margin-bottom:6px}
+.seg{display:flex;border:1px solid var(--rule)}
+.seg button{flex:1;padding:8px 4px;font-size:12px;color:var(--fg2)}
+.seg button+button{border-left:1px solid var(--rule)}
+.seg button.on{background:var(--fg);color:var(--bg)}
+.notes{border-top:1px solid var(--rule);padding-top:16px;margin-top:8px}
+.notes h2{font-size:15px;font-weight:500;margin:0 0 10px}
+.notes ul{margin:0;padding-left:18px;font-size:13px;line-height:1.55;color:var(--fg2)}
+.notes li{margin-bottom:6px}
+.notes b{color:var(--fg);font-weight:500}
+.ia{margin-top:16px;font-size:12px;line-height:1.5;color:var(--fg2)}
+.ia table{width:100%;border-collapse:collapse}
+.ia td{padding:5px 0;border-bottom:1px solid var(--divider);vertical-align:top}
+.ia td:first-child{color:var(--fg3);width:42%;padding-right:8px}
+
+/* ---------- phone ---------- */
+.phone{width:390px;height:844px;flex:none;border-radius:48px;background:#000;padding:10px;box-shadow:0 30px 80px rgba(0,0,0,.25)}
+.device{position:relative;width:100%;height:100%;border-radius:40px;overflow:hidden;background:var(--bg)}
+.status{position:absolute;top:0;left:0;right:0;height:50px;z-index:30;display:flex;justify-content:space-between;align-items:center;padding:6px 30px 0;font-size:15px;font-weight:600;pointer-events:none;color:var(--fg)}
+.status.light{color:#fff}
+.status .dots{display:flex;gap:6px;align-items:center}
+.screen{position:absolute;inset:0 0 82px 0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
+.screen::-webkit-scrollbar{display:none}
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:82px;background:var(--bar);border-top:1px solid var(--divider);display:flex;justify-content:space-around;padding:10px 6px 0;z-index:20}
+.tab{width:64px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--fg3);position:relative}
+.tab svg{width:26px;height:26px}
+.tab.on{color:var(--fg)}
+.tab .avatar-sm{width:26px;height:26px;border-radius:50%;background:var(--clay);color:#fff;font-size:11px;font-weight:600;display:grid;place-items:center;border:1.5px solid transparent}
+.tab.on .avatar-sm{border-color:var(--fg);box-shadow:inset 0 0 0 1.5px var(--bar)}
+.dot{position:absolute;top:-2px;right:14px;min-width:16px;height:16px;border-radius:8px;background:var(--alert);color:var(--onalert);font-size:10px;font-weight:600;display:grid;place-items:center;padding:0 4px}
+svg.i{fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- Home: hero ---------- */
+.hero{position:relative;height:640px;overflow:hidden;background:#2a2620;color:#fff;touch-action:pan-y}
+.slides{display:flex;height:100%;transition:transform .6s cubic-bezier(.22,.61,.36,1)}
+.slide{flex:0 0 100%;height:100%;position:relative;background-size:cover;background-position:center}
+.slide::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,.18) 30%,rgba(0,0,0,.22) 58%,rgba(0,0,0,.72) 100%)}
+.slide .copy{position:absolute;left:24px;right:24px;top:212px;z-index:2}
+.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.8}
+.hero h2{font-weight:300;font-size:34px;line-height:1.1;letter-spacing:-.01em;margin:8px 0 10px}
+.hero .copy p{font-size:16px;font-weight:300;margin:0;opacity:.92}
+.hero-top{position:absolute;top:50px;left:0;right:0;z-index:5;padding:0 20px}
+.hero-head{display:flex;justify-content:space-between;align-items:center;height:44px}
+.wordmark{font-weight:600;font-size:22px;letter-spacing:.02em}
+.hbtns{display:flex;gap:4px;align-items:center}
+.hbtn{width:40px;height:40px;display:grid;place-items:center;position:relative;color:inherit}
+.hbtn svg{width:23px;height:23px}
+.hbtn .pip{position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--alert);box-shadow:0 0 0 2px rgba(0,0,0,.25)}
+.hbtn .av{width:30px;height:30px;border-radius:50%;background:var(--clay);color:#fff;font-size:12px;font-weight:600;display:grid;place-items:center;border:1.5px solid rgba(255,255,255,.85)}
+.texttabs{display:flex;gap:22px;white-space:nowrap;margin-top:22px;padding-left:4px}
+.texttabs button{font-size:17px;font-weight:300;color:rgba(255,255,255,.62);padding:6px 0}
+.texttabs button.on{color:#fff;font-weight:400}
+.hero-bottom{position:absolute;left:24px;right:24px;bottom:28px;z-index:5}
+.meta-line{font-size:13px;opacity:.9;margin-bottom:16px;display:flex;justify-content:space-between}
+.cta{display:block;width:100%;height:50px;font-size:16px;letter-spacing:.01em}
+.cta.solid{background:#fff;color:#111}
+.cta.ghost{border:1px solid rgba(255,255,255,.9);color:#fff;margin-top:12px}
+.bars{display:flex;justify-content:center;gap:6px;margin-top:22px}
+.bars button{width:22px;height:3px;background:rgba(255,255,255,.35);padding:0}
+.bars button.on{width:30px;background:#fff}
+
+/* host panel inside hero */
+.hostpanel{position:absolute;inset:0;background:linear-gradient(160deg,#2b2721,#141210);z-index:1}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(255,255,255,.14);margin-top:20px;border:1px solid rgba(255,255,255,.14)}
+.kpis div{background:#1d1a16;padding:10px 14px}
+.kpis b{display:block;font-size:22px;font-weight:300}
+.kpis span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;opacity:.65}
+
+/* ---------- generic content ---------- */
+.sec{padding:28px 20px 0}
+.sec-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px}
+.sec-h h3{font-size:19px;font-weight:400;margin:0;letter-spacing:-.01em}
+.sec-h button{font-size:13px;color:var(--fg2)}
+.nextup{display:flex;align-items:center;gap:14px;padding:16px;border:1px solid var(--rule);width:100%;text-align:left}
+.datebox{width:46px;text-align:center;border-right:1px solid var(--rule);padding-right:12px}
+.datebox small{display:block;font-size:10px;letter-spacing:.1em;color:var(--fg3)}
+.datebox b{font-size:22px;font-weight:300}
+.nextup .t{flex:1;min-width:0}
+.nextup .t div{font-size:15px}
+.nextup .t span{font-size:12px;color:var(--moss)}
+.cats{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--divider);border-left:1px solid var(--divider)}
+.cats button{height:84px;border-right:1px solid var(--divider);border-bottom:1px solid var(--divider);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:12px;color:var(--fg2)}
+.cats svg{width:26px;height:26px;color:var(--fg)}
+.rail{display:flex;gap:12px;overflow-x:auto;margin:0 -20px;padding:0 20px;scrollbar-width:none}
+.rail::-webkit-scrollbar{display:none}
+.card{flex:0 0 220px;text-align:left}
+.card .ph{height:260px;background-size:cover;background-position:center;background-color:var(--block)}
+.card .n{font-size:15px;margin-top:10px}
+.card .m{font-size:12px;color:var(--fg3);margin-top:3px}
+.foot{height:40px}
+
+/* ---------- page header (non-hero screens) ---------- */
+.ph-head{position:sticky;top:0;z-index:10;background:var(--bg);padding:54px 20px 0}
+.ph-row{display:flex;justify-content:space-between;align-items:center;height:44px}
+.ph-row h1{font-size:28px;font-weight:300;margin:0;letter-spacing:-.01em}
+.ph-row .acts{display:flex;gap:2px}
+.iconbtn{width:40px;height:40px;display:grid;place-items:center}
+.iconbtn svg{width:22px;height:22px}
+.back{display:flex;align-items:center;gap:2px;font-size:15px;color:var(--fg2);height:44px}
+.back svg{width:20px;height:20px}
+.subtabs{display:flex;gap:28px;border-bottom:1px solid var(--divider);margin-top:8px}
+.subtabs button{position:relative;padding:12px 0;font-size:15px;color:var(--fg3);display:flex;gap:6px;align-items:center}
+.subtabs button.on{color:var(--fg)}
+.subtabs button.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--fg)}
+.count{font-size:11px;min-width:18px;height:18px;border-radius:9px;background:var(--alert);color:var(--onalert);display:grid;place-items:center;padding:0 5px;font-weight:600}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:14px 0 12px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;height:32px;padding:0 14px;border:1px solid var(--rule);font-size:13px;color:var(--fg2)}
+.chip.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+
+/* list rows */
+.list{margin:0 20px}
+.row{display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:14px 0;border-bottom:1px solid var(--divider);min-height:56px}
+.row .ic{width:24px;height:24px;flex:none;color:var(--fg)}
+.row .lbl{flex:1;min-width:0;font-size:15px}
+.row .lbl small{display:block;font-size:12px;color:var(--fg3);margin-top:2px}
+.row .val{font-size:13px;color:var(--fg3)}
+.row .chev{width:16px;height:16px;color:var(--fg3);flex:none}
+.grp-h{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg3);margin:30px 20px 4px}
+
+/* threads */
+.thread{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--divider);width:100%;text-align:left}
+.avc{width:46px;height:46px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:15px;font-weight:500;color:#fff;background-size:cover;background-position:center}
+.thread .b{flex:1;min-width:0}
+.thread .top{display:flex;justify-content:space-between;gap:8px}
+.thread .nm{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.thread .tm{font-size:12px;color:var(--fg3);flex:none}
+.thread .ctx{font-size:12px;color:var(--fg3);margin-top:1px}
+.thread .lm{font-size:13px;color:var(--fg2);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thread.unread .nm,.thread.unread .lm{color:var(--fg);font-weight:500}
+.udot{width:8px;height:8px;border-radius:50%;background:var(--alert);flex:none;align-self:center}
+.tag{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border:1px solid currentColor;margin-left:6px;vertical-align:1px}
+
+/* notifications */
+.day{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg3);padding:20px 0 4px}
+.nt{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--divider);width:100%;text-align:left;position:relative}
+.nt .nic{width:40px;height:40px;flex:none;border:1px solid var(--rule);display:grid;place-items:center}
+.nt .nic svg{width:20px;height:20px}
+.nt .b{flex:1;min-width:0;font-size:14px;line-height:1.4;color:var(--fg2)}
+.nt .b b{color:var(--fg);font-weight:500}
+.nt .b small{display:block;font-size:12px;color:var(--fg3);margin-top:3px}
+.nt.unread .b{color:var(--fg)}
+.nt .act{margin-top:10px;display:flex;gap:8px}
+.mini{height:32px;padding:0 14px;font-size:13px;border:1px solid var(--fg)}
+.mini.solid{background:var(--fg);color:var(--bg)}
+.hint{font-size:12px;color:var(--fg3);line-height:1.5;padding:18px 0 8px;display:flex;gap:8px}
+.hint svg{width:16px;height:16px;flex:none;margin-top:1px}
+
+/* account */
+.entity{display:flex;align-items:center;gap:16px;padding:8px 20px 0}
+.entity .avc{width:64px;height:64px;font-size:22px}
+.entity .nm{font-size:22px;font-weight:300}
+.entity .hd{font-size:13px;color:var(--fg3);margin-top:2px}
+.entity .lnk{font-size:13px;color:var(--fg);margin-top:6px;display:inline-flex;align-items:center;gap:2px;border-bottom:1px solid var(--rule)}
+.entity .lnk svg{width:14px;height:14px}
+.mode{display:flex;margin:22px 20px 0;border:1px solid var(--rule)}
+.mode button{flex:1;height:42px;font-size:14px;color:var(--fg2)}
+.mode button.on{background:var(--fg);color:var(--bg)}
+.shortcuts{display:grid;grid-template-columns:repeat(4,1fr);margin:22px 20px 0;border-top:1px solid var(--divider);border-bottom:1px solid var(--divider)}
+.shortcuts button{padding:16px 0 14px;display:flex;flex-direction:column;align-items:center;gap:8px;font-size:12px;color:var(--fg2);position:relative}
+.shortcuts svg{width:26px;height:26px;color:var(--fg)}
+.shortcuts .dot{right:16px;top:10px}
+.attn{margin:16px 20px 0;display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--block);width:calc(100% - 40px);text-align:left;font-size:14px}
+.attn svg{width:20px;height:20px;color:var(--alert);flex:none}
+.attn span{flex:1}
+.signout{display:block;margin:28px 20px 0;width:calc(100% - 40px);height:48px;border:1px solid var(--rule);font-size:15px}
+.ver{text-align:center;font-size:11px;color:var(--fg3);margin:14px 0 30px}
+.guestcard{margin:12px 20px 0;padding:24px 20px;border:1px solid var(--rule)}
+.guestcard h2{font-size:22px;font-weight:300;margin:0 0 6px}
+.guestcard p{font-size:14px;color:var(--fg2);margin:0 0 18px;line-height:1.5}
+.btn{height:48px;width:100%;font-size:15px}
+.btn.solid{background:var(--fg);color:var(--bg)}
+.btn.ghost{border:1px solid var(--fg);margin-top:10px}
+
+/* toggles + radios */
+.sw{width:46px;height:28px;border-radius:14px;background:var(--rule);position:relative;flex:none;transition:background .2s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.sw.on{background:var(--moss)}
+.sw.on::after{transform:translateX(18px)}
+.radio{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--rule);flex:none;display:grid;place-items:center}
+.radio.on{border-color:var(--fg)}
+.radio.on::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--fg)}
+.lockrow{opacity:.55}
+
+/* chat */
+.chat{padding:8px 20px 90px;display:flex;flex-direction:column;gap:8px}
+.ctxbar{margin:0 20px;padding:10px 12px;border:1px solid var(--rule);display:flex;gap:10px;align-items:center;font-size:13px}
+.ctxbar .ph{width:36px;height:36px;background-size:cover;background-position:center;flex:none}
+.bub{max-width:76%;padding:10px 14px;font-size:14px;line-height:1.45}
+.bub.them{background:var(--block);align-self:flex-start}
+.bub.me{background:var(--fg);color:var(--bg);align-self:flex-end}
+.stamp{font-size:11px;color:var(--fg3);text-align:center;margin:10px 0 4px}
+.composer{position:absolute;left:0;right:0;bottom:82px;padding:10px 16px;background:var(--bg);border-top:1px solid var(--divider);display:flex;gap:10px;z-index:12}
+.composer input{flex:1;height:42px;border:1px solid var(--rule);background:transparent;color:var(--fg);padding:0 14px;font:inherit;font-size:14px;outline:none}
+.composer button{width:42px;height:42px;background:var(--fg);color:var(--bg);display:grid;place-items:center}
+
+/* sheet */
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:40;opacity:0;pointer-events:none;transition:opacity .25s}
+.scrim.open{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:41;background:var(--bg);transform:translateY(100%);transition:transform .32s cubic-bezier(.22,.61,.36,1);padding:10px 0 30px;max-height:88%;overflow-y:auto}
+.sheet.open{transform:none}
+.grab{width:36px;height:4px;border-radius:2px;background:var(--rule);margin:0 auto 10px}
+.sheet .entity{padding-top:4px}
+.qgrid{display:grid;grid-template-columns:repeat(4,1fr);margin:20px 20px 0;border-top:1px solid var(--divider);border-bottom:1px solid var(--divider)}
+.qgrid button{padding:16px 0 12px;display:flex;flex-direction:column;align-items:center;gap:8px;font-size:12px;color:var(--fg2)}
+.qgrid svg{width:24px;height:24px;color:var(--fg)}
+.inline-seg{display:flex;border:1px solid var(--rule)}
+.inline-seg button{padding:6px 10px;font-size:12px;color:var(--fg2)}
+.inline-seg button.on{background:var(--fg);color:var(--bg)}
+.placeholder{padding:40px 24px;color:var(--fg2);font-size:14px;line-height:1.6}
+.toast{position:absolute;left:20px;right:20px;bottom:96px;z-index:50;background:var(--fg);color:var(--bg);padding:12px 16px;font-size:13px;opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none}
+.toast.show{opacity:1;transform:none}
+
+@media (max-width:860px){
+  .stage{flex-direction:column;align-items:center;padding:16px}
+  .panel{position:static;width:100%;max-width:390px;order:2}
+}
+@media (max-width:420px){
+  .stage{padding:0}
+  .phone{width:100%;height:100svh;border-radius:0;padding:0}
+  .device{border-radius:0}
+  .panel{padding:16px}
+}
+</style>
+</head>
+<body>
+<div class="stage">
+  <aside class="panel">
+    <h1>Home, Activity, Account</h1>
+    <p class="lede">Redesign proposal for banbe. Interactive prototype only. The codebase is not changed. Tap anything in the phone.</p>
+    <div class="ctl"><label>Signed in as</label><div class="seg" id="roleSeg"></div></div>
+    <div class="ctl"><label>Jump to</label><div class="seg" id="jumpSeg"></div></div>
+    <div class="notes" id="notes"></div>
+    <div class="ia">
+      <table>
+        <tr><td>Today</td><td>Proposal</td></tr>
+        <tr><td>Home header: streak, coins, bell, search</td><td>Search, Activity, avatar. Avatar opens a quick panel with mode, theme, language and Settings</td></tr>
+        <tr><td>Bell on Home + Inbox in the dock + Notifications row in Account</td><td>One Activity tab with Messages and Notifications sub-tabs</td></tr>
+        <tr><td>"New message" notifications in the bell feed</td><td>Only in Messages (unread dot), never in Notifications</td></tr>
+        <tr><td>Account: tabs + 4 tiles + Activity / Share / App groups, Settings hidden one level down</td><td>Profile on top, Going out / Hosting switch, 4 shortcuts, then Activity, Share, Settings, Support. Settings items are visible on the page</td></tr>
+        <tr><td>Admin as a third Account tab</td><td>One "Admin console" row</td></tr>
+        <tr><td>Dock: Home, Schedule, +, Inbox, Account</td><td>Home, Map, Schedule, Activity, Account. "+" moves to the Hosting home and the quick panel</td></tr>
+      </table>
+    </div>
+  </aside>
+
+  <div class="phone"><div class="device" id="device">
+    <div class="status" id="status"><span>7:13</span><span class="dots">
+      <svg width="18" height="11" viewBox="0 0 18 11"><g fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="6" rx="1"/><rect x="10" y="2.5" width="3" height="8.5" rx="1"/><rect x="15" y="0" width="3" height="11" rx="1" opacity=".4"/></g></svg>
+      <svg width="25" height="12" viewBox="0 0 25 12"><rect x=".5" y=".5" width="21" height="11" rx="3" fill="none" stroke="currentColor" opacity=".5"/><rect x="2" y="2" width="14" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx=".7" fill="currentColor" opacity=".5"/></svg>
+    </span></div>
+    <div class="screen" id="screen"></div>
+    <nav class="tabbar" id="tabbar" aria-label="Main"></nav>
+    <div class="scrim" id="scrim" data-a="closeSheet"></div>
+    <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Quick panel"></div>
+    <div class="toast" id="toast"></div>
+  </div></div>
+</div>
+
+<script>
+const PH = '../../public/photos/';
+const ICON = {
+  home:'<path d="M4 11.5 12 5l8 6.5V20h-5.5v-5h-5v5H4z"/>',
+  map:'<path d="M9 4 3.5 6v14L9 18l6 2 5.5-2V4L15 6 9 4zM9 4v14M15 6v14"/>',
+  cal:'<rect x="4" y="5.5" width="16" height="14.5" rx="1"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
+  activity:'<path d="M5 5h14v10H10l-4 3.5V15H5z"/><path d="M18.5 8.5a2.5 2.5 0 1 0 0-.01" stroke-width="0"/>',
+  bubble:'<path d="M4.5 5.5h15v10.5h-9L6 19.5V16H4.5z"/>',
+  bell:'<path d="M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 1.5H5zM10 20a2 2 0 0 0 4 0"/>',
+  search:'<circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M6 18l1.6-1.6M16.4 7.6 18 6"/>',
+  chev:'<path d="m9 5 7 7-7 7"/>',
+  back:'<path d="m15 5-7 7 7 7"/>',
+  ticket:'<path d="M3.5 7.5h17v3a1.5 1.5 0 0 0 0 3v3h-17v-3a1.5 1.5 0 0 0 0-3z"/><path d="M14 7.5v9" stroke-dasharray="1.5 2"/>',
+  wallet:'<rect x="3.5" y="6" width="17" height="13" rx="1"/><path d="M3.5 9.5h17M15.5 14h2"/>',
+  bookmark:'<path d="M6.5 4h11v16l-5.5-4-5.5 4z"/>',
+  star:'<path d="m12 4 2.4 5 5.4.6-4 3.7 1.1 5.3L12 16l-4.9 2.6 1.1-5.3-4-3.7 5.4-.6z"/>',
+  calcheck:'<rect x="4" y="5.5" width="16" height="14.5" rx="1"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4M9 14.5l2 2 4-4"/>',
+  bank:'<path d="M3.5 9 12 4.5 20.5 9M5 9v8M9.5 9v8M14.5 9v8M19 9v8M3.5 19.5h17"/>',
+  users:'<circle cx="9" cy="9" r="3"/><path d="M3.5 19c.6-3 2.7-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/><circle cx="16.5" cy="8" r="2.4"/><path d="M15.5 13.6c2.6-.2 4.4 1.2 5 4"/>',
+  chart:'<path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/>',
+  heart:'<path d="M12 19s-7-4.4-7-9.2A3.8 3.8 0 0 1 12 8a3.8 3.8 0 0 1 7 1.8C19 14.6 12 19 12 19z"/>',
+  folder:'<path d="M3.5 6.5h6l2 2h9v10h-17z"/>',
+  share:'<path d="M12 3.5v11M8 7.5l4-4 4 4M5 12v8h14v-8"/>',
+  card:'<rect x="3.5" y="5.5" width="17" height="13" rx="1"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.5-1.4 1.6-2 3-2s2.5.6 3 2M14.5 10h3M14.5 13h3"/>',
+  person:'<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-4 3.6-6 7-6s6.2 2 7 6"/>',
+  sliders:'<path d="M5 7h9M18 7h1M5 17h1M10 17h9"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>',
+  globe:'<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.4 3.5 5.2 3.5 8.5s-1 6.1-3.5 8.5c-2.5-2.4-3.5-5.2-3.5-8.5s1-6.1 3.5-8.5z"/>',
+  lock:'<rect x="5" y="10.5" width="14" height="9.5" rx="1"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
+  help:'<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.7.3-1 .8-1 1.5v.7M12 16.8v.2"/>',
+  doc:'<path d="M6 3.5h8l4 4v13H6z"/><path d="M14 3.5v4h4M9 12h6M9 15.5h6"/>',
+  qa:'<path d="M4.5 5.5h11V13h-6l-3 2.5V13h-2z"/><path d="M15.5 9h4v7.5H18v2.2L15.5 16.5h-4.5V13"/>',
+  shield:'<path d="M12 3.5 19 6v6c0 4.2-3 7.2-7 8.5-4-1.3-7-4.3-7-8.5V6z"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  sparkle:'<path d="M12 4v4M12 16v4M4 12h4M16 12h4M7 7l2 2M15 15l2 2M7 17l2-2M15 9l2-2"/>',
+  coin:'<circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10h4a1.5 1.5 0 0 1 0 3h-3a1.5 1.5 0 0 0 0 3h4"/>',
+  clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  megaphone:'<path d="M4 10v4h3l8 4.5v-13L7 10z"/><path d="M18 9.5a3.5 3.5 0 0 1 0 5"/>',
+  refund:'<path d="M5 9h11a4 4 0 0 1 0 8H8M5 9l3-3M5 9l3 3"/>',
+  alertc:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5.5M12 16v.3"/>',
+  info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8v.3"/>',
+  send:'<path d="M4 12 20 4l-6 16-3-7z"/>',
+  supper:'<path d="M7 3.5v7a2 2 0 0 0 4 0v-7M9 3.5V20.5M16.5 3.5c-1.7 1-2.5 3-2.5 6v3h2.5v8"/>',
+  music:'<path d="M9 17.5V6l10-2v11.5"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/>',
+  frame:'<rect x="4" y="4" width="16" height="16"/><path d="m4 16 5-5 4 4 2-2 5 5"/><circle cx="15.5" cy="8.5" r="1.3"/>',
+  hanger:'<path d="M12 7.5a2 2 0 1 1 2-2c0 1.2-2 1.5-2 3L3.5 16.5h17L12 8.5"/>',
+  store:'<path d="M4 9.5 5.5 4.5h13L20 9.5M4 9.5v10h16v-10M4 9.5a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0M10 19.5v-5h4v5"/>',
+  grid:'<rect x="4" y="4" width="6.5" height="6.5"/><rect x="13.5" y="4" width="6.5" height="6.5"/><rect x="4" y="13.5" width="6.5" height="6.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5"/>',
+  lightbulb:'<path d="M9 17.5h6M10 20.5h4M8.5 14.5a5.5 5.5 0 1 1 7 0c-.7.6-1 1.3-1 2v1h-5v-1c0-.7-.3-1.4-1-2z"/>',
+  archive:'<rect x="3.5" y="4.5" width="17" height="4"/><path d="M5 8.5v11h14v-11M10 12.5h4"/>',
+  logout:'<path d="M14 4.5H5v15h9M10 12h10M17 9l3 3-3 3"/>',
+};
+const ic = (k, cls='i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]||''}</svg>`;
+
+/* ---------- data ---------- */
+const HEROES = {
+  foryou:[
+    {id:'e1',eyebrow:'Supper club',t:'Bếp Nhỏ',s:'Seven courses at one long table',when:'Sat 8 Nov · 19:00',where:'District 3',price:'450.000 ₫',left:'4 of 12 left',img:'DSCF2023.jpg'},
+    {id:'e2',eyebrow:'Music',t:'Vinyl Sundays',s:'Lineup: Mai Lan, Kiên, Thảo B2B',when:'Sun 9 Nov · 16:00',where:'Thảo Điền',price:'250.000 ₫',left:'18 left',img:'DSCF4207.jpg'},
+    {id:'e3',eyebrow:'Gallery',t:'Paper & Light',s:'Analog prints by six Saigon photographers',when:'Fri 14 Nov · 18:30',where:'District 1',price:'Free',left:'Open entry',img:'DSCF5796.jpg'},
+  ],
+  tonight:[
+    {id:'e4',eyebrow:'Pop-up',t:'Night Market Kitchen',s:'Five cooks, one rooftop',when:'Tonight · 20:00',where:'District 1',price:'300.000 ₫',left:'6 left',img:'DSCF6107.jpg'},
+    {id:'e5',eyebrow:'Music',t:'Quiet Jazz',s:'Trio set in a living room',when:'Tonight · 21:00',where:'Bình Thạnh',price:'200.000 ₫',left:'2 left',img:'DSCF7039.jpg'},
+  ],
+  weekend:[
+    {id:'e1',eyebrow:'Supper club',t:'Bếp Nhỏ',s:'Seven courses at one long table',when:'Sat 8 Nov · 19:00',where:'District 3',price:'450.000 ₫',left:'4 of 12 left',img:'DSCF2023.jpg'},
+    {id:'e6',eyebrow:'Fashion',t:'Second Look',s:'Vintage swap and styling session',when:'Sat 8 Nov · 14:00',where:'District 5',price:'150.000 ₫',left:'21 left',img:'DSCF4864.jpg'},
+    {id:'e2',eyebrow:'Music',t:'Vinyl Sundays',s:'Lineup: Mai Lan, Kiên, Thảo B2B',when:'Sun 9 Nov · 16:00',where:'Thảo Điền',price:'250.000 ₫',left:'18 left',img:'DSCF4207.jpg'},
+  ],
+};
+const RAIL = [
+  {n:'Ceramics & Wine',m:'Thu 13 Nov · District 2 · 380.000 ₫',img:'DSCF4423.jpg'},
+  {n:'Run Club Breakfast',m:'Sat 8 Nov · Thủ Thiêm · Free',img:'DSCF6366.jpg'},
+  {n:'Phở Lab',m:'Sun 9 Nov · District 10 · 220.000 ₫',img:'DSCF2539.jpg'},
+  {n:'Zine Fair',m:'Sat 15 Nov · District 3 · Free',img:'DSCF7501.jpg'},
+];
+const THREADS = [
+  {id:'t1',name:'Bếp Nhỏ',kind:'host',ctx:'Bếp Nhỏ · Sat 8 Nov',last:'See you Saturday. The gate code is in your ticket.',tm:'09:41',unread:true,img:'DSCF2023.jpg',color:'#9C5B3B'},
+  {id:'t2',name:'Second Look team',kind:'team',ctx:'Event team · 5 people',last:'Linh: I can bring the rails at 12:00',tm:'Yesterday',unread:true,color:'#6B4E7C'},
+  {id:'t3',name:'Payment dispute #2041',kind:'dispute',ctx:'Quiet Jazz · banbe support',last:'We have asked the host to check the transfer.',tm:'Tue',unread:false,color:'#9A3E2D'},
+  {id:'t4',name:'Vinyl Sundays',kind:'host',ctx:'Vinyl Sundays · Sun 9 Nov',last:'You: Is there a coat check?',tm:'Mon',unread:false,img:'DSCF4207.jpg',color:'#4E6A30'},
+  {id:'t5',name:'Paper & Light',kind:'host',ctx:'Paper & Light · Fri 14 Nov',last:'Thanks for following us!',tm:'2 Nov',unread:false,img:'DSCF5796.jpg',color:'#8C6014'},
+];
+/* Raw feed as the server returns it. `message` kinds are dropped from the Notifications tab (they are the
+   unread state in Messages already). */
+const RAW_NOTES = [
+  {id:'n0',kind:'message',day:'Today',txt:'<b>Bếp Nhỏ</b> sent you a message',tm:'09:41'},
+  {id:'n1',kind:'tickets',icon:'ticket',day:'Today',unread:true,txt:'<b>Your ticket for Bếp Nhỏ is confirmed.</b> 2 tickets, seats held in your name.',tm:'09:12',action:{label:'View ticket'}},
+  {id:'n2',kind:'payments',icon:'clock',day:'Today',unread:true,txt:'<b>Pay within 18 minutes</b> to keep 2 seats at Night Market Kitchen.',tm:'08:55',action:{label:'Pay now',solid:true}},
+  {id:'nm2',kind:'message',day:'Today',txt:'<b>Linh</b> replied in Second Look team',tm:'Yesterday'},
+  {id:'n3',kind:'events',icon:'megaphone',day:'Today',unread:true,txt:'<b>Vinyl Sundays</b> posted an announcement: doors open 30 min earlier.',tm:'07:30'},
+  {id:'n4',kind:'events',icon:'heart',day:'Last 7 days',txt:'<b>Paper & Light</b>, a host you follow, published a new event.',tm:'Wed'},
+  {id:'n5',kind:'payments',icon:'refund',day:'Last 7 days',txt:'<b>Refund sent:</b> 200.000 ₫ for Quiet Jazz to your account ending 4821.',tm:'Tue'},
+  {id:'nm3',kind:'message',day:'Last 7 days',txt:'<b>banbe support</b> replied about dispute #2041',tm:'Tue'},
+  {id:'n6',kind:'rewards',icon:'star',day:'Last 7 days',txt:'<b>New badge:</b> Regular. You went to 3 events this month.',tm:'Mon'},
+  {id:'n7',kind:'events',icon:'cal',day:'Older',txt:'<b>Reminder:</b> Ceramics & Wine is next week. Add it to your Schedule?',tm:'28 Oct',action:{label:'Add to Schedule'}},
+];
+const HOST_NOTES = [
+  {id:'h1',kind:'payments',icon:'bank',day:'Today',unread:true,txt:'<b>3 guests paid for Bếp Nhỏ.</b> Check the transfers and confirm.',tm:'10:02',action:{label:'Review 3 payments',solid:true},bundle:true},
+  {id:'h2',kind:'tickets',icon:'ticket',day:'Today',unread:true,txt:'<b>Bếp Nhỏ is 2 seats from full.</b> 10 of 12 reserved.',tm:'09:40'},
+];
+
+/* ---------- state ---------- */
+const S = {
+  role:'member', // guest | member | host | admin
+  hosting:false, screen:'home', heroTab:'foryou', heroIdx:0,
+  actTab:'messages', msgFilter:'all', ntFilter:'all',
+  readNotes:new Set(), readThreads:new Set(), thread:null, sub:null,
+  theme:'system', lang:'en', sheet:false,
+  prefs:{tickets:true,payments:true,events:true,rewards:false,marketing:false},
+  stack:[],
+};
+const signedIn = () => S.role !== 'guest';
+const hasHost = () => S.role === 'host' || S.role === 'admin';
+const isAdmin = () => S.role === 'admin';
+const userName = () => S.role==='host' ? 'Trung Đỗ' : S.role==='admin' ? 'banbe Admin' : 'Mai Anh';
+const initials = () => userName().split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+
+function notesFeed(){
+  const base = (S.hosting ? HOST_NOTES.concat(RAW_NOTES) : RAW_NOTES).filter(n => n.kind !== 'message');
+  return base.map(n => ({...n, unread: n.unread && !S.readNotes.has(n.id)}));
+}
+const threads = () => THREADS.map(t => ({...t, unread: t.unread && !S.readThreads.has(t.id)}));
+const unreadMsgs = () => signedIn() ? threads().filter(t=>t.unread).length : 0;
+const unreadNotes = () => signedIn() ? notesFeed().filter(n=>n.unread).length : 0;
+
+/* ---------- theme ---------- */
+function applyTheme(){
+  const dark = S.theme==='dark' || (S.theme==='system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+}
+
+/* ---------- render ---------- */
+const $ = id => document.getElementById(id);
+function render(){
+  applyTheme();
+  const scr = $('screen');
+  const keep = scr.dataset.key === key() ? scr.scrollTop : 0;
+  scr.innerHTML = view();
+  scr.dataset.key = key();
+  scr.scrollTop = keep;
+  $('status').classList.toggle('light', S.screen==='home' && !S.sub);
+  $('tabbar').innerHTML = tabbar();
+  $('sheet').innerHTML = S.sheet ? quickSheet() : '';
+  $('sheet').classList.toggle('open', S.sheet);
+  $('scrim').classList.toggle('open', S.sheet);
+  renderPanel();
+  if (S.screen==='home' && !S.sub) mountHero();
+}
+const key = () => [S.screen,S.sub,S.thread,S.actTab].join('/');
+
+function tabbar(){
+  const u = unreadMsgs()+unreadNotes();
+  const t = (id,label,inner,badge='') => `<button class="tab ${S.screen===id&&!S.sub?'on':''}" data-a="tab" data-v="${id}" aria-label="${label}${badge?`, ${badge} unread`:''}">${inner}<span>${label}</span>${badge?`<span class="dot">${badge}</span>`:''}</button>`;
+  const acct = signedIn() ? `<span class="avatar-sm">${initials()}</span>` : ic('person');
+  return t('home','Home',ic('home'))+t('map','Map',ic('map'))+t('schedule','Schedule',ic('cal'))
+    + t('activity','Activity',ic('bubble'), u||'') + t('account','Account',acct);
+}
+
+function view(){
+  if (S.sub) return subView();
+  if (S.screen==='home') return homeView();
+  if (S.screen==='activity') return S.thread ? threadView() : activityView();
+  if (S.screen==='account') return accountView();
+  if (S.screen==='map') return stubView('Map','Map is unchanged in this proposal (Map E+, note 79). The only change is that it is back in the dock, because Activity takes the Inbox slot and "+" moves out of the bar.');
+  if (S.screen==='schedule') return stubView('Schedule','Schedule is unchanged in this proposal (note 44). It keeps its dock slot. The bell that used to sit on Home now lives in Activity.');
+}
+
+/* Home */
+function homeView(){
+  const tabs = [['foryou','For You'],['tonight','Tonight'],['weekend','Weekend']];
+  if (S.hosting) tabs.push(['hosting','Hosting']);
+  const u = unreadMsgs()+unreadNotes();
+  const avatar = signedIn() ? `<span class="av">${initials()}</span>` : ic('person');
+  let heroInner;
+  if (S.heroTab==='hosting'){
+    heroInner = `<div class="hostpanel"><div class="copy" style="position:absolute;left:24px;right:24px;top:172px">
+      <div class="eyebrow">Hosting · this week</div>
+      <h2>2 events live</h2>
+      <p>Bếp Nhỏ is 2 seats from full. 3 payments are waiting for you.</p>
+      <div class="kpis"><div><b>10/12</b><span>Seats · Bếp Nhỏ</span></div><div><b>4.5M ₫</b><span>Received</span></div><div><b>3</b><span>To confirm</span></div><div><b>27</b><span>Followers</span></div></div>
+    </div></div>
+    <div class="hero-bottom"><button class="cta solid" data-a="toast" data-v="Opens the create flow (Host step first, note 53)">Create event</button>
+      <button class="cta ghost" data-a="openAct" data-v="notifications">Review 3 payments</button><div class="bars"></div></div>`;
+  } else {
+    const list = HEROES[S.heroTab];
+    const h = list[S.heroIdx] || list[0];
+    heroInner = `<div class="slides" id="slides" style="transform:translateX(-${S.heroIdx*100}%)">${list.map(x=>`
+      <div class="slide" style="background-image:url('${PH+x.img}')"><div class="copy">
+        <div class="eyebrow">${x.eyebrow} · ${x.where}</div><h2>${x.t}</h2><p>${x.s}</p></div></div>`).join('')}</div>
+      <div class="hero-bottom">
+        <div class="meta-line"><span>${h.when}</span><span>${h.price} · ${h.left}</span></div>
+        <button class="cta solid" data-a="toast" data-v="${signedIn()?'Opens Reserve on '+h.t:'Asks you to sign in first, then reserves'}">Reserve</button>
+        <button class="cta ghost" data-a="toast" data-v="Opens the ${h.t} event page">Details</button>
+        <div class="bars">${list.map((_,i)=>`<button class="${i===S.heroIdx?'on':''}" data-a="heroGo" data-v="${i}" aria-label="Event ${i+1} of ${list.length}"></button>`).join('')}</div>
+      </div>`;
+  }
+  const nextUp = signedIn() && !S.hosting ? `<div class="sec"><div class="sec-h"><h3>Next up</h3><button data-a="tab" data-v="schedule">Schedule</button></div>
+    <button class="nextup" data-a="toast" data-v="Opens your Bếp Nhỏ ticket"><div class="datebox"><small>SAT</small><b>8</b></div>
+    <div class="t"><div>Bếp Nhỏ · 19:00</div><span>Ticket ready · 2 seats</span></div>${ic('chev','i chev')}</button></div>` : '';
+  const cats = [['supper','Supper club'],['music','Music'],['frame','Gallery'],['hanger','Fashion'],['store','Pop-up'],['grid','All']];
+  return `<section class="hero" id="hero">${heroInner}
+    <div class="hero-top"><div class="hero-head"><span class="wordmark">banbe</span>
+      <div class="hbtns">
+        <button class="hbtn" data-a="toast" data-v="Opens Search (shared bar, note 72)" aria-label="Search">${ic('search')}</button>
+        <button class="hbtn" data-a="openAct" data-v="${unreadNotes()?'notifications':'messages'}" aria-label="Activity${u?`, ${u} unread`:''}">${ic('bubble')}${u?'<span class="pip"></span>':''}</button>
+        <button class="hbtn" data-a="openSheet" aria-label="Your account and quick settings">${avatar}</button>
+      </div></div>
+      <div class="texttabs" role="tablist">${tabs.map(([k,l])=>`<button role="tab" aria-selected="${S.heroTab===k}" class="${S.heroTab===k?'on':''}" data-a="heroTab" data-v="${k}">${l}</button>`).join('')}</div>
+    </div></section>
+    ${nextUp}
+    <div class="sec"><div class="sec-h"><h3>Browse</h3></div>
+      <div class="cats">${cats.map(([i,l])=>`<button data-a="toast" data-v="Filters Home by ${l}">${ic(i)}${l}</button>`).join('')}</div></div>
+    <div class="sec"><div class="sec-h"><h3>This week near you</h3><button data-a="tab" data-v="map">See on map</button></div>
+      <div class="rail">${RAIL.map(r=>`<button class="card" data-a="toast" data-v="Opens ${r.n}"><div class="ph" style="background-image:url('${PH+r.img}')"></div><div class="n">${r.n}</div><div class="m">${r.m}</div></button>`).join('')}</div></div>
+    <div class="foot"></div>`;
+}
+
+let heroTimer=null;
+function mountHero(){
+  clearInterval(heroTimer);
+  if (S.heroTab==='hosting') return;
+  const n = HEROES[S.heroTab].length;
+  heroTimer = setInterval(()=>{ if(S.screen!=='home'||S.sub||S.sheet) return; S.heroIdx=(S.heroIdx+1)%n; render(); }, 6000);
+  const hero = $('hero'); let x0=null;
+  hero.addEventListener('pointerdown',e=>{x0=e.clientX});
+  hero.addEventListener('pointerup',e=>{ if(x0==null) return; const dx=e.clientX-x0; x0=null;
+    if (Math.abs(dx)>40){ S.heroIdx=(S.heroIdx+(dx<0?1:n-1))%n; render(); } });
+}
+
+/* Activity */
+function activityView(){
+  if (!signedIn()) return pageHead('Activity','') + `<div class="guestcard"><h2>Messages and updates</h2><p>Sign in to message hosts and to see updates about your tickets, payments and the hosts you follow.</p><button class="btn solid" data-a="signin">Log in</button><button class="btn ghost" data-a="signin">Create an account</button></div>`;
+  const m = unreadMsgs(), n = unreadNotes();
+  const head = pageHead('Activity', `<button class="iconbtn" data-a="toast" data-v="Search across messages and notifications" aria-label="Search">${ic('search')}</button><button class="iconbtn" data-a="sub" data-v="notifs" aria-label="Notification settings">${ic('gear')}</button>`,
+    `<div class="subtabs" role="tablist">
+      <button role="tab" aria-selected="${S.actTab==='messages'}" class="${S.actTab==='messages'?'on':''}" data-a="actTab" data-v="messages">Messages${m?`<span class="count">${m}</span>`:''}</button>
+      <button role="tab" aria-selected="${S.actTab==='notifications'}" class="${S.actTab==='notifications'?'on':''}" data-a="actTab" data-v="notifications">Notifications${n?`<span class="count">${n}</span>`:''}</button>
+    </div>`);
+  return head + (S.actTab==='messages' ? messagesList() : notificationsList());
+}
+function messagesList(){
+  const f = [['all','All'],['unread','Unread'],['host','Hosts'],['team','Event teams'],['dispute','Disputes']];
+  let list = threads();
+  if (S.msgFilter==='unread') list=list.filter(t=>t.unread); else if (S.msgFilter!=='all') list=list.filter(t=>t.kind===S.msgFilter);
+  return `<div class="list"><div class="chips">${f.map(([k,l])=>`<button class="chip ${S.msgFilter===k?'on':''}" data-a="msgFilter" data-v="${k}">${l}</button>`).join('')}</div>
+    ${list.length? list.map(t=>`<button class="thread ${t.unread?'unread':''}" data-a="openThread" data-v="${t.id}">
+      <span class="avc" style="background-color:${t.color};${t.img?`background-image:url('${PH+t.img}')`:''}">${t.img?'':t.name[0]}</span>
+      <span class="b"><span class="top"><span class="nm">${t.name}${t.kind==='dispute'?'<span class="tag" style="color:var(--alert)">Dispute</span>':t.kind==='team'?'<span class="tag" style="color:var(--plum)">Team</span>':''}</span><span class="tm">${t.tm}</span></span>
+      <span class="ctx" style="display:block">${t.ctx}</span><span class="lm" style="display:block">${t.last}</span></span>
+      ${t.unread?'<span class="udot" aria-label="Unread"></span>':''}</button>`).join('') : `<p class="placeholder" style="padding:30px 0">No conversations match.</p>`}
+    <button class="row" data-a="toast" data-v="Opens archived conversations">${ic('archive','i ic')}<span class="lbl">Archived</span><span class="val">2</span>${ic('chev','i chev')}</button>
+    <div style="height:30px"></div></div>`;
+}
+function notificationsList(){
+  const f = [['all','All'],['tickets','Tickets'],['payments','Payments'],['events','Events'],['rewards','Rewards']];
+  let feed = notesFeed(); if (S.ntFilter!=='all') feed = feed.filter(n=>n.kind===S.ntFilter);
+  const days = [...new Set(feed.map(n=>n.day))];
+  const anyUnread = feed.some(n=>n.unread);
+  const dropped = RAW_NOTES.filter(n=>n.kind==='message').length;
+  return `<div class="list"><div class="chips">${f.map(([k,l])=>`<button class="chip ${S.ntFilter===k?'on':''}" data-a="ntFilter" data-v="${k}">${l}</button>`).join('')}</div>
+    <div style="display:flex;justify-content:flex-end"><button style="font-size:13px;color:${anyUnread?'var(--fg)':'var(--fg3)'};border-bottom:1px solid var(--rule)" data-a="markAll" ${anyUnread?'':'disabled'}>Mark all as read</button></div>
+    ${days.map(d=>`<div class="day">${d}</div>${feed.filter(n=>n.day===d).map(n=>`
+      <div class="nt ${n.unread?'unread':''}" data-a="readNote" data-v="${n.id}" role="button" tabindex="0">
+        <span class="nic" style="${n.unread?'border-color:var(--fg)':''}">${ic(n.icon)}</span>
+        <span class="b">${n.txt}<small>${n.tm}</small>${n.action?`<span class="act"><button class="mini ${n.action.solid?'solid':''}" data-a="toast" data-v="${n.action.label}: done in place, the notification is marked read">${n.action.label}</button></span>`:''}</span>
+        ${n.unread?'<span class="udot" aria-label="Unread"></span>':''}</div>`).join('')}`).join('')}
+    <div class="hint">${ic('info')}<span>New messages show as unread in Messages, not here. ${dropped} message alerts were kept out of this list.</span></div>
+    <div style="height:30px"></div></div>`;
+}
+function threadView(){
+  const t = THREADS.find(x=>x.id===S.thread);
+  return `<div class="ph-head"><div class="ph-row"><button class="back" data-a="closeThread">${ic('back')}Activity</button>
+    <span style="font-size:15px;font-weight:500">${t.name}</span><button class="iconbtn" data-a="toast" data-v="Thread menu: mute, archive, delete for me" aria-label="More">${ic('sliders')}</button></div></div>
+    <div class="ctxbar"><span class="ph" style="background-color:${t.color};${t.img?`background-image:url('${PH+t.img}')`:''}"></span><span style="flex:1">${t.ctx}</span>${ic('chev','i chev')}</div>
+    <div class="chat"><div class="stamp">Today</div>
+      <div class="bub them">Hi Mai Anh, thanks for booking. Any allergies we should know about?</div>
+      <div class="bub me">No allergies. One of us is vegetarian though.</div>
+      <div class="bub them">${t.last}</div></div>
+    <div class="composer"><input placeholder="Message ${t.name}" aria-label="Message"><button data-a="toast" data-v="Message sent" aria-label="Send">${ic('send')}</button></div>`;
+}
+
+/* Account */
+function accountView(){
+  const settingsGroup = settingsRows();
+  const support = rows([
+    ['help','Help & guides','','toast:Opens Personal / Host guides'],
+    ['qa','Questions & answers','','toast:Opens Q&A'],
+    ['doc','Terms & policies','','toast:Opens Terms'],
+  ]);
+  if (!signedIn()) return pageHead('Account','') + `<div class="guestcard"><h2>Welcome to banbe</h2><p>Log in to reserve seats, keep your tickets and message hosts.</p><button class="btn solid" data-a="signin">Log in</button><button class="btn ghost" data-a="signin">Create an account</button></div>
+    <div class="grp-h">Settings</div><div class="list">${rows([['sun','Appearance',themeLabel(),'sub:appearance'],['globe','Language',S.lang==='en'?'English':'Tiếng Việt','sub:language']])}</div>
+    <div class="grp-h">Support</div><div class="list">${support}</div><div class="ver">banbe 3.0 · prototype</div>`;
+  const host = S.hosting;
+  const sc = host
+    ? [['calcheck','Events','toast:Opens your events',2],['bank','Get paid','toast:Opens payouts',0],['users','Team','toast:Opens organizer team',0],['chart','Reports','toast:Opens Reports (host)',0]]
+    : [['ticket','Tickets','toast:Opens Tickets & bookings',1],['wallet','Wallet','toast:Opens Wallet & documents',0],['bookmark','Saved','toast:Opens Saved events',0],['star','Rewards','toast:Opens Rewards & badges',0]];
+  const activity = host
+    ? [['lightbulb','Surveys & event ideas','','toast:Opens surveys'],['folder','Event teams','2','toast:Opens Projects'],['store','Organizer profile','','toast:Opens organizer profile'],['megaphone','Post a story','','toast:Opens story editor']]
+    : [['heart','Following','12','toast:Opens Following'],['folder','Event teams','1','toast:Opens Projects I\'m in'],['chart','Your year in banbe','','toast:Opens personal Reports']];
+  const share = host ? [['card','Share host card','','toast:Opens host share card']] : [['users','Invite friends','','toast:Opens share sheet with referral'],['card','Share your card','','toast:Opens member share card']];
+  return pageHead('Account', `<button class="iconbtn" data-a="toast" data-v="Shows your profile QR / share card" aria-label="Share profile">${ic('share')}</button>`) +
+    `<div class="entity"><span class="avc" style="background:var(--clay)">${initials()}</span><div><div class="nm">${userName()}</div>
+      <div class="hd">@${S.role==='member'?'maianh':S.role==='host'?'bepnho':'admin'} · ${host?'Host':'Member'} since 2025</div>
+      <button class="lnk" data-a="toast" data-v="Opens your public profile">View profile ${ic('chev','i')}</button></div></div>
+    ${hasHost() ? `<div class="mode" role="tablist" aria-label="Mode"><button role="tab" aria-selected="${!host}" class="${!host?'on':''}" data-a="hosting" data-v="0">Going out</button><button role="tab" aria-selected="${host}" class="${host?'on':''}" data-a="hosting" data-v="1">Hosting</button></div>` : ''}
+    <div class="shortcuts">${sc.map(([i,l,a,b])=>`<button data-a="${a.split(':')[0]}" data-v="${a.split(':').slice(1).join(':')}">${ic(i)}${l}${b?`<span class="dot">${b}</span>`:''}</button>`).join('')}</div>
+    ${host ? `<button class="attn" data-a="openAct" data-v="notifications">${ic('alertc')}<span>3 payments to confirm for Bếp Nhỏ</span>${ic('chev','i chev')}</button>` : ''}
+    ${!hasHost() ? `<button class="attn" data-a="toast" data-v="Opens Start hosting (note 67)">${ic('plus')}<span>Host your own event</span>${ic('chev','i chev')}</button>` : ''}
+    <div class="grp-h">${host?'Hosting tools':'Your activity'}</div><div class="list">${rows(activity)}</div>
+    <div class="grp-h">Share</div><div class="list">${rows(share)}</div>
+    <div class="grp-h">Settings</div><div class="list">${settingsGroup}</div>
+    <div class="grp-h">Support</div><div class="list">${support}</div>
+    ${isAdmin() ? `<div class="grp-h">Admin</div><div class="list">${rows([['shield','Admin console','4 to review','sub:admin']])}</div>` : ''}
+    <button class="signout" data-a="signout">Sign out</button><div class="ver">banbe 3.0 · prototype</div>`;
+}
+function settingsRows(){
+  return rows([
+    ['person','Profile & sign-in','Name, phone, password','toast:Opens Account management'],
+    ['bell','Notifications',prefSummary(),'sub:notifs'],
+    ['sparkle','For You preferences','Interests and goals','toast:Opens the 5 For You questions'],
+    ['sun','Appearance',themeLabel(),'sub:appearance'],
+    ['globe','Language',S.lang==='en'?'English':'Tiếng Việt','sub:language'],
+    ['bank','Payment & refund accounts','','toast:Opens Payment & refund accounts'],
+    ['lock','Privacy & security','Face ID, blocked people, delete account','toast:Opens Privacy & security; Delete account sits last here'],
+  ]);
+}
+const themeLabel = () => ({system:'System',light:'Light',dark:'Dark'})[S.theme];
+const prefSummary = () => { const on = Object.values(S.prefs).filter(Boolean).length; return `${on} of 5 on`; };
+function rows(list){
+  return list.map(([i,l,v,a])=>{ const [act,...rest]=a.split(':'); const long = v && v.length>14;
+    return `<button class="row" data-a="${act}" data-v="${rest.join(':')}">${ic(i,'i ic')}<span class="lbl">${l}${long?`<small>${v}</small>`:''}</span>${!long&&v?`<span class="val">${v}</span>`:''}${ic('chev','i chev')}</button>`; }).join('');
+}
+
+/* sub pages (settings: one screen per setting, reachable from Account, the quick panel and Activity) */
+function subView(){
+  const back = `<button class="back" data-a="subBack">${ic('back')}${S.stack.length?S.stack[S.stack.length-1]:'Back'}</button>`;
+  const head = (t) => `<div class="ph-head"><div class="ph-row">${back}<span></span></div><div class="ph-row"><h1>${t}</h1></div></div>`;
+  if (S.sub==='appearance') return head('Appearance') + `<div class="list" style="margin-top:12px">${[['system','System','Follows your phone'],['light','Light',''],['dark','Dark','']].map(([k,l,s])=>
+    `<button class="row" data-a="theme" data-v="${k}"><span class="lbl">${l}${s?`<small>${s}</small>`:''}</span><span class="radio ${S.theme===k?'on':''}"></span></button>`).join('')}</div>`;
+  if (S.sub==='language') return head('Language') + `<div class="list" style="margin-top:12px">${[['en','English'],['vi','Tiếng Việt']].map(([k,l])=>
+    `<button class="row" data-a="lang" data-v="${k}"><span class="lbl">${l}</span><span class="radio ${S.lang===k?'on':''}"></span></button>`).join('')}</div>
+    <p class="hint" style="margin:0 20px">${ic('info')}<span>Notifications and system messages follow this setting too (note 26).</span></p>`;
+  if (S.sub==='notifs') return head('Notifications') + `<div class="list" style="margin-top:4px">
+    ${[['tickets','Tickets','Confirmations, holds, check-in'],['payments','Payments','Pay-by reminders, refunds, receipts'],['events','Events','Announcements, reminders, hosts you follow'],['rewards','Rewards','Badges and streaks'],['marketing','News from banbe','Off unless you turn it on']].map(([k,l,s])=>
+      `<button class="row" data-a="pref" data-v="${k}"><span class="lbl">${l}<small>${s}</small></span><span class="sw ${S.prefs[k]?'on':''}" role="switch" aria-checked="${S.prefs[k]}"></span></button>`).join('')}
+    <div class="row lockrow"><span class="lbl">Messages<small>Push only. They show in Messages, never in the Notifications list.</small></span><span class="sw on"></span></div>
+    <div class="hint">${ic('info')}<span>Booking and payment alerts that affect your money stay on in the app even if push is off.</span></div></div>`;
+  if (S.sub==='admin') return head('Admin console') + `<div class="list" style="margin-top:8px">${rows([
+    ['shield','Review & moderation','4','toast:Pending events, disputes, birthday corrections'],
+    ['calcheck','Manage events','','toast:Opens Manage events (note 54)'],
+    ['users','Admin team','1 vote','toast:Opens Admin team'],
+    ['chart','Metrics & reports','','toast:Opens admin Reports'],
+    ['sliders','Feature switches','','toast:Opens Feature switches (note 64)'],
+    ['person','Test accounts','','toast:Opens Test Accounts (note 57)'],
+    ['help','Admin guide','','toast:Opens Admin guide'],
+  ])}</div>`;
+  return '';
+}
+
+function pageHead(title, acts, extra=''){
+  return `<div class="ph-head"><div class="ph-row"><h1>${title}</h1><span class="acts">${acts}</span></div>${extra}</div>`;
+}
+function stubView(t, txt){ return pageHead(t,'') + `<p class="placeholder">${txt}</p>`; }
+
+/* quick panel from the Home avatar */
+function quickSheet(){
+  if (!signedIn()) return `<div class="grab"></div><div class="guestcard" style="margin-top:0;border:0"><h2>You're browsing as a guest</h2><p>Log in to reserve, save and message hosts.</p><button class="btn solid" data-a="signin">Log in</button></div>
+    <div class="list">${rows([['sun','Appearance',themeLabel(),'subFromSheet:appearance'],['globe','Language',S.lang==='en'?'English':'Tiếng Việt','subFromSheet:language']])}</div>`;
+  const host = S.hosting;
+  const q = host ? [['plus','Create','toast:Opens the create flow'],['calcheck','Events','toast:Opens your events'],['bank','Get paid','toast:Opens payouts'],['gear','Settings','goAccount:']]
+                 : [['ticket','Tickets','toast:Opens Tickets'],['wallet','Wallet','toast:Opens Wallet'],['bookmark','Saved','toast:Opens Saved'],['gear','Settings','goAccount:']];
+  return `<div class="grab"></div>
+    <div class="entity"><span class="avc" style="background:var(--clay)">${initials()}</span><div style="flex:1"><div class="nm" style="font-size:19px">${userName()}</div>
+      <button class="lnk" data-a="goAccount">Account ${ic('chev','i')}</button></div></div>
+    ${hasHost()?`<div class="mode"><button class="${!host?'on':''}" data-a="hosting" data-v="0">Going out</button><button class="${host?'on':''}" data-a="hosting" data-v="1">Hosting</button></div>`:''}
+    <div class="qgrid">${q.map(([i,l,a])=>`<button data-a="${a.split(':')[0]}" data-v="${a.split(':').slice(1).join(':')}">${ic(i)}${l}</button>`).join('')}</div>
+    <div class="list">
+      <div class="row">${ic('sun','i ic')}<span class="lbl">Appearance</span><span class="inline-seg">${['system','light','dark'].map(k=>`<button class="${S.theme===k?'on':''}" data-a="theme" data-v="${k}">${({system:'Auto',light:'Light',dark:'Dark'})[k]}</button>`).join('')}</span></div>
+      <div class="row">${ic('globe','i ic')}<span class="lbl">Language</span><span class="inline-seg">${[['en','EN'],['vi','VI']].map(([k,l])=>`<button class="${S.lang===k?'on':''}" data-a="lang" data-v="${k}">${l}</button>`).join('')}</span></div>
+      ${rows([['bell','Notifications',prefSummary(),'subFromSheet:notifs']])}
+    </div>`;
+}
+
+/* ---------- side panel ---------- */
+const NOTES = {
+  home:['Home',[
+    '<b>Photo first, one event at a time</b>, like the NIO reference: full-bleed photo, light large type, one solid and one outline button, thin page bars. It changes every 6 s and you can swipe it.',
+    '<b>Text tabs on the photo</b> (For You · Tonight · Weekend) take the place of the quick-chip row. In Hosting mode a fourth tab, <b>Hosting</b>, shows this week\'s numbers and Create event, so there is still only one Home.',
+    '<b>Three controls in the header:</b> Search, Activity (one dot for messages and notifications together) and your <b>avatar</b>. The avatar opens a quick panel with mode, theme, language, notification settings and Settings, which answers "no quick access to settings from Home".',
+    'Streak and coins leave the header. They live in Rewards (Account shortcut), which also removes the width maths in homeHeaderLayout.js.',
+    'Below the photo: Next up (your ticket), a line-icon category grid and one horizontal rail. Everything else is one tap away in Map or Search.',
+  ]],
+  activity:['Activity',[
+    '<b>One place for everything that talks to you.</b> Messages and Notifications are two tabs in one dock slot. Today they live in three places: Inbox in the dock, the bell on Home and a row in Account.',
+    'Each tab has its own count. The dock and Home show one combined number.',
+    '<b>No duplicates:</b> "new message" notifications are kept out of the Notifications list. A message shows once, as an unread thread in Messages, and push still alerts you.',
+    'Notifications are grouped Today / Last 7 days / Older and <b>you can act on them in place</b> (Pay now, View ticket, Review 3 payments). Similar host alerts are bundled ("3 guests paid") instead of one row each.',
+    'Filter chips on both tabs, plus <b>Mark all as read</b>. Opening a tab clears the dock badge, but items stay marked unread until you open them.',
+    'The gear opens the same Notifications settings screen as Account and the quick panel: one screen, three ways in.',
+  ]],
+  account:['Account',[
+    '<b>Profile first</b> (avatar, name, handle, View profile), then a clear <b>Going out / Hosting</b> switch for hosts. This replaces the Host · Personal · Admin tabs.',
+    '<b>Four shortcuts</b> in a hairline row (line icons, no filled tiles): Tickets, Wallet, Saved, Rewards. In Hosting mode: Events, Get paid, Team, Reports.',
+    'One attention row only when something needs you (3 payments to confirm). Non-hosts get "Host your own event" in that spot.',
+    '<b>Settings are on the page</b>, not hidden behind a "Settings" row: Profile & sign-in, Notifications, For You, Appearance, Language, Payment accounts, Privacy & security. Each group stays under about 7 rows.',
+    'Admin is one "Admin console" row, not a tab. Destructive actions go last: Sign out at the bottom, Delete account inside Privacy & security.',
+  ]],
+  sheet:['Quick panel (Home avatar)',[
+    'Bottom sheet from the Home avatar, so <b>settings are one tap from Home</b>.',
+    'Mode switch, four shortcuts (the last one is Settings), and Appearance and Language that you change right here. Try Dark.',
+    'Notifications opens the same screen as Account and Activity.',
+  ]],
+  other:['Map and Schedule',[ 'These screens are unchanged in this proposal. They are shown only so the dock is complete.' ]],
+};
+function renderPanel(){
+  const roles = [['guest','Guest'],['member','Member'],['host','Host'],['admin','Admin']];
+  $('roleSeg').innerHTML = roles.map(([k,l])=>`<button class="${S.role===k?'on':''}" data-a="role" data-v="${k}">${l}</button>`).join('');
+  const jumps = [['home','Home'],['activity','Activity'],['account','Account'],['sheet','Quick panel']];
+  const cur = S.sheet?'sheet':S.screen;
+  $('jumpSeg').innerHTML = jumps.map(([k,l])=>`<button class="${cur===k?'on':''}" data-a="jump" data-v="${k}">${l}</button>`).join('');
+  const nk = S.sheet ? 'sheet' : (NOTES[S.screen] ? S.screen : 'other');
+  const [h, items] = NOTES[nk];
+  $('notes').innerHTML = `<h2>${h}: what changed and why</h2><ul>${items.map(i=>`<li>${i}</li>`).join('')}</ul>`;
+}
+
+/* ---------- actions ---------- */
+let toastT;
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),1800); }
+const SUB_TITLE = {account:'Account',activity:'Activity',home:'Home'};
+const A = {
+  tab:v=>{ S.screen=v; S.sub=null; S.thread=null; S.stack=[]; if(v==='home') S.heroIdx=0; },
+  heroTab:v=>{ S.heroTab=v; S.heroIdx=0; },
+  heroGo:v=>{ S.heroIdx=+v; },
+  openAct:v=>{ S.screen='activity'; S.actTab=v||'messages'; S.thread=null; S.sub=null; S.sheet=false; },
+  actTab:v=>{ S.actTab=v; },
+  msgFilter:v=>{ S.msgFilter=v; }, ntFilter:v=>{ S.ntFilter=v; },
+  openThread:v=>{ S.thread=v; S.readThreads.add(v); },
+  closeThread:()=>{ S.thread=null; },
+  readNote:v=>{ S.readNotes.add(v); },
+  markAll:()=>{ notesFeed().forEach(n=>S.readNotes.add(n.id)); toast('All notifications marked as read'); },
+  openSheet:()=>{ S.sheet=true; }, closeSheet:()=>{ S.sheet=false; },
+  goAccount:()=>{ S.sheet=false; S.screen='account'; S.sub=null; S.stack=[]; },
+  sub:v=>{ S.stack.push(SUB_TITLE[S.screen]||'Back'); S.sub=v; },
+  subFromSheet:v=>{ S.sheet=false; S.stack.push(SUB_TITLE[S.screen]||'Back'); S.sub=v; },
+  subBack:()=>{ S.sub=null; S.stack.pop(); },
+  theme:v=>{ S.theme=v; }, lang:v=>{ S.lang=v; toast(v==='vi'?'Đã chuyển sang Tiếng Việt (prototype stays in English)':'Language: English'); },
+  pref:v=>{ S.prefs[v]=!S.prefs[v]; },
+  hosting:v=>{ S.hosting = v==='1'; S.heroTab = S.hosting?'hosting':'foryou'; S.heroIdx=0; },
+  role:v=>{ S.role=v; S.hosting=false; S.heroTab='foryou'; S.sheet=false; S.thread=null; S.sub=null; S.stack=[]; },
+  jump:v=>{ S.sub=null; S.thread=null; S.stack=[]; if(v==='sheet'){ S.screen='home'; S.sheet=true; } else { S.sheet=false; S.screen=v; } },
+  signin:()=>{ S.role='member'; S.sheet=false; toast('Signed in (demo)'); },
+  signout:()=>{ S.role='guest'; S.hosting=false; S.heroTab='foryou'; S.screen='home'; toast('Signed out (demo)'); },
+  toast:v=>{ toast(v); return false; },
+};
+document.addEventListener('click', e=>{
+  const el = e.target.closest('[data-a]'); if(!el || el.disabled) return;
+  e.stopPropagation();
+  const fn = A[el.dataset.a]; if(!fn) return;
+  if (fn(el.dataset.v) !== false) render();
+});
+document.addEventListener('keydown', e=>{
+  if ((e.key==='Enter'||e.key===' ') && e.target.matches('.nt[data-a]')){ e.preventDefault(); e.target.click(); }
+  if (e.key==='Escape' && S.sheet){ S.sheet=false; render(); }
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', ()=>{ if(S.theme==='system') render(); });
+render();
+</script>
+</body>
+</html>

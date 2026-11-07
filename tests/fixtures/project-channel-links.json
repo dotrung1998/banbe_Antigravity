@@ -1,0 +1,52 @@
+{
+  "_about": "Team channel link vectors (note 76). Read by tests/unit/projectChannels.test.mjs and apps/ios/BanbeAppTests/ProjectChannelsTests.swift; migration 210's SQL test runs the 'lists' through sanitize_project_channels. 'detect' -> platform or null; 'channels' -> ok + cleaned fields or error; 'lists' -> ok or error.",
+  "detect": [
+    { "url": "https://us02web.zoom.us/j/123456789?pwd=abc", "platform": "zoom" },
+    { "url": "https://zoom.us/j/123", "platform": "zoom" },
+    { "url": "https://meet.google.com/abc-defg-hij", "platform": "meet" },
+    { "url": "https://zalo.me/g/abcdef", "platform": "zalo" },
+    { "url": "https://m.me/j/AbCd", "platform": "messenger" },
+    { "url": "https://www.messenger.com/t/123", "platform": "messenger" },
+    { "url": "https://chat.whatsapp.com/AbCdEf", "platform": "whatsapp" },
+    { "url": "https://wa.me/84901234567", "platform": "whatsapp" },
+    { "url": "https://t.me/+AbCdEf", "platform": "telegram" },
+    { "url": "https://discord.gg/abc", "platform": "discord" },
+    { "url": "https://teams.microsoft.com/l/meetup-join/x", "platform": "teams" },
+    { "url": "https://teams.live.com/meet/123", "platform": "teams" },
+    { "url": "https://banbe-team.slack.com/archives/C1", "platform": "slack" },
+    { "url": "HTTPS://Meet.Google.com/abc", "platform": "meet" },
+    { "url": "https://docs.google.com/document/d/1", "platform": "link" },
+    { "url": "https://evilzoom.us/j/1", "platform": "link" },
+    { "url": "https://zoom.us.evil.com/j/1", "platform": "link" },
+    { "url": "http://zoom.us/j/1", "platform": null },
+    { "url": "javascript:alert(1)", "platform": null },
+    { "url": "data:text/html,hi", "platform": null },
+    { "url": "https://zoom.us@evil.com/j/1", "platform": null },
+    { "url": "https://zoom.us:8443/j/1", "platform": null },
+    { "url": "https://zoom.us/j/1 2", "platform": null },
+    { "url": "https://localhost/x", "platform": null },
+    { "url": "zoom.us/j/1", "platform": null },
+    { "url": "", "platform": null }
+  ],
+  "channels": [
+    { "case": "label defaults to the platform name", "in": { "url": "https://meet.google.com/abc" }, "ok": true, "out": { "platform": "meet", "label": "Google Meet", "url": "https://meet.google.com/abc", "primary": false } },
+    { "case": "label and spaces are trimmed, primary kept", "in": { "url": "  https://zalo.me/g/x  ", "label": "  Nhóm bếp  ", "primary": true }, "ok": true, "out": { "platform": "zalo", "label": "Nhóm bếp", "url": "https://zalo.me/g/x", "primary": true } },
+    { "case": "a plain link has no default label", "in": { "url": "https://example.org/plan" }, "ok": true, "out": { "platform": "link", "label": "", "url": "https://example.org/plan", "primary": false } },
+    { "case": "explicit platform must match the host", "in": { "platform": "zoom", "url": "https://meet.google.com/abc" }, "ok": false, "error": "platform" },
+    { "case": "explicit link accepts any https host", "in": { "platform": "link", "url": "https://zoom.us/j/1", "label": "Call" }, "ok": true, "out": { "platform": "link", "label": "Call", "url": "https://zoom.us/j/1", "primary": false } },
+    { "case": "unknown platform", "in": { "platform": "myspace", "url": "https://myspace.com/x" }, "ok": false, "error": "platform" },
+    { "case": "http is rejected", "in": { "url": "http://zoom.us/j/1" }, "ok": false, "error": "url" },
+    { "case": "label of 30 characters is fine", "in": { "url": "https://t.me/x", "label": "123456789012345678901234567890" }, "ok": true, "out": { "platform": "telegram", "label": "123456789012345678901234567890", "url": "https://t.me/x", "primary": false } },
+    { "case": "label of 31 characters is too long", "in": { "url": "https://t.me/x", "label": "1234567890123456789012345678901" }, "ok": false, "error": "label" },
+    { "case": "URL over 300 characters", "in": { "url": "https://example.org/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "ok": false, "error": "url" }
+  ],
+  "lists": [
+    { "case": "empty list is fine", "in": [], "ok": true },
+    { "case": "five channels is the maximum", "in": [{ "url": "https://t.me/a" }, { "url": "https://t.me/b" }, { "url": "https://t.me/c" }, { "url": "https://t.me/d" }, { "url": "https://t.me/e" }], "ok": true },
+    { "case": "six channels is too many", "in": [{ "url": "https://t.me/a" }, { "url": "https://t.me/b" }, { "url": "https://t.me/c" }, { "url": "https://t.me/d" }, { "url": "https://t.me/e" }, { "url": "https://t.me/f" }], "ok": false, "error": "count" },
+    { "case": "two starred channels", "in": [{ "url": "https://t.me/a", "primary": true }, { "url": "https://t.me/b", "primary": true }], "ok": false, "error": "primary" },
+    { "case": "one bad entry rejects the whole list", "in": [{ "url": "https://t.me/a" }, { "url": "javascript:alert(1)" }], "ok": false, "error": "url", "index": 1 },
+    { "case": "the same URL twice (case-insensitive)", "in": [{ "url": "https://t.me/a" }, { "url": "HTTPS://T.ME/a" }], "ok": false, "error": "duplicate", "index": 1 },
+    { "case": "not a list", "in": { "url": "https://t.me/a" }, "ok": false, "error": "list" }
+  ]
+}

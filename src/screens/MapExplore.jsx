@@ -1,0 +1,2111 @@
+import { screenHeight } from '../lib/viewport.js';
+import { loadMapStyle } from '../lib/mapStyle.js';
+import { loadMapKit } from '../lib/mapkit.js';
+import { createMapKitMap } from '../lib/mapkitAdapter.js';
+import { CARD_GAP, ATTRIB_RESERVE, computeMapLayout, bottomStackFraction, dockVisible, MAP_DIM } from '../lib/mapLayout.js';
+import { eventSlot, inWindow, dayOptions, defaultWindow, moveKnob, windowFromHomeDate, windowSummary } from '../lib/mapTimeWindow.js';
+import MapTimeBar from '../components/map/MapTimeBar.jsx';
+import MapListSheet from '../components/map/MapListSheet.jsx';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { searchBarStore, useSearchBar } from '../lib/searchBarStore.js';
+import { useBanBe, resolveCoverUrl, photoUrlsByEvent } from '../state/BanBeContext.jsx';
+import { cardPhotoList } from '../lib/eventPhotoUrls.js';
+import { addRecentSearch, loadRecentSearches, saveRecentSearches } from '../lib/mapRecentSearches.js';
+import { supabase } from '../lib/supabase.js';
+import { withR2Columns, marketColumnList, detailsColumnList } from '../lib/mediaUrls.js';
+import {
+  reasonCommits, referenceRect, boundsForRect, mapResults, selectionAfter, boundsOfPoints, pointsNear, nearestPoint,
+  fitCamera, distanceKm as geoKm, sameSpot, padBounds, cityFor, searchCities, cityGroups, activeFilterSummary, CITY_ZOOM,
+  clusterPins, areaKey, areaGroups, markerLevel, areaPanelCloses, AREA_ZOOM, inBounds,
+} from '../lib/mapDiscovery.js';
+import citiesData from '../data/cities.json';
+import { cityOfNode } from '../lib/locationTree.js';
+import { findEvent, isCosmeticCatalogMatch, haversineKm, mapsUrl } from '../data/events.js';
+import { distanceLabel } from '../lib/eventDetailPresentation.js';
+import { whenLabel } from '../lib/quickWins.js';
+import { fillBadge, categorySheetKeys, applyDiscoveryFilters, normalizeFilters, activeFilterCount, DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
+import HomeFilterSheet from './sheets/HomeFilterSheet.jsx';
+import { secondCategory, categoryDefs, cardLine, profileFor } from '../lib/eventTypes.js';
+import { CategoryGlyph, CATEGORY_DEFS, CategorySheet, categoryGlyphMarkup, DiscoveryCard } from '../components/home/HomeDiscoveryParts.jsx';
+import { liveEventOverrides } from '../lib/countdown.js';
+import { formatMoney, formatMoneyShort, rowCurrency, rowTimeZone, cardDateBadge, VN_TIME_ZONE } from '../lib/eventMarket.js';
+import { densityHotspot } from '../lib/densityHotspot.js';
+import { buildEventSearchDoc, matchesSearchQuery } from '../lib/search.js';
+import { prefsIsEmpty } from '../lib/eventPrefs.js';
+import { mapForYouSet, applyForYouFilter } from '../lib/forYou.js';
+import { useForYouAlert } from '../lib/useForYouAlert.js';
+import ForYouChip from './ForYouChip.jsx';
+import { paper, ink, ink2, ink3, rule, alert, clay, clayBg, surface2, photoPill, RADIUS, DISPLAY_FACE, display } from '../theme.js';
+import 'maplibre-gl/dist/maplibre-gl.css';
+
+// Category glyph per FILTER_DEFS key — no icon set exists anywhere else in
+// this app (see .claude/notes/11-realtime-map.md), so these are plain
+// minimal glyphs rather than an invented illustrated icon language.
+const CAT_GLYPH = { all: '▪︎', supper: '🍽️', fashion: '👗', gallery: '🖼️', music: '🎵', popup: '🛍️' };
+
+// Same disabled-button opacity this app already uses everywhere else
+// (apps/ios/BanbeApp/Views/Components.swift:151, Login.jsx's loginBtnStyle)
+// — reused verbatim for the compass button while location is denied.
+const DISABLED_OPACITY = 0.16;
+
+// Map redesign phase 2: the whole public set every 60 s (plus on return to the tab and on pull-to-refresh). It was
+// 5 s, which re-downloaded every row and description a dozen times a minute (Supabase egress, note 40).
+const POLL_MS = 60000;
+
+
+// Map redesign phase 2: the Map loads the WHOLE public live set (up to MAP_EVENT_CAP) with an exact count, then
+// filters by the committed map area locally — panning never needs the network. `complete` is false only when the
+// set is larger than the cap; the screen then says so honestly instead of presenting a truncated page as complete.
+export const MAP_EVENT_CAP = 500;
+// Map v5 (note 73): cities the Map can search, fly to and group by when zoomed out (src/data/cities.json, shared
+// with iOS). Main cities are always offered in the area picker, with or without events.
+const CITIES = citiesData.cities;
+const CITY_BY_ID = new Map(CITIES.map(c => [c.id, c]));
+const MAIN_CITY_IDS = ['vn-hcm', 'vn-hanoi', 'vn-danang'];
+// Map v6 (note 74): the full-height list's layout ('large' photo cards, the default, or 'compact' rows), remembered
+// for this session only (module scope: survives Event Detail round trips and reopening the Map, never stored, and
+// separate from Home's own banbe_home_layout_v1).
+let sessionListLayout = 'large';
+// Map E+ (note 79): the bottom stack, in px above the dock: the neighbourhood chips, then the time bar, then the buttons
+// (my location + "List · N"). The room for all of it is always reserved, so the camera padding and the reference rect
+// never depend on the zoom level, an open panel or the time window.
+const CHIPS_BOTTOM = 12, CHIPS_H = 84, TIME_H = 58, STACK_GAP = 8, BTN_H = 44;
+const TIME_BOTTOM = CHIPS_BOTTOM + CHIPS_H + STACK_GAP;
+const FAB_BOTTOM = TIME_BOTTOM + TIME_H + 10;
+const STACK_H = FAB_BOTTOM + BTN_H + 4;
+
+async function fetchLiveEvents({ limit = MAP_EVENT_CAP, bounds = null } = {}) {
+  const buildQuery = (withR2) => {
+  let q = supabase
+    .from('events')
+    // Keyword-search fix (migration 108) — re-enabled 2026-09-29, see
+    // REAL_EVENT_ROW_COLUMNS's own doc comment (BanBeContext.jsx) for why it
+    // was briefly reverted and how its return was verified.
+    // Search-matcher fix (Issue 2) — `cat_label`, `description`, `intro`
+    // and the event's own organizer name are now selected too, so the
+    // search document built below (`buildEventSearchDoc`) can include
+    // category/organizer/description text regardless of whether
+    // `keywords` happens to be populated for a given row.
+    .select('id, key, name, cat_key, cat_label, area, city, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, ' + detailsColumnList().map(c => c + ', ').join('') + (withR2 ? 'cover_r2_ref, ' : '') + 'keywords, description, intro, country_code, state_province, neighborhood, ' + marketColumnList().map(c => c + ', ').join('') + 'organizers(name)', { count: 'exact' })
+    .eq('status', 'live')
+    // Strict invite-only events (2026-10-25): unlike loadWeekendEvents/
+    // loadDiscoveryEvents (BanBeContext.jsx), this query never filtered
+    // visibility at all — a real invite-only event would have shown up
+    // on the Map for anyone. RLS (migration 113) is the actual backstop
+    // now, but this list should stay honest client-side too: an invitee
+    // sees their own invite-only event on the Map through EventDetail/
+    // deep link, never through discovery search.
+    .eq('visibility', 'public')
+    .order('starts_at', { ascending: true })
+    .range(0, limit - 1);
+  // Bounded mode only (the public set is larger than the cap): the committed area, padded, with its own count.
+  if (bounds) q = q.gte('lat', bounds.south).lte('lat', bounds.north).gte('lng', bounds.west).lte('lng', bounds.east);
+  return q;
+  };
+  const { data, error, count } = await withR2Columns(buildQuery);
+  // A failure throws: the caller keeps the last good results and shows a retry, never an empty "no events".
+  if (error) throw new Error(error.message || 'Failed to load map events');
+  const rows = data || [];
+  const total = typeof count === 'number' ? count : rows.length;
+
+  // Real-cover-photo fix (2026-10-19): `findEvent(row.id)` ALWAYS returns
+  // something — it falls back to `EVENTS[0]` (`EVENTS.find(...) ||
+  // EVENTS[0]`, src/data/events.js) when `row.id` isn't one of the static
+  // demo catalogue's own hardcoded keys. Every organizer-created real event
+  // has a freshly generated id (create_event_draft, migration 085) that can
+  // never match a demo key, so `cosmetic` used to silently resolve to the
+  // FIRST demo catalogue event for every real event — and `img:
+  // cosmetic?.img` below then painted that one demo event's cover photo
+  // onto every real event's map card/pin, regardless of which event was
+  // actually selected. Root-cause fix: only treat `cosmetic` as real
+  // cosmetic data when it's a genuine match, and resolve the map card's own
+  // image the SAME way Home/EventDetail already do for a real row —
+  // `resolveCoverUrl(row.cover_image, firstPhotoUrl)` (BanBeContext.jsx,
+  // migration 087's `cover_image` falling back to the first `event_photos`
+  // row by sort_order) — never the static catalogue for a row that isn't
+  // actually in it.
+  // Real seat fill (migration 186, the same RPC Home uses): `seats_remaining` is never decremented after insert
+  // (note 50), so it can't say "sold out" or "few left". No fill row = no seat status, never a guess.
+  // Map v6 (note 74): up to 6 public photos per event (one batched query) for the Large cards' pager.
+  const [photosByEvent, fillById] = await Promise.all([photoUrlsByEvent(rows.map(r => r.id)), loadFill(rows.map(r => r.id))]);
+
+  const shaped = rows.map(row => {
+    const isCosmeticMatch = isCosmeticCatalogMatch(row.id);
+    const cosmetic = isCosmeticMatch ? findEvent(row.id) : null;
+    const cover = isCosmeticMatch ? cosmetic?.img : resolveCoverUrl(row.cover_image, photosByEvent[row.id]?.[0], row.cover_r2_ref);
+    // 2026-09-25 fix pass (Task 0 audit) — real bug: `when` below used to
+    // be the static catalogue's own frozen `cosmetic.when` verbatim (the
+    // comment here used to claim that was "not reformatted from starts_at
+    // ... so it never disagrees with the rest of the app," which was
+    // exactly backwards once the rest of the app started reading the real
+    // date). `row` here is a real `events` row from THIS query (already
+    // filtered `status = 'live'`), so it can drive the same
+    // `liveEventOverrides` merge every other screen uses directly.
+    const dateOverrides = cosmetic ? liveEventOverrides(row, cosmetic) : null;
+    return {
+      id: row.id,
+      catKey: row.cat_key || cosmetic?.catKey || 'all',
+      // Primary + second category (details.cat2, note 69), the same pair Home filters on.
+      catKeys: [row.cat_key || cosmetic?.catKey, secondCategory(row.details, row.cat_key)].filter(Boolean),
+      details: row.details || {},
+      // Search-matcher fix (Issue 2) — previously never attached to this
+      // screen's event objects at all (only `cat_key` was), so the search
+      // document below had no category DISPLAY text to match against
+      // ("Supper Club") independent of `keywords`.
+      catLabel: row.cat_label || cosmetic?.catLabel,
+      name: row.name || cosmetic?.name,
+      area: row.area || cosmetic?.meta,
+      city: row.city,
+      // Location hierarchy (migration 112) — the raw fields the shared
+      // area/location filter (curArea.match, src/lib/locationTree.js)
+      // reads. `locationLabel` is the RAW district (never `cosmetic.meta`,
+      // which is a "district ▪︎ km ▪︎ date" display string).
+      locationLabel: row.area || cosmetic?.locationLabel || '',
+      countryCode: row.country_code || cosmetic?.countryCode || '',
+      stateProvince: row.state_province || '',
+      neighborhood: row.neighborhood || '',
+      organizerName: row.organizers?.name,
+      description: row.description,
+      intro: row.intro,
+      // Keyword-search fix — real events' own `keywords` (migration 108,
+      // populated at create/resubmit time, defaulting to the event's
+      // category labels when the host leaves the field blank) plus the
+      // demo catalogue's own derived `keywords` for a cosmetic-match row,
+      // so a search term can match on more than just the literal name/area.
+      keywords: row.keywords?.length ? row.keywords : (cosmetic?.keywords || []),
+      lat: row.lat,
+      lng: row.lng,
+      // Stage 3 — a pin requires real coordinates; an event without them
+      // still belongs in the list, just with an honest "no map location"
+      // state instead of an invented point.
+      hasLocation: row.lat != null && row.lng != null,
+      seatsRemaining: row.seats_remaining,
+      startsAt: row.starts_at,
+      // Raw fields the shared For You candidate builder (src/lib/forYou.js) reads —
+      // the same ones Home's events carry, so Home and Map can never score differently.
+      // Minor units of `currency` (migration 195): dong, or cents for USD. `tz` is the venue's zone.
+      priceVnd: row.price_vnd || 0,
+      currency: rowCurrency(row),
+      tz: rowTimeZone(row),
+      status: row.status,
+      // Map price bug fix (2026-09-29) — root cause: this was ALWAYS
+      // `cosmetic?.price` (the static demo catalogue's own hand-written
+      // price string), never the real row's own `price_vnd` (already
+      // fetched in the SELECT above, but never used before this fix) —
+      // for any real, non-cosmetic-matching event this rendered the FIRST
+      // demo catalogue event's own price ("900.000₫", `EVENTS[0]` =
+      // "bepnho"), the exact bug reported: a real event created at 0 VND
+      // showed "900.000đ" on Map while correctly showing "Miễn phí"/Free
+      // on Event Detail (which reads the real row through a completely
+      // different, already-correct path, BanBeContext.jsx's
+      // `shapeRealEventAsCurEvent`). `price_vnd` itself is a real, valid
+      // 0 for a genuinely free event — NOT "missing" — so this checks
+      // `> 0`, never a bare truthiness/`||` check that would treat 0 the
+      // same as null/undefined. Same convention Home.jsx's own
+      // `discoveryShaped` mapping already uses for a real event's price.
+      price: row.price_vnd > 0 ? formatMoney(row.price_vnd, rowCurrency(row)) : 'Miễn phí',
+      img: cover,
+      // Cover first, then the other public photos, max 6 (this query is public events only).
+      // Catalogue rows page through their live photos too (not the bundled stock gallery), like Home's cards.
+      imgs: isCosmeticMatch ? (photosByEvent[row.id]?.length ? cardPhotoList(null, photosByEvent[row.id]) : [cover].filter(Boolean)) : cardPhotoList(cover, photosByEvent[row.id]),
+      when: dateOverrides?.when || cosmetic?.when,
+      booked: fillById[row.id]?.booked ?? null,
+      capacity: fillById[row.id]?.capacity ?? null,
+      fillKnown: !!fillById[row.id],
+      urgent: !!fillById[row.id] && fillBadge(fillById[row.id].booked, fillById[row.id].capacity).almostFull,
+      isNew: (dateOverrides?.until ?? cosmetic?.until) != null && (dateOverrides?.until ?? cosmetic?.until) <= 1,
+      // Live seats_remaining is this screen's own established "real-time-ish"
+      // signal (already used for `urgent` above) — reused for sold-out too,
+      // falling back to the static catalogue's flag only when a row has no
+      // seats_remaining of its own to check.
+      soldOut: fillById[row.id] ? fillBadge(fillById[row.id].booked, fillById[row.id].capacity).soldOut : !!cosmetic?.soldOut,
+    };
+  });
+  return { rows: shaped, total, complete: shaped.length >= total };
+}
+
+const reduceMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+// A Map event in Home's discovery-item shape (src/lib/homeDiscovery.js), so both run the same filter predicate.
+function discoveryItem(ev) {
+  const startsAt = ev.startsAt ? Date.parse(ev.startsAt) : null;
+  return {
+    key: ev.id, startsAt: Number.isFinite(startsAt) ? startsAt : null, priceVnd: ev.priceVnd ?? null, currency: ev.currency,
+    catKeys: ev.catKeys?.length ? ev.catKeys : [ev.catKey].filter(Boolean), booked: ev.booked, capacity: ev.capacity,
+    soldOut: !!ev.soldOut, details: ev.details || {}, tz: ev.tz, ev,
+  };
+}
+
+// Booked/capacity per event from get_public_event_fill (migration 186). Best-effort: an error gives {}.
+async function loadFill(ids) {
+  if (!ids.length) return {};
+  const { data, error } = await supabase.rpc('get_public_event_fill', { p_event_ids: ids.slice(0, 300) });
+  if (error || !Array.isArray(data)) return {};
+  return Object.fromEntries(data.map(r => [r.event_id, { booked: r.booked, capacity: r.capacity }]));
+}
+
+// Seat facts for a row/card: { left, soldOut, almostFull } or null when banbe has no fill for the event.
+function seatFacts(ev) {
+  if (!ev.fillKnown) return ev.soldOut ? { left: 0, soldOut: true, almostFull: false } : null;
+  return fillBadge(ev.booked, ev.capacity);
+}
+
+// Map E+: bold / dimmed state of one marker from the ids inside the window (hitSet null = the window is off). A group is
+// bold when ANY of its events is inside; bubbles show how many ARE; a group with none inside fades (pins and clusters to
+// MAP_DIM.pinOpacity, city and neighbourhood bubbles to MAP_DIM.zeroBubble). Styles only: no layout, no rebuild.
+function styleDim(m, hitSet) {
+  const { pinEl, kind, badge, bub, lbl, selected } = m.__parts;
+  const total = m.__ids.length;
+  const on = !!hitSet;
+  const hit = on ? m.__ids.reduce((n, id) => n + (hitSet.has(id) ? 1 : 0), 0) : total;
+  const dim = on && hit === 0;
+  const bubble = kind === 'area' || kind === 'city';
+  pinEl.setAttribute('data-hit', String(hit));
+  pinEl.setAttribute('data-dim', dim ? 'true' : 'false');
+  pinEl.style.opacity = dim ? String(bubble ? MAP_DIM.zeroBubble : MAP_DIM.pinOpacity) : '';
+  pinEl.style.scale = dim && !bubble ? String(MAP_DIM.pinScale) : '';
+  pinEl.style.filter = dim && !bubble ? 'saturate(0.2)' : '';
+  if (kind === 'area') {
+    bub.textContent = String(on ? hit : total);
+    bub.style.background = dim ? surface2 : ink;
+    bub.style.color = dim ? ink3 : paper;
+  } else if (kind === 'city') {
+    badge.textContent = String(on ? hit : total);
+  } else if (!selected) {
+    pinEl.style.background = on && hit > 0 ? ink : paper;
+    pinEl.style.color = on && hit > 0 ? paper : ink;
+    pinEl.style.fontWeight = on && hit > 0 ? '800' : '';
+  }
+  void lbl;
+}
+
+export default function MapExplore() {
+  const { state: s, set, T, resolvedTheme, goEvent, backFromMapExplore, allowLocation, setMapExploreState, curArea, openArea, openEventPreferences, shareEvent, isSaved, toggleFav } = useBanBe();
+  // Restored once, at mount, if MapExplore.jsx's own CTA saved a snapshot
+  // right before navigating to Event Detail (bug 2) — App.jsx's Shell
+  // unmounts/remounts this whole component on every `screen` change, so
+  // without this every local useState below would just reset to its
+  // hardcoded default the instant the user comes back. Read into a ref
+  // once so later renders (after the snapshot is consumed/cleared) don't
+  // keep re-reading a stale closure.
+  const restoredRef = useRef(s.mapExploreState);
+  const restored = restoredRef.current;
+  const mapDivRef = useRef(null);
+  const mapRef = useRef(null);
+  const markersRef = useRef([]);
+  const prevMarkerKeysRef = useRef(new Set());
+  // Marker class of whichever map is live (MapKit adapter's, or MapLibre's once it is loaded).
+  const markerCtorRef = useRef(null);
+  // The map is created asynchronously AFTER the first load has already set `events`, so the pin effect's first run
+  // found no map and drew nothing until the 5 s poll replaced `events` (device report: no pins on open). This flips
+  // once the map exists and re-runs the pin effect.
+  const [mapReady, setMapReady] = useState(false);
+  // The camera's zoom after each settle: clustering (display only) follows it; the results never do.
+  const [cameraZoom, setCameraZoom] = useState(null);
+  const listRef = useRef(null);
+  const listScrollRestoredRef = useRef(false);
+  // A return from Event Detail starts from the cached rows, so the list never flashes "Loading".
+  const [events, setEvents] = useState(() => restored?.events ?? []);
+  const [loading, setLoading] = useState(() => !restored?.events);
+  // Completeness of the loaded set (false only past MAP_EVENT_CAP) and the last load error (results are kept).
+  const [dataMeta, setDataMeta] = useState(() => ({ total: restored?.events?.length ?? 0, complete: true }));
+  const [loadError, setLoadError] = useState(false);
+  // The committed search area: changes only when the camera settles after geographic navigation (see
+  // src/lib/mapDiscovery.js). Never follows the sheet, a selection reveal or a refresh.
+  const [committedBounds, setCommittedBounds] = useState(() => restored?.committedBounds ?? null);
+  const cameraReasonRef = useRef(null); // reason of the camera move in progress (null + movestart = user)
+  // 'area' while the map is framed on the selected area (destination), else 'map' ("Vùng bản đồ / Map area").
+  const [areaContext, setAreaContext] = useState(() => restored?.areaContext ?? 'map');
+  const framedByAreaRef = useRef(false);
+  const settleTimerRef = useRef(null);
+  // Map redesign phase 3: ONE filter object in Home's shape (src/lib/homeDiscovery.js: date, cats, seatsLeft, price,
+  // free, almostFull, typeFilters), judged by the same applyDiscoveryFilters Home uses — each event in its own venue
+  // time zone. Seeded from a return snapshot, else from Home's hand-off (goMapExplore(ctx)), else nothing.
+  // Moving the map never changes it.
+  const entryRef = useRef(restored ? null : s.mapExploreEntry || null);
+  const entry = entryRef.current;
+  // Map E+ (note 79): the Map's filters never carry a date (`date` is always 'any'): the day and hours are the time bar's,
+  // and they dim rather than remove. Home's date hand-off becomes the time window below.
+  const [filters, setFilters] = useState(() => normalizeFilters({
+    ...(restored?.filters
+    ?? (restored ? { cats: restored.catFilter && restored.catFilter !== 'all' ? [restored.catFilter] : [], seatsLeft: !!restored.openNowOnly } : null)
+    ?? entry?.filters
+    ?? DEFAULT_FILTERS),
+    date: 'any',
+  }));
+  // The day + hour window (src/lib/mapTimeWindow.js). Off ("All days") by default; Home's date hand-off or a returning
+  // snapshot sets it. Nothing here is a filter: results never change with it, only what is bold and what is dimmed.
+  const [timeWin, setTimeWin] = useState(() => restored?.timeWin
+    ?? windowFromHomeDate(entry?.filters?.date ?? 'any', Date.now(), VN_TIME_ZONE));
+  // The category row is single-choice (Home's sheet hides categories in Simple Shell; the Map sheet does too).
+  const catFilter = filters.cats[0] ?? 'all';
+  const setCatFilter = useCallback((k) => setFilters(f => normalizeFilters({ ...f, cats: k === 'all' ? [] : [k], typeFilters: [] })), []);
+  const openNowOnly = filters.seatsLeft;
+  const setOpenNowOnly = useCallback((v) => setFilters(f => normalizeFilters({ ...f, seatsLeft: typeof v === 'function' ? v(f.seatsLeft) : v })), []);
+  const toggleDate = useCallback((opt) => setFilters(f => normalizeFilters({ ...f, date: f.date === opt ? 'any' : opt })), []);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  // Home quick event search (2026-09-27) — a by-name/area text filter,
+  // ANDed with the existing category/open-now/nearby filters above (never
+  // a separate search index — same `events` this screen already loads).
+  // The text is edited by the ONE persistent search bar (hosted in App.jsx); the map's own query lives in its store
+  // (iOS `mapSearchText`). Seeded silently on first render, announced to the bar from a layout effect below.
+  useState(() => { searchBarStore.seedMapQuery(restored?.searchQuery ?? entry?.query ?? ''); });
+  const searchQuery = useSearchBar(b => b.mapQuery);
+  const setSearchQuery = searchBarStore.setMapQuery;
+  // For You (34/35 notes): local to Map (never touches Home's own `filterForYou`),
+  // matching comes from the shared forYouRankEvents so both surfaces score alike.
+  const [forYouOn, setForYouOn] = useState(() => restored?.forYou ?? !!entry?.forYou);
+  // Shim over the persistent bar's input so the existing blur() calls keep working.
+  const searchInputRef = useRef({ blur: () => searchBarStore.blur(), focus: () => searchBarStore.focus() });
+  // Map v6 (note 74): search mode. True while the search input has focus; while it is also empty, the sheet shows
+  // Recent / Cities / Quick filters instead of the list ("never a blank search"). `searchReturnRef` is the snap the
+  // search was opened from, so Cancel puts the sheet back there.
+  const barFocused = useSearchBar(b => b.focused);
+  const searchActive = barFocused;
+  const searchReturnRef = useRef(null);
+  const searchQueryRef = useRef('');
+  searchQueryRef.current = searchQuery;
+  const [recentSearches, setRecentSearches] = useState(() => loadRecentSearches());
+  const rememberSearch = useCallback((q) => {
+    if (!String(q || '').trim()) return;
+    setRecentSearches(prev => {
+      const next = addRecentSearch(prev, q);
+      saveRecentSearches(next);
+      return next;
+    });
+  }, []);
+  // Home quick event search — real-device follow-up (2026-09-28): focusing
+  // via a plain `useEffect` (further down, on mount) fires the `.focus()`
+  // call from a DEFERRED passive-effect flush, scheduled to run after the
+  // browser has already painted — a separate task from the click that
+  // opened this screen. On a real iOS Safari, `.focus()` only pops the
+  // on-screen keyboard when it runs synchronously within the same
+  // user-gesture call stack as the tap that triggered it; called later
+  // (useEffect, setTimeout, a Promise microtask, ...) it silently moves
+  // `document.activeElement` with NO keyboard — exactly the "first tap
+  // does nothing, second (direct, on-the-input) tap brings up the
+  // keyboard" symptom reported. A callback ref fires synchronously during
+  // React's commit phase — still inside the same synchronous flush the
+  // originating click triggered — so focusing there (the instant the
+  // input DOM node itself exists, never a fixed delay/sleep) keeps the
+  // real device's user-gesture trust intact. Guarded by a ref (not state)
+  // so it fires exactly once per mount, never re-focusing on an unrelated
+  // re-render.
+  const initialQueryRef = useRef(restored?.searchQuery ?? entry?.query ?? '');
+  useLayoutEffect(() => {
+    searchBarStore.setMapQuery(initialQueryRef.current); // re-applied here too: StrictMode's mount/unmount/mount would otherwise lose the seed
+    searchBarStore.notify();
+    if (restoredRef.current?.focusSearch) searchBarStore.focus();
+    return () => { searchBarStore.setMapQuery(''); searchBarStore.clear('map'); };
+  }, []);
+  // Map E+ (note 79): the list is a layer over the full-screen map. It opens from "List · N", closes with its Map button
+  // or Esc, and starts closed, so a fresh open is the map itself (restored from a return snapshot when there is one).
+  const [listOpen, setListOpen] = useState(() => restored?.listOpen ?? false);
+  // The open neighbourhood ({ keys, label }) and its panel; the view it was opened from, to go back to. A pin, a list
+  // row or the Back button from Event Detail returns with the panel as it was.
+  const [areaPanel, setAreaPanel] = useState(() => restored?.areaPanel ?? null);
+  const areaPanelRef = useRef(areaPanel);
+  areaPanelRef.current = areaPanel;
+  const areaOpenedAtRef = useRef(0);
+  const preAreaViewRef = useRef(restored?.preAreaView ?? null);
+  const areaScrollToRef = useRef(null);
+  const [categorySheetOpen, setCategorySheetOpen] = useState(false);
+  // The city the map was last flown to (search row, area picker or a city bubble): names the area chip while framed.
+  const [cityDest, setCityDest] = useState(() => restored?.cityDest ?? null);
+  // Owner, 2026-10-24 ("no events on the map until I pull down"): each load takes a number and only the newest one
+  // may write the list, so a slow, stale answer can never overwrite a newer, good one. iOS twin: mapEventsGeneration.
+  // A failed load keeps the last good rows and raises `loadError` (Retry), never an empty list.
+  const loadSeq = useRef(0);
+  const loadLatest = async (opts) => {
+    const n = ++loadSeq.current;
+    try {
+      const res = await fetchLiveEvents(opts);
+      if (n !== loadSeq.current) return null;
+      setDataMeta({ total: res.total, complete: res.complete });
+      setLoadError(false);
+      return res.rows;
+    } catch (err) {
+      if (n === loadSeq.current) { console.warn('Map events load failed:', err); setLoadError(true); }
+      return null;
+    }
+  };
+  // The pin/list-row currently showing the compact in-map preview card —
+  // null when nothing is selected. Not a second data source: it's just an
+  // id into the same `events`/`visibleEvents` this screen already loads.
+  const [selectedId, setSelectedId] = useState(() => restored?.selectedId ?? null);
+  const lastAnimatedPinIdRef = useRef(null);
+  // The top controls' real bottom edge is measured (ResizeObserver), never guessed.
+  const topRef = useRef(null); // search + filter button + chips: the shared top controls
+  const rootRef = useRef(null);
+  const [topControlsBottom, setTopControlsBottom] = useState(56); // px from the TOP of this screen's own box
+  const [containerH, setContainerH] = useState(() => screenHeight());
+  const [dockClear, setDockClear] = useState(110); // px the floating dock occupies at the bottom
+  // The bottom stack: the dock plus the buttons above it. The camera pads for it; the list and the panel float over the
+  // map and never move it.
+  const stackPx = dockClear + STACK_H;
+  // Map v6: Large photo cards / Compact rows at full height (see `sessionListLayout`).
+  const [listLayout, setListLayoutState] = useState(() => restored?.listLayout ?? sessionListLayout);
+  const setListLayout = useCallback((m) => { sessionListLayout = m; setListLayoutState(m); }, []);
+
+  // This screen's OWN box (a fixed layer, which on desktop is the phone frame), not the
+  // window: sheet, card and camera padding all derive from it, so Safari toolbar changes,
+  // rotation and the desktop frame all stay consistent. Also dock clearance for the list.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return undefined;
+    const measure = () => {
+      const r = root.getBoundingClientRect();
+      if (r.height > 0) setContainerH(r.height);
+      // The dock itself (Simple Shell has no Map tab to measure from).
+      const tab = document.querySelector('[data-testid="bottom-tab-bar"]') || document.querySelector('[data-testid="tab-map"]');
+      // Map v5: the dock slides away below tall; measuring it then would read its off-screen position.
+      const dockHiddenNow = document.querySelector('[data-testid="dock-row"]')?.dataset.hidden === 'true';
+      if (tab && !dockHiddenNow) {
+        const tr = tab.getBoundingClientRect();
+        if (tr.height > 0) setDockClear(Math.max(0, Math.round(r.bottom - tr.top)));
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(root);
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); window.removeEventListener('orientationchange', measure); };
+  }, []);
+
+  // Re-measures whenever the box resizes. ("Tìm ở đây" is gone: results follow the map on their own.)
+  useEffect(() => {
+    const els = [topRef.current].filter(Boolean);
+    if (!els.length || !rootRef.current) return undefined;
+    const measure = () => {
+      const top = rootRef.current.getBoundingClientRect().top;
+      setTopControlsBottom(Math.max(...els.map(el => el.getBoundingClientRect().bottom)) - top);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    els.forEach(el => ro.observe(el));
+    return () => ro.disconnect();
+  }, [containerH]);
+
+  // ---- layout geometry (all px, relative to this screen's box) ----
+  // Visible map = [topControlsBottom + gap, top of the bottom stack - attribution strip]; the camera pads to match.
+  const lay = computeMapLayout({ containerH, topControlsBottom, stripFraction: bottomStackFraction(containerH, stackPx) });
+  const layRef = useRef(lay);
+  layRef.current = lay;
+  const cameraPadding = () => layRef.current.cameraPadding;
+
+  // Map E+ (note 79): the dock stays, except while a neighbourhood panel is open. Leaving the Map always gives it back.
+  useEffect(() => { set({ mapDockHidden: !dockVisible(!!areaPanel) }); }, [!!areaPanel]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => set({ mapDockHidden: false }), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Basemap follows the app theme (derived Liberty light/dark, src/lib/mapStyle.js); camera,
+  // markers and selection survive a style swap.
+  const themeRef = useRef(resolvedTheme);
+  useEffect(() => {
+    const mode = resolvedTheme;
+    if (themeRef.current === mode) return undefined;
+    themeRef.current = mode;
+    let cancelled = false;
+    if (mapRef.current?.__isMapKit) { mapRef.current.setColorScheme(mode); return undefined; }
+    loadMapStyle(mode).then(style => { if (!cancelled && mapRef.current) mapRef.current.setStyle(style); });
+    return () => { cancelled = true; };
+  }, [resolvedTheme]);
+
+  // ---- location permission state (drives the compass button's opacity) ----
+  const [locPermission, setLocPermission] = useState('prompt'); // 'granted' | 'denied' | 'prompt'
+  useEffect(() => {
+    if (s.located === true) { setLocPermission('granted'); return; }
+    if (s.located === false) { setLocPermission('denied'); return; }
+    if (!navigator.permissions?.query) return;
+    let sub;
+    navigator.permissions.query({ name: 'geolocation' }).then(status => {
+      setLocPermission(status.state);
+      status.onchange = () => setLocPermission(status.state);
+      sub = status;
+    }).catch(() => {});
+    return () => { if (sub) sub.onchange = null; };
+  }, [s.located]);
+
+  // ---- camera moves carry a reason (src/lib/mapDiscovery.js) ----
+  // Every programmatic move goes through here; a gesture start without one is the user. Only geographic
+  // navigation commits a new search area after the camera settles; 'reveal'/'restore' never do.
+  const moveCamera = useCallback((reason, apply) => {
+    const map = mapRef.current;
+    if (!map) return;
+    cameraReasonRef.current = { reason, t: Date.now() };
+    apply(map);
+  }, []);
+  // Geometry the commit needs, read at settle time (the map's own box, the top controls).
+  const geomRef = useRef({ topControlsBottom, containerH, stackPx });
+  geomRef.current = { topControlsBottom, containerH, stackPx };
+  // Camera padding for a fit: below the top controls, above the bottom stack.
+  const fitPad = (side) => ({ top: geomRef.current.topControlsBottom + CARD_GAP + 16, bottom: geomRef.current.stackPx + ATTRIB_RESERVE + 16, left: side, right: side });
+  const commitArea = useCallback((reason = 'initial') => {
+    const map = mapRef.current;
+    const el = mapDivRef.current;
+    if (!map || !el) return;
+    const size = { width: el.clientWidth || 390, height: el.clientHeight || geomRef.current.containerH };
+    // The reference rect: below the top controls, above the bottom stack — fixed, so opening the list or a panel
+    // never changes the area, its results or the count.
+    const rect = referenceRect({
+      ...size,
+      topInset: geomRef.current.topControlsBottom + CARD_GAP,
+      bottomInset: geomRef.current.stackPx + ATTRIB_RESERVE,
+    });
+    const next = boundsForRect(boundsToBox(map.getBounds()), size, rect);
+    setCommittedBounds(next);
+    // The chip names the picked area only while the map is still framed on it; any other navigation makes the
+    // context "Map area" (Home's selected area itself is never changed by panning).
+    setAreaContext(reason === 'destination' || (reason === 'initial' && framedByAreaRef.current) ? 'area' : 'map');
+    // Test-only hook (like __mapExploreMapForTests): how many times an area was committed, and the last one.
+    if (typeof window !== 'undefined') {
+      window.__mapExploreCommits = (window.__mapExploreCommits || 0) + 1;
+      window.__mapExploreArea = next;
+    }
+  }, []);
+  const onCameraSettled = useCallback(() => {
+    const pending = cameraReasonRef.current;
+    const fresh = pending && Date.now() - pending.t < (reasonCommits(pending.reason) ? 4000 : 1500);
+    const reason = fresh ? pending.reason : 'user';
+    clearTimeout(settleTimerRef.current);
+    // A layout-only reason ('reveal'/'restore') stays in force for its short window: a reveal flight interrupted
+    // by the sheet-padding ease ends in TWO moveends, and the second must not read as the user's. A real gesture
+    // replaces it at movestart. A navigation reason is used once; extra moveends just re-arm the single commit.
+    if (!fresh || reasonCommits(reason)) cameraReasonRef.current = null;
+    if (!reasonCommits(reason)) return;
+    // Coalesce: wheel zoom and flings end in several quick `moveend`s; commit once when they stop.
+    settleTimerRef.current = setTimeout(() => commitArea(reason), 250);
+  }, [commitArea]);
+  useEffect(() => () => clearTimeout(settleTimerRef.current), []);
+
+  const recenterOnUser = useCallback(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocPermission('granted');
+        allowLocation();
+        // Explicit geographic navigation: one new search area once it settles.
+        moveCamera('recenter', map => map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 14 }));
+      },
+      () => setLocPermission('denied'),
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }, [allowLocation, moveCamera]);
+
+  // Map E+ (note 79): a pin opens Event Detail (set below, once the snapshot helper exists). `selectedId` is now only a
+  // highlight, kept for a return snapshot and "Open in Map", which arrive with one event marked.
+  const openDetailRef = useRef(null);
+  const openAreaRef = useRef(null);
+  const openAreaForEventRef = useRef(null);
+
+  // Once a restored snapshot has been read into `restoredRef` (above), clear
+  // context's own copy — it's served its purpose for this mount, and
+  // leaving it sitting in context risks a second, unrelated mount
+  // mistakenly reusing the exact same snapshot later.
+  useEffect(() => {
+    if (restored) setMapExploreState(null);
+    // The Home hand-off is read once (entryRef); a later open from the dock starts clean.
+    if (s.mapExploreEntry) set({ mapExploreEntry: null });
+    // Home quick event search — the actual autofocus itself now happens in
+    // `setSearchInputRef` above (a ref callback, fired synchronously the
+    // instant the input mounts, not from this deferred effect) — see that
+    // callback's own comment for why.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---- first open: load, frame the relevant results above the mid sheet, then draw the map ----
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const loaded = await loadLatest();
+      if (!active) return;
+      const initial = loaded || restored?.events || [];
+      if (loaded) setEvents(loaded);
+      setLoading(false);
+
+      // Apple MapKit JS when enabled + authorised (src/lib/mapkit.js); otherwise the OpenStreetMap map below.
+      const mapkit = await loadMapKit();
+      if (!active || !mapDivRef.current || mapRef.current) return;
+
+      // A restored camera (return from Event Detail / Edit preferences / "Open in Map") is kept exactly. A fresh
+      // open frames what is relevant into the free area above the MID sheet, in this order: the selected area's
+      // events → events within 50 km of a located viewer → the densest city of events. Never the viewer's GPS on
+      // its own, never the whole inventory. No events at all: Ho Chi Minh City, and the empty state says so.
+      let center = restored?.cameraCenter || null;
+      let zoom = restored?.cameraZoom ?? null;
+      if (!center) {
+        const el = mapDivRef.current;
+        const size = { width: el.clientWidth || 390, height: el.clientHeight || containerH };
+        const pts = initial.filter(e => e.hasLocation);
+        const areaPts = curArea.key !== 'all' ? pts.filter(e => curArea.match(e)) : [];
+        const me = s.located === true && s.userCoords ? s.userCoords : null;
+        const nearMe = me ? pointsNear(pts, me, 50) : [];
+        framedByAreaRef.current = areaPts.length > 0;
+        const frame = areaPts.length ? areaPts
+          : nearMe.length ? nearMe
+          : pointsNear(pts, densityHotspot(pts.map(e => ({ lat: e.lat, lng: e.lng }))), 25);
+        const box = boundsOfPoints(frame);
+        if (box) {
+          // Map E+: a fresh open is the neighbourhood level (one bubble per area), not a street-level close-up.
+          const cam = fitCamera(box, size, fitPad(40), { tileSize: mapkit ? 256 : 512, maxZoom: AREA_ZOOM - 0.6 + (mapkit ? 1 : 0) });
+          center = cam.center;
+          zoom = cam.zoom;
+        } else {
+          center = { lat: 10.7769, lng: 106.7009 };
+          zoom = 12;
+        }
+      }
+      if (!active || !mapDivRef.current || mapRef.current) return;
+      let map;
+      if (mapkit) {
+        map = createMapKitMap(mapkit, { container: mapDivRef.current, center, zoom, theme: themeRef.current });
+        markerCtorRef.current = map.Marker;
+      } else {
+        // maplibre-gl 6.x ships pure named ESM exports — there is no
+        // `default` export. `(await import(...)).default` was silently
+        // `undefined`, so `new maplibregl.Map(...)` threw and the map never
+        // initialized (11-realtime-map.md: "web map doesn't render at all").
+        const maplibregl = await import('maplibre-gl');
+        // maplibre-gl locates its tile-decoding worker at runtime via
+        // `new URL('./maplibre-gl-worker.mjs', import.meta.url)`, computed
+        // from a variable rather than a static string literal — Vite/
+        // Rollup's special `new Worker(new URL(...))` bundling only
+        // recognizes a literal, so it never bundles this worker at all; a
+        // production build then never emits `maplibre-gl-worker.mjs` and the
+        // URL 404s (a static host's SPA fallback can mask this as an HTTP
+        // 200 of index.html) — the map style/sprite/source *metadata* still
+        // load fine over plain fetch from the main thread, but no vector
+        // tile is ever decoded into pixels, so only markers (plain DOM
+        // elements, not part of the tile canvas) paint; the base map stays
+        // blank/gray. Confirmed via Playwright's `page.on('worker', ...)`:
+        // the worker was created and immediately closed. vite.config.js's
+        // `maplibreWorkerFiles()` plugin serves/emits the worker file (and
+        // the sibling `maplibre-gl-shared.mjs` it itself imports — a bare
+        // `?url` copy of just the worker file breaks that relative import
+        // once it's alone in a hashed output directory) at this fixed path,
+        // identically in dev and in a production build, so this path always
+        // resolves regardless of mode. See 11-realtime-map.md.
+        maplibregl.setWorkerUrl('/maplibre-gl-worker/maplibre-gl-worker.mjs');
+        if (!active || !mapDivRef.current || mapRef.current) return;
+
+        map = new maplibregl.Map({
+          container: mapDivRef.current,
+          style: await loadMapStyle(themeRef.current),
+          attributionControl: false,
+          center: [center.lng, center.lat],
+          zoom,
+        });
+        map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+        // Required OpenFreeMap/OSM credit stays fully visible (not collapsed behind the "i" button);
+        // the CSS below lifts it above the bottom sheet.
+        map.addControl(new maplibregl.AttributionControl({ compact: false, customAttribution: undefined }), 'bottom-right');
+        // The map container is `inset: 0` of this screen's box; keep the canvas in sync with any
+        // container change (sheet/viewport/Safari toolbar), not just window resizes.
+        if (typeof ResizeObserver !== 'undefined' && mapDivRef.current) {
+          const mro = new ResizeObserver(() => map.resize());
+          mro.observe(mapDivRef.current);
+          map.__bbResizeObserver = mro;
+        }
+        markerCtorRef.current = maplibregl.Marker;
+      }
+      // Move → settle → commit (src/lib/mapDiscovery.js). A gesture (MapLibre passes `originalEvent`) is always
+      // the user's, even if a programmatic move was still pending.
+      map.on('movestart', (e) => {
+        // MapKit JS never says whether a move is a gesture: a start with no fresh programmatic reason is the user's.
+        if (e?.originalEvent) cameraReasonRef.current = { reason: 'user', t: Date.now() };
+        clearTimeout(settleTimerRef.current);
+      });
+      // The live zoom drives clustering (display only); rounded so tiny settles don't redraw every marker.
+      map.on('moveend', () => {
+        const z = map.getZoom();
+        setCameraZoom(Math.round(z * 4) / 4);
+        // Zooming out of the neighbourhood closes its panel; the view stays where it is. Not while it is still flying in.
+        if (areaPanelRef.current && Date.now() - areaOpenedAtRef.current > 1500 && areaPanelCloses(map.__isMapKit ? z - 1 : z)) setAreaPanel(null);
+        onCameraSettled();
+      });
+      // A tap on the map background (not a pin — those are separate marker
+      // DOM elements, never reaches this) clears the selected-event card.
+      // This is a genuine click, not `moveend`, so it can never be confused
+      // with "Search here" (that's tied only to the explicit button).
+      map.on('click', () => setSelectedId(null));
+      mapRef.current = map;
+      setMapReady(true);
+      setCameraZoom(map.getZoom());
+      // First open commits its area once, straight away (the camera is already where it was framed). A restore
+      // keeps its saved area, so the list it returns to is exactly the one the user left. "Open in Map" carries a
+      // camera but no area: it commits the area around that camera.
+      if (!restored?.committedBounds) commitArea();
+      // After a restore the camera may legitimately differ from the area (a selection reveal panned it): the first
+      // settle (e.g. the canvas' own initial resize) is a 'restore' and must not replace the saved area.
+      else cameraReasonRef.current = { reason: 'restore', t: Date.now() };
+      // Test-only hook (Task 2b, 11-realtime-map.md follow-up) — there's no
+      // other way for Playwright to read the live map's own center/zoom
+      // from outside; never read by any app code.
+      if (typeof window !== 'undefined') window.__mapExploreMapForTests = map;
+    })();
+    return () => {
+      active = false;
+      if (typeof window !== 'undefined' && window.__mapExploreMapForTests === mapRef.current) {
+        window.__mapExploreMapForTests = null;
+      }
+      mapRef.current?.__bbResizeObserver?.disconnect();
+      mapRef.current?.remove();
+      mapRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---- freshness: the whole public set again, never a box; camera, area, filters, selection and scroll untouched ----
+  const [refreshing, setRefreshing] = useState(false);
+  // Bounded mode (phase 4): only when the whole public set is larger than MAP_EVENT_CAP. Each committed area then
+  // loads its own events (padded ×1.5, exact count, newest request wins); the "Showing N of M" notice stays honest.
+  // With the set complete (production today) this never runs and panning stays network-free.
+  const boundedRef = useRef(false);
+  const committedRef = useRef(committedBounds);
+  committedRef.current = committedBounds;
+  const boundedOpts = () => (boundedRef.current && committedRef.current ? { bounds: padBounds(committedRef.current, 1.5) } : undefined);
+  useEffect(() => {
+    if (dataMeta.complete && !boundedRef.current) return;
+    if (!committedBounds) return;
+    boundedRef.current = true;
+    let live = true;
+    (async () => {
+      const rows = await loadLatest(boundedOpts());
+      if (live && rows) setEvents(rows);
+    })();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [committedBounds]);
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    const fresh = await loadLatest(boundedOpts());
+    if (fresh) setEvents(fresh);
+    setRefreshing(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const interval = setInterval(refresh, POLL_MS);
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
+  }, [refresh]);
+
+  // Moved above the marker-draw effect below (it references `visibleIdSet`
+  // in its own dependency array, which is evaluated at render time — a
+  // real "Cannot access before initialization" TDZ error surfaced this,
+  // not a guess) — see each memo's own doc comment for what/why.
+  // Search-matcher fix (Issue 2) — one normalized search document per
+  // event, recomputed only when the fetched `events` list itself changes
+  // (a new poll/bounds fetch), never on every keystroke. This is what
+  // guarantees "Supp" surfaces every event the "Supper club" category
+  // chip does: the document always includes the category label/key +
+  // bilingual aliases (`CATEGORY_SEARCH_ALIASES`), independent of whether
+  // that event's own `keywords` column happens to be populated.
+  const eventSearchDocs = useMemo(() => {
+    const docs = new Map();
+    for (const e of events) docs.set(e.id, buildEventSearchDoc(e));
+    return docs;
+  }, [events]);
+
+  // For You = the shared ranker over the loaded events (Home's own semantics and signed-out rule); the Map then keeps
+  // only the matches inside the committed area like every other filter. The area picker is a destination for the map
+  // now (phase 3), not an extra filter, so it no longer narrows the For You set. Toggling never refetches/recenters.
+  const hasPrefs = !!s.eventPrefs && !prefsIsEmpty(s.eventPrefs);
+  // A stale `forYouOn` (signed out / account switch / prefs cleared) must never filter anything.
+  const forYouActive = forYouOn && hasPrefs;
+  const { ranked: forYouRanked, order: forYouOrder } = useMemo(
+    () => mapForYouSet(events, null, s.eventPrefs, hasPrefs, Date.now()),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [events, s.eventPrefs, s.eventPrefsVersion, hasPrefs]);
+  // Read-only view of Home's persisted "new matches" state (Home owns observation).
+  const forYouAlert = useForYouAlert({ userId: s.user?.id, passive: true });
+  const prefsLoading = !!s.user && !s.eventPrefsLoaded;
+
+  // The minute the time filters are judged at (re-evaluated each minute, like Home), never per frame.
+  const nowMinute = Math.floor(Date.now() / 60000);
+  // Search + For You (the two filters that are not in Home's filter object), before geography and the category.
+  const searchedEvents = useMemo(() => {
+    // For You — the SAME match set drives pins and this list.
+    let list = applyForYouFilter(events, forYouActive, forYouOrder);
+    // Matched against the canonical search document (name/category/area/city/organizer/description/keywords),
+    // normalized and multi-token AND — see src/lib/search.js.
+    if (searchQuery.trim()) {
+      list = list.filter(e => matchesSearchQuery(eventSearchDocs.get(e.id) || '', searchQuery));
+    }
+    return list;
+  }, [events, forYouActive, forYouOrder, searchQuery, eventSearchDocs]);
+  // Every filter except the category (so the category chips can say what tapping each one would show): Home's own
+  // predicate — date (venue zone), seats (real fill), price per ticket in one currency, type chips.
+  const baseEvents = useMemo(
+    () => applyDiscoveryFilters(searchedEvents.map(discoveryItem), { ...filters, cats: [] }, nowMinute * 60000).map(it => it.ev),
+    [searchedEvents, filters, nowMinute],
+  );
+
+  // Primary or second category, like Home's catKeys.
+  const inCategory = (e, key) => key === 'all' || (e.catKeys?.length ? e.catKeys : [e.catKey]).includes(key);
+  // Inside the committed map area, every filter except the category (src/lib/mapDiscovery.js mapResults).
+  const areaBase = useMemo(() => mapResults(baseEvents, committedBounds), [baseEvents, committedBounds]);
+  // THE results: pins, list and count all come from this one list.
+  const visibleEvents = useMemo(() => areaBase.filter(e => inCategory(e, catFilter)),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [areaBase, catFilter]);
+  // What tapping each category would show in this map area, with every other active filter applied.
+  const categoryCountMap = useMemo(() => Object.fromEntries(CATEGORY_DEFS.map(c => [c.key, areaBase.filter(e => inCategory(e, c.key)).length])),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [areaBase]);
+  // Matching events that have no map location yet: listed apart, never counted as "in this area".
+  const noLocationMatches = useMemo(() => baseEvents.filter(e => !e.hasLocation && inCategory(e, catFilter)),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [baseEvents, catFilter]);
+  // Matching events anywhere (for "Show nearest" when this area has none).
+  const matchingAnywhere = useMemo(() => baseEvents.filter(e => e.hasLocation && inCategory(e, catFilter)),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [baseEvents, catFilter]);
+  // The filter sheet's market: events IN THE MAP AREA after search + For You, before Home's filters — so its
+  // per-pill counts and "Show N" are exactly what the list will show after Apply.
+  const sheetItems = useMemo(() => mapResults(searchedEvents, committedBounds).map(discoveryItem), [searchedEvents, committedBounds]);
+  // Badge: filters set in the sheet or the time chips (the category row and Seats left show their own state).
+  const sheetFilterCount = activeFilterCount({ ...filters, cats: [], seatsLeft: false });
+  // Matching events outside this area — explains why the Map can show fewer than Home ("+2 outside this area").
+  const outsideCount = matchingAnywhere.length - visibleEvents.filter(e => e.hasLocation).length;
+  // Why the list is empty: no events in this area at all, or filters exclude the ones that are here.
+  const anyInArea = useMemo(() => mapResults(events, committedBounds).length > 0, [events, committedBounds]);
+  // "Seats left" only means something once banbe has real fill for at least one event.
+  const anyFillKnown = useMemo(() => events.some(e => e.fillKnown), [events]);
+
+  // ---- Map v5 (note 73): cities ----
+  // Each loaded event's city (its city / province column, else the smallest city box around it; no DB change).
+  const cityIdById = useMemo(() => new Map(events.map(e => [e.id, cityFor(e, CITIES)])), [events]);
+  // Map E+ (note 79): each loaded event's neighbourhood ({ key, label, cityId }): its own `area` text within its city.
+  const areaInfoById = useMemo(() => new Map(events.map(e => [e.id, areaKey(e, CITIES)])), [events]);
+  // Map E+: each event's slot (venue-zone service day + minutes) once per load; the window test is then an integer compare.
+  const slotById = useMemo(() => {
+    const m = new Map();
+    for (const e of events) {
+      const t = e.startsAt ? Date.parse(e.startsAt) : NaN;
+      if (!Number.isNaN(t)) m.set(e.id, eventSlot(t, e.tz || VN_TIME_ZONE));
+    }
+    return m;
+  }, [events]);
+  // The ids inside the window (null = the window is off, everything is). Recomputed per knob step: no network, no markers rebuilt.
+  const hitSet = useMemo(() => {
+    if (!timeWin.on) return null;
+    const out = new Set();
+    for (const e of events) { const sl = slotById.get(e.id); if (sl && inWindow(sl, timeWin, nowMinute * 60000)) out.add(e.id); }
+    return out;
+  }, [events, slotById, timeWin, nowMinute]);
+  const hitSetRef = useRef(hitSet);
+  hitSetRef.current = hitSet;
+  // The zone of the place being viewed (its events' own zone; Vietnam when there are none): names "today" for the day menu.
+  const viewTz = useMemo(() => {
+    const tally = new Map();
+    for (const e of (visibleEvents.length ? visibleEvents : events)) { const z = e.tz || VN_TIME_ZONE; tally.set(z, (tally.get(z) || 0) + 1); }
+    return [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || VN_TIME_ZONE;
+  }, [visibleEvents, events]);
+  // Events per city with every filter except the search text and the map area (the text may be the city's name).
+  const cityCounts = useMemo(() => {
+    const list = applyDiscoveryFilters(applyForYouFilter(events, forYouActive, forYouOrder).map(discoveryItem), filters, nowMinute * 60000);
+    const out = {};
+    for (const { ev } of list) {
+      const id = cityIdById.get(ev.id);
+      if (id) out[id] = (out[id] || 0) + 1;
+    }
+    return out;
+  }, [events, forYouActive, forYouOrder, filters, nowMinute, cityIdById]);
+  // Cities matching the search text, shown above the results ("Đà Lạt · 2 events" → Go).
+  const cityMatches = useMemo(() => searchCities(searchQuery, CITIES, cityCounts), [searchQuery, cityCounts]);
+  // The area picker's Cities section (AreaSheet reads it while the Map is open): cities with events, most first,
+  // then the main cities so there is always somewhere to go.
+  const pickerCities = useMemo(() => {
+    const withEvents = CITIES.filter(c => cityCounts[c.id] > 0).sort((a, b) => cityCounts[b.id] - cityCounts[a.id]);
+    const rest = MAIN_CITY_IDS.filter(id => !withEvents.some(c => c.id === id)).map(id => CITY_BY_ID.get(id));
+    return [...withEvents, ...rest].map(c => ({ id: c.id, count: cityCounts[c.id] || 0 }));
+  }, [cityCounts]);
+  const pickerCitiesKey = JSON.stringify(pickerCities);
+  useEffect(() => { set({ mapCities: pickerCities }); }, [pickerCitiesKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => set({ mapCities: null, mapCityRequest: null }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // flyToCity is defined further down (it needs the camera helpers); markers drawn above reach it through this ref.
+  const flyToCityRef = useRef(null);
+  const cityName = (id) => { const c = CITY_BY_ID.get(id); return c ? (en ? c.en : c.vi) : ''; };
+
+
+  // Map E+: the window restyles the markers that are already there (bold = inside, dimmed = outside); it never rebuilds them.
+  useEffect(() => { for (const m of markersRef.current) if (m.__parts) styleDim(m, hitSet); }, [hitSet]);
+
+  // ---- draw/refresh pins whenever the event list or selection changes ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    // Markers from the previous run stay until the new ones exist: the ones that are still wanted are swapped out
+    // at once, the ones that no longer are (filtered away) shrink/fade first. Newly appearing ones grow/fade in.
+    const oldMarkers = markersRef.current;
+    markersRef.current = [];
+    const prevKeys = prevMarkerKeysRef.current;
+    const newKeys = new Set();
+    const finishOld = () => {
+      oldMarkers.forEach((m) => {
+        if (newKeys.has(m.__key) || !m.__el) { m.remove(); return; }
+        const inner = m.__el.firstElementChild || m.__el;
+        inner.style.transition = 'opacity 0.24s ease, transform 0.24s ease';
+        inner.style.opacity = '0';
+        if (inner !== m.__el) inner.style.transform = 'scale(0.4)';
+        setTimeout(() => m.remove(), 250);
+      });
+    };
+    let cancelled = false;
+    (async () => {
+      const MarkerCtor = markerCtorRef.current;
+      if (cancelled || !MarkerCtor) { oldMarkers.forEach(m => m.remove()); return; }
+      // Markers are exactly the results (committed area + filters), grouped for display only (phase 4): every result
+      // is in exactly one pin, cluster or stack, so the markers always add up to the count. Rows without coordinates
+      // never get an invented position. A selected event is pulled out of its cluster so it stays visible; at the
+      // same place it stays in its stack (the card steps through it).
+      const located = visibleEvents.filter(e => e.hasLocation);
+      const byId = new Map(located.map(e => [e.id, e]));
+      const zoom = cameraZoom ?? map.getZoom();
+      // MapKit's zoom is one level above the 512 px basis the grouping uses (same world size).
+      const zoom512 = map.__isMapKit ? zoom - 1 : zoom;
+      // Map E+: zoomed out one bubble per city (Map v5), closer in one per neighbourhood, closer still the price pins,
+      // clusters and stacks. Every result is in exactly one marker, so the markers always add up to the count.
+      const level = markerLevel(zoom512);
+      // A highlighted event (restored from Event Detail / "Open in Map") is pulled out of its cluster at pin level so it
+      // stays visible; at the same place it stays in its stack.
+      const sel = level === 'pin' ? byId.get(selectedId) : null;
+      const selStacked = !!sel && sameSpot(located, sel).length > 1;
+      const groupable = sel && !selStacked ? located.filter(e => e.id !== sel.id) : located;
+      const groups = level === 'city' ? cityGroups(groupable, zoom512, p => cityIdById.get(p.id), CITIES)
+        : level === 'area' ? areaGroups(groupable, zoom512, p => areaInfoById.get(p.id) || areaKey(p, CITIES))
+        : clusterPins(groupable, zoom512);
+      if (sel && !selStacked) groups.push({ kind: 'pin', ids: [sel.id], lat: sel.lat, lng: sel.lng });
+      for (const g of groups) {
+        const ev = byId.get(g.ids[0]);
+        const isSelected = g.ids.includes(selectedId);
+        // MapLibre's Marker owns the OUTER element's transform (it rewrites it on every update), so all our styling,
+        // scale and animation live on an inner child; the outer shell stays a plain positioning box (not
+        // position:relative, which would shift every marker by half the map width).
+        const el = document.createElement('div');
+        const pinEl = document.createElement('div');
+        const parts = { pinEl, kind: g.kind, badge: null, bub: null, lbl: null, selected: g.ids.includes(selectedId) };
+        const key = `${g.kind}:${g.ids.join(',')}`;
+        newKeys.add(key);
+        if (g.kind === 'city') {
+          // City bubble (zoomed out): "TP.HCM  5"; tap = fly to that city.
+          const c = CITY_BY_ID.get(g.cityId);
+          const n = g.ids.length;
+          pinEl.style.cssText = `min-height:40px;padding:0 8px 0 16px;box-sizing:border-box;border-radius:20px;background:${ink};color:${paper};border:2px solid ${paper};display:flex;align-items:center;gap:9px;font:700 15px/1 'Be Vietnam Pro',sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 3px 12px rgba(27,25,22,0.38);`;
+          pinEl.setAttribute('data-testid', `map-city-${g.cityId}`);
+          pinEl.setAttribute('data-count', String(n));
+          pinEl.setAttribute('aria-label', T(`${c.vi}, ${n} sự kiện, phóng tới`, `${c.en}, ${n} event${n === 1 ? '' : 's'}, go there`));
+          pinEl.textContent = en ? c.short.en : c.short.vi;
+          const badge = document.createElement('span');
+          badge.style.cssText = `min-width:24px;height:24px;padding:0 7px;box-sizing:border-box;border-radius:12px;background:${paper};color:${ink};display:inline-flex;align-items:center;justify-content:center;font:700 13px/1 'Be Vietnam Pro',sans-serif;`;
+          badge.textContent = String(n);
+          parts.badge = badge;
+          pinEl.appendChild(badge);
+          const activate = () => flyToCityRef.current?.(g.cityId);
+          pinEl.addEventListener('click', (e) => { e.stopPropagation(); activate(); });
+          pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activate(); } });
+        } else if (g.kind === 'area') {
+          // Neighbourhood bubble: the count in an ink pill, the area's name under it. One key opens its panel; several
+          // (bubbles that overlap at this zoom) zoom in to tell them apart.
+          const n = g.ids.length;
+          const single = g.keys.length === 1;
+          const name = single ? (g.labels[0] || T('Khu khác', 'Other areas')) : T(`${g.keys.length} khu`, `${g.keys.length} areas`);
+          pinEl.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;';
+          pinEl.setAttribute('data-testid', `map-areabubble-${g.keys.join('+')}`);
+          pinEl.setAttribute('data-count', String(n));
+          pinEl.setAttribute('data-areas', String(g.keys.length));
+          pinEl.setAttribute('aria-label', T(`${name}, ${n} sự kiện, ${single ? 'mở khu này' : 'phóng to'}`, `${name}, ${n} event${n === 1 ? '' : 's'}, ${single ? 'open this area' : 'zoom in'}`));
+          const bub = document.createElement('span');
+          bub.style.cssText = `min-width:52px;height:52px;padding:0 10px;box-sizing:border-box;border-radius:26px;background:${ink};color:${paper};display:flex;align-items:center;justify-content:center;font:600 22px/1 ${DISPLAY_FACE};box-shadow:0 3px 10px rgba(27,25,22,0.35);`;
+          bub.textContent = String(n);
+          const lbl = document.createElement('span');
+          lbl.style.cssText = `max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 8px;border-radius:999px;background:${paper};color:${ink};font:700 12px/1.3 'Be Vietnam Pro',sans-serif;box-shadow:0 1px 4px rgba(27,25,22,0.2);`;
+          lbl.textContent = name;
+          parts.bub = bub; parts.lbl = lbl;
+          pinEl.appendChild(bub);
+          pinEl.appendChild(lbl);
+          const activate = () => (single ? openAreaRef.current?.(g) : zoomToCluster(g));
+          pinEl.addEventListener('click', (e) => { e.stopPropagation(); activate(); });
+          pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activate(); } });
+        } else if (g.kind === 'pin') {
+          // Pin = the category's line icon + the price per ticket in its own currency ("Free" when 0), Map v5: the
+          // same icons as the category row, so the row reads as the key. Selected = ink fill.
+          const label = ev.priceVnd > 0 ? formatMoneyShort(ev.priceVnd, ev.currency) : T('Miễn phí', 'Free');
+          const cat = CATEGORY_DEFS.find(c => c.key === ev.catKey);
+          pinEl.style.cssText = `height:30px;min-width:30px;padding:0 10px 0 8px;gap:5px;box-sizing:border-box;border-radius:15px;background:${isSelected ? ink : paper};color:${isSelected ? paper : ink};border:1.5px solid ${ink};position:relative;display:flex;align-items:center;justify-content:center;font:600 12.5px/1 'Be Vietnam Pro',sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 2px 6px rgba(27,25,22,0.3);transform:scale(${isSelected ? 1.12 : 1});`;
+          pinEl.setAttribute('data-testid', `map-pin-${ev.id}`);
+          pinEl.setAttribute('data-cat', ev.catKey || 'all');
+          pinEl.setAttribute('aria-label', [ev.name || '', cat ? T(cat.vi, cat.en) : null, label].filter(Boolean).join(', '));
+          pinEl.innerHTML = categoryGlyphMarkup(ev.catKey, 14, 2);
+          const priceSpan = document.createElement('span');
+          priceSpan.textContent = label;
+          pinEl.appendChild(priceSpan);
+          // Close in (street level) or selected: the event's name under the pin, Corner-style. Absolute, so the
+          // marker's own anchor never moves.
+          if (zoom512 >= 15 || isSelected) {
+            const name = document.createElement('span');
+            name.setAttribute('data-testid', `map-pinname-${ev.id}`);
+            name.style.cssText = `position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 11.5px/1.2 'Be Vietnam Pro',sans-serif;color:${ink};background:${paper};padding:2px 8px;border-radius:999px;box-shadow:0 1px 2px rgba(27,25,22,0.2);pointer-events:none;`;
+            name.textContent = ev.name || '';
+            pinEl.appendChild(name);
+          }
+          if (ev.urgent) {
+            const dot = document.createElement('span');
+            dot.style.cssText = `position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:#9A3E2D;border:1.5px solid ${paper};`;
+            pinEl.appendChild(dot);
+          }
+          const activate = () => openDetailRef.current?.(ev.id);
+          pinEl.addEventListener('click', (e) => { e.stopPropagation(); activate(); });
+          pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activate(); } });
+        } else {
+          // Cluster (zoom in) or stack (same place: select the first; the card steps through the rest).
+          const n = g.ids.length;
+          const stack = g.kind === 'stack';
+          pinEl.style.cssText = `height:${stack ? 30 : 36}px;min-width:${stack ? 30 : 36}px;padding:0 ${stack ? 10 : 6}px;box-sizing:border-box;border-radius:18px;background:${isSelected ? ink : paper};color:${isSelected ? paper : ink};border:${stack ? 1.5 : 2}px solid ${ink};display:flex;align-items:center;justify-content:center;gap:4px;font:700 13px/1 'Be Vietnam Pro',sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(27,25,22,0.32);`;
+          pinEl.setAttribute('data-testid', `map-${g.kind}-${g.ids[0]}`);
+          pinEl.setAttribute('data-count', String(n));
+          pinEl.setAttribute('aria-label', stack
+            ? T(`${n} sự kiện cùng địa điểm, mở khu này`, `${n} events at this place, open this area`)
+            : T(`${n} sự kiện ở đây, phóng to`, `${n} events here, zoom in`));
+          pinEl.textContent = stack ? `${n} ≡` : String(n);
+          const activate = () => (stack ? openAreaForEventRef.current?.(byId.get(g.ids[0])) : zoomToCluster(g));
+          pinEl.addEventListener('click', (e) => { e.stopPropagation(); activate(); });
+          pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activate(); } });
+        }
+        // Keyboard + screen reader: every marker is a button (the list is the full alternative).
+        pinEl.setAttribute('role', 'button');
+        pinEl.setAttribute('tabindex', '0');
+        if (isSelected) pinEl.setAttribute('aria-pressed', 'true');
+        pinEl.style.zIndex = isSelected ? '1' : '0';
+        if (isSelected && lastAnimatedPinIdRef.current !== selectedId) {
+          if (!reduceMotion()) pinEl.style.animation = 'banbePinPop 0.32s cubic-bezier(.22,.61,.36,1) both';
+          lastAnimatedPinIdRef.current = selectedId;
+        } else if (prevKeys.size && !prevKeys.has(key) && !reduceMotion()) {
+          pinEl.style.animation = 'banbePinIn 0.3s cubic-bezier(.22,.61,.36,1) both';
+        }
+        el.appendChild(pinEl);
+        const marker = new MarkerCtor({ element: el }).setLngLat([g.lng, g.lat]).addTo(map);
+        marker.__key = key; marker.__el = el; marker.__ids = g.ids; marker.__parts = parts;
+        pinEl.style.transition = 'opacity 0.25s ease, scale 0.18s ease, background-color 0.2s ease';
+        styleDim(marker, hitSetRef.current);
+        markersRef.current.push(marker);
+      }
+      prevMarkerKeysRef.current = newKeys;
+      finishOld();
+    })();
+    return () => { cancelled = true; };
+    // The `cancelled` guard above keeps an in-flight redraw from a STALE run (rapid filter changes or zooming) from
+    // painting markers after a newer run has started.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleEvents, selectedId, mapReady, cameraZoom, cityIdById, areaInfoById]);
+
+  // Stage 2 (2026-09-27 nav/discovery pass) — pull-to-refresh, LOCAL to
+  // this list (not Shell's/App.jsx's generic one): MapExplore renders as
+  // a `position: fixed` full-viewport overlay, so Shell's own scroll
+  // container's scrollTop never moves here and is always 0 — treating
+  // that as "at the top" would hijack the map's OWN vertical gestures
+  // (the bottom sheet's drag-to-resize handle, this very list's native
+  // scroll). This list (`listRef`) has a real, independent scrollTop, so
+  // it gets its own tiny pointer-gesture pair instead, calling this
+  // screen's OWN real refetch (searchHere — current bounds, no camera/
+  // selection reset).
+  // Large cards' photos load in the background while the list is still small, so opening to full never shows them
+  // half-loaded (iOS parity, CardPhotoPrefetch). The browser cache then serves the cards' own <img>s.
+  const preloadKey = visibleEvents.slice(0, 8).map(e => e.id).join(',');
+  useEffect(() => {
+    for (const ev of visibleEvents.slice(0, 8)) for (const src of (ev.imgs?.length ? ev.imgs : [ev.img]).slice(0, 2)) {
+      if (src) { const im = new Image(); im.decoding = 'async'; im.src = src; }
+    }
+  }, [preloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+
+  // Map redesign phase 2 (reverses the earlier "selection survives filters" rule, by the owner's spec): the
+  // selection lives only while its event is one of the results — the committed area + filters, plus the listed
+  // no-location matches. A pan that leaves it outside the area, or a filter that excludes it, clears it; another
+  // event is never opened in its place. Filter changes no longer move the camera either (the old category →
+  // density-hotspot flight is gone): the area changes only through the map.
+  const selectableIds = useMemo(() => [...visibleEvents, ...noLocationMatches].map(e => e.id), [visibleEvents, noLocationMatches]);
+  // Guarded until data and an area exist, so a restored selection is never cleared before its rows arrive.
+  useEffect(() => {
+    if (loading || !committedBounds) return;
+    const next = selectionAfter(selectedId, selectableIds);
+    if (next !== selectedId) setSelectedId(next);
+  }, [loading, committedBounds, selectedId, selectableIds]);
+
+  // Bug 2: best-effort list-scroll restore — once, the first time the list
+  // actually has rows to scroll through. A plain scrollTop pixel value
+  // (unlike a SwiftUI List's opaque scroll position) round-trips exactly
+  // on web, so this restores precisely rather than approximately.
+  useEffect(() => {
+    if (listScrollRestoredRef.current) return;
+    if (!restored?.listScrollTop || visibleEvents.length === 0) return;
+    if (listRef.current) listRef.current.scrollTop = restored.listScrollTop;
+    listScrollRestoredRef.current = true;
+  }, [visibleEvents, restored]);
+
+
+  // Bug 2: snapshot everything MapExplore itself owns right before handing
+  // off to the full-screen Event Detail screen, so returning restores it
+  // instead of re-initializing from scratch. Saved into BanBeContext (not
+  // local state) because App.jsx's Shell unmounts this whole component the
+  // instant `screen` changes away from 'mapExplore'.
+  const saveSnapshot = useCallback(() => {
+    const map = mapRef.current;
+    const center = map?.getCenter();
+    setMapExploreState({
+      cameraCenter: center ? { lat: center.lat, lng: center.lng } : null,
+      cameraZoom: map?.getZoom() ?? null,
+      listOpen, areaPanel, preAreaView: preAreaViewRef.current, timeWin,
+      filters, catFilter,
+      openNowOnly,
+      forYou: forYouOn,
+      searchQuery,
+      selectedId,
+      listScrollTop: listScrollSavedRef.current,
+      // Phase 2: the committed area and the rows themselves, so the return shows the same list at once.
+      committedBounds, areaContext, cityDest,
+      events,
+      // Map v6: the full-height layout (Large / Compact).
+      listLayout,
+    });
+  }, [listOpen, areaPanel, timeWin, filters, catFilter, openNowOnly, forYouOn, searchQuery, selectedId, committedBounds, areaContext, cityDest, events, listLayout, setMapExploreState]);
+
+  // "Show nearest": the closest matching events (same filters) anywhere, framed above the mid sheet — an explicit
+  // geographic move that commits its area once. Never automatic, never presented as "here".
+  const showNearest = useCallback(() => {
+    const map = mapRef.current;
+    const el = mapDivRef.current;
+    if (!map || !el || !matchingAnywhere.length) return;
+    const c = map.getCenter();
+    const from = { lat: c.lat, lng: c.lng };
+    const first = nearestPoint(matchingAnywhere, from);
+    const box = boundsOfPoints(pointsNear(matchingAnywhere, first, 25));
+    if (!box) return;
+    const size = { width: el.clientWidth || 390, height: el.clientHeight || containerH };
+    const cam = fitCamera(box, size, fitPad(40), { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 14 });
+    moveCamera('nearest', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom: cam.zoom, duration: reduceMotion() ? 0 : 800 }));
+  }, [matchingAnywhere, containerH, topControlsBottom, moveCamera]);
+  // Area picker = a DESTINATION (phase 3): picking an area on the Map flies to that area's events and commits it once;
+  // every filter stays. "Everywhere" or an area with no mapped events leaves the camera where it is (no guessed
+  // geometry, never the whole inventory) — the chip then reads "Map area".
+  const areaMountedRef = useRef(false);
+  useEffect(() => {
+    if (!areaMountedRef.current) { areaMountedRef.current = true; return; }
+    setCityDest(null);
+    const map = mapRef.current;
+    const el = mapDivRef.current;
+    if (!map || !el || curArea.key === 'all') { setAreaContext('map'); return; }
+    const box = boundsOfPoints(events.filter(e => e.hasLocation && curArea.match(e)));
+    if (!box) {
+      // Map v6 (note 74): a city node with no mapped events still has somewhere to go: the city's own box.
+      const city = cityOfNode(curArea.key);
+      if (city && CITY_BY_ID.has(city.id)) { flyToCityRef.current?.(city.id); return; }
+      setAreaContext('map');
+      return;
+    }
+    const size = { width: el.clientWidth || 390, height: el.clientHeight || containerH };
+    const cam = fitCamera(box, size, fitPad(40), { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 14 });
+    moveCamera('destination', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom: cam.zoom, duration: reduceMotion() ? 0 : 800 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [curArea.key]);
+  // Tap a cluster: zoom in to fit its events (at least one level), an explicit move that commits its area once.
+  const zoomToCluster = useCallback((g) => {
+    const map = mapRef.current;
+    const el = mapDivRef.current;
+    if (!map || !el || !g.bounds) return;
+    const size = { width: el.clientWidth || 390, height: el.clientHeight || containerH };
+    const cam = fitCamera(g.bounds, size, fitPad(48), { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 18 });
+    const zoom = Math.max(cam.zoom, map.getZoom() + 1);
+    moveCamera('cluster', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom, duration: reduceMotion() ? 0 : 600 }));
+  }, [containerH, topControlsBottom, moveCamera]);
+  // Map v5 (note 73): fly to a city (search row, area picker, city bubble). A destination: commits its area once, keeps
+  // every filter, works with no events there (the city's own box, never guessed from events), sheet to mid.
+  const flyToCity = useCallback((id) => {
+    const map = mapRef.current;
+    const el = mapDivRef.current;
+    const c = CITY_BY_ID.get(id);
+    if (!map || !el || !c) return;
+    const size = { width: el.clientWidth || 390, height: el.clientHeight || containerH };
+    const cam = fitCamera(c.bounds, size, fitPad(24), { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 13 });
+    // A big city box (HCMC with Cần Giờ) fits below CITY_ZOOM, which would just show the same city bubble again:
+    // land at least half a level past it, centred on the city itself.
+    const minZoom = CITY_ZOOM + 0.5 + (map.__isMapKit ? 1 : 0);
+    if (cam.zoom < minZoom) { cam.zoom = minZoom; cam.center = c.center; }
+    setCityDest(id);
+    setSelectedId(null);
+    moveCamera('destination', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom: cam.zoom, duration: reduceMotion() ? 0 : 800 }));
+  }, [containerH, topControlsBottom, moveCamera]);
+  flyToCityRef.current = flyToCity;
+  // ---- Map E+: the neighbourhood panel ----
+  const panelPx = Math.round(containerH * 0.46);
+  // Open a neighbourhood ({ keys, labels, bounds }): fly so its events fill the free band above the panel, at pin level,
+  // and show its events in the panel. With `reveal` (a stack tap, already zoomed in) the camera only centres that point.
+  const openAreaPanel = useCallback((g, opts = {}) => {
+    const map = mapRef.current;
+    const el = mapDivRef.current;
+    if (!map || !el) return;
+    if (!areaPanelRef.current) {
+      const c = map.getCenter();
+      preAreaViewRef.current = { center: { lat: c.lat, lng: c.lng }, zoom: map.getZoom() };
+    }
+    areaOpenedAtRef.current = Date.now();
+    areaScrollToRef.current = opts.scrollTo || null;
+    setAreaPanel({ keys: g.keys, label: g.labels?.[0] || null });
+    setListOpen(false);
+    searchInputRef.current?.blur();
+    const size = { width: el.clientWidth || 390, height: el.clientHeight || geomRef.current.containerH };
+    // Room under the fit: the panel (46%) and the time bar that rides above it.
+    const pad = { top: geomRef.current.topControlsBottom + CARD_GAP + 16, bottom: Math.round(geomRef.current.containerH * 0.46) + 12 + TIME_H + 16, left: 48, right: 48 };
+    const mk = !!map.__isMapKit;
+    const duration = reduceMotion() ? 0 : 700;
+    if (opts.reveal) {
+      const z = map.getZoom();
+      const cam = fitCamera({ north: opts.reveal.lat, south: opts.reveal.lat, east: opts.reveal.lng, west: opts.reveal.lng }, size, pad, { tileSize: mk ? 256 : 512, maxZoom: z, minZoom: z });
+      moveCamera('reveal', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom: z, duration }));
+    } else if (g.bounds) {
+      const cam = fitCamera(g.bounds, size, pad, { tileSize: mk ? 256 : 512, maxZoom: 17 });
+      const zoom = Math.max(cam.zoom, AREA_ZOOM + 0.5 + (mk ? 1 : 0));
+      moveCamera('cluster', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom, duration }));
+    }
+  }, [moveCamera]);
+  // Back ("All areas", Esc): close the panel and, with `goBack`, return to the view it was opened from.
+  const closeAreaPanel = useCallback((goBack) => {
+    setAreaPanel(null);
+    const v = preAreaViewRef.current;
+    preAreaViewRef.current = null;
+    if (goBack && v) moveCamera('cluster', m => m.flyTo({ center: [v.center.lng, v.center.lat], zoom: v.zoom, duration: reduceMotion() ? 0 : 700 }));
+  }, [moveCamera]);
+  openAreaRef.current = openAreaPanel;
+  openAreaForEventRef.current = (ev) => {
+    if (!ev) return;
+    // The events at this place may be named for slightly different areas (free text): the panel lists all of them.
+    const stack = sameSpot(visibleEvents, ev);
+    const infos = (stack.length ? stack : [ev]).map(e => areaInfoById.get(e.id) || areaKey(e, CITIES));
+    const keys = [...new Set([(areaInfoById.get(ev.id) || areaKey(ev, CITIES)).key, ...infos.map(i => i.key)])];
+    const first = areaInfoById.get(ev.id) || areaKey(ev, CITIES);
+    openAreaPanel({ keys, labels: [first.label] }, { reveal: ev, scrollTo: ev.id });
+  };
+  useEffect(() => {
+    if (!areaPanel) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') closeAreaPanel(true); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [areaPanel, closeAreaPanel]);
+  // A city picked in the area sheet (AreaSheet.jsx) arrives as a one-shot request.
+  useEffect(() => {
+    const req = s.mapCityRequest;
+    if (!req || !mapReady) return;
+    set({ mapCityRequest: null });
+    flyToCity(req.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.mapCityRequest?.t, mapReady]);
+  const goCity = useCallback((id) => {
+    if (searchQueryRef.current.trim()) rememberSearch(searchQueryRef.current);
+    searchInputRef.current?.blur();
+    setSearchQuery('');
+    flyToCity(id);
+  }, [flyToCity, rememberSearch]);
+
+  // Distance (km) from the area's centre to the nearest match, for an honest "Show nearest · 1.2 km" hint.
+  const nearestKm = useMemo(() => {
+    if (!committedBounds || !matchingAnywhere.length) return null;
+    const c = { lat: (committedBounds.north + committedBounds.south) / 2, lng: (committedBounds.east + committedBounds.west) / 2 };
+    const p = nearestPoint(matchingAnywhere, c);
+    return p ? geoKm(c, p) : null;
+  }, [committedBounds, matchingAnywhere]);
+  // Clear filters: back to everything in THIS area; the map never moves.
+  const clearFilters = useCallback(() => {
+    setFilters(normalizeFilters(DEFAULT_FILTERS)); setSearchQuery(''); setForYouOn(false);
+  }, []);
+  const filtersActive = activeFilterCount(filters) > 0 || !!searchQuery.trim() || forYouActive;
+  const openEventDetail = useCallback((id) => {
+    saveSnapshot();
+    goEvent(id);
+  }, [saveSnapshot, goEvent]);
+  openDetailRef.current = openEventDetail;
+  // "Edit preferences": same snapshot/restore as Event Detail, so Back returns to the
+  // same camera, sheet, list position and filters.
+  const editPreferences = useCallback(() => {
+    saveSnapshot();
+    openEventPreferences('mapExplore');
+  }, [saveSnapshot, openEventPreferences]);
+  const toggleForYou = useCallback(() => {
+    if (!forYouOn) forYouAlert.acknowledge(forYouRanked.map(m => m.key));
+    setForYouOn(!forYouOn);
+  }, [forYouOn, forYouRanked, forYouAlert.acknowledge]);
+
+  // Task 1 (11-realtime-map.md follow-up): web has no edge-swipe-back
+  // gesture at all (confirmed by inspection, App.jsx's Shell has no
+  // dual-rendering/backdrop concept the way RootView's edge-swipe does on
+  // iOS) — the only Map-Explore-closing-to-Home trigger here is this
+  // button, so there's no "live drag progress" to track. This gives the
+  // button the same shrink/bubble VISUAL as iOS's button+swipe both get
+  // (see `closingProgress` below), just without a
+  // gesture behind it — animate to fully closed, THEN actually navigate,
+  // matching iOS's own button timing (`closeMap()` there).
+  const [closingProgress, setClosingProgress] = useState(0);
+
+  // An explicit exit (as opposed to "on my way to Event Detail, be right
+  // back") clears the snapshot — reopening the map later from Home should
+  // start fresh, not silently resume a session from an unrelated visit.
+  const closeMap = useCallback(() => {
+    searchBarStore.blur();
+    searchBarStore.setAtHome(true); // the persistent bar glides back down onto Home's own bar
+    setClosingProgress(1);
+    // Matches the sheet's own `transform` transition duration (0.42s, the
+    // same bounce curve the restore-only bubble already uses) so the
+    // shrink actually finishes playing before this component unmounts,
+    // rather than being cut short partway through.
+    setTimeout(() => {
+      setMapExploreState(null);
+      backFromMapExplore();
+    }, 420);
+  }, [setMapExploreState, backFromMapExplore]);
+
+  const compassOpacity = locPermission === 'granted' ? 1 : DISABLED_OPACITY;
+
+  // Inside the desktop phone frame the frame's own 50pt status bar covers the
+  // top of this fixed layer, so iOS's "safe area + 8" top controls start below it.
+  const topInset = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(min-width: 700px) and (min-height: 560px) and (hover: hover) and (pointer: fine)').matches) ? 50 : 0;
+
+  // ---- row/card facts (all from real columns; nothing guessed) ----
+  const en = s.lang === 'en';
+  // "Th 4, 05.03 · 19:00" in the venue's own zone (events.tz, migration 195), never the viewer's clock.
+  const eventWhen = (ev) => whenLabel(ev.startsAt, ev.tz, en);
+  // Price per ticket in the event's own currency; 0 is genuinely free.
+  const priceLine = (ev) => (ev.priceVnd > 0
+    ? `${formatMoney(ev.priceVnd, ev.currency)} ${T('/ vé', '/ ticket')}`
+    : T('Miễn phí', 'Free'));
+  // Amount + an outlined ticket icon (iOS parity: "/ ticket" kept getting cut off); the label keeps "/ ticket".
+  const priceTicket = (ev) => (ev.priceVnd > 0 ? (<>
+    {formatMoney(ev.priceVnd, ev.currency)}
+    <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinejoin="round"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5V14a2 2 0 0 0 0-4z" /><path d="M14.5 6v2M14.5 11v2M14.5 16v2" /></svg>
+  </>) : T('Miễn phí', 'Free'));
+  const nearDistance = (ev) => (s.located === true && s.userCoords && ev.hasLocation ? distanceLabel(haversineKm(s.userCoords, ev), en) : null);
+  const sectionLabel = { padding: '12px 0 4px', fontSize: 11.5, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: ink2 };
+  // Solid chip (content sits on an opaque layer). 36pt tall.
+  const catChip = (active, muted) => ({
+    flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 12px', borderRadius: RADIUS.pill,
+    border: active ? `1px solid ${ink}` : '1px solid transparent', background: active ? ink : surface2, color: active ? paper : ink,
+    fontSize: 13, fontWeight: active ? 600 : 500, whiteSpace: 'nowrap', cursor: 'pointer', fontFamily: 'inherit', opacity: muted ? 0.55 : 1,
+  });
+  // Glass chip: the chips sit over the map, like iOS's controls. Active = ink fill.
+  const mapChip = (active, muted) => ({
+    ...photoPill({ position: 'static', borderRadius: RADIUS.pill }),
+    flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 12px', fontSize: 13, fontWeight: active ? 600 : 500,
+    whiteSpace: 'nowrap', fontFamily: 'inherit', opacity: muted ? 0.55 : 1,
+    ...(active ? { background: ink, color: paper, border: `1px solid ${ink}`, backdropFilter: 'none', WebkitBackdropFilter: 'none', boxShadow: 'none' } : null),
+  });
+  // Empty-state action: a real 44px button.
+  const emptyBox = { padding: '20px 20px 18px', color: ink, fontSize: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 6 };
+  const emptyTitle = { fontSize: 16, fontWeight: 700, fontFamily: DISPLAY_FACE };
+  const emptyIcon = (d) => (
+    <span aria-hidden="true" style={{ width: 56, height: 56, borderRadius: 18, background: 'linear-gradient(135deg, rgba(var(--bb-fg-rgb),0.10), rgba(var(--bb-fg-rgb),0.03))', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
+      <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
+    </span>
+  );
+  const emptyAction = { display: 'inline-flex', alignItems: 'center', minHeight: 44, marginTop: 8, padding: '0 16px', borderRadius: RADIUS.pill, border: 'none', background: surface2, color: ink, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' };
+  const emptyActionInk = { ...emptyAction, background: ink, color: paper, marginTop: 6 };
+  // What is filtered (only its count and `tokens` are read now: the empty states say how many filters to clear).
+  const summary = (() => {
+    const base = activeFilterSummary(filters, { forYou: forYouActive, query: searchQuery });
+    if (catFilter === 'all' || base.tokens.some(t => t.kind === 'cat' && t.key === catFilter)) return base;
+    return { tokens: [{ kind: 'cat', key: catFilter }, ...base.tokens], count: base.count + 1 };
+  })();
+  // The city the map is centred on (smallest cities.json box holding the centre): the list's header line.
+  const mapCity = (() => {
+    const b = committedBounds;
+    if (!b) return null;
+    const lat = (b.north + b.south) / 2, lng = (b.east + b.west) / 2;
+    let best = null;
+    for (const c of citiesData.cities || []) {
+      const x = c.bounds;
+      if (!x || lat > x.north || lat < x.south || lng > x.east || lng < x.west) continue;
+      if (!best || (x.north - x.south) * (x.east - x.west) < (best.bounds.north - best.bounds.south) * (best.bounds.east - best.bounds.west)) best = c;
+    }
+    return best ? T(best.vi, best.en) : null;
+  })();
+  const countText = committedBounds && !(loading && !events.length)
+    ? T(`${visibleEvents.length} sự kiện trong vùng bản đồ`, `${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'} in this map area`)
+    : T('Đang tải sự kiện…', 'Loading events…');
+  // Map E+: the time window. `hitCount` is how many of the results are inside it (all of them when it is off).
+  const nowMs = nowMinute * 60000;
+  const dayOpts = dayOptions(nowMs, viewTz, en);
+  const dayLabel = timeWin.on ? (dayOpts.find(o => o.key === timeWin.key)?.label || dayOpts[4].label) : dayOpts[4].label;
+  const isHit = (id) => !hitSet || hitSet.has(id);
+  const hitCount = hitSet ? visibleEvents.reduce((n, e) => n + (hitSet.has(e.id) ? 1 : 0), 0) : visibleEvents.length;
+  const windowLine = windowSummary(timeWin, dayLabel, en);
+  const listHeading = hitSet && committedBounds && !(loading && !events.length)
+    ? T(`${hitCount} sự kiện trong khung giờ`, `${hitCount} event${hitCount === 1 ? '' : 's'} in the window`)
+    : countText;
+  // Map v6 (note 74): Large photo cards (default) or Compact rows — Home's two-icon switch; session-only on the Map.
+  const layoutSwitch = (
+            <div role="radiogroup" aria-label={T('Kiểu hiển thị', 'Layout')} data-testid="map-layout-switch"
+              style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 999, background: 'rgba(var(--bb-fg-rgb),0.06)', flex: 'none' }}>
+              {[['large', T('Ảnh lớn', 'Large photos'), 'M4 4h16v7H4zM4 13h16v7H4z'], ['compact', T('Danh sách gọn', 'Compact list'), 'M4 6h16M4 12h16M4 18h16']].map(([m, lbl, d]) => (
+                <button key={m} type="button" role="radio" aria-checked={listLayout === m} aria-label={lbl} onClick={() => setListLayout(m)} data-testid={`map-layout-${m}`}
+                  style={{ width: 34, height: 30, borderRadius: 999, border: 'none', cursor: 'pointer', color: ink, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: listLayout === m ? 'var(--bb-bg)' : 'transparent', boxShadow: listLayout === m ? '0 1px 3px rgba(27,25,22,0.18)' : 'none' }}>
+                  <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
+                </button>
+              ))}
+            </div>
+  );
+  // Focused and empty: Recent · Cities · Quick filters instead of a blank search.
+  const suggestOpen = searchActive && !searchQuery.trim();
+  const cancelSearch = () => { searchBarStore.blur(); };
+  // Quick filters in the search panel: a tap applies the filter (the map shows it at once) and puts the keyboard away.
+  const quickTap = (fn) => () => { fn(); searchInputRef.current?.blur(); };
+  const quickChips = (prefix) => (
+    <>
+      {hasPrefs && (
+        <button type="button" aria-pressed={forYouActive} onClick={quickTap(toggleForYou)} data-testid={`${prefix}-foryou`} style={catChip(forYouActive, false)}>
+          <span aria-hidden="true" style={{ color: forYouActive ? paper : 'var(--bb-honey)' }}>★</span>{T('Dành cho bạn', 'For You')}
+        </button>
+      )}
+      {(anyFillKnown || openNowOnly) && (
+        <button type="button" aria-pressed={openNowOnly} onClick={quickTap(() => setOpenNowOnly(v => !v))} data-testid={`${prefix}-open-now`} style={catChip(openNowOnly, false)}>
+          {T('Còn chỗ', 'Seats left')}
+        </button>
+      )}
+      <button type="button" onClick={() => { searchInputRef.current?.blur(); setFilterSheetOpen(true); }} data-testid="map-search-all-filters" aria-haspopup="dialog"
+        style={{ ...catChip(sheetFilterCount > 0, false), background: sheetFilterCount > 0 ? ink : 'transparent', border: `1px solid ${sheetFilterCount > 0 ? ink : rule}` }}>
+        <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg>
+        {T('Tất cả bộ lọc', 'All filters')}{sheetFilterCount > 0 ? ` · ${sheetFilterCount}` : ''}
+      </button>
+    </>
+  );
+  // A Map event in Home's DiscoveryCard shape (Large layout): the photos page sideways, the name and numbers stay off
+  // the photo, venue time · area underneath, the category as the type line.
+  const largeCard = (ev) => {
+    const f = seatFacts(ev);
+    const cat = CATEGORY_DEFS.find(c => c.key === ev.catKey && c.key !== 'all');
+    const free = !(ev.priceVnd > 0);
+    return {
+      // Home's card (iOS parity, owner 2026-11-01): the date chip on the photo, area · category underneath, and the
+      // event type line ("Table for 3 · Vegetarian-friendly · 18+") when the type has one.
+      key: ev.id, name: ev.name, img: ev.img, imgs: ev.imgs, dateBadge: ev.startsAt ? cardDateBadge(Date.parse(ev.startsAt), ev.tz, T) : null,
+      priceLabel: free ? T('Miễn phí', 'Free') : formatMoney(ev.priceVnd, ev.currency), isFree: free,
+      metaLine: [ev.area, nearDistance(ev), cat ? T(cat.vi, cat.en) : null].filter(Boolean).join(' · '),
+      typeLine: cardLine(profileFor(ev.catKey), { capacity: ev.capacity, details: ev.details || {} }, en ? 'en' : 'vi') || null,
+      fill: f ? { soldOut: f.soldOut, almostFull: f.almostFull, left: f.left } : null,
+      saved: isSaved(ev.id),
+    };
+  };
+  // Cities matching the search text, first ("Đà Lạt · 2 events" → Go), even with no events there. Shown in the search
+  // panel while typing, else at the top of the list (never both: they carry the same test ids).
+  const cityResults = cityMatches.length > 0 ? (
+    <div data-testid="map-city-results">
+      <div style={sectionLabel}>{T('Thành phố', 'Cities')}</div>
+      {cityMatches.map(({ id, count }) => (
+        <button key={id} type="button" onClick={() => goCity(id)} data-testid={`map-city-row-${id}`}
+          style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 12, padding: '10px 0', minHeight: 56, border: 'none', borderBottom: `1px solid ${rule}`, background: 'none', color: ink, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+          <span aria-hidden="true" style={{ width: 36, height: 36, borderRadius: 18, background: clayBg, color: clay, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
+          </span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 15, fontWeight: 600 }}>{cityName(id)}</span>
+            <span style={{ display: 'block', fontSize: 13, color: ink2 }}>
+              {count ? T(`${count} sự kiện`, `${count} event${count === 1 ? '' : 's'}`) : T('Chưa có sự kiện · vẫn có thể đến', 'No events yet · you can still go')}
+            </span>
+          </span>
+          <span style={{ flex: 'none', color: clay, fontSize: 14, fontWeight: 600 }}>{T('Đến', 'Go')}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
+  // What the search shows while it is focused and empty: Recent (this device only), Cities (with counts, tap = go
+  // there) and the quick filters. mousedown never blurs the input, so a tap here lands before the keyboard closes.
+  const suggestRow = { display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 4 };
+  const searchPanel = (
+    <div data-testid="map-search-suggest" onMouseDown={(e) => { if (e.target.closest('button')) e.preventDefault(); }}>
+      {recentSearches.length > 0 && (
+        <div data-testid="map-search-recent">
+          <div style={sectionLabel}>{T('Gần đây', 'Recent')}</div>
+          <div data-hscroll="true" className="bb-noscroll" style={suggestRow}>
+            {recentSearches.map((q, i) => (
+              <button key={q} type="button" onClick={() => setSearchQuery(q)} data-testid={`map-search-recent-${i}`} style={catChip(false, false)}>
+                <svg aria-hidden="true" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" style={{ opacity: 0.6 }}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {pickerCities.length > 0 && (
+        <div data-testid="map-search-cities">
+          <div style={sectionLabel}>{T('Thành phố', 'Cities')}</div>
+          <div data-hscroll="true" className="bb-noscroll" style={suggestRow}>
+            {pickerCities.map(({ id, count }) => (
+              <button key={id} type="button" onClick={() => goCity(id)} data-testid={`map-search-city-${id}`} style={catChip(false, false)}
+                aria-label={count ? T(`${cityName(id)}, ${count} sự kiện`, `${cityName(id)}, ${count} event${count === 1 ? '' : 's'}`) : cityName(id)}>
+                <svg aria-hidden="true" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" style={{ color: clay }}><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
+                {cityName(id)}
+                {count > 0 && <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.6 }}>{count}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div data-testid="map-search-quick">
+        <div style={sectionLabel}>{T('Lọc nhanh', 'Quick filters')}</div>
+        <div data-hscroll="true" className="bb-noscroll" style={{ ...suggestRow, flexWrap: 'wrap' }}>
+          {quickChips('map-search-chip')}
+        </div>
+      </div>
+    </div>
+  );
+  // An active chip moves to the front (CSS order); scroll its row back there so it is never left out of view.
+  const chipRowRef = useRef(null);
+  const activeChipKey = `${catFilter}|${openNowOnly}|${filters.free}|${filters.almostFull}`;
+  useEffect(() => { chipRowRef.current?.scrollTo?.({ left: 0, behavior: 'smooth' }); }, [activeChipKey]);
+  const clearChip = (testId) => (
+    <button type="button" onClick={(e) => { e.stopPropagation(); clearFilters(); }} data-testid={testId}
+      style={{ flex: 'none', minHeight: 44, padding: '0 10px', border: 'none', background: 'none', color: clay, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+      {T('Xoá', 'Clear')}
+    </button>
+  );
+  const SeatPill = ({ ev, testId }) => {
+    const f = seatFacts(ev);
+    if (!f) return null;
+    if (f.soldOut) return <span data-testid={testId} style={{ fontSize: 12, fontWeight: 600, color: alert }}>{T('Hết chỗ', 'Sold out')}</span>;
+    if (f.almostFull && f.left != null) return <span data-testid={testId} style={{ fontSize: 12, fontWeight: 600, color: ink }}>{T(`Còn ${f.left} chỗ`, `${f.left} left`)}</span>;
+    return null;
+  };
+
+  const compactRow = (ev, prefix, dim = false) => (
+    <div
+      onClick={() => openEventDetail(ev.id)}
+      data-testid={`${prefix}-${ev.id}`}
+      role="button"
+      tabIndex={0}
+      aria-current={ev.id === selectedId ? 'true' : undefined}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEventDetail(ev.id); } }}
+      style={{ display: 'flex', gap: 12, padding: '7px 0', cursor: 'pointer', alignItems: 'flex-start', animation: 'banbeRowIn 0.3s cubic-bezier(.22,.61,.36,1) backwards', background: ev.id === selectedId ? 'rgba(var(--bb-fg-rgb),0.05)' : 'transparent', opacity: dim ? MAP_DIM.rowOpacity : 1 }}
+      data-dim={dim ? 'true' : undefined}
+    >
+      {ev.img && <div style={{ width: 64, height: 64, borderRadius: RADIUS.thumb, backgroundImage: `url(${ev.img})`, backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0 }} />}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.name}</div>
+        {/* Venue date · time (the event's own zone), then the area, plus a distance only when it helps
+            choose (≤ 50 km, Event Detail's rule; a viewer abroad saw "9662,0 km" on every row). */}
+        <div data-testid={`${prefix}-when-${ev.id}`} style={{ fontSize: 13, color: ink2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {eventWhen(ev)}
+        </div>
+        <div data-testid={`${prefix}-area-${ev.id}`} style={{ fontSize: 13, color: ink2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {[ev.area, nearDistance(ev)].filter(Boolean).join(' · ')}
+        </div>
+        {/* Stage 3: an honest "no map location" state for an event with no (or not-yet-confirmed)
+            coordinates, never a silently-omitted row or an invented pin. */}
+        {!ev.hasLocation && (
+          <div data-testid={`${prefix}-no-location-${ev.id}`} style={{ fontSize: 10.5, color: ink, opacity: 0.55, marginTop: 2 }}>
+            {T('Chưa có vị trí trên bản đồ', 'No map location yet')}
+          </div>
+        )}
+      </div>
+      <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+        <div data-testid={`${prefix}-price-${ev.id}`} aria-label={priceLine(ev)} style={{ fontSize: 14, fontWeight: 600, color: ink, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{priceTicket(ev)}</div>
+        <SeatPill ev={ev} testId={`${prefix}-seats-${ev.id}`} />
+      </div>
+    </div>
+  );
+
+  // ---- Map E+: neighbourhood chips and the open panel ----
+  // One chip per neighbourhood with results in the map area (never merged, unlike the bubbles), most events first.
+  const areaChips = useMemo(() => {
+    const located = visibleEvents.filter(e => e.hasLocation);
+    const byId = new Map(located.map(e => [e.id, e]));
+    return areaGroups(located, 12, p => areaInfoById.get(p.id) || areaKey(p, CITIES), null, { mergePx: 0 })
+      .sort((x, y) => (y.ids.length - x.ids.length) || String(x.labels[0] || '~').localeCompare(String(y.labels[0] || '~')))
+      .map(g => ({ ...g, cats: [...new Set(g.ids.map(id => byId.get(id)?.catKey).filter(Boolean))] }));
+  }, [visibleEvents, areaInfoById]);
+  // With a window on, the chips say how many of each area's events are inside it and the busiest-in-window come first.
+  const chipsView = useMemo(() => {
+    const withHits = areaChips.map(g => ({ ...g, hit: hitSet ? g.ids.reduce((n, id) => n + (hitSet.has(id) ? 1 : 0), 0) : g.ids.length }));
+    return hitSet ? [...withHits].sort((x, y) => (y.hit - x.hit) || (y.ids.length - x.ids.length)) : withHits;
+  }, [areaChips, hitSet]);
+  const panelEvents = useMemo(
+    () => (areaPanel ? visibleEvents.filter(e => areaPanel.keys.includes((areaInfoById.get(e.id) || areaKey(e, CITIES)).key)) : []),
+    [areaPanel, visibleEvents, areaInfoById],
+  );
+  const panelHit = hitSet ? panelEvents.reduce((n, e) => n + (hitSet.has(e.id) ? 1 : 0), 0) : panelEvents.length;
+  const panelOrdered = hitSet ? [...panelEvents.filter(e => hitSet.has(e.id)), ...panelEvents.filter(e => !hitSet.has(e.id))] : panelEvents;
+  const areaHeadingRef = useRef(null);
+  const panelKey = areaPanel ? areaPanel.keys.join('+') : '';
+  useEffect(() => {
+    if (!areaPanel) return;
+    areaHeadingRef.current?.focus({ preventScroll: true });
+    const id = areaScrollToRef.current;
+    areaScrollToRef.current = null;
+    if (id) requestAnimationFrame(() => document.querySelector(`[data-testid="map-area-item-${id}"]`)?.scrollIntoView?.({ block: 'nearest' }));
+  }, [panelKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const zoomNow = cameraZoom == null ? null : (mapRef.current?.__isMapKit ? cameraZoom - 1 : cameraZoom);
+  const levelNow = zoomNow == null ? 'area' : markerLevel(zoomNow);
+
+  // ---- the list layer ----
+  // Esc closes it; focus goes to its heading when it opens and back to "List · N" when it closes.
+  const listButtonRef = useRef(null);
+  const listHeadingRef = useRef(null);
+  const listWasOpenRef = useRef(false);
+  // The rows exist only while the list is open (hundreds of hidden cards would re-render on every time-bar step), so its
+  // scroll position is kept here and put back when it opens again.
+  const listScrollSavedRef = useRef(restored?.listScrollTop ?? 0);
+  const listOpenRef = useRef(listOpen);
+  listOpenRef.current = listOpen;
+  useEffect(() => {
+    if (listOpen) {
+      listWasOpenRef.current = true;
+      if (listRef.current && listScrollSavedRef.current) listRef.current.scrollTop = listScrollSavedRef.current;
+      listHeadingRef.current?.focus({ preventScroll: true });
+      const onKey = (e) => { if (e.key === 'Escape') setListOpen(false); };
+      window.addEventListener('keydown', onKey);
+      return () => window.removeEventListener('keydown', onKey);
+    }
+    if (listWasOpenRef.current) listButtonRef.current?.focus({ preventScroll: true });
+    return undefined;
+  }, [listOpen]);
+  const openList = () => { searchInputRef.current?.blur(); setListOpen(true); };
+  // The list's top edge: just under the shared controls.
+  const listTop = Math.round(topControlsBottom + 8);
+  // Why there is nothing to list, each one honest about WHY (never silently widening the area or loosening filters):
+  // first load · failed first load · no events in this area · filters hide the events that are here.
+  const emptyNodes = [
+    forYouActive && visibleEvents.length === 0 && (loading || prefsLoading) && (
+      <div key="fy-load" data-testid="map-foryou-loading" style={{ padding: 20, color: ink, opacity: 0.6, fontSize: 13 }}>{T('Đang tìm sự kiện hợp với bạn…', 'Finding events for you…')}</div>
+    ),
+    forYouActive && visibleEvents.length === 0 && !loading && !prefsLoading && (
+      <div key="fy-empty" data-testid="map-foryou-empty" style={{ padding: 20, color: ink, fontSize: 13 }}>
+        <div style={{ opacity: 0.7 }}>
+          {forYouRanked.length === 0
+            ? T('Chưa có sự kiện nào hợp với sở thích của bạn trong khu vực/vùng bản đồ này.', 'No events match your preferences in this area or map view yet.')
+            : T('Các sự kiện hợp với bạn không khớp bộ lọc hiện tại.', 'Your For You matches don\'t fit the current filters.')}
+        </div>
+        <span onClick={editPreferences} data-testid="map-foryou-empty-edit" role="button" style={{ display: 'inline-block', marginTop: 8, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer' }}>
+          {T('Chỉnh sở thích của bạn', 'Edit preferences')}
+        </span>
+      </div>
+    ),
+    loading && !forYouActive && visibleEvents.length === 0 && (
+      <div key="loading" data-testid="map-loading" style={{ padding: 20, color: ink2, fontSize: 14 }}>{T('Đang tải…', 'Loading…')}</div>
+    ),
+    !loading && loadError && events.length === 0 && (
+      <div key="failed" data-testid="map-load-failed" style={{ padding: 20, color: ink, fontSize: 14 }}>
+        <div style={{ color: ink2 }}>{T('Chưa tải được sự kiện. Kiểm tra kết nối mạng rồi thử lại.', 'Couldn’t load events. Check your connection and try again.')}</div>
+        <button type="button" onClick={refresh} data-testid="map-load-retry" style={emptyAction}>{T('Thử lại', 'Try again')}</button>
+      </div>
+    ),
+    !loading && !forYouActive && visibleEvents.length === 0 && committedBounds && events.length > 0 && cityMatches.length === 0 && (
+      anyInArea && filtersActive ? (
+        <div key="no-results" data-testid="map-search-no-results" style={emptyBox}>
+          {emptyIcon('M4 6h16M7 12h10M10 18h4')}
+          <div style={emptyTitle}>{T('Bộ lọc đang ẩn sự kiện', 'Your filters hide the events')}</div>
+          <div style={{ color: ink2 }}>
+            {searchQuery.trim()
+              ? T(`Không có sự kiện nào trong vùng này khớp với "${searchQuery.trim()}".`, `No events in this area match "${searchQuery.trim()}".`)
+              : T('Có sự kiện trong vùng này, nhưng không khớp bộ lọc hiện tại.', 'There are events in this area, but none match your current filters.')}
+          </div>
+          <button type="button" onClick={clearFilters} data-testid="map-clear-filters" style={emptyActionInk}>{T('Xoá bộ lọc', 'Clear filters')}</button>
+        </div>
+      ) : (
+        <div key="area-empty" data-testid="map-area-empty" style={emptyBox}>
+          {emptyIcon('M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21zM4 4l16 16')}
+          <div style={emptyTitle}>{T('Chưa có sự kiện ở khu vực này', 'No events in this area')}</div>
+          <div style={{ color: ink2 }}>{T('Kéo bản đồ sang nơi khác hoặc xem các sự kiện gần bạn nhất.', 'Move the map, or see the events nearest to you.')}</div>
+          {matchingAnywhere.length > 0 && (
+            <button type="button" onClick={showNearest} data-testid="map-show-nearest" style={emptyActionInk}>
+              {nearestKm != null && nearestKm >= 1
+                ? T(`Xem gần nhất · cách ${Math.round(nearestKm)} km`, `Show nearest · ${Math.round(nearestKm)} km away`)
+                : T('Xem sự kiện gần nhất', 'Show nearest events')}
+            </button>
+          )}
+          {/* Filters on and nothing here: offer to clear them (owner 2026-11-01), never a dead end. */}
+          {(filtersActive || catFilter !== 'all') && (
+            <button type="button" onClick={clearFilters} data-testid="map-clear-filters-empty" style={emptyActionInk}>
+              {T(`Xoá ${summary.count} bộ lọc`, summary.count === 1 ? 'Clear 1 filter' : `Clear ${summary.count} filters`)}
+            </button>
+          )}
+        </div>
+      )
+    ),
+  ].filter(Boolean);
+  // Closed list: the same messages float above the buttons (one place at a time, they share their test ids).
+  const showEmptyCard = !listOpen && !searchActive && !areaPanel && emptyNodes.length > 0;
+  // Plain "nothing here" card with a way out: while it shows, the list button, the time bar and the area chips are hidden.
+  const emptyOnly = showEmptyCard && !(forYouActive && visibleEvents.length === 0) && !!committedBounds
+    && !(loading && events.length === 0) && !(loadError && events.length === 0)
+    && ((anyInArea && filtersActive) || matchingAnywhere.length > 0);
+  const chipsShown = !areaPanel && !listOpen && !searchActive && !emptyOnly && levelNow !== 'city' && chipsView.length > 0;
+  const stackDrop = (chipsShown && !emptyOnly) || areaPanel ? 0 : CHIPS_H + STACK_GAP;
+  const srOnly = { position: 'absolute', width: 1, height: 1, margin: -1, padding: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0 };
+  const forYouCapsule = { ...photoPill({ position: 'static', borderRadius: RADIUS.pill }), display: 'inline-flex', alignItems: 'center', minHeight: 36, padding: '0 12px', fontSize: 13, color: ink, fontWeight: forYouActive ? 700 : 500, whiteSpace: 'nowrap',
+    ...(forYouActive ? { background: ink, color: paper, border: `1px solid ${ink}`, backdropFilter: 'none', WebkitBackdropFilter: 'none', boxShadow: 'none' } : null) };
+  // Badge: every selected filter (sheet, category, Seats left, Free, Almost full) + For You + the day window + a picked area.
+  // The sheet's draft: the filters, with the day window shown as its When pill.
+  const sheetSeed = { ...filters, date: timeWin?.on && ['today', 'tomorrow', 'weekend'].includes(timeWin.key) ? timeWin.key : 'any' };
+  const filterBadge = activeFilterCount(filters) + (forYouActive ? 1 : 0) + (timeWin?.on ? 1 : 0) + (areaContext === 'map' ? 0 : 1);
+  const pickedCategory = catFilter !== 'all' ? CATEGORY_DEFS.find(c => c.key === catFilter) : null;
+  const categoryChipEl = (c) => {
+    const active = catFilter === c.key;
+    const n = categoryCountMap[c.key] ?? 0;
+    return (
+      <button key={c.key} type="button" role="tab" aria-selected={active}
+        aria-label={T(`${c.vi}, ${n} sự kiện`, `${c.en}, ${n} event${n === 1 ? '' : 's'}`)}
+        onClick={() => { if (!active || c.key !== 'all') setCatFilter(active ? 'all' : c.key); }}
+        data-testid={`map-cat-${c.key}`}
+        style={mapChip(active, n === 0 && !active)}>
+        <CategoryGlyph cat={c.key} size={16} strokeWidth={1.8} />
+        <span>{T(c.vi, c.en)}</span>
+        <span data-testid={`map-cat-count-${c.key}`} style={{ fontVariantNumeric: 'tabular-nums', opacity: active ? 0.85 : 0.6 }}>{n}</span>
+      </button>
+    );
+  };
+  const seatsChip = (
+    <button key="seats" type="button" aria-pressed={openNowOnly} onClick={() => setOpenNowOnly(v => !v)} data-testid="map-chip-open-now" style={mapChip(openNowOnly, false)}>
+      {T('Còn chỗ', 'Seats left')}
+    </button>
+  );
+  const freeChip = (
+    <button key="free" type="button" aria-pressed={filters.free} data-testid="map-quick-free"
+      onClick={() => setFilters(f => normalizeFilters({ ...f, free: !f.free, priceMin: null, priceMax: null }))} style={mapChip(filters.free, false)}>
+      {T('Miễn phí', 'Free')}
+    </button>
+  );
+  const almostFullChip = (
+    <button key="almost" type="button" aria-pressed={filters.almostFull} data-testid="map-quick-almost-full"
+      onClick={() => setFilters(f => normalizeFilters({ ...f, almostFull: !f.almostFull }))} style={mapChip(filters.almostFull, false)}>
+      {T('Sắp hết chỗ', 'Almost full')}
+    </button>
+  );
+  // The area chip follows the view: the city under the map centre, or (at neighbourhood zoom) the nearest event area name.
+  const viewAreaLabel = (() => {
+    const b = committedBounds;
+    if (!b) return null;
+    const lat = (b.north + b.south) / 2;
+    const lng = b.west <= b.east ? (b.west + b.east) / 2 : (((b.west + b.east + 360) / 2 + 180) % 360) - 180;
+    const here = { lat, lng };
+    let city = null;
+    for (const c of CITIES) if (inBounds(here, c.bounds) && (!city || (c.bounds.north - c.bounds.south) < (city.bounds.north - city.bounds.south))) city = c;
+    if ((cameraZoom ?? 0) >= AREA_ZOOM) {
+      let best = null;
+      for (const e of events) {
+        if (e.lat == null || e.lng == null) continue;
+        const label = areaInfoById.get(e.id)?.label;
+        if (!label) continue;
+        const d = Math.hypot(e.lat - lat, (e.lng - lng) * Math.cos(lat * Math.PI / 180));
+        if (!best || d < best.d) best = { d, label };
+      }
+      if (best && best.d <= Math.max(b.north - b.south, 0.01) * 0.75) return best.label;
+    }
+    return city ? (en ? city.en : city.vi) : null;
+  })();
+  const areaChipLabel = viewAreaLabel
+    || (areaContext === 'area' && cityDest ? cityName(cityDest) : areaContext === 'area' && curArea.key !== 'all' ? curArea.label : T('Vùng bản đồ', 'Map area'));
+
+  // Register with the persistent bar (re-registered each render so the callbacks are current; only the owner clears).
+  useLayoutEffect(() => {
+    searchBarStore.register({
+      owner: 'map', placeholder: T('Tìm tên, loại, khu vực, thành phố…', 'Search name, type, area, city…'),
+      back: closeMap, cancel: cancelSearch, badge: filterBadge, hasFilters: true, hidden: filterSheetOpen,
+      submit: (text) => { if (String(text || '').trim()) rememberSearch(text); },
+      filters: () => { searchBarStore.blur(); setFilterSheetOpen(true); },
+    });
+  });
+
+  return (
+    <div ref={rootRef} data-screen-label="MapExplore" className="bb-mapsurf"
+      style={{ position: 'fixed', inset: 0, background: paper, opacity: 1 - 0.6 * closingProgress, transform: closingProgress ? `scale(${1 - 0.04 * closingProgress})` : 'none', transition: 'opacity 0.3s ease, transform 0.3s ease' }}>
+      {/* iOS has no map zoom controls (mapControls {}); the web +/- sits below the shared controls. */}
+      <style>{`[data-screen-label="MapExplore"] .maplibregl-ctrl-top-right { top: ${Math.round(topControlsBottom + 12)}px; right: 6px; } [data-screen-label="MapExplore"] .bb-noscroll::-webkit-scrollbar { display: none; }
+        @keyframes bbAreaPanelIn { from { transform: translateY(100%); } to { transform: none; } }
+        /* Attribution (required) lives just above the bottom stack (the dock and its buttons). */
+        [data-screen-label="MapExplore"] .maplibregl-ctrl-bottom-right { display: block; bottom: ${Math.max(0, Math.round(containerH - lay.sheetTopPx))}px; z-index: 3; max-width: calc(100% - 12px); }
+        [data-screen-label="MapExplore"] .maplibregl-ctrl-attrib { font-size: 10px; line-height: 1.3; max-width: 100%; }
+        [data-screen-label="MapExplore"] .maplibregl-ctrl-bottom-left { display: none; }
+        [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl-group { background: var(--bb-field); box-shadow: 0 0 0 1px var(--bb-rule); }
+        [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl-group button + button { border-top: 1px solid var(--bb-rule); }
+        [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl button .maplibregl-ctrl-icon { filter: invert(1); }
+        [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl-attrib { background: rgba(var(--bb-bg-rgb), 0.6); color: var(--bb-fg); }
+        [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl-attrib a { color: var(--bb-fg); }`}</style>
+      <div ref={mapDivRef} style={{ position: 'absolute', inset: 0 }} />
+
+      {/* The settled result count for THIS map area: the same list the pins come from. Announced politely (it changes
+          only when the camera settles or a filter changes, never every frame). */}
+      <span data-testid="map-result-count" data-hit={hitCount} aria-live="polite" style={srOnly}>{countText}</span>
+
+      {/* The shared controls: back, search, filters, then the chips. They stay over the map and over the list. */}
+      <div ref={topRef} data-testid="map-top" style={{ position: 'absolute', left: 0, right: 0, top: topInset, zIndex: 5, padding: '8px 0 0', display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', pointerEvents: 'auto' }}>
+          {/* Empty 44px row: the persistent search bar (App.jsx) draws back, field and filters here. */}
+          <div data-search-bar-slot aria-hidden style={{ height: 44, flex: 1 }} />
+        </div>
+
+        {/* ONE scrolling row (iOS parity): For You first, then every selected filter (Seats left, Free, Almost full, the
+            picked category), then the area chip, the unselected quick filters, the other categories and "All
+            categories". The row keeps data-hscroll so the root tab swipe ignores it. */}
+        <div ref={chipRowRef} data-hscroll="true" data-testid="map-filter-extra-scroller" className="bb-noscroll"
+          style={{ display: 'flex', gap: 8, padding: '2px 16px', overflowX: 'auto', scrollbarWidth: 'none', pointerEvents: 'auto' }}>
+          {hasPrefs && (
+            <ForYouChip
+              T={T}
+              active={forYouActive}
+              pending={forYouAlert.pending}
+              animate={forYouAlert.animate}
+              capsuleStyle={forYouCapsule}
+              onClick={toggleForYou}
+            />
+          )}
+          {anyFillKnown && openNowOnly && seatsChip}
+          {filters.free && freeChip}
+          {filters.almostFull && almostFullChip}
+          {pickedCategory && categoryChipEl(pickedCategory)}
+          {/* Location hierarchy: opens the same shared area sheet Home uses (AreaSheet.jsx). The label follows the view. */}
+          <button type="button" onClick={openArea} data-testid="map-chip-area" aria-haspopup="dialog" style={mapChip(false, false)}>
+            {areaChipLabel} ▾
+          </button>
+          {anyFillKnown && !openNowOnly && seatsChip}
+          {!filters.free && freeChip}
+          {!filters.almostFull && almostFullChip}
+          <div role="tablist" aria-label={T('Danh mục', 'Categories')} data-testid="map-category-row" style={{ display: 'contents' }}>
+            {CATEGORY_DEFS.filter(c => c !== pickedCategory).map(categoryChipEl)}
+          </div>
+          <button type="button" onClick={() => setCategorySheetOpen(true)} data-testid="map-cat-show-all" aria-haspopup="dialog" style={mapChip(false, false)}>
+            {T('Tất cả danh mục', 'All categories')}
+          </button>
+        </div>
+      </div>
+
+      {/* The bottom stack: my location and "List · N", right above the dock. */}
+      <div style={{ position: 'absolute', right: 16, bottom: dockClear + FAB_BOTTOM - stackDrop, transition: reduceMotion() ? 'none' : 'bottom 0.25s ease', zIndex: 3, display: 'flex', alignItems: 'center', gap: 8, visibility: listOpen || areaPanel ? 'hidden' : 'visible' }}>
+        <div role="button" tabIndex={0} onClick={recenterOnUser} data-testid="map-compass" aria-label={T('Vị trí của tôi', 'My location')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); recenterOnUser(); } }}
+          style={{ ...photoPill({ position: 'static', borderRadius: '50%' }), width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: compassOpacity }}>
+          🧭
+        </div>
+        <button ref={listButtonRef} type="button" onClick={openList} data-testid="map-list-button" aria-hidden={emptyOnly || undefined} tabIndex={emptyOnly ? -1 : undefined}
+          aria-label={hitSet
+            ? T(`Danh sách, ${hitCount} sự kiện trong khung giờ`, `List, ${hitCount} event${hitCount === 1 ? '' : 's'} in the window`)
+            : T(`Danh sách, ${visibleEvents.length} sự kiện`, `List, ${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'}`)}
+          style={{ height: 44, padding: '0 18px', borderRadius: 999, background: ink, color: paper, fontSize: 14, fontWeight: 600, border: 'none', fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,0.28)', display: emptyOnly ? 'none' : 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" /></svg>
+          {T('Danh sách', 'List')} · {hitCount}
+        </button>
+      </div>
+
+      {/* (stackDrop: with no neighbourhood chips the time bar and buttons settle into their room, no gap above the dock.) */}
+      {/* Neighbourhood chips: tap one to fly there and open its panel. Hidden at city level, while the list or a panel is
+          open, and while there is nothing to show; their room above the buttons stays reserved. */}
+      {!areaPanel && !listOpen && !searchActive && !emptyOnly && levelNow !== 'city' && chipsView.length > 0 && (
+        <div data-hscroll="true" data-testid="map-area-chips" className="bb-noscroll" role="group" aria-label={T('Khu vực', 'Areas')}
+          style={{ position: 'absolute', left: 0, right: 0, bottom: dockClear + CHIPS_BOTTOM, zIndex: 3, display: 'flex', gap: 8, overflowX: 'auto', padding: '2px 16px 4px', scrollbarWidth: 'none' }}>
+          {chipsView.map(g => {
+            const name = g.labels[0] || T('Khu khác', 'Other areas');
+            const n = g.ids.length;
+            const inHit = !!hitSet && g.hit > 0;
+            const off = !!hitSet && g.hit === 0;
+            const other = n - g.hit;
+            const sub = hitSet
+              ? T(`${g.hit} trong khung giờ${other ? ` · ${other} khác` : ''}`, `${g.hit} in the window${other ? ` · ${other} other` : ''}`)
+              : T(`${n} sự kiện`, `${n} event${n === 1 ? '' : 's'}`);
+            return (
+              <button key={g.keys[0]} type="button" onClick={() => openAreaPanel(g)} data-testid={`map-areachip-${g.keys[0]}`} data-count={n} data-hit={g.hit}
+                aria-label={hitSet
+                  ? T(`${name}, ${g.hit} trong khung giờ, ${other} ngoài khung giờ, mở khu này`, `${name}, ${g.hit} in the window, ${other} outside it, open this area`)
+                  : T(`${name}, ${n} sự kiện, mở khu này`, `${name}, ${n} event${n === 1 ? '' : 's'}, open this area`)}
+                style={{ flex: 'none', minWidth: 108, maxWidth: 190, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '8px 12px', borderRadius: 16, border: 'none', background: inHit ? ink : paper, color: inHit ? paper : ink, opacity: off ? MAP_DIM.chipOpacity : 1, boxShadow: '0 2px 10px rgba(27,25,22,0.16)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'opacity 0.25s ease, background-color 0.25s ease' }}>
+                <span style={{ fontSize: 15, fontWeight: 700, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                <span style={{ fontSize: 12, opacity: inHit ? 0.78 : 1, color: inHit ? 'inherit' : ink2 }}>{sub}</span>
+                <span aria-hidden="true" style={{ display: 'flex', gap: 4, color: inHit ? 'inherit' : ink2, opacity: inHit ? 0.78 : 1, marginTop: 2 }}>
+                  {g.cats.slice(0, 5).map(c => <CategoryGlyph key={c} cat={c} size={14} strokeWidth={1.9} />)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* The neighbourhood panel: its events, over the lower part of the map, with the dock out of the way. */}
+      {areaPanel && (
+        <section data-testid="map-area-panel" aria-label={T('Sự kiện trong khu này', 'Events in this area')}
+          style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: panelPx, zIndex: 4, background: paper, borderRadius: '22px 22px 0 0', boxShadow: '0 -4px 20px rgba(27,25,22,0.14)', display: 'flex', flexDirection: 'column',
+            animation: reduceMotion() ? 'none' : 'bbAreaPanelIn 0.38s cubic-bezier(.2,.85,.25,1)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '14px 16px 8px', flex: 'none' }}>
+            <h3 ref={areaHeadingRef} tabIndex={-1} data-testid="map-area-title" data-count={panelEvents.length} data-hit={panelHit}
+              style={{ margin: 0, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', outline: 'none', ...display(22, { letterSpacing: '-0.02em' }) }}>
+              {(areaPanel.label || T('Khu khác', 'Other areas'))} · {hitSet ? `${panelHit}${panelEvents.length > panelHit ? `/${panelEvents.length}` : ''}` : panelEvents.length}
+            </h3>
+            <button type="button" onClick={() => closeAreaPanel(true)} data-testid="map-area-back"
+              style={{ ...catChip(false, false), flex: 'none' }}>
+              <svg aria-hidden="true" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
+              {T('Tất cả khu', 'All areas')}
+            </button>
+          </div>
+          <div data-testid="map-area-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 16px calc(24px + env(safe-area-inset-bottom, 0px))', overscrollBehavior: 'contain', touchAction: 'pan-y' }}>
+            {panelEvents.length === 0 && (
+              <div data-testid="map-area-panel-empty" style={{ padding: '20px 0', textAlign: 'center', color: ink2, fontSize: 14 }}>
+                {T('Không còn sự kiện ở khu này với bộ lọc hiện tại.', 'No events left in this area with the current filters.')}
+              </div>
+            )}
+            {panelOrdered.map(ev => <Fragment key={ev.id}>{compactRow(ev, 'map-area-item', !isHit(ev.id))}</Fragment>)}
+          </div>
+        </section>
+      )}
+
+      {/* The day + hours: events inside are bold on the map, the rest dimmed; "All days" turns it off. It rides above the
+          panel while one is open. */}
+      <MapTimeBar win={timeWin} options={dayOpts} dayLabel={dayLabel} T={T}
+        onDay={(k) => setTimeWin(defaultWindow(k, Date.now(), viewTz))}
+        onKnob={(which, hour) => setTimeWin(cur => moveKnob(cur, which, hour))}
+        style={{ bottom: areaPanel ? panelPx + 12 : dockClear + TIME_BOTTOM - stackDrop, visibility: listOpen || emptyOnly ? 'hidden' : 'visible', transition: reduceMotion() ? 'none' : 'bottom 0.38s cubic-bezier(.2,.85,.25,1)' }} />
+
+      {showEmptyCard && (
+        <div data-testid="map-empty-card" style={{ position: 'absolute', left: 16, right: 16, bottom: dockClear + FAB_BOTTOM - stackDrop + (emptyOnly ? 0 : BTN_H + 8), zIndex: 3, maxHeight: '40%', overflowY: 'auto', background: paper, borderRadius: 16, boxShadow: '0 4px 18px rgba(27,25,22,0.16)' }}>
+          {emptyNodes}
+        </div>
+      )}
+
+      {/* Focused search: Recent · Cities · Quick filters while it is empty; cities and "show the list" once typing. */}
+      {searchActive && (
+        <div data-testid="map-search-panel" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0, zIndex: 4, background: paper, overflowY: 'auto', padding: `${listTop}px 16px 24px` }}>
+          {suggestOpen ? searchPanel : (
+            <div onMouseDown={(e) => { if (e.target.closest('button')) e.preventDefault(); }}>
+              {cityResults}
+              <button type="button" onClick={() => { if (searchQuery.trim()) rememberSearch(searchQuery); openList(); }} data-testid="map-search-show-list"
+                style={{ ...emptyAction, width: '100%', justifyContent: 'center', marginTop: 12, background: ink, color: paper }}>
+                {T(`Xem ${visibleEvents.length} sự kiện`, `Show ${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'}`)}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* The list: a layer that slides up to just under the shared controls, with a veil over the strip above it. A pull down
+          from its top (finger, mouse or wheel), its Map button and Esc all return to the map. Its rows exist only while it
+          is open; it is hidden from tab order and screen readers while closed. */}
+      <MapListSheet open={listOpen} onClose={() => setListOpen(false)} top={listTop} scrollRef={listRef} mapButtonBottom={dockClear + 12} T={T}>
+        <div data-testid="map-full-count" style={{ padding: '2px 16px 6px', flex: 'none' }}>
+          {mapCity && (
+            <div data-testid="map-sheet-city" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: clay, display: 'flex', alignItems: 'center', gap: 4, paddingTop: 4 }}>
+              <svg aria-hidden="true" width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z" /><circle cx="12" cy="11" r="2" /></svg>
+              {mapCity}
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 6 }}>
+            <h2 ref={listHeadingRef} tabIndex={-1} data-testid="map-list-count" style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 17, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', outline: 'none' }}>
+              {listHeading}
+            </h2>
+            {layoutSwitch}
+          </div>
+          {hitSet && <div data-testid="map-list-window" style={{ fontSize: 13, color: ink2, paddingTop: 2 }}>{windowLine}</div>}
+          {forYouActive && (
+            <span onClick={editPreferences} data-testid="map-foryou-edit-prefs" role="button"
+              style={{ display: 'inline-block', marginTop: 6, fontSize: 12.5, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', color: ink }}>
+              {T('Chỉnh sở thích của bạn', 'Edit preferences')}
+            </span>
+          )}
+        </div>
+
+        {/* Status notices (only when there is something to say): updating, a failed refresh, an incomplete set. */}
+        {((refreshing && events.length > 0) || (loadError && events.length > 0) || !dataMeta.complete || (outsideCount > 0 && visibleEvents.length > 0)) && (
+          <div style={{ padding: '0 16px 6px', display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+            {refreshing && events.length > 0 && <span style={{ fontSize: 12, color: ink2 }}>{T('Đang cập nhật…', 'Updating…')}</span>}
+            {outsideCount > 0 && visibleEvents.length > 0 && (
+              <span data-testid="map-outside-count" style={{ fontSize: 12, color: ink2 }}>
+                {T(`+${outsideCount} sự kiện khớp nằm ngoài vùng này`, `+${outsideCount} matching event${outsideCount === 1 ? '' : 's'} outside this area`)}
+              </span>
+            )}
+            {/* A failed refresh keeps the last good results and says so; Retry reloads the whole set. */}
+            {loadError && events.length > 0 && (
+              <span data-testid="map-refresh-error" role="status" style={{ fontSize: 12, color: ink2 }}>
+                {T('Chưa cập nhật được.', 'Couldn’t update.')}{' '}
+                <button type="button" onClick={refresh} data-testid="map-retry" style={{ border: 'none', background: 'none', padding: 0, minHeight: 32, color: ink, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>
+                  {T('Thử lại', 'Retry')}
+                </button>
+              </span>
+            )}
+            {!dataMeta.complete && (
+              <span data-testid="map-incomplete" style={{ fontSize: 12, color: ink2 }}>
+                {T(`Đang hiện ${events.length}/${dataMeta.total} sự kiện · phóng to để xem kỹ hơn`, `Showing ${events.length} of ${dataMeta.total} events · zoom in for more`)}
+              </span>
+            )}
+          </div>
+        )}
+
+        <div ref={listRef} data-testid="map-list-scroll" onScroll={(e) => { if (listOpenRef.current) listScrollSavedRef.current = e.currentTarget.scrollTop; }}
+          style={{ flex: 1, overflowY: 'auto', padding: `0 16px calc(${dockClear + 16 + 72}px + env(safe-area-inset-bottom, 0px))`, position: 'relative', touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
+          {!searchActive && cityResults}
+          {!searchActive && cityResults && visibleEvents.length > 0 && <div style={sectionLabel}>{T('Sự kiện', 'Events')}</div>}
+          {listOpen && emptyNodes}
+          {/* The results, then (apart, never counted as "in this area") matching events with no map location. */}
+          {listOpen && (() => {
+            // Inside the window first (soonest first, as loaded), then a dimmed "outside" group, then (apart, never counted
+            // as "in this area") matching events with no map location.
+            const inside = hitSet ? visibleEvents.filter(e => hitSet.has(e.id)) : visibleEvents;
+            const outside = hitSet ? visibleEvents.filter(e => !hitSet.has(e.id)) : [];
+            const ordered = [...inside, ...outside, ...noLocationMatches];
+            return ordered.map((ev, i) => {
+              const dim = i >= inside.length && i < inside.length + outside.length;
+              return (
+                <Fragment key={ev.id}>
+                  {i === inside.length && outside.length > 0 && (
+                    <div data-testid="map-list-outside-heading" style={{ padding: '16px 0 4px', fontSize: 12.5, fontWeight: 600, color: ink2, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {T(`${outside.length} sự kiện ngoài khung giờ`, `${outside.length} event${outside.length === 1 ? '' : 's'} outside the window`)}
+                    </div>
+                  )}
+                  {i === inside.length + outside.length && noLocationMatches.length > 0 && (
+                    <div data-testid="map-no-location-heading" style={{ padding: '16px 0 4px', fontSize: 13, fontWeight: 600, color: ink2 }}>
+                      {T(`Chưa có vị trí trên bản đồ (${noLocationMatches.length})`, `No map location yet (${noLocationMatches.length})`)}
+                    </div>
+                  )}
+                  {listLayout === 'large' ? (
+                    <div data-dim={dim ? 'true' : undefined} style={{ paddingTop: i === 0 ? 8 : 0, opacity: dim ? MAP_DIM.rowOpacity : 1 }}>
+                      <DiscoveryCard ev={largeCard(ev)} onOpen={() => openEventDetail(ev.id)} onToggleSave={() => toggleFav(ev.id)} T={T}
+                        testId={`map-list-item-${ev.id}`} role="button" gutter={0} current={ev.id === selectedId} />
+                    </div>
+                  ) : (
+                    compactRow(ev, 'map-list-item', dim)
+                  )}
+                </Fragment>
+              );
+            });
+          })()}
+        </div>
+      </MapListSheet>
+
+      {categorySheetOpen && (
+        <CategorySheet
+          keys={categorySheetKeys(categoryDefs(), s.lang === 'en' ? 'en' : 'vi')}
+          counts={categoryCountMap}
+          values={catFilter === 'all' ? [] : [catFilter]}
+          T={T}
+          onPick={(k) => { setCatFilter(catFilter === k ? 'all' : k); setCategorySheetOpen(false); }}
+          onClose={() => setCategorySheetOpen(false)}
+        />
+      )}
+      {filterSheetOpen && (
+        <HomeFilterSheet
+          mapMode
+          items={sheetItems}
+          filters={sheetSeed}
+          sort="soonest"
+          now={nowMinute * 60000}
+          T={T}
+          canSortNearest={false}
+          areaLabel={areaChipLabel}
+          forYou={hasPrefs ? { on: forYouActive, set: setForYouOn } : null}
+          onApply={(draft) => {
+            // The sheet's When pills drive the day window (dim/bold, never a filter).
+            if (draft.date !== sheetSeed.date) setTimeWin(windowFromHomeDate(draft.date, Date.now(), VN_TIME_ZONE));
+            setFilters(normalizeFilters({ ...draft, date: 'any' }));
+            setFilterSheetOpen(false);
+          }}
+          onClose={() => setFilterSheetOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function boundsToBox(bounds) {
+  return { north: bounds.getNorth(), south: bounds.getSouth(), east: bounds.getEast(), west: bounds.getWest() };
+}

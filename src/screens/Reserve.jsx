@@ -1,0 +1,222 @@
+import { useEffect } from 'react';
+import { supabase } from '../lib/supabase.js';
+import { useBanBe } from '../state/BanBeContext.jsx';
+import { bg } from '../data/events.js';
+import DobCorrectionRequest from './DobCorrectionRequest.jsx';
+import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
+import { paper, ink, FACE, display, fieldGlass, alert } from '../theme.js';
+import { CountStepper, BookingJourneyProgress } from '../components/ui/FormControls.jsx';
+import AsyncSuccessButton from '../components/ui/AsyncSuccessButton.jsx';
+import { eventTotal, currencyUnavailable, CURRENCY_UNAVAILABLE_REASON } from '../lib/reserveBar.js';
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+export default function Reserve() {
+  const {
+    state, T, trStatus, curEvent: ev, backToEvent,
+    qtyMinus, qtyPlus, formNameType, setNameAtHold, submitReserve, goReserveConfirmed, goEditName, setAttendeeField,
+  } = useBanBe();
+  const s = state;
+
+  // The buyer's birthday is already on their profile (kept server-side); if so,
+  // ticket 1 uses it automatically and the date picker is hidden for that card.
+  useEffect(() => {
+    let live = true;
+    supabase.rpc('get_my_dob').then(({ data }) => {
+      if (live && typeof data === 'string' && data) { setAttendeeField(0, 'useProfileDob', true); setAttendeeField(0, 'profileDob', data); }
+    }, () => {});
+    return () => { live = false; };
+  }, [s.eventKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 01-hold-payment.md's 2026-09-17 follow-up #6: Name/Email used to be
+  // free-typed fields that never persisted anywhere (bookings has no such
+  // columns) — every organizer-facing view of a guest's name is meant to be
+  // a live join to profiles.display_name (6c6b932), and the registered
+  // email already exists on the authenticated session. A guest with a real
+  // display_name gets it read-only here; one without (e.g. an OAuth
+  // sign-in whose provider never supplied a name) gets a real input that
+  // actually writes via rename_display_name() — the same RPC Account's
+  // "Đổi tên" uses — rather than a value that goes nowhere. Hold stays
+  // disabled until a real name exists either way.
+  const hasName = !!(s.user?.name || '').trim();
+  // Each ticket needs its attendee's name and date of birth (migration 151):
+  // every attendee gets their own QR and PDF, and the door sees their age.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const attendeesOk = s.attendeeDrafts.length === s.qty
+    && s.attendeeDrafts.every((a, i) => a.name.trim().length >= 2
+      && ((i === 0 && a.useProfileDob) || (a.dob && a.dob <= todayIso))
+      && (i === 0 || !a.email?.trim() || EMAIL_RE.test(a.email.trim())));
+  // Host reservation criteria (migration 162): always pre-check on opening this screen,
+  // block only when the server says ineligible; re-checks on every eventPrefsVersion change.
+  const crit = useReservationCriteria(s.eventKey, { alwaysCheck: true });
+  // Paid booking in this event's currency isn't open yet (paid USD, migration 195): disabled with the reason,
+  // like the criteria block — never a hold that the server would refuse.
+  const noCurrency = currencyUnavailable(ev);
+  const formOk = hasName && attendeesOk && !crit.blocked && !noCurrency;
+  // Note 48: say which field blocks "Hold" instead of a silent grey button.
+  const holdBlockReason = (() => {
+    if (noCurrency) return T(...CURRENCY_UNAVAILABLE_REASON);
+    if (!hasName) return T('Lưu tên của bạn ở trên', 'Save your name above');
+    if (crit.blocked) return null; // CriteriaUnmetCard explains itself
+    const drafts = s.attendeeDrafts.slice(0, s.qty);
+    for (let i = 0; i < drafts.length; i++) {
+      const a = drafts[i];
+      if (a.name.trim().length < 2) return T(`Nhập họ tên cho vé ${i + 1}`, `Add the name for ticket ${i + 1}`);
+      if (!((i === 0 && a.useProfileDob) || (a.dob && a.dob <= todayIso))) return T(`Chọn ngày sinh cho vé ${i + 1}`, `Add the date of birth for ticket ${i + 1}`);
+      if (i > 0 && a.email?.trim() && !EMAIL_RE.test(a.email.trim())) return T(`Kiểm tra email của vé ${i + 1}`, `Check the email for ticket ${i + 1}`);
+    }
+    return null;
+  })();
+  const submitNameAtHold = async () => {
+    await setNameAtHold(s.formName);
+  };
+  // Same total as Event Detail's bar, in the event's own currency (src/lib/reserveBar.js).
+  const totalStr = eventTotal(ev, s.qty);
+  const qtyTotalLabel = s.qty > 1 ? (T('Tổng ', 'Total ') + trStatus(totalStr)) : trStatus(ev.price);
+
+  // Matches events.hold_minutes' default (migration 031 reverted this back
+  // to 30 after migration 026 had briefly bumped it to 60 without updating
+  // this copy — the button said 60 while the server actually held for 30,
+  // the kind of mismatch a buyer only discovers under pressure). PHASE 2's
+  // own verification window is the separate 60-minute number — see
+  // PaymentDetails.jsx/Confirmed.jsx, never this screen.
+  const reserveBtnLabel = s.loading
+    ? T('Đang giữ chỗ…', 'Holding…')
+    : s.qty === 1 ? T('Giữ 1 chỗ ▪︎ 30 phút', 'Hold 1 seat ▪︎ 30 min') : T(`Giữ ${s.qty} chỗ ▪︎ 30 phút`, `Hold ${s.qty} seats ▪︎ 30 min`);
+
+  return (
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Reserve">
+      <div onClick={backToEvent} style={{ padding: '70px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</div>
+      {/* Goal gradient (note 48): picking the event already counts. */}
+      <div style={{ padding: '14px 22px 0' }}><BookingJourneyProgress current={1} T={T} /></div>
+      <div style={{ padding: '16px 22px 0' }}>
+        <h2 style={{ ...display(24, { margin: 0 }) }}>{T('Gần xong rồi.', 'Almost there.')}</h2>
+      </div>
+      <div style={{ ...fieldGlass({ display: 'flex', gap: 14, alignItems: 'center', margin: '18px 22px 0', padding: 13 }) }}>
+        <div style={bg(ev.img, { flex: 'none', width: 52, height: 52 })} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+          <span style={{ ...display(15) }}>{ev.name}</span>
+          <span style={{ fontSize: 11.5, color: ink }}>{ev.when} ▪︎ {s.qty} {T('chỗ', 'seats')} ▪︎ {trStatus(totalStr)}</span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '20px 22px 0' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <label style={{ fontSize: 11.5, color: ink }}>{T('Tên', 'Name')}</label>
+            {hasName && (
+              <span onClick={goEditName} style={{ fontSize: 11, color: ink, opacity: 0.6, cursor: 'pointer' }} data-testid="reserve-name-change-in-account">
+                {T('Đổi trong Tài khoản', 'Change in Account')}
+              </span>
+            )}
+          </div>
+          {hasName ? (
+            <div style={{ ...fieldGlass({ padding: '13px 14px' }), fontSize: 14, fontFamily: FACE, color: ink }} data-testid="reserve-name-readonly">
+              {s.user.name}
+            </div>
+          ) : (
+            <>
+              <input
+                value={s.formName} onChange={formNameType} placeholder={T('Tên của bạn', 'Your name')}
+                style={inputStyle} data-testid="reserve-name-input"
+              />
+              <div
+                onClick={s.reserveNameSaving ? undefined : submitNameAtHold}
+                style={{
+                  alignSelf: 'flex-start', fontSize: 11.5, fontWeight: 600, color: ink,
+                  border: '1px solid rgba(27,25,22,0.16)', borderRadius: 10, padding: '6px 10px',
+                  cursor: s.reserveNameSaving ? 'default' : 'pointer', opacity: s.reserveNameSaving ? 0.6 : 1,
+                }}
+                data-testid="reserve-name-save"
+              >
+                {s.reserveNameSaving ? T('Đang lưu…', 'Saving…') : T('Lưu tên', 'Save name')}
+              </div>
+              {s.reserveNameError && (
+                <span style={{ fontSize: 11, color: alert }}>{s.reserveNameError}</span>
+              )}
+            </>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <label style={{ fontSize: 11.5, color: ink }}>Email</label>
+          <div style={{ ...fieldGlass({ padding: '13px 14px' }), fontSize: 14, fontFamily: FACE, color: ink, opacity: 0.75 }} data-testid="reserve-email-readonly">
+            {s.user?.email || ''}
+          </div>
+        </div>
+      </div>
+      <div style={{ margin: '22px 22px 0' }}>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Số vé', 'Tickets')}</span>
+        <div style={{ ...fieldGlass({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, padding: '12px 14px' }) }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: ink }}>{s.qty} {T('vé', 'tickets')}</span>
+            <span style={{ fontSize: 11.5, color: ink }}>{qtyTotalLabel}</span>
+          </div>
+          <CountStepper value={s.qty} min={1} max={6} unit={T('vé', 'tickets')} testId="reserve-qty"
+            onChange={(n) => (n > s.qty ? qtyPlus() : qtyMinus())} />
+        </div>
+      </div>
+      <div style={{ margin: '22px 22px 0' }} data-testid="reserve-attendees">
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Người tham dự', 'Attendees')}</span>
+        <p style={{ fontSize: 11.5, color: ink, opacity: 0.65, margin: '4px 0 0' }}>
+          {T('Mỗi vé cần tên và ngày sinh của người sẽ tham dự. Vé 1 là của bạn và dùng ngày sinh trong hồ sơ.', 'Each ticket needs the name and date of birth of the person attending. Ticket 1 is yours and uses the birthday on your profile.')}
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+          {s.attendeeDrafts.slice(0, s.qty).map((a, i) => (
+            <div key={i} style={{ ...fieldGlass({ padding: 13, display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`reserve-attendee-${i}`}>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }}>{T('Vé', 'Ticket')} {i + 1}</span>
+              <input
+                value={a.name} onChange={(e) => setAttendeeField(i, 'name', e.target.value)}
+                placeholder={T('Họ và tên', 'Full name')} autoComplete="off"
+                style={{ ...inputStyle, background: 'rgba(255,255,255,0.55)' }} data-testid={`reserve-attendee-${i}-name`}
+              />
+              {i === 0 && a.useProfileDob ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: 13, color: ink }} data-testid="reserve-attendee-0-dob-profile">
+                  {T('Ngày sinh (lấy từ hồ sơ của bạn)', 'Date of birth (from your profile)')}: <b>{a.profileDob ? new Date(`${a.profileDob}T00:00:00`).toLocaleDateString(s.lang === 'en' ? 'en-GB' : 'vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}</b>
+                </span>
+                  <DobCorrectionRequest />
+                </div>
+              ) : (
+                <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, fontSize: 13, color: ink }}>
+                  {T('Ngày sinh', 'Date of birth')}
+                  <input
+                    type="date" value={a.dob} max={todayIso} onChange={(e) => setAttendeeField(i, 'dob', e.target.value)}
+                    style={{ fontFamily: FACE, fontSize: 13, color: ink, background: 'rgba(255,255,255,0.55)', border: '1px solid rgba(27,25,22,0.12)', borderRadius: 10, padding: '7px 10px' }}
+                    data-testid={`reserve-attendee-${i}-dob`}
+                  />
+                </label>
+              )}
+              {i > 0 && (
+                <input
+                  type="email" value={a.email || ''} onChange={(e) => setAttendeeField(i, 'email', e.target.value)}
+                  placeholder={T('Email (không bắt buộc)', 'Email (optional)')} autoComplete="off" autoCapitalize="none"
+                  style={{ ...inputStyle, background: 'rgba(255,255,255,0.55)' }} data-testid={`reserve-attendee-${i}-email`}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ margin: '22px 22px 0', fontSize: 12, lineHeight: 1.55, color: ink }}>
+        {T('banbe không thu tiền. Bạn giữ chỗ 30 phút để chuyển khoản trực tiếp cho người tổ chức. Bấm "Tôi đã chuyển khoản" là đồng hồ dừng và chỗ được khoá cho tới khi người tổ chức xác nhận.', 'banbe does not collect money. Your seat is held for 30 minutes while you transfer to the organizer directly. Tapping "I have transferred" stops the clock and locks your seat until they confirm.')}
+      </div>
+      {crit.restricted && <WhoCanReserve criteria={crit.criteria} style={{ margin: '14px 22px 0' }} />}
+      {crit.blocked && <CriteriaUnmetCard eligibility={crit.eligibility} returnTo="reserve" style={{ margin: '12px 22px 0' }} />}
+      <div style={{ margin: '18px 22px 0' }}>
+        {/* Note 64: navigate class. The ✓ shows only once hold_seats_with_attendees returned a booking; Confirmed
+            opens when it has drawn. A refusal returns the label and shows the error under it. */}
+        <AsyncSuccessButton testId="reserve-submit" label={reserveBtnLabel} enabled={formOk}
+          run={() => submitReserve(formOk, { deferNavigation: true })}
+          onSuccessAnimationComplete={goReserveConfirmed}
+          pendingLabel={T('Đang giữ chỗ…', 'Holding…')} successLabel={T('Đã giữ chỗ', 'Seat held')}
+          style={{ borderRadius: 999, padding: 16, fontSize: 15 }} />
+        {!formOk && holdBlockReason && (
+          <div data-testid="reserve-submit-reason" style={{ fontSize: 12, textAlign: 'center', color: ink, opacity: 0.7, marginTop: 8 }}>{holdBlockReason}</div>
+        )}
+      </div>
+      {s.reserveError && <div role="alert" data-testid="reserve-error" style={{ margin: '12px 22px 0', fontSize: 12, lineHeight: 1.5, color: alert }}>{s.reserveError}</div>}
+      <div style={{ height: 40 }} />
+    </div>
+  );
+}
+
+const inputStyle = { ...fieldGlass({ padding: '13px 14px', border: 'none' }), fontSize: 14, fontFamily: FACE, color: ink, outline: 'none' };

@@ -1,0 +1,280 @@
+import Foundation
+import Supabase
+
+/// Owns the current auth session and profile — the iOS equivalent of
+/// BanBeContext's `user`/`accountType` state and its onAuthStateChange
+/// listener on the web side (src/state/BanBeContext.jsx).
+@MainActor
+final class AuthViewModel: ObservableObject {
+    @Published var session: Session?
+    @Published var profile: Profile?
+    @Published var isSendingCode = false
+    @Published var codeSent = false
+    @Published var errorMessage: String? {
+        didSet { if errorMessage == nil { errorCode = nil } }
+    }
+    /// Note 53: the server's error code behind `errorMessage` (e.g. AUTH_ACCOUNT_EXISTS), so Login can turn the
+    /// two answers that are about the ADDRESS into a warning on the email field, in the app's language.
+    @Published var errorCode: String?
+    /// Server-owned account gate (migration 123): required enrollment (verified
+    /// phone + date of birth for NEW registrations) and the per-session
+    /// "Confirm date of birth" step. RootView blocks the app while this isn't
+    /// `.ready`; the SAME rule is enforced by RLS on the server.
+    @Published var gate: AccountGateState = .unknown
+    /// The last status the server returned (booleans only) — e.g. whether this
+    /// account's phone is verified, for Account -> Security.
+    @Published var gateStatus: AccountGateStatus?
+
+    /// True whenever there's a restored session but Face ID app-lock (see
+    /// BiometricAuthService) hasn't cleared it yet this launch. RootView
+    /// shows FaceIDLockView on top of the app while this is true. This is
+    /// purely a local UI gate — Supabase's own session persistence already
+    /// happened before this is ever set.
+    @Published var isLocked = false
+
+    /// Persisted opt-in for the Face ID app-lock, toggled from SettingsView.
+    /// Off by default — restoring a session works exactly as it does today
+    /// until someone turns this on.
+    @Published var faceIDEnabled: Bool = UserDefaults.standard.bool(forKey: AuthViewModel.faceIDDefaultsKey) {
+        didSet { UserDefaults.standard.set(faceIDEnabled, forKey: AuthViewModel.faceIDDefaultsKey) }
+    }
+    private static let faceIDDefaultsKey = "banbe.faceIDEnabled"
+
+    var isSignedIn: Bool { session != nil }
+
+    /// Splash completion-gating fix (2026-09-30) — true once the FIRST auth
+    /// event (of any kind — almost always `.initialSession`, the cold-
+    /// launch session restore) has actually been processed. Web's
+    /// equivalent is `BanBeContext.jsx`'s `sessionChecked`
+    /// (09-auth-onboarding.md's `postAuthDestination(prev)` explicitly
+    /// treats `!prev.sessionChecked` as "don't decide signed-out yet" for
+    /// exactly this reason). Before this fix, iOS's `SplashView` had no
+    /// equivalent at all — its fixed 2.6s `Task.sleep` could fire
+    /// `dismissSplash(isSignedIn:)` before `authStateChanges`'s first event
+    /// ever arrived, reading `isSignedIn` as `false` for an actually-signed-
+    /// in account on a slow cold start and wrongly forcing them to Login.
+    @Published var sessionChecked = false
+
+    private var authListenerTask: Task<Void, Never>?
+
+    init() {
+        #if DEBUG
+        // UI-test fixtures are offline and hermetic: never restore a real session left in the simulator's keychain by an
+        // earlier real-login run (it would raise the account gate over the fixture mid-test).
+        if UITestFixture.isActive { sessionChecked = true; return }
+        #endif
+        authListenerTask = Task { [weak self] in
+            guard let self else { return }
+            // Restores any persisted session on launch, then keeps listening
+            // for sign-in/out and token refresh — mirrors
+            // supabase.auth.onAuthStateChange in BanBeContext.jsx.
+            for await (event, session) in SupabaseService.client.auth.authStateChanges {
+                if event == .initialSession || event == .signedIn || event == .tokenRefreshed {
+                    self.session = session
+                    if let userId = session?.user.id {
+                        await self.loadProfile(userId: userId)
+                    }
+                    // Only gate the cold-launch restore, not a session that
+                    // was just freshly signed into in this same launch —
+                    // that person is clearly already present.
+                    if event == .initialSession, session != nil, self.faceIDEnabled {
+                        self.isLocked = true
+                    }
+                    if session != nil { await self.refreshGate() } else { self.gate = .unknown }
+                } else if event == .signedOut {
+                    self.session = nil
+                    self.profile = nil
+                    self.isLocked = false
+                    self.gate = .unknown
+                    self.gateStatus = nil
+                }
+                self.sessionChecked = true
+            }
+        }
+    }
+
+    deinit {
+        authListenerTask?.cancel()
+    }
+
+    func loadProfile(userId: UUID) async {
+        do {
+            let profile: Profile = try await SupabaseService.client
+                .from("profiles")
+                .select()
+                .eq("id", value: userId)
+                .single()
+                .execute()
+                .value
+            self.profile = profile
+        } catch {
+            // A brand-new sign-up may not have a profiles row yet if the
+            // trigger that creates one hasn't run — not fatal, just empty.
+            self.profile = nil
+        }
+    }
+
+    /// Requests a 8-digit sign-in/sign-up code by email — via
+    /// AuthAPIService (Gmail delivery through the same Vercel function the
+    /// web app uses), not Supabase's own `signInWithOTP`. Supabase's
+    /// built-in mailer is capped at a handful of emails per hour on this
+    /// project and was failing almost immediately with "email rate limit
+    /// exceeded"; the server function has no such limit. Also deliberately
+    /// asks for no redirect link — this used to pass
+    /// `redirectTo: "banbe://login-callback"`, a URL scheme that was never
+    /// actually registered anywhere in the app, so that option just failed
+    /// silently when tapped. Sign-in here is code-entry only.
+    func sendEmailCode(to email: String, mode: AuthMode, displayName: String? = nil) async {
+        isSendingCode = true
+        errorMessage = nil
+        defer { isSendingCode = false }
+        do {
+            try await AuthAPIService.requestEmailCode(email: email, mode: mode, displayName: displayName)
+            codeSent = true
+        } catch {
+            errorMessage = error.localizedDescription
+            errorCode = (error as? AuthAPIError)?.code
+        }
+    }
+
+    /// Verifies the code from that email and establishes the session
+    /// directly against Supabase (just checking a token, not sending
+    /// anything — no rate limit involved) — the auth-state listener above
+    /// takes it from there. `mode` must match whichever mode the code was
+    /// requested for: a signup confirmation code verifies as `.signup`, a
+    /// login code as `.email`.
+    func verifyEmailCode(email: String, code: String, mode: AuthMode) async {
+        errorMessage = nil
+        do {
+            try await SupabaseService.client.auth.verifyOTP(
+                email: email, token: code, type: mode == .signup ? .signup : .email
+            )
+            codeSent = false
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Password sign-in
+
+    /// Logs in with an email and password, straight to Supabase — no code
+    /// step, since the account already has a password. (Just checking a
+    /// credential, not sending mail, so none of the rate limiting that
+    /// pushed the code path onto our own API applies here.) The
+    /// auth-state listener above takes it from there.
+    func signInWithPassword(email: String, password: String) async {
+        isSendingCode = true
+        errorMessage = nil
+        defer { isSendingCode = false }
+        do {
+            _ = try await SupabaseService.client.auth.signIn(email: email, password: password)
+        } catch {
+            // Deliberately the same message for a wrong password and an
+            // email with no account — a login form shouldn't say which.
+            errorMessage = "Wrong email or password."
+        }
+    }
+
+    /// Creates an account with a chosen password, then — exactly like the
+    /// code path — waits on the emailed 6-digit confirmation, which
+    /// verifyEmailCode(mode: .signup) finishes.
+    func signUpWithPassword(email: String, password: String, displayName: String, locale: String) async {
+        isSendingCode = true
+        errorMessage = nil
+        defer { isSendingCode = false }
+        do {
+            try await AuthAPIService.requestPasswordSignup(
+                email: email, password: password, displayName: displayName, locale: locale
+            )
+            codeSent = true
+        } catch {
+            errorMessage = error.localizedDescription
+            errorCode = (error as? AuthAPIError)?.code
+        }
+    }
+
+    /// Re-locks the app immediately — call this if biometry ever becomes
+    /// unavailable (e.g. removed in Settings) while the toggle is still on,
+    /// or from a manual "Lock now" affordance if one gets added later.
+    func lockIfEnabled() {
+        guard faceIDEnabled, session != nil else { return }
+        isLocked = true
+    }
+
+    // MARK: - Security settings
+
+    /// Turning the app-lock on runs a real Face ID check there and then,
+    /// which is what surfaces iOS's own "banbe would like to use Face ID"
+    /// permission alert the first time (it only ever appears when a policy
+    /// is actually evaluated — flipping a stored flag never prompted
+    /// anything). It doubles as proof the lock will work before anyone
+    /// depends on it: if the prompt is denied, cancelled or biometry isn't
+    /// usable, the setting stays off instead of locking someone out of
+    /// their own app on next launch. Turning it off needs no prompt.
+    func setFaceIDEnabled(_ enabled: Bool, reason: String) async -> Bool {
+        guard enabled else {
+            faceIDEnabled = false
+            return true
+        }
+        let approved = await BiometricAuthService.authenticate(reason: reason)
+        faceIDEnabled = approved
+        return approved
+    }
+
+    /// Sets (or replaces) this account's password. Works for an account
+    /// that has only ever signed in with an emailed code as well as one
+    /// that already has a password — Supabase treats both as the same
+    /// update on the signed-in user, so there's nothing to branch on.
+    func updatePassword(_ newPassword: String) async throws {
+        _ = try await SupabaseService.client.auth.update(user: UserAttributes(password: newPassword))
+    }
+
+    /// "Forgot password" — emails the recovery link. Deliberately resolves
+    /// the same way whether or not the address has an account (the server
+    /// won't say, on purpose).
+    func sendPasswordReset(to email: String) async throws {
+        try await AuthAPIService.requestPasswordReset(email: email)
+    }
+
+    // MARK: - OAuth (note 10)
+
+    /// Presents the provider's sign-in as an `ASWebAuthenticationSession`
+    /// sheet and awaits the resulting session directly — unlike the web
+    /// app, there's no page navigation away from the app here, so
+    /// AppState.policyConsent (checked by the caller before this ever
+    /// runs) simply survives in memory across the whole flow; no
+    /// localStorage-style stash needed the way BanBeContext.jsx's
+    /// syncUser()/PENDING_OAUTH_CONSENT_KEY needs one.
+    ///
+    /// `redirectTo` reuses the `banbe://` scheme already registered for the
+    /// shared-organizer-link deep link (project.yml) — this needs
+    /// `banbe://login-callback` added to the Supabase dashboard's
+    /// Authentication > URL Configuration > Redirect URLs allow-list (see
+    /// .claude/notes/10-oauth-login.md's Task 4 checklist); it does NOT go
+    /// through the app's existing `.onOpenURL`/`handleDeepLink` — the SDK's
+    /// ASWebAuthenticationSession completion handler catches the redirect
+    /// itself before that ever fires.
+    private func signIn(with provider: Provider) async {
+        errorMessage = nil
+        do {
+            _ = try await SupabaseService.client.auth.signInWithOAuth(
+                provider: provider,
+                redirectTo: URL(string: "banbe://login-callback")
+            )
+            // The auth-state-change loop in init() picks up the resulting
+            // session (event .signedIn) the same way it does for every
+            // other sign-in method — nothing further to do here.
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func signInWithGoogle() async { await signIn(with: .google) }
+    func signInWithFacebook() async { await signIn(with: .facebook) }
+
+    func signOut() async {
+        // Same as AppState.signOut(): unregister this device's push token while the session still exists.
+        await AppDelegate.appState?.unregisterPushTokenForSignOut()
+        try? await SupabaseService.client.auth.signOut()
+    }
+}

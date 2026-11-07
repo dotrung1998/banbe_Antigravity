@@ -1,0 +1,279 @@
+name: BanbeApp
+options:
+  bundleIdPrefix: com.banbe
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+# Debug (default, free/personal team): ENABLE_PUSH=NO, entitlements omit
+# aps-environment entirely (BanbeApp.entitlements) — real-device builds
+# sign fine with automatic/personal-team provisioning. Config/Team.xcconfig
+# (Team ID + BANBE_PAID_ACCOUNT=YES) turns push on for Debug as well.
+# Release (paid team only): ENABLE_PUSH=YES, entitlements declare
+# aps-environment (BanbeAppPush.entitlements). See
+# .claude/notes/07-notifications.md for exactly what to flip once a paid
+# Apple Developer account exists — it's these two files, not this one.
+# PersonalTeamDebug: local real-device testing on a free/personal Apple ID
+# with NO paid-program capability at all (also excludes Associated
+# Domains, unlike the ordinary Debug config above) — see
+# .claude/notes/18-ios-personal-team-signing.md.
+configFiles:
+  Debug: Config/Debug.xcconfig
+  Release: Config/Release.xcconfig
+  PersonalTeamDebug: Config/PersonalTeamDebug.xcconfig
+
+# Registers the custom PersonalTeamDebug configuration (xcodegen only
+# infers Debug/Release by default); "debug" here just picks its build
+# settings TYPE (unoptimized, debug symbols) — it stays a fully separate
+# configuration from Debug, not an alias for it.
+configs:
+  Debug: debug
+  Release: release
+  PersonalTeamDebug: debug
+
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: 2.24.0
+
+targets:
+  BanbeApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: BanbeApp
+        excludes:
+          - "**/.DS_Store"
+      # The catalogue's photos, as the WebP derivatives produced by
+      # Tools/optimize-photos.sh (~5MB for all 66). They ship with the app
+      # for the same reason events.json does — it's the same static
+      # catalogue — so the feed paints instantly and works offline instead
+      # of pulling 20MB of JPEG over the network on first run. Referenced
+      # in place rather than copied, so there's one source of truth.
+      - path: ../../public/photos/optimized
+        type: folder
+        buildPhase: resources
+      # The logo artwork the web app uses, referenced in place so both
+      # frontends draw the same mark (see BanbeLogo).
+      - path: ../../public/banbe-mark.png
+        buildPhase: resources
+      - path: ../../public/banbe-wordmark.png
+        buildPhase: resources
+      - path: ../../public/banbe-wordmark-sm.png
+        buildPhase: resources
+      # Pulse/loading UX pass (2026-09-27) — the shared Banbe loading GIF
+      # (BanbeLoadingVisual), referenced in place from `public/` for the
+      # same single-source-of-truth reason as the logo artwork above, and
+      # bundled with the app (not fetched) so the initial splash works
+      # offline per this ticket's own instruction.
+      - path: ../../public/banbe-loading.gif
+        buildPhase: resources
+      # Splash-only replacement for the launch logo: the Adobe
+      # Animate/CreateJS "logomotion" export, referenced in place from
+      # `public/logomotion` (same single-source-of-truth reasoning as the
+      # assets above) and rendered via WKWebView (LogomotionView). Bundled
+      # as a folder resource so its own createjs.min.js/images/html stay
+      # together under one "logomotion" subdirectory at the bundle root.
+      - path: ../../public/logomotion
+        type: folder
+        buildPhase: resources
+      # Event type profiles (supper club, music…): the same JSON the web app imports, referenced in place so
+      # both apps read one file (Lib/EventTypes.swift ⇄ src/lib/eventTypes.js).
+      - path: ../../src/data/eventTypeProfiles.json
+        buildPhase: resources
+      # Map v5 (note 73): the cities the Map searches, flies to and groups by when zoomed out — the same JSON the
+      # web imports (Lib/MapDiscovery.swift ⇄ src/lib/mapDiscovery.js).
+      - path: ../../src/data/cities.json
+        buildPhase: resources
+      # Event Project Hub (note 76): the limits the web imports and the server enforces
+      # (Lib/ProjectLimits.swift ⇄ src/lib/projectPermissions.js).
+      - path: ../../src/data/projectLimits.json
+        buildPhase: resources
+      # Admin "Project hub demo" (migration 216, Lib/ProjectDemo.swift): the synthetic sample the hub phases were
+      # tested with, referenced in place so the demo, the UI fixtures and the web tests read one file.
+      - path: ../../tests/fixtures/project-snapshot.json
+        buildPhase: resources
+    resources:
+      - BanbeApp/Resources
+    dependencies:
+      - package: Supabase
+        product: Supabase
+      # L7 day-of card (docs/impl/phase3-extras.md): the Live Activity widget extension, embedded in the app.
+      - target: BanbeLiveActivity
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.banbe.ios
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: "YES"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # DEVELOPMENT_TEAM is NOT set here: it comes from Config/Team.xcconfig
+        # (included by Debug/Release; empty until a PAID account exists), so
+        # a target-level value can't shadow it. A free/personal team works
+        # fine for everything else (automatic signing installs to a real
+        # device), it just can't provision Push Notifications (see
+        # Config/*.xcconfig, which is where CODE_SIGN_ENTITLEMENTS/ENABLE_PUSH
+        # actually get set, per config — not here, so they can differ).
+        CODE_SIGN_STYLE: Automatic
+        # .claude/notes/18-ios-personal-team-signing.md — a build-setting
+        # variable (not a literal string) so CFBundleDisplayName below can
+        # differ per configuration; Debug/Release keep the existing,
+        # unchanged value ("banbe", exactly as it already was) via this
+        # base default, and only PersonalTeamDebug overrides it, in the
+        # `configs:` block right below.
+        APP_DISPLAY_NAME: banbe
+      # .claude/notes/18-ios-personal-team-signing.md — a distinct bundle
+      # id for local personal-team installs, so Xcode's Automatic Signing
+      # can freely register/use a brand-new App ID for it under a
+      # signed-in personal Apple ID without ever touching (or colliding
+      # with) the real com.banbe.ios App ID this project ships under.
+      # DEVELOPMENT_TEAM is still never set here — only the bundle id
+      # differs; Automatic Signing still resolves the team from whichever
+      # Apple Account is signed into Xcode. APP_DISPLAY_NAME override makes
+      # the Home Screen icon/name read "Banbe Dev" instead of the normal
+      # build's "banbe" — the actual fix for "which install is this?"
+      # confusion after stopping Xcode.
+      configs:
+        PersonalTeamDebug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.banbe.ios.dev
+          APP_DISPLAY_NAME: "Banbe Dev"
+    info:
+      path: BanbeApp/Info.plist
+      properties:
+        # $(APP_DISPLAY_NAME) — Xcode substitutes this from the build
+        # setting of the same name (defined per-configuration above), so
+        # the Home Screen icon/name can differ between configs without a
+        # second Info.plist. See .claude/notes/18-ios-personal-team-signing.md.
+        CFBundleDisplayName: $(APP_DISPLAY_NAME)
+        UILaunchScreen: {}
+        # R2 hybrid media (.claude/notes/28-r2-hybrid-media.md). Empty = off:
+        # resolver always uses the legacy Supabase URL.
+        MEDIA_PUBLIC_BASE_URL: ""
+        MEDIA_R2_READS: ""
+        NSLocationWhenInUseUsageDescription: "banbe uses your location to show how far events are and to filter the area picker."
+        NSCameraUsageDescription: "banbe uses your camera to scan a guest's ticket QR code at check-in, to scan an event team invite, and to attach a photo to a chat message."
+        NSFaceIDUsageDescription: "banbe uses Face ID to unlock the app for a returning signed-in user."
+        NSPhotoLibraryAddUsageDescription: "banbe saves a chat photo or a report chart image to your library when you tap Save."
+        # Opens a shared photo's organizer link straight in the app —
+        # banbe://organizer/<eventKey>. A plain https:// link can only do
+        # this through Universal Links, which need an Associated Domains
+        # entitlement and a real Apple Team ID; until those exist the web
+        # page shared alongside it offers this scheme as an "Open" button.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.banbe.ios
+            CFBundleURLSchemes: [banbe]
+        # Task 1 (this session): portrait-only, no rotation — no view
+        # controller/AppState override needed to match (confirmed by grep:
+        # nothing in this app ever overrides
+        # `supportedInterfaceOrientations`), this key alone is authoritative.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        # iPad must allow every orientation unless the app requires full screen (Xcode warning); iPhone stays
+        # portrait-only above.
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # L7 day-of card: the app may start Live Activities (only ever locally, only while the `live_activity`
+        # switch is on; see BanbeApp/Lib/LiveActivityController.swift).
+        NSSupportsLiveActivities: true
+
+  # L7 day-of card (docs/impl/phase3-extras.md; switch `live_activity`): WidgetKit extension that draws the event-day
+  # Live Activity (Lock Screen + Dynamic Island). No capabilities and no entitlements at all (no App Group, no push:
+  # the app updates the activity locally), so it signs on a free/personal team too (PersonalTeamDebug, note 18).
+  # Bundle id = the app's + ".LiveActivity" (com.banbe.ios.LiveActivity; com.banbe.ios.dev.LiveActivity for
+  # PersonalTeamDebug). Deployment target = the app's (17.0 >= 16.2, which ActivityContent needs).
+  # EventDayAttributes.swift is the one shared file, compiled into both targets.
+  BanbeLiveActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: BanbeLiveActivity
+        excludes:
+          - "**/.DS_Store"
+          - Info.plist
+      - path: BanbeApp/Lib/EventDayAttributes.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.banbe.ios.LiveActivity
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        # The project-level xcconfigs point CODE_SIGN_ENTITLEMENTS at the APP's files (push / associated domains);
+        # an extension must not inherit them.
+        CODE_SIGN_ENTITLEMENTS: ""
+        SKIP_INSTALL: "YES"
+        APPLICATION_EXTENSION_API_ONLY: "YES"
+      configs:
+        PersonalTeamDebug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.banbe.ios.dev.LiveActivity
+    info:
+      path: BanbeLiveActivity/Info.plist
+      properties:
+        CFBundleDisplayName: banbe
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+
+  BanbeAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: BanbeAppUITests
+    dependencies:
+      - target: BanbeApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.banbe.ios.uitests
+        SWIFT_VERSION: "5.0"
+        TEST_TARGET_NAME: BanbeApp
+        GENERATE_INFOPLIST_FILE: "YES"
+
+  # Refund-discoverability investigation (point 3) — a real in-process unit
+  # test target (`@testable import BanbeApp`), unlike BanbeAppUITests
+  # (bundle.ui-testing launches the app as a separate process and cannot
+  # import its module). Only the RefundClaim decode regression test lives
+  # here for now; a small, fast, no-simulator-interaction target, not a
+  # second UI test suite.
+  BanbeAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: BanbeAppTests
+    dependencies:
+      - target: BanbeApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.banbe.ios.tests
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/BanbeApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BanbeApp"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+schemes:
+  BanbeApp:
+    build:
+      targets:
+        BanbeApp: all
+        BanbeAppUITests: [test]
+        BanbeAppTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - BanbeAppUITests
+        - BanbeAppTests
+  # .claude/notes/18-ios-personal-team-signing.md — a dedicated scheme so
+  # "Select Personal Team Debug" is a single picker choice in Xcode's
+  # scheme menu, not a manual per-run Edit Scheme > Build Configuration
+  # change. Builds/runs the app target only (no UI tests — those aren't
+  # part of local personal-device testing).
+  PersonalTeamDebug:
+    build:
+      targets:
+        BanbeApp: all
+    run:
+      config: PersonalTeamDebug

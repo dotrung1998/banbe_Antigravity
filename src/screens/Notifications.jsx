@@ -1,0 +1,655 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { takeBellOrigin } from '../lib/bellOrigin.js';
+import { useBanBe } from '../state/BanBeContext.jsx';
+import { agoLabel, bg } from '../data/events.js';
+import { avatarSourceFor, notificationAgeBucket, groupNotificationsByDay, collapseDayGroups } from '../lib/notifications.js';
+import { paper, ink, rule, alert, display, fieldGlass } from '../theme.js';
+
+// Redesigned to read like Instagram/Facebook's own notification list
+// (07-notifications.md's 2026-09-18 follow-up): a left avatar per row
+// (derived per-kind — see avatarSourceFor), a bold title + single-line
+// truncated preview, and time-based sections with unread always pinned to
+// the top regardless of age. Same fonts/colors as everywhere else in the
+// app (theme.js's paper/ink/display) — no new design system.
+const COLLAPSE_AT = 20;
+
+// Refund MVP task D — one semantic trailing icon per notification title,
+// by kind category. Same minimal inline-SVG convention as Account.jsx's own
+// RowIcon (one stroke weight, one viewBox, `ink` only, no emoji) — kept
+// local here rather than importing from Account.jsx since that component
+// isn't exported and this needs a different (smaller) glyph set.
+const KIND_CATEGORY = {
+  refund_marked_sent: 'refund', refund_confirmed: 'refund', refund_disputed: 'refund', refund_overdue: 'refund',
+  dispute_message: 'dispute', dispute_resolved: 'dispute', payment_disputed: 'dispute',
+  payment_awaiting_verification: 'payment', payment_confirmed: 'payment', payment_document_uploaded: 'payment',
+  payment_document_replaced: 'payment', payment_verification_nudge: 'payment', payment_needs_info: 'payment',
+  hold_created: 'payment', hold_expired: 'payment',
+  booking_requested: 'booking', booking_cancelled: 'booking', booking_declined: 'booking',
+  checked_in: 'booking', checkin_undo: 'booking', checkin_undone: 'booking', undo_check_in: 'booking',
+  reject_pending_guest: 'booking', receipt_requested: 'booking',
+  event_share: 'event', referral_joined: 'event',
+  new_message: 'message', event_announcement: 'message',
+  // iPhone fix pass (2026-09-27), Issue 1 — these fell to 'system' (the
+  // generic bell/circle glyph) before; a distinct people icon reads as "a
+  // Team thing" instead.
+  organizer_invite: 'team', organizer_invite_response: 'team', event_credit_invite: 'team',
+  // Phase 2-3 core loops (migrations 199/200): reminders get their own calendar-with-clock glyph; recaps, follow
+  // alerts and the weekend digest are about an event.
+  event_reminder_day: 'reminder', event_reminder_soon: 'reminder',
+  event_recap: 'event', host_event_recap: 'event', follow_alert: 'event', weekly_digest: 'event',
+};
+function notificationCategory(kind) { return KIND_CATEGORY[kind] || 'system'; }
+
+// Color-as-wayfinding pass (2026-09-27) — the SAME meaning -> color map
+// Account.jsx's own group cards use (ROW_ACCENT_COLORS, re-derived here
+// rather than imported since that module isn't a shared design-tokens
+// file — see its own doc comment for why these four values specifically).
+// Consolidated to the 4 groups that actually exist there: money-related
+// kinds -> "payments" (sand), booking/event kinds -> "activity" (rose),
+// team kinds -> "team" (moss), message/system -> neutral (ink, same as
+// "preferences"). The glyph itself stays `ink` (unchanged, always-
+// readable stroke) — color lives only in a soft circular backdrop behind
+// it, same convention as RowIcon's own `accent` prop, so light/dark
+// contrast is inherited for free and color is never the only signal.
+const CATEGORY_ACCENT = {
+  refund: '#E3D3B4', payment: '#E3D3B4', dispute: '#E3D3B4',
+  booking: '#E7C9C2', event: '#E7C9C2', reminder: '#E7C9C2',
+  team: '#C8CBB2',
+  message: '#3A3630', system: '#3A3630',
+};
+
+function KindIcon({ category }) {
+  const common = { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: ink, strokeWidth: 1.9, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  const byCategory = {
+    refund: <><rect x="3" y="7.3" width="18" height="9.4" rx="1.6" /><circle cx="12" cy="12" r="2.3" /></>,
+    dispute: <><path d="M12 3.2l9 15.6H3z" /><path d="M12 9.5v4M12 16v0" /></>,
+    payment: <><rect x="3.5" y="5.5" width="17" height="13" rx="1.8" /><path d="M3.5 9.7h17" /></>,
+    booking: <><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17" /><path d="M8 3v4M16 3v4" /></>,
+    event: <><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17" /><circle cx="12" cy="14.5" r="2.1" /></>,
+    reminder: <><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17" /><path d="M8 3v4M16 3v4" /><path d="M12 12.6v2.6l1.8 1.1" /></>,
+    message: <path d="M4 5.5h16v10.6H9.6L5 20V16.1H4z" />,
+    team: <><circle cx="8.5" cy="8.5" r="3" /><circle cx="16" cy="9.5" r="2.4" /><path d="M3.2 19c.5-3.1 2.7-5 5.3-5s4.8 1.9 5.3 5" /><path d="M14.5 14.3c2.1.2 3.8 1.9 4.2 4.7" /></>,
+    system: <><circle cx="12" cy="12" r="8.4" /><path d="M12 8.3v4.5M12 15.7v0" /></>,
+  };
+  return (
+    <span
+      aria-hidden
+      style={{
+        flex: 'none', width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: `${CATEGORY_ACCENT[category] || CATEGORY_ACCENT.system}55`,
+      }}
+    >
+      <svg {...common} style={{ opacity: 0.75 }}>{byCategory[category] || byCategory.system}</svg>
+    </span>
+  );
+}
+// TASK 1 (2026-09-22 twentieth follow-up) — must match Inbox.jsx's own
+// SHEET_ANIM_MS exactly (not a separate arbitrary speed): the prior pass
+// left this screen's search input with no `animation` at all, so it
+// snapped open/closed instantly instead of the 600ms fade Inbox uses.
+const SHEET_ANIM_MS = 600;
+
+
+// iOS parity header controls (NotificationsView.iconButton / InboxView.iconButton):
+// a 34pt round glass button with a tiny caption beneath. Shared with Inbox.jsx.
+const HEADER_ICONS = {
+  search: <><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></>,
+  select: <><circle cx="12" cy="12" r="9" /><path d="M8 12.5l2.8 2.8L16.5 9.5" /></>,
+  selectAll: <><path d="M3.5 6.5l1.6 1.6L8 5.2M3.5 12.5l1.6 1.6L8 11.2M3.5 18.5l1.6 1.6L8 17.2" /><path d="M11.5 7h9M11.5 13h9M11.5 19h9" /></>,
+  close: <path d="M6 6l12 12M18 6L6 18" />,
+  gear: <><circle cx="12" cy="12" r="3" /><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /></>,
+};
+export function HeaderIconButton({ icon, label, onClick, testId, tint, style }) {
+  return (
+    <div
+      onClick={onClick}
+      data-testid={testId}
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', userSelect: 'none', ...style }}
+    >
+      <span style={{
+        ...fieldGlass({ borderRadius: '50%', border: '1px solid rgba(var(--bb-fg-rgb), 0.12)', boxShadow: '0 2px 8px rgba(27,25,22,0.08), inset 0 1px 0 rgba(255,255,255,0.5)' }),
+        width: 36, height: 36, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tint || ink,
+      }}>
+        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">{HEADER_ICONS[icon]}</svg>
+      </span>
+      <span style={{ fontSize: 9.5, color: tint || ink, opacity: tint ? 0.85 : 0.7 }}>{label}</span>
+    </div>
+  );
+}
+export function HeaderWordmark() {
+  return <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 96, height: 'auto', display: 'block', flex: 'none' }} />;
+}
+
+function classifyAtLoad(n, now) {
+  return !n.read_at ? 'new' : notificationAgeBucket(n.created_at, now);
+}
+
+export default function Notifications({ overlay = false }) {
+  const {
+    state, T, trStatus, goHome, backFromNotifications, openNotification, deleteNotification, deleteNotifications,
+    markNotificationRead, markNotificationUnread, muteNotificationKind,
+  } = useBanBe();
+  const s = state;
+  const rootRef = useRef(null);
+  // Opened from Home's bell: the page bursts out of the bell as a growing circle (like a droplet), and shrinks back
+  // into it on Back. No bell (or Reduce Motion): it slides in/out from the right instead.
+  const [bell] = useState(() => (overlay ? takeBellOrigin() : null));
+  const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const burst = !!bell && !reduceMotion;
+  const circle = (r) => {
+    const cx = bell.left + bell.width / 2; const cy = bell.top + bell.height / 2;
+    return `circle(${r}px at ${cx}px ${cy}px)`;
+  };
+  const fullRadius = () => {
+    const cx = bell.left + bell.width / 2; const cy = bell.top + bell.height / 2;
+    return Math.hypot(Math.max(cx, window.innerWidth - cx), Math.max(cy, window.innerHeight - cy)) + 8;
+  };
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!burst || !el?.animate) return;
+    el.animate([{ clipPath: circle(bell.width / 2) }, { clipPath: circle(fullRadius()) }], { duration: 520, easing: 'cubic-bezier(.2,.9,.25,1)' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const leave = () => {
+    const el = rootRef.current;
+    if (!overlay || !el?.animate) { backFromNotifications(); return; }
+    if (burst) {
+      el.animate([{ clipPath: circle(fullRadius()) }, { clipPath: circle(bell.width / 2) }], { duration: 380, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' });
+      setTimeout(backFromNotifications, 360);
+      return;
+    }
+    el.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(100%)' }], { duration: 260, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
+    setTimeout(backFromNotifications, 240);
+  };
+  // Over Home the page carries its own edge swipe back (iOS parity). Opened from the bell, the drag
+  // shrinks the page back into the bell as the finger moves (the same circle Back closes with); far or
+  // fast enough finishes the shrink, otherwise it grows back. Without the burst it slides off instead.
+  const edgeRef = useRef({ active: false, startX: 0, lastX: 0, lastT: 0, v: 0, pointerId: null });
+  const dragRadius = (dx) => {
+    const small = bell.width / 2;
+    return small + (fullRadius() - small) * Math.max(0, 1 - dx / window.innerWidth);
+  };
+  const onEdgeDown = (e) => {
+    edgeRef.current = { active: true, startX: e.clientX, lastX: e.clientX, lastT: performance.now(), v: 0, pointerId: e.pointerId };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const el = rootRef.current;
+    if (el) { el.getAnimations?.().forEach(a => a.cancel()); el.style.transition = 'none'; }
+  };
+  const onEdgeMove = (e) => {
+    const g = edgeRef.current;
+    if (!g.active || e.pointerId !== g.pointerId) return;
+    const now = performance.now();
+    g.v = (e.clientX - g.lastX) / Math.max(now - g.lastT, 1);
+    g.lastX = e.clientX; g.lastT = now;
+    const el = rootRef.current;
+    if (!el) return;
+    const dx = Math.max(0, e.clientX - g.startX);
+    if (burst) el.style.clipPath = circle(dragRadius(dx));
+    else el.style.transform = `translateX(${dx}px)`;
+  };
+  const onEdgeUp = (e) => {
+    const g = edgeRef.current;
+    if (!g.active) return;
+    g.active = false;
+    const el = rootRef.current;
+    if (!el) return;
+    const dx = Math.max(0, (e.clientX ?? g.lastX) - g.startX);
+    const w = window.innerWidth;
+    const closes = dx > w * 0.33 || (dx > 24 && g.v > 0.5);
+    if (burst) {
+      const from = circle(dragRadius(dx));
+      const to = closes ? circle(bell.width / 2) : circle(fullRadius());
+      const anim = el.animate([{ clipPath: from }, { clipPath: to }], closes
+        ? { duration: 300, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' }
+        : { duration: 280, easing: 'cubic-bezier(.2,.9,.25,1)' });
+      el.style.clipPath = '';
+      if (closes) setTimeout(backFromNotifications, 280);
+      else anim.onfinish = () => { el.style.clipPath = ''; };
+      return;
+    }
+    if (closes) {
+      el.style.transition = 'transform .22s ease-out';
+      el.style.transform = `translateX(${w}px)`;
+      setTimeout(backFromNotifications, 220);
+    } else {
+      el.style.transition = 'transform .28s cubic-bezier(.2,.9,.25,1)';
+      el.style.transform = 'translateX(0)';
+    }
+  };
+  // Which sections have had their "Xem thêm" tapped — purely a render-time
+  // slice of already-loaded data (loadNotifications() fetches up to 50 at
+  // once), so a plain local Set is enough; nothing here needs a new query.
+  const [expandedSections, setExpandedSections] = useState(() => new Set());
+  const expandSection = (key) => setExpandedSections(prev => new Set(prev).add(key));
+  // BUG 4: the "•••" action menu, open for at most one row's notification
+  // at a time.
+  const [menuFor, setMenuFor] = useState(null);
+  // TASK 2 (2026-09-22 nineteenth follow-up) — search, matching Inbox's own
+  // search icon+label control exactly (Inbox.jsx). Filters title/body
+  // client-side against already-loaded s.notifications, same plain-
+  // substring convention Inbox's own search already uses (no other text-
+  // search backend exists in this app to call into).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  // TASK 2 (2026-09-22 seventeenth follow-up) — selection/edit mode: a
+  // plain local Set of ids, like `expandedSections` above — nothing here
+  // needs a new query, and "Select all" must only ever apply to whatever's
+  // actually loaded/rendered (`s.notifications`), never a hidden/paginated
+  // row the user never saw (this ticket's own explicit requirement).
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const toggleSelected = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const exitSelectionMode = () => { setSelectionMode(false); setSelectedIds(new Set()); };
+  const selectAll = () => setSelectedIds(new Set(s.notifications.map(n => n.id)));
+  const deleteSelected = async () => {
+    const ids = [...selectedIds];
+    exitSelectionMode();
+    await deleteNotifications(ids);
+  };
+
+  // 2026-09-18 follow-up (BUG 3): a notification's SECTION is decided once
+  // — the first time this screen sees it — and frozen from then on, keyed
+  // by id. Reading it only flips its own read_at (handled live below, for
+  // the bold/dim weight), it never moves the row to a different section.
+  // Without this, section membership was being recomputed from live
+  // read_at on every render — the exact same array (s.notifications) is
+  // also overwritten wholesale every 5s by the app-wide toast poll
+  // (startNotificationPolling(), BanBeContext.jsx), so a plain
+  // useMemo/derived-state approach re-shuffles a notification the instant
+  // either markNotificationRead() OR that unrelated poll tick re-renders
+  // this screen — which is what "reading moves it" actually was.
+  const [sectionMembership, setSectionMembership] = useState(() => {
+    const map = {};
+    const now = Date.now();
+    for (const n of s.notifications) map[n.id] = classifyAtLoad(n, now);
+    return map;
+  });
+  useEffect(() => {
+    setSectionMembership(prev => {
+      let changed = false;
+      const next = { ...prev };
+      const now = Date.now();
+      for (const n of s.notifications) {
+        if (!(n.id in next)) { next[n.id] = classifyAtLoad(n, now); changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [s.notifications]);
+
+  const withAgo = (n) => ({
+    ...n,
+    ...(n.kind === 'event_announcement' ? { title: T('Thông báo từ host', 'Host announcement') } : {}),
+    ago: trStatus(agoLabel(Math.max(1, Math.round((Date.now() - new Date(n.created_at).getTime()) / 3600000)))),
+  });
+
+  // TASK 2 (2026-09-22 nineteenth follow-up) — search filters the SOURCE
+  // list before grouping, not the rendered sections — so a matching
+  // notification still lands in its own frozen section (sectionMembership
+  // above is keyed by id and untouched by this), just hidden when it
+  // doesn't match rather than re-bucketed.
+  const q = query.trim().toLowerCase();
+  const searchFiltered = q
+    ? s.notifications.filter(n => (n.title || '').toLowerCase().includes(q) || (n.body || '').toLowerCase().includes(q))
+    : s.notifications;
+
+  // Exactly one bucket per key, regardless of how many unread items are
+  // interleaved with read ones in s.notifications — grouping by a frozen,
+  // pre-computed membership id can never split "Mới" into two blocks the
+  // way a live re-scan keyed on read_at (recomputed mid-list) could.
+  const grouped = { new: [], today: [], week: [], older: [] };
+  for (const n of searchFiltered) {
+    const key = sectionMembership[n.id] ?? classifyAtLoad(n, Date.now());
+    grouped[key].push(n);
+  }
+  // 2026-09-19 follow-up: "7 ngày qua"/"Cũ hơn" get a finer per-calendar-day
+  // header on top of the existing New/Today/Last-7-days/Older buckets
+  // (unchanged, still stabilized by the frozen sectionMembership above) —
+  // "Mới"/"Hôm nay" stay flat exactly as before, per this ticket's own ask.
+  const sections = [
+    { key: 'new', title: T('Mới', 'New'), items: grouped.new, dayGrouped: false },
+    { key: 'today', title: T('Hôm nay', 'Today'), items: grouped.today, dayGrouped: false },
+    { key: 'week', title: T('7 ngày qua', 'Last 7 days'), items: grouped.week, dayGrouped: true },
+    { key: 'older', title: T('Cũ hơn', 'Older'), items: grouped.older, dayGrouped: true },
+  ].filter(sec => sec.items.length > 0);
+
+  const avatarMaps = {
+    bookingById: s.notificationBookingById,
+    eventPhotoByEventId: s.notificationEventPhotoByEventId,
+    avatarByUserId: s.notificationAvatarByUserId,
+  };
+
+  return (
+    <>
+    <div ref={rootRef} data-screen-label="Notifications"
+      style={overlay
+        // Over the live Home: slides in from the right (and back out on Back), Home untouched underneath.
+        // No bell origin = coming back to it (after opening a notification): simply there, no entrance.
+        ? { position: 'fixed', inset: 0, zIndex: 45, overflowY: 'auto', background: paper }
+        : { animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }}>
+      {/* Note 44 web parity: a pushed screen now (Schedule took its dock slot), so it has its own Back. */}
+      <div style={{ padding: '58px 24px 0' }}>
+        <button type="button" onClick={leave} data-testid="notifications-back"
+          style={{ background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</button>
+      </div>
+      <div style={{ padding: '10px 24px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 20 }}>
+        {/* iOS parity: wordmark BEFORE the title, inline (hidden while the
+            search field is showing). Search input replaces the title,
+            mirroring Inbox.jsx's own search-open state. */}
+        {searchOpen ? (
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={T('Tìm thông báo…', 'Search notifications…')}
+            data-testid="notifications-search-input"
+            style={{
+              ...fieldGlass({ flex: 1, minWidth: 0, padding: '10px 14px', borderRadius: 999, border: 'none' }),
+              fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none',
+              animation: `banbeIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both`,
+            }}
+          />
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+            <HeaderWordmark />
+            {/* Always the whole word on one line: the size shrinks with the screen width instead of "Notificati…". */}
+            <span style={{ ...display(27), fontSize: 'clamp(17px, 4.6vw, 27px)', lineHeight: 1.1, whiteSpace: 'nowrap', flex: 'none' }}>
+              {selectionMode ? T('Đang Chọn', 'Selecting') : T('Thông Báo', 'Notifications')}
+            </span>
+          </div>
+        )}
+        {/* The two right-side slots morph in place (key + banbeFade) into
+            Select all + Cancel; Cancel is in the shared `alert` color. */}
+        <div style={{ display: 'flex', gap: 14, flex: 'none' }}>
+          {selectionMode ? (
+            <HeaderIconButton
+              key="select-all" icon="selectAll" label={T('Chọn tất cả', 'Select all')} onClick={selectAll}
+              testId="notifications-select-all" style={{ animation: `banbeFade ${SHEET_ANIM_MS}ms ease both` }}
+            />
+          ) : (
+            <HeaderIconButton
+              key="search" icon={searchOpen ? 'close' : 'search'} label={searchOpen ? T('Đóng', 'Close') : T('Tìm', 'Search')}
+              onClick={() => { if (searchOpen) setQuery(''); setSearchOpen(v => !v); }}
+              testId="notifications-search-toggle" style={{ animation: `banbeFade ${SHEET_ANIM_MS}ms ease both` }}
+            />
+          )}
+          {selectionMode ? (
+            <HeaderIconButton
+              key="cancel" icon="close" label={T('Huỷ', 'Cancel')} tint={alert} onClick={exitSelectionMode}
+              testId="notifications-selection-cancel" style={{ animation: `banbeFade ${SHEET_ANIM_MS}ms ease both` }}
+            />
+          ) : (
+            s.notifications.length > 0 && (
+              <HeaderIconButton
+                key="select" icon="select" label={T('Chọn', 'Select')} onClick={() => setSelectionMode(true)}
+                testId="notifications-select-mode" style={{ animation: `banbeFade ${SHEET_ANIM_MS}ms ease both` }}
+              />
+            )
+          )}
+        </div>
+      </div>
+      {selectionMode && (
+        <div style={{ padding: '0 24px 12px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+          {selectedIds.size > 0 && (
+            <span onClick={deleteSelected} data-testid="notifications-delete-selected" style={{ fontSize: 12.5, fontWeight: 600, color: alert, cursor: 'pointer' }}>
+              {T(`Xoá (${selectedIds.size})`, `Delete (${selectedIds.size})`)}
+            </span>
+          )}
+        </div>
+      )}
+      {sections.length > 0 ? (
+        <div style={{ padding: '14px 24px 40px' }}>
+          {sections.map(sec => {
+            const expanded = expandedSections.has(sec.key);
+            const row = (n) => (
+              <Row
+                key={n.id}
+                n={n}
+                // Live read_at, not the (frozen) section — marking a
+                // notification read only changes its weight/dimming in
+                // place, per BUG 3, never which section it's in.
+                unread={!n.read_at}
+                avatar={avatarSourceFor(n, avatarMaps, s.accountType)}
+                // TASK 2 — in selection mode, a tap toggles the checkbox
+                // instead of navigating; the "•••" menu stays disabled
+                // there too (normal-mode-only behavior, per this ticket's
+                // own requirement 1).
+                onClick={selectionMode ? () => toggleSelected(n.id) : () => openNotification(n)}
+                onOpenMenu={selectionMode ? undefined : () => setMenuFor(n)}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(n.id)}
+              />
+            );
+            if (!sec.dayGrouped) {
+              const visible = expanded ? sec.items : sec.items.slice(0, COLLAPSE_AT);
+              const hiddenCount = sec.items.length - visible.length;
+              return (
+                <Section key={sec.key} title={sec.title}>
+                  {visible.map(withAgo).map(row)}
+                  {hiddenCount > 0 && (
+                    <div
+                      onClick={() => expandSection(sec.key)}
+                      data-testid={`notifications-more-${sec.key}`}
+                      style={{ padding: '12px 0', fontSize: 12.5, fontWeight: 600, color: ink, opacity: 0.65, cursor: 'pointer' }}
+                    >
+                      {T(`Xem thêm (${hiddenCount})`, `View more (${hiddenCount})`)}
+                    </div>
+                  )}
+                </Section>
+              );
+            }
+            // "7 ngày qua"/"Cũ hơn": one header per calendar day underneath
+            // this section's own outer title, collapsing whole days at a
+            // time (collapseDayGroups() never cuts a single day's items in
+            // half) instead of a flat COLLAPSE_AT slice across the range.
+            const dayGroups = groupNotificationsByDay(sec.items, s.lang);
+            const { visible: visibleDays, hidden: hiddenDays } = expanded
+              ? { visible: dayGroups, hidden: [] }
+              : collapseDayGroups(dayGroups, COLLAPSE_AT);
+            const hiddenCount = hiddenDays.reduce((sum, g) => sum + g.items.length, 0);
+            return (
+              <Section key={sec.key} title={sec.title}>
+                {visibleDays.map(day => (
+                  <div key={day.key} style={{ marginBottom: 14 }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.5 }} data-testid="notification-day-header">
+                      {day.label}
+                    </span>
+                    <div style={{ marginTop: 4 }}>{day.items.map(withAgo).map(row)}</div>
+                  </div>
+                ))}
+                {hiddenCount > 0 && (
+                  <div
+                    onClick={() => expandSection(sec.key)}
+                    data-testid={`notifications-more-${sec.key}`}
+                    style={{ padding: '12px 0', fontSize: 12.5, fontWeight: 600, color: ink, opacity: 0.65, cursor: 'pointer' }}
+                  >
+                    {T(`Xem thêm (${hiddenCount})`, `View more (${hiddenCount})`)}
+                  </div>
+                )}
+              </Section>
+            );
+          })}
+        </div>
+      ) : (
+        <div style={{ padding: '80px 40px', textAlign: 'center' }}>
+          <p style={{ fontSize: 14, lineHeight: 1.55, color: ink }}>{T('Chưa có thông báo nào.', 'No notifications yet.')}</p>
+        </div>
+      )}
+      {menuFor && (
+        <NotificationActionSheet
+          n={menuFor}
+          T={T}
+          onClose={() => setMenuFor(null)}
+          onDelete={() => { deleteNotification(menuFor.id); setMenuFor(null); }}
+          onToggleRead={() => {
+            (menuFor.read_at ? markNotificationUnread : markNotificationRead)(menuFor.id);
+            setMenuFor(null);
+          }}
+          onMute={() => { muteNotificationKind(menuFor.kind); setMenuFor(null); }}
+        />
+      )}
+    </div>
+    {overlay && (
+      <div
+        aria-hidden="true"
+        data-testid="notifications-edge-swipe"
+        onPointerDown={onEdgeDown}
+        onPointerMove={onEdgeMove}
+        onPointerUp={onEdgeUp}
+        onPointerCancel={onEdgeUp}
+        style={{ position: 'fixed', top: 0, bottom: 0, left: 0, width: 22, zIndex: 46, touchAction: 'none' }}
+      />
+    )}
+    </>
+  );
+}
+
+// BUG 4: replaces the old per-row "×" delete with a "•••" menu, modeled on
+// Facebook's own notification action sheet — but only the actions this app
+// can actually back for real (no "Show more"/"Show less": nothing ranks or
+// personalizes this list; no "Report issue": no generic issue-report
+// mechanism exists anywhere else in the app to call into — see
+// 07-notifications.md). Reuses the same bottom-sheet visual convention as
+// ReasonSheet.jsx (dim overlay + a paper panel sliding up from the bottom)
+// rather than inventing a new dropdown/floating-menu pattern.
+function NotificationActionSheet({ n, T, onClose, onDelete, onToggleRead, onMute }) {
+  const isRead = !!n.read_at;
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 30, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: paper, borderRadius: '18px 18px 0 0', padding: '10px 0 28px', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(27,25,22,0.16)', margin: '4px auto 10px' }} />
+        <MenuRow onClick={onToggleRead} testId="notification-menu-toggle-read">
+          {isRead ? T('Đánh dấu chưa đọc', 'Mark as unread') : T('Đánh dấu đã đọc', 'Mark as read')}
+        </MenuRow>
+        <MenuRow onClick={onMute} testId="notification-menu-mute">
+          {T('Tắt loại thông báo này', 'Turn off this kind of notification')}
+        </MenuRow>
+        <MenuRow onClick={onDelete} destructive testId="notification-menu-delete">
+          {T('Xoá thông báo này', 'Delete this notification')}
+        </MenuRow>
+      </div>
+    </div>
+  );
+}
+
+function MenuRow({ children, onClick, destructive, testId }) {
+  return (
+    <div
+      onClick={onClick}
+      data-testid={testId}
+      style={{
+        padding: '15px 24px', fontSize: 14.5, color: destructive ? alert : ink,
+        borderBottom: `1px solid ${rule}`, cursor: 'pointer',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Section({ title, children }) {
+  return (
+    <div style={{ marginBottom: 22 }}>
+      <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', color: ink, opacity: 0.6, textTransform: 'uppercase' }}>{title}</span>
+      <div style={{ marginTop: 6 }}>{children}</div>
+    </div>
+  );
+}
+
+// A plain colored circle with the app's own bell mark — never a broken
+// image. Used whenever avatarSourceFor() can't resolve an event photo or a
+// guest avatar (neither exists, or the notification kind has no specific
+// actor at all, e.g. referral_joined).
+// iPhone fix pass (2026-09-27), Issue 1 — Team-related kinds get the same
+// people glyph as their trailing KindIcon (category 'team') instead of the
+// generic bell, so the row reads as "a Team thing" at a glance even when no
+// event photo/guest avatar resolved either.
+function AvatarFallback({ kind }) {
+  const isTeam = kind === 'organizer_invite' || kind === 'organizer_invite_response' || kind === 'event_credit_invite';
+  return (
+    <div
+      aria-hidden
+      style={{
+        flex: 'none', width: 40, height: 40, borderRadius: '50%',
+        background: 'rgba(27,25,22,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 16, color: ink,
+      }}
+    >
+      {isTeam ? <svg width={17} height={17} viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.55 }}><circle cx="8.5" cy="8" r="3.3" /><circle cx="16.5" cy="9" r="2.7" /><path d="M2.5 19.5c.4-3.4 2.9-5.3 6-5.3s5.6 1.9 6 5.3zM15 14.4c3 .1 5.6 1.7 6 5.1h-4.6c-.1-2-.7-3.6-1.4-5.1z" /></svg> : '🔔'}
+    </div>
+  );
+}
+
+function Row({ n, unread, avatar, onClick, onOpenMenu, selectionMode, selected }) {
+  return (
+    <div
+      data-testid="notification-row"
+      data-selected={selectionMode ? (selected ? 'true' : 'false') : undefined}
+      onClick={onClick}
+      style={{
+        display: 'flex', gap: 10, padding: '14px 10px', margin: '0 -10px', borderRadius: 12,
+        cursor: onClick ? 'pointer' : 'default',
+        borderBottom: '1px solid rgba(27,25,22,0.16)',
+        // TASK D — unread: a clearly darker/tinted background + bold title
+        // (existing `fontWeight: unread ? 700 : 400` below, unchanged);
+        // read: normal (transparent) background. Replaces the old
+        // whole-row `opacity: 0.6` fade, which dimmed EVERYTHING in a read
+        // row (including its icon) rather than just distinguishing the two
+        // states via background.
+        background: unread ? 'rgba(27,25,22,0.07)' : 'transparent',
+        ...(n.kind === 'event_announcement' ? { borderLeft: `3px solid ${alert}`, paddingLeft: 12 } : {}),
+      }}
+    >
+      {/* TASK 2 (2026-09-22 seventeenth follow-up) — a checkbox affordance
+          in place of the avatar's usual spot while selecting, existing
+          banbe tokens only (ink/alert/rule — no new colors). */}
+      {selectionMode && (
+        <span
+          data-testid="notification-row-checkbox"
+          style={{
+            flex: 'none', width: 20, height: 20, borderRadius: '50%', alignSelf: 'center', boxSizing: 'border-box',
+            border: `1.5px solid ${selected ? alert : rule}`, background: selected ? alert : 'transparent',
+            color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700,
+          }}
+        >
+          {selected ? '✓' : ''}
+        </span>
+      )}
+      {avatar.type === 'image' ? (
+        <div style={bg(avatar.url, { flex: 'none', width: 40, height: 40, borderRadius: '50%' })} />
+      ) : (
+        <AvatarFallback kind={n.kind} />
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+          {/* BUG 3: bold only while unread — reading a notification unbolds
+              it in place (fontWeight only), it never moves sections. */}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <span style={{ ...display(15, { lineHeight: 1.3 }), fontWeight: unread ? 700 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...(n.kind === 'event_announcement' ? { color: alert } : {}) }}>{n.kind === 'event_announcement' ? '📣 ' : ''}{n.title}</span>
+            <KindIcon category={notificationCategory(n.kind)} />
+          </span>
+          <span style={{ fontSize: 11, color: ink, flex: 'none', whiteSpace: 'nowrap' }}>{n.ago}</span>
+        </div>
+        {/* Instagram's own "bold actor/action + secondary preview" shape —
+            one truncated line, not the old full-body wrap. */}
+        <span style={{ fontSize: 13, lineHeight: 1.4, color: ink, opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.body}</span>
+      </div>
+      {/* BUG 4: "•••" opens the action menu (delete / toggle read /
+          mute this kind) instead of deleting directly. TASK 2: hidden in
+          selection mode (onOpenMenu is undefined there) — normal-mode-only
+          per this ticket's own requirement 1. */}
+      {onOpenMenu && (
+        <span
+          onClick={(e) => { e.stopPropagation(); onOpenMenu(); }}
+          data-testid="notification-menu"
+          style={{ flex: 'none', width: 32, alignSelf: 'center', height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', color: ink, opacity: 0.4, cursor: 'pointer' }}
+        >
+          <svg width={18} height={18} viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.9" /><circle cx="12" cy="12" r="1.9" /><circle cx="19" cy="12" r="1.9" /></svg>
+        </span>
+      )}
+    </div>
+  );
+}

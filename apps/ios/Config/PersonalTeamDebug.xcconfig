@@ -1,0 +1,18 @@
+// Local, free/personal-team real-device testing — see
+// .claude/notes/18-ios-personal-team-signing.md. Same idea as Config/
+// Debug.xcconfig (ENABLE_PUSH=NO, no aps-environment), but goes further:
+// its entitlements file also omits com.apple.developer.associated-domains
+// (added to the ordinary Debug/Release entitlements in the 2026-10-01 UX
+// foundation pass for Universal Links), so this configuration can never
+// fail to sign over ANY capability this project currently declares that
+// isn't confirmed to work on a free/personal team.
+//
+// DEVELOPMENT_TEAM is deliberately never set here (or anywhere in this
+// config) — Automatic Signing resolves it from whichever Apple Account is
+// signed into Xcode > Settings > Accounts at build time, which is the
+// whole point: this file works for ANY personal team, not one hard-coded
+// Team ID.
+ENABLE_PUSH = NO
+CODE_SIGN_ENTITLEMENTS = BanbeApp/BanbeApp.PersonalTeam.entitlements
+CODE_SIGN_STYLE = Automatic
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) PERSONAL_TEAM_BUILD

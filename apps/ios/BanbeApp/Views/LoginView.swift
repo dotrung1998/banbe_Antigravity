@@ -1,0 +1,525 @@
+import SwiftUI
+
+/// Port of src/screens/Login.jsx — a Log in/Sign up toggle, then either an
+/// emailed 8-digit code or an email + password, the same two methods the
+/// web app offers. There is no "sign in via link": that used to be
+/// requested with a `banbe://login-callback` redirect no URL scheme was
+/// ever registered for. The social buttons are still web-only.
+struct LoginView: View {
+    /// Mirrors the web's `authMethod` — which of the two ways in is showing.
+    private enum Method { case code, password }
+
+    @EnvironmentObject var app: AppState
+    @EnvironmentObject var auth: AuthViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // Password is the default way in (owner request); the emailed code is the second tab.
+    @State private var method: Method = .password
+    /// The submit request is in flight: the loading GIF shows next to the button's text.
+    @State private var submitting = false
+    @State private var code = ""
+    @State private var password = ""
+    @State private var passwordConfirm = ""
+    @State private var resetRequested = false
+    @State private var localError = ""
+
+    /// The same pattern every /api/auth/* endpoint enforces, checked
+    /// against the trimmed value those endpoints actually receive — so the
+    /// button never offers to send something the server will bounce.
+    // Note 44 — the tab comes from the route intent (Welcome "Log in" vs
+    // "Get started"), and typed email/name live in AppState so Back to the
+    // welcome screen or a Log in ↔ Sign up switch never loses them.
+    private var mode: AuthMode { app.authIntent.mode }
+
+    /// Note 53: "exists" (signing up with a taken address) / "notFound" (logging in with an unknown one), else nil.
+    private var emailIssue: String? {
+        guard !auth.codeSent, let code = auth.errorCode else { return nil }
+        if code == "AUTH_ACCOUNT_EXISTS" && mode == .signup { return "exists" }
+        if code == "AUTH_ACCOUNT_NOT_FOUND" && mode == .login { return "notFound" }
+        return nil
+    }
+    private var emailFieldState: FieldState {
+        if showEmailFormatError { return .error("") }  // the message itself stays in login.emailError below
+        switch emailIssue {
+        case "exists": return .warning(app.T("Email này đã có tài khoản.", "This email already has an account."))
+        case "notFound": return .warning(app.T("Chưa có tài khoản với email này.", "No account uses this email yet."))
+        default: return .normal
+        }
+    }
+    private func switchModeForEmailIssue() {
+        let target: AuthEntryIntent = emailIssue == "exists" ? .login : .signup
+        auth.errorMessage = nil
+        app.authIntent = target
+    }
+    private var email: String { app.authDraftEmail }
+    private var displayName: String { app.authDraftName }
+    private var emailBinding: Binding<String> { $app.authDraftEmail }
+    private var nameBinding: Binding<String> { $app.authDraftName }
+
+    private var emailFormatOk: Bool {
+        let trimmed = email.trimmingCharacters(in: .whitespaces)
+        return trimmed.range(of: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", options: .regularExpression) != nil
+    }
+
+    /// An empty field isn't an error yet — it's just unfinished — so it
+    /// hides the button without complaining. Something typed that isn't an
+    /// address does say so.
+    private var showEmailFormatError: Bool {
+        !auth.codeSent && !email.trimmingCharacters(in: .whitespaces).isEmpty && !emailFormatOk
+    }
+
+    /// Once a code has been sent the address is already settled and the
+    /// button verifies the code instead, so the email check doesn't apply.
+    private var showSubmit: Bool { auth.codeSent || emailFormatOk }
+
+    private var canRequest: Bool {
+        // Task 1's consent checkbox — banbe_User_Policy.md B1/B3 — only
+        // gates Signup: that's the only path creating a brand-new profile
+        // with policy_accepted_at still nil. An account signing back in
+        // already consented once, so this is trivially true on Login.
+        if mode == .signup && !app.policyConsent { return false }
+        guard emailFormatOk else { return false }
+        if mode == .signup && displayName.isEmpty { return false }
+        if method == .password {
+            // Signing up needs a password worth keeping and a matching
+            // confirmation; logging in just needs something typed.
+            return mode == .login ? !password.isEmpty
+                                  : (password.count >= 8 && password == passwordConfirm)
+        }
+        return true
+    }
+
+    var body: some View {
+        ScreenScaffold {
+            VStack(alignment: .leading, spacing: 0) {
+                // Hidden when this login was reached by force (Task 1's
+                // mandatory gate — post-splash, post-onboarding, sign-out,
+                // or a stray screen change while signed out) rather than a
+                // deliberate "sign in to do X" prompt: there's nowhere
+                // legitimate for Back to go.
+                HStack(spacing: 8) {
+                    if !app.authMandatory {
+                        BackLink(label: app.T("Quay lại", "Back")) { app.backFromLogin() }
+                            .accessibilityIdentifier("login.back")
+                    }
+                    Spacer(minLength: 0)
+                    // Language and theme are reachable before signing in, so the very first
+                    // screens (and the loading message after login) can be read comfortably.
+                    prefPill(app.T("EN", "VN"), id: "login.lang") { app.toggleLang() }
+                    prefPill(app.isDark ? app.T("Sáng", "Light") : app.T("Tối", "Dark"), id: "login.theme") {
+                        app.pickTheme(app.isDark ? "light" : "dark")
+                    }
+                }
+
+                HStack(spacing: 16) {
+                    ForEach([AuthMode.login, AuthMode.signup], id: \.self) { option in
+                        Button {
+                            guard option != mode else { return }
+                            app.authNavForward = option == .signup
+                            withAnimation(AuthMotion.animation(reduceMotion: reduceMotion)) {
+                                app.authIntent = option == .signup ? .signup : .login
+                            }
+                            resetFormState()
+                        } label: {
+                            VStack(spacing: 6) {
+                                Text(option == .login ? app.T("Đăng nhập", "Log in") : app.T("Đăng ký", "Sign up"))
+                                    .font(.system(size: 11.5, weight: mode == option ? .semibold : .regular))
+                                Rectangle()
+                                    .fill(mode == option ? app.palette.ink : .clear)
+                                    .frame(height: 2)
+                            }
+                            .fixedSize()
+                            .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(mode == option ? [.isSelected] : [])
+                        .accessibilityIdentifier(option == .login ? "login.mode.login" : "login.mode.signup")
+                    }
+                    Spacer()
+                }
+                .padding(.top, 24)
+                .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
+
+                Text(mode == .signup
+                     ? app.T("Tạo tài khoản banbe", "Create your banbe account")
+                     : app.T("Chào mừng trở lại", "Welcome back"))
+                    .font(BanbeTheme.display(25))
+                    .padding(.top, 16)
+                    .id(mode)
+                    .transition(AuthMotion.transition(forward: app.authNavForward, reduceMotion: reduceMotion))
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("login.heading")
+
+                Text(app.T(
+                    "Một tài khoản cho tất cả. Muốn tổ chức sự kiện, bạn chỉ cần bật chế độ tổ chức trong Tài khoản.",
+                    "One account for everything. To host events, just switch on organizer mode from your Account."
+                ))
+                .font(.system(size: 13.5))
+                .lineSpacing(3)
+                .padding(.top, 12)
+
+                // Task 3 (note 10) — real Supabase OAuth via
+                // ASWebAuthenticationSession. Not gated on the consent
+                // checkbox at all (fixed after a regression — see note 10's
+                // follow-up): a returning user must go straight through
+                // with zero friction, same as password login. Consent for
+                // a genuinely new profile is handled after the session
+                // lands, by AppState+Data.swift's applySession() routing to
+                // a mandatory Policy screen — not by trying to gate this
+                // button beforehand.
+                VStack(spacing: 10) {
+                    // Note 64: pending while the system web sheet is up; the ✓ only after the session has returned
+                    // and applied, through the same hand-off as password login.
+                    AsyncSuccessButton(
+                        title: app.T("Tiếp tục với Google", "Continue with Google"),
+                        role: .secondary,
+                        pendingLabel: app.T("Đang mở Google…", "Opening Google…"),
+                        successLabel: app.T("Đã đăng nhập", "Signed in"),
+                        identifier: "login.google",
+                        run: runGoogle,
+                        onSuccessAnimationComplete: {
+                            app.completeSignInHandoff(sessionApplied: app.appliedSessionUID != nil && app.appliedSessionUID == auth.session?.user.id)
+                        }
+                    )
+                    // Facebook sign-in is switched off while it is under development.
+                    oauthButton(app.T("Tiếp tục với Facebook", "Continue with Facebook")) {}
+                        .disabled(true)
+                        .opacity(0.4)
+                        .accessibilityIdentifier("login.facebook")
+                    Text(app.T("Đăng nhập Facebook đang được phát triển.", "Facebook login is under development."))
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(app.palette.ink.opacity(0.7))
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("login.facebookNote")
+                }
+                .padding(.top, 16)
+
+                if auth.codeSent {
+                    BanbeField(label: nil, placeholder: app.T("Mã 8 số", "8-digit code"),
+                               text: $code, keyboard: .numberPad)
+                        .padding(.top, 22)
+                } else {
+                    methodTabs
+                        .padding(.top, 20)
+
+                    VStack(spacing: 12) {
+                        if mode == .signup {
+                            BanbeField(label: nil, placeholder: app.T("Tên hiển thị của bạn", "Your display name"),
+                                       text: nameBinding)
+                                .accessibilityIdentifier("login.displayName")
+                        }
+                        // Note 53: error = alert border + message; "already has an account" / "no account" =
+                        // honey border + message + the one-tap way out (the typed email is kept across tabs).
+                        BanbeField(label: nil, placeholder: "ban@email.com", text: emailBinding, keyboard: .emailAddress,
+                                   state: emailFieldState,
+                                   noteActionTitle: emailIssue == "exists" ? app.T("Đăng nhập?", "Log in instead?")
+                                       : emailIssue == "notFound" ? app.T("Đăng ký?", "Sign up instead?") : nil,
+                                   noteAction: emailIssue == nil ? nil : { switchModeForEmailIssue() },
+                                   noteIdentifier: "login.emailIssue",
+                                   contentType: .username)
+                            .accessibilityIdentifier("login.email")
+                            .onChange(of: email) { old, new in autofillArrived(old: old, new: new) }
+                        if showEmailFormatError {
+                            Text(app.T("Email chưa đúng định dạng (ví dụ: ban@email.com)",
+                                       "That doesn't look like an email address (e.g. ban@email.com)"))
+                                .font(.system(size: 12))
+                                .foregroundStyle(BanbeTheme.alert)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .accessibilityIdentifier("login.emailError")
+                        }
+                        if method == .password {
+                            BanbeField(label: nil, placeholder: app.T("Mật khẩu", "Password"),
+                                       text: $password, secure: true,
+                                       contentType: mode == .signup ? .newPassword : .password)
+                                .accessibilityIdentifier("login.password")
+                                .onChange(of: password) { old, new in autofillArrived(old: old, new: new) }
+                            if mode == .signup {
+                                BanbeField(label: nil, placeholder: app.T("Nhập lại mật khẩu", "Re-enter password"),
+                                           text: $passwordConfirm, secure: true, contentType: .newPassword)
+                                    .accessibilityIdentifier("login.passwordConfirm")
+                            }
+                        }
+                    }
+                    .padding(.top, 14)
+
+                    if method == .password && mode == .login {
+                        Button(app.T("Quên mật khẩu?", "Forgot password?")) {
+                            Task { await sendReset() }
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(app.palette.ink.opacity(0.75))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.top, 8)
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("login.forgotPassword")
+                    }
+                }
+
+                // Task 1 — unticked by default, gates `canRequest` above.
+                // Exactly banbe_User_Policy.md's summary-screen wording.
+                // Signup only — a returning account signing in already
+                // consented once. (Note 10 briefly made this render on both
+                // tabs to also gate the OAuth buttons; reverted — OAuth
+                // consent is handled post-redirect now, see the button
+                // comment above, so this is back to exactly note 09's fix.)
+                if !auth.codeSent && mode == .signup {
+                    HStack(alignment: .top, spacing: 8) {
+                        Button {
+                            app.policyConsent.toggle()
+                        } label: {
+                            Image(systemName: app.policyConsent ? "checkmark.square.fill" : "square")
+                                .foregroundStyle(app.palette.ink)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("login.policyConsent")
+
+                        (
+                            Text(app.T("Tôi đồng ý với ", "I agree to the "))
+                            + Text(app.T("Điều khoản sử dụng và Thông báo quyền riêng tư", "Terms of Service and Privacy Notice"))
+                                .fontWeight(.semibold)
+                                .underline()
+                        )
+                        .font(.system(size: 12))
+                        .onTapGesture { app.openPolicy() }
+                    }
+                    .padding(.top, 14)
+                    .accessibilityIdentifier("login.policyLink")
+                }
+
+                if showSubmit {
+                    // Note 64: password login and code verify are real sign-ins. The ✓ only shows once the session is
+                    // applied (or the gate answered), then completeSignInHandoff navigates once. Sending a code (and a
+                    // password sign-up, which ends in a code) is intermediate: it spins and returns to the form.
+                    AsyncSuccessButton(
+                        title: submitLabel,
+                        enabled: !auth.isSendingCode && (auth.codeSent ? !code.isEmpty : canRequest),
+                        pendingLabel: submitLabel,
+                        successLabel: app.T("Đã đăng nhập", "Signed in"),
+                        identifier: "login.submit",
+                        run: runSubmit,
+                        onSuccessAnimationComplete: {
+                            app.completeSignInHandoff(sessionApplied: app.appliedSessionUID != nil && app.appliedSessionUID == auth.session?.user.id)
+                        },
+                        onPhaseChange: { submitting = $0 == .pending }
+                    )
+                    .padding(.top, 14)
+                }
+
+                if resetRequested {
+                    // Same message whether or not that address has an
+                    // account — the endpoint won't say, on purpose.
+                    Text(app.T("Nếu email đó có tài khoản, chúng tôi đã gửi link đặt lại mật khẩu.",
+                               "If that email has an account, we've sent it a reset link."))
+                        .font(.system(size: 12))
+                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 12)
+                }
+
+                if auth.codeSent {
+                    Text(app.T("Đã gửi mã tới email của bạn. Nhập mã để tiếp tục.",
+                               "A code was sent to your email. Enter it to continue."))
+                        .font(.system(size: 12))
+                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 12)
+                    Button(app.T("Dùng email khác", "Use a different email")) {
+                        resetFormState()
+                    }
+                    .font(.system(size: 12))
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 6)
+                    .buttonStyle(.plain)
+                }
+
+                if let error = localError.isEmpty ? (emailIssue == nil ? auth.errorMessage : nil) : localError {
+                    Text(error)
+                        .font(.system(size: 12))
+                        .foregroundStyle(BanbeTheme.alert)
+                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 12)
+                }
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 26)
+            .padding(.top, 16)
+            .padding(.bottom, 40)
+        }
+    }
+
+    private var methodTabs: some View {
+        HStack(spacing: 0) {
+            methodTab(.password, label: app.T("Mật khẩu", "Password"))
+            methodTab(.code, label: app.T("Mã qua email", "Email code"))
+        }
+        .padding(3)
+        .background(app.palette.field, in: Capsule())
+    }
+
+    private func methodTab(_ option: Method, label: String) -> some View {
+        Button {
+            method = option
+            resetFormState()
+        } label: {
+            Text(label)
+                .font(.system(size: 12, weight: method == option ? .semibold : .regular))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(method == option ? app.palette.ink.opacity(0.1) : .clear, in: Capsule())
+                .foregroundStyle(app.palette.ink)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(option == .code ? "login.method.code" : "login.method.password")
+    }
+
+    private func prefPill(_ title: String, id: String, action: @escaping () -> Void) -> some View {
+        Button {
+            Haptics.light()
+            action()
+        } label: {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, 12).frame(minHeight: 34)
+                .background(app.palette.field, in: Capsule())
+                .overlay(Capsule().stroke(app.palette.rule))
+                .foregroundStyle(app.palette.ink)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
+    }
+
+    private func runGoogle() async -> AsyncActionResult {
+        app.beginSignInHandoff()
+        await auth.signInWithGoogle()
+        let applied = app.appliedSessionUID != nil && app.appliedSessionUID == auth.session?.user.id
+        guard auth.errorMessage == nil, await app.awaitSignInReady() else {
+            app.cancelSignInHandoff(sessionApplied: applied)
+            return .failure(auth.errorMessage)
+        }
+        return .success
+    }
+
+    private func runSubmit() async -> AsyncActionResult {
+        let signsIn = auth.codeSent || (method == .password && mode == .login)
+        if signsIn { app.beginSignInHandoff() }
+        await submit()
+        let applied = { app.appliedSessionUID != nil && app.appliedSessionUID == auth.session?.user.id }
+        guard signsIn else { return .failure() }
+        guard auth.errorMessage == nil, localError.isEmpty else {
+            app.cancelSignInHandoff(sessionApplied: applied())
+            return .failure(auth.errorMessage ?? localError)
+        }
+        guard await app.awaitSignInReady() else {
+            app.cancelSignInHandoff(sessionApplied: applied())
+            return .failure()
+        }
+        return .success
+    }
+
+    private func submit() async {
+        // Hide the keyboard the moment the person submits — the loading screen
+        // that follows shouldn't sit under it.
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        localError = ""
+        resetRequested = false
+
+        // The emailed code finishes every flow that has one, including a
+        // password sign-up — the account exists by then but is unconfirmed.
+        if auth.codeSent {
+            await auth.verifyEmailCode(email: email, code: code, mode: mode)
+            return
+        }
+
+        switch (method, mode) {
+        case (.code, _):
+            await auth.sendEmailCode(to: email, mode: mode, displayName: displayName)
+        case (.password, .login):
+            await auth.signInWithPassword(email: email, password: password)
+        case (.password, .signup):
+            guard password.count >= 8 else {
+                localError = app.T("Mật khẩu cần ít nhất 8 ký tự.", "Passwords need at least 8 characters.")
+                return
+            }
+            guard password == passwordConfirm else {
+                localError = app.T("Mật khẩu xác nhận không khớp.", "Passwords do not match.")
+                return
+            }
+            await auth.signUpWithPassword(email: email, password: password,
+                                          displayName: displayName, locale: app.lang)
+        case (.password, .respond):
+            // Unreachable from this screen — `.respond` is only ever used by
+            // the survey-respondent inline verification widget
+            // (RespondVerifyInlineView, SurveyPublicView.swift), which has
+            // its own code-only UI and never reaches this switch.
+            break
+        }
+    }
+
+    private func oauthButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .foregroundStyle(app.palette.ink)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func sendReset() async {
+        localError = ""
+        guard emailFormatOk else {
+            localError = app.T("Nhập email của bạn trước.", "Enter your email first.")
+            return
+        }
+        // Shown as sent either way: the endpoint already refuses to reveal
+        // whether an address has an account, and surfacing a failure here
+        // would leak the same thing by omission.
+        try? await auth.sendPasswordReset(to: email)
+        resetRequested = true
+    }
+
+    private func resetFormState() {
+        auth.codeSent = false
+        auth.errorMessage = nil
+        localError = ""
+        resetRequested = false
+        code = ""
+        password = ""
+        passwordConfirm = ""
+    }
+
+    /// Apple Passwords / a password manager fills email AND password in one step and iOS leaves the cursor in the
+    /// email field with the keyboard up. A field that jumps from empty (or by several characters at once) while
+    /// the other one is filled means the fill happened: close the keyboard, again a bit later because iOS can
+    /// refocus once the fill finishes.
+    private func autofillArrived(old: String, new: String) {
+        guard mode == .login, method == .password, new.count - old.count > 1, !email.isEmpty, !password.isEmpty else { return }
+        for delay in [0.1, 0.35, 0.8] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
+        }
+    }
+
+    private var busy: Bool { submitting || auth.isSendingCode }
+
+    private var submitLabel: String {
+        if busy {
+            if auth.codeSent { return app.T("Đang xác nhận…", "Verifying…") }
+            if method == .password {
+                return mode == .signup ? app.T("Đang tạo tài khoản…", "Creating account…")
+                                       : app.T("Đang đăng nhập…", "Logging in…")
+            }
+            return app.T("Đang gửi…", "Sending…")
+        }
+        if auth.codeSent { return app.T("Xác nhận", "Verify") }
+        if method == .password {
+            return mode == .signup ? app.T("Tạo tài khoản", "Create account")
+                                   : app.T("Đăng nhập", "Log in")
+        }
+        return mode == .signup ? app.T("Gửi mã đăng ký", "Send sign-up code")
+                               : app.T("Gửi mã đăng nhập", "Send sign-in code")
+    }
+}

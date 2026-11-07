@@ -1,0 +1,189 @@
+// Shared design tokens + glass style recipes for the "warm paper" visual system.
+// Ported from the Goc Manual.dc.html design handoff — see its README for the
+// full rationale. One paper, one ink; color only lives in on-photo state chips.
+
+export const paper = 'var(--bb-bg)';
+export const ink = 'var(--bb-fg)';
+export const inkDeep = 'var(--bb-ink-deep)';
+export const rule = 'var(--bb-rule)';
+export const fieldSolid = 'var(--bb-field)';
+// Warning/destructive accent — the one non-palette color the app uses
+// (error copy, "Cancel booking", overdue/urgent states). Matches
+// apps/ios/BanbeApp/Views/BanbeTheme.swift's `BanbeTheme.alert` (#9A3E2D)
+// exactly; was previously hardcoded as that same literal hex in ~20 call
+// sites across src/screens instead of a shared token — see
+// .claude/notes/06-design-tokens.md.
+export const alert = 'var(--bb-alert)';
+// Honey — the "disputed, needs attention, but not an error" accent, for the
+// dispute section pinned at the top of Messages and its matching entries on
+// the payment/refund screens (see index.css's own note). A sibling of `alert`,
+// never a reuse of it: `alert` means something went wrong, honey means two
+// people are still talking it out. Mirrors apps/ios/BanbeApp/Views/
+// BanbeTheme.swift's `Palette.honey` / `Palette.honeyBg` value-for-value.
+export const honey = 'var(--bb-honey)';
+export const honeyBg = 'var(--bb-honey-bg)';
+// Clay — Event Detail's decorative/brand accent (icons, outlined pills, seats bar, tinted photo glass). A sibling
+// of `alert`/`honey`, never an error colour and never the primary CTA. Mirrors `Palette.clay` / `Palette.clayBg`.
+export const clay = 'var(--bb-clay)';
+export const clayBg = 'var(--bb-clay-bg)';
+// Ticket "What's next" strip tones (note 78). plum is the only new colour (awaiting host); mist and moss are role
+// names for the existing Project Hub Question teal / Update moss, so the strip never hard-codes a hex. Mirrors
+// `Palette.plum` / `.question` / `.update`.
+export const plum = 'var(--bb-plum)';
+export const mist = 'var(--bb-question)';
+export const moss = 'var(--bb-update)';
+// Simple Shell surfaces (note 66): three steps of depth per theme instead of borders. surface1 = cards and rows,
+// surface2 = fields, chips and sheets, surface3 = pressed states and popovers. ink2/ink3 = secondary/tertiary text
+// (ink3 stays >= 4.5:1 on every surface), divider = hairline inside a group. Mirror `Palette` in BanbeTheme.swift.
+export const surface1 = 'var(--bb-surface-1)';
+export const surface2 = 'var(--bb-surface-2)';
+export const surface3 = 'var(--bb-surface-3)';
+// Block fills (Simple Shell follow-up, note 66): `block` = any card/tile on paper (light #EEE8DA, dark #1A1815),
+// `blockInset` = anything nested inside a block. Mirror `Palette.block` / `Palette.blockInset`.
+export const block = 'var(--bb-block)';
+export const blockInset = 'var(--bb-block-inset)';
+// Note 71 (Calm Pass, switch polaroid_cards): the polaroid frame of a Home event card and its light-only shadow.
+// Mirror `Palette.mat`.
+export const mat = 'var(--bb-mat)';
+export const matShadow = 'var(--bb-mat-shadow)';
+// The empty photo slot inside a polaroid: field/card fills equal the dark mat, so it would vanish. Mirror `Palette.matSlot`.
+export const matSlot = 'var(--bb-mat-slot)';
+export const ink2 = 'var(--bb-fg-2)';
+export const ink3 = 'var(--bb-fg-3)';
+export const divider = 'var(--bb-divider)';
+// Guided-focus halo gold (decoration only). Mirrors `BanbeTheme.attn`.
+export const attn = 'var(--bb-attn)';
+
+// Named per-context spacing around BanbeLoadingVisual, mirroring
+// apps/ios/BanbeApp/Views/BanbeTheme.swift's `BanbeTheme.LoadingVisual`.
+// Splash.jsx no longer uses the shared GIF (replaced by the logomotion
+// animation), so only Loading.jsx's own gap constant remains here.
+export const RESERVATION_LOADING_GAP = 34; // keeps the seat-hold GIF's own bounds clear of the label below it.
+
+// Dock scrub-highlight — the translucent capsule that sits BEHIND the
+// active/dragged tab icon in BottomTabBar.jsx. Web-only "solid black blob"
+// bug (2026-09-28 dock pass): the highlight used to be painted with the
+// solid `ink` token above at full element opacity, i.e. fully opaque —
+// since the active tab's own icon is ALSO drawn in `ink`, an opaque ink
+// backdrop of roughly the icon's own size read as a solid blob that
+// visually swallowed the icon into itself instead of sitting behind it.
+// iOS's equivalent (`BottomTabBar.swift`) never had this bug — it already
+// paints its highlight as `app.palette.ink.opacity(0.12)`, a translucent
+// tint, not a solid fill. This is that same 0.12 alpha, ported to CSS via
+// the `--bb-fg-rgb` triplet (index.css) since `ink` itself is a plain hex
+// custom property with no alpha channel to reuse directly.
+export const dockHighlight = 'rgba(var(--bb-fg-rgb), 0.12)';
+
+// Be Vietnam Pro — same geometric, rounded-sans vibe as Poppins (the
+// prototype's stand-in face) but designed for full, clean Vietnamese
+// diacritic coverage, so tone marks sit right at any weight/size.
+export const FACE = "'Be Vietnam Pro', system-ui, sans-serif";
+export const DISPLAY_FACE = "'Jost', 'Be Vietnam Pro', system-ui, sans-serif";
+
+// Display/title text: 600, tight tracking.
+export const display = (size, extra) => ({
+  fontFamily: DISPLAY_FACE, fontWeight: 600, letterSpacing: '-0.02em', fontSize: size, color: ink, ...extra,
+});
+
+// One shape language for discovery surfaces (note 50, "4 levels" video lesson): cards and icon tiles share
+// one radius, chips/pills are fully round. Mirrors apps/ios/BanbeApp/Views/BanbeTheme.swift `BanbeTheme.Radius`.
+export const RADIUS = { card: 14, tile: 14, thumb: 12, pill: 999 };
+
+// One spacing scale on the 4/8 grid (note 68): `xl` between sections, `m` inside one. Mirrors BanbeTheme.Space.
+export const SPACE = { xs: 4, s: 8, m: 12, l: 16, xl: 24 };
+
+// ---- Glass recipes (exact, from the handoff) ----
+
+// Safari (and some Chromium builds) fail to clip `backdrop-filter` to
+// `border-radius` once a `box-shadow` is also present — the blur bleeds
+// past the rounded corners into a rectangular halo. Forcing a no-op mask
+// makes the browser composite the element correctly, clipped to its own
+// rounded shape. Spread onto every glass recipe below.
+const clipBackdropFilter = {
+  WebkitMaskImage: '-webkit-radial-gradient(white, black)',
+  maskImage: 'radial-gradient(white, black)',
+};
+
+// Reduce Transparency (note 71 phase 4): every recipe reads its fill and blur through a `--bb-rt-*` variable whose
+// fallback is today's glass. index.css sets those variables only under `prefers-reduced-transparency: reduce`, so the
+// surfaces turn opaque there and nothing changes anywhere else. `rt(name, glass)` builds that `var(--bb-rt-name, glass)`.
+const rt = (name, glass) => `var(--bb-rt-${name}, ${glass})`;
+const rtBlur = (glass) => rt('blur', glass);
+
+// Field glass — inputs, list containers, small tiles.
+export const fieldGlass = (extra) => ({
+  background: rt('field', 'linear-gradient(168deg, var(--bb-white) 0%, rgba(255,255,255,calc(0.16 * var(--bb-sheen, 1))) 42%, rgba(255,255,255,0) 100%), var(--bb-card)'),
+  backdropFilter: rtBlur('blur(12px) saturate(1.06)'), WebkitBackdropFilter: rtBlur('blur(12px) saturate(1.06)'),
+  boxShadow: 'inset 0 1px 0 var(--bb-white), 0 1px 3px var(--bb-shadow)',
+  borderRadius: 12, ...clipBackdropFilter, ...extra,
+});
+
+// Card glass — section cards, stat cards, panels.
+export const cardGlass = (extra) => ({
+  background: rt('card', 'linear-gradient(168deg, var(--bb-white) 0%, rgba(255,255,255,calc(0.24 * var(--bb-sheen, 1))) 45%, rgba(255,255,255,calc(0.04 * var(--bb-sheen, 1))) 100%), var(--bb-card2)'),
+  backdropFilter: rtBlur('blur(14px) saturate(1.05)'), WebkitBackdropFilter: rtBlur('blur(14px) saturate(1.05)'),
+  boxShadow: 'inset 0 1px 0 var(--bb-white), 0 1px 4px var(--bb-shadow)',
+  borderRadius: 12, ...clipBackdropFilter, ...extra,
+});
+
+// Bar glass — sticky bottom bars.
+export const barGlass = (extra) => ({
+  background: rt('bar', 'linear-gradient(180deg, rgba(var(--bb-bg-rgb),0.35) 0%, rgba(var(--bb-bg-rgb),0.78) 45%, rgba(var(--bb-bg-rgb),0.92) 100%)'),
+  backdropFilter: rtBlur('blur(16px) saturate(1.04)'), WebkitBackdropFilter: rtBlur('blur(16px) saturate(1.04)'),
+  ...clipBackdropFilter, ...extra,
+});
+
+// Dock glass — iOS-style translucent capsule (dock + round "+" button):
+// ink-tinted frosted fill, hairline, soft shadow.
+export const dockGlass = (extra) => ({
+  background: rt('dock', 'linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0.04)), rgba(var(--bb-fg-rgb), 0.10)'),
+  backdropFilter: rtBlur('blur(22px) saturate(1.5)'), WebkitBackdropFilter: rtBlur('blur(22px) saturate(1.5)'),
+  border: '1px solid rgba(var(--bb-fg-rgb), 0.12)',
+  boxShadow: '0 8px 24px rgba(27,25,22,0.18), inset 0 1px 0 rgba(255,255,255,0.45)',
+  ...clipBackdropFilter, ...extra,
+});
+
+// Ink glass button — primary CTAs.
+export const inkButton = (extra) => ({
+  background: rt('button', 'linear-gradient(165deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.07) 30%, rgba(255,255,255,0) 55%), var(--bb-button)'),
+  color: 'var(--bb-button-text)', backdropFilter: rtBlur('blur(22px) saturate(1.7)'), WebkitBackdropFilter: rtBlur('blur(22px) saturate(1.7)'),
+  border: '1px solid rgba(255,255,255,0.3)',
+  boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.45), inset 0 -12px 22px rgba(255,255,255,0.08), 0 14px 34px rgba(27,25,22,0.35)',
+  borderRadius: 18, textShadow: '0 1px 2px rgba(27,25,22,0.35)', fontSize: 15, fontWeight: 600,
+  textAlign: 'center', cursor: 'pointer', ...clipBackdropFilter, ...extra,
+});
+
+// Frosted pill over a photo (back/share buttons, remove chip).
+export const photoPill = (extra) => ({
+  position: 'absolute',
+  // Theme-aware: the pill is paper-coloured (cream in light, near-black in
+  // dark) so its `ink` label always contrasts — it used to be hardcoded cream,
+  // which made the label vanish in dark mode.
+  background: rt('pill', 'linear-gradient(165deg, rgba(255,255,255,var(--bb-pill-hi)) 0%, rgba(255,255,255,0.12) 34%, rgba(255,255,255,0) 62%), rgba(var(--bb-bg-rgb),0.85)'),
+  backdropFilter: rtBlur('blur(16px) saturate(1.6)'), WebkitBackdropFilter: rtBlur('blur(16px) saturate(1.6)'),
+  border: '1px solid var(--bb-pill-edge)', boxShadow: 'inset 0 1px 1px var(--bb-pill-inset), 0 6px 16px var(--bb-pill-shadow)',
+  borderRadius: 11, color: ink, cursor: 'pointer', fontSize: 12, ...clipBackdropFilter, ...extra,
+});
+
+// On-photo state chip (the only colored surfaces — translucent, blurred, white label).
+export const CHIP_COLORS = {
+  going: 'rgba(72,88,52,0.74)',       // olive — paid/going
+  cancelled: 'rgba(140,74,48,0.72)',  // clay — cancelled/refunded
+  hold: 'rgba(140,96,20,0.72)',       // honey — on hold
+  invite: 'rgba(52,84,94,0.72)',      // mist — private/invite-only
+  saved: 'rgba(104,84,48,0.74)',      // sand — saved
+  reminder: 'rgba(122,82,0,0.82)',    // gold — starting within 24h / happening now
+  past: 'rgba(78,72,58,0.7)',         // neutral ink — past/ended
+};
+
+export const photoChip = (bg, extra) => ({
+  position: 'absolute', fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase',
+  padding: '6px 10px', borderRadius: 12, color: '#FFFFFF', textShadow: '0 1px 2px rgba(27,25,22,0.4)',
+  background: 'linear-gradient(165deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.12) 34%, rgba(255,255,255,0) 62%), ' + bg,
+  backdropFilter: 'blur(16px) saturate(1.6)', WebkitBackdropFilter: 'blur(16px) saturate(1.6)',
+  border: '1px solid rgba(255,255,255,0.5)', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.65), 0 6px 16px rgba(27,25,22,0.22)',
+  cursor: 'pointer', ...clipBackdropFilter, ...extra,
+});
+
+// The one light chip: unsaved "Lưu" — light glass, ink label.
+export const lightChip = (extra) => photoChip('rgba(var(--bb-bg-rgb),0.62)', { color: ink, textShadow: 'none', ...extra });

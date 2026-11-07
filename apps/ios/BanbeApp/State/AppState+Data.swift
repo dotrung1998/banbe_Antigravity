@@ -1,0 +1,6264 @@
+import Foundation
+import Supabase
+import UIKit
+import Photos
+import CoreLocation
+// Address-autocomplete fix pass (2026-09-28) — MKLocalSearch, for the
+// Create Event address picker (searchCreateAddress below). Free, no API
+// key, already linked into this app (MapExploreView's own Map()).
+import MapKit
+// BUG (2026-10-08 fix pass) — `withAnimation` (used by applyOrganizerMode
+// below, to smooth the LazyVStack reflow its own state change causes) is a
+// SwiftUI global function; this file only imports it now, not before.
+import SwiftUI
+
+/// Row payloads for the writes this app makes. PostgREST needs `Encodable`
+/// values, so each write gets a small explicit struct rather than an
+/// untyped dictionary.
+struct ProfilePreferenceUpdate: Encodable {
+    let locale: String?
+    let theme: String?
+    let prefsSaved: Bool
+    enum CodingKeys: String, CodingKey {
+        case locale, theme
+        case prefsSaved = "prefs_saved"
+    }
+}
+
+/// Task 4 (migration 056) — same profiles.update() pattern as
+/// ProfilePreferenceUpdate above, its own small struct since it's an
+/// unrelated column.
+struct AutoEmailDocumentsUpdate: Encodable {
+    let autoEmailDocuments: Bool
+    enum CodingKeys: String, CodingKey { case autoEmailDocuments = "auto_email_documents" }
+}
+
+/// Proof-of-consent (note 10 / migration 055) — written both from
+/// applySession()'s auto-stamp below (an 'email'-provider session) and
+/// from AppState.acceptPolicyGate() (a brand-new OAuth profile accepting
+/// the mandatory Policy gate). File-scope, not nested, so both can share it.
+struct ConsentUpdate: Encodable {
+    let policyAcceptedAt: String
+    let policyVersion: String
+    enum CodingKeys: String, CodingKey {
+        case policyAcceptedAt = "policy_accepted_at"
+        case policyVersion = "policy_version"
+    }
+}
+
+struct NewThread: Encodable {
+    let eventId: String
+    let guestId: UUID
+    let organizerId: String
+    enum CodingKeys: String, CodingKey {
+        case eventId = "event_id"
+        case guestId = "guest_id"
+        case organizerId = "organizer_id"
+    }
+}
+
+struct NewMessage: Encodable {
+    let threadId: UUID
+    let senderId: UUID
+    let body: String
+    let kind: String
+    enum CodingKeys: String, CodingKey {
+        case threadId = "thread_id"
+        case senderId = "sender_id"
+        case body, kind
+    }
+}
+
+/// Task 4 (2026-09-21 follow-up) — the composer's "+" attach flow.
+struct NewAttachmentMessage: Encodable {
+    let threadId: UUID
+    let senderId: UUID
+    let body: String
+    let kind: String
+    let attachmentPath: String
+    let attachmentType: String
+    let attachmentWidth: Int?
+    let attachmentHeight: Int?
+    let replyToMessageId: UUID?
+    enum CodingKeys: String, CodingKey {
+        case threadId = "thread_id"
+        case senderId = "sender_id"
+        case body, kind
+        case attachmentPath = "attachment_path"
+        case attachmentType = "attachment_type"
+        case attachmentWidth = "attachment_width"
+        case attachmentHeight = "attachment_height"
+        case replyToMessageId = "reply_to_message_id"
+    }
+}
+
+/// Task 3 (2026-09-22 follow-up) — a plain text reply/reaction sent from
+/// the chat-photo viewer's own composer.
+struct NewTextReply: Encodable {
+    let threadId: UUID
+    let senderId: UUID
+    let body: String
+    let kind: String
+    let replyToMessageId: UUID
+    enum CodingKeys: String, CodingKey {
+        case threadId = "thread_id"
+        case senderId = "sender_id"
+        case body, kind
+        case replyToMessageId = "reply_to_message_id"
+    }
+}
+
+/// Task 3 (07-notifications.md) — a new story's INSERT row.
+struct NewStory: Encodable {
+    let organizerId: String
+    let authorId: UUID
+    let mediaPath: String
+    let mediaType: String
+    let width: Int?
+    let height: Int?
+    var overlays: [StoryOverlay] = []
+    var linkUrl: String?
+    var linkLabel: String?
+    var surveyId: UUID?
+    enum CodingKeys: String, CodingKey {
+        case organizerId = "organizer_id"
+        case authorId = "author_id"
+        case mediaPath = "media_path"
+        case mediaType = "media_type"
+        case width, height, overlays
+        case linkUrl = "link_url"
+        case linkLabel = "link_label"
+        case surveyId = "survey_id"
+    }
+}
+/// STAGE C (2026-09-25) — uploadEventPhoto()'s own INSERT row.
+struct NewEventPhoto: Encodable {
+    let eventId: String
+    let storagePath: String
+    enum CodingKeys: String, CodingKey {
+        case eventId = "event_id"
+        case storagePath = "storage_path"
+    }
+}
+struct NewStoryView: Encodable {
+    let storyId: UUID
+    let viewerId: UUID
+    enum CodingKeys: String, CodingKey { case storyId = "story_id"; case viewerId = "viewer_id" }
+}
+
+struct NotificationReadUpdate: Encodable {
+    let readAt: String
+    enum CodingKeys: String, CodingKey { case readAt = "read_at" }
+}
+/// markThreadMessagesRead()'s own write — same shape as NotificationReadUpdate
+/// but stamps `now()` itself so every caller doesn't have to format one.
+struct MessageReadUpdate: Encodable {
+    let readAt: String = ISO8601DateFormatter().string(from: Date())
+    enum CodingKeys: String, CodingKey { case readAt = "read_at" }
+}
+/// The "•••" menu's "Đánh dấu chưa đọc" action (BUG 4) — the exact reverse
+/// of NotificationReadUpdate. A synthesized Encodable would SKIP an
+/// Optional<String> field entirely when nil (encodeIfPresent semantics),
+/// never send `null` — this writes `{"read_at": null}` explicitly instead,
+/// which is what PostgREST needs to actually clear the column.
+struct NotificationUnreadUpdate: Encodable {
+    enum CodingKeys: String, CodingKey { case readAt = "read_at" }
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeNil(forKey: .readAt)
+    }
+}
+struct MutedKindsUpdate: Encodable {
+    let mutedNotificationKinds: [String]
+    enum CodingKeys: String, CodingKey { case mutedNotificationKinds = "muted_notification_kinds" }
+}
+
+// Decodable shapes for the handful of narrow selects below.
+private struct IDRow: Decodable { let id: String }
+private struct OrganizerRow: Decodable {
+    let id: String
+    let name: String
+    let about: String?
+    let avatarPath: String?
+    var avatarR2Ref: String? = nil
+    // Organizer Team pass (2026-09-27, Stage 3).
+    let introLong: String?
+    let socialLinks: [SocialLink]?
+    enum CodingKeys: String, CodingKey {
+        case id, name, about, avatarPath = "avatar_path", avatarR2Ref = "avatar_r2_ref"
+        case introLong = "intro_long", socialLinks = "social_links"
+    }
+}
+private struct UUIDRow: Decodable { let id: UUID }
+private struct OrganizerRef: Decodable { let organizerId: String?
+    enum CodingKeys: String, CodingKey { case organizerId = "organizer_id" } }
+/// STAGE B (2026-09-25) — one row of `loadOrganizerPhotos()`'s real
+/// photo library (a real `event_photos` row, not the static catalogue).
+struct OrganizerPhoto: Decodable, Identifiable, Equatable {
+    let id: UUID
+    let eventId: String
+    let storagePath: String
+    let sortOrder: Int
+    /// `event_photos.r2_ref` (migration 153); nil/absent for legacy rows.
+    var r2Ref: String? = nil
+    enum CodingKeys: String, CodingKey {
+        case id
+        case eventId = "event_id"
+        case storagePath = "storage_path"
+        case sortOrder = "sort_order"
+        case r2Ref = "r2_ref"
+    }
+}
+private struct BookingBrief: Decodable {
+    let eventId: String
+    let qty: Int
+    let status: String
+    enum CodingKeys: String, CodingKey {
+        case eventId = "event_id"
+        case qty, status
+    }
+}
+private struct AttendanceBooking: Decodable {
+    let id: UUID
+    let userId: UUID?
+    let qty: Int
+    let status: String
+    let totalVnd: Int?
+    let code: String?
+    let expiresAt: Date?
+    let paidMarkedAt: Date?
+    let proofPath: String?
+    let recipientName: String?
+    let admissionToken: UUID?
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case qty, status, code
+        case totalVnd = "total_vnd"
+        case expiresAt = "expires_at"
+        case paidMarkedAt = "paid_marked_at"
+        case proofPath = "proof_path"
+        case recipientName = "recipient_name"
+        case admissionToken = "admission_token"
+    }
+}
+/// loadHomeLiveEvents()'s own row shape — `LiveEventStatus` plus the
+/// catalogue key each row belongs to, decoded in one query then split back
+/// into a `[key: LiveEventStatus]` dictionary.
+private struct KeyedLiveEventStatus: Decodable {
+    let slug: String
+    let status: LiveEventStatus
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        slug = try container.decode(String.self, forKey: .slug)
+        status = try LiveEventStatus(from: decoder)
+        location = try EventLocation(from: decoder)
+    }
+    let location: EventLocation
+    enum CodingKeys: String, CodingKey { case slug }
+}
+private struct MessageThreadIDRow: Decodable {
+    let threadId: UUID
+    enum CodingKeys: String, CodingKey { case threadId = "thread_id" }
+}
+private struct ProfileName: Decodable {
+    let id: UUID
+    let displayName: String?
+    enum CodingKeys: String, CodingKey {
+        case id
+        case displayName = "display_name"
+    }
+}
+/// loadInboxThreads()'s own row shape — display_name AND avatar_url in one
+/// query, backing both the row title and the merged-avatar badge (Task 3a).
+private struct ProfileNameAvatar: Decodable {
+    let id: UUID
+    let displayName: String?
+    let avatarUrl: String?
+    enum CodingKeys: String, CodingKey {
+        case id
+        case displayName = "display_name"
+        case avatarUrl = "avatar_url"
+    }
+}
+/// loadInboxThreads()'s own organizer lookup — which profile owns a given
+/// organizer row, for the host-side avatar (organizers itself has no avatar
+/// column).
+private struct OrganizerOwnerRow: Decodable {
+    let id: String
+    let ownerId: UUID?
+    let userId: UUID?
+    enum CodingKeys: String, CodingKey {
+        case id
+        case ownerId = "owner_id"
+        case userId = "user_id"
+    }
+}
+/// Row shapes for loadNotificationAvatarMaps()'s batch joins — notifications
+/// has no actor/avatar column, so these back avatarSource(for:maps:accountType:).
+private struct NotificationBookingRow: Decodable {
+    let id: UUID
+    let eventId: String
+    let userId: UUID?
+    enum CodingKeys: String, CodingKey {
+        case id
+        case eventId = "event_id"
+        case userId = "user_id"
+    }
+}
+private struct EventPhotoRow: Decodable {
+    let eventId: String
+    let storagePath: String
+    var r2Ref: String? = nil
+    enum CodingKeys: String, CodingKey {
+        case eventId = "event_id"
+        case storagePath = "storage_path"
+        case r2Ref = "r2_ref"
+    }
+}
+private struct ProfileAvatarRow: Decodable {
+    let id: UUID
+    let avatarUrl: String?
+    enum CodingKeys: String, CodingKey {
+        case id
+        case avatarUrl = "avatar_url"
+    }
+}
+private struct OrganizerAvatarRow: Decodable {
+    let id: String
+    let avatarPath: String?
+    var avatarR2Ref: String? = nil
+    enum CodingKeys: String, CodingKey {
+        case id
+        case avatarPath = "avatar_path"
+        case avatarR2Ref = "avatar_r2_ref"
+    }
+}
+/// Row shape for the payment_documents query loadAttendanceGuests() runs to
+/// populate AttendanceGuest.hasReceipt/receiptVersionCount/receiptPendingDelete
+/// — mirrors the web's equivalent query in BanBeContext.jsx.
+private struct AttendanceReceiptRow: Decodable {
+    let id: UUID
+    let bookingId: UUID
+    let supersededAt: Date?
+    enum CodingKeys: String, CodingKey {
+        case id
+        case bookingId = "booking_id"
+        case supersededAt = "superseded_at"
+    }
+}
+private struct ThreadRow: Decodable {
+    let id: UUID
+    let eventId: String
+    let guestId: UUID?
+    let organizerId: String
+    enum CodingKeys: String, CodingKey {
+        case id
+        case eventId = "event_id"
+        case guestId = "guest_id"
+        case organizerId = "organizer_id"
+    }
+}
+private struct MessageBrief: Decodable {
+    let threadId: UUID
+    let body: String
+    let senderId: UUID?
+    let createdAt: Date
+    let readAt: Date?
+    enum CodingKeys: String, CodingKey {
+        case threadId = "thread_id"
+        case body
+        case senderId = "sender_id"
+        case createdAt = "created_at"
+        case readAt = "read_at"
+    }
+}
+/// loadInboxThreads()'s own thread_preferences row shape (migration 065).
+private struct ThreadPreferenceRow: Decodable {
+    let threadId: UUID
+    let starred: Bool
+    let archived: Bool
+    let deletedAt: Date?
+    enum CodingKeys: String, CodingKey {
+        case threadId = "thread_id"
+        case starred, archived
+        case deletedAt = "deleted_at"
+    }
+}
+/// What the SECURITY DEFINER RPCs return — every one of them answers with
+/// `{ success: bool, error?: string }` (or the booking row, for hold_seats).
+private struct RPCResult: Decodable {
+    let success: Bool?
+    let error: String?
+    // TASK 1 (cancel_booking response handling) — cancel_booking() also
+    // returns `booking_id` on success; optional so decoding still succeeds
+    // for every other RPC sharing this same struct, which never sends it.
+    let bookingId: UUID?
+    enum CodingKeys: String, CodingKey {
+        case success, error
+        case bookingId = "booking_id"
+    }
+}
+
+// MARK: - Session, profile and account data
+
+extension AppState {
+    /// Date/time picker fix (Stage B, 2026-09-26) — EventDateTimeSheet picks
+    /// in this SAME timezone regardless of the device's own setting, so a
+    /// host traveling outside Vietnam still enters (and sees confirmed
+    /// back) the actual Vietnam wall-clock time their guests will read.
+    // nonisolated: an immutable, Sendable constant, read from nonisolated helpers (SmartDefaults).
+    nonisolated static let vietnamTimeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
+    static let vnDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = vietnamTimeZone
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+    static let vnTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = vietnamTimeZone
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
+    static let vnDateTimeFormatter = vnDateFormatter
+    static let vnCombinedFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = vietnamTimeZone
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f
+    }()
+
+    /// Applies a signed-in session: loads the profile, role, saved
+    /// preferences and this account's real bookings/organizer events —
+    /// the same work syncUser() does on the web.
+    func applySession(_ session: Session?) async {
+        #if DEBUG
+        // The "shell" UI-test fixture mounts the real RootView on seeded signed-in state.
+        if UITestFixture.name?.hasPrefix("shell") == true { return }
+        #endif
+        // Records WHICH session finished loading its account data, so the
+        // splash can wait for it (a nil run at launch must not count for a
+        // restored session that arrives a moment later).
+        defer { appliedSessionUID = session?.user.id }
+        guard let session else {
+            if userID != nil { resetHomeScrollToTop() }
+            userID = nil
+            syncAppEventsSink() // measurement stops and drops its queue with the account
+            userEmail = nil
+            user = nil
+            resetEventPrefsState()
+            resetFollowState()
+            resetRewardsState()
+            resetKeychainState()
+            accountType = "participant"
+            organizerMode = false
+            hasHosted = false
+            mode = "goer"
+            homeView = .goer
+            attending = []
+            tickets = [:]
+            myOrgEventKeys = []
+            myOrgEventOrganizerID = [:]
+            orgRegName = ""
+            // Organizer identity belongs to ONE account: without this, the next account on this device
+            // inherited the previous organizer id and its host setup saved to an organizer it did not own.
+            myOrganizerID = nil
+            myOrganizerIDs = []
+            myOrganizerIdsStatus = "idle"
+            myOrganizerAvatarPath = ""
+            myOrganizerAvatarR2Ref = nil
+            orgRegDesc = ""
+            orgRegIntroLong = ""
+            orgRegLinks = []
+            myOrgPublishedEventCount = nil
+            myOrgHostingSinceYear = nil
+            ensureOrganizerStatus = "idle"
+            ensureOrganizerErrorCode = ""
+            hostSetupOpen = false
+            organizerProfile = nil
+            notifications = []
+            toasts = []
+            unreadMessages = 0
+            stopNotificationPolling()
+            booking = nil
+            holdDeadline = nil
+            // Stage 1 (retention roadmap P0) — this account's saves belong
+            // to it, not to whoever signs in next on this device.
+            favorites = []
+            favoritesLoadedForUID = nil
+            // 2026-10-02 fix — real bug: paymentBookings/myRefunds (isGoing's
+            // own source, and the "Refunds" list) were never cleared on
+            // sign-out, unlike every other per-account array just above —
+            // a sign-out/account-switch on a shared device kept showing
+            // the PREVIOUS account's bookings/refund status under the new
+            // one until something unrelated happened to reload them.
+            // Bumping paymentBookingsSeq also invalidates any load still
+            // in flight for the account that just signed out.
+            paymentBookingsSeq += 1
+            paymentBookings = []
+            myRefunds = []
+            resetScheduleState()
+            // Note 48 — guests can now browse Home/Map/Event signed out, so
+            // nothing from the account that just left may stay on screen:
+            // its story ring (signed private-bucket URLs), survey cards,
+            // admin invite (Action Center), refund/host data, likes, and any
+            // invite-only events or private photo URLs it could see.
+            homeStories = []
+            homeSurveyDiscovery = []
+            homeSurveyDiscoveryHasMore = false
+            myAdminInvite = nil
+            refundDestinations = []
+            refundDestinationsLoaded = false
+            verifications = []
+            refundQueue = []
+            organizerHoldingSummary = nil
+            following = []
+            photoEngagement = [:]
+            realEventsByID = [:]
+            eventPhotoURLs = [:]
+            return
+        }
+        if userID != session.user.id { resetHomeScrollToTop() }
+        userID = session.user.id
+        syncAppEventsSink()
+        userEmail = session.user.email
+        refreshScheduleAdded()
+        clearAuthDraft()
+        syncFollowOwner()
+        syncRewardsOwner()
+        // Once per session: the flag is reset on sign-out, so token refreshes
+        // don't re-read (and re-open a step the user skipped locally).
+        // Started in parallel, but awaited before this function returns (and so
+        // before `appliedSessionUID` lifts the account gate): otherwise the gate
+        // could clear a beat before `needsPreferencesOnboarding` turns true and
+        // Home flashed between "Complete sign-up" and the For You intro.
+        let prefsLoad: Task<Void, Never>? = eventPrefsLoaded ? nil : Task { await loadEventPreferences() }
+
+        // Stage 1 (retention roadmap P0) — real `favorites` rows, not the
+        // local-only array this used to be. See favoritesLoadedForUID's own
+        // comment for why this is guarded rather than unconditional.
+        if favoritesLoadedForUID != session.user.id {
+            favoritesLoadedForUID = session.user.id
+            favorites = []
+            await loadFavorites(uid: session.user.id)
+        }
+
+        do {
+            let profile: Profile = try await SupabaseService.client
+                .from("profiles").select().eq("id", value: session.user.id)
+                .single().execute().value
+            user = profile
+            // BUG 2 (2026-10-06 fix pass) / BUG (2026-10-08 fix pass) —
+            // same race family as BanBeContext.jsx's organizerModeBusyRef
+            // guard (this file's web equivalent): skip the role-derived
+            // fields while a toggle is in flight, so a session/profile
+            // reload landing mid-toggle can never read `profiles.role`
+            // from before that toggle's own UPDATE has committed and
+            // silently revert it. This is the CONFIRMED cause of "toggle
+            // off works for an instant, then flips back on": this guard
+            // used to check `organizerModeBusy`, the `@Published` UI flag
+            // — but the 2026-10-07 fix pass (to stop a SwiftUI "publishing
+            // changes from within view updates" warning) deliberately
+            // delays setting THAT flag until after an `await Task.yield()`
+            // inside `applyOrganizerMode`, so there is now a real window,
+            // between a tap landing and that yield resuming, where
+            // `organizerModeBusy` is still `false` while a toggle is
+            // genuinely already committed to proceeding. `applySession()`
+            // is only re-invoked on sign-in/sign-out via RootView's
+            // `.task(id:)` today (not on a token refresh alone — verified
+            // by reading that `.task(id:)`'s own key, which doesn't change
+            // on a mere token refresh), so this exact window is narrow on
+            // iOS specifically, but guarding on `organizerModeInFlight`
+            // instead — the plain, non-`@Published`, synchronously-set
+            // lock that covers the ENTIRE `applyOrganizerMode` call,
+            // start to finish, not just its RPC await — closes it
+            // completely and costs nothing when nothing is racing.
+            canManageAdmins = profile.canManageAdmins == true
+            if !organizerModeInFlight {
+                let oldMode = organizerMode
+                accountType = profile.role
+                // Account regression fix pass (2026-09-27), Item 3 — this
+                // used to be `profile.role == "organizer" || profile.role
+                // == "admin"`, forcing an admin's organizerMode to `true`
+                // on EVERY session sync regardless of their own toggle.
+                // `role == "admin"` alone is eligibility, never the
+                // CURRENT preference; for an admin that preference now
+                // lives in its own column (organizerModeEnabled,
+                // migration 103), defaulting to true.
+                let canHostNow = profile.role == "organizer" || (profile.role == "admin" && profile.organizerModeEnabled != false)
+                organizerMode = canHostNow
+                mode = canHostNow ? "host" : "goer"
+                // Simple Shell: a sync turning organizer mode on lands Home on Hosting, off on Going out; an unchanged
+                // mode keeps whatever this session chose (Lib/HomeMode.swift).
+                homeView = HomeMode.viewAfterSync(prevOrganizerMode: oldMode, prevHomeView: homeView, organizerMode: canHostNow,
+                                                   stored: HomeMode.stored)
+                #if DEBUG
+                if oldMode != canHostNow {
+                    print("[organizerMode] WRITE source=applySession old=\(oldMode) new=\(canHostNow) role=\(profile.role)")
+                }
+                #endif
+            } else {
+                #if DEBUG
+                print("[organizerMode] applySession() skipped role fields — a toggle is in flight (role on server=\(profile.role))")
+                #endif
+            }
+            autoEmailDocuments = profile.autoEmailDocuments == true
+            mutedNotificationKinds = profile.mutedNotificationKinds ?? []
+
+            // Proof-of-consent bookkeeping (note 10 — this was a gap this
+            // app never closed on any path before now, not just OAuth: see
+            // that note's Task 1). For an 'email'-provider session
+            // (password/emailed-code — LoginView.canRequest already
+            // requires the tick before either ever runs), any profile with
+            // no recorded consent yet just passed through that gate and
+            // can be stamped unconditionally, same as BanBeContext.jsx's
+            // syncUser(). An OAuth session is different: nothing gated it
+            // client-side (signInWithGoogle()/signInWithFacebook() run with
+            // no consent check at all — a returning user must be able to
+            // tap straight through with zero friction), so a brand-new
+            // profile here genuinely has never seen the policy. Route to a
+            // mandatory, no-back-out Policy screen instead of trying to
+            // verify intent before the fact (that used to check
+            // `policyConsent` here and sign the session back out if it
+            // wasn't set — fragile, since nothing actually required it to
+            // be ticked before the button was ever tappable, and it
+            // regressed note 09's Signup-only checkbox fix). Nothing
+            // happens here for a *returning* OAuth sign-in — its profile
+            // already has policyAcceptedAt — so it's exactly as
+            // frictionless as password login.
+            if profile.policyAcceptedAt == nil {
+                let provider = session.user.appMetadata["provider"]?.stringValue
+                if provider == nil || provider == "email" {
+                    let update = ConsentUpdate(policyAcceptedAt: ISO8601DateFormatter().string(from: Date()), policyVersion: PolicyView.version)
+                    do {
+                        try await SupabaseService.client.from("profiles").update(update).eq("id", value: session.user.id).execute()
+                    } catch {
+                        print("Failed to record policy consent:", error)
+                    }
+                } else {
+                    policyGateActive = true
+                    screen = .policy
+                    return
+                }
+            }
+
+            // Language & theme follow the account once it has saved
+            // preferences, so signing in on any device restores them.
+            if profile.prefsSaved == true {
+                lang = profile.locale == "en" ? "en" : "vi"
+                theme = ThemeChoice.normalize(profile.theme, fresh: false)
+            } else {
+                persistPreference(["locale": lang, "theme": theme])
+            }
+        } catch {
+            print("Profile load failed:", error)
+        }
+
+        await loadMyEvents()
+        // Phase 1 Q7: an invite link opened before (or right after) sign-in is redeemed now, once.
+        await redeemPendingReferralIfNeeded()
+        await loadNotifications()
+        startNotificationPolling()
+        resumePushRegistrationIfAllowed()
+        // A push tapped before the account was ready (cold launch) opens now, like a bell tap.
+        routePendingPushIfReady()
+        await loadBookingForCurrentEvent()
+        await prefsLoad?.value
+    }
+
+    func signOut() async {
+        // An unfinished onboarding draft holds this account's private answers.
+        if let uid = userID { OnboardingDraftStore().clear(uid: uid) }
+        // While the session still exists: this device stops getting the leaving account's pushes (ENABLE_PUSH only).
+        await unregisterPushTokenForSignOut()
+        pendingPushNotification = nil
+        try? await SupabaseService.client.auth.signOut()
+        // Private media (chat attachments, invite-only event photos, payment
+        // documents) must not survive into the next account on a shared
+        // device — PhotoLoader's caches aren't scoped per-user, so drop them
+        // outright rather than risk a cached signed-URL image reappearing.
+        accountSearchOpen = false
+        accountSearchQuery = ""
+        PhotoLoader.clearCache()
+        // Roles belong to the account that just left — leaving them behind
+        // would leak the previous user's hosting state into the next sign-in.
+        // Stage 1 — belt-and-suspenders alongside applySession(nil)'s own
+        // clear, same reasoning as web's logout() (BanBeContext.jsx).
+        favoritesLoadedForUID = nil
+        favorites = []
+        homeSurveyDiscoveryExpanded = false
+        // L7: the event-day Lock Screen card shows the leaving account's ticket.
+        await LiveActivityController.shared.endAll()
+        // Phase 2 recaps belong to the account that just left.
+        eventRecapID = nil
+        hostRecapID = nil
+        createSeedCoverImage = nil
+        // Note 76: a team project (names, tasks, channel links) belongs to the account that just left.
+        // Migration 216: so does an open admin demo (no server state to undo; it only lived in memory).
+        projectDemo = nil
+        ProjectDemo.resetStore()
+        projectSnapshot = nil
+        projectEventID = ""
+        projectNotice = ""
+        myProjects = []
+        myProjectsLoaded = false
+        projectInvites = []
+        projectMoney = nil
+        projectDoor = nil
+        projectPayments = nil
+        projectRefunds = nil
+        projectJoinPeek = nil
+        projectJoinCode = ""
+        UserDefaults.standard.removeObject(forKey: Self.pendingProjectInviteKey)
+        await applySession(nil)
+        // Note 44 — lands on the single public welcome screen (one tap to Log
+        // in from there), not straight into Login. Still no guest browsing.
+        authNavForward = false
+        screen = .welcome
+        authMandatory = false
+        authReturnScreen = .home
+        authBackScreen = .welcome
+        // TASK 4 (Reserve→edit-name pass) — clear the return context, same
+        // belt-and-suspenders spirit as authReturnScreen/authBackScreen
+        // above, so a later sign-in never inherits a stale return target.
+        editNameReturnScreen = .profile
+        // TASK 5 (Account badges pass) — admin-only cache; a non-admin (or
+        // the next account signing in) must never see a stale prior count.
+        pendingEventsCount = 0
+        // Simple Shell: the next account starts from its own pick, not this one's.
+        homeView = .goer
+        HomeMode.stored = nil
+        startHostingInviteOpen = false
+        startHostingAfterInvite = false
+    }
+
+    /// Which catalogue events this account is actually attending (from real
+    /// bookings) and which it organizes (from owning the organizer row).
+    func loadMyEvents() async {
+        guard let uid = userID else { return }
+        myOrganizerIdsStatus = "loading"
+        do {
+            let bookings: [BookingBrief] = try await SupabaseService.client
+                .from("bookings")
+                .select("event_id, qty, status")
+                .eq("user_id", value: uid)
+                .in("status", values: ["pending", "confirmed", "attended"])
+                .execute().value
+            var going: [String] = []
+            var counts: [String: Int] = [:]
+            for booking in bookings where !going.contains(booking.eventId) {
+                going.append(booking.eventId)
+                counts[booking.eventId] = booking.qty
+            }
+            attending = going
+            tickets = counts
+
+            // Part B audit (2026-09-28) — real bug found while
+            // investigating the "Jazz Ở Gác"/"Vườn Sau" organizer-identity
+            // report: an owner who genuinely owns MORE THAN ONE organizers
+            // row (only ever produced by migration 020's seed, which
+            // assigns each of its ~20 demo events' organizer uniformly at
+            // random among just 3 test accounts — a real production
+            // user's own create-event flow always reuses their one
+            // existing organizer row, never inserts a second) had this
+            // query with no ORDER BY at all, so `organizers.first` below —
+            // used for orgRegName/myOrganizerID/avatarPath — was whichever
+            // row Postgres felt like returning, differing between app
+            // launches. Not a database FK error (every event's own
+            // organizer_id is correct). Ordering deterministically here
+            // (earliest-created = the owner's "primary" organizer) makes
+            // this identity stable across launches instead of silently
+            // random — mirrors the same fix in web's `syncUser()`.
+            // Hardening (2026-09-28) — migration 020's seed batch shares one
+            // literal `created_at` across all its rows, so `created_at`
+            // alone doesn't actually break ties by SQL semantics (it was
+            // observed stable, but that's physical row order, never
+            // promised by Postgres). `id` as an explicit secondary sort key
+            // makes this genuinely deterministic, not just observed-stable.
+            let organizers: [OrganizerRow] = try await MediaColumns.retrying { withR2 in
+                try await SupabaseService.client
+                .from("organizers")
+                .select(MediaColumns.cols("id, name, about, avatar_path, intro_long, social_links", "avatar_r2_ref", withR2))
+                .or("owner_id.eq.\(uid.uuidString),user_id.eq.\(uid.uuidString)")
+                .order("created_at", ascending: true)
+                .order("id", ascending: true)
+                .execute().value }
+            myOrganizerIDs = organizers.map(\.id)
+            myOrganizerIdsStatus = "loaded"
+            if !organizers.isEmpty {
+                // The account's actual host page name — Account used to
+                // always fall back to the generic "Bếp Nhỏ" placeholder
+                // here, since this was the only place an organizer's name
+                // could be restored on a fresh session and it was never
+                // actually fetched.
+                if let name = organizers.first?.name, !name.isEmpty { orgRegName = name }
+                // Host tab's own profile card (Stage D, migration 090).
+                myOrganizerID = organizers.first?.id
+                orgRegDesc = organizers.first?.about ?? ""
+                orgRegIntroLong = organizers.first?.introLong ?? ""
+                orgRegLinks = organizers.first?.socialLinks ?? []
+                myOrganizerAvatarPath = organizers.first?.avatarPath ?? ""
+                myOrganizerAvatarR2Ref = organizers.first?.avatarR2Ref
+                struct EventIDOrganizer: Decodable { let id: String; let organizerId: String
+                    enum CodingKeys: String, CodingKey { case id; case organizerId = "organizer_id" } }
+                let events: [EventIDOrganizer] = try await SupabaseService.client
+                    .from("events")
+                    .select("id, organizer_id")
+                    .in("organizer_id", values: organizers.map(\.id))
+                    .execute().value
+                myOrgEventKeys = events.map(\.id)
+                // See myOrgEventOrganizerID's own doc comment (AppState.swift)
+                // — Dashboard's branded shelf filters on this; the ownership
+                // gate above (myOrgEventKeys) stays the full union on purpose.
+                myOrgEventOrganizerID = Dictionary(uniqueKeysWithValues: events.map { ($0.id, $0.organizerId) })
+                if !events.isEmpty { hasHosted = true }
+                await loadMyOrgEventSummaries()   // feeds the Host tab / Dock badge for submitted events
+            }
+        } catch {
+            print("Failed to load account events:", error)
+            // myOrganizerIDs itself is deliberately left untouched (already
+            // correct before this pass — this `catch` never wrote to it) —
+            // only the STATUS is new, so a reader can tell "failed" apart
+            // from "confirmed empty" instead of inferring it from `.isEmpty`.
+            myOrganizerIdsStatus = "error"
+        }
+        // Organizer Mode on but no owned organizer (it used to be created
+        // only lazily by create_event_draft): create the default one now.
+        await ensureOrganizerIfNeeded()
+    }
+
+    /// STAGE C (2026-09-25) — the real "add a photo to one of my own
+    /// events" flow this app never had; same upload shape as
+    /// `uploadAvatar` (AppState+Profile.swift), but the row insert is what
+    /// actually matters here — `event_photos_insert_own` (migration 001)
+    /// checks THIS event's organizer is owned by the caller, not merely
+    /// that the caller owns *some* organizer (all the bucket policy,
+    /// `event_photos_host_insert`, checks), so this can't be pointed at an
+    /// event this account doesn't own even though the bucket policy alone
+    /// wouldn't have stopped it. Deliberately callable for an event of ANY
+    /// status — Task 1's own "ended must stay in the library" rule
+    /// implies a host should be able to add a recap photo after the fact,
+    /// not just while an event is live.
+    func uploadEventPhoto(eventID: String, image: UIImage) async -> Bool {
+        guard userID != nil else { return false }
+        guard let data = image.jpegData(compressionQuality: 0.85) else { return false }
+        if data.count > 50 * 1024 * 1024 { // the bucket's own limit, migration 005
+            eventPhotoUploadError = T("Ảnh tối đa 50MB.", "Image must be under 50MB.")
+            return false
+        }
+        eventPhotoUploadBusy[eventID] = true
+        eventPhotoUploadError = ""
+        defer { eventPhotoUploadBusy[eventID] = false }
+        let path = "\(eventID)/\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
+        do {
+            // Privacy fix: an invite-only event's photo must go to the
+            // private bucket (same rule as reconcileEventMedia). If the
+            // visibility can't be read, fail closed rather than risk
+            // publishing an invite-only photo to the public bucket.
+            struct VisRow: Decodable { let visibility: String? }
+            let vis: VisRow = try await SupabaseService.client
+                .from("events").select("visibility").eq("id", value: eventID).single().execute().value
+            let isInvite = vis.visibility == "invite"
+            let bucketID = isInvite ? "event-photos-private" : "event-photos"
+            // Hybrid media API first (public events only; server re-checks
+            // eligibility and answers `.legacy` otherwise).
+            var usedR2 = false
+            if !isInvite {
+                do {
+                    if case .uploaded = try await MediaUploader.uploadEventPhoto(image: image, eventID: eventID) { usedR2 = true }
+                } catch {
+                    print("uploadEventPhoto media finalize failed")
+                    throw error
+                }
+            }
+            if !usedR2 {
+                _ = try await SupabaseService.client.storage.from(bucketID)
+                    .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
+                // Same "bucket name baked into storage_path" convention the
+                // original seed rows already use (migration 010) — every read
+                // path (eventPhotoURL/organizerPhotoUrl/etc.) already strips
+                // this prefix defensively either way.
+                _ = try await SupabaseService.client.from("event_photos")
+                    .insert(NewEventPhoto(eventId: eventID, storagePath: "\(bucketID)/\(path)"))
+                    .execute()
+            }
+            eventPhotoUploaded[eventID] = true
+            Task {
+                try? await Task.sleep(nanoseconds: 1_800_000_000)
+                eventPhotoUploaded[eventID] = false
+            }
+            return true
+        } catch {
+            print("uploadEventPhoto failed:", error, "eventID:", eventID)
+            eventPhotoUploadError = T("Không thể tải ảnh lên. Vui lòng thử lại.", "Could not upload the image. Please try again.")
+            return false
+        }
+    }
+
+    /// Port of web's reconcileEventMedia (BanBeContext.jsx, Stage A media-
+    /// parity pass, 2026-09-26) — CreateEventView's cover/gallery editor
+    /// hands this the event's current staged state in one call: existing
+    /// `event_photos` ids the host removed, new UIImages to upload, and
+    /// which surviving item (existing storage path OR a freshly-uploaded
+    /// one) is the cover. Removals run first so a re-picked cover can never
+    /// collide with a row still being deleted. Never rolls back the event
+    /// row itself on a partial media failure — returns per-item outcomes so
+    /// the caller can show an honest partial-failure notice instead of
+    /// silently claiming full success.
+    @discardableResult
+    func reconcileEventMedia(
+        eventID: String, newImages: [UIImage], coverNewIndex: Int?,
+        removeExistingIDs: [UUID], existingCoverPath: String?, visibility: String = "public"
+    ) async -> (uploaded: Int, failed: Int, removed: Int) {
+        // Strict invite-only events (migration 113) — an invite-only
+        // event's photos go to the SEPARATE, genuinely private
+        // 'event-photos-private' bucket (RLS-gated by host/admin/invited-
+        // status), never the public 'event-photos' bucket whose public
+        // URL bypasses RLS entirely. Public events are unaffected (same
+        // bucket/path as always). Mirrors web's identical fix
+        // (BanBeContext.jsx's reconcileEventMedia).
+        let bucketID = visibility == "invite" ? "event-photos-private" : "event-photos"
+        var removed = 0
+        for photoID in removeExistingIDs {
+            if let row = eventPhotos.first(where: { $0.id == photoID }) {
+                if row.r2Ref != nil { await MediaUploader.delete(ref: row.r2Ref) }
+            }
+            if let row = eventPhotos.first(where: { $0.id == photoID }), !MediaResolver.isR2Ref(row.storagePath) {
+                let rowBucket = row.storagePath.hasPrefix("event-photos-private/") ? "event-photos-private" : "event-photos"
+                let relative = row.storagePath.hasPrefix("\(rowBucket)/")
+                    ? String(row.storagePath.dropFirst("\(rowBucket)/".count)) : row.storagePath
+                _ = try? await SupabaseService.client.storage.from(rowBucket).remove(paths: [relative])
+            }
+            do {
+                _ = try await SupabaseService.client.from("event_photos").delete().eq("id", value: photoID).execute()
+                removed += 1
+            } catch {
+                print("reconcileEventMedia delete failed:", error)
+            }
+        }
+
+        var uploaded = 0
+        var newCoverPath: String?
+        for (i, image) in newImages.enumerated() {
+            guard let data = image.jpegData(compressionQuality: 0.85), data.count <= 50 * 1024 * 1024 else { continue }
+            let path = "\(eventID)/\(Int(Date().timeIntervalSince1970 * 1000))-\(i).jpg"
+            // Hybrid media API first (never for invite-only events).
+            if visibility != "invite" {
+                do {
+                    if case let .uploaded(_, ref) = try await MediaUploader.uploadEventPhoto(
+                        image: image, eventID: eventID, setCover: i == coverNewIndex) {
+                        uploaded += 1
+                        if i == coverNewIndex { newCoverPath = ref }
+                        continue
+                    }
+                } catch {
+                    print("reconcileEventMedia media finalize failed")
+                    continue   // bytes already in R2; do not double-upload to legacy
+                }
+            }
+            do {
+                _ = try await SupabaseService.client.storage.from(bucketID)
+                    .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
+                let storagePath = "\(bucketID)/\(path)"
+                _ = try await SupabaseService.client.from("event_photos")
+                    .insert(NewEventPhoto(eventId: eventID, storagePath: storagePath)).execute()
+                uploaded += 1
+                if i == coverNewIndex { newCoverPath = storagePath }
+            } catch {
+                print("reconcileEventMedia upload failed:", error)
+            }
+        }
+
+        if let cover = newCoverPath ?? existingCoverPath, !cover.isEmpty {
+            struct Params: Encodable {
+                let eventId: String
+                let coverImage: String
+                enum CodingKeys: String, CodingKey { case eventId = "p_event_id", coverImage = "p_cover_image" }
+            }
+            do {
+                _ = try await SupabaseService.client.rpc("update_event_media_and_details", params: Params(eventId: eventID, coverImage: cover)).execute()
+            } catch {
+                print("reconcileEventMedia cover update failed:", error)
+            }
+        }
+        return (uploaded, newImages.count - uploaded, removed)
+    }
+
+    /// Host tab's own profile card save (Stage D, migration 090) — a real
+    /// owner/admin-gated update via update_organizer_profile, separate
+    /// from create_event_draft's own organizer-name side effect. Optional
+    /// avatar upload goes to the organizer-photos bucket, path-scoped to
+    /// this organizer's own id (never another host's — migration 090's
+    /// own storage policies).
+    /// `organizerID`/`name`/`intro` let the first-time host setup sheet save right after the organizer
+    /// is created. Returns whether the save fully succeeded; `orgProfileError` carries the reason.
+    @discardableResult
+    func saveOrganizerProfile(avatarImage: UIImage?, organizerID overrideID: String? = nil,
+                              name overrideName: String? = nil, intro overrideIntro: String? = nil) async -> Bool {
+        guard let organizerID = overrideID ?? myOrganizerID else { return false }
+        let orgName = (overrideName ?? orgRegName).trimmingCharacters(in: .whitespaces)
+        let orgIntro = (overrideIntro ?? orgRegDesc).trimmingCharacters(in: .whitespacesAndNewlines)
+        orgProfileSaving = true
+        orgProfileError = ""
+        // iPhone fix pass (2026-09-27), Issue 2 — separated from the RPC's
+        // own `do/catch` below so a failure can be attributed to the
+        // correct STAGE (upload vs. save) in DEBUG, and so a successful
+        // upload followed by a failed save can roll the upload back
+        // instead of leaving it permanently orphaned in organizer-photos.
+        var avatarPath: String?
+        var avatarR2Ref: String?
+        if let avatarImage {
+            guard let data = avatarImage.jpegData(compressionQuality: 0.85) else {
+                orgProfileSaving = false
+                orgProfileError = T("Không thể lưu. Vui lòng thử lại.", "Could not save. Please try again.")
+                #if DEBUG
+                print("[orgAvatar] stage=decode result=FAILED — UIImage.jpegData returned nil")
+                #endif
+                return false
+            }
+            if data.count > 5 * 1024 * 1024 {
+                orgProfileSaving = false
+                orgProfileError = T("Ảnh tối đa 5MB.", "Photo must be under 5MB.")
+                return false
+            }
+            let path = "\(organizerID)/avatar-\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
+            do {
+                // Hybrid media API first; `.legacy` (or init failure) falls through.
+                do {
+                    if case let .uploaded(_, ref) = try await MediaUploader.uploadOrganizerAvatar(image: avatarImage, organizerID: organizerID) {
+                        avatarR2Ref = ref   // server already set avatar_r2_ref + avatar_path
+                    }
+                } catch {
+                    print("saveOrganizerProfile media finalize failed")
+                    throw error
+                }
+                if avatarR2Ref == nil {
+                    _ = try await SupabaseService.client.storage.from("organizer-photos")
+                        .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
+                    #if DEBUG
+                    print("[orgAvatar] stage=upload result=OK path=\(path)")
+                    #endif
+                    avatarPath = path
+                }
+            } catch {
+                #if DEBUG
+                print("[orgAvatar] stage=upload result=FAILED bucket=organizer-photos organizerID=\(organizerID) error=\(error)")
+                #endif
+                print("saveOrganizerProfile upload failed:", error)
+                orgProfileSaving = false
+                orgProfileError = T("Không thể tải ảnh lên. Vui lòng thử lại.", "Could not upload the image. Please try again.")
+                return false
+            }
+        }
+        do {
+            struct Params: Encodable {
+                let organizerId: String
+                let name: String
+                let intro: String
+                let avatarPath: String?
+                let introLong: String
+                let socialLinks: [SocialLink]
+                enum CodingKeys: String, CodingKey {
+                    case organizerId = "p_organizer_id", name = "p_name", intro = "p_intro", avatarPath = "p_avatar_path"
+                    case introLong = "p_intro_long", socialLinks = "p_social_links"
+                }
+            }
+            let links = orgRegLinks.filter { !$0.url.trimmingCharacters(in: .whitespaces).isEmpty }
+            let result: [String: JSONValue] = try await SupabaseService.client
+                .rpc("update_organizer_profile", params: Params(
+                    organizerId: organizerID, name: orgName,
+                    intro: orgIntro, avatarPath: avatarPath,
+                    introLong: orgRegIntroLong, socialLinks: links
+                ))
+                .execute().value
+            guard case .bool(true) = result["success"] ?? .bool(false) else {
+                if case .string(let err) = result["error"] ?? .string("") {
+                    orgProfileError = err == "INVALID_NAME"
+                        ? T("Tên tổ chức không được để trống (tối đa 80 ký tự).", "Organizer name is required (max 80 chars).")
+                        : err == "INVALID_INTRO"
+                        ? T("Giới thiệu tối đa 2000 ký tự.", "Introduction is limited to 2000 characters.")
+                        : err == "INTRO_TOO_LONG"
+                        ? T("Giới thiệu dài quá (tối đa 4000 ký tự).", "Intro is too long (4000 characters max).")
+                        : err == "INVALID_LINKS"
+                        ? T("Một liên kết không hợp lệ. Chỉ chấp nhận đường dẫn https://.", "One of the links is invalid. Only https:// links are accepted.")
+                        : T("Không thể lưu. Vui lòng thử lại.", "Could not save. Please try again.")
+                }
+                // iPhone fix pass (2026-09-27), Issue 2 — the upload above
+                // already succeeded (`avatarPath` non-nil), but this save
+                // didn't take it — roll the upload back rather than leave
+                // an orphaned, unreferenced object in organizer-photos.
+                if let avatarPath {
+                    #if DEBUG
+                    print("[orgAvatar] stage=save result=FAILED — rolling back orphaned upload path=\(avatarPath)")
+                    #endif
+                    _ = try? await SupabaseService.client.storage.from("organizer-photos").remove(paths: [avatarPath])
+                }
+                if let avatarR2Ref { await MediaUploader.delete(ref: avatarR2Ref) }
+                orgProfileSaving = false
+                return false
+            }
+            if let avatarPath { myOrganizerAvatarPath = avatarPath; myOrganizerAvatarR2Ref = nil }
+            if let avatarR2Ref { myOrganizerAvatarPath = avatarR2Ref; myOrganizerAvatarR2Ref = avatarR2Ref }
+            // DATA FRESHNESS FIX — same root cause and fix as web's
+            // saveOrganizerProfile (BanBeContext.jsx): `organizerProfile` is a
+            // one-shot snapshot fetched by openOrganizerProfile(), never
+            // patched after this real, successful DB write. Only
+            // `myOrganizerAvatarPath` used to get refreshed above, so once
+            // this screen's local avatarPreviewImage was cleared post-save
+            // it fell back to `organizerProfile.avatarPath` — the stale
+            // pre-save value — until the whole screen was reopened. Patches
+            // ONLY the fields this save actually changed, in place.
+            orgRegName = orgName
+            orgRegDesc = orgIntro
+            if organizerProfile?.id == organizerID {
+                organizerProfile?.name = orgName
+                organizerProfile?.about = orgIntro
+                if let avatarPath { organizerProfile?.avatarPath = avatarPath; organizerProfile?.avatarR2Ref = nil }
+                if let avatarR2Ref { organizerProfile?.avatarPath = avatarR2Ref; organizerProfile?.avatarR2Ref = avatarR2Ref }
+                organizerProfile?.introLong = orgRegIntroLong
+                organizerProfile?.socialLinks = links
+            }
+            orgProfileSaving = false
+            return true
+        } catch {
+            #if DEBUG
+            print("[orgAvatar] stage=save result=FAILED(threw) organizerID=\(organizerID) error=\(error)")
+            #endif
+            print("saveOrganizerProfile failed:", error)
+            if let avatarPath {
+                _ = try? await SupabaseService.client.storage.from("organizer-photos").remove(paths: [avatarPath])
+            }
+            if let avatarR2Ref { await MediaUploader.delete(ref: avatarR2Ref) }
+            orgProfileSaving = false
+            orgProfileError = T("Không thể lưu. Vui lòng thử lại.", "Could not save. Please try again.")
+            return false
+        }
+    }
+
+    /// Stage 1 (2026-09-27 nav/discovery pass) — Account host card's own
+    /// "Tổ chức từ <year> ▪︎ <N> sự kiện", read straight from real event
+    /// rows by organizer_id, same published-only rule (status IN live/
+    /// ended) as get_public_profile's event_count/hosting_since_year
+    /// (migration 091) so both places always agree. Re-run whenever
+    /// Account's host tab loads, so an admin approval/cancellation since
+    /// the last visit shows up without needing a relaunch.
+    func loadMyOrgStats() async {
+        guard let organizerID = myOrganizerID else {
+            myOrgPublishedEventCount = nil
+            myOrgHostingSinceYear = nil
+            return
+        }
+        struct Row: Decodable { let status: String; let startsAt: Date?
+            enum CodingKeys: String, CodingKey { case status, startsAt = "starts_at" }
+        }
+        do {
+            let rows: [Row] = try await SupabaseService.client
+                .from("events")
+                .select("status, starts_at")
+                .eq("organizer_id", value: organizerID)
+                .in("status", values: ["live", "ended"])
+                .execute().value
+            myOrgPublishedEventCount = rows.count
+            let years = rows.compactMap { $0.startsAt.map { Calendar(identifier: .gregorian).component(.year, from: $0) } }
+            myOrgHostingSinceYear = years.min()
+        } catch {
+            print("loadMyOrgStats failed:", error)
+        }
+    }
+
+    /// STAGE D (2026-09-25) — EventDetailView's own real photo gallery,
+    /// one event's `event_photos` rows (not the whole organizer's — that's
+    /// `loadOrganizerPhotos` below). Replaces the static demo
+    /// `event.gallery` render. `event_photos` itself is openly readable
+    /// (migration 001), so this needs no extra scoping beyond the event
+    /// id itself — a viewer who can already reach this event's page (real
+    /// `events` RLS already gated that) can see its real photos too.
+    /// Strict invite-only events (migration 113) — the ONLY correct way to
+    /// resolve an 'event-photos-private/…' storage_path (a real, RLS-
+    /// checked signed-URL network call via is_event_host()/has_event_
+    /// invite_access()/is_platform_admin(), same server-side policies as
+    /// web). A public-bucket path still resolves via the cheap synchronous
+    /// getPublicURL() building block. 1-hour signed URL — long enough for
+    /// one screen visit, short enough that a leaked link doesn't stay
+    /// valid indefinitely. Mirrors web's resolveEventPhotoUrlAsync
+    /// (BanBeContext.jsx) exactly.
+    func resolveEventPhotoURL(_ storagePath: String, r2Ref: String? = nil, variant: MediaVariant = .card) async -> URL? {
+        if storagePath.hasPrefix("event-photos-private/") {
+            let relative = String(storagePath.dropFirst("event-photos-private/".count))
+            do {
+                // Same batch API this codebase already uses for every
+                // other private bucket (payment-documents, pay-qr) — no
+                // singular createSignedURL exists in this SDK version.
+                let results = try await SupabaseService.client.storage
+                    .from("event-photos-private")
+                    .createSignedURLs(paths: [relative], expiresIn: 3600)
+                for result in results {
+                    if case let .success(resultPath, signedURL) = result, resultPath == relative {
+                        return signedURL
+                    }
+                }
+                return nil
+            } catch {
+                print("resolveEventPhotoURL signed-url failed:", error)
+                return nil
+            }
+        }
+        return MediaURLs.eventPhoto(storagePath: storagePath, r2Ref: r2Ref, variant: variant)
+    }
+
+    func loadEventPhotos(eventID: String) async {
+        eventPhotosLoading = true
+        do {
+            let photos: [OrganizerPhoto] = try await MediaColumns.retrying { withR2 in
+                try await SupabaseService.client
+                .from("event_photos").select(MediaColumns.cols("id, event_id, storage_path, sort_order", "r2_ref", withR2))
+                .eq("event_id", value: eventID)
+                .order("sort_order", ascending: true)
+                .execute().value }
+            // Resolve every row's display URL BEFORE publishing `eventPhotos`
+            // — CreateEventView's `.onChange(of: app.eventPhotos)` seeds its
+            // gallery the instant that array changes and only ever seeds
+            // ONCE per edit session, so if `eventPhotoURLs` populated AFTER
+            // (a separate @Published property, its own later onChange this
+            // view doesn't watch), the seed would permanently lock in blank
+            // thumbnails for that session.
+            var resolvedURLs: [UUID: URL] = [:]
+            for photo in photos {
+                if let url = await resolveEventPhotoURL(photo.storagePath, r2Ref: photo.r2Ref, variant: .full) {
+                    resolvedURLs[photo.id] = url
+                }
+            }
+            eventPhotoURLs = eventPhotoURLs.merging(resolvedURLs) { _, new in new }
+            eventPhotos = photos
+            eventPhotosLoading = false
+            // Photo-interactions redesign (2026-09-26) — fire-and-forget,
+            // not awaited: the grid renders immediately from `eventPhotos`
+            // above, engagement (like counts/badges) fills in a moment
+            // later via the canonical `photoEngagement` map.
+            let ids = photos.map { $0.id.uuidString.lowercased() }
+            Task { await loadPhotoEngagement(ids) }
+        } catch {
+            print("loadEventPhotos failed:", error)
+            eventPhotos = []
+            eventPhotosLoading = false
+        }
+    }
+
+    /// TASK 3 (event creation validation pass) — AdminEventsView's own
+    /// detailed review section needs MULTIPLE events' galleries available
+    /// at once (one per expanded card); the single global `eventPhotos`/
+    /// `eventPhotosLoading` pair `loadEventPhotos(eventID:)` above owns is
+    /// scoped to exactly one event at a time (a single-event edit
+    /// context), so this is a separate, non-state-mutating query rather
+    /// than reusing/widening that one.
+    func loadEventGalleryURLs(eventID: String) async -> [URL] {
+        do {
+            let photos: [OrganizerPhoto] = try await MediaColumns.retrying { withR2 in
+                try await SupabaseService.client
+                .from("event_photos").select(MediaColumns.cols("id, event_id, storage_path, sort_order", "r2_ref", withR2))
+                .eq("event_id", value: eventID)
+                .order("sort_order", ascending: true)
+                .execute().value }
+            // Strict invite-only events (migration 113) — admin review
+            // must be able to see a pending invite-only event's photos too
+            // (is_event_host()/is_platform_admin() both grant the signed-
+            // URL RLS check), so this uses the same private-bucket-aware
+            // resolver as loadEventPhotos, not a bare getPublicURL.
+            var urls: [URL] = []
+            for photo in photos {
+                if let url = await resolveEventPhotoURL(photo.storagePath, r2Ref: photo.r2Ref, variant: .full) { urls.append(url) }
+            }
+            return urls
+        } catch {
+            print("loadEventGalleryURLs failed:", error)
+            return []
+        }
+    }
+
+    /// STAGE B (2026-09-25) — OrganizerView's real photo library, replacing
+    /// the static demo `orgGallery` render. Two-step, both steps riding
+    /// EXISTING RLS rather than a new RPC: `events` itself already lets the
+    /// owner see every one of their own rows regardless of status (draft
+    /// included — Task 1's own "ended must stay in the owner's library"
+    /// rule, and then some) while a non-owner only ever sees
+    /// live/ended/cancelled (migration 084's fix) — so restricting to
+    /// `status='live' AND visibility='public'` for a NON-owner here is
+    /// what keeps the PUBLIC grid to live+public only, per this ticket's
+    /// own rule 3; `event_photos` itself has always been openly readable
+    /// (`event_photos_select_public: USING (true)`, migration 001) —
+    /// nothing there was ever scoped by event status, so this function is
+    /// the actual enforcement point for "which events' photos," not a new
+    /// RLS grant.
+    func loadOrganizerPhotos(organizerId: String) async {
+        organizerPhotosLoading = true
+        organizerPhotos = []
+        do {
+            let isOwner = myOrganizerIDs.contains(organizerId)
+            var query = SupabaseService.client.from("events").select("id").eq("organizer_id", value: organizerId)
+            if !isOwner { query = query.eq("status", value: "live").eq("visibility", value: "public") }
+            let orgEvents: [IDRow] = try await query.execute().value
+            let eventIds = orgEvents.map(\.id)
+            guard !eventIds.isEmpty else {
+                organizerPhotos = []; organizerPhotosLoading = false; return
+            }
+            let photos: [OrganizerPhoto] = try await MediaColumns.retrying { withR2 in
+                try await SupabaseService.client
+                .from("event_photos").select(MediaColumns.cols("id, event_id, storage_path, sort_order", "r2_ref", withR2))
+                .in("event_id", values: eventIds)
+                .order("sort_order", ascending: true)
+                .execute().value }
+            organizerPhotos = photos
+            organizerPhotosLoading = false
+            // Photo-interactions redesign (2026-09-26) — fire-and-forget,
+            // same reasoning as loadEventPhotos above.
+            let ids = photos.map { $0.id.uuidString.lowercased() }
+            Task { await loadPhotoEngagement(ids) }
+        } catch {
+            print("loadOrganizerPhotos failed:", error)
+            organizerPhotos = []
+            organizerPhotosLoading = false
+        }
+    }
+
+    /// The signed-in user's latest booking for whichever event is open —
+    /// drives the ticket bar, hold countdown and Confirmed screen.
+    func loadBookingForCurrentEvent() async {
+        guard ticketDemo == nil else { return }   // the ticket demo carries its own sample booking
+        guard let uid = userID else { booking = nil; holdDeadline = nil; return }
+        do {
+            let rows: [Booking] = try await SupabaseService.client
+                .from("bookings").select()
+                .eq("event_id", value: eventKey)
+                .eq("user_id", value: uid)
+                .order("created_at", ascending: false)
+                .limit(1)
+                .execute().value
+            // Always set, even to nil — otherwise navigating from a booked
+            // event to one you have no booking for keeps the stale ticket.
+            booking = rows.first
+            holdDeadline = rows.first?.expiresAt
+        } catch {
+            booking = nil
+            holdDeadline = nil
+        }
+    }
+
+    /// The real events row's own status/starts_at for whichever event is
+    /// currently open — runs for every visitor, signed in or not, since
+    /// "has this event ended/been cancelled" is public information. Every
+    /// one of the 20 demo events also has a real row (seeded to match the
+    /// catalogue's bundled cancelled/ended flags), so this resolves for
+    /// those too; only a client-side-only preview has no row, and
+    /// `applyingLiveStatus` leaves the bundled catalogue untouched then.
+    func loadLiveEventStatus() async {
+        guard ticketDemo == nil else { return }
+        do {
+            let key = eventKey
+            let rows: [LiveEventStatus] = try await EventDetailsColumns.retrying {
+                try await SupabaseService.client
+                    .from("events")
+                    .select("status, starts_at, cancelled_at, cancel_reason, capacity" + EventDetailsColumns.suffix)
+                    .eq("id", value: key)
+                    .limit(1)
+                    .execute().value
+            }
+            liveEventStatus = rows.first
+        } catch {
+            liveEventStatus = nil
+        }
+    }
+
+    /// 2026-09-21 follow-up — the batched counterpart of
+    /// `loadLiveEventStatus()` above, for Home's "Sự kiện của bạn" strip
+    /// (real 48h-after-ended expiry — `savedStrip`'s own doc comment) and
+    /// its new "Sắp diễn ra"/"Đã kết thúc" filters. Public info, same as the
+    /// single-event fetch — no signed-in gate.
+    func loadHomeLiveEvents() async {
+        do {
+            let rows: [KeyedLiveEventStatus] = try await EventDetailsColumns.retrying {
+                try await SupabaseService.client
+                    .from("events")
+                    .select("slug, status, starts_at, cancelled_at, cancel_reason, area, city, country_code, state_province, neighborhood, lat, lng, capacity"
+                            + EventDetailsColumns.suffix)
+                    .in("slug", values: EventCatalog.all.map(\.key))
+                    .execute().value
+            }
+            homeLiveEvents = Dictionary(uniqueKeysWithValues: rows.map { ($0.slug, $0.status) })
+            // Location hierarchy (migration 112) — the demo catalogue's
+            // own live DB location, so Home's location filter places each
+            // demo event exactly where Map (which reads the same rows) does.
+            homeEventLocations = Dictionary(uniqueKeysWithValues: rows.map { ($0.slug, $0.location) })
+        } catch {
+            print("loadHomeLiveEvents failed:", error)
+        }
+    }
+
+    /// Live `events` rows for the map explore screen (11-realtime-map.md) —
+    /// optionally scoped to a lat/lng bounding box (the "search here" case,
+    /// or a poll re-query of the last-searched box); nil bounds is the
+    /// initial load, used only to compute the density-hotspot center.
+    @MainActor
+    /// Map redesign phase 2: the Map loads the WHOLE public live set (up to this many) with an exact count and
+    /// filters by the committed map area locally — panning never needs the network (web: MAP_EVENT_CAP).
+    static let mapEventCap = 500
+
+    func loadMapEvents(bounds: MapDiscovery.Bounds? = nil) async {
+        mapEventsGeneration += 1
+        let generation = mapEventsGeneration
+        do {
+            let (rows, total): ([MapEventRow], Int) = try await Self.retryingEventColumns { withR2 in
+            var filter = SupabaseService.client
+                .from("events")
+                // Keyword-search fix (migration 108) — re-enabled
+                // 2026-09-29 after confirming (a live, read-only query
+                // against the real database) migration 108 is actually
+                // deployed. See `realEventColumns`'s own doc comment for
+                // why this was briefly reverted.
+                // Search-matcher fix (Issue 2) — mirrors MapExplore.jsx's
+                // identical select addition (cat_label/city/description/
+                // intro/organizers(name)) so the search document built by
+                // `Search.buildEventSearchDoc` has category/organizer/
+                // description text available regardless of `keywords`.
+                .select(MediaColumns.cols("id, cat_key, cat_label, name, area, city, country_code, state_province, neighborhood, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)" + EventMarketColumns.suffix + EventDetailsColumns.suffix, "cover_r2_ref", withR2), count: .exact)
+                .eq("status", value: "live")
+                // Strict invite-only events (migration 113) — this query
+                // never filtered visibility at all, the exact same gap
+                // MapExplore.jsx's fetchLiveEvents had on web (fixed
+                // there first) — a real invite-only event would have
+                // shown up on the Map for anyone. RLS is the real
+                // backstop now, but this list should stay honest
+                // client-side too.
+                .eq("visibility", value: "public")
+            // Bounded mode only (the public set is larger than the cap): the committed area, padded, with its own count.
+            if let bounds {
+                filter = filter.gte("lat", value: bounds.south).lte("lat", value: bounds.north)
+                    .gte("lng", value: bounds.west).lte("lng", value: bounds.east)
+            }
+            let response: PostgrestResponse<[MapEventRow]> = try await filter
+                .order("starts_at", ascending: true)
+                .limit(Self.mapEventCap)
+                .execute()
+            return (response.value, response.count ?? response.value.count)
+            }
+            // A newer load started while this one was in flight: its answer wins, this one is dropped.
+            guard generation == mapEventsGeneration else { return }
+            mapEvents = rows
+            mapEventsTotal = total
+            mapEventsLoadFailed = false
+            // Real seat fill (migration 186) for the Map's seat pill and "Còn chỗ / Seats left";
+            // `seats_remaining` is never decremented (note 50).
+            await loadPublicEventFill(ids: rows.map(\.id))
+
+            // Real-cover-photo fix (2026-10-19) — root cause: MapExploreView
+            // used to render `EventCatalog.find(ev.id)?.img` unconditionally
+            // for the selected-event card and the list/pin rows.
+            // `EventCatalog.find` always returns SOMETHING (falls back to
+            // `.all.first`, its own doc comment says so, mirroring web's
+            // `findEvent()`) — so for any organizer-created real event
+            // (an id that can never match a demo catalogue key), it
+            // silently resolved to the FIRST demo event's own photo, which
+            // is exactly the "wrong event's cover photo on the map"
+            // real-device report. Fixed by resolving each REAL event's own
+            // `cover_image` (falling back to its first `event_photos` row,
+            // same as web's `resolveCoverUrl`/`firstPhotoUrlByEvent`) here,
+            // once per load, so the view layer never needs the static
+            // catalogue at all for a real event's photo.
+            let realIds = rows.filter { EventCatalog.find($0.id)?.key != $0.id }.map(\.id)
+            // Map v6 pager: every row's photos (catalogue events too, their live rows have photos like any other);
+            // the cover fallback below stays real-events-only.
+            let lists = await photoURLsByEvent(rows.map(\.id))
+            var urls = lists.filter { realIds.contains($0.key) }.compactMapValues(\.first)
+            var galleries: [String: [URL]] = [:]
+            for row in rows {
+                let cover = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref)
+                if let cover { urls[row.id] = cover }
+                let g = Self.gallery(cover: urls[row.id], photos: lists[row.id] ?? [])
+                if !g.isEmpty { galleries[row.id] = g }
+            }
+            mapEventCoverURLs = urls
+            #if DEBUG
+            // `-uiFixture shell.map`: live rows, but every event gets a few bundled photos so the Large cards' pager
+            // can be tested (note 74).
+            if UITestFixture.isActive { galleries = UITestFixture.paddedGalleries(rows.map(\.id), galleries) }
+            #endif
+            mapEventPhotoURLs = galleries
+        } catch {
+            print("Failed to load map events:", error)
+            guard generation == mapEventsGeneration else { return }
+            mapEventsLoadFailed = true
+        }
+        mapEventsLoading = false
+    }
+
+    // MARK: - Organizer mode
+
+    // TASK B (2026-10-03 fix pass) — the actual toggle target is the
+    // CURRENT preference (organizerMode), never eligibility (canHost) —
+    // see applyOrganizerMode's own doc comment for why using canHost here
+    // was the root cause of "organizer mode appears on by default and
+    // cannot be turned off."
+    func toggleOrganizerMode() {
+        guard isSignedIn else { return requireAuth(returnTo: .profile, backTo: .profile) }
+        // TASK 2 (2026-10-05 fix pass) — a real device's slower tap
+        // recognition made a double-tap on this button a genuine way to
+        // fire two overlapping RPC calls: both read the SAME stale
+        // `organizerMode` (the first call's optimistic flip hadn't landed
+        // yet when the second tap's target was computed), so both requests
+        // carried the identical `p_enabled` value, and whichever response
+        // arrived second could stomp the first's rollback/success state
+        // with its own — occasionally landing on the rolled-back branch
+        // and surfacing "Vui lòng thử lại" even though the FIRST call had
+        // already succeeded. `organizerModeBusy` (mirrored on the switch's
+        // own `.disabled` below) makes a second tap while one is in flight
+        // a no-op instead of a second request — `organizerModeInFlight`
+        // (checked again, synchronously, inside `applyOrganizerMode`
+        // itself) is the actual atomic guard; this check just avoids
+        // spawning a pointless extra `Task` in the common case.
+        guard !organizerModeBusy, !organizerModeInFlight else { return }
+        let target = !organizerMode
+        Task { await applyOrganizerMode(target) }
+    }
+
+    /// `hasHosted` is a real, independently re-derived FACT ("does this
+    /// account genuinely own an organizer row") — re-queried on every
+    /// session sync regardless of this toggle (applySession()'s own
+    /// `organizers` lookup), so clearing it here used to just get
+    /// overwritten back to `true` on the very next resync anyway. Combined
+    /// with toggleOrganizerMode() targeting `!canHost` instead of
+    /// `!organizerMode`, a real host with `hasHosted == true` could never
+    /// toggle organizerMode back to `true` once it was `false` — `canHost`
+    /// stays `true` forever (hasHosted alone makes it true), so `!canHost`
+    /// was always `false`, and every tap just re-applied "off" to an
+    /// already-off preference. Fixed: this never touches `hasHosted` at
+    /// all — that field means "eligible to host," permanently true once
+    /// real, and organizerMode is a completely separate, freely-togglable
+    /// preference on top of it.
+    @discardableResult
+    func applyOrganizerMode(_ enabled: Bool) async -> Bool {
+        // Account regression fix pass (2026-09-27), Item 3 — this used to
+        // `return` here unconditionally for an admin, before ever calling
+        // the RPC: no request, no error, just nothing happening — "the
+        // switch looks stuck." Fixed at the root (set_organizer_mode,
+        // migration 103, now writes a SEPARATE organizer_mode_enabled
+        // column for an admin rather than refusing to touch anything), so
+        // an admin now goes through the exact same call below as everyone
+        // else; only the optimistic `accountType` write differs (never
+        // flips an admin away from "admin").
+        // TASK 2 (2026-10-05 fix pass) / BUG 1 (2026-10-07 fix pass) — the
+        // actual re-entrancy guard against a second tap racing an in-flight
+        // call is `organizerModeInFlight` (a plain, non-`@Published` var —
+        // see its own doc comment on AppState.swift), checked and set
+        // SYNCHRONOUSLY, before any `await`, so the check-and-set is
+        // atomic on the MainActor with no window for a second call to slip
+        // through. The `@Published organizerModeBusy` UI flag below is a
+        // separate concern (disabling the switch) and is deliberately set
+        // only AFTER yielding — see that yield's own comment.
+        guard !organizerModeInFlight else { return false }
+        organizerModeInFlight = true
+        defer { organizerModeInFlight = false }
+        #if DEBUG
+        // UI-test fixtures have no session: the switch succeeds locally (no RPC, no first-activation setup sheet).
+        if UITestFixture.isActive {
+            await Task.yield()
+            let before = organizerMode
+            withAnimation(.easeInOut(duration: 0.2)) {
+                organizerMode = enabled
+                mode = enabled ? "host" : "goer"
+                homeView = HomeMode.viewAfterSync(prevOrganizerMode: before, prevHomeView: homeView, organizerMode: enabled)
+            }
+            return true
+        }
+        #endif
+
+        // BUG 1 (2026-10-07 fix pass) — root cause of "one tap produces
+        // many 'Publishing changes from within view updates' warnings":
+        // `toggleOrganizerMode()` calls this from `Task { await
+        // applyOrganizerMode(target) }`, spawned directly inside the
+        // switch's Button action. An unstructured `Task` created from a
+        // synchronous SwiftUI action closure is NOT guaranteed to start on
+        // a fresh run-loop turn — its body can (and, per real-device
+        // reports, does) begin running before the CURRENT view-update
+        // transaction the button tap itself is part of has finished
+        // committing. Every one of the five `@Published` writes just below
+        // (`organizerModeBusy`, `organizerMode`, `accountType`, `mode`,
+        // `organizerModeError`) landing inside that still-open transaction
+        // fires its own copy of the warning — five writes, five warnings
+        // from one tap, matching the report exactly. `Task.yield()` — a
+        // genuine cooperative-scheduling suspension point, not an
+        // arbitrary delay — guarantees every mutation below actually runs
+        // on its OWN, later run-loop turn, unambiguously outside whatever
+        // transaction the triggering tap was part of.
+        await Task.yield()
+
+        organizerModeBusy = true
+        defer { organizerModeBusy = false }
+
+        let rollbackMode = organizerMode
+        let rollbackType = accountType
+        let wasAdmin = accountType == "admin"
+        #if DEBUG
+        print("[organizerMode] WRITE source=toggle-optimistic old=\(rollbackMode) new=\(enabled)")
+        #endif
+        // BUG (2026-10-08 fix pass) — item 5: the LazyVStack sections
+        // gated on `organizerMode` (Account's hosting-management list, the
+        // story-post menu, DockRow's own "+" button) used to insert/remove
+        // with no animation of their own, so this optimistic flip snapped
+        // the layout instantly. Wrapping the mutation itself in
+        // `withAnimation` — the same "animate at the state-mutation site"
+        // convention `BottomTabBarOverlay`'s `dockVisible`/
+        // `DockChrome.collapsed` already use in this codebase, not a new,
+        // second mechanism — lets `ScreenScaffold`'s existing
+        // `scrollPositionID` anchor (AccountView's own
+        // `$app.accountScrollAnchorID`) track the reflow smoothly instead
+        // of snapping, which is what read as a "jerk" whenever this value
+        // changed twice in quick succession (see the flip-back fix below —
+        // this animation helps even a single, correct transition).
+        withAnimation(.easeInOut(duration: 0.2)) {
+            organizerMode = enabled
+            accountType = wasAdmin ? "admin" : (enabled ? "organizer" : "participant")
+            mode = enabled ? "host" : "goer"
+        }
+        organizerModeError = ""
+
+        // BUG 2 (2026-10-06 fix pass) — full request/response trace, dev
+        // console only, never the access token itself (just whether a
+        // session exists) or any personal data — this ticket's own
+        // explicit ask for "auth session, RPC name and parameters,
+        // PostgREST/SQL code/message, returned business code."
+        #if DEBUG
+        let session = try? await SupabaseService.client.auth.session
+        print("[organizerMode] request — hasSession=\(session != nil) expiresAt=\(session.map { String($0.expiresAt) } ?? "nil") rpc=set_organizer_mode params=[p_enabled: \(enabled)]")
+        #endif
+
+        do {
+            // set_organizer_mode (migration 103) now returns jsonb
+            // {role, organizer_mode} instead of a bare role string — the
+            // only way to represent "still admin, but host UI now off."
+            struct SetOrganizerModeResult: Decodable { let role: String; let organizerMode: Bool
+                enum CodingKeys: String, CodingKey { case role, organizerMode = "organizer_mode" }
+            }
+            let result: SetOrganizerModeResult = try await SupabaseService.client
+                .rpc("set_organizer_mode", params: ["p_enabled": enabled])
+                .execute().value
+            #if DEBUG
+            print("[organizerMode] response — role=\(result.role) organizer_mode=\(result.organizerMode)")
+            #endif
+            let confirmed = result.organizerMode
+            #if DEBUG
+            print("[organizerMode] WRITE source=toggle-rpc-success old=\(enabled) new=\(confirmed) role=\(result.role)")
+            #endif
+            withAnimation(.easeInOut(duration: 0.2)) {
+                accountType = result.role
+                organizerMode = confirmed
+                // Account extension (2026-09-27, Stage 1) — "back
+                // navigation if user turns OFF while inside an organizer
+                // screen": the Tổ chức tab and every host-only management
+                // screen disappear the instant this lands `confirmed ==
+                // false`, so a user sitting inside one (or on Account's own
+                // Tổ chức tab) needs a real landing spot — Cá nhân is
+                // always visible. `hasHosted`/eligibility is untouched;
+                // this only ever redirects.
+                if !confirmed {
+                    if Self.hostOnlyScreens.contains(screen) { screen = .profile }
+                    if accountTab == "host" { accountTab = "personal" }
+                } else if !rollbackMode {
+                    // Note 69: turning Hosting on puts Account on the Host tab (first, selected by default).
+                    accountTab = "host"
+                    accountScrollAnchorIDByTab["host"] = nil
+                    accountScrollOffsetByTab["host"] = nil
+                }
+                // Simple Shell: off (from any source) puts Home back on Going out, so a cancelled host setup re-locks
+                // the Hosting segment; turning on lands Home on Hosting (Lib/HomeMode.swift).
+                homeView = HomeMode.viewAfterSync(prevOrganizerMode: rollbackMode, prevHomeView: homeView, organizerMode: confirmed)
+            }
+            // First activation: a returning host who already has a photo, or one who finished/skipped
+            // setup before, never sees the setup sheet again.
+            if confirmed, myOrganizerAvatarPath.isEmpty, !hostSetupResolved { hostSetupOpen = true }
+            if confirmed, !hostSetupOpen { await ensureOrganizerIfNeeded(modeSettled: true) }
+            return confirmed == enabled
+        } catch {
+            // Rolling back in silence is what makes the switch look like it
+            // "turns itself back off" — always say why it went back.
+            #if DEBUG
+            print("[organizerMode] WRITE source=toggle-rpc-rollback old=\(enabled) new=\(rollbackMode)")
+            #endif
+            withAnimation(.easeInOut(duration: 0.2)) {
+                organizerMode = rollbackMode
+                accountType = rollbackType
+                mode = rollbackMode ? "host" : "goer"
+            }
+            // TASK 2 (2026-10-05 fix pass) — this catch block used to log
+            // NOTHING at all, unlike its web equivalent's `console.warn`.
+            // On a real device there was never any way to see WHICH failure
+            // this generic string was covering (an expired session, an RLS
+            // rejection, a genuine network drop, …) — the exact gap this
+            // ticket's own "record the actual error code/message" ask is
+            // about. Dev-build console only; never logs the JWT/session
+            // itself, only the structured DB error PostgrestError already
+            // exposes (code/message/detail), same fields
+            // describeProofUploadError (AppState+Payments.swift) already
+            // treats as safe to print.
+            let code = (error as? PostgrestError)?.code
+            let detail = (error as? PostgrestError)?.message ?? error.localizedDescription
+            #if DEBUG
+            print("[organizerMode] set_organizer_mode(\(enabled)) failed — code=\(code ?? "nil") message=\(detail)")
+            #endif
+            // PGRST301/401-shaped codes mean the access token the RPC ran
+            // under had already expired — a known, actionable cause (stale
+            // session after the app sat backgrounded), distinct from a
+            // genuine server rejection. Everything else still gets the
+            // generic string: this file has never observed another DB error
+            // code from this specific RPC, so claiming a more specific cause
+            // for those would be a guess, not a proven root cause.
+            if code == "PGRST301" || code == "401" {
+                organizerModeError = T(
+                    "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại rồi thử lại.",
+                    "Your session has expired. Please sign in again and retry."
+                )
+            } else {
+                organizerModeError = T(
+                    "Không thể đổi chế độ tổ chức lúc này. Vui lòng thử lại.",
+                    "We could not change organizer mode right now. Please try again."
+                )
+            }
+            return false
+        }
+    }
+
+    // MARK: - Start hosting (Simple Shell follow-up, plan items 1 + 4)
+
+    enum StartHostingLanding { case home }
+
+    /// One entry point for "start hosting" (Home's locked Hosting segment, the dock "+" > Host an event, Account's
+    /// Start hosting). Guest: the sign-in prompt first (the invitation opens after sign-in if organizer mode is still
+    /// off). Organizer mode off: the Start hosting invitation; its primary action calls `confirmStartHosting`.
+    /// Already on: land on Home > Hosting at the top. Web twin: BanBeContext `startHosting({ land: 'home' })`.
+    func startHosting(land: StartHostingLanding = .home) {
+        switch HomeMode.startHostingStep(signedIn: isSignedIn, organizerMode: organizerMode) {
+        case .signIn: promptSignIn(.host, resume: .startHosting)
+        case .invite: startHostingInviteOpen = true
+        case .land: landOnHostHome()
+        }
+    }
+
+    /// The invitation's primary action, run from the sheet's `onDismiss` (RootView) so the first-activation
+    /// HostSetupView never opens under a sheet that is still closing. Lands only when the server said yes; on a
+    /// failure `organizerModeError` keeps today's message and nothing navigates.
+    func confirmStartHosting() async {
+        guard isSignedIn else { return }
+        if !organizerMode {
+            guard await applyOrganizerMode(true), organizerMode else {
+                // Failed: the invitation comes back with today's error message (organizerModeError); nothing navigates.
+                if !organizerModeError.isEmpty { startHostingInviteOpen = true }
+                return
+            }
+        }
+        landOnHostHome()
+    }
+
+    private func landOnHostHome() {
+        homeView = .host
+        HomeMode.stored = .host
+        searchOverlayOpen = false
+        notificationsOverlayOpen = false
+        screen = .home
+        resetHomeScrollToTop()
+    }
+
+    // MARK: - Display name
+
+    /// Reserve's Name field, only for a guest whose profiles.display_name
+    /// is still empty (e.g. an OAuth sign-in whose provider never supplied
+    /// one) — a real write via the same rename_display_name() RPC
+    /// saveDisplayName() uses, not a value that goes nowhere. Deliberately
+    /// does NOT navigate away (unlike saveDisplayName, which returns to
+    /// .profile) or send the name_change notification (unlike a real
+    /// rename, this is a brand-new guest's first-ever name — there's no
+    /// prior organizer relationship yet to notify, and no "old name" to
+    /// report). 01-hold-payment.md's 2026-09-17 follow-up #6.
+    @discardableResult
+    func setNameAtHold(_ name: String) async -> Bool {
+        let newName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !newName.isEmpty else { return false }
+        reserveNameSaving = true
+        reserveNameError = ""
+        do {
+            _ = try await SupabaseService.client
+                .rpc("rename_display_name", params: ["p_new_name": newName])
+                .execute()
+            reserveNameSaving = false
+            user?.displayName = newName
+            formName = newName
+            return true
+        } catch {
+            reserveNameSaving = false
+            reserveNameError = T("Không thể lưu tên lúc này. Vui lòng thử lại.", "Could not save your name right now. Please try again.")
+            return false
+        }
+    }
+
+    // TASK 4 (Reserve→edit-name pass) — captures the CALLER's screen (e.g.
+    // `.reserve`, still holding its own event id/qty/hold state — none of
+    // that is touched by this flow, it's global `AppState`) so save/back
+    // return to wherever this was actually opened from, not always
+    // `.profile`. `AccountView`'s own "Đổi tên" entry still returns to
+    // Account because `screen` there IS `.profile` when this runs.
+    func goEditName() {
+        editNameReturnScreen = screen
+        editNameValue = user?.displayName ?? ""
+        editNameError = ""
+        screen = .editName
+    }
+
+    func saveDisplayName() async {
+        let newName = editNameValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !newName.isEmpty else {
+            editNameError = T("Hãy nhập tên hiển thị.", "Please enter a display name.")
+            return
+        }
+        if newName == user?.displayName { screen = editNameReturnScreen; return }
+        editNameSaving = true
+        editNameError = ""
+        let oldName = user?.displayName ?? ""
+        do {
+            _ = try await SupabaseService.client
+                .rpc("rename_display_name", params: ["p_new_name": newName])
+                .execute()
+            editNameSaving = false
+            user?.displayName = newName
+            screen = editNameReturnScreen
+            // The in-app notifications are written by the RPC itself; this
+            // only dispatches the email side, which re-derives its own
+            // recipients server-side.
+            await AuthAPIService.notify(
+                path: "/api/notify",
+                body: ["type": "name_change", "oldName": oldName, "newName": newName]
+            )
+        } catch {
+            editNameSaving = false
+            editNameError = T(
+                "Không thể đổi tên lúc này. Vui lòng thử lại.",
+                "We could not change your name right now. Please try again."
+            )
+        }
+    }
+
+    // MARK: - Notifications
+
+    /// Notifications is no longer a dock tab (Schedule took its slot, note 44),
+    /// so it is a pushed screen that returns where it was opened from.
+    func goNotifications(back: Screen? = nil) {
+        // From Home: slide in over the live Home instead of switching screens.
+        if screen == .home {
+            notificationsBack = .home
+            notificationsBurstPending = true
+            notificationsOverlayOpen = true   // NotificationsView animates its own burst out of the bell
+            Task { await loadNotifications() }
+            return
+        }
+        if screen != .notifications { notificationsBack = back ?? screen }
+        screen = .notifications
+        Task { await loadNotifications() }
+    }
+
+    func loadNotifications() async {
+        guard let uid = userID else { notifications = []; return }
+        do {
+            let rows: [AppNotification] = try await SupabaseService.client
+                .from("notifications").select()
+                .eq("recipient_id", value: uid)
+                .order("created_at", ascending: false)
+                .limit(50)
+                .execute().value
+            // Filtered client-side, not queried server-side —
+            // mutedNotificationKinds (062) exists purely for this, no
+            // insert-side RPC change (BUG 4).
+            let filtered = rows.filter { !mutedNotificationKinds.contains($0.kind) }
+            let maps = await loadNotificationAvatarMaps(for: filtered)
+            // 2026-09-19 follow-up: proactively prune notifications whose
+            // target has genuinely been deleted — the same check
+            // openNotification() does reactively on tap, run once here so
+            // a stale row never has to be tapped at all to disappear.
+            // `maps.bookingById`/`maps.liveDocumentIds` are already fetched
+            // for avatars, reused here for free. Only these two kinds get a
+            // MUST-HAVE-A-LIVE-TARGET check — their own RLS can't
+            // spuriously deny the row to its own recipient (see
+            // openBookingConfirmed()'s/openDocumentFromNotification()'s own
+            // comments), so a genuine miss always means real deletion.
+            // Every other kind is either a list-level navigation (a
+            // missing single booking just means it doesn't show up there,
+            // not "tap does nothing") or has no cheap, reliable existence
+            // check available — see 07-notifications.md for the specific
+            // reasoning per skipped kind.
+            var staleIDs: [UUID] = []
+            let liveRows = filtered.filter { n in
+                switch n.kind {
+                case "payment_document_uploaded", "payment_document_replaced", "payment_document_expiring_1d":
+                    guard let docID = n.data["document_id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return true }
+                    if maps.liveDocumentIds.contains(docID) { return true }
+                    staleIDs.append(n.id); return false
+                case "payment_confirmed", "hold_created", "dispute_message", "receipt_requested",
+                     "checked_in", "checkin_undone", "dispute_resolved", "payment_disputed", "payment_needs_info":
+                    // TASK 1 (2026-09-22 nineteenth follow-up) — the full
+                    // kind -> outcome table (07-notifications.md has the
+                    // authoritative version): every kind here references
+                    // booking_id and has no destination of its own beyond
+                    // an already-loaded screen, so the SAME existence check
+                    // covers all of them.
+                    // BUG 1 (2026-09-22 eighteenth follow-up) — real device
+                    // report directed extending this to receipt_requested
+                    // too, overriding the prior pass's own "deliberately
+                    // skipped, routes to a list" reasoning — see web
+                    // BanBeContext.jsx's own comment on this same extension.
+                    // TASK 1 (2026-09-22 seventeenth follow-up) — hold_created/
+                    // dispute_message extended onto the SAME check
+                    // payment_confirmed already used: both reference
+                    // booking_id, and `maps.bookingById` already fetches
+                    // every notification's booking_id in this batch
+                    // regardless of kind (loadNotificationAvatarMaps above),
+                    // so this is free — no extra query. RLS safety: a guest
+                    // is always their own booking's recipient (bookings_select_guest,
+                    // auth.uid() = user_id); an organizer-recipient dispute_message
+                    // references a booking on their OWN event, which this
+                    // same batched query already successfully resolves for
+                    // the avatar feature today — a genuine miss means the
+                    // row is really gone, not an RLS false negative.
+                    guard let bookingID = n.data["booking_id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return true }
+                    if maps.bookingById[bookingID] != nil { return true }
+                    staleIDs.append(n.id); return false
+                case "refund_marked_sent", "refund_confirmed", "refund_disputed", "refund_overdue":
+                    // Flow 2 — refund_claims is never hard-deleted anywhere
+                    // in this codebase (defensive coverage, same reasoning
+                    // as the booking_id-keyed kinds above), checked by
+                    // claim_id via maps.liveRefundClaimIds.
+                    guard let claimID = n.data["claim_id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return true }
+                    if maps.liveRefundClaimIds.contains(claimID) { return true }
+                    staleIDs.append(n.id); return false
+                default:
+                    return true
+                }
+            }
+            if !staleIDs.isEmpty {
+                Task {
+                    do {
+                        try await SupabaseService.client.from("notifications")
+                            .delete().in("id", values: staleIDs.map(\.uuidString)).execute()
+                    } catch {
+                        print("Failed to prune stale notifications:", error)
+                    }
+                }
+            }
+            notifications = liveRows
+            notificationAvatarMaps = maps
+        } catch {
+            print("Failed to load notifications:", error)
+        }
+    }
+
+    /// Instagram-style avatars (07-notifications.md's 2026-09-18
+    /// follow-up): notifications has no actor/avatar column of its own, so
+    /// this batches the two joins avatarSource(for:maps:accountType:)
+    /// (Lib/NotificationPresentation.swift) needs — bookings (for its
+    /// event_id/user_id) and, from there, event_photos' cover image /
+    /// profiles.avatar_url — instead of a query per row.
+    private func loadNotificationAvatarMaps(for rows: [AppNotification]) async -> NotificationAvatarMaps {
+        var maps = NotificationAvatarMaps()
+        let bookingIDs = Set(rows.compactMap { $0.data["booking_id"]?.stringValue.flatMap(UUID.init(uuidString:)) })
+        do {
+            if !bookingIDs.isEmpty {
+                let bookings: [NotificationBookingRow] = try await SupabaseService.client
+                    .from("bookings").select("id, event_id, user_id")
+                    .in("id", values: bookingIDs.map(\.uuidString))
+                    .execute().value
+                for b in bookings { maps.bookingById[b.id] = (eventId: b.eventId, userId: b.userId) }
+            }
+            var eventIDs = Set(rows.compactMap { $0.data["event_id"]?.stringValue })
+            eventIDs.formUnion(maps.bookingById.values.map(\.eventId))
+            if !eventIDs.isEmpty {
+                // event_photos.storage_path lives in the PUBLIC
+                // 'event-photos' bucket (005) — getPublicURL() is a local
+                // URL-builder, not a network call, so this is cheap even
+                // though it runs once per resolved event.
+                // 2026-09-18 follow-up (BUG 1): confirmed live that
+                // migration 010's seed rows store storage_path WITH the
+                // bucket name already baked in
+                // ('event-photos/evt_001/cover.jpg') — unlike every other
+                // storage_path/proof_path/file_path column in this schema,
+                // which are bucket-RELATIVE. Passed as-is to
+                // getPublicURL(), this doubles the bucket segment, a broken
+                // URL. Stripped defensively so either convention resolves.
+                let photos: [EventPhotoRow] = try await MediaColumns.retrying { withR2 in
+                    try await SupabaseService.client
+                    .from("event_photos").select(MediaColumns.cols("event_id, storage_path, sort_order", "r2_ref", withR2))
+                    .in("event_id", values: Array(eventIDs))
+                    .order("sort_order", ascending: true)
+                    .execute().value }
+                // Strict invite-only events (migration 113) — a
+                // notification thumbnail can legitimately belong to an
+                // invite-only event (e.g. the recipient's own booking
+                // confirmation), so this must resolve through the same
+                // async/private-bucket-aware helper, not a bare
+                // getPublicURL() that would silently 403 on it.
+                for p in photos where maps.eventPhotoByEventId[p.eventId] == nil {
+                    if let url = await resolveEventPhotoURL(p.storagePath, r2Ref: p.r2Ref, variant: .thumb) {
+                        maps.eventPhotoByEventId[p.eventId] = url
+                    }
+                }
+            }
+            let guestUserIDs = Set(maps.bookingById.values.compactMap(\.userId))
+            if !guestUserIDs.isEmpty {
+                // profiles.avatar_url is stored as a full external URL
+                // already (seed data confirms this — not a storage path),
+                // so no signing/join step beyond this one query.
+                let profiles: [ProfileAvatarRow] = try await SupabaseService.client
+                    .from("profiles").select("id, avatar_url")
+                    .in("id", values: guestUserIDs.map(\.uuidString))
+                    .execute().value
+                for p in profiles {
+                    if let avatarURL = p.avatarUrl, let url = URL(string: avatarURL) {
+                        maps.avatarByUserId[p.id] = url
+                    }
+                }
+            }
+            // 2026-09-19 follow-up: payment_documents wasn't previously
+            // fetched at all for this batch (only used for avatars/photos
+            // above) — a small new query, existence only, so
+            // loadNotifications() can prune a payment_document_uploaded/
+            // _replaced notification whose target row is genuinely gone
+            // (the purge cron, or a manual cleanup) without a second round
+            // trip on top of this one.
+            // TASK 1 (2026-09-22 nineteenth follow-up) — payment_document_expiring_1d
+            // also references document_id; same batched existence check.
+            let documentIDs = Set(rows.filter {
+                $0.kind == "payment_document_uploaded" || $0.kind == "payment_document_replaced" || $0.kind == "payment_document_expiring_1d"
+            }.compactMap { $0.data["document_id"]?.stringValue.flatMap(UUID.init(uuidString:)) })
+            if !documentIDs.isEmpty {
+                let docs: [UUIDRow] = try await SupabaseService.client
+                    .from("payment_documents").select("id")
+                    .in("id", values: documentIDs.map(\.uuidString))
+                    .execute().value
+                maps.liveDocumentIds = Set(docs.map(\.id))
+            }
+            // Flow 2 — same existence-only batch, for claim_id.
+            let claimIDs = Set(rows.filter {
+                $0.kind == "refund_marked_sent" || $0.kind == "refund_confirmed"
+                    || $0.kind == "refund_disputed" || $0.kind == "refund_overdue"
+            }.compactMap { $0.data["claim_id"]?.stringValue.flatMap(UUID.init(uuidString:)) })
+            if !claimIDs.isEmpty {
+                let claims: [UUIDRow] = try await SupabaseService.client
+                    .from("refund_claims").select("id")
+                    .in("id", values: claimIDs.map(\.uuidString))
+                    .execute().value
+                maps.liveRefundClaimIds = Set(claims.map(\.id))
+            }
+            // iPhone fix pass (2026-09-27), Issue 1 — real organizer avatar
+            // for organizer_invite/organizer_invite_response, when it
+            // resolves; `teamNotificationKinds`'s own fallback (a people
+            // glyph, not the generic bell) covers every other case.
+            let organizerIDs = Set(rows.filter {
+                $0.kind == "organizer_invite" || $0.kind == "organizer_invite_response"
+            }.compactMap { $0.data["organizer_id"]?.stringValue })
+            if !organizerIDs.isEmpty {
+                let organizers: [OrganizerAvatarRow] = try await MediaColumns.retrying { withR2 in
+                    try await SupabaseService.client
+                    .from("organizers").select(MediaColumns.cols("id, avatar_path", "avatar_r2_ref", withR2))
+                    .in("id", values: Array(organizerIDs))
+                    .execute().value }
+                for o in organizers {
+                    guard let url = MediaURLs.organizerAvatar(path: o.avatarPath, r2Ref: o.avatarR2Ref, variant: .thumb)
+                    else { continue }
+                    maps.organizerAvatarByOrganizerId[o.id] = url
+                }
+            }
+        } catch {
+            print("loadNotificationAvatarMaps failed:", error)
+        }
+        return maps
+    }
+
+    /// Refetches on a 5s poll (mirrors BanBeContext.jsx's own poll — no
+    /// realtime subscription anywhere in this app, see
+    /// .claude/notes/03-dispute-chat.md) and pushes a toast for any row
+    /// created after this task started that hasn't been toasted yet.
+    /// `sessionStart` is captured before the first request goes out, not
+    /// derived from what that first request happens to return — a row
+    /// inserted while it's still in flight has to toast, since the person
+    /// genuinely hasn't seen it; diffing against "whatever came back last
+    /// time" instead would silently swallow exactly that row (present on
+    /// the very first poll, so treated as already-seen, never toasted).
+    /// Started from applySession() on sign-in, stopped on sign-out.
+    func startNotificationPolling() {
+        notificationPollTask?.cancel()
+        let sessionStart = Date()
+        var toastedIDs = Set<UUID>()
+        var pollTick = 0
+        notificationPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, let uid = self.userID else { return }
+                do {
+                    let fetched: [AppNotification] = try await SupabaseService.client
+                        .from("notifications").select()
+                        .eq("recipient_id", value: uid)
+                        .order("created_at", ascending: false)
+                        .limit(50)
+                        .execute().value
+                    // Filtered client-side, not queried server-side —
+                    // mutedNotificationKinds (062) exists purely for this,
+                    // so a muted kind neither shows in the list nor toasts
+                    // (BUG 4).
+                    let rows = fetched.filter { !self.mutedNotificationKinds.contains($0.kind) }
+                    var attendingStale = false
+                    // reject_pending_guest() ('booking_declined') and
+                    // cancel_booking() ('booking_cancelled') are separate
+                    // RPCs, different notification kinds — but both mean the
+                    // same thing here: a booking that may already be sitting
+                    // in attending/tickets (the "Going" tag) or in `booking`
+                    // (EventDetailView's own ticket/reserve bar) just
+                    // stopped being real. Treated as one shared category
+                    // rather than hardcoding just the one kind each fix was
+                    // originally written for.
+                    let cancellationKinds: Set<String> = ["booking_declined", "booking_cancelled"]
+                    for row in rows where !toastedIDs.contains(row.id) && row.createdAt > sessionStart {
+                        toastedIDs.insert(row.id)
+                        self.pushToast(row)
+                        // Nothing else refreshes attending/tickets outside
+                        // loadMyEvents()'s own sign-in/goGoingList()
+                        // triggers (80423dd). This poll already runs every
+                        // 5s regardless of whether the toast is tapped, so
+                        // it's the one place that can catch this without a
+                        // real realtime subscription (none exist anywhere
+                        // in this app).
+                        if cancellationKinds.contains(row.kind) {
+                            attendingStale = true
+                            // EventDetailView's own ticket/reserve bar reads
+                            // straight off the single top-level `booking`
+                            // object (whichever was last loaded into it),
+                            // not a fresh per-event query — no poll/appear
+                            // effect of its own. If that's the exact
+                            // booking that just got declined/cancelled,
+                            // patch it in place so the bar flips
+                            // immediately on the next render.
+                            if let bookingIDString = row.data["booking_id"]?.stringValue,
+                               let bookingID = UUID(uuidString: bookingIDString),
+                               self.booking?.id == bookingID {
+                                self.booking?.status = "cancelled"
+                            }
+                            // 2026-10-02 fix — same reasoning, for isGoing()'s
+                            // own source: a HOST-initiated cancel/decline
+                            // (this poll's only way to learn about it, since
+                            // it never goes through this guest's own
+                            // submitReason() patch) left paymentBookings
+                            // stale until some unrelated screen happened to
+                            // reload it. Patched in place here too, the one
+                            // place every cancellation source already
+                            // converges regardless of who initiated it.
+                            if let bookingIDString = row.data["booking_id"]?.stringValue,
+                               let bookingID = UUID(uuidString: bookingIDString),
+                               let idx = self.paymentBookings.firstIndex(where: { $0.id == bookingID }) {
+                                self.paymentBookingsSeq += 1
+                                self.paymentBookings[idx].status = "cancelled"
+                            }
+                        }
+                        // Admin Team pass (2026-10-02, migration 121) —
+                        // revoke_admin()'s own doc comment: "revocation
+                        // must invalidate admin access, not merely hide a
+                        // tab until next login." Same proactive, not
+                        // tap-gated pattern as the cancellation kinds
+                        // above — this poll already runs every 5s
+                        // regardless of whether the toast is tapped.
+                        if row.kind == "admin_invite" {
+                            await self.loadMyAdminInvite()
+                        }
+                        // The invitee answered: refresh the sender's roster/invites.
+                        if ["admin_invite_response", "admin_removal_vote", "admin_removal_vote_result"].contains(row.kind), self.canManageAdmins {
+                            await self.loadAdminTeam()
+                        }
+                        if row.kind == "admin_access_revoked" {
+                            self.accountType = "participant"
+                            self.canManageAdmins = false
+                            if self.accountTab == "admin" { self.accountTab = "personal" }
+                        }
+                    }
+                    self.notifications = rows
+                    if attendingStale { await self.loadMyEvents() }
+                } catch {
+                    print("Notification poll failed:", error)
+                }
+                await self.refreshUnreadMessageCount()
+                // About every 30s: re-read the host's own event statuses so the badge for
+                // "submitted events" drops/rises when Banbe approves or sends one back.
+                pollTick += 1
+                if pollTick % 6 == 0, self.organizerMode, !self.myOrgEventKeys.isEmpty { await self.loadMyOrgEventSummaries() }
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+            }
+        }
+    }
+
+    func stopNotificationPolling() {
+        notificationPollTask?.cancel()
+        notificationPollTask = nil
+    }
+
+    /// Inbox tab badge (BottomTabBar.swift) — number of CONVERSATIONS with
+    /// at least one unread message (`read_at IS NULL`, `sender_id` isn't
+    /// me), across every thread I'm a participant in either as the guest
+    /// (`threads.guest_id`) or as the organizer (`threads.organizer_id`
+    /// owned by me) — the exact same thread-scoping loadInboxThreads()
+    /// already uses, reused rather than invented fresh. Piggybacks on
+    /// startNotificationPolling()'s existing 5s loop rather than its own
+    /// timer, since this app has no realtime subscription anywhere to hook
+    /// into instead (03-dispute-chat.md).
+    ///
+    /// 2026-09-21 follow-up: counts distinct threads, not raw unread
+    /// message rows — a thread with 5 unread messages counts once, matching
+    /// most messaging apps' own convention and BottomTabBar.swift's new
+    /// uncapped display for this badge (see its own comment).
+    func refreshUnreadMessageCount() async {
+        guard let uid = userID else { unreadMessages = 0; return }
+        // BUG 1 (2026-09-22 fourteenth/fifteenth follow-up) — see
+        // AppState.swift's own comments on lastReadWriteAt/
+        // unreadCountGeneration.
+        let requestStartedAt = Date()
+        unreadCountGeneration += 1
+        let myGeneration = unreadCountGeneration
+        do {
+            let asGuest: [UUIDRow] = try await SupabaseService.client
+                .from("threads").select("id")
+                .eq("guest_id", value: uid)
+                .execute().value
+
+            let myOrgs: [IDRow] = try await SupabaseService.client
+                .from("organizers").select("id")
+                .or("owner_id.eq.\(uid.uuidString),user_id.eq.\(uid.uuidString)")
+                .execute().value
+
+            var asHost: [UUIDRow] = []
+            if !myOrgs.isEmpty {
+                asHost = try await SupabaseService.client
+                    .from("threads").select("id")
+                    .in("organizer_id", values: myOrgs.map(\.id))
+                    .execute().value
+            }
+
+            let threadIDs = Array(Set((asGuest + asHost).map(\.id)))
+            guard myGeneration == unreadCountGeneration else { return }
+            guard !threadIDs.isEmpty else { unreadMessages = 0; return }
+
+            // BUG (2026-09-22 sixteenth follow-up) — real root cause,
+            // confirmed against real production data: `.neq("sender_id",
+            // ...)` compiles to SQL `sender_id <> uid`, which is NULL-unsafe
+            // — a system message row (sender_id IS NULL, e.g. "Dispute
+            // resolved"/"Confirmation email sent") is silently EXCLUDED by
+            // that predicate, not included. Using `.or(...)` so a NULL
+            // sender_id (system message) counts as unread here too, exactly
+            // like `sender_id != uid` already does client-side (Swift's
+            // `Optional != T` is NULL-safe, unlike SQL's `<>`).
+            let unreadRows: [MessageThreadIDRow] = try await SupabaseService.client
+                .from("messages")
+                .select("thread_id")
+                .in("thread_id", values: threadIDs.map(\.uuidString))
+                .is("read_at", value: nil)
+                .or("sender_id.is.null,sender_id.neq.\(uid.uuidString)")
+                .execute().value
+            guard myGeneration == unreadCountGeneration, requestStartedAt >= lastReadWriteAt else { return }
+            unreadMessages = Set(unreadRows.map(\.threadId)).count
+        } catch {
+            if error is CancellationError || Task.isCancelled { return }
+            print("refreshUnreadMessageCount failed:", error)
+        }
+    }
+
+    /// Marks one notification read — never all at once, and never merely
+    /// from opening the list; read status has to follow an actual tap.
+    func markNotificationRead(_ notification: AppNotification) async {
+        guard notification.readAt == nil else { return }
+        let readAt = Date()
+        if let index = notifications.firstIndex(where: { $0.id == notification.id }) {
+            notifications[index].readAt = readAt
+        }
+        let formatter = ISO8601DateFormatter()
+        do {
+            try await SupabaseService.client.from("notifications")
+                .update(NotificationReadUpdate(readAt: formatter.string(from: readAt)))
+                .eq("id", value: notification.id)
+                .execute()
+        } catch {
+            print("Failed to mark notification read:", error)
+        }
+    }
+
+    /// The "•••" menu's "Đánh dấu chưa đọc" action (BUG 4) — the exact
+    /// reverse of markNotificationRead(). No new RPC/schema: notifications'
+    /// existing UPDATE RLS (scoped to recipient, migration 019) already
+    /// allows a plain client-side write of NULL back onto a column it
+    /// already lets the recipient set.
+    func markNotificationUnread(_ notification: AppNotification) async {
+        guard notification.readAt != nil else { return }
+        if let index = notifications.firstIndex(where: { $0.id == notification.id }) {
+            notifications[index].readAt = nil
+        }
+        do {
+            try await SupabaseService.client.from("notifications")
+                .update(NotificationUnreadUpdate())
+                .eq("id", value: notification.id)
+                .execute()
+        } catch {
+            print("Failed to mark notification unread:", error)
+        }
+    }
+
+    /// The "•••" menu's "Tắt loại thông báo này" action (BUG 4) —
+    /// profiles.muted_notification_kinds (062), filtered client-side only
+    /// in loadNotifications()/the toast poll; no insert-side RPC change.
+    func muteNotificationKind(_ kind: String) async {
+        guard let uid = userID, !mutedNotificationKinds.contains(kind) else { return }
+        let next = mutedNotificationKinds + [kind]
+        mutedNotificationKinds = next
+        notifications.removeAll { $0.kind == kind }
+        do {
+            try await SupabaseService.client.from("profiles")
+                .update(MutedKindsUpdate(mutedNotificationKinds: next))
+                .eq("id", value: uid)
+                .execute()
+        } catch {
+            print("Failed to mute notification kind:", error)
+        }
+    }
+
+    /// Tapping a notification marks it read and, for the kinds that point
+    /// somewhere real, takes you there.
+    /// `source` (notification_opened, migration 196): "bell" for the list and the in-app toast, "push" for a push tap.
+    func openNotification(_ notification: AppNotification, source: String = "bell") {
+        Task { await markNotificationRead(notification) }
+        Analytics.track(.notificationOpened(kind: notification.kind, source: source))
+        // Every branch below passes .notifications as its destination's own
+        // back-target (attendanceBack/verificationsBack/paymentBack/
+        // confirmedBack/documentBack/chatBack — same field/default-param
+        // pattern documentBack/paymentDetailsBackTarget already established)
+        // — a screen reached from the bell always returns to the bell
+        // specifically, not Home or wherever else
+        // (07-notifications.md's 2026-09-18 follow-up).
+        switch notification.kind {
+        case "new_message", "event_announcement":
+            if let threadID = notification.data["thread_id"]?.stringValue,
+               let uuid = UUID(uuidString: threadID) {
+                let key = notification.data["event_id"]?.stringValue ?? self.eventKey
+                openThread(id: uuid, eventKey: key, back: .notifications)
+            }
+        // 01-hold-payment.md follow-up (bug 1): both organizer-only cases
+        // below used to navigate unconditionally — relying on
+        // `openVerifications()`'s own ACCOUNT-level gate or, for
+        // `openAttendance()`, nothing at all — and RLS silently no-opping
+        // the actual data fetch as the only real backstop. That's an
+        // account-wide check ("is this person an organizer of ANYTHING"),
+        // not an EVENT-specific one, so any dual-role account (this app's
+        // own explicit design — the shared fast-suite test account is
+        // exactly this) could land on another organizer's screen for an
+        // event it only ever booked as a guest. `myOrgEventKeys`
+        // (loadMyEvents(), populated at sign-in) is the real, per-event
+        // ownership list — checked here so a non-owner is blocked from the
+        // navigation itself, not just left looking at buttons that
+        // silently no-op under RLS.
+        case "booking_requested":
+            // The organizer's side: straight to the check-in list for that
+            // event, where "mark as paid" already lives (AttendanceView).
+            if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key) {
+                openAttendance(key, back: .notifications)
+            }
+        case "event_approved", "event_rejected", "event_removed", "event_restored":
+            // Event review queue — DashboardView is the one place the host
+            // can already see their own real event's status/rejection
+            // reason, same per-event ownership guard as every other
+            // organizer-bound kind here. Phase 1 Q5: an approval also asks
+            // the dashboard for that event's "live" card (once per event).
+            if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key) {
+                if notification.kind == "event_approved" { liveCelebrationEventID = key }
+                goDashboard()
+            }
+        case "checked_in":
+            // Phase 1 Q4: the ticket screen itself, where the check-in moment ("You're in") shows once per booking.
+            if let bookingIDString = notification.data["booking_id"]?.stringValue,
+               let bookingID = UUID(uuidString: bookingIDString) {
+                Task {
+                    let opened = await openBookingConfirmed(bookingID: bookingID, eventKey: notification.data["event_id"]?.stringValue, back: .notifications)
+                    if opened == false { reportStaleNotification(notification) }
+                }
+            }
+        case "hold_created", "payment_needs_info", "checkin_undone":
+            // 01-hold-payment.md follow-up: hold_created is the guest's own
+            // mirror of "booking_requested" (hold_seats(), migration 053)
+            // — straight back to their own timer/QR/payment screen.
+            // TASK 1 (2026-09-22 nineteenth follow-up) — payment_needs_info
+            // (organizer asking the guest for more proof/info) and
+            // checked_in/checkin_undone (a check-in status change on an
+            // already-confirmed booking) all land on that same screen —
+            // it already reflects current status live, no separate
+            // "checked in" screen exists.
+            if let bookingIDString = notification.data["booking_id"]?.stringValue,
+               let bookingID = UUID(uuidString: bookingIDString) {
+                Task {
+                    let exists = await bookingExists(bookingID)
+                    if !exists { reportStaleNotification(notification); return }
+                    openPaymentDetails(bookingID, back: .notifications)
+                }
+            }
+        case "payment_awaiting_verification", "payment_verification_nudge":
+            // 01-hold-payment.md follow-up: fired by submit_payment_proof()
+            // (031:317) when a guest reports having transferred — the
+            // organizer side of BUG 3, previously never wired at all. Same
+            // destination as "booking_requested" (the very next step in the
+            // same request's lifecycle, still shown/actioned from
+            // VerificationsView, not AttendanceView's check-in list).
+            // TASK 1 (2026-09-22 nineteenth follow-up) — payment_verification_nudge
+            // is the SLA-reminder twin of the same event, same destination.
+            if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key) {
+                openVerifications(back: .notifications)
+            }
+        case "payment_confirmed":
+            if let bookingIDString = notification.data["booking_id"]?.stringValue,
+               let bookingID = UUID(uuidString: bookingIDString) {
+                let key = notification.data["event_id"]?.stringValue
+                // 2026-09-19 follow-up: bookings.id under this kind's own
+                // RLS (auth.uid() = user_id, the recipient by construction)
+                // can't spuriously come back empty — see
+                // openBookingConfirmed()'s own comment and
+                // reportStaleNotification().
+                Task {
+                    let found = await openBookingConfirmed(bookingID: bookingID, eventKey: key, back: .notifications)
+                    if found == false { reportStaleNotification(notification) }
+                }
+            }
+        case "dispute_message", "dispute_resolved", "payment_disputed":
+            // Only the guest and organizer ever receive these (migrations
+            // 048/050 — admin is deliberately excluded), so accountType
+            // alone decides which screen has this booking's chat panel.
+            // message_id may be absent on a row from before migration 050
+            // — DisputeChatPanel.swift falls back to scrolling to the
+            // bottom instead.
+            // TASK 1 (2026-09-22 nineteenth follow-up) — dispute_resolved/
+            // payment_disputed extended onto the same destination; same
+            // existence check as "hold_created" above.
+            let messageID = notification.data["message_id"]?.stringValue.flatMap(UUID.init(uuidString:))
+            // A REFUND dispute's message (migration 129) has no home on any
+            // refund screen any more — the transcript now renders inside the
+            // booking conversation it belongs to, so this routes straight to
+            // THAT conversation with the dispute card expanded. The claim id
+            // is the stable key (the dispute thread's own booking_id is NULL
+            // for refund disputes), and the booking id that ships alongside it
+            // is the claim's underlying booking — the same row both parties
+            // already share.
+            if let claimIDString = notification.data["refund_claim_id"]?.stringValue,
+               let claimID = UUID(uuidString: claimIDString) {
+                chatHighlight = (bookingID: nil, refundClaimID: claimID, messageID: messageID)
+                Task {
+                    if let threadID = notification.data["dispute_thread_id"]?.stringValue.flatMap(UUID.init(uuidString:)) {
+                        openDisputeChatThreadId = threadID
+                    }
+                    await openDisputeForRefundClaim(claimID, back: .notifications)
+                    // openDisputeForRefundClaim clears nothing, but a claim
+                    // whose thread is already gone (purged) must not leave the
+                    // reader on a conversation with no dispute on it.
+                    if conversationRefundDispute?.refundClaimId != claimID {
+                        reportStaleNotification(notification)
+                    }
+                }
+            } else if let bookingIDString = notification.data["booking_id"]?.stringValue,
+                      let bookingID = UUID(uuidString: bookingIDString) {
+                Task {
+                    let exists = await bookingExists(bookingID)
+                    if !exists { reportStaleNotification(notification); return }
+                    chatHighlight = (bookingID: bookingID, refundClaimID: nil, messageID: messageID)
+                    // Both halves land in the SAME booking conversation now
+                    // that the transcript renders there: the goer opens it
+                    // directly, the organizer goes through their own refund
+                    // queue entry point so the per-event ownership check that
+                    // screen already applies can't be bypassed by a tap.
+                    if accountType == "organizer" {
+                        if await openDisputeForBooking(bookingID, back: .notifications) { return }
+                        openVerifications(back: .notifications)
+                    } else {
+                        await openDisputeForBooking(bookingID, back: .notifications)
+                        if screen != .chat { openPaymentDetails(bookingID, back: .notifications) }
+                    }
+                }
+            }
+        case "payment_document_uploaded", "payment_document_replaced", "payment_document_expiring_1d":
+            if let documentIDString = notification.data["document_id"]?.stringValue,
+               let documentID = UUID(uuidString: documentIDString) {
+                // 2026-09-19 follow-up (the CONFIRMED real repro: a bulk
+                // payment_documents cleanup this session directly deleted
+                // every row, orphaning any notification of this kind
+                // created before it) — see openDocumentFromNotification()'s
+                // own comment and reportStaleNotification(). TASK 1
+                // (2026-09-22 nineteenth follow-up) — payment_document_expiring_1d
+                // is just a heads-up straight to the same still-live document.
+                Task {
+                    let found = await openDocumentFromNotification(documentID, backTo: .notifications)
+                    if found == false { reportStaleNotification(notification) }
+                }
+            }
+        case "receipt_requested":
+            // The guest's own "Xem Receipt" (ConfirmedView) asked for one
+            // that doesn't exist yet — straight to Check-in, same per-event
+            // ownership guard as above, with the specific booking's own
+            // "Upload receipt" control auto-highlighted (see
+            // AttendanceView's attendanceHighlightBookingID) so the
+            // organizer doesn't have to hunt for it in a long list.
+            // BUG 1 (2026-09-22 eighteenth follow-up) — same existence
+            // check as "hold_created"/"dispute_message" above.
+            if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key),
+               let bookingIDString = notification.data["booking_id"]?.stringValue,
+               let bookingID = UUID(uuidString: bookingIDString) {
+                Task {
+                    let exists = await bookingExists(bookingID)
+                    if !exists { reportStaleNotification(notification); return }
+                    attendanceHighlightBookingID = bookingID
+                    openAttendance(key, back: .notifications)
+                }
+            }
+        case "booking_cancelled", "booking_declined", "hold_expired":
+            // TASK 1 (2026-09-22 nineteenth follow-up) — the booking/hold
+            // itself is gone (rejected/cancelled/expired) — never a hard-
+            // deleted `events` row anywhere in this schema, so no existence
+            // check needed. The event itself is still the one meaningful
+            // place to land: "you can look at it again."
+            if let key = notification.data["event_id"]?.stringValue {
+                goEvent(key)
+            }
+        case "refund_marked_sent":
+            // Guest-facing: same existence-check-then-navigate shape as
+            // "hold_created" above, straight back to the same booking's
+            // Payment screen (the new host_marked_sent card lives there).
+            if let claimIDString = notification.data["claim_id"]?.stringValue,
+               let claimID = UUID(uuidString: claimIDString),
+               let bookingIDString = notification.data["booking_id"]?.stringValue,
+               let bookingID = UUID(uuidString: bookingIDString) {
+                Task {
+                    let exists = await refundClaimExists(claimID)
+                    if !exists { reportStaleNotification(notification); return }
+                    openPaymentDetails(bookingID, back: .notifications)
+                }
+            }
+        case "refund_dispute_closed", "refund_dispute_autoclose_soon":
+            // One of the two parties pressed "Close dispute" (migration 130).
+            // The claim is untouched financially, but the active-dispute
+            // indicator on the other side has to clear now, not on the next
+            // poll — so this lands on the SAME screen the other party would
+            // use, which reads the verified state and shows "Dispute
+            // completed" with its transcript still open for the retention
+            // window.
+            if let claimIDString = notification.data["claim_id"]?.stringValue,
+               let claimID = UUID(uuidString: claimIDString) {
+                Task {
+                    await loadRefundDisputeThread(claimID, force: true)
+                    await loadDisputeChats()
+                    reloadRefundClaimEverywhere(claimID)
+                    if claimID == paymentRefundClaim?.id, let bookingID = paymentBookingID {
+                        openPaymentDetails(bookingID, back: .notifications)
+                    } else if accountType == "organizer", myOrgEventKeys.contains(notification.data["event_id"]?.stringValue ?? "") {
+                        await loadRefundQueue()
+                        refundQueueFocusClaimID = claimID
+                        openVerifications(back: .notifications)
+                    }
+                }
+            }
+        case "refund_confirmed", "refund_disputed", "refund_overdue":
+            // Organizer-facing: all three land on the refund queue living
+            // inside VerificationsView (this ticket's own "smallest
+            // possible queue inside the already-relevant surface" ask).
+            // Scoped to event ownership like every other organizer-bound
+            // kind above.
+            if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key),
+               let claimIDString = notification.data["claim_id"]?.stringValue,
+               let claimID = UUID(uuidString: claimIDString) {
+                Task {
+                    let exists = await refundClaimExists(claimID)
+                    if !exists { reportStaleNotification(notification); return }
+                    refundQueueFocusClaimID = claimID
+                    openVerifications(back: .notifications)
+                }
+            }
+        // iPhone fix pass (2026-09-27), Issue 1 — real root cause: neither
+        // kind had a case here at all, so tapping fell straight to
+        // `default: break` — "does nothing" beyond the read-state write
+        // every kind already gets above. Ownership is enforced server-side
+        // regardless (organizer_members_select_own/event_credits_select_own
+        // RLS, migrations 098/100) — this only decides where a legitimate
+        // recipient lands.
+        case "organizer_invite":
+            if let organizerId = notification.data["organizer_id"]?.stringValue {
+                Task {
+                    await loadMyOrganizerMemberships()
+                    if myOrganizerInvites.contains(where: { $0.organizerId == organizerId }) {
+                        teamInviteHighlightOrganizerId = organizerId
+                        screen = .profile
+                    } else {
+                        // Already accepted/declined, or the owner removed
+                        // it before this tap landed — a real status toast
+                        // (same mechanism reportStaleNotification() already
+                        // uses below), never a silent no-op or a dead link
+                        // into an empty pending list.
+                        let stillMember = myTeamMemberships.contains(where: { $0.organizerId == organizerId })
+                        pushToast(AppNotification(
+                            id: UUID(), recipientId: notification.recipientId, kind: "stale_notice",
+                            title: stillMember
+                                ? T("Bạn đã tham gia đội ngũ này rồi.", "You're already a member of this Team.")
+                                : T("Lời mời này không còn nữa.", "This invitation is no longer available."),
+                            body: "", data: [:], readAt: Date(), createdAt: Date()
+                        ))
+                    }
+                }
+            }
+        case "organizer_invite_response":
+            // The host's own roster management lives inline on their
+            // Dashboard (DashboardView.swift's own Team section) — no
+            // separate screen to route to. `back: .notifications` added
+            // (2026-09-29 follow-up) — this was the only `openNotification`
+            // branch that left `dashboardBack` untouched, so Dashboard's
+            // own back button/swipe-back silently fell through to a stale
+            // target instead of returning to the bell, unlike every sibling
+            // branch here which threads `back: .notifications` through.
+            goDashboard(back: .notifications)
+        case "event_credit_invite":
+            if let eventId = notification.data["event_id"]?.stringValue {
+                Task {
+                    await loadMyEventCredits()
+                    await loadMyConfirmedEventCredits()
+                    if let credit = myEventCredits.first(where: { $0.eventId == eventId }) ?? myConfirmedEventCredits.first(where: { $0.eventId == eventId }) {
+                        eventCreditHighlightId = credit.id
+                        screen = .profile
+                    } else {
+                        pushToast(AppNotification(
+                            id: UUID(), recipientId: notification.recipientId, kind: "stale_notice",
+                            title: T("Lời mời ghi nhận này không còn nữa.", "This credit invitation is no longer available."),
+                            body: "", data: [:], readAt: Date(), createdAt: Date()
+                        ))
+                    }
+                }
+            }
+        // Admin Team pass (2026-10-02) — the invitee's own pending invite
+        // lives on the SAME "Cá nhân" tab banner as a Team invite (never
+        // an admin-only destination — the whole point is this account
+        // isn't an admin yet); "someone responded" lands the manager back
+        // on the Admin Team group, permission-rechecked there like every
+        // other admin-only surface.
+        case "admin_invite":
+            screen = .profile
+            accountTab = "personal"
+        case "admin_invite_response", "admin_removal_vote", "admin_removal_vote_result":
+            if canManageAdmins {
+                // note 66 — no Admin tab any more: Admin Team opens nested under Administration.
+                accountGroupKey = "adminTeam"
+                screen = .accountGroup
+                accountGroupParentKey = "admin"
+            }
+        case "admin_access_revoked":
+            // Already handled proactively by the toast poll itself (see
+            // its own comment) the instant this notification is first
+            // seen — a later tap just lands on an already-personal-tab
+            // Account screen.
+            screen = .profile
+            accountTab = "personal"
+        // Phase 2-3 core loops (migrations 199/200): one pure table, Lib/CoreLoops.swift `route(kind:data:)`, shared
+        // with web through tests/fixtures/core-loops.json — see openCoreLoopNotification (AppState+CoreLoops.swift).
+        case "event_reminder_day", "event_reminder_soon", "event_recap", "host_event_recap", "follow_alert", "weekly_digest":
+            openCoreLoopNotification(notification)
+        // Note 76: team project notifications open the project, only if I'm still in it.
+        case "project_joined", "project_blocked", "project_digest":
+            openProjectFromNotification(notification)
+        // "guest_renamed": category B, informational only, no destination
+        // by design — falls to default. markNotificationRead() above is
+        // the whole "action."
+        default:
+            break
+        }
+    }
+
+    /// Deep-links a bell notification straight to the document it's about,
+    /// without needing the full Documents list loaded first — fetches the
+    /// one row RLS allows this account to see and opens the viewer on it.
+    /// `role` defaults to "guest" (the notification case) but Attendance's
+    /// own "view this receipt" taps (08-payment-documents.md's 2026-09-17
+    /// follow-up #7 — BUG 1: a live and a still-live superseded copy are
+    /// both now individually tappable there, not just counted) pass "host".
+    ///
+    /// Returns `true` (found, opened), `false` (genuinely zero rows —
+    /// 2026-09-19 follow-up: `.maybeSingle()` instead of the old `.single()`,
+    /// which threw the SAME error for "zero rows" as for a real network/
+    /// decode failure, making the two indistinguishable), or `nil` (a real
+    /// fetch error — NOT the same as not-found, so openNotification() must
+    /// not treat it as stale). payment_documents' RLS (`_select_guest`:
+    /// `auth.uid() = user_id`) can't spuriously deny this row to its own
+    /// notification's recipient, so a confirmed `false` always means the
+    /// row is really gone (the purge cron, or a manual cleanup like the one
+    /// that triggered this fix).
+    @discardableResult
+    func openDocumentFromNotification(_ targetID: UUID, backTo: Screen = .documents, role: String = "guest") async -> Bool? {
+        do {
+            let doc: PaymentDocument? = try await SupabaseService.client
+                .from("payment_documents").select("*")
+                .eq("id", value: targetID.uuidString)
+                .maybeSingle().execute().value
+            guard let doc else { return false }
+            documents = [doc]
+            documentID = doc.id
+            documentsKind = doc.kind
+            documentsRole = role
+            documentBack = backTo
+            screen = .documentView
+            documentFileURL = nil
+            documentFileURLFailed = false
+            documentFileURLErrorDetail = ""
+            if let path = doc.filePath, !path.isEmpty {
+                let url = await signedDocumentFileURL(path)
+                documentFileURL = url
+                if url == nil { documentFileURLFailed = true }
+            }
+            return true
+        } catch {
+            print("openDocumentFromNotification failed:", error)
+            return nil
+        }
+    }
+
+    /// A real, permanent delete — not audit-sensitive the way
+    /// dispute_messages is (05-notify-retention.md's 72h retention is a
+    /// different table entirely), so no soft-delete. RLS
+    /// (notifications_delete_own, migration 050) already scopes this to
+    /// the caller's own rows.
+    func deleteNotification(_ notification: AppNotification) async {
+        let previous = notifications
+        notifications.removeAll { $0.id == notification.id }
+        do {
+            try await SupabaseService.client.from("notifications")
+                .delete().eq("id", value: notification.id).execute()
+        } catch {
+            print("Failed to delete notification:", error)
+            notifications = previous // put it back — the delete didn't actually happen
+        }
+    }
+
+    /// TASK 2 (2026-09-22 seventeenth follow-up) — bulk delete for a
+    /// selection-mode "Xoá (n)" action, web parity (BanBeContext.jsx's
+    /// deleteNotifications). Same RLS scoping as deleteNotification() above
+    /// (notifications_delete_own, migration 050 — caller's own rows only,
+    /// not a manual filter here); bounded to exactly the ids passed in
+    /// (whatever was visibly loaded/selected on screen), never a broader
+    /// delete-everything query. Only removes notification rows — never
+    /// touches bookings/messages/events/documents/receipts.
+    func deleteNotifications(_ ids: [UUID]) async {
+        guard !ids.isEmpty else { return }
+        let idSet = Set(ids)
+        let previous = notifications
+        notifications.removeAll { idSet.contains($0.id) }
+        do {
+            try await SupabaseService.client.from("notifications")
+                .delete().in("id", values: ids.map(\.uuidString)).execute()
+        } catch {
+            print("Failed to delete notifications:", error)
+            notifications = previous // put it back — the delete didn't actually happen
+        }
+    }
+
+    /// TASK 1 (2026-09-22 seventeenth follow-up) — the tap-time existence
+    /// check "hold_created"/"dispute_message" now do before navigating, see
+    /// openNotification()'s own comments. Existence-only (no full row),
+    /// same RLS reasoning as openBookingConfirmed()'s own query.
+    private func bookingExists(_ bookingID: UUID) async -> Bool {
+        let rows: [UUIDRow]? = try? await SupabaseService.client
+            .from("bookings").select("id")
+            .eq("id", value: bookingID.uuidString)
+            .execute().value
+        return !(rows ?? []).isEmpty
+    }
+
+    /// Flow 2 — same shape as bookingExists() above, for refund_claims.
+    private func refundClaimExists(_ claimID: UUID) async -> Bool {
+        let rows: [UUIDRow]? = try? await SupabaseService.client
+            .from("refund_claims").select("id")
+            .eq("id", value: claimID.uuidString)
+            .execute().value
+        return !(rows ?? []).isEmpty
+    }
+
+    /// 2026-09-19 follow-up (07-notifications.md): openNotification() calls
+    /// this whenever a kind's target fetch comes back genuinely not-found
+    /// (RLS can't spuriously produce this for the specific kinds that call
+    /// this — see their own comments — so an empty result really does mean
+    /// the row is gone, e.g. payment_documents' purge cron, or this
+    /// session's own manual test-data cleanup, the real repro that
+    /// surfaced this bug). Deletes the dead notification outright (a link
+    /// to nothing is useless either way) and surfaces a toast so the tap
+    /// isn't silently a no-op. The synthetic notification's `kind` matches
+    /// no case in openNotification()'s own switch (falls to `default:
+    /// break`) and `readAt` is pre-set so tapping the toast itself can't
+    /// re-attempt opening the same now-deleted target or fire a pointless
+    /// mark-read network call.
+    func reportStaleNotification(_ notification: AppNotification) {
+        Task { await deleteNotification(notification) }
+        pushToast(AppNotification(
+            id: UUID(), recipientId: notification.recipientId, kind: "stale_notice",
+            title: T("Nội dung này không còn tồn tại", "This content no longer exists"),
+            body: "", data: [:], readAt: Date(), createdAt: Date()
+        ))
+    }
+
+    /// Reopens the Confirmed/ticket screen for a specific booking — used
+    /// when a 'payment_confirmed' notification is tapped after the guest has
+    /// moved on elsewhere in the app, since the booking that just unlocked
+    /// its QR code isn't necessarily the one still held in `booking`.
+    ///
+    /// Returns `true` (found, opened), `false` (genuinely zero rows —
+    /// 2026-09-19 follow-up: `.maybeSingle()` instead of `.single()`, same
+    /// reasoning as openDocumentFromNotification()'s own comment), or `nil`
+    /// (a real fetch error, not the same as not-found). bookings' own RLS
+    /// (`bookings_select_guest`: `auth.uid() = user_id`) can't spuriously
+    /// deny this row to the booking's own guest, the only recipient a
+    /// `payment_confirmed` notification is ever sent to, so a confirmed
+    /// `false` always means the row is really gone.
+    @discardableResult
+    func openBookingConfirmed(bookingID: UUID, eventKey: String?, back: Screen = .home) async -> Bool? {
+        do {
+            let fresh: Booking? = try await SupabaseService.client
+                .from("bookings").select().eq("id", value: bookingID.uuidString)
+                .maybeSingle().execute().value
+            guard let fresh else { return false }
+            booking = fresh
+            self.eventKey = eventKey ?? fresh.eventId
+            confirmedBack = back
+            // Bug 3 (15-organizer-checkin.md follow-up): `expiresAt` is the
+            // legacy mirror column hold_seats() sets once at creation and
+            // nothing ever clears afterward — an organizer accepting
+            // quickly re-armed `holdDeadline` to that stale future
+            // timestamp, which HomeView's own held-event card reads in
+            // isolation (unlike ConfirmedView's own phase logic, which
+            // already prefers `booking.holdExpiresAt`). That column is
+            // actively maintained (nil once confirmed/rejected), so a
+            // confirmed booking never re-arms this at all.
+            holdDeadline = fresh.holdExpiresAt
+            now = Date()
+            screen = .confirmed
+            await loadLiveEventStatus()
+            return true
+        } catch {
+            print("openBookingConfirmed failed:", error)
+            return nil
+        }
+    }
+
+    /// The client-side half of forfeiting a lapsed PHASE 1 hold. Called the
+    /// instant a ticking countdown (ConfirmedView, PaymentDetailsView,
+    /// HomeView's banner) notices its own deadline has passed while still
+    /// 'holding'.
+    ///
+    /// Every screen that shows "Going"/a ticket/the Reserve-vs-ticket toggle
+    /// reads this same booking's paymentState/status out of shared state —
+    /// never off a live countdown — so patching them here is what makes all
+    /// three update immediately, together, regardless of which screen
+    /// actually noticed the expiry. The RPC call alongside it is what makes
+    /// that true durably instead of just visually: without it, this booking
+    /// would sit at status "confirmed" (instant-approval events set that
+    /// immediately, before payment) until the next minutely sweep — or
+    /// forever, had the sweep ever failed on it the way it once did for
+    /// exactly this case.
+    /// Called from PaymentDetailsView / HomeView, which hold this account's
+    /// bookings as `PayableBooking` (the `bookings` + joined `events`/
+    /// `organizers` shape `loadPaymentBookings()` fetches).
+    func forfeitExpiredHold(_ payable: PayableBooking) {
+        forfeitExpiredHoldCore(bookingID: payable.id, eventKey: payable.eventKey)
+        if let index = paymentBookings.firstIndex(where: { $0.id == payable.id }) {
+            paymentBookings[index].paymentState = .expired
+            paymentBookings[index].status = "expired"
+        }
+    }
+
+    /// Called from ConfirmedView, which holds the ticket's own booking as a
+    /// plain `Booking` (whatever `submitReserve`/`openBookingConfirmed`/the
+    /// polling refresh last fetched it as) rather than a `PayableBooking`.
+    func forfeitExpiredHold(_ current: Booking) {
+        forfeitExpiredHoldCore(bookingID: current.id, eventKey: current.eventId)
+    }
+
+    /// The client-side half of forfeiting a lapsed PHASE 1 hold, shared by
+    /// both overloads above. Called the instant a ticking countdown
+    /// (ConfirmedView, PaymentDetailsView, HomeView's banner) notices its own
+    /// deadline has passed while still 'holding'.
+    ///
+    /// Every screen that shows "Going"/a ticket/the Reserve-vs-ticket toggle
+    /// reads this same booking's paymentState/status out of shared state —
+    /// never off a live countdown — so patching them here is what makes all
+    /// three update immediately, together, regardless of which screen
+    /// actually noticed the expiry. The RPC call alongside it is what makes
+    /// that true durably instead of just visually: without it, this booking
+    /// would sit at status "confirmed" (instant-approval events set that
+    /// immediately, before payment) until the next minutely sweep — or
+    /// forever, had the sweep ever failed on it the way it once did for
+    /// exactly this case.
+    private func forfeitExpiredHoldCore(bookingID: UUID, eventKey: String) {
+        attending.removeAll { $0 == eventKey }
+        if let current = booking, current.id == bookingID {
+            var updated = current
+            updated.paymentState = .expired
+            updated.status = "expired"
+            self.booking = updated
+        }
+        Task {
+            do {
+                let result: ForfeitResult = try await SupabaseService.client
+                    .rpc("forfeit_my_expired_hold", params: ["p_booking": bookingID.uuidString])
+                    .execute().value
+                if result.success == false {
+                    print("forfeitExpiredHold RPC declined:", result.error ?? "unknown")
+                }
+            } catch {
+                print("forfeitExpiredHold RPC failed:", error)
+            }
+        }
+    }
+
+    // MARK: - Reserve / booking
+
+    func qtyMinus() { qty = max(1, qty - 1); syncAttendeeDrafts() }
+    func qtyPlus() { qty = min(6, qty + 1); syncAttendeeDrafts() }
+
+    /// Keep the form exactly `qty` rows long without losing what's typed.
+    /// Reads the buyer's own birthday from their profile (server-side, gate-checked) and,
+    /// if there is one, lets ticket 1 use it and shows it for a double check.
+    func applyProfileDOBToFirstAttendee() async {
+        guard let iso: String = try? await SupabaseService.client.rpc("get_my_dob").execute().value,
+              !iso.isEmpty else { return }
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        guard let d = f.date(from: iso), screen == .reserve, !attendeeDrafts.isEmpty else { return }
+        attendeeDrafts[0].useProfileDOB = true
+        attendeeDrafts[0].profileDOB = d
+    }
+
+    func syncAttendeeDrafts() {
+        while attendeeDrafts.count < qty { attendeeDrafts.append(AttendeeDraft()) }
+        if attendeeDrafts.count > qty { attendeeDrafts.removeLast(attendeeDrafts.count - qty) }
+    }
+
+    /// The party must be fully named before a seat is held.
+    var attendeesComplete: Bool {
+        attendeeDrafts.count == qty && attendeeDrafts.allSatisfy(\.isComplete)
+    }
+
+    /// Reads this account's named tickets for one booking (RLS: buyer only).
+    func loadBookingAttendees(_ bookingID: UUID) async {
+        #if DEBUG
+        if UITestFixture.isActive { return }   // fixtures keep their seeded attendees (shell.confirmed)
+        #endif
+        do {
+            let rows: [BookingAttendee] = try await SupabaseService.client
+                .from("booking_attendees").select()
+                .eq("booking_id", value: bookingID.uuidString)
+                .order("seat_no", ascending: true)
+                .execute().value
+            guard booking?.id == bookingID else { return }
+            bookingAttendees = rows
+        } catch {
+            print("loadBookingAttendees failed:", error)
+        }
+    }
+
+    /// Note 64: `deferNavigation` is the AsyncSuccessButton path: no full-screen loader (the button morphs) and no
+    /// screen change here; the button opens Confirmed once its ✓ has drawn. Returns true only when the hold exists.
+    @discardableResult
+    func submitReserve(deferNavigation: Bool = false) async -> Bool {
+        loading = !deferNavigation
+        reserveError = ""
+        do {
+            // hold_seats() (migration 026), not the legacy claim_seats() —
+            // the latter never touches payment_state/hold_expires_at, so
+            // every booking it created sat at the column default
+            // (payment_state = 'holding', hold_expires_at = NULL) forever,
+            // which is what left the ticket screen showing "Holding your
+            // spot"/00:00 permanently regardless of the event's real state.
+            // hold_seats_with_attendees() (migration 151) validates the whole
+            // party, holds the seats and records every attendee in ONE
+            // transaction — a booking can't exist half-named.
+            let dobFormat = DateFormatter()
+            dobFormat.calendar = Calendar(identifier: .gregorian)
+            dobFormat.locale = Locale(identifier: "en_US_POSIX")
+            dobFormat.dateFormat = "yyyy-MM-dd"
+            // Ticket 1 uses the profile birthday when there is one (migration 173);
+            // tickets 2+ may carry an optional email.
+            let party = attendeeDrafts.prefix(qty).enumerated().map { i, d in
+                HoldSeatsWithAttendeesParams.Attendee(
+                    name: d.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                    dob: (i == 0 && d.useProfileDOB) ? nil : dobFormat.string(from: d.dob ?? Date()),
+                    useProfileDob: (i == 0 && d.useProfileDOB) ? true : nil,
+                    email: (i > 0 && !d.emailTrimmed.isEmpty) ? d.emailTrimmed : nil)
+            }
+            Analytics.trackFirst(.firstReservationStarted, userID: userID)
+            let created: Booking = try await SupabaseService.client
+                .rpc("hold_seats_with_attendees", params: HoldSeatsWithAttendeesParams(event: eventKey, attendees: Array(party)))
+                .execute().value
+            bookingAttendees = []
+            booking = created
+            Task { await loadBookingAttendees(created.id) }
+            holdDeadline = created.holdExpiresAt
+            now = Date()
+            tickets[eventKey] = qty
+            if !attending.contains(eventKey) { attending.append(eventKey) }
+            loading = false
+            if !deferNavigation {
+                screen = .confirmed
+                Haptics.success()
+            }
+            return true
+        } catch {
+            loading = false
+            Haptics.error()
+            // hold_seats() (031:38) raises one of these as a plain
+            // `RAISE EXCEPTION '<CODE>'` — no ERRCODE/DETAIL beyond the
+            // message itself, which `PostgrestError.message` carries
+            // verbatim. This used to always show one generic message
+            // regardless of which of the six distinct exceptions fired —
+            // mapped here the same way `describeProofUploadError` already
+            // distinguishes real causes elsewhere in this file, so a
+            // cancelled/ended event says so instead of a vague "try again".
+            let code = (error as? PostgrestError)?.message ?? ""
+            if let block = AppState.eligibility(fromBookingError: error) {
+                // Criteria not met: show the guidance card, not a generic error.
+                reserveEligibilityBlock = block
+                reserveError = ""
+                return false
+            }
+            // Migration 195's bookings trigger: a paid event in a currency banbe can't take bookings in yet (USD).
+            if code.hasPrefix("PAID_BOOKING_NOT_AVAILABLE") {
+                reserveError = T("Đặt vé trả phí cho sự kiện tại Mỹ sẽ sớm mở", "Paid booking for US events opens soon")
+                return false
+            }
+            reserveError = [
+                "NOT_AUTHENTICATED": T("Bạn cần đăng nhập để giữ chỗ.", "You need to sign in to hold a spot."),
+                "INVALID_QTY": T("Số lượng chỗ không hợp lệ.", "That number of spots isn’t valid."),
+                "INVALID_ATTENDEES": T("Thông tin người tham dự không hợp lệ.", "The attendee details aren’t valid."),
+                "INVALID_ATTENDEE_NAME": T("Mỗi người tham dự cần có tên (ít nhất 2 ký tự).", "Every attendee needs a name (at least 2 characters)."),
+                "INVALID_ATTENDEE_EMAIL": T("Email của một người tham dự không hợp lệ.", "One attendee’s email isn’t valid."),
+                "INVALID_ATTENDEE_DOB": T("Ngày sinh của một người tham dự không hợp lệ.", "One attendee’s date of birth isn’t valid."),
+                "PROFILE_NOT_FOUND": T("Không tìm thấy hồ sơ của bạn. Vui lòng thử lại.", "We couldn’t find your profile. Please try again."),
+                "EVENT_NOT_FOUND": T("Không tìm thấy sự kiện này.", "This event could not be found."),
+                "EVENT_NOT_LIVE": T("Sự kiện này đã bị huỷ hoặc chưa mở.", "This event has been cancelled or isn’t open."),
+                "SOLD_OUT": T("Rất tiếc, chỗ vừa hết.", "Sorry, this just sold out."),
+                // Strict invite-only events (migration 113) — hold_seats'
+                // own gate; a specific, truthful message, not "try again".
+                "INVITE_REQUIRED": T("Sự kiện này chỉ dành cho người được mời.", "This event is invite-only."),
+            ][code] ?? T(
+                "Không thể giữ chỗ lúc này. Vui lòng thử lại.",
+                "Could not hold this spot right now. Please try again."
+            )
+            return false
+        }
+    }
+
+    // Bug 3 (15-organizer-checkin.md follow-up): this used to just flip
+    // `calAdded` to change the button's own label — no calendar event was
+    // ever actually created. `openCalendarPicker()` shows a confirmation
+    // dialog (Google Calendar vs Apple Calendar); the two functions below
+    // do the real, platform-appropriate work for each choice.
+
+    func openCalendarPicker(for event: CatalogEvent) {
+        calendarPickerEvent = event
+        calendarError = ""
+    }
+    func closeCalendarPicker() { calendarPickerEvent = nil }
+
+    /// Same `calendar.google.com/calendar/render` deep link the web app
+    /// uses — works whether or not the Google Calendar app is installed
+    /// (falls back to opening it in Safari).
+    func addToCalendarGoogle(_ event: CatalogEvent) {
+        let start = event.startDate ?? Date()
+        let end = start.addingTimeInterval(2 * 60 * 60) // 2h default — the catalogue has no end time of its own
+        var comps = URLComponents(string: "https://calendar.google.com/calendar/render")!
+        comps.queryItems = [
+            URLQueryItem(name: "action", value: "TEMPLATE"),
+            URLQueryItem(name: "text", value: event.name),
+            URLQueryItem(name: "dates", value: "\(Self.icsDate(start))/\(Self.icsDate(end))"),
+            URLQueryItem(name: "details", value: event.desc),
+            URLQueryItem(name: "location", value: event.locationLabel ?? event.where),
+        ]
+        guard let url = comps.url else { return }
+        UIApplication.shared.open(url)
+        calAdded = true
+        calendarPickerEvent = nil
+    }
+
+    private static func icsDate(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f.string(from: d)
+    }
+
+    // Apple Calendar export moved to the system event editor (note 44,
+    // Lib/CalendarExport.swift): it needs no calendar permission and never
+    // writes silently. The old path here requested FULL calendar access.
+
+    // MARK: - Chat
+
+    func goChat() { Task { await openChat(for: eventKey, back: .event) } }
+
+    /// Open the conversation between this guest and the event's organizer.
+    /// Message-host pass: this is LOOKUP-ONLY. If no threads row exists yet
+    /// the chat stays in draft state (chatThreadID nil, chatPendingOrganizerID
+    /// set) and the row is inserted by `ensureChatThread()` at the first real
+    /// send — so opening the chat and backing out leaves nothing behind (and
+    /// nothing in the inbox). Never used for the organizer's own side — that
+    /// always opens a specific known thread (see openThread, used from Inbox).
+    func openChat(for key: String, back: Screen) async {
+        guard let uid = userID else {
+            return promptSignIn(.message, returnTo: screen, backTo: screen, resume: .chat(eventKey: key, back: back))
+        }
+        eventKey = key
+        chatBack = back
+        chatThreadID = nil
+        chatPendingOrganizerID = nil
+        chatThreadCreation = nil
+        chatMessages = []
+        // Only an EXACT catalogue key match may supply the name —
+        // EventCatalog.find falls back to all[0] ("Bếp Nhỏ") on a miss, which
+        // is what mislabelled every real, host-created event's chat.
+        let catalogEvent = EventCatalog.find(key).flatMap { $0.key == key ? $0 : nil }
+        chatOtherName = catalogEvent?.orgName ?? ""
+        chatGreetingVi = ""
+        chatGreetingEn = ""
+        chatShowsGreeting = true
+        chatUnreadDividerID = nil
+        screen = .chat
+
+        do {
+            let existing: [UUIDRow] = try await SupabaseService.client
+                .from("threads").select("id")
+                .eq("event_id", value: key)
+                .eq("guest_id", value: uid)
+                .limit(1)
+                .execute().value
+            guard eventKey == key else { return }
+            if let found = existing.first {
+                chatThreadID = found.id
+            }
+            let ref = await fetchEventChatRef(key)
+            guard eventKey == key else { return }
+            chatGreetingVi = ref?.chatGreeting ?? ""
+            chatGreetingEn = ref?.chatGreetingEn ?? ""
+            if catalogEvent == nil, let orgID = ref?.organizerId {
+                let name = (await organizerNames(for: [orgID])[orgID] ?? "").trimmingCharacters(in: .whitespaces)
+                guard eventKey == key else { return }
+                if !name.isEmpty { chatOtherName = name }
+                else if let real = realEventsByID[key] ?? nil, !real.orgName.isEmpty { chatOtherName = real.orgName }
+            }
+            if let found = existing.first {
+                await loadChatMessages(found.id, computeDivider: true)
+                return
+            }
+            chatPendingOrganizerID = ref?.organizerId
+        } catch {
+            print("Could not open conversation:", error)
+        }
+    }
+
+    struct EventChatRef: Decodable {
+        let organizerId: String?
+        let chatGreeting: String?
+        let chatGreetingEn: String?
+        enum CodingKeys: String, CodingKey { case organizerId = "organizer_id", chatGreeting = "chat_greeting", chatGreetingEn = "chat_greeting_en" }
+    }
+
+    /// organizer_id + chat_greeting for one event. chat_greeting only exists
+    /// after migration 156 — an undefined-column failure falls back to
+    /// organizer_id alone so messaging keeps working before it is applied.
+    func fetchEventChatRef(_ key: String) async -> EventChatRef? {
+        do {
+            let rows: [EventChatRef] = try await SupabaseService.client
+                .from("events").select("organizer_id, chat_greeting, chat_greeting_en")
+                .eq("id", value: key).limit(1).execute().value
+            return rows.first
+        } catch {
+            // chat_greeting_en is migration 157; chat_greeting is 156.
+            if let rows: [EventChatRef] = try? await SupabaseService.client
+                .from("events").select("organizer_id, chat_greeting")
+                .eq("id", value: key).limit(1).execute().value, let r = rows.first { return r }
+            let rows: [EventChatRef]? = try? await SupabaseService.client
+                .from("events").select("organizer_id")
+                .eq("id", value: key).limit(1).execute().value
+            return rows?.first
+        }
+    }
+
+    /// Inserts the threads row on the first real send (text or attachment) of
+    /// a draft conversation. Concurrent callers share one creation task; a
+    /// failed insert (e.g. the UNIQUE(event_id, guest_id) race) re-selects.
+    func ensureChatThread() async -> UUID? {
+        if let id = chatThreadID { return id }
+        guard let uid = userID else { return nil }
+        let key = eventKey
+        if let task = chatThreadCreation { return await task.value }
+        var orgID = chatPendingOrganizerID
+        if orgID == nil { orgID = await fetchEventChatRef(key)?.organizerId }
+        guard let organizerID = orgID else { return nil }
+        let task = Task<UUID?, Never> { [weak self] in
+            guard self != nil else { return nil }
+            for attempt in 0..<2 {
+                do {
+                    let created: [UUIDRow] = try await SupabaseService.client
+                        .from("threads")
+                        .insert(NewThread(eventId: key, guestId: uid, organizerId: organizerID))
+                        .select("id")
+                        .execute().value
+                    if let id = created.first?.id { return id }
+                } catch {
+                    print("Thread insert failed (attempt \(attempt)):", error)
+                }
+                let existing: [UUIDRow]? = try? await SupabaseService.client
+                    .from("threads").select("id")
+                    .eq("event_id", value: key).eq("guest_id", value: uid)
+                    .limit(1).execute().value
+                if let id = existing?.first?.id { return id }
+            }
+            return nil
+        }
+        chatThreadCreation = task
+        let id = await task.value
+        chatThreadCreation = nil
+        if let id, eventKey == key, chatThreadID == nil {
+            chatThreadID = id
+            chatPendingOrganizerID = nil
+        }
+        return id
+    }
+
+    func openThread(id: UUID, eventKey: String, back: Screen, otherName: String = "") {
+        self.eventKey = eventKey
+        chatBack = back
+        chatThreadID = id
+        chatPendingOrganizerID = nil
+        chatThreadCreation = nil
+        chatMessages = []
+        chatOtherName = otherName
+        chatGreetingVi = ""
+        chatGreetingEn = ""
+        chatShowsGreeting = false
+        chatUnreadDividerID = nil
+        screen = .chat
+        Task { await loadChatMessages(id, computeDivider: true) }
+        // Callers that don't know the other participant's name (notification
+        // tap, dispute entry points) get it resolved from the thread itself,
+        // so the header never falls back to a demo/persona name.
+        if otherName.isEmpty { Task { await resolveChatOtherName(threadID: id) } }
+        if EventCatalog.all.first(where: { $0.key == eventKey }) == nil, realEventsByID[eventKey] == nil {
+            Task { await loadRealEventsByID([eventKey]) }
+        }
+    }
+
+    private func resolveChatOtherName(threadID: UUID) async {
+        guard let uid = userID else { return }
+        struct T: Decodable {
+            let guestId: UUID?; let organizerId: String
+            enum CodingKeys: String, CodingKey { case guestId = "guest_id", organizerId = "organizer_id" }
+        }
+        guard let row = (try? await SupabaseService.client.from("threads")
+            .select("guest_id, organizer_id").eq("id", value: threadID).limit(1)
+            .execute().value as [T])?.first else { return }
+        var name = ""
+        if row.guestId == uid {
+            name = (await organizerNames(for: [row.organizerId])[row.organizerId] ?? "")
+        } else if let gid = row.guestId {
+            let profiles: [ProfileNameAvatar]? = try? await SupabaseService.client
+                .from("profiles").select("id, display_name, avatar_url")
+                .eq("id", value: gid.uuidString).execute().value
+            name = profiles?.first?.displayName ?? ""
+        }
+        name = name.trimmingCharacters(in: .whitespaces)
+        guard chatThreadID == threadID, chatOtherName.isEmpty, !name.isEmpty else { return }
+        chatOtherName = name
+    }
+
+    /// `computeDivider`: true only for the FIRST load of a thread-open (see
+    /// openThread/openChat(for:) above) — captures chatUnreadDividerID once
+    /// from whatever's unread at that moment, then immediately marks those
+    /// rows read. ChatView's own 4s poll calls this again with
+    /// computeDivider left false, so it only ever refreshes `chatMessages`
+    /// and never moves the divider while the thread stays open
+    /// (07-notifications.md).
+    func loadChatMessages(_ threadID: UUID, computeDivider: Bool = false) async {
+        // BUG 1 (2026-09-22 fifteenth follow-up) — see AppState.swift's own
+        // comment on chatMessagesGeneration. ChatView's 4s poll (`pollTask`
+        // in MessagingViews.swift) is routinely cancelled by SwiftUI itself
+        // when the view disappears mid-request — a normal lifecycle event,
+        // not a failure — which is what actually produced the
+        // "Failed to load messages: CancellationError()" log.
+        chatMessagesGeneration += 1
+        let myGeneration = chatMessagesGeneration
+        do {
+            let rows: [ChatMessage] = try await SupabaseService.client
+                .from("messages")
+                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id, announcement_category")
+                .eq("thread_id", value: threadID)
+                .order("created_at", ascending: true)
+                .execute().value
+            guard myGeneration == chatMessagesGeneration else { return }
+            chatMessages = rows
+            if computeDivider {
+                let uid = userID
+                chatUnreadDividerID = rows.first { $0.readAt == nil && $0.senderId != uid }?.id
+                await markThreadMessagesRead(threadID)
+            }
+            // BUG FIX (2026-09-21 follow-up): only sign paths this thread
+            // doesn't already have a URL for — see signChatAttachmentUrls's
+            // own doc comment for why re-signing an already-signed path on
+            // every 4s poll caused the reported "thumbnail
+            // appears/disappears repeatedly" loop.
+            let newPaths = rows.compactMap(\.attachmentPath).filter { chatAttachmentUrls[$0] == nil }
+            if !newPaths.isEmpty { await signChatAttachmentUrls(newPaths) }
+        } catch {
+            if error is CancellationError || Task.isCancelled { return }
+            print("Failed to load messages:", error)
+        }
+    }
+
+    /// Task 4 (2026-09-21 follow-up) — signs every given 'chat-attachments'
+    /// path in one batched call, same pattern this app already uses for the
+    /// private payment-proof bucket.
+    ///
+    /// BUG FIX: `loadChatMessages` used to call this with EVERY attachment
+    /// path on every invocation, including the 4s poll while a thread stays
+    /// open — re-signing an already-signed path produces a brand-new URL
+    /// (same file, different token/expiry) every time, and since the
+    /// `AsyncImage` in `MessagingViews.swift`'s bubble reads straight off
+    /// `chatAttachmentUrls[path]`, a changing URL value makes SwiftUI tear
+    /// down and re-fetch the image from scratch every ~4s — the reported
+    /// loop. Same root-cause SHAPE as the signed-URL churn already
+    /// diagnosed for payment receipts (08-payment-documents.md), not a
+    /// loading-state wiring bug. Fixed on two levels: `loadChatMessages`
+    /// above now only passes genuinely new paths, and this function itself
+    /// never overwrites an already-signed one either, so it's safe even if
+    /// called with a stale path some other way.
+    func signChatAttachmentUrls(_ paths: [String]) async {
+        let wanted = Array(Set(paths)).filter { !$0.isEmpty && chatAttachmentUrls[$0] == nil }
+        guard !wanted.isEmpty else { return }
+        do {
+            let results = try await SupabaseService.client.storage
+                .from("chat-attachments")
+                .createSignedURLs(paths: wanted, expiresIn: 600)
+            for result in results {
+                if case let .success(path, signedURL) = result, chatAttachmentUrls[path] == nil {
+                    chatAttachmentUrls[path] = signedURL
+                }
+            }
+        } catch {
+            print("signChatAttachmentUrls failed:", error)
+        }
+    }
+
+    /// Reuses ProofImageProcessor-style downscaling if this app already has
+    /// one for the payment-proof upload path; otherwise uploads the image
+    /// data as-is (the 'chat-attachments' bucket itself still enforces a
+    /// 20MB cap / allowed MIME types server-side either way).
+    func sendChatAttachment(data: Data, contentType: String, fileExtension: String, width: Int? = nil, height: Int? = nil, replyToMessageId: UUID? = nil) async -> Bool {
+        guard !normalMessagingPaused else { return false }
+        guard let uid = userID, chatCanCompose, let threadID = await ensureChatThread() else { return false }
+        do {
+            // Lowercased: Postgres's own uuid-to-text cast is always
+            // lowercase, unlike Foundation's UUID.uuidString — matches the
+            // same fix `submitPaymentProof`'s own path already needed
+            // (AppState+Payments.swift) for its RLS policy's string match.
+            let path = "\(threadID.uuidString.lowercased())/\(Int(Date().timeIntervalSince1970 * 1000)).\(fileExtension)"
+            _ = try await SupabaseService.client.storage.from("chat-attachments")
+                .upload(path, data: data, options: FileOptions(contentType: contentType))
+            let body = contentType == "application/pdf" ? T("Đã gửi một tệp", "Sent a file") : T("Đã gửi một ảnh", "Sent a photo")
+            let sent: [ChatMessage] = try await SupabaseService.client
+                .from("messages")
+                .insert(NewAttachmentMessage(threadId: threadID, senderId: uid, body: body, kind: "text", attachmentPath: path, attachmentType: contentType, attachmentWidth: width, attachmentHeight: height, replyToMessageId: replyToMessageId))
+                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id, announcement_category")
+                .execute().value
+            if let message = sent.first { chatMessages.append(message) }
+            await signChatAttachmentUrls([path])
+            // Task 5 (2026-09-22 twelfth follow-up) — only when this send
+            // actually came from ChatPhotoViewerView's own reply-attach flow
+            // (replyToMessageId is never set by ChatView's own composer/
+            // camera attach paths).
+            if let message = sent.first, replyToMessageId != nil {
+                chatPhotoViewer = nil
+                chatScrollToMessageID = message.id
+                chatFocusComposer = false
+            }
+            return true
+        } catch {
+            print("sendChatAttachment failed:", error)
+            return false
+        }
+    }
+
+    /// Task 3 (2026-09-22 follow-up) — the chat-photo viewer's own reply/
+    /// reaction composer. A separate function from `chatSend()` (Views
+    /// aren't shown here but mirror ChatView's own `chatSend` on web's
+    /// BanBeContext.jsx) since this viewer has its own local `@State` draft,
+    /// not `AppState.chatDraft`, and always sets `reply_to_message_id`
+    /// (migration 067) rather than encoding "replying to X" in body text.
+    /// `isTypedReply` distinguishes a typed reply (the composer's own Send
+    /// button) from a one-tap quick reaction — only the former should ever
+    /// focus the chat composer's keyboard on return.
+    func sendChatViewerReply(text: String, replyToMessageId: UUID, isTypedReply: Bool = false) async -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let threadID = chatThreadID, let uid = userID else { return false }
+        do {
+            let sent: [ChatMessage] = try await SupabaseService.client
+                .from("messages")
+                .insert(NewTextReply(threadId: threadID, senderId: uid, body: trimmed, kind: "text", replyToMessageId: replyToMessageId))
+                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id, announcement_category")
+                .execute().value
+            if let message = sent.first {
+                chatMessages.append(message)
+                // Task 5 (2026-09-22 twelfth follow-up) — close the viewer
+                // and hand off to ChatView, mirroring web's own
+                // sendChatViewerReply exactly.
+                chatPhotoViewer = nil
+                chatScrollToMessageID = message.id
+                chatFocusComposer = isTypedReply
+            }
+            return true
+        } catch {
+            print("sendChatViewerReply failed:", error)
+            return false
+        }
+    }
+
+    /// Stage 1 (retention roadmap P0) — this account's real saved event ids,
+    /// from `public.favorites` (owner-only RLS already scopes this to the
+    /// signed-in user, same as web's equivalent query). Applied only if no
+    /// later account switch has already moved favoritesLoadedForUID on — a
+    /// stale response from a login this account has since left must not
+    /// resurrect its favorites.
+    func loadFavorites(uid: UUID) async {
+        struct FavoriteRow: Decodable { let eventId: String
+            enum CodingKeys: String, CodingKey { case eventId = "event_id" } }
+        do {
+            let rows: [FavoriteRow] = try await SupabaseService.client
+                .from("favorites").select("event_id").eq("user_id", value: uid).execute().value
+            if favoritesLoadedForUID == uid { favorites = rows.map(\.eventId) }
+        } catch {
+            print("loadFavorites failed:", error)
+        }
+    }
+
+    /// See toggleFavorite()'s own comment — upserts/deletes the matching
+    /// `favorites` row, rolling the optimistic UI flip back only if this is
+    /// still the same signed-in account by the time the request settles.
+    func persistFavoriteToggle(eventKey: String, uid: UUID, wasSaved: Bool) async {
+        struct FavoriteRow: Encodable { let userId: UUID; let eventId: String
+            enum CodingKeys: String, CodingKey { case userId = "user_id"; case eventId = "event_id" } }
+        defer { favoriteToggleInFlight.remove(eventKey) }
+        do {
+            if wasSaved {
+                try await SupabaseService.client.from("favorites")
+                    .delete().eq("user_id", value: uid).eq("event_id", value: eventKey).execute()
+            } else {
+                try await SupabaseService.client.from("favorites")
+                    .upsert(FavoriteRow(userId: uid, eventId: eventKey), onConflict: "user_id,event_id").execute()
+                // The server verifies this save before it counts as an active day (never blocks the save).
+                if userID == uid { Task { await recordSaveDay(eventKey: eventKey) } }
+            }
+        } catch {
+            print("persistFavoriteToggle failed:", error)
+            guard userID == uid else { return }
+            if wasSaved { if !favorites.contains(eventKey) { favorites.append(eventKey) } }
+            else { favorites.removeAll { $0 == eventKey } }
+        }
+    }
+
+    /// See toggleFollow()'s own comment — resolves the event's real
+    /// organizer_id (same events-table lookup openChat(for:) already does)
+    /// and upserts/deletes the matching `follows` row.
+    func persistFollowToggle(eventKey: String, uid: UUID, wasFollowing: Bool) async {
+        struct EventOrg: Decodable { let organizerId: String?
+            enum CodingKeys: String, CodingKey { case organizerId = "organizer_id" } }
+        struct FollowRow: Encodable { let userId: UUID; let organizerId: String
+            enum CodingKeys: String, CodingKey { case userId = "user_id"; case organizerId = "organizer_id" } }
+        do {
+            let rows: [EventOrg] = try await SupabaseService.client
+                .from("events").select("organizer_id").eq("id", value: eventKey).execute().value
+            guard let orgId = rows.first?.organizerId else { return } // demo-catalogue event, local toggle only
+            if wasFollowing {
+                try await SupabaseService.client.from("follows")
+                    .delete().eq("user_id", value: uid).eq("organizer_id", value: orgId).execute()
+            } else {
+                try await SupabaseService.client.from("follows")
+                    .upsert(FollowRow(userId: uid, organizerId: orgId), onConflict: "user_id,organizer_id").execute()
+            }
+        } catch {
+            print("persistFollowToggle failed:", error)
+        }
+    }
+
+    /// The columns shapeReal(As)*'s callers all need — same set web's own
+    /// REAL_EVENT_ROW_COLUMNS uses (BanBeContext.jsx), kept as one constant so
+    /// loadWeekendEvents and loadRealEventsByID never drift apart.
+    ///
+    /// Real-event-maps-link fix pass (2026-09-28) — `lat, lng` were missing
+    /// here despite the doc comment above claiming parity with web's own
+    /// column list, which had the identical gap (fixed there in the same
+    /// pass — BanBeContext.jsx's `REAL_EVENT_ROW_COLUMNS`). Neither platform
+    /// ever actually fetched a real event's own stored coordinates for its
+    /// Event Detail screen, even though `create_event_draft`/
+    /// `resubmit_event_for_review` have stored them since migration 094.
+    // Keyword-search fix (migration 108) — re-enabled 2026-09-29 after
+    // confirming (a live, read-only query against the real database, not
+    // assumed) migration 108 is actually deployed: the `keywords` column
+    // exists and is populated. See git history for why this was briefly
+    // reverted — requesting a column that doesn't exist yet fails the
+    // WHOLE query, not just that field.
+    // TASK 3 (event creation validation pass) — approval/withdrawal_reason/
+    // withdrawn_at added for AdminEventsView's own detailed review section
+    // (booking-approval mode + withdrawal history); additive, same table,
+    // so every other existing reader of this constant is unaffected.
+    private static let realEventColumns = "id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, approval, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, withdrawal_reason, withdrawn_at, cover_image, included_items, intro, address_line, city, postal_code, address_verified, keywords, country_code, state_province, neighborhood"
+    /// + `tz, currency` (migration 195) until the server says those columns don't exist yet.
+    private static func eventColumns(_ withR2: Bool) -> String {
+        MediaColumns.cols(realEventColumns + EventMarketColumns.suffix + EventDetailsColumns.suffix, "cover_r2_ref", withR2)
+    }
+
+    /// Every `eventColumns` read goes through this: the market retry sits INSIDE the R2 one, so a missing
+    /// `tz`/`currency` column is caught (and remembered) before `MediaColumns` could mistake that 42703 for
+    /// a missing `cover_r2_ref`.
+    static func retryingEventColumns<T>(_ body: (_ withR2: Bool) async throws -> T) async throws -> T {
+        try await MediaColumns.retrying { withR2 in
+            try await EventMarketColumns.retrying { try await EventDetailsColumns.retrying { try await body(withR2) } }
+        }
+    }
+
+    /// `events.cover_image` (migration 087) always wins over the gallery's
+    /// own sort_order-first fallback when a host has explicitly picked one —
+    /// same root-cause fix as web's resolveCoverUrl (BanBeContext.jsx): a
+    /// batch upload's sort_order reflects upload order, not cover status.
+    private func resolveCoverURL(_ coverImagePath: String?, r2Ref: String? = nil) -> URL? {
+        // R2 cover (events.cover_r2_ref, or a cover_image that is itself an
+        // `r2:` ref). Only ever set for public events; `.card` variant.
+        let ref = r2Ref ?? coverImagePath.flatMap { MediaResolver.isR2Ref($0) ? $0 : nil }
+        if let ref {
+            let legacy = coverImagePath.flatMap { MediaResolver.isR2Ref($0) ? nil : legacyCoverURL($0) }
+            return MediaResolver.resolve(r2Ref: ref, legacyURL: legacy, variant: .card)
+        }
+        guard let path = coverImagePath, !path.isEmpty else { return nil }
+        return legacyCoverURL(path)
+    }
+
+    private func legacyCoverURL(_ path: String) -> URL? {
+        // Strict invite-only events (migration 113) — this sync helper
+        // can't do a real network call for a private-bucket path
+        // (createSignedURL is async); every call site reachable here
+        // (discovery/Home/Organizer public surfaces) already excludes
+        // invite-only events by visibility filtering, so this is a
+        // defensive fallback, not the real gate — mirrors web's identical
+        // resolveCoverUrl decision (BanBeContext.jsx).
+        guard !path.hasPrefix("event-photos-private/") else { return nil }
+        let relative = path.hasPrefix("event-photos/") ? String(path.dropFirst("event-photos/".count)) : path
+        return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative)
+    }
+
+    /// event_photos rows for `eventIds` -> first display photo URL per
+    /// event — same batching loadNotificationAvatarMaps' own
+    /// eventPhotoByEventId uses (see that function's comment). Factored
+    /// out here so loadWeekendEvents and loadRealEventsByID don't each
+    /// reimplement it. Already async, so this uses the real private-
+    /// bucket-aware resolver rather than a bare getPublicURL.
+    private func firstPhotoURLByEvent(_ eventIds: [String]) async -> [String: URL] {
+        await photoURLsByEvent(eventIds, max: 1).compactMapValues(\.first)
+    }
+
+    /// Map v6 (note 74): up to `max` photos per event in ONE batched `event_photos` query, by sort_order. The first
+    /// photo resolves as before (a private-bucket one through a signed URL); the extra pager photos are public-bucket
+    /// only, and events in `coverOnly` (invite-only) get just their first.
+    func photoURLsByEvent(_ eventIds: [String], max: Int = 6, coverOnly: Set<String> = []) async -> [String: [URL]] {
+        guard !eventIds.isEmpty else { return [:] }
+        var byEvent: [String: [URL]] = [:]
+        do {
+            let photos: [EventPhotoRow] = try await MediaColumns.retrying { withR2 in
+                try await SupabaseService.client
+                .from("event_photos").select(MediaColumns.cols("event_id, storage_path, sort_order", "r2_ref", withR2))
+                .in("event_id", values: eventIds)
+                .order("sort_order", ascending: true)
+                .execute().value }
+            for p in photos {
+                let have = byEvent[p.eventId] ?? []
+                let cap = coverOnly.contains(p.eventId) ? 1 : max
+                guard have.count < cap else { continue }
+                if !have.isEmpty && p.storagePath.hasPrefix("event-photos-private/") { continue }
+                if let url = await resolveEventPhotoURL(p.storagePath, r2Ref: p.r2Ref, variant: .card), !have.contains(url) {
+                    byEvent[p.eventId] = have + [url]
+                }
+            }
+        } catch {
+            print("photoURLsByEvent failed:", error)
+        }
+        return byEvent
+    }
+
+    /// Home cards' pager (note 74): each public event's cover + photos; an invite-only event keeps only its cover.
+    private func noteGalleries(_ rows: [RealEventSummary], _ lists: [String: [URL]]) {
+        var next = eventGalleryURLs
+        for row in rows {
+            let cover = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref) ?? lists[row.id]?.first
+            let g = row.visibility == "public" ? Self.gallery(cover: cover, photos: lists[row.id] ?? []) : [cover].compactMap { $0 }
+            next[row.id] = g.isEmpty ? nil : g
+        }
+        if next != eventGalleryURLs { eventGalleryURLs = next }
+    }
+
+    /// Cover first, then the event's photos, duplicates dropped; at most 6.
+    static func gallery(cover: URL?, photos: [URL]) -> [URL] {
+        // Compared by file, not by URL: the cover (`cover_image`) and the same photo's `event_photos` row resolve to
+        // different URLs (Supabase `/object/` vs `/render/image/`, query params), which showed the cover twice. The
+        // last two path components name the file in both Supabase (`<event>/<file>`) and R2 (`<asset>/<variant>`).
+        var out: [URL] = []
+        var seen = Set<String>()
+        for u in [cover].compactMap({ $0 }) + photos
+        where seen.insert(u.pathComponents.suffix(2).joined(separator: "/").lowercased()).inserted { out.append(u) }
+        return Array(out.prefix(6))
+    }
+
+    /// `organizers.name` for a batch of ids, as a lookup dictionary.
+    func organizerNames(for organizerIDs: [String]) async -> [String: String] {
+        guard !organizerIDs.isEmpty else { return [:] }
+        do {
+            let orgs: [OrganizerRow] = try await SupabaseService.client
+                .from("organizers").select("id, name").in("id", values: organizerIDs).execute().value
+            return Dictionary(uniqueKeysWithValues: orgs.map { ($0.id, $0.name) })
+        } catch {
+            print("organizerNames failed:", error)
+            return [:]
+        }
+    }
+
+    /// TASK 3 (event creation validation pass) — AdminEventsView's own
+    /// detailed review section. Separate from `organizerNames(for:)` above
+    /// (that one's used well beyond admin review — no reason to widen its
+    /// select or its callers' assumptions). Per migration 109's own
+    /// comment, `organizer_type` is self-declared and `verified` has no
+    /// real write path anywhere in this schema — never render either as
+    /// admin-confirmed. Never selects bank_name/bank_account_no/
+    /// momo_phone or any other payout/banking field.
+    private struct OrganizerIdentityRow: Decodable {
+        let id: String
+        let organizerType: String?
+        let verified: Bool?
+        let taxCode: String?
+        enum CodingKeys: String, CodingKey { case id, organizerType = "organizer_type", verified, taxCode = "tax_code" }
+    }
+    private func organizerIdentities(for organizerIDs: [String]) async -> [String: OrganizerIdentityRow] {
+        guard !organizerIDs.isEmpty else { return [:] }
+        do {
+            let orgs: [OrganizerIdentityRow] = try await SupabaseService.client
+                .from("organizers").select("id, organizer_type, verified, tax_code").in("id", values: organizerIDs).execute().value
+            return Dictionary(uniqueKeysWithValues: orgs.map { ($0.id, $0) })
+        } catch {
+            print("organizerIdentities failed:", error)
+            return [:]
+        }
+    }
+
+    /// This account's followed organizer ids (real `follows` rows) — empty
+    /// for a signed-out visitor.
+    private func followedOrganizerIDs() async -> Set<String> {
+        guard let uid = userID else { return [] }
+        struct FollowRow: Decodable { let organizerId: String
+            enum CodingKeys: String, CodingKey { case organizerId = "organizer_id" } }
+        do {
+            let rows: [FollowRow] = try await SupabaseService.client
+                .from("follows").select("organizer_id").eq("user_id", value: uid).execute().value
+            return Set(rows.map(\.organizerId))
+        } catch {
+            print("followedOrganizerIDs failed:", error)
+            return []
+        }
+    }
+
+    /// Blocker fix (retention roadmap follow-up) — the canonical real-event
+    /// lookup by id, mirroring web's loadRealEventsById (BanBeContext.jsx)
+    /// exactly: shared by `currentEvent`'s own fallback (see AppState.swift)
+    /// and any saved/attending/invited event that isn't in the bundled
+    /// catalogue. Never invents a fallback — an id that isn't returned
+    /// (deleted, or RLS denies it) is cached as an explicit `.some(nil)`, so
+    /// callers can render CatalogEvent.unavailable(key:) instead of the row
+    /// just vanishing.
+    func loadRealEventsByID(_ ids: [String]) async {
+        let wanted = Array(Set(ids)).filter { realEventsByID.index(forKey: $0) == nil && !realEventsInFlight.contains($0) }
+        guard !wanted.isEmpty else { return }
+        wanted.forEach { realEventsInFlight.insert($0) }
+        defer { wanted.forEach { realEventsInFlight.remove($0) } }
+        do {
+            let rows: [RealEventSummary] = try await Self.retryingEventColumns { withR2 in
+try await SupabaseService.client
+                .from("events").select(Self.eventColumns(withR2)).in("id", values: wanted)
+                .execute().value }
+            let foundIDs = Set(rows.map(\.id))
+            let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
+            async let photoLists = photoURLsByEvent(rows.map(\.id), coverOnly: Set(rows.filter { $0.visibility != "public" }.map(\.id)))
+            async let orgRows = organizerNames(for: organizerIDs)
+            let photoListsByID = await photoLists
+            let photos = photoListsByID.compactMapValues(\.first)
+            noteGalleries(rows, photoListsByID)
+            let orgNameByID = await orgRows
+            for row in rows {
+                var shaped = row
+                shaped.photoURL = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref) ?? photos[row.id]
+                if let orgId = row.organizerId { shaped.organizerName = orgNameByID[orgId] ?? "" }
+                realEventsByID[row.id] = CatalogEvent.fromReal(shaped)
+            }
+            for id in wanted where !foundIDs.contains(id) { realEventsByID[id] = .some(nil) }
+        } catch {
+            print("loadRealEventsByID failed:", error)
+            wanted.forEach { realEventsInFlight.remove($0) }
+        }
+    }
+
+    /// Retention roadmap P1 ("Cuối tuần này") — a compact Home section built
+    /// entirely from real `events` rows for the applicable Sat/Sun window
+    /// (Countdown.thisWeekendWindow, Asia/Ho_Chi_Minh), never the bundled
+    /// demo catalogue. `status == "live" AND visibility == "public"` is the
+    /// same public-eligibility rule the web side uses (loadWeekendEvents,
+    /// BanBeContext.jsx) — drafts, invite-only and cancelled/ended rows are
+    /// excluded by construction. A sold-out event still appears (excluded
+    /// from booking via CatalogEvent.soldOut, not from discovery).
+    ///
+    /// Sort: followed organizers' events first (real `follows` rows), then
+    /// chronological by starts_at — nothing else. Not an engagement/
+    /// popularity ranking: no photo-like count, no paid/sponsored flag, no
+    /// goc_pulse_ranked() score feeds into this at all.
+    func loadWeekendEvents() async {
+        weekendEventsLoading = true
+        defer { weekendEventsLoading = false }
+        let (start, end) = Countdown.thisWeekendWindow()
+        do {
+            let rows: [RealEventSummary] = try await Self.retryingEventColumns { withR2 in
+try await SupabaseService.client
+                .from("events").select(Self.eventColumns(withR2))
+                .eq("status", value: "live").eq("visibility", value: "public")
+                .gte("starts_at", value: ISO8601DateFormatter().string(from: start))
+                .lte("starts_at", value: ISO8601DateFormatter().string(from: end))
+                .order("starts_at", ascending: true)
+                .execute().value }
+            let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
+            async let photoLists = photoURLsByEvent(rows.map(\.id), coverOnly: Set(rows.filter { $0.visibility != "public" }.map(\.id)))
+            async let orgRows = organizerNames(for: organizerIDs)
+            // Anonymous/signed-out visitors have no followed hosts — an
+            // empty Set falls every event through to the chronological
+            // tiebreak below.
+            async let followedIDs = followedOrganizerIDs()
+            let photoListsByID = await photoLists
+            let photos = photoListsByID.compactMapValues(\.first)
+            noteGalleries(rows, photoListsByID)
+            let orgNameByID = await orgRows
+            let followedOrgIDs = await followedIDs
+
+            var shaped: [(event: CatalogEvent, followed: Bool)] = []
+            for row in rows {
+                var r = row
+                r.photoURL = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref) ?? photos[row.id]
+                if let orgId = row.organizerId { r.organizerName = orgNameByID[orgId] ?? "" }
+                shaped.append((CatalogEvent.fromReal(r), row.organizerId.map { followedOrgIDs.contains($0) } ?? false))
+                // Same rows just fetched — feeds the shared realEventsByID
+                // cache too, so a card that's ALSO saved/attending doesn't
+                // trigger a second, redundant loadRealEventsByID() fetch.
+                realEventsByID[row.id] = shaped.last?.event
+            }
+            weekendEvents = shaped
+                .sorted { $0.followed != $1.followed ? $0.followed : false } // stable: already starts_at-ascending
+                .map(\.event)
+        } catch {
+            print("loadWeekendEvents failed:", error)
+            weekendEvents = []
+        }
+    }
+
+    /// Home-visibility fix (2026-09-29) — iOS port of web's identical
+    /// `loadDiscoveryEvents` (BanBeContext.jsx): every real, publicly-visible
+    /// event (`status IN ('live','cancelled','ended')`, `visibility =
+    /// 'public'` — 'review'/'draft' never included, so pending/withdrawn
+    /// stays hidden exactly as intended), not narrowed to this weekend.
+    /// This is the array `feed` (below) was missing entirely before this
+    /// fix — see this property's own doc comment on `AppState.swift`.
+    func loadDiscoveryEvents() async {
+        #if DEBUG
+        if UITestFixture.isActive { return } // fixture data must not be replaced by a network read
+        #endif
+        discoveryEventsLoading = true
+        defer { discoveryEventsLoading = false }
+        do {
+            let rows: [RealEventSummary] = try await Self.retryingEventColumns { withR2 in
+try await SupabaseService.client
+                .from("events").select(Self.eventColumns(withR2))
+                .eq("visibility", value: "public")
+                .in("status", values: ["live", "cancelled", "ended"])
+                .order("starts_at", ascending: true)
+                .limit(300)
+                .execute().value }
+            let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
+            async let photoLists = photoURLsByEvent(rows.map(\.id), coverOnly: Set(rows.filter { $0.visibility != "public" }.map(\.id)))
+            async let orgRows = organizerNames(for: organizerIDs)
+            let photoListsByID = await photoLists
+            let photos = photoListsByID.compactMapValues(\.first)
+            noteGalleries(rows, photoListsByID)
+            let orgNameByID = await orgRows
+
+            var shaped: [CatalogEvent] = []
+            for row in rows {
+                var r = row
+                r.photoURL = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref) ?? photos[row.id]
+                if let orgId = row.organizerId { r.organizerName = orgNameByID[orgId] ?? "" }
+                let event = CatalogEvent.fromReal(r)
+                shaped.append(event)
+                realEventsByID[row.id] = event
+            }
+            discoveryAlertVersions = Dictionary(rows.map { ($0.id, ForYouAlert.version(reviewedAt: $0.reviewedAt, submittedAt: $0.submittedAt, status: $0.status, visibility: $0.visibility)) }, uniquingKeysWith: { a, _ in a })
+            discoveryEvents = shaped
+            discoveryEventsLoadFailed = false
+            // Real seat fill for the cards (note 50, migration 186) — best-effort, see loadPublicEventFill.
+            await loadPublicEventFill(ids: rows.filter { $0.status == "live" && $0.visibility == "public" }.map(\.id))
+        } catch {
+            print("loadDiscoveryEvents failed:", error)
+            discoveryEvents = []
+            discoveryEventsLoadFailed = true
+        }
+    }
+
+    // ============ Chat photo viewer actions (Task 2, 07-notifications.md) ============
+
+    /// Save/Download — writes the REAL original bytes (fetched from the
+    /// same authorized signed URL already shown inline, never a public
+    /// one) to the user's Photos library via the proper permission flow.
+    func downloadChatPhoto() async -> Bool {
+        guard let item = chatPhotoViewer else { return false }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: item.url)
+            guard let image = UIImage(data: data) else { return false }
+            let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard status == .authorized || status == .limited else { return false }
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }
+            return true
+        } catch {
+            print("downloadChatPhoto failed:", error)
+            return false
+        }
+    }
+
+    /// Forward — re-uploads the same original bytes under the TARGET
+    /// thread's own path (chat_attachments_participant_read RLS grants
+    /// read by the object's OWN path prefix, not by the message row, so a
+    /// forwarded message can't just reference the source thread's copy —
+    /// same reasoning as the web fix, BanBeContext.jsx's forwardChatPhoto).
+    func forwardChatPhoto(to targetThreadId: UUID) async -> Bool {
+        guard let item = chatPhotoViewer, let uid = userID else { return false }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: item.url)
+            let ext = (item.attachmentPath as NSString).pathExtension.isEmpty ? "jpg" : (item.attachmentPath as NSString).pathExtension
+            let contentType = response.mimeType ?? "image/jpeg"
+            let newPath = "\(targetThreadId.uuidString.lowercased())/\(Int(Date().timeIntervalSince1970 * 1000)).\(ext)"
+            _ = try await SupabaseService.client.storage.from("chat-attachments")
+                .upload(newPath, data: data, options: FileOptions(contentType: contentType))
+            _ = try await SupabaseService.client.from("messages").insert(
+                NewAttachmentMessage(threadId: targetThreadId, senderId: uid, body: T("Đã chuyển tiếp một ảnh", "Forwarded a photo"), kind: "text", attachmentPath: newPath, attachmentType: contentType, attachmentWidth: item.width, attachmentHeight: item.height, replyToMessageId: nil)
+            ).execute()
+            closeChatForward()
+            return true
+        } catch {
+            print("forwardChatPhoto failed:", error)
+            return false
+        }
+    }
+
+    /// Task 2.3a (2026-09-22 follow-up) — "Post to Story" from the chat
+    /// photo viewer. Writes the SAME `stories` schema/storage/RLS
+    /// `publishStory()` already uses (Task 4 of this ticket requires this
+    /// be the identical Story type) — only the source bytes differ (an
+    /// already-uploaded chat attachment's signed URL, not a freshly-picked
+    /// local file). `storyCreateBusy` doubles as the double-tap guard: a
+    /// second call while the first is still in flight is a no-op, not a
+    /// second Story row.
+    func postChatPhotoToStory() async -> Bool {
+        guard let item = chatPhotoViewer, !storyCreateBusy else { return false }
+        let orgIds = await currentOrganizerIds()
+        guard let orgId = orgIds.first, let uid = userID else { return false }
+        storyCreateBusy = true
+        defer { storyCreateBusy = false }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: item.url)
+            let ext = (item.attachmentPath as NSString).pathExtension.isEmpty ? "jpg" : (item.attachmentPath as NSString).pathExtension
+            let contentType = response.mimeType ?? "image/jpeg"
+            let path = "\(orgId)/\(Int(Date().timeIntervalSince1970 * 1000)).\(ext)"
+            _ = try await SupabaseService.client.storage.from("stories")
+                .upload(path, data: data, options: FileOptions(contentType: contentType))
+            _ = try await SupabaseService.client.from("stories").insert(
+                NewStory(organizerId: orgId, authorId: uid, mediaPath: path, mediaType: contentType, width: item.width, height: item.height)
+            ).execute()
+            closePostToStoryConfirm()
+            await loadHomeStories()
+            return true
+        } catch {
+            print("postChatPhotoToStory failed:", error)
+            return false
+        }
+    }
+
+    // ============ Stories (Task 3, 07-notifications.md) ============
+    // RLS (migration 066) already does every access check that matters —
+    // an unfiltered SELECT on `stories` only ever returns active rows this
+    // account is actually permitted to see.
+
+    func loadHomeStories() async {
+        guard let uid = userID else {
+            homeStories = []
+            return
+        }
+        do {
+            // migration 147's overlays/link columns — falls back to the
+            // original column list if it hasn't been applied yet, so the
+            // story ring never breaks over a missing migration.
+            let baseCols = "id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at, kind, event_id, survey_id"
+            let rows: [Story]
+            if let withEdits: [Story] = try? await SupabaseService.client
+                .from("stories").select(baseCols + ", overlays, link_url, link_label")
+                .order("created_at", ascending: true).execute().value {
+                rows = withEdits
+            } else {
+                rows = try await SupabaseService.client
+                    .from("stories").select(baseCols)
+                    .order("created_at", ascending: true).execute().value
+            }
+            guard !rows.isEmpty else {
+                homeStories = []
+                return
+            }
+
+            // A real `follows` lookup is what tells "mine/followed" (the
+            // normal per-organizer story ring) apart from everyone else —
+            // Section 5's own public survey DISCOVERY no longer depends on
+            // this at all (see `loadHomeSurveyDiscovery()`, AppState+Surveys.swift
+            // — it reads `surveys` directly now, independent of `stories`/
+            // follow status). This lookup still matters here for the
+            // ordinary story ring below, unchanged.
+            struct FollowRow: Decodable { let organizerId: String
+                enum CodingKeys: String, CodingKey { case organizerId = "organizer_id" } }
+            let followRows: [FollowRow] = (try? await SupabaseService.client
+                .from("follows").select("organizer_id").eq("user_id", value: uid).execute().value) ?? []
+            let followedOrgIds = Set(followRows.map(\.organizerId))
+            let myOrgIds = await currentOrganizerIds()
+            myOrganizerIdsCache = myOrgIds
+            func isMineOrFollowed(_ organizerId: String) -> Bool { myOrgIds.contains(organizerId) || followedOrgIds.contains(organizerId) }
+
+            let ownRows = rows.filter { isMineOrFollowed($0.organizerId) }
+
+            let orgIds = Array(Set(rows.map(\.organizerId)))
+            let orgRows: [OrganizerRow] = try await MediaColumns.retrying { withR2 in
+                try await SupabaseService.client
+                .from("organizers").select(MediaColumns.cols("id, name, avatar_path", "avatar_r2_ref", withR2)).in("id", values: orgIds).execute().value }
+            let orgById = Dictionary(uniqueKeysWithValues: orgRows.map { ($0.id, $0.name) })
+            // Avatar pass — see `StoryItem.hostAvatarURL`'s own doc comment.
+            // Same public-bucket resolver `AppState+Data.swift`'s
+            // notification-avatar map already uses (`organizer-photos`,
+            // synchronous `getPublicURL` — no signing needed, same as every
+            // other organizer avatar in this app).
+            let orgAvatarURLById: [String: URL] = Dictionary(uniqueKeysWithValues: orgRows.compactMap { o in
+                guard let url = MediaURLs.organizerAvatar(path: o.avatarPath, r2Ref: o.avatarR2Ref, variant: .thumb)
+                else { return nil }
+                return (o.id, url)
+            })
+
+            struct StoryViewIDRow: Decodable { let storyId: UUID
+                enum CodingKeys: String, CodingKey { case storyId = "story_id" } }
+            let viewRows: [StoryViewIDRow] = try await SupabaseService.client
+                .from("story_views").select("story_id").eq("viewer_id", value: uid)
+                .in("story_id", values: ownRows.map(\.id.uuidString)).execute().value
+            let viewedSet = Set(viewRows.map(\.storyId)).union(storyViewedIds)
+
+            // Task 4 (2026-09-22 follow-up) — an event_share/survey_share
+            // story's own media_path is deliberately empty (migrations 068/
+            // 117's own comments), so only real media rows are worth a
+            // signed-URL round trip.
+            let mediaPaths = ownRows.filter { $0.kind == "media" && !$0.mediaPath.isEmpty }.map(\.mediaPath)
+            var urlByPath: [String: URL] = [:]
+            if !mediaPaths.isEmpty, let signed = try? await SupabaseService.client.storage.from("stories")
+                .createSignedURLs(paths: mediaPaths, expiresIn: 600) {
+                for result in signed {
+                    if case let .success(path, url) = result { urlByPath[path] = url }
+                }
+            }
+
+            // One get_survey_card() per distinct survey referenced by the
+            // STORY RING only now (`ownRows` — mine/followed) — Section 5's
+            // own discovery no longer needs this at all, since
+            // `get_public_survey_discovery()` already returns everything a
+            // discovery card needs directly (see `loadHomeSurveyDiscovery()`).
+            let surveyIds = Array(Set(ownRows.filter { $0.kind == "survey_share" }.compactMap(\.surveyId)))
+            var cardBySurveyId: [UUID: SurveyCard] = [:]
+            for surveyId in surveyIds {
+                if let card: SurveyCard = try? await SupabaseService.client
+                    .rpc("get_survey_card", params: ["p_survey_id": surveyId.uuidString]).execute().value,
+                   card.success == true {
+                    cardBySurveyId[surveyId] = card
+                }
+            }
+
+            var byOrg: [String: StoryGroup] = [:]
+            for r in ownRows {
+                guard let name = orgById[r.organizerId] else { continue }
+                let isEventShare = r.kind == "event_share"
+                // BUG 2 fix (2026-09-22 follow-up) — two real bugs, confirmed
+                // by reading:
+                // 1. `EventCatalog.find(_:)` falls back to `.all.first` for
+                //    ANY unmatched key ("mirrors findEvent() on the web
+                //    side" — its own doc comment says so) — a genuinely
+                //    bad/missing event_id silently showed a random WRONG
+                //    event instead of this card's own "not available" state.
+                //    Matched directly against `EventCatalog.all` instead (no
+                //    fallback), same fix already applied on web and to the
+                //    2026-09-18 notification-avatar bug for the identical
+                //    reason.
+                // 2. `ev.img` (the catalogue's own web-relative path) was
+                //    being passed straight to `AsyncImage`'s `URL(string:)`,
+                //    which "successfully" parses a scheme-less path into a
+                //    URL with no host — `URLSession` then silently fails to
+                //    load it, exactly the reported blank/white card. Fixed
+                //    by rendering it through `CatalogPhoto` instead (the
+                //    SAME robust cover-photo resolver Event Detail/Home/Map
+                //    already use) — see StoryViewerView.swift's
+                //    `EventShareCard`; the snapshot keeps the raw relative
+                //    path since that's what `CatalogPhoto` itself expects.
+                // 2026-09-25 fix pass (Task 0 audit) — this snapshot is
+                // rebuilt fresh every time loadHomeStories() runs (not
+                // frozen at share-creation time), so it needs the same
+                // live-date merge every other screen uses — it used to read
+                // the raw static catalogue's own `ev.when` directly, same
+                // frozen-month bug class as the others this pass fixed.
+                let snapshot: StoryEventSnapshot? = {
+                    guard isEventShare, let eventId = r.eventId,
+                          let evRaw = EventCatalog.all.first(where: { $0.key == eventId }) else { return nil }
+                    let ev = evRaw.applyingLiveStatus(homeLiveEvents[evRaw.key])
+                    return StoryEventSnapshot(eventKey: ev.key, img: ev.img, name: ev.name, when: ev.when, location: ev.where, lat: ev.lat, lng: ev.lng)
+                }()
+                let card: SurveyCard? = r.kind == "survey_share" ? r.surveyId.flatMap { cardBySurveyId[$0] } : nil
+                let item = StoryItem(id: r.id, mediaPath: r.mediaPath, url: urlByPath[r.mediaPath], width: r.width, height: r.height, createdAt: r.createdAt, viewed: viewedSet.contains(r.id), kind: r.kind, eventSnapshot: snapshot, surveyCard: card, hostAvatarURL: orgAvatarURLById[r.organizerId], overlays: r.overlays ?? [], linkURL: r.linkUrl, linkLabel: r.linkLabel)
+                if byOrg[r.organizerId] != nil { byOrg[r.organizerId]!.stories.append(item) }
+                else { byOrg[r.organizerId] = StoryGroup(organizerId: r.organizerId, orgName: name, stories: [item]) }
+            }
+            // The signed-in account's own active story appears first.
+            homeStories = byOrg.values.sorted { a, b in
+                let aMine = myOrgIds.contains(a.organizerId) ? 0 : 1
+                let bMine = myOrgIds.contains(b.organizerId) ? 0 : 1
+                return aMine != bMine ? aMine < bMine : a.orgName < b.orgName
+            }
+
+        } catch {
+            print("loadHomeStories failed:", error)
+        }
+    }
+
+    /// Organizer ids the signed-in account owns/co-owns — iOS has no cached
+    /// `myOrganizerIds` (unlike web's BanBeContext.jsx), so this mirrors the
+    /// same on-demand `organizers` lookup `refreshUnreadMessageCount()`/
+    /// `loadDocuments()` already use.
+    func currentOrganizerIds() async -> [String] {
+        guard let uid = userID else { return [] }
+        let rows: [IDRow] = (try? await SupabaseService.client
+            .from("organizers").select("id")
+            .or("owner_id.eq.\(uid.uuidString),user_id.eq.\(uid.uuidString)")
+            .execute().value) ?? []
+        return rows.map(\.id)
+    }
+
+    /// Idempotent (PK on story_id+viewer_id) — records a real view and
+    /// updates local state immediately so the ring subdues without waiting
+    /// on a re-fetch.
+    /// BUG 1 fix (2026-09-22 follow-up) — real bug, confirmed by reading:
+    /// this used to update ONLY `storyViewedIds` (a flat Set nothing else
+    /// reads at render time) and left `homeStories`' own per-story
+    /// `viewed`/per-group `allViewed` untouched — those are what the ring
+    /// actually renders (HomeView's story row, AccountView's own avatar),
+    /// so a ring stayed bright until the next unrelated `loadHomeStories()`
+    /// call. Fixed by also updating the matching story/group in
+    /// `homeStories` in this same call, before the `story_views` upsert
+    /// even resolves.
+    func viewStoryTick(_ storyId: UUID) async {
+        guard let uid = userID else { return }
+        storyViewedIds.insert(storyId)
+        for i in homeStories.indices {
+            guard let storyIdx = homeStories[i].stories.firstIndex(where: { $0.id == storyId }) else { continue }
+            homeStories[i].stories[storyIdx].viewed = true
+        }
+        do {
+            try await SupabaseService.client.from("story_views")
+                .upsert(NewStoryView(storyId: storyId, viewerId: uid), onConflict: "story_id,viewer_id").execute()
+        } catch {
+            print("viewStoryTick failed:", error)
+        }
+    }
+
+    /// Publishes the currently-previewed image as a new 24h story for the
+    /// signed-in host's (first) organizer.
+    func publishStory() async -> Bool {
+        guard let image = storyCreatePreviewImage, let uid = userID else { return false }
+        let overlays = storyDraftOverlays.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let link = storyDraftLinkURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let label = storyDraftLinkLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        storyCreateBusy = true
+        defer { storyCreateBusy = false }
+        do {
+            if let editingID = storyEditingID {
+                // Edit: overlays/link only — the media itself is untouched.
+                struct Edit: Encodable {
+                    let overlays: [StoryOverlay]
+                    let linkUrl: String?
+                    let linkLabel: String?
+                    enum CodingKeys: String, CodingKey { case overlays; case linkUrl = "link_url"; case linkLabel = "link_label" }
+                    func encode(to encoder: Encoder) throws {
+                        var c = encoder.container(keyedBy: CodingKeys.self)
+                        try c.encode(overlays, forKey: .overlays)
+                        try c.encode(linkUrl, forKey: .linkUrl)      // explicit null clears the column
+                        try c.encode(linkLabel, forKey: .linkLabel)
+                    }
+                }
+                _ = try await SupabaseService.client.from("stories")
+                    .update(Edit(overlays: overlays, linkUrl: link.isEmpty ? nil : link, linkLabel: link.isEmpty || label.isEmpty ? nil : label))
+                    .eq("id", value: editingID.uuidString).execute()
+            } else {
+                let orgIds = await currentOrganizerIds()
+                guard let orgId = orgIds.first else { return false }
+                guard let data = ProofImage.jpegDataUnderLimit(from: image) else { return false }
+                let dims = UIImage(data: data)?.size
+                let path = "\(orgId)/\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
+                _ = try await SupabaseService.client.storage.from("stories")
+                    .upload(path, data: data, options: FileOptions(contentType: "image/jpeg"))
+                _ = try await SupabaseService.client.from("stories").insert(
+                    NewStory(organizerId: orgId, authorId: uid, mediaPath: path, mediaType: "image/jpeg",
+                             width: dims.map { Int($0.width) }, height: dims.map { Int($0.height) },
+                             overlays: overlays, linkUrl: link.isEmpty ? nil : link,
+                             linkLabel: link.isEmpty || label.isEmpty ? nil : label,
+                             surveyId: storyDraftSurveyID)
+                ).execute()
+            }
+            let hadSurvey = storyDraftSurveyID != nil
+            clearStoryDraft()
+            Haptics.success()
+            await loadHomeStories()
+            if hadSurvey { await loadMySurveys() }
+            return true
+        } catch {
+            print("publishStory failed:", error)
+            return false
+        }
+    }
+
+    func clearStoryDraft() {
+        storyCreatePreviewImage = nil
+        storyDraftOverlays = []
+        storyDraftLinkURL = ""
+        storyDraftLinkLabel = ""
+        storyEditingID = nil
+        storyDraftSurveyID = nil
+    }
+
+    /// Opens the story editor on an already-posted story (overlays/link only).
+    func beginEditStory(_ story: StoryItem) async {
+        guard let url = story.url,
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let image = UIImage(data: data) else { return }
+        storyDraftOverlays = story.overlays
+        storyDraftLinkURL = story.linkURL ?? ""
+        storyDraftLinkLabel = story.linkLabel ?? ""
+        storyEditingID = story.id
+        storyCreatePreviewImage = image
+    }
+
+    /// Deletes a posted story (author / organizer owner — RLS decides) and
+    /// its media object (best effort; the row is what makes it disappear).
+    func deleteStory(_ story: StoryItem) async -> Bool {
+        do {
+            _ = try await SupabaseService.client.from("stories").delete()
+                .eq("id", value: story.id.uuidString).execute()
+            if !story.mediaPath.isEmpty {
+                _ = try? await SupabaseService.client.storage.from("stories").remove(paths: [story.mediaPath])
+            }
+            Haptics.success()
+            await loadHomeStories()
+            return true
+        } catch {
+            print("deleteStory failed:", error)
+            return false
+        }
+    }
+
+    /// Task 4 (2026-09-22 follow-up) — "Share event to Story", Event
+    /// Detail. Ownership is NOT checked here — `create_event_share_story()`
+    /// (migration 068, SECURITY DEFINER) re-verifies the real
+    /// event -> organizer -> owner_id/user_id relationship server-side
+    /// before writing anything; `app.myOrgEventKeys` gating the button's
+    /// visibility (EventDetailView.swift) is a UI nicety, not the security
+    /// boundary.
+    func createEventShareStory(eventKey: String) async -> Bool {
+        guard !storyCreateBusy else { return false }
+        storyCreateBusy = true
+        defer { storyCreateBusy = false }
+        do {
+            struct Params: Encodable { let pEventId: String
+                enum CodingKeys: String, CodingKey { case pEventId = "p_event_id" } }
+            _ = try await SupabaseService.client
+                .rpc("create_event_share_story", params: Params(pEventId: eventKey))
+                .execute()
+            Haptics.success()
+            await loadHomeStories()
+            return true
+        } catch {
+            print("createEventShareStory failed:", error)
+            return false
+        }
+    }
+
+    /// Task 1a — real read-tracking: messages.read_at was never written by
+    /// any code path in this app before this pass (confirmed by grep).
+    /// Scoped to "not sent by me" so a guest opening their own thread can
+    /// never mark their own outgoing messages read.
+    func markThreadMessagesRead(_ threadID: UUID) async {
+        guard let uid = userID else { return }
+        do {
+            // BUG (2026-09-22 sixteenth follow-up) — real root cause,
+            // confirmed against real production data (dotrung1998@gmail.com,
+            // system rows like "Dispute resolved"/"Confirmation email
+            // sent" with sender_id IS NULL and read_at IS NULL): the old
+            // `.neq("sender_id", ...)` compiles to `sender_id <> uid`, which
+            // SQL's NULL semantics silently exclude from the WHERE clause —
+            // a system message's read_at was NEVER actually written, so
+            // every later refetch (loadInboxThreads(), the dock poll) saw
+            // that same never-cleared row and correctly (per its own client-
+            // side, NULL-safe `sender_id != uid` check) reported the thread
+            // unread again — the "reads, then reverts" bug. `.or(...)`
+            // updates a message when it's a system row (sender_id IS NULL)
+            // OR a genuine incoming message from someone else — never a
+            // message this user authored themselves.
+            try await SupabaseService.client
+                .from("messages")
+                .update(MessageReadUpdate())
+                .eq("thread_id", value: threadID)
+                .is("read_at", value: nil)
+                .or("sender_id.is.null,sender_id.neq.\(uid.uuidString)")
+                .execute()
+        } catch {
+            if error is CancellationError || Task.isCancelled { return }
+            print("Failed to mark thread read:", error)
+            return
+        }
+        // BUG 1 (2026-09-22 fourteenth follow-up) — see AppState.swift's own
+        // comment on lastReadWriteAt.
+        lastReadWriteAt = Date()
+        // Task 6 (2026-09-22 twelfth follow-up) — mirrors web's same fix in
+        // BanBeContext.jsx's markThreadMessagesRead: `chatBackAction()` returns
+        // straight to `.inbox` without re-calling `loadInboxThreads()`, so
+        // the row's local `unread` flag (and the dock's `unreadMessages`
+        // count) stayed stale — bold/dotted — until Inbox was re-entered
+        // from OUTSIDE via a fresh `goInbox()`. Patch both local snapshots
+        // right here, the one place every read-marking path goes through.
+        if let idx = inboxThreads.firstIndex(where: { $0.id == threadID }), inboxThreads[idx].unread {
+            inboxThreads[idx].unread = false
+            unreadMessages = max(0, unreadMessages - 1)
+        }
+    }
+
+    func chatSend() async {
+        let text = chatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Normal messaging is paused while this conversation has an active
+        // dispute; the draft is left untouched so it is still there afterwards.
+        guard !normalMessagingPaused else { return }
+        guard !text.isEmpty, let uid = userID, chatCanCompose else { return }
+        chatDraft = ""
+        // Lazy creation: the threads row is inserted only now, at the first
+        // real send of a draft conversation.
+        guard let threadID = await ensureChatThread() else {
+            chatDraft = text
+            return
+        }
+        do {
+            let sent: [ChatMessage] = try await SupabaseService.client
+                .from("messages")
+                .insert(NewMessage(threadId: threadID, senderId: uid, body: text, kind: "text"))
+                .select("id, thread_id, sender_id, body, kind, created_at, read_at")
+                .execute().value
+            if let message = sent.first { chatMessages.append(message) }
+            // No email here — the notify_new_message trigger's in-app
+            // notification is the only one a message gets, and tapping it
+            // opens this same thread.
+        } catch {
+            print("Failed to send message:", error)
+            chatDraft = text
+        }
+    }
+
+    /// Where the Chat header's ‹ and the edge-swipe both take you. Honors
+    /// every real origin screen, not just the three the old expression
+    /// whitelisted — a refund dispute opened from Account (`.profile`) or
+    /// the host Dashboard (`.dashboard`) used to collapse to the
+    /// unrelated event page, then Home.
+    ///
+    /// `accountTab` is left untouched on a `.profile` return: AccountView
+    /// keys its own Personal/Host/Admin body off it, and nothing here ever
+    /// writes it, so the tab the reader was on comes back exactly.
+    ///
+    /// The target is consumed and reset here rather than left in `chatBack`
+    /// for the next conversation — a chat opened from one origin must never
+    /// send a later, unrelated chat back to that origin. Normal chat and
+    /// notification entry points set `chatBack` fresh in openThread()/
+    /// openChat(for:) before they land, so they are unaffected.
+    ///
+    /// The routing half is a static, side-effect-free function (see
+    /// `resolveChatBackTarget`) so it can be unit-tested without a live
+    /// AppState — the two halves must never drift, since the edge-swipe's
+    /// `backTargetScreen` mirrors this exact expression.
+    func chatBackAction() {
+        let target = AppState.resolveChatBackTarget(chatBack)
+        screen = target
+        chatBack = .event
+    }
+
+    /// Side-effect-free half of `chatBackAction` — also mirrored by
+    /// `backTargetScreen`'s own `.chat` case, so the edge-swipe peek and
+    /// the header's ‹ always agree. Nonisolated on purpose: it is pure
+    /// switch logic with no state, so it can be unit-tested without a live
+    /// AppState or a main-actor hop.
+    nonisolated static func resolveChatBackTarget(_ chatBack: Screen) -> Screen {
+        switch chatBack {
+        // .confirmed: "Message host" from the ticket's Event details sheet or strip returns to that same ticket (note 78).
+        case .inbox, .notifications, .paymentDetails, .profile, .dashboard, .confirmed:
+            return chatBack
+        default: return .event
+        }
+    }
+
+    /// A real, permanent delete, own messages only — RLS
+    /// (messages_delete_own, migration 054) scopes this to
+    /// `sender_id = auth.uid()`, which a system message (sender_id nil)
+    /// can never match. No documented retention requirement for this
+    /// table (unlike dispute_messages, see 05-notify-retention.md), so no
+    /// soft-delete here either.
+    func deleteMessage(_ id: UUID) async {
+        let previous = chatMessages
+        chatMessages.removeAll { $0.id == id }
+        do {
+            try await SupabaseService.client.from("messages").delete().eq("id", value: id).execute()
+        } catch {
+            print("Failed to delete message:", error)
+            chatMessages = previous // put it back — the delete didn't actually happen
+        }
+    }
+
+    /// Conversations on both sides: as the guest, and as the organizer of
+    /// threads belonging to an organizer this account owns.
+    func loadInboxThreads() async {
+        guard let uid = userID else { inboxThreads = []; return }
+        // BUG 1 (2026-09-22 fourteenth/fifteenth follow-up) — see
+        // AppState.swift's own comments on lastReadWriteAt/
+        // inboxThreadsGeneration. InboxView's `.task` (MessagingViews.swift)
+        // is cancelled by SwiftUI itself whenever the view disappears
+        // mid-request — a normal lifecycle event, not a failure — which is
+        // what actually produced the "Failed to load conversations:
+        // CancellationError()" log.
+        let requestStartedAt = Date()
+        inboxThreadsGeneration += 1
+        let myGeneration = inboxThreadsGeneration
+        do {
+            let asGuest: [ThreadRow] = try await SupabaseService.client
+                .from("threads").select("id, event_id, guest_id, organizer_id")
+                .eq("guest_id", value: uid)
+                .execute().value
+
+            let myOrgs: [IDRow] = try await SupabaseService.client
+                .from("organizers").select("id")
+                .or("owner_id.eq.\(uid.uuidString),user_id.eq.\(uid.uuidString)")
+                .execute().value
+
+            var asHost: [ThreadRow] = []
+            if !myOrgs.isEmpty {
+                asHost = try await SupabaseService.client
+                    .from("threads").select("id, event_id, guest_id, organizer_id")
+                    .in("organizer_id", values: myOrgs.map(\.id))
+                    .execute().value
+            }
+
+            var seen = Set<UUID>()
+            let threads = (asGuest + asHost).filter { seen.insert($0.id).inserted }
+            guard myGeneration == inboxThreadsGeneration else { return }
+            guard !threads.isEmpty else { inboxThreads = []; return }
+
+            let messages: [MessageBrief] = try await SupabaseService.client
+                .from("messages").select("thread_id, body, sender_id, created_at, read_at")
+                .in("thread_id", values: threads.map(\.id))
+                .order("created_at", ascending: false)
+                .execute().value
+            var lastByThread: [UUID: MessageBrief] = [:]
+            // Task 3 (2026-09-21 follow-up) — same unread signal the dock
+            // badge's own poll uses (read_at IS NULL, not sent by me),
+            // reused here per-row instead of a second computation.
+            var unreadThreadIDs = Set<UUID>()
+            for message in messages {
+                if lastByThread[message.threadId] == nil { lastByThread[message.threadId] = message }
+                if message.readAt == nil, message.senderId != uid { unreadThreadIDs.insert(message.threadId) }
+            }
+
+            // Task 2 (2026-09-21 follow-up) — per-participant star/archive.
+            // deleted_at exists only after migration 156 — fall back to the
+            // original columns on an undefined-column error.
+            var prefRows: [ThreadPreferenceRow]
+            do {
+                prefRows = try await SupabaseService.client
+                    .from("thread_preferences").select("thread_id, starred, archived, deleted_at")
+                    .eq("user_id", value: uid)
+                    .in("thread_id", values: threads.map(\.id))
+                    .execute().value
+            } catch {
+                if error is CancellationError || Task.isCancelled { throw error }
+                prefRows = try await SupabaseService.client
+                    .from("thread_preferences").select("thread_id, starred, archived")
+                    .eq("user_id", value: uid)
+                    .in("thread_id", values: threads.map(\.id))
+                    .execute().value
+            }
+            var prefsByThread: [UUID: ThreadPreference] = [:]
+            for row in prefRows { prefsByThread[row.threadId] = ThreadPreference(starred: row.starred, archived: row.archived, deletedAt: row.deletedAt) }
+            inboxThreadPrefs = prefsByThread
+
+            // Task 3a (07-notifications.md, 2026-09-21) — the OTHER
+            // participant's own avatar for InboxView's merged-avatar badge:
+            // the guest's profiles.avatar_url when I'm the organizer, or the
+            // organizer's owner/user profile avatar_url when I'm the guest.
+            // organizers itself has no avatar column, hence the extra lookup.
+            let orgIDs = Array(Set(threads.map(\.organizerId)))
+            var orgOwnerByOrgID: [String: UUID] = [:]
+            if !orgIDs.isEmpty {
+                let orgRows: [OrganizerOwnerRow] = try await SupabaseService.client
+                    .from("organizers").select("id, owner_id, user_id")
+                    .in("id", values: orgIDs)
+                    .execute().value
+                for row in orgRows { orgOwnerByOrgID[row.id] = row.ownerId ?? row.userId }
+            }
+
+            let guestIDs = Array(Set(threads.compactMap { $0.guestId != uid ? $0.guestId : nil }))
+            let avatarUserIDs = Array(Set(guestIDs + orgOwnerByOrgID.values))
+            var guestNames: [UUID: String] = [:]
+            var avatarByUserID: [UUID: String] = [:]
+            if !avatarUserIDs.isEmpty {
+                let profiles: [ProfileNameAvatar] = try await SupabaseService.client
+                    .from("profiles").select("id, display_name, avatar_url")
+                    .in("id", values: avatarUserIDs.map(\.uuidString))
+                    .execute().value
+                for profile in profiles {
+                    guestNames[profile.id] = profile.displayName
+                    if let avatarUrl = profile.avatarUrl { avatarByUserID[profile.id] = avatarUrl }
+                }
+            }
+
+            guard myGeneration == inboxThreadsGeneration, requestStartedAt >= lastReadWriteAt else { return }
+
+            // The row's cover photo resolves against the real-events cache, so
+            // make sure every real (non-catalogue) event on these threads is in
+            // it BEFORE building rows — otherwise a first-ever Inbox load would
+            // draw a placeholder for every real event and only fill in on a
+            // later poll. Fire-and-forget: the generation guard above already
+            // drops this whole result if a newer load started meanwhile.
+            let realEventIDs = threads.map(\.eventId).filter { id in
+                EventCatalog.all.first(where: { $0.key == id }) == nil
+            }
+            if !realEventIDs.isEmpty {
+                await loadRealEventsByID(realEventIDs)
+                guard myGeneration == inboxThreadsGeneration else { return }
+            }
+
+            // BUG (2026-10-04, physical-iPhone repro): the row's NAME came from
+            // `EventCatalog.find(thread.eventId).orgName`. `find()` matches on
+            // the bundled catalogue's own `key` and, on a miss, returns
+            // `?? EventCatalog.all[0]` — the FIRST DEMO EVENT. A real,
+            // host-created event's id can never equal a catalogue key, so every
+            // real conversation was labelled with a demo event's organizer
+            // ("Bếp Nhỏ"), and that wrong string was passed straight into
+            // openThread(..., otherName:) as the chat header. Details looked
+            // right because `currentEvent` resolves through realEventsByID —
+            // which is exactly why the two disagreed.
+            //
+            // A messaging identity is now resolved from LIVE rows for this
+            // exact thread and never from the catalogue:
+            //   guest side → the `organizers.name` that thread's OWN
+            //                 organizer_id points at
+            //   host side  → that guest's own profiles.display_name
+            // Self-booking/self-refunding (one account is both the guest and
+            // the organizer on the same thread) resolves through the same two
+            // live lookups, so it is labelled by whoever the viewer is talking
+            // TO, which is the only thing a chat header means.
+            let orgNames = await organizerNames(for: orgIDs)
+
+            inboxThreads = threads.compactMap { thread -> InboxThread? in
+                // A conversation with no messages (e.g. an empty row from
+                // before lazy creation) is not a conversation yet.
+                guard let last = lastByThread[thread.id] else { return nil }
+                // Per-user "Delete": hidden until a message newer than
+                // deleted_at arrives.
+                if let deletedAt = prefsByThread[thread.id]?.deletedAt, last.createdAt <= deletedAt { return nil }
+                let iAmGuest = thread.guestId == uid
+                let name: String
+                if iAmGuest {
+                    let orgName = (orgNames[thread.organizerId] ?? "")
+                        .trimmingCharacters(in: .whitespaces)
+                    // An organizer row that is genuinely gone/renamed to blank
+                    // says so honestly instead of borrowing a demo event's name.
+                    name = orgName.isEmpty ? T("Người tổ chức", "Organizer") : orgName
+                } else {
+                    let guestName = (guestNames[thread.guestId ?? UUID()] ?? "").trimmingCharacters(in: .whitespaces)
+                    name = guestName.isEmpty ? "Khách" : guestName
+                }
+                // Cover photo: the bundled catalogue's own `img` only when this
+                // id genuinely IS one of its keys (`find(...).key == id`), else
+                // the real event's resolved photo from realEventsByID, else ""
+                // so CatalogPhoto draws its placeholder. Same guard
+                // `currentEvent` uses — no `?? all[0]` anywhere in this path.
+                let img: String
+                if let catalogEvent = EventCatalog.find(thread.eventId), catalogEvent.key == thread.eventId {
+                    img = catalogEvent.img
+                } else {
+                    img = realEventsByID[thread.eventId]??.img ?? ""
+                }
+                let prefix = last.senderId == uid ? "Bạn: " : ""
+                let otherAvatarURL = iAmGuest ? orgOwnerByOrgID[thread.organizerId].flatMap { avatarByUserID[$0] } : avatarByUserID[thread.guestId ?? UUID()]
+                return InboxThread(
+                    id: thread.id,
+                    eventId: thread.eventId,
+                    eventKey: thread.eventId,
+                    name: name,
+                    img: img,
+                    otherAvatarURL: otherAvatarURL,
+                    snippet: prefix + last.body,
+                    lastAt: last.createdAt,
+                    unread: unreadThreadIDs.contains(thread.id)
+                )
+            }.sorted { ($0.lastAt ?? .distantPast) > ($1.lastAt ?? .distantPast) }
+        } catch {
+            if error is CancellationError || Task.isCancelled { return }
+            print("Failed to load conversations:", error)
+        }
+    }
+
+    /// Task 2 (2026-09-21 follow-up) — swipe-left "Star"/"Archive" actions.
+    /// Upserts into thread_preferences (migration 065), RLS-scoped to
+    /// `user_id = auth.uid()` so a guest and the organizer on the same
+    /// thread always get independent state.
+    func toggleThreadStar(_ threadID: UUID) async {
+        var pref = inboxThreadPrefs[threadID] ?? ThreadPreference()
+        pref.starred.toggle()
+        let previous = inboxThreadPrefs[threadID]
+        inboxThreadPrefs[threadID] = pref
+        await upsertThreadPreference(threadID, pref) { self.inboxThreadPrefs[threadID] = previous }
+    }
+
+    func archiveThread(_ threadID: UUID) async {
+        var pref = inboxThreadPrefs[threadID] ?? ThreadPreference()
+        pref.archived = true
+        let previous = inboxThreadPrefs[threadID]
+        inboxThreadPrefs[threadID] = pref
+        await upsertThreadPreference(threadID, pref) { self.inboxThreadPrefs[threadID] = previous }
+    }
+
+    func unarchiveThread(_ threadID: UUID) async {
+        var pref = inboxThreadPrefs[threadID] ?? ThreadPreference()
+        pref.archived = false
+        let previous = inboxThreadPrefs[threadID]
+        inboxThreadPrefs[threadID] = pref
+        await upsertThreadPreference(threadID, pref) { self.inboxThreadPrefs[threadID] = previous }
+    }
+
+    /// "Delete" = hide for me only (thread_preferences.deleted_at, migration
+    /// 156). Optimistic; reverts if the write fails. The other participant is
+    /// unaffected, and a newer message makes the thread reappear.
+    func deleteThreadForMe(_ threadID: UUID) async {
+        guard let uid = userID else { return }
+        let previousPref = inboxThreadPrefs[threadID]
+        let previousThreads = inboxThreads
+        var pref = previousPref ?? ThreadPreference()
+        let now = Date()
+        pref.deletedAt = now
+        inboxThreadPrefs[threadID] = pref
+        inboxThreads.removeAll { $0.id == threadID }
+        lastReadWriteAt = Date()
+        struct Upsert: Encodable {
+            let threadId: UUID; let userId: UUID; let deletedAt: Date
+            enum CodingKeys: String, CodingKey { case threadId = "thread_id", userId = "user_id", deletedAt = "deleted_at" }
+        }
+        do {
+            try await SupabaseService.client.from("thread_preferences")
+                .upsert(Upsert(threadId: threadID, userId: uid, deletedAt: now))
+                .execute()
+        } catch {
+            print("thread delete (deleted_at) failed:", error)
+            inboxThreadPrefs[threadID] = previousPref
+            inboxThreads = previousThreads
+        }
+    }
+
+    private func upsertThreadPreference(_ threadID: UUID, _ pref: ThreadPreference, onFailure: @escaping () -> Void) async {
+        guard let uid = userID else { return }
+        struct Upsert: Encodable {
+            let threadId: UUID
+            let userId: UUID
+            let starred: Bool
+            let archived: Bool
+            enum CodingKeys: String, CodingKey {
+                case threadId = "thread_id"
+                case userId = "user_id"
+                case starred, archived
+            }
+        }
+        do {
+            try await SupabaseService.client.from("thread_preferences")
+                .upsert(Upsert(threadId: threadID, userId: uid, starred: pref.starred, archived: pref.archived))
+                .execute()
+        } catch {
+            print("thread_preferences upsert failed:", error)
+            onFailure()
+        }
+    }
+
+    /// Task 1b — "Give feedback" (app_feedback, migration 065). No existing
+    /// generic feedback table (confirmed via grep before adding this one).
+    func submitFeedback(_ body: String, isBugReport: Bool) async -> Bool {
+        guard let uid = userID else { return false }
+        struct FeedbackInsert: Encodable {
+            let userId: UUID
+            let body: String
+            let isBugReport: Bool
+            enum CodingKeys: String, CodingKey {
+                case userId = "user_id"
+                case body
+                case isBugReport = "is_bug_report"
+            }
+        }
+        do {
+            try await SupabaseService.client.from("app_feedback")
+                .insert(FeedbackInsert(userId: uid, body: body.trimmingCharacters(in: .whitespacesAndNewlines), isBugReport: isBugReport))
+                .execute()
+            return true
+        } catch {
+            print("submitFeedback failed:", error)
+            return false
+        }
+    }
+
+    // MARK: - Attendance / check-in
+
+    func openAttendance(_ key: String, back: Screen = .dashboard) {
+        attendanceEventKey = key
+        attendanceGuests = []
+        // attendanceLoading explicitly true here too, not just inside
+        // loadAttendanceGuests below — the very first render of
+        // AttendanceView must never see attendanceGuests:[] paired with
+        // attendanceLoading:false, which is exactly what would render the
+        // (wrong, not-yet-resolved) empty-state text for one frame.
+        attendanceLoading = true
+        // TASK A — real root cause of the "ghost TDK404 row": refundCenterClaims/
+        // refundCenterSelected were never cleared here, only ever replaced by
+        // loadRefundCenter()'s own async response. Switching Attendance from
+        // one event to another rendered the PREVIOUS event's stale claims —
+        // including one that has nothing to do with the event now on screen
+        // — for the entire window between mount and that response landing
+        // (or forever, if it errored). Cleared synchronously now, exactly
+        // like attendanceGuests already was.
+        refundCenterClaims = []
+        refundCenterSelected = []
+        refundBatchError = ""
+        attendanceBack = back
+        screen = .attendance
+        Task { await loadAttendanceGuests(key) }
+        // Real event metadata (name/date/status) for a non-catalogue key —
+        // see AppState.attendanceEventState. loadMissingRealEvents() is a
+        // no-op if `key` is already a bundled catalogue id or already
+        // cached/in flight, so this is always safe to call unconditionally.
+        Task { await loadMissingRealEvents(for: [key]) }
+    }
+
+    /// TASK D — root cause of the "No one has booked… then flickers"
+    /// report: this used to run 3 sequential awaited queries with no
+    /// request-ordering guard at all. A fast poll re-fire (AttendanceView's
+    /// own 6s timer) or two overlapping calls could let an OLDER, SLOWER
+    /// response resolve AFTER a newer one and overwrite it with stale data
+    /// — including momentarily replacing a real guest list with `[]`, which
+    /// the empty-state text then renders as "no guests" before the newer
+    /// response's already-in-flight result lands a moment later.
+    /// `attendanceGuestsSeq` makes only the NEWEST call's response ever
+    /// allowed to write state.
+    func loadAttendanceGuests(_ key: String) async {
+        attendanceGuestsSeq += 1
+        let seq = attendanceGuestsSeq
+        attendanceLoading = true
+        do {
+            let bookings: [AttendanceBooking] = try await SupabaseService.client
+                .from("bookings")
+                .select("id, user_id, qty, status, total_vnd, code, expires_at, paid_marked_at, proof_path, recipient_name, admission_token")
+                .eq("event_id", value: key)
+                .in("status", values: ["pending", "confirmed", "attended"])
+                .execute().value
+            let userIDs = Array(Set(bookings.compactMap(\.userId)))
+            var names: [UUID: String] = [:]
+            if !userIDs.isEmpty {
+                let profiles: [ProfileName] = try await SupabaseService.client
+                    .from("profiles").select("id, display_name")
+                    .in("id", values: userIDs.map(\.uuidString))
+                    .execute().value
+                for profile in profiles { names[profile.id] = profile.displayName }
+            }
+            // Upload Receipt's reason prompt (08-payment-documents.md's
+            // 2026-09-17 follow-up #5) needs to know, per booking, whether a
+            // *live* receipt already exists — upload_payment_document()
+            // (056) requires a reason exactly when one does — plus how many
+            // superseded-but-still-queryable copies (056's 24h soft-delete
+            // window) are still pending deletion. Mirrors the web's
+            // equivalent query in BanBeContext.jsx's loadAttendanceGuests().
+            var receiptsByBooking: [UUID: [AttendanceReceipt]] = [:]
+            if !bookings.isEmpty {
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                let nowIso = isoFormatter.string(from: Date())
+                let receiptRows: [AttendanceReceiptRow] = try await SupabaseService.client
+                    .from("payment_documents").select("id, booking_id, superseded_at")
+                    .eq("kind", value: "receipt")
+                    .in("booking_id", values: bookings.map(\.id.uuidString))
+                    .or("superseded_at.is.null,purge_after.gt.\(nowIso)")
+                    .order("issued_at", ascending: false)
+                    .execute().value
+                for row in receiptRows {
+                    // Each row individually tappable/openable, not just
+                    // counted (08-payment-documents.md's 2026-09-17
+                    // follow-up #7 — BUG 1).
+                    receiptsByBooking[row.bookingId, default: []].append(
+                        AttendanceReceipt(id: row.id, isLive: row.supersededAt == nil)
+                    )
+                }
+            }
+            guard seq == attendanceGuestsSeq else { return }
+            let rightNow = Date()
+            attendanceGuests = bookings
+                // Expired holds are seats nobody actually has — listing them
+                // would just fill the check-in screen with ghosts.
+                .filter { $0.status != "pending" || ($0.expiresAt ?? .distantFuture) > rightNow }
+                .map { booking in
+                    let recipient = booking.recipientName?.trimmingCharacters(in: .whitespaces) ?? ""
+                    let profileName = (names[booking.userId ?? UUID()] ?? "").trimmingCharacters(in: .whitespaces)
+                    let raw = !recipient.isEmpty ? recipient : profileName
+                    let receipts = receiptsByBooking[booking.id] ?? []
+                    let live = receipts.filter(\.isLive).count
+                    let pendingDelete = receipts.count - live
+                    return AttendanceGuest(
+                        id: booking.id,
+                        name: raw.isEmpty ? "Khách" : raw,
+                        qty: booking.qty,
+                        checkedIn: booking.status == "attended",
+                        admissionToken: booking.admissionToken,
+                        paid: booking.paidMarkedAt != nil,
+                        totalVnd: booking.totalVnd ?? 0,
+                        code: booking.code ?? "",
+                        hasProof: !(booking.proofPath ?? "").isEmpty,
+                        hasReceipt: live > 0,
+                        receiptVersionCount: receipts.count,
+                        receiptPendingDelete: pendingDelete,
+                        receipts: receipts
+                    )
+                }
+            attendanceLoading = false
+        } catch {
+            print("Failed to load attendance list:", error)
+            guard seq == attendanceGuestsSeq else { return }
+            attendanceGuests = []
+            attendanceLoading = false
+        }
+    }
+
+    /// Tapping a guest already checked in asks for a reason first (reversing
+    /// is never silent — see ReasonSheet). Tapping one not yet checked in
+    /// (14-organizer-checkin.md, Bug 3) now asks for a plain confirm first
+    /// too — an accidental tap used to check someone in instantly.
+    func toggleCheckIn(_ guest: AttendanceGuest) {
+        if guest.checkedIn {
+            reasonPrompt = ReasonPrompt(kind: .undoCheckin, bookingID: guest.id, guestName: guest.name)
+            reasonPromptError = ""
+            return
+        }
+        reasonPrompt = ReasonPrompt(kind: .confirmCheckin, bookingID: guest.id, guestName: guest.name)
+        reasonPromptError = ""
+    }
+
+    /// The actual check_in_guest() call — factored out of toggleCheckIn so
+    /// the confirm dialog's "Yes" can share this path.
+    @discardableResult
+    func performCheckIn(bookingID: UUID) async -> Bool {
+        if let index = attendanceGuests.firstIndex(where: { $0.id == bookingID }) {
+            attendanceGuests[index].checkedIn = true
+        }
+        let ok = await checkIn(bookingID: bookingID)
+        if !ok, let index = attendanceGuests.firstIndex(where: { $0.id == bookingID }) {
+            attendanceGuests[index].checkedIn = false
+        }
+        return ok
+    }
+
+    /// 14-organizer-checkin.md (Bug 3): the ReasonSheet's "Confirm" for a
+    /// `.confirmCheckin` prompt.
+    func confirmCheckIn() async {
+        guard let prompt = reasonPrompt, prompt.kind == .confirmCheckin else { return }
+        reasonPrompt = nil
+        await performCheckIn(bookingID: prompt.bookingID)
+    }
+
+    /// Both the manual list and the QR scanner go through this same
+    /// already-authorized RPC, so they share one notification path.
+    /// `source` matters since migration 132: only a SCANNED credential is
+    /// checked against the booking's current admission_token, because that is
+    /// the only path where a superseded QR could arrive. A manual tap on the
+    /// host's own guest list addresses the row by id and is not a credential.
+    @discardableResult
+    func checkIn(bookingID: UUID, source: String = "manual") async -> Bool {
+        do {
+            let result: RPCResult = try await SupabaseService.client
+                .rpc("check_in_guest", params: ["p_reservation_id": bookingID.uuidString, "p_source": source])
+                .execute().value
+            guard result.success == true else { return false }
+            Haptics.success()
+            await AuthAPIService.notify(path: "/api/notify", body: ["type": "check_in", "bookingId": bookingID.uuidString])
+            return true
+        } catch {
+            print("Check-in failed:", error)
+            return false
+        }
+    }
+
+    func checkInByScan(_ bookingID: String) async -> Bool {
+        guard let uuid = UUID(uuidString: bookingID) else { return false }
+        let ok = await checkIn(bookingID: uuid, source: "scan")
+        if ok, let key = attendanceEventKey { await loadAttendanceGuests(key) }
+        return ok
+    }
+
+    func openCancelBooking(_ guest: AttendanceGuest) {
+        reasonPrompt = ReasonPrompt(kind: .cancelBooking, bookingID: guest.id, guestName: guest.name)
+        reasonPromptError = ""
+    }
+
+    /// 14-organizer-checkin.md (Bug 2b): "Có nhận khách này không?" ▪︎ "Từ
+    /// chối" — reject_pending_guest() (migration 059) halts every pending
+    /// process for the booking and returns the seat to the pool, then
+    /// notifies the guest via chat + bell notification itself.
+    func openRejectGuest(_ guest: AttendanceGuest) {
+        reasonPrompt = ReasonPrompt(kind: .rejectGuest, bookingID: guest.id, guestName: guest.name)
+        reasonPromptError = ""
+    }
+
+    func closeReasonPrompt() {
+        reasonPrompt = nil
+        reasonPromptError = ""
+    }
+
+    /// Reversing a check-in or cancelling a paid booking always carries one
+    /// of the fixed reasons, so the guest's notification says something
+    /// concrete — and both are emailed as well as shown in-app.
+    /// `.confirmCheckin` never reaches here — see confirmCheckIn() instead.
+    func submitReason(_ label: String) async {
+        guard let prompt = reasonPrompt, prompt.kind != .confirmCheckin else { return }
+        reasonPromptBusy = true
+        reasonPromptError = ""
+        do {
+            let result: RPCResult
+            switch prompt.kind {
+            case .undoCheckin:
+                result = try await SupabaseService.client
+                    .rpc("undo_check_in", params: [
+                        "p_booking_id": prompt.bookingID.uuidString, "p_reason": label,
+                    ])
+                    .execute().value
+            case .cancelBooking:
+                result = try await SupabaseService.client
+                    .rpc("cancel_booking", params: [
+                        "p_booking": prompt.bookingID.uuidString, "p_reason": label,
+                    ])
+                    .execute().value
+            case .rejectGuest:
+                result = try await SupabaseService.client
+                    .rpc("reject_pending_guest", params: [
+                        "p_booking": prompt.bookingID.uuidString, "p_reason": label,
+                    ])
+                    .execute().value
+            case .confirmCheckin:
+                return // guarded above; unreachable
+            }
+            guard result.success == true else {
+                // TASK 1 — real bug, confirmed by reading: this used to
+                // `throw AuthAPIError(code: "RPC_FAILED")` for EVERY typed
+                // `{success:false, error:...}` response regardless of kind,
+                // discarding `result.error` entirely — the catch block below
+                // never even looked at it, only at `prompt.kind`, so
+                // cancel_booking's AUTH_REQUIRED/BOOKING_NOT_FOUND/
+                // NOT_AUTHORIZED/BOOKING_CANNOT_BE_CANCELLED all collapsed
+                // into the exact same generic "Không thể huỷ vé. Vui lòng
+                // thử lại." — indistinguishable from a real transport/decode
+                // exception. Handled inline here for .cancelBooking only
+                // (undoCheckin/rejectGuest keep their prior behavior,
+                // unchanged, per this ticket's own scope) — never throws,
+                // so it can never reach the generic catch below.
+                reasonPromptBusy = false
+                if prompt.kind == .cancelBooking {
+                    reasonPromptError = Self.cancelBookingErrorMessage(result.error, T)
+                } else {
+                    reasonPromptError = prompt.kind == .undoCheckin
+                        ? T("Không thể huỷ điểm danh. Vui lòng thử lại.", "Could not undo the check-in. Please try again.")
+                        : T("Không thể từ chối yêu cầu này. Vui lòng thử lại.", "Could not reject this request. Please try again.")
+                }
+                return
+            }
+
+            reasonPrompt = nil
+            reasonPromptBusy = false
+            // 2026-10-02 fix — real bug: a successful cancel_booking() never
+            // patched/refreshed this guest's OWN paymentBookings/attending
+            // at all (only loadAttendanceGuests above, the HOST side of a
+            // host-initiated cancel) — isGoing() reads paymentBookings, so
+            // "Going" stayed stale until something unrelated happened to
+            // reload it. Patched in place immediately (bumping
+            // paymentBookingsSeq first invalidates any older in-flight
+            // loadPaymentBookings() call, so a slow stale response can't
+            // land afterward and resurrect it — see that seq's own doc
+            // comment), then a real background reload confirms it and
+            // picks up the resulting refund_claims row elsewhere. attending
+            // (loadMyEvents()'s own server-filtered list) already excludes
+            // 'cancelled' at the query level, so a plain reload there is
+            // sufficient — no in-place patch needed for it specifically.
+            if prompt.kind == .cancelBooking {
+                paymentBookingsSeq += 1
+                if let idx = paymentBookings.firstIndex(where: { $0.id == prompt.bookingID }) {
+                    paymentBookings[idx].status = "cancelled"
+                }
+                Task { await loadPaymentBookings() }
+                Task { await loadMyEvents() }
+            }
+            if let key = attendanceEventKey { await loadAttendanceGuests(key) }
+            // reject_pending_guest() already inserts the guest's chat
+            // message + bell notification itself (migration 059) — no
+            // separate /api/notify email for this kind.
+            guard prompt.kind != .rejectGuest else { return }
+            await AuthAPIService.notify(
+                path: "/api/notify",
+                body: [
+                    "type": prompt.kind == .undoCheckin ? "checkin_undo" : "booking_cancelled",
+                    "bookingId": prompt.bookingID.uuidString, "reason": label,
+                ]
+            )
+        } catch {
+            reasonPromptBusy = false
+            if prompt.kind == .cancelBooking {
+                // TASK 1 point 5 — a genuine thrown error (network/decode/a
+                // real Postgres exception cancel_booking() itself didn't
+                // catch) — distinct from the RPC's own typed success:false
+                // response, which is handled above and never throws.
+                // TASK 2 — must never surface a raw Postgres/driver error
+                // string to the user (e.g. the CONFIRMED root cause itself:
+                // `column "reason" is of type refund_reason but expression
+                // is of type text`) — only to development logs, via print()
+                // above.
+                reasonPromptError = T(
+                    "Hiện chưa thể huỷ vé do lỗi hệ thống. Vui lòng thử lại sau.",
+                    "Booking cancellation isn't available right now due to a system error. Please try again later."
+                )
+            } else {
+                reasonPromptError = prompt.kind == .undoCheckin
+                    ? T("Không thể huỷ điểm danh. Vui lòng thử lại.", "Could not undo the check-in. Please try again.")
+                    : T("Không thể từ chối yêu cầu này. Vui lòng thử lại.", "Could not reject this request. Please try again.")
+            }
+        }
+    }
+
+    /// TASK 1 — the exact five typed outcomes cancel_booking() (migration
+    /// 069) can return, mapped to a specific, user-visible Vietnamese
+    /// message each — never the one-size-fits-all string this replaces.
+    private static func cancelBookingErrorMessage(_ code: String?, _ T: (String, String) -> String) -> String {
+        switch code {
+        case "AUTH_REQUIRED":
+            return T("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.", "Your session has expired. Please sign in again.")
+        case "BOOKING_NOT_FOUND":
+            return T("Không tìm thấy vé này. Vé có thể đã bị xoá.", "This booking could not be found. It may have been deleted.")
+        case "NOT_AUTHORIZED":
+            return T("Bạn không có quyền huỷ vé này.", "You don't have permission to cancel this booking.")
+        case "BOOKING_CANNOT_BE_CANCELLED":
+            return T("Vé này không thể huỷ vì đã bị huỷ, hết hạn hoặc khách đã check-in.", "This booking can't be cancelled: it's already cancelled, expired, or the guest already checked in.")
+        case let code?:
+            return T("Không thể huỷ vé: \(code)", "Could not cancel the booking: \(code)")
+        case nil:
+            return T("Không thể huỷ vé. Vui lòng thử lại.", "Could not cancel the booking. Please try again.")
+        }
+    }
+
+    // MARK: - Create event
+
+    func pickCreateCategory(_ key: String) {
+        let primaryBefore = createCats.first
+        if let index = createCats.firstIndex(of: key) {
+            createCats.remove(at: index)
+        } else {
+            createCats.append(key)
+            if createCats.count > 2 { createCats = [createCats[0], key] }
+        }
+        // The first pick is the type that shapes the form (event type profiles); record which one, never content.
+        if let primary = createCats.first, primary != primaryBefore, eventTypesEnabled {
+            Analytics.track(.createEventTypeSelected(type: primary))
+        }
+    }
+
+    /// One event-type fact for one type (kept per type, see `createDetails`). nil clears it.
+    func setCreateDetail(type: String, field: String, value: EventDetailValue?) {
+        var forType = createDetails[type] ?? [:]
+        forType[field] = value
+        createDetails[type] = forType
+    }
+
+    /// Event review queue — branches on `createEditEventId`: a fresh
+    /// submission goes through create_event_draft (INSERT, status becomes
+    /// 'review' — migration 085), while editing a previously-REJECTED
+    /// event (goEditEvent below) goes through resubmit_event_for_review
+    /// (UPDATE the SAME row; ownership + `status = 'draft'` enforced
+    /// server-side, never a second duplicate event row).
+    /// Address-autocomplete fix pass (2026-09-28) — a live search
+    /// (MKLocalSearch, built into MapKit — no API key), replacing the old
+    /// single-shot CLGeocoder "type free text, tap Confirm, get ONE
+    /// result" flow. Debounced from the UI side (`OnboardingViews.swift`'s
+    /// `.onChange(of: app.createLoc)`, same 500ms/4-char-minimum
+    /// convention web's own `createLocType` uses), so this itself just
+    /// needs stale-response protection: `createAddressSeq` is bumped on
+    /// every call, and a response only applies if it's still current by
+    /// the time the search resolves — same convention this file already
+    /// uses elsewhere for async races (e.g. `realEventsInFlightRef`-style
+    /// guards).
+    func searchCreateAddress(_ rawQuery: String) async {
+        let query = rawQuery.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return }
+        createAddressSeq += 1
+        let seq = createAddressSeq
+        createAddressSearching = true
+        createAddressSearchError = ""
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = query
+        // Biases (doesn't strictly filter) toward Ho Chi Minh City, since
+        // every existing event (demo + real) is there — same bias the old
+        // CLGeocoder call achieved by appending ", Hồ Chí Minh, Việt Nam"
+        // to the query text.
+        request.region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 10.7769, longitude: 106.7009),
+            span: MKCoordinateSpan(latitudeDelta: 0.5, longitudeDelta: 0.5)
+        )
+        do {
+            let response = try await MKLocalSearch(request: request).start()
+            guard seq == createAddressSeq else { return } // a newer search has since started
+            let suggestions = response.mapItems.compactMap(AddressSuggestion.init(mapItem:))
+            createAddressSearching = false
+            createAddressSuggestions = suggestions
+            createAddressSearchError = suggestions.isEmpty
+                ? T("Không tìm thấy địa chỉ nào. Thử ghi rõ số nhà và đường.", "No addresses found. Try including a house number and street.")
+                : ""
+        } catch {
+            guard seq == createAddressSeq else { return }
+            print("searchCreateAddress failed:", error)
+            createAddressSearching = false
+            createAddressSuggestions = []
+            createAddressSearchError = T("Không thể tìm địa chỉ lúc này. Kiểm tra kết nối rồi thử lại.", "Couldn't search addresses right now. Check your connection and retry.")
+        }
+    }
+
+    /// Explicit retry — e.g. after a transient network failure, without
+    /// the host needing to retype anything.
+    func retryCreateAddressSearch() async {
+        await searchCreateAddress(createLoc)
+    }
+
+    func selectCreateAddressSuggestion(_ suggestion: AddressSuggestion) {
+        createAddressSeq += 1 // invalidate any still-in-flight search
+        createAddressLine = suggestion.addressLine
+        createDistrict = suggestion.district
+        createCity = suggestion.city
+        createPostalCode = suggestion.postalCode
+        // Location hierarchy (migration 112) — "" (not nil) for a level
+        // MapKit didn't return, so a resubmit with a freshly re-picked
+        // address CLEARS a stale old value server-side instead of
+        // COALESCE-preserving it.
+        // The place's own zone first, so the date/time re-express once into the final zone (migration 195).
+        createPlaceTimeZoneID = suggestion.timeZoneID
+        createCountryCode = suggestion.countryCode ?? ""
+        createStateProvince = suggestion.stateProvince ?? ""
+        createNeighborhood = suggestion.neighborhood ?? ""
+        createLat = suggestion.lat
+        createLng = suggestion.lng
+        createLocLabel = suggestion.label
+        createLocConfirmed = true
+        createAddressSuggestions = []
+        createAddressSearching = false
+        createAddressSearchError = ""
+    }
+
+    /// "Adjust" — clears the confirmed selection so the host can search
+    /// again, without losing what they'd typed in the box.
+    func clearCreateAddressSelection() {
+        createAddressLine = ""
+        createDistrict = ""
+        createCity = ""
+        createPostalCode = ""
+        createCountryCode = nil
+        createStateProvince = nil
+        createNeighborhood = nil
+        createPlaceTimeZoneID = nil
+        createLat = nil
+        createLng = nil
+        createLocLabel = ""
+        createLocConfirmed = false
+    }
+
+    /// resubmit_event_for_review's own returned `error` code (migration
+    /// 107), e.g. "RESUBMISSION_LIMIT_REACHED" — thrown so the catch block
+    /// below can map it to the same user-facing message web's
+    /// createSubmit/BanBeContext.jsx uses for the identical code.
+    struct ResubmitEventError: Error { let code: String }
+
+    // TASK 3 (event creation validation pass) — returns real success/
+    // failure so the post-submission chooser (CreateEventView) only ever
+    // opens on a REAL RPC-confirmed success, never just "the request
+    // finished." `@discardableResult` since every existing call site
+    // (goEditEvent's own resubmit path, if any) that doesn't care about
+    // the outcome keeps compiling unchanged.
+    @discardableResult
+    func submitCreateEvent(
+        newImages: [UIImage] = [], coverNewIndex: Int? = nil,
+        removeExistingPhotoIDs: [UUID] = [], existingCoverPath: String? = nil,
+        defaultKeywordsLabel: String = "",
+        showsLoader: Bool = true
+    ) async -> Bool {
+        guard !createName.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        guard !submitCreateEventInFlight else { return false }
+        submitCreateEventInFlight = true
+        defer { submitCreateEventInFlight = false }
+        // Note 64: Review's AsyncSuccessButton is the progress indicator, so it asks for no full-screen loader.
+        loading = showsLoader
+        createError = ""
+        createMediaError = ""
+
+        // Price in the MINOR unit of the event's currency (migration 195): đồng, or cents for a US event.
+        guard let priceAmount = createPriceAmount else {
+            loading = false
+            createError = createCurrency == "USD"
+                ? T("Nhập giá dạng 12 hoặc 12.50 (USD).", "Enter the price like 12 or 12.50 (USD).")
+                : T("Giá vé không hợp lệ.", "That price isn't valid.")
+            return false
+        }
+        let capacity = Int(createSeats.filter { $0.isNumber }) ?? 0
+        // Both createEventDate/createEventTime are picked in EventDateTimeSheet's calendar for the event's own
+        // zone (`createEventTimeZone`: the venue's, Vietnam by default) — formatted with that SAME zone here so
+        // the wall-clock digits sent to the RPC match what the host actually saw, regardless of the device zone.
+        let eventDate = createEventDate.map(createFormatter("yyyy-MM-dd").string(from:))
+        let eventTime = createEventTime.map(createFormatter("HH:mm:ss").string(from:))
+        if let picked = createStartsAt, picked < Date().addingTimeInterval(-5 * 60) {
+            loading = false
+            createError = T("Ngày giờ sự kiện đã ở trong quá khứ.", "This event's date/time is in the past.")
+            return false
+        }
+
+        // Address-autocomplete fix pass (2026-09-28) — client-side mirror
+        // of migration 105's own ADDRESS_NOT_VERIFIED gate, to avoid a
+        // round trip for an obviously-incomplete address (the RPC is the
+        // real gate). `createLocConfirmed` only ever becomes true via
+        // `selectCreateAddressSuggestion` (a real suggestion the host
+        // picked, this session) or `goEditEvent` pre-filling an event that
+        // ALREADY had a verified address — either way every other address
+        // field is guaranteed populated whenever this is true.
+        guard createLocConfirmed,
+              !createAddressLine.trimmingCharacters(in: .whitespaces).isEmpty,
+              !createDistrict.trimmingCharacters(in: .whitespaces).isEmpty,
+              !createCity.trimmingCharacters(in: .whitespaces).isEmpty,
+              let submitLat = createLat, let submitLng = createLng
+        else {
+            loading = false
+            createError = T("Hãy chọn một địa chỉ gợi ý và xác nhận vị trí trên bản đồ trước khi đăng.", "Select a suggested address and confirm its pin before publishing.")
+            return false
+        }
+
+        // "Bao gồm" item validation — mirrors migration 087's own server-
+        // side gate (max 3, label 1-60, detail <=300) exactly the way web's
+        // identical `createSubmit` does (BanBeContext.jsx); the RPC is the
+        // real gate, this only avoids a round trip for an obviously-
+        // invalid client state.
+        let includedItemsPayload = createIncludedItems
+            .map { IncludedItem(label: $0.label.trimmingCharacters(in: .whitespaces), detail: $0.detail.trimmingCharacters(in: .whitespaces)) }
+            .filter { !$0.label.isEmpty }
+        guard includedItemsPayload.allSatisfy({ $0.label.count <= 60 && $0.detail.count <= 300 }) else {
+            loading = false
+            createError = T("Mỗi mục \"Bao gồm\" cần tên (tối đa 60 ký tự) và mô tả tối đa 300 ký tự.", "Each \"Included\" item needs a label (max 60 chars) and detail under 300 chars.")
+            return false
+        }
+
+        // Keyword-search fix (migration 108) — mirrors web's identical
+        // `createSubmit` default: a blank keywords field defaults to the
+        // event's own selected category label(s) (`defaultKeywordsLabel`,
+        // computed by the caller from the SAME `categories`/`createCats`
+        // the review sheet already shows — never a second, separate
+        // category->label mapping).
+        // Search-matcher fix (Issue 2) — mirrors web's identical
+        // `createSubmit` fix: organizer-typed keywords now SUPPLEMENT the
+        // category default instead of REPLACING it (previously a non-blank
+        // `createKeywords` field dropped the category terms entirely — a
+        // real root cause of "insufficient" keyword coverage found via the
+        // live-DB audit, see .claude/notes/19-map-search-keywords.md).
+        let trimmedKeywords = createKeywords.trimmingCharacters(in: .whitespaces)
+        let categoryKeywords = defaultKeywordsLabel
+            .components(separatedBy: " ▪︎ ")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let organizerKeywords = trimmedKeywords.isEmpty ? [] : trimmedKeywords
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        var seenKeywords = Set<String>()
+        let keywordsPayload: [String] = (categoryKeywords + organizerKeywords).filter { seenKeywords.insert($0).inserted }.prefix(20).map { $0 }
+
+        do {
+            var eventID: String?
+            if let retryID = createCriteriaRetryEventID {
+                // Earlier attempt created the draft (already in review, so NOT
+                // resubmittable) but the criteria save failed — redo only that.
+                eventID = retryID
+            } else if let editID = createEditEventId {
+                let result: [String: JSONValue] = try await SupabaseService.client
+                    .rpc("resubmit_event_for_review", params: ResubmitEventParams(
+                        eventId: editID,
+                        name: createName.trimmingCharacters(in: .whitespaces),
+                        category: createCats.first ?? "supper",
+                        description: createDesc.trimmingCharacters(in: .whitespaces),
+                        location: createDistrict.trimmingCharacters(in: .whitespaces),
+                        eventDate: eventDate, eventTime: eventTime,
+                        priceVnd: priceAmount, capacity: capacity,
+                        intro: createIntro.trimmingCharacters(in: .whitespacesAndNewlines),
+                        includedItems: includedItemsPayload,
+                        lat: submitLat, lng: submitLng,
+                        addressLine: createAddressLine.trimmingCharacters(in: .whitespaces),
+                        city: createCity.trimmingCharacters(in: .whitespaces),
+                        postalCode: createPostalCode.trimmingCharacters(in: .whitespaces),
+                        addressVerified: true,
+                        countryCode: createCountryCode,
+                        stateProvince: createStateProvince,
+                        neighborhood: createNeighborhood,
+                        tz: createTzParam
+                    ))
+                    .execute().value
+                if case .bool(true) = result["success"] ?? .bool(false) {
+                    eventID = editID
+                } else {
+                    // Surface migration 107's specific error code (e.g.
+                    // RESUBMISSION_LIMIT_REACHED) instead of a generic
+                    // "server error" — mirrors web's identical mapping
+                    // (BanBeContext.jsx's createSubmit catch block).
+                    let code: String
+                    if case .string(let s)? = result["error"] { code = s } else { code = "" }
+                    throw ResubmitEventError(code: code)
+                }
+            } else {
+                if !canHost { await applyOrganizerMode(true) }
+                struct CreatedEvent: Decodable {
+                    let id: String
+                    let organizerId: String?
+                    enum CodingKeys: String, CodingKey { case id, organizerId = "organizer_id" }
+                }
+                let created: CreatedEvent = try await SupabaseService.client
+                    .rpc("create_event_draft", params: CreateEventParams(
+                        name: createName.trimmingCharacters(in: .whitespaces),
+                        category: createCats.first ?? "supper",
+                        description: createDesc.trimmingCharacters(in: .whitespaces),
+                        location: createDistrict.trimmingCharacters(in: .whitespaces),
+                        eventDate: eventDate,
+                        eventTime: eventTime,
+                        priceVnd: priceAmount,
+                        capacity: capacity,
+                        organizerName: orgRegName.trimmingCharacters(in: .whitespaces).isEmpty
+                            ? "Organizer" : orgRegName.trimmingCharacters(in: .whitespaces),
+                        instagram: orgRegIg.trimmingCharacters(in: .whitespaces),
+                        about: orgRegDesc.trimmingCharacters(in: .whitespaces),
+                        intro: createIntro.trimmingCharacters(in: .whitespacesAndNewlines),
+                        includedItems: includedItemsPayload,
+                        lat: submitLat, lng: submitLng,
+                        addressLine: createAddressLine.trimmingCharacters(in: .whitespaces),
+                        city: createCity.trimmingCharacters(in: .whitespaces),
+                        postalCode: createPostalCode.trimmingCharacters(in: .whitespaces),
+                        addressVerified: true,
+                        countryCode: createCountryCode,
+                        stateProvince: createStateProvince,
+                        neighborhood: createNeighborhood,
+                        tz: createTzParam
+                    ))
+                    .execute().value
+                eventID = created.id
+                // iPhone fix pass (Stage 1) — create_event_draft's own
+                // RETURNING row already carries the real organizer_id (it
+                // creates the organizer row itself on a host's very first
+                // submission), but this used to go unused: myOrganizerID
+                // stayed nil until the NEXT full session load, so Account >
+                // Tổ chức's persistent organizer card wouldn't appear right
+                // after creating a first event — only after a relaunch —
+                // looking like its visibility depended on having gone
+                // through dock + > Tạo sự kiện rather than on real
+                // organizer-management ability.
+                if let organizerId = created.organizerId {
+                    myOrganizerID = organizerId
+                    if !myOrganizerIDs.contains(organizerId) { myOrganizerIDs.append(organizerId) }
+                }
+            }
+
+            // Keyword-search fix (migration 108) — a separate, additive RPC
+            // rather than a new param on create_event_draft/
+            // resubmit_event_for_review (both already large, multiply-
+            // extended functions this pass deliberately doesn't touch):
+            // owner-checked, SECURITY DEFINER, does one thing. Best-effort
+            // — a failure here shouldn't block the event submission
+            // itself, which already succeeded above.
+            // Message-host pass (migration 156) — host's opening message.
+            // Direct owner-RLS update (events_update_own), best-effort and
+            // tolerant of the column not existing yet. Skipped on create
+            // when blank so a pre-migration DB never sees the call at all.
+            if let eventID {
+                let vi = String(createChatGreeting.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500))
+                let en = String(createChatGreetingEn.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500))
+                if !vi.isEmpty || !en.isEmpty || createEditEventId != nil {
+                    struct GreetingUpdate: Encodable {
+                        let vi: String?
+                        let en: String?
+                        let includeEn: Bool
+                        enum CodingKeys: String, CodingKey { case vi = "chat_greeting", en = "chat_greeting_en" }
+                        func encode(to encoder: Encoder) throws {
+                            var c = encoder.container(keyedBy: CodingKeys.self)
+                            try c.encode(vi, forKey: .vi) // explicit null clears it
+                            if includeEn { try c.encode(en, forKey: .en) }
+                        }
+                    }
+                    do {
+                        try await SupabaseService.client.from("events")
+                            .update(GreetingUpdate(vi: vi.isEmpty ? nil : vi, en: en.isEmpty ? nil : en, includeEn: true))
+                            .eq("id", value: eventID).execute()
+                    } catch {
+                        // Migration 157 (chat_greeting_en) may not be applied yet — retry Vietnamese only.
+                        do {
+                            try await SupabaseService.client.from("events")
+                                .update(GreetingUpdate(vi: vi.isEmpty ? nil : vi, en: nil, includeEn: false))
+                                .eq("id", value: eventID).execute()
+                        } catch {
+                            print("chat_greeting update failed (migrations 156/157 applied?):", error)
+                        }
+                    }
+                }
+            }
+
+            if let eventID {
+                struct SetKeywordsParams: Encodable {
+                    let eventId: String
+                    let keywords: [String]
+                    enum CodingKeys: String, CodingKey { case eventId = "p_event_id", keywords = "p_keywords" }
+                }
+                do {
+                    let _: JSONValue = try await SupabaseService.client
+                        .rpc("set_event_keywords", params: SetKeywordsParams(eventId: eventID, keywords: keywordsPayload))
+                        .execute().value
+                } catch {
+                    print("set_event_keywords failed:", error)
+                }
+
+                // Event type facts (migration 203): only the primary type's, cleaned like the server validates.
+                // Best-effort like keywords; skipped while the switch is off.
+                if eventTypesEnabled {
+                    struct SetDetailsParams: Encodable {
+                        let eventId: String
+                        let details: EventDetailsPayload
+                        enum CodingKeys: String, CodingKey { case eventId = "p_event_id", details = "p_details" }
+                    }
+                    // Note 69 (migration 207): both picked types' facts, the second category and the intro style.
+                    let cleaned = EventTypes.publishDetails(keys: createCats.isEmpty ? ["supper"] : createCats, draft: createDetails,
+                                                            introFont: createIntroFont, introColor: createIntroColor)
+                    do {
+                        let r: [String: JSONValue] = try await SupabaseService.client
+                            .rpc("set_event_details", params: SetDetailsParams(eventId: eventID, details: EventDetailsPayload(cleaned)))
+                            .execute().value
+                        // Before migration 209 the server refuses the host-written sub-lines, and before 207 the second
+                        // type's fields and the 207 keys; retry without the sub-lines, then with the first type's facts
+                        // alone (exactly what it accepted before), so nothing else is lost (note 75).
+                        func refused(_ r: [String: JSONValue]) -> Bool {
+                            if case .string(let code)? = r["error"] { return ["INVALID_DETAILS", "FIELD_NOT_FOR_TYPE"].contains(code) }
+                            return false
+                        }
+                        var last = r, sent = cleaned
+                        let primaryOnly = createCats.first.map { EventTypes.clean(EventTypes.profile($0), createDetails[$0] ?? [:]) } ?? [:]
+                        for next in [EventTypes.withoutSublines(cleaned), EventTypes.withoutSublines(primaryOnly)] where refused(last) && next != sent {
+                            sent = next
+                            last = try await SupabaseService.client
+                                .rpc("set_event_details", params: SetDetailsParams(eventId: eventID, details: EventDetailsPayload(next)))
+                                .execute().value
+                        }
+                    } catch {
+                        print("set_event_details failed (migration 203 not applied?):", error)
+                    }
+                }
+
+                // Strict invite-only events (migration 113) — same
+                // "separate, additive RPC" pattern as set_event_keywords
+                // just above, not a new positional param on
+                // create_event_draft/resubmit_event_for_review. Best-
+                // effort like keywords, but surfaced as a non-fatal note
+                // since visibility is a real privacy setting.
+                struct SetVisibilityParams: Encodable {
+                    let eventId: String
+                    let visibility: String
+                    enum CodingKeys: String, CodingKey { case eventId = "p_event_id", visibility = "p_visibility" }
+                }
+                do {
+                    let _: JSONValue = try await SupabaseService.client
+                        .rpc("set_event_visibility", params: SetVisibilityParams(eventId: eventID, visibility: createVisibility))
+                        .execute().value
+                    MediaUploader.reconcile(eventID: eventID)
+                } catch {
+                    print("set_event_visibility failed:", error)
+                }
+
+                // Host goal (note 50, migration 186) — host-only side table, best-effort like keywords.
+                // On edit it is always written so a host can clear an earlier answer.
+                if createHostGoal != nil || createEditEventId != nil {
+                    await saveEventHostGoal(eventID: eventID, goal: createHostGoal)
+                }
+
+                // Reservation criteria (migration 162). A host who chose a
+                // restriction must never see the event go out unrestricted
+                // because this call failed — block with a message and keep
+                // them on the form (re-submitting is idempotent).
+                let wantedCriteria = createCriteria.normalizedForSave()
+                if !wantedCriteria.isEveryone || createEditEventId != nil || createCriteriaRetryEventID != nil {
+                    let ok = await setReservationCriteria(eventID: eventID, wantedCriteria)
+                    if !ok {
+                        loading = false
+                        // Retry must reuse THIS event (not create a duplicate, and
+                        // not resubmit: a fresh draft is already in 'review').
+                        createCriteriaRetryEventID = eventID
+                        createError = T(
+                            "Không lưu được điều kiện đặt chỗ nên sự kiện chưa được gửi đi công khai. Vui lòng thử lại.",
+                            "We couldn’t save the reservation criteria, so the event was not released unrestricted. Please try again.")
+                        return false
+                    }
+                    createCriteriaRetryEventID = nil
+                }
+            }
+
+            if let eventID, !newImages.isEmpty || !removeExistingPhotoIDs.isEmpty || (existingCoverPath?.isEmpty == false) {
+                let (uploaded, failed, _) = await reconcileEventMedia(
+                    eventID: eventID, newImages: newImages, coverNewIndex: coverNewIndex,
+                    removeExistingIDs: removeExistingPhotoIDs, existingCoverPath: existingCoverPath,
+                    visibility: createVisibility
+                )
+                if failed > 0 {
+                    createMediaError = uploaded > 0
+                        ? T("Đã gửi sự kiện, nhưng \(failed) ảnh chưa tải lên được.", "Event submitted, but \(failed) photo(s) didn't upload.")
+                        : T("Đã gửi sự kiện, nhưng không tải được ảnh nào.", "Event submitted, but no photos could be uploaded.")
+                }
+            }
+
+            // TASK 3 (event creation validation pass) — the 3-8 photo
+            // invariant enforced in the TRUSTED WRITE PATH, not just the
+            // UI; see migration 109's own comment for why this has to be a
+            // separate, post-reconciliation RPC rather than a gate inside
+            // create_event_draft itself. A failure here withdraws the
+            // event back to 'draft' with a real rejection_reason
+            // server-side — a genuine submission FAILURE, not a success
+            // with a note, so it must NOT set createSent.
+            if let eventID {
+                struct FinalizePhotoCountParams: Encodable {
+                    let eventId: String
+                    enum CodingKeys: String, CodingKey { case eventId = "p_event_id" }
+                }
+                do {
+                    let result: [String: JSONValue] = try await SupabaseService.client
+                        .rpc("finalize_event_photo_count", params: FinalizePhotoCountParams(eventId: eventID))
+                        .execute().value
+                    if case .bool(false) = result["success"] ?? .bool(true),
+                       case .string("PHOTO_COUNT_INVALID") = result["error"] ?? .string("") {
+                        let count: Int
+                        if case .double(let d)? = result["count"] { count = Int(d) } else { count = 0 }
+                        loading = false
+                        createError = T(
+                            "Sự kiện cần 3-8 ảnh khả dụng (hiện có \(count)). Sự kiện đã được chuyển về bản nháp. Hãy thêm/bớt ảnh rồi gửi lại.",
+                            "This event needs 3-8 available photos (it has \(count)). It's been moved back to draft. Add or remove photos, then resubmit."
+                        )
+                        return false
+                    }
+                } catch {
+                    print("finalize_event_photo_count failed:", error)
+                }
+            }
+
+            loading = false
+            createSent = true
+            Haptics.success()
+            hasHosted = true
+            mode = "host"
+            await loadMyEvents()
+            await loadMyOrgEventSummaries()
+            return true
+        } catch {
+            loading = false
+            // Migration 107's specific error codes surfaced with the SAME
+            // user-facing copy web's createSubmit (BanBeContext.jsx) uses —
+            // both are a banbe PRODUCT POLICY limit (2 resubmissions per
+            // rolling 24h), never phrased as a legal/Ticketbox requirement.
+            // `create_event_draft`'s RAISE EXCEPTION messages arrive as a
+            // PostgrestError whose own `message` starts with the code;
+            // `resubmit_event_for_review`'s arrives as `ResubmitEventError`.
+            let code: String
+            if let resubmitError = error as? ResubmitEventError {
+                code = resubmitError.code
+            } else if let postgrestError = error as? PostgrestError {
+                code = postgrestError.message
+            } else {
+                code = ""
+            }
+            if let marketMessage = createMarketErrorMessage(code) {
+                createError = marketMessage
+            } else if code.contains("RESUBMISSION_LIMIT_REACHED") {
+                createError = T(
+                    "Bạn đã gửi lại tối đa 2 lần trong 24 giờ qua. Vui lòng thử lại sau.",
+                    "You've already resubmitted this event twice in the last 24 hours. Please try again later."
+                )
+            } else if code.contains("DUPLICATE_PENDING_EVENT") {
+                createError = T(
+                    "Sự kiện này đã đang chờ duyệt. Hãy sửa & gửi lại sự kiện đó thay vì tạo mới.",
+                    "This event is already pending review. Edit and resubmit it instead of creating a new one."
+                )
+            } else {
+                createError = T(
+                    "Không thể gửi sự kiện lúc này. Vui lòng thử lại.",
+                    "Could not submit this event right now. Please try again."
+                )
+            }
+            return false
+        }
+    }
+
+    func requestVerify() { orgVerifyRequested = true }
+
+    /// Opens CreateEventView pre-filled with a previously-REJECTED event's
+    /// own real data (Dashboard's "Sửa & gửi lại"). resubmit_event_for_
+    /// review itself re-checks both ownership and `status = 'draft'` —
+    /// this only lets the host SEE their own fields to correct.
+    func goEditEvent(_ real: RealEventSummary) {
+        // Always reached from Dashboard's "Sửa & gửi lại" — createBack()/
+        // backTarget's `.create` case both read this real origin now
+        // instead of guessing from `hasHosted`.
+        createOriginScreen = .dashboard
+        createEditEventId = real.id
+        createDefaultsSource = nil
+        createAppliedDefaults = nil
+        createSent = false
+        createError = ""
+        createName = real.name
+        createCats = real.catKey.map { [$0] } ?? []
+        createDesc = real.description ?? ""
+        createIntro = real.intro ?? ""
+        createChatGreeting = real.chatGreeting ?? ""
+        createChatGreetingEn = real.chatGreetingEn ?? ""
+        createDetails = [:]
+        if let key = real.catKey, let values = real.details?.values, !values.isEmpty {
+            // Note 69: split what was published back into the draft's shape: the second category joins the picks, its
+            // own fields go under it, the intro style goes to `_style`, the rest stays under the first type.
+            let second = EventTypes.secondCategory(values, primary: key)
+            if let second, !createCats.contains(second) { createCats.append(second) }
+            let keys = [key, second].compactMap { $0 }
+            for (field, value) in values where !EventTypes.extraKeys.contains(field) {
+                let owner = EventTypes.owner(of: field, keys: keys) ?? key
+                createDetails[owner, default: [:]][field] = value
+            }
+            let style = EventTypes.introStyle(values)
+            createIntroFont = style.font ?? "sans"
+            createIntroColor = style.color ?? "ink"
+        }
+        createKwDismissed = []
+        if real.chatGreeting == nil && real.chatGreetingEn == nil {
+            let editID = real.id
+            Task { [weak self] in
+                guard let self else { return }
+                let ref = await self.fetchEventChatRef(editID)
+                guard self.createEditEventId == editID else { return }
+                if self.createChatGreeting.isEmpty { self.createChatGreeting = ref?.chatGreeting ?? "" }
+                if self.createChatGreetingEn.isEmpty { self.createChatGreetingEn = ref?.chatGreetingEn ?? "" }
+            }
+        }
+        // Address-autocomplete fix pass (2026-09-28) — an event that
+        // already has a verified address (migration 105) pre-fills it as
+        // ALREADY confirmed — resubmit_event_for_review preserves it via
+        // COALESCE even if this edit session never re-touches it, so
+        // there's no reason to make the host re-search an address that
+        // was already resolved. The search box (`createLoc`) stays empty
+        // either way — it's a live search field now, not a display of the
+        // current value — except for a pre-105 event with no structured
+        // address yet, where seeding it with the old free-text `area` at
+        // least gives the host a starting point to re-search from.
+        let hadVerifiedAddress = real.addressVerified == true
+        createLoc = hadVerifiedAddress ? "" : (real.area ?? "")
+        createLat = real.lat
+        createLng = real.lng
+        createLocLabel = hadVerifiedAddress
+            ? [real.addressLine, real.area, real.city].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+            : ""
+        createAddressLine = real.addressLine ?? ""
+        createDistrict = real.area ?? ""
+        createCity = real.city ?? ""
+        createPostalCode = real.postalCode ?? ""
+        createVisibility = real.visibility
+        createCriteria = .everyone
+        // Note 50: the goal picked last time (host-only read), best-effort.
+        createHostGoal = nil
+        do {
+            let editID = real.id
+            Task { [weak self] in await self?.loadEventHostGoal(eventID: editID) }
+        }
+        do {
+            let editID = real.id
+            Task { [weak self] in
+                guard let self else { return }
+                let c = await self.fetchEventCriteria(eventKey: editID)
+                guard self.createEditEventId == editID else { return }
+                self.createCriteria = c ?? .everyone
+            }
+        }
+        // nil = "not re-picked this session" → omitted from the resubmit
+        // payload, so the RPC COALESCE-preserves the row's own values.
+        createCountryCode = nil
+        createStateProvince = nil
+        createNeighborhood = nil
+        createPlaceTimeZoneID = nil
+        // Migration 195: while the address isn't re-picked, the row's own zone/currency apply. The currency a
+        // resubmit stores follows the row's country (the server re-derives it), so the price is typed in that.
+        createEditBaseTimeZoneID = real.timeZoneID
+        createEditBaseCurrency = EventMarket.eventCurrency(countryCode: real.countryCode) ?? real.rowCurrency
+        createLocConfirmed = hadVerifiedAddress
+        createAddressSuggestions = []
+        createAddressSearching = false
+        createAddressSearchError = ""
+        // The row's wall-clock date/time, read in the event's own zone (set just above).
+        createEventDate = real.eventDate.flatMap { createFormatter("yyyy-MM-dd").date(from: $0) }
+        createEventTime = real.eventTime.flatMap { [self] raw -> Date? in
+            let normalized = raw.count == 5 ? raw + ":00" : raw
+            return createFormatter("HH:mm:ss").date(from: normalized)
+        }
+        // A legacy VND price on a US row is not carried over as dollars: the host re-enters it.
+        createPrice = real.priceVnd.flatMap { amount -> String? in
+            if real.rowCurrency != createCurrency && amount > 0 { return nil }
+            return EventMarket.priceInputText(amount, currency: real.rowCurrency)
+        } ?? ""
+        createSeats = real.capacity.map(String.init) ?? ""
+        createIncludedItems = real.includedItems ?? []
+        createKeywords = (real.keywords ?? []).joined(separator: ", ")
+        screen = .create
+    }
+
+    /// Owner-only withdrawal of a PENDING ('review') submission (migration
+    /// 107, `withdraw_event_submission`) — iOS port of web's identical
+    /// `withdrawEventSubmission` (BanBeContext.jsx). Requires a non-empty
+    /// reason (the RPC re-enforces this). Preserves the event row: the RPC
+    /// moves it to 'draft', same status a rejection uses, with
+    /// `withdrawal_reason`/`withdrawn_at` recorded separately from
+    /// `rejection_reason`. Never touches the resubmission counter.
+    @discardableResult
+    func withdrawEventSubmission(_ eventId: String, reason: String) async -> Bool {
+        let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            withdrawEventError = T("Vui lòng nhập lý do rút lại.", "Please enter a reason to withdraw.")
+            return false
+        }
+        withdrawEventBusy = true
+        withdrawEventError = ""
+        struct Params: Encodable { let pEventId: String; let pReason: String
+            enum CodingKeys: String, CodingKey { case pEventId = "p_event_id", pReason = "p_reason" } }
+        struct Result: Decodable { let success: Bool; let error: String? }
+        do {
+            let result: Result = try await SupabaseService.client
+                .rpc("withdraw_event_submission", params: Params(pEventId: eventId, pReason: trimmed))
+                .execute().value
+            withdrawEventBusy = false
+            guard result.success else {
+                withdrawEventError = result.error == "NOT_PENDING"
+                    ? T("Sự kiện này không còn ở trạng thái chờ duyệt.", "This event is no longer pending review.")
+                    : result.error == "REASON_REQUIRED"
+                    ? T("Vui lòng nhập lý do rút lại.", "Please enter a reason to withdraw.")
+                    : T("Không thể rút lại lúc này.", "Unable to withdraw this submission right now.")
+                return false
+            }
+            MediaUploader.reconcile(eventID: eventId)
+            // Reflect the new 'draft' status locally without a full reload.
+            await loadMyOrgEventSummaries()
+            return true
+        } catch {
+            withdrawEventBusy = false
+            withdrawEventError = T("Không thể rút lại lúc này.", "Unable to withdraw this submission right now.")
+            return false
+        }
+    }
+
+    /// Read-only "N attempts left" / "next eligible at" lookup (migration
+    /// 107, `get_event_resubmission_status`) — iOS port of web's
+    /// `loadResubmissionStatus`. A banbe PRODUCT POLICY limit (2 successful
+    /// resubmissions per rolling 24h), never a legal/Ticketbox requirement.
+    func loadResubmissionStatus(_ eventId: String) async {
+        struct Params: Encodable { let pEventId: String
+            enum CodingKeys: String, CodingKey { case pEventId = "p_event_id" } }
+        struct Result: Decodable {
+            let success: Bool
+            let remainingAttempts: Int?
+            let nextEligibleAt: Date?
+            enum CodingKeys: String, CodingKey {
+                case success, remainingAttempts = "remaining_attempts", nextEligibleAt = "next_eligible_at"
+            }
+        }
+        do {
+            let result: Result = try await SupabaseService.client
+                .rpc("get_event_resubmission_status", params: Params(pEventId: eventId))
+                .execute().value
+            guard result.success else { return }
+            resubmissionStatusByEvent[eventId] = ResubmissionStatus(
+                remaining: result.remainingAttempts ?? 2, nextEligibleAt: result.nextEligibleAt
+            )
+        } catch {
+            print("get_event_resubmission_status failed:", error)
+        }
+    }
+
+    // ---- admin event review queue (event submission -> review -> publish) ----
+
+    /// `focusID` (Manage events' "Review now", 2026-10-21): that event opens already expanded.
+    func openAdminEvents(focusID: String? = nil) {
+        guard isAdmin else { return }
+        adminEventsFocusID = focusID
+        screen = .adminEvents
+        Task { await loadPendingEvents() }
+    }
+
+    /// TASK 5 (Account badges pass) — a lightweight COUNT-only sibling to
+    /// `loadPendingEvents()` below, for the "adminReview" group-card
+    /// badge (AccountView.swift). Deliberately does NOT reuse
+    /// `loadPendingEvents()` itself: that fetches full event rows +
+    /// first-photo lookups for the review list UI, too heavy to run just
+    /// to show a number on every Account load. Same `events_select_admin`
+    /// RLS (migration 085) backs both, so this stays authorized/consistent
+    /// with the real queue.
+    func loadPendingEventsCount() async {
+        do {
+            let response: PostgrestResponse<[IDRow]> = try await SupabaseService.client
+                .from("events")
+                .select("id", count: .exact)
+                .eq("status", value: "review")
+                .execute()
+            pendingEventsCount = response.count ?? 0
+        } catch {
+            print("loadPendingEventsCount failed:", error)
+            // Honest-failure handling — a query failure must not leave a
+            // stale positive count on screen implying there's still
+            // something to review when the real state is simply unknown.
+            pendingEventsCount = 0
+        }
+    }
+
+    /// `events_select_admin` (migration 085) is what actually makes this
+    /// return every organizer's pending rows, not just this account's own.
+    func loadPendingEvents() async {
+        adminEventsLoading = true
+        adminEventError = ""
+        defer { adminEventsLoading = false }
+        do {
+            let rows: [RealEventSummary] = try await Self.retryingEventColumns { withR2 in
+try await SupabaseService.client
+                .from("events").select(Self.eventColumns(withR2))
+                .eq("status", value: "review")
+                .order("submitted_at", ascending: true)
+                .execute().value }
+            let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
+            async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
+            async let orgNames = organizerNames(for: organizerIDs)
+            async let orgIdentities = organizerIdentities(for: organizerIDs)
+            let photos = await photoMap
+            let names = await orgNames
+            let identities = await orgIdentities
+            adminEvents = rows.map { row in
+                var r = row
+                r.photoURL = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref) ?? photos[row.id]
+                if let orgId = row.organizerId {
+                    r.organizerName = names[orgId] ?? ""
+                    if let identity = identities[orgId] {
+                        r.organizerType = identity.organizerType ?? "individual"
+                        r.organizerVerified = identity.verified ?? false
+                        r.organizerHasTaxCode = !(identity.taxCode ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+                    }
+                }
+                return r
+            }
+        } catch {
+            print("loadPendingEvents failed:", error)
+            adminEvents = []
+            adminEventError = error.localizedDescription
+        }
+    }
+
+    /// admin_review_event (migration 085) does the actual admin-gated,
+    /// race-safe (row-locked, status-checked) transition — this just calls
+    /// it and refreshes the queue. A rejection with no reason is blocked
+    /// server-side (REASON_REQUIRED) as well as here.
+    @discardableResult
+    func reviewEvent(_ eventId: String, approve: Bool, reason: String) async -> Bool {
+        if !approve && reason.trimmingCharacters(in: .whitespaces).isEmpty {
+            adminEventError = "REASON_REQUIRED"
+            return false
+        }
+        adminEventBusy = eventId
+        adminEventError = ""
+        var ok = false
+        do {
+            let result: [String: JSONValue] = try await SupabaseService.client
+                .rpc("admin_review_event", params: AdminReviewEventParams(eventId: eventId, approve: approve, reason: reason))
+                .execute().value
+            if case .bool(true) = result["success"] ?? .bool(false) {
+                ok = true
+            } else if case .string(let err) = result["error"] ?? .string("") {
+                adminEventError = err
+            }
+        } catch {
+            print("reviewEvent failed:", error)
+            adminEventError = error.localizedDescription
+        }
+        adminEventBusy = nil
+        // TASK 5 (Account badges pass) — the adminReview group-card badge
+        // reads pendingEventsCount, not adminEvents.count, so it needs its
+        // own refresh here too, same as the full queue does.
+        if ok { await loadPendingEvents(); await loadPendingEventsCount() }
+        return ok
+    }
+
+    enum RemindAdminResult { case sent(Int), limit, failed }
+
+    /// Host nudges the admins about an event still waiting for review (max 2 per event,
+    /// enforced by `remind_admin_event_review`, migration 148).
+    func remindAdminAboutEvent(_ eventId: String) async -> RemindAdminResult {
+        struct Reply: Decodable { let success: Bool?; let error: String?; let remindCount: Int?
+            enum CodingKeys: String, CodingKey { case success, error; case remindCount = "remind_count" } }
+        do {
+            let r: Reply = try await SupabaseService.client
+                .rpc("remind_admin_event_review", params: ["p_event_id": eventId]).execute().value
+            if r.success == true { return .sent(r.remindCount ?? 1) }
+            return r.error == "REMIND_LIMIT_REACHED" ? .limit : .failed
+        } catch {
+            print("remindAdminAboutEvent failed:", error)
+            return .failed
+        }
+    }
+
+    /// This account's own real (non-catalogue) events, raw — see
+    /// myOrgEventSummaries' own doc comment (AppState.swift).
+    func loadMyOrgEventSummaries() async {
+        let realKeys = myOrgEventKeys.filter { key in EventCatalog.all.first(where: { $0.key == key }) == nil }
+        guard !realKeys.isEmpty else { myOrgEventSummaries = []; return }
+        do {
+            let rows: [RealEventSummary] = try await Self.retryingEventColumns { withR2 in
+try await SupabaseService.client
+                .from("events").select(Self.eventColumns(withR2)).in("id", values: realKeys)
+                .execute().value }
+            let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
+            async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
+            async let orgNames = organizerNames(for: organizerIDs)
+            let photos = await photoMap
+            let names = await orgNames
+            myOrgEventSummaries = rows.map { row in
+                var r = row
+                r.photoURL = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref) ?? photos[row.id]
+                if let orgId = row.organizerId { r.organizerName = names[orgId] ?? "" }
+                return r
+            }
+        } catch {
+            print("loadMyOrgEventSummaries failed:", error)
+            myOrgEventSummaries = []
+        }
+    }
+}
+
+/// `get_event_resubmission_status`'s own remaining-attempts/next-eligible
+/// result, cached per event id on `AppState.resubmissionStatusByEvent`.
+struct ResubmissionStatus {
+    let remaining: Int
+    let nextEligibleAt: Date?
+}
+
+/// A generic RPC's jsonb reply where the exact value type per key varies
+/// (a plain `[String: String]`/`[String: Bool]` can't decode a mixed
+/// `{success, status}` or `{success, error}` response). Only the couple of
+/// cases admin_review_event actually returns are handled.
+enum JSONValue: Decodable {
+    case bool(Bool)
+    case string(String)
+    // TASK 3 (event creation validation pass) — additive: finalize_event_
+    // photo_count's own `count` field is a real number, which fell through
+    // to `.null` before (bool/string were the only two non-null cases
+    // this ever tried). Tried AFTER bool (so `true`/`false` still decode
+    // as `.bool`, unchanged) and before falling to `.null`.
+    case double(Double)
+    case null
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let b = try? container.decode(Bool.self) { self = .bool(b); return }
+        if let s = try? container.decode(String.self) { self = .string(s); return }
+        if let d = try? container.decode(Double.self) { self = .double(d); return }
+        self = .null
+    }
+}
+
+/// RPC parameter payload for resubmit_event_for_review.
+struct ResubmitEventParams: Encodable {
+    let eventId: String
+    let name: String
+    let category: String
+    let description: String
+    let location: String
+    let eventDate: String?
+    let eventTime: String?
+    let priceVnd: Int
+    let capacity: Int
+    let intro: String
+    let includedItems: [IncludedItem]
+    let lat: Double?
+    let lng: Double?
+    // Address-autocomplete fix pass (2026-09-28, migration 105).
+    let addressLine: String
+    let city: String
+    let postalCode: String
+    let addressVerified: Bool
+    // Location hierarchy (migration 112) — optional trailing params;
+    // nil is OMITTED from the JSON (synthesized encodeIfPresent), so the
+    // RPC's own DEFAULT NULL applies.
+    let countryCode: String?
+    let stateProvince: String?
+    let neighborhood: String?
+    /// Migration 195 — see CreateEventParams.tz.
+    var tz: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case eventId = "p_event_id"
+        case name = "p_name"
+        case category = "p_category"
+        case description = "p_description"
+        case location = "p_location"
+        case eventDate = "p_event_date"
+        case eventTime = "p_event_time"
+        case priceVnd = "p_price_vnd"
+        case capacity = "p_capacity"
+        case intro = "p_intro"
+        case includedItems = "p_included_items"
+        case lat = "p_lat"
+        case lng = "p_lng"
+        case addressLine = "p_address_line"
+        case city = "p_city"
+        case postalCode = "p_postal_code"
+        case addressVerified = "p_address_verified"
+        case countryCode = "p_country_code"
+        case stateProvince = "p_state_province"
+        case neighborhood = "p_neighborhood"
+        case tz = "p_tz"
+    }
+}
+
+/// RPC parameter payload for admin_review_event.
+struct AdminReviewEventParams: Encodable {
+    let eventId: String
+    let approve: Bool
+    let reason: String
+
+    enum CodingKeys: String, CodingKey {
+        case eventId = "p_event_id"
+        case approve = "p_approve"
+        case reason = "p_reason"
+    }
+}
+
+/// RPC parameter payloads (PostgREST needs one Encodable value per call;
+/// mixed-type dictionaries aren't expressible in Swift).
+struct HoldSeatsParams: Encodable {
+    let event: String
+    let qty: Int
+    enum CodingKeys: String, CodingKey {
+        case event = "p_event"
+        case qty = "p_qty"
+    }
+}
+
+struct CreateEventParams: Encodable {
+    let name: String
+    let category: String
+    let description: String
+    let location: String
+    let eventDate: String?
+    let eventTime: String?
+    let priceVnd: Int
+    let capacity: Int
+    let organizerName: String
+    let instagram: String
+    let about: String
+    let intro: String
+    let includedItems: [IncludedItem]
+    let lat: Double?
+    let lng: Double?
+    // Address-autocomplete fix pass (2026-09-28, migration 105).
+    let addressLine: String
+    let city: String
+    let postalCode: String
+    let addressVerified: Bool
+    // Location hierarchy (migration 112) — optional trailing params;
+    // nil is OMITTED from the JSON (synthesized encodeIfPresent), so the
+    // RPC's own DEFAULT NULL applies.
+    let countryCode: String?
+    let stateProvince: String?
+    let neighborhood: String?
+    /// Migration 195 — sent only for a US address (`createTzParam`); nil is omitted, so a server without 195
+    /// still finds its own signature for every VN create.
+    var tz: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case name = "p_name"
+        case category = "p_category"
+        case description = "p_description"
+        case location = "p_location"
+        case eventDate = "p_event_date"
+        case eventTime = "p_event_time"
+        case priceVnd = "p_price_vnd"
+        case capacity = "p_capacity"
+        case organizerName = "p_organizer_name"
+        case instagram = "p_instagram"
+        case about = "p_about"
+        case intro = "p_intro"
+        case includedItems = "p_included_items"
+        case lat = "p_lat"
+        case lng = "p_lng"
+        case addressLine = "p_address_line"
+        case city = "p_city"
+        case postalCode = "p_postal_code"
+        case addressVerified = "p_address_verified"
+        case countryCode = "p_country_code"
+        case stateProvince = "p_state_province"
+        case neighborhood = "p_neighborhood"
+        case tz = "p_tz"
+    }
+}
+
+// MARK: - Host: cancel an event + email its ticket holders
+
+extension AppState {
+    struct TicketHolder: Decodable, Equatable {
+        let name: String
+        let email: String
+    }
+
+    private struct TicketHoldersResult: Decodable {
+        let success: Bool
+        let holders: [TicketHolder]?
+        let error: String?
+    }
+
+    private struct CancelEventResult: Decodable {
+        let success: Bool
+        let error: String?
+    }
+
+    /// Everyone cancelling would affect (organizer/admin only, server-enforced).
+    /// nil on failure, so the caller can tell "none" from "couldn't load".
+    func loadTicketHolders(eventKey: String) async -> [TicketHolder]? {
+        do {
+            let res: TicketHoldersResult = try await SupabaseService.client
+                .rpc("get_event_ticket_holders", params: ["p_event": eventKey])
+                .execute().value
+            return res.success ? (res.holders ?? []) : nil
+        } catch {
+            print("loadTicketHolders failed:", error)
+            return nil
+        }
+    }
+
+    /// Host -> every confirmed ticket-holder (migration 166). Server enforces host-only, the
+    /// 24h-before..12h-after window and a rate limit. Returns (sent, nil) or (nil, message).
+    func sendEventAnnouncement(eventKey: String, category: String, body: String, templateID: String?) async -> (sent: Int?, error: String?) {
+        struct Params: Encodable {
+            let pEvent: String, pCategory: String, pBody: String, pTemplateId: String?
+            enum CodingKeys: String, CodingKey { case pEvent = "p_event", pCategory = "p_category", pBody = "p_body", pTemplateId = "p_template_id" }
+        }
+        struct Result: Decodable { let success: Bool; let sent: Int?; let error: String? }
+        do {
+            let res: Result = try await SupabaseService.client
+                .rpc("send_event_announcement", params: Params(pEvent: eventKey, pCategory: category, pBody: body, pTemplateId: templateID))
+                .execute().value
+            if res.success { return (res.sent ?? 0, nil) }
+            switch res.error {
+            case "OUTSIDE_WINDOW": return (nil, T("Chỉ gửi được từ 24 giờ trước đến 12 giờ sau giờ bắt đầu.", "You can only send from 24h before to 12h after the start."))
+            case "RATE_LIMITED": return (nil, T("Bạn đã gửi quá nhiều thông báo. Thử lại sau ít phút.", "You've sent too many announcements. Try again in a few minutes."))
+            case "NOT_AUTHORIZED": return (nil, T("Bạn không có quyền gửi thông báo cho sự kiện này.", "You can't send announcements for this event."))
+            case "INVALID_BODY": return (nil, T("Nội dung phải từ 1 đến 300 ký tự.", "Message must be 1 to 300 characters."))
+            default: return (nil, T("Không gửi được. Thử lại nhé.", "Couldn't send. Please try again."))
+            }
+        } catch {
+            print("sendEventAnnouncement failed:", error)
+            return (nil, T("Không gửi được. Thử lại nhé.", "Couldn't send. Please try again."))
+        }
+    }
+
+    /// Cancels the event through the existing cancel_event RPC (cancels every
+    /// live booking, opens the refund claims, posts the system message).
+    /// Returns nil on success, otherwise a message fit to show the host.
+    func hostCancelEvent(eventKey: String, reason: String) async -> String? {
+        do {
+            let res: CancelEventResult = try await SupabaseService.client
+                .rpc("cancel_event", params: ["p_event": eventKey, "p_reason": reason])
+                .execute().value
+            guard res.success else {
+                return res.error == "NOT_AUTHORIZED"
+                    ? T("Bạn không có quyền huỷ sự kiện này.", "You're not allowed to cancel this event.")
+                    : T("Không huỷ được sự kiện. Vui lòng thử lại.", "Couldn't cancel the event. Please try again.")
+            }
+            await loadAttendanceGuests(eventKey)
+            return nil
+        } catch {
+            print("hostCancelEvent failed:", error)
+            return T("Không huỷ được sự kiện. Vui lòng thử lại.", "Couldn't cancel the event. Please try again.")
+        }
+    }
+}
+
+/// `events.details` (migration 203, event type profiles): selected only while the server has it, same idea as
+/// `EventMarketColumns` below. Rows read without it have no type facts (today's behaviour).
+enum EventDetailsColumns {
+    private static let lock = NSLock()
+    private static var _missing = false
+    static var missing: Bool { lock.lock(); defer { lock.unlock() }; return _missing }
+    static func markMissing() { lock.lock(); _missing = true; lock.unlock() }
+
+    static var suffix: String { missing ? "" : ", details" }
+
+    static func isMissingColumnError(_ error: Error) -> Bool {
+        let s = String(describing: error).lowercased()
+        guard s.contains("42703") || s.contains("does not exist") || s.contains("could not find") else { return false }
+        return s.contains(".details") || s.contains("\"details\"") || s.contains("'details'") || s.contains(" details ")
+    }
+
+    static func retrying<T>(_ body: () async throws -> T) async throws -> T {
+        if missing { return try await body() }
+        do { return try await body() } catch {
+            guard isMissingColumnError(error) else { throw error }
+            markMissing()
+            return try await body()
+        }
+    }
+}
+
+/// `events.tz` / `events.currency` (migration 195) are selected only while the server has them. Production may not
+/// have 195 yet, and PostgREST fails the WHOLE query on an unknown column (42703), so the first such failure retries
+/// once with the old column list and remembers it for the rest of the session (same idea as `MediaColumns`).
+/// Rows read without the columns fall back to `EventMarket.rowTimeZoneID` / `rowCurrency` (location zone, VND).
+enum EventMarketColumns {
+    private static let lock = NSLock()
+    private static var _missing = false
+    static var missing: Bool { lock.lock(); defer { lock.unlock() }; return _missing }
+    static func markMissing() { lock.lock(); _missing = true; lock.unlock() }
+
+    /// Appended to an `events` select list.
+    static var suffix: String { missing ? "" : ", tz, currency" }
+
+    /// Only an unknown `tz`/`currency` column counts (a missing `cover_r2_ref` is MediaColumns' business).
+    static func isMissingColumnError(_ error: Error) -> Bool {
+        let s = String(describing: error).lowercased()
+        guard s.contains("42703") || s.contains("does not exist") || s.contains("could not find") else { return false }
+        return s.contains(".tz") || s.contains("\"tz\"") || s.contains("'tz'") || s.contains(" tz ")
+            || s.contains(".currency") || s.contains("\"currency\"") || s.contains("'currency'") || s.contains(" currency ")
+    }
+
+    static func retrying<T>(_ body: () async throws -> T) async throws -> T {
+        if missing { return try await body() }
+        do { return try await body() } catch {
+            guard isMissingColumnError(error) else { throw error }
+            markMissing()
+            return try await body()
+        }
+    }
+}
+
+
+// MARK: - Event drafts (host)
+
+extension AppState {
+    func loadEventDrafts() {
+        eventDrafts = userID.map { EventDraftStore.load($0) } ?? []
+    }
+
+    /// Snapshots the open form (text fields from here, photos/step from the view). False = already 5 drafts.
+    func saveEventDraft(photos: [UIImage], coverIndex: Int, step: Int) -> Bool {
+        guard let uid = userID else { return false }
+        var d = eventDrafts.first { $0.id == createDraftID } ?? HostEventDraft()
+        d.step = step; d.coverIndex = coverIndex
+        d.name = createName; d.desc = createDesc; d.intro = createIntro; d.keywords = createKeywords
+        d.chatGreeting = createChatGreeting; d.chatGreetingEn = createChatGreetingEn
+        d.details = createDetails.mapValues { EventDetailsPayload($0) }; d.kwDismissed = createKwDismissed
+        d.cats = createCats; d.included = createIncludedItems
+        d.price = createPrice; d.seats = createSeats; d.visibility = createVisibility
+        d.hostGoal = createHostGoal; d.criteria = createCriteria
+        d.eventDate = createEventDate; d.eventTime = createEventTime
+        d.loc = createLoc; d.locLabel = createLocLabel; d.addressLine = createAddressLine
+        d.district = createDistrict; d.city = createCity; d.postalCode = createPostalCode
+        d.lat = createLat; d.lng = createLng
+        d.countryCode = createCountryCode; d.stateProvince = createStateProvince
+        d.neighborhood = createNeighborhood; d.placeTimeZoneID = createPlaceTimeZoneID
+        d.locConfirmed = createLocConfirmed
+        guard EventDraftStore.save(d, photos: photos, uid: uid) else { return false }
+        createDraftID = d.id
+        loadEventDrafts()
+        return true
+    }
+
+    /// Fills the form from a draft (photos are returned for the view's own gallery state).
+    func applyEventDraft(_ d: HostEventDraft) {
+        createEditEventId = nil
+        createSent = false; createError = ""
+        createDraftID = d.id
+        createName = d.name; createDesc = d.desc; createIntro = d.intro; createKeywords = d.keywords
+        createChatGreeting = d.chatGreeting; createChatGreetingEn = d.chatGreetingEn
+        createDetails = (d.details ?? [:]).mapValues(\.values); createKwDismissed = d.kwDismissed ?? []
+        createCats = d.cats; createIncludedItems = d.included
+        createPrice = d.price; createSeats = d.seats; createVisibility = d.visibility
+        createHostGoal = d.hostGoal; createCriteria = d.criteria
+        // Place first (its didSet re-zones the date/time), then the date and time themselves.
+        createCountryCode = d.countryCode; createStateProvince = d.stateProvince
+        createPlaceTimeZoneID = d.placeTimeZoneID; createNeighborhood = d.neighborhood
+        createLoc = d.loc; createLocLabel = d.locLabel; createAddressLine = d.addressLine
+        createDistrict = d.district; createCity = d.city; createPostalCode = d.postalCode
+        createLat = d.lat; createLng = d.lng; createLocConfirmed = d.locConfirmed
+        createEventDate = d.eventDate; createEventTime = d.eventTime
+        createDefaultsSource = nil; createAppliedDefaults = nil
+        createUndoOffer = nil
+    }
+
+    func deleteEventDraft(_ id: UUID) {
+        guard let uid = userID else { return }
+        EventDraftStore.delete(id, uid: uid)
+        if createDraftID == id { createDraftID = nil }
+        loadEventDrafts()
+    }
+}

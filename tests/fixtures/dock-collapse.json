@@ -1,0 +1,18 @@
+{
+  "_doc": "Dock shrink-on-scroll steps (web src/lib/dockLayout.js dockCollapseStep, iOS Lib/DockLayout.swift DockCollapse). offsetY: 0 at the top, more negative further down; delta < 0 = scrolling down. Each case starts from { collapsed: false, travel: 0 } and feeds the samples in order.",
+  "threshold": 24,
+  "cases": [
+    { "name": "a steady scroll down shrinks once 24 pt have been travelled",
+      "steps": [[-10, -10, false], [-20, -10, false], [-34, -14, true]] },
+    { "name": "a small reversal (a finger wobble or a bounce) keeps it shrunk",
+      "steps": [[-60, -30, true], [-70, -10, true], [-55, 15, true], [-75, -20, true]] },
+    { "name": "a real scroll up expands it",
+      "steps": [[-200, -40, true], [-185, 15, true], [-170, 15, false]] },
+    { "name": "near the top it is always full size",
+      "steps": [[-200, -40, true], [-3, 197, false], [-2, -1, false]] },
+    { "name": "a reversal restarts the run, even mid-way",
+      "steps": [[-100, -20, false], [-90, 10, false], [-110, -20, false], [-115, -5, true]] },
+    { "name": "no movement changes nothing",
+      "steps": [[-100, -30, true], [-100, 0, true]] }
+  ]
+}

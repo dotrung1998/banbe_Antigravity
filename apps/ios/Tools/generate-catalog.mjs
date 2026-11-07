@@ -1,0 +1,66 @@
+// Emits apps/ios/BanbeApp/Resources/events.json from the web app's own
+// catalogue (src/data/events.js), so the iOS feed shows exactly the same
+// events, copy, photos and organizer detail as the web feed instead of a
+// hand-transcribed second copy that drifts.
+//
+// Run from the repo root after changing src/data/events.js:
+//   node apps/ios/Tools/generate-catalog.mjs
+import { writeFileSync } from 'node:fs';
+import { EVENTS } from '../../../src/data/events.js';
+
+const rows = EVENTS.map(e => ({
+  key: e.key,
+  catKey: e.catKey,
+  cat: e.cat,
+  cat2Key: e.cat2Key,
+  catDisplay: e.catDisplay,
+  name: e.name,
+  img: e.img,
+  lat: e.lat,
+  lng: e.lng,
+  meta: e.meta,
+  where: e.where,
+  when: e.when,
+  price: e.price,
+  seats: e.seats,
+  seatsLong: e.seatsLong,
+  urgent: e.urgent,
+  desc: e.desc,
+  included: e.included,
+  // Demo-event Event Introduction pass (2026-09-28) — the generator's own
+  // field whitelist didn't include these at all, so this catalog file was
+  // never going to carry them regardless of what the web source had —
+  // adding them here is the actual fix (not just re-running the
+  // generator); see CatalogEvent.swift's own `intro`/`includedItems`
+  // doc comments for how iOS decodes them.
+  intro: e.intro,
+  includedItems: e.includedItems,
+  host: e.host,
+  hostShort: e.hostShort,
+  greeting: e.greeting,
+  gallery: e.gallery,
+  orgGallery: e.orgGallery,
+  orgName: e.orgName,
+  orgIg: e.orgIg,
+  orgDesc: e.orgDesc,
+  orgSince: e.orgSince,
+  orgCount: e.orgCount,
+  orgTrusted: e.orgTrusted,
+  cancelled: e.cancelled,
+  cancelledHoursAgo: e.cancelledHoursAgo,
+  endedHoursAgo: e.endedHoursAgo,
+  soldOut: e.soldOut,
+  inviteOnly: e.inviteOnly,
+  until: e.until,
+  untilLabel: e.untilLabel,
+  // Bug 3 (15-organizer-checkin.md follow-up): "Add to Calendar" needs a
+  // real, structured start time — startDate is already a resolved JS Date
+  // on the web side; emit it as an ISO string so Swift can decode it as a
+  // real Date instead of re-parsing `when`/`where`'s display text.
+  startDate: e.startDate ? e.startDate.toISOString() : null,
+  locationLabel: e.locationLabel,
+}));
+
+const out = new URL('../BanbeApp/Resources/events.json', import.meta.url);
+writeFileSync(out, JSON.stringify(rows, null, 2) + '\n');
+console.log(`Wrote ${rows.length} events to ${out.pathname}`);

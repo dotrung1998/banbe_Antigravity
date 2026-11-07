@@ -1,0 +1,1094 @@
+import SwiftUI
+
+/// Account IA pass (2026-09-27) — the ONE shared child screen every
+/// Account group entry card opens (`app.openAccountGroup(_:)`), keyed by
+/// `app.accountGroupKey`. Mirrors web's `src/screens/AccountGroup.jsx`
+/// exactly — same six group keys, same relocated rows/testids/routes, so
+/// the two platforms can't drift on what a given group actually contains.
+/// Never a separate screen per group: six near-identical files/screens
+/// for what's really one layout (a title, a back-to-Account link, and a
+/// handful of EXISTING rows) would just be repetition, not a real
+/// architectural need.
+struct AccountGroupView: View {
+    @EnvironmentObject var app: AppState
+    @ObservedObject private var retention = TicketRetentionStore.shared
+    @State private var selecting = false
+    @State private var selected: Set<UUID> = []
+    @State private var confirmDelete = false
+    @State private var pdfShare: PDFShareItem?
+    /// Migration 216: the "View as" picker of the admin Project hub demo.
+    @State private var demoPicker = false
+    @State private var ticketDemoPicker = false
+
+    // Kept on AppState (`accountGroupTitle(for:)`) so back-button labels
+    // elsewhere can show the same text without drifting from this title.
+    private var title: String { app.accountGroupTitle(for: app.accountGroupKey) }
+
+    private var titleIcon: String {
+        switch app.accountGroupKey {
+        case "team": return "person.3"
+        case "activity": return "calendar.badge.checkmark"
+        case "payments": return "banknote"
+        case "preferences": return "slider.horizontal.3"
+        case "hostOps": return "checklist"
+        case "adminReview": return "exclamationmark.shield"
+        // 2026-10-02 fix — was missing entirely, falling to the generic
+        // "circle" placeholder below; matches the Admin Team row's own
+        // icon (AccountView.swift's groupCardRow call).
+        case "adminTeam": return "person.3.fill"
+        case "helpLegal": return "lock.shield"
+        case "admin": return "checkmark.shield"   // note 66: the former Admin tab
+        default: return "circle"
+        }
+    }
+
+    private var completedCount: Int {
+        app.completedEventsCount
+    }
+
+    var body: some View {
+        ScreenScaffold {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                Button { app.goBack() } label: {
+                    // note 66 — a group nested under Administration names it on the way back.
+                    Text("‹ " + (app.accountGroupParentKey.map { app.accountGroupTitle(for: $0) } ?? app.T("Tài khoản", "Account")))
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(app.palette.ink)
+                .accessibilityIdentifier("accountGroup.back")
+
+                HStack(spacing: 10) {
+                    Image(systemName: titleIcon)
+                        .font(.system(size: 20, weight: .medium))
+                        .frame(width: 34, height: 34)
+                        .background((ROW_ACCENT_COLORS[app.accountGroupKey ?? ""] ?? .clear).opacity(0.33), in: Circle())
+                    Text(title).font(BanbeTheme.display(24))
+                }
+                .padding(.top, 10)
+                .padding(.top, 16)
+
+                Group {
+                    switch app.accountGroupKey {
+                    case "team": teamContent
+                    // One container: `.padding(.top, 22)` below is applied to every
+                    // child of the Group, so a multi-view body got 22pt above each
+                    // heading AND each card instead of once above the screen.
+                    case "activity": VStack(alignment: .leading, spacing: 0) { activityContent }
+                    case "payments": paymentsContent
+                    case "preferences": preferencesContent
+                    case "hostOps": hostOpsContent
+                    case "adminReview": adminReviewContent
+                    // One container, same reason as "activity" above: otherwise the Group's
+                    // `.padding(.top, 22)` is applied to every child (heading, card, row).
+                    case "adminTeam": VStack(alignment: .leading, spacing: 0) { adminTeamContent }
+                    case "helpLegal": helpLegalContent
+                    case "admin": adminContent   // note 66
+                    default: EmptyView()
+                    }
+                }
+                .padding(.top, 22)
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 60)
+        }
+        .confirmationDialog(
+            app.T("Xóa \(selected.count) mục khỏi danh sách?", "Remove \(selected.count) item(s) from your list?"),
+            isPresented: $confirmDelete, titleVisibility: .visible
+        ) {
+            Button(app.T("Xóa", "Delete"), role: .destructive) {
+                if let uid = app.userID { retention.remove(selected, user: uid) }
+                selected = []
+                selecting = false
+            }
+            Button(app.T("Hủy", "Cancel"), role: .cancel) {}
+        }
+        .sheet(item: $pdfShare) { item in ActivityShareSheet(url: item.url) }
+        .sheet(isPresented: $demoPicker) {
+            ProjectDemoPicker { role, eventDay in
+                demoPicker = false
+                app.startProjectDemo(as: role, eventDay: eventDay)
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $ticketDemoPicker) {
+            TicketDemoPicker { key, variant in
+                ticketDemoPicker = false
+                app.startTicketDemo(key, variant: variant)
+            }
+            .presentationDetents([.large])
+        }
+        .sheet(item: $app.importedTicketOpen) { t in
+            ImportedTicketView(ticket: t).environmentObject(app)
+        }
+        .task { await app.loadImportedTickets() }
+        .task(id: app.paymentBookings.map(\.id)) { reconcileRetention() }
+        // Safety net (mirrors AccountView's own accountTab role-sync) — a
+        // role change while this happens to be open sends it back to
+        // Account rather than showing a group its role no longer has.
+        .onChange(of: app.organizerMode) { _, on in
+            if app.accountGroupKey == "hostOps", !on { app.screen = .profile }
+        }
+        .onChange(of: app.accountType) { _, type in
+            if ["adminReview", "admin"].contains(app.accountGroupKey ?? ""), type != "admin" { app.screen = .profile }
+        }
+        // Admin Team pass (2026-10-02) — a direct deep link straight into
+        // `accountGroupKey: "adminTeam"` (e.g. from the admin_invite_
+        // response notification case) bypasses AccountView's own `.task`s;
+        // idempotent re-fetch, same reasoning as `activityContent`'s own
+        // "loaded elsewhere too" sources.
+        .onAppear {
+            if app.accountGroupKey == "adminTeam" && app.canManageAdmins {
+                Task { await app.loadAdminTeam() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var teamContent: some View {
+        if !app.myOrganizerInvites.isEmpty {
+            Text(app.T("Lời mời Team", "Team Invites")).font(.system(size: 11.5, weight: .semibold))
+            ForEach(app.myOrganizerInvites) { inv in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(app.T("\(inv.organizers?.name ?? "Một tổ chức") mời bạn làm \(inv.publicRole)", "\(inv.organizers?.name ?? "An organizer") invited you as \(inv.publicRole)"))
+                        .font(.system(size: 13))
+                    HStack(spacing: 8) {
+                        InkButton(title: app.T("Chấp nhận", "Accept")) { Task { await app.respondToOrganizerInvite(membershipID: inv.id, accept: true) } }
+                        Button(app.T("Từ chối", "Decline")) { Task { await app.respondToOrganizerInvite(membershipID: inv.id, accept: false) } }
+                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            .frame(maxWidth: .infinity).padding(.vertical, 10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                    }
+                }
+                .padding(14)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 8)
+                .accessibilityIdentifier("team.invite.\(inv.id)")
+            }
+        }
+        if !app.myTeamMemberships.isEmpty {
+            Text(app.T("Đội ngũ của tôi", "My Teams")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            ForEach(app.myTeamMemberships) { m in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(m.organizers?.name ?? app.T("Một tổ chức", "An organizer")).font(.system(size: 13))
+                        Text(m.publicRole).font(.system(size: 11)).opacity(0.65)
+                    }
+                    Spacer()
+                    Button {
+                        Task { await app.setOrganizerMemberVisibility(membershipID: m.id, visible: !m.publicVisible) }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(app.T("Hiển thị tôi trong Team", "Show me in the Team")).font(.system(size: 10.5))
+                            ZStack(alignment: m.publicVisible ? .trailing : .leading) {
+                                Capsule().fill(m.publicVisible ? app.palette.ink : app.palette.ink.opacity(0.18)).frame(width: 38, height: 22)
+                                Circle().fill(app.palette.paper).frame(width: 17, height: 17).padding(2.5)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("team.membership.visibility.\(m.id)")
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(14)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 8)
+            }
+        }
+        if app.myOrganizerInvites.isEmpty && app.myTeamMemberships.isEmpty {
+            Text(app.T("Chưa có lời mời hay Team nào.", "No invites or teams yet."))
+                .font(.system(size: 13)).opacity(0.65)
+        }
+
+        // Account IA reorg (2026-09-30) — event-credit invites (organizer-
+        // collaboration credits, not attendee tickets) RELOCATED here from
+        // the old `activityContent` — a deliberate reclassification, not a
+        // silent drop: both this and Team invites/memberships above are
+        // organizer-collaboration concerns, a better semantic fit than
+        // sitting alongside real attendee bookings in "Tickets & Bookings".
+        // Content/identifiers unchanged from their previous location.
+        if !app.myEventCredits.isEmpty {
+            Text(app.T("Đóng góp sự kiện: lời mời đang chờ", "Event contributions: pending invites")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            ForEach(app.myEventCredits) { c in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(app.T(
+                        "\(c.organizers?.name ?? "Một tổ chức") ghi nhận bạn đã tổ chức \"\(c.events?.name ?? "")\"",
+                        "\(c.organizers?.name ?? "An organizer") credited you for organizing \"\(c.events?.name ?? "")\""
+                    )).font(.system(size: 13))
+                    HStack(spacing: 8) {
+                        InkButton(title: app.T("Chấp nhận", "Accept")) { Task { await app.respondToEventCredit(creditID: c.id, accept: true) } }
+                        Button(app.T("Từ chối", "Decline")) { Task { await app.respondToEventCredit(creditID: c.id, accept: false) } }
+                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            .frame(maxWidth: .infinity).padding(.vertical, 10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                    }
+                }
+                .padding(14)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 8)
+                .accessibilityIdentifier("eventCredit.\(c.id)")
+            }
+        }
+        if !app.myConfirmedEventCredits.isEmpty {
+            Text(app.T("Đóng góp sự kiện: đã xác nhận", "Event contributions: confirmed")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            ForEach(app.myConfirmedEventCredits) { c in
+                Button { app.goEvent(c.eventId) } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(c.events?.name ?? app.T("Một sự kiện", "An event")).font(.system(size: 13, weight: .semibold))
+                            Text(c.organizers?.name ?? app.T("Một tổ chức", "An organizer")).font(.system(size: 11)).opacity(0.65)
+                        }
+                        Spacer(minLength: 0)
+                        Text("›").font(.system(size: 18)).opacity(0.5)
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(14)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 8)
+                .accessibilityIdentifier("eventCreditConfirmed.\(c.id)")
+            }
+        }
+    }
+
+    // Account IA reorg (2026-09-30) — Task 2b: "My Tickets" is now REAL
+    // DB-backed data, reusing `app.paymentBookings` (`loadPaymentBookings()`,
+    // AppState+Payments.swift) — the exact same `bookings` query
+    // AccountView's own Action Center already loads, joined to
+    // `events`/`organizers` for the real event name. Active bookings tap into
+    // `openBookingConfirmed` — the same booking-id-scoped helper Confirmed's
+    // own notification-reopen path already uses — which self-gates the real QR
+    // (`Booking.isTicket`) vs. the "awaiting payment" state.
+    // Cancelled/expired/no_show bookings (real `bookings.status` values)
+    // get their own clearly labeled section — no fabricated "refunded" bucket,
+    // since `bookings.status` has no such value.
+    //
+    // Gift pass (migration 132): a seat that was gifted is not an admission
+    // ticket for the purchaser any more, so its row shows "Gifted to <name>"
+    // and offers the PDF only — no QR screen, no re-gift, no import. Once the
+    // event is over the row moves into the finished section with an accurate
+    // "Event ended · Gifted" subtitle; no status is written, because a
+    // completed event is not a cancelled one and the purchase keeps its
+    // refund record either way.
+    //
+    // Spacing pass: this screen now uses Account's own section rhythm —
+    // a heading sits 8pt above its grouped card, and sections are 18pt apart —
+    // instead of the previous mix of 8/18/22/28pt gaps that left headings
+    // stranded far from their content and "Past Events" floating on its own.
+    @ViewBuilder
+    private var activityContent: some View {
+        if app.paymentsLoading && app.paymentBookings.isEmpty {
+            Text(app.T("Đang tải vé của bạn…", "Loading your tickets…"))
+                .font(.system(size: 13)).opacity(0.65)
+        } else if app.paymentBookings.isEmpty {
+            Text(app.T("Bạn chưa có vé nào.", "You don't have any tickets yet."))
+                .font(.system(size: 13)).opacity(0.65)
+        } else {
+            let endedGiftIDs = Set(app.paymentBookings.filter { app.isFinishedGift($0) }.map(\.id))
+            let active = app.paymentBookings.filter {
+                ["pending", "confirmed", "attended"].contains($0.status)
+                    && !endedGiftIDs.contains($0.id) && !app.isEventEnded(eventKey: $0.eventKey)
+            }
+            let allInactive = app.paymentBookings.filter {
+                ["cancelled", "expired", "no_show"].contains($0.status) || endedGiftIDs.contains($0.id)
+            }
+            let inactive = allInactive.filter { booking in
+                guard let uid = app.userID else { return true }
+                return !retention.isHidden(booking.id, user: uid)
+            }
+            if !active.isEmpty {
+                Text(app.T("Vé của tôi", "My Tickets")).font(.system(size: 11.5, weight: .semibold))
+                VStack(spacing: 0) {
+                    ForEach(Array(active.enumerated()), id: \.element.id) { i, b in
+                        activeTicketRow(b)
+                        if i < active.count - 1 { Divider().overlay(app.palette.rule) }
+                    }
+                }
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 8)
+            }
+            if !inactive.isEmpty {
+                HStack {
+                    Text(app.T("Đã hủy / hết hạn", "Cancelled / Expired")).font(.system(size: 11.5, weight: .semibold))
+                    Spacer(minLength: 0)
+                    Button(selecting ? app.T("Xong", "Done") : app.T("Chọn", "Select")) {
+                        selecting.toggle()
+                        selected = []
+                    }
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("tickets.inactive.select")
+                }
+                .padding(.top, 18)
+                VStack(spacing: 0) {
+                    ForEach(Array(inactive.enumerated()), id: \.element.id) { i, b in
+                        finishedTicketRow(b)
+                        if i < inactive.count - 1 { Divider().overlay(app.palette.rule).opacity(0.65) }
+                    }
+                }
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 8)
+                if selecting {
+                    HStack(spacing: 10) {
+                        Button(selected.count == inactive.count ? app.T("Bỏ chọn tất cả", "Deselect all") : app.T("Chọn tất cả", "Select all")) {
+                            selected = selected.count == inactive.count ? [] : Set(inactive.map(\.id))
+                        }
+                        .accessibilityIdentifier("tickets.inactive.selectAll")
+                        Spacer(minLength: 0)
+                        Button(app.T("Xóa (\(selected.count))", "Delete (\(selected.count))"), role: .destructive) {
+                            confirmDelete = true
+                        }
+                        .disabled(selected.isEmpty)
+                        .accessibilityIdentifier("tickets.inactive.delete")
+                    }
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .padding(.top, 10)
+                }
+                Text(app.T("Các mục này tự động bị xóa sau 30 ngày. Xóa chỉ ẩn khỏi danh sách của bạn. Hồ sơ hoàn tiền vẫn được giữ.",
+                           "These are removed automatically after 30 days. Deleting only clears them from your list. Any refund record is kept."))
+                    .font(.system(size: 10.5)).opacity(0.6).padding(.top, 8)
+            }
+        }
+
+        // "Sự kiện đã hoàn thành" relabeled "Sự Kiện Quá Khứ"/"Past Events"
+        // for clarity — same destination (`goCompletedList`), unchanged. Now an
+        // ordinary grouped row on the same 18pt section rhythm as the two above
+        // (it used to sit below them with no rhythm of its own), carrying its
+        // real count in the same trailing position every other group row uses.
+        Text(app.T("Lịch sử", "History")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+        VStack(spacing: 0) {
+            row(app.T("Sự Kiện Quá Khứ", "Past Events"), identifier: "account.completedList", icon: "calendar.badge.checkmark", trailing: "\(completedCount) ›") { app.goCompletedList() }
+        }
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.top, 8)
+
+        // Tickets other people imported-in from a group booking (migration 152).
+        if !app.importedTickets.isEmpty {
+            Text(app.T("Vé đã nhập", "Imported tickets")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            VStack(spacing: 0) {
+                ForEach(Array(app.importedTickets.enumerated()), id: \.element.id) { i, t in
+                    Button { app.importedTicketOpen = t } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "ticket").font(.system(size: 16)).frame(width: 30)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(t.eventName).font(.system(size: 13.5, weight: .semibold))
+                                Text(t.name + (t.isVoid ? " ▪︎ " + app.T("Đã huỷ", "Cancelled") : ""))
+                                    .font(.system(size: 11.5)).opacity(0.65)
+                            }
+                            Spacer(minLength: 6)
+                            Text("›")
+                        }
+                        .foregroundStyle(app.palette.ink)
+                        .strikethrough(t.isVoid)
+                        .padding(.horizontal, 14).padding(.vertical, 12)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("account.importedTicket.\(t.seatNo)")
+                    if i < app.importedTickets.count - 1 { Divider().overlay(app.palette.rule).opacity(0.65) }
+                }
+            }
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.top, 8)
+            .accessibilityIdentifier("account.importedTickets")
+        }
+
+        // The recipient's own entry point for a claim code — deliberately its
+        // own row, never reachable from the check-in QR, which is a different
+        // credential entirely (see migration 132).
+        Text(app.T("Nhập vé được tặng hoặc vé nhóm", "Import a gifted or group ticket")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+        VStack(spacing: 0) {
+            row(app.T("Nhập vé bằng mã nhận vé", "Import a ticket with your claim code"),
+                identifier: "account.giftImport", icon: "gift", trailing: "›") {
+                app.openGiftImport()
+            }
+        }
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.top, 8)
+        .accessibilityIdentifier("account.giftImportSection")
+    }
+
+    /// A live ticket. A gifted one is deliberately inert apart from its PDF:
+    /// the purchaser owns the transaction, not the seat.
+    @ViewBuilder
+    private func activeTicketRow(_ b: PayableBooking) -> some View {
+        if b.isGifted {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName)
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(app.T("Đã tặng cho \(b.recipientName ?? "")", "Gifted to \(b.recipientName ?? "")"))
+                        .font(.system(size: 11)).opacity(0.85)
+                }
+                Spacer(minLength: 0)
+                giftPDFButton(b)
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(14)
+            .accessibilityIdentifier("myTicketGifted.\(b.id)")
+        } else {
+            Button {
+                Task { _ = await app.openBookingConfirmed(bookingID: b.id, eventKey: b.eventKey, back: .accountGroup) }
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
+                        Text(ticketStatusLabel(b)).font(.system(size: 11)).opacity(0.85)
+                    }
+                    Spacer(minLength: 0)
+                    Text("›").font(.system(size: 18)).opacity(0.5)
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(14)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("myTicket.\(b.id)")
+        }
+    }
+
+    /// PDF re-download, for a gift whose event is already over as much as for
+    /// one still to come. The purchaser's copy of what they sent never goes
+    /// away.
+    private func giftPDFButton(_ b: PayableBooking) -> some View {
+        Button {
+            if let url = app.exportGiftPDF(for: b) { pdfShare = PDFShareItem(url: url) }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.down.document").font(.system(size: 12, weight: .medium))
+                Text(app.T("PDF", "PDF")).font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .overlay(Capsule().stroke(app.palette.rule))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("myTicketGiftedPDF.\(b.id)")
+    }
+
+    /// A cancelled/expired/no-show row, plus the gifted rows whose event has
+    /// finished. Read-only in both cases.
+    private func finishedTicketRow(_ b: PayableBooking) -> some View {
+        HStack(spacing: 10) {
+            if selecting {
+                Image(systemName: selected.contains(b.id) ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18))
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
+                Text(terminalStatusLabel(b)).font(.system(size: 11))
+            }
+            Spacer(minLength: 0)
+            if b.isGifted { giftPDFButton(b) }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(14)
+        .opacity(0.65)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard selecting else { return }
+            if selected.contains(b.id) { selected.remove(b.id) } else { selected.insert(b.id) }
+        }
+        .accessibilityIdentifier("myTicketInactive.\(b.id)")
+    }
+
+    private func reconcileRetention() {
+        guard let uid = app.userID else { return }
+        let inactive = app.paymentBookings.filter {
+            ["cancelled", "expired", "no_show"].contains($0.status) || app.isFinishedGift($0)
+        }
+        // A refund that is still open keeps its row, whatever its age.
+        let openRefunds = Set(app.myRefunds.compactMap(\.bookingId))
+        retention.reconcile(user: uid, inactive: inactive.map(\.id),
+                            protected: Set(inactive.map(\.id)).intersection(openRefunds))
+        Task { await retention.sync(user: uid) }
+    }
+
+    private func ticketStatusLabel(_ b: PayableBooking) -> String {
+        if b.isTicket { return app.T("Vé đã sẵn sàng", "Ticket ready") }
+        if b.status == "attended" { return app.T("Đã tham dự", "Attended") }
+        if b.paymentState == .pendingVerification { return app.T("Chờ xác nhận thanh toán", "Awaiting Verification") }
+        if b.status == "pending" { return app.T("Đang giữ chỗ", "Holding") }
+        return app.T("Đang xử lý", "In progress")
+    }
+
+    // 2026-10-02 fix — "truthful refund status" requirement: refund status
+    // describes MONEY, not ticket validity, so it's layered on top of (not
+    // instead of) the plain terminal booking status. Reuses the SAME
+    // active-claim list (`app.myRefunds`, already loaded by AccountView's
+    // own `.task`s) and the exact copy `MyRefundsView.statusLabel(_:)`
+    // already established — never a second, independently-worded set of
+    // refund strings. `app.myRefunds` only ever holds ACTIVE claims
+    // (owed/host_marked_sent/disputed — `loadMyRefunds()`'s own query
+    // filter) — a cancelled booking with no matching entry here either
+    // never needed a refund (free/no payment) or one already completed;
+    // not fabricated as "Refunded" without a real signal to confirm which.
+    private func terminalStatusLabel(_ b: PayableBooking) -> String {
+        // A gift whose event has finished is NOT a cancelled booking: nothing
+        // about the money changed, so this says what actually happened instead
+        // of borrowing the cancellation wording (and never touches status, which
+        // would destroy the refund record's meaning).
+        if app.isFinishedGift(b) {
+            return app.T("Sự kiện đã kết thúc ▪︎ Đã tặng", "Event ended ▪︎ Gifted")
+        }
+        let base: String
+        switch b.status {
+        case "cancelled": base = app.T("Đã hủy", "Cancelled")
+        case "expired": base = app.T("Đã hết hạn", "Expired")
+        case "no_show": base = app.T("Không tham dự", "No-show")
+        default: base = b.status
+        }
+        guard let claim = app.myRefunds.first(where: { $0.bookingId == b.id }) else { return base }
+        let refundLabel: String
+        switch claim.status {
+        case "owed": refundLabel = app.T("Đang chờ hoàn tiền", "Refund Pending")
+        case "host_marked_sent": refundLabel = app.T("Đang chờ bạn xác nhận đã nhận tiền", "Awaiting Refund Confirmation")
+        case "disputed": refundLabel = app.T("Hoàn tiền đang tranh chấp", "Refund Disputed")
+        default: return base
+        }
+        return "\(base) ▪︎ \(refundLabel)"
+    }
+
+    @ViewBuilder
+    private var paymentsContent: some View {
+        VStack(spacing: 0) {
+            row(app.T("Hoá đơn", "Invoices"), identifier: "account.invoices", icon: "doc.text", trailing: "›") { app.openDocuments(kind: "invoice", role: "guest") }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Biên nhận", "Receipts"), identifier: "account.receipts", icon: "receipt", trailing: "›") { app.openDocuments(kind: "receipt", role: "guest") }
+            Divider().overlay(app.palette.rule)
+            // Sub-section-of-a-group back-navigation fix (2026-09-29,
+            // second pass) — was `back: .profile`, skipping this group
+            // page (same class of bug as `.documents`'s own fix).
+            row(app.T("Tài khoản thanh toán & nhận hoàn tiền", "Payment & refund accounts"), identifier: "account.refundAccounts", icon: "banknote", trailing: "›") { app.openRefundAccounts(back: .accountGroup) }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Hoàn tiền", "Refunds"), identifier: "account.refunds", icon: "checklist", trailing: "›", badge: AccountBadges.myRefundActionCount(myRefunds: app.myRefunds)) { app.openMyRefunds(back: .accountGroup) }
+            Divider().overlay(app.palette.rule)
+            HStack(spacing: 12) {
+                Image(systemName: "envelope.badge")
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 22, height: 22)
+                    .opacity(0.72)
+                Text(app.T("Gửi email chứng từ thanh toán", "Email payment documents"))
+                    .font(.system(size: 14))
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { app.autoEmailDocuments },
+                    set: { enabled in
+                        if enabled != app.autoEmailDocuments { app.toggleAutoEmailDocuments() }
+                    }
+                ))
+                .labelsHidden()
+                .toggleStyle(BanbeLiquidToggleStyle())
+                .accessibilityIdentifier("account.autoEmailDocuments")
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var preferencesContent: some View {
+        VStack(spacing: 0) {
+            row(app.T("Ngôn ngữ & Hiển thị", "Language & Appearance"),
+                identifier: "account.preferences", icon: "slider.horizontal.3",
+                trailing: "›") {
+                app.openPreferences()
+            }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Bảo mật", "Security"), identifier: "account.security", icon: "lock.shield", trailing: "›") { app.openSecurity() }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Sở thích sự kiện", "Event preferences"), identifier: "account.eventPreferences",
+                icon: "sparkles", trailing: "›") { app.openEventPreferences() }
+        }
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+        // L5 (migration 200): the weekly digest opt-in; renders nothing while the weekly_digest switch is off.
+        NotificationPrefsSection()
+
+        #if DEBUG
+        // Simulator notification test (Debug builds only, never shipped): docs/apple-setup-checklist.md.
+        DebugPushTestSection()
+        #endif
+
+        // Account deletion (Task 2, Account/Settings pass) — a visually
+        // separated "Account Management" subsection, per this ticket's own
+        // placement instruction (distinct from the rows above and from
+        // Sign Out on the parent AccountView). Reuses `BanbeTheme.alert` —
+        // no new color introduced.
+        VStack(alignment: .leading, spacing: 8) {
+            Text(app.T("Quản Lý Tài Khoản", "Account Management"))
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(app.palette.ink)
+                .padding(.top, 24)
+
+            Button { app.deleteAccountStayOpen = true } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.shield").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22)
+                    Text(app.T("Xóa Tài Khoản", "Delete Account")).font(.system(size: 14, weight: .semibold))
+                    Spacer()
+                    Text("›").font(.system(size: 15))
+                }
+                .foregroundStyle(BanbeTheme.alert)
+                .padding(16)
+                .background(BanbeTheme.alert.opacity(0.08))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(BanbeTheme.alert.opacity(0.35), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("account.deleteRow")
+        }
+    }
+
+    @ViewBuilder
+    private var hostOpsContent: some View {
+        VStack(spacing: 0) {
+            // Sub-section-of-a-group back-navigation fix (2026-09-29,
+            // second pass) — was the default `back: .profile`, skipping
+            // this group page.
+            // FIX PASS (2026-09-30) — badge parity with this group's own
+            // entry card (AccountView.swift's "Vận hành & thanh toán tổ
+            // chức"), same rule the "Pending events" row below already
+            // established: both verifications AND refundQueue land on
+            // THIS exact screen (openVerifications), so this row's badge
+            // is the same sum, not a second independently-derived count.
+            row(app.T("Chờ xác nhận thanh toán", "Awaiting Verification"), identifier: "host.verifications", icon: "checklist", trailing: "›", badge: AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueue: app.refundQueue)) { app.openVerifications(back: .accountGroup) }
+            Divider().overlay(app.palette.rule)
+            // Refund-discoverability fix — refunds previously only lived
+            // inside the row above, with no mention of the word "refund"
+            // anywhere in this group's own labels. Same screen/data
+            // (openVerificationsRefunds just adds a one-shot scroll flag to
+            // the SAME openVerifications() call), own badge
+            // (AccountBadges.refundActionCount — the same refundQueue.count
+            // term the row above's own sum already includes).
+            row(app.T("Hoàn tiền", "Refunds"), identifier: "host.refunds", icon: "banknote", trailing: "›", badge: AccountBadges.refundActionCount(organizerMode: app.organizerMode, refundQueue: app.refundQueue)) { app.openVerificationsRefunds(back: .accountGroup) }
+            Divider().overlay(app.palette.rule)
+            // 2026-10-02 fix — was "banknote", a duplicate of "Refunds"
+            // directly above in this SAME container; a distinct glyph.
+            row(app.T("Nhận thanh toán", "Getting Paid"), identifier: "host.payout", icon: "creditcard", trailing: "›") { app.openPayout() }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Hoá đơn đã phát hành", "Invoices Issued"), identifier: "host.invoices", icon: "doc.text", trailing: "›") { app.openDocuments(kind: "invoice", role: "host") }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Biên nhận đã phát hành", "Receipts Issued"), identifier: "host.receipts", icon: "receipt", trailing: "›") { app.openDocuments(kind: "receipt", role: "host") }
+        }
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    // Parity fix (2026-09-30) — web has a dedicated "Tranh chấp thanh
+    // toán"/"Payment disputes" row (`openDisputes`, routing to
+    // `Disputes.jsx`); iOS never had a standalone disputes screen or
+    // `openDisputes` action at all — its dispute desk has always lived
+    // INSIDE `AdminDashboardView` (see that file's own "iOS counterpart of
+    // src/screens/Disputes.jsx" comment, `app.adminDisputes`/
+    // `loadAdminDisputes()`). Rather than inventing a new `openDisputes`
+    // action or a second dispute-viewing screen, this row reuses the
+    // EXACT existing destination (`app.openAdminDashboard()`) — the real
+    // screen where iOS disputes already live — closing the visible-row
+    // parity gap without adding new dispute logic. "Bảng quản trị"/"Admin
+    // Panel" below still opens the same screen for its other admin tools;
+    // both rows are legitimately two doors into one destination, not a
+    // duplicate feature.
+    // 2026-10-02 fix — all three rows used the identical "exclamationmark.
+    // shield" glyph, with no visual way to tell them apart at a glance;
+    // each now has its own distinct icon (destinations/badges unchanged).
+    @ViewBuilder
+    // Help & Legal — How banbe works (note 63: the Welcome story, replayable),
+    // Terms (the full policy screen), the text guides (Admin guide only for
+    // admins) and the Q&A. Mirrors web's `helpLegal` group.
+    private var helpLegalContent: some View {
+        VStack(spacing: 0) {
+            row(app.T("banbe hoạt động thế nào", "How banbe works"), identifier: "help.howItWorks", icon: "lightbulb", trailing: "›") { app.screen = .helpHowItWorks }
+            Divider().overlay(app.palette.rule)
+            // Note 64: only while onboarding Version 3 is on. Replays the tour; never touches the first-run marker.
+            if app.onboardingVersion == 3 {
+                row(app.T("Xem hướng dẫn trong ứng dụng", "Tour the app"), identifier: "help.appTour", icon: "lightbulb", trailing: "›") { app.replayOnboardingTour() }
+                Divider().overlay(app.palette.rule)
+            }
+            row(app.T("Điều khoản", "Terms"), identifier: "help.terms", icon: "doc.text", trailing: "›") { app.openPolicy() }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Hướng dẫn: Người tham gia", "Guide: Personal"), identifier: "help.guide.personal", icon: "checklist", trailing: "›") { openGuide("personal") }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Hướng dẫn: Người tổ chức (Host)", "Guide: Host"), identifier: "help.guide.host", icon: "checklist", trailing: "›") { openGuide("host") }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Hỏi & Đáp", "Q&A"), identifier: "help.faq", icon: "questionmark.bubble", trailing: "›") { app.screen = .helpFaq }
+        }
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func openGuide(_ key: String) {
+        app.helpGuideKey = key
+        app.screen = .helpGuide
+    }
+
+    /// note 66 — Administration: exactly what the old Account › Admin tab listed. Review & Moderation and
+    /// Admin Team open nested (Back returns here, not to Account).
+    private var adminContent: some View {
+        VStack(spacing: 0) {
+            row(app.T("Duyệt & Kiểm Duyệt", "Review & Moderation"), identifier: "account.group.adminReview",
+                icon: "exclamationmark.shield", trailing: "›", badge: app.pendingEventsCount) { openNested("adminReview") }
+            Divider().overlay(app.palette.divider)
+            row(app.T("Đội Ngũ Quản Trị", "Admin Team"), identifier: "account.group.adminTeam", icon: "person.3.fill",
+                trailing: "›", badge: app.adminInvites.filter { $0.status == "pending" }.count) { openNested("adminTeam") }
+            Divider().overlay(app.palette.divider)
+            row(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsAdmin",
+                icon: "chart.bar.doc.horizontal", trailing: "›") { app.openReports(scope: "admin", back: .accountGroup) }
+            Divider().overlay(app.palette.divider)
+            row(app.T("Hướng Dẫn Quản Trị", "Admin Guide"), identifier: "account.adminGuide", icon: "checklist", trailing: "›") {
+                app.helpGuideKey = "admin"; app.screen = .helpGuide
+            }
+        }
+        .background(app.palette.surface1, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .task { if app.isAdmin { await app.loadPendingEventsCount() } }
+        .task { if app.canManageAdmins { await app.loadAdminTeam() } }
+    }
+
+    private func openNested(_ key: String) {
+        app.accountGroupParentKey = app.accountGroupKey
+        app.accountGroupKey = key
+        if key == "adminTeam" && app.canManageAdmins { Task { await app.loadAdminTeam() } }
+    }
+
+    private var adminReviewContent: some View {
+        VStack(spacing: 0) {
+            row(app.T("Tranh Chấp Thanh Toán", "Payment Disputes"), identifier: "admin.disputes", icon: "exclamationmark.bubble", trailing: "›") { app.openAdminDashboard() }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Sự Kiện Chờ Duyệt", "Pending Events"), identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›", badge: app.pendingEventsCount) { app.openAdminEvents() }
+            Divider().overlay(app.palette.rule)
+            // Note 54: remove / restore / delete events (any status), one or many at a time.
+            row(app.T("Quản lý sự kiện", "Manage events"), identifier: "admin.manageEvents", icon: "calendar.badge.minus", trailing: "›") { if app.isAdmin { app.screen = .adminManageEvents } }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Tài Khoản Thử Nghiệm", "Test Accounts"), identifier: "admin.testAccounts", icon: "person.badge.shield.checkmark", trailing: "›") { if app.isAdmin { app.screen = .adminTestAccounts } }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Sửa ngày sinh", "Birthday corrections"), identifier: "admin.dobCorrections", icon: "calendar.badge.exclamationmark", trailing: "›") { if app.isAdmin { app.screen = .adminDobCorrections } }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Công tắc tính năng", "Feature switches"), identifier: "admin.features", icon: "switch.2", trailing: "›") { if app.isAdmin { app.screen = .adminFeatures } }
+            // Migration 216: admins only, while switch project_hub_demo is on. Sample data on this device only.
+            if app.projectDemoAvailable {
+                Divider().overlay(app.palette.rule)
+                projectDemoRow
+            }
+            // Migration 217: admins only, while switch ticket_demo is on. Sample bookings on this device only.
+            if app.ticketDemoAvailable {
+                Divider().overlay(app.palette.rule)
+                ticketDemoRow
+            }
+            Divider().overlay(app.palette.rule)
+            // Migration 196: aggregate retention by market, admins only (the server checks too).
+            row(app.T("Báo cáo quay lại", "Retention report"), identifier: "admin.retention", icon: "chart.bar.xaxis", trailing: "›") { if app.isAdmin { app.screen = .adminRetention } }
+        }
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    // Admin Team pass (2026-10-02, migration 121) — reusing proven
+    // organizer-invitation MECHANICS (accept/decline shape straight above,
+    // `teamContent`) but NOT its permissions: this view never lets a
+    // client write `role`/`can_manage_admins` directly — every control
+    // below calls a server RPC that enforces its own authorization, this
+    // UI only reflects the result.
+    @ViewBuilder
+    private var adminTeamContent: some View {
+        if let invite = app.myAdminInvite {
+            Text(app.T("Lời mời quản trị", "Admin Invite")).font(.system(size: 11.5, weight: .semibold))
+            VStack(alignment: .leading, spacing: 8) {
+                Text(app.T("Bạn được mời trở thành quản trị viên banbe.", "You've been invited to become a banbe admin."))
+                    .font(.system(size: 13))
+                HStack(spacing: 8) {
+                    InkButton(title: app.T("Chấp nhận", "Accept")) { Task { await app.respondToAdminInvite(inviteID: invite.id, accept: true) } }
+                    Button(app.T("Từ chối", "Decline")) { Task { await app.respondToAdminInvite(inviteID: invite.id, accept: false) } }
+                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                }
+            }
+            .padding(14)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.top, 8)
+            .accessibilityIdentifier("adminInvite.\(invite.id)")
+        }
+
+        if app.accountType == "admin" && !app.canManageAdmins {
+            Text(app.T("Bạn không có quyền quản lý đội ngũ quản trị.", "You don't have permission to manage the admin team."))
+                .font(.system(size: 13)).opacity(0.65).padding(.top, 18)
+                .accessibilityIdentifier("adminTeam.noPermission")
+        }
+
+        if app.canManageAdmins {
+            Text(app.T("Mời Quản Trị Viên", "Invite Admin")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(app.T("Email người được mời", "Invitee's email"), text: $app.adminInviteEmailDraft)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .font(.system(size: 13.5)).padding(10)
+                    .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.rule))
+                    .accessibilityIdentifier("adminTeam.emailInput")
+                if !app.adminInviteError.isEmpty {
+                    Text(app.adminInviteError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                }
+                if let confirmEmail = app.adminInviteConfirmEmail {
+                    Text(app.T("Mời \(confirmEmail) làm quản trị viên banbe?", "Invite \(confirmEmail) as a banbe admin?"))
+                        .font(.system(size: 12.5))
+                    HStack(spacing: 8) {
+                        InkButton(title: app.adminInviteBusy ? app.T("Đang gửi…", "Sending…") : app.T("Xác nhận mời", "Confirm invite")) {
+                            Task { await app.confirmAdminInvite() }
+                        }
+                        .opacity(app.adminInviteBusy ? 0.6 : 1)
+                        .disabled(app.adminInviteBusy)
+                        Button(app.T("Huỷ", "Cancel")) { app.cancelAdminInviteConfirm() }
+                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            .frame(maxWidth: .infinity).padding(.vertical, 10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                    }
+                } else {
+                    InkButton(title: app.T("Mời", "Invite")) { app.requestAdminInviteConfirm() }
+                        .accessibilityIdentifier("adminTeam.inviteSubmit")
+                }
+            }
+            .padding(14)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.top, 8)
+
+            let pendingInvites = app.adminInvites.filter { $0.status == "pending" }
+            if !pendingInvites.isEmpty {
+                Text(app.T("Lời Mời Đang Chờ", "Pending Invites")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+                ForEach(pendingInvites) { inv in
+                    HStack {
+                        Text(inv.invitedEmail).font(.system(size: 13)).lineLimit(1)
+                        Spacer(minLength: 8)
+                        if app.revokeAdminInviteConfirmID == inv.id {
+                            HStack(spacing: 8) {
+                                Button(app.T("Thu hồi?", "Revoke?")) { Task { await app.confirmRevokeAdminInvite() } }
+                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                                Button(app.T("Huỷ", "Cancel")) { app.cancelRevokeAdminInviteConfirm() }
+                                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                            }
+                        } else {
+                            Button(app.T("Thu hồi", "Revoke")) { app.requestRevokeAdminInviteConfirm(inv.id) }
+                                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        }
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(14)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("adminInviteRow.\(inv.id)")
+                }
+            }
+
+            if let removal = app.adminRemoval, !removal.votes.isEmpty {
+                Text(app.T("Cuộc Bỏ Phiếu Đang Mở", "Open Votes")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+                ForEach(removal.votes) { v in
+                    VStack(alignment: .leading, spacing: 8) {
+                        let who = v.targetName.isEmpty ? app.T("quản trị viên", "this admin") : v.targetName
+                        Text(v.kind == "revoke_admin"
+                             ? app.T("Gỡ \(who) khỏi đội ngũ quản trị", "Remove \(who) as an admin")
+                             : app.T("Bỏ quyền quản lý đội ngũ của \(who)", "Remove team-management access from \(who)"))
+                            .font(.system(size: 13, weight: .semibold))
+                        let opener = v.openedByName.isEmpty ? app.T("một quản trị viên", "an admin") : v.openedByName
+                        let expires = v.expiresAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? ""
+                        Text(app.T("Mở bởi \(opener). Đồng ý \(v.yes) · Không \(v.no) · cần \(v.needed)/\(v.electorate) phiếu đồng ý. Hết hạn \(expires)",
+                                   "Opened by \(opener). Yes \(v.yes) · No \(v.no) · \(v.needed) of \(v.electorate) yes votes needed. Expires \(expires)"))
+                            .font(.system(size: 12)).opacity(0.7)
+                        if v.canVote {
+                            HStack(spacing: 8) {
+                                InkButton(title: app.T("Đồng ý", "Approve")) { Task { await app.castAdminRemovalVote(voteID: v.id, approve: true) } }
+                                    .opacity(app.adminRemovalBusy ? 0.6 : 1).disabled(app.adminRemovalBusy)
+                                    .accessibilityIdentifier("adminRemovalVote.yes.\(v.id)")
+                                Button(app.T("Từ chối", "Reject")) { Task { await app.castAdminRemovalVote(voteID: v.id, approve: false) } }
+                                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                                    .disabled(app.adminRemovalBusy)
+                                    .accessibilityIdentifier("adminRemovalVote.no.\(v.id)")
+                            }
+                        } else if let mine = v.myVote {
+                            Text(app.T("Bạn đã bỏ phiếu: \(mine == "yes" ? "đồng ý" : "từ chối").", "You voted: \(mine == "yes" ? "approve" : "reject").")).font(.system(size: 12)).opacity(0.6)
+                        } else {
+                            Text(app.T("Bạn không thể bỏ phiếu cho chính mình.", "You can't vote on your own removal.")).font(.system(size: 12)).opacity(0.6)
+                        }
+                        if v.isOpener {
+                            Button(app.T("Huỷ cuộc bỏ phiếu", "Cancel this vote")) { Task { await app.cancelAdminRemovalVote(voteID: v.id) } }
+                                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                                .disabled(app.adminRemovalBusy)
+                        }
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(14)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("adminRemovalVoteCard.\(v.id)")
+                }
+            }
+
+            Text(app.T("Quản Trị Viên Hiện Tại", "Current Admins")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            ForEach(app.adminRoster) { a in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text((a.displayName?.isEmpty == false ? a.displayName! : app.T("(Chưa đặt tên)", "(No name set)")) + (a.isSelf ? app.T(" (bạn)", " (you)") : ""))
+                            .font(.system(size: 13))
+                        if a.canManageAdmins {
+                            Text(app.T("Có quyền quản lý đội ngũ", "Can manage the admin team")).font(.system(size: 10.5)).opacity(0.6)
+                        }
+                        if !a.isSelf && app.revokeAdminConfirmID != a.id && app.adminRemoval?.protectedUserId != a.id {
+                            // Only an admin who already manages the team reaches this screen
+                            // (server re-checks in set_admin_management_permission).
+                            Button(a.canManageAdmins ? app.T("Bỏ quyền quản lý đội ngũ", "Remove team-management access") : app.T("Cấp quyền quản lý đội ngũ", "Allow managing the team"))
+                            { Task { await app.setAdminManagementPermission(a.id, enabled: !a.canManageAdmins) } }
+                                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                                .padding(.top, 4)
+                                .accessibilityIdentifier("adminRosterPermission.\(a.id)")
+                        }
+                        if let removal = app.adminRemoval, removal.protectedUserId == a.id {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(app.T("Tài khoản được bảo vệ", "Protected admin")).font(.system(size: 10.5, weight: .semibold)).opacity(0.8)
+                                if !a.isSelf {
+                                    if removal.adminCount < removal.minAdmins {
+                                        Text(app.T("Chỉ có thể thay đổi khi có ít nhất \(removal.minAdmins) quản trị viên (hiện có \(removal.adminCount)), và phải qua bỏ phiếu.",
+                                                   "Can only be changed with at least \(removal.minAdmins) admins (now \(removal.adminCount)), and only by a vote."))
+                                            .font(.system(size: 11.5)).opacity(0.65)
+                                    } else if !removal.canOpen {
+                                        Text(app.T("Cần ít nhất 2 quản trị viên có quyền quản lý đội ngũ (không tính tài khoản này) để bỏ phiếu. Hãy cấp quyền quản lý đội ngũ cho quản trị viên khác.",
+                                                   "At least 2 admins with team-management access (not counting this account) are needed to vote. Grant team-management access to another admin first."))
+                                            .font(.system(size: 11.5)).opacity(0.65)
+                                    } else {
+                                        if a.canManageAdmins && !removal.votes.contains(where: { $0.kind == "revoke_management" }) {
+                                            Button(app.T("Mở bỏ phiếu: bỏ quyền quản lý đội ngũ", "Start a vote: remove team-management access")) {
+                                                Task { await app.openAdminRemovalVote(targetID: a.id, kind: "revoke_management") }
+                                            }
+                                            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                                            .disabled(app.adminRemovalBusy)
+                                            .accessibilityIdentifier("adminRemovalOpen.management")
+                                        }
+                                        if !removal.votes.contains(where: { $0.kind == "revoke_admin" }) {
+                                            Button(app.T("Mở bỏ phiếu: gỡ khỏi đội ngũ quản trị", "Start a vote: remove as admin")) {
+                                                Task { await app.openAdminRemovalVote(targetID: a.id, kind: "revoke_admin") }
+                                            }
+                                            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                                            .disabled(app.adminRemovalBusy)
+                                            .accessibilityIdentifier("adminRemovalOpen.admin")
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.top, 4)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    if !a.isSelf && app.adminRemoval?.protectedUserId != a.id {
+                        if app.revokeAdminConfirmID == a.id {
+                            HStack(spacing: 8) {
+                                Button(app.T("Thu hồi?", "Revoke?")) { Task { await app.confirmRevokeAdmin() } }
+                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                                Button(app.T("Huỷ", "Cancel")) { app.cancelRevokeAdminConfirm() }
+                                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                            }
+                        } else {
+                            Button(app.T("Thu hồi quyền", "Revoke")) { app.requestRevokeAdminConfirm(a.id) }
+                                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        }
+                    }
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(14)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 8)
+                .accessibilityIdentifier("adminRosterRow.\(a.id)")
+            }
+        }
+
+        if app.myAdminInvite == nil && app.accountType != "admin" {
+            Text(app.T("Không có gì ở đây.", "Nothing here.")).font(.system(size: 13)).opacity(0.65)
+        }
+    }
+
+    // TASK 5 real-device follow-up — `badge` (0 = hidden) so a child row
+    // (e.g. "Pending events") can show the SAME real count its own
+    // group-entry card already does — same capsule style `groupCard`
+    // (AccountView.swift) uses, capped at "99+" with the full count kept
+    // in the accessibility label.
+    private var ticketDemoRow: some View {
+        Button { if app.ticketDemoAvailable { ticketDemoPicker = true } } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "ticket").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.T("Bản demo vé", "Ticket demo")).font(.system(size: 14))
+                    Text(app.T("Dữ liệu mẫu. Không lưu gì.", "Sample data. Nothing is saved.")).font(.system(size: 12)).opacity(0.65)
+                }
+                Spacer()
+                Text("›").font(.system(size: 13))
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("admin.ticketDemo")
+    }
+
+    private var projectDemoRow: some View {
+        Button { if app.projectDemoAvailable { demoPicker = true } } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "theatermasks")
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 22, height: 22)
+                    .opacity(0.72)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.T("Bản demo dự án sự kiện", "Project hub demo")).font(.system(size: 14))
+                        .accessibilityIdentifier("admin.projectDemo.title")
+                    Text(app.T("Dữ liệu mẫu. Không lưu gì.", "Sample data. Nothing is saved.")).font(.system(size: 12)).opacity(0.65)
+                }
+                Spacer()
+                Text("›").font(.system(size: 13))
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("admin.projectDemo")
+    }
+
+    private func row(_ title: String, identifier: String? = nil, icon: String, trailing: String, badge: Int = 0, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 22, height: 22)
+                    .opacity(0.72)
+                Text(title).font(.system(size: 14))
+                Spacer()
+                if badge > 0 {
+                    Text(badge > 99 ? "99+" : "\(badge)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(app.palette.paper)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(BanbeTheme.alert, in: Capsule())
+                        .accessibilityLabel(app.T("\(badge) mục mới", "\(badge) new item(s)"))
+                }
+                Text(trailing).font(.system(size: 13))
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 16).padding(.vertical, 15)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier ?? title)
+    }
+}
+
+
+struct PDFShareItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+struct ActivityShareSheet: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
+}

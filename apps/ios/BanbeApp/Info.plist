@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>$(APP_DISPLAY_NAME)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.banbe.ios</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>banbe</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>MEDIA_PUBLIC_BASE_URL</key>
+	<string></string>
+	<key>MEDIA_R2_READS</key>
+	<string></string>
+	<key>NSCameraUsageDescription</key>
+	<string>banbe uses your camera to scan a guest's ticket QR code at check-in, to scan an event team invite, and to attach a photo to a chat message.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>banbe uses Face ID to unlock the app for a returning signed-in user.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>banbe uses your location to show how far events are and to filter the area picker.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>banbe saves a chat photo or a report chart image to your library when you tap Save.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+</dict>
+</plist>

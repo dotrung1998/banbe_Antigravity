@@ -1,0 +1,391 @@
+// @ts-check
+/// <reference types="@playwright/test" />
+//
+// Real-backend end-to-end test of the ticket-dispute flow (notes 01-05):
+// hold -> mark paid -> organizer "not found" -> temporary dispute chat
+// (both directions) -> escalate -> admin resolves (both outcomes) -> the
+// decision email.
+//
+// Unlike every other spec in this suite, this one does NOT mock any network
+// route — it creates real Supabase Auth users, writes real rows, and (when
+// GMAIL_USER/GMAIL_APP_PASSWORD resolve) sends a real Gmail message. It is
+// gated on SUPABASE_SERVICE_ROLE_KEY being available (see tests/e2e/setup.mjs)
+// and is NOT part of the default fast suite — run it explicitly:
+//   npx playwright test tests/dispute-flow-e2e.spec.js
+//
+// WHY THE PARTICIPANT SIDE ISN'T CLICKED THROUGH THE UI: Home/EventDetail
+// only ever render the static demo catalogue in src/data/events.js — there
+// is no live query against the `events` table and no `?event=` URL param
+// (confirmed by grep: zero references to `v_event_availability`/
+// `seats_remaining` anywhere in src/). A booking's `event_id` has to match
+// one of those hardcoded demo keys for Reserve/PaymentDetails/Confirmed to
+// ever become reachable by clicking through Home. A fresh event created for
+// this test is therefore not click-reachable, and temporarily splicing fake
+// rows into the shared demo catalogue would risk the ~268 other tests that
+// assert on it. The organizer/admin queues (Verifications.jsx, Disputes.jsx)
+// have no such dependency — they query live views (`v_pending_verifications`,
+// `v_disputes`) by real ownership/RLS — so those two roles ARE driven
+// through the real browser UI below. The participant's three actions (hold,
+// mark paid, send a chat message) go through the identical RPCs
+// (`hold_seats`, `submit_payment_proof`, `send_dispute_message`) via an
+// authenticated supabase-js client signed in with
+// `auth.signInWithPassword()` — the exact call the real Login screen's
+// password tab makes — so authentication and every server-side check (RLS,
+// SECURITY DEFINER functions, triggers) are still fully real; only the
+// keystrokes are not simulated. This is worth fixing properly (a `?event=`
+// deep link, or a dev-only seed of one live-queryable demo event) if this
+// suite is going to grow — flagged in 04-admin-escalation.md.
+import { test, expect } from '@playwright/test';
+import {
+  hasServiceRole, adminClient, anonClient, ensureAdminAccount, createTestUser,
+  createOrganizer, createEvent, signIn, cleanup,
+} from './e2e/setup.mjs';
+import { setupToHome } from './helpers.js';
+
+const SKIP_REASON = 'requires SUPABASE_SERVICE_ROLE_KEY (+ VITE_SUPABASE_ANON_KEY) — '
+  + 'this test writes real rows and sends a real email; see tests/e2e/setup.mjs';
+
+test.describe.configure({ mode: 'serial' });
+
+test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
+  /** @type {ReturnType<typeof adminClient>} */
+  let admin;
+  let adminAcct, organizerUser;
+  let organizerId;
+  const eventIds = [];
+  const userIds = [];
+
+  test.beforeAll(async () => {
+    if (!hasServiceRole()) return;
+    admin = adminClient();
+    adminAcct = await ensureAdminAccount(admin);
+    organizerUser = await createTestUser(admin, 'organizer', { role: 'organizer', displayName: 'E2E Organizer' });
+    organizerId = await createOrganizer(admin, organizerUser.userId, 'E2E Test Organizer');
+    userIds.push(organizerUser.userId);
+  });
+
+  test.afterAll(async () => {
+    if (!admin) return;
+    await cleanup(admin, { userIds, organizerId, eventIds });
+  });
+
+  async function loginWithPassword(page, email, password) {
+    await setupToHome(page);
+    await page.getByTestId('tab-profile').click();
+    await expect(page.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 5000 });
+    await page.getByText('Đăng nhập để lưu sự kiện và nhắn tin').click();
+    await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 5000 });
+    await page.locator('[data-screen-label="Login"]').getByText('Mật khẩu', { exact: true }).click();
+    await page.locator('[data-testid="login-email"]').fill(email);
+    await page.locator('input[placeholder="Password"], input[placeholder="Mật khẩu"]').first().fill(password);
+    await page.locator('[data-testid="login-submit"]').click();
+    await expect(page.locator('[data-screen-label="Login"]')).toBeHidden({ timeout: 8000 });
+  }
+
+  /**
+   * Runs one full pass of the flow for one outcome ('uphold' issues the
+   * ticket, matching "Khách đúng ▪︎ cấp vé"; 'release' matches "Mở lại chỗ").
+   * Returns the three pass/fail results the ticket asked for.
+   */
+  async function runDisputeFlow({ browser, label, outcome }) {
+    const eventId = await createEvent(admin, organizerId, label);
+    eventIds.push(eventId);
+    const participant = await createTestUser(admin, `participant-${label}`, { displayName: `E2E Participant ${label}` });
+    userIds.push(participant.userId);
+
+    const results = { chatBothDirections: null, statusTransition: null, emailDelivered: null };
+
+    // --- Participant: hold a slot, mark payment sent, send one chat message ---
+    // (see file header for why this is RPC-driven rather than click-driven)
+    const { client: participantClient } = await signIn(participant.email, participant.password);
+    const { data: booking, error: holdError } = await participantClient.rpc('hold_seats', {
+      p_event: eventId, p_qty: 1, p_note: null,
+    });
+    expect(holdError, `hold_seats failed: ${holdError?.message}`).toBeNull();
+    expect(booking.payment_state).toBe('holding');
+    expect(booking.hold_expires_at).toBeTruthy();
+    const bookingId = booking.id;
+
+    // Real upload to the real 'pay-proof' bucket, at the real convention
+    // (`<bookingId>/<filename>`, enforced by the storage RLS policy) — a
+    // tiny valid PNG, so the later email step's real attachment-download
+    // path is exercised too, not just stubbed with a string.
+    const tinyPng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64'
+    );
+    const proofPath = `${bookingId}/proof.png`;
+    const { error: uploadError } = await participantClient.storage.from('pay-proof').upload(proofPath, tinyPng, { contentType: 'image/png' });
+    expect(uploadError, `proof upload failed: ${uploadError?.message}`).toBeNull();
+
+    const { data: submitResult, error: submitError } = await participantClient.rpc('submit_payment_proof', {
+      p_booking: bookingId, p_transaction_id: `E2E-${label.toUpperCase()}-TXN`, p_proof_path: proofPath,
+    });
+    expect(submitError, `submit_payment_proof failed: ${submitError?.message}`).toBeNull();
+    expect(submitResult.success).toBe(true);
+    // The "timer stops" signal (01-hold-payment.md): hold_expires_at stops
+    // being consulted the moment payment_state leaves 'holding' — confirm
+    // that transition actually happened, which is what freezes the
+    // countdown in PaymentDetails.jsx (payment-countdown -> payment-frozen).
+    const { data: afterSubmit } = await admin.from('bookings').select('payment_state').eq('id', bookingId).single();
+    expect(afterSubmit.payment_state).toBe('pending_verification');
+
+    // --- Participant's own real browser session, opened now (while the
+    // booking still qualifies for "Going") and kept open, not re-created
+    // later — this is what actually reproduces the "Going" list bug: it
+    // requires `attending` to have already been populated with this event
+    // BEFORE the dispute resolves, in the same session, exactly like a
+    // guest who has the app open when an admin resolves against them. A
+    // fresh login after the fact would pass even with the old, buggy
+    // union-merge code, since a first-ever fetch has no stale state to
+    // wrongly keep. ---
+    let participantContext, participantPage;
+    if (outcome === 'release') {
+      participantContext = await browser.newContext();
+      participantPage = await participantContext.newPage();
+      // Signing in fires BanBeContext.jsx's user-id-keyed effect as a side
+      // effect (not a click this test controls), which fetches and
+      // populates `attending` — attach the listener before login so it
+      // catches that fetch, and confirm the booking was actually there
+      // (Account's own "Going" count can't be used for this: it's filtered
+      // through the static demo catalogue, which this synthetic test event
+      // was never in — see the file header — so it would always read 0
+      // regardless of `attending`'s real content).
+      const initialBookingsResponse = participantPage.waitForResponse(
+        res => res.url().includes('/rest/v1/bookings') && res.request().method() === 'GET',
+        { timeout: 10000 }
+      );
+      await loginWithPassword(participantPage, participant.email, participant.password);
+      const initialRows = await (await initialBookingsResponse).json();
+      const initiallyListed = (initialRows || []).some(r => r.event_id === eventId || r.id === bookingId);
+      expect(initiallyListed, `booking ${bookingId} should have been in the pre-resolution fetch: ${JSON.stringify(initialRows)}`).toBe(true);
+      await participantPage.getByTestId('tab-profile').click();
+      await expect(participantPage.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 5000 });
+      // Confirms the actual CLIENT-SIDE state (s.attending), not just the
+      // network response above — a plain response check can't tell a
+      // correct fresh fetch apart from a buggy union-merge, since both
+      // start from an empty `attending` on first login either way. The
+      // real regression only shows up later, when this same already-
+      // populated state has to correctly DROP the booking after resolution.
+      await expect(participantPage.locator('[data-testid="account-tile-tickets"]'))
+        .toHaveAttribute('data-attending-raw-count', '1', { timeout: 5000 });
+    }
+
+    // --- Organizer: real UI. "Chưa thấy" (not found) + reason ---
+    const organizerContext = await browser.newContext();
+    const organizerPage = await organizerContext.newPage();
+    await loginWithPassword(organizerPage, organizerUser.email, organizerUser.password);
+    await organizerPage.getByTestId('tab-profile').click();
+    // Note 66: no tabs; organizer mode on (organizerUser has role='organizer') shows the host tiles, and
+    // verifications sit behind the "Get paid" tile (the hostOps group).
+    await organizerPage.locator('[data-testid="account-tile-getpaid"]').click();
+    await organizerPage.locator('[data-testid="host-verifications"]').click();
+    await expect(organizerPage.locator('[data-testid="verifications-title"]')).toBeVisible({ timeout: 5000 });
+
+    const row = organizerPage.locator('[data-testid="verification-row"]');
+    await expect(row).toHaveCount(1, { timeout: 8000 }); // only this test's own booking, for this fresh organizer
+    await row.locator('[data-testid="verification-reject"]').click();
+    await organizerPage.locator('[data-testid="verification-reason"]').fill(`E2E ${label}: proof not found in statement`);
+    await organizerPage.locator('[data-testid="verification-reject-confirm"]').click();
+    // reject_payment() opens dispute_threads immediately (migration 041) —
+    // the chat opener appears on the same row without a page reload.
+    await expect(row.locator('[data-testid="verification-open-not-found-chat"]')).toBeVisible({ timeout: 8000 });
+
+    // --- Participant sends first (RPC) so the organizer's real UI panel,
+    // once opened, has to actually pull in a message it didn't just send. ---
+    const { data: guestSend, error: guestSendError } = await participantClient.rpc('send_dispute_message', {
+      p_booking: bookingId, p_body: `Participant ${label}: here is my transfer receipt again.`,
+    });
+    expect(guestSendError, `guest send_dispute_message failed: ${guestSendError?.message}`).toBeNull();
+    expect(guestSend.success, `guest send_dispute_message returned: ${JSON.stringify(guestSend)}`).toBe(true);
+
+    await row.locator('[data-testid="verification-open-not-found-chat"]').click();
+    const orgPanel = row.locator('[data-testid="dispute-chat-panel"]');
+    await expect(orgPanel).toBeVisible({ timeout: 5000 });
+    // 4s poll (DisputeChatPanel.jsx) — generous timeout for the guest's
+    // message to actually show up on the organizer's screen.
+    await expect(orgPanel.locator('[data-testid="dispute-chat-message"]')).toHaveCount(1, { timeout: 10000 });
+    await orgPanel.locator('[data-testid="dispute-chat-input"]').fill(`Organizer ${label}: checking with the bank now.`);
+    await orgPanel.locator('[data-testid="dispute-chat-send"]').click();
+    await expect(orgPanel.locator('[data-testid="dispute-chat-message"]')).toHaveCount(2, { timeout: 10000 });
+    const chatTexts = await orgPanel.locator('[data-testid="dispute-chat-message"]').allTextContents();
+    results.chatBothDirections =
+      chatTexts.some(t => t.includes('here is my transfer receipt')) &&
+      chatTexts.some(t => t.includes('checking with the bank'));
+    expect(results.chatBothDirections, `expected both directions in: ${JSON.stringify(chatTexts)}`).toBe(true);
+
+    // --- Organizer escalates to banbe ---
+    // The "escalate to banbe" button was removed from the UI (product
+    // decision, 2026-10-05); the RPC is kept, so the admin leg below is
+    // still exercised by calling it as the organizer.
+    const { client: organizerClient } = await signIn(organizerUser.email, organizerUser.password);
+    const { data: escalated, error: escalateError } = await organizerClient.rpc('escalate_payment_dispute', {
+      p_booking: bookingId, p_reason: `E2E ${label}: cannot reconcile, escalating`,
+    });
+    expect(escalateError, `escalate failed: ${escalateError?.message}`).toBeNull();
+    expect(escalated.success, `escalate returned: ${JSON.stringify(escalated)}`).toBe(true);
+    await expect(async () => {
+      const { data } = await admin.from('bookings').select('payment_state').eq('id', bookingId).single();
+      expect(data.payment_state).toBe('disputed');
+    }).toPass({ timeout: 8000 });
+    await organizerContext.close();
+
+    // --- Admin: real UI. Resolve the dispute (both outcomes tested across the two runs). ---
+    const adminContext = await browser.newContext();
+    const adminPage = await adminContext.newPage();
+    await loginWithPassword(adminPage, adminAcct.email, adminAcct.password);
+    await adminPage.getByTestId('tab-profile').click();
+    // Note 66: Admin is one "Admin tools" row, independent of organizerMode.
+    await adminPage.locator('[data-testid="account-admin-tools"]').click();
+    // Account IA pass (2026-09-27) — disputes now behind the
+    // "adminReview" group card, not directly on the Admin tab.
+    await adminPage.locator('[data-testid="account-group-adminReview"]').click();
+    await adminPage.locator('[data-testid="admin-disputes"]').click();
+    await expect(adminPage.locator('[data-testid="disputes-title"]')).toBeVisible({ timeout: 5000 });
+
+    const disputeRow = adminPage.locator('[data-testid="dispute-row"]');
+    await expect(disputeRow).toHaveCount(1, { timeout: 8000 });
+    await disputeRow.locator('[data-testid="dispute-reason-category"]').selectOption('proof_not_found');
+    await disputeRow.locator('[data-testid="dispute-note"]').fill(`E2E ${label}: resolved by automated test`);
+    if (outcome === 'uphold') {
+      await disputeRow.locator('[data-testid="dispute-uphold"]').click();
+    } else {
+      await disputeRow.locator('[data-testid="dispute-reject"]').click();
+    }
+    // The row leaving the open list (or the resolve button's own busy-label
+    // clearing) is resolve_dispute()'s DB write landing — confirmed below
+    // against the database directly, not just the UI's own optimistic state.
+    await expect(adminPage.locator('[data-testid="dispute-row"]')).toHaveCount(0, { timeout: 10000 });
+    await adminContext.close();
+
+    // --- Check 2: ticket status transition (the exact P0001 regression this repo hit before) ---
+    const { data: resolvedBooking } = await admin.from('bookings')
+      .select('payment_state, status, dispute_resolved_at, dispute_resolution').eq('id', bookingId).single();
+    if (outcome === 'uphold') {
+      results.statusTransition = resolvedBooking.payment_state === 'confirmed' && resolvedBooking.status === 'confirmed';
+    } else {
+      results.statusTransition = resolvedBooking.payment_state === 'expired' && resolvedBooking.status === 'expired';
+    }
+    expect(results.statusTransition, `unexpected post-resolution state: ${JSON.stringify(resolvedBooking)}`).toBe(true);
+    expect(resolvedBooking.dispute_resolved_at).toBeTruthy();
+
+    // --- "Going" list regression check (only meaningful for 'release': a
+    // guest who lost the ticket must stop seeing the event under "Going") ---
+    // Two things are checked, deliberately not just one:
+    //   1. the raw network response goGoingList()'s refetch gets back — the
+    //      SQL-level filter (bookings.status IN ('pending','confirmed',
+    //      'attended')) already excludes 'expired' correctly on its own, so
+    //      this alone would pass even against the OLD buggy client code
+    //      (a bare response check can't see what the client then does with
+    //      the result).
+    //   2. the actual client-side state afterward, via the
+    //      data-attending-raw-count test attribute (Account.jsx) — this is
+    //      what would have failed before the fix: the old code unioned this
+    //      fresh (now-empty) result into whatever `attending` already held,
+    //      so the resolved booking's event_id never actually left.
+    // Home/EventList render only the static demo catalogue (see file
+    // header), so this synthetic test event is never visible there
+    // regardless of whether the bug is fixed — check 2 reads a hidden
+    // count attribute for exactly this reason, not the rendered list.
+    if (outcome === 'release') {
+      // Same page/session opened earlier, already showing this event as
+      // "Going" from before the resolution — not a fresh login, which
+      // would trivially pass even with the old buggy code (a first-ever
+      // fetch has no stale state to wrongly retain).
+      const bookingsResponse = participantPage.waitForResponse(
+        res => res.url().includes('/rest/v1/bookings') && res.request().method() === 'GET',
+        { timeout: 8000 }
+      );
+      // Note 66: the Going list (goGoingList, which refetches) is reached from Account search now.
+      await participantPage.locator('[data-testid="account-search-toggle"]').click();
+      await participantPage.locator('[data-testid="account-search-input"]').fill('going');
+      await participantPage.locator('[data-testid="account-search-going"]').click();
+      const res = await bookingsResponse;
+      const rows = await res.json();
+      const stillListedInQuery = (rows || []).some(r => r.event_id === eventId || r.id === bookingId);
+      expect(stillListedInQuery, `resolved booking ${bookingId} still present in goGoingList()'s refetch: ${JSON.stringify(rows)}`).toBe(false);
+
+      // The click above navigated to EventList, unmounting the element the
+      // count attribute lives on — go back to Account to read it post-refetch.
+      await participantPage.locator('[data-testid="event-list-back"]').click();
+      await expect(participantPage.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 5000 });
+      // Back from a search result restores the search; close it so the tiles show again.
+      await participantPage.locator('[data-testid="account-search-toggle"]').click();
+      const goingCard = participantPage.locator('[data-testid="account-tile-tickets"]');
+      await expect(goingCard).toHaveAttribute('data-attending-raw-count', '0', { timeout: 8000 });
+
+      results.goingListExcludesResolved = true;
+      await participantContext.close();
+    }
+
+    const { data: thread } = await admin.from('dispute_threads')
+      .select('resolved_at, resolution_kind, purge_after, organizer_id').eq('booking_id', bookingId).single();
+    expect(thread.resolved_at).toBeTruthy();
+    expect(thread.resolution_kind).toBe(outcome === 'uphold' ? 'ticket_issued' : 'cancelled');
+
+    const { data: stats } = await admin.from('dispute_resolution_stats')
+      .select('resolution_kind, reason_category, time_to_resolution_seconds').eq('booking_id', bookingId).maybeSingle();
+    expect(stats, 'dispute_resolution_stats row missing (migration 047)').toBeTruthy();
+    expect(stats.reason_category).toBe('proof_not_found');
+    expect(stats.time_to_resolution_seconds).toBeGreaterThanOrEqual(0);
+
+    // --- Check 3: the actual decision email ---
+    // /api/dispute-resolved-email is a Vercel serverless function; the local
+    // Playwright webServer is plain `vite` (no Vercel runtime), so the
+    // browser's own fire-and-forget fetch() to it 404s here — that's a
+    // sandbox limitation, not a product bug (flagged in 05-notify-retention.md
+    // long before this test). To exercise the REAL handler code (same file,
+    // same logic, real Gmail send) rather than just assert around the gap,
+    // it's imported and invoked directly with a real admin bearer token.
+    const { session: adminSession } = await signIn(adminAcct.email, adminAcct.password);
+    const { default: disputeResolvedEmailHandler } = await import('../api/dispute-resolved-email.js');
+    const fakeReq = {
+      method: 'POST',
+      headers: { authorization: `Bearer ${adminSession.access_token}` },
+      body: { bookingId },
+    };
+    let capturedStatus = null;
+    let capturedBody = null;
+    const fakeRes = {
+      setHeader() {},
+      status(code) { capturedStatus = code; return this; },
+      json(body) { capturedBody = body; return this; },
+    };
+    await disputeResolvedEmailHandler(fakeReq, fakeRes);
+
+    results.emailDelivered = capturedStatus === 200 && capturedBody?.sent > 0;
+    console.log(`[${label}] dispute-resolved-email response:`, capturedStatus, JSON.stringify(capturedBody));
+
+    // Independently confirm getUserById resolves both real accounts to real,
+    // non-null emails (the specific bug this ticket named as a suspect).
+    const { data: guestAuth } = await admin.auth.admin.getUserById(participant.userId);
+    const { data: organizerAuth } = await admin.auth.admin.getUserById(organizerUser.userId);
+    expect(guestAuth?.user?.email).toBe(participant.email);
+    expect(organizerAuth?.user?.email).toBe(organizerUser.email);
+
+    expect(capturedStatus, `dispute-resolved-email returned ${capturedStatus}: ${JSON.stringify(capturedBody)}`).toBe(200);
+    expect(capturedBody.sent, `expected both recipients to receive mail, got: ${JSON.stringify(capturedBody)}`).toBe(2);
+
+    const { data: threadAfterEmail } = await admin.from('dispute_threads').select('email_sent_at').eq('booking_id', bookingId).single();
+    expect(threadAfterEmail.email_sent_at, 'email_sent_at was never stamped').toBeTruthy();
+
+    return results;
+  }
+
+  test('Run A — "ticket approved" (Khách đúng ▪︎ cấp vé)', async ({ browser }) => {
+    test.skip(!hasServiceRole(), SKIP_REASON);
+    test.setTimeout(120_000);
+    const results = await runDisputeFlow({ browser, label: 'run-a', outcome: 'uphold' });
+    expect(results.chatBothDirections).toBe(true);
+    expect(results.statusTransition).toBe(true);
+  });
+
+  test('Run B — "return to pool" (Mở lại chỗ)', async ({ browser }) => {
+    test.skip(!hasServiceRole(), SKIP_REASON);
+    test.setTimeout(120_000);
+    const results = await runDisputeFlow({ browser, label: 'run-b', outcome: 'release' });
+    expect(results.chatBothDirections).toBe(true);
+    expect(results.statusTransition).toBe(true);
+    expect(results.goingListExcludesResolved).toBe(true);
+  });
+});

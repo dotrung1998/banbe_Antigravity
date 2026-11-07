@@ -1,0 +1,1271 @@
+{
+ "_comment": "Note 78: the approved What's next strip copy. Generated from src/lib/ticketCopy.js; shared with tests/unit/ticketCopy.test.mjs and apps/ios/BanbeAppTests/TicketCopyTests.swift. Change the copy in ticketCopy.js, regenerate, and port it to TicketCopy.swift.",
+ "cases": [
+  {
+   "name": "cancelled/vi/full",
+   "key": "cancelled",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": false
+   },
+   "expect": {
+    "label": "Đã hủy",
+    "heading": "Sự kiện đã bị hủy",
+    "sub": "Vé không còn dùng để vào cửa",
+    "detail": "Nếu bạn đã chuyển tiền, người tổ chức có trách nhiệm hoàn tiền cho bạn.",
+    "link": {
+     "kind": "refunds",
+     "label": "Theo dõi hoàn tiền"
+    }
+   }
+  },
+  {
+   "name": "cancelled/vi/none",
+   "key": "cancelled",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": false
+   },
+   "expect": {
+    "label": "Đã hủy",
+    "heading": "Đặt chỗ đã bị hủy",
+    "sub": "Vé không còn dùng để vào cửa",
+    "detail": null,
+    "link": null
+   }
+  },
+  {
+   "name": "cancelled/en/full",
+   "key": "cancelled",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": true
+   },
+   "expect": {
+    "label": "Cancelled",
+    "heading": "This event was cancelled",
+    "sub": "This ticket no longer works for entry",
+    "detail": "If you already paid, the organizer is responsible for your refund.",
+    "link": {
+     "kind": "refunds",
+     "label": "Track refund"
+    }
+   }
+  },
+  {
+   "name": "cancelled/en/none",
+   "key": "cancelled",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": true
+   },
+   "expect": {
+    "label": "Cancelled",
+    "heading": "This booking was cancelled",
+    "sub": "This ticket no longer works for entry",
+    "detail": null,
+    "link": null
+   }
+  },
+  {
+   "name": "expired/vi/full",
+   "key": "expired",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": false
+   },
+   "expect": {
+    "label": "Hết hạn",
+    "heading": "Chỗ giữ đã hết hạn",
+    "sub": "Chỗ đã được mở lại",
+    "detail": "Bạn chưa chuyển khoản trước khi hết giờ giữ chỗ, nên chỗ đã được mở lại cho người khác. Bạn có thể giữ chỗ lại nếu vẫn còn chỗ trống.",
+    "link": {
+     "kind": "reserve",
+     "label": "Đặt lại"
+    }
+   }
+  },
+  {
+   "name": "expired/vi/none",
+   "key": "expired",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": false
+   },
+   "expect": {
+    "label": "Hết hạn",
+    "heading": "Chỗ giữ đã hết hạn",
+    "sub": "Chỗ đã được mở lại",
+    "detail": "Bạn chưa chuyển khoản trước khi hết giờ giữ chỗ, nên chỗ đã được mở lại cho người khác. Bạn có thể giữ chỗ lại nếu vẫn còn chỗ trống.",
+    "link": {
+     "kind": "reserve",
+     "label": "Đặt lại"
+    }
+   }
+  },
+  {
+   "name": "expired/en/full",
+   "key": "expired",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": true
+   },
+   "expect": {
+    "label": "Expired",
+    "heading": "Your hold ran out",
+    "sub": "The seat was released",
+    "detail": "You didn't complete payment before the hold ran out, so the seat was released back. You can reserve again if there's still room.",
+    "link": {
+     "kind": "reserve",
+     "label": "Reserve again"
+    }
+   }
+  },
+  {
+   "name": "expired/en/none",
+   "key": "expired",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": true
+   },
+   "expect": {
+    "label": "Expired",
+    "heading": "Your hold ran out",
+    "sub": "The seat was released",
+    "detail": "You didn't complete payment before the hold ran out, so the seat was released back. You can reserve again if there's still room.",
+    "link": {
+     "kind": "reserve",
+     "label": "Reserve again"
+    }
+   }
+  },
+  {
+   "name": "review/vi/full",
+   "key": "review",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": false
+   },
+   "expect": {
+    "label": "Đang xem xét",
+    "heading": "banbe đang xem xét",
+    "sub": null,
+    "detail": "Chỗ của bạn vẫn được giữ trong lúc chờ xem xét.",
+    "link": null
+   }
+  },
+  {
+   "name": "review/vi/none",
+   "key": "review",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": false
+   },
+   "expect": {
+    "label": "Đang xem xét",
+    "heading": "banbe đang xem xét",
+    "sub": null,
+    "detail": "Chỗ của bạn vẫn được giữ trong lúc chờ xem xét.",
+    "link": null
+   }
+  },
+  {
+   "name": "review/en/full",
+   "key": "review",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": true
+   },
+   "expect": {
+    "label": "Under review",
+    "heading": "banbe is reviewing this",
+    "sub": null,
+    "detail": "Your seat stays held while this is reviewed.",
+    "link": null
+   }
+  },
+  {
+   "name": "review/en/none",
+   "key": "review",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": true
+   },
+   "expect": {
+    "label": "Under review",
+    "heading": "banbe is reviewing this",
+    "sub": null,
+    "detail": "Your seat stays held while this is reviewed.",
+    "link": null
+   }
+  },
+  {
+   "name": "holding/vi/full",
+   "key": "holding",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": false
+   },
+   "expect": {
+    "label": "Đang giữ chỗ",
+    "heading": "Chuyển khoản trước khi hết giờ",
+    "sub": null,
+    "detail": "Chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn. Mã QR mở khi họ xác nhận.",
+    "link": {
+     "kind": "pay",
+     "label": "Xem thông tin chuyển khoản"
+    }
+   }
+  },
+  {
+   "name": "holding/vi/none",
+   "key": "holding",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": false
+   },
+   "expect": {
+    "label": "Đang giữ chỗ",
+    "heading": "Chuyển khoản trước khi hết giờ",
+    "sub": null,
+    "detail": "Chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn. Mã QR mở khi họ xác nhận.",
+    "link": {
+     "kind": "pay",
+     "label": "Xem thông tin chuyển khoản"
+    }
+   }
+  },
+  {
+   "name": "holding/en/full",
+   "key": "holding",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": true
+   },
+   "expect": {
+    "label": "Holding",
+    "heading": "Pay before time runs out",
+    "sub": null,
+    "detail": "Pay the organizer directly using the instructions in chat. Your QR unlocks once they confirm.",
+    "link": {
+     "kind": "pay",
+     "label": "See payment details"
+    }
+   }
+  },
+  {
+   "name": "holding/en/none",
+   "key": "holding",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": true
+   },
+   "expect": {
+    "label": "Holding",
+    "heading": "Pay before time runs out",
+    "sub": null,
+    "detail": "Pay the organizer directly using the instructions in chat. Your QR unlocks once they confirm.",
+    "link": {
+     "kind": "pay",
+     "label": "See payment details"
+    }
+   }
+  },
+  {
+   "name": "awaiting/vi/full",
+   "key": "awaiting",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": false
+   },
+   "expect": {
+    "label": "Chờ host",
+    "heading": "Host đang kiểm tra chuyển khoản",
+    "sub": "Bạn sẽ nhận thông báo khi vé sẵn sàng",
+    "detail": "Host này thường xác nhận trong khoảng 1 giờ.",
+    "link": {
+     "kind": "chat",
+     "label": "Nhắn host"
+    }
+   }
+  },
+  {
+   "name": "awaiting/vi/none",
+   "key": "awaiting",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": false
+   },
+   "expect": {
+    "label": "Chờ host",
+    "heading": "Host đang kiểm tra chuyển khoản",
+    "sub": "Bạn sẽ nhận thông báo khi vé sẵn sàng",
+    "detail": null,
+    "link": {
+     "kind": "chat",
+     "label": "Nhắn host"
+    }
+   }
+  },
+  {
+   "name": "awaiting/en/full",
+   "key": "awaiting",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": true
+   },
+   "expect": {
+    "label": "Awaiting host",
+    "heading": "The host is checking your transfer",
+    "sub": "We'll notify you when your ticket is ready",
+    "detail": "This host usually confirms within about 1 hour.",
+    "link": {
+     "kind": "chat",
+     "label": "Message host"
+    }
+   }
+  },
+  {
+   "name": "awaiting/en/none",
+   "key": "awaiting",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": true
+   },
+   "expect": {
+    "label": "Awaiting host",
+    "heading": "The host is checking your transfer",
+    "sub": "We'll notify you when your ticket is ready",
+    "detail": null,
+    "link": {
+     "kind": "chat",
+     "label": "Message host"
+    }
+   }
+  },
+  {
+   "name": "ended/vi/full",
+   "key": "ended",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": false
+   },
+   "expect": {
+    "label": "Đã kết thúc",
+    "heading": "Sự kiện đã kết thúc",
+    "sub": "Vé không còn dùng để vào cửa",
+    "detail": "Biên nhận (nếu có) vẫn nằm trong Thêm tuỳ chọn.",
+    "link": {
+     "kind": "receipt",
+     "label": "Xem biên nhận"
+    }
+   }
+  },
+  {
+   "name": "ended/vi/none",
+   "key": "ended",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": false
+   },
+   "expect": {
+    "label": "Đã kết thúc",
+    "heading": "Sự kiện đã kết thúc",
+    "sub": "Vé không còn dùng để vào cửa",
+    "detail": "Biên nhận (nếu có) vẫn nằm trong Thêm tuỳ chọn.",
+    "link": null
+   }
+  },
+  {
+   "name": "ended/en/full",
+   "key": "ended",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": true
+   },
+   "expect": {
+    "label": "Ended",
+    "heading": "This event has ended",
+    "sub": "Ticket no longer valid for entry",
+    "detail": "Any receipt stays under More options.",
+    "link": {
+     "kind": "receipt",
+     "label": "View receipt"
+    }
+   }
+  },
+  {
+   "name": "ended/en/none",
+   "key": "ended",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": true
+   },
+   "expect": {
+    "label": "Ended",
+    "heading": "This event has ended",
+    "sub": "Ticket no longer valid for entry",
+    "detail": "Any receipt stays under More options.",
+    "link": null
+   }
+  },
+  {
+   "name": "checkedIn/vi/full",
+   "key": "checkedIn",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": false
+   },
+   "expect": {
+    "label": "Đã check-in",
+    "heading": "Bạn đã vào cửa",
+    "sub": "Chúc bạn một buổi vui",
+    "detail": null,
+    "link": {
+     "kind": "receipt",
+     "label": "Xem biên nhận"
+    }
+   }
+  },
+  {
+   "name": "checkedIn/vi/none",
+   "key": "checkedIn",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": false
+   },
+   "expect": {
+    "label": "Đã check-in",
+    "heading": "Bạn đã vào cửa",
+    "sub": "Chúc bạn một buổi vui",
+    "detail": null,
+    "link": null
+   }
+  },
+  {
+   "name": "checkedIn/en/full",
+   "key": "checkedIn",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": true
+   },
+   "expect": {
+    "label": "Checked in",
+    "heading": "You're in",
+    "sub": "Enjoy the event",
+    "detail": null,
+    "link": {
+     "kind": "receipt",
+     "label": "View receipt"
+    }
+   }
+  },
+  {
+   "name": "checkedIn/en/none",
+   "key": "checkedIn",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": true
+   },
+   "expect": {
+    "label": "Checked in",
+    "heading": "You're in",
+    "sub": "Enjoy the event",
+    "detail": null,
+    "link": null
+   }
+  },
+  {
+   "name": "today/vi/full",
+   "key": "today",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": false
+   },
+   "expect": {
+    "label": "Hôm nay",
+    "heading": "Hôm nay lúc 20:00",
+    "sub": "Quận 1",
+    "detail": "Mở sẵn trang này tại cửa và tăng độ sáng màn hình.",
+    "link": {
+     "kind": "directions",
+     "label": "Chỉ đường"
+    }
+   }
+  },
+  {
+   "name": "today/vi/none",
+   "key": "today",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": false
+   },
+   "expect": {
+    "label": "Hôm nay",
+    "heading": "Hôm nay",
+    "sub": null,
+    "detail": "Mở sẵn trang này tại cửa và tăng độ sáng màn hình.",
+    "link": null
+   }
+  },
+  {
+   "name": "today/en/full",
+   "key": "today",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": true
+   },
+   "expect": {
+    "label": "Today",
+    "heading": "Today at 20:00",
+    "sub": "Quận 1",
+    "detail": "Keep this page open at the door and raise your screen brightness.",
+    "link": {
+     "kind": "directions",
+     "label": "Directions"
+    }
+   }
+  },
+  {
+   "name": "today/en/none",
+   "key": "today",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": true
+   },
+   "expect": {
+    "label": "Today",
+    "heading": "Today",
+    "sub": null,
+    "detail": "Keep this page open at the door and raise your screen brightness.",
+    "link": null
+   }
+  },
+  {
+   "name": "upcoming/vi/full",
+   "key": "upcoming",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": false
+   },
+   "expect": {
+    "label": "Sắp diễn ra",
+    "heading": "Còn 3 ngày nữa",
+    "sub": "Sat 28 Oct ▪︎ 20:00",
+    "detail": "Vé đã sẵn sàng. Mã QR dùng để vào cửa vào ngày diễn ra.",
+    "link": {
+     "kind": "calendar",
+     "label": "Thêm vào lịch"
+    }
+   }
+  },
+  {
+   "name": "upcoming/vi/none",
+   "key": "upcoming",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": false
+   },
+   "expect": {
+    "label": "Sắp diễn ra",
+    "heading": "Sắp diễn ra",
+    "sub": null,
+    "detail": "Vé đã sẵn sàng. Mã QR dùng để vào cửa vào ngày diễn ra.",
+    "link": {
+     "kind": "calendar",
+     "label": "Thêm vào lịch"
+    }
+   }
+  },
+  {
+   "name": "upcoming/en/full",
+   "key": "upcoming",
+   "ctx": {
+    "eventCancelled": true,
+    "dateText": "Sat 28 Oct",
+    "timeText": "20:00",
+    "areaText": "Quận 1",
+    "daysUntil": 3,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": false,
+    "hasReceipt": true,
+    "hasRefund": true,
+    "hasDirections": true,
+    "en": true
+   },
+   "expect": {
+    "label": "Upcoming",
+    "heading": "3 days to go",
+    "sub": "Sat 28 Oct ▪︎ 20:00",
+    "detail": "Your ticket is ready. The QR is what you show at the door on the day.",
+    "link": {
+     "kind": "calendar",
+     "label": "Add to calendar"
+    }
+   }
+  },
+  {
+   "name": "upcoming/en/none",
+   "key": "upcoming",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": true
+   },
+   "expect": {
+    "label": "Upcoming",
+    "heading": "Upcoming",
+    "sub": null,
+    "detail": "Your ticket is ready. The QR is what you show at the door on the day.",
+    "link": {
+     "kind": "calendar",
+     "label": "Add to calendar"
+    }
+   }
+  },
+  {
+   "name": "cancelled/vi/extra",
+   "key": "cancelled",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": true,
+    "hasDirections": false,
+    "en": false
+   },
+   "expect": {
+    "label": "Đã hủy",
+    "heading": "Đặt chỗ đã bị hủy",
+    "sub": "Vé không còn dùng để vào cửa",
+    "detail": null,
+    "link": {
+     "kind": "refunds",
+     "label": "Theo dõi hoàn tiền"
+    }
+   }
+  },
+  {
+   "name": "cancelled/en/extra",
+   "key": "cancelled",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": true,
+    "hasDirections": false,
+    "en": true
+   },
+   "expect": {
+    "label": "Cancelled",
+    "heading": "This booking was cancelled",
+    "sub": "This ticket no longer works for entry",
+    "detail": null,
+    "link": {
+     "kind": "refunds",
+     "label": "Track refund"
+    }
+   }
+  },
+  {
+   "name": "awaiting/vi/extra",
+   "key": "awaiting",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": true,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": false
+   },
+   "expect": {
+    "label": "Chờ host",
+    "heading": "Host đang kiểm tra chuyển khoản",
+    "sub": "Người tổ chức đang xử lý, có thể mất thêm chút thời gian",
+    "detail": "Host này thường xác nhận trong khoảng 1 giờ.",
+    "link": {
+     "kind": "chat",
+     "label": "Nhắn host"
+    }
+   }
+  },
+  {
+   "name": "awaiting/en/extra",
+   "key": "awaiting",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": {
+     "vi": "Host này thường xác nhận trong khoảng 1 giờ.",
+     "en": "This host usually confirms within about 1 hour."
+    },
+    "verifyOverdue": true,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": true
+   },
+   "expect": {
+    "label": "Awaiting host",
+    "heading": "The host is checking your transfer",
+    "sub": "The organizer is on it, it may take a little longer",
+    "detail": "This host usually confirms within about 1 hour.",
+    "link": {
+     "kind": "chat",
+     "label": "Message host"
+    }
+   }
+  },
+  {
+   "name": "today/vi/extra",
+   "key": "today",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "19:00",
+    "areaText": "Bình Thạnh",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": true,
+    "en": false
+   },
+   "expect": {
+    "label": "Hôm nay",
+    "heading": "Hôm nay lúc 19:00",
+    "sub": "Bình Thạnh",
+    "detail": "Mở sẵn trang này tại cửa và tăng độ sáng màn hình.",
+    "link": {
+     "kind": "directions",
+     "label": "Chỉ đường"
+    }
+   }
+  },
+  {
+   "name": "today/en/extra",
+   "key": "today",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "19:00",
+    "areaText": "Bình Thạnh",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": true,
+    "en": true
+   },
+   "expect": {
+    "label": "Today",
+    "heading": "Today at 19:00",
+    "sub": "Bình Thạnh",
+    "detail": "Keep this page open at the door and raise your screen brightness.",
+    "link": {
+     "kind": "directions",
+     "label": "Directions"
+    }
+   }
+  },
+  {
+   "name": "upcoming/vi/extra",
+   "key": "upcoming",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "Th 7, 11.07",
+    "timeText": "19:00",
+    "areaText": "",
+    "daysUntil": 1,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": false
+   },
+   "expect": {
+    "label": "Sắp diễn ra",
+    "heading": "Còn 1 ngày nữa",
+    "sub": "Th 7, 11.07 ▪︎ 19:00",
+    "detail": "Vé đã sẵn sàng. Mã QR dùng để vào cửa vào ngày diễn ra.",
+    "link": {
+     "kind": "calendar",
+     "label": "Thêm vào lịch"
+    }
+   }
+  },
+  {
+   "name": "upcoming/en/extra",
+   "key": "upcoming",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "Th 7, 11.07",
+    "timeText": "19:00",
+    "areaText": "",
+    "daysUntil": 1,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": true
+   },
+   "expect": {
+    "label": "Upcoming",
+    "heading": "1 day to go",
+    "sub": "Th 7, 11.07 ▪︎ 19:00",
+    "detail": "Your ticket is ready. The QR is what you show at the door on the day.",
+    "link": {
+     "kind": "calendar",
+     "label": "Add to calendar"
+    }
+   }
+  },
+  {
+   "name": "upcoming/vi/extra",
+   "key": "upcoming",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": false
+   },
+   "expect": {
+    "label": "Sắp diễn ra",
+    "heading": "Sắp diễn ra",
+    "sub": null,
+    "detail": "Vé đã sẵn sàng. Mã QR dùng để vào cửa vào ngày diễn ra.",
+    "link": {
+     "kind": "calendar",
+     "label": "Thêm vào lịch"
+    }
+   }
+  },
+  {
+   "name": "upcoming/en/extra",
+   "key": "upcoming",
+   "ctx": {
+    "eventCancelled": false,
+    "dateText": "",
+    "timeText": "",
+    "areaText": "",
+    "daysUntil": null,
+    "typicalWait": null,
+    "verifyOverdue": false,
+    "hasReceipt": false,
+    "hasRefund": false,
+    "hasDirections": false,
+    "en": true
+   },
+   "expect": {
+    "label": "Upcoming",
+    "heading": "Upcoming",
+    "sub": null,
+    "detail": "Your ticket is ready. The QR is what you show at the door on the day.",
+    "link": {
+     "kind": "calendar",
+     "label": "Add to calendar"
+    }
+   }
+  }
+ ]
+}

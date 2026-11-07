@@ -1,0 +1,76 @@
+import SwiftUI
+
+@main
+struct BanbeApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var authViewModel = AuthViewModel()
+    @StateObject private var appState = AppState()
+    @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        StorageImageCache.install()
+        // AppDelegate is instantiated by UIKit before any SwiftUI @StateObject
+        // exists, so it can't reach `appState` any other way — set once here.
+        AppDelegate.appState = appState
+        BanbeLoadingVisual.prewarm()
+        // .claude/notes/18-ios-personal-team-signing.md — developer-only
+        // signal (console, never a user-facing banner) that this build was
+        // compiled under Config/PersonalTeamDebug.xcconfig, which omits
+        // aps-environment and com.apple.developer.associated-domains
+        // entirely. Nothing else reads this flag to change behavior beyond
+        // what ENABLE_PUSH=NO and the missing entitlement already do on
+        // their own — it's purely informational.
+        #if PERSONAL_TEAM_BUILD
+        print("Personal Team build: push and Universal Links are disabled.")
+        #endif
+    }
+
+    /// DEBUG builds can be launched straight into a deterministic fixture
+    /// (`-uiFixture <name>`, App/UITestFixtures.swift); otherwise the real app.
+    @ViewBuilder private var rootView: some View {
+        #if DEBUG
+        if UITestFixture.name == "spike.mapList" {
+            MapListOverlaySpike() // Map E+ plan step 0: stand-alone pull-down spike, no app state needed
+        } else if let fixture = UITestFixture.name {
+            UITestFixtureRoot(name: fixture)
+        } else {
+            RootView()
+        }
+        #else
+        RootView()
+        #endif
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            rootView
+                .environmentObject(authViewModel)
+                .environmentObject(appState)
+                .onOpenURL { url in appState.handleDeepLink(url) }
+                // Platform feature flags (migration 187): read on start and on every return to the foreground
+                // (throttled inside), so an admin's switch reaches a running app within seconds.
+                .task {
+                    await appState.loadFeatureFlags()
+                    appState.syncLiveActivities() // L7 event-day card (switch live_activity), local only
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        Task {
+                            await appState.loadFeatureFlags()
+                            appState.syncLiveActivities()
+                        }
+                        appState.noteAppActiveForMeasurement() // app_opened, once per local day (migration 196)
+                    }
+                }
+                // TASK D (2026-10-01 UX foundation pass) — universal links
+                // (https://banbe.app/...) arrive as an NSUserActivity, not
+                // through onOpenURL (that's only ever the custom `banbe://`
+                // scheme, e.g. the OAuth callback). Separate handler,
+                // separate mechanism.
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    guard let url = activity.webpageURL else { return }
+                    appState.handleUniversalLink(url)
+                }
+        }
+    }
+}

@@ -1,0 +1,32 @@
+{
+  "_comment": "Simple Shell Home hero (note 66). Read by tests/unit/homeHero.test.mjs and apps/ios/BanbeAppTests/HomeHeroTests.swift. now = 2026-11-01T12:00:00Z = 1793534400000.",
+  "now": 1793534400000,
+  "goer": [
+    { "case": "guest always gets the guest banner", "input": { "signedIn": false, "nextUp": true, "actionCount": 2, "checklistVisible": true }, "expect": "guest" },
+    { "case": "next up beats everything", "input": { "signedIn": true, "nextUp": true, "actionCount": 3, "checklistVisible": true }, "expect": "nextUp" },
+    { "case": "action center next", "input": { "signedIn": true, "nextUp": false, "actionCount": 1, "checklistVisible": true }, "expect": "action" },
+    { "case": "checklist for new users", "input": { "signedIn": true, "nextUp": false, "actionCount": 0, "checklistVisible": true }, "expect": "checklist" },
+    { "case": "nothing: cards start right away", "input": { "signedIn": true, "nextUp": false, "actionCount": 0, "checklistVisible": false }, "expect": "none" }
+  ],
+  "host": [
+    { "case": "no events: plan your next", "events": [], "expect": null },
+    { "case": "soonest upcoming wins", "events": [
+      { "key": "b", "startsAt": 1793620800000, "status": "live" },
+      { "key": "a", "startsAt": 1793556000000, "status": "live" }
+    ], "expect": "a" },
+    { "case": "ongoing (started, not ended) still counts", "events": [
+      { "key": "now", "startsAt": 1793527200000, "endsAt": 1793541600000, "status": "live" },
+      { "key": "later", "startsAt": 1793620800000, "status": "live" }
+    ], "expect": "now" },
+    { "case": "ended, cancelled and removed are skipped", "events": [
+      { "key": "old", "startsAt": 1793448000000, "endsAt": 1793455200000, "status": "live" },
+      { "key": "x", "startsAt": 1793556000000, "status": "cancelled" },
+      { "key": "y", "startsAt": 1793556000000, "status": "removed" },
+      { "key": "ok", "startsAt": 1793707200000, "status": "pending" }
+    ], "expect": "ok" },
+    { "case": "no end time: treated as over 12h after start", "events": [
+      { "key": "stale", "startsAt": 1793480400000, "status": "live" },
+      { "key": "fresh", "startsAt": 1793530800000, "status": "live" }
+    ], "expect": "fresh" }
+  ]
+}

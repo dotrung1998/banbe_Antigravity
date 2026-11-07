@@ -1,0 +1,2052 @@
+import SwiftUI
+
+/// The event title's on-screen frame (global), for the title hand-off into the nav bar.
+private struct EventTitleFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
+
+/// V8 tabs (note 75): each section's top in the scrolled CONTENT's own coordinates. Those only change on layout, never
+/// on scroll, so a preference is safe here (the live offset comes from the KVO probe; a preference stops updating
+/// during a drag, note 06).
+private struct EventSectionTopsKey: PreferenceKey {
+    static var defaultValue: [String: CGFloat] = [:]
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) { value.merge(nextValue()) { $1 } }
+}
+
+private extension View {
+    func eventSectionTop(_ id: String) -> some View {
+        background(GeometryReader { g in
+            Color.clear.preference(key: EventSectionTopsKey.self, value: [id: g.frame(in: .named("eventContent")).minY])
+        })
+    }
+}
+
+/// Create-event "Public preview" (owner, 2026-10-21): the real Event Detail rendered from an unsaved draft, so the
+/// host sees exactly what guests will. Nothing here is fetched or saved; every guest control (save, share, ⋯, the
+/// calendar pill, host actions, seat chips, Reserve) is shown but inert. Web twin: `EventDetail({ preview })`.
+struct EventDetailPreview {
+    enum Photo: Identifiable {
+        case local(id: String, image: UIImage)
+        case remote(id: String, url: String)
+        var id: String { switch self { case .local(let id, _), .remote(let id, _): return id } }
+    }
+    let event: CatalogEvent
+    /// Cover first.
+    let photos: [Photo]
+    /// Seats the host offered; nothing is booked in a draft, so the bar reads "all free".
+    let capacity: Int?
+    let backLabel: String
+    let onBack: () -> Void
+    /// Sits under the (inert) reserve bar: the review sheet's Confirm & submit.
+    let footer: AnyView
+}
+
+/// Port of src/screens/EventDetail.jsx — hero photo with back/share pills,
+/// the address as a Maps link, details, organizer row, photo strip, and the
+/// bottom action bar (which shows your ticket if you already hold one).
+struct EventDetailView: View {
+    @EnvironmentObject var app: AppState
+    @Environment(\.openURL) private var openURL
+    /// Non-nil = the create-event Public preview (see `EventDetailPreview`).
+    let preview: EventDetailPreview?
+    private var isPreview: Bool { preview != nil }
+
+    init(preview: EventDetailPreview? = nil) {
+        self.preview = preview
+    }
+    @State private var shareStoryMessage: String?
+    @State private var shareConfirmOpen = false
+    // Intro/included-parity fix pass (2026-09-28) — "Bao gồm"/Included was
+    // plain, non-tappable text; now opens a sheet showing the event's own
+    // "Giới thiệu sự kiện"/introduction FIRST, then the structured
+    // Included items below it — same content web already has, just
+    // surfaced differently there (an always-visible intro section plus
+    // its own separate included-only sheet) vs. here (one sheet, both).
+    @State private var introIncludedSheetOpen = false
+    /// "Link copied" flash after the ⋯ menu's Copy link.
+    @State private var linkCopied = false
+    /// L8 "Copied. Paste it in Zalo." flash after the ⋯ menu's Copy invite for Zalo.
+    @State private var zaloCopied = false
+    /// Phase 1 Q3: "Next from this host" on an ended page (up to 3 live events still ahead).
+    @State private var hostNext: [AppState.HostUpcomingEvent] = []
+    /// Where the in-sheet title is right now (global), measured from its layout frame (its own fade/shrink transforms
+    /// don't move that, so there is no feedback loop).
+    @State private var titleFrame: CGRect = .zero
+    /// Bumped by the blocked bar's "see why" tap; the scroll view scrolls the criteria card into view.
+    @State private var criteriaScrollRequest = 0
+    /// About's "Read more" expanded the description in place (note 68).
+    @State private var aboutExpanded = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    // Airbnb-style layout: the photo is a fixed backdrop that fades out while the rounded info sheet scrolls up over it.
+    /// 320 (was 400, note 68): with the sheet's overlap, Date / Time / Place, the Host row and the CTA fit a 6.1" phone.
+    private let heroHeight: CGFloat = 320
+    private let sheetOverlap: CGFloat = 40
+    // Matches the iPhone's own screen-corner curvature (~47-55pt on current models).
+    private let sheetRadius: CGFloat = 46
+    /// With the info fully pulled up, this much of the photo (from the top of the screen) stays visible above it.
+    private let pinnedStrip: CGFloat = 120
+    /// V8 (note 75): the ticket stub rises this far into the photo; the title band above it is that much shorter and the
+    /// paper starts where the photo ends at rest. Web `STUB_RISE`.
+    private let stubRise: CGFloat = 104
+    /// Only the part of the offset the photo parallax/fade and the title hand-off read (clamped past the hero), so a
+    /// scroll frame below the hero no longer re-renders this whole page; the raw offset (tab spy) is kept apart.
+    @State private var scrollOffset: CGFloat = 0
+    private final class RawOffset { var y: CGFloat = 0 }
+    @State private var raw = RawOffset()
+    /// V8 tabs (note 75): how far the content can scroll, the sections' tops, the lit tab, a tapped tab held until the
+    /// reader scrolls themselves, and the probe's one-off scroll request.
+    @State private var maxScroll: CGFloat = 0
+    @State private var sectionTops: [String: CGFloat] = [:]
+    @State private var activeTab = "overview"
+    @State private var tabLock: String?
+    @State private var tabLockGeneration = 0
+    @State private var scrollRequest: ScaffoldScrollRequest?
+    private let tabRowHeight: CGFloat = 50
+    // Drag-down-to-close (only from the very top of the scroll view).
+    @State private var dismissDrag: CGFloat = 0
+    @State private var isDismissDragging = false
+    /// The drag has passed the point where letting go closes the screen (the one haptic tick of a close, note 47).
+    @State private var dismissArmed = false
+    @State private var isDismissing = false
+    /// Whether the current touch started with the scroll view already at the very top. Closing is only allowed
+    /// then: scrolling up to the top and carrying on in the SAME drag must not close the screen.
+    @State private var dragBeganAtTop: Bool?
+    /// 0 = shrunk into the card it opened from, 1 = full screen. Flipped (animated) on appear and on close.
+    @State private var presented = false
+    /// The page itself (background, info sheet, buttons): fades in after the photo starts growing, out before it shrinks.
+    @State private var contentShown = false
+    /// Note 77: the staggered rise-in of the page's parts on a fresh open (pills, title, stub, date, calendar tiles,
+    /// details, bar). Already true when coming back, in preview and with Reduce Motion.
+    @State private var entered = false
+    /// Status line from the stub's calendar tiles ("Added to your banbe Schedule…"), shown under the stub.
+    @State private var planMessage: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Where the cover photo actually was on screen the moment a close began (drag pose included). The close then
+    /// runs from here straight into the card — the same path as the Back button — instead of unwinding the drag
+    /// pose on top of the shrink, which made the photo dip below the card until the screen switched (note 47).
+    @State private var closeStart: CGRect?
+    /// Centre (global) of the page layers the drag pose scales around; the photo is posed with the same numbers.
+    @State private var poseAnchor: CGPoint = .zero
+    private var screenSize: CGSize { UIScreen.main.bounds.size }
+    private var bottomInset: CGFloat {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.keyWindow?.safeAreaInsets.bottom ?? 0
+    }
+    /// Where this screen zooms out of / back into: the tapped card's photo (nil when opened from somewhere with none).
+    /// Only meaningful while zooming (opening: the rect captured at the tap; closing: the card's live frame, or that
+    /// same rect if the card has scrolled away). At rest, and for opens that did not start from a card, it is nil.
+    private var zoomOrigin: CGRect? {
+        // Opened from Map: no card to zoom from; the screen opens from, and closes toward, the centre of the screen.
+        guard !isPreview, app.eventBackScreen != .mapExplore else { return nil }
+        // Closing wins over a still-flagged open (closed within 1.4s of opening): shrink into the card's live frame.
+        if isDismissing { return app.zoomOrigin(for: event.key) ?? app.eventOriginRect }
+        if app.eventOpening { return app.eventOriginRect }
+        return nil
+    }
+    /// True when there is no card to zoom from/into: the whole screen then scales up from the centre and fades.
+    private var centerPose: Bool { zoomOrigin == nil }
+    private var zoomT: CGFloat { presented ? 1 : 0 }
+    /// The cover photo's frame (screen coordinates): the tapped card's photo at 0, the full-bleed cover at 1. With no
+    /// card to come from it grows from a slightly inset copy of the cover.
+    private var heroFrame: CGRect {
+        let full = closeStart ?? CGRect(x: 0, y: 0, width: screenSize.width, height: topInset + heroHeight)
+        let from = zoomOrigin ?? full
+        func lerp(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * zoomT }
+        return CGRect(x: lerp(from.minX, full.minX), y: lerp(from.minY, full.minY),
+                      width: lerp(from.width, full.width), height: lerp(from.height, full.height))
+    }
+    /// Drag-down pose: shrink around the page centre and follow the finger at a third of its travel.
+    private var dragScale: CGFloat { 1 - 0.16 * dismissProgress }
+    private func dragPosed(_ r: CGRect) -> CGRect {
+        let s = dragScale, a = poseAnchor, dy = dismissDrag * 0.35
+        return CGRect(x: a.x + (r.minX - a.x) * s, y: a.y + (r.minY - a.y) * s + dy,
+                      width: r.width * s, height: r.height * s)
+    }
+    /// The cover photo's on-screen frame: the zoom frame, its scroll parallax and (while dragged) the drag pose. The
+    /// photo is NOT inside the posed layers, so nothing but this decides where it is.
+    private var heroScreenFrame: CGRect {
+        let f = heroFrame
+        guard closeStart == nil else { return f }
+        let parallax = min(max(scrollOffset, 0), heroHeight) * 0.3 * zoomT
+        return dragPosed(f.offsetBy(dx: 0, dy: -parallax))
+    }
+    private func closeAnimated() {
+        guard !isDismissing else { return }
+        isDismissing = true
+        // Freeze the photo where it is right now; the page layers keep their drag pose and just fade.
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { closeStart = heroScreenFrame }
+        // RootView draws a stand-in underneath only when there is no live screen there (publishing this would make
+        // every screen re-render, Home included, mid-animation).
+        let live = app.eventHasLiveUnderlay
+        if !live { app.eventDismissProgress = max(app.eventDismissProgress, 0.001) }
+        withAnimation(.easeIn(duration: centerPose ? 0.34 : 0.22)) { contentShown = false }
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.92)) { presented = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.62) {
+            app.backFromEvent()
+            DispatchQueue.main.async {
+                if app.eventDismissProgress != 0 { app.eventDismissProgress = 0 }
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) { closeStart = nil; dismissDrag = 0 }
+                isDismissing = false
+            }
+        }
+    }
+    private var topInset: CGFloat {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.keyWindow?.safeAreaInsets.top ?? 0
+    }
+    private var dismissProgress: CGFloat { min(1, max(0, dismissDrag / 320)) }
+    /// Letting go past this pull closes the screen.
+    private let dismissCloseDistance: CGFloat = 140
+
+    private var event: CatalogEvent { preview?.event ?? app.currentEvent }
+    /// Event type profiles (migration 203): only while the switch is on; a type without a profile renders as before.
+    /// Note 69: the event's own type plus its second category (details.cat2, migration 207).
+    private var typeProfile: EventTypeProfile? { app.eventTypesEnabled ? EventTypes.eventProfile(catKey: event.catKey, details: event.details) : nil }
+    private var typeFacts: [EventTypes.Fact] {
+        typeProfile.map { EventTypes.detailFacts($0, event.details, lang: app.isEN ? "en" : "vi") } ?? []
+    }
+    // STAGE D (2026-09-25) — real event_photos URLs, replacing the static
+    // demo `event.gallery` below.
+    // Photo-interactions redesign (2026-09-26) — each entry now carries the
+    // photo's real id + its OWN owning event id (every photo here genuinely
+    // belongs to `event.key`, since this is a single-event query), not just
+    // a bare URL — see `PhotoGalleryItem`'s own doc comment.
+    private var realPhotos: [PhotoGalleryItem] {
+        // Strict invite-only events (migration 113) — app.eventPhotoURLs
+        // is already resolved by loadEventPhotos (public getPublicURL or a
+        // private-bucket signed URL); a photo with no resolved URL yet
+        // (still loading, or resolution failed) is simply omitted rather
+        // than shown broken.
+        app.eventPhotos.compactMap { photo in
+            guard let url = app.eventPhotoURLs[photo.id] else { return nil }
+            return PhotoGalleryItem(id: photo.id.uuidString.lowercased(), url: url.absoluteString, eventId: event.key)
+        }
+    }
+
+    /// Reached from several places, so "back" returns to whichever one you
+    /// actually came from, labelled accordingly.
+    private var backLabel: String {
+        // BUG 3 fix (2026-09-22 follow-up) — an event opened from a story
+        // has exactly one consistent origin: StoryViewer, not whichever
+        // screen happened to be showing underneath it — the pill used to
+        // fall through to the plain `default: "banbe"` case below while
+        // `backFromEvent()` actually reopened the story, the same
+        // label-vs-behavior contradiction Follow-up bug 2 (just above)
+        // already fixed once for Map Explore.
+        if app.eventBackIsStory {
+            if let host = app.storyReturnHostName { return app.T("Tin của \(host)", "\(host)’s story") }
+            return app.T("Story", "Story")
+        }
+        switch app.eventBackScreen {
+        case .dashboard: return app.T("Trang của bạn", "Your dashboard")
+        case .organizerProfile: return app.T("Trang tổ chức", "Organizer page")
+        case .create: return app.T("Tạo Sự Kiện", "Create Event")
+        // Named after whichever list it is ("Going"/"Saved"/"Completed
+        // events"), so the pill says where it actually goes.
+        case .eventList: return app.eventListTitle
+        // Follow-up bug 2: this used to fall through to the "banbe"/Home
+        // default below, even though `backFromEvent()` already correctly
+        // routed back to Map Explore (eventBackScreen was `.mapExplore`,
+        // not `.home`) — the pill *said* "banbe" while *behaving* like it
+        // went to the map, which read as wrong regardless of the real
+        // destination being correct.
+        case .mapExplore: return app.T("Bản đồ", "Map")
+        // Note 78: opened from the ticket's Event details sheet; Back returns to that same ticket.
+        case .confirmed: return app.T("Vé", "Ticket")
+        default: return "banbe"
+        }
+    }
+
+    /// A live booking for this exact event opens the ticket instead of
+    /// running the guest through Reserve again.
+    private var myBooking: Booking? {
+        guard !isPreview, let booking = app.booking,
+              booking.eventId == event.key,
+              ["pending", "confirmed", "attended"].contains(booking.status)
+        else { return nil }
+        return booking
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            // The page background and everything on it fade in AFTER the photo has started growing out of the card
+            // (and fade out first when closing), so it reads as the card's photo expanding, not a screen on top.
+            app.palette.paper.ignoresSafeArea().opacity(contentShown ? 1 : 0)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(GeometryReader { g in
+                    Color.clear
+                        .onAppear { poseAnchor = CGPoint(x: g.frame(in: .global).midX, y: g.frame(in: .global).midY) }
+                        .onChange(of: g.frame(in: .global)) { _, f in poseAnchor = CGPoint(x: f.midX, y: f.midY) }
+                })
+                .modifier(dragPose)
+            // The photo is a layer of the screen itself (not inside the stack below), so it can reach the very top
+            // edge, under the status bar, and both side edges. It is also the shared element: its frame runs from
+            // the tapped card's photo to the full-bleed cover (see `heroFrame`).
+            heroBackdrop
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .ignoresSafeArea(edges: .top)
+            // Top scrim: keeps the round controls legible on bright covers (they used to rely on a dark sample photo).
+            LinearGradient(colors: [.black.opacity(0.34), .clear], startPoint: .top, endPoint: .bottom)
+                .frame(height: topInset + 124)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .ignoresSafeArea(edges: .top)
+                .allowsHitTesting(false)
+                .opacity(contentShown && !collapsed ? 1 : 0)
+                .animation(.easeOut(duration: 0.2), value: collapsed)
+                .modifier(dragPose)
+                .accessibilityHidden(true)
+            VStack(spacing: 0) {
+                ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        // Room for the backdrop photo; the sheet below starts `sheetOverlap` up inside it. This
+                        // content starts at the safe-area top, and the photo is `topInset` taller than `heroHeight`.
+                        // Story-first (note 70): the pills and the title sit on the photo in this band, over the hero's
+                        // bottom scrim; a long title grows the band (minHeight), never clips.
+                        heroTitleBand
+                            .frame(minHeight: topInset + heroHeight - pinnedStrip - stubRise, alignment: .bottomLeading)
+                        // V8 ticket stub (note 75): half over the photo, half on the page.
+                        stubBand
+                            .modifier(EntranceRise(shown: entered, step: 2, y: 22, scale: 0.97, animated: !reduceMotion))
+                        details
+                            .background(app.palette.paper)
+                            .modifier(EntranceRise(shown: entered, step: 5, y: 26, animated: !reduceMotion))
+                    }
+                    .coordinateSpace(name: "eventContent")
+                    .onPreferenceChange(EventSectionTopsKey.self) { sectionTops = $0 }
+                    // Remembers the offset per event and, when coming back (not a fresh open), puts it straight back.
+                    // Note 75: also the live offset on every iOS version (KVO keeps reporting during a drag, note 06) and
+                    // the tabs' scroll-to.
+                    .background(ScaffoldScrollProbe(restoreOffsetY: app.eventOpening || isPreview ? nil : app.eventScrollOffsets[event.key],
+                                                    onOffset: { [key = event.key, isPreview] y in if !isPreview { app.eventScrollOffsets[key] = y } },
+                                                    onChange: { _, userDriven in if userDriven && tabLock != nil { tabLock = nil } },
+                                                    onScrollMetrics: { y, content, viewport in
+                                                        raw.y = y
+                                                        let capped = min(y, topInset + heroHeight + 2)
+                                                        if scrollOffset != capped { scrollOffset = capped }
+                                                        let m = max(0, content - viewport)
+                                                        if maxScroll != m { maxScroll = m }
+                                                        spyTabs()
+                                                    },
+                                                    scrollRequest: scrollRequest))
+                }
+                .coordinateSpace(name: "eventScroll")
+                .scrollDisabled(isDismissDragging)
+                .simultaneousGesture(dismissGesture, including: isPreview ? .subviews : .all)
+                .onChange(of: criteriaScrollRequest) { _, _ in
+                    withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("event.criteria", anchor: .center) }
+                }
+                }
+                // The scrolling area starts `pinnedStrip` down the screen, with the sheet's own rounded top corners,
+                // so a band of the photo stays visible above the info however far it is pulled up.
+                .mask { UnevenRoundedRectangle(topLeadingRadius: sheetRadius, topTrailingRadius: sheetRadius, style: .continuous) }
+                .padding(.top, max(0, pinnedStrip - topInset))
+                if let preview {
+                    // What guests will see, shown but inert; then the host's own Confirm & submit.
+                    VStack(spacing: 0) {
+                        actionBar.allowsHitTesting(false).accessibilityHidden(true)
+                        preview.footer
+                    }
+                } else {
+                    actionBar
+                        .modifier(EntranceRise(shown: entered, step: 6, y: 40, animated: !reduceMotion))
+                }
+            }
+            .opacity(contentShown ? 1 : 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .modifier(dragPose)
+            // Task 3 follow-up: back/share used to live INSIDE `hero`,
+            // which scrolls away with the rest of the content the instant
+            // the user scrolls the photo out of view. Rendered here
+            // instead — a ZStack sibling of the ScrollView, not a
+            // descendant of it — so they float persistently regardless of
+            // scroll position, the same floating-pill treatment the map
+            // screen's own back/compass buttons already get.
+            // Solid nav bar once the title has scrolled away (mockup "02 · Khi cuộn xuống").
+            navBar
+                .opacity(contentShown ? 1 : 0)
+                .modifier(dragPose)
+            // V8 tabs (note 75): under the title once the nav bar is solid.
+            tabRow
+                .opacity(contentShown && collapsed ? 1 : 0)
+                .allowsHitTesting(collapsed)
+                .accessibilityHidden(!collapsed)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .modifier(dragPose)
+            backShareRow.opacity(contentShown ? 1 : 0)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .modifier(dragPose)
+            // Left-edge swipe back: the page follows the finger with the same shrink as pull-down, and closes the same
+            // way as Back (into the card it came from) — never the generic sideways slide (RootView leaves .event alone).
+            Color.clear
+                .frame(width: isPreview ? 0 : 22)
+                .contentShape(Rectangle())
+                .gesture(edgeSwipeGesture, including: isPreview ? .none : .all)
+                .padding(.top, topInset + 64)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .ignoresSafeArea(edges: .bottom)
+                .accessibilityHidden(true)
+        }
+        // No card to come from (Map): the whole screen grows from / shrinks toward the middle of the screen.
+        .scaleEffect(centerPose ? 0.84 + 0.16 * zoomT : 1)
+        .onAppear {
+            // Coming BACK (host page, chat, Reserve…), not a fresh open: everything is simply already there, at the
+            // same scroll position — no grow-in, no fade, no pop.
+            guard app.eventOpening, !isPreview else {
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) { presented = true; contentShown = true; entered = true }
+                return
+            }
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.9)) { presented = true }
+                withAnimation(.easeOut(duration: 0.36).delay(zoomOrigin == nil ? 0 : 0.2)) { contentShown = true }
+                entered = true
+            }
+        }
+        .onDisappear { if app.eventDismissProgress != 0 { app.eventDismissProgress = 0 } }
+        .sheet(isPresented: $shareConfirmOpen) { shareConfirmSheet }
+        .sheet(isPresented: $introIncludedSheetOpen) {
+            CardSheet(title: app.T("Giới thiệu & Bao gồm", "About & Included"),
+                      closeID: "event.includedSheet.close",
+                      onClose: { introIncludedSheetOpen = false }) { introIncludedSheetContent }
+        }
+        // STAGE D (2026-09-25) — re-fetched whenever the viewed event
+        // changes (this view can be reached repeatedly for different
+        // events without ever being torn down, e.g. via `goEvent`).
+        .task(id: event.key) { if !isPreview { await app.loadEventPhotos(eventID: event.key) } }
+        .task(id: event.key) { if !isPreview { await app.loadEventOrgStats(forEventKey: event.key) } }
+        // This event's own live seat fill, however the screen was reached (note 70).
+        .task(id: event.key) { if !isPreview { await app.loadPublicEventFill(ids: [event.key]) } }
+        // Reservation criteria (migration 162): small per-event read; only a
+        // restricted event triggers the eligibility pre-check (Everyone = no
+        // extra calls/UI). Re-runs when the guest saves new preferences.
+        .task(id: "\(event.key)|\(app.eventPrefsVersion)|\(app.isSignedIn)") {
+            guard !isPreview else { return }
+            app.reserveEligibilityBlock = nil
+            await app.loadEventCriteria(eventKey: event.key)
+            if app.isSignedIn, let c = app.eventCriteriaByKey[event.key], !c.isEveryone {
+                await app.recheckReservationEligibility(eventKey: event.key)
+            }
+        }
+    }
+
+    private var edgeSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .global)
+            .onChanged { value in
+                guard !isDismissing else { return }
+                let dx = value.translation.width
+                if !isDismissDragging {
+                    guard dx > 0, dx > abs(value.translation.height) else { return }
+                    isDismissDragging = true
+                }
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) {
+                    dismissDrag = max(0, dx)
+                    if !app.eventHasLiveUnderlay { app.eventDismissProgress = max(0.001, dismissProgress) }
+                }
+                let armed = dismissDrag > dismissCloseDistance
+                if armed != dismissArmed {
+                    dismissArmed = armed
+                    if armed { Haptics.light() }
+                }
+            }
+            .onEnded { value in
+                defer { dismissArmed = false }
+                guard isDismissDragging else { return }
+                isDismissDragging = false
+                if dismissDrag > dismissCloseDistance || value.predictedEndTranslation.width > 360 {
+                    closeAnimated()
+                } else {
+                    withAnimation(.spring(response: 0.46, dampingFraction: 0.86)) { dismissDrag = 0 }
+                    if app.eventDismissProgress != 0 { app.eventDismissProgress = 0 }
+                }
+            }
+    }
+
+    /// Pull down from the very top to close: the screen follows the finger (shrinking), and a long enough pull or a
+    /// flick finishes the close with the same shrink-and-fade. Anything else springs back. Never starts mid-scroll.
+    private var dismissGesture: some Gesture {
+        DragGesture(minimumDistance: 10, coordinateSpace: .global)
+            .onChanged { value in
+                guard !isDismissing else { return }
+                let dx = value.translation.width, dy = value.translation.height
+                if dragBeganAtTop == nil { dragBeganAtTop = scrollOffset <= 12 }
+                guard dragBeganAtTop == true else { return }
+                if !isDismissDragging {
+                    guard scrollOffset <= 1, dy > 0, dy > abs(dx) * 1.2 else { return }
+                    isDismissDragging = true
+                }
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) {
+                    dismissDrag = max(0, dy)
+                    if !app.eventHasLiveUnderlay { app.eventDismissProgress = max(0.001, dismissProgress) }
+                }
+                // One tick when the drag passes the close point (and again if it comes back and crosses it again);
+                // nothing on release or when the screen underneath settles.
+                let armed = dismissDrag > dismissCloseDistance
+                if armed != dismissArmed {
+                    dismissArmed = armed
+                    if armed { Haptics.light() }
+                }
+            }
+            .onEnded { value in
+                defer { dragBeganAtTop = nil; dismissArmed = false }
+                guard isDismissDragging else { return }
+                isDismissDragging = false
+                if dismissDrag > dismissCloseDistance || value.predictedEndTranslation.height > 420 {
+                    closeAnimated()
+                } else {
+                    withAnimation(.spring(response: 0.46, dampingFraction: 0.86)) { dismissDrag = 0 }
+                    if app.eventDismissProgress != 0 { app.eventDismissProgress = 0 }
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var criteriaSection: some View {
+        if let c = app.eventCriteriaByKey[event.key], !c.isEveryone {
+            VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
+                // Plain words + this viewer's result (note 70); an unmet result is the card below, with its action.
+                criteriaLine(c.plain(vi: !app.isEN) ?? "")
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("event.criteria.summary")
+                if let block = app.reserveEligibilityBlock {
+                    CriteriaUnmetCard(eligibility: block, returnTo: .event, idPrefix: "event")
+                }
+            }
+        }
+    }
+
+    private func criteriaLine(_ text: String) -> Text {
+        var line = Text(text)
+        if !app.isSignedIn {
+            line = line + Text(" · " + app.T("Đăng nhập để kiểm tra", "Sign in to check")).foregroundColor(app.palette.ink2)
+        } else if app.reserveEligibilityBlock == nil, app.reserveEligibleKey == event.key {
+            line = line + Text(" · " + app.T("✓ Bạn đủ điều kiện", "✓ You qualify")).fontWeight(.semibold)
+        }
+        return line
+    }
+
+    // BUG 4 fix (2026-09-22 follow-up) — event cover preview, title/date,
+    // and an explicit Cancel/Post choice before anything is written.
+    private var shareConfirmSheet: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                CatalogPhoto(path: event.img, height: 64, width: 64, cornerRadius: 12)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(event.name).font(BanbeTheme.display(15))
+                    Text(event.when).font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                }
+            }
+            Text(app.T("Sẽ hiển thị dưới dạng story trong 24 giờ.", "This will be visible as a story for 24 hours."))
+                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+            HStack(spacing: 8) {
+                Button(app.T("Hủy", "Cancel")) { shareConfirmOpen = false }
+                    .frame(maxWidth: .infinity).padding(.vertical, 13)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+                    .accessibilityIdentifier("event.shareToStory.cancel")
+                Button {
+                    Task {
+                        shareConfirmOpen = false
+                        let ok = await app.createEventShareStory(eventKey: event.key)
+                        shareStoryMessage = ok ? app.T("Đã đăng lên story", "Posted to Story") : app.T("Không đăng được", "Couldn't post")
+                        try? await Task.sleep(nanoseconds: 2_400_000_000)
+                        shareStoryMessage = nil
+                    }
+                } label: {
+                    Text(app.T("Đăng Story", "Post Story"))
+                        .frame(maxWidth: .infinity).padding(.vertical, 13)
+                        .foregroundStyle(app.palette.paper)
+                        .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12))
+                }
+                .accessibilityIdentifier("event.shareToStory.confirm")
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(20)
+        .presentationDetents([.height(220)])
+    }
+
+    private var canOpenInMap: Bool { app.eventBackScreen == .home && event.lat != nil && event.lng != nil }
+    /// Scrolled this far, the title has gone under the top edge: the solid nav bar (mockup "02 · Khi cuộn xuống")
+    /// takes over and the glass controls turn into plain clay glyphs.
+    private var collapseAt: CGFloat { topInset + heroHeight - sheetOverlap - pinnedStrip + 70 }
+    /// 0 while the title is comfortably below the bar, 1 once it has fully passed under it. Drives the hand-off: the
+    /// in-sheet title rises, shrinks and fades while the bar's title grows into place — the name moves up and shrinks
+    /// rather than being covered and swapped.
+    private var titleProgress: CGFloat {
+        guard titleFrame.height > 0 else { return scrollOffset > collapseAt ? 1 : 0 }
+        let lead: CGFloat = 36
+        return min(1, max(0, (navBarHeight + lead - titleFrame.minY) / (titleFrame.height + lead)))
+    }
+    private var collapsed: Bool { titleProgress > 0.6 }
+    /// Height of the band above the scroll view (the pinned photo strip), which the nav bar covers.
+    private var navBarHeight: CGFloat { max(topInset, pinnedStrip) }
+
+    /// Back pill "‹ {where you came from}", then ⋯ / Share / Save discs (mockup). Once the nav bar is solid the back
+    /// pill shrinks to its chevron to give the event name room.
+    private var backShareRow: some View {
+        HStack(spacing: collapsed ? 0 : 8) {
+            Button { if let preview { preview.onBack() } else { closeAnimated() } } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold))
+                    if !collapsed {
+                        Text(preview?.backLabel ?? backLabel).font(.system(size: 15, weight: .semibold)).lineLimit(1).frame(maxWidth: 124, alignment: .leading)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                }
+                .padding(.leading, 11).padding(.trailing, collapsed ? 11 : 14)
+                .frame(minWidth: collapsed ? 44 : 40, minHeight: collapsed ? 44 : 40)
+                .modifier(ControlChrome(collapsed: collapsed, clay: app.palette.clay, shape: AnyShape(Capsule())))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            // Follow-up bug 2: an explicit, map-specific label so VoiceOver users get the same "this returns to the map,
+            // not Home" clarity.
+            .accessibilityLabel(preview?.backLabel ?? (app.eventBackScreen == .mapExplore ? app.T("Quay lại bản đồ", "Back to map") : backLabel))
+            .accessibilityIdentifier("event.back")
+            Spacer(minLength: 0)
+            Group {
+            // ⋯ is a native pop-up menu, exactly like the calendar pill beside the title (EventPlanTitleRow).
+            Menu { moreMenuItems } label: { discLabel("ellipsis") }
+                .accessibilityIdentifier("event.more")
+                .accessibilityLabel(app.T("Thêm", "More"))
+            Button { share() } label: { discLabel("square.and.arrow.up") }
+                .buttonStyle(.plain)
+                .accessibilityLabel(app.T("Chia sẻ", "Share"))
+                .accessibilityIdentifier("event.share")
+            // Save uses the same isSaved/toggleFavorite Home's own EventCard does (keys off `favorites` by id).
+            Button { app.toggleFavorite(event.key) } label: { discLabel(app.isSaved(event.key) ? "heart.fill" : "heart") }
+                .buttonStyle(.plain)
+                .accessibilityLabel(app.isSaved(event.key) ? app.T("Đã lưu", "Saved") : app.T("Lưu", "Save"))
+                .accessibilityAddTraits(app.isSaved(event.key) ? .isSelected : [])
+                .accessibilityIdentifier("event.save")
+            }
+            // Preview: the guest's controls are shown as they will look, but do nothing for a draft.
+            .allowsHitTesting(!isPreview)
+        }
+        .overlay(alignment: .topTrailing) {
+            if app.sharedFlash || linkCopied || zaloCopied {
+                Text(zaloCopied ? app.T(CoreLoops.zaloCopied.vi, CoreLoops.zaloCopied.en) : app.T("Đã sao chép link", "Link copied"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(app.palette.ink)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(app.palette.paper.opacity(0.94), in: Capsule())
+                    .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                    .offset(y: 48)
+                    .transition(.opacity)
+            }
+        }
+        // Collapsed (V8): plain clay glyphs in 44pt hit areas with no gaps, pulled to the edges for the title.
+        .padding(.horizontal, collapsed ? 4 : 16)
+        .padding(.top, collapsed ? 14 : 16)
+        .animation(.easeOut(duration: 0.2), value: collapsed)
+    }
+
+    private func discLabel(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 17, weight: .semibold))
+            .frame(width: collapsed ? 44 : 40, height: collapsed ? 44 : 40)
+            .modifier(ControlChrome(collapsed: collapsed, clay: app.palette.clay, shape: AnyShape(Circle())))
+            .contentShape(Circle())
+    }
+
+    @ViewBuilder
+    private var moreMenuItems: some View {
+        // Only when reached from Home (and the event has confirmed coordinates); `openEventOnMap` reuses Map Explore's
+        // own restored-snapshot mechanism, so its selected-pin card appears automatically.
+        if canOpenInMap {
+            Button { app.openEventOnMap(event) } label: { Label(app.T("Xem trên bản đồ", "Open in map"), systemImage: "map") }
+                .accessibilityIdentifier("event.openInMap")
+        }
+        if app.eventBackScreen != .home {
+            Button { app.goHome() } label: { Label(app.T("Về trang chính", "Back to home"), systemImage: "house") }
+                .accessibilityIdentifier("event.backHome")
+        }
+        // Only for the account that owns this event's organizer (re-checked server-side); opens the confirm step.
+        if app.myOrgEventKeys.contains(event.key) {
+            Button { shareConfirmOpen = true } label: {
+                Label(app.storyCreateBusy ? app.T("Đang đăng…", "Posting…") : app.T("Chia sẻ lên Story", "Share to Story"), systemImage: "camera")
+            }
+            .disabled(app.storyCreateBusy)
+            .accessibilityIdentifier("event.shareToStory")
+        }
+        Divider()
+        Button { copyLink() } label: { Label(app.T("Sao chép link", "Copy link"), systemImage: "link") }
+            .accessibilityIdentifier("event.copyLink")
+        // L8 market sharing (switch market_share), beside Copy link: Vietnam events copy an invite for Zalo (there is
+        // no verified Zalo share URL, so it is pasted), US events open Messages with it.
+        switch inviteMarket {
+        case "VN":
+            Button { copyZaloInvite() } label: { Label(app.T("Chép lời mời cho Zalo", "Copy invite for Zalo"), systemImage: "doc.on.doc") }
+                .accessibilityIdentifier("event.copyZalo")
+        case "US":
+            Button { textAFriend() } label: { Label(app.T("Nhắn tin cho bạn bè", "Text a friend"), systemImage: "message") }
+                .accessibilityIdentifier("event.textFriend")
+        default:
+            EmptyView()
+        }
+    }
+
+    /// "VN" | "US" while the market_share switch is on, else nil. The demo catalogue is Saigon; a real event without a
+    /// country reads from its currency (same rule as web EventDetail.jsx).
+    private var inviteMarket: String? {
+        guard !isPreview, FeatureFlags.isOn(app.featureFlags, "market_share") else { return nil }
+        guard let loc = event.location else { return "VN" }
+        let country = (loc.countryCode ?? "").isEmpty ? (event.currency == "USD" ? "US" : "VN") : loc.countryCode
+        return CoreLoops.shareMarket(country)
+    }
+
+    /// "name ▪︎ when" + newline + the same link the system share sends (core-loops.json `shareText`).
+    private func inviteText(market: String) -> String? {
+        guard let id = event.key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return nil }
+        let zone = event.timeZoneID.flatMap { TimeZone(identifier: $0) } ?? EventMarket.vnTimeZone
+        let when = event.startDate.map { CoreLoops.shareWhen(startsAt: $0, timeZone: zone, market: market) }
+            ?? (market == "VN" ? event.when : "")
+        return CoreLoops.shareInviteText(name: event.name, when: when, url: "\(AppConfig.publicWebOrigin)/api/photo-share?eid=\(id)")
+    }
+
+    private func copyZaloInvite() {
+        guard let text = inviteText(market: "VN") else { return }
+        UIPasteboard.general.string = text
+        Analytics.track(.shareCompleted(channel: "zalo_copy", context: "event"))
+        Haptics.light()
+        withAnimation { zaloCopied = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { withAnimation { zaloCopied = false } }
+    }
+
+    private func textAFriend() {
+        guard let text = inviteText(market: "US"), let url = URL(string: CoreLoops.smsInviteLink(text)) else { return }
+        UIApplication.shared.open(url) { opened in
+            if opened { Analytics.track(.shareCompleted(channel: "sms", context: "event")) }
+        }
+    }
+
+    private func copyLink() {
+        guard let id = event.key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return }
+        UIPasteboard.general.string = "\(AppConfig.publicWebOrigin)/api/photo-share?eid=\(id)"
+        Haptics.light()
+        withAnimation { linkCopied = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { withAnimation { linkCopied = false } }
+    }
+
+    /// Solid paper bar over the pinned photo strip, repeating the event name once the title has scrolled away.
+    private var navBar: some View {
+        let p = titleProgress
+        return ZStack(alignment: .top) {
+            app.palette.paper
+                .overlay(alignment: .bottom) { softRule.frame(height: 0.5) }
+                .opacity(p)
+            Text(event.name)
+                .font(BanbeTheme.display(16))
+                .foregroundStyle(app.palette.ink)
+                .lineLimit(1)
+                .opacity(p)
+                .scaleEffect(1 + 0.6 * (1 - p), anchor: .bottom)
+                .offset(y: (1 - p) * 30)
+                .padding(.leading, 66).padding(.trailing, 160)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .padding(.top, topInset + 16)
+        }
+        .frame(height: navBarHeight + tabRowHeight)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .ignoresSafeArea(edges: .top)
+        .allowsHitTesting(false)
+        .accessibilityHidden(!collapsed)
+    }
+
+    // MARK: V8 tabs (note 75)
+
+    private var tabIDs: [String] {
+        EventDetailTabs.visible(hasMenu: !cards.isEmpty, hasHost: true, hasPhotos: !stripList.isEmpty || !(preview?.photos.isEmpty ?? true),
+                                hasProtection: hasProtection)
+    }
+    private func tabLabel(_ id: String) -> String {
+        switch id {
+        case "menu": return menuTitle
+        case "host": return app.T("Chủ nhà", "Host")
+        case "photos": return app.T("Ảnh", "Photos")
+        case "safe": return app.T("Bảo vệ", "Protection")
+        default: return app.T("Tổng quan", "Overview")
+        }
+    }
+    /// The offset at which each visible section sits right under the tab row.
+    private var tabTops: [Double] { tabIDs.map { Double((sectionTops[$0] ?? 0) - tabRowHeight - BanbeTheme.Space.m) } }
+
+    private func spyTabs() {
+        if let lock = tabLock { if activeTab != lock { activeTab = lock }; return }
+        let i = EventDetailTabs.active(tops: tabTops, scrollTop: Double(raw.y), maxScroll: Double(maxScroll), lead: 24)
+        let ids = tabIDs
+        if ids.indices.contains(i), activeTab != ids[i] { activeTab = ids[i] }
+    }
+
+    private func goTab(_ id: String) {
+        guard let i = tabIDs.firstIndex(of: id) else { return }
+        tabLock = id
+        activeTab = id
+        tabLockGeneration += 1
+        let gen = tabLockGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { if tabLockGeneration == gen { tabLock = nil } }
+        scrollRequest = ScaffoldScrollRequest(token: (scrollRequest?.token ?? 0) + 1, y: max(0, CGFloat(tabTops[i]) + 1),
+                                              animated: !UIAccessibility.isReduceMotionEnabled)
+        Haptics.light()
+    }
+
+    private var tabRow: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(tabIDs, id: \.self) { id in
+                        let on = activeTab == id
+                        Button { goTab(id) } label: {
+                            Text(tabLabel(id))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(on ? app.palette.paper : app.palette.ink)
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: 40)
+                                .background(on ? app.palette.ink : app.palette.block, in: Capsule())
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .id(id)
+                        .accessibilityAddTraits(on ? .isSelected : [])
+                        .accessibilityIdentifier("event.tab.\(id)")
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .onChange(of: activeTab) { _, id in
+                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
+            }
+        }
+        .frame(height: tabRowHeight - 6)
+        .padding(.top, navBarHeight - topInset)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.tabs")
+    }
+
+    /// The cover photo, full-bleed to the top and side edges, pinned behind the scrolling sheet. It fades to the
+    /// page colour as the sheet rises over it, and drifts up a little more slowly than the content.
+    private var heroBackdrop: some View {
+        // Fades only part-way (never to nothing): the strip left above the pulled-up info stays clearly visible.
+        let fade = min(1, max(0, scrollOffset / (heroHeight * 0.62))) * zoomT
+        let f = heroScreenFrame
+        // Card corners while zoomed in; while dragged, the posed page's own rounding (the page mask no longer covers
+        // the photo, see `dragPose`).
+        let radius = max(14 * (1 - zoomT), closeStart == nil ? min(sheetRadius, dismissProgress * 120) * dragScale : 0)
+        return ZStack {
+            heroImage   // no placeholder fill: the card shows through until the photo is ready
+            // Bottom scrim under the title on the photo (note 70): the same dark gradient in both themes, so the white
+            // text keeps ≥ 4.5:1 even on a white photo (EventDetailPresentation.heroScrim, unit-tested).
+            LinearGradient(stops: [
+                .init(color: .black.opacity(0), location: EventDetailPresentation.heroScrim.start),
+                .init(color: .black.opacity(EventDetailPresentation.heroScrim.alpha), location: EventDetailPresentation.heroScrim.full),
+                .init(color: .black.opacity(EventDetailPresentation.heroScrim.end), location: 1),
+            ], startPoint: .top, endPoint: .bottom)
+            .opacity(zoomT)
+            // The photo's foot melts into the page so the ticket floats over one surface (no hard photo/paper edge).
+            LinearGradient(colors: [app.palette.paper.opacity(0), app.palette.paper], startPoint: .top, endPoint: .bottom)
+                .frame(height: 110)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .opacity(zoomT)
+        }
+            .frame(width: f.width, height: f.height)
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            // Gone once the solid nav bar covers the strip, so it never peeks through the sheet's rounded corners.
+            .opacity((1 - 0.4 * fade) * (centerPose ? (contentShown ? 1 : 0) : 1) * (titleProgress >= 1 && closeStart == nil ? 0 : 1))
+            .offset(x: f.minX, y: f.minY)
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder private var heroImage: some View {
+        if case .local(_, let image)? = preview?.photos.first {
+            Image(uiImage: image).resizable().scaledToFill()
+        } else if case .remote(_, let url)? = preview?.photos.first {
+            RemoteImage(path: url, maxPixel: 1100)
+        } else {
+            RemoteImage(path: event.img, maxPixel: 1100)
+        }
+    }
+
+    /// The preview's photo strip: same tiles as `photoStrip`, from the draft's local/uploaded photos (no viewer).
+    private func previewPhotoStrip(_ photos: [EventDetailPreview.Photo]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(photos) { photo in
+                    Group {
+                        switch photo {
+                        case .local(_, let image): Image(uiImage: image).resizable().scaledToFill()
+                        case .remote(_, let url): CatalogPhoto(path: url, height: 166, width: 132, cornerRadius: 0)
+                        }
+                    }
+                    .frame(width: 132, height: 166)
+                    .clipShape(RoundedRectangle(cornerRadius: BanbeTheme.Radius.thumb, style: .continuous))
+                }
+            }
+        }
+    }
+
+    /// Drag-down-to-close for the page layers (background, info sheet, buttons): shrink toward the middle, round off
+    /// and follow the finger while the screen underneath shows through. Each layer fills the same frame, so they all
+    /// scale around the same centre (`poseAnchor`), which `dragPosed` uses for the photo. A mask that ignores the safe
+    /// area (a plain clipShape would cut the background off at the status bar).
+    private var dragPose: DragPoseModifier {
+        DragPoseModifier(radius: min(sheetRadius, dismissProgress * 120), scale: dragScale, offsetY: dismissDrag * 0.35)
+    }
+
+    /// One hairline weight for the page's own dividers: softer than `rule`, so sections read as one surface.
+    private var softRule: Color { app.palette.ink.opacity(0.10) }
+    private var hostName: String { event.orgName.isEmpty ? event.hostShort : event.orgName }
+    /// About (note 68): description (else the intro's first paragraph) clamped to 3 lines; a blank intro is no intro.
+    private var about: EventDetailPresentation.About {
+        EventDetailPresentation.aboutSection(desc: event.desc, intro: event.intro, includedCount: event.includedItems?.count ?? 0)
+    }
+    /// `where` is "area ▪︎ distance ▪︎ day ▪︎ time". Note 70: the tile's value is the area alone (one line); the
+    /// distance replaces the "Place" label, and only when it helps choose (≤ 50 km). A viewer far away saw
+    /// "Bình Thạnh ▪︎ 9662,0 km away" wrap to four lines.
+    private var placeLine: String {
+        app.trStatus(event.where.components(separatedBy: " ▪︎ ").first ?? "")
+    }
+    private var placeDistance: String? {
+        guard !isPreview, app.located == true else { return nil }
+        return EventDetailPresentation.distanceLabel(km: haversineKm(from: app.userCoords, to: event), en: app.isEN)
+    }
+    /// Ngày / Giờ: `when` is "Th 4, 04.11 ▪︎ 20:00" for catalogue and real events alike.
+    private var whenParts: (date: String?, time: String?) {
+        let parts = event.when.components(separatedBy: " ▪︎ ").filter { !$0.isEmpty }
+        // The date in the app's language (note 70: English screens showed "Th 4, 04.11"), from the same text as the time.
+        return (parts.first.map { EventDetailPresentation.dateTileLabel($0, en: app.isEN) }, parts.count > 1 ? parts[1] : nil)
+    }
+    /// Capacity and seats still free: the live fill only (never an invented capacity; loaded for this event on open,
+    /// note 70); a draft has every seat free.
+    private var seatCounts: (capacity: Int?, remaining: Int?) {
+        if let preview { return (preview.capacity, preview.capacity) }
+        guard let fill = app.eventFill[event.key], fill.capacity > 0 else { return (nil, nil) }
+        return (fill.capacity, max(0, fill.capacity - fill.booked))
+    }
+    /// One seat status beside the price (note 68): "You're going" for a ticket holder, "Sold out" (also at 0 left),
+    /// else "N left" (honey when few). The bar only shows while seats are actually open.
+    private var seat: EventDetailPresentation.SeatStatus {
+        EventDetailPresentation.seatStatus(capacity: seatCounts.capacity, remaining: seatCounts.remaining,
+                                           soldOut: event.soldOut, going: barState == .ticket)
+    }
+    private var seatPill: (text: String, fg: Color, bg: Color)? {
+        switch seat.kind {
+        case .going: return (app.T("Bạn sẽ tham gia", "You're going"), app.palette.clay, app.palette.clayBg)
+        case .soldOut: return (app.trStatus("Hết chỗ"), app.palette.ink2, app.palette.surface2)
+        case .few: return (seatsLeftText, app.palette.honey, app.palette.honeyBg)
+        case .open: return (seatsLeftText, app.palette.ink2, app.palette.surface2)
+        case .unknown:
+            let text = app.trStatus(event.seatsLong)
+            return text.isEmpty ? nil : (text, app.palette.ink2, app.palette.surface2)
+        }
+    }
+    /// V8 (owner decision 5): "Còn N vé" / "N tickets left", no "of M" and no booked bar.
+    private var seatsLeftText: String { EventDetailPresentation.ticketsLeftText(seat.left ?? 0, en: app.isEN) }
+    /// The stepper never offers more than the seats still free (note 70: with 3 left it reached 6).
+    private var qtyMax: Int { ReserveBar.qtyCeiling(remaining: isPreview ? nil : seatCounts.remaining) }
+    /// Event type facts: minimum age is a restriction, so it sits beside the category; alcohol + dietary are chips.
+    private var facts: EventDetailPresentation.SplitFacts { EventDetailPresentation.splitFacts(typeFacts) }
+    /// "On the menu" / "Included" items as their own section (note 70).
+    private var included: (visible: Bool, items: [String]) {
+        if let items = event.includedItems, !items.isEmpty { return EventDetailPresentation.includedSection(items.map(\.label)) }
+        return EventDetailPresentation.includedSection(event.included.components(separatedBy: CharacterSet(charactersIn: "▪︎,·")))
+    }
+    // MARK: V8 ticket stub (note 75)
+
+    /// The raw "Th 4, 04.11" date text the time is split from (`event.when`, already in the venue's zone).
+    private var rawWhenDate: String? { event.when.components(separatedBy: " ▪︎ ").first(where: { !$0.isEmpty }) }
+    private var stubBlock: EventDetailPresentation.DateBlock? { rawWhenDate.flatMap { EventDetailPresentation.dateBlock($0, en: app.isEN) } }
+    /// Days to go in the VENUE's zone (note 60), from the same date text as the block (never startDate, note 70).
+    private var stubCountdown: String? {
+        guard !ended, !event.cancelled, let raw = rawWhenDate else { return nil }
+        let zone = event.eventTimeZone ?? EventMarket.vnTimeZone
+        return Countdown.countdownChipText(Countdown.daysUntilInZone(raw, start: event.startDate, timeZone: zone), en: app.isEN)
+    }
+    /// Under the place: the distance when it helps choose (≤ 50 km), else "Area · city" (cities.json short name).
+    private var placeSub: String {
+        if let d = placeDistance { return app.T("Cách \(d)", "\(d) away") }
+        let loc = event.location
+        let id = MapDiscovery.cityFor(.init(city: loc?.city, stateProvince: loc?.stateProvince, countryCode: loc?.countryCode,
+                                            lat: event.lat ?? loc?.lat, lng: event.lng ?? loc?.lng), cities: MapDiscovery.cities)
+        if let c = MapDiscovery.city(id) { return app.T("Khu vực", "Area") + " · " + app.T(c.short.vi, c.short.en) }
+        return app.T("Địa điểm", "Place")
+    }
+    /// "Good to know" rows (alcohol, each dietary choice, minimum age, other facts); a sub-line only when the host wrote one.
+    private var needRows: [EventDetailPresentation.NeedRow] { EventDetailPresentation.needToKnowRows(typeFacts, notes: typeProfile == nil ? .init() : EventTypes.detailNotes(event.details, en: app.isEN), en: app.isEN) }
+    /// The menu cards: the structured items (label + detail), else the legacy included text as labels. No icons.
+    private var cards: [IncludedItem] {
+        if let items = event.includedItems, !items.isEmpty { return EventDetailPresentation.menuCards(items) }
+        return EventDetailPresentation.menuCards(included.items.map { IncludedItem(label: $0, detail: "") })
+    }
+    /// Protection steps: hidden once there is nothing left to protect (owner decision 8).
+    private var hasProtection: Bool { ![.ended, .endedAttended, .cancelled, .ticket, .pending].contains(barState) }
+    private var menuTitle: String { typeProfile?.detail?.includedTitle?.text(app.isEN ? "en" : "vi") ?? app.T("Bao gồm", "Included") }
+    /// Step 2 is an SLA with reminders, never an automatic confirm (note 02), so it says exactly that (owner decision 4).
+    private var protectionSteps: [(String, String)] {
+        let free = event.isFree
+        return [
+            (app.T("Giữ chỗ 30 phút", "Seat held for 30 min"),
+             free ? app.T("Chỗ của bạn được giữ trong lúc bạn xác nhận.", "Your seat is held while you confirm.")
+                  : app.T("Chỗ của bạn được giữ trong lúc thanh toán.", "Your seat is held while you pay.")),
+            (free ? app.T("Chủ nhà xác nhận", "The host confirms") : app.T("Chủ nhà xác nhận thanh toán", "The host confirms your payment"),
+             app.T("Chủ nhà có 1 giờ để xác nhận; banbe sẽ nhắc nếu chậm", "The host has 1 hour to confirm; banbe reminds them")),
+            (app.T("Nhận vé QR", "Get your QR ticket"), app.T("Đưa mã QR khi đến nơi.", "Show the code when you arrive.")),
+            (app.T("Có sự cố? Có kênh tranh chấp", "A problem? There is a dispute path"),
+             app.T("Nếu không tìm thấy buổi tiệc, một cuộc trò chuyện tạm sẽ mở và banbe xử lý nếu cần.",
+                   "If you can't find the event, a temporary chat opens and banbe steps in if needed.")),
+        ]
+    }
+    /// V8 section headings: small caps over each section.
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 12, weight: .bold)).tracking(0.96)
+            .foregroundStyle(app.palette.ink3)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    /// The stub over the photo's lower edge; the paper starts `stubRise` down, where the photo ends at rest.
+    private var stubBand: some View {
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+            ticketStub
+            if let planMessage {
+                Text(planMessage).font(.footnote).foregroundStyle(app.palette.ink2)
+                    .padding(.horizontal, 6)
+                    .transition(.opacity)
+                    .accessibilityIdentifier("event.plan.message")
+            }
+            if let note = venueTimeNote {
+                Text(note).font(.footnote).foregroundStyle(app.palette.ink3)
+                    .padding(.horizontal, 6)
+                    .accessibilityIdentifier("event.fact.venueTime")
+            }
+        }
+        .padding(.horizontal, 16)
+        .background(alignment: .top) {
+            // No hard edge under the ticket: the paper fades in below it so the stub floats.
+            VStack(spacing: 0) {
+                Color.clear.frame(height: stubRise - 8)
+                LinearGradient(colors: [app.palette.paper.opacity(0), app.palette.paper], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 52)
+                app.palette.paper
+            }
+        }
+    }
+
+    /// Date block, time + countdown, the place with Directions, the perforation, then price + one seat chip.
+    private var ticketStub: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 0) {
+                if stubBlock != nil || whenParts.time != nil {
+                    HStack(alignment: .center, spacing: BanbeTheme.Space.l) {
+                        if let b = stubBlock {
+                            // Note 77: a bigger block so the row has no empty right half.
+                            VStack(spacing: 4) {
+                                Text(b.month).font(.system(size: 13, weight: .bold)).tracking(1.04)
+                                Text(b.day).font(BanbeTheme.display(46).weight(.heavy))
+                                Text(b.weekday).font(.system(size: 12.5, weight: .bold)).tracking(0.8).lineLimit(1).minimumScaleFactor(0.8)
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 16).padding(.vertical, 14)
+                            .frame(minWidth: 100)
+                            .background(app.palette.clay, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            // Note 77: the page flips down from its top edge like a tear-off calendar.
+                            .rotation3DEffect(.degrees(entered || reduceMotion ? 0 : -100), axis: (x: 1, y: 0, z: 0), anchor: .top, perspective: 0.6)
+                            .opacity(entered || reduceMotion ? 1 : 0)
+                            .animation(reduceMotion ? nil : .spring(response: 0.62, dampingFraction: 0.62).delay(0.36), value: entered)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(whenParts.date ?? "\(b.weekday) \(b.day) \(b.month)")
+                            .accessibilityIdentifier("event.fact.when")
+                        }
+                        VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+                            if let time = whenParts.time {
+                                Text(time).font(BanbeTheme.display(31).weight(.heavy))
+                                    .accessibilityIdentifier("event.fact.time")
+                            }
+                            if let cd = stubCountdown {
+                                Label(cd, systemImage: "clock")
+                                    .font(.system(size: 12.5, weight: .bold))
+                                    .foregroundStyle(app.palette.clay)
+                                    .padding(.horizontal, 12).padding(.vertical, 7)
+                                    .background(app.palette.clayBg, in: Capsule())
+                                    .accessibilityIdentifier("event.countdown")
+                            }
+                        }
+                        Spacer(minLength: 0)
+                        EventPlanButtons(event: event, day: stubBlock?.day ?? "", month: stubBlock?.weekday ?? "",
+                                         onMessage: { m in withAnimation(.easeOut(duration: 0.2)) { planMessage = m } })
+                            .allowsHitTesting(!isPreview)
+                            .modifier(EntranceRise(shown: entered, step: 4, x: 14, y: 0, animated: !reduceMotion))
+                    }
+                    .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 14)
+                }
+                HStack(spacing: 11) {
+                    Image(systemName: "mappin").font(.system(size: 19, weight: .semibold)).foregroundStyle(app.palette.clay)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(placeLine.isEmpty ? app.T("Địa điểm", "Place") : placeLine)
+                            .font(.system(size: 16, weight: .bold)).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                        Text(placeSub).font(.system(size: 12.5)).foregroundStyle(app.palette.ink2)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("event.fact.where")
+                    Spacer(minLength: 0)
+                    if let mapsURL = event.mapsURL {
+                        Button {
+                            // Opening directions is the natural moment to also offer the distance, if never decided.
+                            if app.located == nil { app.askLocation() }
+                            openURL(mapsURL)
+                        } label: {
+                            Label(app.T("Chỉ đường", "Directions"), systemImage: "location")
+                                .font(.system(size: 13.5, weight: .bold))
+                                .foregroundStyle(app.palette.paper)
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: 44)
+                                .background(app.palette.ink, in: Capsule())
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .allowsHitTesting(!isPreview)
+                        .accessibilityIdentifier("event.address")
+                    }
+                }
+                .padding(.leading, 13).padding(.trailing, 10).padding(.vertical, 10)
+                .background(app.palette.surface2, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .padding(.horizontal, 18).padding(.top, (stubBlock == nil && whenParts.time == nil) ? 18 : 0).padding(.bottom, 17)
+            }
+            .background(TicketStubHalf(edge: .top, radius: 20, notch: 12.5).fill(app.palette.surface1))
+            VStack(spacing: 0) {
+                Line().stroke(app.palette.clay.opacity(0.55), style: StrokeStyle(lineWidth: 2, dash: [6, 5]))
+                    .frame(height: 2).padding(.horizontal, 25)
+                    .accessibilityHidden(true)
+                if !event.price.isEmpty || seatPill != nil {
+                    HStack(alignment: .center, spacing: BanbeTheme.Space.m) {
+                        if !event.price.isEmpty {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(app.trStatus(event.price)).font(BanbeTheme.display(27).weight(.heavy))
+                                if !event.isFree { Text(app.T("/ vé", "/ ticket")).font(.system(size: 14)).foregroundStyle(app.palette.ink2) }
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("event.price")
+                        }
+                        Spacer(minLength: 0)
+                        if let pill = seatPill {
+                            Text(pill.text)
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(pill.fg)
+                                .padding(.horizontal, 14).padding(.vertical, 9)
+                                .background(pill.bg, in: Capsule())
+                                .accessibilityIdentifier("event.seatStatus")
+                        }
+                    }
+                    .padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 19)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("event.fact.seats")
+                }
+            }
+            .background(TicketStubHalf(edge: .bottom, radius: 20, notch: 12.5).fill(app.palette.surface1))
+        }
+        .foregroundStyle(app.palette.ink)
+        .compositingGroup()
+        .shadow(color: app.palette.ink.opacity(0.30), radius: 0.6)
+        .shadow(color: .black.opacity(0.22), radius: 9, y: 12)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.ticketStub")
+    }
+
+    /// The strip never repeats the cover above it or the same URL twice (note 70); the viewer still pages through all.
+    private var stripList: [PhotoGalleryItem] {
+        EventDetailPresentation.stripPhotos(realPhotos, heroURL: event.img.isEmpty ? nil : event.img) { $0.url }
+    }
+
+    /// Story-first band on the photo (note 70): category / minimum-age / invite pills, then the title with the calendar
+    /// circle, all white over the hero's bottom scrim.
+    private var heroTitleBand: some View {
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
+            FlowRow(spacing: BanbeTheme.Space.s) {
+                if !app.trStatus(event.cat).isEmpty {
+                    Text(app.trStatus(event.cat).uppercased())
+                        .font(.footnote.weight(.semibold)).tracking(0.5)
+                        .foregroundStyle(Color(red: 0.106, green: 0.098, blue: 0.086))
+                        .padding(.horizontal, 12).padding(.vertical, 4)
+                        .background(Color.white.opacity(0.92), in: Capsule())
+                        .accessibilityIdentifier("event.category")
+                }
+                if let age = facts.minAge {
+                    Text(age.value)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 11).padding(.vertical, 3)
+                        .overlay(Capsule().stroke(Color.white.opacity(0.85), lineWidth: 1))
+                        .accessibilityLabel("\(age.label) \(age.value)")
+                        .accessibilityIdentifier("event.typeFact.\(age.id)")
+                }
+                if event.inviteOnly {
+                    Text(app.T("Riêng tư · theo lời mời", "Private · invite only"))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 4)
+                        .background(app.palette.clay.opacity(0.85), in: Capsule())
+                        .accessibilityIdentifier("event.inviteChip")
+                }
+            }
+            .modifier(EntranceRise(shown: entered, step: 0, y: 12, animated: !reduceMotion))
+            // Note 77: the title alone; the calendar choices live in the ticket stub.
+            EventPlanTitleRow(event: event, onPhoto: true)
+                .modifier(EntranceRise(shown: entered, step: 1, y: 14, animated: !reduceMotion))
+                .opacity(1 - titleProgress)
+                .scaleEffect(1 - 0.3 * titleProgress, anchor: .bottomLeading)
+                .offset(y: -12 * titleProgress)
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: EventTitleFrameKey.self, value: g.frame(in: .global))
+                })
+                .onPreferenceChange(EventTitleFrameKey.self) { titleFrame = $0 }
+        }
+        .padding(.horizontal, 22)
+        .padding(.bottom, 20)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.heroTitle")
+    }
+
+    private var details: some View {
+        // One spacing scale (note 68): 24 between sections, 8–12 inside one.
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.xl) {
+            if let shareStoryMessage {
+                Text(shareStoryMessage)
+                    .font(.footnote)
+                    .foregroundStyle(app.palette.ink3)
+            }
+
+            // Overview (V8, note 75): who can reserve, then "Good to know" (alcohol, each dietary choice, minimum age, the
+            // type's other facts) as icon rows, then About.
+            VStack(alignment: .leading, spacing: BanbeTheme.Space.xl) {
+                // Who can reserve, in plain words with this viewer's result (note 70); the unmet card keeps its action.
+                criteriaSection
+                    .id("event.criteria")
+                if !needRows.isEmpty { needToKnowSection }
+                // About (note 68): the description clamped to 3 lines ("Read more" expands it here); "More ›" opens the
+                // About & Included sheet. Never a heading with nothing under it.
+                if about.visible { aboutSection }
+            }
+            .id("sec.overview")
+            .eventSectionTop("overview")
+            // "On the menu" / "Included" (V8): up to 3 cards.
+            if !cards.isEmpty { includedItemsSection.id("sec.menu").eventSectionTop("menu") }
+            // The host, once (note 68): a card with the name, real stats and an outlined Message pill.
+            hostSection.allowsHitTesting(!isPreview).id("sec.host").eventSectionTop("host")
+
+            // L2 (switch event_recap): a guest who went opens their recap card, where the private feedback lives.
+            if barState == .endedAttended, !isPreview, app.eventRecapEnabled, (app.realEventsByID[event.key] ?? nil) != nil {
+                InkButton(title: app.T("Xem tổng kết và gửi cảm nhận", "See the recap and share feedback")) {
+                    app.openEventRecap(event.key, back: .event)
+                }
+                .accessibilityIdentifier("event.openRecap")
+            }
+            if isOver, !isPreview, let orgID = endedOrganizerID {
+                endedNextSection(orgID)
+            }
+
+            VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
+                // "Hình ảnh · N": the horizontal photo strip (V8 tiles).
+                let photoCount = preview?.photos.count ?? stripList.count
+                sectionLabel(app.T("Hình ảnh", "Photos") + (photoCount > 0 ? " · \(photoCount)" : ""))
+                // STAGE D (2026-09-25) — real event_photos rows, not the static demo `event.gallery`. A genuinely
+                // photo-less real event shows plain text, never a fake/demo photo standing in for a real one.
+                if let preview {
+                    if preview.photos.isEmpty {
+                        Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet."))
+                            .font(.footnote).foregroundStyle(app.palette.ink3)
+                    } else {
+                        previewPhotoStrip(preview.photos)
+                    }
+                } else if app.eventPhotosLoading {
+                    Text(app.T("Đang tải…", "Loading…"))
+                        .font(.footnote).foregroundStyle(app.palette.ink3)
+                } else if stripList.isEmpty {
+                    Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet."))
+                        .font(.footnote).foregroundStyle(app.palette.ink3)
+                } else {
+                    photoStrip
+                }
+            }
+            .id("sec.photos")
+            .eventSectionTop("photos")
+            // Protected booking (V8): the escrow steps in plain words; hidden once there is nothing left to protect.
+            if hasProtection { protectionSection.id("sec.safe").eventSectionTop("safe") }
+            }
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 22)
+        .padding(.top, BanbeTheme.Space.xl)
+        .padding(.bottom, BanbeTheme.Space.xl + 8)
+    }
+
+    /// Ngày / Giờ / Địa điểm tile (note 68): clay icon, the value (what you came for) over a quiet label, each on one
+    /// line at standard text sizes (note 70). All three
+    /// share one width (each takes `maxWidth: .infinity`) and one height (the row is `fixedSize` vertically); the
+    /// Simple Shell surface2 fill (= the light block), no hairline.
+    private func tile<Content: View>(_ symbol: String, _ label: String, @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.xs) {
+            Image(systemName: symbol).font(.system(size: 15)).foregroundStyle(app.palette.clay)
+                .padding(.bottom, BanbeTheme.Space.xs)
+                .accessibilityHidden(true)
+            content().font(.subheadline.weight(.semibold)).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            Text(label).font(.footnote).foregroundStyle(app.palette.ink3).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(BanbeTheme.Space.m)
+        .background(app.palette.surface2, in: RoundedRectangle(cornerRadius: BanbeTheme.Radius.tile, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private var dateTile: some View {
+        if let date = whenParts.date {
+            tile("calendar", app.T("Ngày", "Date")) { Text(date) }
+                .accessibilityIdentifier("event.fact.when")
+        }
+    }
+
+    @ViewBuilder private var timeTile: some View {
+        if let time = whenParts.time {
+            tile("clock", app.T("Giờ", "Time")) { Text(time) }
+                .accessibilityIdentifier("event.fact.time")
+        }
+    }
+
+    /// Real events show the VENUE's wall clock (migration 195); when this device reads it differently, the viewer's
+    /// own clock as one quiet line under the tiles (web `viewerTimeNote`).
+    private var venueTimeNote: String? {
+        guard let zone = event.eventTimeZone, let start = event.startDate else { return nil }
+        return SchedulePresentation.viewerTimeNote(start: start, venueZone: zone, vi: !app.isEN)
+    }
+
+    private var placeTile: some View {
+        tile("mappin.and.ellipse", placeDistance.map { app.T("Cách \($0)", "\($0) away") } ?? app.T("Địa điểm", "Place")) { Text(placeLine) }
+            .accessibilityIdentifier("event.fact.where")
+            .overlay(alignment: .topTrailing) {
+                if let mapsURL = event.mapsURL {
+                    // Icon-only (no text, to save space): opens directions in Maps.
+                    Button {
+                        // Opening directions is the natural moment to also offer the distance, if never decided.
+                        if app.located == nil { app.askLocation() }
+                        openURL(mapsURL)
+                    } label: {
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(app.palette.clay)
+                            .frame(width: 28, height: 28)
+                            .background(app.palette.clayBg, in: Circle())
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(-2)
+                    .accessibilityLabel(app.T("Xem bản đồ", "Directions"))
+                    .accessibilityIdentifier("event.address")
+                }
+            }
+    }
+
+    /// About (note 68): heading ("More ›" opens the About & Included sheet when it has an intro or items), the
+    /// description clamped to 3 lines with "Read more" expanding it in place. The included items are their own
+    /// section below (note 70).
+    private var aboutSection: some View {
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
+            Button { if about.hasSheet { introIncludedSheetOpen = true } } label: {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(app.T("Giới thiệu", "About")).font(BanbeTheme.display(17))
+                    Spacer()
+                    if about.hasSheet {
+                        Text(app.T("Xem thêm", "More") + " ›").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.clay)
+                    }
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!about.hasSheet)
+            .accessibilityIdentifier("event.includedSection")
+            .accessibilityLabel(about.hasSheet ? app.T("Giới thiệu và bao gồm, xem thêm", "Introduction and included, view more") : app.T("Giới thiệu", "About"))
+            if !about.body.isEmpty {
+                Text(about.body)
+                    .font(.system(size: 15))
+                    .lineSpacing(4)
+                    .opacity(0.85)
+                    .lineLimit(about.clampable && !aboutExpanded ? EventDetailPresentation.aboutLines : nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("event.description")
+                if about.clampable && !aboutExpanded {
+                    Button { aboutExpanded = true } label: {
+                        Text(app.T("Xem thêm", "Read more")).font(.footnote.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("event.readMore")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(app.palette.ink)
+    }
+
+    /// "On the menu" / "Included" (V8, note 75): up to 3 cards, the label over the host's detail line (no icons: no data).
+    /// When About is hidden, this heading opens the About & Included sheet instead (and carries `event.includedSection`).
+    private var includedItemsSection: some View {
+        let opensSheet = !about.visible && about.hasSheet
+        return VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
+            Button { if opensSheet { introIncludedSheetOpen = true } } label: {
+                HStack(alignment: .firstTextBaseline) {
+                    sectionLabel(menuTitle)
+                    Spacer()
+                    if opensSheet {
+                        Text(app.T("Xem thêm", "More") + " ›").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.clay)
+                    }
+                }
+                .frame(minHeight: opensSheet ? 44 : nil)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!opensSheet)
+            .accessibilityIdentifier(opensSheet ? "event.includedSection" : "event.includedHeading")
+            HStack(alignment: .top, spacing: 9) {
+                ForEach(Array(cards.enumerated()), id: \.offset) { i, c in
+                    VStack(spacing: 5) {
+                        Text(c.label).font(.system(size: 16, weight: .bold)).multilineTextAlignment(.center)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                        if !c.detail.isEmpty {
+                            Text(c.detail).font(.system(size: 12)).foregroundStyle(app.palette.ink2)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                        }
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(app.palette.block, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("event.includedItem.\(i)")
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(app.palette.ink)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.includedItems")
+    }
+
+    /// "Good to know" (V8): icon rows; a sub-line only when the host wrote one (never invented copy). Identifiers keep
+    /// `event.typeFact.<id>` (dietary rows `-2`, `-3`; the age row `min_age-row`, the header pill keeps `min_age`).
+    private var needToKnowSection: some View {
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
+            sectionLabel(app.T("Cần biết trước khi đến", "Good to know"))
+            VStack(alignment: .leading, spacing: BanbeTheme.Space.l) {
+                ForEach(needRows, id: \.key) { r in
+                    HStack(spacing: 13) {
+                        ZStack {
+                            Circle().fill(app.palette.clayBg)
+                            switch r.icon {
+                            case .alcohol: Image(systemName: "wineglass").font(.system(size: 16))
+                            case .dietary: Image(systemName: "leaf").font(.system(size: 16))
+                            case .age: Text(r.badge ?? "").font(.system(size: 13, weight: .bold))
+                            case .fact: Image(systemName: "info.circle").font(.system(size: 16))
+                            }
+                        }
+                        .foregroundStyle(app.palette.clay)
+                        .frame(width: 40, height: 40)
+                        .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(r.title).font(.system(size: 15.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                            if let sub = r.sub {
+                                Text(sub).font(.system(size: 13)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("event.typeFact.\(r.key)")
+                }
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.typeFacts")
+    }
+
+    /// Protected booking (V8): numbered steps joined by a hairline.
+    private var protectionSection: some View {
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
+            sectionLabel(app.T("Đặt chỗ được bảo vệ", "Protected booking"))
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(protectionSteps.enumerated()), id: \.offset) { i, step in
+                    HStack(alignment: .top, spacing: 13) {
+                        Text("\(i + 1)").font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(app.palette.paper)
+                            .frame(width: 33, height: 33)
+                            .background(app.palette.ink, in: Circle())
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(step.0).font(.system(size: 15.5, weight: .bold)).fixedSize(horizontal: false, vertical: true)
+                            Text(step.1).font(.system(size: 13)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.top, 5)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.bottom, i < protectionSteps.count - 1 ? 20 : 0)
+                    .background(alignment: .topLeading) {
+                        if i < protectionSteps.count - 1 {
+                            Rectangle().fill(app.palette.divider).frame(width: 2).padding(.top, 37).padding(.bottom, 3).padding(.leading, 15.5)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.protection")
+    }
+
+    /// A chip's identifier: the first chip of a fact keeps `event.typeFact.<id>`, later ones get `-2`, `-3` (note 70).
+    private func chipID(_ index: Int, _ f: EventTypes.Fact) -> String {
+        let nth = facts.chips.prefix(index).filter { $0.id == f.id }.count
+        return nth == 0 ? "event.typeFact.\(f.id)" : "event.typeFact.\(f.id)-\(nth + 1)"
+    }
+
+    /// Host subline in the card (real stats only).
+    private var hostSubline: String {
+        let stats = app.eventOrganizerID[event.key].flatMap { app.organizerStats[$0] }
+        var parts: [String] = []
+        if let year = stats?.sinceYear { parts.append(app.T("Tham gia từ \(year)", "Joined \(year)")) }
+        if let stats, stats.count > 0 { parts.append(app.T("\(stats.count) sự kiện", stats.count == 1 ? "1 event" : "\(stats.count) events")) }
+        return parts.joined(separator: " · ")
+    }
+
+    // MARK: Phase 1 Q3 — an ended page is not a dead end
+
+    private var isOver: Bool { barState == .ended || barState == .endedAttended }
+    /// Real events only: a demo event without an organizer id shows neither the follow button nor the list.
+    private var endedOrganizerID: String? { app.eventOrganizerID[event.key] ?? event.organizerId }
+
+    /// Follow host, then up to 3 of the host's live events still ahead ("Next from this host"); the photos section
+    /// below already shows the recap (event_photos stays readable for ended events, migration 084).
+    private func endedNextSection(_ organizerID: String) -> some View {
+        let following = app.isFollowing(organizerID)
+        return VStack(alignment: .leading, spacing: 0) {
+            Button { Task { await app.toggleFollowOrganizer(organizerID) } } label: {
+                Label(following ? app.T("Đang theo dõi host ✓", "Following this host ✓") : app.T("Theo dõi host", "Follow host"),
+                      systemImage: "person")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(app.palette.clay)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(following ? app.palette.clay.opacity(0.12) : .clear, in: Capsule())
+                    .overlay(Capsule().stroke(app.palette.clay, lineWidth: 1))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(following ? .isSelected : [])
+            .accessibilityIdentifier("event.ended.follow")
+            if !hostNext.isEmpty {
+                Text(app.T("Sự kiện tiếp theo của host", "Next from this host"))
+                    .font(BanbeTheme.display(20))
+                    .padding(.top, 24)
+                VStack(spacing: 0) {
+                    ForEach(Array(hostNext.enumerated()), id: \.element.id) { index, e in
+                        Button { app.goEvent(e.id) } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(e.name).font(BanbeTheme.display(15)).lineLimit(1)
+                                    Text(app.discoveryWhenLabel(e.startsAt, timeZone: EventMarket.timeZone(e.timeZoneID)))
+                                        .font(.system(size: 12.5)).opacity(0.65)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(app.palette.clay).accessibilityHidden(true)
+                            }
+                            .padding(.vertical, 11)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .overlay(alignment: .top) { if index > 0 { Rectangle().fill(softRule).frame(height: 1) } }
+                        .accessibilityIdentifier("event.ended.next.\(index)")
+                    }
+                }
+                .padding(.top, 8)
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .accessibilityIdentifier("event.ended.section")
+        .task(id: "\(event.key)|\(organizerID)") {
+            hostNext = []
+            let rows = await app.nextFromHost(organizerID: organizerID, excluding: event.key)
+            hostNext = rows
+        }
+    }
+
+    /// "Người tổ chức": its own section — heading, then a soft card with the host and two actions (same outlined clay
+    /// buttons as before).
+    /// The host, once (note 68): avatar, name (wraps to two lines), real stats, a 44pt Message icon button. The whole
+    /// row opens the host's page.
+    private var hostSection: some View {
+        VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
+        sectionLabel(app.T("Chủ nhà", "Host"))
+        HStack(spacing: BanbeTheme.Space.m) {
+            Button { app.openEventOrganizer(eventKey: app.eventKey) } label: {
+                HStack(spacing: BanbeTheme.Space.m) {
+                    organizerAvatar
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: BanbeTheme.Space.s) {
+                            Text(hostName.isEmpty ? app.T("Người tổ chức", "Host") : hostName)
+                                .font(BanbeTheme.display(17)).lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if app.isFollowing(app.eventOrganizerID[event.key]) {
+                                Text("✓ " + app.T("Đang theo dõi", "Following")).font(.caption.weight(.semibold))
+                                    .foregroundStyle(app.palette.clay)
+                            }
+                        }
+                        Text(hostSubline.isEmpty ? app.T("Người tổ chức", "Host") : hostSubline)
+                            .font(.footnote).foregroundStyle(app.palette.ink3)
+                            .accessibilityIdentifier("event.organizerStats")
+                    }
+                    Spacer(minLength: 0)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel([app.T("Người tổ chức", "Host"), hostName, hostSubline].filter { !$0.isEmpty }.joined(separator: ", "))
+            .accessibilityHint(app.T("Mở trang", "Opens profile"))
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("event.organizer")
+            // Moved here from the retired standalone organizer page: message the host straight from the event.
+            Button { app.goChat() } label: {
+                Label(app.T("Nhắn tin", "Message"), systemImage: "bubble.left")
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(app.palette.clay)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 44)
+                    .overlay(Capsule().stroke(app.palette.clay, lineWidth: 1.5))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityLabel(app.T("Nhắn cho ", "Message ") + hostName)
+            .accessibilityIdentifier("event.messageHost")
+        }
+        .padding(12)
+        .background(app.palette.block, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        }
+        .foregroundStyle(app.palette.ink)
+    }
+
+    /// The host's round photo (their initial when there is none).
+    private var organizerAvatar: some View {
+        let stats = app.eventOrganizerID[event.key].flatMap { app.organizerStats[$0] }
+        let url = MediaURLs.organizerAvatar(path: stats?.avatarPath, r2Ref: stats?.avatarR2Ref, variant: .thumb)
+        return ZStack {
+            Circle().fill(app.palette.surface2)
+            if let url {
+                RemoteImage(path: url.absoluteString, maxPixel: 144)
+            } else {
+                Text(String(hostName.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
+                    .font(.system(size: 16, weight: .semibold))
+            }
+        }
+        .frame(width: 40, height: 40)
+        .clipShape(Circle())
+    }
+
+    private var photoStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 9) {
+                ForEach(Array(stripList.enumerated()), id: \.element.id) { index, photo in
+                    // GeometryReader so the tap can read `geo.frame(in: .global)`: the origin rect the photo viewer's
+                    // dismiss animation shrinks back to.
+                    GeometryReader { geo in
+                        Button {
+                            app.openPhoto(gallery: realPhotos, index: realPhotos.firstIndex { $0.id == photo.id } ?? 0, organizer: event.orgName, originRect: geo.frame(in: .global))
+                        } label: {
+                            ZStack(alignment: .topTrailing) {
+                                CatalogPhoto(path: photo.url, height: 172, width: 242, cornerRadius: 16)
+                                // A liked photo gets a filled heart badge; an unliked one shows none here (the
+                                // full-screen viewer's like button is the discoverable way, matching web).
+                                if app.photoEngagement[photo.id]?.likedByMe == true {
+                                    Image(systemName: "heart.fill")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(.white)
+                                        .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
+                                        .padding(8)
+                                        .allowsHitTesting(false)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .onAppear { app.photoThumbFrames[photo.id] = geo.frame(in: .global) }
+                        .onChange(of: geo.frame(in: .global)) { _, f in app.photoThumbFrames[photo.id] = f }
+                        .onDisappear { app.photoThumbFrames[photo.id] = nil }
+                    }
+                    .frame(width: 242, height: 172)
+                    .accessibilityIdentifier("event.photo.\(index)")
+                }
+            }
+        }
+    }
+
+    private var introIncludedSheetContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if let intro = event.intro {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(app.T("Giới thiệu sự kiện", "About this event"))
+                                .font(.system(size: 11.5, weight: .semibold))
+                            // Paragraph breaks on blank lines, same
+                            // convention web's own `introParagraphs`
+                            // (EventDetail.jsx) uses for the same field.
+                            // Note 69: the host's chosen font and colour (details.intro_font / intro_color, migration 207).
+                            let style = EventTypes.introStyle(event.details)
+                            ForEach(Array(intro.components(separatedBy: "\n\n").enumerated()), id: \.offset) { _, paragraph in
+                                Text(paragraph.trimmingCharacters(in: .whitespacesAndNewlines))
+                                    .font(IntroStyle.font(style.font, size: 13.5))
+                                    .foregroundStyle(IntroStyle.color(style.color, app.palette))
+                                    .lineSpacing(5)
+                            }
+                        }
+                    }
+                    let items = event.includedItems ?? []
+                    if !items.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(app.T("Bao gồm", "Included"))
+                                .font(.system(size: 11.5, weight: .semibold))
+                            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.label).font(.system(size: 13.5, weight: .medium))
+                                    if !item.detail.isEmpty {
+                                        Text(item.detail).font(.system(size: 12.5)).opacity(0.7)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .accessibilityIdentifier("event.includedSheet")
+    }
+
+    // A completed event has nothing left to reserve — showing "Reserve"
+    // (or even the sold-out waitlist prompt) on something that already
+    // happened reads as broken, not just unnecessary.
+    private var ended: Bool { event.endedHoursAgo != nil }
+
+    /// One state for the sticky bar (Lib/ReserveBar.swift, mirrored on web). Cancelled is checked before ended/sold
+    /// out because a cancelled event's stale `seatsRemaining` can still read as available or sold out; a held booking
+    /// is NOT a ticket until `Booking.isTicket` (TASK B, 2026-10-01).
+    private var barState: ReserveBar.State {
+        // A checked-in booking ("attended", migration 021) is still that same paid ticket (Phase 1 Q3 "You went ✓").
+        let ticket = myBooking.map { $0.isTicket || ($0.status == "attended" && $0.paymentState == .confirmed) } ?? false
+        return ReserveBar.state(booking: myBooking != nil, ticket: ticket,
+                         cancelled: event.cancelled, ended: ended, soldOut: event.soldOut,
+                         currencyUnavailable: !event.paidBookingAvailable,
+                         blocked: !isPreview && app.reserveEligibilityBlock != nil)
+    }
+
+    /// Sticky action area, ONE row (note 70): the stepper beside the CTA with the live total, then one quiet line with
+    /// the refund promise. Always on screen, so the decision can happen wherever the reader is convinced. Reserve opens
+    /// pre-filled via `app.qty`. At accessibility text sizes the CTA wraps under the stepper.
+    private var actionBar: some View {
+        let state = barState
+        // Preview: what a guest sees on arrival (1 ticket), not whatever the host last picked elsewhere.
+        let qty = isPreview ? 1 : ReserveBar.clampQty(app.qty, max: qtyMax)
+        return VStack(spacing: 6) {
+            if state == .reserve {
+                qtyPresets(qty)
+                    .padding(.bottom, 2)
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: BanbeTheme.Space.s) { qtyStepper(qty); ctaButton(state, qty: qty) }
+                } else {
+                    HStack(spacing: BanbeTheme.Space.s) {
+                        qtyStepper(qty)
+                        ctaButton(state, qty: qty)
+                    }
+                }
+                Label {
+                    Text(event.isOpen && !event.isFree
+                         ? app.T("Hoàn tiền tự động 100% nếu sự kiện bị hủy", "Automatic full refund if the event is cancelled")
+                         : app.T("Chỗ được giữ 30 phút để bạn xác nhận", "Seats are held for 30 minutes while you confirm"))
+                        .font(.footnote)
+                        .foregroundStyle(app.palette.ink.opacity(0.8))
+                } icon: {
+                    Image(systemName: "checkmark.shield").font(.system(size: 12)).foregroundStyle(app.palette.clay)
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("event.trustLine")
+            } else {
+                ctaButton(state, qty: qty)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+        .background {
+            UnevenRoundedRectangle(topLeadingRadius: 22, topTrailingRadius: 22, style: .continuous)
+                .fill(app.palette.paper)
+                .shadow(color: .black.opacity(0.10), radius: 12, y: -4)
+                .ignoresSafeArea(edges: .bottom)
+        }
+    }
+
+    /// V8 (note 75, overrides note 70): 1·2·3 preset chips with their totals; they and the stepper share `app.qty`.
+    /// qty 1–3 lights its chip, 4+ lights none; a chip above the seats left is disabled like the stepper's +. Free events
+    /// show the count only (owner decision 7).
+    private func qtyPresets(_ qty: Int) -> some View {
+        HStack(spacing: BanbeTheme.Space.s) {
+            ForEach(ReserveBar.presets, id: \.self) { n in
+                let on = ReserveBar.presetSelected(qty) == n
+                let enabled = ReserveBar.presetEnabled(n, max: qtyMax)
+                Button { app.qty = ReserveBar.clampQty(n, max: qtyMax); Haptics.light() } label: {
+                    VStack(spacing: 3) {
+                        Text(app.T("\(n) vé", n == 1 ? "1 ticket" : "\(n) tickets")).font(.system(size: 15, weight: .bold))
+                        if !event.isFree {
+                            Text(app.trStatus(ReserveBar.totalPrice(amount: event.priceVnd, currency: event.currency, qty: n)))
+                                .font(.system(size: 12)).foregroundStyle(app.palette.ink2)
+                        }
+                    }
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .padding(.vertical, 4)
+                    .background(on ? app.palette.block : .clear, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(on ? app.palette.ink : app.palette.rule, lineWidth: 1.5))
+                    .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(!enabled)
+                .opacity(enabled ? 1 : 0.35)
+                .accessibilityAddTraits(on ? .isSelected : [])
+                .accessibilityIdentifier("event.qty.\(n)")
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+    }
+
+    /// Outlined − n + with 44pt buttons; clamped to 1…`qtyMax` (never more than the seats left). VoiceOver reads it as
+    /// one adjustable "Tickets, 1" control.
+    private func qtyStepper(_ qty: Int) -> some View {
+        HStack(spacing: 0) {
+            Button { app.qty = ReserveBar.clampQty(qty - 1, max: qtyMax); Haptics.light() } label: {
+                Image(systemName: "minus").font(.system(size: 14, weight: .semibold)).frame(width: 44, height: 48).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(qty <= 1)
+            .opacity(qty <= 1 ? 0.35 : 1)
+            .accessibilityIdentifier("event.qty.minus")
+            Text("\(qty)").font(.system(size: 16, weight: .semibold)).frame(minWidth: 18)
+                .accessibilityIdentifier("event.qty.value")
+            Button { app.qty = ReserveBar.clampQty(qty + 1, max: qtyMax); Haptics.light() } label: {
+                Image(systemName: "plus").font(.system(size: 14, weight: .semibold)).frame(width: 44, height: 48).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(qty >= qtyMax)
+            .opacity(qty >= qtyMax ? 0.35 : 1)
+            .accessibilityIdentifier("event.qty.plus")
+        }
+        .foregroundStyle(app.palette.ink)
+        .overlay(Capsule().stroke(app.palette.rule, lineWidth: 1))
+        .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(app.T("Số vé", "Tickets"))
+        .accessibilityValue("\(qty)")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: app.qty = ReserveBar.clampQty(qty + 1, max: qtyMax)
+            case .decrement: app.qty = ReserveBar.clampQty(qty - 1, max: qtyMax)
+            @unknown default: break
+            }
+        }
+    }
+
+    /// The CTA itself carries `event.actionBar` (ReserveButtonRegressionUITests taps the first element with it, so it
+    /// must not sit on a container whose seat chips would inherit it).
+    @ViewBuilder
+    private func ctaButton(_ state: ReserveBar.State, qty: Int) -> some View {
+        switch state {
+        case .ticket:
+            // The action, with the entry code as a quiet second line (note 68).
+            InkButton(title: app.T("Xem vé của bạn", "View your ticket"), subtitle: app.T("Mã \(myBooking?.code ?? "")", "Code \(myBooking?.code ?? "")")) {
+                app.openHeld()
+            }
+            .accessibilityIdentifier("event.actionBar")
+        case .pending:
+            InkButton(title: app.T("Xem trạng thái thanh toán", "View payment status")) { app.openHeld() }
+                .accessibilityIdentifier("event.actionBar")
+        case .reserve:
+            // Outcome + total before the tap: the guest knows what they are about to hold and pay.
+            let total = app.trStatus(ReserveBar.totalPrice(amount: event.isFree ? 0 : event.priceVnd, currency: event.currency, qty: qty))
+            InkButton(title: qty == 1 ? app.T("Giữ chỗ · ", "Reserve · ") + total
+                                      : app.T("Giữ \(qty) chỗ · ", "Reserve \(qty) seats · ") + total) {
+                app.goReserve()
+            }
+            .accessibilityIdentifier("event.actionBar")
+        case .cancelled:
+            fieldLabel(app.T("Sự kiện đã bị huỷ", "Event has been cancelled"))
+                .accessibilityIdentifier("event.actionBar")
+        case .endedAttended:
+            fieldLabel(app.T("Bạn đã tham gia ✓", "You went ✓"))
+                .accessibilityIdentifier("event.actionBar")
+        case .ended:
+            fieldLabel(app.T("Sự kiện đã kết thúc", "This event has ended"))
+                .accessibilityIdentifier("event.actionBar")
+        case .soldOut:
+            Button { app.goChat() } label: { fieldLabel(app.T("Hết chỗ · nhắn để vào danh sách chờ", "Sold out · message for waitlist")) }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("event.actionBar")
+        case .currencyUnavailable:
+            // Paid USD events (migration 195): shown with their price, but booking isn't open yet. Disabled with the
+            // reason in place (note 48's disabledReason pattern), never an error after a tap.
+            InkButton(title: app.T("Giữ chỗ · ", "Reserve · ") + app.trStatus(event.price), enabled: false,
+                      disabledReason: app.T("Đặt vé trả phí cho sự kiện tại Mỹ sẽ sớm mở", "Paid booking for US events opens soon")) {}
+                .accessibilityIdentifier("event.actionBar")
+        case .blocked:
+            // The bar says WHY it can't be used, and tapping scrolls to the full explanation card instead of a dead tap.
+            Button { criteriaScrollRequest += 1 } label: { fieldLabel(app.T("Chưa đủ điều kiện · xem lý do", "Not eligible yet · see why")) }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("event.actionBar")
+        }
+    }
+
+    private func fieldLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 15, weight: .semibold))
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 15)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .foregroundStyle(app.palette.ink)
+    }
+
+    /// Shares the event through `/api/photo-share?eid=` (api/photo-share.js), which serves Open Graph tags
+    /// with the event's COVER photo as the preview (banbe.app no longer exists, so the old link was dead).
+    /// The share sheet itself previews the cover straight from the cache via `PhotoShareSource`.
+    private func share() {
+        let origin = AppConfig.publicWebOrigin
+        guard let id = event.key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "\(origin)/api/photo-share?eid=\(id)") else { return }
+        let text = [event.name, event.where].filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
+        Task {
+            let image = event.img.isEmpty ? nil : await PhotoLoader.load(path: event.img, maxPixel: 1600)
+            await MainActor.run {
+                let items: [Any] = [text, PhotoShareSource(image: image, title: event.name, url: url)]
+                let activity = UIActivityViewController(activityItems: items, applicationActivities: nil)
+                activity.completionWithItemsHandler = { type, completed, _, _ in
+                    guard completed else { return } // share_completed only for a share that really went out
+                    Analytics.track(.shareCompleted(channel: AppEventRules.shareChannel(type), context: "event"))
+                }
+                UIApplication.shared.topViewController?.present(activity, animated: true)
+            }
+        }
+    }
+}
+
+extension UIApplication {
+    /// Topmost view controller — needed to present UIKit's share sheet from
+    /// SwiftUI without threading a presenter through every screen.
+    var topViewController: UIViewController? {
+        let scene = connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        var top = scene?.keyWindow?.rootViewController
+        while let presented = top?.presentedViewController { top = presented }
+        return top
+    }
+}
+
+private struct DragPoseModifier: ViewModifier {
+    let radius: CGFloat
+    let scale: CGFloat
+    let offsetY: CGFloat
+    func body(content: Content) -> some View {
+        content
+            .mask { RoundedRectangle(cornerRadius: radius, style: .continuous).ignoresSafeArea() }
+            .scaleEffect(scale)
+            .offset(y: offsetY)
+    }
+}
+
+/// The look of the controls over the cover photo: clay-tinted glass with a white glyph (legible on bright, busy and
+/// dark covers), or — once the solid nav bar has taken over — no chrome at all and a clay glyph.
+private struct ControlChrome: ViewModifier {
+    let collapsed: Bool
+    let clay: Color
+    let shape: AnyShape
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(collapsed ? clay : .white)
+            .background {
+                if !collapsed {
+                    // Note 71 phase 4: a fixed deep clay (not the theme clay, which made the white glyph 1.65:1 in dark
+                    // on a bright cover). Reduce Transparency: fully opaque.
+                    ZStack {
+                        if !reduceTransparency { shape.fill(.ultraThinMaterial) }
+                        shape.fill(BanbeTheme.photoControl.opacity(reduceTransparency ? 1 : BanbeTheme.photoControlAlpha))
+                    }
+                }
+            }
+            .overlay { if !collapsed { shape.stroke(Color.white.opacity(0.32), lineWidth: 0.5) } }
+            .shadow(color: .black.opacity(collapsed ? 0 : 0.2), radius: 8, y: 3)
+    }
+}
+
+/// One half of the V8 ticket stub (note 75): rounded on its outer edge, with a semicircular notch at both ends of the
+/// perforation edge. Web twin: TicketStub.jsx's radial masks.
+struct TicketStubHalf: Shape {
+    enum Edge { case top, bottom }
+    let edge: Edge
+    let radius: CGFloat
+    let notch: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let body = Path(roundedRect: rect, cornerRadii: edge == .top
+                        ? RectangleCornerRadii(topLeading: radius, bottomLeading: 0, bottomTrailing: 0, topTrailing: radius)
+                        : RectangleCornerRadii(topLeading: 0, bottomLeading: radius, bottomTrailing: radius, topTrailing: 0),
+                        style: .continuous)
+        let y = edge == .top ? rect.maxY : rect.minY
+        var holes = Path()
+        holes.addEllipse(in: CGRect(x: rect.minX - notch, y: y - notch, width: notch * 2, height: notch * 2))
+        holes.addEllipse(in: CGRect(x: rect.maxX - notch, y: y - notch, width: notch * 2, height: notch * 2))
+        return body.subtracting(holes)
+    }
+}
+
+/// A horizontal line through the middle of its frame (the stub's dashed perforation).
+private struct Line: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return p
+    }
+}
+
+/// Note 77: one part of Event Detail rising into place on a fresh open, `step` × 70 ms after the page fades in.
+/// Without animation (Reduce Motion) it only follows `shown`, which is already true then.
+struct EntranceRise: ViewModifier {
+    let shown: Bool
+    let step: Int
+    var x: CGFloat = 0
+    var y: CGFloat = 16
+    var scale: CGFloat = 1
+    var animated = true
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(x: shown ? 0 : x, y: shown ? 0 : y)
+            .scaleEffect(shown ? 1 : scale, anchor: .top)
+            .animation(animated ? .spring(response: 0.5, dampingFraction: 0.86).delay(0.16 + Double(step) * 0.07) : nil, value: shown)
+    }
+}

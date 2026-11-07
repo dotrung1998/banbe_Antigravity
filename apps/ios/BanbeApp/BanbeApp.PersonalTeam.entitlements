@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- .claude/notes/18-ios-personal-team-signing.md — the Personal Team
+	     Debug configuration's entitlements file. Deliberately empty: no
+	     capability here has been confirmed to provision under a free/
+	     personal Apple ID. This is NOT the same file as BanbeApp.entitlements
+	     (the ordinary Debug config) — that one now also declares
+	     com.apple.developer.associated-domains (added for Universal Links,
+	     2026-10-01 UX foundation pass), which is exactly the kind of thing
+	     this file exists to avoid, on top of aps-environment (Push), so a
+	     from-scratch personal-team install can never fail to sign over a
+	     capability mismatch. Add a capability here only after confirming
+	     — by an actual successful real-device build — that a free/personal
+	     team can provision it; when in doubt, leave it out and let the
+	     feature it backs degrade safely instead (see AppState+Push.swift,
+	     AppState+Profile.swift's handleUniversalLink). -->
+</dict>
+</plist>

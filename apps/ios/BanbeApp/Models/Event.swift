@@ -1,0 +1,304 @@
+import Foundation
+import MapKit
+
+/// Mirrors the `events` table. `id` is text (a slug), not a uuid.
+/// `status` is only ever queried as 'live' from the client — draft/review/
+/// cancelled/ended rows are filtered out by RLS for anyone but the host.
+struct Event: Codable, Identifiable, Hashable {
+    let id: String
+    var organizerId: String?
+    var slug: String?
+    var name: String
+    var category: String
+    var description: String
+    var area: String
+    var lat: Double?
+    var lng: Double?
+    var startsAt: Date?
+    var priceVnd: Int
+    var capacity: Int
+    var seatsRemaining: Int?
+    var palette: String
+    var visibility: String   // "public" | "invite"
+    var status: String       // "draft" | "review" | "live" | "cancelled" | "ended"
+    var createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizerId = "organizer_id"
+        case slug
+        case name
+        case category
+        case description
+        case area
+        case lat
+        case lng
+        case startsAt = "starts_at"
+        case priceVnd = "price_vnd"
+        case capacity
+        case seatsRemaining = "seats_remaining"
+        case palette
+        case visibility
+        case status
+        case createdAt = "created_at"
+    }
+}
+
+/// Search-matcher fix (Issue 2) — a dedicated join struct rather than
+/// reusing `AppState+Team.swift`'s `EventCreditOrganizerJoin` (which is
+/// `Decodable`-only): `MapEventRow` itself is `Codable` (both directions),
+/// and Swift's synthesized `Encodable` conformance requires every stored
+/// property's type to be `Encodable` too.
+struct MapEventOrganizerJoin: Codable, Hashable { let name: String? }
+
+/// A narrower projection of `events`, used only by the map explore screen
+/// (11-realtime-map.md) — needs `cat_key` (for the pin glyph) which `Event`
+/// above doesn't carry, and skips fields the map has no use for.
+struct MapEventRow: Codable, Identifiable, Hashable {
+    let id: String
+    var catKey: String?
+    var name: String
+    var area: String
+    var lat: Double?
+    var lng: Double?
+    var startsAt: Date?
+    var priceVnd: Int
+    var seatsRemaining: Int?
+    var status: String
+    // Real-cover-photo fix (2026-10-19) — see MapExploreView.swift's
+    // `coverURL(for:)`: this event's own `events.cover_image` (migration
+    // 087), needed so the map card/pin can show ITS OWN photo instead of
+    // falling back to `EventCatalog.find(_:)`, which always resolves to
+    // the FIRST demo catalogue event for any real (non-demo) event id.
+    var coverImage: String?
+    /// `events.cover_r2_ref` (migration 153); absent before it is applied.
+    var coverR2Ref: String? = nil
+    // Keyword-search fix (migration 108) — same idea as web's identical
+    // MapExplore.jsx change: a search term now also matches this event's
+    // own `keywords` (category-derived by default when a host leaves the
+    // field blank at creation), not just its literal name/district.
+    var keywords: [String]?
+    // Search-matcher fix (Issue 2) — mirrors MapExplore.jsx's identical
+    // additions: category DISPLAY label, city, organizer name and
+    // description/intro text, all folded into the one canonical search
+    // document `Search.swift`'s `buildEventSearchDoc` builds, so the text
+    // search box surfaces everything the category chip does regardless of
+    // whether `keywords` happens to be populated for a given row.
+    var catLabel: String?
+    var city: String?
+    var description: String?
+    var intro: String?
+    var organizers: MapEventOrganizerJoin?
+    var organizerName: String? { organizers?.name }
+    // Location hierarchy (migration 112) — feeds `LocationHierarchy`'s
+    // tree/filter (Map now honors the same location selection as Home).
+    var countryCode: String?
+    var stateProvince: String?
+    var neighborhood: String?
+    /// Migration 195 — the event's own IANA zone and currency (`priceVnd` is in that currency's minor unit).
+    /// Absent on a server without 195; `rowCurrency`/`timeZoneID` give the defaults.
+    var tz: String? = nil
+    var currency: String? = nil
+    var rowCurrency: String { EventMarket.rowCurrency(currency) }
+    var timeZoneID: String { EventMarket.rowTimeZoneID(tz: tz, countryCode: countryCode, stateProvince: stateProvince) }
+    /// `events.details` (migration 203); its `cat2` is the second category (note 69).
+    var details: EventDetailsPayload? = nil
+    /// Primary + second category, the same pair Home filters on.
+    var catKeys: [String] {
+        [catKey, EventTypes.secondCategory(details?.values ?? [:], primary: catKey)].compactMap { $0 }
+    }
+    /// Same directions link as Event Detail (`CatalogEvent.mapsURL`).
+    var mapsURL: URL? { CatalogEvent.mapsURL(lat: lat, lng: lng) }
+    var location: EventLocation {
+        EventLocation(countryCode: countryCode, stateProvince: stateProvince, city: city, area: area, neighborhood: neighborhood,
+                      lat: lat, lng: lng)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case tz, currency
+        case countryCode = "country_code"
+        case stateProvince = "state_province"
+        case neighborhood
+        case catKey = "cat_key"
+        case name
+        case area
+        case lat
+        case lng
+        case startsAt = "starts_at"
+        case priceVnd = "price_vnd"
+        case seatsRemaining = "seats_remaining"
+        case status
+        case coverImage = "cover_image"
+        case coverR2Ref = "cover_r2_ref"
+        case keywords
+        case catLabel = "cat_label"
+        case city
+        case description
+        case intro
+        case organizers
+        case details
+    }
+}
+
+/// MapExploreView's own local state, saved onto `AppState.mapExploreState`
+/// right before navigating to Event Detail and restored on return — see
+/// that property's own doc comment and `.claude/notes/11-realtime-map.md`
+/// (bug 2). Plain data, not `Codable`/persisted anywhere beyond memory —
+/// this only needs to survive one screen's round trip within a single app
+/// session, not a relaunch.
+struct MapExploreState {
+    var cameraCenterLat: Double
+    var cameraCenterLng: Double
+    var cameraSpanLat: Double
+    var cameraSpanLng: Double
+    /// One of the three literal fractions `MapExploreView.sheetContent`'s
+    /// `.presentationDetents` declares (0.12/0.45/0.72) — see that view's
+    /// own `sheetFraction`/`detent(for:)` for why a plain Double is used
+    /// instead of storing `PresentationDetent` directly (it isn't a type
+    /// this struct can hold a stable literal of across platform versions).
+    var sheetFraction: Double
+    var catFilter: String
+    var openNowOnly: Bool
+    var sortByDistance: Bool
+    var selectedId: String?
+    /// For You chip + search text survive Event Detail / Edit preferences round trips.
+    var forYou: Bool = false
+    var searchQuery: String = ""
+    /// Map redesign phase 2: the committed search area, restored as-is so the list the user returns to is exactly the
+    /// one they left (nil for "Open in Map", which commits the area around its camera).
+    var committedBounds: MapDiscovery.Bounds? = nil
+    /// Phase 3: the Map's whole filter object (Home's shape) and the area chip's context ("area" / "map").
+    var filters: HomeDiscovery.Filters? = nil
+    /// Map E+ (note 79): the day + hour window (nil on a snapshot from before it = off).
+    var timeWin: MapTimeWindow.Window? = nil
+    var areaContext: String = "map"
+    /// Map v5 (note 73): the city the map was flown to while `areaContext` is "city" (web `cityDest`).
+    var cityContextID: String? = nil
+    /// Task 7 (2026-09-21 follow-up, 11-realtime-map.md) — true only for
+    /// `AppState.openEventOnMap(_:)`'s own from-scratch snapshot, whose
+    /// `cameraSpanLat`/`cameraSpanLng` (0.01°, a tight single-pin view) are
+    /// meant ONLY for the visual camera, never for the data-loading query
+    /// bounds — see `MapExploreView.init(restored:)`'s own use of this flag.
+    var singleEventFocus: Bool = false
+    /// Map E+ (note 79): the list layer was open (and where it was scrolled) and a neighbourhood panel was open (with the
+    /// view it was opened from), so Back from Event Detail returns to exactly that.
+    var listOpen: Bool = false
+    var listOffset: Double = 0
+    var areaPanelKeys: [String]? = nil
+    var areaPanelLabel: String? = nil
+    var preAreaRegion: SavedRegion? = nil
+
+    struct SavedRegion {
+        var centerLat: Double
+        var centerLng: Double
+        var spanLat: Double
+        var spanLng: Double
+    }
+}
+
+/// Address-autocomplete fix pass (2026-09-28) — one candidate from
+/// `AppState.searchCreateAddress(_:)` (MKLocalSearch). Mirrors web's own
+/// `shapeAddressSuggestion` (BanBeContext.jsx) field-for-field, so both
+/// platforms validate/store the exact same shape server-side (migration
+/// 105) despite using different underlying providers (MapKit here,
+/// Nominatim there) — "compare iOS and web behavior without creating
+/// incompatible provider-specific event records," per this ticket.
+struct AddressSuggestion: Identifiable, Equatable {
+    let id: String
+    /// Street + house number ("12 Nguyễn Văn Đậu"), OR a verified named
+    /// venue/POI's own name when no conventional house number exists —
+    /// see `init(mapItem:)`'s own comment for exactly how that's decided.
+    let addressLine: String
+    let district: String
+    let city: String
+    let postalCode: String
+    let isVenue: Bool
+    let lat: Double
+    let lng: Double
+    /// Full human-readable label for the "confirmed" summary UI.
+    let label: String
+    // Location hierarchy (migration 112) — sent as the RPCs' new
+    // `p_country_code`/`p_state_province`/`p_neighborhood`.
+    /// `placemark.isoCountryCode` ("VN"/"US"), uppercased; nil if MapKit
+    /// didn't return one.
+    let countryCode: String?
+    /// `placemark.administrativeArea` — deliberately the SAME source
+    /// `city` already uses for VN (so for a Vietnamese address the two are
+    /// equal; that overlap is honest, not a bug: `city` keeps its existing
+    /// meaning, `stateProvince` is the hierarchy's own level). US
+    /// abbreviations ("CA") are expanded to the full state name so the
+    /// node ID matches web's Nominatim-sourced value.
+    let stateProvince: String?
+    /// `placemark.subLocality`, ONLY when it's genuinely finer than the
+    /// locality `district` already used. With the current district rule
+    /// (subLocality first) that's never true, so this is nil in practice
+    /// — intentionally left honest rather than guessing a finer level.
+    let neighborhood: String?
+    /// Migration 195 — `MKMapItem.timeZone` (the place's own IANA zone, exact for multi-zone US states);
+    /// sent as `p_tz` for a US event. nil when MapKit doesn't say.
+    let timeZoneID: String?
+
+    /// `nil` when MapKit's own result can't resolve to a genuinely
+    /// precise point by this app's rules — same heuristic web's
+    /// `shapeAddressSuggestion` applies to Nominatim's results:
+    /// house-number+street, OR a named place (a real MapKit
+    /// `pointOfInterestCategory`, or any non-empty `MKMapItem.name` when
+    /// there's no house number to use instead) with a resolvable
+    /// district+city. A bare road with no name and no house number, or a
+    /// result with no district/city at all, is rejected — never offered
+    /// as a selectable suggestion.
+    ///
+    /// District/city extraction is a best-effort mapping of Apple's own
+    /// placemark hierarchy (`locality`/`subLocality`/`administrativeArea`)
+    /// onto this app's district/city model — Apple's own geocoding
+    /// granularity for Vietnamese addresses was not verified on-device as
+    /// part of this pass (no simulator/device run), so this is a
+    /// reasonable mapping, not a confirmed-correct one.
+    init?(mapItem: MKMapItem) {
+        let placemark = mapItem.placemark
+        let houseNumber = (placemark.subThoroughfare ?? "").trimmingCharacters(in: .whitespaces)
+        let street = (placemark.thoroughfare ?? "").trimmingCharacters(in: .whitespaces)
+        let venueName = (mapItem.name ?? "").trimmingCharacters(in: .whitespaces)
+        let district = (placemark.subLocality?.isEmpty == false ? placemark.subLocality : placemark.locality) ?? ""
+        let isoCountry = (placemark.isoCountryCode ?? "").trimmingCharacters(in: .whitespaces).uppercased()
+        let adminArea = (placemark.administrativeArea ?? "").trimmingCharacters(in: .whitespaces)
+        let locality = (placemark.locality ?? "").trimmingCharacters(in: .whitespaces)
+        // Location hierarchy (migration 112) — for a US address MapKit's
+        // `administrativeArea` is the state ("CA"), never the city, so
+        // `city` there comes from `locality` instead (there is no real US
+        // event data yet, so no existing row's meaning changes). VN is
+        // unchanged: `city` stays `administrativeArea`.
+        let city = (isoCountry == "US" && !locality.isEmpty) ? locality : adminArea
+        let postalCode = (placemark.postalCode ?? "").trimmingCharacters(in: .whitespaces)
+
+        var resolvedAddressLine = ""
+        var resolvedIsVenue = false
+        if !houseNumber.isEmpty, !street.isEmpty {
+            resolvedAddressLine = "\(houseNumber) \(street)"
+        } else if !venueName.isEmpty {
+            resolvedAddressLine = venueName
+            resolvedIsVenue = true
+        } else {
+            return nil
+        }
+        guard !district.trimmingCharacters(in: .whitespaces).isEmpty, !city.isEmpty else { return nil }
+        guard let coordinate = placemark.location?.coordinate else { return nil }
+
+        self.id = "\(coordinate.latitude),\(coordinate.longitude),\(resolvedAddressLine)"
+        self.addressLine = resolvedAddressLine
+        self.district = district.trimmingCharacters(in: .whitespaces)
+        self.city = city
+        self.postalCode = postalCode
+        self.isVenue = resolvedIsVenue
+        self.lat = coordinate.latitude
+        self.lng = coordinate.longitude
+        self.label = [resolvedAddressLine, district, city].filter { !$0.isEmpty }.joined(separator: ", ")
+        self.countryCode = isoCountry.isEmpty ? nil : isoCountry
+        self.stateProvince = adminArea.isEmpty ? nil : (isoCountry == "US" ? LocationHierarchy.fullUSStateName(adminArea) : adminArea)
+        let subLocality = (placemark.subLocality ?? "").trimmingCharacters(in: .whitespaces)
+        let trimmedDistrict = district.trimmingCharacters(in: .whitespaces)
+        self.neighborhood = (!subLocality.isEmpty && SearchMatch.normalize(subLocality) != SearchMatch.normalize(trimmedDistrict)) ? subLocality : nil
+        self.timeZoneID = mapItem.timeZone?.identifier
+    }
+}

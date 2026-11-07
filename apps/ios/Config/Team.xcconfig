@@ -1,0 +1,4 @@
+// Your Apple Developer Team ID (10 characters) goes here once you have the PAID Apple Developer Program:
+//   node scripts/apple-team-setup.mjs --team <TEAMID>     (docs/apple-setup-checklist.md)
+// Debug and Release include this file. PersonalTeamDebug does not (it stays capability-free for free Apple IDs).
+DEVELOPMENT_TEAM =

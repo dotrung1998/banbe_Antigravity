@@ -1,0 +1,1530 @@
+import SwiftUI
+import UIKit
+import CoreImage.CIFilterBuiltins
+import ImageIO
+
+/// Shared switch treatment: the track follows the Organizer mode control,
+/// while the knob stays native Liquid Glass on iOS 26 and falls back to the
+/// existing material language on older systems.
+struct BanbeLiquidToggleStyle: ToggleStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var dragTranslation: CGFloat = 0
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 12) {
+            configuration.label
+            Spacer(minLength: 8)
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(configuration.isOn ? Color.primary : Color.primary.opacity(0.18))
+                    .frame(width: 44, height: 26)
+                knob
+                    .padding(3)
+                    .offset(x: knobOffset(isOn: configuration.isOn))
+            }
+            .frame(width: 44, height: 26)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 4)
+                    .updating($dragTranslation) { value, state, _ in
+                        state = value.translation.width
+                    }
+                    .onEnded { value in
+                        let travel: CGFloat = 18
+                        let base = configuration.isOn ? travel : 0
+                        let proposed = min(travel, max(0, base + value.translation.width))
+                        let newValue: Bool
+                        if abs(value.translation.width) < 4 {
+                            newValue = !configuration.isOn
+                        } else {
+                            newValue = proposed >= travel / 2
+                        }
+                        guard newValue != configuration.isOn else { return }
+                        if reduceMotion {
+                            configuration.isOn = newValue
+                        } else {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                                configuration.isOn = newValue
+                            }
+                        }
+                    }
+            )
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard abs(dragTranslation) < 4 else { return }
+            if reduceMotion {
+                configuration.isOn.toggle()
+            } else {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                    configuration.isOn.toggle()
+                }
+            }
+        }
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityValue(configuration.isOn ? "On" : "Off")
+    }
+
+    private func knobOffset(isOn: Bool) -> CGFloat {
+        let travel: CGFloat = 18
+        let base = isOn ? travel : 0
+        return min(travel, max(0, base + dragTranslation))
+    }
+
+    @ViewBuilder
+    private var knob: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer {
+                Circle()
+                    .fill(.clear)
+                    .frame(width: 20, height: 20)
+                    .glassEffect(.regular.interactive(), in: Circle())
+            }
+        } else {
+            Circle()
+                .fill(.regularMaterial)
+                .frame(width: 20, height: 20)
+        }
+    }
+}
+
+/// Pulse/loading UX pass (2026-09-27) — the shared Banbe loading visual,
+/// used at every spot the ticket named: a fetching Pulse tab
+/// (PulseViewerView), the branded splash screen and Face ID wait screen
+/// (SplashView/FaceIDLockView), the Confirmed ticket's QR-generation gap,
+/// and a pending seat reservation (RootView's `loadingOverlay`). Web's
+/// equivalent is `src/components/BanbeLoadingVisual.jsx`, sharing the same
+/// bundled `banbe-loading.gif` (see project.yml — referenced in place from
+/// `public/`, exactly like the wordmark/mark artwork, so both platforms
+/// draw the literal same file, never two independently-exported copies).
+///
+/// SwiftUI has no native multi-frame GIF playback (`Image(uiImage:)` only
+/// ever paints an animated `UIImage`'s FIRST frame) — frames are decoded
+/// once via ImageIO and looped through a small `UIViewRepresentable`
+/// (`UIImageView.animationImages`), the standard, documented mechanism for
+/// this. Honors Reduce Motion: shows the GIF's own first frame, static,
+/// instead of looping it — there's no earlier Reduce-Motion precedent on
+/// this codebase to match (grepped both platforms — neither `Loading.jsx`'s
+/// `banbeTumble` spin nor `SplashView`'s orbit arc guards on it today), so
+/// this is a new, narrowly-scoped guard rather than a wider retrofit.
+struct BanbeLoadingVisual: View {
+    var size: CGFloat = 72
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Group {
+            if reduceMotion {
+                if let frame = Self.firstFrame {
+                    Image(uiImage: frame).resizable().scaledToFit()
+                } else {
+                    ProgressView()
+                }
+            } else if !Self.frames.isEmpty {
+                AnimatedGIFView(frames: Self.frames, duration: Self.totalDuration)
+            } else {
+                // Decode failed — never expected (a bundled asset), but a
+                // missing/corrupt file shouldn't blank whichever loading
+                // moment is showing this.
+                ProgressView()
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityLabel(Text("Loading"))
+    }
+
+    /// Decodes the GIF off the main thread at launch, so the first place that
+    /// shows it (the Face ID lock screen after a force quit) doesn't stall on
+    /// decoding it while the person waits.
+    static func prewarm() {
+        DispatchQueue.global(qos: .userInitiated).async { _ = frames.count }
+    }
+
+    // Decoded once, process-wide — every call site (Pulse alone creates
+    // one of these per tab load) shares the same decoded frames instead of
+    // re-parsing the bundled GIF from disk each time this view appears.
+    private static let (frames, durations, firstFrame): ([UIImage], [Double], UIImage?) = {
+        guard let url = Bundle.main.url(forResource: "banbe-loading", withExtension: "gif"),
+              let data = try? Data(contentsOf: url),
+              let source = CGImageSourceCreateWithData(data as CFData, nil)
+        else { return ([], [], nil) }
+        let count = CGImageSourceGetCount(source)
+        var frames: [UIImage] = []
+        var durations: [Double] = []
+        for i in 0..<count {
+            guard let cgImage = CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
+            frames.append(UIImage(cgImage: cgImage))
+            let props = CGImageSourceCopyPropertiesAtIndex(source, i, nil) as? [String: Any]
+            let gifProps = props?[kCGImagePropertyGIFDictionary as String] as? [String: Any]
+            let delay = (gifProps?[kCGImagePropertyGIFUnclampedDelayTime as String] as? Double)
+                ?? (gifProps?[kCGImagePropertyGIFDelayTime as String] as? Double) ?? 0.1
+            durations.append(max(delay, 0.02))
+        }
+        return (frames, durations, frames.first)
+    }()
+
+    private static var totalDuration: Double { durations.reduce(0, +) }
+}
+
+private struct AnimatedGIFView: UIViewRepresentable {
+    let frames: [UIImage]
+    let duration: Double
+
+    func makeUIView(context: Context) -> UIImageView {
+        let view = UIImageView()
+        view.contentMode = .scaleAspectFit
+        view.animationImages = frames
+        view.animationDuration = duration > 0 ? duration : 1
+        view.animationRepeatCount = 0
+        if !frames.isEmpty { view.startAnimating() }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIImageView, context: Context) {}
+}
+
+/// A photo from the catalogue, loaded remotely from the deployed web app's
+/// static assets (see PhotoCatalog / CatalogEvent.photoURL).
+struct CatalogPhoto: View {
+    let path: String
+    var height: CGFloat?
+    var width: CGFloat?
+    var cornerRadius: CGFloat = 14
+
+    @EnvironmentObject private var app: AppState
+
+    /// Longest edge to decode at, in pixels — a 52pt avatar has no use for
+    /// a 1000px decode. Falls back to a full-width card's worth when the
+    /// view sizes itself from the container.
+    private var maxPixel: CGFloat {
+        let points = max(width ?? 0, height ?? 0)
+        let longest = points > 0 ? points : 420
+        return longest * UIScreen.main.scale
+    }
+
+    var body: some View {
+        // The frame comes from the placeholder rectangle, and the photo is
+        // drawn as an overlay on top of it: an overlay can never change its
+        // parent's size, whereas an image sized directly would report its
+        // full pixel width and stretch the whole scroll view sideways once
+        // it finished downloading.
+        Rectangle()
+            .fill(app.palette.field)
+            .frame(width: width, height: height)
+            .frame(maxWidth: width == nil ? .infinity : nil)
+            .overlay { RemoteImage(path: path, maxPixel: maxPixel) }
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+}
+
+/// The banbe logo, drawn from the same PNGs the web app uses
+/// (public/banbe-mark.png and the two wordmarks), so both frontends show
+/// the same artwork rather than iOS approximating it with text.
+///
+/// Drawn as a template tinted with the current ink colour: the artwork is
+/// near-black, which is right on the light paper but would be invisible on
+/// the dark one. The web app renders the PNG as-is and does lose the logo
+/// in its dark theme — tinting keeps the design system's "one ink" rule
+/// and stays identical in light mode.
+struct BanbeLogo: View {
+    enum Kind: String {
+        case mark = "banbe-mark"
+        case wordmark = "banbe-wordmark"
+        case wordmarkSmall = "banbe-wordmark-sm"
+    }
+
+    /// Shared width for the inline wordmark placed before a section title
+    /// (Account, Home, Messages, Notifications) so it reads as one uniform
+    /// mark across every section rather than a different size per screen.
+    static let headerWordmarkWidth: CGFloat = 112
+
+    let kind: Kind
+    var width: CGFloat?
+    var height: CGFloat?
+
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        Group {
+            if let image = UIImage(named: kind.rawValue) {
+                Image(uiImage: image)
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                // Never expected — but a missing asset shouldn't blank the
+                // header on the one screen someone is looking at.
+                Text("banbe").font(BanbeTheme.display(height ?? 24))
+            }
+        }
+        .frame(width: width, height: height)
+        .foregroundStyle(app.palette.logo)
+        .accessibilityLabel("banbe")
+    }
+}
+
+/// Draws a catalogue photo through PhotoLoader. Starts from the memory
+/// cache synchronously, so scrolling back to an already-seen card paints
+/// immediately rather than flashing its placeholder again.
+struct RemoteImage: View {
+    let path: String
+    let maxPixel: CGFloat
+    @State private var image: UIImage?
+
+    init(path: String, maxPixel: CGFloat) {
+        self.path = path
+        self.maxPixel = maxPixel
+        _image = State(initialValue: PhotoLoader.cached(path: path, maxPixel: maxPixel))
+    }
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .transition(.opacity)
+            } else {
+                Color.clear
+            }
+        }
+        // BUG 1 (2026-09-22 eleventh follow-up) — real bug, confirmed by
+        // reading: `@State private var image` is only seeded from `init`'s
+        // `State(initialValue:)` the FIRST time this view is created at a
+        // given position in the tree — a caller that swaps `path` while
+        // this SAME `RemoteImage` instance stays mounted (e.g.
+        // `CatalogPhoto` inside `StoryViewerView`'s `EventShareCard`,
+        // whose view identity is preserved across a horizontal host-swipe
+        // since it's the same struct at the same tree position) does NOT
+        // get a fresh `init()` call, so `image` keeps holding the
+        // PREVIOUS path's picture. `.task(id: path)` correctly restarts
+        // when `path` changes, but its old `guard image == nil else {
+        // return }` treated "already have some image" as "already have
+        // THIS path's image" — so it silently skipped loading the new
+        // path entirely, leaving the stale photo on screen indefinitely.
+        // This is the actual root cause of "swiping to Host B's story
+        // updates the host name but keeps showing Host A's cover/card" —
+        // not React/SwiftUI state-identity reuse in the abstract, but this
+        // ONE concrete stale-guard bug in this shared, widely-used loader.
+        // Fixed: check the SYNCHRONOUS cache for the NEW path specifically
+        // (paints instantly if it's already warm, e.g. from BUG 3's own
+        // preloading) and otherwise clear the stale image immediately
+        // (never show the wrong photo) before awaiting a fresh load.
+        .task(id: path) {
+            if let cached = PhotoLoader.cached(path: path, maxPixel: maxPixel) {
+                image = cached
+                return
+            }
+            image = nil
+            let loaded = await PhotoLoader.load(path: path, maxPixel: maxPixel)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.2)) { image = loaded }
+        }
+    }
+}
+
+/// The on-photo state chip — "Saved", "Going", "Cancelled" and friends.
+struct PhotoChip: View {
+    let text: String
+    var background: Color = BanbeTheme.Chip.saved
+    var foreground: Color = .white
+
+    var body: some View {
+        Text(text.uppercased())
+            .font(.system(size: 10, weight: .semibold))
+            .kerning(0.4)
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(.white.opacity(0.5), lineWidth: 1)
+            )
+    }
+}
+
+/// The primary ink-filled action button used across the web screens.
+struct InkButton: View {
+    let title: String
+    var enabled = true
+    var cornerRadius: CGFloat = 18
+    /// nil = the original fixed 15pt; pass a text style to scale with Dynamic Type.
+    var font: Font? = nil
+    /// Why the button is disabled, shown as a caption under it (note 48).
+    /// nil = no caption (the original behaviour).
+    var disabledReason: String? = nil
+    /// A quiet second line under the title (note 68: the ticket's entry code). nil = one line.
+    var subtitle: String? = nil
+    let action: () -> Void
+
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        if !enabled, let disabledReason, !disabledReason.isEmpty {
+            VStack(spacing: 8) {
+                button.accessibilityHint(disabledReason)
+                Text(disabledReason)
+                    .font(.footnote)
+                    .foregroundStyle(app.palette.ink.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityHidden(true)
+                    .accessibilityIdentifier("inkButton.disabledReason")
+            }
+        } else {
+            button
+        }
+    }
+
+    private var button: some View {
+        Button(action: { if enabled { action() } }) {
+            VStack(spacing: 2) {
+                Text(title)
+                    .font(font ?? .system(size: 15, weight: .semibold))
+                if let subtitle {
+                    Text(subtitle).font(.footnote.monospacedDigit()).opacity(0.7)
+                }
+            }
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, subtitle == nil ? 15 : 10)
+                .background(
+                    enabled ? app.palette.ink : app.palette.ink.opacity(0.16),
+                    in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                )
+                .foregroundStyle(enabled ? app.palette.paper : app.palette.ink)
+                .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        }
+        // Note 53: every button answers the touch (pressed state + a light haptic).
+        .buttonStyle(PressableButtonStyle())
+        .disabled(!enabled)
+    }
+}
+
+/// Note 53: the pressed state shared by every button style here — a slight shrink + dim while held, and a light
+/// haptic on release. No movement under Reduce Motion (the dim stays). Web twin: `.bb-press` in src/index.css.
+struct PressableButtonStyle: ButtonStyle {
+    var haptic = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, pressed in
+                if !pressed && haptic { Haptics.light() }
+            }
+    }
+}
+
+/// Note 53: the quieter alternative next to an `InkButton` — field fill + hairline, optional leading emoji/symbol.
+/// Never solid ink, so it can't be mistaken for the primary action. Web twin: FormControls.jsx `Button variant="secondary"`.
+struct SecondaryButton: View {
+    let title: String
+    var emoji: String? = nil
+    var systemImage: String? = nil
+    var cornerRadius: CGFloat = 18
+    let action: () -> Void
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if let emoji { Text(emoji).accessibilityHidden(true) }
+                if let systemImage { Image(systemName: systemImage).accessibilityHidden(true) }
+                Text(title)
+            }
+            .font(.system(size: 15, weight: .semibold))
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .foregroundStyle(app.palette.ink)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        }
+        .buttonStyle(PressableButtonStyle())
+    }
+}
+
+/// Note 53: what a field is telling you. `.error` = alert border + message; `.warning` = honey border + message
+/// (optionally with a one-tap way out, e.g. "Log in instead?"). Focus itself is shown by `fieldChrome(focused:)`.
+enum FieldState: Equatable {
+    case normal
+    case error(String)
+    case warning(String)
+
+    var message: String? {
+        switch self { case .normal: return nil; case .error(let m), .warning(let m): return m }
+    }
+}
+
+/// Note 53 field chrome (Kole Jain, "Feedback & states"): a focused field gets a clay border and a soft clay halo,
+/// an error an alert border, a warning a honey border. Clay is the decorative accent — never an error, never the
+/// primary CTA — so focus can't be mistaken for either. Web twin: the field-state rules in src/index.css.
+struct FieldChrome: ViewModifier {
+    var focused: Bool
+    var state: FieldState = .normal
+    var cornerRadius: CGFloat = 14
+    /// false = no border at rest (the flat `field`-filled style); the focus/state border still shows.
+    var bordered = true
+    @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var tint: Color? {
+        switch state {
+        case .error: return BanbeTheme.alert
+        case .warning: return app.palette.honey
+        case .normal: return focused ? app.palette.clay : nil
+        }
+    }
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        content
+            .overlay {
+                if let tint {
+                    shape.stroke(tint, lineWidth: 1.5)
+                } else if bordered {
+                    shape.stroke(app.palette.rule, lineWidth: 1)
+                }
+            }
+            .background {
+                if let tint {
+                    RoundedRectangle(cornerRadius: cornerRadius + 3, style: .continuous)
+                        .stroke(tint.opacity(0.2), lineWidth: 4)
+                        .padding(-3)
+                }
+            }
+            .animation(Motion.animation(.easeOut(duration: 0.15), reduce: reduceMotion), value: focused)
+            .animation(Motion.animation(.easeOut(duration: 0.15), reduce: reduceMotion), value: state)
+    }
+}
+
+extension View {
+    func fieldChrome(focused: Bool, state: FieldState = .normal, cornerRadius: CGFloat = 14, bordered: Bool = true) -> some View {
+        modifier(FieldChrome(focused: focused, state: state, cornerRadius: cornerRadius, bordered: bordered))
+    }
+}
+
+/// The line under a field in `.error` / `.warning` (note 53), with an optional inline action.
+struct FieldNote: View {
+    let state: FieldState
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
+    var identifier: String? = nil
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        if let message = state.message, !message.isEmpty {
+            let color: Color = { if case .warning = state { return app.palette.honey }; return BanbeTheme.alert }()
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(message)
+                if let actionTitle, let action {
+                    Button(actionTitle, action: action)
+                        .fontWeight(.bold)
+                        .underline(pattern: .dot)
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier((identifier ?? "field.note") + ".action")
+                }
+            }
+            .font(.system(size: 12.5, weight: .medium))
+            .foregroundStyle(color)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(identifier ?? "field.note")
+        }
+    }
+}
+
+/// A labelled text field styled like the web app's glass fields.
+struct BanbeField: View {
+    let label: String?
+    let placeholder: String
+    @Binding var text: String
+    var secure = false
+    var keyboard: UIKeyboardType = .default
+    // Required-field marker fix (2026-09-29) — a red "*" next to a field's
+    // label, matching web's identical CreateEvent.jsx change, so a host
+    // can tell before tapping "Review before submitting" which fields
+    // actually block it (event name, confirmed address) rather than
+    // finding out only from the error message afterward.
+    var required = false
+    /// Note 48 form style: an SF Symbol before an uppercase label, and a
+    /// larger, bordered input (used by Create event). nil = original look.
+    var icon: String? = nil
+    /// Create-event field id for the ✓ in its label (note 66).
+    var doneField: String? = nil
+    /// Note 69: a long text. Grows over these lines and is never shorter than two one-line fields (LongText).
+    var lines: ClosedRange<Int>? = nil
+    /// Note 69: shows the Expand button in the label row (opens the whole text in a sheet).
+    var onExpand: (() -> Void)? = nil
+    /// Note 53: error / warning state (border + message under the field).
+    var state: FieldState = .normal
+    /// Note 53: lets a screen drive focus (Create event's "take me to this field"). Without it the field
+    /// tracks its own focus, which is all the focus border needs.
+    var focus: FocusState<String?>.Binding? = nil
+    var focusID: String? = nil
+    /// Note 53: an optional one-tap way out shown in the note under the field ("Log in instead?").
+    var noteActionTitle: String? = nil
+    var noteAction: (() -> Void)? = nil
+    var noteIdentifier: String? = nil
+    /// Autofill hint (.username / .password / .newPassword) so Passwords can fill the field.
+    var contentType: UITextContentType? = nil
+
+    @EnvironmentObject private var app: AppState
+    @FocusState private var ownFocus: Bool
+
+    private var isFocused: Bool {
+        if let focus, let focusID { return focus.wrappedValue == focusID }
+        return ownFocus
+    }
+
+    var body: some View {
+        if let icon { iconStyle(icon) } else { plainStyle }
+    }
+
+    @ViewBuilder
+    private var input: some View {
+        let field = Group {
+            if secure { SecureField(placeholder, text: $text) }
+            else if let lines { TextField(placeholder, text: $text, axis: .vertical).lineLimit(lines) }
+            else { TextField(placeholder, text: $text) }
+        }
+        .textContentType(contentType)
+        if let focus, let focusID {
+            field.focused(focus, equals: focusID)
+        } else {
+            field.focused($ownFocus)
+        }
+    }
+
+    private func iconStyle(_ icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let label {
+                HStack(spacing: 0) {
+                    FormFieldLabel(icon: icon, text: label, required: required, field: doneField)
+                    if let onExpand {
+                        Spacer(minLength: 8)
+                        ExpandFieldButton(fieldName: label, identifier: doneField.map { "create.expand.\($0)" }, action: onExpand)
+                            .padding(.vertical, -12)
+                    }
+                }
+            }
+            input
+            .frame(minHeight: lines == nil ? nil : LongText.minBoxHeight - 30, alignment: .topLeading)
+            .font(.system(size: 16))
+            .keyboardType(keyboard)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(keyboard == .emailAddress ? .never : .sentences)
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 16).padding(.vertical, 15)
+            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .fieldChrome(focused: isFocused, state: state, cornerRadius: 14)
+            FieldNote(state: state, actionTitle: noteActionTitle, action: noteAction, identifier: noteIdentifier)
+        }
+    }
+
+
+    private var plainStyle: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if let label {
+                HStack(spacing: 3) {
+                    Text(label).font(.system(size: 11.5)).foregroundStyle(app.palette.ink)
+                    if required {
+                        Text("*").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                    }
+                }
+            }
+            input
+            .font(.system(size: 14))
+            .keyboardType(keyboard)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(keyboard == .emailAddress ? .never : .sentences)
+            .foregroundStyle(app.palette.ink)
+            .padding(13)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .fieldChrome(focused: isFocused, state: state, cornerRadius: 12, bordered: false)
+            FieldNote(state: state, actionTitle: noteActionTitle, action: noteAction, identifier: noteIdentifier)
+        }
+    }
+}
+
+/// Note 53 (owner report): a small anchored menu shown as a popover. Used where SwiftUI's `Menu` left a white
+/// platter behind its label for a moment after closing (iOS 26 lifts the label's bounding box into the menu and
+/// puts it back): the dock "+" and Event Detail's calendar button. A popover zooms out of its source without
+/// lifting it. Rows: icon + title, 50pt tall, hairline dividers; destructive rows in the alert colour.
+struct PopoverMenuItem: Identifiable {
+    let id: String
+    let title: String
+    let systemImage: String
+    var destructive = false
+    var disabled = false
+    let action: () -> Void
+}
+
+struct PopoverMenuList: View {
+    let items: [PopoverMenuItem]
+    let dismiss: () -> Void
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                if index > 0 { Divider().overlay(app.palette.rule) }
+                Button {
+                    dismiss()
+                    // Let the popover finish closing before the action presents anything (a sheet, a picker…).
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { item.action() }
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: item.systemImage)
+                            .font(.system(size: 17, weight: .medium))
+                            .frame(width: 24)
+                            .accessibilityHidden(true)
+                        Text(item.title)
+                            .font(.body)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(item.destructive ? BanbeTheme.alert : app.palette.ink)
+                    .padding(.horizontal, 18)
+                    .frame(minHeight: 50)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(item.disabled)
+                .opacity(item.disabled ? 0.55 : 1)
+                .accessibilityIdentifier(item.id)
+            }
+        }
+        .padding(.vertical, 4)
+        .frame(width: 280)
+        .presentationCompactAdaptation(.popover)
+    }
+}
+
+/// Note 53 (owner report): the banbe logo + section title at the top of every dock tab (Home, Schedule, Messages,
+/// Account; Map has its own search header). One component, one size, one gap, one row height and one side padding,
+/// so switching tabs never makes the logo or the title jump. Guarded by DockHeaderUITests (same title frame on
+/// every tab, EN + VI).
+struct DockHeaderTitle: View {
+    let title: String
+    let identifier: String
+    var logoWidth: CGFloat = BanbeLogo.headerWordmarkWidth
+    var titleSize: CGFloat = 27
+
+    static let spacing: CGFloat = 10
+    /// Every dock header row is this tall, whatever controls sit on its right.
+    static let rowHeight: CGFloat = 52
+    static let horizontalPadding: CGFloat = 20
+
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        HStack(alignment: .center, spacing: Self.spacing) {
+            BanbeLogo(kind: .wordmark, width: logoWidth)
+            Text(title)
+                .font(BanbeTheme.display(titleSize))
+                .foregroundStyle(app.palette.ink)
+                .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier(identifier)
+        }
+    }
+}
+
+/// Icon + uppercase label above a form field (note 48 form style).
+/// Note 66: which required create-event fields are complete, and which just became so. Set once at the root of
+/// CreateEventView from its single progress result; read by `FormFieldLabel(field:)`.
+struct CreateDoneMarks: Equatable {
+    var done: Set<String> = []
+    var fresh: Set<String> = []
+}
+
+private struct CreateDoneMarksKey: EnvironmentKey {
+    static let defaultValue = CreateDoneMarks()
+}
+
+extension EnvironmentValues {
+    var createDoneMarks: CreateDoneMarks {
+        get { self[CreateDoneMarksKey.self] }
+        set { self[CreateDoneMarksKey.self] = newValue }
+    }
+}
+
+/// The small ✓ after a complete required field's label: ink disc, paper check. `pop` draws it once
+/// (scale 0.6 → 1.08 → 1 and the check stroke drawing in); Reduce Motion = a plain fade. Web: `DoneMark`.
+struct DoneMark: View {
+    let field: String
+    var pop = false
+    @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var drawn: CGFloat = 1
+    @State private var scale: CGFloat = 1
+    @State private var shown: Double = 1
+
+    var body: some View {
+        ZStack {
+            Circle().fill(app.palette.ink)
+            CheckShape().trim(from: 0, to: drawn)
+                .stroke(app.palette.paper, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                .frame(width: 9, height: 9)
+        }
+        .frame(width: 16, height: 16)
+        .scaleEffect(scale)
+        .opacity(shown)
+        .accessibilityHidden(true)
+        .accessibilityIdentifier("create.done.\(field)")
+        .onAppear { if pop { play() } }
+        .onChange(of: pop) { _, now in if now { play() } }
+    }
+
+    private func play() {
+        if reduceMotion {
+            shown = 0
+            withAnimation(.easeOut(duration: 0.15)) { shown = 1 }
+            return
+        }
+        drawn = 0; scale = 0.6; shown = 0
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.55)) { scale = 1; shown = 1 }
+        withAnimation(.easeOut(duration: 0.24).delay(0.08)) { drawn = 1 }
+    }
+
+    private struct CheckShape: Shape {
+        func path(in rect: CGRect) -> Path {
+            var p = Path()
+            p.move(to: CGPoint(x: rect.minX + rect.width * 0.08, y: rect.minY + rect.height * 0.53))
+            p.addLine(to: CGPoint(x: rect.minX + rect.width * 0.38, y: rect.minY + rect.height * 0.82))
+            p.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.04, y: rect.minY + rect.height * 0.2))
+            return p
+        }
+    }
+}
+
+struct FormFieldLabel: View {
+    let icon: String
+    let text: String
+    var required = false
+    var trailing: String? = nil
+    /// Create-event field id (note 66): shows the ✓ once this required field is complete.
+    var field: String? = nil
+
+    @EnvironmentObject private var app: AppState
+    @Environment(\.createDoneMarks) private var marks
+
+    private var isDone: Bool { field.map { marks.done.contains($0) } ?? false }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 18)
+                .accessibilityHidden(true)
+            Text(text.uppercased())
+                .font(.system(size: 12, weight: .semibold))
+                .kerning(0.6)
+            if isDone, let field {
+                DoneMark(field: field, pop: marks.fresh.contains(field))
+            } else if required {
+                Text("*").font(.system(size: 12, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                    .accessibilityLabel(app.T("bắt buộc", "required"))
+            }
+            Spacer(minLength: 0)
+            if let trailing {
+                Text(trailing).font(.system(size: 11, weight: .semibold))
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(app.palette.ink.opacity(0.08), in: Capsule())
+            }
+        }
+        .foregroundStyle(app.palette.ink.opacity(0.8))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// A back link ("‹ somewhere"), the web app's standard way back.
+struct BackLink: View {
+    let label: String
+    let action: () -> Void
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        Button(action: action) {
+            Text("‹ \(label)")
+                .font(.system(size: 12))
+                .foregroundStyle(app.palette.ink)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// A real, scannable QR of the booking id — the same value
+/// check_in_guest() accepts, so the organizer's scanner reads it directly.
+/// Fixed black-on-white whatever the theme: a phone camera doesn't know
+/// about the app's palette.
+struct QRCodeImage: View {
+    let value: String
+    var size: CGFloat = 76
+    /// Quiet zone around the code (the paper ticket draws it larger, note 78); other callers keep the default.
+    var padding: CGFloat = 4
+
+    var body: some View {
+        ZStack {
+            Color.white
+            if let image = Self.generate(value) {
+                Image(uiImage: image)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(padding)
+            }
+        }
+        .frame(width: size, height: size)
+    }
+
+    private static func generate(_ value: String) -> UIImage? {
+        let context = CIContext()
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(value.utf8)
+        guard let output = filter.outputImage?.transformedBy(.init(scaleX: 10, y: 10)),
+              let cgImage = context.createCGImage(output, from: output.extent)
+        else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
+}
+
+private extension CIImage {
+    func transformedBy(_ transform: CGAffineTransform) -> CIImage { transformed(by: transform) }
+}
+
+/// Screen scaffold: paper background, the app's own top inset, and a
+/// scrolling body — the shape nearly every web screen has.
+// Matches web's PULL_TRIGGER_PX (App.jsx Shell) for the same "how far is
+// a real pull" feel on both platforms. A free function, not a `static let`
+// on ScreenScaffold itself — stored type properties aren't supported on a
+// generic type.
+let screenScaffoldPullTriggerDistance: CGFloat = 64
+
+struct ScreenScaffold<Content: View>: View {
+    @EnvironmentObject private var app: AppState
+    var scroll = true
+    // Deployment target is iOS 17 (apps/ios/project.yml), so the native
+    // iOS 26 `.tabBarMinimizeBehavior(.onScrollDown)` isn't available —
+    // this is the hand-rolled equivalent: screens that show the bottom tab
+    // bar (BottomTabBar.swift) opt in here so their own ScrollView's offset
+    // drives DockChrome.collapsed, mirroring src/App.jsx's Shell
+    // (which reads the same signal off its own scroll listener).
+    var tracksBottomBarScroll = false
+    // Home task 3 (2026-09-21 follow-up) — web's App.jsx Shell has one
+    // generic, per-screen scroll-position map (`scrollPositions`, keyed by
+    // `state.screen`) that every screen gets for free. SwiftUI has no
+    // equivalent built in, and no raw pixel-offset restore API at this
+    // project's iOS 17 deployment target (`ScrollPosition`/`.scrollPosition(_:)`
+    // for an arbitrary Y offset is iOS 18+) — but `.scrollPosition(id:)`
+    // (iOS 17) DOES exist for a `.scrollTargetLayout()` container, and is
+    // bidirectional: it both reports which id is at the top as the user
+    // scrolls AND scrolls TO that id once the view (re)appears with a
+    // non-nil binding already set. A caller passes a `@Published` id
+    // binding from `AppState` (so it survives the view being torn down and
+    // recreated on screen navigation, the same way `mapExploreState` does
+    // for Map Explore) and gives each scrollable child a stable `.id(...)`
+    // — see `HomeView`'s own use of this for its feed cards.
+    var scrollPositionID: Binding<String?>? = nil
+    /// Exact-offset memory (Home): `restoreOffsetY` is re-applied for ~1s after the scroll view
+    /// appears (a LazyVStack may not have laid out far enough yet), and `onScrollOffset` reports the
+    /// live raw `contentOffset.y` once that restore has finished. Complements `scrollPositionID`,
+    /// which only restores when the target id is already materialized.
+    var restoreOffsetY: CGFloat? = nil
+    var onScrollOffset: ((CGFloat) -> Void)? = nil
+    /// Bumping this pins the scroll view to the very top (overrides any restore in flight).
+    var scrollToTopToken: Int = 0
+    // Refresh-indicator fix pass (2026-09-27, follow-up A) — replaces each
+    // root screen's own plain `.refreshable { await ... }` (whose system
+    // spinner can't be reskinned, see RootRefreshIndicator's own doc
+    // comment). The closure is the exact same reload this screen already
+    // called from `.refreshable` — nothing about WHAT gets reloaded
+    // changes, only how the pull is triggered/drawn. `nil` (every other
+    // screen) means this scaffold behaves exactly as before: no probe
+    // wiring, no indicator overlay.
+    // Pull-refresh-indicator-position fix (2026-09-29) — this was a single
+    // hardcoded `54` shared by every scaffold-based screen, tuned for a
+    // single-row header (a bare title, optionally with icon buttons on the
+    // same line — Inbox, Notifications, Map). AccountView has a SECOND
+    // header row below its title (the Personal/Host/Admin tab pills,
+    // `.padding(.top, 16)` + the pills themselves), so the same constant
+    // landed the indicator mid-way into that row instead of just under the
+    // title, looking visually offset compared to every other screen.
+    // Screens with an extra header row now pass their own larger value
+    // instead of this shared default. Declared BEFORE `onRefresh` so a
+    // multi-line trailing-closure call site (`onRefresh: { ... })`) doesn't
+    // need this argument threaded in after it — Swift requires labeled
+    // arguments in declaration order.
+    var refreshIndicatorTopPadding: CGFloat = 54
+    var onRefresh: (() async -> Void)? = nil
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            app.palette.paper.ignoresSafeArea()
+            if scroll {
+                ScrollView {
+                    // maxWidth pins the content to the viewport — without it
+                    // any wide child (a photo, a long meta line) makes the
+                    // whole page pan sideways.
+                    Group {
+                        if scrollPositionID != nil {
+                            content()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .scrollTargetLayout()
+                        } else {
+                            content()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .background(
+                        (tracksBottomBarScroll || onRefresh != nil)
+                            ? AnyView(ScaffoldScrollProbe(
+                                restoreOffsetY: restoreOffsetY, onOffset: onScrollOffset,
+                                scrollToTopToken: scrollToTopToken,
+                                onChange: { offsetY, userDriven in
+                                    if tracksBottomBarScroll { app.noteScaffoldScroll(offsetY, userDriven: userDriven) }
+                                },
+                                onPullPhase: onRefresh != nil ? { phase, translationY in
+                                    switch phase {
+                                    case .began: app.beginRootPull()
+                                    case .changed: app.updateRootPull(translationY)
+                                    case .ended: app.endRootPull(trigger: onRefresh!)
+                                    case .cancelled: app.cancelRootPull()
+                                    }
+                                } : nil
+                              ))
+                            : AnyView(EmptyView())
+                    )
+                }
+                .modifier(ScrollPositionIDModifier(id: scrollPositionID))
+                // Pull-to-refresh hold fix (2026-09-29) — see
+                // `AppState.rootPullContentOffset`'s own doc comment: holds
+                // the content down at the pulled position for the WHOLE
+                // refresh duration instead of springing back the instant
+                // the finger releases.
+                .offset(y: onRefresh != nil ? app.rootPullContentOffset : 0)
+            } else {
+                content().frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if onRefresh != nil, app.rootPullProgress > 0 || app.rootRefreshing {
+                RootRefreshIndicator(screen: app.screen, progress: app.rootPullProgress, refreshing: app.rootRefreshing)
+                    .padding(.top, refreshIndicatorTopPadding)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        // Ticket's own "dismiss on ... tab switch" clause — leaving this
+        // screen (a dock tap, a swipe commit, or Back) clears any pull
+        // progress/refreshing state before the NEXT onRefresh-enabled
+        // screen mounts, so it never inherits a stale indicator.
+        .onDisappear { if onRefresh != nil { app.cancelRootPull() } }
+    }
+}
+
+/// Applies `.scrollPosition(id:)` only when a binding was actually passed —
+/// `ScrollView` itself has no "no-op" form of that modifier to fall back to.
+private struct ScrollPositionIDModifier: ViewModifier {
+    let id: Binding<String?>?
+    func body(content: Content) -> some View {
+        if let id {
+            // TASK 3 (2026-09-22 twentieth follow-up) — the ticket's own
+            // preferred fallback is the originating card centered in the
+            // revealed viewport, not top-aligned (this modifier's only
+            // current caller is HomeView, so this is safe to make the
+            // default rather than threading a new parameter through).
+            content.scrollPosition(id: id, anchor: .center)
+        } else {
+            content
+        }
+    }
+}
+
+/// BUG 2 follow-up (4d137235 real-device report): the previous mechanism
+/// here — a `GeometryReader` reporting its frame through a `PreferenceKey`
+/// — is a well-known SwiftUI limitation, not a wiring mistake: preference
+/// values only propagate on the `.default` RunLoop mode, but a LIVE
+/// touch-drag runs `UIScrollView`'s own tracking in `.tracking` mode, so
+/// this style of scroll-offset tracking silently stops updating for as
+/// long as a finger is actually down and only "catches up" once you lift
+/// it and momentum/deceleration kicks in (back on `.default` mode) — or
+/// sometimes not even then. This is exactly why the wiring (present and
+/// correct end-to-end: `tracksBottomBarScroll` on Home/Inbox/Notifications/
+/// Account → this probe → `AppState.noteScaffoldScroll()` →
+/// `DockChrome.collapsed` → `BottomTabBar`'s `.scaleEffect`) looked completely
+/// fine on inspection while still doing nothing live on a real device.
+/// KVO on `UIScrollView.contentOffset` does not have this limitation — the
+/// change notification fires synchronously as the property mutates,
+/// independent of which RunLoop mode is currently active, which is exactly
+/// why plain UIKit code has never needed this workaround.
+// Refresh-indicator fix pass (2026-09-27, follow-up B) — `.began` only
+// fires onward to the caller when the gesture is "qualified": the scroll
+// view's own `contentOffset.y` was already at/above the top the instant
+// the finger went down. That's the actual root-cause fix for "icon visible
+// while idle" — the previous version drove `rootPullProgress` straight off
+// raw `contentOffset` KVO, which fires for a momentum bounce past the top,
+// a `.scrollPosition(id:)` restore, or the view's first layout pass, none
+// of which are a real user pull.
+enum ScaffoldPullPhase { case began, changed, ended, cancelled }
+
+/// A one-off "scroll to this offset" for `ScaffoldScrollProbe` (Event Detail V8 tabs, note 75): `y` is measured from the
+/// top of the content (the same 0-at-top value `onScrollMetrics` reports); a new `token` triggers it once.
+struct ScaffoldScrollRequest: Equatable {
+    var token: Int
+    var y: CGFloat
+    var animated = true
+}
+
+struct ScaffoldScrollProbe: UIViewRepresentable {
+    var restoreOffsetY: CGFloat? = nil
+    var onOffset: ((CGFloat) -> Void)? = nil
+    var scrollToTopToken: Int = 0
+    let onChange: (CGFloat, Bool) -> Void
+    var onPullPhase: ((ScaffoldPullPhase, CGFloat) -> Void)? = nil
+    /// Map v5 (note 73): (offset below the top, content height, viewport height) on every scroll — the Map's sticky
+    /// header collapses only when enough content is left to stay scrolled.
+    var onScrollMetrics: ((CGFloat, CGFloat, CGFloat) -> Void)? = nil
+    /// Note 75: scrolls the observed scroll view to `y` (clamped to its range) whenever the token changes.
+    var scrollRequest: ScaffoldScrollRequest? = nil
+
+    func makeUIView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.restoreOffsetY = restoreOffsetY
+        view.onOffset = onOffset
+        view.onChange = onChange
+        view.onPullPhase = onPullPhase
+        view.onScrollMetrics = onScrollMetrics
+        view.scrollToTopToken = scrollToTopToken
+        return view
+    }
+
+    func updateUIView(_ uiView: ProbeView, context: Context) {
+        uiView.onOffset = onOffset
+        uiView.onChange = onChange
+        uiView.onPullPhase = onPullPhase
+        uiView.onScrollMetrics = onScrollMetrics
+        if uiView.scrollToTopToken != scrollToTopToken {
+            uiView.scrollToTopToken = scrollToTopToken
+            uiView.pinToTop()
+        }
+        if let r = scrollRequest, r.token != uiView.scrollRequestToken {
+            uiView.scrollRequestToken = r.token
+            uiView.scroll(toY: r.y, animated: r.animated)
+        }
+    }
+
+    final class ProbeView: UIView {
+        var onChange: ((CGFloat, Bool) -> Void)?
+        var onPullPhase: ((ScaffoldPullPhase, CGFloat) -> Void)?
+        var onScrollMetrics: ((CGFloat, CGFloat, CGFloat) -> Void)?
+        var restoreOffsetY: CGFloat?
+        var onOffset: ((CGFloat) -> Void)?
+        /// True while the saved offset is still being re-applied; live offsets are not reported
+        /// then, so the initial layout's offset 0 never overwrites the value being restored.
+        private var restoring = false
+        var scrollToTopToken = 0
+        var scrollRequestToken = 0
+        private var pinGeneration = 0
+
+        /// Content offset for `y` below the content top, clamped between the top and the bottom of the content.
+        func scroll(toY y: CGFloat, animated: Bool) {
+            guard let sv = observedScrollView else { return }
+            restoring = false
+            let top = -sv.adjustedContentInset.top
+            let bottom = max(top, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
+            sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: min(bottom, max(top, y + top))), animated: animated)
+        }
+        private weak var observedScrollView: UIScrollView?
+        private var observation: NSKeyValueObservation?
+        private weak var attachedGesture: UIPanGestureRecognizer?
+        private var pullQualified = false
+
+        override func didMoveToWindow() { super.didMoveToWindow(); attachIfNeeded() }
+        override func didMoveToSuperview() { super.didMoveToSuperview(); attachIfNeeded() }
+
+        // Walks up from this (otherwise invisible, zero-size) probe — placed
+        // as the scrolled content's own `.background`, so it's always a
+        // descendant of the actual `UIScrollView` SwiftUI's `ScrollView`
+        // creates — to find and observe that ancestor directly.
+        private func attachIfNeeded() {
+            guard observedScrollView == nil else { return }
+            var responder: UIView? = superview
+            while let candidate = responder {
+                if let scrollView = candidate as? UIScrollView {
+                    observedScrollView = scrollView
+                    // Negated to match the old GeometryReader convention
+                    // this replaces (0 at the top, increasingly negative
+                    // scrolling down) — AppState.noteScaffoldScroll() and
+                    // every doc comment referencing "offsetY" assume that
+                    // sign, so nothing downstream needed to change.
+                    observation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] sv, _ in
+                        // Note 47: only a finger-driven scroll (dragging, or its momentum) may move the dock; a
+                        // restored scroll position on returning to a tab used to read as "scrolled down".
+                        self?.onChange?(-sv.contentOffset.y, sv.isTracking || sv.isDragging || sv.isDecelerating)
+                        if self?.restoring == false { self?.onOffset?(sv.contentOffset.y) }
+                        self?.onScrollMetrics?(sv.contentOffset.y + sv.adjustedContentInset.top, sv.contentSize.height,
+                                               sv.bounds.height - sv.adjustedContentInset.top - sv.adjustedContentInset.bottom)
+                    }
+                    beginRestoreIfNeeded(scrollView)
+                    onChange?(-scrollView.contentOffset.y, false)
+                    if onPullPhase != nil {
+                        scrollView.panGestureRecognizer.addTarget(self, action: #selector(handlePanStateChange(_:)))
+                        attachedGesture = scrollView.panGestureRecognizer
+                    }
+                    return
+                }
+                responder = candidate.superview
+            }
+        }
+
+        /// Holds the scroll view at the top for ~0.5s (content inserted above an id-anchored
+        /// card — e.g. Home's checklist after onboarding — would otherwise push it back down),
+        /// and stops the moment the user touches it.
+        func pinToTop() {
+            pinGeneration += 1
+            restoring = false
+            guard let sv = observedScrollView else { return }
+            pinStep(sv, generation: pinGeneration, tick: 0)
+        }
+
+        private func pinStep(_ sv: UIScrollView, generation: Int, tick: Int) {
+            guard generation == pinGeneration, tick < 10, !(sv.isTracking || sv.isDragging) else { return }
+            let topY = -sv.adjustedContentInset.top
+            if abs(sv.contentOffset.y - topY) > 1 {
+                sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: topY), animated: false)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak sv] in
+                guard let self, let sv else { return }
+                self.pinStep(sv, generation: generation, tick: tick + 1)
+            }
+        }
+
+        private func beginRestoreIfNeeded(_ sv: UIScrollView) {
+            guard let target = restoreOffsetY else { return }
+            restoring = true
+            restoreStep(sv, target: target, tick: 0)
+        }
+
+        // 20 ticks x 50ms. Re-applies the target whenever the content is tall enough and the
+        // offset drifted (e.g. the id-based restore moved it), and gives up the moment the user
+        // touches the scroll view. A target at (or above) the top is a no-op.
+        private func restoreStep(_ sv: UIScrollView, target: CGFloat, tick: Int) {
+            let topY = -sv.adjustedContentInset.top
+            if !restoring || sv.isTracking || sv.isDragging || tick >= 20 || target <= topY + 1 {
+                restoring = false
+                return
+            }
+            let maxY = sv.contentSize.height - sv.bounds.height + sv.adjustedContentInset.bottom
+            if maxY >= target - 1, abs(sv.contentOffset.y - target) > 1 {
+                sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: target), animated: false)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak sv] in
+                guard let self, let sv else { return }
+                self.restoreStep(sv, target: target, tick: tick + 1)
+            }
+        }
+
+        @objc private func handlePanStateChange(_ gesture: UIPanGestureRecognizer) {
+            guard let scrollView = observedScrollView else { return }
+            switch gesture.state {
+            case .began:
+                // The only place eligibility is decided — a downward pull
+                // that starts anywhere else in the content never qualifies,
+                // matching "begins at the TOP of that tab's own scroll
+                // container" exactly.
+                pullQualified = scrollView.contentOffset.y <= 1
+                if pullQualified { onPullPhase?(.began, 0) }
+            case .changed:
+                guard pullQualified else { return }
+                onPullPhase?(.changed, gesture.translation(in: scrollView).y)
+            case .ended, .cancelled:
+                guard pullQualified else { return }
+                pullQualified = false
+                onPullPhase?(gesture.state == .ended ? .ended : .cancelled, gesture.translation(in: scrollView).y)
+            default:
+                break
+            }
+        }
+
+        deinit {
+            if let attachedGesture {
+                attachedGesture.removeTarget(self, action: #selector(handlePanStateChange(_:)))
+            }
+        }
+    }
+}
+
+// Map search-focus fix (2026-09-28, fourth pass) — `SheetPresentationSettledProbe`
+// used to live here: an invisible `UIViewRepresentable` walking the real
+// UIKit responder chain for `UIViewController.transitionCoordinator`, to
+// know when a `.sheet`'s own presentation animation had genuinely finished
+// before requesting `@FocusState` focus on a field inside it. Three
+// consecutive real-device passes refining exactly WHEN/how that probe fired
+// (a bare completion callback, then its return-value-checked fallback, then
+// routing the actual `@FocusState` write through a SwiftUI `.onChange`
+// instead of straight out of the UIKit callback) never once raised the
+// keyboard on a real device — removed, not patched a fourth time, in favor
+// of `.defaultFocus(_:_:)`.
+
+/// Map search-focus fix (2026-09-28, fifth pass) — real, CONFIRMED root
+/// cause, isolated with a temporary on-screen debug marker reading
+/// `@FocusState` directly: `.defaultFocus(_:_:)`, then (for elimination) a
+/// bare synchronous `.onAppear { searchFieldFocused = true }` with NO
+/// indirection of any kind, BOTH left the marker provably unfocused on a
+/// real device — proof this was never a timing problem. A genuine user tap
+/// on the exact same field always worked. That combination means
+/// `@FocusState` itself cannot deliver programmatic focus to this
+/// particular field, full stop — while the plain UIKit mechanism a manual
+/// tap already uses (`becomeFirstResponder()`) is proven to work. This
+/// wraps a real `UITextField` directly, driving that exact proven mechanism
+/// ourselves instead of asking SwiftUI's focus abstraction to do something
+/// it has now been shown not to do here. `isFirstResponder` is two-way: a
+/// genuine tap (routed through the `UITextField` itself, exactly like
+/// before) reports back through `textFieldDidBeginEditing`/`textFieldDidEndEditing`,
+/// so this stays a faithful drop-in for `TextField` + `.focused($x)`, not
+/// a one-directional hack.
+struct FocusableTextField: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var isFirstResponder: Bool
+    var placeholder: String
+    var font: UIFont
+    /// Return key ("Search") pressed — Map v6 saves the query as a recent search (note 74).
+    var onSubmit: (() -> Void)? = nil
+
+    func makeUIView(context: Context) -> UITextField {
+        let tf = UITextField()
+        // Never wider than offered: a long placeholder pushed the Map sheet's search row (and everything under it)
+        // past both screen edges once buttons sat beside the field.
+        tf.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        tf.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        tf.placeholder = placeholder
+        tf.font = font
+        tf.delegate = context.coordinator
+        tf.autocorrectionType = .no
+        tf.returnKeyType = .search
+        tf.addTarget(context.coordinator, action: #selector(Coordinator.editingChanged), for: .editingChanged)
+        return tf
+    }
+
+    func updateUIView(_ uiView: UITextField, context: Context) {
+        if uiView.text != text { uiView.text = text }
+        if uiView.placeholder != placeholder { uiView.placeholder = placeholder }
+        if isFirstResponder, !uiView.isFirstResponder {
+            // Deferred one tick, same reasoning `ScaffoldScrollProbe`/the
+            // removed `SheetPresentationSettledProbe` already established
+            // elsewhere in this file: calling into UIKit's own responder
+            // machinery from the MIDDLE of a SwiftUI view-update pass is
+            // unreliable; yielding to the next run loop turn first (not a
+            // timed sleep — zero delay) lets this update commit before
+            // UIKit reacts to it.
+            DispatchQueue.main.async { uiView.becomeFirstResponder() }
+        } else if !isFirstResponder, uiView.isFirstResponder {
+            DispatchQueue.main.async { uiView.resignFirstResponder() }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        private let parent: FocusableTextField
+        init(_ parent: FocusableTextField) { self.parent = parent }
+
+        @objc func editingChanged(_ sender: UITextField) {
+            parent.text = sender.text ?? ""
+        }
+
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            DispatchQueue.main.async { self.parent.isFirstResponder = true }
+        }
+
+        func textFieldDidEndEditing(_ textField: UITextField) {
+            DispatchQueue.main.async { self.parent.isFirstResponder = false }
+        }
+
+        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            parent.onSubmit?()
+            textField.resignFirstResponder()
+            return true
+        }
+    }
+}
+
+/// Accidental-tap-during-swipe fix (2026-09-29 follow-up) — a plain
+/// `Button`'s own touch tracking only checks "did the release land inside
+/// my bounds," not "how far did the touch travel to get there." A
+/// full-width row/card swiped 60+pt horizontally (a slow tab-swipe or
+/// edge-swipe-back that starts on it) still releases geometrically inside
+/// that SAME row, so the row's tap fires exactly as if it had been a
+/// clean, stationary tap — confirmed the real cause after the earlier
+/// `.allowsHitTesting` fix (RootView.swift) didn't fully close this:
+/// hit-testing only gates NEW touches, but the Button's own touch tracking
+/// already began at touch-DOWN, before `tabSwipeDirection`/`isDragTracking`
+/// had any value to gate on — a later state change can't retroactively
+/// un-claim a touch a control already started tracking.
+///
+/// `SwipeSafeButton` is a drop-in `Button` replacement (same
+/// `action`/`label` initializer shape, so most call sites are a one-word
+/// rename) that only invokes `action` when the touch stayed within a
+/// small, deliberate distance of where it started — see the current
+/// implementation note below for how (this went through two broken
+/// approaches first; both are kept here as history since the same
+/// mistakes are easy to reach for again). `.accessibilityAddTraits(.isButton)`
+/// keeps VoiceOver's "Button" semantics, which a plain gesture-driven View
+/// doesn't get for free the way a real `Button` does.
+///
+/// Coordinate-space bug (2026-09-29, first follow-up — this is why the
+/// very first version never actually blocked anything): the original drag
+/// gesture measured translation in `.local` coordinate space — relative to
+/// THIS ROW'S OWN frame. But during a tab-swipe/edge-swipe-back, the
+/// screen this row lives in is ITSELF being offset live, 1:1 with the
+/// finger (`RootView`'s `offsetForRootScreen`) — so relative to the row's
+/// own (also moving) local frame, the touch barely displaced at all, no
+/// matter how far the swipe actually travelled on screen.
+///
+/// Scroll-breaking bug (2026-09-29, second follow-up): fixing the above by
+/// switching to `.global` coordinate space with a raw
+/// `DragGesture(minimumDistance: 0...1)` attached via `.simultaneousGesture`
+/// then broke Home's vertical scrolling entirely (Notifications' shorter,
+/// gappier rows happened to mostly dodge it, making it look "fixed" there
+/// by luck) — a raw `DragGesture` recognizing that early is a known
+/// SwiftUI/UIScrollView interaction where the scroll view's own pan
+/// gesture defers to content that claims the touch first, even under
+/// `.simultaneousGesture`; tuning the minimum distance up only made this
+/// LESS likely, not impossible, and Home's large, near-full-bleed cards
+/// meant almost every scroll attempt started on top of one.
+///
+/// `.onLongPressGesture(minimumDuration: 0, maximumDistance:)` replaced
+/// the raw `DragGesture` next — the gesture class SwiftUI/UIKit actually
+/// engineered for "press that cancels itself once the touch travels too
+/// far," which is why it coexists with scrolling where a raw `DragGesture`
+/// didn't. But it has no coordinate-space parameter at all (unlike
+/// `DragGesture`, which at least lets you ask for `.global`) — its
+/// built-in `maximumDistance` check is ALSO measured against this row's
+/// own (live-offset-during-a-swipe) local frame, so it was fooled by the
+/// exact same "content chasing the finger" effect as the very first
+/// version, just via a different mechanism — confirmed after it still let
+/// a swipe-then-release open a Home card into Event Detail.
+///
+/// Final fix (2026-09-29, third follow-up): stopped trying to measure
+/// swipe distance at the row at all. `RootView`'s OWN screen-level swipe
+/// gestures don't have this problem — they're attached to an ANCESTOR
+/// that ISN'T itself being offset, so they detect a real horizontal swipe
+/// correctly, by construction. This defers to that already-correct signal
+/// (`AppState.isRootSwipeActive`, mirrored from `RootView` — see its own
+/// doc comment) instead of re-deriving a second, row-local measurement
+/// that keeps being foolable in new ways. `sawSwipeDuringPress` latches
+/// `true` the moment that signal goes true ANYWHERE during this press
+/// (via the `.onChange` below, independent of whatever order this row's
+/// own `onLongPressGesture` callbacks happen to fire in relative to
+/// RootView's gesture — no race to get right), and is what `perform`
+/// actually checks, not a live/instantaneous read that could lose a race
+/// against `RootView` resetting its own state right at release.
+/// A "Xong" / "Done" button above the keyboard (the system gives it the Liquid Glass look on iOS 26). Attached once
+/// near the top of the main view tree, and again on anything presented separately (sheets, full-screen covers),
+/// which is not part of that tree.
+struct KeyboardDoneToolbar: ViewModifier {
+    var enabled = true
+    @EnvironmentObject private var app: AppState
+    func body(content: Content) -> some View {
+        content.toolbar {
+            if enabled {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button(app.T("Xong", "Done")) {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+}
+extension View {
+    func keyboardDoneToolbar(_ enabled: Bool = true) -> some View { modifier(KeyboardDoneToolbar(enabled: enabled)) }
+}
+
+/// Registers this view's on-screen frame as the place Event Detail zooms out of (and back into) for `key`.
+struct ZoomSourceModifier: ViewModifier {
+    let key: String
+    @EnvironmentObject private var app: AppState
+    func body(content: Content) -> some View {
+        content.background(GeometryReader { g in
+            Color.clear
+                .onAppear { app.eventZoomFrames[key] = g.frame(in: .global) }
+                .onChange(of: g.frame(in: .global)) { _, f in app.eventZoomFrames[key] = f }
+        })
+    }
+}
+extension View {
+    func zoomSource(_ key: String) -> some View { modifier(ZoomSourceModifier(key: key)) }
+}
+
+struct SwipeSafeButton<Label: View>: View {
+    let action: () -> Void
+    @ViewBuilder let label: () -> Label
+    @EnvironmentObject private var app: AppState
+    @State private var sawSwipeDuringPress = false
+
+    var body: some View {
+        label()
+            .contentShape(Rectangle())
+            .accessibilityAddTraits(.isButton)
+            .onLongPressGesture(minimumDuration: 0, maximumDistance: 10, perform: {
+                if !sawSwipeDuringPress { action() }
+            }, onPressingChanged: { pressing in
+                // Reset at the START of a new press to whatever's
+                // currently true (almost always `false` — a swipe hasn't
+                // had time to lock in yet at touch-down), never carried
+                // over stale from a previous, unrelated press.
+                if pressing { sawSwipeDuringPress = app.isRootSwipeActive || app.isLocalSwipeActive }
+            })
+            .onChange(of: app.isRootSwipeActive) { _, active in
+                if active { sawSwipeDuringPress = true }
+            }
+            .onChange(of: app.isLocalSwipeActive) { _, active in
+                if active { sawSwipeDuringPress = true }
+            }
+    }
+}
+
+/// The system share sheet, for handing a generated FILE to the user —
+/// DisputeChatPanel's "Download transcript" being the first user here
+/// (ReportsView's CSV/JSON exports use `ShareLink` instead, because theirs
+/// are already sitting on disk when the screen renders).
+///
+/// Deliberately the same `UIActivityViewController` presentation
+/// PhotoViewerView.swift already uses for its own share, including
+/// `completionWithItemsHandler`, so the export sheet behaves identically to
+/// every other share in this app instead of being a second, subtly different
+/// code path.
+struct BanbeShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    /// Called when the sheet finishes. `true` only when the person completed an
+    /// activity (saved to Files, sent, copied). Dismissing the sheet reports
+    /// `false`, so callers can never mistake "it opened" or "it closed" for
+    /// "it was saved".
+    var onFinish: ((Bool) -> Void)? = nil
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        if let onFinish {
+            controller.completionWithItemsHandler = { _, completed, _, error in
+                onFinish(completed && error == nil)
+            }
+        }
+        // iPad requires an anchor or this traps.
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = controller.view
+            popover.sourceRect = CGRect(x: controller.view.bounds.midX, y: controller.view.bounds.maxY - 1, width: 1, height: 1)
+            popover.permittedArrowDirections = []
+        }
+        return controller
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}

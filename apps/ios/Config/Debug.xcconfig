@@ -1,0 +1,10 @@
+// Debug: Push capability ON (aps-environment = development) so the build is ready for the paid Apple Developer
+// account (docs/apple-setup-checklist.md). Whether the app actually REGISTERS for push is decided at runtime by the
+// `push_enabled` switch (migration 194), so this changes nothing for users while that switch is off.
+// A FREE / personal Apple ID cannot sign Push: for real-device testing without the paid account use the
+// PersonalTeamDebug configuration (.claude/notes/18-ios-personal-team-signing.md). Simulator builds work either way.
+#include "Team.xcconfig"
+
+ENABLE_PUSH = YES
+CODE_SIGN_ENTITLEMENTS = BanbeApp/BanbeAppPush.entitlements
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) DEBUG ENABLE_PUSH

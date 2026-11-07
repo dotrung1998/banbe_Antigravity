@@ -1,0 +1,12 @@
+{
+  "_comment": "V8 preset chips (note 75): one qty shared by the 1·2·3 chips and the stepper. Shared by tests/unit/reserveBar.test.mjs and apps/ios/BanbeAppTests/ReserveBarTests.swift.",
+  "presets": [1, 2, 3],
+  "selected": [
+    { "qty": 1, "out": 1 }, { "qty": 2, "out": 2 }, { "qty": 3, "out": 3 },
+    { "qty": 4, "out": null }, { "qty": 6, "out": null }
+  ],
+  "enabled": [
+    { "n": 3, "max": 6, "out": true }, { "n": 3, "max": 3, "out": true },
+    { "n": 3, "max": 2, "out": false }, { "n": 2, "max": 1, "out": false }, { "n": 1, "max": 1, "out": true }
+  ]
+}

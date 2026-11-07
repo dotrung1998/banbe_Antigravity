@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/banbe-favicon.png" />
+    <link rel="apple-touch-icon" href="/banbe-favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#F7F4EC" />
+    <title>banbe</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&family=Jost:wght@400;500;600&display=swap&subset=vietnamese" rel="stylesheet">
+  </head>
+  <body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+      <filter id="bb-logo-tint" color-interpolation-filters="sRGB">
+        <feColorMatrix type="matrix" values="0 0 0 0 0.965  0 0 0 0 0.769  0 0 0 0 0.325  0 0 0 1 0" />
+      </filter>
+    </svg>
+    <div id="root"></div>
+    <!-- Task 1 (this session) — web has no OS-level rotation lock (the
+         Screen Orientation API's lock() only works inside an installed/
+         fullscreen PWA, not a normal mobile browser tab, which is what
+         this app runs in); see src/index.css's own comment on the
+         matching media query. Pure CSS/markup, no JS dependency, so it
+         still works even if a script fails to load. -->
+    <div id="bb-rotate-overlay">
+      <p>Vui lòng xoay điện thoại về chiều dọc<br />Please rotate your phone back to portrait</p>
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

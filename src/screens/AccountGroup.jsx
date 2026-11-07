@@ -1,0 +1,772 @@
+import { useEffect, useState } from 'react';
+import { loadHiddenTickets, reconcileTickets, removeTickets, syncHiddenTickets } from '../lib/ticketRetention.js';
+import { useBanBe } from '../state/BanBeContext.jsx';
+import DigestOptIn from './DigestOptIn.jsx';
+import { EVENTS } from '../data/events.js';
+import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
+import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
+import { computeHostActionCount, computeRefundActionCount, computeMyRefundActionCount, formatBadgeCount } from '../lib/badges.js';
+import { isBookingTicket } from '../lib/bookingTicket.js';
+import { onboardingVersion } from '../lib/featureFlags.js';
+import { projectDemoAllowed } from '../lib/projectDemo.js';
+import ProjectDemoPicker from '../components/project/ProjectDemoPicker.jsx';
+import TicketDemoPicker from '../components/project/TicketDemoPicker.jsx';
+import { ticketDemoAllowed } from '../lib/ticketDemo.js';
+import { giftPdfData } from '../lib/giftTicket.js';
+import { downloadTicketPdfs } from '../lib/ticketPdf.js';
+
+// Account IA pass (2026-09-27) — the ONE shared child screen every
+// Account group entry card opens (`openAccountGroup(key)`), keyed by
+// `s.accountGroupKey`. Never a separate screen per group: the six groups
+// (team/activity/payments/preferences on Cá nhân, hostOps on Tổ chức,
+// adminReview on Admin) are really one layout — a title, a back-to-
+// Account link, and a handful of EXISTING rows relocated here verbatim
+// (same data-testid, same onClick target) — so building six near-
+// identical files/screens would just be repetition, not a real
+// architectural need. `accountTab` itself is never touched by this
+// screen, so "‹ Tài khoản" always lands back on whichever tab was showing.
+// Account IA reorg (2026-09-30) — "activity"'s visible label changed to
+// "Tickets & Bookings" (its content is now this account's REAL bookings,
+// see the `key === 'activity'` block below) and "preferences" relabeled
+// to "Settings" for accuracy. Both `groupKey`s themselves are UNCHANGED
+// (still "activity"/"preferences" — the route/testid/deep-link target),
+// per this pass's own instruction to rename labels only, never keys.
+const GROUP_META = {
+  team: { vi: 'Hồ Sơ & Team', en: 'Profile & Team' },
+  activity: { vi: 'Vé & Đặt Chỗ', en: 'Tickets & Bookings' },
+  payments: { vi: 'Thanh Toán & Giấy Tờ', en: 'Payments & Documents' },
+  preferences: { vi: 'Cài Đặt', en: 'Settings' },
+  hostOps: { vi: 'Vận Hành & Thanh Toán Tổ Chức', en: 'Event Operations & Payments' },
+  adminReview: { vi: 'Duyệt & Kiểm Duyệt', en: 'Review & Moderation' },
+  adminTeam: { vi: 'Đội Ngũ Quản Trị', en: 'Admin Team' },
+  helpLegal: { vi: 'Trợ Giúp & Pháp Lý', en: 'Help & Legal' },
+  // Note 66: the old Account "Admin" tab, now one "Admin tools" row on Account that opens this list.
+  admin: { vi: 'Quản trị', en: 'Administration' },
+};
+// Note 66: groups opened FROM the admin list return to it (not to Account).
+const ADMIN_CHILD_GROUPS = new Set(['adminReview', 'adminTeam']);
+
+// TASK 5 real-device follow-up — `badge` (0/undefined = hidden) so a child
+// row (e.g. "Pending events") can show the SAME real count its own
+// group-entry card already does — same capsule style `GroupCard`
+// (Account.jsx) uses, capped at "99+" with the full count kept in
+// aria-label/title.
+function Row({ icon, label, trailing, onClick, testId, border = true, badge }) {
+  return (
+    <div onClick={onClick} data-testid={testId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: border ? `1px solid ${rule}` : 'none', cursor: 'pointer' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind={icon} />{label}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {!!badge && (
+          <span data-testid={`${testId}-badge`} role="status" aria-label={`${badge} new item(s)`} title={String(badge)} style={{ fontSize: 11, fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}>
+            {formatBadgeCount(badge)}
+          </span>
+        )}
+        <span style={{ fontSize: 13, color: ink }}>{trailing}</span>
+      </span>
+    </div>
+  );
+}
+
+// iOS `isEventEnded` twin for a booking's joined event row: the static catalogue's
+// endedHoursAgo, else a start time more than 4h ago.
+function isTicketEventEnded(b) {
+  const ev = b.events || {};
+  const cat = EVENTS.find(e => e.key === ev.key);
+  if (cat && cat.endedHoursAgo != null) return true;
+  if (!ev.event_date) return false;
+  const start = new Date(`${ev.event_date}T${ev.event_time || '00:00:00'}`);
+  return !isNaN(start) && start.getTime() < Date.now() - 4 * 3600 * 1000;
+}
+
+export default function AccountGroup() {
+  const {
+    state: s, T, set,
+    goCompletedList, respondToEventCredit, goEvent, openTicketImport, openImportedTicket, loadImportedTickets,
+    respondToOrganizerInvite, setOrganizerMemberVisibility,
+    openPreferences, openSecurity, openEventPreferences, openPolicy, openDocuments, openRefundAccounts, openMyRefunds,
+    openVerifications, openVerificationsRefunds, openPayout, openDisputes, openAdminEvents,
+    loadPaymentBookings, loadMyRefunds, openBookingConfirmed, openDeleteAccountStay,
+    respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft,
+    requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite,
+    requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite,
+    requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, setAdminManagementPermission,
+    openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote, replayOnboardingTour, openReports, loadPendingEventsCount,
+  } = useBanBe();
+  const key = s.accountGroupKey;
+
+  // Cancelled / expired list housekeeping (select + delete, 30-day auto-clear) — mirrors iOS.
+  const uid = s.user?.id;
+  const [hiddenTickets, setHiddenTickets] = useState(() => loadHiddenTickets(uid));
+  const [selecting, setSelecting] = useState(false);
+  const [selectedTickets, setSelectedTickets] = useState(() => new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [demoPicker, setDemoPicker] = useState(false);
+  const [ticketDemoPicker, setTicketDemoPicker] = useState(false);
+  useEffect(() => { if (key === 'activity') loadMyRefunds?.(); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const ids = (s.paymentBookings || []).filter(b => ['cancelled', 'expired', 'no_show'].includes(b.status)).map(b => b.id);
+    const openRefunds = new Set((s.myRefunds || []).map(c => c.booking_id).filter(Boolean));
+    setHiddenTickets(reconcileTickets(uid, ids, new Set(ids.filter(id => openRefunds.has(id)))));
+    // Account-wide hidden list (migration 176): merge what other devices hid, share what this one did.
+    let live = true;
+    syncHiddenTickets(uid).then(h => { if (live) setHiddenTickets(h); });
+    return () => { live = false; };
+  }, [uid, s.paymentBookings, s.myRefunds]);
+
+  // Safety net (mirrors Account.jsx's own accountTab role-sync effect) — a
+  // role change while this screen happens to be open (organizer mode
+  // toggled off elsewhere, an admin demoted) sends it back to Account
+  // rather than showing a group its own role no longer has.
+  useEffect(() => {
+    if (key === 'hostOps' && !s.organizerMode) set({ screen: 'profile' });
+    else if ((key === 'adminReview' || key === 'admin') && s.accountType !== 'admin') set({ screen: 'profile' });
+  }, [key, s.organizerMode, s.accountType, set]);
+
+  // Account IA reorg (2026-09-30) — "My Tickets" (the `activity` group's
+  // new real content) reuses the SAME `paymentBookings` array Account.jsx
+  // already loads for its own Action Center — Account.jsx has already
+  // loaded it by the time this screen is reachable, but a direct deep link
+  // straight into `accountGroupKey: 'activity'` (bypassing Account.jsx's
+  // own mount effect) is a real path, so this screen loads it itself too;
+  // `loadPaymentBookings` is idempotent (a plain re-fetch), never a second
+  // divergent source.
+  useEffect(() => {
+    if (key === 'activity' && s.user?.id) { loadPaymentBookings(); loadImportedTickets(); }
+  }, [key, s.user?.id, loadPaymentBookings, loadImportedTickets]);
+  // Admin Team pass (2026-10-02) — a direct deep link straight into
+  // `accountGroupKey: 'adminTeam'` bypasses Account.jsx's own mount
+  // effect, same reasoning as `activity` above; idempotent re-fetch.
+  useEffect(() => {
+    if (key === 'adminTeam' && s.canManageAdmins) loadAdminTeam();
+  }, [key, s.canManageAdmins, loadAdminTeam]);
+  // Note 66: the admin list's badges, for a deep link straight to /profile/group/admin.
+  useEffect(() => {
+    if (key !== 'admin' || s.accountType !== 'admin') return;
+    loadPendingEventsCount();
+    if (s.canManageAdmins) loadAdminTeam();
+  }, [key, s.accountType, s.canManageAdmins, loadPendingEventsCount, loadAdminTeam]);
+
+  if (!key || !GROUP_META[key]) return null;
+  const title = T(GROUP_META[key].vi, GROUP_META[key].en);
+  // Note 66: Back from Review / Admin Team returns to the admin list when that is where they were opened from.
+  const backToAdmin = s.accountGroupBack === 'admin' && ADMIN_CHILD_GROUPS.has(key) && s.accountType === 'admin';
+  const openFromAdmin = (child) => set({ screen: 'accountGroup', accountGroupKey: child, accountGroupBack: 'admin' });
+  const completedCount = [...new Set([...(s.favorites || []), ...s.attending])]
+    .map(k => EVENTS.find(e => e.key === k))
+    .filter(e => e && e.endedHoursAgo != null).length;
+
+  return (
+    <div style={{ position: 'relative', animation: 'banbeFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="AccountGroup">
+      <div onClick={() => set(backToAdmin ? { screen: 'accountGroup', accountGroupKey: 'admin', accountGroupBack: null } : { screen: 'profile', accountGroupBack: null })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="account-group-back">
+        ‹ {backToAdmin ? T(GROUP_META.admin.vi, GROUP_META.admin.en) : T('Tài khoản', 'Account')}
+      </div>
+      <div style={{ padding: '16px 20px 40px' }}>
+        <h1 style={{ ...display(27, { margin: 0, lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: 10 }) }}>
+          <RowIcon kind={{ team: 'users', activity: 'calendarCheck', payments: 'banknote', preferences: 'sliders', hostOps: 'checklist', adminReview: 'alertShield', adminTeam: 'users', helpLegal: 'shield', admin: 'shield' }[key]} size={26} accent={ROW_ACCENT_COLORS[key]} />
+          {title}
+        </h1>
+
+        {key === 'team' && (
+          <>
+            {s.myOrganizerInvites.length > 0 && (
+              <div style={{ marginTop: 24 }} data-testid="account-team-invites">
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Lời mời Team', 'Team Invites')}</span>
+                {s.myOrganizerInvites.map(inv => (
+                  <div key={inv.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`team-invite-${inv.id}`}>
+                    <span style={{ fontSize: 13, color: ink }}>
+                      {T(`${inv.organizers?.name || 'Một tổ chức'} mời bạn làm ${inv.public_role}`, `${inv.organizers?.name || 'An organizer'} invited you as ${inv.public_role}`)}
+                    </span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div onClick={() => respondToOrganizerInvite(inv.id, true)} data-testid={`team-invite-accept-${inv.id}`} style={{ ...inkButton({ flex: 1, padding: 10, fontSize: 12.5 }) }}>{T('Chấp nhận', 'Accept')}</div>
+                      <div onClick={() => respondToOrganizerInvite(inv.id, false)} data-testid={`team-invite-decline-${inv.id}`} style={{ ...fieldGlass({ flex: 1, padding: 10, fontSize: 12.5, textAlign: 'center', cursor: 'pointer' }) }}>{T('Từ chối', 'Decline')}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {s.myTeamMemberships.length > 0 && (
+              <div style={{ marginTop: 24 }} data-testid="account-team-memberships">
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đội ngũ của tôi', 'My Teams')}</span>
+                {s.myTeamMemberships.map(m => (
+                  <div key={m.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`team-membership-${m.id}`}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                      <span style={{ fontSize: 13, color: ink }}>{m.organizers?.name || T('Một tổ chức', 'An organizer')}</span>
+                      <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{m.public_role}</span>
+                    </div>
+                    <div
+                      onClick={() => setOrganizerMemberVisibility(m.id, !m.public_visible)}
+                      data-testid={`team-membership-visibility-${m.id}`}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+                    >
+                      <span style={{ fontSize: 11, color: ink }}>{T('Hiển thị tôi trong Team', 'Show me in the Team')}</span>
+                      <span aria-hidden style={{ flex: 'none', width: 40, height: 24, borderRadius: 12, padding: 3, background: m.public_visible ? ink : 'rgba(27,25,22,0.18)', transition: 'background .15s' }}>
+                        <span style={{ display: 'block', width: 18, height: 18, borderRadius: '50%', background: paper, transform: m.public_visible ? 'translateX(16px)' : 'translateX(0)', transition: 'transform .15s' }} />
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {s.myOrganizerInvites.length === 0 && s.myTeamMemberships.length === 0 && (
+              <p style={{ fontSize: 13, color: ink, opacity: 0.65, marginTop: 24 }}>{T('Chưa có lời mời hay Team nào.', 'No invites or teams yet.')}</p>
+            )}
+            {/* Account IA reorg (2026-09-30) — event-credit invites
+                (organizer-collaboration credits, not attendee tickets)
+                RELOCATED here from the old "activity" group — a deliberate
+                reclassification, not a silent drop: both this and Team
+                invites/memberships above are organizer-collaboration
+                concerns, a better semantic fit than sitting alongside real
+                attendee bookings in "Tickets & Bookings". Content/testids
+                unchanged from their previous location. */}
+            {s.myEventCredits.length > 0 && (
+              <div style={{ marginTop: 24 }} data-testid="account-event-credits">
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện: lời mời đang chờ', 'Event contributions: pending invites')}</span>
+                {s.myEventCredits.map(c => (
+                  <div key={c.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`event-credit-${c.id}`}>
+                    <span style={{ fontSize: 13, color: ink }}>
+                      {T(`${c.organizers?.name || 'Một tổ chức'} ghi nhận bạn đã tổ chức "${c.events?.name || ''}"`, `${c.organizers?.name || 'An organizer'} credited you for organizing "${c.events?.name || ''}"`)}
+                    </span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div onClick={() => respondToEventCredit(c.id, true)} data-testid={`event-credit-accept-${c.id}`} style={{ ...inkButton({ flex: 1, padding: 10, fontSize: 12.5 }) }}>{T('Chấp nhận', 'Accept')}</div>
+                      <div onClick={() => respondToEventCredit(c.id, false)} data-testid={`event-credit-decline-${c.id}`} style={{ ...fieldGlass({ flex: 1, padding: 10, fontSize: 12.5, textAlign: 'center', cursor: 'pointer' }) }}>{T('Từ chối', 'Decline')}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {s.myConfirmedEventCredits.length > 0 && (
+              <div style={{ marginTop: 24 }} data-testid="account-event-credits-confirmed">
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện: đã xác nhận', 'Event contributions: confirmed')}</span>
+                {s.myConfirmedEventCredits.map(c => (
+                  <div
+                    key={c.id}
+                    onClick={() => goEvent(c.event_id)}
+                    style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }) }}
+                    data-testid={`event-credit-confirmed-${c.id}`}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: ink }}>{c.events?.name || T('Một sự kiện', 'An event')}</span>
+                      <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{c.organizers?.name || T('Một tổ chức', 'An organizer')}</span>
+                    </div>
+                    <span aria-hidden style={{ fontSize: 18, color: ink, opacity: 0.5 }}>›</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {key === 'activity' && (
+          <>
+            {/* Account IA reorg (2026-09-30) — Task 2b: "My Tickets" is now
+                REAL DB-backed data, reusing `s.paymentBookings`
+                (`loadPaymentBookings()`, BanBeContext.jsx) — the exact same
+                `bookings` query Account.jsx's own Action Center already
+                loads (`user_id`-scoped, joined to `events`/`organizers` for
+                real name/date), not the static demo catalogue and not a
+                second divergent query. Active bookings (pending/confirmed/
+                attended) tap into `openBookingConfirmed`, the same booking-
+                id-scoped helper Confirmed.jsx's own notification-reopen
+                path already uses — it self-gates the real QR (via
+                `isBookingTicket`) vs. the "awaiting payment" state, exactly
+                like Event Detail's reserve bar's `openHeld` already does
+                for whichever booking happens to be in `state.booking`, just
+                generalized to any booking id. Cancelled/expired/no_show
+                bookings (real `bookings.status` values confirmed in the
+                migrations — see 069/070/072/011) get their own clearly
+                labeled, non-interactive section — no fabricated "refunded"
+                bucket, since `bookings.status` has no such value. */}
+            {s.paymentsLoading && !s.paymentBookings.length && (
+              <p style={{ fontSize: 13, color: ink, opacity: 0.65, marginTop: 24 }} data-testid="my-tickets-loading">{T('Đang tải vé của bạn…', 'Loading your tickets…')}</p>
+            )}
+            {!s.paymentsLoading && s.paymentBookings.length === 0 && (
+              <p style={{ fontSize: 13, color: ink, opacity: 0.65, marginTop: 24 }} data-testid="my-tickets-empty">{T('Bạn chưa có vé nào.', "You don't have any tickets yet.")}</p>
+            )}
+            {(() => {
+              // Mirrors iOS: an ended event leaves "My Tickets" (it lives under Past
+              // Events). A gifted one moves to the finished list so its PDF stays
+              // reachable; no status is written.
+              const live = ['pending', 'confirmed', 'attended'];
+              const endedGifts = s.paymentBookings.filter(b => live.includes(b.status) && b.recipient_name && isTicketEventEnded(b));
+              const endedGiftIds = new Set(endedGifts.map(b => b.id));
+              const active = s.paymentBookings.filter(b => live.includes(b.status) && !isTicketEventEnded(b));
+              const inactive = s.paymentBookings.filter(b => (['cancelled', 'expired', 'no_show'].includes(b.status) || endedGiftIds.has(b.id)) && !hiddenTickets.has(b.id));
+              const downloadGiftPdf = async (b) => {
+                try {
+                  const ev = b.events || {};
+                  await downloadTicketPdfs([giftPdfData({
+                    eventName: ev.name || '', organizer: ev.organizers?.name || '',
+                    whenText: ev.event_date ? `${ev.event_date}${ev.event_time ? ' ' + ev.event_time : ''}` : '',
+                    venue: ev.area || '', isEN: s.lang === 'en',
+                  }, { recipientName: b.recipient_name, ticketCode: b.code, admissionToken: b.admission_token || b.id, claimCode: b.claim_code, reference: b.id })], `banbe-gift-ticket-${b.code || b.id}.zip`);
+                } catch (e) { console.warn('gift PDF failed:', e); }
+              };
+              const pdfButton = (b) => (
+                <span role="button" onClick={(e) => { e.stopPropagation(); downloadGiftPdf(b); }}
+                  style={{ flex: 'none', marginLeft: 'auto', padding: '8px 12px', borderRadius: 999, border: `1px solid ${rule}`, fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}
+                  data-testid={`my-ticket-gift-pdf-${b.id}`}>PDF</span>
+              );
+              const statusLabel = (b) => {
+                if (isBookingTicket(b)) return T('Vé đã sẵn sàng', 'Ticket ready');
+                if (b.status === 'attended') return T('Đã tham dự', 'Attended');
+                if (b.payment_state === 'pending_verification') return T('Chờ xác nhận thanh toán', 'Awaiting Verification');
+                if (b.status === 'pending') return T('Đang giữ chỗ', 'Holding');
+                return T('Đang xử lý', 'In progress');
+              };
+              const terminalLabel = (b) => endedGiftIds.has(b.id) ? T('Sự kiện đã kết thúc ▪︎ Đã tặng', 'Event ended ▪︎ Gifted') : ({
+                cancelled: T('Đã hủy', 'Cancelled'),
+                expired: T('Đã hết hạn', 'Expired'),
+                no_show: T('Không tham dự', 'No-show'),
+              }[b.status] || b.status);
+              return (
+                <>
+                  {active.length > 0 && (
+                    <div style={{ marginTop: 24 }} data-testid="my-tickets-active">
+                      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Vé của tôi', 'My Tickets')}</span>
+                      {active.map(b => (
+                        <div
+                          key={b.id}
+                          onClick={b.recipient_name ? undefined : () => openBookingConfirmed(b.id, b.event_id, 'accountGroup')}
+                          style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: b.recipient_name ? 'default' : 'pointer' }) }}
+                          data-testid={`my-ticket-${b.id}`}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.events?.name || T('Một sự kiện', 'An event')}</span>
+                            <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{b.events?.event_date ? `${b.events.event_date}${b.events.event_time ? ' ▪︎ ' + b.events.event_time : ''}` : ''}</span>
+                            <span style={{ fontSize: 11, color: ink, opacity: 0.85 }}>{b.recipient_name ? T(`Đã tặng cho ${b.recipient_name}`, `Gifted to ${b.recipient_name}`) : statusLabel(b)}</span>
+                          </div>
+                          {b.recipient_name ? pdfButton(b) : <span aria-hidden style={{ fontSize: 18, color: ink, opacity: 0.5, flex: 'none' }}>›</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {inactive.length > 0 && (
+                    <div style={{ marginTop: 24 }} data-testid="my-tickets-inactive">
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đã hủy / hết hạn', 'Cancelled / expired')}</span>
+                        <span
+                          role="button"
+                          onClick={() => { setSelecting(v => !v); setSelectedTickets(new Set()); setConfirmDelete(false); }}
+                          style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer' }}
+                          data-testid="tickets-inactive-select"
+                        >{selecting ? T('Xong', 'Done') : T('Chọn', 'Select')}</span>
+                      </div>
+                      {inactive.map(b => (
+                        <div
+                          key={b.id}
+                          onClick={() => {
+                            if (!selecting) return;
+                            setSelectedTickets(prev => { const n = new Set(prev); n.has(b.id) ? n.delete(b.id) : n.add(b.id); return n; });
+                          }}
+                          style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, opacity: 0.65, cursor: selecting ? 'pointer' : 'default' }) }}
+                          data-testid={`my-ticket-inactive-${b.id}`}
+                        >
+                          {selecting && <span aria-hidden style={{ fontSize: 18, color: ink, flex: 'none' }}>{selectedTickets.has(b.id) ? '◉' : '○'}</span>}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.events?.name || T('Một sự kiện', 'An event')}</span>
+                            <span style={{ fontSize: 11, color: ink }}>{terminalLabel(b)}</span>
+                          </div>
+                          {b.recipient_name && pdfButton(b)}
+                        </div>
+                      ))}
+                      {selecting && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, fontSize: 12.5, fontWeight: 600, color: ink }}>
+                          <span
+                            role="button"
+                            onClick={() => setSelectedTickets(selectedTickets.size === inactive.length ? new Set() : new Set(inactive.map(b => b.id)))}
+                            style={{ cursor: 'pointer' }}
+                            data-testid="tickets-inactive-select-all"
+                          >{selectedTickets.size === inactive.length ? T('Bỏ chọn tất cả', 'Deselect all') : T('Chọn tất cả', 'Select all')}</span>
+                          {confirmDelete ? (
+                            <span style={{ display: 'flex', gap: 14 }}>
+                              <span role="button" onClick={() => setConfirmDelete(false)} style={{ cursor: 'pointer' }}>{T('Hủy', 'Cancel')}</span>
+                              <span
+                                role="button"
+                                data-testid="tickets-inactive-delete-confirm"
+                                onClick={() => {
+                                  setHiddenTickets(removeTickets(uid, selectedTickets));
+                                  setSelectedTickets(new Set()); setSelecting(false); setConfirmDelete(false);
+                                }}
+                                style={{ cursor: 'pointer', color: alert }}
+                              >{T(`Xóa ${selectedTickets.size} mục?`, `Remove ${selectedTickets.size} item(s)?`)}</span>
+                            </span>
+                          ) : (
+                            <span
+                              role="button"
+                              data-testid="tickets-inactive-delete"
+                              onClick={() => selectedTickets.size && setConfirmDelete(true)}
+                              style={{ cursor: selectedTickets.size ? 'pointer' : 'default', opacity: selectedTickets.size ? 1 : 0.4, color: alert }}
+                            >{T(`Xóa (${selectedTickets.size})`, `Delete (${selectedTickets.size})`)}</span>
+                          )}
+                        </div>
+                      )}
+                      <p style={{ fontSize: 10.5, color: ink, opacity: 0.6, marginTop: 8 }}>
+                        {T('Các mục này tự động bị xóa sau 30 ngày. Xóa chỉ ẩn khỏi danh sách của bạn. Hồ sơ hoàn tiền vẫn được giữ.', 'These are removed automatically after 30 days. Deleting only clears them from your list. Any refund record is kept.')}
+                      </p>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+            {/* "Sự kiện đã hoàn thành" relabeled "Quá Khứ"/"Past Events" for
+                clarity — same destination (`goCompletedList` ->
+                `EventListView`/`EventList.jsx` mode 'completed'), unchanged. */}
+            <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
+              <Row icon="calendarCheck" label={T('Sự Kiện Quá Khứ', 'Past Events')} trailing={`${completedCount} ›`} testId="account-completed-events" onClick={goCompletedList} border={false} />
+            </div>
+
+            {/* Tickets other people imported into THIS account (migration 152):
+                a named ticket from a group booking, or a gift. */}
+            {(s.importedTickets || []).length > 0 && (
+              <>
+                <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: ink, marginTop: 24 }}>{T('Vé đã nhập', 'Imported tickets')}</span>
+                <div style={{ ...fieldGlass({ marginTop: 8, display: 'flex', flexDirection: 'column' }) }} data-testid="account-imported-tickets">
+                  {s.importedTickets.map((t, i) => {
+                    const voided = t.booking_status === 'cancelled' || t.booking_status === 'expired' || t.event_status === 'cancelled';
+                    return (
+                      <div key={t.attendee_id} onClick={() => openImportedTicket(t)} data-testid={`account-imported-ticket-${t.seat_no}`}
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '13px 16px', borderBottom: i < s.importedTickets.length - 1 ? `1px solid ${rule}` : 'none', cursor: 'pointer', textDecoration: voided ? 'line-through' : 'none' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.event_name}</span>
+                          <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{t.name}{voided ? ` ▪︎ ${T('Đã huỷ', 'Cancelled')}` : ''}</span>
+                        </div>
+                        <span style={{ fontSize: 13, color: ink }}>›</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+            <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: ink, marginTop: 24 }}>{T('Nhập vé được tặng hoặc vé nhóm', 'Import a gifted or group ticket')}</span>
+            <div style={{ ...fieldGlass({ marginTop: 8, display: 'flex', flexDirection: 'column' }) }}>
+              <Row icon="document" label={T('Nhập vé bằng mã nhận vé', 'Import a ticket with your claim code')} trailing="›" testId="account-ticket-import" onClick={() => openTicketImport('')} border={false} />
+            </div>
+          </>
+        )}
+
+        {key === 'payments' && (
+          <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
+            <Row icon="document" label={T('Hoá đơn', 'Invoices')} trailing="›" testId="account-invoices" onClick={() => openDocuments('invoice', 'guest')} />
+            <Row icon="receipt" label={T('Biên nhận', 'Receipts')} trailing="›" testId="account-receipts" onClick={() => openDocuments('receipt', 'guest')} />
+            <Row icon="banknote" label={T('Tài khoản thanh toán & nhận hoàn tiền', 'Payment & refund accounts')} trailing="›" testId="account-refund-accounts" onClick={() => openRefundAccounts('profile')} />
+            <Row icon="checklist" label={T('Hoàn tiền', 'Refunds')} trailing="›" testId="account-refunds" badge={computeMyRefundActionCount(s)} onClick={() => openMyRefunds('profile')} border={false} />
+          </div>
+        )}
+
+        {/* Help & Legal — How banbe works (note 63: the Welcome story, replayable), Terms (the full policy screen),
+            then the text guides (Personal, Host; the Admin guide lives on the Admin tab), then the Q&A. */}
+        {key === 'helpLegal' && (
+          <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
+            <Row icon="lightbulb" label={T('banbe hoạt động thế nào', 'How banbe works')} trailing="›" testId="help-how-it-works" onClick={() => set({ screen: 'howItWorks' })} />
+            {/* Note 64: only while onboarding Version 3 is on. Replays the tour over the real app; never touches the first-run marker. */}
+            {onboardingVersion(s.featureFlags) === 3 && (
+              <Row icon="lightbulb" label={T('Xem hướng dẫn trong ứng dụng', 'Tour the app')} trailing="›" testId="help-app-tour" onClick={replayOnboardingTour} />
+            )}
+            <Row icon="document" label={T('Điều khoản', 'Terms')} trailing="›" testId="help-terms" onClick={openPolicy} />
+            <Row icon="checklist" label={T('Hướng dẫn: Người tham gia', 'Guide: Personal')} trailing="›" testId="help-guide-personal" onClick={() => set({ screen: 'guide', guideKey: 'personal' })} />
+            <Row icon="checklist" label={T('Hướng dẫn: Người tổ chức (Host)', 'Guide: Host')} trailing="›" testId="help-guide-host" onClick={() => set({ screen: 'guide', guideKey: 'host' })} />
+            <Row icon="receipt" label={T('Hỏi & Đáp', 'Q&A')} trailing="›" testId="help-faq" onClick={() => set({ screen: 'faq' })} border={false} />
+          </div>
+        )}
+
+        {key === 'preferences' && (
+          <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
+            <Row
+              icon="sliders" label={T('Tùy chỉnh ứng dụng', 'App Preferences')}
+              trailing={`${s.lang === 'en' ? 'English' : 'Tiếng Việt'} ▪︎ ${s.theme === 'system' ? T('Theo thiết bị', 'System') : s.theme === 'dark' ? T('Tối', 'Dark') : T('Sáng', 'Light')}`}
+              testId="account-preferences"
+              onClick={openPreferences}
+            />
+            <Row icon="sliders" label={T('Sở thích sự kiện', 'Event preferences')} trailing="›" testId="account-event-preferences" onClick={() => openEventPreferences(null)} />
+            <Row icon="shield" label={T('Bảo mật', 'Security')} trailing="›" testId="account-security" onClick={openSecurity} border={false} />
+          </div>
+        )}
+
+        {/* L5 (migration 200): the weekly digest opt-in; renders nothing while the weekly_digest switch is off. */}
+        {key === 'preferences' && <DigestOptIn />}
+
+        {/* Account deletion (Task 2, Account/Settings pass) — a visually
+            separated "Account Management" subsection inside this same
+            `preferences` group screen, per this ticket's own placement
+            instruction (distinct from the ordinary rows above and from
+            Sign Out on the parent Account screen). Reuses the existing
+            `alert` color token — no new color introduced. */}
+        {key === 'preferences' && (
+          <div style={{ marginTop: 24 }} data-testid="account-management-section">
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản Lý Tài Khoản', 'Account Management')}</span>
+            <div
+              onClick={openDeleteAccountStay}
+              data-testid="account-delete-row"
+              style={{
+                marginTop: 8, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                cursor: 'pointer', borderRadius: 14, border: `1px solid ${alert}55`, background: `${alert}14`,
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: alert, fontWeight: 600 }}>
+                <RowIcon kind="alertShield" />{T('Xóa Tài Khoản', 'Delete Account')}
+              </span>
+              <span style={{ fontSize: 15, color: alert, lineHeight: 1 }}>›</span>
+            </div>
+          </div>
+        )}
+
+        {key === 'hostOps' && (
+          <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
+            {/* FIX PASS (2026-09-30) — badge parity with this group's own
+                entry card (Account.jsx's "Vận hành & thanh toán tổ chức"),
+                same rule 25bd5f5 already established for "Pending events"
+                below: both verifications AND refundQueue land on THIS exact
+                screen (openVerifications), so this row's badge is the same
+                sum, not a second independently-derived count. */}
+            <Row icon="checklist" label={T('Chờ xác nhận thanh toán', 'Awaiting Verification')} trailing="›" testId="host-verifications" onClick={openVerifications} badge={computeHostActionCount(s)} />
+            {/* Refund-discoverability fix — refunds previously only lived
+                inside the row above, with no mention of the word "refund"
+                anywhere in this group's own labels. Same screen/data
+                (openVerificationsRefunds just adds a one-shot scroll flag
+                to the SAME openVerifications() call), own badge
+                (computeRefundActionCount — the same refundQueue.length term
+                the row above's own sum already includes, never a second,
+                differently-defined count). */}
+            <Row icon="banknote" label={T('Hoàn tiền', 'Refunds')} trailing="›" testId="host-refunds" onClick={openVerificationsRefunds} badge={computeRefundActionCount(s)} />
+            <Row icon="banknote" label={T('Nhận thanh toán', 'Getting Paid')} trailing="›" testId="host-payout" onClick={openPayout} />
+            <Row icon="document" label={T('Hoá đơn đã phát hành', 'Invoices Issued')} trailing="›" testId="host-invoices" onClick={() => openDocuments('invoice', 'host')} />
+            <Row icon="receipt" label={T('Biên nhận đã phát hành', 'Receipts Issued')} trailing="›" testId="host-receipts" onClick={() => openDocuments('receipt', 'host')} border={false} />
+          </div>
+        )}
+
+        {/* Note 66: exactly the old Account Admin tab's entries, same badges and destinations. */}
+        {key === 'admin' && (
+          <div data-testid="account-admin-group" style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
+            <Row icon="alertShield" label={T('Duyệt & Kiểm Duyệt', 'Review & Moderation')} trailing="›" testId="account-group-adminReview" onClick={() => openFromAdmin('adminReview')} badge={s.pendingEventsCount} />
+            <Row icon="users" label={T('Đội Ngũ Quản Trị', 'Admin Team')} trailing="›" testId="account-group-adminTeam" onClick={() => openFromAdmin('adminTeam')} badge={(s.adminInvites || []).filter(i => i.status === 'pending').length} />
+            <Row icon="document" label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} trailing="›" testId="account-reports-admin" onClick={() => openReports('admin', null, 'accountGroup')} />
+            <Row icon="checklist" label={T('Hướng Dẫn Quản Trị', 'Admin Guide')} trailing="›" testId="account-admin-guide" onClick={() => set({ screen: 'guide', guideKey: 'admin' })} border={false} />
+          </div>
+        )}
+
+        {key === 'adminReview' && (
+          <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
+            <Row icon="alertShield" label={T('Tranh chấp thanh toán', 'Payment Disputes')} trailing="›" testId="admin-disputes" onClick={openDisputes} />
+            <Row icon="alertShield" label={T('Sự Kiện Chờ Duyệt', 'Pending Events')} trailing="›" testId="admin-events" onClick={openAdminEvents} badge={s.pendingEventsCount} />
+            {/* Note 54: remove / restore / delete events (any status), one or many at a time. */}
+            <Row icon="alertShield" label={T('Quản lý sự kiện', 'Manage events')} trailing="›" testId="admin-manage-events" onClick={() => set({ screen: 'adminManageEvents' })} />
+            <Row icon="alertShield" label={T('Tài Khoản Thử Nghiệm', 'Test Accounts')} trailing="›" testId="admin-test-accounts" onClick={() => set({ screen: 'adminTestAccounts' })} />
+            <Row icon="alertShield" label={T('Sửa ngày sinh', 'Birthday corrections')} trailing="›" testId="admin-dob-corrections" onClick={() => set({ screen: 'adminDobCorrections' })} />
+            <Row icon="sliders" label={T('Công tắc tính năng', 'Feature switches')} trailing="›" testId="admin-features" onClick={() => set({ screen: 'adminFeatures' })} />
+            {/* Migration 216: admins only, while switch project_hub_demo is on. Opens the hub on sample data, nothing is saved. */}
+            {projectDemoAllowed(s) && (
+              <div onClick={() => setDemoPicker(true)} data-testid="admin-project-demo" role="button" tabIndex={0}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDemoPicker(true); } }}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
+                  <RowIcon kind="users" />
+                  <span>
+                    <span style={{ display: 'block' }} data-testid="admin-project-demo-title">{T('Bản demo dự án sự kiện', 'Project hub demo')}</span>
+                    <span style={{ display: 'block', fontSize: 12, opacity: 0.65, marginTop: 2 }}>{T('Dữ liệu mẫu. Không lưu gì.', 'Sample data. Nothing is saved.')}</span>
+                  </span>
+                </span>
+                <span style={{ fontSize: 13, color: ink }}>›</span>
+              </div>
+            )}
+            {/* Migration 217: admins only, while switch ticket_demo is on. Opens the ticket screen on a sample booking. */}
+            {ticketDemoAllowed(s) && (
+              <div onClick={() => setTicketDemoPicker(true)} data-testid="admin-ticket-demo" role="button" tabIndex={0}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTicketDemoPicker(true); } }}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
+                  <RowIcon kind="users" />
+                  <span>
+                    <span style={{ display: 'block' }}>{T('Bản demo vé', 'Ticket demo')}</span>
+                    <span style={{ display: 'block', fontSize: 12, opacity: 0.65, marginTop: 2 }}>{T('Dữ liệu mẫu. Không lưu gì.', 'Sample data. Nothing is saved.')}</span>
+                  </span>
+                </span>
+                <span style={{ fontSize: 13, color: ink }}>›</span>
+              </div>
+            )}
+            {/* Migration 196: aggregate retention by market, admins only (the server checks too). */}
+            <Row icon="users" label={T('Báo cáo quay lại', 'Retention report')} trailing="›" testId="admin-retention" onClick={() => set({ screen: 'adminRetention' })} border={false} />
+          </div>
+        )}
+
+        {/* Admin Team pass (2026-10-02, migration 121) — reusing proven
+            organizer-invitation MECHANICS (accept/decline shape straight
+            below, the `team` block above) but NOT its permissions: this
+            screen never lets a client write `role`/`can_manage_admins`
+            directly — every button below calls a server RPC that enforces
+            its own authorization, this UI only reflects the result. */}
+        {key === 'adminTeam' && (
+          <>
+            {s.myAdminInvite && (
+              <div style={{ marginTop: 24 }} data-testid="account-admin-invite">
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Lời mời quản trị', 'Admin Invite')}</span>
+                <div style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`admin-invite-${s.myAdminInvite.id}`}>
+                  <span style={{ fontSize: 13, color: ink }}>
+                    {T('Bạn được mời trở thành quản trị viên banbe.', "You've been invited to become a banbe admin.")}
+                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <div onClick={() => respondToAdminInvite(s.myAdminInvite.id, true)} data-testid="admin-invite-accept" style={{ ...inkButton({ flex: 1, padding: 10, fontSize: 12.5 }) }}>{T('Chấp nhận', 'Accept')}</div>
+                    <div onClick={() => respondToAdminInvite(s.myAdminInvite.id, false)} data-testid="admin-invite-decline" style={{ ...fieldGlass({ flex: 1, padding: 10, fontSize: 12.5, textAlign: 'center', cursor: 'pointer' }) }}>{T('Từ chối', 'Decline')}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {s.accountType === 'admin' && !s.canManageAdmins && (
+              <p style={{ fontSize: 13, color: ink, opacity: 0.65, marginTop: 24 }} data-testid="admin-team-no-permission">
+                {T('Bạn không có quyền quản lý đội ngũ quản trị.', "You don't have permission to manage the admin team.")}
+              </p>
+            )}
+
+            {s.canManageAdmins && (
+              <>
+                <div style={{ marginTop: 24 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Mời Quản Trị Viên', 'Invite Admin')}</span>
+                  <div style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }}>
+                    <input
+                      value={s.adminInviteEmailDraft}
+                      onChange={setAdminInviteEmailDraft}
+                      placeholder={T('Email người được mời', "Invitee's email")}
+                      data-testid="admin-invite-email-input"
+                      style={{ fontSize: 13.5, padding: '10px 12px', border: `1px solid ${rule}`, borderRadius: 10, background: paper, color: ink }}
+                    />
+                    {!!s.adminInviteError && <span style={{ fontSize: 12, color: alert }} data-testid="admin-invite-error">{s.adminInviteError}</span>}
+                    {s.adminInviteConfirmEmail ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="admin-invite-confirm">
+                        <span style={{ fontSize: 12.5, color: ink }}>
+                          {T(`Mời ${s.adminInviteConfirmEmail} làm quản trị viên banbe?`, `Invite ${s.adminInviteConfirmEmail} as a banbe admin?`)}
+                        </span>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <div onClick={confirmAdminInvite} data-testid="admin-invite-confirm-yes" style={{ ...inkButton({ flex: 1, padding: 10, fontSize: 12.5, opacity: s.adminInviteBusy ? 0.6 : 1 }) }}>
+                            {s.adminInviteBusy ? T('Đang gửi…', 'Sending…') : T('Xác nhận mời', 'Confirm invite')}
+                          </div>
+                          <div onClick={cancelAdminInviteConfirm} data-testid="admin-invite-confirm-cancel" style={{ ...fieldGlass({ flex: 1, padding: 10, fontSize: 12.5, textAlign: 'center', cursor: 'pointer' }) }}>{T('Huỷ', 'Cancel')}</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div onClick={requestAdminInviteConfirm} data-testid="admin-invite-submit" style={{ ...inkButton({ padding: 10, fontSize: 12.5, textAlign: 'center' }) }}>{T('Mời', 'Invite')}</div>
+                    )}
+                  </div>
+                </div>
+
+                {s.adminInvites.filter(i => i.status === 'pending').length > 0 && (
+                  <div style={{ marginTop: 24 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Lời Mời Đang Chờ', 'Pending Invites')}</span>
+                    {s.adminInvites.filter(i => i.status === 'pending').map(inv => (
+                      <div key={inv.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`admin-invite-row-${inv.id}`}>
+                        <span style={{ fontSize: 13, color: ink, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.invited_email}</span>
+                        {s.revokeAdminInviteConfirmId === inv.id ? (
+                          <span style={{ display: 'flex', gap: 8, flex: 'none' }}>
+                            <span onClick={confirmRevokeAdminInvite} data-testid={`admin-invite-revoke-yes-${inv.id}`} style={{ fontSize: 12, fontWeight: 600, color: alert, cursor: 'pointer' }}>{T('Thu hồi?', 'Revoke?')}</span>
+                            <span onClick={cancelRevokeAdminInviteConfirm} style={{ fontSize: 12, color: ink, opacity: 0.6, cursor: 'pointer' }}>{T('Huỷ', 'Cancel')}</span>
+                          </span>
+                        ) : (
+                          <span onClick={() => requestRevokeAdminInviteConfirm(inv.id)} data-testid={`admin-invite-revoke-${inv.id}`} style={{ fontSize: 12, color: ink, opacity: 0.6, cursor: 'pointer', flex: 'none' }}>{T('Thu hồi', 'Revoke')}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {s.adminRemoval?.votes?.length > 0 && (
+                  <div style={{ marginTop: 24 }} data-testid="admin-removal-votes">
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Cuộc Bỏ Phiếu Đang Mở', 'Open Votes')}</span>
+                    {s.adminRemoval.votes.map(v => (
+                      <div key={v.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`admin-removal-vote-${v.id}`}>
+                        <span style={{ fontSize: 13, color: ink, fontWeight: 600 }}>
+                          {v.kind === 'revoke_admin'
+                            ? T(`Gỡ ${v.target_name || 'quản trị viên'} khỏi đội ngũ quản trị`, `Remove ${v.target_name || 'this admin'} as an admin`)
+                            : T(`Bỏ quyền quản lý đội ngũ của ${v.target_name || 'quản trị viên'}`, `Remove team-management access from ${v.target_name || 'this admin'}`)}
+                        </span>
+                        <span style={{ fontSize: 12, color: ink, opacity: 0.7 }}>
+                          {T(`Mở bởi ${v.opened_by_name || 'một quản trị viên'}. Đồng ý ${v.yes} · Không ${v.no} · cần ${v.needed}/${v.electorate} phiếu đồng ý.`,
+                             `Opened by ${v.opened_by_name || 'an admin'}. Yes ${v.yes} · No ${v.no} · ${v.needed} of ${v.electorate} yes votes needed.`)}
+                          {' '}{T('Hết hạn', 'Expires')} {new Date(v.expires_at).toLocaleString(s.lang === 'en' ? 'en-US' : 'vi-VN', { dateStyle: 'medium', timeStyle: 'short' })}
+                        </span>
+                        {v.can_vote ? (
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <div onClick={() => !s.adminRemovalBusy && castAdminRemovalVote(v.id, true)} data-testid={`admin-removal-vote-yes-${v.id}`} style={{ ...inkButton({ flex: 1, padding: 10, fontSize: 12.5, opacity: s.adminRemovalBusy ? 0.6 : 1 }) }}>{T('Đồng ý', 'Approve')}</div>
+                            <div onClick={() => !s.adminRemovalBusy && castAdminRemovalVote(v.id, false)} data-testid={`admin-removal-vote-no-${v.id}`} style={{ ...fieldGlass({ flex: 1, padding: 10, fontSize: 12.5, textAlign: 'center', cursor: 'pointer', opacity: s.adminRemovalBusy ? 0.6 : 1 }) }}>{T('Từ chối', 'Reject')}</div>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 12, color: ink, opacity: 0.6 }}>
+                            {v.my_vote ? T(`Bạn đã bỏ phiếu: ${v.my_vote === 'yes' ? 'đồng ý' : 'từ chối'}.`, `You voted: ${v.my_vote === 'yes' ? 'approve' : 'reject'}.`) : T('Bạn không thể bỏ phiếu cho chính mình.', "You can't vote on your own removal.")}
+                          </span>
+                        )}
+                        {v.is_opener && (
+                          <span onClick={() => !s.adminRemovalBusy && cancelAdminRemovalVote(v.id)} data-testid={`admin-removal-vote-cancel-${v.id}`} style={{ fontSize: 12, color: ink, opacity: 0.6, cursor: 'pointer' }}>{T('Huỷ cuộc bỏ phiếu', 'Cancel this vote')}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ marginTop: 24 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản Trị Viên Hiện Tại', 'Current Admins')}</span>
+                  {s.adminRoster.map(a => (
+                    <div key={a.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`admin-roster-row-${a.id}`}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                        <span style={{ fontSize: 13, color: ink }}>{a.display_name || T('(Chưa đặt tên)', '(No name set)')}{a.is_self ? T(' (bạn)', ' (you)') : ''}</span>
+                        {a.can_manage_admins && <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>{T('Có quyền quản lý đội ngũ', 'Can manage the admin team')}</span>}
+                        {!a.is_self && s.revokeAdminConfirmId !== a.id && s.adminRemoval?.protected_user_id !== a.id && (
+                          <span onClick={() => setAdminManagementPermission(a.id, !a.can_manage_admins)} data-testid={`admin-roster-permission-${a.id}`} role="button" style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer', marginTop: 4 }}>
+                            {a.can_manage_admins ? T('Bỏ quyền quản lý đội ngũ', 'Remove team-management access') : T('Cấp quyền quản lý đội ngũ', 'Allow managing the team')}
+                          </span>
+                        )}
+                        {s.adminRemoval?.protected_user_id === a.id && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }} data-testid="admin-protected-block">
+                            <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.8 }}>{T('Tài khoản được bảo vệ', 'Protected admin')}</span>
+                            {!a.is_self && (
+                              s.adminRemoval.admin_count < 3 ? (
+                                <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>
+                                  {T(`Chỉ có thể thay đổi khi có ít nhất 3 quản trị viên (hiện có ${s.adminRemoval.admin_count}), và phải qua bỏ phiếu.`,
+                                     `Can only be changed with at least 3 admins (now ${s.adminRemoval.admin_count}), and only by a vote.`)}
+                                </span>
+                              ) : !s.adminRemoval.can_open ? (
+                                <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>
+                                  {T('Cần ít nhất 2 quản trị viên có quyền quản lý đội ngũ (không tính tài khoản này) để bỏ phiếu. Hãy cấp quyền quản lý đội ngũ cho quản trị viên khác.', 'At least 2 admins with team-management access (not counting this account) are needed to vote. Grant team-management access to another admin first.')}
+                                </span>
+                              ) : (
+                                <>
+                                  {a.can_manage_admins && !s.adminRemoval.votes.some(v => v.kind === 'revoke_management') && (
+                                    <span onClick={() => !s.adminRemovalBusy && openAdminRemovalVote(a.id, 'revoke_management')} data-testid="admin-removal-open-management" role="button" style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>
+                                      {T('Mở bỏ phiếu: bỏ quyền quản lý đội ngũ', 'Start a vote: remove team-management access')}
+                                    </span>
+                                  )}
+                                  {!s.adminRemoval.votes.some(v => v.kind === 'revoke_admin') && (
+                                    <span onClick={() => !s.adminRemovalBusy && openAdminRemovalVote(a.id, 'revoke_admin')} data-testid="admin-removal-open-admin" role="button" style={{ fontSize: 11.5, fontWeight: 600, color: alert, cursor: 'pointer' }}>
+                                      {T('Mở bỏ phiếu: gỡ khỏi đội ngũ quản trị', 'Start a vote: remove as admin')}
+                                    </span>
+                                  )}
+                                </>
+                              )
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {!a.is_self && s.adminRemoval?.protected_user_id !== a.id && (
+                        s.revokeAdminConfirmId === a.id ? (
+                          <span style={{ display: 'flex', gap: 8, flex: 'none' }}>
+                            <span onClick={confirmRevokeAdmin} data-testid={`admin-roster-revoke-yes-${a.id}`} style={{ fontSize: 12, fontWeight: 600, color: alert, cursor: 'pointer' }}>{T('Thu hồi?', 'Revoke?')}</span>
+                            <span onClick={cancelRevokeAdminConfirm} style={{ fontSize: 12, color: ink, opacity: 0.6, cursor: 'pointer' }}>{T('Huỷ', 'Cancel')}</span>
+                          </span>
+                        ) : (
+                          <span onClick={() => requestRevokeAdminConfirm(a.id)} data-testid={`admin-roster-revoke-${a.id}`} style={{ fontSize: 12, color: ink, opacity: 0.6, cursor: 'pointer', flex: 'none' }}>{T('Thu hồi quyền', 'Revoke')}</span>
+                        )
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {!s.myAdminInvite && s.accountType !== 'admin' && (
+              <p style={{ fontSize: 13, color: ink, opacity: 0.65, marginTop: 24 }}>{T('Không có gì ở đây.', 'Nothing here.')}</p>
+            )}
+          </>
+        )}
+      </div>
+      {ticketDemoPicker && key === 'adminReview' && ticketDemoAllowed(s) && <TicketDemoPicker close={() => setTicketDemoPicker(false)} />}
+      {demoPicker && key === 'adminReview' && projectDemoAllowed(s) && <ProjectDemoPicker close={() => setDemoPicker(false)} />}
+    </div>
+  );
+}

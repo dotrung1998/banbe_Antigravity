@@ -1,0 +1,164 @@
+import SwiftUI
+import PhotosUI
+
+/// TASK D (2026-10-01 UX foundation pass) — the owner's own editable public
+/// identity: avatar, handle, display name, bio, city, interests, palette.
+/// Reachable by tapping Account's own profile card (AccountView.swift).
+struct EditProfileView: View {
+    @EnvironmentObject private var app: AppState
+    @State private var avatarPickerItem: PhotosPickerItem?
+
+    private var canSave: Bool {
+        app.editProfileHandle.trimmingCharacters(in: .whitespaces).count >= 3
+            && !app.editProfileName.trimmingCharacters(in: .whitespaces).isEmpty
+            && !app.editProfileBusy
+    }
+    private var monogram: String {
+        String((app.editProfileName.isEmpty ? app.T("B", "B") : app.editProfileName).prefix(1)).uppercased()
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+        ScreenScaffold {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    BackLink(label: app.T("Tài khoản", "Account")) { app.backFromEditProfile() }
+                    Spacer()
+                    Text(app.T("Chỉnh sửa hồ sơ", "Edit profile")).font(BanbeTheme.display(16))
+                    Spacer()
+                    Color.clear.frame(width: 50)
+                }
+
+                VStack(spacing: 10) {
+                    ZStack {
+                        if let url = app.user?.avatarURL, let imageURL = URL(string: url) {
+                            AsyncImage(url: imageURL) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
+                                .frame(width: 84, height: 84).clipShape(Circle())
+                        } else {
+                            Circle().fill(app.palette.ink).frame(width: 84, height: 84)
+                                .overlay(Text(monogram).font(.system(size: 30, weight: .bold)).foregroundStyle(app.palette.paper))
+                        }
+                    }
+                    HStack(spacing: 14) {
+                        let changePhotoTitle = app.T("Đổi ảnh", "Change photo")
+                        let inkColor = app.palette.ink
+                        PhotosPicker(selection: $avatarPickerItem, matching: .images) {
+                            Text(changePhotoTitle).font(.system(size: 12, weight: .semibold)).foregroundStyle(inkColor)
+                        }
+                        .accessibilityIdentifier("editProfile.avatarPick")
+                        if app.user?.avatarURL != nil {
+                            Button(app.T("Xoá ảnh", "Remove photo")) { Task { await app.removeAvatar() } }
+                                .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 22)
+                .onChange(of: avatarPickerItem) { _, newItem in
+                    Task {
+                        guard let newItem, let data = try? await newItem.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
+                        await app.changeAvatarAndSave(image)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 14) {
+                    field(app.T("Tên người dùng (handle)", "Handle"), prefix: "@", text: Binding(
+                        get: { app.editProfileHandle },
+                        set: { app.editProfileHandle = $0.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "_" } }
+                    ), id: "editProfile.handle")
+                    field(app.T("Tên hiển thị", "Display name"), text: $app.editProfileName, id: "editProfile.name")
+                    field(app.T("Giới thiệu ngắn", "Short bio"), text: $app.editProfileBio, id: "editProfile.bio")
+                    field(app.T("Khu vực (không bắt buộc)", "City (optional)"), text: $app.editProfileCity, id: "editProfile.city")
+                    field(app.T("Sở thích, cách nhau bởi dấu phẩy", "Interests, comma-separated"), text: $app.editProfileInterests, id: "editProfile.interests")
+
+                    // Organizer Team pass (2026-09-27, Stage 3) — a
+                    // SEPARATE long-form intro; the short bio above is
+                    // untouched.
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(app.T("Giới thiệu chi tiết (không bắt buộc)", "Long-form intro (optional)"))
+                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink)
+                        TextEditor(text: $app.editProfileIntroLong)
+                            .font(.system(size: 13.5)).frame(height: 120)
+                            .accessibilityIdentifier("editProfile.introLong")
+                        Text("\(app.editProfileIntroLong.count)/4000").font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.55))
+                    }
+
+                    SocialLinksEditorView(links: $app.editProfileLinks, open: $app.editProfileLinksOpen, testPrefix: "editProfile.link")
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(app.T("Bảng màu hồ sơ", "Profile palette")).font(.system(size: 11.5)).foregroundStyle(app.palette.ink)
+                        HStack(spacing: 10) {
+                            ForEach(ProfilePalette.all, id: \.key) { p in
+                                Circle().fill(p.color).frame(width: 34, height: 34)
+                                    .overlay(Circle().stroke(app.palette.ink, lineWidth: app.editProfileTheme == p.key ? 2.5 : 0))
+                                    .onTapGesture { app.editProfileTheme = p.key }
+                                    .accessibilityIdentifier("editProfile.theme.\(p.key)")
+                            }
+                        }
+                    }
+
+                    // Profile keychain (note 35): own Save/Cancel, independent of the profile Save below.
+                    KeychainSettingsSection().id("editProfile.keychain")
+
+                    if !app.editProfileError.isEmpty {
+                        Text(app.editProfileError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                    }
+
+                    // Note 64: navigate class. ✓ only after save_profile accepted it, then back to Account.
+                    AsyncSuccessButton(title: app.T("Lưu", "Save"), enabled: canSave,
+                                       pendingLabel: app.T("Đang lưu…", "Saving…"), successLabel: app.T("Đã lưu", "Saved"),
+                                       identifier: "editProfile.save",
+                                       run: { await app.saveProfileFields(deferNavigation: true) ? .success : .failure(app.editProfileError) },
+                                       onSuccessAnimationComplete: { app.screen = .profile })
+
+                    if let handle = app.user?.handle, !handle.isEmpty {
+                        Button(app.T("Xem hồ sơ công khai của bạn", "View your public profile")) {
+                            app.openPublicProfile(handle: handle, back: .editProfile)
+                        }
+                        .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                        .frame(maxWidth: .infinity).padding(.top, 10).padding(.bottom, 30)
+                        .accessibilityIdentifier("editProfile.preview")
+                    }
+                }
+                .padding(.top, 22)
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 20).padding(.top, 16)
+        }
+        .onAppear {
+            // "Edit charm" on the profile opens straight at the Keychain section.
+            guard KeychainStore.shared.focusKeychainOnEdit else { return }
+            KeychainStore.shared.focusKeychainOnEdit = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                withAnimation { proxy.scrollTo("editProfile.keychain", anchor: .top) }
+            }
+        }
+        }
+    }
+
+    @ViewBuilder
+    private func field(_ label: String, prefix: String? = nil, text: Binding<String>, id: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label).font(.system(size: 11.5)).foregroundStyle(app.palette.ink)
+            HStack {
+                if let prefix { Text(prefix).font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.6)) }
+                TextField("", text: text).font(.system(size: 13)).accessibilityIdentifier(id)
+            }
+            .padding(11)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+    }
+}
+
+struct ProfilePalette {
+    let key: String
+    let color: Color
+    static let all: [ProfilePalette] = [
+        // Exact web values (src/lib/profileTheme.js; shared fixture tests/fixtures/profile-card.json, note 68).
+        ProfilePalette(key: "default", color: Color(hex: 0xEDE7D9)),
+        ProfilePalette(key: "rose", color: Color(hex: 0xE7C9C2)),
+        ProfilePalette(key: "moss", color: Color(hex: 0xC8CBB2)),
+        ProfilePalette(key: "ink", color: Color(hex: 0x3A3630)),
+        ProfilePalette(key: "sand", color: Color(hex: 0xE3D3B4)),
+    ]
+}

@@ -1,0 +1,369 @@
+# Refund lifecycle — host cancel → refund destinations → batch/mark-sent → dispute (2026-09-24 → 2026-09-28)
+
+## Status: WORKING (web + iOS), several real bugs found and fixed across multiple passes — read the bug sections below before touching this area again, they document root causes that are easy to reintroduce.
+
+## Migration chain (read in order, each is CREATE OR REPLACE over the last — only 069 is the "base"; do not edit any of these in place, always add a new forward migration)
+- `20260924000069_069_refund_lifecycle.sql` — `cancel_booking()` (host-cancel branch reason fix), `mark_refund_sent()`, `confirm_refund_received()`, `dispute_refund()`, `goc_flag_overdue_refunds()`. `refund_claims`/`refund_status`/`refund_reason` themselves are older (002/008).
+- `20260924000070_070_fix_cancel_booking_refund_reason_cast.sql` — real bug: a `CASE WHEN … THEN 'x' ELSE 'y' END` with no explicit cast resolves to `text`, not "unknown" like a bare literal, so Postgres refuses to implicitly assign it to the `refund_reason` enum column on INSERT. Fixed with explicit `::refund_reason` casts. **If you ever see `column "reason" is of type refund_reason but expression is of type text`, this is the exact bug class — check every CASE expression feeding an enum column, not just this one.**
+- `20260925000071_071_refund_destinations.sql` — `refund_destinations` table (originally ONE row per user, PK on `user_id`) + `set_refund_destination()` RPC. **Superseded by 074 below — `set_refund_destination()` no longer exists.**
+- `20260925000072_072_refund_deadlines_and_resend.sql` — `refund_claims.refund_due_at`/`disputed_at`/`host_response_due_at`/`dispute_flagged_at`/`transfer_reference`, `goc_add_business_days()`, `resend_refund_transfer_info()` RPC (host "Gửi lại thông tin chuyển khoản" — stays `disputed`, doesn't change status).
+- `20260925000073_073_refund_batches.sql` — `refund_batches`/`refund_batch_items` + `create_and_confirm_refund_batch()` (host bulk "Xác nhận đã chuyển tiền" — atomic, single RPC does create+confirm together, no separate draft-batch state ever exists).
+- `20260926000074_074_refund_destinations_multi_and_snapshot.sql` — `refund_destinations` extended to many-rows-per-user (`id` PK, `label`, `is_default`, unique-default partial index); `refund_claims.selected_destination_id`/`recipient_snapshot` (jsonb, snapshotted at selection time so a later edit/delete of the account never changes what a host already sees); new RPCs `save_refund_destination`, `delete_refund_destination`, `set_default_refund_destination`, `select_refund_destination`; RLS host-read policy tightened to ONLY the destination actually selected on one of the host's own claims (not the guest's whole account list); `create_and_confirm_refund_batch()` redefined to require `selected_destination_id IS NOT NULL`.
+- `20260927000075_075_refund_accounts_order_and_snapshot_invariant.sql` — `refund_destinations.position` + `reorder_refund_destinations()` RPC (drag-to-reorder; moving to position 0 auto-defaults); `goc_refund_snapshot_valid(jsonb)` helper; **`mark_refund_sent()` redefined to require a valid snapshot too** (see Bug C below — this was the real gap); one-time data repair reverting any invalid historical `host_marked_sent` claim back to `owed`.
+- `20260928000076_076_reorder_refund_destinations_returns_rows.sql` — `reorder_refund_destinations()` redefined to return the canonical saved rows (`jsonb.destinations`) in its own response, so the client no longer needs a SEPARATE `loadRefundDestinations()` fetch after a successful reorder (see Bug B below — that second, unguarded round trip was the reorder snap-back's real cause).
+- `20260929000077_077_reorder_default_race_and_canonical_host_claims.sql` — **the actual server-side bug behind the reorder failure** (076 fixed a client-side race, but the RPC itself still threw a real Postgres error on the server — see Bug B2 below); also adds `get_host_refund_claims(p_event_id)`, the canonical ownership-enforcing RPC that replaces the host Refund Center's old client-composed query (see Bug A2 below), plus a non-destructive `refund_claims.orphaned_at` flag column.
+- `20260930000078_078_canonical_host_refund_queue_and_mark_sent_result.sql` — `get_host_refund_claims()`'s `p_event_id` becomes optional (`NULL` = every claim across every event the caller hosts, admin-aware via `profiles.role`), so it can also serve the ACCOUNT-LEVEL refund queue (Verifications.jsx/VerificationsView), which had never been migrated to it at all (see Bug A3 below). `mark_refund_sent()` gets an `amount_vnd > 0` guard, its "no valid destination" business code is renamed `NO_DESTINATION_SELECTED` -> `REFUND_DESTINATION_REQUIRED` (updated at every call site), and it now returns the complete canonical claim (`'claim', to_jsonb(v_claim)`) on every path, including the idempotent repeat-tap path.
+
+**If touching refunds again: read migration 078 in full before writing a new one** — it's the current source of truth for `mark_refund_sent`/`create_and_confirm_refund_batch`/`reorder_refund_destinations`/`get_host_refund_claims`/the destinations schema.
+
+## Architecture facts worth knowing before you start
+- **Neither web nor iOS has ANY real router/NavigationStack.** Web is a flat `state.screen` string switched in `App.jsx`'s `SCREENS` map (`src/App.jsx`); iOS is a flat `Screen` enum switched in `RootView.swift`, with a **hand-rolled edge-swipe-back gesture** (`RootView.swift`'s `edgeSwipe`) driven entirely by `AppState.swift`'s `goBack()` / `backTargetScreen` switch statements. **Adding a new screen ALWAYS means adding a case to both `goBack()` and `backTargetScreen`, or swipe-back silently does nothing for it** (exactly the Task A bug below — two missing `case` lines, not a gesture-tuning problem).
+- Web has no URL routing either — `state.screen` is pure React state, lost on reload. The established relaunch-persistence pattern (first used for `refundAccounts`/`myRefunds`) is `localStorage.setItem('banbe.lastScreen', <screen>)` on open / `removeItem` on leave, restored in `postAuthDestination()` (`BanBeContext.jsx`) only for a small whitelist of screens. iOS mirrors this with `UserDefaults.standard` under the same key, restored in `AppState.swift`'s own `postAuthDestination(isSignedIn:)`.
+- Web also has no browser-history integration by default (back button does nothing) — the `refundAccounts`/`myRefunds` routes are the first to `window.history.pushState`/listen for `popstate`, consumed via `window.history.back()` whenever the app itself navigates away from one of these screens first (so a stray forward-swipe can't resurrect a route already left). If you add more screens that need "browser back works", copy this pattern rather than inventing a new one.
+- `refund_destinations` RLS is intentionally narrow: the goer can read/write only their own rows; an organizer can read a destination ONLY when it's the one `selected_destination_id` on one of their own event's claims — never a blanket read of a guest's saved accounts. This is why the host Refund Center reads `refund_claims.recipient_snapshot` (a plain jsonb copy), never a live join against `refund_destinations`.
+
+## Bug (2026-09-26) — the "0đ / disappearing / reappearing" host Refund Center claim
+**Confirmed root cause**: `loadRefundCenter()` (both platforms) unconditionally reset the host's row-selection (`refundCenterSelected`) to empty on **every** call — including the routine 6s background poll. A host mid-review with rows selected had that selection silently wiped by the next poll tick: the review screen's own "N khách ▪︎ tổng X₫" collapsed to 0 selected / 0₫ and the confirm CTA disabled itself. **Not** an actual mutation of `amount_vnd` anywhere — nothing client-side ever wrote that column, and no zero-sentinel existed in the code, despite how the symptom read.
+**Fix**: `loadRefundCenter` now *prunes* selection to ids that still exist/are still eligible instead of wiping it; eligibility/recipient moved off a live `refund_destinations` join (which could also race a goer's concurrent destination edit) onto the claim's own persisted `selected_destination_id`/`recipient_snapshot`; a transient fetch error now leaves existing state untouched instead of clearing it; added `refundBatchInFlight`/`refundResendInFlight` guards against double-submit.
+**Lesson**: any "refresh/poll" function that resets user-in-progress UI state (a selection, a form, an open panel) on every tick is a latent bug — always prune/reconcile against ids, never blanket-reset, unless you've confirmed nothing user-initiated can be in flight.
+
+## Bug (2026-09-27) — invalid "Sent · awaiting confirmation" with no recipient destination
+**Confirmed root cause**: there are TWO RPCs that can move a claim to `host_marked_sent` — `create_and_confirm_refund_batch()` (already checked `selected_destination_id IS NOT NULL`) and `mark_refund_sent()` (used by Verifications.jsx's plain "Đã hoàn tiền" button AND Attendance's "Hoàn lại lần nữa"), which had **no snapshot check at all**. A host using that second path could mark any owed/disputed claim sent regardless of whether the goer had ever selected a destination.
+**Fix**: `mark_refund_sent()` (migration 075) now runs through the same `goc_refund_snapshot_valid()` check as the batch RPC. **Lesson: when there are multiple RPC entry points to the same terminal state, an invariant enforced in only one of them is not actually enforced — audit every path to a status transition, not just the one you're currently working on.**
+
+## Bug (2026-09-27) — Attendance guest-list flicker ("No one has booked…" then changes)
+**Confirmed root cause**: `loadAttendanceGuests()` (both platforms) runs 2-3 sequential awaited queries with no request-ordering guard. A poll re-fire or two overlapping calls could let an older, slower response resolve *after* a newer one and overwrite it with stale/empty data for one frame — the empty-state text then correctly rendered what it was told, which was wrong.
+**Fix**: added a monotonic request-sequence counter (`attendanceGuestsSeq`, both platforms) — only the newest in-flight call may write `attendanceGuests`/`attendanceLoading`. Also: `openAttendance()` now sets `attendanceLoading = true` synchronously (not just inside the async loader), and empty-state copy now distinguishes still-loading vs loaded-empty-with-refund-history vs loaded-empty-with-none (checks `refundCenterClaims`, loaded independently). **Lesson: any polled list-loading function with multiple sequential awaits and no request-id guard is a latent out-of-order-response bug — this exact pattern (poll interval + multi-await loader + no seq guard) should be checked anywhere else it appears in this codebase.**
+
+## Bug (2026-09-28) — ghost TDK404 row in host Refund Center
+**Confirmed root cause, two compounding bugs**:
+1. `openAttendance()` (both platforms) never cleared `refundCenterClaims`/`refundCenterSelected` — only `loadRefundCenter()`'s own async response ever replaced them. Switching Attendance from one event (or one host session) to another rendered the PREVIOUS event's/account's stale claims for the entire window between mount and that response landing, or indefinitely if it errored. This is the same *class* of bug as the attendance-flicker one above (state only ever cleared by an async response, never synchronously on navigation) — **check every `open*()` function that navigates into a screen backed by async-loaded state for this exact gap, not just these two.**
+2. The Refund Center row LIST rendered every claim regardless of status — including already-resolved `host_marked_sent`/`guest_confirmed` ones — because the full `claims` array (fetched for the progress-summary stats, which genuinely need all statuses) was reused directly as the row list too, with no separate filter for "what a host can actually act on".
+**Fix**: `openAttendance()` now clears refund-center state synchronously, exactly like it already did for `attendanceGuests`. `loadRefundCenter()` now also drops any claim that can't resolve to a real booking row within the same query (orphan-row protection). The rendered row list (`visibleRows`/`refundCenterRow` loop) is now filtered to `status IN ('owed', 'disputed')` only — `claims`/the unfiltered array stays but is used ONLY for the "N/M sent" progress summary, never for the tappable row list. `logout()` (web) now also clears every refund-related cache (`refundCenterClaims`, `refundQueue`, `refundDestinations`, `myRefunds`, `paymentRefundClaim`, `attendanceGuests`) so a same-device account switch can't briefly render the previous user's data. **iOS logout/`signOut()` was NOT touched this pass — it lives outside this ticket's read scope (not in AppState/AppState+Payments/AppState+Data); it likely has the same gap and should get the same treatment next time refunds are touched.**
+
+## Bug (2026-09-28) — reorder snap-back + white reload
+**Confirmed root cause**: `reorderRefundDestinations()` (both platforms) did an optimistic local reorder, then ALWAYS fired a separate, unconditional `loadRefundDestinations()` fetch afterward to find out what the server actually persisted — a second network round trip with no guard against a stray concurrent refetch (any other call to `loadRefundDestinations()`, e.g. a mount effect) landing with pre-reorder positions and clobbering the just-applied order.
+**Fix**: `reorder_refund_destinations()` (migration 076) now returns the canonical saved rows in its own jsonb response — the client uses that directly and never fetches a second time on success, so there's no second request left to race. Added `refundDestinationsReordering` (both platforms) as an in-flight flag that `loadRefundDestinations()` itself now checks and skips writing over. On failure, the array is restored to exactly what it was before the drag (saved as `previous` before the optimistic update) and a friendly error shows (`refundDestinationError`, reused from the add/edit form's own error slot) — never silently left half-reordered. **Lesson: "optimistic update, then refetch to reconcile" is only safe if either (a) the refetch is the ONLY thing that can touch that state while in flight, or (b) there's an explicit in-flight guard — an RPC that can just return its own authoritative result removes the whole class of race instead of trying to guard around it.**
+
+## Bug (2026-09-29) — reorder still failed on the server after migration 076 (real Postgres error, not just a client race)
+**Confirmed root cause**: migration 076 fixed the CLIENT-side race (the unguarded second fetch), but the RPC itself still threw a real `23505 unique_violation` on the server whenever a goer dragged a NON-default account to position 0. `idx_refund_destinations_one_default` (074) is a partial `UNIQUE INDEX ON (user_id) WHERE is_default`, checked immediately (not deferred). `reorder_refund_destinations()`'s `FOREACH` loop updated rows one at a time in `p_ordered_ids` order; when the dragged-to-first row wasn't already the default, the loop set its `is_default = true` before reaching the row that still held the old `is_default = true` — two rows with `is_default = true` for the same `user_id` at once, rejected by the index. This is the literal error the client had been quietly swallowing into "Chưa thể lưu thứ tự..." for every single "drag a non-default row to the top" — the most common reorder action there is.
+**Fix**: migration 077 adds one statement before the loop — `UPDATE refund_destinations SET is_default = false WHERE user_id = auth.uid() AND is_default = true` — so nothing is ever competing for `is_default = true` by the time the loop sets it on exactly one row. Also added full dev-only diagnostic logging (`code`/`message`/`details`/`hint` + the submitted ids + caller's user id) on both platforms' catch blocks, gated so it never reaches a release build's console as a raw string shown to the user (the friendly Vietnamese error is unchanged).
+**Lesson**: a partial/conditional UNIQUE INDEX (`WHERE is_default`, `WHERE is_active`, etc.) is only really safe to update via a "clear the old holder(s) first, in their own statement" pattern when a loop or multi-row update might otherwise briefly have two rows satisfying the same partial condition — order-dependent single-row loops over such a column are a latent unique-violation waiting for the "wrong" input order, and will not show up in testing unless you specifically drag a non-default (not just any) row to the constrained position.
+
+## Bug (2026-09-29) — ghost refund claim in host Refund Center: the previous "orphan filter" was a client-side bandaid, not a fix
+**Confirmed root cause**: the previous pass's fix (the `validClaims`/`bookingById` filter in `loadRefundCenter`) discarded rows that couldn't be reconciled to a fetched booking — but it was still built on top of a client-composed query (fetch this event's bookings, then fetch `refund_claims` via a client-built `.or(booking_id.eq...)` string) with the actual ownership/identity chain (claim -> booking -> event -> organizer) spread across three unsynchronized places: the RLS policy, the client's own bookings prefetch, and the client's own post-hoc filter. Any drift between those three (e.g. the client filter checking `booking_id` only while a legacy row only had `reservation_id`, or the bookings prefetch being scoped by a stale/wrong `eventKey`) could still let something invalid through, or silently under/over-filter — a client-side check is a UI-level guard, not a structural guarantee, exactly as this ticket's own instructions called out ("do not merely add a UI filter").
+**Fix**: `get_host_refund_claims(p_event_id)` (migration 077) replaces the whole client composition with one `SECURITY DEFINER` RPC whose SQL performs the canonical identity chain as **INNER JOINs**: `refund_claims -> bookings -> events (WHERE events.id = p_event_id) -> organizers (WHERE caller owns it)`. A row is now structurally impossible to return unless every link resolves — there is no client-side "is this valid?" step left to get out of sync with anything, because an orphaned claim, a claim whose booking belongs to a different event, or a claim under an event the caller doesn't host simply cannot survive the join. The RPC also returns `guest_name` directly (one query, no separate `profiles` fetch). A non-destructive `refund_claims.orphaned_at` column was also added and backfilled for any row that fails the booking/event/organizer join at all — visible for admin audit, never deleted, and not required for correctness any more (the RPC's joins already exclude these regardless of the flag).
+**Lesson**: "fetch broadly, then filter in the client to what's valid" is never equivalent to "the server can only ever return what's valid" — the former can (and did, across two passes) leave multiple copies of the same ownership logic to maintain in sync; the latter has exactly one. When a ticket explicitly says "don't just add a UI filter," that's usually a sign the previous fix was this exact anti-pattern.
+
+## Bug (2026-09-30) — TDK404 kept showing an actionable "Mark refund sent" card on Account > Awaiting verification even after Attendance's Refund Center was fixed
+**Confirmed root cause**: Account > Awaiting verification's refund section (`src/screens/Verifications.jsx`'s `s.refundQueue` / `apps/ios/BanbeApp/Views/VerificationsView.swift`'s `app.refundQueue`) was an ENTIRELY SEPARATE implementation from Attendance's Refund Center — its own client-composed query (`refund_claims` -> `bookings` -> `events` -> `profiles`, all joined in JS/Swift, never routed through `get_host_refund_claims()`), and critically, it had **no recipient-snapshot check at all** — every `owed`/`disputed` claim got the "Đã hoàn tiền"/"Mark refund sent" CTA unconditionally, unlike Attendance which had checked this since the 2026-09-27 pass. Fixing Attendance's ghost-row bug never touched this screen at all, because it was never the same code path to begin with — exactly the kind of drift a shared canonical path is supposed to make impossible.
+**Fix**: `loadRefundQueue()` (both platforms) now calls `get_host_refund_claims()` with no event id (migration 078's optional `p_event_id`), reusing the exact INNER-JOIN ownership guarantees Attendance already relies on, scoped across ALL the host's events instead of one. A single shared presentation mapper — `refundClaimPresentation()` (`src/lib/refundPresentation.js`, new file) on web, `RefundClaim.hasValidDestination`/`.isActiveRefundStatus`/`.isRefundActionable` (an extension in `AppState+Payments.swift`) on iOS — is now used by BOTH `loadRefundCenter` (Attendance) and `loadRefundQueue` (Verifications), so "what's actionable" can never drift between the two screens again. Verifications' refund cards now show "Khách chưa chọn tài khoản nhận hoàn tiền." instead of a CTA when `!hasDestination`, exactly like Attendance.
+**Lesson**: this is the second time in this feature's history two screens independently computed "is this claim actionable" (see the 2026-09-27 mark_refund_sent snapshot-check bug — same shape, one level up: there it was two RPCs, here it's two client screens). Whenever a ticket says "fix screen X's version of a bug we already fixed on screen Y," the first question is always "are X and Y actually sharing the same data-fetch and business-rule code at all, or do they just look similar?" — if the answer is "similar-looking but separate," unifying them onto one shared function is the real fix, not patching the second copy to match the first by hand.
+
+## Bug (2026-09-30) — "Mark refund sent" could still show the same actionable card again between the mutation succeeding and the next refetch landing
+**Confirmed root cause**: `loadRefundQueue()`/`loadRefundCenter()` had no request-sequencing guard (unlike `loadAttendanceGuests()`'s `attendanceGuestsSeq`, fixed for a similar reason back on 2026-09-27) — three independent, uncoordinated callers (a mount effect/task, a 6s poll interval/task, and `markRefundSent()`'s own post-mutation refetch) could each land in any order and unconditionally overwrite `refundQueue`/`refundCenterClaims`. A poll tick that started reading `status = 'owed'` just before a host tapped "Xác nhận" could still resolve AFTER the mutation's own fresher refetch, silently reintroducing the just-confirmed claim as still-owed/actionable.
+**Fix**: added `refundQueueSeq`/`refundCenterSeq` monotonic counters (iOS: plain vars on `AppState`, same pattern as `attendanceGuestsSeq`; web: `useRef`s in `BanBeContext.jsx`) — only the newest call may write state. Additionally, `mark_refund_sent()` (migration 078) now returns the complete canonical claim, which is patched into both `refundQueue`/`refundCenterClaims` BY ID immediately on success (before the backstop refetch even lands), so there's no window where the UI is showing stale pre-mutation data at all — the seq guard then just protects the backstop refetch that follows. Patching preserves the row's own `guestName`/`eventName` explicitly (`to_jsonb()`'s canonical claim is the raw `refund_claims` row shape only, no joined display fields) and never strips the claim out of the array on this patch — status-based section filtering (`activeRows`/`pendingRows` on web, `activeRefundRows`/`pendingRefundRows` on iOS) is what moves it into a "Đang chờ xác nhận" section, so the progress-summary stats that need every status still see it.
+**Lesson**: "the mutation succeeded, refetch to get the truth" always has a race window unless EITHER the mutation's own response already IS the truth (patch immediately, no window at all) OR every reader of that state is sequence-guarded (protects the eventual refetch, but not the window before it lands). Doing both, as here, closes it completely rather than just shrinking it.
+
+## Account (web + iOS) scroll-position preservation — reused, not reinvented
+Product rule required preserving Account's scroll position across a push into a child screen (Refund accounts, My refunds, …) and back, explicitly told to reuse whatever Home already does rather than build a second system.
+- **Web**: `src/App.jsx`'s `Shell` component already does this GENERICALLY for every `state.screen` — `scrollPositions` (a plain ref map keyed by `state.screen`) + a `useLayoutEffect` on `[state.screen]` that restores `scrollTop`, plus a `ResizeObserver`-based "keep re-applying the saved target until the user scrolls again" fallback for late-arriving async content. Despite the code comments' "Home task 3" framing, none of this is actually gated to `state.screen === 'home'` — it was already screen-agnostic. **No code change was needed for Account specifically** — it already worked, verified by reading the mechanism, not assumed.
+- **iOS**: no generic equivalent exists — `ScreenScaffold`'s `scrollPositionID: Binding<String?>?` parameter (`Components.swift`) is the reusable piece (already used by `HomeView` via `app.homeScrollAnchorID`), but each screen has to opt in with its own `@Published` id binding on `AppState` and give its own meaningful child views a stable `.id(...)`. Added `app.accountScrollAnchorID` + ids on Account's stats/links/hosting-toggle sections + the same `retryScrollRestoreIfNeeded()` nil-then-reassign dance `HomeView` already uses (required because `.scrollPosition(id:)` won't re-trigger a scroll if set to the SAME id it already holds). **If another iOS screen needs this, copy `AccountView`'s wiring, not `HomeView`'s directly — Account's version is the simpler one with no async data-readiness gate.**
+
+## Bug (2026-09-29) — iOS reorder drag visually overlapped/cut off the next row
+**Confirmed root cause**: `RefundAccountsView`'s destinations `List` (native `.onMove`) was nested INSIDE `ScreenScaffold`'s own `ScrollView` (`scroll` defaults to `true`), with `.scrollDisabled(true)` and a hand-computed `.frame(height:)` (a flat `44pt * row count` sum, `+92` per row with its menu expanded) bolted on to fake "just a plain non-scrolling block". That fixed-height clipping frame has no relationship to the native drag-reorder's real (taller, elevated, animated) row metrics during an active drag — so the container clipped/overlapped whatever didn't fit inside its hand-computed height. This is exactly the forbidden pattern: a native reorderable `List` inside a competing outer `ScrollView` plus a manual fixed-height/clipping frame.
+**Fix**: `ScreenScaffold(scroll: false)` for this screen (no outer `ScrollView` to compete with) — the destinations `List` is now the screen's only scroll container and sizes/animates itself natively (no `.scrollDisabled`, no manual row-height sum; `rowHeight(for:)` deleted entirely). The "+ Thêm tài khoản" row moved INSIDE the same `List` (its own non-reorderable `Section`, `.moveDisabled(true)`) instead of living as a sibling view outside it, so there is exactly one scrollable region on the whole screen, never two.
+**Lesson**: a `List` with `.onMove` needs to own its own scrolling and size itself naturally — wrapping it in another `ScrollView` and then trying to neutralize that ScrollView's competing behavior with `.scrollDisabled` + a manually computed `.frame(height:)` cannot account for the native drag/lift animation's real geometry and will clip or overlap rows under it. If a screen needs non-scrolling header content above a reorderable list, put that content in its own non-reorderable `List` `Section`, not in an outer `ScrollView`.
+
+## Files / functions (current)
+- `src/lib/refundPresentation.js` (new) / `RefundClaim` extension in `AppState+Payments.swift` — the ONE shared "what's actionable" mapper (`hasDestination`/`eligible`/`needsDestination`/`actionable`/`pendingConfirmation`), used by both `loadRefundCenter` and `loadRefundQueue` on both platforms. If you add a THIRD host refund surface, it must use this too — see the 2026-09-30 ghost-TDK404-on-Verifications bug above for what happens when it doesn't.
+- `src/state/BanBeContext.jsx` / `apps/ios/BanbeApp/State/AppState+Payments.swift` (+ `AppState.swift` for published state, `AppState+Data.swift` for `loadAttendanceGuests`) — all refund state/RPC calls. `loadRefundCenter` AND `loadRefundQueue` on both platforms now call `get_host_refund_claims()` (077/078, `p_event_id` optional — one event vs. every event the host runs), not a client-composed query. Both have their own `Seq` request-sequencing guard (`refundCenterSeq`/`refundQueueSeq`).
+- `src/screens/RefundAccounts.jsx` / `apps/ios/BanbeApp/Views/RefundAccountsView.swift` — goer's saved destinations (compact iOS-Settings-style rows, native drag reorder — web: HTML5 DnD; iOS: `List`+`.onMove` with edit-mode pinned active, `.deleteDisabled(true)`, `ScreenScaffold(scroll: false)` so the `List` is the screen's only scroll container — note the native SwiftUI reorder handle renders at the row's **trailing** edge, not leading, a platform constraint of using the native mechanism).
+- `src/screens/MyRefunds.jsx` / `apps/ios/BanbeApp/Views/MyRefundsView.swift` — goer's persistent "Hoàn tiền" list (Account entry point, independent of notifications).
+- `src/screens/Account.jsx` / `apps/ios/BanbeApp/Views/AccountView.swift` — entry points to the above two, plus (iOS only, see scroll section above) `app.accountScrollAnchorID`.
+- `src/screens/PaymentDetails.jsx` / `apps/ios/BanbeApp/Views/PaymentViews.swift` — goer's per-claim destination picker (`refund.chooseDestination`/`refund.changeDestination`), deadline/dispute copy.
+- `src/screens/Attendance.jsx` / `apps/ios/BanbeApp/Views/AttendanceView.swift` — host's per-event Refund Center section (bulk select/review/confirm, resend, "Hoàn lại lần nữa").
+- `src/screens/Notifications.jsx` / `apps/ios/BanbeApp/Views/MessagingViews.swift`'s `NotificationsView` — per-kind trailing icon (`notificationCategory`/`KindIcon`) + unread background tint, no emoji.
+
+## Deliberately NOT implemented
+- Flow 1's "Chuyển từ tài khoản" (goer picks which saved account they paid FROM, for host reconciliation) — `submit_payment_proof`/verification never reference a source-bank-account field anywhere in this schema, so per that ticket's own "only if genuinely used by existing verification" condition, this was skipped. Don't add it without checking verification actually needs it first.
+- A single reusable `HostRefundQueue` UI component/view shared literally between Attendance's Refund Center (checkbox multi-select + batch confirm) and Verifications' refund queue (per-row inline confirm) — the 2026-09-30 ticket's own task D listed this as a "prefer," not a hard requirement. What WAS unified is the data layer (same RPC, same `refundClaimPresentation` mapper, same RPCs for the mutation) — the two screens still have their own React/SwiftUI rendering code because their interaction models genuinely differ (bulk review vs. one-at-a-time). If a future ticket wants literal component sharing, that's a bigger, riskier refactor than this pass's actual bug (two screens disagreeing on "is this claim actionable") required.
+
+## Copy conventions established here (reuse verbatim, don't redrift)
+- Goer destination picker: "Chọn tài khoản nhận hoàn tiền" / "Thêm tài khoản mới" / "Tài khoản nhận hoàn đã được lưu" / empty state "Chưa có tài khoản nhận hoàn tiền".
+- Host Refund Center / Verifications refund queue (same copy, both surfaces now share the same mapper): "Khách chưa chọn tài khoản nhận hoàn tiền." (owed, no snapshot) / "Đang chờ khách xác nhận đã nhận tiền." (host_marked_sent status label) / "Chưa thể đánh dấu đã hoàn tiền. Khách cần chọn tài khoản nhận trước." (`REFUND_DESTINATION_REQUIRED` error — renamed from `NO_DESTINATION_SELECTED` in migration 078, check for the OLD name if grepping older code/notes).
+- Attendance empty states: "Đang tải khách…" (loading) / "Hiện không có khách đang hoạt động cho sự kiện này." (empty + has refund history) / "Chưa có khách đặt sự kiện này." (empty, no history).
+- Generic system-error fallback used everywhere in this area: "Không thể cập nhật lúc này. Vui lòng thử lại." — never a raw Postgres/RPC error string in any UI; log raw errors via `print`/`console.warn` only.
+
+## Bug (2026-10-01) — a real refund claim showed on web but not iOS at all, for banbetestadmin@gmail.com
+**Confirmed root cause, by reading the decode path (not confirmed against the actual differing row — this environment has no access to the live claim data)**: `AppState+Payments.swift`'s `RefundClaim` used Swift's default synthesized `Decodable`, which decodes a JSON array atomically — if ANY single element fails (a non-optional field like `amountVnd`/`reason`/`status` receiving `null`, or the nested `RecipientSnapshot`'s non-optional `bankName`/`accountNumber`/`accountHolderName` receiving `null`), the WHOLE `[RefundClaim]` array throws, which `get_host_refund_claims()` returns as one top-level result — so one malformed/edge-case claim silently emptied the ENTIRE queue on iOS (caught in `loadRefundQueue`'s/`loadRefundCenter`'s `catch` block, printed to console only, never shown to the user), while web's loosely-typed JS just reads a `null` field as falsy and renders the rest of the claim fine. This is the same "strict Swift Codable vs. loose JS" asymmetry class of bug — a single decode failure anywhere in a batch silently drops the ENTIRE batch, not just the offending row.
+**Fix**: `RefundClaim` now has a custom `init(from decoder:)` that decodes every field via `decodeIfPresent` with a safe default (never throws for a missing/null field), and wraps the nested `recipientSnapshot` decode in `try?` so even a malformed destination snapshot degrades to `nil` (treated as "no valid destination," already a handled state) rather than failing the claim. Since both `loadRefundQueue` (Verifications' account-wide queue) AND `loadRefundCenter` (Attendance's per-event Refund Center) decode through this exact same struct, one fix covers both screens.
+**Lesson**: any `Codable` struct decoding a batch/array from an RPC that mixes real historical data (which may predate a column being consistently populated) should default-decode every field defensively — a single edge-case row should never be able to take down an entire list on iOS while web (JS) shows it fine, since that asymmetry is invisible until someone happens to test the SAME account on both platforms.
+
+## Bug (2026-10-??) — "Could not load the refund queue" — get_host_refund_claims()'s p_event_id was the WRONG TYPE this entire time
+
+**Confirmed root cause, by a real authenticated integration test against the deployed project** (`tests/e2e/refund-queue-type-mismatch.integration.mjs` — same sanctioned real-backend pattern as `tests/e2e/setup.mjs`: service-role ONLY to seed a throwaway host/organizer/event/booking/refund claim, an anon-key client mirroring the real app's own auth for the actual RPC call, full cleanup). Migrations 077/078 declared `get_host_refund_claims(p_event_id uuid DEFAULT NULL)` — but `events.id` is `text` (migration 001, human-readable slugs like `test-s-ki-n-8444c8`, never real UUIDs; confirmed by grep that every OTHER event-scoped RPC in this entire schema correctly takes `p_event_id text` — this was the one exception). Two independent, confirmed-live failure modes from the one typo:
+1. **`loadRefundQueue()`'s own account-wide call, `p_event_id: null`** (Verifications.jsx/AppState+Payments.swift). Even though the plpgsql `IF p_event_id IS NOT NULL` branch is genuinely skipped at NULL, the function's final `SELECT`'s `WHERE (p_event_id IS NULL OR e.id = p_event_id)` is ONE SQL expression Postgres must type-check as a whole regardless of the OR's runtime short-circuit value — `text = uuid` has no operator, so this raised a real `42883 operator does not exist: text = uuid` on every single call, NULL or not. **This was never visibly reported before the 2026-10-01 refund-discoverability pass added real error surfacing to `loadRefundQueue`** (it used to silently render an empty queue on any error) — the "Could not load the refund queue" the user is now seeing is the SAME long-standing server bug finally becoming visible, not a new regression.
+2. **`loadRefundCenter()`'s per-event call with a real text event id** (Attendance.jsx/AttendanceView.swift) — fails even earlier, at PostgREST's own parameter-binding layer (`22P02 invalid input syntax for type uuid`), since a real event id string isn't a valid UUID literal at all. This path has presumably NEVER worked for any real (non-coincidentally-UUID-shaped) event.
+**Fix, written, NOT YET deployed**: `supabase/migrations/20261031000119_119_fix_get_host_refund_claims_event_id_type.sql` — redeclares with `p_event_id text` (same convention every other event-scoped RPC already uses), `DROP FUNCTION IF EXISTS ...(uuid)` first since a parameter-type change is a new Postgres signature. Function body is otherwise byte-for-byte identical — no ownership/RLS change, self-booking (guest == host) is explicitly NOT excluded (confirmed by reading — the WHERE clause only ever checks organizer ownership, never guest identity). **No `supabase` CLI/DB credentials in this environment to actually run the migration** — `supabase db push` (or applying the SQL directly) is required, then re-run the integration test above to confirm (it's the exact reproduction case; it currently FAILs on the unfixed schema, confirmed live this pass).
+
+## Bug (2026-10-??) — cancelled-but-previously-paid booking still showed "Confirmed. Your ticket and receipt are ready." + View Ticket
+
+**Confirmed root cause, by reading**: `PaymentDetails.jsx`'s `isConfirmed` (and iOS `PaymentViews.swift`'s `phase == .confirmed` branch) is derived ONLY from `booking.payment_state`, never `booking.status`. `cancel_booking()` (migration 069) sets `status = 'cancelled'` but **never touches `payment_state` at all** — a booking that was paid (`payment_state = 'confirmed'`) before being cancelled keeps reading as `isConfirmed === true` forever, so the "ticket is live" card rendered right alongside the screen's OWN already-correct cancellation/refund card (`isHostCancelledWithRefund`, same file) — the exact contradiction reported (IMG_6779: refund info + "Confirmed...ticket ready" + View Ticket, same screen). `Confirmed.jsx` (the actual QR/ticket screen) was NOT affected — it already uses the shared `isBookingTicket()` helper (note 17B), which correctly ANDs `status === 'confirmed'` with `payment_state === 'confirmed'`; no QR was ever at risk of reissue.
+**Fix**: both platforms now compute `isCancelledBooking = booking.status == "cancelled"` and check it BEFORE `isConfirmed` — the header title now reads "Đã huỷ"/"Cancelled" and the body shows a plainly-labeled "Đã huỷ. Vé này không còn hiệu lực."/"Cancelled. This ticket is no longer valid." notice instead of the ticket-ready block, whenever a booking is both `payment_state=confirmed` AND `status=cancelled`. The paid-amount card and the existing cancellation/refund card are untouched — no financial-state change, no QR reissue, nothing hidden.
+**Files**: `src/screens/PaymentDetails.jsx` (`isCancelledBooking`, H1 title, the `isConfirmed` ticket block); iOS `apps/ios/BanbeApp/Views/PaymentViews.swift` (same, in `content(_:)`).
+
+## Point 2 — richer refund-queue diagnostics (2026-10-?? pass)
+`loadRefundQueue()` (both platforms) now distinguishes failure STAGE explicitly — transport exception vs. a resolved PostgREST/RPC error vs. a client-side decode error — and stores the server's own safe `code`/`message`/`details`/`hint` (web: `refundQueueErrorDetail`; iOS: `refundQueueErrorStage`/`Code`/`Message`) for the existing opt-in diagnostics panel (5-tap on the "Hoàn tiền"/"Refunds" title, Verifications.jsx/VerificationsView.swift) to display — never logged/shown as a full payload, token, or bank detail.
+
+## Fix pass — stale host refund/verification badge (confirmed real, root cause found)
+
+**Real root cause**: `get_host_refund_claims()` (migration 078) has NO status
+filter at all — it returns every claim ever created for a host's events,
+regardless of status (`owed`/`disputed`/`host_marked_sent`/
+`guest_confirmed`/`waived`/`resolved`). `refundQueue` (the client array this
+RPC fills) therefore holds full history, not just outstanding work. Every
+badge in this app's navigation chain (`src/lib/badges.js`'s
+`computeHostActionCount`/`computeRefundActionCount`, iOS's
+`Lib/Badges.swift`'s `hostActionCount`/`refundActionCount`) summed
+`refundQueue.length`/`.count` DIRECTLY — raw, unfiltered — so a host whose
+Refunds/Verifications screen was genuinely empty (every real claim already
+sent/confirmed/waived/resolved) still saw a leftover positive badge from
+old history. Verifications.jsx/VerificationsView.swift's own DISPLAY logic
+was already correct (`status === 'owed' || 'disputed'` for the active
+section) — only the BADGE skipped that filter, exactly the "copied string
+check drifted from the real UI" failure mode a single canonical helper is
+supposed to prevent.
+
+**Fix**: `src/lib/refundPresentation.js`'s `refundClaimPresentation()`
+(already spread onto every loaded claim, both at initial load and at
+per-claim patch-on-mutation) now EXPOSES the `isActive` boolean it already
+computed internally but never returned — the exact same "owed or disputed"
+check `VerificationsView.swift`'s own `RefundClaim.isActiveRefundStatus`
+(`AppState+Payments.swift`) already was on iOS. `badges.js`'s
+`countActionableRefunds()` and iOS's new `AccountBadges.actionableRefundCount()`
+both now filter `refundQueue` by this ONE field before counting — reused,
+not copied, on both platforms. Found and fixed the SAME raw-count bug at
+two more call sites that bypassed the shared helpers entirely:
+`Account.jsx`'s `hostOps` GroupCard badge (was `verifications.length +
+refundQueue.length` inline) and iOS `AccountView.swift`'s equivalent
+`hostManagementRows` badge (was `app.verifications.count +
+app.refundQueue.count` inline) — both now call
+`computeHostActionCount(s)`/`AccountBadges.hostActionCount(...)` like every
+other badge site. `Verifications.jsx`'s own `activeCount`/`activeRows`
+local re-derivations were also switched to read `c.isActive`/
+`c.pendingConfirmation` from the shared mapper instead of keeping their own
+duplicate `status === 'owed' || 'disputed'` string check (now genuinely
+ONE place decides this, not two that happened to agree).
+
+**Not changed**: `get_host_refund_claims()` itself (no migration/schema
+change this pass — client-side filtering is correct and sufficient here,
+since the RPC's full-history shape is intentionally reused by the
+diagnostics panel/CSV-style views that DO want every claim, not just
+actionable ones). `v_pending_verifications` (the `verifications` array's
+own source) was re-checked and already named/scoped as a genuinely pending-
+only view — no equivalent staleness found there.
+
+**Verified**: `npx vite build` clean. `xcodegen generate` + `xcodebuild
+-scheme PersonalTeamDebug -configuration Debug -sdk iphonesimulator
+-destination 'generic/platform=iOS Simulator' build` → **BUILD SUCCEEDED**.
+No simulator/device UI run — the three badge-count call sites and the
+`isActive`/`isActiveRefundStatus` field reuse were verified by reading,
+not by observing a real empty-queue account on a device.
+
+## 2026-10-02 — iOS-only: stale "Going" after cancel/refund, Account row grouping
+
+**Real root cause, confirmed by reading**: `cancel_booking()`
+(`20260924000070_070...sql:73-77`) sets `bookings.status = 'cancelled'`
+but NEVER touches `payment_state` — a booking that was `payment_state =
+'confirmed'` before cancellation (the common already-paid case) stays
+`payment_state = 'confirmed'` forever after. `AppState.isGoing(_:)`
+(`AppState.swift`) checked `paymentState == .confirmed` alone with no
+`status` check at all — so a cancelled-and-refunded booking showed
+"Going" indefinitely on Home's saved-strip chip. `payment_state` describes
+whether money was ever confirmed; it is not ticket validity. Not a feed/
+label-mapping bug — the predicate itself was wrong.
+
+**Fix**: `isGoing(_:)` now also requires `["pending", "confirmed",
+"attended"].contains(status)` — the same "is this booking still actually
+live" status set `Booking.isTicket`/`isAwaitingConfirmation` already
+established, reused rather than reinvented. `.contains` over ALL
+`paymentBookings` for the event was already correct (never a first/latest-
+row decision) — another valid booking on the same event still counts.
+`EventDetailView.myBooking` was re-checked and was ALREADY correct (same
+status set, confirmed by reading — not where the bug was).
+
+**Three supporting staleness gaps, same root cause class, all fixed
+together**: (1) a guest's own `cancel_booking()` call (`submitReason()`,
+`AppState+Data.swift`) never patched/refreshed `paymentBookings` at all —
+only `loadAttendanceGuests` (the HOST side); now patches the booking's
+`status` in place immediately, bumps a new `paymentBookingsSeq` guard
+(mirrors `attendanceGuestsSeq`/`refundQueueSeq`) so a slower, already-in-
+flight stale reload can't land afterward and resurrect it, then kicks off
+a real background reload. (2) the SAME patch added to the existing 5s
+notification poll's `cancellationKinds` branch, for a HOST-initiated
+cancel (the guest's own client never calls `submitReason()` for that
+case). (3) `applySession(nil)` (sign-out) never cleared `paymentBookings`/
+`myRefunds` at all, unlike every other per-account array right next to it
+— a shared-device sign-out/account-switch kept showing the PREVIOUS
+account's bookings/refund status. (4) Home's `loadPaymentBookings`/
+`loadMyRefunds`/`loadMyEvents` only ever ran once on mount — added a
+`scenePhase` foreground refresh (`HomeView.swift`) so a cancellation that
+happened while backgrounded is picked up without needing a remount.
+
+**Refund status labels (Account → Vé & Đặt Chỗ → "Đã hủy / hết hạn")**:
+`terminalStatusLabel(_:)` (`AccountGroupView.swift`) now cross-references
+`app.myRefunds` (already-loaded active claims) by booking id and appends
+the EXACT same copy `MyRefundsView.statusLabel(_:)` already established
+("Đang chờ hoàn tiền"/"Refund Pending", "Đang chờ bạn xác nhận đã nhận
+tiền"/"Awaiting Refund Confirmation", "Hoàn tiền đang tranh chấp"/"Refund
+Disputed") — never a second, independently-worded set. `loadMyRefunds()`'s
+own query deliberately excludes resolved (`guest_confirmed`) claims, so a
+cancelled booking with no active claim falls back to the plain "Đã hủy"
+label rather than a fabricated "Refunded" with no real signal behind it.
+
+**Account row grouping**: `activityContent`'s "Vé của tôi"/"Đã hủy / hết
+hạn" sections used to render each booking as its OWN separate rounded
+card with gaps between them — now ONE `VStack(spacing: 0)` per section
+with internal `Divider()`s, `.background(app.palette.field, in:
+RoundedRectangle(cornerRadius: 14))` applied once to the whole group —
+matching `hostOpsContent`'s/`paymentsContent`'s already-established
+styling exactly (same row padding/corner radius/tap targets reused, no
+new ones). No IA change — same rows, same routes/badges, just contiguous.
+
+**Follow-up, same day — the top-level Account cards (`AccountView.swift`)
+had the identical gap-between-floating-cards issue**, confirmed by a real
+device screenshot: Personal tab's "Vé & Đặt Chỗ"/Going-Saved stats/
+"Thanh Toán & Giấy Tờ"/"Số Liệu & Báo Cáo" were four separate cards, and
+even "Event Operations & Payments" itself (the ticket's own styling
+SOURCE) was never actually applied to its own Host-tab entry row — it and
+"Organizer Profile & Team"/"Surveys & Event Ideas" were three separate
+cards too, as was Admin tab's "Review & Moderation"/"Admin Team" pair
+(already a `VStack`, but each child still carried its OWN background).
+Fixed with three new, additive helpers (`groupedContainer`, `groupCardRow`,
+`groupDivider`, `reportsGroupRow`, `counterGroupRow` — all in
+`AccountView.swift`) that render the SAME row content as the pre-existing
+`groupCard`/`reportsRow`/`counter` but without each one's own background/
+top-padding, so a whole cluster shares ONE `groupedContainer` surface with
+internal dividers instead. Applied to: Personal tab's Activity cluster
+(Tickets & Bookings row, Going|Saved stat pair — a `Divider()` between the
+two stat buttons inside the same `HStack` renders as the vertical
+separator the two-column layout needs — Payments & Documents row, Metrics
+& Reports row, all one container); Personal tab's Settings cluster
+(Personal Profile, Settings, Help & Legal, one container); Host tab's
+`hostManagementRows` (Event Operations & Payments, Organizer Profile &
+Team, Surveys & Event Ideas, one container); Admin tab's `adminSection`
+(Review & Moderation, Admin Team, one container). The OLD `groupCard`/
+`counter` functions became fully unused by this and were deleted (confirmed
+zero remaining call sites by grep first); `reportsRow` is KEPT — still
+used by Host/Admin tabs' own standalone Reports row, which stays a
+separate, un-grouped entry exactly as before (a deliberate, pre-existing
+separation, not something this pass's own grouping touched). Conditional
+banners (Team invite, Admin invite) and `hostingSection`'s toggle are
+unchanged — intentionally NOT merged into either cluster, matching the
+ticket's own "no merging unrelated actions" rule (a contextual alert and a
+settings row are not the same kind of thing).
+
+**Verified**: `xcodebuild -scheme PersonalTeamDebug -sdk iphonesimulator
+build` → BUILD SUCCEEDED, including after deleting the two now-dead
+functions. No simulator/device UI run.
+
+## 2026-10-02, same day — icon size/duplication cleanup + Help & Legal swipe-back
+
+**Icon sizes standardized**: `groupCardRow` (AccountView.swift) was the
+one outlier — a 30x30 frame with a `ROW_ACCENT_COLORS`-tinted `Circle()`
+background, vs. every other row icon on this screen (`row`/`reportsRow`/
+`reportsGroupRow`/the inline Personal Profile & Help & Legal buttons), a
+plain 22x22/16pt/0.72-opacity glyph with no background (the row already
+sits on its group's shared container background — a second color layer
+per icon was redundant, not needed for "distinct"). `counterGroupRow` was
+a THIRD size (20x20/15pt). All now 22x22/16pt/no-background; the
+team-invite/admin-invite banners' own inline icons (also 30x30+circle)
+match too. Distinctness now comes only from each icon's own glyph.
+
+**Duplicate glyphs fixed** (same icon used for two different things,
+visible in the same or an adjacent container): "Going" stat
+(`checkmark.circle`, was `calendar.badge.checkmark` — duplicate of
+"Tickets & Bookings" directly above it in the same group); Admin Team
+row/invite banner (`person.3.fill`, was `person.3`/`exclamationmark.
+shield` — duplicated "Organizer Profile & Team"'s icon, and the invite
+banner's own icon didn't even match its real destination); Surveys &
+Event Ideas (`lightbulb`, was `checklist` — duplicate of "Event
+Operations & Payments" in the same container); Host tab's "Getting Paid"
+(`creditcard`, was `banknote` — duplicate of "Refunds" directly above it);
+`adminReviewContent`'s three rows (Payment Disputes/Admin Panel/Pending
+Events, `AccountGroupView.swift`) ALL used the identical
+`exclamationmark.shield` with no way to tell them apart — now
+`exclamationmark.bubble`/`square.grid.2x2`/`exclamationmark.shield`
+respectively. Also found and fixed while here: `AccountGroupView.
+titleIcon` had no `"adminTeam"` case at all, falling to the generic
+`"circle"` placeholder on that page's own header — added, matching the
+row's icon.
+
+**"Help & Legal" didn't support swipe-to-go-back — confirmed root cause,
+NOT a gesture-recognition issue**: `.policy` (`AppState.swift`) had no
+case in either `goBack()` or `backTargetScreen` — the exact same missing-
+switch-case bug class this file's own `.refundAccounts`/`.organizerTeam`
+fixes already document. A completed edge-swipe fell to `goBack()`'s
+`default: break` (no-op — `app.screen` never changed, though RootView's
+slide-off animation still played and then reverted, reading as "swipe
+doesn't work here"), and `backTargetScreen` fell to `default: return
+.home` (the swipe's live peek-behind showed Home instead of wherever Help
+& Legal was actually opened from). Fixed by adding `case .policy: screen
+= policyBackScreen` / `case .policy: return policyBackScreen` to both —
+reuses the exact same target the in-screen "‹ Back" link
+(`app.openPolicy()`/`policyBackScreen`) already uses, so both exit paths
+can't drift apart.
+
+**Verified**: `xcodebuild -scheme PersonalTeamDebug -sdk iphonesimulator
+build` → BUILD SUCCEEDED. No simulator/device UI run — the user's own
+iPhone is the real check for icon legibility and the swipe-back feel.
+
+## 2026-10-02, same day — Review & Moderation sub-screens: back target + header icon
+
+**Real bug, confirmed by reading**: `AdminDashboardView`/`AdminEventsView`
+("Payment Disputes"/"Admin Panel"/"Pending Events", reached from
+`AccountGroupView`'s `adminReviewContent` rows) hardcoded their own
+`BackLink` straight to `app.screen = .profile` ("Account") — skipping the
+"Review & Moderation" group page entirely, even though that's the only
+place either screen is ever opened from (confirmed by grep: zero other
+call sites for `openAdminDashboard()`/`openAdminEvents()`).
+`AppState.swift`'s `goBack()`/`backTargetScreen` (the edge-swipe's own
+exit path) had the identical `.profile` target hardcoded for `.disputes`/
+`.adminEvents` — same sub-section-of-a-group bug class this file's own
+`.preferences`/`.payout`/`.policy` fixes already document. Both the
+on-screen BackLink AND the edge-swipe now go to `.accountGroup` (which
+still shows "Review & Moderation" — `accountGroupKey` is never touched by
+either sub-screen).
+
+**Header icon + consistent color added**: neither screen had an icon in
+its header at all (title text only), unlike `AccountGroupView`'s own page
+header (`titleIcon` in a `ROW_ACCENT_COLORS`-tinted circle). Added the
+same treatment: `AdminDashboardView` gets `exclamationmark.bubble`
+("Payment Disputes" — its own row's icon, since "Admin Panel" is the
+SAME destination's second door, not a second title); `AdminEventsView`
+gets `exclamationmark.shield` ("Pending Events"'s own icon). Both tinted
+with `ROW_ACCENT_COLORS["adminReview"]` — the parent group's own accent,
+for a consistent color scheme with the rest of Account rather than a new
+ad-hoc color per sub-screen.
+
+**Files**: `AppState.swift` (`goBack()`/`backTargetScreen`'s `.disputes`/
+`.adminEvents` cases), `AdminDashboardView.swift`, `AdminEventsView.swift`.
+**Verified**: `xcodebuild -scheme PersonalTeamDebug -sdk iphonesimulator
+build` → BUILD SUCCEEDED. No simulator/device UI run.
+
+**Verified**: `xcodebuild -scheme PersonalTeamDebug -sdk iphonesimulator
+build` → BUILD SUCCEEDED. No existing unit test touches this logic (no
+Swift unit-test target covers `isGoing`/`paymentBookings` — confirmed by
+grep). No simulator/device UI run — this pass is iOS-only per its own
+scope; web was not read, built, or compared for parity.
+
+## Auto-confirm after 7 days + overdue guidance (2026-10-03)
+- Migration `20261107000127_127_refund_auto_confirm_7d.sql`: `goc_auto_confirm_refunds()` (hourly pg_cron, :15) moves `host_marked_sent` claims older than 7 days (from `host_marked_at`) to `guest_confirmed`, sets `refund_claims.auto_confirmed = true`, notifies guest + host (`refund_confirmed`, `data.auto = true`). Guest can still dispute before then. **Must be applied via `supabase db push` — until then the UI promises a rule the server doesn't enforce.**
+- The 7 is in THREE places — change together: that migration, `REFUND_AUTO_CONFIRM_DAYS` (`src/lib/refundPresentation.js`) / `RefundClaim.autoConfirmDays` (AppState+Payments.swift), and Terms A5 (`banbe_User_Policy.md`, `Policy.jsx`, `PolicyView.swift`; `POLICY_VERSION` bumped to 2026-10-03, no re-consent flow — see 09).
+- "Things to do" confirm-refund item, refund card and Refunds list all show the auto-confirm date. Owed refund past `refund_due_at` shows "Message host" (opens the event chat) + "Raise a dispute" (`dispute_refund`, goes to admin "Payment disputes").
+
+## Host refund proof (2026-10-03)
+- Migration `20261108000128_128_refund_proof.sql`: `refund_claims.proof_path`, private `refund-proof` bucket (`<claim_id>/<file>`, host uploads, host+guest read), `mark_refund_sent(claim, note, proof_path DEFAULT NULL)` (old 2-arg signature dropped). Proof is OPTIONAL; the batch Refund Center flow doesn't attach one. Apply with `supabase db push`.
+- Host: attach-proof picker in the "Mark refund sent" confirm step (Verifications, iOS+web). Goer: image shown on the "host reported sending" confirm card (PaymentDetails).
+- **Found while doing this**: iOS `loadPaymentRefundClaim`/`loadMyRefunds` selects omitted `selected_destination_id`/`recipient_snapshot`, so the chosen account never showed after selection; fixed (+ `proof_path`).

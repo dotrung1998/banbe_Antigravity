@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>banbe Onboarding V4</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Be+Vietnam+Pro:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Prototype only. Tokens copied from src/index.css (--bb-*) so it reads like the real app. */
+:root {
+  --bg:#F7F4EC; --fg:#1B1916; --fg2:rgba(27,25,22,.72); --fg3:rgba(27,25,22,.64);
+  --rule:rgba(27,25,22,.16); --block:#EEE8DA; --field:#E6DFCE; --clay:#9C5B3B; --clayBg:#EFE0D2;
+  --moss:#4E6A30; --honey:#8C6014; --alert:#9A3E2D;
+  --page:#E4DED0; --panel:#FBF9F4; --scrim:rgba(12,11,9,.62); --ios:#F2F2F7; --iosFg:#000; --iosBlue:#007AFF;
+  --display:'Jost','Be Vietnam Pro',system-ui,sans-serif; --text:'Be Vietnam Pro',system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0F0E0B; --fg:#F2EDE1; --fg2:rgba(242,237,225,.72); --fg3:rgba(242,237,225,.56);
+  --rule:rgba(242,237,225,.18); --block:#1A1815; --field:#24211C; --clay:#D8926C; --clayBg:#3B2A20;
+  --moss:#A9C487; --honey:#F2C46D; --alert:#E8715B;
+  --page:#070605; --panel:#141210; --scrim:rgba(0,0,0,.7); --ios:#2C2C2E; --iosFg:#fff; --iosBlue:#0A84FF;
+}}
+:root[data-theme="dark"] {
+  --bg:#0F0E0B; --fg:#F2EDE1; --fg2:rgba(242,237,225,.72); --fg3:rgba(242,237,225,.56);
+  --rule:rgba(242,237,225,.18); --block:#1A1815; --field:#24211C; --clay:#D8926C; --clayBg:#3B2A20;
+  --moss:#A9C487; --honey:#F2C46D; --alert:#E8715B;
+  --page:#070605; --panel:#141210; --scrim:rgba(0,0,0,.7); --ios:#2C2C2E; --iosFg:#fff; --iosBlue:#0A84FF;
+}
+* { box-sizing:border-box; }
+html,body { margin:0; }
+body { background:var(--page); color:var(--fg); font-family:var(--text); -webkit-font-smoothing:antialiased; }
+button { font-family:inherit; cursor:pointer; color:inherit; }
+.wrap { max-width:1180px; margin:0 auto; padding:20px 16px 48px; display:grid; grid-template-columns:auto 1fr; gap:32px; align-items:start; }
+@media (max-width:900px){ .wrap { grid-template-columns:1fr; justify-items:center; } }
+
+/* reviewer toolbar */
+.bar { grid-column:1/-1; display:flex; flex-wrap:wrap; gap:8px; align-items:center; width:100%; }
+.bar h1 { font-family:var(--display); font-weight:600; font-size:22px; letter-spacing:-.02em; margin:0 12px 0 0; }
+.bar .tag { font-size:12px; color:var(--fg3); margin-right:auto; }
+.chipbtn { border:1px solid var(--rule); background:var(--panel); border-radius:999px; padding:8px 14px; font-size:13px; font-weight:600; min-height:36px; }
+.chipbtn:hover { border-color:var(--fg3); }
+
+/* phone */
+.phone { width:min(390px, calc(100vw - 32px)); height:820px; border-radius:48px; background:#000; padding:10px; box-shadow:0 30px 60px rgba(0,0,0,.25); position:relative; flex:none; }
+.screen { position:relative; width:100%; height:100%; border-radius:39px; overflow:hidden; background:var(--bg); }
+.status { position:absolute; top:0; left:0; right:0; height:48px; display:flex; justify-content:space-between; align-items:center; padding:6px 28px 0; font-size:15px; font-weight:600; z-index:60; pointer-events:none; }
+.island { position:absolute; top:10px; left:50%; transform:translateX(-50%); width:118px; height:34px; border-radius:20px; background:#000; z-index:61; }
+.view { position:absolute; inset:0; padding-top:52px; display:flex; flex-direction:column; animation:rise .32s ease both; }
+@keyframes rise { from { opacity:0; transform:translateY(10px);} to { opacity:1; transform:none; } }
+@media (prefers-reduced-motion: reduce){ .view,.coach,.toast,.alert { animation:none !important; } .spot { transition:none !important; } }
+
+.pad { padding:0 24px; }
+.disp { font-family:var(--display); font-weight:600; letter-spacing:-.02em; }
+.eyebrow { font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--fg3); font-weight:600; }
+.muted { color:var(--fg2); }
+.btn { display:flex; align-items:center; justify-content:center; width:100%; min-height:54px; border-radius:16px; border:none; background:var(--fg); color:var(--bg); font-size:17px; font-weight:600; }
+.btn.sec { background:var(--block); color:var(--fg); border:1px solid var(--rule); }
+.btn:disabled { opacity:.4; cursor:default; }
+.link { background:none; border:none; font-size:15px; font-weight:600; color:var(--fg2); min-height:44px; padding:0 12px; }
+.foot { margin-top:auto; padding:16px 24px 34px; display:grid; gap:10px; }
+.fine { font-size:13px; color:var(--fg3); text-align:center; margin:2px 0 0; }
+
+/* progress (never interactive) */
+.prog { display:flex; gap:4px; }
+.prog i { flex:1; height:4px; border-radius:2px; background:var(--rule); }
+.prog i.on { background:var(--fg); }
+.topline { display:flex; align-items:center; gap:12px; padding:8px 24px 0; min-height:44px; }
+.back { width:40px; height:40px; border-radius:20px; border:1px solid var(--rule); background:var(--block); font-size:18px; display:grid; place-items:center; flex:none; }
+
+/* welcome */
+.collage { position:relative; height:330px; margin:12px 0 0; }
+.ph { position:absolute; border-radius:18px; box-shadow:0 10px 24px rgba(0,0,0,.18); }
+.g1 { background:linear-gradient(135deg,#C98A5B,#6E3B22); }
+.g2 { background:linear-gradient(135deg,#7E8F5A,#2F3E1E); }
+.g3 { background:linear-gradient(135deg,#B9A27A,#5B4A2E); }
+.g4 { background:linear-gradient(135deg,#8E6C8A,#3B2638); }
+.g5 { background:linear-gradient(135deg,#5E7F8C,#20323A); }
+
+/* tiles */
+.tiles { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:20px; }
+.tile { border:1.5px solid var(--rule); background:var(--block); border-radius:16px; padding:14px; text-align:left; min-height:76px; font-size:15px; font-weight:600; display:flex; flex-direction:column; gap:6px; }
+.tile .e { font-size:22px; }
+.tile[aria-pressed="true"] { border-color:var(--clay); background:var(--clayBg); box-shadow:inset 0 0 0 1px var(--clay); }
+.rows { display:grid; gap:10px; margin-top:20px; }
+.row { border:1.5px solid var(--rule); background:var(--block); border-radius:16px; padding:14px 16px; text-align:left; font-size:16px; font-weight:600; display:flex; justify-content:space-between; align-items:center; min-height:60px; }
+.row small { display:block; font-weight:400; color:var(--fg2); font-size:13px; margin-top:2px; }
+.row[aria-pressed="true"] { border-color:var(--clay); background:var(--clayBg); box-shadow:inset 0 0 0 1px var(--clay); }
+.feedback { font-size:14px; color:var(--moss); min-height:20px; margin:12px 0 0; }
+
+/* consent */
+.consent { text-align:center; display:flex; flex-direction:column; align-items:center; }
+.cicon { width:76px; height:76px; border-radius:24px; background:var(--clayBg); color:var(--clay); display:grid; place-items:center; margin:40px auto 18px; }
+.consent h2 { font-size:30px; line-height:1.12; margin:8px 0 12px; }
+.consent p.lead { font-size:16px; line-height:1.5; color:var(--fg2); margin:0; }
+.ticks { list-style:none; padding:0; margin:22px 0 0; text-align:left; display:grid; gap:12px; width:100%; }
+.ticks li { display:flex; gap:12px; font-size:15px; line-height:1.4; }
+.ticks svg { flex:none; color:var(--moss); margin-top:2px; }
+.state-line { font-size:13px; color:var(--fg3); }
+
+/* iOS system alert mock */
+.alertwrap { position:absolute; inset:0; background:rgba(0,0,0,.4); display:grid; place-items:center; z-index:80; }
+.alert { width:270px; border-radius:14px; background:var(--ios); color:var(--iosFg); text-align:center; overflow:hidden; animation:pop .2s ease both; font-family:-apple-system,system-ui,sans-serif; }
+@keyframes pop { from { transform:scale(1.1); opacity:0; } to { transform:none; opacity:1; } }
+.alert .b { padding:18px 16px 16px; }
+.alert h4 { margin:0 0 4px; font-size:17px; }
+.alert p { margin:0; font-size:13px; line-height:1.35; }
+.alert .acts { display:grid; grid-template-columns:1fr 1fr; border-top:.5px solid rgba(128,128,128,.4); }
+.alert .acts button { background:none; border:none; min-height:44px; font-size:17px; color:var(--iosBlue); }
+.alert .acts button + button { border-left:.5px solid rgba(128,128,128,.4); font-weight:600; }
+.sysnote { position:absolute; top:-26px; left:0; right:0; text-align:center; font-size:11px; color:#fff; opacity:.8; }
+
+/* summary */
+.sum { display:grid; gap:0; margin-top:18px; border-radius:16px; background:var(--block); border:1px solid var(--rule); }
+.sum div { display:flex; justify-content:space-between; gap:12px; padding:14px 16px; font-size:15px; }
+.sum div + div { border-top:1px solid var(--rule); }
+.pill { font-size:12px; font-weight:700; padding:4px 10px; border-radius:999px; white-space:nowrap; flex:none; align-self:center; line-height:1.3; }
+.pill.on { background:var(--moss); color:var(--bg); }
+.pill.off { border:1px solid var(--rule); color:var(--fg2); }
+
+/* app mock */
+.hdr { display:flex; justify-content:space-between; align-items:center; padding:6px 20px 8px; }
+.hdr .disp { font-size:30px; }
+.iconbtn { width:40px; height:40px; border-radius:20px; background:var(--block); border:1px solid var(--rule); display:grid; place-items:center; }
+.modesw { display:flex; background:var(--block); border:1px solid var(--rule); border-radius:999px; padding:3px; font-size:13px; font-weight:600; }
+.modesw span { padding:7px 12px; border-radius:999px; }
+.modesw .a { background:var(--fg); color:var(--bg); }
+.search { margin:4px 20px 10px; height:46px; border-radius:23px; background:var(--block); border:1px solid var(--rule); display:flex; align-items:center; gap:10px; padding:0 16px; color:var(--fg3); font-size:15px; }
+.chips { display:flex; gap:8px; padding:0 20px 12px; overflow:hidden; }
+.chip { flex:none; border:1px solid var(--rule); background:var(--bg); border-radius:999px; padding:8px 14px; font-size:14px; font-weight:600; }
+.chip.on { background:var(--fg); color:var(--bg); border-color:var(--fg); }
+.chip .dot { display:inline-block; width:7px; height:7px; border-radius:4px; background:var(--honey); margin-left:6px; vertical-align:2px; }
+.scroll { flex:1; overflow:hidden; padding:0 20px 120px; display:grid; gap:14px; align-content:start; }
+.card { border-radius:20px; background:var(--block); border:1px solid var(--rule); overflow:hidden; }
+.card .img { height:150px; position:relative; }
+.card .img .tagp { position:absolute; left:12px; top:12px; background:rgba(0,0,0,.55); color:#fff; font-size:12px; font-weight:600; padding:5px 10px; border-radius:999px; }
+.card .body { padding:12px 14px 14px; }
+.card h3 { font-family:var(--display); font-size:19px; font-weight:600; margin:0 0 4px; letter-spacing:-.01em; }
+.card .meta { font-size:13px; color:var(--fg2); display:flex; justify-content:space-between; }
+.dock { position:absolute; left:14px; right:14px; bottom:22px; height:66px; border-radius:33px; background:var(--block); border:1px solid var(--rule); box-shadow:0 8px 24px rgba(0,0,0,.14); display:grid; grid-template-columns:repeat(5,1fr); align-items:center; z-index:20; }
+.dock button { background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:2px; font-size:10.5px; font-weight:600; color:var(--fg3); min-height:56px; justify-content:center; }
+.dock button.a { color:var(--fg); }
+.dock .plus { width:48px; height:48px; border-radius:24px; background:var(--fg); color:var(--bg); display:grid; place-items:center; margin:0 auto; min-height:0; }
+
+/* event detail mock */
+.hero { height:300px; position:relative; flex:none; }
+.hero .scrim { position:absolute; inset:0; background:linear-gradient(180deg,rgba(0,0,0,.25),transparent 40%,rgba(0,0,0,.65)); }
+.hero .t { position:absolute; left:20px; right:20px; bottom:16px; color:#fff; }
+.hero .t h2 { font-family:var(--display); font-size:28px; margin:0 0 8px; line-height:1.1; }
+.hero .navb { position:absolute; top:58px; left:16px; right:16px; display:flex; justify-content:space-between; }
+.glass { width:40px; height:40px; border-radius:20px; background:rgba(60,30,18,.72); color:#fff; display:grid; place-items:center; border:none; }
+.hpill { display:inline-block; font-size:12px; font-weight:600; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,.2); margin-right:6px; }
+.stub { margin:-22px 16px 0; position:relative; border-radius:18px; background:var(--block); border:1px solid var(--rule); padding:14px; display:grid; grid-template-columns:62px 1fr; gap:14px; z-index:2; }
+.datebox { border-radius:12px; background:var(--clayBg); color:var(--clay); text-align:center; padding:8px 0; font-weight:700; }
+.datebox b { display:block; font-family:var(--display); font-size:26px; line-height:1; }
+.stub .r { font-size:14px; line-height:1.45; }
+.stub .r .cd { color:var(--clay); font-weight:600; font-size:13px; }
+.hostrow { margin:14px 16px 0; display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:16px; background:var(--block); border:1px solid var(--rule); }
+.av { width:40px; height:40px; border-radius:20px; }
+.hostrow .n { flex:1; font-size:14px; } .hostrow .n b { display:block; font-size:15px; }
+.steps3 { margin:14px 16px 0; font-size:13px; color:var(--fg2); display:grid; gap:6px; }
+.resbar { position:absolute; left:0; right:0; bottom:0; padding:12px 16px 30px; background:var(--bg); border-top:1px solid var(--rule); display:grid; gap:10px; z-index:5; }
+.presets { display:flex; gap:8px; align-items:center; }
+.presets span { flex:1; text-align:center; border:1px solid var(--rule); border-radius:12px; padding:8px 0; font-weight:600; font-size:14px; }
+.presets span.a { background:var(--fg); color:var(--bg); }
+.resbar .btn { min-height:52px; }
+.resbar small { text-align:center; font-size:12px; color:var(--fg3); }
+
+/* list screens */
+.listitem { display:flex; gap:12px; align-items:center; padding:12px 14px; border-radius:16px; background:var(--block); border:1px solid var(--rule); }
+.listitem .sq { width:52px; height:52px; border-radius:12px; flex:none; }
+.listitem .tx { flex:1; font-size:13px; color:var(--fg2); } .listitem .tx b { display:block; color:var(--fg); font-size:15px; }
+.daylabel { font-size:12px; font-weight:700; letter-spacing:.1em; color:var(--fg3); text-transform:uppercase; margin-top:6px; }
+
+/* tour layer */
+.tour { position:absolute; inset:0; z-index:70; }
+.tour .catch { position:absolute; inset:0; }
+.spot { position:absolute; border-radius:18px; box-shadow:0 0 0 2px var(--clay), 0 0 0 9999px var(--scrim); transition:all .35s cubic-bezier(.2,.8,.2,1); pointer-events:none; }
+.spot.pulse::after { content:''; position:absolute; inset:-6px; border-radius:inherit; border:2px solid var(--clay); animation:ring 1.4s ease-out infinite; }
+@keyframes ring { from { opacity:.9; transform:scale(1);} to { opacity:0; transform:scale(1.08);} }
+.coach { position:absolute; left:14px; right:14px; background:var(--bg); color:var(--fg); border-radius:22px; padding:16px 18px 14px; box-shadow:0 16px 40px rgba(0,0,0,.3); animation:rise .28s ease both; }
+.coach .k { display:flex; justify-content:space-between; align-items:center; font-size:12px; font-weight:600; color:var(--fg3); }
+.coach h3 { font-family:var(--display); font-size:21px; margin:6px 0 6px; letter-spacing:-.01em; }
+.coach p { margin:0; font-size:14.5px; line-height:1.5; color:var(--fg2); }
+.coach .why { margin-top:10px; padding:10px 12px; border-radius:12px; background:var(--block); font-size:13px; line-height:1.45; color:var(--fg2); }
+.coach .why b { color:var(--fg); }
+.coach .acts { display:flex; align-items:center; gap:8px; margin-top:12px; }
+.coach .acts .btn { min-height:46px; font-size:15px; border-radius:14px; flex:1; }
+.coach .doit { flex:1; display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; color:var(--clay); min-height:46px; }
+.coach .seg { display:flex; gap:3px; margin-top:12px; }
+.coach .seg i { flex:1; height:3px; border-radius:2px; background:var(--rule); }
+.coach .seg i.on { background:var(--clay); }
+.coach .seg i.gap { margin-left:6px; }
+
+/* chapter break sheet */
+.sheet { position:absolute; left:0; right:0; bottom:0; background:var(--bg); border-radius:28px 28px 0 0; padding:22px 24px 34px; box-shadow:0 -10px 40px rgba(0,0,0,.25); animation:rise .3s ease both; }
+.chaps { display:grid; gap:8px; margin:16px 0 18px; }
+.chaps div { display:flex; align-items:center; gap:12px; font-size:15px; padding:10px 12px; border-radius:12px; }
+.chaps .n { width:26px; height:26px; border-radius:13px; display:grid; place-items:center; font-size:13px; font-weight:700; border:1.5px solid var(--rule); flex:none; }
+.chaps .done .n { background:var(--moss); border-color:var(--moss); color:var(--bg); }
+.chaps .cur { background:var(--clayBg); } .chaps .cur .n { border-color:var(--clay); color:var(--clay); }
+.chaps .later { color:var(--fg3); }
+.chaps small { margin-left:auto; color:var(--fg3); font-size:12px; }
+
+.toast { position:absolute; left:20px; right:20px; top:58px; background:var(--fg); color:var(--bg); border-radius:14px; padding:12px 14px; font-size:14px; z-index:90; animation:rise .25s ease both; box-shadow:0 10px 24px rgba(0,0,0,.2); }
+
+/* notes panel */
+.notes { background:var(--panel); border:1px solid var(--rule); border-radius:24px; padding:24px; position:sticky; top:16px; width:100%; max-width:640px; }
+.notes h2 { font-family:var(--display); font-weight:600; font-size:24px; margin:4px 0 8px; letter-spacing:-.02em; }
+.notes h3 { font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--fg3); margin:20px 0 8px; }
+.notes p, .notes li { font-size:14.5px; line-height:1.55; color:var(--fg2); }
+.notes ul { padding-left:18px; margin:0; }
+.notes .cmp { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; }
+.notes .cmp div { border-radius:14px; padding:12px; font-size:13.5px; line-height:1.5; }
+.notes .cmp .was { background:var(--block); color:var(--fg2); }
+.notes .cmp .now { background:var(--clayBg); color:var(--fg); }
+.notes .cmp b { display:block; font-size:11px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:4px; }
+.notes a { color:var(--clay); }
+.flowmap { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.flowmap span { font-size:12px; font-weight:600; padding:6px 10px; border-radius:999px; border:1px solid var(--rule); color:var(--fg3); }
+.flowmap span.cur { background:var(--fg); color:var(--bg); border-color:var(--fg); }
+.flowmap span.done { color:var(--fg); }
+@media (max-width:420px){ .notes .cmp { grid-template-columns:1fr; } .phone { height:760px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <h1>Onboarding V4</h1>
+    <span class="tag">Prototype · not wired to the app · EN only</span>
+    <button class="chipbtn" data-jump="welcome">Restart</button>
+    <button class="chipbtn" data-jump="consent0">Jump: consent</button>
+    <button class="chipbtn" data-jump="tourstart">Jump: tour</button>
+    <button class="chipbtn" id="themeBtn">Theme: system</button>
+  </div>
+
+  <div class="phone"><div class="screen" id="screen">
+    <div class="island"></div>
+    <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+    <div id="app"></div>
+    <div id="overlay"></div>
+  </div></div>
+
+  <aside class="notes" id="notes" aria-live="polite"></aside>
+</div>
+
+<script>
+/* ---------- tiny helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const app = $('#app'), overlay = $('#overlay'), screen = $('#screen'), notes = $('#notes');
+const ICON = {
+  bell:'<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
+  mail:'<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+  chat:'<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>',
+  tick:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  search:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  home:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>',
+  map:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></svg>',
+  cal:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  inbox:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>',
+  plus:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  bellS:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
+  hand:'👆',
+};
+
+/* ---------- prototype state ---------- */
+const S = { interests:new Set(), when:new Set(), budget:null, consent:{}, tourDone:[], view:'welcome' };
+
+/* ---------- onboarding content ---------- */
+const QUESTIONS = [
+  { id:'interests', title:'What sounds fun?', sub:'Pick any. This shapes your For You list.', kind:'tiles',
+    opts:[['supper','🍽️','Supper clubs'],['music','🎶','Live music'],['gallery','🖼️','Art & galleries'],['pop','🛍️','Pop-ups & markets'],['fashion','👗','Fashion'],['workshop','🧵','Workshops']] },
+  { id:'when', title:'When are you usually free?', sub:'Pick any. We use it for Tonight and Weekend picks.', kind:'rows',
+    opts:[['weeknights','Weeknights','After 6 pm, Mon to Thu'],['weekends','Weekends','Fri night to Sunday'],['daytime','Daytime','Brunches, markets, workshops']] },
+  { id:'budget', title:'A comfortable ticket price?', sub:'Pick one. You still see everything, just ranked.', kind:'rows', single:true,
+    opts:[['b1','Under 200k ₫','Coffee tastings, small pop-ups'],['b2','200k to 500k ₫','Most supper clubs and gigs'],['b3','500k ₫ and up','Tasting menus, special nights'],['any','Price doesn’t matter','']] },
+];
+
+// One decision per screen. kind 'os' = Continue opens the system alert (Apple: a pre-alert screen offers one action).
+// kind 'app' = banbe's own setting: Continue turns it on, "Not now" keeps it off, both equally visible.
+const CONSENTS = [
+  { id:'push', kind:'os', icon:ICON.bell, eyebrow:'Before you book', title:'Know when it’s time to go',
+    lead:'banbe can send a reminder the day before and an hour before each event you book, plus a nudge when a hold is about to expire.',
+    ticks:['Reminders for events you booked, never ads','Hold-expiry warning, so you don’t lose your seat','Turn it off anytime in Settings'],
+    fine:'Next, iPhone asks you to allow notifications. You decide there.' },
+  { id:'email', kind:'app', icon:ICON.mail, eyebrow:'Your paperwork', title:'Receipts in your inbox',
+    lead:'When a host uploads an invoice or receipt for your booking, banbe can email it to you straight away.',
+    ticks:['Only documents for your own bookings','Sent to the email on your account','Change it in Account › Settings › App preferences'],
+    yes:'Continue', no:'Not now', fine:'Continue turns this on. Not now keeps it off.' },
+  { id:'promo', kind:'app', icon:ICON.chat, eyebrow:'Optional', title:'Texts from hosts you know',
+    lead:'Hosts you have booked with or messaged may want to text you about their next event. They write and send it themselves. banbe never sends promos for them.',
+    ticks:['Only hosts you have already interacted with','Off unless you say yes here','Change it in Account › Settings › Security'],
+    yes:'Continue', no:'Not now', fine:'Continue lets those hosts text you. Not now keeps it off.' },
+];
+
+/* Tour: 4 short chapters, 12 steps, forward only. `act` = the user must tap the real control to move on. */
+const CHAPTERS = [
+  { id:'find', name:'Find something to do', screen:'home', steps:[
+    { t:'#t-search', title:'Search everything', body:'Type an event, a host or a neighbourhood. Results update as you type, in Vietnamese or English.', why:'Tip: try “Quận 1” or a host’s name.' },
+    { t:'#t-foryou', title:'For You, from your answers', body:'This filter uses the three answers you just gave. A gold dot means new picks since your last visit.', act:'Tap For You to try it', do:'foryou' },
+    { t:'#t-card', title:'Every card is an event', body:'Photo, category, date, area and price per ticket. Swipe the photo for more. Tap the card to open it.', act:'Tap the card to open it', do:'open' },
+  ]},
+  { id:'book', name:'Book a seat', screen:'event', steps:[
+    { t:'#t-stub', title:'The ticket stub', body:'Date, the countdown in the venue’s own time, the place and Directions. Add it to banbe Schedule or your phone calendar from here.' },
+    { t:'#t-presets', title:'How many seats', body:'Pick 1, 2 or 3, or use the stepper. It never lets you pick more than are left. Each seat gets its own name and QR code later.' },
+    { t:'#t-reserve', title:'Hold first, pay after', body:'Reserve holds your seats for 30 minutes at no cost. You pay the host by bank transfer within that window.', why:'<b>Protected booking:</b> the host has 1 hour to confirm. If they can’t find your payment, a dispute chat opens and banbe can step in.' },
+    { t:'#t-host', title:'Ask the host anything', body:'Message the host before you book. The chat stays with this event, so nothing gets lost in other apps.' },
+  ]},
+  { id:'after', name:'After you book', screen:'event', steps:[
+    { t:'#d-schedule', title:'Your Schedule', body:'Tickets and saved plans, day by day. Your next event is always at the top.', act:'Tap Schedule', do:'schedule' },
+    { t:'#t-ticket', title:'Your ticket lives here', body:'At the door, open it and show the QR. With friends, swipe between each named ticket.', why:'<b>What’s next</b> on the ticket tells you the one thing to do now: pay, wait for the host, or just show up.' },
+    { t:'#d-inbox', title:'Messages and updates', body:'Host chats, booking updates and refund news land here. A badge means something needs you.', act:'Tap Messages', do:'inbox' },
+  ]},
+  { id:'host', name:'Hosting (optional)', screen:'inbox', steps:[
+    { t:'#t-mode', title:'Going out or Hosting', body:'Hosting switches Home to your events, sales and check-ins. Switch back anytime, nothing is lost.' },
+    { t:'#d-plus', title:'The + button', body:'Add a plan, invite friends, or create an event in 5 short steps. banbe copies your last event so the next one is faster.' },
+  ]},
+];
+const TOTAL_STEPS = CHAPTERS.reduce((n, c) => n + c.steps.length, 0);
+
+/* ---------- notes panel copy per screen ---------- */
+const FLOW = ['Welcome','3 questions','Your picks','3 choices','Tour'];
+const NOTES = {
+  welcome: { f:0, h:'One promise, one button', what:'A single entry with a time cost (“about a minute”). “Set up later” is a plain link, not a second button competing for attention.',
+    was:'5 questions, then a reveal, then a settings review, then an 8-step tour, each a separate decision.', now:'3 questions → your picks → 3 one-tap choices → an optional tour in short chapters.' },
+  q: { f:1, h:'Fewer questions, same For You', what:'Goals and Languages are dropped from onboarding: Languages doesn’t filter anything yet, and Goals overlaps Interests. Both stay in Account › Preferences. Back is kept here, since an answer is cheap to revisit.',
+    was:'5 questions: goals, interests, availability, budget, languages.', now:'3 questions: interests, when you’re free, budget. Each one changes what you see next.' },
+  reveal: { f:2, h:'Show the payoff before asking for anything', what:'People say yes more often once they’ve seen what the app does for them. The real For You count comes first, the asks come after.' },
+  consent: { f:3, h:'One choice per screen, not a toggle list', what:'Each feature gets its own screen: what it does, what it never does, where to change it. The person answers with Continue or Not now. Nothing is pre-switched on.',
+    was:'“Quick settings review”: two switch rows (email documents ON by default, promo texts OFF) and one Continue for both.', now:'One screen per feature. App features: Continue = on, Not now = off, both full-size buttons. Phone permissions: Continue only, then iPhone’s own alert decides (Apple rule).' },
+  summary: { f:3, h:'Confirm what was chosen', what:'A read-only recap, no switches, with where to change each one. The tour is offered with its real length so skipping it is an informed choice.' },
+  tour: { f:4, h:'A longer tour, in short chapters', what:'12 steps instead of 8, split into 4 chapters of 2 to 4 steps. Inside a chapter it only goes forward: no Back, no tappable dots. Some steps make you tap the real control (learn by doing). “End tour” is always there and replays live in Account › Help.',
+    was:'8 steps in one run, Back button, and clickable dots that jump to any step.', now:'4 chapters, forward only, a progress bar you can read but not tap, and a break between chapters.' },
+  chapter: { f:4, h:'Chapter breaks are the only exit points', what:'Between chapters the person sees what they finished and what’s next with its step count, then picks Continue or Finish for now. Short runs finish far more often than one long run.' },
+  done: { f:4, h:'Peak-end', what:'A short finish card. Each chapter can be replayed alone from Account › Help & Legal › Take the tour, so nobody needs a Back button to re-read a step.' },
+};
+const SOURCES = `
+<h3>Research behind it</h3>
+<ul>
+<li>Apple HIG asks for private data only when it’s needed, explains why first, and keeps a pre-alert screen to one action that opens the system alert. <a href="https://developer.apple.com/design/human-interface-guidelines/privacy" target="_blank" rel="noopener">HIG: Privacy</a>, <a href="https://developer.apple.com/design/human-interface-guidelines/onboarding.md" target="_blank" rel="noopener">HIG: Onboarding</a></li>
+<li>A priming screen before the OS prompt, one permission at a time, with the benefit stated. <a href="https://www.appcues.com/blog/mobile-permission-priming" target="_blank" rel="noopener">Appcues</a>, <a href="https://app.uxcel.com/lessons/ask-permission-best-practices-607" target="_blank" rel="noopener">uxcel</a>, <a href="https://www.monterail.com/blog/how-to-ask-users-for-app-permissions" target="_blank" rel="noopener">Monterail</a></li>
+<li>Tour length: 3 to 4 steps finish around 72 to 74%, 7+ steps around 16%. Progress bars help completion by about 12%. User-triggered tours finish more often (67% vs 31%). <a href="https://www.chameleon.io/blog/chameleon-benchmark-report" target="_blank" rel="noopener">Chameleon benchmarks</a>, <a href="https://www.chameleon.io/blog/product-tour-benchmarks-highlights" target="_blank" rel="noopener">15M interactions</a> (vendor data, directional)</li>
+<li>Learn by doing: a step that waits for the real tap teaches better than a highlight alone. <a href="https://userpilot.com/blog/interactive-walkthrough-vs-product-tour" target="_blank" rel="noopener">Userpilot</a> (practitioner opinion)</li>
+</ul>`;
+
+function renderNotes(key) {
+  const n = NOTES[key]; if (!n) return;
+  notes.innerHTML = `
+    <div class="eyebrow">This screen</div>
+    <h2>${n.h}</h2>
+    <p>${n.what}</p>
+    ${n.was ? `<div class="cmp"><div class="was"><b>Today</b>${n.was}</div><div class="now"><b>Proposed</b>${n.now}</div></div>` : ''}
+    <h3>Flow</h3>
+    <div class="flowmap">${FLOW.map((x, i) => `<span class="${i === n.f ? 'cur' : i < n.f ? 'done' : ''}">${x}</span>`).join('')}</div>
+    ${SOURCES}`;
+}
+
+/* ---------- views ---------- */
+function show(html, notesKey) { overlay.innerHTML = ''; app.innerHTML = `<div class="view">${html}</div>`; renderNotes(notesKey); }
+function toast(msg) {
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; screen.appendChild(t);
+  setTimeout(() => t.remove(), 2400);
+}
+
+function welcome() {
+  S.view = 'welcome';
+  show(`
+    <div class="collage">
+      <div class="ph g1" style="left:24px;top:14px;width:150px;height:190px;transform:rotate(-5deg)"></div>
+      <div class="ph g2" style="right:26px;top:0;width:140px;height:170px;transform:rotate(6deg)"></div>
+      <div class="ph g3" style="left:96px;top:140px;width:170px;height:170px;transform:rotate(-1deg)"></div>
+      <div class="ph" style="right:30px;top:200px;background:var(--bg);padding:8px 14px;border-radius:999px;font-weight:600;font-size:14px;border:1px solid var(--rule)">✨ For You</div>
+    </div>
+    <div class="pad" style="margin-top:22px">
+      <div class="disp" style="font-size:34px;line-height:1.08">Small events worth going out for.</div>
+      <p class="muted" style="font-size:16px;line-height:1.5;margin:12px 0 0">Answer 3 quick questions and banbe lines up what’s on near you.</p>
+    </div>
+    <div class="foot">
+      <button class="btn" id="go">Get started</button>
+      <p class="fine">About a minute · <button class="link" id="later" style="padding:0;min-height:0;font-size:13px;text-decoration:underline">Set up later</button></p>
+    </div>`, 'welcome');
+  $('#go').onclick = () => question(0);
+  $('#later').onclick = () => { toast('Skipped. You can answer anytime in Account › Preferences.'); consent(0); };
+}
+
+function question(i) {
+  S.view = 'q' + i;
+  const q = QUESTIONS[i], picked = q.id === 'budget' ? new Set(S.budget ? [S.budget] : []) : S[q.id];
+  const opt = q.kind === 'tiles'
+    ? `<div class="tiles">${q.opts.map(([id, e, l]) => `<button class="tile" data-id="${id}" aria-pressed="${picked.has(id)}"><span class="e">${e}</span>${l}</button>`).join('')}</div>`
+    : `<div class="rows">${q.opts.map(([id, l, d]) => `<button class="row" data-id="${id}" aria-pressed="${picked.has(id)}"><span>${l}${d ? `<small>${d}</small>` : ''}</span><span aria-hidden="true">${picked.has(id) ? '✓' : ''}</span></button>`).join('')}</div>`;
+  show(`
+    <div class="topline">
+      <button class="back" id="back" aria-label="Back">‹</button>
+      <div class="prog" style="flex:1">${QUESTIONS.map((_, k) => `<i class="${k <= i ? 'on' : ''}"></i>`).join('')}</div>
+      <span class="state-line">${i + 1} of 3</span>
+    </div>
+    <div class="pad" style="margin-top:22px">
+      <div class="disp" style="font-size:30px;line-height:1.12">${q.title}</div>
+      <p class="muted" style="margin:8px 0 0;font-size:15px">${q.sub}</p>
+      ${opt}
+      <p class="feedback" id="fb"></p>
+    </div>
+    <div class="foot">
+      <button class="btn" id="next" ${picked.size ? '' : 'disabled'}>${i === 2 ? 'See my picks' : 'Continue'}</button>
+      <button class="link" id="skip">Skip this one</button>
+    </div>`, 'q');
+  const fb = $('#fb');
+  const feedback = () => {
+    const n = picked.size;
+    fb.textContent = !n ? '' : q.id === 'interests' ? `${3 + n * 3} events this month match ${n === 1 ? 'that' : 'these'}.` : q.id === 'when' ? 'Got it. Tonight and Weekend chips will use this.' : 'Nice. Prices outside this still show, ranked lower.';
+  };
+  feedback();
+  app.querySelectorAll('[data-id]').forEach(b => b.onclick = () => {
+    const id = b.dataset.id;
+    if (q.single) { picked.clear(); picked.add(id); S.budget = id; question(i); return; }
+    picked.has(id) ? picked.delete(id) : picked.add(id);
+    b.setAttribute('aria-pressed', picked.has(id));
+    const mark = b.querySelector('[aria-hidden]'); if (mark) mark.textContent = picked.has(id) ? '✓' : '';
+    $('#next').disabled = !picked.size; feedback();
+  });
+  $('#back').onclick = () => (i === 0 ? welcome() : question(i - 1));
+  $('#next').onclick = () => (i < 2 ? question(i + 1) : reveal());
+  $('#skip').onclick = () => (i < 2 ? question(i + 1) : reveal());
+}
+
+function reveal() {
+  S.view = 'reveal';
+  const n = Math.max(6, 3 + S.interests.size * 3);
+  show(`
+    <div class="pad" style="margin-top:30px">
+      <div class="eyebrow">Your For You</div>
+      <div class="disp" style="font-size:34px;line-height:1.08;margin-top:8px">${n} events picked for you this month</div>
+      <p class="muted" style="font-size:15px;margin:10px 0 0">Here are the first two. There’s more on Home.</p>
+    </div>
+    <div class="pad" style="display:grid;gap:12px;margin-top:20px">
+      ${miniCard('g1', 'Bếp Nhỏ supper club', 'Sat 14 Nov · Quận 3', '450k ₫')}
+      ${miniCard('g4', 'Vinyl night at Saigon Ouï', 'Fri 13 Nov · Quận 1', '180k ₫')}
+    </div>
+    <div class="foot"><button class="btn" id="go">Continue</button></div>`, 'reveal');
+  $('#go').onclick = () => consent(0);
+}
+const miniCard = (g, t, m, p) => `<div class="listitem"><div class="sq ${g}"></div><div class="tx"><b>${t}</b>${m}</div><b style="font-size:14px">${p}</b></div>`;
+
+function consent(i) {
+  S.view = 'consent' + i;
+  const c = CONSENTS[i];
+  const actions = c.kind === 'os'
+    ? `<button class="btn" id="yes">Continue</button>`
+    : `<button class="btn" id="yes">${c.yes}</button><button class="btn sec" id="no">${c.no}</button>`;
+  show(`
+    <div class="topline"><div class="prog" style="flex:1">${CONSENTS.map((_, k) => `<i class="${k <= i ? 'on' : ''}"></i>`).join('')}</div><span class="state-line">${i + 1} of 3</span></div>
+    <div class="pad consent">
+      <div class="cicon">${c.icon}</div>
+      <div class="eyebrow">${c.eyebrow}</div>
+      <h2 class="disp">${c.title}</h2>
+      <p class="lead">${c.lead}</p>
+      <ul class="ticks">${c.ticks.map(t => `<li>${ICON.tick}<span>${t}</span></li>`).join('')}</ul>
+    </div>
+    <div class="foot">${actions}<p class="fine">${c.fine}</p></div>`, 'consent');
+  const nextC = () => (i < CONSENTS.length - 1 ? consent(i + 1) : summary());
+  if (c.kind === 'os') {
+    $('#yes').onclick = () => {
+      overlay.innerHTML = `<div class="alertwrap"><div style="position:relative"><div class="sysnote">iPhone system alert (simulated)</div><div class="alert"><div class="b"><h4>“banbe” Would Like to Send You Notifications</h4><p>Notifications may include alerts, sounds and icon badges. These can be configured in Settings.</p></div><div class="acts"><button id="deny">Don’t Allow</button><button id="allow">Allow</button></div></div></div></div>`;
+      $('#allow').onclick = () => { S.consent[c.id] = true; nextC(); };
+      $('#deny').onclick = () => { S.consent[c.id] = false; nextC(); };
+    };
+  } else {
+    $('#yes').onclick = () => { S.consent[c.id] = true; nextC(); };
+    $('#no').onclick = () => { S.consent[c.id] = false; nextC(); };
+  }
+}
+
+function summary() {
+  S.view = 'summary';
+  const line = (label, on, where) => `<div><span>${label}<br><span class="state-line">${where}</span></span><span class="pill ${on ? 'on' : 'off'}">${on ? 'On' : 'Off'}</span></div>`;
+  show(`
+    <div class="pad" style="margin-top:30px">
+      <div class="disp" style="font-size:32px;line-height:1.1">You’re all set</div>
+      <p class="muted" style="font-size:15px;margin:10px 0 0">Here’s what you chose. Change any of it later.</p>
+      <div class="sum">
+        ${line('Event reminders', !!S.consent.push, 'iPhone Settings › banbe')}
+        ${line('Receipts by email', !!S.consent.email, 'Account › Settings › App preferences')}
+        ${line('Texts from hosts', !!S.consent.promo, 'Account › Settings › Security')}
+      </div>
+    </div>
+    <div class="pad" style="margin-top:22px">
+      <div class="listitem" style="align-items:flex-start"><div style="font-size:26px">🧭</div><div class="tx"><b>Want the 2-minute tour?</b>4 short chapters on the real screens: find, book, after booking, hosting. You can stop after any chapter.</div></div>
+    </div>
+    <div class="foot">
+      <button class="btn" id="tour">Start the tour</button>
+      <button class="link" id="skip">Go to Home</button>
+    </div>`, 'summary');
+  $('#tour').onclick = () => startTour();
+  $('#skip').onclick = () => { homeScreen(); renderNotes('done'); toast('Tour skipped. Find it in Account › Help & Legal.'); };
+}
+
+/* ---------- app screens used by the tour ---------- */
+function dock(active) {
+  const b = (id, ic, l) => `<button id="d-${id}" class="${active === id ? 'a' : ''}">${ic}<span>${l}</span></button>`;
+  return `<nav class="dock">${b('home', ICON.home, 'Home')}${b('map', ICON.map, 'Map')}<button id="d-plus" aria-label="Create"><span class="plus">${ICON.plus}</span></button>${b('schedule', ICON.cal, 'Schedule')}${b('inbox', ICON.inbox, 'Messages')}</nav>`;
+}
+function homeScreen(forYouOn) {
+  app.innerHTML = `<div class="view" style="animation:none">
+    <div class="hdr"><span class="disp">banbe</span><div style="display:flex;gap:8px;align-items:center"><div class="modesw" id="t-mode"><span class="a">Going out</span><span>Hosting</span></div><span class="iconbtn">${ICON.bellS}</span></div></div>
+    <div class="search" id="t-search">${ICON.search}<span>Search events, hosts, areas</span></div>
+    <div class="chips"><span class="chip ${forYouOn ? 'on' : ''}" id="t-foryou">✨ For You<span class="dot"></span></span><span class="chip">Tonight</span><span class="chip">This weekend</span><span class="chip">Under 200k</span></div>
+    <div class="scroll">
+      <article class="card" id="t-card"><div class="img g1"><span class="tagp">🍽️ Supper club</span></div><div class="body"><h3>Bếp Nhỏ supper club</h3><div class="meta"><span>Sat 14 Nov · 19:00 · Quận 3</span><b>450k ₫</b></div></div></article>
+      <article class="card"><div class="img g4"><span class="tagp">🎶 Live music</span></div><div class="body"><h3>Vinyl night at Saigon Ouï</h3><div class="meta"><span>Fri 13 Nov · 21:00 · Quận 1</span><b>180k ₫</b></div></div></article>
+    </div>
+    ${dock('home')}
+  </div>`;
+}
+function eventScreen() {
+  app.innerHTML = `<div class="view">
+    <div class="hero g1"><div class="scrim"></div>
+      <div class="navb"><button class="glass" aria-label="Back">‹</button><button class="glass" aria-label="More">⋯</button></div>
+      <div class="t"><h2>Bếp Nhỏ supper club</h2><span class="hpill">🍽️ Supper club</span><span class="hpill">18+</span><span class="hpill">🍷 Wine served</span></div>
+    </div>
+    <div class="stub" id="t-stub"><div class="datebox">SAT<b>14</b>NOV</div><div class="r"><b>19:00 to 22:00</b><br><span class="cd">Starts in 6 days</span><br>Quận 3, Hồ Chí Minh · <u>Directions</u></div></div>
+    <div class="hostrow" id="t-host"><div class="av g3"></div><div class="n"><b>Hosted by Linh</b>12 events · replies in about 1 h</div><span class="iconbtn">${ICON.inbox}</span></div>
+    <div class="steps3"><span>① Reserve holds seats 30 min, free</span><span>② Pay the host by bank transfer</span><span>③ Host confirms within 1 h, then your QR appears</span></div>
+    <div class="resbar">
+      <div class="presets" id="t-presets"><span class="a">1</span><span>2</span><span>3</span><span style="flex:1.4">− 1 +</span></div>
+      <button class="btn" id="t-reserve">Reserve · 450k ₫</button>
+      <small>3 of 12 seats left · full refund up to 48 h before</small>
+    </div>
+  </div>`;
+}
+function scheduleScreen() {
+  app.innerHTML = `<div class="view">
+    <div class="hdr"><span class="disp">Schedule</span><span class="iconbtn">${ICON.cal}</span></div>
+    <div class="scroll" style="padding-top:6px">
+      <div class="daylabel">Next up</div>
+      <div class="listitem" id="t-ticket" style="border-color:var(--clay)"><div class="sq g1"></div><div class="tx"><b>Bếp Nhỏ supper club</b>Sat 14 Nov · 19:00 · 1 ticket<br><span style="color:var(--clay);font-weight:600">What’s next: pay within 30 min</span></div></div>
+      <div class="daylabel">Later this month</div>
+      <div class="listitem"><div class="sq g4"></div><div class="tx"><b>Vinyl night at Saigon Ouï</b>Fri 20 Nov · saved plan</div></div>
+    </div>
+    ${dock('schedule')}
+  </div>`;
+}
+function inboxScreen() {
+  app.innerHTML = `<div class="view">
+    <div class="hdr"><span class="disp">Messages</span><div class="modesw" id="t-mode"><span class="a">Going out</span><span>Hosting</span></div></div>
+    <div class="scroll" style="padding-top:6px">
+      <div class="listitem"><div class="av g3"></div><div class="tx"><b>Linh · Bếp Nhỏ</b>Hi! Any dietary needs for Saturday?</div><span class="pill on">1</span></div>
+      <div class="listitem"><div class="av g5" style="border-radius:12px"></div><div class="tx"><b>banbe</b>Your hold expires in 24 minutes.</div></div>
+    </div>
+    ${dock('inbox')}
+  </div>`;
+}
+const SCREENS = { home:() => homeScreen(), event:eventScreen, schedule:scheduleScreen, inbox:inboxScreen };
+
+/* ---------- tour engine: forward only ---------- */
+const T = { ch:0, st:0, done:0 };
+function startTour() { T.ch = 0; T.st = 0; T.done = 0; S.tourDone = []; SCREENS[CHAPTERS[0].screen](); renderNotes('tour'); step(); }
+
+function step() {
+  const ch = CHAPTERS[T.ch], s = ch.steps[T.st];
+  const target = $(s.t, app);
+  if (!target) { advance(); return; } // a step whose control isn't on screen is skipped, never shown pointing at nothing
+  const sr = screen.getBoundingClientRect(), r = target.getBoundingClientRect();
+  const box = { x:r.left - sr.left - 6, y:r.top - sr.top - 6, w:r.width + 12, h:r.height + 12 };
+  const below = box.y + box.h / 2 < sr.height * 0.5;
+  // progress: one segment per step, a gap between chapters; read-only
+  let seg = '', k = 0;
+  CHAPTERS.forEach((c, ci) => c.steps.forEach((_, si) => { seg += `<i class="${k < T.done + 1 ? 'on' : ''} ${si === 0 && ci > 0 ? 'gap' : ''}"></i>`; k++; }));
+  overlay.innerHTML = `<div class="tour" role="dialog" aria-modal="true" aria-labelledby="coachT">
+    <div class="catch" id="catch"></div>
+    <div class="spot ${s.act ? 'pulse' : ''}" style="left:${box.x}px;top:${box.y}px;width:${box.w}px;height:${box.h}px"></div>
+    <div class="coach" style="${below ? `top:${box.y + box.h + 12}px` : `bottom:${sr.height - box.y + 12}px`}">
+      <div class="k"><span>Chapter ${T.ch + 1} of ${CHAPTERS.length} · ${ch.name}</span><span>${T.st + 1}/${ch.steps.length}</span></div>
+      <h3 id="coachT" tabindex="-1">${s.title}</h3>
+      <p>${s.body}</p>
+      ${s.why ? `<div class="why">${s.why}</div>` : ''}
+      <div class="acts">
+        ${s.act ? `<div class="doit"><span aria-hidden="true">${ICON.hand}</span>${s.act}</div>` : `<button class="btn" id="nx">${T.st === ch.steps.length - 1 ? 'Finish chapter' : 'Next'}</button>`}
+        <button class="link" id="end">End tour</button>
+      </div>
+      <div class="seg" aria-label="Step ${T.done + 1} of ${TOTAL_STEPS}">${seg}</div>
+    </div></div>`;
+  $('#coachT').focus({ preventScroll:true });
+  $('#end').onclick = endTour;
+  if (!s.act) $('#nx').onclick = advance;
+  // Taps outside the highlighted control do nothing; a tap on it performs the real action (learn by doing).
+  $('#catch').onclick = (e) => {
+    if (!s.act) return;
+    const x = e.clientX - sr.left, y = e.clientY - sr.top;
+    if (x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h) perform(s.do);
+  };
+}
+function perform(what) {
+  if (what === 'foryou') { homeScreen(true); toast('For You on: showing your picks'); }
+  if (what === 'open') eventScreen();
+  if (what === 'schedule') scheduleScreen();
+  if (what === 'inbox') inboxScreen();
+  setTimeout(advance, what === 'foryou' ? 300 : 120);
+}
+function advance() {
+  T.done++;
+  const ch = CHAPTERS[T.ch];
+  if (T.st < ch.steps.length - 1) { T.st++; step(); return; }
+  S.tourDone.push(ch.id);
+  if (T.ch < CHAPTERS.length - 1) chapterBreak(); else tourFinished();
+}
+function chapterBreak() {
+  const nextC = CHAPTERS[T.ch + 1];
+  renderNotes('chapter');
+  overlay.innerHTML = `<div class="tour"><div class="catch" style="background:var(--scrim)"></div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="brkT">
+      <div class="eyebrow">Chapter ${T.ch + 1} done</div>
+      <div class="disp" id="brkT" tabindex="-1" style="font-size:26px;margin-top:6px">Nice. Next: ${nextC.name.toLowerCase()}</div>
+      <div class="chaps">${CHAPTERS.map((c, i) => `<div class="${i <= T.ch ? 'done' : i === T.ch + 1 ? 'cur' : 'later'}"><span class="n">${i <= T.ch ? '✓' : i + 1}</span>${c.name}<small>${c.steps.length} steps</small></div>`).join('')}</div>
+      <button class="btn" id="cont">Continue · ${nextC.steps.length} steps</button>
+      <button class="link" id="stop" style="width:100%;margin-top:6px">Finish for now</button>
+    </div></div>`;
+  $('#brkT').focus({ preventScroll:true });
+  $('#cont').onclick = () => {
+    T.ch++; T.st = 0; renderNotes('tour');
+    const sc = CHAPTERS[T.ch].screen;
+    // "After you book" continues from the event page; other chapters open their own screen.
+    if (!(sc === 'event' && $('#t-stub', app))) SCREENS[sc]();
+    step();
+  };
+  $('#stop').onclick = endTour;
+}
+function endTour() {
+  overlay.innerHTML = ''; renderNotes('done');
+  toast(`Tour stopped after ${S.tourDone.length} of ${CHAPTERS.length} chapters. Pick it up in Account › Help & Legal.`);
+}
+function tourFinished() {
+  renderNotes('done');
+  overlay.innerHTML = `<div class="tour"><div class="catch" style="background:var(--scrim)"></div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="finT" style="text-align:center">
+      <div style="font-size:44px">🎉</div>
+      <div class="disp" id="finT" tabindex="-1" style="font-size:28px;margin-top:6px">That’s the tour</div>
+      <p class="muted" style="font-size:15px;line-height:1.5;margin:8px 0 18px">You found an event, saw how a seat is held and paid, where your ticket lives, and where hosting starts. Replay any chapter from Account › Help & Legal.</p>
+      <button class="btn" id="home">Explore banbe</button>
+    </div></div>`;
+  $('#finT').focus({ preventScroll:true });
+  $('#home').onclick = () => { overlay.innerHTML = ''; homeScreen(true); };
+}
+
+/* ---------- reviewer controls ---------- */
+document.querySelectorAll('[data-jump]').forEach(b => b.onclick = () => {
+  const j = b.dataset.jump;
+  if (j === 'welcome') { S.interests.clear(); S.when.clear(); S.budget = null; S.consent = {}; welcome(); }
+  if (j === 'consent0') consent(0);
+  if (j === 'tourstart') startTour();
+});
+const themes = ['system', 'light', 'dark']; let ti = 0;
+$('#themeBtn').onclick = () => {
+  ti = (ti + 1) % 3; const t = themes[ti];
+  t === 'system' ? document.documentElement.removeAttribute('data-theme') : document.documentElement.setAttribute('data-theme', t);
+  $('#themeBtn').textContent = 'Theme: ' + t;
+};
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('.tour', overlay)) endTour(); });
+
+welcome();
+</script>
+</body>
+</html>

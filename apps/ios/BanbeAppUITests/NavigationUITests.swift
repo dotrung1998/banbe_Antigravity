@@ -1,0 +1,244 @@
+import XCTest
+
+/// Smoke coverage for the screens and the navigation between them — the
+/// iOS counterpart of the web app's Playwright suite. Each screen names
+/// itself with a `screen.<name>` accessibility identifier (see RootView)
+/// and the controls carry stable ids, the same way the web screens use
+/// data-screen-label / data-testid rather than display copy (which is
+/// bilingual and would break when the language changes).
+///
+/// These deliberately avoid anything needing a signed-in session: the
+/// signed-out paths behave identically on every machine.
+final class NavigationUITests: XCTestCase {
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    /// Launches straight into the feed, past onboarding.
+    @discardableResult
+    private func launchToHome() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-banbe.onboarded", "YES"]
+        app.launch()
+        XCTAssertTrue(app.otherElements["screen.home"].waitForExistence(timeout: 15),
+                      "Expected the feed to be the first screen")
+        return app
+    }
+
+    func testOnboardingRunsThroughLanguageAndTheme() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-banbe.onboarded", "NO"]
+        app.launch()
+
+        // The splash auto-advances after a moment; tapping skips the wait.
+        if app.otherElements["screen.splash"].waitForExistence(timeout: 3) {
+            app.tap()
+        }
+        XCTAssertTrue(app.otherElements["screen.langPick"].waitForExistence(timeout: 10))
+
+        app.buttons["lang.vi"].tap()
+        XCTAssertTrue(app.otherElements["screen.themePick"].waitForExistence(timeout: 5))
+
+        app.buttons["theme.dark"].tap()
+        app.buttons["onboarding.continue"].tap()
+        XCTAssertTrue(app.otherElements["screen.home"].waitForExistence(timeout: 5))
+    }
+
+    func testFeedOpensAnEventAndComesBack() {
+        let app = launchToHome()
+
+        let card = app.buttons["card.bepnho"]
+        XCTAssertTrue(card.waitForExistence(timeout: 15), "Expected the catalogue feed to render")
+        card.tap()
+
+        XCTAssertTrue(app.otherElements["screen.event"].waitForExistence(timeout: 5))
+        // Detail shows what the card doesn't — the "Included" row.
+        XCTAssertTrue(app.staticTexts["Bao gồm"].waitForExistence(timeout: 5))
+
+        app.buttons["event.back"].tap()
+        XCTAssertTrue(app.otherElements["screen.home"].waitForExistence(timeout: 5))
+    }
+
+    func testEventOpensTheOrganizerPage() {
+        let app = launchToHome()
+        app.buttons["card.bepnho"].tap()
+        XCTAssertTrue(app.otherElements["screen.event"].waitForExistence(timeout: 5))
+
+        // The organizer row sits below the hero photo and the description,
+        // so it needs scrolling into view first — same as for a real user.
+        let organizerRow = app.buttons["event.organizer"]
+        XCTAssertTrue(organizerRow.waitForExistence(timeout: 5))
+        var swipes = 0
+        while !organizerRow.isHittable && swipes < 6 {
+            app.swipeUp()
+            swipes += 1
+        }
+        organizerRow.tap()
+
+        // The standalone organizer page is retired: the row opens the
+        // organizer profile (resolved from the event's organizer id).
+        XCTAssertTrue(app.otherElements["screen.organizerProfile"].waitForExistence(timeout: 10))
+    }
+
+    func testCategoryFilterNarrowsTheFeed() {
+        let app = launchToHome()
+        XCTAssertTrue(app.buttons["card.bepnho"].waitForExistence(timeout: 15))
+
+        app.buttons["filter.music"].tap()
+        // A supper club event drops out of a music-only feed.
+        XCTAssertTrue(waitForDisappearance(of: app.buttons["card.bepnho"]),
+                      "Filter did not narrow the feed")
+        XCTAssertTrue(app.buttons["card.jazzgac"].waitForExistence(timeout: 5))
+    }
+
+    /// The area control is a native `Menu` (the same mechanism as the chat
+    /// composer's "+" attach button), so "All locations" is one of its rows and
+    /// the searchable hierarchy is reachable through its "Search locations…"
+    /// row. Both paths are driven here so a regression in either one — a menu
+    /// that no longer opens, a selection that no longer filters the feed —
+    /// fails this test.
+    func testAreaSheetOpensAndFiltersTheFeed() {
+        let app = launchToHome()
+        XCTAssertTrue(app.buttons["card.bepnho"].waitForExistence(timeout: 15))
+
+        // 1. The menu itself.
+        app.buttons["header.area"].tap()
+        let searchRow = app.buttons["area.search"]
+        XCTAssertTrue(searchRow.waitForExistence(timeout: 5), "Area menu did not open")
+        searchRow.tap()
+
+        // 2. Pick a district through the searchable list.
+        let target = app.buttons["area.thaodien"]
+        XCTAssertTrue(target.waitForExistence(timeout: 5), "Searchable location list did not open")
+        target.tap()
+        XCTAssertTrue(waitForDisappearance(of: app.buttons["area.thaodien"]))
+        // Bình Thạnh events are gone; Thảo Điền ones remain.
+        XCTAssertTrue(waitForDisappearance(of: app.buttons["card.bepnho"]))
+        XCTAssertTrue(app.buttons["card.bandai"].waitForExistence(timeout: 5))
+
+        // 3. Back to "All locations" from the menu's own first row.
+        app.buttons["header.area"].tap()
+        let all = app.buttons["area.all"]
+        XCTAssertTrue(all.waitForExistence(timeout: 5), "Area menu did not reopen")
+        all.tap()
+        XCTAssertTrue(app.buttons["card.bepnho"].waitForExistence(timeout: 5),
+                      "Choosing All locations did not restore the full feed")
+    }
+
+    func testAccountAndPreferencesSwitchLanguage() {
+        let app = launchToHome()
+        app.buttons["header.account"].tap()
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
+
+        app.buttons["account.preferences"].tap()
+        XCTAssertTrue(app.otherElements["screen.preferences"].waitForExistence(timeout: 5))
+
+        // Switching to English retitles the screen in place.
+        app.buttons["pref.lang.en"].tap()
+        XCTAssertTrue(app.staticTexts["Language & appearance"].waitForExistence(timeout: 5))
+
+        // Put it back, so a rerun starts from the same place.
+        app.buttons["pref.lang.vi"].tap()
+        XCTAssertTrue(app.staticTexts["Ngôn ngữ & hiển thị"].waitForExistence(timeout: 5))
+    }
+
+    /// Security used to be a subsection buried inside Language & appearance;
+    /// it's its own row on Account and its own screen now.
+    func testSecurityIsItsOwnScreenOffAccount() {
+        let app = launchToHome()
+        app.buttons["header.account"].tap()
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
+
+        // It is no longer reachable from inside Preferences.
+        app.buttons["account.preferences"].tap()
+        XCTAssertTrue(app.otherElements["screen.preferences"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Bảo mật"].exists)
+        app.buttons["‹ Tài khoản"].tap()
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
+
+        // It is reachable as its own row, and back returns to Account.
+        app.buttons["account.security"].tap()
+        XCTAssertTrue(app.otherElements["screen.security"].waitForExistence(timeout: 5))
+        app.buttons["‹ Tài khoản"].tap()
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
+    }
+
+    func testDarkThemeRepaintsTheApp() {
+        let app = launchToHome()
+        app.buttons["header.account"].tap()
+        app.buttons["account.preferences"].tap()
+        XCTAssertTrue(app.otherElements["screen.preferences"].waitForExistence(timeout: 5))
+
+        app.buttons["pref.theme.dark"].tap()
+        // Nothing to assert on colour directly, but the screen must survive
+        // the repaint and stay interactive.
+        XCTAssertTrue(app.buttons["pref.theme.light"].waitForExistence(timeout: 5))
+        app.buttons["pref.theme.light"].tap()
+        XCTAssertTrue(app.otherElements["screen.preferences"].exists)
+    }
+
+    /// The submit button is the app's promise that the address can be sent
+    /// to, so it stays away until the format actually holds up — and says
+    /// why rather than just sitting there greyed out.
+    func testLoginHidesSubmitUntilTheEmailLooksLikeAnEmail() throws {
+        let app = launchToHome()
+        app.buttons["header.account"].tap()
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
+
+        let signIn = app.buttons["account.signIn"]
+        try XCTSkipUnless(signIn.waitForExistence(timeout: 3), "Already signed in on this simulator")
+        signIn.tap()
+        XCTAssertTrue(app.otherElements["screen.login"].waitForExistence(timeout: 5))
+
+        let email = app.textFields["login.email"]
+        XCTAssertTrue(email.waitForExistence(timeout: 5))
+
+        // Untouched: nothing to submit yet, nothing to complain about either.
+        XCTAssertFalse(app.buttons["login.submit"].exists)
+        XCTAssertFalse(app.staticTexts["login.emailError"].exists)
+
+        // Rejected by the server's own pattern, so the button must not offer.
+        email.tap()
+        for bad in ["not-an-email", "a@b"] {
+            email.press(forDuration: 1.1)
+            if app.menuItems["Select All"].waitForExistence(timeout: 2) {
+                app.menuItems["Select All"].tap()
+            }
+            email.typeText(bad)
+            XCTAssertTrue(app.staticTexts["login.emailError"].waitForExistence(timeout: 3),
+                          "Expected a format complaint for \(bad)")
+            XCTAssertFalse(app.buttons["login.submit"].exists,
+                           "Submit should stay hidden for \(bad)")
+        }
+
+        // A real address brings the button back and clears the complaint.
+        email.press(forDuration: 1.1)
+        if app.menuItems["Select All"].waitForExistence(timeout: 2) {
+            app.menuItems["Select All"].tap()
+        }
+        email.typeText("ban@email.com")
+        XCTAssertTrue(app.buttons["login.submit"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["login.emailError"].exists)
+    }
+
+    func testSignedOutAccountOffersSignIn() throws {
+        let app = launchToHome()
+        app.buttons["header.account"].tap()
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
+
+        // Only meaningful signed out; a restored session makes this a no-op.
+        let signIn = app.buttons["account.signIn"]
+        try XCTSkipUnless(signIn.waitForExistence(timeout: 3), "Already signed in on this simulator")
+
+        signIn.tap()
+        XCTAssertTrue(app.otherElements["screen.login"].waitForExistence(timeout: 5))
+    }
+
+    private func waitForDisappearance(of element: XCUIElement, timeout: TimeInterval = 8) -> Bool {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: element
+        )
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
+}
