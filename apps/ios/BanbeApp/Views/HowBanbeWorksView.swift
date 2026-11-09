@@ -578,7 +578,7 @@ private struct QuizDemo: View {
             // Guard the first layout pass (width 0): never divide by zero.
             let scale = max(geo.size.width, 1) / phoneWidth
             VStack(alignment: .leading, spacing: 0) {
-                OnboardingTopBar(step: 2, onBack: {}, onSkip: {})
+                OnboardingTopBar(step: 1, onBack: {}, onSkip: {})
                     .padding(.horizontal, 16).padding(.top, 8)
                     .allowsHitTesting(false)
                 VStack(alignment: .leading, spacing: 10) {

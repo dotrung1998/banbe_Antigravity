@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Onboarding Version 3 tour state (note 64). Web twin: src/components/tour/OnboardingTour.jsx.
+/// Tour state (note 64), forward only in short chapters since onboarding v5 (note 80). Web twin (still the 8-step
+/// jumpable version): src/components/tour/OnboardingTour.jsx.
 ///
 /// Its own ObservableObject (not AppState) so target frames updating every layout pass only re-render the overlay.
 /// AppState mirrors one bool, `tourActive`, which RootView/the dock window use to shield the real app.
@@ -8,18 +9,41 @@ import SwiftUI
 final class OnboardingTourController: ObservableObject {
     static let shared = OnboardingTourController()
 
+    enum Phase: Equatable {
+        /// A step's card over its highlighted control.
+        case step
+        /// The sheet between chapters: the only place to stop, apart from End tour.
+        case chapterDone
+        /// The closing sheet after the last chapter.
+        case finished
+    }
+
+    struct ChapterRun: Identifiable, Equatable {
+        let id: String
+        let name: (vi: String, en: String)
+        /// Indices into `steps`.
+        let range: Range<Int>
+
+        static func == (a: ChapterRun, b: ChapterRun) -> Bool { a.id == b.id && a.range == b.range }
+    }
+
     @Published private(set) var steps: [TourStep] = []
+    @Published private(set) var chapters: [ChapterRun] = []
     @Published private(set) var index = 0
+    @Published private(set) var phase: Phase = .step
     @Published private(set) var missing: Set<Int> = []
     @Published private(set) var replay = false
     @Published private(set) var frames: [String: CGRect] = [:]
     /// Bumped when the current step wants its target scrolled into view (Home's first event card).
     @Published private(set) var scrollRequest = 0
-    private var direction = 1
     private var latest: [String: CGRect] = [:]
 
     var active: Bool { !steps.isEmpty }
     var current: TourStep? { steps.indices.contains(index) ? steps[index] : nil }
+    var chapterIndex: Int { chapters.firstIndex { $0.range.contains(index) } ?? 0 }
+    var chapter: ChapterRun? { chapters.indices.contains(chapterIndex) ? chapters[chapterIndex] : nil }
+    var isLastInChapter: Bool { nextIndexInChapter() == nil }
+    var doIt: TourDoIt? { current.flatMap { OnboardingTourContent.doIt[$0.id] } }
 
     func report(_ id: String, _ rect: CGRect?) {
         latest[id] = rect
@@ -27,62 +51,64 @@ final class OnboardingTourController: ObservableObject {
         frames[id] = rect
     }
 
-    func begin(steps: [TourStep], replay: Bool) {
+    func begin(plan: [(chapter: TourChapter, steps: [TourStep])], replay: Bool) {
+        var all: [TourStep] = []
+        var runs: [ChapterRun] = []
+        for (c, s) in plan where !s.isEmpty {
+            runs.append(ChapterRun(id: c.id, name: c.name, range: all.count..<(all.count + s.count)))
+            all += s
+        }
         self.replay = replay
         missing = []
         index = 0
-        direction = 1
+        phase = .step
         frames = latest
-        self.steps = steps
+        chapters = runs
+        steps = all
         requestScrollIfNeeded()
     }
 
     func reset() {
         steps = []
+        chapters = []
         missing = []
         frames = [:]
+        phase = .step
     }
 
-    func goTo(_ i: Int) {
-        guard steps.indices.contains(i), !missing.contains(i) else { return }
-        direction = i >= index ? 1 : -1
-        index = i
+    /// Next step in this chapter, else the chapter break, else the closing sheet. Never goes back.
+    func next() {
+        guard phase == .step else { return }
+        if let i = nextIndexInChapter() {
+            index = i
+            requestScrollIfNeeded()
+        } else {
+            phase = chapterIndex + 1 < chapters.count ? .chapterDone : .finished
+        }
+    }
+
+    /// "Continue" on the chapter break.
+    func continueToNextChapter() {
+        guard phase == .chapterDone, chapters.indices.contains(chapterIndex + 1) else { return }
+        index = chapters[chapterIndex + 1].range.lowerBound
+        phase = .step
         requestScrollIfNeeded()
     }
 
-    /// Returns false when there is no next step (the caller finishes).
-    func next() -> Bool {
-        var i = index + 1
-        while i < steps.count && missing.contains(i) { i += 1 }
-        guard i < steps.count else { return false }
-        direction = 1
-        index = i
-        requestScrollIfNeeded()
-        return true
-    }
-
-    func back() {
-        var i = index - 1
-        while i >= 0 && missing.contains(i) { i -= 1 }
-        guard i >= 0 else { return }
-        direction = -1
-        index = i
-        requestScrollIfNeeded()
-    }
-
-    var isFirst: Bool { var i = index - 1; while i >= 0 && missing.contains(i) { i -= 1 }; return i < 0 }
-    var isLast: Bool { var i = index + 1; while i < steps.count && missing.contains(i) { i += 1 }; return i >= steps.count }
-
-    /// The current target never showed up: skip it in the direction of travel. Returns false when nothing is left.
-    func skipMissing() -> Bool {
+    /// The current target never showed up: skip it, forward only.
+    func skipMissing() {
         missing.insert(index)
-        var i = index + direction
-        while i >= 0 && i < steps.count && missing.contains(i) { i += direction }
-        if i < 0 { i = index + 1; while i < steps.count && missing.contains(i) { i += 1 } }
-        guard i >= 0 && i < steps.count else { return false }
-        index = i
-        requestScrollIfNeeded()
-        return true
+        next()
+    }
+
+    /// Steps shown so far, for the read-only progress bar (missing ones count as passed).
+    var position: Int { index + 1 }
+
+    private func nextIndexInChapter() -> Int? {
+        guard let c = chapter else { return nil }
+        var i = index + 1
+        while i < c.range.upperBound && missing.contains(i) { i += 1 }
+        return i < c.range.upperBound ? i : nil
     }
 
     private func requestScrollIfNeeded() {
@@ -91,13 +117,26 @@ final class OnboardingTourController: ObservableObject {
 }
 
 extension AppState {
-    /// First-run entry: the sign-in reveal ended, or personalization landed on Home. Re-checks everything itself.
+    /// First-run entry when no recap offered the tour (the sign-in reveal ended): only while Version 3 is on.
     func maybeStartOnboardingTour() {
         guard onboardingVersion == 3, let uid = userID, !tourActive,
               !UserDefaults.standard.bool(forKey: OnboardingTourContent.doneKey(uid)),
               screen == .home, !needsSettingsOnboarding, !needsPreferencesOnboarding, !onboardingFlowActive
         else { return }
         startOnboardingTour(replay: false)
+    }
+
+    /// The onboarding recap's "Start the tour" (note 80): the person asked for it, so no version switch applies.
+    func startOnboardingTourFromRecap() {
+        guard userID != nil, !tourActive, !onboardingFlowActive else { return }
+        screen = .home
+        startOnboardingTour(replay: false)
+    }
+
+    /// The recap's "Skip, go to Home": the tour never starts by itself afterwards (Help & Legal still replays it).
+    func markOnboardingTourSeen() {
+        guard let uid = userID else { return }
+        UserDefaults.standard.set(true, forKey: OnboardingTourContent.doneKey(uid))
     }
 
     /// Help & Legal replay: a fresh tour that never reads or writes the first-run marker.
@@ -109,15 +148,15 @@ extension AppState {
     func signInRevealDidFinish() { maybeStartOnboardingTour() }
 
     private func startOnboardingTour(replay: Bool) {
-        let steps = OnboardingTourContent.eligible(organizerMode: organizerMode, simpleShell: simpleShellEnabled)
-        guard !steps.isEmpty else { return }
+        let plan = OnboardingTourContent.plan(organizerMode: organizerMode, simpleShell: simpleShellEnabled)
+        guard !plan.isEmpty else { return }
         Analytics.paused = true
         tourActive = true
-        OnboardingTourController.shared.begin(steps: steps, replay: replay)
+        OnboardingTourController.shared.begin(plan: plan, replay: replay)
         UIAccessibility.post(notification: .screenChanged, argument: nil)
     }
 
-    /// Finish or Skip: Home, scrolled to the top; the marker only for a first run.
+    /// Finish, End tour or "Finish for now": Home, scrolled to the top; the marker only for a first run.
     func endOnboardingTour(completed: Bool) {
         let tour = OnboardingTourController.shared
         guard tour.active else { return }
@@ -145,5 +184,19 @@ extension AppState {
         guard let step = OnboardingTourController.shared.current else { return }
         let target: Screen = step.screen == "profile" ? .profile : .home
         if screen != target { screen = target }
+    }
+
+    /// A "do it" step's tap: runs what the highlighted control does, from here, then moves on.
+    func performTourDoIt() {
+        let tour = OnboardingTourController.shared
+        guard tour.phase == .step, let step = tour.current, tour.doIt != nil else { return }
+        switch step.id {
+        case "home.forYou":
+            Haptics.selection()
+            if !filterForYou { toggleHomeFilter("forYou") }
+        default:
+            break
+        }
+        tour.next()
     }
 }

@@ -51,15 +51,13 @@ final class ReviewRetentionUITests: XCTestCase {
         shot("create-progress-ring")
     }
 
-    func testOnboardingWelcomeTilesShareOneHeight() {
+    func testOnboardingWelcomeSaysHowLongItTakes() {
         let app = XCUIApplication()
         app.launchArguments += ["-uiFixture", "onboarding", "-banbe.lang", "vi", "-uiTesting", "1", "-uiFixtureReset", "YES"]
         app.launch()
         XCTAssertTrue(el(app, "onboarding.start").waitForExistence(timeout: 10))
-        sleep(1)
-        let tiles = app.otherElements.matching(NSPredicate(format: "label CONTAINS 'phút' OR label CONTAINS 'Chỉ bạn thấy' OR label CONTAINS 'Đổi lúc nào'"))
-        let heights = (0..<tiles.count).map { tiles.element(boundBy: $0).frame.height }
-        if heights.count == 3 { XCTAssertEqual(heights.max()! - heights.min()!, 0, accuracy: 1, "tiles share one height: \(heights)") }
+        XCTAssertTrue(app.staticTexts["3 câu hỏi, khoảng một phút"].exists, "note 80: the time it takes is said up front")
+        XCTAssertTrue(el(app, "onboarding.skipAll").exists)
         shot("onboarding-welcome-vi")
     }
 

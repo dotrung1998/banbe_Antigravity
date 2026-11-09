@@ -119,8 +119,9 @@ extension AppState {
 
     /// Ends the personalization flow: hides the overlay, turns on For You when
     /// it has real matches, switches on the Home checklist and opens the event
-    /// the reveal was tapped on, if any.
-    func finishOnboardingFlow(showForYou: Bool, openEventKey: String?, answeredPreferences: Bool) {
+    /// the reveal was tapped on, if any. `startTour` is the recap's answer (note 80): true = "Start the tour",
+    /// false = "Skip, go to Home" (the tour then never starts by itself), nil = the flow ended without a recap.
+    func finishOnboardingFlow(showForYou: Bool, openEventKey: String?, answeredPreferences: Bool, startTour: Bool? = nil) {
         onboardingFlowActive = false
         if answeredPreferences, let uid = userID, !activation.enabled {
             activation.enabled = true
@@ -134,11 +135,12 @@ extension AppState {
         // "Get started" checklist is visible instead of the feed.
         resetHomeScrollToTop()
         if let key = openEventKey { goEvent(key) }
+        else if startTour == false { markOnboardingTourSeen() }
         else {
-            // Note 64: personalization just landed on Home; the v3 tour may start once its overlay has gone.
+            // Note 64: personalization just landed on Home; the tour starts once the flow's overlay has gone.
             Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 600_000_000)
-                self?.maybeStartOnboardingTour()
+                if startTour == true { self?.startOnboardingTourFromRecap() } else { self?.maybeStartOnboardingTour() }
             }
         }
     }
@@ -226,8 +228,39 @@ extension AppState {
     /// area filter. Empty when the user has no preferences / nothing matches.
     var forYouMatches: [ForYouMatch] {
         guard let prefs = eventPrefs, !prefs.isEmpty else { return [] }
+        return ForYou.rank(forYouAreaCandidates, prefs: prefs)
+    }
+
+    /// `forYouCandidates` inside the Home area: what onboarding counts and reveals (note 80).
+    var forYouAreaCandidates: [ForYouCandidate] {
         let inArea = Set(discoveryEvents.filter { matchesArea(withLive($0)) }.map(\.key))
-        return ForYou.rank(forYouCandidates.filter { inArea.contains($0.key) }, prefs: prefs)
+        return forYouCandidates.filter { inArea.contains($0.key) }
+    }
+
+    // MARK: onboarding v5 choices (note 80)
+
+    /// The one-choice screens this run can honestly show, decided once when the flow opens. Each writes a real
+    /// setting; a choice that couldn't take effect right now is left out.
+    func onboardingConsents() async -> [OnboardingConsent] {
+        guard needsSettingsOnboarding else { return [] }
+        var out: [OnboardingConsent] = []
+        if await canOfferPushInOnboarding() { out.append(.push) }
+        if weeklyDigestEnabled { out.append(.digest) }
+        if !organizerMode { out.append(.hosting) }
+        return out
+    }
+
+    /// Continue on a choice screen. Returns whether the setting really ended up on.
+    func applyOnboardingConsent(_ kind: OnboardingConsent) async -> Bool {
+        switch kind {
+        case .push:
+            return await requestPushFromOnboarding()
+        case .digest:
+            return await setNotificationConsent("set_my_digest_opt_in", enabled: true) == nil
+        case .hosting:
+            _ = await applyOrganizerMode(true)
+            return organizerMode
+        }
     }
 
     /// The gold star shows only when at least one matching event exists.

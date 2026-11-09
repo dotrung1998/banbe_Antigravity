@@ -1,19 +1,24 @@
 import Foundation
 
-// Post-signup personalization flow — the pure part (state machine, draft
-// persistence, "what your answers change" copy). No SwiftUI, no network:
-// covered by BanbeAppTests/OnboardingFlowTests.swift. The screens live in
-// Views/OnboardingFlowViews.swift.
+// Post-signup personalization flow, onboarding v5 — the pure part (state machine, draft persistence, the
+// "For You is never empty" reveal plan, live option counts, "what your answers change" copy). No SwiftUI, no
+// network: covered by BanbeAppTests/OnboardingFlowTests.swift. The screens live in Views/OnboardingFlowViews.swift.
+// Prototype: docs/prototypes/banbe-onboarding-v5-standalone.html, decisions in .claude/notes/80-onboarding-v5-ios.md.
 //
-// Server contract unchanged (migration 162, note 34): finishing calls
-// `complete_preferences_onboarding(p_preferences)` exactly as before
-// (nil = skipped everything, marker only); the settings step still calls
+// Welcome → 3 questions (interests, when, budget) → save → your For You → one choice per screen (only when the
+// settings step is owed) → recap with the tour offer → Home (or the chaptered tour).
+//
+// Server contract unchanged (migration 162, note 34): finishing the questions calls
+// `complete_preferences_onboarding(p_preferences)` (nil = skipped everything, marker only); the choices end with
 // `complete_settings_onboarding`. Answers stay owner-only.
 
 enum OnboardingQuestion: String, CaseIterable, Codable {
     case goals, interests, availability, budget, languages
 
-    static var count: Int { allCases.count }
+    /// The questions onboarding asks, in order. Goals overlap interests and languages don't filter anything yet,
+    /// so both stay in Account › Event preferences only.
+    static let flow: [OnboardingQuestion] = [.interests, .availability, .budget]
+    static var count: Int { flow.count }
 
     func options() -> [PrefOption] {
         switch self {
@@ -47,13 +52,30 @@ enum OnboardingQuestion: String, CaseIterable, Codable {
     }
 }
 
+/// One choice per screen. Each one writes a real, existing setting; a choice whose setting can't be changed right
+/// now is never shown (decided once, when the flow starts).
+enum OnboardingConsent: String, Codable, CaseIterable {
+    /// iOS notification permission. Only offered while iOS has never asked and push is live in this build.
+    case push
+    /// Weekly digest (`set_my_digest_opt_in`, migration 200). Only while the `weekly_digest` switch is on.
+    case digest
+    /// Hosting mode (`set_organizer_mode`). Not offered to someone already in hosting mode.
+    case hosting
+
+    /// The screen before a system alert offers one action (Apple HIG); banbe's own switches get Continue/Not now.
+    var asksSystem: Bool { self == .push }
+}
+
 enum OnboardingStage: Equatable, Codable {
     case welcome
     case question(Int)
     case saving
     case saveFailed
     case reveal
-    case settings
+    case consent(Int)
+    case settingsSaving
+    case settingsFailed
+    case recap
     case finished
 }
 
@@ -89,21 +111,32 @@ struct OnboardingFlowState: Equatable, Codable {
     var stage: OnboardingStage
     var draft = EventPreferences()
     var region: String = BudgetRegion.vn.rawValue
-    /// Server says the five questions are still owed.
+    /// Server says the questions are still owed.
     var needsPreferences: Bool
-    /// Server says the settings review is still owed.
+    /// Server says the settings step (now the one-choice screens) is still owed.
     var needsSettings: Bool
+    /// The choice screens this run shows, in order.
+    var consents: [OnboardingConsent] = []
+    /// What each shown choice ended as (OnboardingConsent.rawValue → on). Push = what iOS answered.
+    var choices: [String: Bool] = [:]
     /// "Skip all": nothing is saved and there is nothing to reveal.
     var skippedAll = false
     /// Back from the save-failed screen returns here.
     var lastQuestion = OnboardingQuestion.count - 1
+    /// The recap's "Start the tour" was pressed.
+    var tourRequested = false
 
     var budgetRegion: BudgetRegion { BudgetRegion(rawValue: region) ?? .vn }
 
     var currentQuestion: OnboardingQuestion? {
-        if case .question(let i) = stage, OnboardingQuestion.allCases.indices.contains(i) {
-            return OnboardingQuestion.allCases[i]
+        if case .question(let i) = stage, OnboardingQuestion.flow.indices.contains(i) {
+            return OnboardingQuestion.flow[i]
         }
+        return nil
+    }
+
+    var currentConsent: OnboardingConsent? {
+        if case .consent(let i) = stage, consents.indices.contains(i) { return consents[i] }
         return nil
     }
 
@@ -115,13 +148,17 @@ struct OnboardingFlowState: Equatable, Codable {
 
     var answeredQuestionCount: Int {
         let p = draft.normalizedForSave()
-        return OnboardingQuestion.allCases.filter { $0.answerCount(p) > 0 }.count
+        return OnboardingQuestion.flow.filter { $0.answerCount(p) > 0 }.count
     }
 
-    static func initial(needsPreferences: Bool, needsSettings: Bool, region: BudgetRegion) -> OnboardingFlowState {
-        let stage: OnboardingStage = needsPreferences ? .welcome : (needsSettings ? .settings : .finished)
-        return OnboardingFlowState(stage: stage, region: region.rawValue,
-                                   needsPreferences: needsPreferences, needsSettings: needsSettings)
+    static func initial(needsPreferences: Bool, needsSettings: Bool, region: BudgetRegion,
+                        consents: [OnboardingConsent] = []) -> OnboardingFlowState {
+        let stage: OnboardingStage
+        if needsPreferences { stage = .welcome }
+        else if needsSettings { stage = consents.isEmpty ? .settingsSaving : .consent(0) }
+        else { stage = .finished }
+        return OnboardingFlowState(stage: stage, region: region.rawValue, needsPreferences: needsPreferences,
+                                   needsSettings: needsSettings, consents: consents)
     }
 }
 
@@ -140,11 +177,22 @@ enum OnboardingAction: Equatable {
     /// After a failed save: leave for this session only (server marker unset).
     case skipForNow
     case revealContinue
-    case settingsDone
+    /// "Change my answers" on the reveal: back to the first question, answers kept.
+    case redoAnswers
+    /// The choice screen's outcome, after its setting was written (or iOS answered).
+    case consentAnswered(OnboardingConsent, Bool)
+    case settingsSucceeded
+    case settingsFailed
+    case retrySettings
+    /// After a failed settings marker: on to the recap for this session only.
+    case skipSettingsForNow
+    case startTour
+    case skipTour
 }
 
 enum OnboardingEffect: Equatable {
     case save(EventPreferences?)
+    case completeSettings
     case track(AnalyticsEvent)
 }
 
@@ -208,8 +256,11 @@ enum OnboardingFlow {
             let effect = OnboardingEffect.track(.onboardingCompleted(answeredQuestions: s.skippedAll ? 0 : s.answeredQuestionCount,
                                                                      skippedAll: s.payload == nil))
             s.needsPreferences = false
-            s.stage = s.payload == nil ? afterPreferences(s) : .reveal
-            return [effect]
+            if s.payload != nil {
+                s.stage = .reveal
+                return [effect]
+            }
+            return [effect] + toChoices(&s)
 
         case (.saving, .saveFailed):
             s.stage = .saveFailed
@@ -226,15 +277,49 @@ enum OnboardingFlow {
             return [viewed(s.lastQuestion)]
 
         case (.saveFailed, .skipForNow):
-            s.stage = afterPreferences(s)
-            return []
+            return toChoices(&s)
 
         case (.reveal, .revealContinue):
-            s.stage = afterPreferences(s)
+            return toChoices(&s)
+
+        case (.reveal, .redoAnswers):
+            s.skippedAll = false
+            s.stage = .question(0)
+            return [viewed(0)]
+
+        case (.consent(let i), .consentAnswered(let kind, let on)):
+            guard s.consents.indices.contains(i), s.consents[i] == kind else { return [] }
+            s.choices[kind.rawValue] = on
+            if i + 1 < s.consents.count {
+                s.stage = .consent(i + 1)
+                return []
+            }
+            s.stage = .settingsSaving
+            return [.completeSettings]
+
+        case (.settingsSaving, .settingsSucceeded):
+            s.needsSettings = false
+            s.stage = .recap
             return []
 
-        case (.settings, .settingsDone):
-            s.needsSettings = false
+        case (.settingsSaving, .settingsFailed):
+            s.stage = .settingsFailed
+            return []
+
+        case (.settingsFailed, .retrySettings):
+            s.stage = .settingsSaving
+            return [.completeSettings]
+
+        case (.settingsFailed, .skipSettingsForNow):
+            s.stage = .recap
+            return []
+
+        case (.recap, .startTour):
+            s.tourRequested = true
+            s.stage = .finished
+            return []
+
+        case (.recap, .skipTour):
             s.stage = .finished
             return []
 
@@ -244,11 +329,21 @@ enum OnboardingFlow {
     }
 
     private static func viewed(_ i: Int) -> OnboardingEffect {
-        .track(.onboardingQuestionViewed(question: OnboardingQuestion.allCases[i].rawValue))
+        .track(.onboardingQuestionViewed(question: OnboardingQuestion.flow[i].rawValue))
     }
 
-    private static func afterPreferences(_ s: OnboardingFlowState) -> OnboardingStage {
-        s.needsSettings ? .settings : .finished
+    /// After the questions (and the reveal): the choice screens when the settings step is owed, else the recap.
+    private static func toChoices(_ s: inout OnboardingFlowState) -> [OnboardingEffect] {
+        guard s.needsSettings else {
+            s.stage = .recap
+            return []
+        }
+        if s.consents.isEmpty {
+            s.stage = .settingsSaving
+            return [.completeSettings]
+        }
+        s.stage = .consent(0)
+        return []
     }
 }
 
@@ -260,14 +355,15 @@ enum OnboardingFlow {
 struct OnboardingDraftStore {
     var defaults: UserDefaults = .standard
 
-    private func key(_ uid: UUID) -> String { "banbe.onboardingDraft.v1.\(uid.uuidString)" }
+    // v2: question indices changed with the 3-question flow, so a 5-question draft is never resumed.
+    private func key(_ uid: UUID) -> String { "banbe.onboardingDraft.v2.\(uid.uuidString)" }
 
     func save(_ state: OnboardingFlowState, uid: UUID) {
         // Only an in-progress questionnaire is worth resuming.
         switch state.stage {
         case .question, .saveFailed:
             if let data = try? JSONEncoder().encode(state) { defaults.set(data, forKey: key(uid)) }
-        case .welcome, .saving, .reveal, .settings, .finished:
+        case .welcome, .saving, .reveal, .consent, .settingsSaving, .settingsFailed, .recap, .finished:
             break
         }
     }
@@ -281,17 +377,159 @@ struct OnboardingDraftStore {
 
     /// Fresh state from the SERVER flags, with a saved draft folded in only
     /// while the questions are still owed (the server always wins).
-    func resume(uid: UUID?, needsPreferences: Bool, needsSettings: Bool, region: BudgetRegion) -> OnboardingFlowState {
-        var s = OnboardingFlowState.initial(needsPreferences: needsPreferences, needsSettings: needsSettings, region: region)
+    func resume(uid: UUID?, needsPreferences: Bool, needsSettings: Bool, region: BudgetRegion,
+                consents: [OnboardingConsent] = []) -> OnboardingFlowState {
+        var s = OnboardingFlowState.initial(needsPreferences: needsPreferences, needsSettings: needsSettings,
+                                            region: region, consents: consents)
         guard needsPreferences, let uid, let saved = load(uid: uid) else { return s }
         s.draft = saved.draft
         s.region = saved.region
         switch saved.stage {
-        case .question(let i) where OnboardingQuestion.allCases.indices.contains(i): s.stage = .question(i)
-        case .saveFailed: s.stage = .question(saved.lastQuestion)
+        case .question(let i) where OnboardingQuestion.flow.indices.contains(i): s.stage = .question(i)
+        case .saveFailed: s.stage = .question(min(saved.lastQuestion, OnboardingQuestion.count - 1))
         default: break
         }
         return s
+    }
+}
+
+// MARK: - Live counts and the reveal plan (For You is never empty)
+
+/// How the reveal fills For You. Web twin: none yet (iOS first, note 80).
+enum RevealMode: String, Equatable {
+    /// 3+ upcoming events fit the answers.
+    case picked
+    /// Fewer than 3 fit: exact matches first, then more of the same types, then the soonest events.
+    case topped
+    /// Every picked type has nothing on right now: the soonest events fill in, and those types are watched.
+    case soon
+    /// Interests skipped: the soonest events, labelled as not personal yet.
+    case popular
+}
+
+struct RevealPlan: Equatable {
+    let mode: RevealMode
+    /// Event keys to show, best first.
+    let keys: [String]
+    /// How many upcoming events fit every answer.
+    let exact: Int
+    /// Picked types that have events on now / that have none.
+    let live: [String]
+    let waiting: [String]
+}
+
+/// The same rules as `ForYou.match` (interests and budget exclude, time is compared in the event's own zone),
+/// used to count what each answer would leave, and to plan the reveal. Unknown data never excludes.
+enum OnboardingCounts {
+    static let minimum = 3
+    static let tileMax = 5
+
+    /// Discoverable, not started yet, soonest first (key breaks ties, so the order is total).
+    static func upcoming(_ events: [ForYouCandidate], now: Date = Date()) -> [ForYouCandidate] {
+        events.filter { $0.isBookable && ($0.startsAt.map { $0 >= now } ?? true) }
+            .sorted { a, b in
+                let sa = a.startsAt ?? .distantFuture, sb = b.startsAt ?? .distantFuture
+                return sa != sb ? sa < sb : a.key < b.key
+            }
+    }
+
+    /// Upcoming events per interest id (an event with two types counts for both).
+    static func typeCounts(_ events: [ForYouCandidate], now: Date = Date()) -> [String: Int] {
+        let known = Set(EventPrefTaxonomy.interests.map(\.id))
+        var out: [String: Int] = [:]
+        for e in upcoming(events, now: now) {
+            for c in Set(e.categories) where known.contains(c) { out[c, default: 0] += 1 }
+        }
+        return out
+    }
+
+    /// The question's tiles: only types with events on now, most first, at most five (no placeholders).
+    static func tileTypes(_ counts: [String: Int], label: (String) -> String) -> [String] {
+        counts.filter { $0.value > 0 }
+            .sorted { a, b in a.value != b.value ? a.value > b.value : label(a.key) < label(b.key) }
+            .prefix(tileMax).map(\.key)
+    }
+
+    static func fitsInterests(_ e: ForYouCandidate, _ interests: [String]) -> Bool {
+        guard !interests.isEmpty else { return true }
+        let known = e.categories.filter { c in EventPrefTaxonomy.interests.contains { $0.id == c } }
+        return known.isEmpty || known.contains(where: interests.contains)
+    }
+
+    static func fitsBudget(_ e: ForYouCandidate, _ b: BudgetPref?) -> Bool {
+        guard let b else { return true }
+        if b.tier == "free" { return e.isFree }
+        if e.isFree { return true }
+        let region = BudgetRegion.forCurrency(b.currency)
+        guard let cap = region.cap(tier: b.tier), let amount = e.priceAmount, let cur = e.priceCurrency,
+              cur == region.currency else { return true }
+        return amount <= cap
+    }
+
+    /// Day (weekdays/weekends) and time (daytime/evening) are separate groups; each picked group must fit.
+    static func fitsAvailability(_ e: ForYouCandidate, _ ids: [String]) -> Bool {
+        let picked = EventPreferences.concrete(ids)
+        guard !picked.isEmpty, let s = e.startsAt, let tz = e.timeZone else { return true }
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let weekday = cal.component(.weekday, from: s)
+        let isWeekend = weekday == 1 || weekday == 7
+        let isDaytime = cal.component(.hour, from: s) < 17
+        let days = picked.filter { $0 == "weekdays" || $0 == "weekends" }
+        let times = picked.filter { $0 == "daytime" || $0 == "evening" }
+        if !days.isEmpty && !days.contains(isWeekend ? "weekends" : "weekdays") { return false }
+        if !times.isEmpty && !times.contains(isDaytime ? "daytime" : "evening") { return false }
+        return true
+    }
+
+    /// Upcoming events that fit every answer so far.
+    static func matchCount(_ events: [ForYouCandidate], _ p: EventPreferences, now: Date = Date()) -> Int {
+        let interests = p.declaredInterests, avail = p.availability ?? []
+        return upcoming(events, now: now).filter {
+            fitsInterests($0, interests) && fitsBudget($0, p.budget) && fitsAvailability($0, avail)
+        }.count
+    }
+
+    /// The count next to one option: the answers so far with this option as the question's only answer.
+    static func optionCount(_ events: [ForYouCandidate], _ p: EventPreferences, question: OnboardingQuestion,
+                            option: String, region: BudgetRegion, now: Date = Date()) -> Int {
+        var q = p
+        switch question {
+        case .availability: q.availability = [option]
+        case .budget: q.budget = PrefSelection.pickBudget(nil, tier: option, region: region)
+        case .interests: q.interests = [option]
+        case .goals, .languages: break
+        }
+        return matchCount(events, q, now: now)
+    }
+
+    /// What the reveal shows. Never empty while any upcoming event exists.
+    static func reveal(_ events: [ForYouCandidate], prefs: EventPreferences, now: Date = Date()) -> RevealPlan {
+        let up = upcoming(events, now: now)
+        let counts = typeCounts(up, now: now)
+        let chosen = prefs.declaredInterests
+        let live = chosen.filter { (counts[$0] ?? 0) > 0 }
+        let waiting = chosen.filter { (counts[$0] ?? 0) == 0 }
+        func filled(_ first: [String], upTo n: Int) -> [String] {
+            var keys = first
+            for e in up where keys.count < n && !keys.contains(e.key) { keys.append(e.key) }
+            return Array(keys.prefix(n))
+        }
+        if live.isEmpty {
+            var rest = prefs
+            rest.interests = nil
+            let ranked = ForYou.rank(up, prefs: rest, now: now).map(\.key)
+            return RevealPlan(mode: chosen.isEmpty ? .popular : .soon, keys: filled(ranked, upTo: tileMax),
+                              exact: 0, live: [], waiting: waiting)
+        }
+        let exact = ForYou.rank(up, prefs: prefs, now: now).map(\.key)
+        if exact.count >= minimum {
+            return RevealPlan(mode: .picked, keys: Array(exact.prefix(tileMax)), exact: exact.count,
+                              live: live, waiting: waiting)
+        }
+        let same = ForYou.rank(up, prefs: EventPreferences(interests: live), now: now).map(\.key)
+            .filter { !exact.contains($0) }
+        return RevealPlan(mode: .topped, keys: filled(exact + same, upTo: minimum + 2), exact: exact.count,
+                          live: live, waiting: waiting)
     }
 }
 

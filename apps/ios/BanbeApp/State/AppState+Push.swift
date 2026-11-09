@@ -63,6 +63,42 @@ extension AppState {
     /// Not now: nothing is asked again automatically (the person can allow it later in iOS Settings).
     func declinePushAsk() { pushAskPresented = false }
 
+    // MARK: Onboarding v5 choice screen (note 80)
+
+    /// Whether onboarding may show its notifications screen: only when its Continue would really bring up the iOS
+    /// alert (push live in this build and switched on, iOS has never asked).
+    func canOfferPushInOnboarding() async -> Bool {
+        #if ENABLE_PUSH
+        guard userID != nil, pushEnabled else { return false }
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        return settings.authorizationStatus == .notDetermined
+        #else
+        return false
+        #endif
+    }
+
+    /// Continue on that screen: the real iOS alert, then registration if allowed. Returns what iOS answered. Also
+    /// marks the ticket-time ask (Q6) as offered, so the same question never comes twice.
+    func requestPushFromOnboarding() async -> Bool {
+        #if ENABLE_PUSH
+        guard pushEnabled else { return false }
+        if let uid = userID?.uuidString.lowercased() {
+            UserDefaults.standard.set(true, forKey: Self.pushAskOfferedKey(uid))
+        }
+        let granted: Bool
+        do {
+            granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+        } catch {
+            print("Push authorization request failed:", error)
+            granted = false
+        }
+        if granted { UIApplication.shared.registerForRemoteNotifications() }
+        return granted
+        #else
+        return false
+        #endif
+    }
+
     /// The last token this device registered (UserDefaults), so sign-out can unregister exactly that one.
     static let lastPushTokenKey = "banbe.push.lastToken.v1"
 

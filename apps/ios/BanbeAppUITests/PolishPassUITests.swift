@@ -76,12 +76,13 @@ final class PolishPassUITests: XCTestCase {
         XCTAssertTrue(el(app, "onboarding.start").waitForExistence(timeout: 10))
         shot("onboarding-welcome")
         el(app, "onboarding.start").tap()
-        XCTAssertTrue(el(app, "onboarding.question.goals").waitForExistence(timeout: 5))
-        XCTAssertEqual(el(app, "onboarding.progress").label, "1 of 5")
-        el(app, "onboarding.goals.learn").tap()
-        XCTAssertTrue(el(app, "onboarding.goals.learn").isSelected)
-        XCTAssertTrue(app.staticTexts["💡 · we'll rank events like this higher"].exists, "each tap answers")
-        shot("onboarding-goals-selected")
+        XCTAssertTrue(el(app, "onboarding.question.interests").waitForExistence(timeout: 5))
+        XCTAssertEqual(el(app, "onboarding.progress").label, "1 of 3")
+        XCTAssertTrue(el(app, "onboarding.interests.more").exists, "the sixth tile searches every type")
+        el(app, "onboarding.interests.music").tap()
+        XCTAssertTrue(el(app, "onboarding.interests.music").isSelected)
+        XCTAssertTrue(app.staticTexts["2 events fit so far. For You will add close picks."].waitForExistence(timeout: 3), "each tap answers")
+        shot("onboarding-interests-selected")
     }
 
     /// Save draft → leave → the draft can be reopened from Drafts with what was typed.

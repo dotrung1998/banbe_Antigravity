@@ -78,47 +78,50 @@ final class ReportsAndOnboardingUITests: XCTestCase {
         XCTAssertTrue(el(app, "reports.empty").waitForExistence(timeout: 10))
     }
 
-    // MARK: Onboarding
+
+    // MARK: Onboarding (v5, note 80)
 
     func testAnswerSkipBackAndComplete() {
         let app = launch("onboarding")
         XCTAssertTrue(el(app, "onboarding.start").waitForExistence(timeout: 10))
         el(app, "onboarding.start").tap()
 
-        XCTAssertTrue(el(app, "onboarding.question.goals").waitForExistence(timeout: 5))
-        XCTAssertEqual(el(app, "onboarding.progress").label, "1 of 5")
-        el(app, "onboarding.goals.meet_people").tap()
-        el(app, "onboarding.goals.learn").tap()
-        XCTAssertTrue(el(app, "onboarding.goals.learn").isSelected)
-        el(app, "onboarding.goals.no_preference").tap()
-        XCTAssertFalse(el(app, "onboarding.goals.learn").isSelected, "No preference is exclusive")
-        el(app, "onboarding.goals.learn").tap()
-        el(app, "onboarding.next").tap()
-
         XCTAssertTrue(el(app, "onboarding.question.interests").waitForExistence(timeout: 5))
+        XCTAssertEqual(el(app, "onboarding.progress").label, "1 of 3")
+        XCTAssertFalse(el(app, "onboarding.next").isEnabled, "Continue waits for an answer; Skip is the other way on")
         el(app, "onboarding.interests.music").tap()
-        el(app, "onboarding.back").tap()
-        XCTAssertTrue(el(app, "onboarding.question.goals").waitForExistence(timeout: 5))
-        XCTAssertTrue(el(app, "onboarding.goals.learn").isSelected, "Back keeps answers")
-        el(app, "onboarding.next").tap()
-        XCTAssertTrue(el(app, "onboarding.interests.music").waitForExistence(timeout: 5))
         XCTAssertTrue(el(app, "onboarding.interests.music").isSelected)
+        el(app, "onboarding.interests.gallery").tap()
+        el(app, "onboarding.interests.gallery").tap()
+        XCTAssertFalse(el(app, "onboarding.interests.gallery").isSelected)
         el(app, "onboarding.next").tap()
 
         XCTAssertTrue(el(app, "onboarding.question.availability").waitForExistence(timeout: 5))
+        el(app, "onboarding.availability.evening").tap()
+        el(app, "onboarding.back").tap()
+        XCTAssertTrue(el(app, "onboarding.question.interests").waitForExistence(timeout: 5))
+        XCTAssertTrue(el(app, "onboarding.interests.music").isSelected, "Back keeps answers")
+        el(app, "onboarding.next").tap()
+        XCTAssertTrue(el(app, "onboarding.availability.evening").waitForExistence(timeout: 5))
+        XCTAssertTrue(el(app, "onboarding.availability.evening").isSelected)
         el(app, "onboarding.skipQuestion").tap()
+
         XCTAssertTrue(el(app, "onboarding.question.budget").waitForExistence(timeout: 5))
+        XCTAssertEqual(el(app, "onboarding.progress").label, "3 of 3")
         el(app, "onboarding.budget.free").tap()
         el(app, "onboarding.next").tap()
-        XCTAssertTrue(el(app, "onboarding.question.languages").waitForExistence(timeout: 5))
-        XCTAssertEqual(el(app, "onboarding.progress").label, "5 of 5")
-        el(app, "onboarding.next").tap()
 
+        // Two free music events in the fixture: fewer than three, so close picks are added and it says so.
         XCTAssertTrue(el(app, "onboarding.reveal").waitForExistence(timeout: 10))
-        XCTAssertTrue(el(app, "onboarding.reveal.count").waitForExistence(timeout: 5))
-        XCTAssertEqual(el(app, "onboarding.reveal.count").label, "2 upcoming events fit you")
-        XCTAssertTrue(el(app, "onboarding.reveal.impacts").exists)
+        XCTAssertTrue(waitLabel(el(app, "onboarding.reveal"), contains: "2 close matches"))
+        XCTAssertTrue(el(app, "onboarding.reveal.event").waitForExistence(timeout: 5))
         el(app, "onboarding.reveal.continue").tap()
+
+        // Nothing owed in the settings step here, so straight to the recap and its tour offer.
+        XCTAssertTrue(el(app, "onboarding.recap").waitForExistence(timeout: 5))
+        XCTAssertTrue(el(app, "onboarding.recap.hosting").exists)
+        XCTAssertTrue(el(app, "onboarding.recap.tour").exists)
+        el(app, "onboarding.recap.home").tap()
         XCTAssertTrue(el(app, "fixture.finished").waitForExistence(timeout: 5))
     }
 
@@ -126,41 +129,57 @@ final class ReportsAndOnboardingUITests: XCTestCase {
         let app = launch("onboarding")
         XCTAssertTrue(el(app, "onboarding.skipAll").waitForExistence(timeout: 10))
         el(app, "onboarding.skipAll").tap()
-        XCTAssertTrue(el(app, "fixture.finished").waitForExistence(timeout: 5), "skip all saves nothing and shows no reveal")
+        XCTAssertTrue(el(app, "onboarding.recap").waitForExistence(timeout: 5), "skip all saves nothing and shows no reveal")
+        XCTAssertTrue(waitLabel(el(app, "onboarding.recap.forYou"), contains: "Not set yet"))
+        el(app, "onboarding.recap.home").tap()
+        XCTAssertTrue(el(app, "fixture.finished").waitForExistence(timeout: 5))
     }
 
     func testSaveFailureIsHonestAndRecoverable() {
         let app = launch("onboarding.saveFails")
         XCTAssertTrue(el(app, "onboarding.start").waitForExistence(timeout: 10))
         el(app, "onboarding.start").tap()
-        for _ in 0..<5 {
-            XCTAssertTrue(el(app, "onboarding.next").waitForExistence(timeout: 5))
-            el(app, "onboarding.next").tap()
+        for _ in 0..<3 {
+            XCTAssertTrue(el(app, "onboarding.skipQuestion").waitForExistence(timeout: 5))
+            el(app, "onboarding.skipQuestion").tap()
         }
         XCTAssertTrue(el(app, "onboarding.saveFailed").waitForExistence(timeout: 10))
         el(app, "onboarding.failed.back").tap()
-        XCTAssertTrue(el(app, "onboarding.question.languages").waitForExistence(timeout: 5))
-        el(app, "onboarding.next").tap()
+        XCTAssertTrue(el(app, "onboarding.question.budget").waitForExistence(timeout: 5))
+        el(app, "onboarding.skipQuestion").tap()
         XCTAssertTrue(el(app, "onboarding.failed.skip").waitForExistence(timeout: 10))
         el(app, "onboarding.failed.skip").tap()
-        XCTAssertTrue(el(app, "fixture.finished").waitForExistence(timeout: 5))
+        XCTAssertTrue(el(app, "onboarding.recap").waitForExistence(timeout: 5))
     }
 
-    func testZeroMatchesAndOfflineReveal() {
+    func testTypeWithNothingOnStillRevealsAndOfflineReveal() {
+        // Only fashion events exist: music isn't a tile (no placeholders) but is reachable through More types.
         var app = launch("onboarding.zero")
         el(app, "onboarding.start").tap()
-        XCTAssertTrue(el(app, "onboarding.question.goals").waitForExistence(timeout: 5))
+        XCTAssertTrue(el(app, "onboarding.question.interests").waitForExistence(timeout: 5))
+        XCTAssertFalse(el(app, "onboarding.interests.music").exists)
+        el(app, "onboarding.interests.more").tap()
+        XCTAssertTrue(el(app, "onboarding.types.music").waitForExistence(timeout: 5))
+        el(app, "onboarding.types.music").tap()
+        el(app, "onboarding.types.done").tap()
+        XCTAssertTrue(el(app, "onboarding.interests.chip.music").waitForExistence(timeout: 5), "picked there, shown as a chip")
         el(app, "onboarding.next").tap()
-        el(app, "onboarding.interests.music").tap()
-        for _ in 0..<4 { el(app, "onboarding.next").tap() }
-        XCTAssertTrue(el(app, "onboarding.reveal.empty").waitForExistence(timeout: 10))
+        el(app, "onboarding.skipQuestion").tap()
+        el(app, "onboarding.skipQuestion").tap()
+        XCTAssertTrue(el(app, "onboarding.reveal").waitForExistence(timeout: 10))
+        XCTAssertTrue(el(app, "onboarding.reveal.event").waitForExistence(timeout: 5), "For You is never empty")
+        XCTAssertFalse(el(app, "onboarding.reveal.empty").exists)
         app.terminate()
 
         app = launch("onboarding.offline")
         el(app, "onboarding.start").tap()
-        XCTAssertTrue(el(app, "onboarding.question.goals").waitForExistence(timeout: 5))
-        el(app, "onboarding.goals.learn").tap()
-        for _ in 0..<5 { el(app, "onboarding.next").tap() }
+        XCTAssertTrue(el(app, "onboarding.interests.more").waitForExistence(timeout: 5))
+        el(app, "onboarding.interests.more").tap()
+        el(app, "onboarding.types.music").tap()
+        el(app, "onboarding.types.done").tap()
+        el(app, "onboarding.next").tap()
+        el(app, "onboarding.skipQuestion").tap()
+        el(app, "onboarding.skipQuestion").tap()
         XCTAssertTrue(el(app, "onboarding.reveal.failed").waitForExistence(timeout: 10))
         XCTAssertTrue(el(app, "onboarding.reveal.retry").exists)
     }
@@ -168,17 +187,17 @@ final class ReportsAndOnboardingUITests: XCTestCase {
     func testDraftSurvivesRelaunch() {
         var app = launch("onboarding")
         el(app, "onboarding.start").tap()
-        XCTAssertTrue(el(app, "onboarding.goals.learn").waitForExistence(timeout: 5))
-        el(app, "onboarding.goals.learn").tap()
+        XCTAssertTrue(el(app, "onboarding.interests.music").waitForExistence(timeout: 5))
+        el(app, "onboarding.interests.music").tap()
         el(app, "onboarding.next").tap()
-        XCTAssertTrue(el(app, "onboarding.question.interests").waitForExistence(timeout: 5))
+        XCTAssertTrue(el(app, "onboarding.question.availability").waitForExistence(timeout: 5))
         app.terminate()
 
         app = launch("onboarding", reset: false)
-        XCTAssertTrue(el(app, "onboarding.question.interests").waitForExistence(timeout: 10), "resumes at the same question")
+        XCTAssertTrue(el(app, "onboarding.question.availability").waitForExistence(timeout: 10), "resumes at the same question")
         el(app, "onboarding.back").tap()
-        XCTAssertTrue(el(app, "onboarding.goals.learn").waitForExistence(timeout: 5))
-        XCTAssertTrue(el(app, "onboarding.goals.learn").isSelected, "answer restored")
+        XCTAssertTrue(el(app, "onboarding.interests.music").waitForExistence(timeout: 5))
+        XCTAssertTrue(el(app, "onboarding.interests.music").isSelected, "answer restored")
     }
 
     func testVietnameseCopy() {
@@ -186,6 +205,11 @@ final class ReportsAndOnboardingUITests: XCTestCase {
         XCTAssertTrue(el(app, "onboarding.start").waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["Bắt đầu"].exists)
         el(app, "onboarding.start").tap()
-        XCTAssertEqual(el(app, "onboarding.progress").label, "Câu 1/5")
+        XCTAssertEqual(el(app, "onboarding.progress").label, "Câu 1/3")
+    }
+
+    private func waitLabel(_ e: XCUIElement, contains text: String, timeout: TimeInterval = 5) -> Bool {
+        let p = NSPredicate(format: "label CONTAINS %@", text)
+        return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: p, object: e)], timeout: timeout) == .completed
     }
 }

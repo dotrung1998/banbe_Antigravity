@@ -703,8 +703,9 @@ struct AccountGroupView: View {
         VStack(spacing: 0) {
             row(app.T("banbe hoạt động thế nào", "How banbe works"), identifier: "help.howItWorks", icon: "lightbulb", trailing: "›") { app.screen = .helpHowItWorks }
             Divider().overlay(app.palette.rule)
-            // Note 64: only while onboarding Version 3 is on. Replays the tour; never touches the first-run marker.
-            if app.onboardingVersion == 3 {
+            // Note 80: always here for signed-in people, since onboarding's recap offers the tour to everyone and
+            // points back to this row. Replays the tour; never touches the first-run marker.
+            if app.isSignedIn {
                 row(app.T("Xem hướng dẫn trong ứng dụng", "Tour the app"), identifier: "help.appTour", icon: "lightbulb", trailing: "›") { app.replayOnboardingTour() }
                 Divider().overlay(app.palette.rule)
             }

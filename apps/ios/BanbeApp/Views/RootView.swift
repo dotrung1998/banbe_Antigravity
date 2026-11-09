@@ -972,8 +972,8 @@ struct RootView: View {
             // has also finished loading — otherwise the login form reappears for
             // about a second between the gate clearing and Home appearing.
             if showsAccountGate { AccountGateOverlay().transition(.opacity) }
-            // Post-signup personalization (five optional questions → reveal →
-            // short settings review). Server markers make it one-time;
+            // Post-signup personalization (note 80: three optional questions → reveal →
+            // one choice per screen → recap). Server markers make it one-time;
             // `onboardingFlowActive` keeps it up for the reveal after they clear.
             // Below the Face ID lock.
             if showsEventOnboarding { EventOnboardingOverlay() }

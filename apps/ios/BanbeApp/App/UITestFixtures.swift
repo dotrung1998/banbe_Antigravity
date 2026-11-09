@@ -714,7 +714,7 @@ struct UITestFixtureRoot: View {
         let saveFails = variant == "saveFails"
         var state = store.resume(uid: UITestFixture.userID, needsPreferences: true, needsSettings: false, region: .vn)
         // Screenshot entry points straight into a later screen.
-        if variant == "budget" { state.stage = .question(3); state.draft.budget = BudgetPref(tier: "low", currency: "VND") }
+        if variant == "budget" { state.stage = .question(2); state.draft.budget = BudgetPref(tier: "low", currency: "VND") }
         if variant == "reveal" {
             let prefs = EventPreferences(interests: ["music", "gallery"], goals: ["meet_people"], availability: ["evening"],
                                          budget: BudgetPref(tier: "free", currency: nil), languages: ["vi", "en"])
