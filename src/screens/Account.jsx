@@ -415,17 +415,34 @@ export default function Account() {
       <div data-testid="account-content" style={{ display: searchOpen ? 'none' : 'block' }}>
         {/* 2. Identity card. Goer: the personal profile card (it IS the profile; › opens the public page).
             Host: the organizer card instead, with a small link back to the personal public profile. */}
-        <button type="button" data-testid="account-profile-card" onClick={s.user?.handle ? openMyPublicProfile : undefined}
-          style={{ display: 'flex', alignItems: 'center', gap: 16, width: '100%', padding: '8px 20px 0', border: 'none', background: 'none', textAlign: 'left', color: ink, font: 'inherit', cursor: s.user?.handle ? 'pointer' : 'default' }}>
-          <span style={{ flex: 'none', width: 64, height: 64, borderRadius: '50%', background: 'var(--bb-clay, #9C5B3B)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 500, overflow: 'hidden' }}>
-            {s.user?.avatarUrl ? <img src={s.user.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : profileName.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()}
-          </span>
-          <span style={{ minWidth: 0 }}>
-            <span data-testid="account-profile-name" style={{ display: 'block', fontSize: 22, fontWeight: 300 }}>{profileName}</span>
-            <span style={{ display: 'block', fontSize: 13, color: ink3, marginTop: 2 }}>{[s.user?.handle && `@${s.user.handle}`, `${isOrganizer ? T('Người tổ chức', 'Host') : T('Thành viên', 'Member')}${s.user?.createdAt ? ` ${T('từ', 'since')} ${new Date(s.user.createdAt).getFullYear()}` : ''}`].filter(Boolean).join(' · ')}</span>
-            {s.user?.handle && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginTop: 6, fontSize: 13, borderBottom: '1px solid var(--bb-rule)' }}>{T('Xem hồ sơ', 'View profile')} ›</span>}
-          </span>
-        </button>
+        <KeychainFrame config={myKeychain} margin="0" cardHeight={64} testId="account-keychain-frame">
+          {({ reserveRight }) => {
+            const hostTab = tab === 'host' && !!s.myOrganizerId;
+            const orgImg = hostTab ? organizerAvatarUrl(s.myOrganizerAvatarPath, s.myOrganizerAvatarR2Ref) : '';
+            const img = hostTab ? orgImg : s.user?.avatarUrl;
+            const title = hostTab ? (s.orgRegName || T('Chưa đặt tên', 'Unnamed host')) : profileName;
+            const initials = title.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+            const since = s.user?.createdAt ? ` ${T('từ', 'since')} ${new Date(s.user.createdAt).getFullYear()}` : '';
+            const sub = hostTab
+              ? (s.myOrgHostingSinceYear ? T(`Tổ chức từ ${s.myOrgHostingSinceYear}`, `Hosting since ${s.myOrgHostingSinceYear}`) : T('Người tổ chức', 'Host'))
+              : [s.user?.handle && `@${s.user.handle}`, `${tab === 'admin' ? T('Quản trị viên', 'Admin') : isOrganizer ? T('Người tổ chức', 'Host') : T('Thành viên', 'Member')}${tab === 'admin' ? '' : since}`].filter(Boolean).join(' · ');
+            const linkLabel = hostTab ? T('Hồ sơ tổ chức', 'Host profile') : T('Xem hồ sơ', 'View profile');
+            const open = hostTab ? () => openOrganizerProfile(s.myOrganizerId, 'profile') : s.user?.handle ? openMyPublicProfile : undefined;
+            return (
+              <button type="button" data-testid="account-profile-card" onClick={open}
+                style={{ display: 'flex', alignItems: 'center', gap: 16, width: '100%', padding: `8px ${20 + reserveRight}px 0 20px`, boxSizing: 'border-box', border: 'none', background: 'none', textAlign: 'left', color: ink, font: 'inherit', cursor: open ? 'pointer' : 'default' }}>
+                <span style={{ flex: 'none', width: 64, height: 64, borderRadius: hostTab ? 16 : '50%', background: 'var(--bb-clay, #9C5B3B)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 500, overflow: 'hidden' }}>
+                  {img ? <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials}
+                </span>
+                <span style={{ minWidth: 0 }}>
+                  <span data-testid="account-profile-name" style={{ display: 'block', fontSize: 22, fontWeight: 300 }}>{title}</span>
+                  <span style={{ display: 'block', fontSize: 13, color: ink3, marginTop: 2 }}>{sub}</span>
+                  {open && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginTop: 6, fontSize: 13, borderBottom: '1px solid var(--bb-rule)' }}>{linkLabel} ›</span>}
+                </span>
+              </button>
+            );
+          }}
+        </KeychainFrame>
         {s.user && (
           <div style={{ margin: '18px 20px 0' }}>
             <button type="button" role="switch" aria-checked={!!isOrganizer} disabled={s.organizerModeBusy} onClick={toggleOrganizerMode} data-testid="organizer-mode-toggle"

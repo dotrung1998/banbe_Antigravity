@@ -38,7 +38,7 @@ const KIND_CATEGORY = {
   event_reminder_day: 'reminder', event_reminder_soon: 'reminder',
   event_recap: 'event', host_event_recap: 'event', follow_alert: 'event', weekly_digest: 'event',
 };
-function notificationCategory(kind) { return KIND_CATEGORY[kind] || 'system'; }
+export function notificationCategory(kind) { return KIND_CATEGORY[kind] || 'system'; }
 
 // Color-as-wayfinding pass (2026-09-27) — the SAME meaning -> color map
 // Account.jsx's own group cards use (ROW_ACCENT_COLORS, re-derived here

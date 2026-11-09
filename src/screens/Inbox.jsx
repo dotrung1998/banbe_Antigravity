@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg } from '../data/events.js';
-import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass } from '../theme.js';
-import { HeaderIconButton } from './Notifications.jsx';
-import DockHeaderTitle, { DOCK_HEADER } from '../components/ui/DockHeaderTitle.jsx';
+import { paper, ink, ink2, ink3, rule, alert, block, divider, display, fieldGlass, inkButton, cardGlass } from '../theme.js';
+import { DOCK_HEADER } from '../components/ui/DockHeaderTitle.jsx';
 import { isActiveDisputeChat } from './ConversationDispute.jsx';
+import { notificationCategory as notifCategory } from './Notifications.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 
 // Same 6s poll interval the ordinary conversation list uses, for the same
@@ -59,7 +59,7 @@ function InboxRow({ c, onOpen, onStar, onArchive, onDelete, T, disputeActive }) 
   const unread = !!c.unread;
 
   return (
-    <div style={{ position: 'relative', overflow: 'hidden', borderBottom: `1px solid ${rule}`, ...(disputeActive ? { margin: '0 -10px' } : null) }}>
+    <div style={{ position: 'relative', overflow: 'hidden', borderBottom: `1px solid ${divider}`, ...(disputeActive ? { margin: '0 -10px' } : null) }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: REVEAL_WIDTH, display: 'flex' }}>
         <div
           onClick={(e) => { e.stopPropagation(); onStar(); setOffset(0); }}
@@ -102,7 +102,7 @@ function InboxRow({ c, onOpen, onStar, onArchive, onDelete, T, disputeActive }) 
         data-unread={unread ? 'true' : 'false'}
         data-dispute={disputeActive ? 'true' : undefined}
         style={{
-          display: 'flex', gap: 16, alignItems: 'center', padding: '16px 0', cursor: 'pointer',
+          display: 'flex', gap: 12, alignItems: 'center', padding: '14px 0', cursor: 'pointer',
           // iOS parity: a full-row rounded pale-red surface, not a left bar.
           background: disputeActive ? 'color-mix(in srgb, var(--bb-alert) 10%, var(--bb-bg))' : paper,
           // Same full-row rounded fill as an unread notification (10px side
@@ -138,12 +138,12 @@ function InboxRow({ c, onOpen, onStar, onArchive, onDelete, T, disputeActive }) 
                 via opacity/color rather than a lighter font-weight, so it
                 reads clearly lighter than an unread row's name without
                 losing its title-vs-preview hierarchy. */}
-            <span style={{ ...display(18, { lineHeight: 1.15, fontWeight: 700, opacity: unread ? 1 : 0.62 }) }}>{c.name}</span>
+            <span style={{ fontSize: 15, lineHeight: 1.2, fontWeight: unread ? 600 : 400, color: ink }}>{c.name}</span>
           </div>
           {disputeActive && (
             <span data-testid="inbox-row-dispute" style={{ fontSize: 11.5, fontWeight: 700, color: alert }}>{T('Tranh chấp đang diễn ra', 'Dispute in progress')}</span>
           )}
-          <span style={{ fontSize: 13, color: ink, opacity: unread ? 1 : 0.72, fontWeight: unread ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.snippet}</span>
+          <span style={{ fontSize: 13, color: unread ? ink : ink2, fontWeight: unread ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.snippet}</span>
         </div>
         {/* Bug 1 (2026-09-21 follow-up) — moved off the avatar (where it
             could collide with the merged-avatar badge) to the row's own
@@ -266,8 +266,20 @@ function FeedbackFlow({ onClose, T }) {
   );
 }
 
+const iconBtn = { width: 44, height: 44, border: 'none', background: 'none', color: ink, display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0 };
+function Chips({ items, value, onChange }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '14px 0 10px', scrollbarWidth: 'none' }}>
+      {items.map(([k, label]) => (
+        <button key={k} type="button" onClick={() => onChange(k)} style={{ flex: 'none', height: 34, padding: '0 14px', border: 'none', borderRadius: 999, fontFamily: 'inherit', fontSize: 13, cursor: 'pointer',
+          background: value === k ? ink : block, color: value === k ? paper : ink2, fontWeight: value === k ? 600 : 400 }}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
 export default function Inbox() {
-  const { state, T, openThread, toggleThreadStar, archiveThread, unarchiveThread, deleteThreadForMe, setInboxView, loadDisputeChats, goHome } = useBanBe();
+  const { state, T, loadNotifications, openNotification, markNotificationRead, openThread, toggleThreadStar, archiveThread, unarchiveThread, deleteThreadForMe, setInboxView, loadDisputeChats, goHome } = useBanBe();
   const s = state;
 
   // Keeps the dispute index fresh — it drives the "Dispute in progress" row
@@ -279,6 +291,10 @@ export default function Inbox() {
     return () => clearInterval(id);
   }, [loadDisputeChats, s.inboxView]);
 
+  const [tab, setTab] = useState('messages');
+  const [msgF, setMsgF] = useState('all');
+  const [ntF, setNtF] = useState('all');
+  useEffect(() => { loadNotifications?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -296,14 +312,15 @@ export default function Inbox() {
     [s.disputeChats]
   );
   const visible = useMemo(() => {
-    const byView = merged.filter(c => (s.inboxView === 'archived' ? c.archived : !c.archived));
+    const byView = merged.filter(c => (s.inboxView === 'archived' ? c.archived : !c.archived))
+      .filter(c => msgF === 'unread' ? c.unread : msgF === 'dispute' ? activeDisputeThreads.has(c.threadId) : true);
     const q = query.trim().toLowerCase();
     if (!q) return byView;
     // Task 1a — reuses a plain client-side substring filter (this app has
     // no other real text-search backend to call into, only MapExplore's
     // "Search here" location re-query, which is a different concept).
     return byView.filter(c => c.name.toLowerCase().includes(q) || c.snippet.toLowerCase().includes(q));
-  }, [merged, s.inboxView, query]);
+  }, [merged, s.inboxView, query, msgF, activeDisputeThreads]);
 
   const emptyArchived = T('Chưa có cuộc trò chuyện nào được lưu trữ.', 'No archived conversations yet.');
 
@@ -326,26 +343,68 @@ export default function Inbox() {
             }}
           />
         ) : (
-          // iOS parity: wordmark BEFORE the title, inline in the same row.
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <DockHeaderTitle title={s.inboxView === 'archived' ? T('Đã lưu trữ', 'Archived') : T('Tin nhắn', 'Messages')} testId="inbox-title" />
-          </div>
+          <h1 data-testid="inbox-title" style={{ margin: 0, minWidth: 0, flex: 1, fontSize: 30, fontWeight: 300, letterSpacing: '-.01em', color: ink }}>
+            {s.inboxView === 'archived' ? T('Đã lưu trữ', 'Archived') : T('Hoạt động', 'Activity')}
+          </h1>
         )}
-        {/* Task 1 — "Done" replaced with search + settings icons. Task 5 —
-            each icon-only control gets a small label underneath. */}
-        <div style={{ display: 'flex', gap: 14, flex: 'none' }}>
-          <HeaderIconButton
-            icon={searchOpen ? 'close' : 'search'}
-            label={searchOpen ? T('Đóng', 'Close') : T('Tìm', 'Search')}
-            onClick={() => { if (searchOpen) setQuery(''); setSearchOpen(v => !v); }}
-            testId="inbox-search-toggle"
-          />
+        <div style={{ display: 'flex', gap: 2, flex: 'none', marginLeft: searchOpen ? 12 : 0 }}>
+          <button type="button" data-testid="inbox-search-toggle" aria-label={searchOpen ? T('Đóng', 'Close') : T('Tìm', 'Search')} onClick={() => { if (searchOpen) setQuery(''); setSearchOpen(v => !v); }} style={iconBtn}>
+            <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">{searchOpen ? <path d="M5 5l14 14M19 5L5 19" /> : <><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></>}</svg>
+          </button>
           {s.inboxView === 'active' && (
-            <HeaderIconButton icon="gear" label={T('Cài đặt', 'Settings')} onClick={() => setSettingsOpen(true)} testId="inbox-settings-toggle" />
+            <button type="button" data-testid="inbox-settings-toggle" aria-label={T('Cài đặt', 'Settings')} onClick={() => setSettingsOpen(true)} style={iconBtn}>
+              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7" /></svg>
+            </button>
           )}
         </div>
       </div>
 
+      {s.inboxView === 'active' && !searchOpen && (
+        <div role="tablist" data-testid="activity-tabs" style={{ display: 'flex', background: block, borderRadius: 999, padding: 3, margin: '6px 20px 0' }}>
+          {[['messages', T('Tin nhắn', 'Messages'), s.unreadMessages || 0], ['notifications', T('Thông báo', 'Notifications'), s.unreadNotifications || 0]].map(([k, label, n]) => (
+            <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} data-testid={`activity-tab-${k}`}
+              style={{ flex: 1, height: 38, border: 'none', borderRadius: 999, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                background: tab === k ? ink : 'transparent', color: tab === k ? paper : ink3 }}>
+              {label}
+              {n > 0 && <span style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: alert, color: 'var(--bb-on-alert)', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{n}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {tab === 'notifications' && s.inboxView === 'active' ? (() => {
+        const cat = (k) => { const c = notifCategory(k); return c === 'booking' || c === 'reminder' ? 'tickets' : ['payment', 'refund', 'dispute'].includes(c) ? 'payments' : c === 'event' || c === 'message' ? 'events' : 'rewards'; };
+        const all = s.notifications || [];
+        const list = all.filter(n => (ntF === 'all' || cat(n.kind) === ntF) && (!query.trim() || `${n.title} ${n.body}`.toLowerCase().includes(query.trim().toLowerCase())));
+        const unreadAll = all.filter(n => !n.read_at);
+        return (
+          <div style={{ margin: '0 20px 40px' }} data-testid="activity-notifications">
+            <Chips value={ntF} onChange={setNtF} items={[['all', T('Tất cả', 'All')], ['tickets', T('Vé', 'Tickets')], ['payments', T('Thanh toán', 'Payments')], ['events', T('Sự kiện', 'Events')], ['rewards', T('Thưởng', 'Rewards')]]} />
+            {unreadAll.length > 0 && (
+              <div style={{ textAlign: 'right', paddingBottom: 4 }}>
+                <button type="button" data-testid="notifications-mark-all" onClick={() => unreadAll.forEach(n => markNotificationRead(n.id))} style={{ border: 'none', background: 'none', padding: 0, fontFamily: 'inherit', fontSize: 13, color: ink, borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>{T('Đánh dấu đã đọc', 'Mark all as read')}</button>
+              </div>
+            )}
+            {list.map(n => (
+              <div key={n.id} role="button" tabIndex={0} data-testid="notification-row" onClick={() => openNotification(n)} onKeyDown={(e) => { if (e.key === 'Enter') openNotification(n); }}
+                style={{ display: 'flex', gap: 12, padding: '14px 0', borderBottom: `1px solid ${divider}`, cursor: 'pointer' }}>
+                <span style={{ flex: 'none', width: 40, height: 40, borderRadius: '50%', border: `1px solid ${n.read_at ? rule : ink}`, display: 'grid', placeItems: 'center', fontSize: 15, color: ink }}>{n.kind === 'event_announcement' ? '📣' : (n.title || '•').trim().charAt(0).toUpperCase()}</span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: 1.4, color: n.read_at ? ink2 : ink }}>
+                  <b style={{ color: ink, fontWeight: 600 }}>{n.title}</b> {n.body}
+                  <small style={{ display: 'block', fontSize: 12, color: ink3, marginTop: 3 }}>{n.ago}</small>
+                </span>
+                {!n.read_at && <span style={{ width: 8, height: 8, borderRadius: '50%', background: alert, flex: 'none', marginTop: 6 }} />}
+              </div>
+            ))}
+            {list.length === 0 && <p style={{ padding: '48px 20px', margin: 0, textAlign: 'center', fontSize: 14, color: ink2 }}>{T('Chưa có thông báo nào.', 'Nothing here yet.')}</p>}
+          </div>
+        );
+      })() : (<>
+      {s.inboxView === 'active' && !searchOpen && (
+        <div style={{ margin: '0 20px' }}>
+          <Chips value={msgF} onChange={setMsgF} items={[['all', T('Tất cả', 'All')], ['unread', T('Chưa đọc', 'Unread')], ['dispute', T('Tranh chấp', 'Disputes')]]} />
+        </div>
+      )}
       {s.inboxView === 'archived' && (
         <div onClick={() => setInboxView('active')} data-testid="inbox-back-to-active" style={{ padding: '0 24px 8px', fontSize: 12.5, color: ink, opacity: 0.7, cursor: 'pointer' }}>
           ‹ {T('Quay lại Tin nhắn', 'Back to Messages')}
@@ -356,7 +415,7 @@ export default function Inbox() {
           conversation; the row below is just highlighted. */}
 
       {visible.length > 0 ? (
-        <div style={{ padding: '6px 24px 40px' }}>
+        <div style={{ padding: '0 20px 40px' }}>
           {visible.map(c => (
             <InboxRow
               key={c.threadId}
@@ -388,6 +447,8 @@ export default function Inbox() {
           </div>
         )
       )}
+
+      </>)}
 
       {settingsOpen && (
         <div onClick={() => setSettingsOpen(false)} style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
