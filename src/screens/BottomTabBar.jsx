@@ -143,15 +143,15 @@ export const DOCK_ORDER = ['home', 'mapExplore', 'schedule', 'inbox', 'profile']
 // itself to the exact same vertical band as this bar — "adjacent to the
 // existing dock" only reads as true if it shares these two numbers, not
 // approximations of them.
-export const BAR_HEIGHT = 64;
+export const BAR_HEIGHT = 72;
 // Stage 3 (2026-09-27 nav/discovery pass) — bumped back up (20→26) now
 // that the text labels below each icon are gone (see the removed
 // `dockLabel` span) — the icon itself is the only thing left to read at a
 // glance, so it gets the room the labels used to occupy.
-const ICON_SIZE = 26;
+const ICON_SIZE = 24;
 // BUG 3: sits a little closer to the bottom edge than 64f2719/623ec1e's
 // 18px — "shift its resting position lower."
-export const BAR_BOTTOM_OFFSET = 10;
+export const BAR_BOTTOM_OFFSET = 16;
 
 // TASK 1 (2026-10-05 fix pass) — the dock and the create-"+" button are now
 // ONE laid-out row (see DockRow in App.jsx) sharing a single outer margin
@@ -213,9 +213,9 @@ export default function BottomTabBar({ collapsed }) {
     { key: 'home', icon: 'home', onClick: goHome, label: T('Trang chính', 'Home'), testId: 'tab-home', badge: 0, badgeCapped: false },
     { key: 'mapExplore', icon: 'map', onClick: goMapExplore, label: T('Bản đồ', 'Map'), testId: 'tab-map', badge: 0, badgeCapped: false },
     { key: 'schedule', icon: 'schedule', onClick: goSchedule, label: T('Lịch', 'Schedule'), testId: 'tab-schedule', badge: 0, badgeCapped: false },
-    { key: 'inbox', icon: 'inbox', onClick: goInbox, label: T('Tin nhắn', 'Messages'), testId: 'tab-inbox', badge: s.unreadMessages || 0, badgeCapped: false },
+    { key: 'inbox', icon: 'inbox', onClick: goInbox, label: simpleShell ? T('Hoạt động', 'Activity') : T('Tin nhắn', 'Messages'), testId: 'tab-inbox', badge: (s.unreadMessages || 0) + (simpleShell ? (s.unreadNotifications || 0) : 0), badgeCapped: false },
     { key: 'profile', icon: 'profile', onClick: goProfile, label: T('Tài khoản', 'Account'), testId: 'tab-profile', badge: accountBadge, badgeCapped: true, badgeCap: 99 },
-  ], [goHome, goMapExplore, goSchedule, goInbox, goProfile, T, s.unreadMessages, accountBadge]);
+  ], [goHome, goMapExplore, goSchedule, goInbox, goProfile, T, s.unreadMessages, s.unreadNotifications, simpleShell, accountBadge]);
   const items = useMemo(() => dockSlots(simpleShell)
     .map(k => (k === CREATE_SLOT ? { key: CREATE_SLOT, isCreate: true } : tabDefs.find(t => t.key === k))), [simpleShell, tabDefs]);
   const highlightKey = dockHighlightFor(s.screen, simpleShell);
@@ -678,12 +678,14 @@ export default function BottomTabBar({ collapsed }) {
             aria-selected={activeIndex === i}
             aria-current={activeIndex === i ? 'page' : undefined}
             style={{
-              position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
               flex: '1 1 0', minWidth: 44, minHeight: 44, height: '100%', zIndex: 1,
             }}
           >
             <div style={{ position: 'relative', width: ICON_SIZE, height: ICON_SIZE, opacity: activeIndex === i ? 1 : 0.72, ...(activeIndex === i ? { color: '#1B1916' } : null) }}>
-              {ICONS[item.icon](activeIndex === i ? '#1B1916' : ink, activeIndex === i)}
+              {item.key === 'profile' && s.user
+                ? <span aria-hidden style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--bb-clay, #9C5B3B)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{String(s.user.name || s.user.email || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}</span>
+                : ICONS[item.icon](activeIndex === i ? '#1B1916' : ink, activeIndex === i)}
               {item.badge > 0 && (() => {
                 const cap = item.badgeCap ?? 9;
                 const displayText = item.badgeCapped && item.badge > cap ? `${cap}+` : String(item.badge);
@@ -708,6 +710,7 @@ export default function BottomTabBar({ collapsed }) {
                 );
               })()}
             </div>
+            <span aria-hidden style={{ fontSize: 11, lineHeight: 1.1, fontWeight: activeIndex === i ? 700 : 500, opacity: activeIndex === i ? 1 : 0.75, color: activeIndex === i ? '#1B1916' : ink }}>{item.label}</span>
           </div>
         )))}
     </div>

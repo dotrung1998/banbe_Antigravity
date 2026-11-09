@@ -76,6 +76,9 @@ export function RowIcon({ kind, size = 22, accent }) {
     heart: <path d="M12 20.2s-7.4-4.4-7.4-10a4.3 4.3 0 0 1 7.4-2.9 4.3 4.3 0 0 1 7.4 2.9c0 5.6-7.4 10-7.4 10z" />,
     calendar: <><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17M8 3v4M16 3v4M8 13.5h.01M12 13.5h.01M16 13.5h.01M8 17h.01M12 17h.01" /></>,
     person: <><circle cx="12" cy="12" r="8.6" /><circle cx="12" cy="10" r="2.9" /><path d="M6.6 18.3c1.2-2.1 3.1-3.2 5.4-3.2s4.2 1.1 5.4 3.2" /></>,
+    sun: <><circle cx="12" cy="12" r="4" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4" /></>,
+    globe: <><circle cx="12" cy="12" r="8.6" /><path d="M3.4 12h17.2M12 3.4c2.5 2.5 2.5 14.7 0 17.2M12 3.4c-2.5 2.5-2.5 14.7 0 17.2" /></>,
+    star: <path d="M12 3.8l2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z" />,
     bookmark: <path d="M7 3.5h10v17l-5-3.6-5 3.6z" />,
     checkCircle: <><circle cx="12" cy="12" r="8.6" /><path d="M8.3 12.3l2.5 2.5 4.9-5" /></>,
     lightbulb: <><path d="M9 18.5h6M10 21h4" /><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.4 1.1 2.2v.5h5v-.5c0-.8.4-1.6 1.1-2.2A6 6 0 0 0 12 3z" /></>,
@@ -104,10 +107,10 @@ export function RowIcon({ kind, size = 22, accent }) {
 }
 
 /** Note 69: a labelled group of rows; the heading is a real heading, sized to be seen. */
-function RowGroup({ title, testId, top = 28, children }) {
+function RowGroup({ title, testId, top = 30, children }) {
   return (
     <section data-testid={testId} style={{ marginTop: top }}>
-      <h2 style={{ margin: '0 24px 10px', fontSize: 20, fontWeight: 600, color: ink, letterSpacing: '-0.01em' }}>{title}</h2>
+      <h2 style={{ margin: '0 20px 4px', fontSize: 11, fontWeight: 400, letterSpacing: '.12em', textTransform: 'uppercase', color: ink3 }}>{title}</h2>
       <MoreList testId={`${testId}-list`}>{children}</MoreList>
     </section>
   );
@@ -250,8 +253,7 @@ export default function Account() {
       badge: computeMyRefundActionCount(s), onClick: () => openAccountGroup('payments') },
     { tileKey: 'saved', icon: 'bookmark', title: T('Đã lưu', 'Saved'),
       value: T(`${savedCount} sự kiện`, `${savedCount} ${savedCount === 1 ? 'event' : 'events'}`), onClick: goSavedList },
-    { tileKey: 'help', icon: 'help', title: T('Trợ giúp', 'Help'),
-      value: T('Hướng dẫn, điều khoản, Q&A', 'Guides, terms, Q&A'), onClick: () => openAccountGroup('helpLegal') },
+    { tileKey: 'rewards', icon: 'star', title: T('Phần thưởng', 'Rewards'), onClick: () => set({ screen: 'rewards', rewardsBack: 'profile' }) },
   ];
   const eventsValue = (() => {
     const bits = [];
@@ -321,7 +323,6 @@ export default function Account() {
 
   // Note 69: labelled groups instead of one "More" list.
   const activityRows = [
-    notificationsRow,
     projectsRow,
     <MoreRow key="following" icon="heart" label={T('Đang theo dõi', 'Following')} testId="account-following"
       trailing={s.followedStatus === 'loaded' ? String(s.followedOrgIds.length) : null} onClick={() => set({ screen: 'following' })} />,
@@ -338,7 +339,8 @@ export default function Account() {
       <MoreRow key="share" icon="person" label={T('Chia sẻ thẻ hồ sơ', 'Share your card')} testId="account-share-card-personal" onClick={() => setShareCardFor('member')} />
     ) : null,
   ].filter(Boolean);
-  const appRows = [settingsRow, s.user ? organizerToggleRow : null];
+  const appRows = [settingsRow];
+  const supportRows = [<MoreRow key="help" icon="help" label={T('Trợ giúp', 'Help')} testId="account-help" onClick={() => openAccountGroup('helpLegal')} />];
   const hostToolRows = [
     <MoreRow key="story" icon="pencil" label={T('Đăng story', 'Post a story')} testId="account-host-post-story"
       sub={T('Thêm chữ và liên kết, sửa hoặc xóa sau khi đăng', 'Add text and a link, edit or delete after posting')}
@@ -394,21 +396,51 @@ export default function Account() {
               style={{ ...fieldGlass({ flex: 1, minWidth: 0, padding: '10px 14px', borderRadius: 999, fontSize: 13.5, color: ink, border: 'none', outline: 'none' }) }}
             />
           ) : (
-            <DockHeaderTitle title={T('Tài khoản', 'Account')} testId="account-title" />
+            <h1 data-testid="account-title" style={{ margin: 0, fontSize: 30, fontWeight: 300, letterSpacing: '-.01em', color: ink }}>{T('Tài khoản', 'Account')}</h1>
           )}
           <span style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 'none', marginLeft: searchOpen ? 12 : 0 }}>
-            <span onClick={toggleSearch} data-testid="account-search-toggle" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', color: ink }}>
-              <span style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: fieldSolid }}>
-                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
-                  {searchOpen ? <path d="M5 5l14 14M19 5L5 19" /> : <><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></>}
-                </svg>
-              </span>
-              <span style={{ fontSize: 9.5, opacity: 0.7 }}>{searchOpen ? T('Đóng', 'Close') : T('Tìm', 'Search')}</span>
-            </span>
+            {s.user && (
+              <button type="button" onClick={() => setShareCardFor('member')} data-testid="account-share-profile" aria-label={T('Chia sẻ hồ sơ', 'Share profile')}
+                style={{ width: 44, height: 44, border: 'none', background: 'none', color: ink, display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0 }}>
+                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><path d="M12 15V4M8 8l4-4 4 4M5 12v7h14v-7" /></svg>
+              </button>
+            )}
           </span>
         </div>
-        {/* Note 69: the tabs (when there are any) sit in the sticky header; hidden while searching. */}
-        {!searchOpen && tabs.length > 0 && (
+      </div>
+
+      {searchOpen && <div style={{ height: 8 }} />}
+      {searchOpen && <AccountSearchResults query={searchQuery} />}
+
+      <div data-testid="account-content" style={{ display: searchOpen ? 'none' : 'block' }}>
+        {/* 2. Identity card. Goer: the personal profile card (it IS the profile; › opens the public page).
+            Host: the organizer card instead, with a small link back to the personal public profile. */}
+        <button type="button" data-testid="account-profile-card" onClick={s.user?.handle ? openMyPublicProfile : undefined}
+          style={{ display: 'flex', alignItems: 'center', gap: 16, width: '100%', padding: '8px 20px 0', border: 'none', background: 'none', textAlign: 'left', color: ink, font: 'inherit', cursor: s.user?.handle ? 'pointer' : 'default' }}>
+          <span style={{ flex: 'none', width: 64, height: 64, borderRadius: '50%', background: 'var(--bb-clay, #9C5B3B)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 500, overflow: 'hidden' }}>
+            {s.user?.avatarUrl ? <img src={s.user.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : profileName.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()}
+          </span>
+          <span style={{ minWidth: 0 }}>
+            <span data-testid="account-profile-name" style={{ display: 'block', fontSize: 22, fontWeight: 300 }}>{profileName}</span>
+            <span style={{ display: 'block', fontSize: 13, color: ink3, marginTop: 2 }}>{[s.user?.handle && `@${s.user.handle}`, `${isOrganizer ? T('Người tổ chức', 'Host') : T('Thành viên', 'Member')}${s.user?.createdAt ? ` ${T('từ', 'since')} ${new Date(s.user.createdAt).getFullYear()}` : ''}`].filter(Boolean).join(' · ')}</span>
+            {s.user?.handle && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginTop: 6, fontSize: 13, borderBottom: '1px solid var(--bb-rule)' }}>{T('Xem hồ sơ', 'View profile')} ›</span>}
+          </span>
+        </button>
+        {s.user && (
+          <div style={{ margin: '18px 20px 0' }}>
+            <button type="button" role="switch" aria-checked={!!isOrganizer} disabled={s.organizerModeBusy} onClick={toggleOrganizerMode} data-testid="organizer-mode-toggle"
+              style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', borderRadius: 16, color: ink, font: 'inherit', cursor: 'pointer',
+                background: isOrganizer ? `color-mix(in srgb, var(--bb-moss, #5E7A5A) 14%, ${block})` : block }}>
+              <span style={{ flex: 'none', width: 36, height: 36, borderRadius: '50%', background: paper, display: 'grid', placeItems: 'center' }}><RowIcon kind="store" size={19} /></span>
+              <span style={{ flex: 1, fontSize: 15, fontWeight: 600 }}>{T('Chế độ tổ chức', 'Hosting mode')}
+                <small style={{ display: 'block', fontSize: 12.5, fontWeight: 400, color: ink2, marginTop: 1 }}>{T('Bật để tạo và quản lý sự kiện', 'Turn on to create and manage events')}</small></span>
+              <span aria-hidden style={{ flex: 'none', width: 46, height: 28, borderRadius: 14, position: 'relative', background: isOrganizer ? 'var(--bb-moss, #5E7A5A)' : 'rgba(var(--bb-fg-rgb),0.18)', transition: 'background .2s' }}>
+                <span style={{ position: 'absolute', top: 3, left: 3, width: 22, height: 22, borderRadius: '50%', background: '#fff', transform: isOrganizer ? 'translateX(18px)' : 'none', transition: 'transform .2s', boxShadow: '0 1px 2px rgba(0,0,0,.2)' }} />
+              </span>
+            </button>
+          </div>
+        )}
+        {tabs.length > 0 && (
           <div role="tablist" aria-label={T('Tài khoản', 'Account')} data-testid="account-tabs" onKeyDown={onTabKeyDown}
             style={{ display: 'flex', gap: 2, padding: 2, margin: '12px 20px 0', borderRadius: 999, background: surface2 }}>
             {tabs.map(key => {
@@ -431,77 +463,6 @@ export default function Account() {
               );
             })}
           </div>
-        )}
-      </div>
-
-      {searchOpen && <div style={{ height: 8 }} />}
-      {searchOpen && <AccountSearchResults query={searchQuery} />}
-
-      <div data-testid="account-content" style={{ display: searchOpen ? 'none' : 'block' }}>
-        {/* 2. Identity card. Goer: the personal profile card (it IS the profile; › opens the public page).
-            Host: the organizer card instead, with a small link back to the personal public profile. */}
-        {tab === 'personal' && (
-          <KeychainFrame config={myKeychain} margin="8px 20px 0" cardHeight={92} testId="account-keychain-frame">
-          {({ reserveLeft, reserveRight }) => (
-          <div
-            style={{
-              ...cardGlass({ margin: 0, padding: `18px ${16 + reserveRight}px 18px ${16 + reserveLeft}px`, display: 'flex', gap: 14, alignItems: 'center', cursor: s.user?.handle ? 'pointer' : 'default' }),
-              // Note 66 follow-up: the theme wash sits on the `block` fill, so the card reads on paper in light mode.
-              background: `linear-gradient(165deg, ${PROFILE_PALETTE_COLORS[s.user?.profileTheme] || PROFILE_PALETTE_COLORS.default}55, transparent 70%), ${block}`,
-            }}
-            data-testid="account-profile-card"
-            // Note 69: the whole card opens the public profile (Rename and the story ring stop the click themselves).
-            onClick={s.user?.handle ? openMyPublicProfile : undefined}
-            role={s.user?.handle ? 'button' : undefined}
-            tabIndex={s.user?.handle ? 0 : undefined}
-            aria-label={s.user?.handle ? T(`${profileName}, mở hồ sơ công khai`, `${profileName}, open your public profile`) : undefined}
-            onKeyDown={s.user?.handle ? (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openMyPublicProfile(); } } : undefined}
-          >
-            {/* Story ring: bright while an active story is unviewed, subdued once viewed, none without a story. */}
-            <div
-              onClick={hasActiveStory ? (e) => { e.stopPropagation(); openStoryViewer(myStoryGroup.organizerId); } : undefined}
-              data-testid="account-story-ring"
-              data-story-state={hasActiveStory ? (storyUnviewed ? 'unviewed' : 'viewed') : 'none'}
-              style={{
-                flex: 'none', width: 64, height: 64, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                border: hasActiveStory ? `2.5px solid ${storyUnviewed ? alert : 'transparent'}` : '2.5px solid transparent',
-                boxShadow: hasActiveStory && !storyUnviewed ? `inset 0 0 0 2.5px ${rule}` : 'none',
-                cursor: hasActiveStory ? 'pointer' : 'default',
-              }}
-            >
-              {s.user?.avatarUrl ? (
-                <img src={s.user.avatarUrl} alt="" style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover' }} />
-              ) : (
-                <div style={{ ...fieldGlass({ width: 56, height: 56, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }), ...display(22) }}>
-                  {(profileName || 'B').trim()[0]?.toUpperCase() || 'B'}
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1 }}>
-              {/* Note 69: the name gets the full width, up to two lines; Rename moved under it. */}
-              <span data-testid="account-profile-name" style={{ ...display(22, { lineHeight: 1.2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere' }) }}>{profileName}</span>
-              {s.user?.handle && <span style={{ fontSize: 11.5, color: ink2 }}>@{s.user.handle}</span>}
-              <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, letterSpacing: '0.06em', color: ink2 }}>{profileSub}</span>
-                {s.user && (
-                  <button type="button" onClick={(e) => { e.stopPropagation(); goEditName(); }} data-testid="account-rename"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: ink2, cursor: 'pointer', background: 'none', border: 'none', padding: '6px 0', minHeight: 32, fontFamily: 'inherit' }}>
-                    <RowIcon kind="pencil" size={13} />{T('Đổi tên', 'Rename')}
-                  </button>
-                )}
-              </span>
-            </div>
-            {s.user && (
-              <span
-                aria-hidden
-                data-testid="account-edit-profile"
-                style={{ flex: 'none', fontSize: 20, color: ink, opacity: 0.55, cursor: 'pointer', alignSelf: 'center', padding: '12px 4px' }}>
-                ›
-              </span>
-            )}
-          </div>
-          )}
-          </KeychainFrame>
         )}
 
         {tab === 'host' && (
@@ -576,13 +537,6 @@ export default function Account() {
         )}
 
         {/* 3. Rewards strip (behind the `rewards` switch), right under the profile card on Personal (note 69). */}
-        {tab === 'personal' && rewardsEnabled && s.user && (
-          <RewardsStrip
-            label={rewardsLabel}
-            ariaLabel={rewardsSummaryLive ? `${rewardsLabel}. ${T('Mở phần thưởng và huy hiệu', 'Open rewards and badges')}` : rewardsLabel}
-            onClick={() => set({ screen: 'rewards', rewardsBack: 'profile' })}
-          />
-        )}
 
         {/* 4. Four big tiles, per tab. */}
         {tab !== 'admin' && <AccountTileGrid tiles={tab === 'host' ? hostTiles : goerTiles} T={T} />}
@@ -621,9 +575,10 @@ export default function Account() {
         {/* 7. Labelled groups (note 69; replaced the single "More" list). */}
         {tab === 'personal' && (
           <>
-            <RowGroup title={T('Hoạt động', 'Activity')} testId="account-group-activity">{activityRows}</RowGroup>
-            {shareRows.length > 0 && <RowGroup title={T('Chia sẻ & mời', 'Share & invite')} testId="account-group-share">{shareRows}</RowGroup>}
-            <RowGroup title={T('Ứng dụng', 'App')} testId="account-group-app">{appRows}</RowGroup>
+            <RowGroup title={T('Hoạt động của bạn', 'Your activity')} testId="account-group-activity">{activityRows}</RowGroup>
+            {shareRows.length > 0 && <RowGroup title={T('Chia sẻ', 'Share')} testId="account-group-share">{shareRows}</RowGroup>}
+            <RowGroup title={T('Cài đặt', 'Settings')} testId="account-group-app">{appRows}</RowGroup>
+            <RowGroup title={T('Hỗ trợ', 'Support')} testId="account-group-support">{supportRows}</RowGroup>
           </>
         )}
         {tab === 'host' && <RowGroup title={T('Công cụ tổ chức', 'Hosting tools')} testId="account-group-host-tools">{hostToolRows}</RowGroup>}
@@ -667,7 +622,7 @@ export default function Account() {
 
         {/* 9. Sign out / Sign in, once, on Personal. Host and Admin end on a group: give them the same room above the dock. */}
         {tab !== 'personal' ? <div aria-hidden style={{ height: 40 }} /> : s.user ? (
-          <div onClick={logout} role="button" data-testid="account-sign-out" style={{ padding: '24px 24px 40px', minHeight: 44, display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink, cursor: 'pointer' }}><RowIcon kind="logout" size={18} />{T('Đăng xuất', 'Sign out')}</div>
+          <div onClick={logout} role="button" data-testid="account-sign-out" style={{ margin: '30px 20px 40px', height: 48, border: '1.5px solid var(--bb-alert)', borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: 'var(--bb-alert)', cursor: 'pointer' }}><RowIcon kind="logout" size={18} />{T('Đăng xuất', 'Sign out')}</div>
         ) : (
           <div onClick={goLogin} role="button" data-testid="account-sign-in" style={{ padding: '24px 24px 40px', minHeight: 44, display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, lineHeight: 1.5, color: ink, cursor: 'pointer' }}><RowIcon kind="login" size={18} />{T('Đăng nhập để lưu sự kiện và nhắn tin', 'Sign in to save events and message hosts')}</div>
         )}

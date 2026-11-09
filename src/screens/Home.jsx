@@ -39,6 +39,7 @@ import { GuestBrowseBanner } from './GuestPromptSheet.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { CategoryRow, CategorySheet, HomeSearchBar, DiscoveryCard, DiscoveryRow, NextUpBanner } from '../components/home/HomeDiscoveryParts.jsx';
 import HomeShellV5 from '../components/home/HomeShellV5.jsx';
+import QuickSheetV5 from '../components/home/QuickSheetV5.jsx';
 // Map v6 (note 74): the card pager's photos (cover first, max 6).
 import { cardPhotoList } from '../lib/eventPhotoUrls.js';
 import HomeFilterSheet, { DATE_LABELS, RELAX_LABELS, SORT_LABELS } from './sheets/HomeFilterSheet.jsx';
@@ -770,6 +771,7 @@ export default function Home() {
   const areaName = curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label;
   // Home from the v5 prototype (note 80): hero tab, Browse counts, By type summary and the type pick.
   const [heroTab, setHeroTab] = useState('foryou');
+  const [quickOpen, setQuickOpen] = useState(false);
   const shellTypeCounts = useMemo(() => {
     const o = { ...categoryCountMap };
     delete o.all;
@@ -991,7 +993,7 @@ export default function Home() {
           lists={heroLists} items={shownItems} user={s.user} typeCounts={shellTypeCounts} badgeDate={badgeDate} trStatus={trStatus}
           dateLabel={new Date().toLocaleDateString(s.lang === 'en' ? 'en-GB' : 'vi-VN', { weekday: 'long', day: 'numeric', month: 'long' })}
           areaLabel={areaName}
-          onOpenEvent={goEvent} onSeeAll={heroSeeAll} onMap={openMapWithContext} onAccount={() => set({ screen: 'profile' })}
+          onOpenEvent={goEvent} onSeeAll={heroSeeAll} onMap={openMapWithContext} onAccount={() => setQuickOpen(true)}
           onSearch={openSearch} onArea={openAreaMenu} onFilters={() => set({ homeFilterSheetOpen: true })} filterSummary={shellFilterSummary}
           onFindType={() => setCategorySheetOpen(true)} onPickType={shellPickType}
           hostBody={<div data-reveal="1"><HostHome /><div style={{ height: 44 }} /></div>}>
@@ -1006,6 +1008,7 @@ export default function Home() {
             {goerHero === 'none' && savedUpcomingEl}
           </div>
         </HomeShellV5>
+        {quickOpen && <QuickSheetV5 onClose={() => setQuickOpen(false)} />}
         {categorySheetOpen && (
           <CategorySheet keys={categorySheetKeys(categoryDefs(), s.lang === 'en' ? 'en' : 'vi')} counts={categoryCountMap} values={homeFilters.cats} T={T}
             onPick={(k) => { shellPickType(k); setCategorySheetOpen(false); }} onClose={() => setCategorySheetOpen(false)} />

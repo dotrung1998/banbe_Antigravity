@@ -21,38 +21,24 @@ function Badge({ count, testId }) {
   );
 }
 
-/** One big tile: icon + title + one value line, badge in the corner. A real <button> for keyboard and screen readers. */
+/** One shortcut: icon + label, badge on the icon's corner (prototype `.shortcuts`). */
 export function AccountTile({ tileKey, icon, title, value, badge = 0, onClick, T, dataAttrs }) {
-  const parts = [title, value, badge > 0 ? T(`${badge} mục mới`, `${badge} new`) : null].filter(Boolean);
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      data-testid={`account-tile-${tileKey}`}
-      aria-label={parts.join(', ')}
-      {...dataAttrs}
-      style={{
-        minHeight: 88, minWidth: 0, padding: 14, boxSizing: 'border-box', border: 'none', borderRadius: 14, background: block,
-        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8,
-        textAlign: 'left', cursor: 'pointer', color: ink, font: 'inherit', WebkitTapHighlightColor: 'transparent',
-      }}
-    >
-      <span style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <RowIcon kind={icon} size={26} />
-        <Badge count={badge} testId={`account-tile-${tileKey}-badge`} />
-      </span>
-      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, width: '100%' }}>
-        <span style={{ fontSize: 15, fontWeight: 600, color: ink, lineHeight: 1.25 }}>{title}</span>
-        {value && <span style={{ fontSize: 12, lineHeight: 1.35, color: ink2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>}
-      </span>
+    <button type="button" onClick={onClick} data-testid={`account-tile-${tileKey}`}
+      aria-label={[title, badge > 0 ? T(`${badge} mục mới`, `${badge} new`) : null].filter(Boolean).join(', ')} {...dataAttrs}
+      style={{ position: 'relative', padding: '16px 0 14px', border: 'none', background: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+        color: ink2, font: 'inherit', fontSize: 12, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
+      <span style={{ color: ink, display: 'flex' }}><RowIcon kind={icon} size={26} /></span>
+      <span>{title}</span>
+      {badge > 0 && <span style={{ position: 'absolute', top: 8, right: 14 }}><Badge count={badge} testId={`account-tile-${tileKey}-badge`} /></span>}
     </button>
   );
 }
 
 export function AccountTileGrid({ tiles, T }) {
   return (
-    <div data-testid="account-tiles" style={{ margin: '16px 20px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-      {tiles.map(t => <AccountTile key={t.tileKey} {...t} T={T} />)}
+    <div data-testid="account-tiles" style={{ margin: '18px 20px 0', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderTop: `1px solid ${divider}`, borderBottom: `1px solid ${divider}` }}>
+      {tiles.map(x => <AccountTile key={x.tileKey} {...x} T={T} />)}
     </div>
   );
 }
@@ -70,9 +56,9 @@ export function AccountSectionLabel({ label, testId }) {
 export function MoreList({ children, testId }) {
   const rows = [].concat(children).flat().filter(Boolean);
   return (
-    <div data-testid={testId} style={{ margin: '0 20px', borderRadius: 14, background: block, overflow: 'hidden' }}>
+    <div data-testid={testId} style={{ margin: '0 20px' }}>
       {rows.map((row, i) => (
-        <div key={i} style={{ borderTop: i > 0 ? `1px solid ${divider}` : 'none', position: 'relative' }}>{row}</div>
+        <div key={i} style={{ borderBottom: `1px solid ${divider}`, position: 'relative' }}>{row}</div>
       ))}
     </div>
   );
@@ -86,10 +72,10 @@ export function MoreRow({ icon, label, sub, trailing, badge = 0, badgeLabel, onC
       onKeyDown={(e) => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onClick?.(); } }}
       role={role} tabIndex={0} aria-disabled={disabled || undefined} aria-label={ariaLabel} aria-checked={ariaChecked}
       data-testid={testId}
-      style={{ minHeight: 52, boxSizing: 'border-box', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.55 : 1 }}
+      style={{ minHeight: 56, boxSizing: 'border-box', padding: '14px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.55 : 1 }}
     >
-      <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-        <RowIcon kind={icon} />
+      <span style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+        <RowIcon kind={icon} size={24} />
         <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
           <span style={{ fontSize: 15, color: ink }}>{label}</span>
           {sub && <span style={{ fontSize: 12, lineHeight: 1.4, color: ink2 }}>{sub}</span>}
@@ -97,7 +83,7 @@ export function MoreRow({ icon, label, sub, trailing, badge = 0, badgeLabel, onC
       </span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
         {badge > 0 && <span role="status" aria-label={badgeLabel} data-testid={testId ? `${testId}-badge` : undefined} style={{ minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px', boxSizing: 'border-box', background: alert, color: 'var(--bb-on-alert)', fontSize: 11, fontWeight: 700, lineHeight: '20px', textAlign: 'center' }}>{formatBadgeCount(badge)}</span>}
-        {trailing != null && trailing !== '' && <span style={{ fontSize: 13, color: ink2 }}>{trailing}</span>}
+        {trailing != null && trailing !== '' && <span style={{ fontSize: 13, color: ink3 }}>{trailing}</span>}
         {end !== undefined ? end : <span aria-hidden style={{ fontSize: 17, color: ink3, lineHeight: 1 }}>›</span>}
       </span>
     </div>
