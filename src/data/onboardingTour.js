@@ -34,6 +34,9 @@ export const TOUR_STEPS = [
   { id: 'activity.tabs', target: 'tour.activity.tabs', screen: 'inbox', placement: 'below',
     vi: ['Tin nhắn và Thông báo', 'Tin nhắn là các cuộc trò chuyện: host, đội sự kiện, tranh chấp. Thông báo là cập nhật: vé, thanh toán, sự kiện. Không có gì hiện hai lần.'],
     en: ['Messages and Notifications', 'Messages are conversations: hosts, event teams, disputes. Notifications are updates: tickets, payments, events. Nothing shows up twice.'] },
+  { id: 'activity.gear', target: 'tour.activity.gear', screen: 'inbox', placement: 'below',
+    vi: ['Cài đặt tin nhắn', 'Hội thoại đã lưu trữ và phản hồi nằm sau nút này. Công tắc thông báo ở Tài khoản › Cài đặt.'],
+    en: ['Messaging settings', 'Archived conversations and feedback live behind this gear. Notification switches are in Account › Settings.'] },
   { id: 'dock.account', target: 'tour.dock.account', screen: 'inbox', placement: 'above',
     vi: ['Tài khoản', 'Hồ sơ, vé, ví và cài đặt của bạn.'],
     en: ['Account', 'Your profile, tickets, wallet and settings.'] },
@@ -72,7 +75,8 @@ export const WEB_TARGETS = {
   'tour.activity.tabs': '[data-testid="activity-tabs"]',
   'tour.account.shortcuts': '[data-testid="account-tiles"]',
   'tour.account.organizerMode': '[data-testid="organizer-mode-toggle"]',
-  'tour.account.settings': '[data-testid="account-group-preferences"]',
+  'tour.account.settings': '[data-testid="account-notifications"]',
+  'tour.activity.gear': '[data-testid="inbox-settings-toggle"]',
   'tour.host.hero': '[data-testid="home-host-hero"],[data-testid="home-host-plan"]',
   'tour.host.quick': '[data-testid="home-host-quick"]',
 };
@@ -87,7 +91,7 @@ export const tourDoneKey = uid => `banbe.tour.v3.done.${uid}`;
 /** Three short chapters (note 80, iOS twin `OnboardingTourContent.chapters`). A chapter with no eligible step is dropped. */
 export const TOUR_CHAPTERS = [
   { id: 'discover', name: ['Khám phá', 'Discover'], stepIds: ['home.forYou', 'home.tonight', 'home.tabPicks', 'home.search', 'home.browse', 'home.filters'] },
-  { id: 'plans', name: ['Lịch và tin nhắn', 'Plans and messages'], stepIds: ['dock.schedule', 'dock.activity', 'activity.tabs'] },
+  { id: 'plans', name: ['Lịch và tin nhắn', 'Plans and messages'], stepIds: ['dock.schedule', 'dock.activity', 'activity.tabs', 'activity.gear'] },
   { id: 'you', name: ['Tài khoản của bạn', 'Your account'], stepIds: ['dock.account', 'account.shortcuts', 'account.organizerMode', 'account.settings'] },
   { id: 'host', name: ['Tổ chức', 'Hosting'], stepIds: ['host.tab', 'host.hero', 'host.quick'] },
 ];

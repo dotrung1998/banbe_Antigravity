@@ -29,6 +29,10 @@ const WAIT_MS = 1500;
 const PAD = 6;
 const TOUR_SCREENS = new Set(['home', 'inbox', 'profile']);
 
+const frameOf = () => {
+  const b = document.querySelector('.bb-screen')?.getBoundingClientRect();
+  return b && b.width > 0 ? b : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight, bottom: window.innerHeight };
+};
 const readDone = uid => { try { return !!localStorage.getItem(tourDoneKey(uid)); } catch { return false; } };
 const writeDone = uid => { try { localStorage.setItem(tourDoneKey(uid), new Date().toISOString()); } catch { /* private mode */ } };
 const findTarget = id => {
@@ -146,6 +150,7 @@ export default function OnboardingTour() {
   useEffect(() => {
     if (!run || !step) return undefined;
     if (s.screen !== step.screen) { set({ screen: step.screen }); return undefined; }
+    if (step.screen === 'profile' && s.accountTab && s.accountTab !== 'personal') set({ accountTab: 'personal' });
     let raf = 0; let cancelled = false; let el = null; let last = ''; let prepped = false;
     const t0 = performance.now();
     // A target that never showed up is skipped, forward only.
@@ -165,7 +170,8 @@ export default function OnboardingTour() {
           raf = requestAnimationFrame(tick); return;
         }
         const r0 = el.getBoundingClientRect();
-        if (r0.top < 0 || r0.bottom > window.innerHeight) el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+        const f = frameOf();
+        if (r0.top < f.top + 56 || r0.bottom > f.bottom - 110) el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
       }
       const r = el.getBoundingClientRect();
       const key = `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
@@ -226,14 +232,15 @@ export default function OnboardingTour() {
   const L = (pair) => pair[lang];
   const vw = window.innerWidth, vh = window.innerHeight;
   // The device frame on a desktop browser; the sheet and card stay inside it.
-  const fb = document.querySelector('.bb-screen')?.getBoundingClientRect();
-  const fr = fb && fb.width > 0 ? fb : { left: 0, top: 0, width: vw, height: vh, bottom: vh };
+  const fr = frameOf();
+  const wrap = { position: 'fixed', left: fr.left, top: fr.top, width: fr.width, height: fr.height, overflow: 'hidden', transform: 'translateZ(0)', zIndex: 3000,
+    borderRadius: fr.width === vw ? 0 : 55 };
   const ease = reduce ? 'none' : 'all .28s cubic-bezier(.22,1,.36,1)';
   const ci = chapterOf(run, run.index);
   const chapter = run.chapters[ci];
 
   const scrim = (hole) => (
-    <svg aria-hidden="true" width={vw} height={vh} style={{ position: 'absolute', inset: 0 }}
+    <svg aria-hidden="true" width={fr.width} height={fr.height} style={{ position: 'absolute', inset: 0 }}
       onClick={(e) => {
         e.stopPropagation();
         // Only a "do it" step reacts, and only to a click inside its highlight.
@@ -241,11 +248,11 @@ export default function OnboardingTour() {
       }}>
       <defs>
         <mask id="bb-tour-mask">
-          <rect x="0" y="0" width={vw} height={vh} fill="white" />
-          {hole && <rect x={hole.x} y={hole.y} width={hole.w} height={hole.h} rx="16" fill="black" />}
+          <rect x="0" y="0" width={fr.width} height={fr.height} fill="white" />
+          {hole && <rect x={hole.x - fr.left} y={hole.y - fr.top} width={hole.w} height={hole.h} rx="16" fill="black" />}
         </mask>
       </defs>
-      <rect x="0" y="0" width={vw} height={vh} fill="rgba(20,18,14,0.62)" mask="url(#bb-tour-mask)" />
+      <rect x="0" y="0" width={fr.width} height={fr.height} fill="rgba(20,18,14,0.62)" mask="url(#bb-tour-mask)" />
     </svg>
   );
 
@@ -261,10 +268,10 @@ export default function OnboardingTour() {
       </button>
     );
     return createPortal(
-      <div data-testid="tour-overlay" data-phase={run.phase} data-replay={run.replay || undefined} style={{ position: 'fixed', inset: 0, zIndex: 3000 }}>
+      <div data-testid="tour-overlay" data-phase={run.phase} data-replay={run.replay || undefined} style={wrap}>
         {scrim(null)}
         <div ref={cardRef} role="dialog" aria-modal="true" aria-labelledby="tour-title" data-testid={finished ? 'tour-finish' : 'tour-break'}
-          style={{ position: 'absolute', left: fr.left, width: fr.width, bottom: vh - fr.bottom, boxSizing: 'border-box', padding: '10px 20px 30px',
+          style={{ position: 'absolute', left: 0, width: '100%', bottom: 0, boxSizing: 'border-box', padding: '10px 20px 30px',
             borderRadius: '26px 26px 0 0', background: paper, color: ink, animation: reduce ? 'none' : 'bbTourUp .32s cubic-bezier(.22,.61,.36,1) both' }}>
           <div aria-hidden style={{ width: 36, height: 5, borderRadius: 3, background: 'rgba(var(--bb-fg-rgb), 0.2)', margin: '0 auto 12px' }} />
           <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', opacity: 0.6 }}>
@@ -320,26 +327,26 @@ export default function OnboardingTour() {
   const total = run.steps.length;
 
   const cardW = Math.min(360, fr.width - 24);
-  const cardStyle = { left: fr.left + Math.max(12, (fr.width - cardW) / 2) };
+  const cardStyle = { left: (fr.width - cardW) / 2 };
   if (rect) {
-    const cx = rect.left + rect.width / 2;
-    cardStyle.left = Math.min(Math.max(fr.left + 12, cx - cardW / 2), fr.left + fr.width - cardW - 12);
-    const below = step.placement === 'below' ? rect.top + rect.height < vh * 0.62 : rect.top < vh * 0.38;
-    if (below) cardStyle.top = Math.min(rect.top + rect.height + PAD + 12, fr.bottom - 250);
-    else cardStyle.bottom = Math.max(vh - fr.bottom + 16, vh - rect.top + PAD + 12);
+    const rt = rect.top - fr.top;
+    cardStyle.left = Math.min(Math.max(12, rect.left - fr.left + rect.width / 2 - cardW / 2), fr.width - cardW - 12);
+    const below = step.placement === 'below' ? rt + rect.height < fr.height * 0.62 : rt < fr.height * 0.38;
+    if (below) cardStyle.top = Math.min(rt + rect.height + PAD + 12, fr.height - 250);
+    else cardStyle.bottom = Math.max(16, fr.height - rt + PAD + 12);
   } else {
-    cardStyle.top = vh * 0.35;
+    cardStyle.top = fr.height * 0.35;
   }
   const hole = rect && { x: rect.left - PAD, y: rect.top - PAD, w: rect.width + PAD * 2, h: rect.height + PAD * 2 };
 
   return createPortal(
     <div data-testid="tour-overlay" data-phase="step" data-step={step.id} data-index={run.index} data-replay={run.replay || undefined}
-      style={{ position: 'fixed', inset: 0, zIndex: 3000 }}>
+      style={wrap}>
       {/* Scrim with a cut-out around the real control. It swallows every pointer event: the control is never pressed. */}
       {scrim(hole)}
       {hole && (
         <div aria-hidden="true" data-testid="tour-highlight"
-          style={{ position: 'absolute', left: hole.x, top: hole.y, width: hole.w, height: hole.h, borderRadius: 16,
+          style={{ position: 'absolute', left: hole.x - fr.left, top: hole.y - fr.top, width: hole.w, height: hole.h, borderRadius: 16,
             boxShadow: '0 0 0 2px var(--bb-clay, #C2683F), 0 0 0 6px rgba(194,104,63,0.25)', transition: ease, pointerEvents: 'none' }}>
           {doIt && !reduce && (
             <span style={{ position: 'absolute', inset: -6, borderRadius: 'inherit', border: '2px solid #fff', animation: 'bbTourRing 1.4s ease-out infinite' }} />

@@ -620,7 +620,7 @@ export default function Account() {
         )}
 
         {/* 9. Sign out / Sign in, once, on Personal. Host and Admin end on a group: give them the same room above the dock. */}
-        {tab !== 'personal' ? <div aria-hidden style={{ height: 40 }} /> : s.user ? (
+        {!s.user && tab !== 'personal' ? <div aria-hidden style={{ height: 40 }} /> : s.user ? (
           <div onClick={logout} role="button" data-testid="account-sign-out" style={{ margin: '30px 20px 40px', height: 48, border: '1.5px solid var(--bb-alert)', borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: 'var(--bb-alert)', cursor: 'pointer' }}><RowIcon kind="logout" size={18} />{T('Đăng xuất', 'Sign out')}</div>
         ) : (
           <div onClick={goLogin} role="button" data-testid="account-sign-in" style={{ padding: '24px 24px 40px', minHeight: 44, display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, lineHeight: 1.5, color: ink, cursor: 'pointer' }}><RowIcon kind="login" size={18} />{T('Đăng nhập để lưu sự kiện và nhắn tin', 'Sign in to save events and message hosts')}</div>
