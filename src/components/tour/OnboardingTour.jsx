@@ -146,13 +146,19 @@ export default function OnboardingTour() {
   useEffect(() => {
     if (!run || !step) return undefined;
     if (s.screen !== step.screen) { set({ screen: step.screen }); return undefined; }
-    let raf = 0; let cancelled = false; let el = null; let last = '';
+    let raf = 0; let cancelled = false; let el = null; let last = ''; let prepped = false;
     const t0 = performance.now();
     // A target that never showed up is skipped, forward only.
     const skip = () => setRun(r => (r ? advance({ ...r, missing: new Set([...r.missing, r.index]) }) : r));
     const tick = () => {
       if (cancelled) return;
       if (!el || !document.contains(el)) {
+        // Step 1 always starts from For You, whatever tab Home was left on.
+        if (step.id === 'home.forYou' && !prepped) {
+          const tab = document.querySelector('[data-testid="home-hero-tab-foryou"]');
+          if (tab) { prepped = true; if (tab.getAttribute('aria-selected') !== 'true') tab.click(); }
+          raf = requestAnimationFrame(tick); return;
+        }
         el = findTarget(step.target);
         if (!el) {
           if (performance.now() - t0 > WAIT_MS) { skip(); return; }
@@ -183,13 +189,17 @@ export default function OnboardingTour() {
   }), []);
   const doIt = step ? TOUR_DO_IT[step.id] : null;
   // A "do it" step: run what the highlighted control does, from here, then move on.
-  const performDoIt = useCallback(() => {
+  const performDoIt = useCallback((pt) => {
     if (!run || run.phase !== 'step') return;
     const st = run.steps[run.index];
     if (!TOUR_DO_IT[st.id]) return;
     if (st.id === 'dock.activity') goInbox();
     else if (st.id === 'dock.account') goProfile();
-    else findTarget(st.target)?.click();
+    else if (st.id === 'home.tonight') {
+      const tabs = [...document.querySelectorAll('[data-testid^="home-hero-tab-"]')];
+      const hit = pt && tabs.find(b => { const r = b.getBoundingClientRect(); return pt.x >= r.left && pt.x <= r.right && pt.y >= r.top && pt.y <= r.bottom; });
+      (hit && !/hosting/.test(hit.dataset.testid) ? hit : document.querySelector('[data-testid="home-hero-tab-tonight"]'))?.click();
+    } else findTarget(st.target)?.click();
     next();
   }, [run, goInbox, goProfile, next]);
   const endTour = useCallback(() => end(true), [end]);
@@ -215,6 +225,9 @@ export default function OnboardingTour() {
   const lang = s.lang === 'en' ? 1 : 0;
   const L = (pair) => pair[lang];
   const vw = window.innerWidth, vh = window.innerHeight;
+  // The device frame on a desktop browser; the sheet and card stay inside it.
+  const fb = document.querySelector('.bb-screen')?.getBoundingClientRect();
+  const fr = fb && fb.width > 0 ? fb : { left: 0, top: 0, width: vw, height: vh, bottom: vh };
   const ease = reduce ? 'none' : 'all .28s cubic-bezier(.22,1,.36,1)';
   const ci = chapterOf(run, run.index);
   const chapter = run.chapters[ci];
@@ -224,7 +237,7 @@ export default function OnboardingTour() {
       onClick={(e) => {
         e.stopPropagation();
         // Only a "do it" step reacts, and only to a click inside its highlight.
-        if (doIt && hole && e.clientX >= hole.x && e.clientX <= hole.x + hole.w && e.clientY >= hole.y && e.clientY <= hole.y + hole.h) performDoIt();
+        if (doIt && hole && e.clientX >= hole.x && e.clientX <= hole.x + hole.w && e.clientY >= hole.y && e.clientY <= hole.y + hole.h) performDoIt({ x: e.clientX, y: e.clientY });
       }}>
       <defs>
         <mask id="bb-tour-mask">
@@ -251,7 +264,7 @@ export default function OnboardingTour() {
       <div data-testid="tour-overlay" data-phase={run.phase} data-replay={run.replay || undefined} style={{ position: 'fixed', inset: 0, zIndex: 3000 }}>
         {scrim(null)}
         <div ref={cardRef} role="dialog" aria-modal="true" aria-labelledby="tour-title" data-testid={finished ? 'tour-finish' : 'tour-break'}
-          style={{ position: 'absolute', left: 0, right: 0, bottom: 0, margin: '0 auto', maxWidth: 480, boxSizing: 'border-box', padding: '10px 20px 30px',
+          style={{ position: 'absolute', left: fr.left, width: fr.width, bottom: vh - fr.bottom, boxSizing: 'border-box', padding: '10px 20px 30px',
             borderRadius: '26px 26px 0 0', background: paper, color: ink, animation: reduce ? 'none' : 'bbTourUp .32s cubic-bezier(.22,.61,.36,1) both' }}>
           <div aria-hidden style={{ width: 36, height: 5, borderRadius: 3, background: 'rgba(var(--bb-fg-rgb), 0.2)', margin: '0 auto 12px' }} />
           <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', opacity: 0.6 }}>
@@ -306,14 +319,14 @@ export default function OnboardingTour() {
   const lastInChapter = (() => { let i = run.index + 1; while (i < chapter.to && run.missing.has(i)) i += 1; return i >= chapter.to; })();
   const total = run.steps.length;
 
-  const cardW = Math.min(360, vw - 24);
-  const cardStyle = { left: Math.max(12, (vw - cardW) / 2) };
+  const cardW = Math.min(360, fr.width - 24);
+  const cardStyle = { left: fr.left + Math.max(12, (fr.width - cardW) / 2) };
   if (rect) {
     const cx = rect.left + rect.width / 2;
-    cardStyle.left = Math.min(Math.max(12, cx - cardW / 2), vw - cardW - 12);
+    cardStyle.left = Math.min(Math.max(fr.left + 12, cx - cardW / 2), fr.left + fr.width - cardW - 12);
     const below = step.placement === 'below' ? rect.top + rect.height < vh * 0.62 : rect.top < vh * 0.38;
-    if (below) cardStyle.top = Math.min(rect.top + rect.height + PAD + 12, vh - 250);
-    else cardStyle.bottom = Math.max(16, vh - rect.top + PAD + 12);
+    if (below) cardStyle.top = Math.min(rect.top + rect.height + PAD + 12, fr.bottom - 250);
+    else cardStyle.bottom = Math.max(vh - fr.bottom + 16, vh - rect.top + PAD + 12);
   } else {
     cardStyle.top = vh * 0.35;
   }
@@ -344,7 +357,7 @@ export default function OnboardingTour() {
         <p id="tour-body" data-testid="tour-body" style={{ fontSize: 14, lineHeight: 1.5, margin: '6px 0 0', opacity: 0.8 }}>{body}</p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
           {doIt ? (
-            <button type="button" data-testid="tour-do-it" onClick={performDoIt}
+            <button type="button" data-testid="tour-do-it" onClick={() => performDoIt()}
               style={{ flex: 1, minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left', padding: 0 }}>
               <span aria-hidden>↗</span>{T(`${doIt[0]} để tiếp tục`, `${doIt[1]} to continue`)}
             </button>

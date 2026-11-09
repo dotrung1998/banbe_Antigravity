@@ -124,7 +124,7 @@ function RowGroup({ title, testId, top = 30, children }) {
 export default function Account() {
   const project = useEventProject();
   const {
-    state, T, set, goEditName, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
+    state, T, set, goEditName, openRefundAccounts, openSecurity, openEventPreferences, openPolicy, pickLight, pickDark, pickVi, pickEn, openAdminEvents, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
     startHosting,
     openMyRefunds,
     loadHomeStories, openStoryViewer, openStoryLibraryPicker, openStoryCameraPicker,
@@ -328,11 +328,11 @@ export default function Account() {
 
   // Note 69: labelled groups instead of one "More" list.
   const activityRows = [
-    projectsRow,
     <MoreRow key="following" icon="heart" label={T('Đang theo dõi', 'Following')} testId="account-following"
       trailing={s.followedStatus === 'loaded' ? String(s.followedOrgIds.length) : null} onClick={() => set({ screen: 'following' })} />,
+    s.user ? (projectsRow || <MoreRow key="projects" icon="users" label={T('Đội sự kiện', 'Event teams')} testId="account-projects" onClick={() => project.openJoin('', 'profile')} />) : null,
     s.user ? (
-      <MoreRow key="reports" icon="chart" label={T('Báo cáo', 'Reports')} testId="account-reports-personal" onClick={() => openReports('personal', null, 'profile')} />
+      <MoreRow key="reports" icon="chart" label={T('Năm của bạn trên banbe', 'Your year in banbe')} testId="account-reports-personal" onClick={() => openReports('personal', null, 'profile')} />
     ) : null,
   ];
   const shareRows = [
@@ -344,8 +344,28 @@ export default function Account() {
       <MoreRow key="share" icon="person" label={T('Chia sẻ thẻ hồ sơ', 'Share your card')} testId="account-share-card-personal" onClick={() => setShareCardFor('member')} />
     ) : null,
   ].filter(Boolean);
-  const appRows = [settingsRow];
-  const supportRows = [<MoreRow key="help" icon="help" label={T('Trợ giúp', 'Help')} testId="account-help" onClick={() => openAccountGroup('helpLegal')} />];
+  const seg = (testId, opts) => (
+    <span style={{ display: 'flex', background: block, borderRadius: 999, padding: 2 }} onClick={e => e.stopPropagation()}>
+      {opts.map(([k, label, on, fn]) => (
+        <button key={k} type="button" data-testid={`${testId}-${k}`} onClick={fn} style={{ height: 30, padding: '0 11px', border: 'none', borderRadius: 999, fontFamily: 'inherit', fontSize: 12, cursor: 'pointer',
+          background: on ? ink : 'transparent', color: on ? paper : ink2, fontWeight: on ? 600 : 400 }}>{label}</button>
+      ))}
+    </span>
+  );
+  const appRows = [
+    s.user ? <MoreRow key="profile" icon="person" label={T('Hồ sơ & đăng nhập', 'Profile & sign-in')} sub={T('Tên, số điện thoại, mật khẩu', 'Name, phone, password')} testId="account-group-preferences" onClick={goEditName} /> : null,
+    s.user ? notificationsRow : null,
+    s.user ? <MoreRow key="foryou" icon="star" label={T('Gợi ý Dành cho bạn', 'For You preferences')} sub={T('Sở thích và mục tiêu', 'Interests and goals')} testId="account-event-preferences" onClick={() => openEventPreferences(null)} /> : null,
+    <MoreRow key="appearance" icon="sun" label={T('Giao diện', 'Appearance')} testId="account-appearance" end={seg('account-theme', [['light', T('Sáng', 'Light'), s.theme !== 'dark', pickLight], ['dark', T('Tối', 'Dark'), s.theme === 'dark', pickDark]])} />,
+    <MoreRow key="language" icon="globe" label={T('Ngôn ngữ', 'Language')} testId="account-language" end={seg('account-lang', [['vi', 'VI', s.lang !== 'en', pickVi], ['en', 'EN', s.lang === 'en', pickEn]])} />,
+    s.user ? <MoreRow key="refund-accounts" icon="bank" label={T('Tài khoản thanh toán & nhận hoàn tiền', 'Payment & refund accounts')} testId="account-refund-accounts" onClick={() => openRefundAccounts('profile')} /> : null,
+    s.user ? <MoreRow key="security" icon="shield" label={T('Quyền riêng tư & bảo mật', 'Privacy & security')} sub={T('Face ID, người bị chặn, xoá tài khoản', 'Face ID, blocked people, delete account')} testId="account-security" onClick={openSecurity} /> : null,
+  ];
+  const supportRows = [
+    <MoreRow key="help" icon="help" label={T('Hướng dẫn', 'Help & guides')} testId="account-help" onClick={() => openAccountGroup('helpLegal')} />,
+    <MoreRow key="qa" icon="help" label={T('Hỏi & Đáp', 'Questions & answers')} testId="account-faq" onClick={() => set({ screen: 'faq' })} />,
+    <MoreRow key="terms" icon="doc" label={T('Điều khoản & chính sách', 'Terms & policies')} testId="account-terms" onClick={openPolicy} />,
+  ];
   const hostToolRows = [
     <MoreRow key="surveys" icon="lightbulb" label={T('Khảo sát & ý tưởng sự kiện', 'Surveys & event ideas')} testId="account-group-surveys" onClick={goSurveysHosting} />,
     <MoreRow key="story" icon="pencil" label={T('Đăng story', 'Post a story')} testId="account-host-post-story"
@@ -371,7 +391,10 @@ export default function Account() {
     <MoreRow key="team" icon="users" label={T('Đội ngũ quản trị', 'Admin team')} testId="account-group-adminTeam"
       badge={adminInvitesPending} badgeLabel={T(`${adminInvitesPending} lời mời`, `${adminInvitesPending} invite(s)`)}
       onClick={() => set({ screen: 'accountGroup', accountGroupKey: 'adminTeam', accountGroupBack: null })} />,
+    <MoreRow key="events" icon="calendarCheck" label={T('Quản lý sự kiện', 'Manage events')} testId="admin-manage-events" onClick={() => set({ screen: 'adminManageEvents' })} />,
     <MoreRow key="metrics" icon="chart" label={T('Số liệu & báo cáo', 'Metrics & reports')} testId="account-reports-admin" onClick={() => openReports('admin', null, 'profile')} />,
+    <MoreRow key="features" icon="sliders" label={T('Công tắc tính năng', 'Feature switches')} testId="admin-features" onClick={() => set({ screen: 'adminFeatures' })} />,
+    <MoreRow key="testacc" icon="person" label={T('Tài khoản thử nghiệm', 'Test accounts')} testId="admin-test-accounts" onClick={() => set({ screen: 'adminTestAccounts' })} />,
     <MoreRow key="guide" icon="help" label={T('Hướng dẫn quản trị', 'Admin guide')} testId="account-admin-guide" onClick={() => set({ screen: 'guide', guideKey: 'admin' })} />,
   ];
   const tabMeta = {

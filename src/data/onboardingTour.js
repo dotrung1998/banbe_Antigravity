@@ -13,6 +13,9 @@ export const TOUR_STEPS = [
   { id: 'home.tonight', target: 'tour.home.tonight', screen: 'home', placement: 'below',
     vi: ['Ba cách vào xem', 'Dành cho bạn là của riêng bạn. Tối nay là mọi thứ diễn ra hôm nay. Cuối tuần gồm thứ Bảy và Chủ nhật.'],
     en: ['Three ways in', 'For You is yours. Tonight is everything on today. Weekend covers Saturday and Sunday.'] },
+  { id: 'home.tabPicks', target: 'tour.home.rail', screen: 'home', placement: 'below',
+    vi: ['Danh sách theo tab', 'Các gợi ý bên dưới đổi theo tab bạn chọn. Hôm nay chưa có gì thì tab sẽ báo trống.'],
+    en: ['Picks follow the tab', 'The picks below change with the tab you choose. If nothing is on, the tab says so.'] },
   { id: 'home.search', target: 'tour.home.search', screen: 'home', placement: 'below',
     vi: ['Tìm kiếm và khu vực', 'Tìm sự kiện, host hay địa điểm. Chấm ghim đặt khu vực, và mọi danh sách trên Trang chính đều theo khu vực đó.'],
     en: ['Search and area', 'Search events, hosts or places. The pin sets your area, and every list on Home follows it.'] },
@@ -57,9 +60,10 @@ export const TOUR_STEPS = [
 /** Web: semantic target id → the existing control's selector (first match in DOM order). */
 export const WEB_TARGETS = {
   'tour.home.forYou': '[data-testid^="home-hero-card-"]',
-  'tour.home.tonight': '[data-testid="home-hero-tab-tonight"]',
+  'tour.home.tonight': '[data-testid="home-hero-tabs"]',
+  'tour.home.rail': '[data-testid="home-hero-rail"],[data-testid="home-hero-empty"]',
   'tour.home.hosting': '[data-testid="home-hero-tab-hosting"]',
-  'tour.home.search': '[data-testid="home-search-bar"]',
+  'tour.home.search': '[data-testid="home-search-row"]',
   'tour.home.browse': '[data-testid="home-browse"]',
   'tour.home.filters': '[data-testid="home-filter-summary"]',
   'tour.dock.schedule': '[data-testid="tab-schedule"]',
@@ -82,7 +86,7 @@ export const tourDoneKey = uid => `banbe.tour.v3.done.${uid}`;
 
 /** Three short chapters (note 80, iOS twin `OnboardingTourContent.chapters`). A chapter with no eligible step is dropped. */
 export const TOUR_CHAPTERS = [
-  { id: 'discover', name: ['Khám phá', 'Discover'], stepIds: ['home.forYou', 'home.tonight', 'home.search', 'home.browse', 'home.filters'] },
+  { id: 'discover', name: ['Khám phá', 'Discover'], stepIds: ['home.forYou', 'home.tonight', 'home.tabPicks', 'home.search', 'home.browse', 'home.filters'] },
   { id: 'plans', name: ['Lịch và tin nhắn', 'Plans and messages'], stepIds: ['dock.schedule', 'dock.activity', 'activity.tabs'] },
   { id: 'you', name: ['Tài khoản của bạn', 'Your account'], stepIds: ['dock.account', 'account.shortcuts', 'account.organizerMode', 'account.settings'] },
   { id: 'host', name: ['Tổ chức', 'Hosting'], stepIds: ['host.tab', 'host.hero', 'host.quick'] },
@@ -90,7 +94,7 @@ export const TOUR_CHAPTERS = [
 
 /** "Do it" steps only move on when the highlighted control is used; the overlay performs it (see OnboardingTour). */
 export const TOUR_DO_IT = {
-  'home.tonight': ['Chạm Tối nay', 'Tap Tonight'],
+  'home.tonight': ['Chạm Tối nay hoặc Cuối tuần', 'Tap Tonight or Weekend'],
   'dock.activity': ['Chạm Hoạt động', 'Tap Activity'],
   'dock.account': ['Chạm Tài khoản', 'Tap Account'],
   'host.tab': ['Chạm Hosting', 'Tap Hosting'],

@@ -91,7 +91,7 @@ export default function HomeShellV5({
               </button>
             </div>
           </div>
-          <div style={{ display: 'flex', margin: '10px 20px 0', height: 46, borderRadius: 999, ...glass, alignItems: 'center', color: 'rgba(255,255,255,.75)', boxSizing: 'border-box' }}>
+          <div data-testid="home-search-row" style={{ display: 'flex', margin: '10px 20px 0', height: 46, borderRadius: 999, ...glass, alignItems: 'center', color: 'rgba(255,255,255,.75)', boxSizing: 'border-box' }}>
             <button type="button" onClick={onSearch} data-testid="home-search-bar" aria-label={T('Tìm sự kiện', 'Search events')}
               style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px 0 16px', border: 'none', background: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 15, cursor: 'text', textAlign: 'left' }}>
               <Icon d={SEARCH} size={19} /><span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{T('Tìm sự kiện', 'Search events')}</span>
@@ -101,7 +101,7 @@ export default function HomeShellV5({
               <Icon d={PIN} size={17} /><span aria-hidden style={{ fontSize: 10 }}>▾</span>
             </button>
           </div>
-          <div role="tablist" style={{ display: 'flex', gap: 20, padding: '18px 24px 4px', overflowX: 'auto', scrollbarWidth: 'none', whiteSpace: 'nowrap' }}>
+          <div role="tablist" data-testid="home-hero-tabs" style={{ display: 'flex', gap: 20, padding: '18px 24px 4px', overflowX: 'auto', scrollbarWidth: 'none', whiteSpace: 'nowrap' }}>
             {tabs.map(([k, vi, en]) => (
               <button key={k} type="button" role="tab" aria-selected={tab === k} data-testid={`home-hero-tab-${k}`} onClick={() => onTab(k)}
                 style={{ flex: 'none', border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 17, padding: '6px 0', cursor: 'pointer', color: tab === k ? '#fff' : ON_DARK,
