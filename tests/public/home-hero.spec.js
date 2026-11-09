@@ -79,6 +79,7 @@ const WRITES = /^(set_|save_|complete_)/;
 test('Home opens on the photo hero: tabs, a card rail ending in See all, honest empty tabs', async ({ page }) => {
   const calls = [];
   await mockSupabase(page, { flags: {}, calls }); // no simple_shell key: the shell is on by default
+  page.on('pageerror', e => console.log('PAGEERR', e.message));
   await signIn(page);
 
   const hero = page.getByTestId('home-photo-hero');
@@ -89,6 +90,7 @@ test('Home opens on the photo hero: tabs, a card rail ending in See all, honest 
   await expect(cards).toHaveCount(5);
   await expect(page.getByTestId('home-hero-see-all')).toBeVisible();
   await shot(page, 'home-hero');
+  if (SHOTS) { await page.evaluate(() => { const sc = [...document.querySelectorAll('*')].find(e => e.scrollHeight > e.clientHeight + 200 && getComputedStyle(e).overflowY !== 'visible'); if (sc) sc.scrollTop = 640; }); await page.waitForTimeout(500); await page.screenshot({ path: `${SHOTS}/home-scrolled.png` }); await page.evaluate(() => { const sc = [...document.querySelectorAll('*')].find(e => e.scrollHeight > e.clientHeight + 200 && getComputedStyle(e).overflowY !== 'visible'); if (sc) sc.scrollTop = 0; }); }
 
   // Everything is 2+ days out, so Tonight is honestly empty.
   await page.getByTestId('home-hero-tab-tonight').click();

@@ -38,7 +38,7 @@ import ActivationChecklistCard from './ActivationChecklistCard.jsx';
 import { GuestBrowseBanner } from './GuestPromptSheet.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { CategoryRow, CategorySheet, HomeSearchBar, DiscoveryCard, DiscoveryRow, NextUpBanner } from '../components/home/HomeDiscoveryParts.jsx';
-import HomePhotoHero from '../components/home/HomePhotoHero.jsx';
+import HomeShellV5 from '../components/home/HomeShellV5.jsx';
 // Map v6 (note 74): the card pager's photos (cover first, max 6).
 import { cardPhotoList } from '../lib/eventPhotoUrls.js';
 import HomeFilterSheet, { DATE_LABELS, RELAX_LABELS, SORT_LABELS } from './sheets/HomeFilterSheet.jsx';
@@ -104,7 +104,7 @@ export const FILTER_DEFS = [
 export default function Home() {
   const {
     state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, toggleFav,
-    goEvent, pickFilter, clearFilters, toggleHomeFilter, goMapExplore, toggleLang, toggleTheme,
+    goEvent, pickFilter, clearFilters, toggleHomeFilter, goMapExplore, toggleLang, toggleTheme, setHomeView, startHosting,
     becomeHost, switchToHost,
     canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary, loadHomeLiveEvents,
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
@@ -532,7 +532,7 @@ export default function Home() {
       const e = it.ev;
       const fill = fillBadge(it.booked, it.capacity);
       return {
-        key: e.key, name: e.name, img: e.img, dateBadge: badgeDate(it.startsAt, e.isReal ? e.tz : null),
+        key: e.key, name: e.name, img: e.img, saved: !!e.saved, dateBadge: badgeDate(it.startsAt, e.isReal ? e.tz : null),
         priceLabel: it.priceVnd === 0 ? T('Miễn phí', 'Free') : trStatus(e.price),
         metaLine: trStatus(e.catDisplay || e.cat) || '', left: fill.left != null ? T(`Còn ${fill.left} chỗ`, `${fill.left} left`) : '',
       };
@@ -768,6 +768,23 @@ export default function Home() {
       width: inFrame ? frame.width : window.innerWidth } });
   };
   const areaName = curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label;
+  // Home from the v5 prototype (note 80): hero tab, Browse counts, By type summary and the type pick.
+  const [heroTab, setHeroTab] = useState('foryou');
+  const shellTypeCounts = useMemo(() => {
+    const o = { ...categoryCountMap };
+    delete o.all;
+    return o;
+  }, [categoryCountMap]);
+  const shellFilterSummary = [
+    areaName,
+    { today: T('Hôm nay', 'Today'), tomorrow: T('Ngày mai', 'Tomorrow'), weekend: T('Cuối tuần', 'Weekend'), week: T('7 ngày tới', 'Next 7 days') }[homeFilters.date] || T('Mọi lúc', 'Any time'),
+    homeFilters.free ? T('Miễn phí', 'Free') : T('Mọi mức giá', 'Any price'),
+  ].join(' · ');
+  const shellPickType = (k) => {
+    if (!(homeFilters.cats || []).includes(k)) pickFilter(k);
+    setTimeout(() => document.querySelector('[data-testid="home-by-type"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 120);
+  };
+
 
   // Simple Shell: exactly one block at the top (src/lib/homeHero.js). Saved-coming-up only when nothing else leads.
   const goerHero = simpleShell ? pickGoerHero({
@@ -885,6 +902,7 @@ export default function Home() {
           theme). Search lives here again (same openEventSearch action and
           data-testid as the old floating button). */}
       {/* Pinned like iOS (HomeView's `header` sits above its ScrollView): stays put while the feed scrolls under it. */}
+      {!simpleShell && (
       <div data-testid="home-fixed-header" data-reveal="0" style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 8px`, display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
         <div ref={headerRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: DOCK_HEADER.rowHeight }}>
           {/* Note 53: the shared dock header — same logo, gap, title and row height as Schedule/Messages/Account. */}
@@ -961,7 +979,39 @@ export default function Home() {
           </div>
         )}
       </div>
-      {hostView ? (
+      )}
+      {simpleShell ? (
+        <>
+        <HomeShellV5 T={T} lang={s.lang === 'en' ? 'en' : 'vi'} tab={hostView ? 'hosting' : heroTab} canHost={!!s.user}
+          onTab={(k) => {
+            if (k === 'hosting') { if (!s.organizerMode) { if (!s.organizerModeBusy) startHosting({ land: 'home' }); } else if (!hostView) setHomeView('host'); return; }
+            if (hostView) setHomeView('goer');
+            setHeroTab(k);
+          }}
+          lists={heroLists} items={shownItems} user={s.user} typeCounts={shellTypeCounts} badgeDate={badgeDate} trStatus={trStatus}
+          dateLabel={new Date().toLocaleDateString(s.lang === 'en' ? 'en-GB' : 'vi-VN', { weekday: 'long', day: 'numeric', month: 'long' })}
+          areaLabel={areaName}
+          onOpenEvent={goEvent} onSeeAll={heroSeeAll} onMap={openMapWithContext} onAccount={() => set({ screen: 'profile' })}
+          onSearch={openSearch} onArea={openAreaMenu} onFilters={() => set({ homeFilterSheetOpen: true })} filterSummary={shellFilterSummary}
+          onFindType={() => setCategorySheetOpen(true)} onPickType={shellPickType}
+          hostBody={<div data-reveal="1"><HostHome /><div style={{ height: 44 }} /></div>}>
+          <div data-reveal="1" data-testid="home-hero" data-hero={goerHero}>
+            {goerHero === 'nextUp' && (
+              <NextUpBanner item={nextUp && { ...nextUp, when: nextUp.status }} onOpen={() => openSaved(nextUp)} T={T}
+                onShowTicket={nextUpTicket ? () => openBookingConfirmed(nextUpTicket.id, nextUpTicket.event_id, 'home') : null} />
+            )}
+            {goerHero === 'action' && <ActionCenter items={actionItems} onSeeAll={goNotifications} T={T} />}
+            {goerHero === 'checklist' && <ActivationChecklistCard />}
+            {goerHero === 'guest' && <GuestBrowseBanner />}
+            {goerHero === 'none' && savedUpcomingEl}
+          </div>
+        </HomeShellV5>
+        {categorySheetOpen && (
+          <CategorySheet keys={categorySheetKeys(categoryDefs(), s.lang === 'en' ? 'en' : 'vi')} counts={categoryCountMap} values={homeFilters.cats} T={T}
+            onPick={(k) => { shellPickType(k); setCategorySheetOpen(false); }} onClose={() => setCategorySheetOpen(false)} />
+        )}
+        </>
+      ) : hostView ? (
         <div data-reveal="1"><HostHome /><div style={{ height: 44 }} /></div>
       ) : (
       <>
@@ -969,7 +1019,6 @@ export default function Home() {
           wrappers, so layout is unchanged; they only animate while <html data-reveal="1">. */}
       {simpleShell ? (
         <>
-        {heroLists && <div data-reveal="1"><HomePhotoHero lists={heroLists} T={T} onOpen={goEvent} onSeeAll={heroSeeAll} /></div>}
         <div data-reveal="1" data-testid="home-hero" data-hero={goerHero}>
           {goerHero === 'nextUp' && (
             <NextUpBanner item={nextUp && { ...nextUp, when: nextUp.status }} onOpen={() => openSaved(nextUp)} T={T}
