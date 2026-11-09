@@ -1,19 +1,29 @@
-// Post-signup personalization flow — the pure part. Web port of iOS `Lib/OnboardingFlow.swift` (note 43):
-// welcome → five questions, one per screen (n of 5, Back, Skip, Continue) → save → reveal → settings (only if
-// owed) → Home. No React, no network: tests/unit/onboardingFlow.test.mjs.
+// Post-signup personalization flow, onboarding v5 — the pure part. Web twin of iOS `Lib/OnboardingFlow.swift`
+// (note 80; prototype docs/prototypes/banbe-onboarding-v5-standalone.html):
+// welcome → 3 questions (interests, when, budget) → save → your For You (never empty) → one choice per screen (only
+// when the settings step is owed) → recap with the tour offer → Home, or the chaptered tour.
+// No React, no network: tests/unit/onboardingFlow.test.mjs.
 //
-// Server contract unchanged (migration 162, note 34): finishing calls complete_preferences_onboarding(p)
-// (null = skipped everything, marker only); the settings step still calls complete_settings_onboarding.
-// Answers stay owner-only.
+// Server contract unchanged (migration 162, note 34): finishing the questions calls complete_preferences_onboarding(p)
+// (null = skipped everything, marker only); the choices end with complete_settings_onboarding. Answers stay owner-only.
 
 import {
   GOALS, INTERESTS, AVAILABILITY, LANGUAGES, NO_PREFERENCE, normalizeForSave, prefsIsEmpty, toggleMulti,
   pickBudgetTier, budgetRegionCurrency, budgetRegionForCurrency, budgetCap, formatBudgetMoney, prefLabel,
   declaredInterests, declaredGoals, declaredAvailability, optionEmoji,
 } from './eventPrefs.js';
-import { forYouRankEvents } from './forYou.js';
+import { forYouRank, forYouRankEvents, forYouCandidateFromEvent, zonedParts } from './forYou.js';
 
-export const QUESTIONS = ['goals', 'interests', 'availability', 'budget', 'languages'];
+/** The questions onboarding asks, in order. Goals and languages stay in Account › Event preferences. */
+export const QUESTIONS = ['interests', 'availability', 'budget'];
+
+/**
+ * One choice per screen. Each writes a real setting; a choice that couldn't take effect right now is never shown.
+ * Web has no push permission, so its choices are the weekly digest and Hosting mode.
+ */
+export const CONSENTS = ['push', 'digest', 'hosting'];
+/** The screen before a system prompt offers one action (Apple HIG); banbe's own switches get Continue / Not now. */
+export const consentAsksSystem = (kind) => kind === 'push';
 
 export function questionOptions(q) {
   return { goals: GOALS, interests: INTERESTS, availability: AVAILABILITY, languages: LANGUAGES }[q] || [];
@@ -39,30 +49,42 @@ function switchRegion(budget, region) {
 
 export function payload(state) {
   const p = normalizeForSave(state.draft);
-  return state.skippedAll || isEmptyPayload(p) ? null : p;
+  return state.skippedAll || prefsIsEmpty(p) ? null : p;
 }
-const isEmptyPayload = (p) => prefsIsEmpty(p);
 
 export function answeredQuestionCount(state) {
   const p = normalizeForSave(state.draft);
   return QUESTIONS.filter(q => answerCount(q, p) > 0).length;
 }
 
+/** The current choice screen's kind, or null. */
+export const currentConsent = (s) => (s.stage === 'consent' ? s.consents[s.index] ?? null : null);
+
 /**
- * stage: 'welcome' | 'question' (with `index`) | 'saving' | 'saveFailed' | 'reveal' | 'settings' | 'finished'
+ * stage: 'welcome' | 'question' (with `index`) | 'saving' | 'saveFailed' | 'reveal' | 'consent' (with `index`) |
+ * 'settingsSaving' | 'settingsFailed' | 'recap' | 'finished'
  */
-export function initialState({ needsPreferences, needsSettings, region = 'VN' }) {
-  const stage = needsPreferences ? 'welcome' : needsSettings ? 'settings' : 'finished';
-  return { stage, index: 0, draft: {}, region, needsPreferences, needsSettings, skippedAll: false, lastQuestion: QUESTIONS.length - 1 };
+export function initialState({ needsPreferences, needsSettings, region = 'VN', consents = [] }) {
+  const stage = needsPreferences ? 'welcome' : needsSettings ? (consents.length ? 'consent' : 'settingsSaving') : 'finished';
+  return {
+    stage, index: 0, draft: {}, region, needsPreferences, needsSettings, consents, choices: {},
+    skippedAll: false, lastQuestion: QUESTIONS.length - 1, tourRequested: false,
+  };
 }
 
-const afterPreferences = (s) => (s.needsSettings ? 'settings' : 'finished');
 const viewed = (i) => ({ type: 'track', name: 'onboarding_question_viewed', props: { question_id: QUESTIONS[i] } });
 
+/** After the questions (and the reveal): the choice screens when the settings step is owed, else the recap. */
+function toChoices(s) {
+  if (!s.needsSettings) return { state: { ...s, stage: 'recap' }, effects: [] };
+  if (!s.consents.length) return { state: { ...s, stage: 'settingsSaving' }, effects: [{ type: 'completeSettings' }] };
+  return { state: { ...s, stage: 'consent', index: 0 }, effects: [] };
+}
+
 /**
- * Applies `action`; returns { state, effects } (effects in order: { type: 'save', payload } | { type: 'track', ... }).
- * Actions that don't apply to the current stage are ignored (double taps, a late callback), so the state never
- * moves backwards past a successful save.
+ * Applies `action`; returns { state, effects } (effects in order: { type: 'save', payload } | { type: 'completeSettings' }
+ * | { type: 'track', ... }). Actions that don't apply to the current stage are ignored (double taps, a late callback),
+ * so the state never moves backwards past a successful save.
  */
 export function reduce(s, action) {
   const a = typeof action === 'string' ? { type: action } : action;
@@ -76,7 +98,7 @@ export function reduce(s, action) {
     case 'question': {
       const i = s.index;
       const q = QUESTIONS[i];
-      if (a.type === 'toggle' && q !== 'budget') return { state: { ...s, draft: { ...s.draft, [a.question]: toggleMulti(s.draft[a.question], a.id) } }, effects: [] };
+      if (a.type === 'toggle' && a.question !== 'budget') return { state: { ...s, draft: { ...s.draft, [a.question]: toggleMulti(s.draft[a.question], a.id) } }, effects: [] };
       if (a.type === 'pickBudget') return { state: { ...s, draft: { ...s.draft, budget: pickBudgetTier(s.draft.budget, a.tier, s.region) } }, effects: [] };
       if (a.type === 'setRegion') return { state: { ...s, region: a.region, draft: { ...s.draft, budget: switchRegion(s.draft.budget, a.region) } }, effects: [] };
       if (a.type === 'next' || a.type === 'skipQuestion') {
@@ -104,10 +126,11 @@ export function reduce(s, action) {
     case 'saving':
       if (a.type === 'saveSucceeded') {
         const p = payload(s);
-        return {
-          state: { ...s, needsPreferences: false, stage: p == null ? afterPreferences(s) : 'reveal' },
-          effects: [{ type: 'track', name: 'onboarding_completed', props: { answered_questions: s.skippedAll ? 0 : answeredQuestionCount(s), skipped_all: p == null } }],
-        };
+        const track = { type: 'track', name: 'onboarding_completed', props: { answered_questions: s.skippedAll ? 0 : answeredQuestionCount(s), skipped_all: p == null } };
+        const done = { ...s, needsPreferences: false };
+        if (p != null) return { state: { ...done, stage: 'reveal' }, effects: [track] };
+        const r = toChoices(done);
+        return { state: r.state, effects: [track, ...r.effects] };
       }
       if (a.type === 'saveFailed') return { state: { ...s, stage: 'saveFailed' }, effects: [] };
       return same;
@@ -117,15 +140,36 @@ export function reduce(s, action) {
       // Edit an answer after a failure; "Skip all" is undone by going back.
       if (a.type === 'back') return { state: { ...s, skippedAll: false, stage: 'question', index: s.lastQuestion }, effects: [viewed(s.lastQuestion)] };
       // Leave for this session only (the server marker stays unset).
-      if (a.type === 'skipForNow') return { state: { ...s, stage: afterPreferences(s) }, effects: [] };
+      if (a.type === 'skipForNow') return toChoices(s);
       return same;
 
     case 'reveal':
-      if (a.type === 'revealContinue') return { state: { ...s, stage: afterPreferences(s) }, effects: [] };
+      if (a.type === 'revealContinue') return toChoices(s);
+      // "Change my answers": back to the first question, answers kept.
+      if (a.type === 'redoAnswers') return { state: { ...s, skippedAll: false, stage: 'question', index: 0 }, effects: [viewed(0)] };
       return same;
 
-    case 'settings':
-      if (a.type === 'settingsDone') return { state: { ...s, needsSettings: false, stage: 'finished' }, effects: [] };
+    case 'consent': {
+      if (a.type !== 'consentAnswered' || s.consents[s.index] !== a.kind) return same;
+      const choices = { ...s.choices, [a.kind]: !!a.on };
+      if (s.index + 1 < s.consents.length) return { state: { ...s, choices, index: s.index + 1 }, effects: [] };
+      return { state: { ...s, choices, stage: 'settingsSaving' }, effects: [{ type: 'completeSettings' }] };
+    }
+
+    case 'settingsSaving':
+      if (a.type === 'settingsSucceeded') return { state: { ...s, needsSettings: false, stage: 'recap' }, effects: [] };
+      if (a.type === 'settingsFailed') return { state: { ...s, stage: 'settingsFailed' }, effects: [] };
+      return same;
+
+    case 'settingsFailed':
+      if (a.type === 'retrySettings') return { state: { ...s, stage: 'settingsSaving' }, effects: [{ type: 'completeSettings' }] };
+      // After a failed marker: on to the recap for this session only.
+      if (a.type === 'skipSettingsForNow') return { state: { ...s, stage: 'recap' }, effects: [] };
+      return same;
+
+    case 'recap':
+      if (a.type === 'startTour') return { state: { ...s, tourRequested: true, stage: 'finished' }, effects: [] };
+      if (a.type === 'skipTour') return { state: { ...s, stage: 'finished' }, effects: [] };
       return same;
 
     default:
@@ -135,7 +179,8 @@ export function reduce(s, action) {
 
 // MARK: draft persistence (this browser only, per account)
 
-const draftKey = (uid) => `banbe.onboardingDraft.v1.${uid}`;
+// v2: question indices changed with the 3-question flow, so a 5-question draft is never resumed.
+const draftKey = (uid) => `banbe.onboardingDraft.v2.${uid}`;
 const defaultStorage = () => (typeof localStorage !== 'undefined' ? localStorage : null);
 
 /**
@@ -159,8 +204,8 @@ export const draftStore = {
     try { storage.removeItem(draftKey(uid)); } catch { /* ignore */ }
   },
   /** Fresh state from the SERVER flags, with a saved draft folded in only while the questions are still owed (the server always wins). */
-  resume(uid, { needsPreferences, needsSettings, region }, storage = defaultStorage()) {
-    const s = initialState({ needsPreferences, needsSettings, region });
+  resume(uid, { needsPreferences, needsSettings, region, consents = [] }, storage = defaultStorage()) {
+    const s = initialState({ needsPreferences, needsSettings, region, consents });
     if (!needsPreferences) return s;
     const saved = this.load(uid, storage);
     if (!saved || typeof saved !== 'object') return s;
@@ -170,6 +215,119 @@ export const draftStore = {
     return out;
   },
 };
+
+// MARK: live counts and the reveal plan (For You is never empty). Twin of iOS `OnboardingCounts`.
+
+export const MIN_FOR_YOU = 3;
+export const TILE_MAX = 5;
+const knownInterest = (c) => INTERESTS.some(o => o.id === c);
+
+/** forYou.js candidates for the discovery events onboarding counts: live, public, inside the Home area. */
+export function onboardingCandidates(discoveryEvents, areaMatch) {
+  return (discoveryEvents || [])
+    .filter(e => e.status === 'live' && e.visibility === 'public' && (!areaMatch || areaMatch(e)))
+    .map(e => forYouCandidateFromEvent(discoveryCandidate(e)));
+}
+
+/** Discoverable, not started yet, soonest first (key breaks ties, so the order is total). */
+export function upcoming(cands, now = Date.now()) {
+  return (cands || []).filter(e => e.isBookable && (e.startsAt == null || e.startsAt >= now))
+    .sort((a, b) => {
+      const sa = a.startsAt ?? Infinity, sb = b.startsAt ?? Infinity;
+      if (sa !== sb) return sa < sb ? -1 : 1;
+      return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+    });
+}
+
+/** Upcoming events per interest id (an event with two types counts for both). */
+export function typeCounts(cands, now = Date.now()) {
+  const out = {};
+  for (const e of upcoming(cands, now)) {
+    for (const c of new Set(e.categories)) if (knownInterest(c)) out[c] = (out[c] || 0) + 1;
+  }
+  return out;
+}
+
+/** The question's tiles: only types with events on now, most first, at most five (no placeholders). */
+export function tileTypes(counts, label = (k) => k) {
+  return Object.entries(counts).filter(([, n]) => n > 0)
+    .sort(([ka, a], [kb, b]) => (a !== b ? b - a : label(ka).localeCompare(label(kb))))
+    .slice(0, TILE_MAX).map(([k]) => k);
+}
+
+function fitsInterests(e, interests) {
+  if (!interests.length) return true;
+  const known = e.categories.filter(knownInterest);
+  return !known.length || known.some(c => interests.includes(c));
+}
+
+function fitsBudget(e, b) {
+  if (!b) return true;
+  if (b.tier === 'free') return e.isFree;
+  if (e.isFree) return true;
+  const region = budgetRegionForCurrency(b.currency);
+  const cap = budgetCap(region, b.tier);
+  if (cap == null || e.priceAmount == null || e.priceCurrency !== budgetRegionCurrency(region)) return true;
+  return e.priceAmount <= cap;
+}
+
+/** Day (weekdays/weekends) and time (daytime/evening) are separate groups; each picked group must fit. */
+function fitsAvailability(e, ids) {
+  const picked = (ids || []).filter(x => x !== NO_PREFERENCE);
+  if (!picked.length || e.startsAt == null || !e.timeZone) return true;
+  const parts = zonedParts(e.startsAt, e.timeZone);
+  if (!parts) return true;
+  const isWeekend = parts.weekday === 0 || parts.weekday === 6;
+  const isDaytime = parts.hour < 17;
+  const days = picked.filter(x => x === 'weekdays' || x === 'weekends');
+  const times = picked.filter(x => x === 'daytime' || x === 'evening');
+  if (days.length && !days.includes(isWeekend ? 'weekends' : 'weekdays')) return false;
+  if (times.length && !times.includes(isDaytime ? 'daytime' : 'evening')) return false;
+  return true;
+}
+
+/** Upcoming events that fit every answer so far (the same rules as forYouMatch: interests and budget exclude). */
+export function matchCount(cands, p, now = Date.now()) {
+  const interests = declaredInterests(p);
+  return upcoming(cands, now).filter(e => fitsInterests(e, interests) && fitsBudget(e, p?.budget) && fitsAvailability(e, p?.availability)).length;
+}
+
+/** The count next to one option: the answers so far with this option as the question's only answer. */
+export function optionCount(cands, p, question, option, region, now = Date.now()) {
+  const q = { ...(p || {}) };
+  if (question === 'availability') q.availability = [option];
+  else if (question === 'budget') q.budget = pickBudgetTier(null, option, region);
+  else if (question === 'interests') q.interests = [option];
+  return matchCount(cands, q, now);
+}
+
+/**
+ * What the reveal shows: { mode, keys, exact, live, waiting }. Never empty while any upcoming event exists.
+ * mode: picked (3+ fit) | topped (fewer: exact first, then more of the same types, then the soonest) |
+ *       soon (every picked type has nothing on: the soonest, those types watched) | popular (interests skipped).
+ */
+export function revealPlan(cands, prefs, now = Date.now()) {
+  const up = upcoming(cands, now);
+  const counts = typeCounts(up, now);
+  const chosen = declaredInterests(prefs);
+  const live = chosen.filter(k => (counts[k] || 0) > 0);
+  const waiting = chosen.filter(k => !(counts[k] > 0));
+  const filled = (first, n) => {
+    const keys = [...first];
+    for (const e of up) { if (keys.length >= n) break; if (!keys.includes(e.key)) keys.push(e.key); }
+    return keys.slice(0, n);
+  };
+  if (!live.length) {
+    const rest = { ...(prefs || {}) };
+    delete rest.interests;
+    const ranked = forYouRank(up, rest, now).map(m => m.key);
+    return { mode: chosen.length ? 'soon' : 'popular', keys: filled(ranked, TILE_MAX), exact: 0, live: [], waiting };
+  }
+  const exact = forYouRank(up, prefs, now).map(m => m.key);
+  if (exact.length >= MIN_FOR_YOU) return { mode: 'picked', keys: exact.slice(0, TILE_MAX), exact: exact.length, live, waiting };
+  const same = forYouRank(up, { interests: live }, now).map(m => m.key).filter(k => !exact.includes(k));
+  return { mode: 'topped', keys: filled([...exact, ...same], MIN_FOR_YOU + 2), exact: exact.length, live, waiting };
+}
 
 // MARK: live feedback under a question (note 53)
 

@@ -106,36 +106,42 @@ test('success: ✓ then exactly one hand-off to Home, no loading screen; v3 tour
   expect(screens.slice(0, 2)).toEqual(['Login', 'Home']);
   expect(await page.evaluate(() => window.__sawLoader)).toBe(false);
 
-  // The sign-in reveal ends, then the v3 tour starts over the real Home.
+  // The sign-in reveal ends, then the v3 tour starts over the real Home: forward-only chapters (note 80).
   const overlay = page.getByTestId('tour-overlay');
   await expect(overlay).toBeVisible({ timeout: 8000 });
-  await expect(page.getByTestId('tour-title')).toContainText('Find anything here');
+  await expect(page.getByTestId('tour-title')).toContainText('Search and area');
+  await expect(page.getByTestId('tour-chapter')).toContainText('Chapter 1 of 3');
   await expect(page.locator('#root')).toHaveAttribute('inert', '');
   await expect(page.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
+  await expect(page.getByTestId('tour-back')).toHaveCount(0); // no Back
+  await expect(page.getByTestId('tour-step-1')).toHaveCount(0); // the progress bar can't be used to jump
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/web-tour-1.png` });
 
   const before = calls.length;
   // Clicking where the real search bar is does nothing: the scrim takes it.
   const bar = await page.getByTestId('home-search-bar').boundingBox();
   if (bar) await page.mouse.click(bar.x + bar.width / 2, bar.y + bar.height / 2);
-  await expect(page.getByTestId('tour-title')).toContainText('Find anything here');
+  await expect(page.getByTestId('tour-title')).toContainText('Search and area');
 
   // No For You preferences in this synthetic account: that step is skipped, not pointed at nothing. Home still
   // lists the bundled catalogue, so the event-card step has a real card to show.
   await page.getByTestId('tour-next').click();
-  await expect(page.getByTestId('tour-title')).toContainText('An event', { timeout: 6000 });
-  await expect(page.getByTestId('tour-step-2')).toBeDisabled();
+  await expect(page.getByTestId('tour-title')).toContainText('Open an event', { timeout: 6000 });
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/web-tour-3.png` });
   await page.getByTestId('tour-next').click();
   await expect(page.getByTestId('tour-title')).toContainText('Map');
+  await expect(page.getByTestId('tour-next')).toHaveText('Finish chapter');
+  await page.getByTestId('tour-next').click();
 
-  // Direct jump, Back, and the Account step on the real Account screen.
-  await page.getByTestId('tour-step-6').click();
+  // Chapter breaks are the only place to stop; continue through chapter 2 to the Account chapter.
+  await expect(page.getByTestId('tour-sheet-title')).toHaveText('Next: plans and messages');
+  await page.getByTestId('tour-break-continue').click();
+  await expect(page.getByTestId('tour-title')).toContainText('Schedule', { timeout: 6000 });
+  await page.getByTestId('tour-next').click();
   await expect(page.getByTestId('tour-title')).toContainText('Messages');
-  await page.getByTestId('tour-back').click();
-  await expect(page.getByTestId('tour-title')).toContainText('Schedule');
-  await page.getByTestId('tour-step-7').click();
-  await expect(page.getByTestId('tour-title')).toContainText('Want to host?', { timeout: 6000 });
+  await page.getByTestId('tour-next').click();
+  await page.getByTestId('tour-break-continue').click();
+  await expect(page.getByTestId('tour-title')).toContainText('Hosting mode', { timeout: 6000 });
   await expect(page.locator('[data-screen-label="Account"]')).toBeVisible();
   // The cut-out sits on the real organizer toggle, scrolled into view.
   await expect(page.getByTestId('tour-highlight')).toBeVisible();
@@ -146,7 +152,7 @@ test('success: ✓ then exactly one hand-off to Home, no loading screen; v3 tour
   }, { timeout: 4000 }).toBe(true);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/web-tour-7.png` });
 
-  // Keyboard: Tab stays in the card; Escape = Skip, back on Home, #root usable again, marker written.
+  // Keyboard: Tab stays in the card; Escape = End tour, back on Home, #root usable again, marker written.
   await page.keyboard.press('Tab');
   expect(await page.evaluate(() => !!document.activeElement?.closest('[data-testid="tour-card"]'))).toBe(true);
   await page.keyboard.press('Escape');

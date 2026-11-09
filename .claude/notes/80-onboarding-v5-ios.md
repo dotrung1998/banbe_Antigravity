@@ -1,6 +1,6 @@
-# 80 — Onboarding v5 on iOS: 3 questions, never-empty For You, one choice per screen, chaptered tour
+# 80 — Onboarding v5 (iOS + web): 3 questions, never-empty For You, one choice per screen, chaptered tour
 
-Status (2026-11-09): IMPLEMENTED (iOS only, web not done). No migration. Not built in Xcode and not run on a
+Status (2026-11-09): IMPLEMENTED on iOS, then mirrored on the web (see "Web parity" at the end). No migration. iOS was not built in Xcode and not run on a
 simulator or device (the work was done on Linux): the pure model and coordinator were compiled and their 33 unit
 tests run with Swift 6.0.3 on Linux, every changed Swift file passes the Swift parser, the web/iOS tour parity test
 passes 5/5. SwiftUI views and the UI tests are unverified until an Xcode build runs them.
@@ -82,4 +82,26 @@ Prototype: `docs/prototypes/banbe-onboarding-v5-standalone.html` (commit 763e850
 ## Not verified / open
 - Xcode build, all UI tests, the look of every new screen (light/dark, Dynamic Type, VoiceOver), the push alert on a
   device, Hosting mode's first-activation sheet appearing over onboarding.
-- Web parity (`src/screens/EventOnboarding.jsx`, `src/components/tour/OnboardingTour.jsx`) is not done.
+
+## Web parity (2026-11-09, second pass)
+Same flow and rules on the web, same copy (EN/VI). Files:
+- `src/lib/onboardingFlow.js`: 3 questions, stages consent/settingsSaving/settingsFailed/recap, `completeSettings`
+  effect, draft key `banbe.onboardingDraft.v2`, live counts and `revealPlan` (twin of iOS `OnboardingCounts`).
+- `src/screens/EventOnboarding.jsx`: welcome (blurred photo + photo fan), questions with live counts and the "More
+  types" sheet, reveal rail, choice screens, recap. `ChoiceRow` and `QUESTION_COPY.interests` are kept for the
+  "How banbe works" quiz card. The old settings review (`SettingsStep`) is gone, as on iOS.
+- **Choices on web: weekly digest (while `weekly_digest` is on) and Hosting mode only.** The web has no push
+  permission, so there is no notifications screen. Continue writes `set_my_digest_opt_in` / `applyOrganizerMode(true)`
+  (now exported from the context); Not now writes nothing.
+- `src/data/onboardingTour.js` (`TOUR_CHAPTERS`, `TOUR_DO_IT`, `HOSTING_ON_COPY`, `tourPlan`) and
+  `src/components/tour/OnboardingTour.jsx`: forward only, chapter breaks, read-only progress, For You do-it step,
+  Escape = End tour. Step ids/targets/order unchanged (parity test still 5/5).
+- Context: `finishOnboardingFlow({ startTour })`; the recap's "Start the tour" sets `tourRecapStartToken` (no version
+  switch), "Skip, go to Home" writes the first-run marker. Help › "Tour the app" shows for every signed-in user.
+
+Web verification: `npm run build` green; unit `onboardingFlow` (29), `onboardingTour` (5), `onboardingVisuals`,
+`eventPrefs-forYou` pass (50 total); new mocked Playwright spec `tests/public/onboarding-v5.spec.js` 2/2 (Chromium),
+screenshots reviewed at 390×844 (welcome, interests, reveal, choice, recap, tour do-it, chapter break).
+`tests/public/signin-morph-tour.spec.js` was updated for the chaptered tour. Its "success" test already failed on the
+base commit at `login-submit-check` (the ✓ morph), unrelated to this change; with that one line removed locally, the
+updated tour part passes. `onboarding-v2.spec.js` 5/5. Not checked on web: Firefox/WebKit, dark mode, real backend.

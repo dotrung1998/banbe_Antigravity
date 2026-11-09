@@ -1,30 +1,38 @@
-// Post-signup personalization flow — web port of the iOS flow (note 43; pure rules in lib/onboardingFlow.js):
-// welcome → five questions, one per screen ("n of 5", Back, Skip, Continue) → save → a real For You reveal →
-// the settings review (only if owed) → Home, with For You switched on only when there are real matches.
-// Mounted by App.jsx below the account gate; shown only for a signed-in user past splash/login/policy whose
-// server markers say a step is still owed (and kept up through the reveal by `onboardingFlowActive`).
+// Post-signup personalization, onboarding v5 (note 80; prototype docs/prototypes/banbe-onboarding-v5-standalone.html).
+// Web twin of iOS Views/OnboardingFlowViews.swift; pure rules in lib/onboardingFlow.js:
+// welcome → What sounds fun? → When are you usually free? → A comfortable ticket price? → save → your For You (never
+// empty) → one choice per screen (only when the settings step is owed) → recap with the tour offer → Home, or the
+// chaptered tour. Mounted by App.jsx below the account gate; shown only for a signed-in user past
+// splash/login/policy whose server markers say a step is still owed (and kept up by `onboardingFlowActive`).
 //
 // Server contract unchanged: complete_preferences_onboarding(p) (null = skipped everything, marker only) and
-// complete_settings_onboarding. A failed save leaves the user on an honest screen with Retry / Edit answers /
-// Skip for now (this session only — the marker stays unset). An unfinished questionnaire is kept in this
-// browser for this account (lib/onboardingFlow.js draftStore) and resumed only while the server still owes it.
-// Haptics and Face ID do not exist on web and are omitted.
+// complete_settings_onboarding after the last choice. Each choice writes a real setting only on Continue:
+// the weekly digest (set_my_digest_opt_in, while `weekly_digest` is on) and Hosting mode (set_organizer_mode). Web has
+// no push permission, so there is no notifications screen here. An unfinished questionnaire is kept in this browser
+// for this account (draftStore) and resumed only while the server still owes it.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { useAccountGate, getHostPromoConsent, setHostPromoConsent } from '../lib/accountGate.js';
-import { paper, ink, display, fieldGlass, alert } from '../theme.js';
-import { StepProgress, encouragement, Button } from '../components/ui/FormControls.jsx';
-import { NO_PREFERENCE, BUDGET_TIERS, BUDGET_REGIONS, budgetTierLabel, budgetRegionDefault, normalizeForSave, prefLabel, optionEmoji } from '../lib/eventPrefs.js';
-import { QUESTIONS, questionOptions, reduce, draftStore, impactLines, revealMatches, selectionFeedback, payload as flowPayload } from '../lib/onboardingFlow.js';
+import { useAccountGate } from '../lib/accountGate.js';
+import { supabase } from '../lib/supabase.js';
+import { flagOn } from '../lib/featureFlags.js';
+import { paper, ink, display } from '../theme.js';
+import { Button } from '../components/ui/FormControls.jsx';
+import { NO_PREFERENCE, BUDGET_TIERS, BUDGET_REGIONS, INTERESTS, AVAILABILITY, budgetTierLabel, budgetRegionDefault, normalizeForSave, prefLabel, optionEmoji } from '../lib/eventPrefs.js';
+import {
+  QUESTIONS, reduce, draftStore, payload as flowPayload, currentConsent, consentAsksSystem,
+  onboardingCandidates, typeCounts, tileTypes, matchCount, optionCount, revealPlan, MIN_FOR_YOU,
+} from '../lib/onboardingFlow.js';
+import { tourPlan } from '../data/onboardingTour.js';
+import { EVENTS } from '../data/events.js';
 import { LOCATION_ALL } from '../lib/locationTree.js';
 import { track, matchBucket } from '../lib/analytics.js';
-import { EventPrefsPrivacyNote } from './EventPreferences.jsx';
 import { formatMoney, rowCurrency, rowTimeZone } from '../lib/eventMarket.js';
 import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
 
 const NOT_ONBOARDING_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy']);
 const muted = (a) => `rgba(var(--bb-fg-rgb), ${a})`;
+const NIGHT = '#16140f';
 
 /** True while the onboarding overlay is (or should be) on screen; App.jsx hides the dock with it. */
 export function useEventOnboardingActive() {
@@ -35,154 +43,101 @@ export function useEventOnboardingActive() {
     && (s.needsSettingsOnboarding || s.needsPreferencesOnboarding || s.onboardingFlowActive);
 }
 
-// Goal gradient (note 48): creating the account is step 1 and already done, so nothing opens at 0%.
-function StepIndicator({ step, total = 2 }) {
-  const { T } = useBanBe();
-  const steps = [T('Tài khoản', 'Account'), T('Cài đặt', 'Settings'), T('Sở thích', 'Interests')].slice(0, total + 1);
-  return (
-    <div data-testid="onboarding-step-indicator" aria-label={T(`Bước ${step} trên ${total}`, `Step ${step} of ${total}`)} style={{ marginBottom: 22 }}>
-      <StepProgress steps={steps} current={step} message={encouragement(steps.length - step, T)} />
-    </div>
-  );
-}
-
-function SwitchRow({ title, detail, on, onClick, testId, disabled }) {
-  return (
-    <div
-      onClick={disabled ? undefined : onClick} role="switch" aria-checked={on} aria-disabled={!!disabled} data-testid={testId}
-      style={{ ...fieldGlass({ padding: '15px 18px', border: 'none' }), display: 'flex', alignItems: 'center', gap: 12, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.55 : 1 }}
-    >
-      <div style={{ flex: 1 }}>
-        <div style={display(16, { lineHeight: 1.3 })}>{title}</div>
-        <div style={{ fontSize: 11.5, lineHeight: 1.55, color: ink, opacity: 0.8, marginTop: 3 }}>{detail}</div>
-      </div>
-      <span style={{ flex: 'none', width: 44, height: 26, borderRadius: 13, background: on ? ink : 'rgba(27,25,22,0.18)', position: 'relative', transition: 'background .15s' }}>
-        <span style={{ position: 'absolute', top: 3, left: on ? 21 : 3, width: 20, height: 20, borderRadius: 10, background: paper, transition: 'left .15s' }} />
-      </span>
-    </div>
-  );
-}
-
 // Note 53: one button system. The next step is always the solid primary; an alternative is a secondary (field
-// fill + hairline); "skip / later" is text only. Selected answers are tinted, never solid ink, so they can't be
-// mistaken for the Continue button.
+// fill + hairline); "skip / later" is text only.
 function InkBtn({ label, enabled = true, onClick, testId }) {
   return <Button variant="primary" testId={testId} label={label} disabled={!enabled} onClick={onClick} style={{ width: '100%' }} />;
 }
-
-const SecondaryBtn = ({ label, icon, onClick, testId, disabled }) => (
-  <Button variant="secondary" testId={testId} label={label} icon={icon} disabled={disabled} onClick={onClick} style={{ width: '100%', marginTop: 10 }} />
+const SecondaryBtn = ({ label, icon, onClick, testId, disabled, style }) => (
+  <Button variant="secondary" testId={testId} label={label} icon={icon} disabled={disabled} onClick={onClick} style={{ width: '100%', marginTop: 10, ...style }} />
 );
-
 const LinkBtn = ({ label, onClick, testId, disabled }) => (
-  <Button variant="tertiary" testId={testId} label={label} disabled={disabled} onClick={onClick} style={{ width: '100%', marginTop: 8, fontSize: 14 }} />
+  <Button variant="tertiary" testId={testId} label={label} disabled={disabled} onClick={onClick} style={{ width: '100%', marginTop: 4, fontSize: 14 }} />
 );
 
-function SettingsStep({ onDone, stepIndex, stepTotal }) {
-  const { state: s, T, set, toggleAutoEmailDocuments, completeSettingsOnboarding } = useBanBe();
-  const isNew = s.eventOnboardingIsNewAccount;
-  // New account: ordinary non-sensitive settings default ON. An existing prompted
-  // account shows and keeps what it already has; only changed toggles are written.
-  // Consent is never pre-ticked (note 48): promo starts OFF for new accounts.
-  // Location is no longer asked here (iOS parity, note 43): Map/area picker
-  // request it when they actually need it.
-  const [emailDocs, setEmailDocs] = useState(() => (isNew ? true : s.autoEmailDocuments));
-  const [promo, setPromo] = useState(false);
-  const [promoCurrent, setPromoCurrent] = useState(null); // null = unknown (read failed / loading)
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+const evN = (n, vi) => (vi ? `${n} sự kiện` : `${n} ${n === 1 ? 'event' : 'events'}`);
+const typeLabel = (id, vi) => prefLabel(id, INTERESTS, vi);
+/** "A, B and C" / "A, B or C" with the type labels. */
+function joinTypes(ids, vi, or = false) {
+  const n = ids.map(k => typeLabel(k, vi));
+  if (n.length < 2) return n.join('');
+  return `${n.slice(0, -1).join(', ')} ${or ? (vi ? 'hoặc' : 'or') : (vi ? 'và' : 'and')} ${n[n.length - 1]}`;
+}
 
-  useEffect(() => {
-    let live = true;
-    getHostPromoConsent().then(v => {
-      if (!live) return;
-      setPromoCurrent(v);
-      setPromo(isNew ? false : (v ?? false));
-    });
-    return () => { live = false; };
-  }, [isNew]);
+function Eyebrow({ children, style }) {
+  return <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: muted(0.62), ...style }}>{children}</div>;
+}
 
-  const finish = async () => {
-    if (busy) return;
-    setBusy(true); setFailed(false);
-    try {
-      // Write a setting only when the final toggle differs from its current value.
-      if (emailDocs !== s.autoEmailDocuments) toggleAutoEmailDocuments();
-      if (promoCurrent !== null && promo !== promoCurrent) {
-        const v = await setHostPromoConsent(promo);
-        if (v != null) setPromoCurrent(v);
-      }
-      const ok = await completeSettingsOnboarding();
-      setFailed(!ok);
-      if (ok) onDone();
-    } finally { setBusy(false); }
-  };
-
+/** Back (labelled with where it goes), "1 of 3", and one bar per screen. */
+function StepHeader({ label, step, total, backLabel, onBack }) {
   return (
-    <div data-testid="onboarding-settings-step">
-      <StepIndicator step={stepIndex} total={stepTotal} />
-      <h1 style={display(27, { margin: 0, lineHeight: 1.2 })}>{T('Xem nhanh cài đặt', 'Quick settings review')}</h1>
-      <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '10px 0 0' }}>
-        {T('Tất cả đều không bắt buộc, bạn có thể đổi lại bất cứ lúc nào trong Tài khoản.', 'Everything here is optional, you can change it any time in Account.')}
-      </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 22 }}>
-        <SwitchRow testId="onboarding-settings-emailDocs" on={emailDocs} onClick={() => setEmailDocs(v => !v)}
-          title={T('Gửi hoá đơn qua email', 'Email me payment documents')}
-          detail={T('Tự gửi hoá đơn/biên nhận tới email của bạn. Đổi lại tại Tài khoản > Cài đặt > Tùy chỉnh ứng dụng.', 'Automatically email invoices and receipts to you. Change it in Account > Settings > App Preferences.')} />
-        <SwitchRow testId="onboarding-settings-promo" on={promo} disabled={promoCurrent === null} onClick={() => setPromo(v => !v)}
-          title={T('Tin nhắn quảng bá từ host', 'Host promotional texts')}
-          detail={T('Tắt trừ khi bạn bật. Nếu bật, host bạn đã tương tác có thể soạn tin quảng bá SMS và tự gửi. banbe không gửi hộ. Đổi lại bất cứ lúc nào tại Tài khoản > Cài đặt > Bảo mật.',
-            "Off unless you switch it on. If on, hosts you've interacted with may compose a promo text that they send themselves. banbe doesn't send for them. Change it any time in Account > Settings > Security.")} />
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 }}>
+        {onBack ? (
+          <button type="button" onClick={onBack} data-testid="onboarding-back" className="bb-press"
+            style={{ background: 'none', border: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, fontWeight: 500, minHeight: 44, marginLeft: -6, padding: '0 6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span aria-hidden style={{ fontSize: 22, lineHeight: 1 }}>‹</span>{backLabel}
+          </button>
+        ) : <span />}
+        <span data-testid="onboarding-progress" style={{ fontSize: 13, color: muted(0.65), fontVariantNumeric: 'tabular-nums' }}>{label}</span>
       </div>
-      {failed && (
-        <p data-testid="onboarding-settings-error" style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '16px 0 0' }}>
-          {T('Chưa hoàn tất được bước này. Thử lại, hoặc bỏ qua lúc này (bước này có thể hiện lại lần mở sau).',
-            'Couldn\'t finish this step. Retry, or skip for now (it may reappear next time you open the app).')}
-        </p>
-      )}
-      <div style={{ marginTop: 22 }}>
-        <InkBtn testId="onboarding-settings-continue" enabled={!busy} onClick={finish}
-          label={busy ? T('Đang lưu…', 'Saving…') : failed ? T('Thử lại', 'Retry') : T('Tiếp tục', 'Continue')} />
+      <div aria-hidden style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+        {Array.from({ length: total }, (_, i) => (
+          <i key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= step ? ink : muted(0.14), transition: 'background .3s' }} />
+        ))}
       </div>
-      {failed && <LinkBtn testId="onboarding-settings-skip" label={T('Bỏ qua lúc này', 'Skip for now')} onClick={() => { set({ needsSettingsOnboarding: false }); onDone(); }} />}
     </div>
   );
 }
-
 
 // ---- welcome ----
 
 function WelcomeStep({ send }) {
   const { T } = useBanBe();
-  // Entrance (owner, 2026-10-21): the content rises in from below, then the three tiles land one after
-  // another, left to right. `.bb-rise` turns all of it off under prefers-reduced-motion.
+  const photos = EVENTS.slice(0, 3).map(e => e.img).filter(Boolean);
   const rise = (delayMs) => ({ animation: `bbRiseIn .4s cubic-bezier(.2,.8,.2,1) ${delayMs}ms backwards` });
-  // Three glanceable tiles instead of three sentences (note 53). Flex stretches them to one shared height;
-  // the title keeps two lines' room so every tile's text starts and sits at the same place.
-  const tile = (i, emoji, title, sub) => (
-    <div className="bb-rise" style={{ flex: 1, minWidth: 0, background: 'var(--bb-field)', borderRadius: 16, padding: '14px 10px', textAlign: 'center', ...rise(120 + i * 70) }}>
-      <div aria-hidden style={{ fontSize: 26, lineHeight: '32px', height: 32 }}>{emoji}</div>
-      <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3, marginTop: 6 }}>{title}</div>
-      <div style={{ fontSize: 11.5, lineHeight: 1.35, color: muted(0.7), marginTop: 2 }}>{sub}</div>
-    </div>
-  );
+  const fan = [
+    { left: 22, top: 16, width: 148, height: 196, rotate: -5 },
+    { right: 24, top: 0, width: 150, height: 186, rotate: 5 },
+    { left: '50%', top: 132, width: 176, height: 170, rotate: -1, centered: true },
+  ];
   return (
-    <div data-testid="onboarding-welcome">
-      <div className="bb-rise" style={rise(0)}>
-        <div aria-hidden style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 84, height: 84, borderRadius: 26, background: 'var(--bb-honey-bg)', fontSize: 42 }}>🌟</div>
-        <h1 style={display(30, { margin: '20px 0 0', lineHeight: 1.15 })}>{T('Tìm những buổi bạn thật sự muốn đi', "Find events you'll actually want to go to")}</h1>
-        <p style={{ fontSize: 15, lineHeight: 1.55, margin: '10px 0 0', color: muted(0.8) }}>
-          {T('5 câu ngắn, rồi banbe gắn ★ Dành cho bạn lên sự kiện hợp với bạn.', '5 quick taps, then banbe stars ★ For You on the events that fit.')}
-        </p>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: 8, margin: '24px 0 28px' }}>
-        {tile(0, '⏱️', T('~1 phút', '~1 minute'), T('Câu nào cũng bỏ qua được', 'Skip any question'))}
-        {tile(1, '🔒', T('Chỉ bạn thấy', 'Only you see it'), T('Host không bao giờ thấy', 'Hosts never do'))}
-        {tile(2, '⚙️', T('Đổi lúc nào', 'Change anytime'), T('Trong Tài khoản', 'In Account'))}
-      </div>
-      <div className="bb-rise" style={rise(300)}>
-        <InkBtn testId="onboarding-start" label={T('Bắt đầu', 'Get started')} onClick={() => send('start')} />
-        <LinkBtn testId="onboarding-skip-all" label={T('Bỏ qua, xem tất cả sự kiện', 'Skip, show me everything')} onClick={() => send('skipAll')} />
+    <div data-testid="onboarding-welcome" style={{ position: 'fixed', inset: 0, background: NIGHT, color: '#fff', overflowY: 'auto', zIndex: 1 }}>
+      {photos[0] && (
+        <div aria-hidden style={{ position: 'fixed', inset: -30, background: `center/cover no-repeat url("${photos[0]}")`, filter: 'blur(18px) brightness(.42) saturate(.9)', transform: 'scale(1.1)' }} />
+      )}
+      <div style={{ position: 'relative', maxWidth: 480, margin: '0 auto', padding: '40px 24px 32px', boxSizing: 'border-box', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
+        <div aria-hidden style={{ position: 'relative', height: 318, margin: '6px 0 0' }}>
+          {photos.map((p, i) => {
+            const f = fan[i];
+            return (
+              <span key={p} className="bb-rise" style={{
+                position: 'absolute', top: f.top, left: f.left, right: f.right, width: f.width, height: f.height, borderRadius: 14,
+                background: `center/cover no-repeat url("${p}")`, boxShadow: '0 14px 30px rgba(0,0,0,.35)',
+                transform: `${f.centered ? 'translateX(-50%) ' : ''}rotate(${f.rotate}deg)`, ...rise(i * 80),
+              }} />
+            );
+          })}
+        </div>
+        <div className="bb-rise" style={rise(100)}>
+          <h1 style={display(34, { margin: '10px 0 0', lineHeight: 1.12, color: '#fff', fontWeight: 300 })}>
+            {T('Những buổi nhỏ, đáng để ra ngoài.', 'Small events worth going out for.')}
+          </h1>
+          <p style={{ fontSize: 15, lineHeight: 1.5, margin: '10px 0 0', color: 'rgba(255,255,255,.82)' }}>
+            {T('Supper club, buổi nghe nhạc, triển lãm. Do host thật tổ chức, mỗi lần vài chỗ.', 'Supper clubs, listening sessions, openings. Run by real hosts, a few seats at a time.')}
+          </p>
+        </div>
+        <div className="bb-rise" style={{ marginTop: 'auto', paddingTop: 28, display: 'grid', gap: 8, ...rise(250) }}>
+          <button type="button" data-testid="onboarding-start" onClick={() => send('start')} className="bb-press"
+            style={{ height: 50, borderRadius: 999, border: 'none', background: '#fff', color: '#111', fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+            {T('Bắt đầu', 'Get started')}
+          </button>
+          <button type="button" data-testid="onboarding-skip-all" onClick={() => send('skipAll')} className="bb-press"
+            style={{ height: 50, borderRadius: 999, border: '1px solid rgba(255,255,255,.85)', background: 'transparent', color: '#fff', fontFamily: 'inherit', fontSize: 15, fontWeight: 500, cursor: 'pointer' }}>
+            {T('Bỏ qua, xem tất cả sự kiện', 'Skip, show me everything')}
+          </button>
+          <p style={{ fontSize: 12.5, textAlign: 'center', color: 'rgba(255,255,255,.65)', margin: '4px 0 0' }}>{T('3 câu hỏi, khoảng một phút', '3 questions, about a minute')}</p>
+        </div>
       </div>
     </div>
   );
@@ -190,19 +145,20 @@ function WelcomeStep({ send }) {
 
 // ---- one question per screen ----
 
-// [title, subtitle (one line), step name, hero emoji]. The first question greets by name (note 53: personal,
-// conversational, one short line under the title instead of a paragraph).
+// [title, subtitle (one line), step name, hero emoji]. HowBanbeWorks' quiz card reuses the interests entry.
 export const QUESTION_COPY = {
-  goals: [['Bạn muốn gì từ một buổi đi chơi?', 'What do you want from a night out?'], ['Chọn bao nhiêu cũng được.', 'Pick as many as you like.'], ['Mục tiêu', 'Goals'], '👋'],
-  interests: [['Loại sự kiện nào hợp với bạn?', 'Which kinds of events are you into?'], ['Chỉ những loại bạn chọn được gắn ★.', 'Only the kinds you pick get the ★.'], ['Sở thích', 'Interests'], '🎟️'],
-  availability: [['Bạn thường rảnh khi nào?', 'When are you usually free?'], ['Giờ khác vẫn hiện, chỉ xếp sau.', 'Other times still show, just lower.'], ['Thời gian', 'Time'], '🗓️'],
-  budget: [['Mỗi buổi bạn muốn chi khoảng bao nhiêu?', 'How much do you like to spend per event?'], ['Chọn một mức.', 'Pick one.'], ['Ngân sách', 'Budget'], '💸'],
-  languages: [['Bạn thoải mái với ngôn ngữ nào?', 'Which languages are you comfortable with?'], ['Không bắt buộc, chưa dùng để lọc.', "Optional, doesn't filter yet."], ['Ngôn ngữ', 'Language'], '💬'],
+  interests: [['Bạn thấy gì vui?', 'What sounds fun?'], ['Chọn bao nhiêu cũng được. Đây sẽ là gợi ý Dành cho bạn trên Trang chính.', 'Pick any. This becomes your For You on Home.'], ['Sở thích', 'Interests'], '🎟️'],
+  availability: [['Bạn thường rảnh khi nào?', 'When are you usually free?'], ['Chọn bao nhiêu cũng được. Giờ khác vẫn hiện, chỉ xếp sau.', 'Pick any. Other times still show, just lower down.'], ['Thời gian', 'Time'], '🗓️'],
+  budget: [['Giá vé bao nhiêu thì thoải mái?', 'A comfortable ticket price?'], ['Chọn một mức. Sự kiện đắt hơn sẽ không được gợi ý.', 'Pick one. Pricier events are left out of For You.'], ['Ngân sách', 'Budget'], '💸'],
 };
-// Short labels sit in a 2-column grid of emoji tiles; long ones (budget amounts, languages) stay as rows.
-const TILE_QUESTIONS = new Set(['goals', 'interests', 'availability']);
 
-/** An answer. Selected = tinted fill + ink outline + check badge + a bigger emoji; never solid ink (that's the CTA). */
+const AVAILABILITY_DETAIL = {
+  weekdays: ['Thứ Hai đến thứ Sáu', 'Monday to Friday'],
+  weekends: ['Thứ Bảy và Chủ nhật', 'Saturday and Sunday'],
+  daytime: ['Bắt đầu trước 17:00', 'Starts before 17:00'],
+  evening: ['Bắt đầu từ 17:00', 'Starts at 17:00 or later'],
+};
+
 export function ChoiceRow({ title, emoji, selected, onClick, testId, multi = true, tile = false }) {
   const check = (
     <span aria-hidden style={{
@@ -240,100 +196,227 @@ export function ChoiceRow({ title, emoji, selected, onClick, testId, multi = tru
   );
 }
 
-function QuestionStep({ flow, send }) {
+const selectedLook = (on) => ({
+  color: ink, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 16,
+  background: on ? muted(0.07) : 'var(--bb-field)', border: `${on ? 1.5 : 1}px solid ${on ? ink : 'var(--bb-rule)'}`,
+  transition: 'background .15s, border-color .15s',
+});
+
+function Tile({ emoji, title, detail, selected, onClick, testId, haspopup }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={haspopup ? undefined : selected} aria-haspopup={haspopup || undefined} data-testid={testId} className="bb-press"
+      style={{ ...selectedLook(selected), position: 'relative', minHeight: 96, padding: '12px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, textAlign: 'center' }}>
+      {selected && <span aria-hidden style={{ position: 'absolute', top: 6, right: 8, fontSize: 12 }}>✓</span>}
+      <span aria-hidden style={{ fontSize: 26, lineHeight: 1.1 }}>{emoji}</span>
+      <span style={{ fontSize: 13, fontWeight: selected ? 700 : 500, lineHeight: 1.25 }}>{title}</span>
+      {detail != null && <small style={{ fontSize: 11.5, color: muted(0.65) }}>{detail}</small>}
+    </button>
+  );
+}
+
+function CountRow({ title, detail, count, selected, onClick, testId, single }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={selected} data-testid={testId} className="bb-press"
+      style={{ ...selectedLook(selected), width: '100%', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', padding: '12px 16px', minHeight: 60 }}>
+      <span style={{ flex: 1 }}>
+        <span style={{ display: 'block', fontSize: 15, fontWeight: selected ? 700 : 500 }}>{title}</span>
+        {detail && <small style={{ display: 'block', fontSize: 12.5, opacity: 0.7, marginTop: 2 }}>{detail}</small>}
+      </span>
+      {count != null && <span data-testid={`${testId}-count`} style={{ fontSize: 12.5, opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>{count}</span>}
+      <span aria-hidden style={{ width: 22, height: 22, borderRadius: single ? 11 : 7, flex: 'none', display: 'grid', placeItems: 'center', fontSize: 13,
+        border: `1.5px solid ${selected ? ink : muted(0.3)}`, background: selected ? ink : 'transparent', color: paper }}>{selected ? '✓' : ''}</span>
+    </button>
+  );
+}
+
+/** "More types": every type, searchable. Types with events on now first (most first), then the rest A to Z. */
+function TypesPanel({ flow, send, counts, countsReady, onClose }) {
+  const { state: s, T } = useBanBe();
+  const vi = s.lang !== 'en';
+  const [query, setQuery] = useState('');
+  const inputRef = useRef(null);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const q = query.trim().toLowerCase();
+  const all = INTERESTS.filter(o => !q || o.vi.toLowerCase().includes(q) || o.en.toLowerCase().includes(q));
+  const label = (o) => (vi ? o.vi : o.en);
+  const live = all.filter(o => (counts[o.id] || 0) > 0).sort((a, b) => (counts[b.id] - counts[a.id]) || label(a).localeCompare(label(b)));
+  const rest = all.filter(o => !(counts[o.id] > 0)).sort((a, b) => label(a).localeCompare(label(b)));
+  const picked = flow.draft.interests || [];
+  const group = (text) => <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: muted(0.6), margin: '16px 0 4px' }}>{text}</div>;
+  const row = (o) => {
+    const on = picked.includes(o.id);
+    const n = counts[o.id] || 0;
+    return (
+      <button key={o.id} type="button" aria-pressed={on} data-testid={`onboarding-types-${o.id}`} onClick={() => send({ type: 'toggle', question: 'interests', id: o.id })}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, minHeight: 52, padding: 0, border: 'none', borderBottom: '1px solid var(--bb-rule)', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 15, cursor: 'pointer', textAlign: 'left' }}>
+        <span aria-hidden style={{ width: 32, fontSize: 20 }}>{optionEmoji(o.id)}</span>
+        <span style={{ flex: 1, fontWeight: on ? 600 : 400 }}>{label(o)}</span>
+        {countsReady && n > 0 && <small style={{ fontSize: 12.5, opacity: 0.65 }}>{evN(n, vi)}</small>}
+        <span aria-hidden style={{ width: 22, height: 22, borderRadius: 11, display: 'grid', placeItems: 'center', fontSize: 12, border: `1.5px solid ${on ? ink : muted(0.3)}`, background: on ? ink : 'transparent', color: paper }}>{on ? '✓' : ''}</span>
+      </button>
+    );
+  };
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 5 }}>
+      <div aria-hidden onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.4)' }} />
+      <div role="dialog" aria-modal="true" aria-labelledby="onboarding-types-title" data-testid="onboarding-types"
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 60, maxWidth: 480, margin: '0 auto', background: paper, color: ink, borderRadius: '26px 26px 0 0', display: 'flex', flexDirection: 'column', boxShadow: '0 -10px 40px rgba(0,0,0,.2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px 0' }}>
+          <h2 id="onboarding-types-title" style={{ fontSize: 19, fontWeight: 600, margin: 0 }}>{T('Mọi loại sự kiện', 'All types')}</h2>
+          <button type="button" data-testid="onboarding-types-done" onClick={onClose}
+            style={{ minHeight: 44, border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>{T('Xong', 'Done')}</button>
+        </div>
+        <div style={{ margin: '10px 20px', display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', minHeight: 44, borderRadius: 999, background: 'var(--bb-field)' }}>
+          <span aria-hidden style={{ opacity: 0.6 }}>⌕</span>
+          <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} data-testid="onboarding-types-search" autoComplete="off"
+            aria-label={T('Tìm loại sự kiện', 'Search event types')}
+            placeholder={T(`Tìm ${INTERESTS.length} loại`, `Search ${INTERESTS.length} types`)}
+            style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', color: ink, fontFamily: 'inherit', fontSize: 15, minHeight: 40 }} />
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 24px' }}>
+          {!live.length && !rest.length && (
+            <div style={{ padding: '24px 0' }}>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>{T(`Không có loại nào tên “${query}”`, `No type called “${query}”`)}</div>
+              <div style={{ fontSize: 14, opacity: 0.7, marginTop: 4 }}>{T('Thử một từ ngắn hơn.', 'Try a shorter word.')}</div>
+            </div>
+          )}
+          {live.length > 0 && <>{group(T('Đang có sự kiện', 'On now'))}{live.map(row)}</>}
+          {rest.length > 0 && <>{group(T('Các loại khác, A đến Z', 'More types, A to Z'))}{rest.map(row)}</>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuestionStep({ flow, send, cands, countsReady }) {
   const { state: s, T } = useBanBe();
   const vi = s.lang !== 'en';
   const q = QUESTIONS[flow.index];
-  const [[titleVi, titleEn], [subVi, subEn], , hero] = QUESTION_COPY[q];
+  const [[titleVi, titleEn], [subVi, subEn]] = QUESTION_COPY[q];
   const last = flow.index + 1 === QUESTIONS.length;
-  const picked = flow.draft[q];
-  const tiles = TILE_QUESTIONS.has(q);
-  // Slide in from the side we're moving towards (iOS parity: questions slide).
+  const draft = flow.draft;
+  const picked = q === 'budget' ? !!draft.budget : (draft[q] || []).length > 0;
+  const [typesOpen, setTypesOpen] = useState(false);
   const prevIndex = useRef(flow.index);
   const forward = flow.index >= prevIndex.current;
   useEffect(() => { prevIndex.current = flow.index; }, [flow.index]);
-  // Given name: last word of a Vietnamese name ("Nguyễn Văn An" -> An), first word in English.
-  const nameParts = flow.index === 0 ? String(s.user?.name || '').trim().split(/\s+/).filter(Boolean) : [];
-  const firstName = nameParts.length ? (vi ? nameParts[nameParts.length - 1] : nameParts[0]) : '';
-  const title = firstName
-    ? T(`Chào ${firstName}! ${titleVi}`, `Hi ${firstName}! ${titleEn}`)
-    : T(titleVi, titleEn);
-  // Head start (note 48): the account counts as done, so question 1 opens at 1/6 of the bar, not empty.
-  const pct = Math.round(((flow.index + 1) / (QUESTIONS.length + 1)) * 100);
-  const feedback = selectionFeedback(q, picked, vi);
+
+  const counts = useMemo(() => typeCounts(cands), [cands]);
+  const feedback = (() => {
+    if (!picked) return q === 'interests' ? T('Bỏ qua thì Dành cho bạn bắt đầu với những gì sắp diễn ra.', "Skip it and For You starts with what's on soon.") : '';
+    if (q === 'budget') {
+      const tier = draft.budget?.tier;
+      return tier === 'flexible' ? T('Đã ghi nhận. Không giới hạn giá.', 'Got it. No price limit.')
+        : tier === 'free' ? T('Đã ghi nhận. Chỉ sự kiện miễn phí.', 'Got it. Free events only.')
+          : T('Đã ghi nhận. Sự kiện đắt hơn sẽ bị bỏ ra.', 'Got it. Pricier events are left out.');
+    }
+    if (!countsReady) return '';
+    if (q === 'interests' && !(draft.interests || []).some(k => counts[k] > 0)) {
+      return T('Hiện chưa có buổi nào. Dành cho bạn sẽ bắt đầu với những gì sắp diễn ra, và các loại này hiện lên khi host đăng.',
+        "None on right now. For You starts with what's on soon, and these types show up as hosts post them.");
+    }
+    const n = matchCount(cands, draft);
+    if (n === 0) return T('Chưa có gì khớp hết. Dành cho bạn sẽ thêm gợi ý gần đúng.', 'Nothing fits all of that yet. For You will add close picks.');
+    if (n < MIN_FOR_YOU) return T(`${n} sự kiện khớp. Dành cho bạn sẽ thêm gợi ý gần đúng.`, `${n} ${n === 1 ? 'event fits' : 'events fit'} so far. For You will add close picks.`);
+    return T(`${n} sự kiện khớp đến giờ.`, `${n} events match so far.`);
+  })();
+
+  let options;
+  if (q === 'interests') {
+    const tiles = tileTypes(counts, k => typeLabel(k, vi));
+    const sel = draft.interests || [];
+    const extra = sel.filter(k => k !== NO_PREFERENCE && !tiles.includes(k));
+    options = (
+      <>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          {tiles.map(k => (
+            <Tile key={k} testId={`onboarding-option-${k}`} emoji={optionEmoji(k)} title={typeLabel(k, vi)} detail={countsReady ? evN(counts[k] || 0, vi) : null}
+              selected={sel.includes(k)} onClick={() => send({ type: 'toggle', question: 'interests', id: k })} />
+          ))}
+          <Tile testId="onboarding-more-types" emoji="🔍" title={T('Loại khác', 'More types')} haspopup="dialog" selected={extra.length > 0}
+            detail={extra.length ? T(`Đã chọn ${extra.length}`, `${extra.length} picked`) : T(`Tìm ${INTERESTS.length} loại`, `${INTERESTS.length} to search`)}
+            onClick={() => setTypesOpen(true)} />
+        </div>
+        {extra.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+            {extra.map(k => (
+              <button key={k} type="button" data-testid={`onboarding-chip-${k}`} onClick={() => send({ type: 'toggle', question: 'interests', id: k })}
+                aria-label={T(`Bỏ ${typeLabel(k, vi)}`, `Remove ${typeLabel(k, vi)}`)}
+                style={{ minHeight: 36, padding: '0 14px', borderRadius: 999, border: 'none', background: ink, color: paper, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                {typeLabel(k, vi)} ×
+              </button>
+            ))}
+          </div>
+        )}
+      </>
+    );
+  } else if (q === 'availability') {
+    options = (
+      <div style={{ display: 'grid', gap: 8 }}>
+        {AVAILABILITY.map(o => (
+          <CountRow key={o.id} testId={`onboarding-option-${o.id}`} title={vi ? o.vi : o.en} detail={T(...AVAILABILITY_DETAIL[o.id])}
+            count={countsReady ? evN(optionCount(cands, draft, 'availability', o.id, flow.region), vi) : null}
+            selected={!!draft.availability?.includes(o.id)} onClick={() => send({ type: 'toggle', question: 'availability', id: o.id })} />
+        ))}
+      </div>
+    );
+  } else {
+    options = (
+      <div style={{ display: 'grid', gap: 8 }}>
+        <div role="group" aria-label={T('Loại tiền', 'Currency')} style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 999, background: 'var(--bb-field)', marginBottom: 4 }}>
+          {BUDGET_REGIONS.map(r => (
+            <button key={r} type="button" aria-pressed={flow.region === r} data-testid={`onboarding-region-${r}`} onClick={() => send({ type: 'setRegion', region: r })}
+              style={{ flex: 1, minHeight: 36, borderRadius: 999, border: 'none', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: flow.region === r ? ink : 'transparent', color: flow.region === r ? paper : ink }}>
+              {r === 'US' ? 'USD' : 'VND'}
+            </button>
+          ))}
+        </div>
+        {BUDGET_TIERS.map(t => (
+          <CountRow key={t} single testId={`onboarding-option-${t}`}
+            title={t === 'flexible' ? T('Giá nào cũng được', "Price doesn't matter") : budgetTierLabel(flow.region, t, vi)}
+            count={countsReady ? evN(optionCount(cands, draft, 'budget', t, flow.region), vi) : null}
+            selected={draft.budget?.tier === t} onClick={() => send({ type: 'pickBudget', tier: t })} />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div data-testid={`onboarding-question-${q}`}>
-      {/* One compact progress line (note 53): back, the bar with "2/5", skip. Was three indicators. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-        <button type="button" onClick={() => send('back')} aria-label={T('Quay lại', 'Back')} data-testid="onboarding-back" className="bb-press"
-          style={{ background: 'none', border: 'none', color: ink, fontSize: 24, width: 44, height: 44, marginLeft: -12, cursor: 'pointer', flex: 'none' }}>‹</button>
-        <div data-testid="onboarding-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
-          aria-valuetext={T(`Câu ${flow.index + 1} trên ${QUESTIONS.length}`, `Question ${flow.index + 1} of ${QUESTIONS.length}`)}
-          style={{ flex: 1, height: 6, borderRadius: 999, background: muted(0.12), overflow: 'hidden' }}>
-          <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: ink, transition: 'width .35s cubic-bezier(.22,.61,.36,1)' }} />
-        </div>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: muted(0.7), fontVariantNumeric: 'tabular-nums', flex: 'none' }} data-testid="onboarding-counter">
-          {flow.index + 1}/{QUESTIONS.length}
-        </span>
-        <Button variant="tertiary" testId="onboarding-skip" label={T('Bỏ qua', 'Skip')} onClick={() => send('skipQuestion')} style={{ marginRight: -12, flex: 'none' }} />
-      </div>
-
+      <StepHeader label={T(`Câu ${flow.index + 1}/${QUESTIONS.length}`, `${flow.index + 1} of ${QUESTIONS.length}`)} step={flow.index} total={QUESTIONS.length}
+        backLabel={flow.index === 0 ? T('Chào mừng', 'Welcome') : T('Quay lại', 'Back')} onBack={() => send('back')} />
       <div key={q} className="bb-slide" style={{ animation: `${forward ? 'bbSlideFromRight' : 'bbSlideFromLeft'} .3s cubic-bezier(.22,.61,.36,1) both` }}>
-      <div aria-hidden style={{ fontSize: 52, lineHeight: 1, marginTop: 18 }}>{hero}</div>
-      <h1 style={display(26, { margin: '14px 0 0', lineHeight: 1.2 })}>{title}</h1>
-      <p style={{ fontSize: 14, lineHeight: 1.5, color: muted(0.7), margin: '6px 0 0' }}>{T(subVi, subEn)}</p>
-
-      <div style={tiles ? { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 22 } : { display: 'flex', flexDirection: 'column', gap: 10, marginTop: 22 }}>
-        {q === 'budget' ? (
-          <>
-            <div role="group" aria-label={T('Loại tiền', 'Currency')} style={{ display: 'inline-flex', alignSelf: 'flex-start', gap: 4, padding: 4, borderRadius: 999, background: 'var(--bb-field)', marginBottom: 4 }}>
-              {BUDGET_REGIONS.map(r => (
-                <button key={r} type="button" aria-pressed={flow.region === r} data-testid={`onboarding-region-${r}`} onClick={() => send({ type: 'setRegion', region: r })}
-                  style={{ border: 'none', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, padding: '7px 14px', borderRadius: 999, cursor: 'pointer', background: flow.region === r ? ink : 'transparent', color: flow.region === r ? paper : ink }}>
-                  {r === 'US' ? 'USD' : 'VND'}
-                </button>
-              ))}
-            </div>
-            {BUDGET_TIERS.map(t => (
-              <ChoiceRow key={t} multi={false} testId={`onboarding-option-${t}`} title={budgetTierLabel(flow.region, t, vi)} emoji={optionEmoji(t)}
-                selected={flow.draft.budget?.tier === t} onClick={() => send({ type: 'pickBudget', tier: t })} />
-            ))}
-            <ChoiceRow multi={false} testId={`onboarding-option-${NO_PREFERENCE}`} title={T('Không ưu tiên', 'No preference')} emoji={optionEmoji(NO_PREFERENCE)}
-              selected={flow.draft.budget?.tier === NO_PREFERENCE} onClick={() => send({ type: 'pickBudget', tier: NO_PREFERENCE })} />
-          </>
-        ) : (
-          <>
-            {questionOptions(q).map(o => (
-              <ChoiceRow key={o.id} tile={tiles} testId={`onboarding-option-${o.id}`} title={prefLabel(o.id, questionOptions(q), vi)} emoji={optionEmoji(o.id)}
-                selected={!!picked?.includes(o.id)} onClick={() => send({ type: 'toggle', question: q, id: o.id })} />
-            ))}
-            <div style={tiles ? { gridColumn: '1 / -1' } : undefined}>
-              <ChoiceRow testId={`onboarding-option-${NO_PREFERENCE}`} title={T('Không ưu tiên', 'No preference')} emoji={optionEmoji(NO_PREFERENCE)}
-                selected={!!picked?.includes(NO_PREFERENCE)} onClick={() => send({ type: 'toggle', question: q, id: NO_PREFERENCE })} />
-            </div>
-          </>
-        )}
-      </div>
-      {/* Live feedback (note 53): each tap answers with what it will do. Reserved height, so nothing jumps. */}
-      <p data-testid="onboarding-feedback" aria-live="polite" style={{ minHeight: 20, fontSize: 13, fontWeight: 600, lineHeight: 1.5, color: muted(0.75), margin: '14px 2px 0' }}>
-        {feedback || ''}
-      </p>
-      {last && <div style={{ marginTop: 10 }}><EventPrefsPrivacyNote /></div>}
+        <Eyebrow>{T('Dành cho bạn', 'For You')}</Eyebrow>
+        <h1 style={display(30, { margin: '8px 0 0', lineHeight: 1.12, fontWeight: 300 })}>{T(titleVi, titleEn)}</h1>
+        <p style={{ fontSize: 15, lineHeight: 1.5, color: muted(0.72), margin: '8px 0 22px' }}>{T(subVi, subEn)}</p>
+        {options}
+        <p data-testid="onboarding-feedback" aria-live="polite" style={{ minHeight: 20, fontSize: 13.5, fontWeight: 600, lineHeight: 1.5, color: 'var(--bb-moss, inherit)', margin: '14px 2px 0' }}>
+          {feedback}
+        </p>
       </div>
       <div style={{ marginTop: 18 }}>
-        <InkBtn testId="onboarding-next" label={last ? T('Xem gợi ý của tôi', 'See my picks') : T('Tiếp tục', 'Continue')} onClick={() => send('next')} />
+        <InkBtn testId="onboarding-next" enabled={picked} label={last ? T('Xem gợi ý của tôi', 'Show my picks') : T('Tiếp tục', 'Continue')} onClick={() => send('next')} />
+        <LinkBtn testId="onboarding-skip" label={T('Bỏ qua câu này', 'Skip this question')} onClick={() => send('skipQuestion')} />
       </div>
+      {typesOpen && q === 'interests' && (
+        <TypesPanel flow={flow} send={send} counts={counts} countsReady={countsReady} onClose={() => setTypesOpen(false)} />
+      )}
     </div>
   );
 }
 
 // ---- saving / failed ----
 
-function SavingStep() {
+function SavingStep({ label }) {
   const { T } = useBanBe();
   return (
     <div role="status" data-testid="onboarding-saving" style={{ padding: '120px 0', textAlign: 'center', fontSize: 14 }}>
-      {T('Đang lưu lựa chọn của bạn…', 'Saving your picks…')}
+      {label || T('Đang lưu lựa chọn của bạn…', 'Saving your picks…')}
     </div>
   );
 }
@@ -354,7 +437,24 @@ function SaveFailedStep({ send }) {
   );
 }
 
-// ---- personalized reveal (real matches, real ranking) ----
+/** The settings marker didn't save. The choices themselves are already written; only "done" is missing. */
+function SettingsFailedStep({ send }) {
+  const { T, set } = useBanBe();
+  return (
+    <div data-testid="onboarding-settings-failed">
+      <h1 style={display(26, { margin: '40px 0 0' })}>{T('Chưa hoàn tất được', "Couldn't finish setup yet")}</h1>
+      <p style={{ fontSize: 14, lineHeight: 1.55, margin: '10px 0 24px' }}>
+        {T('Lựa chọn của bạn đã được lưu. Thử lại, hoặc bỏ qua lúc này (bước này có thể hiện lại lần mở sau).',
+          'Your choices are saved. Retry, or skip for now (this step may come back next time you open the app).')}
+      </p>
+      <InkBtn testId="onboarding-settings-retry" label={T('Thử lại', 'Retry')} onClick={() => send('retrySettings')} />
+      {/* Session-only, as before: the server marker stays unset. */}
+      <LinkBtn testId="onboarding-settings-skip" label={T('Bỏ qua lúc này', 'Skip for now')} onClick={() => { set({ needsSettingsOnboarding: false }); send('skipSettingsForNow'); }} />
+    </div>
+  );
+}
+
+// ---- your For You (the reveal) ----
 
 // In the event's own zone (migration 195): a US event's 19:00 reads 19:00 here too.
 function revealWhen(startsAt, lang, timeZone) {
@@ -362,17 +462,15 @@ function revealWhen(startsAt, lang, timeZone) {
   return new Date(startsAt).toLocaleString(lang === 'en' ? 'en-GB' : 'vi-VN', { timeZone, weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-// The reveal is the peak of onboarding (note 53, peak-end rule): a short confetti burst when it lands, and the
-// natural next ask (♡ Save) right on the cards.
-function RevealStep({ flow, reveal, onContinue, onOpenEvent }) {
+/** The payoff before anything is asked. Never empty while any upcoming event exists; each case says which it is. */
+function RevealStep({ flow, send, cands }) {
   const { state: s, T, curArea, loadDiscoveryEvents, pickArea, isSaved, toggleFav } = useBanBe();
   const vi = s.lang !== 'en';
   const prefs = s.eventPrefs || normalizeForSave(flow.draft);
-  const lines = impactLines(prefs, vi);
-  const { matches, everywhereCount } = reveal;
+  const plan = useMemo(() => revealPlan(cands, prefs), [cands, prefs]);
+  const loading = !!s.discoveryEventsLoading && !(s.discoveryEvents || []).length;
+  const failed = !!s.discoveryEventsLoadFailed && !(s.discoveryEvents || []).length;
   const areaLimited = curArea.key !== LOCATION_ALL;
-  const failed = s.discoveryEventsLoadFailed && !(s.discoveryEvents || []).length;
-  const loading = !!s.discoveryEventsLoading;
   const trackedRef = useRef(false);
 
   useEffect(() => {
@@ -382,31 +480,39 @@ function RevealStep({ flow, reveal, onContinue, onOpenEvent }) {
   useEffect(() => {
     if (trackedRef.current || loading || failed) return;
     trackedRef.current = true;
-    track('personalized_results_viewed', { match_bucket: matchBucket(matches.length) });
-  }, [loading, failed, matches.length]);
+    track('personalized_results_viewed', { match_bucket: matchBucket(plan.exact) });
+  }, [loading, failed, plan.exact]);
 
+  const names = (ids, or) => joinTypes(ids, vi, or);
+  const title = loading ? T('Đang tìm sự kiện cho bạn…', 'Finding your events…')
+    : plan.mode === 'popular' ? T('Đây là những gì sắp diễn ra', "Here's what's on soon")
+      : plan.mode === 'soon' ? T(`Chưa có buổi ${names(plan.waiting)} nào`, `Nothing on for ${names(plan.waiting)} right now`)
+        : plan.mode === 'topped' ? (plan.exact === 0 ? T('Chưa có gì khớp mọi câu trả lời', 'Nothing fits every answer yet')
+          : T(`${plan.exact} sự kiện khớp, và vài buổi tương tự`, `${plan.exact} close ${plan.exact === 1 ? 'match' : 'matches'}, and more like ${plan.exact === 1 ? 'it' : 'them'}`))
+          : T(`${plan.exact} sự kiện chọn cho bạn`, `${plan.exact} events picked for you`);
+  const later = plan.waiting.length && plan.mode !== 'soon'
+    ? T(` Hiện chưa có buổi ${names(plan.waiting, true)}; chúng sẽ hiện khi host đăng.`, ` Nothing is on for ${names(plan.waiting, true)} yet; those show up as hosts post them.`) : '';
+  const sub = plan.mode === 'popular'
+    ? T('Bạn bỏ qua phần sở thích, nên danh sách bắt đầu với các sự kiện sớm nhất. Trả lời lúc nào cũng được trong Tài khoản › Sở thích sự kiện.',
+      'You skipped what you like, so this starts with the soonest events. Answer any time in Account › Event preferences.')
+    : plan.mode === 'soon'
+      ? T(`Trong lúc chờ, đây là những sự kiện sớm nhất. Khi host đăng một buổi ${names(plan.waiting, true)}, nó sẽ được gợi ý trước.`,
+        `Meanwhile, here are the soonest events. When a host posts ${names(plan.waiting, true)}, it's suggested first.`)
+      : plan.mode === 'topped'
+        ? T(`${plan.exact ? 'Chỉ vài sự kiện khớp mọi câu trả lời lúc này, nên' : 'Câu trả lời của bạn hơi hẹp lúc này, nên'} danh sách thêm các buổi ${names(plan.live)} khác, rồi đến những gì sắp diễn ra. Buổi khớp nhất luôn đứng đầu.`,
+          `${plan.exact ? 'Only a few events fit all your answers right now, so' : 'Your answers are narrow right now, so'} this also shows other ${names(plan.live)} events, then what's on soon. Exact matches stay first.`) + later
+        : T(`Chọn từ những gì bạn thích: ${names(plan.live)}. Bật ★ Dành cho bạn trên Trang chính để chỉ xem chúng.`,
+          `Picked from what you like: ${names(plan.live)}. Turn on ★ For You on Home to see only these.`) + later;
+  const redo = plan.mode === 'popular' ? T('Trả lời các câu hỏi', 'Answer the questions')
+    : plan.mode === 'picked' ? T('Đổi câu trả lời', 'Change my answers') : T('Chọn loại khác', 'Pick other types');
   const byKey = new Map((s.discoveryEvents || []).map(e => [e.key, e]));
-  const cta = flow.needsSettings ? T('Tiếp tục', 'Continue') : matches.length ? T('Xem gợi ý cho tôi', 'Show my picks') : T('Xem tất cả sự kiện', 'See all events');
-  const areaSuffix = (viTxt) => (areaLimited ? (viTxt ? ` ở ${curArea.label}` : ` in ${curArea.label}`) : '');
 
   return (
-    <div data-testid="onboarding-reveal" style={{ position: 'relative' }}>
-      {!loading && !failed && matches.length > 0 && <ConfettiBurst />}
-      <div aria-hidden style={{ fontSize: 44, lineHeight: 1 }}>{!loading && !failed && matches.length > 0 ? '🎉' : '✨'}</div>
-      <h1 style={display(30, { margin: '12px 0 0', lineHeight: 1.15 })}>{T('Đây là những gì hợp với bạn', "Here's what fits you")}</h1>
-      <div data-testid="onboarding-reveal-impacts" style={{ background: 'var(--bb-field)', borderRadius: 20, padding: 16, marginTop: 18 }}>
-        <div style={{ fontSize: 14, fontWeight: 600 }}>{T('Câu trả lời của bạn thay đổi gì', 'What your answers change')}</div>
-        {lines.length === 0 && (
-          <p style={{ fontSize: 13.5, margin: '8px 0 0' }}>{T('Chưa lọc gì cả: bạn chọn "Không ưu tiên" nên mọi sự kiện đều hiện như bình thường.', 'Nothing is filtered: you chose "No preference", so every event shows as usual.')}</p>
-        )}
-        {lines.map((l, i) => (
-          <div key={i} style={{ display: 'flex', gap: 10, marginTop: 10, fontSize: 13.5, lineHeight: 1.45 }}>
-            <span aria-hidden style={{ width: 20, textAlign: 'center' }}>{l.kind === 'filter' ? '🎯' : l.kind === 'ranking' ? '⬆️' : '🔖'}</span>
-            <span>{l.text}</span>
-          </div>
-        ))}
-      </div>
-
+    <div data-testid="onboarding-reveal" data-mode={plan.mode} style={{ position: 'relative' }}>
+      {!loading && !failed && plan.mode === 'picked' && <ConfettiBurst />}
+      <Eyebrow>{T('Dành cho bạn', 'Your For You')}</Eyebrow>
+      <h1 data-testid="onboarding-reveal-title" style={display(30, { margin: '8px 0 0', lineHeight: 1.12, fontWeight: 300 })}>{title}</h1>
+      {!loading && !failed && <p data-testid="onboarding-reveal-sub" style={{ fontSize: 15, lineHeight: 1.5, color: muted(0.75), margin: '8px 0 0' }}>{sub}</p>}
       <div style={{ marginTop: 22 }}>
         {loading ? (
           <p role="status" data-testid="onboarding-reveal-loading" style={{ fontSize: 14, textAlign: 'center', padding: '40px 0' }}>{T('Đang tìm sự kiện hợp với bạn…', 'Finding events that fit…')}</p>
@@ -415,55 +521,150 @@ function RevealStep({ flow, reveal, onContinue, onOpenEvent }) {
             <p style={{ fontSize: 14, margin: 0 }}>{T('Chưa tải được sự kiện. Lựa chọn của bạn đã được lưu.', "Couldn't load events right now. Your answers are saved.")}</p>
             <LinkBtn testId="onboarding-reveal-retry" label={T('Thử lại', 'Try again')} onClick={loadDiscoveryEvents} />
           </div>
-        ) : matches.length === 0 ? (
+        ) : !plan.keys.length ? (
           <div>
             <div data-testid="onboarding-reveal-empty" style={{ fontSize: 16, fontWeight: 600 }}>
-              {T(`Hiện chưa có sự kiện sắp tới nào khớp${areaSuffix(true)}.`, `No upcoming events match yet${areaSuffix(false)}.`)}
+              {T(`Hiện chưa có sự kiện sắp tới nào${areaLimited ? ` ở ${curArea.label}` : ''}.`, `No upcoming events yet${areaLimited ? ` in ${curArea.label}` : ''}.`)}
             </div>
-            <p style={{ fontSize: 13.5, color: muted(0.75), margin: '8px 0 0' }}>
-              {T('Khi có sự kiện hợp, chip ★ Dành cho bạn sẽ hiện trên trang chủ. Bạn có thể nới lựa chọn trong Tài khoản > Sở thích sự kiện.',
-                'When one does, the ★ For You chip shows up on Home. You can loosen your answers in Account > Event preferences.')}
-            </p>
-            {areaLimited && everywhereCount > 0 && (
-              <LinkBtn testId="onboarding-reveal-all-areas" label={T(`Xem ở mọi khu vực (${everywhereCount})`, `Look in all areas (${everywhereCount})`)} onClick={() => pickArea(LOCATION_ALL)} />
-            )}
+            {areaLimited && <LinkBtn testId="onboarding-reveal-all-areas" label={T('Xem ở mọi khu vực', 'Look in all areas')} onClick={() => pickArea(LOCATION_ALL)} />}
           </div>
         ) : (
-          <div>
-            <div data-testid="onboarding-reveal-count" style={{ fontSize: 16, fontWeight: 600 }}>
-              {T(`${matches.length} sự kiện sắp tới hợp với bạn${areaSuffix(true)}`, `${matches.length} upcoming event${matches.length === 1 ? '' : 's'} fit you${areaSuffix(false)}`)}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-              {matches.slice(0, 3).map(m => {
-                const e = byKey.get(m.key);
-                if (!e) return null;
-                const saved = isSaved(e.key);
-                return (
-                  <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 4, borderRadius: 16, background: 'var(--bb-field)', paddingRight: 4 }}>
-                    <button type="button" onClick={() => onOpenEvent(e.key)} data-testid="onboarding-reveal-event" className="bb-press"
-                      style={{ flex: 1, minWidth: 0, display: 'flex', gap: 12, alignItems: 'center', textAlign: 'left', fontFamily: 'inherit', color: ink, padding: 10, borderRadius: 16, border: 'none', background: 'none', cursor: 'pointer' }}>
-                      <span aria-hidden style={{ width: 72, height: 72, borderRadius: 12, flex: '0 0 auto', background: e.photoUrl ? `center/cover no-repeat url("${e.photoUrl}")` : muted(0.08) }} />
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}><span aria-hidden style={{ color: '#CC9E29' }}>★ </span>{e.name}</span>
-                        <span style={{ display: 'block', fontSize: 12.5, opacity: 0.75, marginTop: 3 }}>{revealWhen(e.startsAt, s.lang, rowTimeZone(e))}</span>
-                        <span style={{ display: 'block', fontSize: 12.5, opacity: 0.75 }}>{e.priceVnd ? formatMoney(e.priceVnd, rowCurrency(e)) : T('Miễn phí', 'Free')}</span>
-                      </span>
-                    </button>
+          <div data-testid="onboarding-reveal-rail" style={{ display: 'flex', gap: 12, overflowX: 'auto', margin: '0 -24px', padding: '0 24px 4px', scrollbarWidth: 'none' }}>
+            {plan.keys.map(k => {
+              const e = byKey.get(k);
+              if (!e) return null;
+              const saved = isSaved(e.key);
+              return (
+                <div key={k} data-testid="onboarding-reveal-event" style={{ flex: '0 0 180px' }}>
+                  <div style={{ position: 'relative', height: 210, borderRadius: 14, background: e.photoUrl ? `center/cover no-repeat url("${e.photoUrl}")` : muted(0.08) }}>
                     {/* The ask inside the peak: keep the ones you like, one tap. */}
                     <button type="button" onClick={() => toggleFav(e.key)} aria-pressed={saved} data-testid="onboarding-reveal-save" className="bb-press"
                       aria-label={saved ? T(`Bỏ lưu ${e.name}`, `Unsave ${e.name}`) : T(`Lưu ${e.name}`, `Save ${e.name}`)}
-                      style={{ flex: 'none', width: 44, height: 44, borderRadius: 999, border: 'none', background: saved ? 'var(--bb-clay-bg)' : 'transparent', color: saved ? 'var(--bb-clay)' : ink, fontSize: 20, cursor: 'pointer' }}>
+                      style={{ position: 'absolute', top: 4, right: 4, width: 44, height: 44, borderRadius: 999, border: 'none', background: 'rgba(247,244,236,.92)', color: saved ? 'var(--bb-clay)' : '#1B1916', fontSize: 19, cursor: 'pointer' }}>
                       {saved ? '♥' : '♡'}
                     </button>
                   </div>
-                );
-              })}
-            </div>
+                  <div style={{ fontSize: 14, fontWeight: 600, marginTop: 8, lineHeight: 1.3 }}>{e.name}</div>
+                  <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>
+                    {revealWhen(e.startsAt, s.lang, rowTimeZone(e))} · {e.priceVnd ? formatMoney(e.priceVnd, rowCurrency(e)) : T('Miễn phí', 'Free')}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
       <div style={{ marginTop: 26 }}>
-        <InkBtn testId="onboarding-reveal-continue" enabled={!loading} label={cta} onClick={onContinue} />
+        <InkBtn testId="onboarding-reveal-continue" enabled={!loading} label={T('Tiếp tục', 'Continue')} onClick={() => send('revealContinue')} />
+        <LinkBtn testId="onboarding-reveal-redo" label={redo} onClick={() => send('redoAnswers')} />
+      </div>
+    </div>
+  );
+}
+
+// ---- one choice per screen ----
+
+const CONSENT_COPY = {
+  push: {
+    icon: '🔔', eb: ['Thông báo', 'Notifications'], t: ['Biết khi nào cần đi', "Know when it's time to go"],
+    lead: ['banbe có thể báo khi có gì mới với vé, thanh toán và tin nhắn của bạn.', 'banbe can tell you when something happens with your tickets, payments and messages.'],
+    ticks: [['Chỉ về vé, thanh toán và tin nhắn của bạn', 'Only about your own tickets, payments and messages'], ['Thông báo quảng bá vẫn tắt trừ khi bạn bật', 'Promotional pushes stay off unless you turn them on']],
+    fine: ['Tiếp theo, trình duyệt sẽ hỏi. Bạn quyết định ở đó.', 'Next, your browser asks. You decide there.'],
+  },
+  digest: {
+    icon: '✉️', eb: ['Bản tin', 'Weekly digest'], t: ['Sự kiện cuối tuần, mỗi tuần một lần', "This weekend's events, once a week"],
+    lead: ['Một bản tin ngắn tối thứ Năm với các sự kiện cuối tuần.', "A short digest on Thursday evening with the weekend's events."],
+    ticks: [['Mỗi tuần một lần, tối thứ Năm', 'Once a week, Thursday evening'], ['Là tin quảng bá, nên tắt trừ khi bạn đồng ý', "It's promotional, so it stays off unless you say yes"], ['Đổi trong Tài khoản › Cài đặt › Thông báo', 'Change it in Account › Settings › Notifications']],
+    fine: ['Tiếp tục để bật. Để sau thì vẫn tắt.', 'Continue turns this on. Not now keeps it off.'],
+  },
+  hosting: {
+    icon: '🏪', eb: ['Tổ chức', 'Hosting'], t: ['Muốn tự tổ chức sự kiện?', 'Want to host your own events?'],
+    lead: ['Chế độ tổ chức thêm công cụ để tạo sự kiện, check-in khách và nhận tiền.', 'Hosting mode adds the tools to create events, check guests in and get paid.'],
+    ticks: [['Tạo sự kiện trong khoảng 5 phút', 'Create an event in about 5 minutes'], ['Phần đi chơi vẫn y như cũ', 'Going out stays exactly the same']],
+    fine: ['Tiếp tục để bật chế độ tổ chức. Để sau thì ứng dụng gọn hơn.', 'Continue turns on Hosting mode. Not now keeps the app simpler.'],
+  },
+};
+
+function ConsentStep({ flow, busy, onAnswer }) {
+  const { state: s, T } = useBanBe();
+  const kind = currentConsent(flow);
+  const c = CONSENT_COPY[kind];
+  const simple = flagOn(s.featureFlags, 'simple_shell');
+  const ticks = kind === 'hosting'
+    ? [...c.ticks, simple ? ['Tắt lúc nào cũng được, ngay trên Trang chính', 'Switch it off any time, right on Home'] : ['Tắt lúc nào cũng được, trong Tài khoản', 'Switch it off any time, in Account']]
+    : c.ticks;
+  return (
+    <div data-testid={`onboarding-consent-${kind}`}>
+      <StepHeader label={T(`Lựa chọn ${flow.index + 1}/${flow.consents.length}`, `Choice ${flow.index + 1} of ${flow.consents.length}`)} step={flow.index} total={flow.consents.length} />
+      <div key={kind} className="bb-slide" style={{ animation: 'bbSlideFromRight .3s cubic-bezier(.22,.61,.36,1) both' }}>
+        <div aria-hidden style={{ fontSize: 30, marginTop: 18 }}>{c.icon}</div>
+        <Eyebrow style={{ marginTop: 16 }}>{T(...c.eb)}</Eyebrow>
+        <h1 style={display(30, { margin: '8px 0 0', lineHeight: 1.12, fontWeight: 300 })}>{T(...c.t)}</h1>
+        <p style={{ fontSize: 15, lineHeight: 1.5, color: muted(0.75), margin: '8px 0 0' }}>{T(...c.lead)}</p>
+        <ul style={{ listStyle: 'none', padding: 0, margin: '22px 0 0' }}>
+          {ticks.map(t => (
+            <li key={t[1]} style={{ display: 'flex', gap: 12, padding: '12px 0', borderTop: '1px solid var(--bb-rule)', fontSize: 14, lineHeight: 1.45 }}>
+              <span aria-hidden style={{ fontWeight: 700 }}>✓</span><span>{T(...t)}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div style={{ marginTop: 22 }}>
+        <InkBtn testId="onboarding-consent-continue" enabled={!busy} label={busy ? T('Đang lưu…', 'Saving…') : T('Tiếp tục', 'Continue')} onClick={() => onAnswer(true)} />
+        {/* Same size as Continue: saying no is as easy as saying yes. */}
+        {!consentAsksSystem(kind) && (
+          <SecondaryBtn testId="onboarding-consent-not-now" disabled={busy} label={T('Để sau', 'Not now')} onClick={() => onAnswer(false)} />
+        )}
+        <p style={{ fontSize: 12.5, textAlign: 'center', color: muted(0.65), margin: '10px 0 0' }}>{T(...c.fine)}</p>
+      </div>
+    </div>
+  );
+}
+
+// ---- recap and the tour offer ----
+
+function RecapStep({ flow, send }) {
+  const { state: s, T } = useBanBe();
+  const simple = flagOn(s.featureFlags, 'simple_shell');
+  const chapters = tourPlan({ organizerMode: !!s.organizerMode, simpleShell: simple }).map(c => c.chapter);
+  const p = flowPayload(flow) || (s.eventPrefs && Object.keys(normalizeForSave(s.eventPrefs)).length > 1 ? s.eventPrefs : null);
+  const nTypes = (p?.interests || []).filter(x => x !== NO_PREFERENCE).length;
+  const forYou = !p ? null : nTypes ? T(`${nTypes} loại`, `${nTypes} ${nTypes === 1 ? 'type' : 'types'}`) : T('Đã lưu', 'Saved');
+  const row = (id, icon, title, where, value, on) => (
+    <div data-testid={`onboarding-recap-${id}`} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 0', borderBottom: '1px solid var(--bb-rule)' }}>
+      <span aria-hidden style={{ width: 24, textAlign: 'center' }}>{icon}</span>
+      <span style={{ flex: 1 }}>
+        <span style={{ display: 'block', fontSize: 15 }}>{title}</span>
+        <small style={{ display: 'block', fontSize: 12, color: muted(0.62) }}>{where}</small>
+      </span>
+      <span data-testid={`onboarding-recap-${id}-value`} style={{ fontSize: 14, fontWeight: on ? 600 : 400, color: on ? ink : muted(0.62) }}>{value}</span>
+    </div>
+  );
+  return (
+    <div data-testid="onboarding-recap">
+      <Eyebrow style={{ marginTop: 6 }}>{T('Xong', 'Done')}</Eyebrow>
+      <h1 style={display(30, { margin: '8px 0 0', fontWeight: 300 })}>{T('Bạn đã sẵn sàng', "You're all set")}</h1>
+      <p style={{ fontSize: 15, color: muted(0.75), margin: '8px 0 0' }}>{T('Đây là những gì bạn chọn. Đổi lúc nào cũng được.', "Here's what you chose. All of it can change later.")}</p>
+      <div style={{ marginTop: 20 }}>
+        {row('foryou', '✨', T('Dành cho bạn', 'For You'), T('Tài khoản › Sở thích sự kiện', 'Account › Event preferences'), forYou || T('Chưa đặt', 'Not set yet'), !!forYou)}
+        {flow.consents.includes('digest') && row('digest', '✉️', T('Bản tin cuối tuần', 'Weekly digest'), T('Tài khoản › Cài đặt › Thông báo', 'Account › Settings › Notifications'),
+          flow.choices.digest ? T('Bật', 'On') : T('Tắt', 'Off'), !!flow.choices.digest)}
+        {row('hosting', '🏪', T('Chế độ tổ chức', 'Hosting mode'), simple ? T('Trang chính, nút Tổ chức', 'Home, the Hosting switch') : T('Tài khoản, dưới tên bạn', 'Account, under your name'),
+          s.organizerMode ? T('Bật', 'On') : T('Tắt', 'Off'), !!s.organizerMode)}
+      </div>
+      <div style={{ marginTop: 22, padding: 18, borderRadius: 16, background: 'var(--bb-field)' }}>
+        <div style={{ fontSize: 16, fontWeight: 500 }}>{T('Xem hướng dẫn, khoảng 2 phút', 'Take the tour, about 2 minutes')}</div>
+        <div style={{ fontSize: 13.5, lineHeight: 1.5, color: muted(0.75), marginTop: 4 }}>
+          {T(`${chapters.length} chương ngắn trên chính các màn hình thật. Chỉ đi tới, và bạn có thể dừng sau mỗi chương.`,
+            `${chapters.length} short chapters on the real screens. It only goes forward, and you can stop after any chapter.`)}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+          {chapters.map(c => <span key={c.id} style={{ fontSize: 12, fontWeight: 600, padding: '5px 10px', borderRadius: 999, background: paper }}>{T(...c.name)}</span>)}
+        </div>
+      </div>
+      <div style={{ marginTop: 22 }}>
+        <InkBtn testId="onboarding-recap-tour" label={T('Bắt đầu hướng dẫn', 'Start the tour')} onClick={() => send('startTour')} />
+        <LinkBtn testId="onboarding-recap-home" label={T('Bỏ qua, về Trang chính', 'Skip, go to Home')} onClick={() => send('skipTour')} />
       </div>
     </div>
   );
@@ -471,22 +672,34 @@ function RevealStep({ flow, reveal, onContinue, onOpenEvent }) {
 
 // ---- the flow ----
 
+/** The choice screens this run can honestly show, decided once when the flow opens. */
+function consentsFor(s) {
+  if (!s.needsSettingsOnboarding) return [];
+  const out = [];
+  if (flagOn(s.featureFlags, 'weekly_digest')) out.push('digest');
+  if (!s.organizerMode) out.push('hosting');
+  return out;
+}
+
 function OnboardingFlowRunner() {
-  const { state: s, set, curArea, completePreferencesOnboarding, finishOnboardingFlow } = useBanBe();
+  const { state: s, set, curArea, loadDiscoveryEvents, completePreferencesOnboarding, saveEventPreferences, completeSettingsOnboarding, applyOrganizerMode, finishOnboardingFlow } = useBanBe();
   const uid = s.user?.id;
   const [flow, setFlow] = useState(() => draftStore.resume(uid, {
-    needsPreferences: s.needsPreferencesOnboarding, needsSettings: s.needsSettingsOnboarding, region: budgetRegionDefault(),
+    needsPreferences: s.needsPreferencesOnboarding, needsSettings: s.needsSettingsOnboarding, region: budgetRegionDefault(), consents: consentsFor(s),
   }));
+  const [consentBusy, setConsentBusy] = useState(false);
   const flowRef = useRef(flow);
   flowRef.current = flow;
-  const pendingEventRef = useRef(null);
   const finishedRef = useRef(false);
+  const live = useRef({});
+  live.current = { needsPreferences: s.needsPreferencesOnboarding };
 
-  // Keep the overlay up through the reveal even after the server markers clear — but never re-arm it once the
-  // flow has finished (finishOnboardingFlow clears the flag while this runner is still mounted).
+  // Keep the overlay up through the recap even after the server markers clear, but never re-arm it once the flow
+  // has finished (finishOnboardingFlow clears the flag while this runner is still mounted).
   useEffect(() => {
     if (!s.onboardingFlowActive && flow.stage !== 'finished' && !finishedRef.current) set({ onboardingFlowActive: true });
   }, [s.onboardingFlowActive, flow.stage, set]);
+
   useEffect(() => { draftStore.save(flow, uid); }, [flow, uid]);
 
   const send = (action) => {
@@ -496,40 +709,71 @@ function OnboardingFlowRunner() {
     for (const e of effects) {
       if (e.type === 'track') track(e.name, e.props);
       if (e.type === 'save') {
-        completePreferencesOnboarding(e.payload).then(ok => send(ok ? 'saveSucceeded' : 'saveFailed'));
+        // "Change my answers" after the first save: the marker is already set, so a plain save (skipping every
+        // question there keeps the answers already saved).
+        const save = live.current.needsPreferences ? completePreferencesOnboarding(e.payload)
+          : e.payload ? saveEventPreferences(e.payload) : Promise.resolve(true);
+        save.then(ok => send(ok ? 'saveSucceeded' : 'saveFailed'));
       }
+      if (e.type === 'completeSettings') completeSettingsOnboarding().then(ok => send(ok ? 'settingsSucceeded' : 'settingsFailed'));
     }
   };
 
-  const prefs = s.eventPrefs || normalizeForSave(flow.draft);
-  const reveal = useMemo(
-    () => revealMatches(s.discoveryEvents, prefs, curArea.key === LOCATION_ALL ? null : curArea.match),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [s.discoveryEvents, s.eventPrefs, s.eventPrefsVersion, flow.draft, curArea],
-  );
+  // A flow that opens on work (only the settings marker is owed and there's nothing to ask) starts it here.
+  useEffect(() => {
+    if (flow.stage === 'settingsSaving') completeSettingsOnboarding().then(ok => send(ok ? 'settingsSucceeded' : 'settingsFailed'));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** A choice screen's button. Continue writes the setting; Not now writes nothing (every choice is already off). */
+  const answer = async (yes) => {
+    const kind = currentConsent(flowRef.current);
+    if (!kind || consentBusy) return;
+    if (!yes) { send({ type: 'consentAnswered', kind, on: false }); return; }
+    setConsentBusy(true);
+    let on = false;
+    try {
+      if (kind === 'digest') {
+        const { data, error } = await supabase.rpc('set_my_digest_opt_in', { p_enabled: true }).then(r => r, () => ({ data: null, error: true }));
+        on = !error && data?.success === true;
+      } else if (kind === 'hosting') {
+        on = !!(await applyOrganizerMode(true));
+      }
+    } finally { setConsentBusy(false); }
+    send({ type: 'consentAnswered', kind, on });
+  };
+
+  const areaMatch = curArea.key === LOCATION_ALL ? null : curArea.match;
+  const cands = useMemo(() => onboardingCandidates(s.discoveryEvents, areaMatch), [s.discoveryEvents, areaMatch]);
+  const countsReady = (s.discoveryEvents || []).length > 0;
+
+  useEffect(() => {
+    if (flow.stage === 'question' && !(s.discoveryEvents || []).length && !s.discoveryEventsLoading && !s.discoveryEventsLoadFailed) loadDiscoveryEvents();
+  }, [flow.stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Hand-off once the flow is done: the overlay closes, For You turns on only with real matches.
+  const exactMatches = useMemo(() => {
+    const prefs = s.eventPrefs || normalizeForSave(flow.draft);
+    return revealPlan(cands, prefs).exact;
+  }, [cands, s.eventPrefs, flow.draft]);
   useEffect(() => {
     if (flow.stage !== 'finished' || finishedRef.current) return;
     finishedRef.current = true;
     draftStore.clear(uid);
     const answered = flowPayload(flow) != null;
-    finishOnboardingFlow({ showForYou: answered, hasMatches: reveal.matches.length > 0, openEventKey: pendingEventRef.current, answeredPreferences: answered });
-  }, [flow, uid, reveal.matches.length, finishOnboardingFlow]);
+    finishOnboardingFlow({ showForYou: answered, hasMatches: exactMatches > 0, openEventKey: null, answeredPreferences: answered, startTour: flow.tourRequested });
+  }, [flow, uid, exactMatches, finishOnboardingFlow]);
 
-  const settingsTotal = flow.needsPreferences || s.needsPreferencesOnboarding ? 2 : 1;
   switch (flow.stage) {
     case 'welcome': return <WelcomeStep send={send} />;
-    case 'question': return <QuestionStep flow={flow} send={send} />;
+    case 'question': return <QuestionStep flow={flow} send={send} cands={cands} countsReady={countsReady} />;
     case 'saving': return <SavingStep />;
     case 'saveFailed': return <SaveFailedStep send={send} />;
-    case 'reveal':
-      return (
-        <RevealStep flow={flow} reveal={reveal}
-          onContinue={() => send('revealContinue')}
-          onOpenEvent={(key) => { pendingEventRef.current = key; send('revealContinue'); }} />
-      );
-    case 'settings': return <SettingsStep onDone={() => send('settingsDone')} stepIndex={settingsTotal} stepTotal={settingsTotal} />;
+    case 'reveal': return <RevealStep flow={flow} send={send} cands={cands} />;
+    case 'consent': return <ConsentStep flow={flow} busy={consentBusy} onAnswer={answer} />;
+    case 'settingsSaving': return <SavingStep label={s.lang === 'en' ? 'Saving your choices…' : 'Đang lưu lựa chọn của bạn…'} />;
+    case 'settingsFailed': return <SettingsFailedStep send={send} />;
+    case 'recap': return <RecapStep flow={flow} send={send} />;
     default: return null;
   }
 }
@@ -541,7 +785,7 @@ export default function EventOnboarding() {
   // While the (existing) area sheet is open from the reveal, step aside without unmounting so the flow survives.
   return (
     <div data-testid="event-onboarding-overlay" style={{ position: 'fixed', inset: 0, zIndex: 1900, background: paper, overflowY: 'auto', display: s.areaAsking ? 'none' : 'block', animation: 'banbeFade 0.25s ease both' }}>
-      <div style={{ maxWidth: 480, margin: '0 auto', padding: '48px 24px 42px', boxSizing: 'border-box', color: ink }}>
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '40px 24px 42px', boxSizing: 'border-box', color: ink }}>
         <OnboardingFlowRunner key={s.user?.id || 'none'} />
       </div>
     </div>

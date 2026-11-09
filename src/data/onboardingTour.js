@@ -1,4 +1,4 @@
-// Onboarding Version 3: the guided tour over the real app (note 64). iOS twin: Models/OnboardingTourContent.swift —
+// The guided tour over the real app (note 64), forward-only chapters since onboarding v5 (note 80). iOS twin: Models/OnboardingTourContent.swift —
 // tests/unit/onboardingTour.test.mjs checks both have the same step ids, targets, screens and order.
 //
 // Each step points at a REAL control by a stable target id. Web resolves the id to an existing data-testid (the
@@ -9,50 +9,50 @@
 export const TOUR_STEPS = [
   {
     id: 'home.search', target: 'tour.home.search', screen: 'home', placement: 'below',
-    vi: ['Tìm mọi thứ ở đây', 'Gõ tên sự kiện, host hay khu vực. Kết quả hiện ngay khi bạn gõ.'],
-    en: ['Find anything here', 'Type an event, a host or an area. Results show up as you type.'],
+    vi: ['Tìm kiếm và khu vực', 'Tìm sự kiện, host hay địa điểm. Mọi danh sách trên Trang chính đều theo khu vực bạn chọn.'],
+    en: ['Search and area', 'Search events, hosts or places. Every list on Home follows the area you pick.'],
     short: ['Tìm kiếm', 'Search'],
   },
   {
     id: 'home.forYou', target: 'tour.home.forYou', screen: 'home', placement: 'below',
-    vi: ['Dành cho bạn', 'Lọc theo câu trả lời của bạn lúc bắt đầu. Chấm vàng nghĩa là có gợi ý mới.'],
-    en: ['For You', 'Filters by the answers you gave at the start. A gold dot means there are new picks.'],
+    vi: ['Gợi ý Dành cho bạn', 'Làm từ câu trả lời bạn vừa chọn. Chấm vàng nghĩa là có gợi ý mới.'],
+    en: ['Your For You picks', 'Built from the answers you just gave. A gold dot means there are new picks.'],
     short: ['Dành cho bạn', 'For You'],
   },
   {
     id: 'home.eventCard', target: 'tour.home.eventCard', screen: 'home', placement: 'below',
-    vi: ['Một sự kiện', 'Chạm vào thẻ để xem chi tiết, giữ chỗ hoặc nhắn host. Giữ chỗ miễn phí trong 30 phút.'],
-    en: ['An event', 'Tap a card to see details, hold a seat or message the host. A hold is free for 30 minutes.'],
+    vi: ['Mở một sự kiện', 'Chạm vào thẻ để xem chi tiết, giữ chỗ hoặc nhắn host. Giữ chỗ miễn phí trong 30 phút.'],
+    en: ['Open an event', 'Tap a card to see details, hold a seat or message the host. A hold is free for 30 minutes.'],
     short: ['Sự kiện', 'Event'],
   },
   {
     id: 'dock.map', target: 'tour.dock.map', screen: 'home', placement: 'above',
-    vi: ['Bản đồ', 'Xem sự kiện quanh bạn trên bản đồ.'],
-    en: ['Map', 'See what is on around you on a map.'],
+    vi: ['Bản đồ', 'Xem sự kiện quanh bạn, theo khu phố và theo giờ.'],
+    en: ['Map', "See what's on around you, by neighbourhood and by time."],
     short: ['Bản đồ', 'Map'],
   },
   {
     id: 'dock.schedule', target: 'tour.dock.schedule', screen: 'home', placement: 'above',
-    vi: ['Lịch', 'Vé và những buổi bạn đã lưu, xếp theo ngày.'],
-    en: ['Schedule', 'Your tickets and saved plans, day by day.'],
+    vi: ['Lịch', 'Mọi vé và buổi bạn đã lưu, xếp theo ngày.'],
+    en: ['Schedule', 'Every ticket and saved plan, day by day.'],
     short: ['Lịch', 'Schedule'],
   },
   {
     id: 'dock.inbox', target: 'tour.dock.inbox', screen: 'home', placement: 'above',
-    vi: ['Tin nhắn', 'Trò chuyện với host và nhận cập nhật về vé của bạn.'],
-    en: ['Messages', 'Chat with hosts and get updates about your tickets.'],
+    vi: ['Tin nhắn', 'Trò chuyện với host và đội sự kiện, cùng cập nhật về vé của bạn. Huy hiệu đếm tin chưa đọc.'],
+    en: ['Messages', "Conversations with hosts and event teams, and updates about your tickets. The badge counts what's unread."],
     short: ['Tin nhắn', 'Messages'],
   },
   {
     id: 'account.organizerMode', target: 'tour.account.organizerMode', screen: 'profile', placement: 'below',
-    vi: ['Muốn tổ chức?', 'Bật chế độ tổ chức ở đây để tạo sự kiện của riêng bạn. Tắt lúc nào cũng được.'],
-    en: ['Want to host?', 'Turn on organizer mode here to create your own events. Turn it off any time.'],
+    vi: ['Chế độ tổ chức', 'Đang tắt, như bạn đã chọn. Bật lúc nào bạn muốn tổ chức một sự kiện.'],
+    en: ['Hosting mode', 'Off, as you chose. Turn it on any time you want to run an event.'],
     short: ['Tổ chức', 'Host'],
   },
   {
     id: 'dock.create', target: 'tour.dock.create', screen: 'profile', placement: 'above', requires: 'organizerMode',
-    vi: ['Tạo sự kiện', 'Nút + này mở trình tạo sự kiện 5 bước.'],
-    en: ['Create an event', 'This + opens the 5-step event builder.'],
+    vi: ['Tạo sự kiện', 'Nút + này mở trình tạo sự kiện 5 bước. Mất khoảng 5 phút.'],
+    en: ['Create an event', 'This + opens the 5-step event builder. It takes about 5 minutes.'],
     short: ['Tạo', 'Create'],
   },
 ];
@@ -99,3 +99,31 @@ export function eligibleSteps(ctx) {
 }
 
 export const tourDoneKey = uid => `banbe.tour.v3.done.${uid}`;
+
+/** Three short chapters (note 80, iOS twin `OnboardingTourContent.chapters`). A chapter with no eligible step is dropped. */
+export const TOUR_CHAPTERS = [
+  { id: 'discover', name: ['Khám phá', 'Discover'], stepIds: ['home.search', 'home.forYou', 'home.eventCard', 'dock.map'] },
+  { id: 'plans', name: ['Lịch và tin nhắn', 'Plans and messages'], stepIds: ['dock.schedule', 'dock.inbox'] },
+  { id: 'you', name: ['Tài khoản của bạn', 'Your account'], stepIds: ['account.organizerMode', 'dock.create'] },
+];
+
+/**
+ * "Do it" steps only move on when the highlighted control is clicked. The overlay then runs that control's own
+ * action itself; the real control underneath is never pressed.
+ */
+export const TOUR_DO_IT = {
+  'home.forYou': ['Chạm Dành cho bạn', 'Tap For You'],
+};
+
+/** The hosting step speaks to what the person chose during setup. */
+export const HOSTING_ON_COPY = {
+  vi: ['Chế độ tổ chức', 'Bạn đã bật lúc thiết lập. Nó thêm công cụ tổ chức: tạo sự kiện, check-in khách và nhận tiền.'],
+  en: ['Hosting mode', 'You turned this on during setup. It adds the hosting tools: create events, check guests in and get paid.'],
+};
+
+/** The eligible steps grouped into their chapters, in tour order: [{ chapter, steps }]. */
+export function tourPlan(ctx) {
+  const byId = new Map(eligibleSteps(ctx).map(st => [st.id, st]));
+  return TOUR_CHAPTERS.map(chapter => ({ chapter, steps: chapter.stepIds.map(id => byId.get(id)).filter(Boolean) }))
+    .filter(c => c.steps.length);
+}
