@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg } from '../data/events.js';
 import { paper, ink, ink2, ink3, rule, alert, block, divider, display, fieldGlass, inkButton, cardGlass } from '../theme.js';
 import { DOCK_HEADER } from '../components/ui/DockHeaderTitle.jsx';
 import { isActiveDisputeChat } from './ConversationDispute.jsx';
-import { notificationCategory as notifCategory } from './Notifications.jsx';
+import { notificationCategory as notifCategory, Row as NotificationRow } from './Notifications.jsx';
+import { avatarSourceFor } from '../lib/notifications.js';
 import EmptyState from '../components/ui/EmptyState.jsx';
 
 // Same 6s poll interval the ordinary conversation list uses, for the same
@@ -279,7 +280,7 @@ function Chips({ items, value, onChange }) {
 }
 
 export default function Inbox() {
-  const { state, T, loadNotifications, openNotification, markNotificationRead, openThread, toggleThreadStar, archiveThread, unarchiveThread, deleteThreadForMe, setInboxView, loadDisputeChats, goHome } = useBanBe();
+  const { state, T, set, loadNotifications, openNotification, markNotificationRead, openThread, toggleThreadStar, archiveThread, unarchiveThread, deleteThreadForMe, setInboxView, loadDisputeChats, goHome } = useBanBe();
   const s = state;
 
   // Keeps the dispute index fresh — it drives the "Dispute in progress" row
@@ -291,7 +292,15 @@ export default function Inbox() {
     return () => clearInterval(id);
   }, [loadDisputeChats, s.inboxView]);
 
-  const [tab, setTab] = useState('messages');
+  const [tab, setTab] = useState(s.activityTab || 'messages');
+  const rootRef = useRef(null);
+  const scroller = () => { let e = rootRef.current?.parentElement; while (e && e !== document.body && !(e.scrollHeight > e.clientHeight && /auto|scroll/.test(getComputedStyle(e).overflowY))) e = e.parentElement; return e; };
+  useLayoutEffect(() => {
+    if (s.activityScroll == null) return;
+    const y = s.activityScroll;
+    set({ activityScroll: null, activityReturn: false });
+    requestAnimationFrame(() => { const e = scroller(); if (e) e.scrollTop = y; });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [msgF, setMsgF] = useState('all');
   const [ntF, setNtF] = useState('all');
   useEffect(() => { loadNotifications?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -325,7 +334,7 @@ export default function Inbox() {
   const emptyArchived = T('Chưa có cuộc trò chuyện nào được lưu trữ.', 'No archived conversations yet.');
 
   return (
-    <div style={{ position: 'relative', animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Inbox">
+    <div style={{ position: 'relative', animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Inbox" ref={rootRef}>
       {/* Pinned like iOS: the title row stays put while the conversations scroll under it. */}
       {/* Note 53: same padding and row height as every dock header (was a 24px gutter). */}
       <div data-testid="inbox-fixed-header" style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 12px`, height: DOCK_HEADER.rowHeight, boxSizing: 'content-box', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
@@ -362,7 +371,7 @@ export default function Inbox() {
       {s.inboxView === 'active' && !searchOpen && (
         <div role="tablist" data-testid="activity-tabs" style={{ display: 'flex', background: block, borderRadius: 999, padding: 3, margin: '6px 20px 0' }}>
           {[['messages', T('Tin nhắn', 'Messages'), s.unreadMessages || 0], ['notifications', T('Thông báo', 'Notifications'), s.unreadNotifications || 0]].map(([k, label, n]) => (
-            <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} data-testid={`activity-tab-${k}`}
+            <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => { setTab(k); set({ activityTab: k }); }} data-testid={`activity-tab-${k}`}
               style={{ flex: 1, height: 38, border: 'none', borderRadius: 999, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 background: tab === k ? ink : 'transparent', color: tab === k ? paper : ink3 }}>
               {label}
@@ -386,15 +395,8 @@ export default function Inbox() {
               </div>
             )}
             {list.map(n => (
-              <div key={n.id} role="button" tabIndex={0} data-testid="notification-row" onClick={() => openNotification(n)} onKeyDown={(e) => { if (e.key === 'Enter') openNotification(n); }}
-                style={{ display: 'flex', gap: 12, padding: '14px 0', borderBottom: `1px solid ${divider}`, cursor: 'pointer' }}>
-                <span style={{ flex: 'none', width: 40, height: 40, borderRadius: '50%', border: `1px solid ${n.read_at ? rule : ink}`, display: 'grid', placeItems: 'center', fontSize: 15, color: ink }}>{n.kind === 'event_announcement' ? '📣' : (n.title || '•').trim().charAt(0).toUpperCase()}</span>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: 1.4, color: n.read_at ? ink2 : ink }}>
-                  <b style={{ color: ink, fontWeight: 600 }}>{n.title}</b> {n.body}
-                  <small style={{ display: 'block', fontSize: 12, color: ink3, marginTop: 3 }}>{n.ago}</small>
-                </span>
-                {!n.read_at && <span style={{ width: 8, height: 8, borderRadius: '50%', background: alert, flex: 'none', marginTop: 6 }} />}
-              </div>
+              <NotificationRow key={n.id} n={n} unread={!n.read_at} avatar={avatarSourceFor(n, { bookingById: s.notificationBookingById, eventPhotoByEventId: s.notificationEventPhotoByEventId, avatarByUserId: s.notificationAvatarByUserId }, s.accountType)}
+                onClick={() => { set({ activityTab: 'notifications', activityScroll: scroller()?.scrollTop || 0, activityReturn: true }); openNotification(n); }} />
             ))}
             {list.length === 0 && <p style={{ padding: '48px 20px', margin: 0, textAlign: 'center', fontSize: 14, color: ink2 }}>{T('Chưa có thông báo nào.', 'Nothing here yet.')}</p>}
           </div>

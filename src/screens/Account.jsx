@@ -78,6 +78,10 @@ export function RowIcon({ kind, size = 22, accent }) {
     person: <><circle cx="12" cy="12" r="8.6" /><circle cx="12" cy="10" r="2.9" /><path d="M6.6 18.3c1.2-2.1 3.1-3.2 5.4-3.2s4.2 1.1 5.4 3.2" /></>,
     sun: <><circle cx="12" cy="12" r="4" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4" /></>,
     globe: <><circle cx="12" cy="12" r="8.6" /><path d="M3.4 12h17.2M12 3.4c2.5 2.5 2.5 14.7 0 17.2M12 3.4c-2.5 2.5-2.5 14.7 0 17.2" /></>,
+    card: <><rect x="3.5" y="5.5" width="17" height="13" rx="2" /><path d="M3.5 10h17M7 15h4" /></>,
+    doc: <><path d="M6 3.5h8l4 4v13H6z" /><path d="M14 3.5v4h4M9 12h6M9 16h6" /></>,
+    refund: <><path d="M4 12a8 8 0 1 0 2.5-5.8" /><path d="M4 4.5v4h4" /></>,
+    bank: <><path d="M3.5 9.5L12 4l8.5 5.5z" /><path d="M6 11.5v6M10 11.5v6M14 11.5v6M18 11.5v6M4 20h16" /></>,
     star: <path d="M12 3.8l2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z" />,
     bookmark: <path d="M7 3.5h10v17l-5-3.6-5 3.6z" />,
     checkCircle: <><circle cx="12" cy="12" r="8.6" /><path d="M8.3 12.3l2.5 2.5 4.9-5" /></>,
@@ -342,17 +346,22 @@ export default function Account() {
   const appRows = [settingsRow];
   const supportRows = [<MoreRow key="help" icon="help" label={T('Trợ giúp', 'Help')} testId="account-help" onClick={() => openAccountGroup('helpLegal')} />];
   const hostToolRows = [
+    <MoreRow key="surveys" icon="lightbulb" label={T('Khảo sát & ý tưởng sự kiện', 'Surveys & event ideas')} testId="account-group-surveys" onClick={goSurveysHosting} />,
     <MoreRow key="story" icon="pencil" label={T('Đăng story', 'Post a story')} testId="account-host-post-story"
       sub={T('Thêm chữ và liên kết, sửa hoặc xóa sau khi đăng', 'Add text and a link, edit or delete after posting')}
       onClick={() => setHostStoryMenuOpen(v => !v)} />,
     s.myOrganizerId ? (
-      <MoreRow key="share-host" icon="store" label={T('Chia sẻ thẻ tổ chức', 'Share host card')} testId="account-share-card-host" onClick={() => setShareCardFor('host')} />
-    ) : null,
-    <MoreRow key="surveys" icon="lightbulb" label={T('Khảo sát & ý tưởng sự kiện', 'Surveys & event ideas')} testId="account-group-surveys" onClick={goSurveysHosting} />,
-    s.myOrganizerId ? (
       <MoreRow key="org-profile" icon="store" label={T('Hồ sơ tổ chức', 'Organizer profile')} testId="account-organizer-profile" onClick={() => openOrganizerProfile(s.myOrganizerId, 'profile')} />
     ) : null,
+    s.myOrganizerId ? (
+      <MoreRow key="share-host" icon="card" label={T('Chia sẻ thẻ tổ chức', 'Share host card')} testId="account-share-card-host" onClick={() => setShareCardFor('host')} />
+    ) : null,
   ];
+  const moneyRows = [
+    ['refund', T('Hoàn tiền', 'Refunds'), 'refunds'],
+    ['doc', T('Hoá đơn & biên nhận đã phát hành', 'Invoices & receipts issued'), 'documents'],
+    ['bank', T('Tài khoản nhận tiền', 'Payout account'), 'payout'],
+  ].map(([icon, label, k]) => <MoreRow key={k} icon={icon} label={label} testId={`account-money-${k}`} onClick={() => openAccountGroup('hostOps')} />);
   // The former 'admin' AccountGroup rows, inline. Back from each lands on this tab.
   const adminRows = [
     <MoreRow key="review" icon="shield" label={T('Duyệt & kiểm duyệt', 'Review & moderation')} testId="account-group-adminReview"
@@ -494,62 +503,6 @@ export default function Account() {
                 <div role="button" data-testid="org-profile-ensure-setup" onClick={openHostSetup} style={{ ...inkButton({ marginTop: 4, borderRadius: 18, padding: 14, fontSize: 14 }) }}>{T('Thiết lập hồ sơ', 'Set up profile')}</div>
               </div>
             )}
-            {canHost && s.myOrganizerId && (
-              <div
-                onClick={() => goDashboard('profile')}
-                className={hostReminder ? 'bb-rem-card' : undefined}
-                data-reminder={hostReminder || undefined}
-                style={{
-                  ...cardGlass({ margin: '8px 20px 0', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer' }),
-                  position: 'relative', '--bb-rem-r': '12px',
-                  // Moss wash, never the personal `profileTheme`, so it always reads as the organization identity.
-                  background: `linear-gradient(165deg, ${PROFILE_PALETTE_COLORS.moss}66, transparent 70%), ${block}`,
-                }}
-                data-testid="org-profile-card"
-              >
-                {hostReminder && <style>{REMINDER_CSS}</style>}
-                <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-                  <div style={{ flex: 'none', width: 56, height: 56, borderRadius: 14, overflow: 'hidden' }}>
-                    {organizerAvatarUrl(s.myOrganizerAvatarPath, s.myOrganizerAvatarR2Ref) ? (
-                      <img src={organizerAvatarUrl(s.myOrganizerAvatarPath, s.myOrganizerAvatarR2Ref)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: ink, color: paper, ...display(20) }}>
-                        {(s.orgRegName || 'B').trim()[0]?.toUpperCase() || 'B'}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1 }}>
-                    <span style={{ ...display(18, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{s.orgRegName || T('Chưa đặt tên', 'Unnamed host')}</span>
-                    {s.myOrgPublishedEventCount !== null && (
-                      <span style={{ fontSize: 11, color: ink2 }}>
-                        {s.myOrgHostingSinceYear
-                          ? T(`Tổ chức từ ${s.myOrgHostingSinceYear} ▪︎ ${s.myOrgPublishedEventCount} sự kiện`, `Hosting since ${s.myOrgHostingSinceYear} ▪︎ ${s.myOrgPublishedEventCount} events`)
-                          : T('Chưa có sự kiện công khai nào', 'No published events yet')}
-                      </span>
-                    )}
-                  </div>
-                  {hostReminder && (
-                    <span data-testid="org-profile-checkin-hint" style={{ flex: 'none', fontSize: 12, fontWeight: 700, color: '#7A5200' }}>{T('Điểm danh', 'Check-in')}</span>
-                  )}
-                  <span aria-hidden data-testid="org-profile-view-public" style={{ flex: 'none', fontSize: 20, color: ink, opacity: hostReminder ? 1 : 0.55 }}>›</span>
-                </div>
-                {s.orgRegDesc && (
-                  <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink2, margin: 0 }}>{s.orgRegDesc}</p>
-                )}
-              </div>
-            )}
-            {s.user?.handle && (
-              <div style={{ padding: '8px 24px 0', display: 'flex', justifyContent: 'flex-end' }}>
-                <span
-                  onClick={openMyPublicProfile}
-                  role="button"
-                  data-testid="account-switch-identity"
-                  style={{ fontSize: 12.5, color: ink2, cursor: 'pointer', padding: '12px 0', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                >
-                  {T('Hồ sơ cá nhân', 'Personal profile')} <span aria-hidden>›</span>
-                </span>
-              </div>
-            )}
           </>
         )}
 
@@ -598,7 +551,12 @@ export default function Account() {
             <RowGroup title={T('Hỗ trợ', 'Support')} testId="account-group-support">{supportRows}</RowGroup>
           </>
         )}
-        {tab === 'host' && <RowGroup title={T('Công cụ tổ chức', 'Hosting tools')} testId="account-group-host-tools">{hostToolRows}</RowGroup>}
+        {tab === 'host' && (
+          <>
+            <RowGroup title={T('Công cụ tổ chức', 'Hosting tools')} testId="account-group-host-tools">{hostToolRows}</RowGroup>
+            <RowGroup title={T('Tiền', 'Money')} testId="account-group-money">{moneyRows}</RowGroup>
+          </>
+        )}
         {tab === 'admin' && <RowGroup title={T('Quản trị', 'Administration')} testId="account-group-admin-tools" top={16}>{adminRows}</RowGroup>}
         {tab === 'personal' && s.organizerModeError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 24px 0' }}>{s.organizerModeError}</p>}
 

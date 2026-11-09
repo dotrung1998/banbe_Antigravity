@@ -127,10 +127,12 @@ function classifyAtLoad(n, now) {
 export default function Notifications({ overlay = false }) {
   const {
     state, T, trStatus, goHome, backFromNotifications, openNotification, deleteNotification, deleteNotifications,
-    markNotificationRead, markNotificationUnread, muteNotificationKind,
+    markNotificationRead, markNotificationUnread, muteNotificationKind, set,
   } = useBanBe();
   const s = state;
   const rootRef = useRef(null);
+  // Opened from Activity > Notifications: a screen reached from a notification returns here, so bounce back to Activity.
+  useLayoutEffect(() => { if (!overlay && s.activityReturn) set({ screen: 'inbox' }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Opened from Home's bell: the page bursts out of the bell as a growing circle (like a droplet), and shrinks back
   // into it on Back. No bell (or Reduce Motion): it slides in/out from the right instead.
   const [bell] = useState(() => (overlay ? takeBellOrigin() : null));
@@ -583,7 +585,7 @@ function AvatarFallback({ kind }) {
   );
 }
 
-function Row({ n, unread, avatar, onClick, onOpenMenu, selectionMode, selected }) {
+export function Row({ n, unread, avatar, onClick, onOpenMenu, selectionMode, selected }) {
   return (
     <div
       data-testid="notification-row"
