@@ -160,7 +160,7 @@ struct WelcomeView: View {
             // the quieter field-filled secondary (it used to be a same-size ink outline that read as a twin);
             // Log in is text only.
             InkButton(title: app.T("Khám phá sự kiện", "Explore events"), font: .headline) {
-                app.browseAsGuest()
+                if GuestOnboarding.seen { app.browseAsGuest() } else { app.onboardingPreview = true }
             }
             .accessibilityIdentifier("welcome.explore")
             SecondaryButton(title: app.T("Tạo tài khoản", "Create an account"), emoji: "✨") {
@@ -168,17 +168,6 @@ struct WelcomeView: View {
                 app.openAuth(.signup)
             }
             .accessibilityIdentifier("welcome.getStarted")
-            #if DEBUG
-            Button { app.onboardingPreview = true } label: {
-                Text(app.T("Xem thử phần làm quen (không lưu gì)", "Preview onboarding (nothing is saved)"))
-                    .font(.subheadline.weight(.semibold))
-                    .opacity(0.8)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PressableButtonStyle(haptic: false))
-            .accessibilityIdentifier("welcome.previewOnboarding")
-            #endif
             Button {
                 Analytics.track(.publicEntryLogin)
                 app.openAuth(.login)

@@ -177,6 +177,12 @@ export function reduce(s, action) {
   }
 }
 
+// MARK: guest first run (note 80). A logged-out visitor sees the flow once, locally (nothing is written to a server).
+
+const GUEST_SEEN_KEY = 'banbe.guestOnboarding.v1';
+export const guestOnboardingSeen = (storage = defaultStorage()) => { try { return !!storage?.getItem(GUEST_SEEN_KEY); } catch { return true; } };
+export const markGuestOnboardingSeen = (storage = defaultStorage()) => { try { storage?.setItem(GUEST_SEEN_KEY, '1'); } catch { /* ignore */ } };
+
 // MARK: draft persistence (this browser only, per account)
 
 // v2: question indices changed with the 3-question flow, so a 5-question draft is never resumed.

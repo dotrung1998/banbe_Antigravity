@@ -135,3 +135,10 @@ enum OnboardingTourContent {
 
     static func doneKey(_ uid: UUID) -> String { "banbe.tour.v3.done.\(uid.uuidString.lowercased())" }
 }
+
+/// Note 80: a logged-out visitor sees onboarding once per device (local only; no server marker exists without an account).
+enum GuestOnboarding {
+    private static let key = "banbe.guestOnboarding.v1"
+    static var seen: Bool { UserDefaults.standard.bool(forKey: key) }
+    static func markSeen() { UserDefaults.standard.set(true, forKey: key) }
+}

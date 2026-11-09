@@ -977,10 +977,8 @@ struct RootView: View {
             // `onboardingFlowActive` keeps it up for the reveal after they clear.
             // Below the Face ID lock.
             if showsEventOnboarding { EventOnboardingOverlay() }
-            #if DEBUG
-            // Note 80: the same overlay in explicit preview mode, before any login. Every save is local.
+            // Note 80: the same overlay for a logged-out first run (once per device). Every save is local.
             if app.onboardingPreview && !app.tourActive && auth.session == nil { EventOnboardingOverlay(preview: true) }
-            #endif
             // Mounted during the splash too (invisible), so the Face ID prompt starts
             // right away at launch instead of waiting for the splash animation to end.
             if auth.isLocked {

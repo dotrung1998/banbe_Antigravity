@@ -20,7 +20,7 @@ import { paper, ink, display } from '../theme.js';
 import { Button } from '../components/ui/FormControls.jsx';
 import { NO_PREFERENCE, BUDGET_TIERS, BUDGET_REGIONS, INTERESTS, AVAILABILITY, budgetTierLabel, budgetRegionDefault, normalizeForSave, prefLabel, optionEmoji } from '../lib/eventPrefs.js';
 import {
-  QUESTIONS, reduce, initialState, draftStore, payload as flowPayload, currentConsent, consentAsksSystem,
+  QUESTIONS, reduce, initialState, draftStore, markGuestOnboardingSeen, payload as flowPayload, currentConsent, consentAsksSystem,
   onboardingCandidates, typeCounts, tileTypes, matchCount, optionCount, revealPlan, MIN_FOR_YOU,
 } from '../lib/onboardingFlow.js';
 import { tourPlan } from '../data/onboardingTour.js';
@@ -666,8 +666,8 @@ function RecapStep({ flow, send, preview }) {
       </div>
       <div style={{ marginTop: 22 }}>
         <InkBtn testId="onboarding-recap-tour" label={T('Bắt đầu hướng dẫn', 'Start the tour')} onClick={() => send('startTour')} />
-        <LinkBtn testId="onboarding-recap-home" label={preview ? T('Tạo tài khoản để lưu lựa chọn', 'Create an account to save these') : T('Bỏ qua, về Trang chính', 'Skip, go to Home')} onClick={() => send('skipTour')} />
-        {preview && <p data-testid="onboarding-preview-note" style={{ fontSize: 12.5, textAlign: 'center', color: muted(0.65), margin: '8px 0 0' }}>{T('Bản xem thử: chưa có gì được lưu.', 'Preview only: nothing was saved.')}</p>}
+        <LinkBtn testId="onboarding-recap-home" label={preview ? T('Bỏ qua, xem sự kiện', 'Skip, browse events') : T('Bỏ qua, về Trang chính', 'Skip, go to Home')} onClick={() => send('skipTour')} />
+        {preview && <p data-testid="onboarding-preview-note" style={{ fontSize: 12.5, textAlign: 'center', color: muted(0.65), margin: '8px 0 0' }}>{T('Bạn chưa đăng nhập: chưa có gì được lưu. Tạo tài khoản để giữ lựa chọn.', 'You are not logged in, so nothing was saved. Create an account to keep these.')}</p>}
       </div>
     </div>
   );
@@ -685,7 +685,7 @@ function consentsFor(s) {
 }
 
 function OnboardingFlowRunner({ preview = false }) {
-  const { state: s, set, openAuth, browseAsGuest, curArea, loadDiscoveryEvents, completePreferencesOnboarding, saveEventPreferences, completeSettingsOnboarding, applyOrganizerMode, finishOnboardingFlow } = useBanBe();
+  const { state: s, set, browseAsGuest, curArea, loadDiscoveryEvents, completePreferencesOnboarding, saveEventPreferences, completeSettingsOnboarding, applyOrganizerMode, finishOnboardingFlow } = useBanBe();
   const uid = s.user?.id;
   const [flow, setFlow] = useState(() => (preview
     ? initialState({ needsPreferences: true, needsSettings: true, region: budgetRegionDefault(), consents: ['digest', 'hosting'] })
@@ -773,8 +773,10 @@ function OnboardingFlowRunner({ preview = false }) {
     finishedRef.current = true;
     if (preview) {
       // Preview ends at sign-up (or in the tour over guest Home). Nothing was written, so no marker.
+      // Guest first run: nothing was written, so no server marker. Remember on this device that it was shown.
+      markGuestOnboardingSeen();
       if (flow.tourRequested) { browseAsGuest(); set({ onboardingPreview: 'tour', screen: 'home', tourRecapStartToken: Date.now() }); }
-      else { set({ onboardingPreview: false }); openAuth('signup', 'welcome'); }
+      else { set({ onboardingPreview: false }); browseAsGuest(); }
       return;
     }
     draftStore.clear(uid);

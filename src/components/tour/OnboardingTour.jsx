@@ -89,8 +89,8 @@ export default function OnboardingTour() {
     });
     setRect(null);
     if (s.onboardingPreview) {
-      // Preview over: back to Welcome, where the real sign-up and login are.
-      set({ onboardingPreview: false, screen: 'welcome' });
+      // Guest first run over: on to guest Home.
+      set({ onboardingPreview: false, screen: 'home', homeScrollTopToken: Date.now() });
     } else set({ screen: 'home', homeScrollTopToken: Date.now() });
     const el = restoreFocus.current;
     restoreFocus.current = null;

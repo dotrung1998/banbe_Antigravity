@@ -1429,7 +1429,7 @@ private struct OnboardingRecapView: View {
             VStack(spacing: 2) {
                 InkButton(title: app.T("Bắt đầu hướng dẫn", "Start the tour")) { flow.send(.startTour) }
                     .accessibilityIdentifier("onboarding.recap.tour")
-                OnboardingLinkButton(title: app.onboardingPreview ? app.T("Quay lại Chào mừng (chưa lưu gì)", "Back to Welcome (nothing was saved)") : app.T("Bỏ qua, về Trang chính", "Skip, go to Home"), identifier: "onboarding.recap.home") {
+                OnboardingLinkButton(title: app.onboardingPreview ? app.T("Bỏ qua, xem sự kiện (chưa đăng nhập nên chưa lưu)", "Skip, browse events (not logged in, so nothing is saved)") : app.T("Bỏ qua, về Trang chính", "Skip, go to Home"), identifier: "onboarding.recap.home") {
                     flow.send(.skipTour)
                 }
             }

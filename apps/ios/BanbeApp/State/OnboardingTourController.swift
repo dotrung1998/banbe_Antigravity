@@ -160,12 +160,13 @@ extension AppState {
         UIAccessibility.post(notification: .screenChanged, argument: nil)
     }
 
-    /// Note 80 preview: the recap's answer. Nothing was written, so there is no marker either way.
+    /// Note 80 guest first run: the recap's answer. Nothing was written to a server; the device only remembers it ran.
     func finishOnboardingPreview(startTour: Bool) {
         Analytics.paused = false
+        GuestOnboarding.markSeen()
         guard startTour else {
             onboardingPreview = false
-            screen = .welcome
+            browseAsGuest()
             return
         }
         // The overlay leaves (preview flag stays on for the tour, which ends back at Welcome).
@@ -188,8 +189,6 @@ extension AppState {
         Analytics.paused = false
         if onboardingPreview {
             onboardingPreview = false
-            screen = .welcome
-            return
         }
         screen = .home
         resetHomeScrollToTop()
