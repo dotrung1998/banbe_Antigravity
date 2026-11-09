@@ -1,7 +1,8 @@
 // Quick settings panel from the Home avatar (v5 prototype `sheet()`): profile link, hosting switch, four shortcuts,
 // Appearance + Language segments, Notifications and Sign out. Guests get the sign-in card plus the two segments.
 import { createPortal } from 'react-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { accountTabs, resolveAccountTab } from '../../lib/accountTabs.js';
 import { useBanBe } from '../../state/BanBeContext.jsx';
 import { effectiveHomeView, hostSegmentLocked } from '../../lib/homeMode.js';
 import { RowIcon } from '../../screens/Account.jsx';
@@ -12,7 +13,7 @@ const seg = (on) => ({ height: 30, padding: '0 11px', border: 'none', borderRadi
   background: on ? 'var(--bb-fg)' : 'transparent', color: on ? 'var(--bb-bg)' : 'var(--bb-fg-2)', fontWeight: on ? 600 : 400 });
 
 export default function QuickSheetV5({ onClose }) {
-  const { state: s, T, toggleTheme, toggleLang, goProfile, goNotifications, goLogin, logout, openAccountGroup, goSavedList, setHomeView, startHosting } = useBanBe();
+  const { state: s, set, T, toggleTheme, toggleLang, goProfile, goNotifications, goLogin, logout, openAccountGroup, goSavedList, setHomeView, startHosting, canHost, goCreate, goDashboard, openAdminEvents } = useBanBe();
   useEffect(() => {
     const k = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', k);
@@ -28,22 +29,41 @@ export default function QuickSheetV5({ onClose }) {
     if (hostOn) setHomeView('goer');
     else if (hostSegmentLocked(!!s.organizerMode)) { if (!s.organizerModeBusy) { onClose(); startHosting({ land: 'home' }); } } else setHomeView('host');
   };
+  const tabs = user ? accountTabs({ isAdmin: s.accountType === 'admin', hostMode: !!s.organizerMode && !!canHost }) : [];
+  const [tabSel, setTabSel] = useState(null);
+  const tab = resolveAccountTab(tabSel || s.accountTab, tabs) || 'personal';
+  const toAccount = (k) => () => { set({ screen: 'profile', accountTab: k }); };
   const dark = s.theme === 'dark';
   const en = s.lang === 'en';
-  const shortcuts = [
-    ['ticket', T('Vé', 'Tickets'), () => openAccountGroup('activity'), computeMyTicketsActionCount(s)],
-    ['wallet', T('Ví', 'Wallet'), () => openAccountGroup('payments')],
-    ['bookmark', T('Đã lưu', 'Saved'), goSavedList],
-    ['sliders', T('Cài đặt', 'Settings'), () => openAccountGroup('preferences')],
-  ];
+  const shortcuts = {
+    personal: [
+      ['ticket', T('Vé', 'Tickets'), () => openAccountGroup('activity'), computeMyTicketsActionCount(s)],
+      ['wallet', T('Ví', 'Wallet'), () => openAccountGroup('payments')],
+      ['bookmark', T('Đã lưu', 'Saved'), goSavedList],
+      ['sliders', T('Cài đặt', 'Settings'), toAccount('personal')],
+    ],
+    host: [
+      ['plus', T('Tạo', 'Create'), goCreate],
+      ['calendarCheck', T('Sự kiện', 'Events'), () => goDashboard('home')],
+      ['banknote', T('Nhận tiền', 'Get paid'), () => openAccountGroup('hostOps')],
+      ['sliders', T('Cài đặt', 'Settings'), toAccount('host')],
+    ],
+    admin: [
+      ['shield', T('Duyệt', 'Review'), () => set({ screen: 'accountGroup', accountGroupKey: 'adminReview', accountGroupBack: null })],
+      ['calendarCheck', T('Sự kiện', 'Events'), () => openAdminEvents()],
+      ['sliders', T('Công tắc', 'Switches'), () => set({ screen: 'adminFeatures' })],
+      ['shield', T('Bảng quản trị', 'Console'), toAccount('admin')],
+    ],
+  }[tab];
+  const tabLabel = { host: T('Tổ chức', 'Host'), personal: T('Cá nhân', 'Personal'), admin: T('Quản trị', 'Admin') };
   const row = { display: 'flex', alignItems: 'center', gap: 14, padding: '14px 0', borderBottom: line, minHeight: 56, fontSize: 15 };
-  const target = typeof document !== 'undefined' ? document.body : null;
+  const target = typeof document !== 'undefined' ? (document.querySelector('.bb-screen') || document.body) : null;
   if (!target) return null;
   return createPortal(
-    <div data-testid="home-quick-sheet" style={{ position: 'fixed', inset: 0, zIndex: 400 }}>
-      <div onClick={onClose} aria-hidden style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)' }} />
+    <div data-testid="home-quick-sheet" style={{ position: 'fixed', inset: 0, zIndex: 2100 }}>
+      <div onClick={onClose} aria-hidden style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.45)' }} />
       <div role="dialog" aria-modal="true" aria-label={T('Cài đặt nhanh', 'Quick settings')}
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, margin: '0 auto', maxWidth: 560, maxHeight: '90%', overflowY: 'auto', background: 'var(--bb-bg)', color: 'var(--bb-fg)', borderRadius: '26px 26px 0 0', padding: '10px 0 30px', animation: 'banbeIn .32s cubic-bezier(.22,.61,.36,1) both' }}>
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '90%', overflowY: 'auto', background: 'var(--bb-bg)', color: 'var(--bb-fg)', borderRadius: '26px 26px 0 0', padding: '10px 0 30px', animation: 'banbeIn .32s cubic-bezier(.22,.61,.36,1) both' }}>
         <div style={{ width: 38, height: 5, borderRadius: 3, background: 'var(--bb-rule)', margin: '0 auto 12px' }} />
         {user ? (
           <>
@@ -66,9 +86,18 @@ export default function QuickSheetV5({ onClose }) {
                 </span>
               </button>
             </div>
+            {tabs.length > 0 && (
+              <div role="tablist" data-testid="quick-tabs" style={{ display: 'flex', gap: 2, padding: 2, margin: '12px 20px 0', borderRadius: 999, background: 'var(--bb-surface2, var(--bb-block))' }}>
+                {tabs.map(k => (
+                  <button key={k} type="button" role="tab" aria-selected={tab === k} data-testid={`quick-tab-${k}`} onClick={() => setTabSel(k)}
+                    style={{ flex: 1, minHeight: 38, border: 'none', borderRadius: 999, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                      background: tab === k ? 'var(--bb-fg)' : 'transparent', color: tab === k ? 'var(--bb-bg)' : 'var(--bb-fg-2)' }}>{tabLabel[k]}</button>
+                ))}
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', margin: '16px 20px 0', borderTop: line, borderBottom: line }}>
-              {shortcuts.map(([icon, label, fn, badge]) => (
-                <button key={icon} type="button" onClick={go(fn)} data-testid={`quick-${icon}`} style={{ position: 'relative', padding: '16px 0 12px', border: 'none', background: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, fontFamily: 'inherit', fontSize: 12, color: 'inherit', cursor: 'pointer' }}>
+              {shortcuts.map(([icon, label, fn, badge], i) => (
+                <button key={`${icon}${i}`} type="button" onClick={go(fn)} data-testid={`quick-${icon}`} style={{ position: 'relative', padding: '16px 0 12px', border: 'none', background: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, fontFamily: 'inherit', fontSize: 12, color: 'inherit', cursor: 'pointer' }}>
                   <RowIcon kind={icon} size={24} /><span style={{ opacity: 0.8 }}>{label}</span>
                   {badge > 0 && <span style={{ position: 'absolute', top: 8, right: 16, minWidth: 17, height: 17, padding: '0 4px', borderRadius: 999, background: 'var(--bb-alert)', color: 'var(--bb-on-alert)', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{badge}</span>}
                 </button>

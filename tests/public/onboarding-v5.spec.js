@@ -149,7 +149,7 @@ test('v5: three questions, never-empty For You, one choice per screen, recap, th
   const overlay = page.getByTestId('tour-overlay');
   await expect(overlay).toBeVisible({ timeout: 8000 });
   await expect(page.getByTestId('tour-chapter')).toContainText('Chapter 1 of 3');
-  await expect(page.getByTestId('tour-title')).toHaveText('Search and area');
+  await expect(page.getByTestId('tour-title')).toHaveText('Your For You picks');
   await expect(page.getByTestId('tour-back')).toHaveCount(0);
   await expect(page.getByTestId('tour-step-1')).toHaveCount(0);
   await shot(page, 'v5-tour-1');

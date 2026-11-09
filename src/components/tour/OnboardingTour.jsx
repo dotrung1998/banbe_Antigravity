@@ -27,7 +27,7 @@ import { paper, ink, display } from '../../theme.js';
 
 const WAIT_MS = 1500;
 const PAD = 6;
-const TOUR_SCREENS = new Set(['home', 'profile']);
+const TOUR_SCREENS = new Set(['home', 'inbox', 'profile']);
 
 const readDone = uid => { try { return !!localStorage.getItem(tourDoneKey(uid)); } catch { return false; } };
 const writeDone = uid => { try { localStorage.setItem(tourDoneKey(uid), new Date().toISOString()); } catch { /* private mode */ } };
@@ -53,7 +53,7 @@ function advance(r) {
 }
 
 export default function OnboardingTour() {
-  const { state: s, set, T, toggleHomeFilter } = useBanBe();
+  const { state: s, set, T, goInbox, goProfile } = useBanBe();
   const gate = useAccountGate();
   const eventOnboardingActive = useEventOnboardingActive();
   const reduce = useReducedMotion();
@@ -187,9 +187,11 @@ export default function OnboardingTour() {
     if (!run || run.phase !== 'step') return;
     const st = run.steps[run.index];
     if (!TOUR_DO_IT[st.id]) return;
-    if (st.id === 'home.forYou' && !s.filterForYou) toggleHomeFilter('forYou');
+    if (st.id === 'dock.activity') goInbox();
+    else if (st.id === 'dock.account') goProfile();
+    else findTarget(st.target)?.click();
     next();
-  }, [run, s.filterForYou, toggleHomeFilter, next]);
+  }, [run, goInbox, goProfile, next]);
   const endTour = useCallback(() => end(true), [end]);
 
   // Keyboard: Escape = End tour, Tab stays inside the card or sheet.
@@ -297,7 +299,7 @@ export default function OnboardingTour() {
   }
 
   // ---- step card ----
-  const useHostingOn = step.id === 'account.organizerMode' && s.organizerMode && !flagOn(s.featureFlags, 'simple_shell');
+  const useHostingOn = step.id === 'account.organizerMode' && s.organizerMode;
   const [title, body] = useHostingOn ? (lang ? HOSTING_ON_COPY.en : HOSTING_ON_COPY.vi) : (lang ? step.en : step.vi);
   const stepInChapter = run.index - chapter.from + 1;
   const chapterSteps = chapter.to - chapter.from;

@@ -82,6 +82,7 @@ export function RowIcon({ kind, size = 22, accent }) {
     doc: <><path d="M6 3.5h8l4 4v13H6z" /><path d="M14 3.5v4h4M9 12h6M9 16h6" /></>,
     refund: <><path d="M4 12a8 8 0 1 0 2.5-5.8" /><path d="M4 4.5v4h4" /></>,
     bank: <><path d="M3.5 9.5L12 4l8.5 5.5z" /><path d="M6 11.5v6M10 11.5v6M14 11.5v6M18 11.5v6M4 20h16" /></>,
+    plus: <path d="M12 5v14M5 12h14" />,
     star: <path d="M12 3.8l2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z" />,
     bookmark: <path d="M7 3.5h10v17l-5-3.6-5 3.6z" />,
     checkCircle: <><circle cx="12" cy="12" r="8.6" /><path d="M8.3 12.3l2.5 2.5 4.9-5" /></>,
