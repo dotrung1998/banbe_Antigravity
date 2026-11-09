@@ -24,7 +24,7 @@ enum FeatureFlags {
     /// dark until set: a missing key must never hand anyone door or money access. "ticket_demo" (migration 217): the admin-only ticket demo on sample bookings. "project_hub_demo" (migration 216):
     /// the admin-only demo hub on sample data, off unless set.
     static let offUnlessSet: Set<String> = ["admin_event_wipe", "rewards_v2", "push_enabled", "app_events",
-                                            "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share", "onboarding_v2", "onboarding_v3", "event_type_profiles", "simple_shell", "polaroid_cards",
+                                            "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share", "onboarding_v2", "onboarding_v3", "event_type_profiles", "polaroid_cards",
                                             "event_project_hub", "project_qr_invite", "project_delegate_checkin", "project_delegate_payments", "project_delegate_refunds", "project_hub_demo", "ticket_demo"]
     static let cacheKey = "banbe.featureFlags.v1"
 

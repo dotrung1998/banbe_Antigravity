@@ -38,6 +38,7 @@ import ActivationChecklistCard from './ActivationChecklistCard.jsx';
 import { GuestBrowseBanner } from './GuestPromptSheet.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { CategoryRow, CategorySheet, HomeSearchBar, DiscoveryCard, DiscoveryRow, NextUpBanner } from '../components/home/HomeDiscoveryParts.jsx';
+import HomePhotoHero from '../components/home/HomePhotoHero.jsx';
 // Map v6 (note 74): the card pager's photos (cover first, max 6).
 import { cardPhotoList } from '../lib/eventPhotoUrls.js';
 import HomeFilterSheet, { DATE_LABELS, RELAX_LABELS, SORT_LABELS } from './sheets/HomeFilterSheet.jsx';
@@ -523,6 +524,33 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [shownItems, forYouRanked, forYouActive, topPulseKey, trStatus, T, typesOn, s.lang, cardImgs]);
 
+  // Home photo hero (note 80): For You / Tonight / Weekend rails built from the same items and filters as the list.
+  const heroLists = useMemo(() => {
+    if (!simpleShell) return null;
+    const open = (it) => !it.soldOut && !it.ev.cancelled && Number.isFinite(it.startsAt) && it.startsAt >= nowMs - 3600e3;
+    const shape = (it) => {
+      const e = it.ev;
+      const fill = fillBadge(it.booked, it.capacity);
+      return {
+        key: e.key, name: e.name, img: e.img, dateBadge: badgeDate(it.startsAt, e.isReal ? e.tz : null),
+        priceLabel: it.priceVnd === 0 ? T('Miễn phí', 'Free') : trStatus(e.price),
+        metaLine: trStatus(e.catDisplay || e.cat) || '', left: fill.left != null ? T(`Còn ${fill.left} chỗ`, `${fill.left} left`) : '',
+      };
+    };
+    const base = { ...homeFilters, date: 'any' };
+    const byDate = (date) => applyDiscoveryFilters(discoveryItems, { ...base, date }, nowMs).filter(open).slice(0, 5).map(shape);
+    const byKey = new Map(discoveryItems.map(it => [it.key, it]));
+    const ranked = forYouRanked.map(m => byKey.get(m.key)).filter(Boolean).filter(open);
+    const soonest = applyDiscoveryFilters(discoveryItems, base, nowMs).filter(open);
+    return { foryou: (ranked.length ? ranked : soonest).slice(0, 5).map(shape), tonight: byDate('today'), weekend: byDate('weekend') };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simpleShell, discoveryItems, homeFilters, forYouRanked, T, trStatus, Math.floor(nowMs / 60000)]);
+  const heroSeeAll = (tab) => {
+    if (tab === 'foryou') { if (!s.filterForYou && hasForYou) toggleHomeFilter('forYou'); }
+    else if (homeFilters.date !== (tab === 'tonight' ? 'today' : 'weekend')) pickFilter(tab === 'tonight' ? 'today' : 'weekend');
+    setTimeout(() => document.querySelector('[data-testid^="home-event-"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 120);
+  };
+
   // Retention roadmap P1 ("Cuối tuần này") — reuses the SAME district
   // (curArea) and category (homeFilters.cats) picks already driving the main feed
   // above, rather than inventing a separate preference of its own; there is
@@ -940,6 +968,8 @@ export default function Home() {
       {/* Note 64: regions 1 and 2 are the sign-in reveal order (header 0, summary 1, feed 2, dock 3). Plain block
           wrappers, so layout is unchanged; they only animate while <html data-reveal="1">. */}
       {simpleShell ? (
+        <>
+        {heroLists && <div data-reveal="1"><HomePhotoHero lists={heroLists} T={T} onOpen={goEvent} onSeeAll={heroSeeAll} /></div>}
         <div data-reveal="1" data-testid="home-hero" data-hero={goerHero}>
           {goerHero === 'nextUp' && (
             <NextUpBanner item={nextUp && { ...nextUp, when: nextUp.status }} onOpen={() => openSaved(nextUp)} T={T}
@@ -950,6 +980,7 @@ export default function Home() {
           {goerHero === 'guest' && <GuestBrowseBanner />}
           {goerHero === 'none' && savedUpcomingEl}
         </div>
+        </>
       ) : (
       <div data-reveal="1">
       {/* First thing in the scrolling feed, like iOS (PulseTickerView at the top of the LazyVStack). */}

@@ -105,3 +105,18 @@ screenshots reviewed at 390×844 (welcome, interests, reveal, choice, recap, tou
 `tests/public/signin-morph-tour.spec.js` was updated for the chaptered tour. Its "success" test already failed on the
 base commit at `login-submit-check` (the ✓ morph), unrelated to this change; with that one line removed locally, the
 updated tour part passes. `onboarding-v2.spec.js` 5/5. Not checked on web: Firefox/WebKit, dark mode, real backend.
+
+## Home + Account from the same prototype (2026-11-09, third pass; web only so far)
+Owner choices: web Home first (iOS port next), and "turn existing on" for Account.
+- **Simple Shell is now ON by default** (`simple_shell` removed from `OFF_UNLESS_SET` on web and iOS). A saved
+  `false` from an admin still turns it off; a missing key no longer does. This brings the shell Home, the dock with
+  "+", and Account without tabs to everyone. Migration 206's seed is unchanged.
+- **Home photo hero (web, shell Going-out view):** `src/components/home/HomePhotoHero.jsx`, wired in `Home.jsx`
+  (`heroLists`): blurred photo of the current card, text tabs For You / Tonight / Weekend, snap rail of up to 5 cards
+  ending in "See all" (applies the matching filter and scrolls to the list). For You = ranked matches, else the
+  soonest events; Tonight/Weekend reuse `applyDiscoveryFilters`. Honest empty states. The existing Next up / action /
+  checklist block, category row (Browse), chips and list stay below it, unchanged.
+- Test: `tests/public/home-hero.spec.js` (mocked, 1/1). Screenshot reviewed at 390x844.
+- **Not done yet:** iOS Home hero (Swift port), the "By type" rows, Browse grid restyle, Account gaps (profile
+  header, 4 shortcuts, grouped lists) vs the shell Account. Signed-in specs that assumed the old Home
+  (`home-quick-controls` etc.) now meet the shell Home; they need real credentials and were not run here.
