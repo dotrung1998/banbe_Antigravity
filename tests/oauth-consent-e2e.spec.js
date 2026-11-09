@@ -17,7 +17,8 @@ import { hasServiceRole, adminClient, createTestUser, signIn, cleanup } from './
 test.describe('OAuth consent gate (real backend)', () => {
   test.skip(!hasServiceRole(), 'Needs SUPABASE_SERVICE_ROLE_KEY — see tests/e2e/loadEnv.mjs');
 
-  const projectRef = new URL(process.env.VITE_SUPABASE_URL).hostname.split('.')[0];
+  // Collected even when skipped: without the env var there is no URL to parse (the skip above applies).
+  const projectRef = process.env.VITE_SUPABASE_URL ? new URL(process.env.VITE_SUPABASE_URL).hostname.split('.')[0] : '';
   const storageKeyName = `sb-${projectRef}-auth-token`;
 
   /** Builds a Playwright storageState object from a real Supabase session. */
