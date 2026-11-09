@@ -168,6 +168,17 @@ struct WelcomeView: View {
                 app.openAuth(.signup)
             }
             .accessibilityIdentifier("welcome.getStarted")
+            #if DEBUG
+            Button { app.onboardingPreview = true } label: {
+                Text(app.T("Xem thử phần làm quen (không lưu gì)", "Preview onboarding (nothing is saved)"))
+                    .font(.subheadline.weight(.semibold))
+                    .opacity(0.8)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PressableButtonStyle(haptic: false))
+            .accessibilityIdentifier("welcome.previewOnboarding")
+            #endif
             Button {
                 Analytics.track(.publicEntryLogin)
                 app.openAuth(.login)

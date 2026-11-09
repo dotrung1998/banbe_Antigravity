@@ -148,12 +148,32 @@ extension AppState {
     func signInRevealDidFinish() { maybeStartOnboardingTour() }
 
     private func startOnboardingTour(replay: Bool) {
-        let plan = OnboardingTourContent.plan(organizerMode: organizerMode, simpleShell: simpleShellEnabled)
+        var plan = OnboardingTourContent.plan(organizerMode: organizerMode, simpleShell: simpleShellEnabled)
+        // Guest preview: Home steps only (Account needs a login).
+        if onboardingPreview {
+            plan = plan.map { ($0.chapter, $0.steps.filter { $0.screen == "home" }) }.filter { !$0.1.isEmpty }
+        }
         guard !plan.isEmpty else { return }
         Analytics.paused = true
         tourActive = true
         OnboardingTourController.shared.begin(plan: plan, replay: replay)
         UIAccessibility.post(notification: .screenChanged, argument: nil)
+    }
+
+    /// Note 80 preview: the recap's answer. Nothing was written, so there is no marker either way.
+    func finishOnboardingPreview(startTour: Bool) {
+        Analytics.paused = false
+        guard startTour else {
+            onboardingPreview = false
+            screen = .welcome
+            return
+        }
+        // The overlay leaves (preview flag stays on for the tour, which ends back at Welcome).
+        screen = .home
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            self?.startOnboardingTour(replay: true)
+        }
     }
 
     /// Finish, End tour or "Finish for now": Home, scrolled to the top; the marker only for a first run.
@@ -166,6 +186,11 @@ extension AppState {
         tour.reset()
         tourActive = false
         Analytics.paused = false
+        if onboardingPreview {
+            onboardingPreview = false
+            screen = .welcome
+            return
+        }
         screen = .home
         resetHomeScrollToTop()
         UIAccessibility.post(notification: .screenChanged, argument: nil)
@@ -174,6 +199,7 @@ extension AppState {
     /// Something more important took over (gate, personalization, sign-out, a deep link): stop without the marker.
     func abortOnboardingTour() {
         guard OnboardingTourController.shared.active else { return }
+        onboardingPreview = false
         OnboardingTourController.shared.reset()
         tourActive = false
         Analytics.paused = false

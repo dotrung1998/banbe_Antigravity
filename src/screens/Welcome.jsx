@@ -43,7 +43,11 @@ const primaryBtn = { width: '100%', minHeight: 56, borderRadius: 18, border: 'no
 const secondaryBtn = { width: '100%', minHeight: 50, borderRadius: 18, border: '1px solid var(--bb-rule)', background: 'var(--bb-field)', color: ink, fontFamily: 'inherit', fontSize: 15.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
 
 export default function Welcome() {
-  const { state: s, T, resolvedTheme, toggleLang, toggleTheme, browseAsGuest, openAuth } = useBanBe();
+  const { state: s, T, set, resolvedTheme, toggleLang, toggleTheme, browseAsGuest, openAuth } = useBanBe();
+  // Entry for testers: /?onboarding=preview opens the local-only onboarding v5 preview (note 80).
+  useEffect(() => {
+    try { if (new URLSearchParams(window.location.search).get('onboarding') === 'preview') set({ onboardingPreview: 'flow' }); } catch { /* ignore */ }
+  }, [set]);
   const [page, setPage] = useState(null); // null = welcome; 0..3 = story page
   const v2 = flagOn(s.featureFlags, 'onboarding_v2');
   // V2 entrance plays when Welcome opens, not again when coming back from the story.
@@ -68,6 +72,10 @@ export default function Welcome() {
       <button type="button" onClick={() => openAuth('signup', 'welcome')} data-testid="welcome-signup" className="bb-press"
         style={secondaryBtn}>
         <span aria-hidden>✨</span>{T('Tạo tài khoản', 'Create an account')}
+      </button>
+      <button type="button" onClick={() => set({ onboardingPreview: 'flow' })} data-testid="welcome-preview-onboarding" className="bb-press"
+        style={{ width: '100%', padding: 10, border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer', minHeight: 44, opacity: 0.8 }}>
+        {T('Xem thử phần làm quen (không lưu gì)', 'Preview onboarding (nothing is saved)')}
       </button>
       <button type="button" onClick={() => { track('public_entry_login'); openAuth('login', 'welcome'); }} data-testid="welcome-login" className="bb-press"
         style={{ width: '100%', padding: 12, border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 15, fontWeight: 500, cursor: 'pointer', minHeight: 48 }}>

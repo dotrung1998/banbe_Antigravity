@@ -67,7 +67,9 @@ export default function OnboardingTour() {
   const pendingRecap = useRef(0);
 
   const start = useCallback(({ replay }) => {
-    const plan = tourPlan({ organizerMode: !!s.organizerMode, simpleShell: flagOn(s.featureFlags, 'simple_shell') });
+    // Guest preview (note 80): only the Home steps (Account needs a login), and nothing is persisted.
+    const plan = tourPlan({ organizerMode: !!s.organizerMode, simpleShell: flagOn(s.featureFlags, 'simple_shell') })
+      .map(c => (s.onboardingPreview ? { ...c, steps: c.steps.filter(st => st.screen === 'home') } : c)).filter(c => c.steps.length);
     if (!plan.length) return;
     const steps = [];
     const chapters = plan.map(({ chapter, steps: st }) => {
@@ -78,7 +80,7 @@ export default function OnboardingTour() {
     restoreFocus.current = document.activeElement;
     setRect(null);
     setRun({ replay, steps, chapters, index: 0, phase: 'step', missing: new Set() });
-  }, [s.organizerMode, s.featureFlags]);
+  }, [s.organizerMode, s.featureFlags, s.onboardingPreview]);
 
   const end = useCallback((completed) => {
     setRun(r => {
@@ -86,11 +88,14 @@ export default function OnboardingTour() {
       return null;
     });
     setRect(null);
-    set({ screen: 'home', homeScrollTopToken: Date.now() });
+    if (s.onboardingPreview) {
+      // Preview over: back to Welcome, where the real sign-up and login are.
+      set({ onboardingPreview: false, screen: 'welcome' });
+    } else set({ screen: 'home', homeScrollTopToken: Date.now() });
     const el = restoreFocus.current;
     restoreFocus.current = null;
     setTimeout(() => { if (el && document.contains(el)) el.focus?.({ preventScroll: true }); }, 0);
-  }, [set, s.user?.id]);
+  }, [set, s.user?.id, s.onboardingPreview]);
 
   // ---- entry points ----
   useEffect(() => { if (s.tourAutoStartToken) pendingStart.current = Date.now(); }, [s.tourAutoStartToken]);
@@ -100,7 +105,7 @@ export default function OnboardingTour() {
     const blocked = gate.blocking || eventOnboardingActive || s.policyGateActive || s.screen !== 'home';
     // The recap's "Start the tour": the person asked for it, so no version switch or marker check applies.
     if (pendingRecap.current && Date.now() - pendingRecap.current <= 4000) {
-      if (!s.user?.id) { pendingRecap.current = 0; return; }
+      if (!s.user?.id && !s.onboardingPreview) { pendingRecap.current = 0; return; }
       if (blocked) return;
       pendingRecap.current = 0;
       start({ replay: false });
@@ -130,10 +135,10 @@ export default function OnboardingTour() {
   // Abort (no marker) when something more important takes over: a gate, personalization, sign-out, a deep link.
   useEffect(() => {
     if (!run) return;
-    if (!s.user || gate.blocking || eventOnboardingActive || s.policyGateActive || !TOUR_SCREENS.has(s.screen)) {
+    if ((!s.user && !s.onboardingPreview) || gate.blocking || eventOnboardingActive || s.policyGateActive || !TOUR_SCREENS.has(s.screen)) {
       setRun(null); setRect(null);
     }
-  }, [run, s.user, gate.blocking, eventOnboardingActive, s.policyGateActive, s.screen]);
+  }, [run, s.user, s.onboardingPreview, gate.blocking, eventOnboardingActive, s.policyGateActive, s.screen]);
 
   // ---- step: go to its screen, wait for the target, then follow it every frame ----
   const onStep = run?.phase === 'step';

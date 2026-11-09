@@ -667,6 +667,8 @@ const initialState = {
   tourAutoStartToken: 0,
   // Note 80: the onboarding recap's "Start the tour" (no version switch applies: the person asked for it).
   tourRecapStartToken: 0,
+  // Note 80: logged-out preview of onboarding v5. false | 'flow' | 'tour'. Local only: nothing is written anywhere.
+  onboardingPreview: false,
   tourReplayRequest: 0,
   // Host reservation criteria (migration 162): criteria cache by event id,
   // the guest eligibility pre-check, and the create-flow retry target.

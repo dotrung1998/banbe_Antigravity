@@ -97,6 +97,8 @@ final class OnboardingCoordinator: ObservableObject {
 struct EventOnboardingOverlay: View {
     @EnvironmentObject var app: AppState
     @State private var flow: OnboardingCoordinator?
+    /// Note 80: logged-out demo. Every closure below is local; no Supabase call, marker or setting is ever written.
+    var preview = false
 
     var body: some View {
         ZStack {
@@ -106,6 +108,15 @@ struct EventOnboardingOverlay: View {
         .transition(.opacity)
         .task {
             guard flow == nil else { return }
+            if preview {
+                Analytics.paused = true
+                let state = OnboardingFlowState.initial(needsPreferences: true, needsSettings: true,
+                                                        region: BudgetRegion.deviceDefault(), consents: [.digest, .hosting])
+                let coordinator = OnboardingCoordinator(state: state, uid: nil, save: { _ in true },
+                                                        completeSettings: { true }, applyConsent: { _ in true })
+                flow = coordinator
+                return
+            }
             let consents = await app.onboardingConsents()
             let state = OnboardingDraftStore().resume(
                 uid: app.userID, needsPreferences: app.needsPreferencesOnboarding,
@@ -174,6 +185,10 @@ struct OnboardingFlowView: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: flow.state.stage)
         .onChange(of: flow.state.stage) { _, stage in
             guard stage == .finished else { return }
+            if app.onboardingPreview {
+                app.finishOnboardingPreview(startTour: flow.state.tourRequested)
+                return
+            }
             let answered = flow.state.payload != nil
             app.finishOnboardingFlow(showForYou: answered, openEventKey: nil, answeredPreferences: answered,
                                      startTour: flow.state.tourRequested)
@@ -1414,7 +1429,7 @@ private struct OnboardingRecapView: View {
             VStack(spacing: 2) {
                 InkButton(title: app.T("Bắt đầu hướng dẫn", "Start the tour")) { flow.send(.startTour) }
                     .accessibilityIdentifier("onboarding.recap.tour")
-                OnboardingLinkButton(title: app.T("Bỏ qua, về Trang chính", "Skip, go to Home"), identifier: "onboarding.recap.home") {
+                OnboardingLinkButton(title: app.onboardingPreview ? app.T("Quay lại Chào mừng (chưa lưu gì)", "Back to Welcome (nothing was saved)") : app.T("Bỏ qua, về Trang chính", "Skip, go to Home"), identifier: "onboarding.recap.home") {
                     flow.send(.skipTour)
                 }
             }

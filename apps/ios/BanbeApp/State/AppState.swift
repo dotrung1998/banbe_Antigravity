@@ -597,6 +597,8 @@ final class AppState: ObservableObject {
     /// Keeps the onboarding overlay up after the server markers clear, so the
     /// personalized reveal can show (OnboardingFlowViews.swift).
     @Published var onboardingFlowActive = false
+    /// Note 80: logged-out, local-only preview of onboarding v5 (DEBUG builds, opened from Welcome). Nothing is written.
+    @Published var onboardingPreview = false
     /// Post-onboarding Home checklist (Lib/ActivationChecklist.swift), per account.
     @Published var activation = ActivationChecklistState()
     /// Where Account > Event preferences returns to (set by the entry row).

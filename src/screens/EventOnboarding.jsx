@@ -20,7 +20,7 @@ import { paper, ink, display } from '../theme.js';
 import { Button } from '../components/ui/FormControls.jsx';
 import { NO_PREFERENCE, BUDGET_TIERS, BUDGET_REGIONS, INTERESTS, AVAILABILITY, budgetTierLabel, budgetRegionDefault, normalizeForSave, prefLabel, optionEmoji } from '../lib/eventPrefs.js';
 import {
-  QUESTIONS, reduce, draftStore, payload as flowPayload, currentConsent, consentAsksSystem,
+  QUESTIONS, reduce, initialState, draftStore, payload as flowPayload, currentConsent, consentAsksSystem,
   onboardingCandidates, typeCounts, tileTypes, matchCount, optionCount, revealPlan, MIN_FOR_YOU,
 } from '../lib/onboardingFlow.js';
 import { tourPlan } from '../data/onboardingTour.js';
@@ -38,6 +38,8 @@ const NIGHT = '#16140f';
 export function useEventOnboardingActive() {
   const { state: s } = useBanBe();
   const { gate } = useAccountGate();
+  // Guest preview (note 80): a local-only demo of the same flow, shown before login. Never touches the server.
+  if (s.onboardingPreview === 'flow') return true;
   return !!s.user && s.sessionChecked && !s.authSyncing && !s.policyGateActive && gate === 'ready'
     && !NOT_ONBOARDING_SCREENS.has(s.screen)
     && (s.needsSettingsOnboarding || s.needsPreferencesOnboarding || s.onboardingFlowActive);
@@ -623,7 +625,7 @@ function ConsentStep({ flow, busy, onAnswer }) {
 
 // ---- recap and the tour offer ----
 
-function RecapStep({ flow, send }) {
+function RecapStep({ flow, send, preview }) {
   const { state: s, T } = useBanBe();
   const simple = flagOn(s.featureFlags, 'simple_shell');
   const chapters = tourPlan({ organizerMode: !!s.organizerMode, simpleShell: simple }).map(c => c.chapter);
@@ -664,7 +666,8 @@ function RecapStep({ flow, send }) {
       </div>
       <div style={{ marginTop: 22 }}>
         <InkBtn testId="onboarding-recap-tour" label={T('Bắt đầu hướng dẫn', 'Start the tour')} onClick={() => send('startTour')} />
-        <LinkBtn testId="onboarding-recap-home" label={T('Bỏ qua, về Trang chính', 'Skip, go to Home')} onClick={() => send('skipTour')} />
+        <LinkBtn testId="onboarding-recap-home" label={preview ? T('Tạo tài khoản để lưu lựa chọn', 'Create an account to save these') : T('Bỏ qua, về Trang chính', 'Skip, go to Home')} onClick={() => send('skipTour')} />
+        {preview && <p data-testid="onboarding-preview-note" style={{ fontSize: 12.5, textAlign: 'center', color: muted(0.65), margin: '8px 0 0' }}>{T('Bản xem thử: chưa có gì được lưu.', 'Preview only: nothing was saved.')}</p>}
       </div>
     </div>
   );
@@ -681,12 +684,14 @@ function consentsFor(s) {
   return out;
 }
 
-function OnboardingFlowRunner() {
-  const { state: s, set, curArea, loadDiscoveryEvents, completePreferencesOnboarding, saveEventPreferences, completeSettingsOnboarding, applyOrganizerMode, finishOnboardingFlow } = useBanBe();
+function OnboardingFlowRunner({ preview = false }) {
+  const { state: s, set, openAuth, browseAsGuest, curArea, loadDiscoveryEvents, completePreferencesOnboarding, saveEventPreferences, completeSettingsOnboarding, applyOrganizerMode, finishOnboardingFlow } = useBanBe();
   const uid = s.user?.id;
-  const [flow, setFlow] = useState(() => draftStore.resume(uid, {
-    needsPreferences: s.needsPreferencesOnboarding, needsSettings: s.needsSettingsOnboarding, region: budgetRegionDefault(), consents: consentsFor(s),
-  }));
+  const [flow, setFlow] = useState(() => (preview
+    ? initialState({ needsPreferences: true, needsSettings: true, region: budgetRegionDefault(), consents: ['digest', 'hosting'] })
+    : draftStore.resume(uid, {
+      needsPreferences: s.needsPreferencesOnboarding, needsSettings: s.needsSettingsOnboarding, region: budgetRegionDefault(), consents: consentsFor(s),
+    })));
   const [consentBusy, setConsentBusy] = useState(false);
   const flowRef = useRef(flow);
   flowRef.current = flow;
@@ -697,10 +702,11 @@ function OnboardingFlowRunner() {
   // Keep the overlay up through the recap even after the server markers clear, but never re-arm it once the flow
   // has finished (finishOnboardingFlow clears the flag while this runner is still mounted).
   useEffect(() => {
+    if (preview) return;
     if (!s.onboardingFlowActive && flow.stage !== 'finished' && !finishedRef.current) set({ onboardingFlowActive: true });
   }, [s.onboardingFlowActive, flow.stage, set]);
 
-  useEffect(() => { draftStore.save(flow, uid); }, [flow, uid]);
+  useEffect(() => { if (!preview) draftStore.save(flow, uid); }, [flow, uid, preview]);
 
   const send = (action) => {
     const { state, effects } = reduce(flowRef.current, action);
@@ -708,6 +714,11 @@ function OnboardingFlowRunner() {
     setFlow(state);
     for (const e of effects) {
       if (e.type === 'track') track(e.name, e.props);
+      // Preview: every write is answered locally, no RPC is ever called.
+      if (preview && (e.type === 'save' || e.type === 'completeSettings')) {
+        send(e.type === 'save' ? 'saveSucceeded' : 'settingsSucceeded');
+        continue;
+      }
       if (e.type === 'save') {
         // "Change my answers" after the first save: the marker is already set, so a plain save (skipping every
         // question there keeps the answers already saved).
@@ -721,7 +732,7 @@ function OnboardingFlowRunner() {
 
   // A flow that opens on work (only the settings marker is owed and there's nothing to ask) starts it here.
   useEffect(() => {
-    if (flow.stage === 'settingsSaving') completeSettingsOnboarding().then(ok => send(ok ? 'settingsSucceeded' : 'settingsFailed'));
+    if (!preview && flow.stage === 'settingsSaving') completeSettingsOnboarding().then(ok => send(ok ? 'settingsSucceeded' : 'settingsFailed'));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -730,6 +741,7 @@ function OnboardingFlowRunner() {
     const kind = currentConsent(flowRef.current);
     if (!kind || consentBusy) return;
     if (!yes) { send({ type: 'consentAnswered', kind, on: false }); return; }
+    if (preview) { send({ type: 'consentAnswered', kind, on: true }); return; }
     setConsentBusy(true);
     let on = false;
     try {
@@ -759,6 +771,12 @@ function OnboardingFlowRunner() {
   useEffect(() => {
     if (flow.stage !== 'finished' || finishedRef.current) return;
     finishedRef.current = true;
+    if (preview) {
+      // Preview ends at sign-up (or in the tour over guest Home). Nothing was written, so no marker.
+      if (flow.tourRequested) { browseAsGuest(); set({ onboardingPreview: 'tour', screen: 'home', tourRecapStartToken: Date.now() }); }
+      else { set({ onboardingPreview: false }); openAuth('signup', 'welcome'); }
+      return;
+    }
     draftStore.clear(uid);
     const answered = flowPayload(flow) != null;
     finishOnboardingFlow({ showForYou: answered, hasMatches: exactMatches > 0, openEventKey: null, answeredPreferences: answered, startTour: flow.tourRequested });
@@ -773,7 +791,7 @@ function OnboardingFlowRunner() {
     case 'consent': return <ConsentStep flow={flow} busy={consentBusy} onAnswer={answer} />;
     case 'settingsSaving': return <SavingStep label={s.lang === 'en' ? 'Saving your choices…' : 'Đang lưu lựa chọn của bạn…'} />;
     case 'settingsFailed': return <SettingsFailedStep send={send} />;
-    case 'recap': return <RecapStep flow={flow} send={send} />;
+    case 'recap': return <RecapStep flow={flow} send={send} preview={preview} />;
     default: return null;
   }
 }
@@ -786,7 +804,7 @@ export default function EventOnboarding() {
   return (
     <div data-testid="event-onboarding-overlay" style={{ position: 'fixed', inset: 0, zIndex: 1900, background: paper, overflowY: 'auto', display: s.areaAsking ? 'none' : 'block', animation: 'banbeFade 0.25s ease both' }}>
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '40px 24px 42px', boxSizing: 'border-box', color: ink }}>
-        <OnboardingFlowRunner key={s.user?.id || 'none'} />
+        <OnboardingFlowRunner key={s.onboardingPreview === 'flow' ? 'preview' : (s.user?.id || 'none')} preview={s.onboardingPreview === 'flow'} />
       </div>
     </div>
   );
