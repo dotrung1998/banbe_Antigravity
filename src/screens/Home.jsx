@@ -896,6 +896,118 @@ export default function Home() {
             );
   };
 
+  const surveySection = s.user ? (
+      <div style={{ padding: simpleShell ? '28px 20px 0' : '16px 20px 16px', borderTop: simpleShell ? 'none' : `1px solid ${rule}` }} data-testid="home-survey-discovery-section">
+        {/* Collapse/expand pass — collapsed by default; the compact
+            horizontal strip below (already the "compact cards, not a tall
+            stack" shape this ticket asks for) only renders while expanded.
+            `homeSurveyDiscoveryExpanded` lives in BanBeContext state, not
+            local component state, so it survives Home unmounting/remounting
+            around a trip into the survey modal and back. */}
+        <div
+          onClick={() => set({ homeSurveyDiscoveryExpanded: !s.homeSurveyDiscoveryExpanded })}
+          data-testid="home-survey-discovery-toggle"
+          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', minHeight: 32 }}
+        >
+          <span style={{ ...display(SECTION_TITLE) }}>
+            {T('Góp ý cho sự kiện sắp tới', 'Help Shape Upcoming Events')}
+          </span>
+          {!s.homeSurveyDiscoveryLoading && !s.homeSurveyDiscoveryError && s.homeSurveyDiscovery.length > 0 && (
+            // Honest LOADED count, never a fabricated total — "+" only when
+            // the server told us more exist (`hasMore`), never guessed from
+            // a page-size cap.
+            <span style={{ fontSize: 13, fontWeight: 600, color: ink, opacity: 0.75, background: `${ink}1a`, borderRadius: 999, padding: '2px 10px' }}>
+              {s.homeSurveyDiscoveryHasMore ? `${s.homeSurveyDiscovery.length}+` : s.homeSurveyDiscovery.length}
+            </span>
+          )}
+          <span style={{ flex: 1 }} />
+          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"
+            style={{ color: ink, opacity: 0.55, transform: s.homeSurveyDiscoveryExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </div>
+        {s.homeSurveyDiscoveryExpanded && (
+        <div style={{ marginTop: 10 }}>
+        {s.homeSurveyDiscoveryLoading && !s.homeSurveyDiscovery.length && (
+          <div style={{ fontSize: 12, opacity: 0.6 }} data-testid="home-survey-discovery-loading">{T('Đang tải…', 'Loading…')}</div>
+        )}
+        {!s.homeSurveyDiscoveryLoading && s.homeSurveyDiscoveryError && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="home-survey-discovery-error">
+            <span style={{ fontSize: 12, color: alert }}>{s.homeSurveyDiscoveryError}</span>
+            <span onClick={loadHomeSurveyDiscovery} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer', alignSelf: 'flex-start' }}>{T('Thử lại', 'Retry')}</span>
+          </div>
+        )}
+        {!s.homeSurveyDiscoveryLoading && !s.homeSurveyDiscoveryError && s.homeSurveyDiscovery.length === 0 && (
+          <div style={{ fontSize: 12, opacity: 0.6 }} data-testid="home-survey-discovery-empty">
+            {T('Chưa có khảo sát công khai nào.', 'No public surveys right now.')}
+          </div>
+        )}
+        {s.homeSurveyDiscovery.length > 0 && (
+          // Compact-vertical-list pass — replaces the previous horizontal
+          // `data-hscroll` carousel entirely. Plain vertical flow inside
+          // Home's own page (no nested scroll container of any kind), so
+          // this never competes with the root-screen swipe gesture at
+          // all — that conflict was specific to HORIZONTAL motion inside a
+          // `overflowX: auto` row; a vertical list has nothing for that
+          // gesture to misread.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="home-survey-discovery-row">
+            {s.homeSurveyDiscovery.slice(0, visibleSurveyDiscoveryCount).map(card => (
+              <div
+                key={card.survey_id}
+                onClick={() => openSurveyStoryModal(card.public_id)}
+                data-testid="home-survey-discovery-card"
+                role="button"
+                tabIndex={0}
+                aria-label={card.closes_at
+                  ? T(`Trả lời khảo sát: ${card.title}, tổ chức bởi ${card.host_name}, hạn ${new Date(card.closes_at).toLocaleDateString('vi-VN')}`,
+                      `Answer survey: ${card.title}, hosted by ${card.host_name}, deadline ${new Date(card.closes_at).toLocaleDateString('vi-VN')}`)
+                  : T(`Trả lời khảo sát: ${card.title}, tổ chức bởi ${card.host_name}`, `Answer survey: ${card.title}, hosted by ${card.host_name}`)}
+                style={{ ...fieldGlass({ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 12px', borderRadius: 12, cursor: 'pointer' }) }}
+              >
+                {card.host_avatar_url ? (
+                  <img src={card.host_avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }} />
+                ) : (
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 999, background: `${ink}1a`, flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: ink,
+                  }}>
+                    {(card.host_name || '?').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.title}</div>
+                  <div style={{ fontSize: 11, color: ink, opacity: 0.65, marginTop: 2, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                    <span>{card.host_name}</span>
+                    {card.closes_at && (
+                      <>
+                        {/* Solid small square separator — decorative, hidden
+                            from accessibility, never a bullet/dash/large
+                            clock glyph. */}
+                        <span aria-hidden="true" style={{ width: 3, height: 3, borderRadius: 1, background: ink, opacity: 0.55, flexShrink: 0 }} />
+                        <span>{T('Hạn', 'Deadline')}: {new Date(card.closes_at).toLocaleDateString('vi-VN')}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <span aria-hidden="true" style={{ fontSize: 13, color: ink, opacity: 0.35, flexShrink: 0, marginTop: 2 }}>›</span>
+              </div>
+            ))}
+            {(visibleSurveyDiscoveryCount < s.homeSurveyDiscovery.length || s.homeSurveyDiscoveryHasMore) && (
+              <div
+                onClick={revealMoreSurveyDiscovery}
+                data-testid="home-survey-discovery-show-more"
+                style={{ fontSize: 12, fontWeight: 600, color: ink, textAlign: 'center', cursor: 'pointer', padding: '8px 0' }}
+              >
+                {s.homeSurveyDiscoveryLoadingMore ? T('Đang tải…', 'Loading…') : T('Xem thêm', 'Show More')}
+              </div>
+            )}
+          </div>
+        )}
+        </div>
+        )}
+      </div>
+  ) : null;
+
   return (
     <>
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Home">
@@ -996,7 +1108,7 @@ export default function Home() {
           onOpenEvent={goEvent} onSeeAll={heroSeeAll} onMap={openMapWithContext} onAccount={() => setQuickOpen(true)}
           onSearch={openSearch} onArea={openAreaMenu} onFilters={() => set({ homeFilterSheetOpen: true })} filterSummary={shellFilterSummary}
           onFindType={() => setCategorySheetOpen(true)} onPickType={shellPickType}
-          hostBody={<div data-reveal="1"><HostHome /><div style={{ height: 44 }} /></div>}>
+          hostBody={<div data-reveal="1"><HostHome /><div style={{ height: 44 }} /></div>} below={surveySection}>
           <div data-reveal="1" data-testid="home-hero" data-hero={goerHero}>
             {goerHero === 'nextUp' && (
               <NextUpBanner item={nextUp && { ...nextUp, when: nextUp.status }} onOpen={() => openSaved(nextUp)} T={T}
@@ -1334,117 +1446,7 @@ export default function Home() {
           same dedup key, so a render-level duplicate is structurally
           impossible here too. */}
       {/* Note 49: surveys need an account (the discovery RPC is authenticated-only) — hidden for a guest. */}
-      {s.user && (
-      <div style={{ padding: '16px 20px 16px', borderTop: `1px solid ${rule}` }} data-testid="home-survey-discovery-section">
-        {/* Collapse/expand pass — collapsed by default; the compact
-            horizontal strip below (already the "compact cards, not a tall
-            stack" shape this ticket asks for) only renders while expanded.
-            `homeSurveyDiscoveryExpanded` lives in BanBeContext state, not
-            local component state, so it survives Home unmounting/remounting
-            around a trip into the survey modal and back. */}
-        <div
-          onClick={() => set({ homeSurveyDiscoveryExpanded: !s.homeSurveyDiscoveryExpanded })}
-          data-testid="home-survey-discovery-toggle"
-          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', minHeight: 32 }}
-        >
-          <span style={{ ...display(SECTION_TITLE) }}>
-            {T('Góp ý cho sự kiện sắp tới', 'Help Shape Upcoming Events')}
-          </span>
-          {!s.homeSurveyDiscoveryLoading && !s.homeSurveyDiscoveryError && s.homeSurveyDiscovery.length > 0 && (
-            // Honest LOADED count, never a fabricated total — "+" only when
-            // the server told us more exist (`hasMore`), never guessed from
-            // a page-size cap.
-            <span style={{ fontSize: 13, fontWeight: 600, color: ink, opacity: 0.75, background: `${ink}1a`, borderRadius: 999, padding: '2px 10px' }}>
-              {s.homeSurveyDiscoveryHasMore ? `${s.homeSurveyDiscovery.length}+` : s.homeSurveyDiscovery.length}
-            </span>
-          )}
-          <span style={{ flex: 1 }} />
-          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"
-            style={{ color: ink, opacity: 0.55, transform: s.homeSurveyDiscoveryExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </div>
-        {s.homeSurveyDiscoveryExpanded && (
-        <div style={{ marginTop: 10 }}>
-        {s.homeSurveyDiscoveryLoading && !s.homeSurveyDiscovery.length && (
-          <div style={{ fontSize: 12, opacity: 0.6 }} data-testid="home-survey-discovery-loading">{T('Đang tải…', 'Loading…')}</div>
-        )}
-        {!s.homeSurveyDiscoveryLoading && s.homeSurveyDiscoveryError && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="home-survey-discovery-error">
-            <span style={{ fontSize: 12, color: alert }}>{s.homeSurveyDiscoveryError}</span>
-            <span onClick={loadHomeSurveyDiscovery} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer', alignSelf: 'flex-start' }}>{T('Thử lại', 'Retry')}</span>
-          </div>
-        )}
-        {!s.homeSurveyDiscoveryLoading && !s.homeSurveyDiscoveryError && s.homeSurveyDiscovery.length === 0 && (
-          <div style={{ fontSize: 12, opacity: 0.6 }} data-testid="home-survey-discovery-empty">
-            {T('Chưa có khảo sát công khai nào.', 'No public surveys right now.')}
-          </div>
-        )}
-        {s.homeSurveyDiscovery.length > 0 && (
-          // Compact-vertical-list pass — replaces the previous horizontal
-          // `data-hscroll` carousel entirely. Plain vertical flow inside
-          // Home's own page (no nested scroll container of any kind), so
-          // this never competes with the root-screen swipe gesture at
-          // all — that conflict was specific to HORIZONTAL motion inside a
-          // `overflowX: auto` row; a vertical list has nothing for that
-          // gesture to misread.
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="home-survey-discovery-row">
-            {s.homeSurveyDiscovery.slice(0, visibleSurveyDiscoveryCount).map(card => (
-              <div
-                key={card.survey_id}
-                onClick={() => openSurveyStoryModal(card.public_id)}
-                data-testid="home-survey-discovery-card"
-                role="button"
-                tabIndex={0}
-                aria-label={card.closes_at
-                  ? T(`Trả lời khảo sát: ${card.title}, tổ chức bởi ${card.host_name}, hạn ${new Date(card.closes_at).toLocaleDateString('vi-VN')}`,
-                      `Answer survey: ${card.title}, hosted by ${card.host_name}, deadline ${new Date(card.closes_at).toLocaleDateString('vi-VN')}`)
-                  : T(`Trả lời khảo sát: ${card.title}, tổ chức bởi ${card.host_name}`, `Answer survey: ${card.title}, hosted by ${card.host_name}`)}
-                style={{ ...fieldGlass({ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 12px', borderRadius: 12, cursor: 'pointer' }) }}
-              >
-                {card.host_avatar_url ? (
-                  <img src={card.host_avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }} />
-                ) : (
-                  <div style={{
-                    width: 28, height: 28, borderRadius: 999, background: `${ink}1a`, flexShrink: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: ink,
-                  }}>
-                    {(card.host_name || '?').charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.title}</div>
-                  <div style={{ fontSize: 11, color: ink, opacity: 0.65, marginTop: 2, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                    <span>{card.host_name}</span>
-                    {card.closes_at && (
-                      <>
-                        {/* Solid small square separator — decorative, hidden
-                            from accessibility, never a bullet/dash/large
-                            clock glyph. */}
-                        <span aria-hidden="true" style={{ width: 3, height: 3, borderRadius: 1, background: ink, opacity: 0.55, flexShrink: 0 }} />
-                        <span>{T('Hạn', 'Deadline')}: {new Date(card.closes_at).toLocaleDateString('vi-VN')}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <span aria-hidden="true" style={{ fontSize: 13, color: ink, opacity: 0.35, flexShrink: 0, marginTop: 2 }}>›</span>
-              </div>
-            ))}
-            {(visibleSurveyDiscoveryCount < s.homeSurveyDiscovery.length || s.homeSurveyDiscoveryHasMore) && (
-              <div
-                onClick={revealMoreSurveyDiscovery}
-                data-testid="home-survey-discovery-show-more"
-                style={{ fontSize: 12, fontWeight: 600, color: ink, textAlign: 'center', cursor: 'pointer', padding: '8px 0' }}
-              >
-                {s.homeSurveyDiscoveryLoadingMore ? T('Đang tải…', 'Loading…') : T('Xem thêm', 'Show More')}
-              </div>
-            )}
-          </div>
-        )}
-        </div>
-        )}
-      </div>
-      )}
+      {surveySection}
 
       <div style={{ padding: '6px 20px 8px', fontSize: 11, color: ink }}>
         {T('Vài buổi vui dành cho riêng bạn tuần này. Không xếp hạng, không quảng cáo, không lướt vô tận.', 'A few fun gatherings made just for you this week. No ratings, no ads, no endless scrolling.')}

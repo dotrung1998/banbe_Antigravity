@@ -124,7 +124,7 @@ function RowGroup({ title, testId, top = 30, children }) {
 export default function Account() {
   const project = useEventProject();
   const {
-    state, T, set, goEditName, openRefundAccounts, openSecurity, openEventPreferences, openPolicy, pickLight, pickDark, pickVi, pickEn, openAdminEvents, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
+    state, T, set, goEditName, openRefundAccounts, openSecurity, openEventPreferences, openPolicy, toggleTheme, toggleLang, openAdminEvents, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
     startHosting,
     openMyRefunds,
     loadHomeStories, openStoryViewer, openStoryLibraryPicker, openStoryCameraPicker,
@@ -258,7 +258,9 @@ export default function Account() {
       badge: computeMyRefundActionCount(s), onClick: () => openAccountGroup('payments') },
     { tileKey: 'saved', icon: 'bookmark', title: T('Đã lưu', 'Saved'),
       value: T(`${savedCount} sự kiện`, `${savedCount} ${savedCount === 1 ? 'event' : 'events'}`), onClick: goSavedList },
-    { tileKey: 'rewards', icon: 'star', title: T('Phần thưởng', 'Rewards'), onClick: () => set({ screen: 'rewards', rewardsBack: 'profile' }) },
+    rewardsEnabled
+      ? { tileKey: 'rewards', icon: 'star', title: T('Phần thưởng', 'Rewards'), onClick: () => set({ screen: 'rewards', rewardsBack: 'profile' }) }
+      : { tileKey: 'help', icon: 'help', title: T('Trợ giúp', 'Help'), onClick: () => openAccountGroup('helpLegal') },
   ];
   const eventsValue = (() => {
     const bits = [];
@@ -355,8 +357,8 @@ export default function Account() {
     s.user ? <MoreRow key="profile" icon="person" label={T('Hồ sơ & đăng nhập', 'Profile & sign-in')} sub={T('Tên, số điện thoại, mật khẩu', 'Name, phone, password')} testId="account-group-preferences" onClick={goEditName} /> : null,
     s.user ? notificationsRow : null,
     s.user ? <MoreRow key="foryou" icon="star" label={T('Gợi ý Dành cho bạn', 'For You preferences')} sub={T('Sở thích và mục tiêu', 'Interests and goals')} testId="account-event-preferences" onClick={() => openEventPreferences(null)} /> : null,
-    <MoreRow key="appearance" icon="sun" label={T('Giao diện', 'Appearance')} testId="account-appearance" end={seg('account-theme', [['light', T('Sáng', 'Light'), s.theme !== 'dark', pickLight], ['dark', T('Tối', 'Dark'), s.theme === 'dark', pickDark]])} />,
-    <MoreRow key="language" icon="globe" label={T('Ngôn ngữ', 'Language')} testId="account-language" end={seg('account-lang', [['vi', 'VI', s.lang !== 'en', pickVi], ['en', 'EN', s.lang === 'en', pickEn]])} />,
+    <MoreRow key="appearance" icon="sun" label={T('Giao diện', 'Appearance')} testId="account-appearance" end={seg('account-theme', [['light', T('Sáng', 'Light'), s.theme !== 'dark', () => s.theme === 'dark' && toggleTheme()], ['dark', T('Tối', 'Dark'), s.theme === 'dark', () => s.theme !== 'dark' && toggleTheme()]])} />,
+    <MoreRow key="language" icon="globe" label={T('Ngôn ngữ', 'Language')} testId="account-language" end={seg('account-lang', [['vi', 'VI', s.lang !== 'en', () => s.lang === 'en' && toggleLang()], ['en', 'EN', s.lang === 'en', () => s.lang !== 'en' && toggleLang()]])} />,
     s.user ? <MoreRow key="refund-accounts" icon="bank" label={T('Tài khoản thanh toán & nhận hoàn tiền', 'Payment & refund accounts')} testId="account-refund-accounts" onClick={() => openRefundAccounts('profile')} /> : null,
     s.user ? <MoreRow key="security" icon="shield" label={T('Quyền riêng tư & bảo mật', 'Privacy & security')} sub={T('Face ID, người bị chặn, xoá tài khoản', 'Face ID, blocked people, delete account')} testId="account-security" onClick={openSecurity} /> : null,
   ];
