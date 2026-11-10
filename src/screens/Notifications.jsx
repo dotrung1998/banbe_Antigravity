@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { takeBellOrigin } from '../lib/bellOrigin.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { agoLabel, bg } from '../data/events.js';
+import { KIND_CATEGORY } from '../lib/notificationPrefs.js';
 import { avatarSourceFor, notificationAgeBucket, groupNotificationsByDay, collapseDayGroups } from '../lib/notifications.js';
 import { paper, ink, rule, alert, display, fieldGlass } from '../theme.js';
 
@@ -18,26 +19,7 @@ const COLLAPSE_AT = 20;
 // RowIcon (one stroke weight, one viewBox, `ink` only, no emoji) — kept
 // local here rather than importing from Account.jsx since that component
 // isn't exported and this needs a different (smaller) glyph set.
-export const KIND_CATEGORY = {
-  refund_marked_sent: 'refund', refund_confirmed: 'refund', refund_disputed: 'refund', refund_overdue: 'refund',
-  dispute_message: 'dispute', dispute_resolved: 'dispute', payment_disputed: 'dispute',
-  payment_awaiting_verification: 'payment', payment_confirmed: 'payment', payment_document_uploaded: 'payment',
-  payment_document_replaced: 'payment', payment_verification_nudge: 'payment', payment_needs_info: 'payment',
-  hold_created: 'payment', hold_expired: 'payment',
-  booking_requested: 'booking', booking_cancelled: 'booking', booking_declined: 'booking',
-  checked_in: 'booking', checkin_undo: 'booking', checkin_undone: 'booking', undo_check_in: 'booking',
-  reject_pending_guest: 'booking', receipt_requested: 'booking',
-  event_share: 'event', referral_joined: 'event',
-  new_message: 'message', event_announcement: 'message',
-  // iPhone fix pass (2026-09-27), Issue 1 — these fell to 'system' (the
-  // generic bell/circle glyph) before; a distinct people icon reads as "a
-  // Team thing" instead.
-  organizer_invite: 'team', organizer_invite_response: 'team', event_credit_invite: 'team',
-  // Phase 2-3 core loops (migrations 199/200): reminders get their own calendar-with-clock glyph; recaps, follow
-  // alerts and the weekend digest are about an event.
-  event_reminder_day: 'reminder', event_reminder_soon: 'reminder',
-  event_recap: 'event', host_event_recap: 'event', follow_alert: 'event', weekly_digest: 'event',
-};
+// The kind -> category map itself lives in lib/notificationPrefs.js (shared with Notification preferences).
 export function notificationCategory(kind) { return KIND_CATEGORY[kind] || 'system'; }
 
 // Color-as-wayfinding pass (2026-09-27) — the SAME meaning -> color map

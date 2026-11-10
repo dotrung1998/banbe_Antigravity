@@ -34,6 +34,7 @@ const STATIC = {
   preferences: '/settings',
   security: '/settings/security',
   eventPreferences: '/settings/event-preferences',
+  notifPrefs: '/settings/notifications',
   following: '/profile/following',
   rewards: '/profile/rewards',
   editName: '/profile/name',

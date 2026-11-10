@@ -4,7 +4,8 @@ import { createPortal } from 'react-dom';
 import { useEffect, useState } from 'react';
 import { accountTabs, resolveAccountTab } from '../../lib/accountTabs.js';
 import { useBanBe } from '../../state/BanBeContext.jsx';
-import { effectiveHomeView, hostSegmentLocked } from '../../lib/homeMode.js';
+import { resolveTheme } from '../../lib/themeChoice.js';
+import { notifPrefsSummary } from '../../lib/notificationPrefs.js';
 import { RowIcon } from '../../screens/Account.jsx';
 import { computeMyTicketsActionCount } from '../../lib/badges.js';
 
@@ -13,27 +14,31 @@ const seg = (on) => ({ height: 30, padding: '0 11px', border: 'none', borderRadi
   background: on ? 'var(--bb-fg)' : 'transparent', color: on ? 'var(--bb-bg)' : 'var(--bb-fg-2)', fontWeight: on ? 600 : 400 });
 
 export default function QuickSheetV5({ onClose }) {
-  const { state: s, set, T, toggleTheme, toggleLang, goProfile, goNotifications, goLogin, logout, openAccountGroup, goSavedList, setHomeView, startHosting, canHost, goCreate, goDashboard, openAdminEvents } = useBanBe();
+  const { state: s, set, T, pickTheme, toggleLang, goProfile, goLogin, logout, openAccountGroup, goSavedList, toggleOrganizerMode, canHost, goCreate, goDashboard, openAdminEvents } = useBanBe();
   useEffect(() => {
     const k = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   }, [onClose]);
+  // A first-time host gets the Host setup sheet after the switch turns on; it sits under this panel, so step aside.
+  useEffect(() => { if (s.hostSetupOpen) onClose(); }, [s.hostSetupOpen, onClose]);
   const go = (fn) => () => { onClose(); fn(); };
   const user = s.user;
   const name = user ? (user.name || (user.email ? user.email.split('@')[0] : T('Bạn', 'You'))) : '';
   const ini = name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
-  const view = effectiveHomeView(!!s.organizerMode, s.homeView);
-  const hostOn = view === 'host';
-  const onHost = () => {
-    if (hostOn) setHomeView('goer');
-    else if (hostSegmentLocked(!!s.organizerMode)) { if (!s.organizerModeBusy) { onClose(); startHosting({ land: 'home' }); } } else setHomeView('host');
-  };
-  const tabs = user ? accountTabs({ isAdmin: s.accountType === 'admin', hostMode: !!s.organizerMode && !!canHost }) : [];
+  // The same Hosting mode switch as Account (organizer mode itself, not the Home view), so the switch and the
+  // Host tab below can never disagree. Turning it on selects the Host tab, like the prototype.
+  const hostOn = !!s.organizerMode;
   const [tabSel, setTabSel] = useState(null);
+  const onHost = () => {
+    if (s.organizerModeBusy) return;
+    if (!hostOn) setTabSel('host');
+    toggleOrganizerMode();
+  };
+  const tabs = user ? accountTabs({ isAdmin: s.accountType === 'admin', hostMode: hostOn && !!canHost }) : [];
   const tab = resolveAccountTab(tabSel || s.accountTab, tabs) || 'personal';
   const toAccount = (k) => () => { set({ screen: 'profile', accountTab: k }); };
-  const dark = s.theme === 'dark';
+  const dark = resolveTheme(s.theme, s.systemDark) === 'dark';
   const en = s.lang === 'en';
   const shortcuts = {
     personal: [
@@ -75,7 +80,7 @@ export default function QuickSheetV5({ onClose }) {
               </span>
             </button>
             <div style={{ margin: '18px 20px 0' }}>
-              <button type="button" role="switch" aria-checked={hostOn} onClick={onHost} data-testid="quick-host-switch"
+              <button type="button" role="switch" aria-checked={hostOn} disabled={s.organizerModeBusy} onClick={onHost} data-testid="quick-host-switch"
                 style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', borderRadius: 16, color: 'inherit', font: 'inherit', cursor: 'pointer',
                   background: hostOn ? 'color-mix(in srgb, var(--bb-moss, #5E7A5A) 14%, var(--bb-block))' : 'var(--bb-block)' }}>
                 <span style={{ flex: 'none', width: 36, height: 36, borderRadius: '50%', background: 'var(--bb-bg)', display: 'grid', placeItems: 'center' }}><RowIcon kind="store" size={19} /></span>
@@ -85,6 +90,7 @@ export default function QuickSheetV5({ onClose }) {
                   <span style={{ position: 'absolute', top: 3, left: 3, width: 22, height: 22, borderRadius: '50%', background: '#fff', transform: hostOn ? 'translateX(18px)' : 'none', transition: 'transform .2s', boxShadow: '0 1px 2px rgba(0,0,0,.2)' }} />
                 </span>
               </button>
+              {s.organizerModeError && <p role="alert" style={{ fontSize: 12.5, lineHeight: 1.5, color: 'var(--bb-alert)', margin: '8px 4px 0' }}>{s.organizerModeError}</p>}
             </div>
             {tabs.length > 0 && (
               <div role="tablist" data-testid="quick-tabs" style={{ display: 'flex', gap: 2, padding: 2, margin: '12px 20px 0', borderRadius: 999, background: 'var(--bb-surface2, var(--bb-block))' }}>
@@ -114,16 +120,16 @@ export default function QuickSheetV5({ onClose }) {
         <div style={{ margin: '0 20px' }}>
           <div style={row}><RowIcon kind="sun" size={24} /><span style={{ flex: 1 }}>{T('Giao diện', 'Appearance')}</span>
             <span style={{ display: 'flex', background: 'var(--bb-block)', borderRadius: 999, padding: 2 }}>
-              <button type="button" data-testid="quick-theme-light" onClick={() => dark && toggleTheme()} style={seg(!dark)}>{T('Sáng', 'Light')}</button>
-              <button type="button" data-testid="quick-theme-dark" onClick={() => !dark && toggleTheme()} style={seg(dark)}>{T('Tối', 'Dark')}</button></span></div>
+              <button type="button" data-testid="quick-theme-light" onClick={() => pickTheme('light')} style={seg(!dark)}>{T('Sáng', 'Light')}</button>
+              <button type="button" data-testid="quick-theme-dark" onClick={() => pickTheme('dark')} style={seg(dark)}>{T('Tối', 'Dark')}</button></span></div>
           <div style={row}><RowIcon kind="globe" size={24} /><span style={{ flex: 1 }}>{T('Ngôn ngữ', 'Language')}</span>
             <span style={{ display: 'flex', background: 'var(--bb-block)', borderRadius: 999, padding: 2 }}>
               <button type="button" data-testid="quick-lang-vi" onClick={() => en && toggleLang()} style={seg(!en)}>VI</button>
               <button type="button" data-testid="quick-lang-en" onClick={() => !en && toggleLang()} style={seg(en)}>EN</button></span></div>
           {user && (
-            <button type="button" onClick={go(goNotifications)} data-testid="quick-notifications" style={{ ...row, width: '100%', border: 'none', borderBottom: line, background: 'none', color: 'inherit', fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+            <button type="button" onClick={go(() => set({ screen: 'notifPrefs', notifPrefsBack: 'home' }))} data-testid="quick-notifications" style={{ ...row, width: '100%', border: 'none', borderBottom: line, background: 'none', color: 'inherit', fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
               <RowIcon kind="bell" size={24} /><span style={{ flex: 1 }}>{T('Thông báo', 'Notifications')}</span>
-              {s.unreadNotifications > 0 && <span style={{ fontSize: 13, opacity: 0.6 }}>{T(`${s.unreadNotifications} chưa đọc`, `${s.unreadNotifications} unread`)}</span>}
+              <span style={{ fontSize: 13, opacity: 0.6 }}>{notifPrefsSummary(s.mutedNotificationKinds, T)}</span>
               <span aria-hidden style={{ opacity: 0.5 }}>›</span>
             </button>
           )}

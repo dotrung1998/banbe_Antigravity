@@ -23,6 +23,7 @@ import { computeAdminModerationCount, computeHostActionCount, computeMyTicketsAc
 import { capsuleStreak } from '../lib/rewards.js';
 import { AccountTileGrid, MoreList, MoreRow, RewardsStrip } from './AccountTiles.jsx';
 import StartHostingCard from '../components/StartHostingCard.jsx';
+import { resolveTheme } from '../lib/themeChoice.js';
 
 function organizerAvatarUrl(path, r2Ref, variant = 'thumb') {
   return organizerAvatarPublicUrl(path, r2Ref, variant);
@@ -124,7 +125,7 @@ function RowGroup({ title, testId, top = 30, children }) {
 export default function Account() {
   const project = useEventProject();
   const {
-    state, T, set, goEditName, openRefundAccounts, openSecurity, openEventPreferences, openPolicy, toggleTheme, toggleLang, openAdminEvents, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
+    state, T, set, goEditName, openRefundAccounts, openSecurity, openEventPreferences, openPolicy, pickTheme, toggleLang, openAdminEvents, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
     startHosting,
     openMyRefunds,
     loadHomeStories, openStoryViewer, openStoryLibraryPicker, openStoryCameraPicker,
@@ -314,7 +315,7 @@ export default function Account() {
     />
   );
   const notificationsRow = (
-    <MoreRow key="notifications" icon="bell" label={T('Tùy chọn thông báo', 'Notification preferences')} testId="account-notifications" onClick={() => set({ screen: 'notifPrefs' })} />
+    <MoreRow key="notifications" icon="bell" label={T('Tùy chọn thông báo', 'Notification preferences')} testId="account-notifications" onClick={() => set({ screen: 'notifPrefs', notifPrefsBack: 'profile' })} />
   );
   // Note 76: "Projects I'm in", or "Join an event team with a code" while I'm in none (switch event_project_hub).
   const projectsOn = !!s.user?.id && s.featureFlags?.event_project_hub === true;
@@ -345,6 +346,8 @@ export default function Account() {
       <MoreRow key="share" icon="person" label={T('Chia sẻ thẻ hồ sơ', 'Share your card')} testId="account-share-card-personal" onClick={() => setShareCardFor('member')} />
     ) : null,
   ].filter(Boolean);
+  // What is on screen (a System choice resolves to the device's), so the segment never shows Light on a dark page.
+  const shownDark = resolveTheme(s.theme, s.systemDark) === 'dark';
   const seg = (testId, opts) => (
     <span style={{ display: 'flex', background: block, borderRadius: 999, padding: 2 }} onClick={e => e.stopPropagation()}>
       {opts.map(([k, label, on, fn]) => (
@@ -357,7 +360,7 @@ export default function Account() {
     s.user ? <MoreRow key="profile" icon="person" label={T('Hồ sơ & đăng nhập', 'Profile & sign-in')} sub={T('Tên, số điện thoại, mật khẩu', 'Name, phone, password')} testId="account-group-preferences" onClick={goEditName} /> : null,
     s.user ? notificationsRow : null,
     s.user ? <MoreRow key="foryou" icon="star" label={T('Gợi ý Dành cho bạn', 'For You preferences')} sub={T('Sở thích và mục tiêu', 'Interests and goals')} testId="account-event-preferences" onClick={() => openEventPreferences(null)} /> : null,
-    <MoreRow key="appearance" icon="sun" label={T('Giao diện', 'Appearance')} testId="account-appearance" end={seg('account-theme', [['light', T('Sáng', 'Light'), s.theme !== 'dark', () => s.theme === 'dark' && toggleTheme()], ['dark', T('Tối', 'Dark'), s.theme === 'dark', () => s.theme !== 'dark' && toggleTheme()]])} />,
+    <MoreRow key="appearance" icon="sun" label={T('Giao diện', 'Appearance')} testId="account-appearance" end={seg('account-theme', [['light', T('Sáng', 'Light'), !shownDark, () => pickTheme('light')], ['dark', T('Tối', 'Dark'), shownDark, () => pickTheme('dark')]])} />,
     <MoreRow key="language" icon="globe" label={T('Ngôn ngữ', 'Language')} testId="account-language" end={seg('account-lang', [['vi', 'VI', s.lang !== 'en', () => s.lang === 'en' && toggleLang()], ['en', 'EN', s.lang === 'en', () => s.lang !== 'en' && toggleLang()]])} />,
     s.user ? <MoreRow key="refund-accounts" icon="bank" label={T('Tài khoản thanh toán & nhận hoàn tiền', 'Payment & refund accounts')} testId="account-refund-accounts" onClick={() => openRefundAccounts('profile')} /> : null,
     s.user ? <MoreRow key="security" icon="shield" label={T('Quyền riêng tư & bảo mật', 'Privacy & security')} sub={T('Face ID, người bị chặn, xoá tài khoản', 'Face ID, blocked people, delete account')} testId="account-security" onClick={openSecurity} /> : null,

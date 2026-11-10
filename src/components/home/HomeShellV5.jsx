@@ -213,8 +213,9 @@ export default function HomeShellV5({
               </div>
             </div>
           ))}
-          <div style={{ height: 120 }} />
           {below}
+          {/* Clearance for the floating dock, after the last section so nothing sits below a dead gap. */}
+          <div style={{ height: 120 }} />
         </>
       )}
     </div>
