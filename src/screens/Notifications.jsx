@@ -18,7 +18,7 @@ const COLLAPSE_AT = 20;
 // RowIcon (one stroke weight, one viewBox, `ink` only, no emoji) — kept
 // local here rather than importing from Account.jsx since that component
 // isn't exported and this needs a different (smaller) glyph set.
-const KIND_CATEGORY = {
+export const KIND_CATEGORY = {
   refund_marked_sent: 'refund', refund_confirmed: 'refund', refund_disputed: 'refund', refund_overdue: 'refund',
   dispute_message: 'dispute', dispute_resolved: 'dispute', payment_disputed: 'dispute',
   payment_awaiting_verification: 'payment', payment_confirmed: 'payment', payment_document_uploaded: 'payment',

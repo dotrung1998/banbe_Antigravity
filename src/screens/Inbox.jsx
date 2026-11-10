@@ -307,6 +307,7 @@ export default function Inbox() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  useEffect(() => { set({ dockSuppressed: settingsOpen }); return () => set({ dockSuppressed: false }); }, [settingsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null); // threadId awaiting confirm
 
@@ -361,9 +362,20 @@ export default function Inbox() {
             <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">{searchOpen ? <path d="M5 5l14 14M19 5L5 19" /> : <><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></>}</svg>
           </button>
           {s.inboxView === 'active' && (
-            <button type="button" data-testid="inbox-settings-toggle" aria-label={T('Cài đặt', 'Settings')} onClick={() => setSettingsOpen(true)} style={iconBtn}>
-              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7" /></svg>
-            </button>
+            <span style={{ position: 'relative', display: 'flex' }}>
+              <button type="button" data-testid="inbox-settings-toggle" aria-label={T('Cài đặt', 'Settings')} aria-expanded={settingsOpen} onClick={() => setSettingsOpen(v => !v)} style={iconBtn}>
+                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
+              </button>
+              {settingsOpen && (
+                <>
+                  <div onClick={() => setSettingsOpen(false)} aria-hidden style={{ position: 'fixed', inset: 0, zIndex: 29 }} />
+                  <div role="menu" data-testid="inbox-settings-menu" style={{ position: 'absolute', top: '100%', right: 0, zIndex: 30, minWidth: 220, padding: '6px 0', borderRadius: 14, background: paper, boxShadow: `0 10px 30px rgba(0,0,0,.18), 0 0 0 1px ${rule}`, animation: 'banbeFade 0.15s ease both' }}>
+                    <div role="menuitem" onClick={() => { setSettingsOpen(false); setInboxView('archived'); }} data-testid="inbox-menu-archived" style={{ padding: '14px 16px', fontSize: 14.5, color: ink, cursor: 'pointer', borderBottom: `1px solid ${rule}` }}>{T('Đã lưu trữ', 'Archived')}</div>
+                    <div role="menuitem" onClick={() => { setSettingsOpen(false); setFeedbackOpen(true); }} data-testid="inbox-menu-feedback" style={{ padding: '14px 16px', fontSize: 14.5, color: ink, cursor: 'pointer' }}>{T('Gửi Phản Hồi', 'Give Feedback')}</div>
+                  </div>
+                </>
+              )}
+            </span>
           )}
         </div>
       </div>
@@ -451,36 +463,6 @@ export default function Inbox() {
       )}
 
       </>)}
-
-      {settingsOpen && (
-        <div onClick={() => setSettingsOpen(false)} style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
-          {/* Bug 1b (2026-09-21 follow-up): the entrance was 0.32s — bumped
-              to the SAME slower SHEET_ANIM_MS the search reveal now also
-              uses. Row height/padding increased (13px -> 22px vertical) so
-              the two options actually fill the sheet instead of leaving a
-              dead gap below them. */}
-          <div onClick={(e) => e.stopPropagation()} style={{ ...cardGlass({ borderRadius: '18px 18px 0 0' }), padding: '18px 22px 34px', display: 'flex', flexDirection: 'column', animation: `banbeSheetIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ ...display(18) }}>{T('Cài Đặt Tin Nhắn', 'Messaging Settings')}</span>
-              <span onClick={() => setSettingsOpen(false)} style={{ fontSize: 18, color: ink, cursor: 'pointer' }}>✕</span>
-            </div>
-            <div
-              onClick={() => { setSettingsOpen(false); setInboxView('archived'); }}
-              data-testid="inbox-menu-archived"
-              style={{ padding: '22px 2px', borderTop: `1px solid ${rule}`, fontSize: 14.5, color: ink, cursor: 'pointer' }}
-            >
-              {T('Đã lưu trữ', 'Archived')}
-            </div>
-            <div
-              onClick={() => { setSettingsOpen(false); setFeedbackOpen(true); }}
-              data-testid="inbox-menu-feedback"
-              style={{ padding: '22px 2px', borderTop: `1px solid ${rule}`, borderBottom: `1px solid ${rule}`, fontSize: 14.5, color: ink, cursor: 'pointer' }}
-            >
-              {T('Gửi Phản Hồi', 'Give Feedback')}
-            </div>
-          </div>
-        </div>
-      )}
 
       {deleteTarget && (
         <div onClick={() => setDeleteTarget(null)} data-testid="inbox-delete-confirm" style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>

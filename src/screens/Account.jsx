@@ -312,8 +312,7 @@ export default function Account() {
     />
   );
   const notificationsRow = (
-    <MoreRow key="notifications" icon="bell" label={T('Thông báo', 'Notifications')} testId="account-notifications" onClick={goNotifications}
-      badge={s.unreadNotifications || 0} badgeLabel={T(`${s.unreadNotifications || 0} chưa đọc`, `${s.unreadNotifications || 0} unread`)} />
+    <MoreRow key="notifications" icon="bell" label={T('Tùy chọn thông báo', 'Notification preferences')} testId="account-notifications" onClick={() => set({ screen: 'notifPrefs' })} />
   );
   // Note 76: "Projects I'm in", or "Join an event team with a code" while I'm in none (switch event_project_hub).
   const projectsOn = !!s.user?.id && s.featureFlags?.event_project_hub === true;

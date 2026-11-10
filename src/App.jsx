@@ -5,6 +5,7 @@ import { BanBeProvider, useBanBe } from './state/BanBeContext.jsx';
 import useUrlSync from './lib/useUrlSync.js';
 import useKeepFocusedVisible from './lib/useKeepFocusedVisible.js';
 import useSignInReveal from './lib/useSignInReveal.js';
+import NotificationPrefs from './screens/NotificationPrefs.jsx';
 import OnboardingTour from './components/tour/OnboardingTour.jsx';
 import { CREATE_UNDO_MS } from './lib/createDraftUndo.js';
 import { dockOrder, dockCollapseStep, dockCollapseStore } from './lib/dockLayout.js';
@@ -109,6 +110,7 @@ const SCREENS = {
   profile: Account,
   accountGroup: AccountGroup,
   inbox: Inbox,
+  notifPrefs: NotificationPrefs,
   event: EventDetail,
   reserve: Reserve,
   confirmed: Confirmed,
@@ -363,7 +365,7 @@ function Shell() {
   // visibility flag or another UIWindow-style overlay.
   // Post-signup onboarding overlay (note 34): the dock is hidden while it is up.
   const eventOnboardingActive = useEventOnboardingActive();
-  const showBar = showsBottomBar(state.screen) && !state.storyViewer && !state.pulseOpen && !state.areaAsking && !state.storySurveyModalPublicId && !eventOnboardingActive;
+  const showBar = showsBottomBar(state.screen) && !state.storyViewer && !state.pulseOpen && !state.areaAsking && !state.dockSuppressed && !state.storySurveyModalPublicId && !eventOnboardingActive;
 
   // Stage 2 (2026-09-27 nav/discovery pass) — root-tab swipe + pull-to-
   // refresh, both gated on the SAME "is a root tab actually showing right
