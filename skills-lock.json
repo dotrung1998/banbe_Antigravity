@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "skills": {
+    "web-browsing-cli": {
+      "source": "only-cli/oc",
+      "sourceType": "github",
+      "skillPath": "skills/web-browsing-cli/SKILL.md",
+      "computedHash": "4a1ca8f39f77da0fdb6bf995065efe90f63f8be6cd793e8215db1a464ba1132b"
+    }
+  }
+}
