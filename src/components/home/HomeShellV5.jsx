@@ -2,7 +2,7 @@
 // (wordmark + date, Map, avatar), the glass search bar, the tabs (For You | Tonight | Weekend, + Hosting for hosts)
 // and the card rail; then Next up, Browse (types with counts + Find a type) and By type (one photo row per type).
 // Pure view over the lists Home.jsx already builds, so it adds no fetching and no filters of its own.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CategoryGlyph } from './HomeDiscoveryParts.jsx';
 import { categoryDefs } from '../../lib/eventTypes.js';
 
@@ -19,6 +19,9 @@ const MAP = <><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v
 const SEARCH = <><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></>;
 const PIN = <><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></>;
 const COG = <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>;
+const SPARK = <><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /><path d="M19 17v4M17 19h4" /></>;
+const MOON = <path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z" />;
+const CAL = <><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M3.5 10h17M8 3v4M16 3v4" /></>;
 const SLIDERS = <><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>;
 
 const initials = (name) => String(name || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '·';
@@ -31,27 +34,61 @@ const initials = (name) => String(name || '').trim().split(/\s+/).filter(Boolean
  * @param {boolean} p.canHost  show the Hosting tab
  */
 export default function HomeShellV5({
-  T, lang, tab, onTab, lists, items, canHost, user, dateLabel, areaLabel,
-  onOpenEvent, onSeeAll, onMap, onAccount, onSearch, onArea, onFilters, filterSummary, onFindType, onPickType,
+  T, lang, tab, onTab, lists, items, canHost, user, dateLabel, areaLabel, areaActive = false, filtersActive = false, hasPrefs = true, onClearFilters,
+  onOpenEvent, onSeeAll, onMap, onAccount, onSearch, onArea, onFilters, filterSummary, onFindType, onPickType, onSetPrefs, onBrowseAll,
   typeCounts, badgeDate, trStatus, children, hostBody, below,
 }) {
   const rail = useRef(null);
   const [idx, setIdx] = useState(0);
+  const headRef = useRef(null);
+  const sentinel = useRef(null);
+  const [headH, setHeadH] = useState(0);
+  const [stuck, setStuck] = useState(false);
+  // The header (wordmark, Map, avatar, search) is sticky over the content; it is measured so the hero can slide under it.
+  useLayoutEffect(() => {
+    const el = headRef.current;
+    if (!el) return undefined;
+    const measure = () => setHeadH(Math.round(el.getBoundingClientRect().height));
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // Dark, readable background only once the content has scrolled under it.
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting), { threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  // Same wording as the main Home/Map search bar (HomeSearchBar).
+  const placeholder = areaActive ? T(`Tìm sự kiện gần ${areaLabel}`, `Find events near ${areaLabel}`) : T('Tìm sự kiện ở mọi nơi', 'Find events anywhere');
   const hosting = tab === 'hosting';
   const list = hosting ? [] : (lists[tab] || []);
   const cur = list[Math.min(idx, Math.max(list.length - 1, 0))];
   const sig = list.map(e => e.key).join('|');
   useEffect(() => { setIdx(0); if (rail.current) rail.current.scrollLeft = 0; }, [tab, sig]);
+  // Rail position: one read per frame, and card width read from layout once (not per scroll event).
+  const railRaf = useRef(0);
+  const railStep = useRef(0);
+  useEffect(() => () => { if (railRaf.current) cancelAnimationFrame(railRaf.current); }, []);
   const onScroll = () => {
-    const el = rail.current;
-    if (!el || !list.length) return;
-    const card = el.firstElementChild;
-    const step = card ? card.getBoundingClientRect().width + 12 : 280;
-    setIdx(Math.min(list.length - 1, Math.max(0, Math.round(el.scrollLeft / step))));
+    if (railRaf.current || !list.length) return;
+    railRaf.current = requestAnimationFrame(() => {
+      railRaf.current = 0;
+      const el = rail.current;
+      if (!el) return;
+      if (!railStep.current) { const card = el.firstElementChild; railStep.current = card ? card.getBoundingClientRect().width + 12 : 280; }
+      setIdx(Math.min(list.length - 1, Math.max(0, Math.round(el.scrollLeft / railStep.current))));
+    });
   };
 
   const tabs = [...TABS, ...(canHost ? [['hosting', 'Tổ chức', 'Hosting']] : [])];
-  const glass = { border: '1px solid rgba(255,255,255,.18)', background: 'rgba(255,255,255,.14)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' };
+  // No live backdrop-filter here: these controls sit in the sticky header over a moving photo, and a backdrop blur
+  // is re-computed every scrolled frame. The backdrop is already blurred and darkened, so a slightly stronger fill reads the same.
+  const glass = { border: '1px solid rgba(255,255,255,.18)', background: 'rgba(255,255,255,.17)' };
 
   // By type: one row per type, most events first; a type with no event is not shown.
   const sections = useMemo(() => {
@@ -70,15 +107,14 @@ export default function HomeShellV5({
 
   return (
     <div data-testid="home-shell-v5" data-tab={tab}>
-      <section data-testid="home-photo-hero" data-tab={tab} aria-label={T('Gợi ý nổi bật', 'Featured events')}
-        style={{ position: 'relative', overflow: 'hidden', background: NIGHT, color: '#fff' }}>
-        <div aria-hidden style={{ position: 'absolute', inset: -30, transform: 'scale(1.1)', transition: 'background-image .5s',
-          background: cur?.img ? `center/cover no-repeat url("${cur.img}")` : 'linear-gradient(180deg,#2b2721,#16140f)',
-          filter: cur?.img ? 'blur(18px) brightness(.45) saturate(.9)' : 'none' }} />
-        <div style={{ position: 'relative', padding: '20px 0 0' }}>
+      <div ref={sentinel} aria-hidden style={{ height: 1, marginBottom: -1 }} />
+      <div ref={headRef} data-testid="home-sticky-header" data-stuck={stuck || undefined}
+        style={{ position: 'sticky', top: 0, zIndex: 20, color: '#fff', padding: 'calc(20px + env(safe-area-inset-top, 0px)) 0 12px',
+          background: stuck ? 'rgba(22,20,15,.96)' : 'transparent',
+          boxShadow: stuck ? '0 1px 0 rgba(255,255,255,.08)' : 'none', transition: 'background .2s' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 48, padding: '0 20px' }}>
             <div>
-              <img src="/banbe-wordmark.png" alt="banbe" data-testid="home-title" crossOrigin="anonymous" style={{ height: 30, width: 'auto', display: 'block', filter: 'invert(1)' }} />
+              <img src="/banbe-wordmark.png" alt="banbe" data-testid="home-title" crossOrigin="anonymous" style={{ height: 45, width: 'auto', display: 'block', filter: 'invert(1)' }} />
               <div style={{ fontSize: 14, color: 'rgba(255,255,255,.8)', marginTop: 4 }}>{dateLabel}</div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -94,13 +130,24 @@ export default function HomeShellV5({
           <div data-testid="home-search-row" style={{ display: 'flex', margin: '10px 20px 0', height: 46, borderRadius: 999, ...glass, alignItems: 'center', color: 'rgba(255,255,255,.75)', boxSizing: 'border-box' }}>
             <button type="button" onClick={onSearch} data-testid="home-search-bar" aria-label={T('Tìm sự kiện', 'Search events')}
               style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px 0 16px', border: 'none', background: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 15, cursor: 'text', textAlign: 'left' }}>
-              <Icon d={SEARCH} size={19} /><span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{T('Tìm sự kiện', 'Search events')}</span>
+              <Icon d={SEARCH} size={19} /><span style={{ flex: 1, fontSize: 14.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{placeholder}</span>
             </button>
-            <button type="button" onClick={onArea} data-testid="home-area-toggle" aria-haspopup="menu" aria-label={T(`Khu vực: ${areaLabel}`, `Area: ${areaLabel}`)}
-              style={{ flex: 'none', height: 26, display: 'flex', alignItems: 'center', gap: 6, color: '#fff', fontFamily: 'inherit', fontSize: 15, fontWeight: 500, background: 'none', border: 'none', borderLeft: '1px solid rgba(255,255,255,.25)', padding: '0 14px 0 12px', cursor: 'pointer' }}>
-              <Icon d={PIN} size={17} /><span aria-hidden style={{ fontSize: 10 }}>▾</span>
+            <span aria-hidden style={{ width: 1, height: 22, background: 'rgba(255,255,255,.25)', flex: 'none' }} />
+            <button type="button" onClick={onArea} data-testid="home-area-toggle" aria-haspopup="menu" aria-label={T(`Khu vực: ${areaLabel}. Đổi khu vực`, `Area: ${areaLabel}. Change area`)}
+              style={{ flex: '0 1 auto', minWidth: 44, maxWidth: '42%', height: 44, display: 'flex', alignItems: 'center', gap: 5, color: '#fff', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, background: 'none', border: 'none', padding: '0 12px', cursor: 'pointer' }}>
+              <Icon d={PIN} size={17} />
+              {areaActive && <span data-testid="home-area-label" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{areaLabel}</span>}
+              <span aria-hidden style={{ fontSize: 10, flex: 'none' }}>▾</span>
             </button>
           </div>
+
+      </div>
+      <section data-testid="home-photo-hero" data-tab={tab} aria-label={T('Gợi ý nổi bật', 'Featured events')}
+        style={{ position: 'relative', overflow: 'hidden', contain: 'paint', background: NIGHT, color: '#fff', marginTop: -headH }}>
+        <div aria-hidden style={{ position: 'absolute', inset: -30, transform: 'scale(1.1) translateZ(0)', willChange: 'transform', backfaceVisibility: 'hidden',
+          background: cur?.img ? `center/cover no-repeat url("${cur.img}")` : 'linear-gradient(180deg,#2b2721,#16140f)',
+          filter: cur?.img ? 'blur(18px) brightness(.45) saturate(.9)' : 'none' }} />
+        <div style={{ position: 'relative', padding: `${headH}px 0 0` }}>
           <div role="tablist" data-testid="home-hero-tabs" style={{ display: 'flex', gap: 20, padding: '18px 24px 4px', overflowX: 'auto', scrollbarWidth: 'none', whiteSpace: 'nowrap' }}>
             {tabs.map(([k, vi, en]) => (
               <button key={k} type="button" role="tab" aria-selected={tab === k} data-testid={`home-hero-tab-${k}`} onClick={() => onTab(k)}
@@ -134,12 +181,48 @@ export default function HomeShellV5({
                     <span aria-hidden style={{ fontSize: 26 }}>→</span><span>{T('Xem tất cả', 'See all')}</span>
                   </button>
                 )}
-                {!list.length && (
-                  <div data-testid="home-hero-empty" style={{ flex: '1 0 100%', minHeight: 140, borderRadius: 16, border: '1px dashed rgba(255,255,255,.3)', background: 'rgba(255,255,255,.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20, fontSize: 14, lineHeight: 1.5 }}>
-                    {tab === 'foryou' ? T('Chưa có gợi ý. Trả lời vài câu hỏi trong Tài khoản › Sở thích sự kiện.', 'No picks yet. Answer a few questions in Account › Event preferences.')
-                      : tab === 'tonight' ? T('Tối nay chưa có sự kiện nào.', 'Nothing on tonight.') : T('Cuối tuần này chưa có sự kiện nào.', 'Nothing on this weekend.')}
-                  </div>
-                )}
+                {!list.length && (() => {
+                  const areaTxt = areaLabel;
+                  const narrowed = areaActive || filtersActive;
+                  const changeArea = (e) => onArea?.(e);
+                  const base = tab === 'foryou'
+                    ? { icon: SPARK, text: T('Chưa có gợi ý. Trả lời vài câu hỏi để chúng tôi chọn sự kiện hợp với bạn.', 'No picks yet. Answer a few questions and we will pick events that fit you.'),
+                        cta: T('Đặt sở thích', 'Set your preferences'), go: onSetPrefs }
+                    : tab === 'tonight'
+                      ? { icon: MOON, text: T('Tối nay chưa có sự kiện nào.', 'Nothing on tonight.'), cta: T('Xem cuối tuần', 'See this weekend'), go: () => onTab('weekend') }
+                      : { icon: CAL, text: T('Cuối tuần này chưa có sự kiện nào.', 'Nothing on this weekend.'), cta: T('Xem tất cả sự kiện', 'Browse all events'), go: onBrowseAll };
+                  let E = { ...base, area: false, clear: null, prefs: false };
+                  if (narrowed && tab === 'foryou') {
+                    E = { icon: SPARK, area: true, go: changeArea, cta: T('Đổi khu vực', 'Change area'), prefs: !hasPrefs,
+                      text: areaActive ? T(`Chưa có gợi ý ở ${areaTxt}. Thử khu vực khác hoặc bỏ bộ lọc.`, `No picks in ${areaTxt}. Try another area or clear your filters.`)
+                        : T('Chưa có gợi ý khớp bộ lọc của bạn. Thử bỏ bớt bộ lọc.', 'No picks match your filters. Try clearing some.'),
+                      clear: areaActive ? T(`Xem mọi sự kiện`, 'Show all events') : T('Bỏ bộ lọc', 'Clear filters') };
+                    if (!areaActive) E = { ...E, area: false, go: onClearFilters, cta: T('Bỏ bộ lọc', 'Clear filters'), clear: null };
+                  } else if (narrowed && areaActive) {
+                    E = { ...base, area: true, clear: T('Xem mọi sự kiện', 'Show all events'), text: tab === 'tonight' ? T(`Tối nay chưa có sự kiện nào ở ${areaTxt}.`, `Nothing on tonight in ${areaTxt}.`) : T(`Cuối tuần này chưa có sự kiện nào ở ${areaTxt}.`, `Nothing on this weekend in ${areaTxt}.`) };
+                  }
+                  const sec = { minHeight: 44, padding: '0 16px', borderRadius: 999, border: '1px solid rgba(255,255,255,.35)', background: 'none', color: '#fff', fontFamily: 'inherit', fontSize: 14, fontWeight: 500, cursor: 'pointer' };
+                  return (
+                    <div data-testid="home-hero-empty" data-empty-tab={tab} data-empty-area={areaActive || undefined}
+                      style={{ flex: '0 0 268px', height: 360, boxSizing: 'border-box', borderRadius: 16, border: '1px dashed rgba(255,255,255,.3)', background: 'rgba(255,255,255,.08)', scrollSnapAlign: 'start',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', padding: 20, fontSize: 15, lineHeight: 1.45 }}>
+                      <Icon d={E.icon} size={28} sw={1.2} />
+                      <span>{E.text}</span>
+                      <button type="button" data-testid={E.area && tab === 'foryou' ? 'home-hero-empty-area' : 'home-hero-empty-cta'} onClick={(e) => E.go?.(e)}
+                        style={{ minHeight: 44, padding: '0 20px', borderRadius: 999, border: 'none', background: 'rgba(247,244,236,.92)', color: '#1B1916', fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>{E.cta}</button>
+                      {E.area && tab !== 'foryou' && (
+                        <button type="button" data-testid="home-hero-empty-area" onClick={changeArea} style={sec}>{T('Đổi khu vực', 'Change area')}</button>
+                      )}
+                      {E.clear && (
+                        <button type="button" data-testid="home-hero-empty-clear" onClick={() => onClearFilters?.()} style={sec}>{E.clear}</button>
+                      )}
+                      {E.prefs && (
+                        <button type="button" data-testid="home-hero-empty-prefs" onClick={() => onSetPrefs?.()}
+                          style={{ minHeight: 44, padding: '0 8px', border: 'none', background: 'none', color: ON_DARK, fontFamily: 'inherit', fontSize: 13.5, textDecoration: 'underline', cursor: 'pointer' }}>{T('Đặt sở thích', 'Set your preferences')}</button>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
               <div aria-hidden style={{ display: 'flex', justifyContent: 'center', gap: 6, padding: '18px 0 22px' }}>
                 {list.map((e, i) => <i key={e.key} style={{ width: i === idx ? 30 : 20, height: 3, borderRadius: 2, background: i === idx ? '#fff' : 'rgba(255,255,255,.32)', transition: 'width .2s' }} />)}
@@ -154,7 +237,7 @@ export default function HomeShellV5({
         <>
           {children}
           {browse.length > 0 && (
-            <div data-testid="home-browse" style={{ padding: '28px 20px 0' }}>
+            <div data-testid="home-browse" style={{ padding: '28px 20px 0', scrollMarginTop: headH }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}><h3 style={h3}>{T('Khám phá', 'Browse')}</h3></div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
                 {browse.map(([k, n]) => (
@@ -179,7 +262,7 @@ export default function HomeShellV5({
                 style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', background: 'var(--bb-block, rgba(var(--bb-fg-rgb),.06))', color: 'inherit', display: 'grid', placeItems: 'center', cursor: 'pointer' }}><Icon d={SLIDERS} size={18} /></button>
             </div>
             <button type="button" onClick={onFilters} data-testid="home-filter-summary"
-              style={{ display: 'block', margin: '8px 0 0', padding: '0 0 3px', border: 'none', borderBottom: '1px solid var(--bb-rule)', background: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 13, opacity: 0.72, cursor: 'pointer', textAlign: 'left' }}>{filterSummary}</button>
+              style={{ display: 'block', width: 'fit-content', maxWidth: '100%', margin: '8px 0 0', padding: '0 0 3px', border: 'none', borderBottom: '1px solid var(--bb-rule)', background: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 13, opacity: 0.72, cursor: 'pointer', textAlign: 'left' }}>{filterSummary}</button>
           </div>
           {sections.length === 0 && (
             <div data-testid="home-by-type-empty" style={{ padding: '24px 20px 0' }}>

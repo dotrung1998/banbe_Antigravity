@@ -42,7 +42,11 @@ export const TOUR_STEPS = [
     en: ['Account', 'Your profile, tickets, wallet and settings.'] },
   { id: 'account.shortcuts', target: 'tour.account.shortcuts', screen: 'profile', placement: 'below',
     vi: ['Bốn lối tắt hay dùng', 'Vé kèm mã QR, Ví cho thông tin thanh toán, sự kiện Đã lưu và Phần thưởng.'],
-    en: ['The four you’ll use most', 'Tickets with their QR codes, Wallet for payment details, Saved events, and Rewards.'] },
+    en: ['The four you’ll use most', 'Tickets with their QR codes, Wallet for payment details, Saved events, and Rewards.'],
+    // The 4th Account shortcut is Help while the admin `rewards` switch is off (Account.jsx). iOS mirrors this field name.
+    copyWhenRewardsOff: {
+      vi: ['Bốn lối tắt hay dùng', 'Vé kèm mã QR, Ví cho thông tin thanh toán, sự kiện Đã lưu và Trợ giúp.'],
+      en: ['The four you’ll use most', 'Tickets with their QR codes, Wallet for payment details, Saved events, and Help.'] } },
   { id: 'account.organizerMode', target: 'tour.account.organizerMode', screen: 'profile', placement: 'below',
     vi: ['Chế độ tổ chức', 'Đang tắt, như bạn đã chọn. Bật lúc nào bạn muốn tổ chức một sự kiện. Nó thêm Hosting ở Trang chính và tab Host ở đây.'],
     en: ['Hosting mode', 'Off, as you chose. Turn it on any time you want to run an event. It adds Hosting on Home and the Host tab here.'] },
@@ -80,6 +84,13 @@ export const WEB_TARGETS = {
   'tour.host.hero': '[data-testid="home-host-hero"],[data-testid="home-host-plan"]',
   'tour.host.quick': '[data-testid="home-host-quick"]',
 };
+
+/** The [title, body] pair for a step in `lang` ('vi'|'en') given the live Rewards switch. Computed at call time, never cached. */
+export function stepCopy(step, lang, { rewardsEnabled = true } = {}) {
+  const l = lang === 'en' ? 'en' : 'vi';
+  if (!rewardsEnabled && step.copyWhenRewardsOff) return step.copyWhenRewardsOff[l];
+  return step[l];
+}
 
 /** The steps this account can see, in order. */
 export function eligibleSteps(ctx) {

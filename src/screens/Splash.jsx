@@ -51,8 +51,8 @@ export default function Splash() {
       <iframe
         ref={iframeRef}
         title="banbe"
-        // Note 69: the artwork is black; in dark mode it is tinted to the wordmark's amber (index.css, iOS palette.logo).
-        src={resolvedTheme === 'dark' ? '/logomotion/logomotion2309.html?tint=%23f6c453' : '/logomotion/logomotion2309.html'}
+        // Note 69: the artwork is black; in dark mode it is tinted white.
+        src={resolvedTheme === 'dark' ? '/logomotion/logomotion2309.html?tint=%23ffffff' : '/logomotion/logomotion2309.html'}
         scrolling="no"
         data-testid="splash-logomotion"
         style={{

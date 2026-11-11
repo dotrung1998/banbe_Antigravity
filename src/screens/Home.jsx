@@ -1104,10 +1104,14 @@ export default function Home() {
           }}
           lists={heroLists} items={shownItems} user={s.user} typeCounts={shellTypeCounts} badgeDate={badgeDate} trStatus={trStatus}
           dateLabel={new Date().toLocaleDateString(s.lang === 'en' ? 'en-GB' : 'vi-VN', { weekday: 'long', day: 'numeric', month: 'long' })}
-          areaLabel={areaName}
+          areaLabel={areaName} areaActive={curArea.key !== 'all'}
+          filtersActive={filterBadge > 0 || curArea.key !== 'all'} hasPrefs={!!s.eventPrefs && !prefsIsEmpty(s.eventPrefs)}
+          onClearFilters={() => { clearFilters(); set({ homeSort: 'soonest' }); }}
           onOpenEvent={goEvent} onSeeAll={heroSeeAll} onMap={openMapWithContext} onAccount={() => setQuickOpen(true)}
           onSearch={openSearch} onArea={openAreaMenu} onFilters={() => set({ homeFilterSheetOpen: true })} filterSummary={shellFilterSummary}
           onFindType={() => setCategorySheetOpen(true)} onPickType={shellPickType}
+          onSetPrefs={() => openEventPreferences('home')}
+          onBrowseAll={() => { setHomeFilters(f => ({ ...f, date: 'any' })); setTimeout(() => (document.querySelector('[data-testid="home-browse"]') || document.querySelector('[data-testid="home-by-type"]'))?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 120); }}
           hostBody={<div data-reveal="1"><HostHome /><div style={{ height: 44 }} /></div>} below={surveySection}>
           <div data-reveal="1" data-testid="home-hero" data-hero={goerHero}>
             {goerHero === 'nextUp' && (

@@ -1,6 +1,6 @@
 import PhoneStatusBar from './components/PhoneFrame.jsx';
 import { ImportSheet, ImportedTicketSheet } from './screens/sheets/TicketImportSheet.jsx';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { BanBeProvider, useBanBe } from './state/BanBeContext.jsx';
 import useUrlSync from './lib/useUrlSync.js';
 import useKeepFocusedVisible from './lib/useKeepFocusedVisible.js';
@@ -88,7 +88,7 @@ import { StartHostingSheet } from './components/StartHostingCard.jsx';
 import TeamPage from './screens/TeamPage.jsx';
 import SurveyPublic from './screens/SurveyPublic.jsx';
 import SurveysHosting from './screens/SurveysHosting.jsx';
-import RootRefreshIndicator from './screens/RootRefreshIndicator.jsx';
+import RootRefreshIndicator, { PULL_GAP_PX, PULL_TRIGGER_PX } from './screens/RootRefreshIndicator.jsx';
 import AccountGate from './screens/AccountGate.jsx'; // account gate (web parity)
 import EventPreferences from './screens/EventPreferences.jsx';
 import Following from './screens/Following.jsx';
@@ -163,6 +163,9 @@ const SCREENS = {
   surveyPublic: SurveyPublic,
   surveysHosting: SurveysHosting,
 };
+// Screens take no props and read everything from context, so memo lets the Shell re-render per pointer move (pull to
+// refresh, tab swipe) without re-rendering the whole Home tree under the finger.
+const MEMO_SCREENS = Object.fromEntries(Object.entries(SCREENS).map(([k, C]) => [k, memo(C)]));
 
 // TASK 1 (2026-10-05 fix pass) — the dock and the create-"+" button laid
 // out as ONE row, replacing two independently absolutely-positioned
@@ -381,13 +384,21 @@ function Shell() {
   // Reserves the true left/right screen edges for the OS's own edge-swipe-
   // back gesture (iOS Safari) on every root screen — never just Map.
   const EDGE_RESERVE_PX = 24;
-  const PULL_TRIGGER_PX = 64;
   const PULL_MAX_PX = 100;
   const gestureRef = useRef({ active: false, phase: null, startX: 0, startY: 0, lastX: 0, lastY: 0, pointerId: null, scrollTopAtStart: 0, width: 0 });
   const [swipeX, setSwipeX] = useState(0);
   const [pullDist, setPullDist] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState('');
+  // Keep the indicator mounted briefly after the pull ends so it can fade/scale out instead of vanishing.
+  const pullActive = pullDist > 0 || refreshing || !!refreshError;
+  const [indicatorMounted, setIndicatorMounted] = useState(false);
+  const [indicatorScreen, setIndicatorScreen] = useState(state.screen);
+  useEffect(() => {
+    if (pullActive) { setIndicatorMounted(true); setIndicatorScreen(state.screen); return undefined; }
+    const t = setTimeout(() => setIndicatorMounted(false), 220);
+    return () => clearTimeout(t);
+  }, [pullActive, state.screen]);
   // Only true while a drag is actively driving swipeX/pullDist — lets the
   // render below skip the snap-back CSS transition exactly then, so the
   // gesture follows the finger with zero lag instead of chasing a tween.
@@ -484,6 +495,20 @@ function Shell() {
     };
   };
 
+  // Drag state writes are coalesced to one per frame (pointermove can fire faster than the screen paints).
+  const dragRaf = useRef(0);
+  const dragFn = useRef(null);
+  const pullDistRef = useRef(0);
+  const queueDrag = (fn) => {
+    dragFn.current = fn;
+    if (dragRaf.current) return;
+    dragRaf.current = requestAnimationFrame(() => { dragRaf.current = 0; const f = dragFn.current; dragFn.current = null; f?.(); });
+  };
+  const flushDrag = () => {
+    if (dragRaf.current) { cancelAnimationFrame(dragRaf.current); dragRaf.current = 0; }
+    dragFn.current = null;
+  };
+
   const onGesturePointerMove = (e) => {
     const g = gestureRef.current;
     if (!g.active || e.pointerId !== g.pointerId) return;
@@ -526,7 +551,7 @@ function Shell() {
       let clamped = dx;
       if (dx < 0 && !canNext) clamped = dx * 0.25;
       if (dx > 0 && !canPrev) clamped = dx * 0.25;
-      setSwipeX(clamped);
+      queueDrag(() => setSwipeX(clamped));
       // Mount the real adjacent screen as soon as a direction is known —
       // its own existing loader (`.task`/mount effect) starts right away
       // instead of waiting for the gesture to commit.
@@ -535,7 +560,9 @@ function Shell() {
     } else if (g.phase === 'pull') {
       e.preventDefault();
       setIsPulling(true);
-      setPullDist(Math.min(PULL_MAX_PX, Math.max(0, dy) * 0.5));
+      const dist = Math.min(PULL_MAX_PX, Math.max(0, dy) * 0.5);
+      pullDistRef.current = dist;
+      queueDrag(() => setPullDist(dist));
     }
   };
 
@@ -543,6 +570,7 @@ function Shell() {
     const g = gestureRef.current;
     if (!g.active) return;
     g.active = false;
+    flushDrag();
     const dx = g.lastX - g.startX;
 
     if (g.phase === 'horizontal') {
@@ -587,11 +615,11 @@ function Shell() {
       }
     } else if (g.phase === 'pull') {
       setIsPulling(false);
-      if (pullDist >= PULL_TRIGGER_PX) {
+      if (pullDistRef.current >= PULL_TRIGGER_PX) {
         setRefreshing(true);
         setRefreshError('');
         const screen = stateRef.current.screen;
-        setPullDist(PULL_TRIGGER_PX * 0.72);
+        setPullDist(PULL_GAP_PX);
         (async () => {
           try {
             await runRefresh(screen);
@@ -614,6 +642,7 @@ function Shell() {
   const cancelGesture = () => {
     gestureRef.current.active = false;
     gestureRef.current.phase = null;
+    flushDrag();
     setIsSwiping(false);
     setSwipeX(0);
     if (swipeNeighbor) setTimeout(() => setSwipeNeighbor(null), 250);
@@ -773,26 +802,16 @@ function Shell() {
             distance before release, held at PULL_TRIGGER_PX*0.72 (a fixed
             "travel" position) while the real reload is in flight; a
             friendly line on failure instead. */}
-        {(pullDist > 0 || refreshing || refreshError) && (
-          <div
-            data-testid="pull-to-refresh-indicator"
-            style={{
-              position: 'absolute', top: 14, left: 0, right: 0, display: 'flex', justifyContent: 'center', zIndex: 5,
-              transform: `translateY(${Math.max(0, pullDist - 28)}px)`, transition: isPulling ? 'none' : 'transform 0.22s ease',
-              pointerEvents: 'none',
-            }}
-          >
-            {refreshError ? (
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, background: paper, borderRadius: 999, padding: '7px 14px', boxShadow: '0 4px 14px rgba(27,25,22,0.16)' }}>{refreshError}</span>
-            ) : (
-              <RootRefreshIndicator
-                screen={state.screen}
-                progress={pullDist / PULL_TRIGGER_PX}
-                refreshing={refreshing}
-                label={T('Đang làm mới', 'Refreshing')}
-              />
-            )}
-          </div>
+        {indicatorMounted && (
+          <RootRefreshIndicator
+            screen={indicatorScreen}
+            pullDist={pullDist}
+            isPulling={isPulling}
+            refreshing={refreshing}
+            error={refreshError}
+            visible={pullActive}
+            label={T('Đang làm mới', 'Refreshing')}
+          />
         )}
         {/* Root-tab-swipe fix pass (2026-09-27, follow-up B) — a CSS Grid
             "stack" (both children share the same `gridArea`, so the
@@ -814,7 +833,7 @@ function Shell() {
             // closing the event shows Home (not a blank page) behind the shrinking card, and Home keeps its
             // instance, scroll position and data instead of remounting. Same `key` before and after the close.
             const isUnderlay = !isCurrent && s === eventUnderlay;
-            const ScreenComp = SCREENS[s] || Home;
+            const ScreenComp = MEMO_SCREENS[s] || MEMO_SCREENS.home;
             const off = isCurrent ? swipeX : neighborOffset(s);
             return (
               <div
@@ -854,7 +873,7 @@ function Shell() {
           : T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
       {/* Simple Shell (switch simple_shell): the "+" lives inside the bar (BottomTabBar), so no "+" beside it. */}
-      {showBar && <LiveDockRow hidden={state.screen === 'mapExplore' && !!state.mapDockHidden} showCreate={state.organizerMode && !flagOn(state.featureFlags, 'simple_shell')} />}
+      {showBar && <LiveDockRow hidden={(state.screen === 'mapExplore' && !!state.mapDockHidden) || !!state.quickSheetOpen} showCreate={state.organizerMode && !flagOn(state.featureFlags, 'simple_shell')} />}
       {/* Undo after leaving a new-event draft (BanBeContext createUndoOffer), above the dock when it shows. */}
       {state.createUndoOffer && state.screen !== 'create' && (
         <CreateUndoToast key={state.createUndoOffer.id} offer={state.createUndoOffer} aboveDock={showBar} />

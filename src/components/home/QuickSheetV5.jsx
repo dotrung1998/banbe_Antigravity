@@ -8,6 +8,7 @@ import { resolveTheme } from '../../lib/themeChoice.js';
 import { notifPrefsSummary } from '../../lib/notificationPrefs.js';
 import { RowIcon } from '../../screens/Account.jsx';
 import { computeMyTicketsActionCount } from '../../lib/badges.js';
+import NotificationPrefs from '../../screens/NotificationPrefs.jsx';
 
 const line = '1px solid var(--bb-divider, rgba(var(--bb-fg-rgb),.12))';
 const seg = (on) => ({ height: 30, padding: '0 11px', border: 'none', borderRadius: 999, fontFamily: 'inherit', fontSize: 12, cursor: 'pointer',
@@ -22,6 +23,8 @@ export default function QuickSheetV5({ onClose }) {
   }, [onClose]);
   // A first-time host gets the Host setup sheet after the switch turns on; it sits under this panel, so step aside.
   useEffect(() => { if (s.hostSetupOpen) onClose(); }, [s.hostSetupOpen, onClose]);
+  // The dock slides away while this sheet is open (iOS parity).
+  useEffect(() => { set({ quickSheetOpen: true }); return () => set({ quickSheetOpen: false }); }, [set]);
   const go = (fn) => () => { onClose(); fn(); };
   const user = s.user;
   const name = user ? (user.name || (user.email ? user.email.split('@')[0] : T('Bạn', 'You'))) : '';
@@ -30,6 +33,7 @@ export default function QuickSheetV5({ onClose }) {
   // Host tab below can never disagree. Turning it on selects the Host tab, like the prototype.
   const hostOn = !!s.organizerMode;
   const [tabSel, setTabSel] = useState(null);
+  const [view, setView] = useState('main'); // 'main' | 'prefs' (Notification preferences stays a sheet, sized to its content)
   const onHost = () => {
     if (s.organizerModeBusy) return;
     if (!hostOn) setTabSel('host');
@@ -45,7 +49,7 @@ export default function QuickSheetV5({ onClose }) {
       ['ticket', T('Vé', 'Tickets'), () => openAccountGroup('activity'), computeMyTicketsActionCount(s)],
       ['wallet', T('Ví', 'Wallet'), () => openAccountGroup('payments')],
       ['bookmark', T('Đã lưu', 'Saved'), goSavedList],
-      ['sliders', T('Cài đặt', 'Settings'), toAccount('personal')],
+      ['help', T('Trợ giúp', 'Help'), () => openAccountGroup('helpLegal')],
     ],
     host: [
       ['plus', T('Tạo', 'Create'), goCreate],
@@ -68,8 +72,9 @@ export default function QuickSheetV5({ onClose }) {
     <div data-testid="home-quick-sheet" style={{ position: 'fixed', inset: 0, zIndex: 2100 }}>
       <div onClick={onClose} aria-hidden style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.45)' }} />
       <div role="dialog" aria-modal="true" aria-label={T('Cài đặt nhanh', 'Quick settings')}
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '90%', overflowY: 'auto', background: 'var(--bb-bg)', color: 'var(--bb-fg)', borderRadius: '26px 26px 0 0', padding: '10px 0 30px', animation: 'banbeIn .32s cubic-bezier(.22,.61,.36,1) both' }}>
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '90%', overflowY: 'auto', background: 'var(--bb-bg)', color: 'var(--bb-fg)', borderRadius: '26px 26px 0 0', padding: '10px 0 calc(14px + env(safe-area-inset-bottom, 0px))', animation: 'banbeIn .32s cubic-bezier(.22,.61,.36,1) both' }}>
         <div style={{ width: 38, height: 5, borderRadius: 3, background: 'var(--bb-rule)', margin: '0 auto 12px' }} />
+        {view === 'prefs' && user ? <NotificationPrefs embedded onBack={() => setView('main')} /> : (<>
         {user ? (
           <>
             <button type="button" onClick={go(goProfile)} data-testid="quick-account" style={{ display: 'flex', alignItems: 'center', gap: 16, width: '100%', padding: '8px 20px 0', border: 'none', background: 'none', color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
@@ -127,8 +132,8 @@ export default function QuickSheetV5({ onClose }) {
               <button type="button" data-testid="quick-lang-vi" onClick={() => en && toggleLang()} style={seg(!en)}>VI</button>
               <button type="button" data-testid="quick-lang-en" onClick={() => !en && toggleLang()} style={seg(en)}>EN</button></span></div>
           {user && (
-            <button type="button" onClick={go(() => set({ screen: 'notifPrefs', notifPrefsBack: 'home' }))} data-testid="quick-notifications" style={{ ...row, width: '100%', border: 'none', borderBottom: line, background: 'none', color: 'inherit', fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
-              <RowIcon kind="bell" size={24} /><span style={{ flex: 1 }}>{T('Thông báo', 'Notifications')}</span>
+            <button type="button" onClick={() => setView('prefs')} data-testid="quick-notifications" style={{ ...row, width: '100%', border: 'none', borderBottom: line, background: 'none', color: 'inherit', fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+              <RowIcon kind="bell" size={24} /><span style={{ flex: 1 }}>{T('Tùy chọn thông báo', 'Notification preferences')}</span>
               <span style={{ fontSize: 13, opacity: 0.6 }}>{notifPrefsSummary(s.mutedNotificationKinds, T)}</span>
               <span aria-hidden style={{ opacity: 0.5 }}>›</span>
             </button>
@@ -139,6 +144,7 @@ export default function QuickSheetV5({ onClose }) {
             <RowIcon kind="logout" size={18} />{T('Đăng xuất', 'Sign out')}
           </button>
         )}
+        </>)}
       </div>
     </div>,
     target,

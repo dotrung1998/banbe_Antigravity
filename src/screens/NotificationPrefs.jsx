@@ -9,7 +9,7 @@ import { flagOn } from '../lib/featureFlags.js';
 import { NOTIF_PREF_GROUPS, groupOn, toggleGroup } from '../lib/notificationPrefs.js';
 import { paper, ink, ink3, alert, divider } from '../theme.js';
 
-export default function NotificationPrefs() {
+export default function NotificationPrefs({ embedded = false, onBack = null } = {}) {
   const { state: s, T, set, loadNotifications } = useBanBe();
   const muted = s.mutedNotificationKinds || [];
   const [saving, setSaving] = useState(false);
@@ -60,6 +60,8 @@ export default function NotificationPrefs() {
     if (e || !data?.success) { setDigest(!want); setError(failed); }
   };
 
+  // Opened from Account: a full page whose Back returns to Account (same tab). From the Home quick sheet it is
+  // `embedded` in that sheet, sized to its content, and Back returns to the sheet's main panel.
   const back = s.notifPrefsBack === 'home' ? 'home' : 'profile';
   const sw = (on) => (
     <span aria-hidden style={{ flex: 'none', width: 46, height: 28, borderRadius: 14, position: 'relative', background: on ? 'var(--bb-moss, #5E7A5A)' : 'rgba(var(--bb-fg-rgb),0.18)', transition: 'background .2s' }}>
@@ -69,12 +71,12 @@ export default function NotificationPrefs() {
   const row = { display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 0', border: 'none', borderBottom: `1px solid ${divider}`, background: 'none', color: ink, font: 'inherit', textAlign: 'left' };
   const lbl = (title, sub) => <span style={{ flex: 1, fontSize: 15 }}>{title}<small style={{ display: 'block', fontSize: 12.5, color: ink3, marginTop: 2 }}>{sub}</small></span>;
   return (
-    <div data-screen-label="NotificationPrefs" style={{ minHeight: '100%', background: paper, animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
-      <div style={{ padding: '56px 20px 0' }}>
-        <button type="button" data-testid="notif-prefs-back" onClick={() => set({ screen: back, notifPrefsBack: null })} style={{ border: 'none', background: 'none', padding: '8px 0', color: ink, font: 'inherit', fontSize: 15, cursor: 'pointer' }}>‹ {back === 'home' ? T('Trang chủ', 'Home') : T('Tài khoản', 'Account')}</button>
-        <h1 style={{ margin: '8px 0 4px', fontSize: 30, fontWeight: 300, letterSpacing: '-.01em', color: ink }}>{T('Tùy chọn thông báo', 'Notification preferences')}</h1>
+    <div data-screen-label="NotificationPrefs" data-embedded={embedded || undefined} style={embedded ? { background: 'transparent' } : { minHeight: '100%', background: paper, animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+      <div style={{ padding: embedded ? '0 20px' : '56px 20px 0' }}>
+        <button type="button" data-testid="notif-prefs-back" onClick={() => (embedded && onBack ? onBack() : set({ screen: back, notifPrefsBack: null }))} style={{ border: 'none', background: 'none', padding: '8px 0', color: ink, font: 'inherit', fontSize: 15, cursor: 'pointer' }}>‹ {embedded ? T('Cài đặt nhanh', 'Quick settings') : back === 'home' ? T('Trang chủ', 'Home') : T('Tài khoản', 'Account')}</button>
+        <h1 style={{ margin: '8px 0 4px', fontSize: embedded ? 24 : 30, fontWeight: 300, letterSpacing: '-.01em', color: ink }}>{T('Tùy chọn thông báo', 'Notification preferences')}</h1>
       </div>
-      <div style={{ margin: '0 20px 40px' }} data-testid="notif-prefs-list">
+      <div style={{ margin: embedded ? '0 20px 4px' : '0 20px 40px' }} data-testid="notif-prefs-list">
         {NOTIF_PREF_GROUPS.map(g => {
           const on = groupOn(muted, g);
           return (

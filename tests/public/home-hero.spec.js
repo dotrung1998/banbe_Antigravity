@@ -96,6 +96,21 @@ test('Home opens on the photo hero: tabs, a card rail ending in See all, honest 
   await page.getByTestId('home-hero-tab-tonight').click();
   await expect(page.getByTestId('home-hero-empty')).toBeVisible();
   await expect(page.getByTestId('home-hero-tab-tonight')).toHaveAttribute('aria-selected', 'true');
+  // The empty state is a rail-card-sized card with one primary action; Tonight's switches to Weekend.
+  const emptyBox = await page.getByTestId('home-hero-empty').boundingBox();
+  expect(Math.round(emptyBox.width)).toBe(268); expect(Math.round(emptyBox.height)).toBe(360);
+  await page.getByTestId('home-hero-empty-cta').click();
+  await expect(page.getByTestId('home-hero-tab-weekend')).toHaveAttribute('aria-selected', 'true');
+
+  // Sticky header: after scrolling down the wordmark, Map, avatar and search row are still at the top of the screen.
+  await page.evaluate(() => { const sc = [...document.querySelectorAll('*')].find(e => e.scrollHeight > e.clientHeight + 200 && getComputedStyle(e).overflowY !== 'visible'); if (sc) sc.scrollTop = 700; });
+  await page.waitForTimeout(400);
+  for (const id of ['home-title', 'home-map-button', 'home-avatar-button', 'home-search-row']) {
+    const b = await page.getByTestId(id).boundingBox();
+    expect(b.y).toBeGreaterThanOrEqual(-1); expect(b.y).toBeLessThan(200);
+  }
+  await expect(page.getByTestId('home-sticky-header')).toHaveAttribute('data-stuck', 'true');
+  await page.evaluate(() => { const sc = [...document.querySelectorAll('*')].find(e => e.scrollHeight > e.clientHeight + 200 && getComputedStyle(e).overflowY !== 'visible'); if (sc) sc.scrollTop = 0; });
 
   // A card opens the real event page.
   await page.getByTestId('home-hero-tab-foryou').click();
@@ -103,4 +118,30 @@ test('Home opens on the photo hero: tabs, a card rail ending in See all, honest 
   await expect(page.locator('[data-screen-label="Event"]')).toBeVisible({ timeout: 8000 });
   // Browsing wrote nothing.
   expect(calls.filter(fn => WRITES.test(fn))).toEqual([]);
+});
+
+test('Search row shows the chosen area; empty tabs offer Change area and Clear filters', async ({ page }) => {
+  const calls = [];
+  await mockSupabase(page, { flags: {}, calls });
+  await signIn(page);
+  await expect(page.getByTestId('home-photo-hero')).toBeVisible({ timeout: 20000 });
+  // No area: just the pin, no label.
+  await expect(page.getByTestId('home-area-label')).toHaveCount(0);
+  await expect(page.getByTestId('home-area-toggle')).toHaveAttribute('aria-label', /Everywhere|Area/);
+  await page.getByTestId('home-area-toggle').click();
+  // Pick the first country, then "All in <country>".
+  await page.locator('[data-testid^="area-menu-node-"]').first().click();
+  await page.getByTestId('area-menu-all-in').click();
+  const label = page.getByTestId('home-area-label');
+  await expect(label).toBeVisible();
+  const txt = (await label.textContent() || '').trim();
+  expect(txt.length).toBeGreaterThan(0);
+  await expect(page.getByTestId('home-area-toggle')).toHaveAttribute('aria-label', new RegExp(`Area: ${txt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  // Tonight is empty (everything is 2+ days out): it offers Change area and a way to show everything.
+  await page.getByTestId('home-hero-tab-tonight').click();
+  await expect(page.getByTestId('home-hero-empty')).toBeVisible();
+  await expect(page.getByTestId('home-hero-empty-area')).toBeVisible();
+  await expect(page.getByTestId('home-hero-empty-clear')).toBeVisible();
+  await page.getByTestId('home-hero-empty-clear').click();
+  await expect(page.getByTestId('home-area-label')).toHaveCount(0);
 });

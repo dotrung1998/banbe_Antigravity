@@ -370,6 +370,11 @@ input::placeholder, textarea::placeholder {
    (RootRefreshIndicator.jsx), replacing banbeSpin's generic circle. Each
    shape's pathLength is normalized to 100 (see TAB_OUTLINE_SHAPES), so one
    dashoffset range works for every icon regardless of its real geometry. */
+@keyframes banbeRefreshPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
 @keyframes banbeRefreshTravel {
   from { stroke-dashoffset: 0; }
   to { stroke-dashoffset: -100; }

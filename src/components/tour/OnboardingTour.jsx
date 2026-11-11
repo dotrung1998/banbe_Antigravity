@@ -22,7 +22,7 @@ import { useEventOnboardingActive } from '../../screens/EventOnboarding.jsx';
 import { onboardingVersion, flagOn } from '../../lib/featureFlags.js';
 import { setAnalyticsPaused } from '../../lib/analytics.js';
 import { useReducedMotion } from '../../lib/useReducedMotion.js';
-import { tourPlan, WEB_TARGETS, tourDoneKey, TOUR_DO_IT, HOSTING_ON_COPY } from '../../data/onboardingTour.js';
+import { tourPlan, WEB_TARGETS, tourDoneKey, TOUR_DO_IT, HOSTING_ON_COPY, stepCopy } from '../../data/onboardingTour.js';
 import { paper, ink, display } from '../../theme.js';
 
 const WAIT_MS = 1500;
@@ -44,6 +44,42 @@ const findTarget = id => {
   return r.width > 0 && r.height > 0 ? el : null;
 };
 
+/** Nearest scrolling ancestor (the app's scroll viewport, or the document). */
+const scrollerOf = (el) => {
+  for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+    const oy = getComputedStyle(n).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight + 1) return n;
+  }
+  return document.scrollingElement || document.documentElement;
+};
+/** The part of the frame a target may occupy: below the fixed header, above the dock. */
+const visibleBand = () => {
+  const f = frameOf();
+  let top = f.top + 8;
+  const head = document.querySelector('[data-testid="home-sticky-header"]');
+  if (head) { const hb = head.getBoundingClientRect(); if (hb.height > 0) top = Math.max(top, hb.bottom + 8); }
+  let bottom = f.bottom - 8;
+  const dock = document.querySelector('[data-testid="dock-row"]');
+  if (dock && dock.getAttribute('data-hidden') !== 'true') { const db = dock.getBoundingClientRect(); if (db.height > 0 && db.top > f.top) bottom = Math.min(bottom, db.top - 8); }
+  return { top, bottom };
+};
+/** Scroll so the whole target sits inside the band (centred when it fits, else its top at the band top). Returns true if it moved. */
+const bringIntoView = (el) => {
+  // Targets that live inside the pinned header or the dock never scroll with the page: nothing to bring into view.
+  if (el.closest('[data-testid="home-sticky-header"],[data-testid="dock-row"]')) return false;
+  const r = el.getBoundingClientRect();
+  const { top, bottom } = visibleBand();
+  if (r.top >= top - 0.5 && r.bottom <= bottom + 0.5) return false;
+  const room = bottom - top;
+  const want = r.height >= room ? top : top + (room - r.height) / 2;
+  const delta = r.top - want;
+  if (Math.abs(delta) < 1) return false;
+  const sc = scrollerOf(el);
+  const before = sc.scrollTop;
+  sc.scrollTop = before + delta;
+  return sc.scrollTop !== before;
+};
+
 /** Index of the chapter holding step `i`. */
 const chapterOf = (run, i) => Math.max(0, run.chapters.findIndex(c => i >= c.from && i < c.to));
 
@@ -57,7 +93,7 @@ function advance(r) {
 }
 
 export default function OnboardingTour() {
-  const { state: s, set, T, goInbox, goProfile } = useBanBe();
+  const { state: s, set, T, goInbox, goProfile, rewardsEnabled } = useBanBe();
   const gate = useAccountGate();
   const eventOnboardingActive = useEventOnboardingActive();
   const reduce = useReducedMotion();
@@ -152,6 +188,7 @@ export default function OnboardingTour() {
     if (s.screen !== step.screen) { set({ screen: step.screen }); return undefined; }
     if (step.screen === 'profile' && s.accountTab && s.accountTab !== 'personal') set({ accountTab: 'personal' });
     let raf = 0; let cancelled = false; let el = null; let last = ''; let prepped = false;
+    let settledFrames = 0; let ready = false; let fixes = 0; let lastKey = '';
     const t0 = performance.now();
     // A target that never showed up is skipped, forward only.
     const skip = () => setRun(r => (r ? advance({ ...r, missing: new Set([...r.missing, r.index]) }) : r));
@@ -165,16 +202,23 @@ export default function OnboardingTour() {
           raf = requestAnimationFrame(tick); return;
         }
         el = findTarget(step.target);
+        ready = false; settledFrames = 0; fixes = 0; lastKey = '';
         if (!el) {
           if (performance.now() - t0 > WAIT_MS) { skip(); return; }
           raf = requestAnimationFrame(tick); return;
         }
-        const r0 = el.getBoundingClientRect();
-        const f = frameOf();
-        if (r0.top < f.top + 56 || r0.bottom > f.bottom - 110) el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
       }
       const r = el.getBoundingClientRect();
       const key = `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
+      if (!ready) {
+        // Before the step shows: bring the whole target into view (below fixed headers, above the dock), let layout
+        // settle for a few frames, then measure. The spotlight only appears once the rect has stopped moving.
+        if (fixes < 4 && bringIntoView(el)) { fixes += 1; settledFrames = 0; lastKey = ''; raf = requestAnimationFrame(tick); return; }
+        settledFrames = key === lastKey ? settledFrames + 1 : 0;
+        lastKey = key;
+        if (settledFrames < 4) { raf = requestAnimationFrame(tick); return; }
+        ready = true;
+      }
       if (key !== last) { last = key; setRect({ left: r.left, top: r.top, width: r.width, height: r.height }); }
       raf = requestAnimationFrame(tick);
     };
@@ -320,7 +364,7 @@ export default function OnboardingTour() {
 
   // ---- step card ----
   const useHostingOn = step.id === 'account.organizerMode' && s.organizerMode;
-  const [title, body] = useHostingOn ? (lang ? HOSTING_ON_COPY.en : HOSTING_ON_COPY.vi) : (lang ? step.en : step.vi);
+  const [title, body] = useHostingOn ? (lang ? HOSTING_ON_COPY.en : HOSTING_ON_COPY.vi) : stepCopy(step, lang ? 'en' : 'vi', { rewardsEnabled });
   const stepInChapter = run.index - chapter.from + 1;
   const chapterSteps = chapter.to - chapter.from;
   const lastInChapter = (() => { let i = run.index + 1; while (i < chapter.to && run.missing.has(i)) i += 1; return i >= chapter.to; })();
@@ -331,8 +375,14 @@ export default function OnboardingTour() {
   if (rect) {
     const rt = rect.top - fr.top;
     cardStyle.left = Math.min(Math.max(12, rect.left - fr.left + rect.width / 2 - cardW / 2), fr.width - cardW - 12);
-    const below = step.placement === 'below' ? rt + rect.height < fr.height * 0.62 : rt < fr.height * 0.38;
-    if (below) cardStyle.top = Math.min(rt + rect.height + PAD + 12, fr.height - 250);
+    // The card goes on the side that doesn't cover the target: the preferred side if the card fits there, else the roomier one.
+    const cardH = cardRef.current?.offsetHeight || 210;
+    const roomBelow = fr.height - (rt + rect.height + PAD) - 12 - 16;
+    const roomAbove = rt - PAD - 12 - 16;
+    const want = step.placement === 'above' ? 'above' : 'below';
+    const fits = (side) => (side === 'below' ? roomBelow : roomAbove) >= cardH;
+    const side = fits(want) ? want : fits(want === 'below' ? 'above' : 'below') ? (want === 'below' ? 'above' : 'below') : (roomBelow >= roomAbove ? 'below' : 'above');
+    if (side === 'below') cardStyle.top = Math.min(rt + rect.height + PAD + 12, fr.height - cardH - 16);
     else cardStyle.bottom = Math.max(16, fr.height - rt + PAD + 12);
   } else {
     cardStyle.top = fr.height * 0.35;
