@@ -30,6 +30,10 @@ struct InboxView: View {
     @State private var searchOpen = false
     @State private var query = ""
     @State private var feedbackOpen = false
+    // Activity redesign (web: Inbox.jsx tabs + chips). The tab is remembered across a trip into a notification's
+    // destination (ActivityMemory), so Back returns here on the same tab.
+    @State private var tab: ActivityTab = ActivityMemory.tab
+    @State private var msgFilter: ActivityMessageFilter = .all
     // Bug 1c (2026-09-21 follow-up) — brings up the keyboard the instant
     // the search field appears, no extra tap needed first.
     @FocusState private var searchFieldFocused: Bool
@@ -45,10 +49,21 @@ struct InboxView: View {
             let archived = app.inboxThreadPrefs[t.id]?.archived ?? false
             return effectiveInboxView == .archived ? archived : !archived
         }
+        let filtered = byView.filter { t in
+            switch msgFilter {
+            case .all: return true
+            case .unread: return t.unread
+            case .dispute: return app.activeDisputeConversationThreadIds.contains(t.id)
+            }
+        }
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return byView }
-        return byView.filter { $0.name.lowercased().contains(q) || $0.snippet.lowercased().contains(q) }
+        guard !q.isEmpty else { return filtered }
+        return filtered.filter { $0.name.lowercased().contains(q) || $0.snippet.lowercased().contains(q) }
     }
+
+    /// Height of the fixed tabs + chips block; the pull indicator anchors below it.
+    @State private var pullChromeHeight: CGFloat = 0
+    private var showsNotificationsTab: Bool { effectiveInboxView == .active && tab == .notifications }
 
     var body: some View {
         ZStack {
@@ -76,12 +91,29 @@ struct InboxView: View {
                 // refresh mechanics below.
                 ZStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 0) {
-                if effectiveInboxView == .archived {
-                    Button("‹ " + app.T("Quay lại Tin nhắn", "Back to Messages")) { app.inboxView = .active }
-                        .font(.system(size: 12.5)).buttonStyle(.plain)
-                        .foregroundStyle(app.palette.ink.opacity(0.7))
-                        .padding(.horizontal, 24).padding(.bottom, 6)
+                VStack(alignment: .leading, spacing: 0) {
+                    if effectiveInboxView == .active && !searchOpen {
+                        ActivityTabsBar(tab: $tab)
+                        if tab == .messages {
+                            ActivityChips(
+                                items: [(ActivityMessageFilter.all, app.T("Tất cả", "All")), (ActivityMessageFilter.unread, app.T("Chưa đọc", "Unread")),
+                                        (ActivityMessageFilter.dispute, app.T("Tranh chấp", "Disputes"))],
+                                value: $msgFilter, identifierPrefix: "activity.msgChip"
+                            )
+                        }
+                    }
+                    if effectiveInboxView == .archived {
+                        Button("‹ " + app.T("Quay lại Tin nhắn", "Back to Messages")) { app.inboxView = .active }
+                            .font(.system(size: 12.5)).buttonStyle(.plain)
+                            .foregroundStyle(app.palette.ink.opacity(0.7))
+                            .padding(.horizontal, 24).padding(.bottom, 6)
+                    }
                 }
+                .background(GeometryReader { g in
+                    Color.clear
+                        .onAppear { pullChromeHeight = g.size.height }
+                        .onChange(of: g.size.height) { _, h in pullChromeHeight = h }
+                })
                 // No standalone dispute band above the conversation list any
                 // more. A refund dispute now lives INSIDE the booking
                 // conversation it belongs to, as a block hung off that
@@ -92,7 +124,9 @@ struct InboxView: View {
                 // the real ones. What's left of that idea is the highlight
                 // below: the conversation carrying a live dispute is marked
                 // on its own row, so it's still findable from here.
-                if visibleThreads.isEmpty {
+                if showsNotificationsTab {
+                    ActivityNotificationsList(query: query)
+                } else if visibleThreads.isEmpty {
                     // Calm Pass phase 2: an empty inbox says how a conversation starts and offers the way there. A
                     // search with no hits or an empty archive stays a plain line (nothing to do there).
                     if !query.trimmingCharacters(in: .whitespaces).isEmpty || effectiveInboxView == .archived {
@@ -164,19 +198,16 @@ struct InboxView: View {
                     .background(app.palette.paper)
                     // Pull-to-refresh hold fix (2026-09-29) — see
                     // `AppState.rootPullContentOffset`'s own doc comment.
-                    .offset(y: app.rootPullContentOffset)
+                    .modifier(RootPullOffsetModifier(enabled: true))
                 }
                 }
-                if app.rootPullProgress > 0 || app.rootRefreshing {
-                    RootRefreshIndicator(screen: .inbox, progress: app.rootPullProgress, refreshing: app.rootRefreshing)
-                        .padding(.top, 16)
-                        .allowsHitTesting(false)
-                        .frame(maxWidth: .infinity, alignment: .top)
-                }
+                RootPullIndicatorHost(screen: .inbox, pullAnchorTop: pullChromeHeight)
+                    .frame(maxWidth: .infinity, alignment: .top)
                 }
             }
         }
         .task { await app.loadInboxThreads() }
+        .onAppear { ActivityMemory.clearReturn() }
         // The dispute index is what marks which of these rows is carrying a
         // live dispute (see InboxRow). Nothing else on this screen needs it,
         // but it still has to be kept fresh here — the removed yellow
@@ -246,11 +277,16 @@ struct InboxView: View {
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             } else {
                 // Note 53: the shared dock header (same logo, gap and title as Home/Schedule/Account).
-                DockHeaderTitle(title: effectiveInboxView == .archived ? app.T("Đã lưu trữ", "Archived") : app.T("Tin nhắn", "Messages"),
-                                identifier: "inbox.title")
+                // Web parity: a plain large light title (no wordmark) with the search and gear icons at the right.
+                Text(effectiveInboxView == .archived ? app.T("Đã lưu trữ", "Archived") : app.T("Hoạt động", "Activity"))
+                    .font(BanbeTheme.display(30))
+                    .foregroundStyle(app.palette.ink)
+                    .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("inbox.title")
             }
             Spacer()
-            HStack(spacing: 14) {
+            HStack(spacing: 2) {
                 // Bug 1c (2026-09-21 follow-up) — `searchFieldFocused` set
                 // true right alongside the reveal animation so the
                 // keyboard comes up immediately, not on a second tap.
@@ -283,15 +319,14 @@ struct InboxView: View {
                         }
                         .accessibilityIdentifier("inbox.settings.feedback")
                     } label: {
-                        VStack(spacing: 2) {
-                            Image(systemName: "gearshape")
-                                .font(.system(size: 14))
-                                .frame(width: 34, height: 34)
-                                .background(app.palette.field, in: Circle())
-                            Text(app.T("Cài đặt", "Settings")).font(.system(size: 9.5)).opacity(0.7)
-                        }
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 19, weight: .light))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                            .accessibilityLabel(app.T("Cài đặt", "Settings"))
                     }
                     .foregroundStyle(app.palette.ink)
+                    .tourTarget("tour.activity.gear")
                     .accessibilityIdentifier("inbox.settingsToggle")
                 }
             }
@@ -305,13 +340,11 @@ struct InboxView: View {
 
     private func iconButton(_ systemImage: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 2) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 14))
-                    .frame(width: 34, height: 34)
-                    .background(app.palette.field, in: Circle())
-                Text(label).font(.system(size: 9.5)).opacity(0.7)
-            }
+            Image(systemName: systemImage)
+                .font(.system(size: 19, weight: .light))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                .accessibilityLabel(label)
         }
         .buttonStyle(.plain)
         .foregroundStyle(app.palette.ink)
@@ -1296,7 +1329,7 @@ private let notificationKindCategory: [String: String] = [
     "event_reminder_day": "reminder", "event_reminder_soon": "reminder",
     "event_recap": "event", "host_event_recap": "event", "follow_alert": "event", "weekly_digest": "event",
 ]
-private func notificationCategory(_ kind: String) -> String { notificationKindCategory[kind] ?? "system" }
+func notificationCategory(_ kind: String) -> String { notificationKindCategory[kind] ?? "system" }
 
 // Color-as-wayfinding pass (2026-09-27) — the SAME meaning -> color map
 // AccountView's own group cards use (ROW_ACCENT_COLORS), consolidated to
@@ -1311,7 +1344,7 @@ private let notificationCategoryAccent: [String: Color] = [
     "message": ROW_ACCENT_COLORS["preferences"]!, "system": ROW_ACCENT_COLORS["preferences"]!,
 ]
 
-private struct NotificationKindIcon: View {
+struct NotificationKindIcon: View {
     let category: String
     private var symbolName: String {
         switch category {
@@ -1635,6 +1668,11 @@ struct NotificationsView: View {
                     .ignoresSafeArea()
                     .accessibilityHidden(true)
                 }
+        } else if ActivityMemory.returnPending {
+            // A notification opened from Activity routes Back here (.notifications); hand it straight back to the
+            // Activity screen (Notifications tab) instead of showing this second list.
+            InboxView()
+                .onAppear { ActivityMemory.clearReturn(); app.screen = .inbox }
         } else {
             content
         }
@@ -1670,7 +1708,7 @@ struct NotificationsView: View {
                 }
             notificationsHeader
             ZStack {
-            ScreenScaffold(tracksBottomBarScroll: false, refreshIndicatorTopPadding: 16, onRefresh: { await app.loadNotifications() }) {
+            ScreenScaffold(tracksBottomBarScroll: false, onRefresh: { await app.loadNotifications() }) {
                 VStack(alignment: .leading, spacing: 0) {
                     if selectionMode, !app.selectedNotificationIDs.isEmpty {
                         HStack {

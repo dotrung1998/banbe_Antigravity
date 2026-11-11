@@ -2652,9 +2652,11 @@ extension AppState {
         case "admin_invite_response", "admin_removal_vote", "admin_removal_vote_result":
             if canManageAdmins {
                 // note 66 — no Admin tab any more: Admin Team opens nested under Administration.
+                // The Admin tab lists these rows directly, so Back returns to Account on that tab (no nested parent).
+                accountTab = "admin"
+                accountGroupParentKey = nil
                 accountGroupKey = "adminTeam"
                 screen = .accountGroup
-                accountGroupParentKey = "admin"
             }
         case "admin_access_revoked":
             // Already handled proactively by the toast poll itself (see

@@ -939,6 +939,8 @@ struct ScreenScaffold<Content: View>: View {
     var onScrollOffset: ((CGFloat) -> Void)? = nil
     /// Bumping this pins the scroll view to the very top (overrides any restore in flight).
     var scrollToTopToken: Int = 0
+    /// One-off programmatic scroll (the onboarding tour brings Account's target into view); a new token triggers it once.
+    var scrollRequest: ScaffoldScrollRequest? = nil
     // Refresh-indicator fix pass (2026-09-27, follow-up A) — replaces each
     // root screen's own plain `.refreshable { await ... }` (whose system
     // spinner can't be reskinned, see RootRefreshIndicator's own doc
@@ -960,7 +962,10 @@ struct ScreenScaffold<Content: View>: View {
     // multi-line trailing-closure call site (`onRefresh: { ... })`) doesn't
     // need this argument threaded in after it — Swift requires labeled
     // arguments in declaration order.
-    var refreshIndicatorTopPadding: CGFloat = 54
+    /// Bottom edge of this screen's fixed top chrome, measured from the scaffold's own top. 0 when the scaffold already
+    /// sits below its header (Account, Schedule, Notifications); Home passes its pinned header's height. The refresh
+    /// chip is anchored here and never overlaps the chrome above.
+    var pullAnchorTop: CGFloat = 0
     var onRefresh: (() async -> Void)? = nil
     @ViewBuilder var content: () -> Content
 
@@ -997,7 +1002,8 @@ struct ScreenScaffold<Content: View>: View {
                                     case .ended: app.endRootPull(trigger: onRefresh!)
                                     case .cancelled: app.cancelRootPull()
                                     }
-                                } : nil
+                                } : nil,
+                                scrollRequest: scrollRequest
                               ))
                             : AnyView(EmptyView())
                     )
@@ -1008,15 +1014,12 @@ struct ScreenScaffold<Content: View>: View {
                 // the content down at the pulled position for the WHOLE
                 // refresh duration instead of springing back the instant
                 // the finger releases.
-                .offset(y: onRefresh != nil ? app.rootPullContentOffset : 0)
+                .modifier(RootPullOffsetModifier(enabled: onRefresh != nil))
             } else {
                 content().frame(maxWidth: .infinity, alignment: .leading)
             }
-            if onRefresh != nil, app.rootPullProgress > 0 || app.rootRefreshing {
-                RootRefreshIndicator(screen: app.screen, progress: app.rootPullProgress, refreshing: app.rootRefreshing)
-                    .padding(.top, refreshIndicatorTopPadding)
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
+            if onRefresh != nil {
+                RootPullIndicatorHost(screen: app.screen, pullAnchorTop: pullAnchorTop)
             }
         }
         // Ticket's own "dismiss on ... tab switch" clause — leaving this
@@ -1024,6 +1027,52 @@ struct ScreenScaffold<Content: View>: View {
         // progress/refreshing state before the NEXT onRefresh-enabled
         // screen mounts, so it never inherits a stale indicator.
         .onDisappear { if onRefresh != nil { app.cancelRootPull() } }
+    }
+}
+
+/// Pull-to-refresh state that changes every pan frame. Only `RootPullOffsetModifier` / `RootPullIndicatorHost` observe it,
+/// so a pull re-renders just those, not every view that observes AppState.
+final class RootPullState: ObservableObject {
+    @Published var progress: CGFloat = 0
+    @Published var refreshing = false
+    var contentOffset: CGFloat { refreshing ? screenScaffoldPullTriggerDistance : progress * screenScaffoldPullTriggerDistance }
+}
+
+struct RootPullOffsetModifier: ViewModifier {
+    @EnvironmentObject private var app: AppState
+    let enabled: Bool
+    func body(content: Content) -> some View {
+        if enabled { content.modifier(Inner(pull: app.rootPull)) } else { content }
+    }
+    private struct Inner: ViewModifier {
+        @ObservedObject var pull: RootPullState
+        func body(content: Content) -> some View { content.offset(y: pull.contentOffset) }
+    }
+}
+
+/// Pull-to-refresh indicator, one design on every screen. `anchorTop` is the bottom edge of the screen's FIXED top
+/// chrome measured from this host's own top (0 when the host already sits below it). The chip is centred in the gap the
+/// pull opens below that edge: `anchorTop + gap / 2 - chip / 2`, with `gap` the current content offset.
+struct RootPullIndicatorHost: View {
+    @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let screen: Screen
+    var pullAnchorTop: CGFloat = 0
+    var body: some View { Inner(pull: app.rootPull, screen: screen, anchorTop: pullAnchorTop, reduceMotion: reduceMotion) }
+    private struct Inner: View {
+        @ObservedObject var pull: RootPullState
+        let screen: Screen
+        let anchorTop: CGFloat
+        let reduceMotion: Bool
+        var body: some View {
+            let chip = RootRefreshIndicator.chipSize
+            let gap = reduceMotion ? screenScaffoldPullTriggerDistance : pull.contentOffset
+            RootRefreshIndicator(screen: screen, progress: pull.progress, refreshing: pull.refreshing)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, anchorTop + max(0, gap / 2 - chip / 2))
+                .frame(maxHeight: .infinity, alignment: .top)
+                .allowsHitTesting(false)
+        }
     }
 }
 
@@ -1078,6 +1127,8 @@ struct ScaffoldScrollRequest: Equatable {
     var token: Int
     var y: CGFloat
     var animated = true
+    /// True: `y` is a distance to move from where the scroll view is now (positive = further down), not an absolute offset.
+    var relative = false
 }
 
 struct ScaffoldScrollProbe: UIViewRepresentable {
@@ -1114,7 +1165,7 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
         }
         if let r = scrollRequest, r.token != uiView.scrollRequestToken {
             uiView.scrollRequestToken = r.token
-            uiView.scroll(toY: r.y, animated: r.animated)
+            if r.relative { uiView.scroll(byY: r.y, animated: r.animated) } else { uiView.scroll(toY: r.y, animated: r.animated) }
         }
     }
 
@@ -1138,6 +1189,14 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
             let top = -sv.adjustedContentInset.top
             let bottom = max(top, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
             sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: min(bottom, max(top, y + top))), animated: animated)
+        }
+        /// Moves `dy` from the current offset (clamped to the content's range).
+        func scroll(byY dy: CGFloat, animated: Bool) {
+            guard let sv = observedScrollView else { return }
+            restoring = false
+            let top = -sv.adjustedContentInset.top
+            let bottom = max(top, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
+            sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: min(bottom, max(top, sv.contentOffset.y + dy))), animated: animated)
         }
         private weak var observedScrollView: UIScrollView?
         private var observation: NSKeyValueObservation?

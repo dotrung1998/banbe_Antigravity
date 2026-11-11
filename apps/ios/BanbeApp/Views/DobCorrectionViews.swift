@@ -217,7 +217,7 @@ struct AdminDobCorrectionsView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Duyệt & Kiểm Duyệt", "Review & Moderation")) { app.screen = .accountGroup }
+                BackLink(label: app.backLabel(for: app.accountSubBack)) { app.goBack() }
                     .padding(.top, 8)
                 Text(app.T("Sửa ngày sinh", "Birthday corrections")).font(BanbeTheme.display(24)).padding(.top, 14)
                 Text(app.T("Người dùng gửi yêu cầu khi ngày sinh trong hồ sơ bị sai. Duyệt sẽ ghi đè ngày sinh đã lưu.",

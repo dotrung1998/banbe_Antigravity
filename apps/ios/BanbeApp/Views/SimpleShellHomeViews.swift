@@ -108,7 +108,8 @@ struct HostHomeSections: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let e = nextHosted { hero(e) } else { planCard }
+            Group { if let e = nextHosted { hero(e) } else { planCard } }
+                .tourTarget("tour.host.hero")
             quickActions.padding(.top, 16)
             ActionCenterView(items: actionItems, onSeeAll: { app.goNotifications() })
                 .padding(.top, 16)
@@ -210,6 +211,7 @@ struct HostHomeSections: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(app.T("Lối tắt tổ chức", "Hosting shortcuts"))
         .accessibilityIdentifier("home.host.quick")
+        .tourTarget("tour.host.quick")
     }
 
     // MARK: Upcoming (note 69)

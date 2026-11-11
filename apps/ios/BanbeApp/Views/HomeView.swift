@@ -18,6 +18,8 @@ struct HomeView: View {
     @ScaledMetric(relativeTo: .footnote) private var chipFont: CGFloat = 13
     /// The "Show all" category sheet (every category A–Z with its count).
     @State private var categorySheetOpen = false
+    @State private var quickSheetOpen = false
+    @State private var pinnedHeaderHeight: CGFloat = HomeHeroPinnedHeader.fallbackHeight
     @Environment(\.scenePhase) private var scenePhase
     @State private var tickTask: Task<Void, Never>?
     @State private var tick = Date()
@@ -33,6 +35,8 @@ struct HomeView: View {
     /// location list — a native `Menu` can't host a text field, so this is
     /// where typing a place name still works. See `LocationPickerSheet`.
     @State private var areaSearchOpen = false
+    /// Note 80: the photo hero's tab (Going out, Simple Shell). Hosting is the other Home view, not a value here.
+    @State private var heroTab: HomeHeroTab = .foryou
     @StateObject private var forYouAlert = ForYouAlertModel()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -117,7 +121,7 @@ struct HomeView: View {
             activeHeader.revealRegion(0)
             // L5 weekly digest: its notification asks for the "This weekend" rail (AppState.goHomeThisWeekend).
             ScrollViewReader { weekendProxy in
-            ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: homeScrollAnchorBinding, restoreOffsetY: app.homeScrollOffsetY, onScrollOffset: { app.homeScrollOffsetY = $0 }, scrollToTopToken: app.homeScrollToTopToken, refreshIndicatorTopPadding: 16, onRefresh: {
+            ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: homeScrollAnchorBinding, restoreOffsetY: app.homeScrollOffsetY, onScrollOffset: { app.homeScrollOffsetY = $0; HomeHeaderFade.shared.update(offsetY: $0) }, scrollToTopToken: app.homeScrollToTopToken, scrollRequest: app.homeTourScrollRequest, pullAnchorTop: app.simpleShellEnabled ? pinnedHeaderHeight : 0, onRefresh: {
                 await app.loadHomeLiveEvents()
                 await app.loadWeekendEvents()
                 await app.loadDiscoveryEvents()
@@ -133,6 +137,14 @@ struct HomeView: View {
                     // Simple Shell (note 66, switch simple_shell): one hero per mode. OFF renders the feed below unchanged.
                     if app.simpleShellEnabled {
                         if hostHome {
+                            // Hosting is a 4th tab of the same hero (no card rail); the host sections swap in under it.
+                            HomeHeroSection(tab: $heroTab, lists: snap.heroLists, onSeeAll: { heroSeeAll($0) },
+                                            onSearchLocations: { areaSearchOpen = true },
+                                            onAvatar: { quickSheetOpen = true },
+                                            headerHeight: pinnedHeaderHeight)
+                                .id(true)   // distinct from the Going out hero: a lazy stack reuses a node by its outer id
+                                .id("home.tour.hero")
+                                .revealRegion(0)
                             HostHomeSections(actionItems: sortActionCenterItems(hostActionItems)).revealRegion(1)
                         } else {
                             simpleGoerFeed(snap)
@@ -190,11 +202,25 @@ struct HomeView: View {
                 .padding(.bottom, BottomTabBar.contentClearance)
             }
             .task(id: app.homeWeekendScrollRequest) { await scrollToWeekendIfAsked(weekendProxy) }
+            // Hero empty card "Browse all events": bring Browse / By type to the top once the cleared filter has applied.
+            .onChange(of: app.homeBrowseScrollRequest) { _, req in
+                guard req != nil else { return }
+                app.homeBrowseScrollRequest = nil
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 120_000_000)
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.4)) { weekendProxy.scrollTo("home.tour.browse", anchor: .top) }
+                }
+            }
             // Note 64: the v3 tour's event-card step brings the first card into view (a scroll, nothing else).
             .onReceive(OnboardingTourController.shared.$scrollRequest.dropFirst()) { _ in
-                guard let first = snap.cards.first?.key else { return }
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) { weekendProxy.scrollTo(first, anchor: .center) }
+                let target = OnboardingTourController.shared.scrollTarget
+                let id: String? = target == "event" ? snap.cards.first?.key : target
+                guard let id else { return }
+                let anchor: UnitPoint = target == "home.tour.hero" ? .top : .center
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) { weekendProxy.scrollTo(id, anchor: anchor) }
             }
+            // The tour asks for a hero tab (For You on step 1, Tonight on its "do it" tap).
+            .onReceive(OnboardingTourController.shared.$heroTabRequest.compactMap { $0 }) { heroTab = $0 }
             }
         }
         }
@@ -205,6 +231,15 @@ struct HomeView: View {
         // chip until Home happened to remount. Re-runs the same loads
         // (idempotent re-fetch, same as every other "also loaded here"
         // source in this codebase) on returning to the foreground.
+        // The header from the wordmark to the search bar stays pinned while the feed scrolls under it.
+        .overlay(alignment: .top) {
+            if app.simpleShellEnabled {
+                HomeHeroPinnedHeader(onSearchLocations: { areaSearchOpen = true },
+                                     onAvatar: { quickSheetOpen = true },
+                                     height: $pinnedHeaderHeight)
+                    .revealRegion(0)
+            }
+        }
         .task(id: app.justSignedIn) { await app.finishSignInReveal(reduceMotion: reduceMotion) }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, app.userID != nil else { return }
@@ -309,6 +344,7 @@ struct HomeView: View {
                             forYou: (app.eventPrefs?.isEmpty ?? true) ? nil : Binding(get: { app.filterForYou }, set: { app.filterForYou = $0 }))
             .environmentObject(app)
         }
+        .sheet(isPresented: $quickSheetOpen) { QuickSheetView(onClose: { quickSheetOpen = false }).environmentObject(app) }
         .sheet(isPresented: $categorySheetOpen) {
             HomeCategorySheet(counts: makeSnapshot().categoryCounts)
                 .environmentObject(app)
@@ -622,7 +658,8 @@ struct HomeView: View {
 
     @ViewBuilder
     private var activeHeader: some View {
-        if app.simpleShellEnabled { simpleHeader } else { header }
+        // Note 80: with Simple Shell the header lives inside the photo hero on BOTH Going out and Hosting (it scrolls with the feed).
+        if !app.simpleShellEnabled { header }
     }
 
     /// Logo, the Going out | Hosting switch and the bell. Streak/coins and the area/language/theme chips are gone from
@@ -723,51 +760,67 @@ struct HomeView: View {
     @ViewBuilder
     private func simpleGoerFeed(_ snap: Snapshot) -> some View {
         let items = app.isSignedIn ? sortActionCenterItems(goerActionItems) : []
+        // Note 80: the full-bleed photo hero (header, search, tabs, card rail), then the same one-hero block as before.
+        HomeHeroSection(tab: $heroTab, lists: snap.heroLists, onSeeAll: { heroSeeAll($0) },
+                        onSearchLocations: { areaSearchOpen = true },
+                        onAvatar: { quickSheetOpen = true },
+                        headerHeight: pinnedHeaderHeight)
+            .id(false)
+            .id("home.tour.hero")
+            .revealRegion(0)
         let kind = HomeHero.goer(signedIn: app.isSignedIn, hasNextUp: nextUp != nil, actionCount: items.count,
                                  checklistVisible: app.isSignedIn && checklistVisible)
         goerHero(kind, items: items).revealRegion(1)
         if kind == .none, !savedUpcoming.isEmpty { savedUpcomingSection.revealRegion(1) }
-        // Plan item 2: the category quick filter is back (the same row, counts and "Show all" A-Z sheet as switch
-        // OFF), compact, then the selected category's type chips, then the chip row. The Filters sheet no longer
-        // repeats categories or type chips while this is on.
-        HomeCategoryRow(keys: snap.categoryRow, counts: snap.categoryCounts, onShowAll: { categorySheetOpen = true },
-                        compact: true)
+        // Note 80: Browse (types with counts + Find a type), then By type (one photo row per type). The old category row,
+        // chip row, "N events" header and card list are replaced by these; Filters still opens the same sheet.
+        HomeBrowseSection(counts: snap.categoryCounts, onPick: { shellPickType($0) }, onFind: { categorySheetOpen = true })
+            .id("home.tour.browse")
             .revealRegion(2)
         if !snap.typeChips.isEmpty {
             typeChipRow(snap)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                 .revealRegion(2)
         }
-        simpleChipRow(snap)
-            .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+        HomeByTypeSections(sections: HomeByTypeSections.sections(shown: snap.shown, cards: snap.cards),
+                           summary: shellFilterSummary, onFilters: { app.homeFilterSheetOpen = true },
+                           onPick: { shellPickType($0) })
+            .id("home.tour.filters")
             .revealRegion(2)
-        if app.filterForYou && app.hasForYouMatches { forYouEditRow.padding(.bottom, 4).revealRegion(2) }
-        sectionHeader(snap, includeMap: true).revealRegion(2)
-        let last = snap.cards.count - 1
-        ForEach(Array(snap.cards.enumerated()), id: \.element.key) { i, card in
-            Group {
-                if layoutMode == "list" { DiscoveryRow(model: card) } else { DiscoveryCard(model: card) }
-            }
-            .revealRegion(2)
-            .modifier(FirstCardTourTarget(isFirst: i == 0))
-            .id(card.key)
-            if i == min(2, last), !app.homeStories.isEmpty { storyRow }
-            if i == min(5, last), pulseHasItems {
-                PulseTickerView().padding(.horizontal, 20).padding(.vertical, 10)
-            }
-        }
+            .modifier(FirstCardTourTarget(isFirst: true))
+        if !app.homeStories.isEmpty { storyRow.padding(.top, 20) }
+        if pulseHasItems { PulseTickerView().padding(.horizontal, 20).padding(.vertical, 10) }
         if !snap.relaxHints.isEmpty && !snap.items.isEmpty { relaxHintsRow(snap.relaxHints) }
-        if snap.cards.isEmpty {
-            emptyState
-            if !app.homeStories.isEmpty { storyRow }
-            if pulseHasItems { PulseTickerView().padding(.horizontal, 20).padding(.vertical, 10) }
-        } else {
-            footer
-        }
-        if app.homeFilters.date != "weekend" { weekendSection.id("home.weekend") }
         if app.isSignedIn { surveyDiscoveryRow }
         tagline
         hostLink
+    }
+
+    /// "Area · date · price", the one-line summary under By type (web twin: `shellFilterSummary`).
+    private var shellFilterSummary: String {
+        let f = app.homeFilters
+        let area = app.area == LocationHierarchy.allID ? app.T("Mọi nơi", "Everywhere") : app.currentAreaLabel
+        let date = HomeDiscovery.dateLabels[f.date].map { app.T($0.vi, $0.en) } ?? app.T("Mọi lúc", "Any time")
+        let price = f.free ? app.T("Miễn phí", "Free") : app.T("Mọi mức giá", "Any price")
+        return [area, date, price].joined(separator: " · ")
+    }
+
+    /// A type tile or row filters Home to that type (web twin: `shellPickType`); an already picked type stays picked.
+    private func shellPickType(_ key: String) {
+        Haptics.selection()
+        if !app.homeFilters.cats.contains(key) { app.pickFilter(key) }
+    }
+
+    /// "See all" on a hero rail: For You turns the For You filter on, Tonight / Weekend set the date, then the feed shows.
+    private func heroSeeAll(_ tab: HomeHeroTab) {
+        switch tab {
+        case .foryou:
+            if !app.filterForYou && app.hasForYouMatches { app.filterForYou = true }
+        case .tonight, .weekend:
+            var f = app.homeFilters
+            f.date = tab == .tonight ? "today" : "weekend"
+            app.setHomeFilters(f)
+        }
     }
 
     /// For You first, then Today / This weekend / Free / Almost full (scrolling), then Filters with its count, pinned.
@@ -1142,6 +1195,8 @@ struct HomeView: View {
         var typeCounts: [String: Int] = [:]
         var categoryCounts: [String: Int] = [:]
         var categoryRow: [String] = ["all"]
+        /// Note 80: the hero's rails (max 5 each), same filters as the feed except the date. Empty unless Simple Shell.
+        var heroLists: [HomeHeroTab: [DiscoveryCardModel]] = [:]
     }
 
     private static let quickChips: [(key: String, vi: String, en: String)] = [
@@ -1208,8 +1263,37 @@ struct HomeView: View {
         // Category row (web twin): what tapping each category shows, with the very same filter the feed renders with.
         let catCounts = HomeDiscovery.categoryCounts(items, f, keys: EventTypes.keys, now: now)
         let catRow = HomeDiscovery.categoryRowKeys(catCounts, keys: EventTypes.keys, selected: f.cats)
-        return Snapshot(items: items, shown: shown, cards: cards, quickCounts: quick, relaxHints: hints, filterBadge: badge,
-                        typeChips: typeChips, typeCounts: typeCounts, categoryCounts: catCounts, categoryRow: catRow)
+        var snap = Snapshot(items: items, shown: shown, cards: cards, quickCounts: quick, relaxHints: hints, filterBadge: badge,
+                            typeChips: typeChips, typeCounts: typeCounts, categoryCounts: catCounts, categoryRow: catRow)
+        if app.simpleShellEnabled && app.effectiveHomeView != .host {
+            snap.heroLists = makeHeroLists(items: items, byKey: byKey, forYou: forYou, filters: f, now: now)
+        }
+        return snap
+    }
+
+    /// Note 80 (web twin: `heroLists` in Home.jsx): For You (ranked matches, else the soonest), Tonight and Weekend, each
+    /// at most 5 open events (not sold out, not cancelled, not started more than an hour ago), every filter kept
+    /// except the date.
+    private func makeHeroLists(items: [HomeDiscovery.Item], byKey: [String: CatalogEvent], forYou: [ForYouMatch],
+                               filters: HomeDiscovery.Filters, now: Date) -> [HomeHeroTab: [DiscoveryCardModel]] {
+        func open(_ it: HomeDiscovery.Item) -> Bool {
+            guard !it.soldOut, byKey[it.key]?.cancelled == false, let start = it.startsAt else { return false }
+            return start >= now.addingTimeInterval(-3600)
+        }
+        func shape(_ its: [HomeDiscovery.Item]) -> [DiscoveryCardModel] {
+            its.prefix(5).compactMap { it in byKey[it.key].map { app.discoveryCardModel($0, item: it, now: now) } }
+        }
+        var base = filters
+        base.date = "any"
+        func byDate(_ date: String) -> [DiscoveryCardModel] {
+            var g = base
+            g.date = date
+            return shape(HomeDiscovery.apply(items, g, now: now).filter(open))
+        }
+        let byItemKey = Dictionary(items.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+        let ranked = forYou.compactMap { byItemKey[$0.key] }.filter(open)
+        let soonest = HomeDiscovery.apply(items, base, now: now).filter(open)
+        return [.foryou: shape(ranked.isEmpty ? soonest : ranked), .tonight: byDate("today"), .weekend: byDate("weekend")]
     }
 
     /// Event type profiles (switch event_type_profiles): the selected category's own chips (a supper club:

@@ -114,8 +114,8 @@ struct DockCreateButtonView: View {
 
     // MARK: Simple Shell centre "+"
 
-    /// Ink disc, paper "+", 48pt (the touch target is the whole disc; the bar slot around it is wider).
-    private static let discSize: CGFloat = 48
+    /// Ink disc, paper "+", 26pt (the touch target is the whole disc; the bar slot around it is wider).
+    private static let discSize: CGFloat = 26
 
     /// Simple Shell follow-up (plan item 3): the popover is bound to `app.dockCreateOpen`, so a dock drag released
     /// over this slot opens the same menu, from the same anchor, as a tap.
@@ -124,15 +124,25 @@ struct DockCreateButtonView: View {
             Haptics.light()
             app.dockCreateOpen = true
         } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(app.palette.paper)
-                .frame(width: Self.discSize, height: Self.discSize)
-                .background(app.palette.ink, in: Circle())
-                .scaleEffect(scrubHover ? 0.9 : 1)
-                .opacity(scrubHover ? 0.82 : 1)
-                .animation(Motion.animation(.spring(response: 0.22, dampingFraction: 0.7), reduce: reduceMotion), value: scrubHover)
-                .contentShape(Circle())
+            // Web twin (note 80): a 26pt ink disc with a small "+" and a "Create" label under it, like the other slots.
+            VStack(spacing: 3) {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(app.palette.paper)
+                    .frame(width: Self.discSize, height: Self.discSize)
+                    .background(app.palette.ink, in: Circle())
+                Text(app.T("Tạo", "Create"))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(app.palette.ink)
+                    .opacity(0.75)
+                    .lineLimit(1)
+                    .accessibilityHidden(true)
+            }
+            .frame(minWidth: 44, minHeight: BottomTabBar.barHeight - 10)
+            .scaleEffect(scrubHover ? 0.9 : 1)
+            .opacity(scrubHover ? 0.82 : 1)
+            .animation(Motion.animation(.spring(response: 0.22, dampingFraction: 0.7), reduce: reduceMotion), value: scrubHover)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle(haptic: false))
         // The menu is a bottom sheet presented by RootView (DockCreateSheet), like the web one.

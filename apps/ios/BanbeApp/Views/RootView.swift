@@ -1451,6 +1451,7 @@ struct RootView: View {
         case .attendance: AttendanceView()
         case .preferences: PreferencesView()
         case .eventPreferences: EventPreferencesView()
+        case .notifPrefs: NotificationPrefsView(style: .page)
         case .following: FollowingView()
         case .rewards:
             // Hidden by an admin (migration 187), whether this was a deep link or the flag flipped while it was

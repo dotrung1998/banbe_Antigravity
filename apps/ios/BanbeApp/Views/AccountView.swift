@@ -153,8 +153,6 @@ struct AccountView: View {
             app.palette.paper.ignoresSafeArea()
         VStack(alignment: .leading, spacing: 0) {
             accountHeader
-            // Note 69: the tabs (when there are any) are a fixed sibling, like the header; hidden while searching.
-            if !searchOpen && !accountTabs.isEmpty { accountTabBar }
             // Fixed-header pass (2026-10-02) — tabs used to be the FIRST
             // row inside `accountContent`'s own LazyVStack, i.e. inside the
             // scrollable `ScreenScaffold` content: scrolling the Personal/
@@ -167,7 +165,8 @@ struct AccountView: View {
             ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: accountScrollAnchorBinding,
                            restoreOffsetY: app.accountScrollOffsetByTab[modeKey],
                            onScrollOffset: { app.accountScrollOffsetByTab[modeKey] = $0 },
-                           refreshIndicatorTopPadding: 24, onRefresh: {
+                           scrollRequest: app.accountTourScrollRequest,
+                           onRefresh: {
                 guard app.userID != nil else { return }
                 await app.loadPaymentBookings()
                 await app.loadMyRefunds()
@@ -262,12 +261,9 @@ struct AccountView: View {
         // against the row's top; centering keeps the title and "Done"
         // button fully visible at any wordmark size, matching
         // Messages/Notifications which already use `.center` here.
+        // Web parity: a large light "Account" title with only a share icon at the right (no logo, no search button;
+        // the search field still appears when something opens it and then offers a close button).
         HStack(alignment: .center) {
-            // "banbe" wordmark parity fix (2026-09-29, follow-up:
-            // placed BEFORE the title, inline in the same row — not
-            // as its own row above it) — matches Home's own header
-            // wordmark (HomeView.swift); Notifications/Messages got
-            // the same addition in this pass.
             if searchOpen {
                 TextField(app.T("Tìm trong tài khoản…", "Search Account…"), text: $app.accountSearchQuery)
                     .font(.system(size: 13.5))
@@ -283,33 +279,47 @@ struct AccountView: View {
                     .accessibilityIdentifier("account.searchInput")
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             } else {
-                // Note 53: the shared dock header (same logo, gap and title as Home/Schedule/Messages).
-                DockHeaderTitle(title: app.T("Tài khoản", "Account"), identifier: "account.title")
+                Text(app.T("Tài khoản", "Account"))
+                    .font(BanbeTheme.display(30))
+                    .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("account.title")
                 Spacer()
             }
-            // Search (replaces "Done") — same icon-over-label button as
-            // Messages/Notifications.
-            SwipeSafeButton {
-                if app.accountSearchOpen { app.accountSearchQuery = "" }
-                withAnimation(.easeInOut(duration: 0.22)) { app.accountSearchOpen.toggle() }
-                searchFocused = app.accountSearchOpen
-            } label: {
-                VStack(spacing: 2) {
-                    Image(systemName: searchOpen ? "xmark" : "magnifyingglass")
+            if searchOpen {
+                SwipeSafeButton {
+                    app.accountSearchQuery = ""
+                    withAnimation(.easeInOut(duration: 0.22)) { app.accountSearchOpen = false }
+                    searchFocused = false
+                } label: {
+                    Image(systemName: "xmark")
                         .font(.system(size: 14))
-                        .frame(width: 34, height: 34)
-                        .background(app.palette.field, in: Circle())
-                    Text(searchOpen ? app.T("Đóng", "Close") : app.T("Tìm", "Search"))
-                        .font(.system(size: 9.5)).opacity(0.7)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(app.T("Đóng", "Close"))
+                .accessibilityIdentifier("account.searchToggle")
+            } else if app.isSignedIn {
+                SwipeSafeButton {
+                    shareCardForHost = false; shareCardOpen = true
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 19, weight: .light))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(app.T("Chia sẻ hồ sơ", "Share profile"))
+                .accessibilityIdentifier("account.shareProfile")
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("account.searchToggle")
         }
         .foregroundStyle(app.palette.ink)
         .frame(height: DockHeaderTitle.rowHeight)  // note 53: same row height on every dock tab
         .padding(.horizontal, DockHeaderTitle.horizontalPadding)
         .padding(.top, 16)
+        // The tour keeps its spotlight below this fixed title (it measures where the scrolling content starts).
+        .tourTarget("tour.account.headerBottom")
     }
 
     private var isHostMode: Bool { app.organizerMode && app.canHost }
@@ -348,34 +358,37 @@ struct AccountView: View {
     }
 
     private var accountContent: some View {
+        // Web order: identity, Hosting mode card, tabs, then the selected tab's body (all scroll together).
         LazyVStack(alignment: .leading, spacing: 0) {
-            switch selectedTab {
-            case "host": hostTabContent
-            case "admin": adminTabContent
-            default: personalTabContent
+            identityCard
+            if app.isSignedIn { hostingToggleRow.padding(.top, 18) }
+            if !accountTabs.isEmpty { accountTabBar.padding(.horizontal, -20) }
+            VStack(alignment: .leading, spacing: 0) {
+                switch selectedTab {
+                case "host": hostTabContent
+                case "admin": adminTabContent
+                default: personalTabContent
+                }
             }
+            // A tab switch swaps the body (and its own scroll anchor).
+            .id(modeKey)
+            .transition(.opacity)
+            // Sign out ends every tab (it used to be Personal only); it carries the room above the dock.
+            signOutButton.id("account.signOut")
         }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 20)
-        .padding(.top, accountTabs.isEmpty ? 16 : 4)
-        // Personal ends with Sign out, which already clears the dock. Host and Admin end on a group, so they need the
-        // same room or their last row sits under the dock.
-        .padding(.bottom, selectedTab == "personal" ? 0 : BottomTabBar.contentClearance + 16)
-        // A tab switch swaps the whole body (and its own scroll anchor).
-        .id(modeKey)
-        .transition(.opacity)
+        .padding(.top, 4)
         .sheet(isPresented: $shareCardOpen) { shareCardSheet }
         .sheet(isPresented: $eventStoryPickerOpen) { eventStoryPicker }
     }
 
-    /// Personal: who you are, rewards, your tiles, what you owe, then the labelled groups. Host duties stay here
-    /// while the Host tab is hidden, so owed money is never out of sight.
+    /// Personal: who you are, the Hosting mode card, your tiles, what you owe, then the labelled groups. Host duties
+    /// stay here while the Host tab is hidden, so owed money is never out of sight.
     @ViewBuilder
     private var personalTabContent: some View {
-        personalProfileCard.id("account.personal.card")
-        if app.rewardsEnabled { rewardsStrip.padding(.top, 12).id("account.personal.rewards") }
         AccountTilesGrid(tiles: goerTiles)
-            .padding(.top, 16)
+            .padding(.top, 12)
             .id("account-tiles")
         // Note 76 phase 4: with no project yet this row is "Join a team with a code" (an invitee's way in without a link).
         if app.projectHubEnabled && (app.myProjectsLoaded || !app.myProjects.isEmpty) { projectsStrip.padding(.top, 12).id("account.personal.projects") }
@@ -387,33 +400,69 @@ struct AccountView: View {
         }
         if !app.myOrganizerInvites.isEmpty { teamInviteBanner.id("account.personal.teamInvite") }
 
-        rowGroup(id: "account.personal.activity", title: app.T("Hoạt động", "Activity")) {
+        rowGroup(id: "account.personal.activity", title: app.T("Hoạt động của bạn", "Your activity")) {
             moreRow(app.T("Thông báo", "Notifications"), icon: "bell", identifier: "account.notifications",
                     badge: app.unreadNotifications) { app.goNotifications(back: .profile) }
             moreDivider()
-            moreRow(app.T("Đang theo dõi", "Following"), icon: "person.crop.circle.badge.checkmark", identifier: "account.following",
+            moreRow(app.T("Đang theo dõi", "Following"), icon: "heart", identifier: "account.following",
                     trailing: app.followedStatus == .loaded ? "\(app.followedOrgIDs.count)" : nil) { app.screen = .following }
             moreDivider()
-            moreRow(app.T("Báo cáo", "Reports"), icon: "chart.bar.doc.horizontal", identifier: "account.reportsPersonal") {
+            moreRow(app.T("Năm của bạn trên banbe", "Your year in banbe"), icon: "chart.bar.doc.horizontal", identifier: "account.reportsPersonal") {
                 app.openReports(scope: "personal", back: .profile)
             }
         }
         let hasHandle = !(app.user?.handle ?? "").isEmpty
         if app.referralLink != nil || hasHandle {
-            rowGroup(id: "account.personal.share", title: app.T("Chia sẻ & mời", "Share & invite")) {
+            rowGroup(id: "account.personal.share", title: app.T("Chia sẻ", "Share")) {
                 if app.referralLink != nil {
                     moreRow(app.T("Mời bạn bè", "Invite friends"), icon: "person.2", identifier: "account.inviteFriends") { app.shareReferral() }
                 }
                 if app.referralLink != nil && hasHandle { moreDivider() }
                 if hasHandle {
-                    moreRow(app.T("Chia sẻ thẻ của bạn", "Share your card"), icon: "qrcode", identifier: "account.shareProfileCard") {
+                    moreRow(app.T("Chia sẻ thẻ hồ sơ", "Share your card"), icon: "qrcode", identifier: "account.shareProfileCard") {
                         shareCardForHost = false; shareCardOpen = true
                     }
                 }
             }
         }
-        rowGroup(id: "account.personal.app", title: app.T("Ứng dụng", "App")) {
-            moreRow(app.T("Cài đặt", "Settings"), icon: "gearshape", identifier: "account.group.preferences") { openGroup("preferences") }
+        rowGroup(id: "account.personal.app", title: app.T("Cài đặt", "Settings")) {
+            if app.isSignedIn {
+                moreRow(app.T("Hồ sơ & đăng nhập", "Profile & sign-in"), sub: app.T("Tên, số điện thoại, mật khẩu", "Name, phone, password"),
+                        icon: "person.crop.circle", identifier: "account.group.preferences") { app.goEditName() }
+                moreDivider()
+            }
+            // The tour's Settings step spotlights exactly what its copy lists: notifications, For You, appearance, language.
+            VStack(spacing: 0) {
+                if app.isSignedIn {
+                    moreRow(app.T("Tùy chọn thông báo", "Notification preferences"), icon: "bell.badge", identifier: "account.notificationPrefs",
+                            trailing: NotificationPrefs.summary(app.mutedNotificationKinds, isEN: app.isEN)) { app.screen = .notifPrefs }
+                    moreDivider()
+                    moreRow(app.T("Gợi ý Dành cho bạn", "For You preferences"), sub: app.T("Sở thích và mục tiêu", "Interests and goals"),
+                            icon: "sparkles", identifier: "account.eventPreferences") { app.openEventPreferences() }
+                    moreDivider()
+                }
+                segmentRow(app.T("Giao diện", "Appearance"), icon: "sun.max", identifier: "account.appearance", options: [
+                    ("light", app.T("Sáng", "Light"), !app.isDark, { app.pickTheme("light") }),
+                    ("dark", app.T("Tối", "Dark"), app.isDark, { app.pickTheme("dark") }),
+                ])
+                moreDivider()
+                segmentRow(app.T("Ngôn ngữ", "Language"), icon: "globe", identifier: "account.language", options: [
+                    ("vi", "VI", !app.isEN, { if app.isEN { app.toggleLang() } }),
+                    ("en", "EN", app.isEN, { if !app.isEN { app.toggleLang() } }),
+                ])
+            }
+            .tourTarget("tour.account.settings")
+            if app.isSignedIn {
+                moreDivider()
+                moreRow(app.T("Tài khoản thanh toán & nhận hoàn tiền", "Payment & refund accounts"), icon: "building.columns",
+                        identifier: "account.refundAccounts") { app.openRefundAccounts() }
+                moreDivider()
+                moreRow(app.T("Quyền riêng tư & bảo mật", "Privacy & security"), sub: app.T("Face ID, người bị chặn, xoá tài khoản", "Face ID, blocked people, delete account"),
+                        icon: "lock.shield", identifier: "account.security") { app.openSecurity() }
+            }
+            moreDivider()
+            // Everything that used to live under Settings only (image cache, digest, account deletion) stays one tap away.
+            moreRow(app.T("Thêm cài đặt", "More settings"), icon: "gearshape", identifier: "account.moreSettings") { openGroup("preferences") }
             moreDivider()
             moreRow(imageCacheClearedAt == nil ? app.T("Xoá bộ nhớ đệm hình ảnh", "Clear image cache")
                                                : app.T("Đã xoá bộ nhớ đệm hình ảnh", "Image cache cleared"),
@@ -421,8 +470,13 @@ struct AccountView: View {
                 PhotoLoader.clearCache()
                 imageCacheClearedAt = Date()
             }
+        }
+        rowGroup(id: "account.personal.support", title: app.T("Hỗ trợ", "Support")) {
+            moreRow(app.T("Hướng dẫn", "Help & guides"), icon: "questionmark.circle", identifier: "account.help") { openGroup("helpLegal") }
             moreDivider()
-            hostingToggleRow
+            moreRow(app.T("Hỏi & Đáp", "Questions & answers"), icon: "questionmark.bubble", identifier: "account.faq") { app.screen = .helpFaq }
+            moreDivider()
+            moreRow(app.T("Điều khoản & chính sách", "Terms & policies"), icon: "doc.text", identifier: "account.terms") { app.openPolicy() }
         }
         if !app.organizerModeError.isEmpty {
             Text(app.organizerModeError)
@@ -431,15 +485,13 @@ struct AccountView: View {
                 .padding(.top, 10)
         }
         if !app.canHost { hostFirstEventCard.id("account.personal.hostFirst") }
-        signOutButton.id("account.personal.signOut")
     }
 
     /// Host (first while Hosting mode is on): the organizer card, host tiles, host duties and the hosting tools.
     @ViewBuilder
     private var hostTabContent: some View {
-        hostIdentity
         AccountTilesGrid(tiles: hostTiles)
-            .padding(.top, 16)
+            .padding(.top, 12)
             .id("account-tiles")
         if app.projectHubEnabled && !app.myProjects.isEmpty { projectsStrip.padding(.top, 12).id("account.host.projects") }
         if !hostActionItems.isEmpty {
@@ -448,21 +500,29 @@ struct AccountView: View {
                 .id("account.host.actions")
         }
         rowGroup(id: "account.host.tools", title: app.T("Công cụ tổ chức", "Hosting tools")) {
+            moreRow(app.T("Khảo sát & ý tưởng sự kiện", "Surveys & event ideas"), icon: "lightbulb", identifier: "account.group.surveys") {
+                app.screen = .surveysHosting
+            }
+            moreDivider()
             postStoryRow
+            moreDivider()
+            moreRow(app.T("Hồ sơ tổ chức", "Organizer profile"), icon: "storefront", identifier: "account.organizerProfile") {
+                if let id = app.myOrganizerID { app.openOrganizerProfile(organizerID: id, back: .profile) } else { app.hostSetupOpen = true }
+            }
             if app.myOrganizerID != nil {
                 moreDivider()
                 moreRow(app.T("Chia sẻ thẻ tổ chức", "Share host card"), icon: "qrcode", identifier: "account.shareHostCard") {
                     shareCardForHost = true; shareCardOpen = true
                 }
             }
+        }
+        // Web "Money" group: the three host money screens (all live in the Host operations group).
+        rowGroup(id: "account.host.money", title: app.T("Tiền", "Money")) {
+            moreRow(app.T("Hoàn tiền", "Refunds"), icon: "arrow.counterclockwise", identifier: "account.money.refunds") { openGroup("hostOps") }
             moreDivider()
-            moreRow(app.T("Khảo sát & ý tưởng sự kiện", "Surveys & event ideas"), icon: "lightbulb", identifier: "account.group.surveys") {
-                app.screen = .surveysHosting
-            }
+            moreRow(app.T("Hoá đơn & biên nhận đã phát hành", "Invoices & receipts issued"), icon: "doc.text", identifier: "account.money.documents") { openGroup("hostOps") }
             moreDivider()
-            moreRow(app.T("Hồ sơ tổ chức", "Organizer profile"), icon: "storefront", identifier: "account.organizerProfile") {
-                if let id = app.myOrganizerID { app.openOrganizerProfile(organizerID: id, back: .profile) } else { app.hostSetupOpen = true }
-            }
+            moreRow(app.T("Tài khoản nhận tiền", "Payout account"), icon: "building.columns", identifier: "account.money.payout") { openGroup("hostOps") }
         }
     }
 
@@ -482,8 +542,20 @@ struct AccountView: View {
                 openGroup("adminTeam")
             }
             moreDivider()
+            moreRow(app.T("Quản lý sự kiện", "Manage events"), icon: "calendar.badge.minus", identifier: "admin.manageEvents") {
+                if app.isAdmin { app.screen = .adminManageEvents }
+            }
+            moreDivider()
             moreRow(app.T("Số liệu & báo cáo", "Metrics & reports"), icon: "chart.bar.doc.horizontal", identifier: "account.reportsAdmin") {
                 app.openReports(scope: "admin", back: .profile)
+            }
+            moreDivider()
+            moreRow(app.T("Công tắc tính năng", "Feature switches"), icon: "switch.2", identifier: "admin.features") {
+                if app.isAdmin { app.screen = .adminFeatures }
+            }
+            moreDivider()
+            moreRow(app.T("Tài khoản thử nghiệm", "Test accounts"), icon: "person.badge.shield.checkmark", identifier: "admin.testAccounts") {
+                if app.isAdmin { app.screen = .adminTestAccounts }
             }
             moreDivider()
             moreRow(app.T("Hướng dẫn quản trị", "Admin guide"), icon: "checklist", identifier: "account.adminGuide") {
@@ -495,17 +567,20 @@ struct AccountView: View {
 
     /// Note 69: a labelled group of rows (replaces the single "More" list). One scroll anchor per group, so Back from
     /// any row lands on the group it was opened from.
-    private func rowGroup<Content: View>(id: String, title: String, topPadding: CGFloat = 28,
+    private func rowGroup<Content: View>(id: String, title: String, topPadding: CGFloat = 26,
                                          @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(app.palette.ink)
+        VStack(alignment: .leading, spacing: 0) {
+            // Web `RowGroup`: small-caps label, then plain rows split by hairlines (no card fill).
+            Text(title.uppercased())
+                .font(.system(size: 12, weight: .semibold))
+                .kerning(0.5)
+                .foregroundStyle(app.palette.ink3)
+                .padding(.bottom, 6)
                 .accessibilityAddTraits(.isHeader)
                 // On the heading only: on the container it would replace every row's own identifier.
                 .accessibilityIdentifier(id)
             VStack(spacing: 0, content: content)
-                .background(app.palette.block, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(alignment: .bottom) { Rectangle().fill(app.palette.divider).frame(height: 1 / UIScreen.main.scale) }
         }
         .padding(.top, topPadding)
         .id(id)
@@ -513,105 +588,103 @@ struct AccountView: View {
 
     // MARK: Identity
 
-    /// The goer identity card (unchanged: KeychainFrame charm, rename, › to the public profile).
-    private var personalProfileCard: some View {
-        HStack(spacing: 14) {
-            Group {
-                if let urlStr = app.user?.avatarURL, let url = URL(string: urlStr) {
-                    AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
-                        .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                } else {
-                    Text(String(app.displayName.prefix(1)).uppercased())
-                        .font(BanbeTheme.display(22))
-                        .frame(width: 56, height: 56)
-                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    /// Web identity row: a clay avatar tile (round for a person, rounded square for the host), the name, one quiet
+    /// line, and a small underlined link to the matching public profile. No card fill, no border.
+    @ViewBuilder
+    private var identityCard: some View {
+        if selectedTab == "host", app.canHost, app.organizerMode, app.myOrganizerID == nil, !app.hostSetupOpen {
+            orgProfileCard()   // the "Finish your host profile" card
+        } else {
+            let hostTab = selectedTab == "host" && app.myOrganizerID != nil
+            let title: String = hostTab
+                ? (app.orgRegName.isEmpty ? app.T("Chưa đặt tên", "Unnamed host") : app.orgRegName)
+                : app.displayName
+            let initials = title.split(separator: " ").prefix(2).compactMap { $0.first.map(String.init) }.joined().uppercased()
+            let year = Calendar.current.component(.year, from: app.user?.createdAt ?? Date())
+            let role: String = selectedTab == "admin" ? app.T("Quản trị viên", "Admin")
+                : (app.organizerMode ? app.T("Người tổ chức", "Host") : app.T("Thành viên", "Member"))
+            let sub: String = {
+                if hostTab {
+                    return app.myOrgHostingSinceYear.map { app.T("Tổ chức từ \($0)", "Hosting since \($0)") } ?? app.T("Người tổ chức", "Host")
                 }
+                let handle = (app.user?.handle ?? "").isEmpty ? nil : "@\(app.user?.handle ?? "")"
+                let tail = selectedTab == "admin" ? role : "\(role) \(app.T("từ", "since")) \(year)"
+                return [handle, tail].compactMap { $0 }.joined(separator: " · ")
+            }()
+            let hasHandle = !(app.user?.handle ?? "").isEmpty
+            let canOpen = hostTab || (app.isSignedIn && hasHandle)
+            let linkLabel = hostTab ? app.T("Hồ sơ tổ chức", "Host profile") : app.T("Xem hồ sơ", "View profile")
+            let open: () -> Void = {
+                if hostTab, let id = app.myOrganizerID { app.openOrganizerProfile(organizerID: id, back: .profile) }
+                else { openOwnPublicProfile() }
             }
-            .frame(width: 64, height: 64)
-            // Note 69: the name gets the full width (up to two lines) and Rename moved under it, so a long name is
-            // never cut off.
-            VStack(alignment: .leading, spacing: 4) {
-                Text(app.displayName).font(BanbeTheme.display(22))
-                    .lineLimit(2).minimumScaleFactor(0.85)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(app.isSignedIn ? .isButton : [])
-                    .accessibilityHint(app.isSignedIn ? app.T("Mở hồ sơ cá nhân", "Opens your personal profile") : "")
-                    .accessibilityAction { if app.isSignedIn { openOwnPublicProfile() } }
-                if let handle = app.user?.handle, !handle.isEmpty {
-                    Text("@\(handle)").font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
-                }
-                HStack(spacing: 10) {
-                    Text(subtitle).font(.system(size: 11)).kerning(0.6)
-                    if app.isSignedIn {
-                        // A real button inside the tappable card: it wins over the card's own tap.
-                        SwipeSafeButton {
-                            app.goEditName()
-                        } label: {
-                            Label(app.T("Đổi tên", "Rename"), systemImage: "pencil")
-                                .labelStyle(.titleAndIcon)
-                                .frame(minHeight: 32)
-                                .contentShape(Rectangle())
-                        }
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(app.palette.ink.opacity(0.65))
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("account.rename")
-                    }
-                }
-            }
-            Spacer(minLength: 0)
-            if app.isSignedIn {
+            let avatarURL: URL? = hostTab ? organizerAvatarURL : app.user?.avatarURL.flatMap { URL(string: $0) }
+            let shape = RoundedRectangle(cornerRadius: hostTab ? 16 : 32, style: .continuous)
+            HStack(spacing: 16) {
                 SwipeSafeButton {
-                    openOwnPublicProfile()
+                    if hostTab, let g = myStoryGroup { app.openStoryViewer(g.organizerId) } else if canOpen { open() }
                 } label: {
-                    Image(systemName: "chevron.right").font(.system(size: 16)).foregroundStyle(app.palette.ink.opacity(0.55))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                    ZStack {
+                        if hostTab, let g = myStoryGroup {
+                            RoundedRectangle(cornerRadius: 19, style: .continuous)
+                                .strokeBorder(g.allViewed ? app.palette.rule : BanbeTheme.alert, lineWidth: 2.5)
+                                .frame(width: 72, height: 72)
+                        }
+                        ZStack {
+                            if let avatarURL {
+                                AsyncImage(url: avatarURL) { $0.resizable().scaledToFill() } placeholder: { app.palette.clay }
+                            } else {
+                                Text(initials).font(.system(size: 22, weight: .medium)).foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .background(app.palette.clay)
+                            }
+                        }
+                        .frame(width: 64, height: 64)
+                        .clipShape(shape)
+                    }
+                    .frame(width: 72, height: 72)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(app.T("Hồ sơ cá nhân", "Personal profile"))
-                .accessibilityIdentifier("account.editProfile")
-            }
-        }
-        .keychainProfileCharm(handle: app.user?.handle, layout: .leading, outset: 16)
-        .padding(16)
-        .background(
-            LinearGradient(
-                colors: [(ProfilePalette.all.first { $0.key == (app.user?.profileTheme ?? "default") }?.color ?? ProfilePalette.all[0].color).opacity(0.35), .clear],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-        )
-        // Plan item 5: the identity card is a block like the tiles under it (the theme wash sits on top).
-        .background(app.palette.block, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
-        // Note 69: the whole card opens the public profile, not just the ›. Rename (a real button) still wins.
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .onTapGesture { if app.isSignedIn { Haptics.light(); openOwnPublicProfile() } }
-        .padding(.top, 22)
-        .accessibilityIdentifier("account.profileCard")
-    }
-
-    /// Host mode: the organizer card (or its ensure card), plus a small link to the personal public profile.
-    @ViewBuilder
-    private var hostIdentity: some View {
-        orgProfileCard()
-        if let handle = app.user?.handle, !handle.isEmpty {
-            SwipeSafeButton { openOwnPublicProfile() } label: {
-                HStack(spacing: 4) {
-                    Text(app.T("Hồ sơ cá nhân", "Personal profile"))
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                .accessibilityIdentifier(hostTab ? "account.storyRing" : "account.editProfile")
+                .accessibilityLabel(hostTab ? title : app.T("Hồ sơ cá nhân", "Personal profile"))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(BanbeTheme.display(22))
+                        .lineLimit(2).minimumScaleFactor(0.85)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(sub).font(.system(size: 13)).foregroundStyle(app.palette.ink3)
+                    if app.hostReminderPhase != nil && hostTab {
+                        Text(app.T("Điểm danh", "Check-in"))
+                            .font(.system(size: 12, weight: .bold)).foregroundStyle(Color(hex: 0x7A5200))
+                            .accessibilityIdentifier("org.profile.checkinHint")
+                    }
+                    if canOpen {
+                        SwipeSafeButton(action: open) {
+                            Text(linkLabel + " ›").font(.system(size: 13))
+                                .padding(.top, 6)
+                                .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
+                                .frame(minHeight: 32, alignment: .bottom)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier(hostTab ? "org.profile.viewPublic" : "account.viewProfile")
+                    }
                 }
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(app.palette.ink2)
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.plain)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(app.T("Hồ sơ cá nhân", "Personal profile"))
-            .accessibilityAddTraits(.isButton)
-            .accessibilityIdentifier("account.switchIdentity")
+            .foregroundStyle(app.palette.ink)
+            .keychainProfileCharm(handle: app.user?.handle, layout: .leading, outset: 16)
+            .padding(.top, 14)
+            .overlay {
+                if hostTab && app.hostReminderPhase != nil { EventReminderHalo(trigger: hostHaloTrigger, cornerRadius: 14) }
+            }
+            // Where the host-setup reveal's dots assemble.
+            .background(GeometryReader { g in
+                Color.clear
+                    .onAppear { if hostTab { app.hostCardFrame = g.frame(in: .global) } }
+                    .onChange(of: g.frame(in: .global)) { _, f in if hostTab { app.hostCardFrame = f } }
+            })
+            .id(hostTab ? "account-host-card" : "account.identity") // scroll target for the host-setup reveal
+            .accessibilityIdentifier(hostTab ? "org.profile.card" : "account.profileCard")
         }
     }
 
@@ -636,8 +709,11 @@ struct AccountView: View {
                         badge: AccountBadges.myRefundActionCount(myRefunds: app.myRefunds)) { openGroup("payments") },
             AccountTile(key: "saved", symbol: "heart", title: app.T("Đã lưu", "Saved"),
                         value: app.T("\(saved) sự kiện", saved == 1 ? "1 event" : "\(saved) events")) { app.goSavedList() },
-            AccountTile(key: "help", symbol: "questionmark.circle", title: app.T("Trợ giúp", "Help"),
-                        value: app.T("Hướng dẫn, điều khoản, Q&A", "Guides, terms, Q&A")) { openGroup("helpLegal") },
+            // Web: Rewards when the switch is on (its streak/coins strip is gone), Help while it is off.
+            app.rewardsEnabled
+                ? AccountTile(key: "rewards", symbol: "star", title: app.T("Phần thưởng", "Rewards"), value: "") { app.openRewards(from: .profile) }
+                : AccountTile(key: "help", symbol: "questionmark.circle", title: app.T("Trợ giúp", "Help"),
+                              value: app.T("Hướng dẫn, điều khoản, Q&A", "Guides, terms, Q&A")) { openGroup("helpLegal") },
         ]
     }
 
@@ -774,17 +850,19 @@ struct AccountView: View {
     // MARK: Rows
 
     private func moreDivider() -> some View {
-        Rectangle().fill(app.palette.divider).frame(height: 1 / UIScreen.main.scale).padding(.leading, 50)
-    }
+        Rectangle().fill(app.palette.divider).frame(height: 1 / UIScreen.main.scale)}
 
-    private func moreRowLabel(_ title: String, icon: String, badge: Int = 0, trailing: String? = nil, chevron: Bool = true) -> some View {
-        HStack(spacing: 12) {
+    private func moreRowLabel(_ title: String, sub: String? = nil, icon: String, badge: Int = 0, trailing: String? = nil, chevron: Bool = true) -> some View {
+        HStack(spacing: 14) {
             Image(systemName: icon)
-                .font(.system(size: 16, weight: .medium))
-                .frame(width: 22, height: 22)
-                .foregroundStyle(app.palette.ink2)
+                .font(.system(size: 18, weight: .light))
+                .frame(width: 24, height: 24)
+                .foregroundStyle(app.palette.ink)
                 .accessibilityHidden(true)
-            Text(title).font(.body).fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 15)).fixedSize(horizontal: false, vertical: true)
+                if let sub { Text(sub).font(.system(size: 12)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true) }
+            }
             Spacer(minLength: 8)
             if badge > 0 {
                 Text(AccountBadges.format(badge))
@@ -801,21 +879,61 @@ struct AccountView: View {
             }
         }
         .foregroundStyle(app.palette.ink)
-        .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
         .contentShape(Rectangle())
     }
 
-    private func moreRow(_ title: String, icon: String, identifier: String, badge: Int = 0, trailing: String? = nil,
+    private func moreRow(_ title: String, sub: String? = nil, icon: String, identifier: String, badge: Int = 0, trailing: String? = nil,
                          chevron: Bool = true, action: @escaping () -> Void) -> some View {
         SwipeSafeButton(action: action) {
-            moreRowLabel(title, icon: icon, badge: badge, trailing: trailing, chevron: chevron)
+            moreRowLabel(title, sub: sub, icon: icon, badge: badge, trailing: trailing, chevron: chevron)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(badge > 0 ? app.T("\(title), \(badge) mục mới", "\(title), \(badge) new item(s)")
                                       : (trailing.map { "\(title), \($0)" } ?? title))
         .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier(identifier)
+    }
+
+    /// A row whose trailing control is a small two-option pill (web `seg`): Appearance and Language change in place,
+    /// no screen in between. `options` = (key, label, selected, action).
+    private func segmentRow(_ title: String, icon: String, identifier: String,
+                            options: [(String, String, Bool, () -> Void)]) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .light))
+                .frame(width: 24, height: 24)
+                .foregroundStyle(app.palette.ink)
+                .accessibilityHidden(true)
+            Text(title).font(.system(size: 15)).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            HStack(spacing: 2) {
+                ForEach(options, id: \.0) { opt in
+                    Button {
+                        guard !opt.2 else { return }
+                        Haptics.selection()
+                        opt.3()
+                    } label: {
+                        Text(opt.1)
+                            .font(.system(size: 12, weight: opt.2 ? .semibold : .regular))
+                            .padding(.horizontal, 11)
+                            .frame(minWidth: 44, minHeight: 30)
+                            .background(opt.2 ? app.palette.ink : Color.clear, in: Capsule())
+                            .foregroundStyle(opt.2 ? app.palette.paper : app.palette.ink2)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(opt.2 ? AccessibilityTraits([.isButton, .isSelected]) : AccessibilityTraits.isButton)
+                    .accessibilityIdentifier("\(identifier).\(opt.0)")
+                }
+            }
+            .padding(2)
+            .background(app.palette.block, in: Capsule())
+        }
+        .foregroundStyle(app.palette.ink)
+        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(identifier)
     }
 
@@ -832,50 +950,20 @@ struct AccountView: View {
                 Label(app.T("Chọn từ sự kiện của tôi", "Share one of my events"), systemImage: "calendar")
             }
         } label: {
-            moreRowLabel(app.T("Đăng story", "Post a story"), icon: "plus.circle", chevron: false)
+            moreRowLabel(app.T("Đăng story", "Post a story"), sub: app.T("Thêm chữ và liên kết, sửa hoặc xóa sau khi đăng", "Add text and a link, edit or delete after posting"), icon: "pencil", chevron: false)
                 .overlay(alignment: .trailing) {
                     Image(systemName: "chevron.up.chevron.down").font(.system(size: 12)).foregroundStyle(app.palette.ink3)
-                        .padding(.trailing, 16).accessibilityHidden(true)
+                        .accessibilityHidden(true)
                 }
         }
         .accessibilityIdentifier("account.postStory")
     }
 
-    /// Hosting mode on/off (the same toggle as before; keeps the tour target).
+    /// Hosting mode as a card under the identity (web: the card above the tabs), on every tab. Keeps the tour target.
     private var hostingToggleRow: some View {
-        SwipeSafeButton { app.toggleOrganizerMode() } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "person.2.badge.gearshape")
-                    .font(.system(size: 16, weight: .medium))
-                    .frame(width: 22, height: 22)
-                    .foregroundStyle(app.palette.ink2)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(app.T("Chế độ tổ chức", "Hosting mode")).font(.body)
-                    Text(app.T("Bật để tạo và quản lý sự kiện.", "Turn on to create and manage events."))
-                        .font(.footnote)
-                        .foregroundStyle(app.palette.ink2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 8)
-                Toggle("", isOn: Binding(
-                    get: { app.organizerMode },
-                    set: { enabled in
-                        guard enabled != app.organizerMode else { return }
-                        app.toggleOrganizerMode()
-                    }
-                ))
-                .labelsHidden()
-                .toggleStyle(BanbeLiquidToggleStyle())
-            }
-            .foregroundStyle(app.palette.ink)
-            .padding(.horizontal, 16).padding(.vertical, 10)
-            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
-            .contentShape(Rectangle())
+        HostingModeCard(isOn: app.organizerMode, busy: app.organizerModeBusy, identifier: "account.organizerToggle") {
+            app.toggleOrganizerMode()
         }
-        .buttonStyle(.plain)
-        .disabled(app.organizerModeBusy)
-        .opacity(app.organizerModeBusy ? 0.55 : 1)
-        .accessibilityIdentifier("account.organizerToggle")
         .tourTarget("tour.account.organizerMode")
         .id("account-hosting-toggle")
     }
@@ -948,6 +1036,7 @@ struct AccountView: View {
 
     private func openGroup(_ key: String) {
         app.accountGroupParentKey = nil   // note 66: opened straight from Account
+        app.accountGroupReturnsHome = false
         app.accountGroupKey = key
         app.screen = .accountGroup
     }
@@ -1062,7 +1151,7 @@ struct AccountView: View {
                   "admin quản trị công cụ tools administration") { openGroup("admin") },
                 e("adminReview", "admin", aVi, aEn, "Duyệt & Kiểm Duyệt", "Review & Moderation", "exclamationmark.shield",
                   "duyệt review kiểm duyệt moderation approve phê duyệt") {
-                      app.accountGroupKey = "adminReview"; app.screen = .accountGroup; app.accountGroupParentKey = "admin"
+                      app.accountTab = "admin"; app.accountGroupParentKey = nil; app.accountGroupKey = "adminReview"; app.screen = .accountGroup
                   },
                 e("disputes", "admin", aVi, aEn, "Tranh Chấp Thanh Toán", "Payment Disputes", "exclamationmark.bubble",
                   "tranh chấp dispute khiếu nại escalation thanh toán payment dashboard bảng điều khiển bảng quản trị admin panel") { app.openAdminDashboard() },
@@ -1070,7 +1159,7 @@ struct AccountView: View {
                   "sự kiện chờ duyệt pending events approve từ chối reject") { app.openAdminEvents() },
                 e("adminTeam", "admin", aVi, aEn, "Đội Ngũ Quản Trị", "Admin Team", "person.3.fill",
                   "admin quản trị viên mời invite thành viên team đội ngũ") {
-                      app.accountGroupKey = "adminTeam"; app.screen = .accountGroup; app.accountGroupParentKey = "admin"
+                      app.accountTab = "admin"; app.accountGroupParentKey = nil; app.accountGroupKey = "adminTeam"; app.screen = .accountGroup
                   },
                 e("reportsAdmin", "admin", aVi, aEn, "Số Liệu & Báo Cáo", "Metrics & Reports", "chart.bar.doc.horizontal",
                   "thống kê statistics analytics báo cáo report số liệu") { app.openReports(scope: "admin", back: .profile) },
@@ -1444,104 +1533,6 @@ struct AccountView: View {
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .padding(.top, 22)
             .accessibilityIdentifier("account.ensureOrganizer")
-        } else if app.canHost, app.myOrganizerID != nil {
-            SwipeSafeButton {
-                app.goDashboard(back: .profile)
-            } label: {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 14) {
-                        // Story ring (host feature): bright while there's an
-                        // unviewed active story, subdued once all are viewed,
-                        // none without a story. Tapping opens the viewer; the
-                        // rest of the card still opens the dashboard.
-                        SwipeSafeButton {
-                            if let g = myStoryGroup { app.openStoryViewer(g.organizerId) }
-                            else { app.goDashboard(back: .profile) }
-                        } label: {
-                            ZStack {
-                                if let g = myStoryGroup {
-                                    RoundedRectangle(cornerRadius: 17, style: .continuous)
-                                        .strokeBorder(g.allViewed ? app.palette.rule : BanbeTheme.alert, lineWidth: 2.5)
-                                        .frame(width: 66, height: 66)
-                                }
-                                ZStack {
-                                    if let url = organizerAvatarURL {
-                                        AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
-                                    } else {
-                                        Text((app.orgRegName.first.map(String.init) ?? "B").uppercased())
-                                            .font(BanbeTheme.display(20))
-                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                            .background(app.palette.field)
-                                    }
-                                }
-                                .frame(width: 56, height: 56)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            }
-                            .frame(width: 66, height: 66)
-                        }
-                        .accessibilityIdentifier("account.storyRing")
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(app.orgRegName.isEmpty ? app.T("Chưa đặt tên", "Unnamed host") : app.orgRegName)
-                                .font(BanbeTheme.display(18))
-                            // Same published-events-only rule as
-                            // get_public_profile's event_count/
-                            // hosting_since_year (migration 091,
-                            // loadMyOrgStats), so this card and the
-                            // public page never disagree. nil = not
-                            // loaded yet.
-                            if let count = app.myOrgPublishedEventCount {
-                                Text(app.myOrgHostingSinceYear.map { year in
-                                    app.T("Tổ chức từ \(year) ▪︎ \(count) sự kiện", "Hosting since \(year) ▪︎ \(count) events")
-                                } ?? app.T("Chưa có sự kiện công khai nào", "No published events yet"))
-                                    .font(.system(size: 11)).opacity(0.7)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                        if app.hostReminderPhase != nil {
-                            // An event is starting soon / in progress: tell the host where this card goes.
-                            Text(app.T("Điểm danh", "Check-in"))
-                                .font(.system(size: 12, weight: .bold)).foregroundStyle(Color(hex: 0x7A5200))
-                                .accessibilityIdentifier("org.profile.checkinHint")
-                        }
-                        Text("›").font(.system(size: 20)).opacity(app.hostReminderPhase != nil ? 1 : 0.55)
-                            .accessibilityIdentifier("org.profile.viewPublic")
-                    }
-                    if !app.orgRegDesc.isEmpty {
-                        Text(app.orgRegDesc).font(.system(size: 12.5)).opacity(0.85)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(app.palette.ink)
-            .padding(16)
-            // Account regression fix pass (2026-09-27), Item 4 — same
-            // visual quality as the personal card's own gradient wash
-            // (account.profileCard, above), but a deliberately DIFFERENT
-            // palette (moss, never the account's own chosen profileTheme)
-            // so this always reads as a distinct organization identity,
-            // never a second copy of the personal card.
-            .background(
-                LinearGradient(
-                    colors: [(ProfilePalette.all.first { $0.key == "moss" }?.color ?? ProfilePalette.all[0].color).opacity(0.4), .clear],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                ),
-                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-            )
-            .background(app.palette.block, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
-            .overlay {
-                if app.hostReminderPhase != nil { EventReminderHalo(trigger: hostHaloTrigger, cornerRadius: 14) }
-            }
-            // Where the host-setup reveal's dots assemble.
-            .background(GeometryReader { g in
-                Color.clear
-                    .onAppear { app.hostCardFrame = g.frame(in: .global) }
-                    .onChange(of: g.frame(in: .global)) { _, f in app.hostCardFrame = f }
-            })
-            .padding(.top, 22)
-            .id("account-host-card") // scroll target: the host-setup reveal brings the whole card into view
-            .accessibilityIdentifier("org.profile.card")
         }
     }
 

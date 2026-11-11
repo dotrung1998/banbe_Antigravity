@@ -215,7 +215,7 @@ struct AdminTestAccountsView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Duyệt & Kiểm Duyệt", "Review & Moderation")) { app.screen = .accountGroup }
+                BackLink(label: app.backLabel(for: app.accountSubBack)) { app.goBack() }
                     .padding(.top, 8)
                     .accessibilityIdentifier("adminTest.back")
 

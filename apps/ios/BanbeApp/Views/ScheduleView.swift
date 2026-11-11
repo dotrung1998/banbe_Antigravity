@@ -63,7 +63,7 @@ private struct ScheduleScreen: View {
                         .padding(.horizontal, DockHeaderTitle.horizontalPadding).padding(.top, 16).padding(.bottom, 8)
                         .background(app.palette.paper)
                 }
-                ScreenScaffold(tracksBottomBarScroll: true, refreshIndicatorTopPadding: 16, onRefresh: { await reload(force: true) }) {
+                ScreenScaffold(tracksBottomBarScroll: true, onRefresh: { await reload(force: true) }) {
                     VStack(alignment: .leading, spacing: 14) {
                         if largeText { headerBlock.padding(.top, 16) }
                         Text(SchedulePresentation.dayTitle(selected, calendar: calendar, vi: vi))

@@ -20,6 +20,7 @@ enum FeatureFlags {
     /// "app_events" (migration 196): first-party measurement, nothing is sent until an admin turns it on.
     /// Migrations 199/200: "event_reminders" is on unless an admin turns it off; the rest stay dark until set.
     /// "onboarding_v2" (migration 201) + "onboarding_v3" (migration 202): which onboarding runs, see `onboardingVersion`.
+    /// "simple_shell" (note 66) is ON unless an admin turns it off (note 80, web twin src/lib/featureFlags.js): not in this list.
     /// Event Project Hub (note 76, migrations 210-214): the hub, QR invites and each money step separately. All stay
     /// dark until set: a missing key must never hand anyone door or money access. "ticket_demo" (migration 217): the admin-only ticket demo on sample bookings. "project_hub_demo" (migration 216):
     /// the admin-only demo hub on sample data, off unless set.

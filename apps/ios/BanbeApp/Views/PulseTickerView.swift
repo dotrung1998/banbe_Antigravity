@@ -25,13 +25,14 @@ struct PulseTickerView: View {
     ]
 
     var body: some View {
+        let its = items
         SwipeSafeButton {
             Haptics.light()
             app.openPulseViewer()
         } label: {
             HStack(spacing: 10) {
                 chip
-                track
+                track(its)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .bold)).opacity(0.5)
                     .accessibilityHidden(true)
@@ -44,14 +45,14 @@ struct PulseTickerView: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
+        .accessibilityLabel(label(its))
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("home.pulseTicker")
-        .accessibilityValue("\(items.count)")
+        .accessibilityValue("\(its.count)")
         .onAppear { startedAt = Date() }
     }
 
-    private var label: String {
+    private func label(_ items: [PulseTicker.Item]) -> String {
         items.isEmpty
             ? app.T("Banbe Pulse. Xem điều gì đang hot. Mở", "Banbe Pulse. See what's trending. Open")
             : app.T("Banbe Pulse. Top sự kiện: \(items.map(\.name).joined(separator: ", ")). Mở",
@@ -71,11 +72,11 @@ struct PulseTickerView: View {
     /// The track is an empty, fixed-height, full-width box and the text is an OVERLAY on it: the scrolling strip is
     /// much wider than the box, and as an overlay its width can never leak into the layout (the capsule once ran off
     /// the screen's right edge). Clipped to the box and faded at both ends.
-    private var track: some View {
+    private func track(_ items: [PulseTicker.Item]) -> some View {
         Color.clear
             .frame(maxWidth: .infinity)
             .frame(height: 38)
-            .overlay(alignment: .leading) { trackContent }
+            .overlay(alignment: .leading) { trackContent(items) }
             .clipped()
             .mask(LinearGradient(stops: [
                 .init(color: .clear, location: 0), .init(color: .black, location: 0.04),
@@ -84,7 +85,7 @@ struct PulseTickerView: View {
     }
 
     @ViewBuilder
-    private var trackContent: some View {
+    private func trackContent(_ items: [PulseTicker.Item]) -> some View {
         if items.isEmpty {
             Text(app.T("Xem điều gì đang hot tuần này", "See what's trending this week"))
                 .font(.system(size: 13.5)).opacity(0.7).lineLimit(1)
@@ -94,12 +95,13 @@ struct PulseTickerView: View {
                 .font(.system(size: 13.5, weight: .medium)).lineLimit(1)
         } else {
             MarqueeStrip(startedAt: startedAt, paused: scenePhase != .active,
-                         secondsPerPass: PulseTicker.seconds(for: items)) { strip }
+                         secondsPerPass: PulseTicker.seconds(for: items),
+                         ink: app.palette.ink, renderKey: items.map(\.name).joined(separator: "\u{1}")) { strip(items) }
         }
     }
 
     /// One copy of the text: "1 Name   2 Name   3 Name".
-    private var strip: some View {
+    private func strip(_ items: [PulseTicker.Item]) -> some View {
         HStack(spacing: 22) {
             ForEach(items) { it in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -111,41 +113,108 @@ struct PulseTickerView: View {
     }
 }
 
-/// Scrolls `content` right-to-left forever. Two copies side by side, shifted by (elapsed × speed) modulo one copy's
+/// Scrolls `content` right-to-left forever. Two copies side by side, shifted by (elapsed x speed) modulo one copy's
 /// width plus the gap, so the loop is seamless. The speed is set so one pass takes `secondsPerPass`.
+///
+/// Measured (2026-11-11): the previous TimelineView version re-ran the whole Home view graph and display-list pass
+/// ~30x per second for as long as it was mounted (a LazyVStack keeps it mounted after the first scroll to it): 8% of
+/// the main thread while Home sat idle, 12% of it during a scripted scroll, on the simulator. The strip is now drawn
+/// once into a bitmap and moved by a Core Animation translation, which the render server runs with no main-thread work.
 private struct MarqueeStrip<Content: View>: View {
     let startedAt: Date
     let paused: Bool
     let secondsPerPass: Double
+    let ink: Color
+    /// Anything that changes what the bitmap shows other than the colour (the text itself).
+    let renderKey: String
     @ViewBuilder let content: () -> Content
-    @State private var contentWidth: CGFloat = 0
+    @State private var bitmap: UIImage?
+    @State private var renderedFor = ""
+    @Environment(\.displayScale) private var displayScale
     private let gap: CGFloat = 28
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: paused)) { tl in
-            let run = max(contentWidth + gap, 1)
-            // Speed in points per second so a pass over one copy lasts `secondsPerPass`.
-            let speed = run / max(secondsPerPass, 1)
-            let elapsed = tl.date.timeIntervalSince(startedAt)
-            let offset = -CGFloat((elapsed * Double(speed)).truncatingRemainder(dividingBy: Double(run)))
-            HStack(spacing: gap) {
-                content().fixedSize()
-                content().fixedSize().accessibilityHidden(true)
-            }
-            .offset(x: offset)
+        let key = "\(renderKey)|\(UIColor(ink).cgColor.components ?? [])|\(displayScale)"
+        MarqueeLayerView(image: bitmap, scale: displayScale, gap: gap, secondsPerPass: secondsPerPass,
+                         startedAt: startedAt, paused: paused)
+            .frame(width: bitmap.map { $0.size.width } ?? 0, height: bitmap.map { $0.size.height } ?? 0)
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(alignment: .leading) {
-            // Measures one copy (hidden, never laid out for the user).
+            .onAppear { render(key) }
+            .onChange(of: key) { _, k in render(k) }
+    }
+
+    private func render(_ key: String) {
+        guard renderedFor != key else { return }
+        renderedFor = key
+        let r = ImageRenderer(content: HStack(spacing: gap) {
             content().fixedSize()
-                .background(GeometryReader { Color.clear.preference(key: MarqueeWidthKey.self, value: $0.size.width) })
-                .hidden()
-        }
-        .onPreferenceChange(MarqueeWidthKey.self) { contentWidth = $0 }
+            content().fixedSize()
+        }.foregroundStyle(ink))
+        r.scale = displayScale
+        bitmap = r.uiImage
     }
 }
 
-private struct MarqueeWidthKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+/// A UIView whose only layer shows the two-copy bitmap and slides it left by one copy + gap per pass.
+private struct MarqueeLayerView: UIViewRepresentable {
+    let image: UIImage?
+    let scale: CGFloat
+    let gap: CGFloat
+    let secondsPerPass: Double
+    let startedAt: Date
+    let paused: Bool
+
+    func makeUIView(context: Context) -> Strip {
+        let v = Strip()
+        v.isUserInteractionEnabled = false
+        v.isAccessibilityElement = false
+        return v
+    }
+
+    func updateUIView(_ v: Strip, context: Context) {
+        v.configure(image: image, scale: scale, gap: gap, secondsPerPass: secondsPerPass, startedAt: startedAt, paused: paused)
+    }
+
+    final class Strip: UIView {
+        private var image: UIImage?
+        private var gap: CGFloat = 0
+        private var secondsPerPass: Double = 14
+        private var startedAt = Date()
+        private var paused = false
+        private let key = "pulse.marquee"
+
+        func configure(image: UIImage?, scale: CGFloat, gap: CGFloat, secondsPerPass: Double, startedAt: Date, paused: Bool) {
+            let changed = self.image !== image || self.gap != gap || self.secondsPerPass != secondsPerPass
+                || self.startedAt != startedAt || self.paused != paused
+            self.image = image; self.gap = gap; self.secondsPerPass = secondsPerPass
+            self.startedAt = startedAt; self.paused = paused
+            layer.contents = image?.cgImage
+            layer.contentsScale = scale
+            if changed { restart() }
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window != nil { restart() }   // Core Animation drops animations of layers that left a window
+        }
+
+        private func restart() {
+            layer.removeAnimation(forKey: key)
+            guard !paused, let image, window != nil else { return }
+            // One pass moves the strip left by one copy + the gap. The bitmap holds two copies and one gap.
+            let run = (image.size.width + gap) / 2
+            guard run > 1 else { return }
+            let duration = max(secondsPerPass, 1)
+            let a = CABasicAnimation(keyPath: "transform.translation.x")
+            a.fromValue = 0
+            a.toValue = -run
+            a.duration = duration
+            a.repeatCount = .infinity
+            a.timingFunction = CAMediaTimingFunction(name: .linear)
+            // The same clock-driven phase as before: where the strip is depends only on time since `startedAt`.
+            a.timeOffset = max(0, Date().timeIntervalSince(startedAt)).truncatingRemainder(dividingBy: duration)
+            a.isRemovedOnCompletion = false
+            layer.add(a, forKey: key)
+        }
+    }
 }

@@ -71,7 +71,7 @@ struct BottomTabBar: View {
     // change on `src/screens/BottomTabBar.jsx`. `BottomTabBarOverlay` reads
     // `Self.barHeight` directly for its own hosting window's hit-testable
     // band, so it stays in lockstep automatically.
-    static let barHeight: CGFloat = 64
+    static let barHeight: CGFloat = 72
     // TASK 1 (2026-10-05 fix pass) — reduced from 380 to 300 so the dock
     // and the create-"+" button (now ONE laid-out row — see DockRow, this
     // file, and BottomTabBarOverlay.swift's own DockRow usage) could sit
@@ -89,7 +89,8 @@ struct BottomTabBar: View {
     // to wrap/clip; matches the web bar's own bump.
     static let barWidth: CGFloat = 380
     static let barHorizontalPadding: CGFloat = 20
-    static let bottomOffset: CGFloat = 2
+    // Web twin (BottomTabBar.jsx): the dock rests a little higher (bottom offset 10 -> 16), bar 64 -> 72.
+    static let bottomOffset: CGFloat = 8
     /// Room under a docked screen's scroll content so its last row clears the floating dock (was a bare 100).
     static let contentClearance: CGFloat = barHeight + bottomOffset + 34
     // TASK 1 — shared with the create-"+" button (DockCreateButtonView) and
@@ -103,8 +104,14 @@ struct BottomTabBar: View {
     // that the on-dock text labels are gone (see the removed `dockLabel`
     // field/Text below) — the icon itself is the only thing left to read
     // at a glance, so it gets the room the labels used to occupy.
-    private let iconSize: CGFloat = 26
+    private let iconSize: CGFloat = 24
     private var barHeight: CGFloat { Self.barHeight }
+
+    /// First letters of the first two words, uppercased ("Trung Do" -> "TD"); "?" when empty.
+    static func initials(_ name: String) -> String {
+        let letters = name.split(separator: " ").prefix(2).compactMap { $0.first }.map { String($0).uppercased() }.joined()
+        return letters.isEmpty ? "?" : letters
+    }
 
     private struct Item: Identifiable {
         let id: String
@@ -155,7 +162,8 @@ struct BottomTabBar: View {
             // Unread count: number of conversations with an unread message
             // — see refreshUnreadMessageCount() (AppState+Data.swift),
             // refreshed on the same 5s poll as unreadNotifications.
-            Item(id: "inbox", icon: { AnyView(InboxGlyph(color: $0, filled: $1)) }, label: app.T("Tin nhắn", "Messages"), action: { app.goInbox() }, badge: app.unreadMessages),
+            Item(id: "inbox", icon: { AnyView(InboxGlyph(color: $0, filled: $1)) }, label: simpleShell ? app.T("Hoạt động", "Activity") : app.T("Tin nhắn", "Messages"), action: { app.goInbox() },
+                 badge: app.unreadMessages + (simpleShell ? app.unreadNotifications : 0)),
             Item(id: "profile", icon: { AnyView(ProfileGlyph(color: $0, filled: $1)) }, label: app.T("Tài khoản", "Account"), action: { app.goProfile() }, badge: accountBadge, badgeCapped: true, badgeCap: 99),
         ]
         let shown = Set(slots)
@@ -484,11 +492,31 @@ struct BottomTabBar: View {
         let isActive = activeID == item.id
         let badgeText: String = item.badgeCapped ? AccountBadges.format(item.badge, cap: item.badgeCap) : String(item.badge)
         ZStack(alignment: .topTrailing) {
-            item.icon(app.palette.ink, isActive)
-                .frame(width: iconSize, height: iconSize)
+            // Web twin (note 80): icon over an 11pt label; with Simple Shell the Account slot is the user's initials.
+            VStack(spacing: 3) {
+                Group {
+                    if item.id == "profile", simpleShell, app.isSignedIn {
+                        Text(Self.initials(app.displayName))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: iconSize, height: iconSize)
+                            .background(app.palette.clay, in: Circle())
+                    } else {
+                        item.icon(app.palette.ink, isActive)
+                            .frame(width: iconSize, height: iconSize)
+                    }
+                }
                 .opacity(isActive ? 1 : 0.72)
                 // Icon under the lifted pill swells with it (Photos-style).
                 .scaleEffect(1 + (pressScale - 1) * 1.9 * iconProximity(item))
+                Text(item.label)
+                    .font(.system(size: 11, weight: isActive ? .bold : .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .foregroundStyle(app.palette.ink)
+                    .opacity(isActive ? 1 : 0.75)
+                    .accessibilityHidden(true)
+            }
             if item.badge > 0 {
                 Text(badgeText)
                     .font(.system(size: 9, weight: .bold))

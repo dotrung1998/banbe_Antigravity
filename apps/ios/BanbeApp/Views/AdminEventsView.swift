@@ -45,7 +45,7 @@ struct AdminEventsView: View {
                 // 2026-10-02 fix — only ever reached from AccountGroupView's
                 // "adminReview" (Review & Moderation) rows now; same fix as
                 // AdminDashboardView's own BackLink.
-                BackLink(label: app.T("Duyệt & Kiểm Duyệt", "Review & Moderation")) { app.screen = .accountGroup }
+                BackLink(label: app.backLabel(for: app.accountSubBack)) { app.goBack() }
                     .padding(.top, 8)
                     .accessibilityIdentifier("adminEvents.back")
 

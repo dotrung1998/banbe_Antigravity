@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Tour state (note 64), forward only in short chapters since onboarding v5 (note 80). Web twin (still the 8-step
-/// jumpable version): src/components/tour/OnboardingTour.jsx.
+/// Tour state (note 64), forward only in short chapters since onboarding v5 (note 80). Web twin (jumpable steps there): src/components/tour/OnboardingTour.jsx.
 ///
 /// Its own ObservableObject (not AppState) so target frames updating every layout pass only re-render the overlay.
 /// AppState mirrors one bool, `tourActive`, which RootView/the dock window use to shield the real app.
@@ -36,6 +35,10 @@ final class OnboardingTourController: ObservableObject {
     @Published private(set) var frames: [String: CGRect] = [:]
     /// Bumped when the current step wants its target scrolled into view (Home's first event card).
     @Published private(set) var scrollRequest = 0
+    /// What the current step wants Home scrolled to (a `home.tour.*` id, or "event" for the first event card).
+    private(set) var scrollTarget: String = "event"
+    /// Asks Home to show one hero tab (For You on the first step, Tonight on the "do it" tap). Home listens with `onReceive`.
+    @Published private(set) var heroTabRequest: HomeHeroTab?
     private var latest: [String: CGRect] = [:]
 
     var active: Bool { !steps.isEmpty }
@@ -45,10 +48,27 @@ final class OnboardingTourController: ObservableObject {
     var isLastInChapter: Bool { nextIndexInChapter() == nil }
     var doIt: TourDoIt? { current.flatMap { OnboardingTourContent.doIt[$0.id] } }
 
-    func report(_ id: String, _ rect: CGRect?) {
-        latest[id] = rect
-        guard active, frames[id] != rect else { return }
-        frames[id] = rect
+    /// True from the moment a step starts until its screen is shown, scrolled and measured (stable). The overlay draws
+    /// no cut-out and no card meanwhile, so nothing points at a control that is still moving.
+    @Published private(set) var settling = true
+    private var owners: [String: UUID] = [:]
+
+    func setSettling(_ value: Bool) { if settling != value { settling = value } }
+
+    /// `owner` is the publishing view instance: a disappearing view only clears a frame it published itself.
+    func report(_ id: String, _ rect: CGRect?, owner: UUID) {
+        if let rect {
+            owners[id] = owner
+            latest[id] = rect
+            guard active, frames[id] != rect else { return }
+            frames[id] = rect
+        } else {
+            guard owners[id] == nil || owners[id] == owner else { return }
+            owners[id] = nil
+            latest[id] = nil
+            guard active, frames[id] != nil else { return }
+            frames[id] = nil
+        }
     }
 
     func begin(plan: [(chapter: TourChapter, steps: [TourStep])], replay: Bool) {
@@ -62,6 +82,7 @@ final class OnboardingTourController: ObservableObject {
         missing = []
         index = 0
         phase = .step
+        settling = true
         frames = latest
         chapters = runs
         steps = all
@@ -80,6 +101,7 @@ final class OnboardingTourController: ObservableObject {
     func next() {
         guard phase == .step else { return }
         if let i = nextIndexInChapter() {
+            settling = true
             index = i
             requestScrollIfNeeded()
         } else {
@@ -90,6 +112,7 @@ final class OnboardingTourController: ObservableObject {
     /// "Continue" on the chapter break.
     func continueToNextChapter() {
         guard phase == .chapterDone, chapters.indices.contains(chapterIndex + 1) else { return }
+        settling = true
         index = chapters[chapterIndex + 1].range.lowerBound
         phase = .step
         requestScrollIfNeeded()
@@ -111,8 +134,19 @@ final class OnboardingTourController: ObservableObject {
         return i < c.range.upperBound ? i : nil
     }
 
+    func requestHeroTab(_ tab: HomeHeroTab) { heroTabRequest = tab }
+
     private func requestScrollIfNeeded() {
-        if current?.target == "tour.home.eventCard" { scrollRequest += 1 }
+        guard let target = current?.target else { return }
+        switch target {
+        case "tour.home.eventCard": scrollTarget = "event"
+        case "tour.home.browse": scrollTarget = "home.tour.browse"
+        case "tour.home.filters": scrollTarget = "home.tour.filters"
+        case "tour.home.forYou", "tour.home.tonight", "tour.home.rail", "tour.home.search", "tour.home.hosting",
+             "tour.host.hero", "tour.host.quick": scrollTarget = "home.tour.hero"
+        default: return
+        }
+        scrollRequest += 1
     }
 }
 
@@ -207,20 +241,59 @@ extension AppState {
     /// Moves to the screen the current step lives on. Never touches the highlighted control.
     func showTourStepScreen() {
         guard let step = OnboardingTourController.shared.current else { return }
-        let target: Screen = step.screen == "profile" ? .profile : .home
-        if screen != target { screen = target }
+        switch step.screen {
+        case "inbox":
+            // Same entry the dock uses; the tour only ever runs signed in here (guest previews drop these steps).
+            if screen != .inbox { goInbox() }
+        case "profile":
+            if screen != .profile { resetAccountScrollMemory(); goProfile() }
+            // The Personal tab holds the tiles and Settings the account steps point at (web does the same).
+            if accountTab != "personal", AccountTabs.tabs(isAdmin: isAdmin, hostMode: organizerMode).contains("personal") {
+                accountTab = "personal"
+            }
+        default:
+            if screen != .home { screen = .home }
+            if organizerMode { homeView = step.id.hasPrefix("host.") ? .host : .goer }
+            // Step 1 always starts from For You, whatever tab Home was left on (web does the same).
+            if step.id == "home.forYou" { OnboardingTourController.shared.requestHeroTab(.foryou) }
+        }
+    }
+
+    /// Account opens at its top for the tour: no saved offset or anchor may pull it elsewhere while a step is measured.
+    func resetAccountScrollMemory() {
+        accountScrollOffsetByTab = [:]
+        accountScrollAnchorIDByTab = [:]
+    }
+
+    /// Scrolls Account's content: `relative` moves from where it is now (positive = further down), otherwise to an offset.
+    func requestAccountTourScroll(_ y: CGFloat, relative: Bool) {
+        accountTourScrollRequest = ScaffoldScrollRequest(token: (accountTourScrollRequest?.token ?? 0) + 1, y: y,
+                                                         animated: !UIAccessibility.isReduceMotionEnabled, relative: relative)
+    }
+
+    /// Home twin of `requestAccountTourScroll`.
+    func requestHomeTourScroll(_ y: CGFloat, relative: Bool) {
+        homeTourScrollRequest = ScaffoldScrollRequest(token: (homeTourScrollRequest?.token ?? 0) + 1, y: y,
+                                                      animated: !UIAccessibility.isReduceMotionEnabled, relative: relative)
     }
 
     /// A "do it" step's tap: runs what the highlighted control does, from here, then moves on.
     func performTourDoIt() {
         let tour = OnboardingTourController.shared
         guard tour.phase == .step, let step = tour.current, tour.doIt != nil else { return }
+        Haptics.selection()
+        // Guest previews have no Activity or Account to open; the step just moves on.
+        let signedIn = isSignedIn && !onboardingPreview
         switch step.id {
-        case "home.forYou":
-            Haptics.selection()
-            if !filterForYou { toggleHomeFilter("forYou") }
+        case "dock.activity":
+            if signedIn { goInbox() }
+        case "dock.account":
+            if signedIn { resetAccountScrollMemory(); goProfile() }
+        case "host.tab":
+            if organizerMode { homeView = .host }
         default:
-            break
+            // The highlight covers the whole tab row, so the tap shows Tonight (web picks the tab under the finger).
+            if step.id == "home.tonight" { OnboardingTourController.shared.requestHeroTab(.tonight) }
         }
         tour.next()
     }

@@ -27,7 +27,7 @@ struct AdminDashboardView: View {
                 // Account, skipping that page entirely (the same
                 // sub-section-of-a-group bug AppState.swift's goBack()/
                 // backTargetScreen just got fixed for too).
-                BackLink(label: app.T("Duyệt & Kiểm Duyệt", "Review & Moderation")) { app.screen = .accountGroup }
+                BackLink(label: app.backLabel(for: app.accountSubBack)) { app.goBack() }
                     .padding(.top, 8)
                     .accessibilityIdentifier("admin.back")
 

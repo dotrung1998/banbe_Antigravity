@@ -35,7 +35,8 @@ struct OnboardingTourOverlay: View {
             let size = geo.size
             let onStep = tour.phase == .step
             let step = onStep ? tour.current : nil
-            let rect = step.flatMap { tour.frames[$0.target] }.flatMap { visible($0, in: size) }
+            // No cut-out and no card while the step is still going to its screen / scrolling (`tour.settling`).
+            let rect = tour.settling ? nil : step.flatMap { tour.frames[$0.target] }.flatMap { visible($0, in: size) }
             ZStack(alignment: .topLeading) {
                 scrim(size: size, hole: rect)
                 if let rect {
@@ -63,7 +64,7 @@ struct OnboardingTourOverlay: View {
                             }
                     }
                 }
-                if let step {
+                if let step, !tour.settling {
                     card(step, size: size, rect: rect)
                 }
                 if tour.phase == .chapterDone { chapterBreak(size: size) }
@@ -77,7 +78,7 @@ struct OnboardingTourOverlay: View {
         .task(id: "\(tour.index).\(tour.phase)") { await settleStep() }
         .onChange(of: app.screen) { _, s in
             // A deep link or anything else that leaves the tour's screens ends it (no marker).
-            if s != .home && s != .profile { app.abortOnboardingTour() }
+            if s != .home && s != .inbox && s != .profile { app.abortOnboardingTour() }
         }
         .onChange(of: app.userID) { _, uid in if uid == nil { app.abortOnboardingTour() } }
         .onChange(of: app.onboardingFlowActive || app.needsPreferencesOnboarding || app.needsSettingsOnboarding) { _, up in
@@ -85,27 +86,91 @@ struct OnboardingTourOverlay: View {
         }
     }
 
-    /// Go to the step's screen, give its target a moment to appear, otherwise skip it (forward only).
+    /// Go to the step's screen, bring its target fully into view (Account scrolls here; Home scrolls itself), wait until
+    /// the measured frame stops moving, and only then let the cut-out and card show. A target that never shows up within
+    /// a short wait is skipped (forward only).
     private func settleStep() async {
         titleFocused = false
         guard tour.phase == .step else {
+            tour.setSettling(false)
             UIAccessibility.post(notification: .screenChanged, argument: nil)
             return
         }
+        tour.setSettling(true)
         app.showTourStepScreen()
-        let deadline = Date().addingTimeInterval(Self.waitSeconds)
-        while Date() < deadline {
-            if let step = tour.current, let r = tour.frames[step.target], visibleRect(r) { break }
+        guard let step = tour.current else { return }
+        let started = Date()
+        var last: CGRect?
+        var stable = 0
+        var missingTicks = 0
+        var visibleSince: Date?
+        var scrolls = 0
+        var lastScrolledFrom: CGRect??
+        while Date().timeIntervalSince(started) < 6 {
             try? await Task.sleep(nanoseconds: 100_000_000)
             if Task.isCancelled { return }
+            let f = tour.frames[step.target]
+            if f == last { stable += 1 } else { stable = 0; last = f }
+            missingTicks = f == nil ? missingTicks + 1 : 0
+            let isVisible = f.map(visibleRect) ?? false
+            if isVisible, visibleSince == nil { visibleSince = Date() }
+            // Account / Home: scroll until the target sits fully in the clear band (below the fixed title or pinned
+            // header, above the dock).
+            let scrolled = step.screen == "profile" || Self.homeScrolled.contains(step.target)
+            if scrolled, stable >= 3, scrolls < 8 {
+                if let move = accountMove(for: step, frame: f, attempt: scrolls) {
+                    if let from = lastScrolledFrom, from == f { /* the scroll view could not move any further */ }
+                    else {
+                        lastScrolledFrom = .some(f)
+                        scrolls += 1
+                        stable = 0
+                        if step.screen == "profile" { app.requestAccountTourScroll(move.y, relative: move.relative) }
+                        else { app.requestHomeTourScroll(move.y, relative: move.relative) }
+                        continue
+                    }
+                }
+            }
+            if isVisible, stable >= 3 { break }
+            if isVisible, let since = visibleSince, Date().timeIntervalSince(since) > 1.2 { break }
+            // Not on screen (and nothing left to scroll): the usual short wait, then skip.
+            let scrollingLeft = scrolled && scrolls < 8
+            if !isVisible, missingTicks > 15, !scrollingLeft { break }
         }
-        if let step = tour.current, tour.frames[step.target].map(visibleRect) != true {
+        if Task.isCancelled { return }
+        guard tour.frames[step.target].map(visibleRect) == true else {
             tour.skipMissing()
             return
         }
+        tour.setSettling(false)
         titleFocused = true
         UIAccessibility.post(notification: .screenChanged, argument: nil)
     }
+
+    /// The scroll Account needs so `step`'s target is fully visible with room for the card on its far side, or nil when it
+    /// already is. `frame` is nil while the row is not built yet (a lazy stack): go to the top first, then walk down.
+    private func accountMove(for step: TourStep, frame f: CGRect?, attempt: Int) -> (y: CGFloat, relative: Bool)? {
+        let height = UIScreen.main.bounds.height
+        let home = step.screen != "profile"
+        // Home: the pinned header (wordmark to search bar) sits over the feed, so the clear band starts below it.
+        let top = home ? (tour.frames["tour.home.headerBottom"]?.maxY ?? 160) + 12
+                       : (tour.frames["tour.account.headerBottom"]?.maxY ?? 130) + 8
+        let bottom = height - 110
+        guard let f, f.width > 0, f.height > 0 else {
+            return attempt == 0 && !home ? (0, false) : (320, true)
+        }
+        if step.below {
+            // Card goes under the target: keep it in the upper part of the clear band.
+            if f.minY >= top && f.maxY <= height * 0.62 { return nil }
+            return (f.minY - (top + 24), true)
+        }
+        // Card goes above the target: keep it in the lower part of the screen.
+        if f.minY >= height * 0.42 && f.maxY <= bottom { return nil }
+        return (f.minY - height * 0.55, true)
+    }
+
+    /// Home targets that live in the scrolling feed (the hero, tabs and search stay put at the top).
+    private static let homeScrolled: Set<String> = ["tour.home.browse", "tour.home.filters", "tour.home.eventCard",
+                                                    "tour.host.hero", "tour.host.quick"]
 
     private func visibleRect(_ r: CGRect) -> Bool {
         let screen = UIScreen.main.bounds
@@ -210,11 +275,11 @@ struct OnboardingTourOverlay: View {
     }
 
     private func stepCopy(_ step: TourStep) -> (title: String, body: String) {
-        if step.id == "account.organizerMode" && app.organizerMode && !app.simpleShellEnabled {
+        if step.id == "account.organizerMode" && app.organizerMode {
             let on = OnboardingTourContent.hostingOnCopy
             return app.isEN ? on.en : on.vi
         }
-        return app.isEN ? step.en : step.vi
+        return step.copy(rewardsOn: app.rewardsEnabled, english: app.isEN)
     }
 
     /// One thin bar per step, a gap between chapters. Read-only: it shows where you are, it can't be used to jump.

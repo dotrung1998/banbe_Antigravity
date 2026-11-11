@@ -31,6 +31,8 @@ enum Screen: String {
     // Note 63: Help & Legal > How banbe works (the Welcome story, replayable while signed in).
     case helpHowItWorks
     case eventPreferences
+    // Account > Notification preferences as a page (the Home quick sheet shows the same content as a sheet).
+    case notifPrefs
     // Note 44 — signed-out public entry, and the Schedule dock tab.
     case welcome
     case schedule
@@ -276,6 +278,13 @@ final class AppState: ObservableObject {
     // EXCLUDES verifications/payout/documents/refund-queue screens, which
     // stay reachable regardless of organizerMode (gated on canHost alone).
     static let hostOnlyScreens: Set<Screen> = [.dashboard, .create, .attendance]
+    /// Account sub-screens whose Back goes to wherever they were opened from (`accountSubBack`).
+    static let accountSubScreens: Set<Screen> = [.preferences, .security, .payout, .eventPreferences, .disputes, .adminEvents,
+                                                 .adminTestAccounts, .adminDobCorrections, .adminFeatures, .adminManageEvents, .adminRetention, .notifPrefs]
+    static let helpScreens: Set<Screen> = [.helpGuide, .helpFaq, .helpHowItWorks]
+    /// Where the current Account sub-screen / Help reader was opened from (set by `screen`'s didSet).
+    var accountSubOrigin: Screen = .profile
+    var helpOrigin: Screen = .accountGroup
 
     // MARK: Navigation
     @Published var screen: Screen = .home {
@@ -283,6 +292,13 @@ final class AppState: ObservableObject {
         didSet {
             if accountGroupParentKey != nil, [.profile, .home, .schedule, .inbox, .mapExplore].contains(screen) {
                 accountGroupParentKey = nil
+            }
+            // Back-navigation audit: remember where an Account sub-screen / Help reader was opened from (the Account
+            // tab row, a group page, search or the Home quick sheet), so Back returns exactly there. Only a screen
+            // OUTSIDE the set counts as an origin, so hopping between sub-screens never overwrites it.
+            if oldValue != screen {
+                if Self.accountSubScreens.contains(screen), !Self.accountSubScreens.contains(oldValue) { accountSubOrigin = oldValue }
+                if Self.helpScreens.contains(screen), !Self.helpScreens.contains(oldValue) { helpOrigin = oldValue }
             }
             // Migration 216: the admin demo lives only inside the hub. Leaving it any way (Back, a dock tab, sign-out) ends it.
             if projectDemo != nil, screen != .eventProject { endProjectDemo() }
@@ -302,8 +318,18 @@ final class AppState: ObservableObject {
     // shared pair of fields is enough since only one root tab is ever
     // interactive at a time; each screen still owns its OWN reload
     // closure, passed to `ScreenScaffold(onRefresh:)`.
-    @Published var rootPullProgress: CGFloat = 0
-    @Published var rootRefreshing = false
+    // Perf: these two change on every pan frame while pulling. They live in their own ObservableObject (observed only by
+    // the offset/indicator views) so a pull no longer invalidates every view observing AppState (Home's whole body and
+    // its snapshot included). The forwarding properties below are deliberately not @Published.
+    let rootPull = RootPullState()
+    var rootPullProgress: CGFloat {
+        get { rootPull.progress }
+        set { rootPull.progress = newValue }
+    }
+    var rootRefreshing: Bool {
+        get { rootPull.refreshing }
+        set { rootPull.refreshing = newValue }
+    }
     // TASK 1 (2026-09-22 twenty-first follow-up) — the single shared signal
     // `BottomTabBarOverlay.applyVisibility()` (BottomTabBarOverlay.swift)
     // drives for EVERY dock hide/show case (screen change, StoryViewer,
@@ -527,6 +553,8 @@ final class AppState: ObservableObject {
     @Published var hostRecapBack: Screen = .dashboard
     /// L5 weekly digest: set when its notification opens Home; HomeView scrolls to "This weekend" once and clears it.
     @Published var homeWeekendScrollRequest: UUID?
+    /// Hero empty card "Browse all events": HomeView scrolls down to the Browse / By type section (once per request).
+    @Published var homeBrowseScrollRequest: UUID?
     /// L3 "Run it again": the original event's cover, staged by CreateEventView as the new draft's first photo (once).
     @Published var createSeedCoverImage: UIImage?
     /// Leaving a NEW event draft that has input (Back or edge swipe) offers Undo for a few seconds
@@ -762,6 +790,8 @@ final class AppState: ObservableObject {
     // "team" | "activity" | "payments" | "preferences" | "hostOps" |
     // "adminReview". `accountTab` itself is untouched by opening a group.
     @Published var accountGroupKey: String?
+    /// Set by the Home quick sheet's Help shortcut: Back from that group returns to Home instead of Account.
+    var accountGroupReturnsHome = false
     /// note 66 — the group a nested group was opened from ("admin" for Review & Moderation / Admin Team), so
     /// Back returns to Administration instead of Account. nil = opened straight from Account.
     @Published var accountGroupParentKey: String?
@@ -1391,7 +1421,27 @@ final class AppState: ObservableObject {
     /// normally go "back" to a group page, but one opened from search has no group
     /// page, so back returns straight to the search results (Account).
     @Published var accountSearchReturn = false
-    var accountSubBack: Screen { accountSearchReturn ? .profile : .accountGroup }
+    /// Back from an Account sub-screen: the group page it was opened from, the Account tab row it was opened from
+    /// (the tab is untouched), the Home quick sheet's origin, or the search results (Account).
+    var accountSubBack: Screen {
+        if accountSearchReturn { return .profile }
+        switch accountSubOrigin {
+        case .accountGroup: return (accountGroupKey ?? "").isEmpty ? .profile : .accountGroup
+        default: return accountSubOrigin
+        }
+    }
+    /// Back from Help Q&A / How banbe works / a guide: the Help & Legal group when opened from it, else the origin.
+    func backFromHelp() {
+        switch helpOrigin {
+        case .accountGroup: accountGroupKey = "helpLegal"; screen = .accountGroup
+        default: screen = helpOrigin
+        }
+    }
+    var helpBackScreen: Screen {
+        switch helpOrigin {
+        default: return helpOrigin
+        }
+    }
     @Published var accountSearchQuery = ""
     @Published var hostPromoConsentError = ""
     @Published var payoutQRError = ""
@@ -2237,6 +2287,7 @@ final class AppState: ObservableObject {
     func resetHomeScrollToTop() {
         homeScrollAnchorID = nil
         homeScrollOffsetY = nil
+        HomeHeaderFade.shared.update(offsetY: 0)
         homeScrollToTopToken &+= 1
     }
     /// TASK C — same mechanism, for AccountView (see its own doc comment):
@@ -2255,6 +2306,10 @@ final class AppState: ObservableObject {
     /// Note 69: exact scroll offset per Account tab (same mechanism as `homeScrollOffsetY`), so Back from a row lands
     /// where you were, not on a centred group. Not @Published: it is written on every scroll.
     var accountScrollOffsetByTab: [String: CGFloat] = [:]
+    /// The onboarding tour's one-off Account scroll (brings the spotlighted row into view); AccountView hands it to its scaffold.
+    @Published var accountTourScrollRequest: ScaffoldScrollRequest?
+    /// Same for Home: brings a spotlighted section fully below the pinned header and above the dock.
+    @Published var homeTourScrollRequest: ScaffoldScrollRequest?
 
     /// Task 1 (11-realtime-map.md follow-up): mirrors `RootView`'s own
     /// edge-swipe-back gesture progress (0 at rest, 1 at full commit) so
@@ -4011,7 +4066,7 @@ final class AppState: ObservableObject {
         // "adminReview" (Review & Moderation) rows now, not straight from
         // Account itself — same sub-section-of-a-group class of bug the
         // `.preferences`/`.security`/`.payout` cases above already fixed.
-        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures, .adminManageEvents, .adminRetention: screen = accountSubBack
+        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures, .adminManageEvents, .adminRetention, .notifPrefs: screen = accountSubBack
         case .mapExplore: goHome()
         case .search: screen = searchBackScreen
         // TASK A fix — these two cases were simply missing, so the shared
@@ -4051,6 +4106,9 @@ final class AppState: ObservableObject {
             if let parent = accountGroupParentKey {
                 accountGroupKey = parent
                 accountGroupParentKey = nil
+            } else if accountGroupReturnsHome {
+                accountGroupReturnsHome = false
+                screen = .home
             } else {
                 screen = .profile
             }
@@ -4067,7 +4125,7 @@ final class AppState: ObservableObject {
         case .policy: screen = policyBackScreen
         // Help & Legal guides / Q&A go back to the Help & Legal group.
         case .helpGuide where helpGuideKey == "admin": screen = accountGroupKey == "admin" ? .accountGroup : .profile   // note 66
-        case .helpGuide, .helpFaq, .helpHowItWorks: accountGroupKey = "helpLegal"; screen = .accountGroup
+        case .helpGuide, .helpFaq, .helpHowItWorks: backFromHelp()
         case .eventRecap: screen = eventRecapBack
         case .hostRecap: screen = hostRecapBack
         default: break
@@ -4155,7 +4213,7 @@ final class AppState: ObservableObject {
         case .documents: return documentsListBack
         case .documentView: return documentBack
         case .verifications: return verificationsBack
-        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures, .adminManageEvents, .adminRetention: return accountSubBack
+        case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures, .adminManageEvents, .adminRetention, .notifPrefs: return accountSubBack
         case .mapExplore: return .home
         case .search: return searchBackScreen
         // TASK A fix — same missing-case bug as goBack() above: without
@@ -4179,7 +4237,7 @@ final class AppState: ObservableObject {
         // of where Team was actually opened from.
         case .organizerTeam: return organizerTeamBackScreen
         case .reports: return reportsBackScreen
-        case .accountGroup: return accountGroupParentKey != nil ? .accountGroup : .profile   // note 66
+        case .accountGroup: return accountGroupParentKey != nil ? .accountGroup : (accountGroupReturnsHome ? .home : .profile)   // note 66
         // 2026-10-02 fix — matches goBack()'s own new `.policy` case: same
         // missing-case bug, this half controlling what peeks in behind the
         // screen during the drag itself (would have shown Home instead of
@@ -4187,7 +4245,7 @@ final class AppState: ObservableObject {
         // other screen this exact bug class already hit).
         case .policy: return policyBackScreen
         case .helpGuide where helpGuideKey == "admin": return accountGroupKey == "admin" ? .accountGroup : .profile   // note 66
-        case .helpGuide, .helpFaq, .helpHowItWorks: return .accountGroup
+        case .helpGuide, .helpFaq, .helpHowItWorks: return helpBackScreen
         case .eventRecap: return eventRecapBack
         case .hostRecap: return hostRecapBack
         default: return .home
