@@ -202,6 +202,7 @@ struct HomeView: View {
                 .padding(.bottom, BottomTabBar.contentClearance)
             }
             .task(id: app.homeWeekendScrollRequest) { await scrollToWeekendIfAsked(weekendProxy) }
+            .environment(\.scaffoldClipsContent, homeClipsContent)
             // Hero empty card "Browse all events": bring Browse / By type to the top once the cleared filter has applied.
             .onChange(of: app.homeBrowseScrollRequest) { _, req in
                 guard req != nil else { return }
@@ -654,6 +655,9 @@ struct HomeView: View {
 
     /// Home shows the host sections only when the effective view is Hosting (Lib/HomeMode.swift): organizer mode on
     /// AND this session chose Hosting. Organizer mode off is always Going out, whatever was chosen before.
+    /// Simple Shell: the hero backdrop paints above the scroll bounds, so the scroll view must not clip it (pull / bounce).
+    private var homeClipsContent: Bool { !app.simpleShellEnabled }
+
     private var hostHome: Bool { app.simpleShellEnabled && app.effectiveHomeView == .host }
 
     @ViewBuilder

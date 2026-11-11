@@ -967,6 +967,9 @@ struct ScreenScaffold<Content: View>: View {
     /// chip is anchored here and never overlaps the chrome above.
     var pullAnchorTop: CGFloat = 0
     var onRefresh: (() async -> Void)? = nil
+    /// False lets the scroll content draw past the scroll view's bounds. Home's hero backdrop extends upward past its top
+    /// edge, so a pull / rubber band that moves the content down reveals more of that same dark backdrop instead of paper.
+    @Environment(\.scaffoldClipsContent) private var clipsContent
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -1009,6 +1012,7 @@ struct ScreenScaffold<Content: View>: View {
                     )
                 }
                 .modifier(ScrollPositionIDModifier(id: scrollPositionID))
+                .scrollClipDisabled(!clipsContent)
                 // Pull-to-refresh hold fix (2026-09-29) — see
                 // `AppState.rootPullContentOffset`'s own doc comment: holds
                 // the content down at the pulled position for the WHOLE
@@ -1027,6 +1031,14 @@ struct ScreenScaffold<Content: View>: View {
         // progress/refreshing state before the NEXT onRefresh-enabled
         // screen mounts, so it never inherits a stale indicator.
         .onDisappear { if onRefresh != nil { app.cancelRootPull() } }
+    }
+}
+
+private struct ScaffoldClipsContentKey: EnvironmentKey { static let defaultValue = true }
+extension EnvironmentValues {
+    var scaffoldClipsContent: Bool {
+        get { self[ScaffoldClipsContentKey.self] }
+        set { self[ScaffoldClipsContentKey.self] = newValue }
     }
 }
 
