@@ -137,7 +137,7 @@ targets:
       # confusion after stopping Xcode.
       configs:
         PersonalTeamDebug:
-          PRODUCT_BUNDLE_IDENTIFIER: com.banbe.ios.dev
+          PRODUCT_BUNDLE_IDENTIFIER: com.thetrung.banbe.dev
           APP_DISPLAY_NAME: "Banbe Dev"
     info:
       path: BanbeApp/Info.plist
@@ -184,7 +184,7 @@ targets:
   # L7 day-of card (docs/impl/phase3-extras.md; switch `live_activity`): WidgetKit extension that draws the event-day
   # Live Activity (Lock Screen + Dynamic Island). No capabilities and no entitlements at all (no App Group, no push:
   # the app updates the activity locally), so it signs on a free/personal team too (PersonalTeamDebug, note 18).
-  # Bundle id = the app's + ".LiveActivity" (com.banbe.ios.LiveActivity; com.banbe.ios.dev.LiveActivity for
+  # Bundle id = the app's + ".LiveActivity" (com.banbe.ios.LiveActivity; com.thetrung.banbe.dev.LiveActivity for
   # PersonalTeamDebug). Deployment target = the app's (17.0 >= 16.2, which ActivityContent needs).
   # EventDayAttributes.swift is the one shared file, compiled into both targets.
   BanbeLiveActivity:
@@ -209,7 +209,7 @@ targets:
         APPLICATION_EXTENSION_API_ONLY: "YES"
       configs:
         PersonalTeamDebug:
-          PRODUCT_BUNDLE_IDENTIFIER: com.banbe.ios.dev.LiveActivity
+          PRODUCT_BUNDLE_IDENTIFIER: com.thetrung.banbe.dev.LiveActivity
     info:
       path: BanbeLiveActivity/Info.plist
       properties:
