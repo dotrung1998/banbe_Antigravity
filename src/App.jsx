@@ -213,6 +213,7 @@ function CreateUndoToast({ offer, aboveDock }) {
 }
 
 // Room under every docked screen so its last row scrolls clear of the floating dock (was a bare 92).
+const SAFE_TOP = 'var(--bb-safe-top, env(safe-area-inset-top, 0px))';
 const DOCK_CLEARANCE = BAR_HEIGHT + BAR_BOTTOM_OFFSET + 18;
 
 // `hidden` (Map v5, note 73): the Map hides the dock at peek and mid and shows it at tall. It slides down and fades
@@ -391,6 +392,7 @@ function Shell() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState('');
   // Keep the indicator mounted briefly after the pull ends so it can fade/scale out instead of vanishing.
+  const heroHome = state.screen === 'home' && flagOn(state.featureFlags, 'simple_shell');
   const pullActive = pullDist > 0 || refreshing || !!refreshError;
   const [indicatorMounted, setIndicatorMounted] = useState(false);
   const [indicatorScreen, setIndicatorScreen] = useState(state.screen);
@@ -826,7 +828,11 @@ function Shell() {
             drops the old sibling), so React never tears down and remounts
             the destination the way changing `<Screen key={state.screen}/>`'s
             own key used to. */}
-        <div style={{ paddingBottom: showBar ? DOCK_CLEARANCE : 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
+        {/* iPhone safe area (status bar / Dynamic Island): the page runs under it (viewport-fit=cover + black-translucent).
+            Home's dark hero deliberately extends beneath it; every other root screen gets the inset as top padding and a
+            sticky paper strip so scrolled content never slides under the clock. Zero on desktop / Safari tabs. */}
+        {!heroHome && state.screen !== 'event' && <div aria-hidden data-testid="safe-top-strip" style={{ position: 'sticky', top: 0, zIndex: 30, height: SAFE_TOP, marginBottom: `calc(${SAFE_TOP} * -1)`, background: 'var(--bb-bg)', pointerEvents: 'none' }} />}
+        <div style={{ paddingTop: (heroHome || state.screen === 'event') ? 0 : SAFE_TOP, paddingBottom: showBar ? DOCK_CLEARANCE : 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
           {[...(eventUnderlay ? [eventUnderlay] : []), state.screen, ...(swipeNeighbor ? [swipeNeighbor] : [])].map((s) => {
             const isCurrent = s === state.screen;
             // iOS parity (2026-10-18): the screen an open event returns to stays mounted BENEATH it (inert), so

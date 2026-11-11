@@ -4,6 +4,7 @@
 // Pure view over the lists Home.jsx already builds, so it adds no fetching and no filters of its own.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CategoryGlyph } from './HomeDiscoveryParts.jsx';
+import { setThemeColor } from '../../lib/themeColor.js';
 import { categoryDefs } from '../../lib/eventTypes.js';
 
 const NIGHT = '#16140f';
@@ -63,6 +64,9 @@ export default function HomeShellV5({
     io.observe(el);
     return () => io.disconnect();
   }, []);
+  // Status bar / Dynamic Island tint follows the hero: night while the hero is at the top, paper once scrolled past it.
+  useEffect(() => { setThemeColor(!stuck); }, [stuck]);
+  useEffect(() => () => setThemeColor(false), []);
   // Same wording as the main Home/Map search bar (HomeSearchBar).
   const placeholder = areaActive ? T(`Tìm sự kiện gần ${areaLabel}`, `Find events near ${areaLabel}`) : T('Tìm sự kiện ở mọi nơi', 'Find events anywhere');
   const hosting = tab === 'hosting';
@@ -106,10 +110,14 @@ export default function HomeShellV5({
   const h3 = { fontSize: 19, fontWeight: 400, margin: 0, letterSpacing: '-.01em' };
 
   return (
-    <div data-testid="home-shell-v5" data-tab={tab}>
+    <div data-testid="home-shell-v5" data-tab={tab} style={{ position: 'relative' }}>
+      {/* Pull-to-refresh: the whole screen translates down, so the gap it opens above Home must be the hero's night
+          colour, not paper. This layer hangs above the content (clipped by the scroller at rest, visible only in the
+          gap while pulling/holding/springing back). */}
+      <div aria-hidden data-testid="home-pull-backdrop" style={{ position: 'absolute', left: 0, right: 0, bottom: '100%', height: 320, background: 'linear-gradient(180deg,#16140f,#2b2721)', pointerEvents: 'none' }} />
       <div ref={sentinel} aria-hidden style={{ height: 1, marginBottom: -1 }} />
       <div ref={headRef} data-testid="home-sticky-header" data-stuck={stuck || undefined}
-        style={{ position: 'sticky', top: 0, zIndex: 20, color: '#fff', padding: 'calc(20px + env(safe-area-inset-top, 0px)) 0 12px',
+        style={{ position: 'sticky', top: 0, zIndex: 20, color: '#fff', padding: 'calc(20px + var(--bb-safe-top, env(safe-area-inset-top, 0px))) 0 12px',
           background: stuck ? 'rgba(22,20,15,.96)' : 'transparent',
           boxShadow: stuck ? '0 1px 0 rgba(255,255,255,.08)' : 'none', transition: 'background .2s' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 48, padding: '0 20px' }}>
