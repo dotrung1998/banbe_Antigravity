@@ -1017,7 +1017,7 @@ export default function Home() {
           data-testid as the old floating button). */}
       {/* Pinned like iOS (HomeView's `header` sits above its ScrollView): stays put while the feed scrolls under it. */}
       {!simpleShell && (
-      <div data-testid="home-fixed-header" data-reveal="0" style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 8px`, display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
+      <div data-testid="home-fixed-header" data-reveal="0" style={{ padding: `${DOCK_HEADER.top} ${DOCK_HEADER.side}px 8px`, display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
         <div ref={headerRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: DOCK_HEADER.rowHeight }}>
           {/* Note 53: the shared dock header — same logo, gap, title and row height as Schedule/Messages/Account. */}
           <DockHeaderTitle title={T('Nhà', 'Home')} testId="home-title" wordmark={layout.wordmark} showTitle={simpleShell ? false : showTitle} />

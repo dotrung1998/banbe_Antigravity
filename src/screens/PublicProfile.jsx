@@ -72,7 +72,7 @@ export default function PublicProfile() {
   if (s.publicProfileError || !p) {
     return (
       <div style={{ minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Public profile">
-        <div style={{ padding: '66px 20px 0' }}>
+        <div style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 20px 0' }}>
           <span onClick={backFromPublicProfile} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('‹ Quay lại', '‹ Back')}</span>
         </div>
         <p style={{ textAlign: 'center', fontSize: 13, color: ink, marginTop: 60 }}>{s.publicProfileError}</p>
@@ -119,7 +119,7 @@ export default function PublicProfile() {
           {T('Mở trong ứng dụng banbe ›', 'Open in the banbe app ›')}
         </a>
       )}
-      <div style={{ padding: '56px 16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ padding: 'max(14px, calc(56px - var(--bb-status-trim, 0px))) 16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <button type="button" onClick={backFromPublicProfile} data-testid="public-profile-back" style={{ minHeight: 44, padding: 0, border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 15, color: ink, cursor: 'pointer' }}>{T('‹ Quay lại', '‹ Back')}</button>
         <button type="button" onClick={() => setShareCardOpen(true)} data-testid="public-profile-share" style={{ minHeight: 44, padding: 0, border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 15, fontWeight: 600, color: ink, cursor: 'pointer' }}>
           {T('Chia sẻ', 'Share')}

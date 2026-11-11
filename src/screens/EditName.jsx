@@ -10,7 +10,7 @@ export default function EditName() {
       {/* TASK 4 (Reserve→edit-name pass) — editNameReturnScreen (set by
           goEditName) is wherever this was actually opened from now, not
           always Account. */}
-      <div onClick={() => set({ screen: s.editNameReturnScreen })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>
+      <div onClick={() => set({ screen: s.editNameReturnScreen })} style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>
         ‹ {s.editNameReturnScreen === 'reserve' ? T('Đặt chỗ', 'Reserve') : T('Tài khoản', 'Account')}
       </div>
       <div style={{ padding: '16px 30px 42px' }}>

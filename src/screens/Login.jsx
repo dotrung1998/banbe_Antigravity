@@ -116,7 +116,7 @@ export default function Login() {
   const dark = resolvedTheme === 'dark';
 
   return (
-    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: '66px 26px 40px', background: paper, color: ink }} data-screen-label="Login">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 26px 40px', background: paper, color: ink }} data-screen-label="Login">
       {/* Back link is hidden when login was reached by force (mandatory
           gate); the row stays so the pills keep their place. Language and
           theme pills mirror iOS LoginView's prefPill pair. */}

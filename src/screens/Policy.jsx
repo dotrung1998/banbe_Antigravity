@@ -62,7 +62,7 @@ function PolicyView({ state, flags, backFromPolicy, acceptPolicyGate, declinePol
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Policy">
-      <div style={{ padding: '66px 22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+      <div style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         {standalone
           ? <span style={{ fontSize: 12, color: ink, opacity: 0.7 }}>banbe</span>
           : gateActive

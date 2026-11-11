@@ -51,7 +51,7 @@ export default function HostRecap() {
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Host recap">
-      <div onClick={backFromHostRecap} role="button" data-testid="host-recap-back" style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>
+      <div onClick={backFromHostRecap} role="button" data-testid="host-recap-back" style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>
         ‹ {s.hostRecapBack === 'notifications' ? T('Thông báo', 'Notifications') : T('Trang tổ chức', 'Dashboard')}
       </div>
       <div style={{ padding: '14px 22px 48px' }}>

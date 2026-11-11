@@ -153,7 +153,7 @@ export default function EventPreferences() {
 
   return (
     <div style={{ animation: 'banbeFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="EventPreferences" data-testid="event-preferences-screen">
-      <div onClick={goBack} data-testid="prefs-back" style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>
+      <div onClick={goBack} data-testid="prefs-back" style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>
         ‹ {s.eventPrefsReturnScreen ? T('Quay lại', 'Back') : T('Cài Đặt', 'Settings')}
       </div>
       <div style={{ padding: '16px 30px 42px' }}>

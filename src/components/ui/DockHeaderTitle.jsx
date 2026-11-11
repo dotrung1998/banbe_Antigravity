@@ -5,7 +5,9 @@
 import { display } from '../../theme.js';
 
 export const DOCK_HEADER = {
-  top: 62,        // space above the row (status bar area)
+  // Space above the row. A real phone already has its own status bar / safe area (App.jsx pads for it), so this is a small
+  // gap (14px); only the desktop phone frame, whose mock status bar sits above the screen, keeps 62px (index.css).
+  top: 'var(--bb-dock-top, 14px)',
   side: 20,       // page gutter, each side
   rowHeight: 52,  // every dock header row is this tall, whatever controls sit on its right
   wordmark: 96,

@@ -90,7 +90,7 @@ export default function OrganizerProfile() {
   if (s.organizerProfileError || !org) {
     return (
       <div style={{ minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Organizer profile">
-        <div style={{ padding: '66px 20px 0' }}>
+        <div style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 20px 0' }}>
           <span onClick={backFromOrganizerProfile} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('‹ Quay lại', '‹ Back')}</span>
         </div>
         <p style={{ textAlign: 'center', fontSize: 13, color: ink, marginTop: 60 }}>{s.organizerProfileError}</p>
@@ -107,7 +107,7 @@ export default function OrganizerProfile() {
 
   return (
     <div style={{ minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Organizer profile">
-      <div style={{ padding: '66px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span onClick={backFromOrganizerProfile} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('‹ Quay lại', '‹ Back')}</span>
         <span onClick={() => setShareCardOpen(true)} data-testid="organizer-profile-share" style={{ fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>
           {T('Chia sẻ', 'Share')}

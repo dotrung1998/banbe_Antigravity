@@ -79,7 +79,7 @@ export default function Welcome() {
   );
   return (
     <div data-screen-label="Welcome" style={{ minHeight: '100%', background: paper, color: ink, display: 'flex', justifyContent: 'center' }}>
-      <div style={{ width: '100%', maxWidth: 480, padding: '56px 24px 40px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+      <div style={{ width: '100%', maxWidth: 480, padding: 'max(14px, calc(56px - var(--bb-status-trim, 0px))) 24px 40px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {page !== null && (
             <button type="button" onClick={() => (finished ? setFinished(false) : setPage(p => (p > 0 ? p - 1 : null)))} aria-label={T('Quay lại', 'Back')} style={{ ...pill, background: 'none', border: 'none', fontSize: 22, padding: '0 10px' }}>‹</button>

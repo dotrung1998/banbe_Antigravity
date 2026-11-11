@@ -174,7 +174,7 @@ export default function Attendance() {
   if (!attKey || attEvLoading || attEvUnavailable) {
     return (
       <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
-        <div onClick={backFromAttendance} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
+        <div onClick={backFromAttendance} style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
         {attKey && (
           <p style={{ padding: '40px 22px', fontSize: 13, color: ink }}>
             {attEvUnavailable
@@ -203,7 +203,7 @@ export default function Attendance() {
   if (eventEnded) {
     return (
       <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
-        <div onClick={backFromAttendance} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
+        <div onClick={backFromAttendance} style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
         <p style={{ padding: '40px 22px 0', fontSize: 13, color: ink }}>{attEvLive.cancelled ? T('Sự kiện đã bị huỷ.', 'This event was cancelled.') : T('Sự kiện đã kết thúc.', 'This event has ended.')}</p>
         {/* A cancelled event keeps its guest emails reachable, so the host can
             come back and finish drafting messages after leaving the sheet. */}
@@ -231,7 +231,7 @@ export default function Attendance() {
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
-      <div onClick={backFromAttendance} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
+      <div onClick={backFromAttendance} style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
       <div style={{ padding: '14px 22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <div style={{ minWidth: 0 }}>
           <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Điểm danh khách', 'Guest check-in')}</span>

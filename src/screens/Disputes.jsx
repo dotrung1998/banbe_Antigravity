@@ -50,7 +50,7 @@ export default function Disputes() {
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Disputes">
-      <div onClick={backFromDocuments} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="disputes-back">
+      <div onClick={backFromDocuments} style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="disputes-back">
         ‹ {T('Duyệt & Kiểm Duyệt', 'Review & Moderation')}
       </div>
       <div style={{ padding: '14px 22px 0' }}>

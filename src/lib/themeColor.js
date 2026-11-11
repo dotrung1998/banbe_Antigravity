@@ -1,6 +1,7 @@
 // Browser chrome colour (iPhone status bar / Dynamic Island tint in Safari, standalone PWA status area).
-// Home's dark photo hero sets the night colour while it is at the top; everything else falls back to the page paper
-// colour (light/dark aware via --bb-bg), so the strip above the content never shows a mismatched band.
+// The whole app uses the dark "night" colour (same as the Home hero) so the area above the content never shows a pale
+// band: in a Safari tab the system tints the top bar with it, and in a standalone app `body::before` in index.css paints
+// the safe-area strip with the same colour. The `dark` argument is kept so existing callers keep working.
 const NIGHT = '#16140f';
 function meta() {
   if (typeof document === 'undefined') return null;
@@ -8,15 +9,8 @@ function meta() {
   if (!m) { m = document.createElement('meta'); m.setAttribute('name', 'theme-color'); document.head.appendChild(m); }
   return m;
 }
-export function paperColor() {
-  try {
-    const v = getComputedStyle(document.documentElement).getPropertyValue('--bb-bg').trim();
-    const stage = document.querySelector('.bb-stage [data-bb-theme], .bb-stage');
-    const sv = stage ? getComputedStyle(stage).getPropertyValue('--bb-bg').trim() : '';
-    return sv || v || '#F7F4EC';
-  } catch { return '#F7F4EC'; }
-}
-export function setThemeColor(dark) {
+export function paperColor() { return NIGHT; }
+export function setThemeColor() {
   const m = meta();
-  if (m) m.setAttribute('content', dark ? NIGHT : paperColor());
+  if (m) m.setAttribute('content', NIGHT);
 }

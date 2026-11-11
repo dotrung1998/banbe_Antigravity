@@ -74,7 +74,7 @@ export default function EventList() {
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label={SCREEN_LABELS[mode]}>
-      <div onClick={backFromEventList} data-testid="event-list-back" style={{ padding: '70px 20px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
+      <div onClick={backFromEventList} data-testid="event-list-back" style={{ padding: 'max(14px, calc(70px - var(--bb-status-trim, 0px))) 20px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
       <div style={{ padding: '10px 20px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
         <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flex: 'none' }}>
           {mode === 'saved' ? <path d="M6.5 3.5h11v17l-5.5-4.2-5.5 4.2z" />

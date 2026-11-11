@@ -22,7 +22,7 @@ export default function TeamPage() {
   if (s.organizerTeamLoading) {
     return (
       <div style={{ minHeight: '100%', background: paper }} data-screen-label="Organizer team">
-        <div style={{ padding: '66px 20px 0' }}>
+        <div style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 20px 0' }}>
           <span onClick={backFromOrganizerTeam} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('‹ Quay lại', '‹ Back')}</span>
         </div>
       </div>
@@ -31,7 +31,7 @@ export default function TeamPage() {
   if (s.organizerTeamError || !team) {
     return (
       <div style={{ minHeight: '100%', background: paper }} data-screen-label="Organizer team">
-        <div style={{ padding: '66px 20px 0' }}>
+        <div style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 20px 0' }}>
           <span onClick={backFromOrganizerTeam} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('‹ Quay lại', '‹ Back')}</span>
         </div>
         <p style={{ textAlign: 'center', fontSize: 13, color: ink, marginTop: 60 }}>{s.organizerTeamError}</p>
@@ -52,7 +52,7 @@ export default function TeamPage() {
 
   return (
     <div style={{ minHeight: '100%', background: paper, animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both' }} data-screen-label="Organizer team">
-      <div style={{ padding: '66px 20px 0' }}>
+      <div style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 20px 0' }}>
         <span onClick={backFromOrganizerTeam} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('‹ Quay lại', '‹ Back')}</span>
       </div>
       <div style={{ padding: '10px 20px 0' }}>

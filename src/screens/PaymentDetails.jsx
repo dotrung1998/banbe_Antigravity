@@ -813,7 +813,7 @@ function VietQr({ payload }) {
 function Frame({ children, onBack, T }) {
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Payment">
-      <div onClick={onBack} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="payment-back">
+      <div onClick={onBack} style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="payment-back">
         ‹ {T('Quay lại', 'Back')}
       </div>
       {children}

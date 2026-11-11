@@ -28,7 +28,7 @@ export default function DocumentView() {
   if (!doc) {
     return (
       <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Document">
-        <div onClick={backFromDocument} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</div>
+        <div onClick={backFromDocument} style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</div>
         <p style={{ fontSize: 13, color: ink, margin: '18px 22px 0' }}>{T('Không tìm thấy chứng từ.', "Couldn't find that document.")}</p>
       </div>
     );
@@ -65,7 +65,7 @@ export default function DocumentView() {
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Document">
-      <div onClick={backFromDocument} style={{ flex: 'none', padding: '66px 22px 14px', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="document-view-back">
+      <div onClick={backFromDocument} style={{ flex: 'none', padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 14px', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="document-view-back">
         ‹ {T('Quay lại', 'Back')}
       </div>
 

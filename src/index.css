@@ -180,6 +180,18 @@ html, body {
   padding: 0;
 }
 
+/* iPhone status bar / Dynamic Island strip (web app opened full screen): painted with the dark hero colour on EVERY
+   screen so no pale band shows above the content. 0 high on desktop, in the desktop phone frame and in Safari tabs. */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: var(--bb-safe-top, env(safe-area-inset-top, 0px));
+  background: #16140f;
+  z-index: 2147483000;
+  pointer-events: none;
+}
+
 body {
   background: #EFEBE0;
   font-family: var(--bb-face, 'Be Vietnam Pro'), system-ui, sans-serif;
@@ -469,6 +481,7 @@ input::placeholder, textarea::placeholder {
    app is full-bleed exactly as before.
    ------------------------------------------------------------------------ */
 .bb-device, .bb-screen { display: contents; }
+:root { --bb-dock-top: 14px; --bb-status-trim: 52px; }
 .bb-statusbar { display: none; }
 
 @media (min-width: 700px) and (min-height: 560px) and (hover: hover) and (pointer: fine) {
@@ -488,6 +501,8 @@ input::placeholder, textarea::placeholder {
     box-shadow: 0 0 0 2px #3A3733, 0 0 0 5px #1B1916, 0 40px 90px rgba(27, 25, 22, 0.38);
   }
   .bb-screen {
+    --bb-dock-top: 62px; /* desktop phone frame keeps the original spacing */
+    --bb-status-trim: 0px;
     display: flex;
     flex-direction: column;
     position: relative;

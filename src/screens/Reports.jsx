@@ -507,7 +507,7 @@ export default function Reports() {
 
   return (
     <div style={{ minHeight: '100%', background: paper, color: ink, animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both' }} data-screen-label="Reports">
-      <div style={{ padding: '66px 20px 0' }}>
+      <div style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 20px 0' }}>
         <button type="button" onClick={backFromReports} style={{ appearance: 'none', border: 'none', background: 'none', padding: 0, fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</button>
       </div>
 

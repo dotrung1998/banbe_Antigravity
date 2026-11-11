@@ -582,7 +582,7 @@ export default function CreateEvent() {
     <DoneMarks.Provider value={doneMarks}>
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) backwards', minHeight: '100%', background: paper }} data-screen-label="Create event">
       <div role="status" aria-live="polite" data-testid="create-done-announce" style={visuallyHidden}>{doneAnnounce}</div>
-      <div ref={topRef} style={{ padding: '58px 22px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div ref={topRef} style={{ padding: 'max(14px, calc(58px - var(--bb-status-trim, 0px))) 22px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
         <span onClick={leaveCreate} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {createBackLabel}</span>
         <span style={{ flex: 1 }} />
         {!s.createEditEventId && drafts.length > 0 && (
@@ -1328,7 +1328,7 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
       data-testid="create-review-step"
       style={{ position: 'fixed', inset: 0, background: paper, zIndex: 40, display: 'flex', flexDirection: 'column', animation: 'banbeIn 0.25s cubic-bezier(.22,.61,.36,1) both' }}
     >
-      <div onClick={onBack} data-testid="create-review-back" style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer', flex: 'none' }}>
+      <div onClick={onBack} data-testid="create-review-back" style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer', flex: 'none' }}>
         ‹ {T('Quay lại chỉnh sửa', 'Back to edit')}
       </div>
       {/* The scrolling content starts below a hairline, never right against the tabs (owner, 2026-10-21). */}

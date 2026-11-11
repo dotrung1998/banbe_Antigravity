@@ -20,7 +20,7 @@ export default function HostIntro() {
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Host intro">
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <div onClick={goProfile} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
+      <div onClick={goProfile} style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
       <div style={{ padding: '16px 22px 30px' }}>
         <span style={{ fontSize: 11.5, color: ink }}>{T('Dành cho người tổ chức', 'For organizers')}</span>
         <h1 style={{ ...display(27, { lineHeight: 1.2, margin: '8px 0 0' }) }}>{T('Trang tổ chức của bạn, trước khi bạn đăng gì', 'Your organizer page, before you post anything')}</h1>

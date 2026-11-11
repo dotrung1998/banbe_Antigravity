@@ -182,7 +182,7 @@ export default function Chat() {
 
   return (
     <div style={{ position: 'absolute', inset: 0, animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Chat">
-      <div style={{ padding: '66px 22px 14px', borderBottom: `1px solid ${rule}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 14px', borderBottom: `1px solid ${rule}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
           <span onClick={chatBackFn} data-testid="chat-back" style={{ fontSize: 11, color: ink, cursor: 'pointer' }}>‹ {chatBackLabel}</span>
           <span style={{ ...display(18) }}>{headerTitle}</span>

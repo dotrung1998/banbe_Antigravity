@@ -254,7 +254,7 @@ export default function Dashboard() {
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Organizer dashboard">
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <div style={{ padding: '66px 22px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div onClick={backFromDashboard} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
           <span style={{ fontSize: 14, color: ink, lineHeight: 1 }}>‹</span>
           <span data-testid="dashboard-back-label" style={{ fontSize: 12, color: ink }}>{backLabel}</span>

@@ -338,7 +338,7 @@ export default function Inbox() {
     <div style={{ position: 'relative', animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Inbox" ref={rootRef}>
       {/* Pinned like iOS: the title row stays put while the conversations scroll under it. */}
       {/* Note 53: same padding and row height as every dock header (was a 24px gutter). */}
-      <div data-testid="inbox-fixed-header" style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 12px`, height: DOCK_HEADER.rowHeight, boxSizing: 'content-box', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
+      <div data-testid="inbox-fixed-header" style={{ padding: `${DOCK_HEADER.top} ${DOCK_HEADER.side}px 12px`, height: DOCK_HEADER.rowHeight, boxSizing: 'content-box', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, position: 'sticky', top: 0, zIndex: 6, background: paper }}>
         {searchOpen ? (
           <input
             autoFocus

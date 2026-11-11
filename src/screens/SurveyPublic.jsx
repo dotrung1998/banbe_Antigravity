@@ -160,7 +160,7 @@ export default function SurveyPublic() {
 
   if (s.surveyPublicError || !survey) {
     return (
-      <div style={{ minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '66px 24px 24px', gap: 12 }}>
+      <div style={{ minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 24px 24px', gap: 12 }}>
         <div style={{ alignSelf: 'stretch', display: 'flex', justifyContent: 'flex-end', padding: '0 0 8px' }}>
           <span onClick={requestClose} data-testid="survey-close" style={{ cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</span>
         </div>
@@ -178,7 +178,7 @@ export default function SurveyPublic() {
 
   return (
     <div style={{ minHeight: '100%', background: paper, color: ink }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '66px 20px 8px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 20px 8px' }}>
         <span style={{ fontSize: 12, opacity: 0.6 }}>{survey.host_name}</span>
         <span onClick={requestClose} data-testid="survey-close" style={{ cursor: 'pointer', fontSize: 18 }}>×</span>
       </div>

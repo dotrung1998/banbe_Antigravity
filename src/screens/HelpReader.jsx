@@ -112,7 +112,7 @@ export default function HelpReader({ title, intro, sections, onBack, backLabel, 
   return (
     <div style={{ animation: 'banbeFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label={testId} data-testid={testId}>
       <div ref={topRef} />
-      <div onClick={onBack} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid={`${testId}-back`}>‹ {backLabel}</div>
+      <div onClick={onBack} style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid={`${testId}-back`}>‹ {backLabel}</div>
       <div style={{ padding: '16px 20px 120px' }}>
         <h1 style={{ ...display(26, { margin: 0, lineHeight: 1.2 }) }}>{title}</h1>
         {intro && <p style={{ fontSize: 13, lineHeight: 1.6, color: ink, opacity: 0.75, margin: '8px 0 0' }}>{intro}</p>}

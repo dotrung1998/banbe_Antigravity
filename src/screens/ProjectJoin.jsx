@@ -35,7 +35,7 @@ export default function ProjectJoin() {
   };
   const day = peek?.event_date ? (() => { const [y, m, d] = peek.event_date.split('-').map(Number); return new Intl.DateTimeFormat(T('vi-VN', 'en-US'), { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d))); })() : null;
   return (
-    <div data-screen-label="ProjectJoin" data-testid="project-join" style={{ minHeight: '100%', background: paper, color: ink, padding: '58px 18px 40px', boxSizing: 'border-box' }}>
+    <div data-screen-label="ProjectJoin" data-testid="project-join" style={{ minHeight: '100%', background: paper, color: ink, padding: 'max(14px, calc(58px - var(--bb-status-trim, 0px))) 18px 40px', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button type="button" onClick={() => set({ screen: s.projectJoinBack || 'home' })} aria-label={T('Quay lại', 'Back')} data-testid="project-join-back"
           style={{ width: 44, height: 44, borderRadius: '50%', border: 0, background: block, color: ink, fontSize: 20, cursor: 'pointer' }}>‹</button>

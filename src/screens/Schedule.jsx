@@ -285,7 +285,7 @@ export default function Schedule() {
       {/* Pinned like iOS ScheduleView: title, month/Today, Mine/Discover and the week strip stay put; the agenda scrolls. */}
       <div data-testid="schedule-fixed-header" style={{ position: 'sticky', top: 0, zIndex: 6, background: paper, paddingBottom: 8 }}>
       {/* Note 53: the shared dock header — same logo, gap, title, row height and padding as Home/Messages/Account. */}
-      <div style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 0`, display: 'flex', alignItems: 'center', height: DOCK_HEADER.rowHeight, boxSizing: 'content-box' }}>
+      <div style={{ padding: `${DOCK_HEADER.top} ${DOCK_HEADER.side}px 0`, display: 'flex', alignItems: 'center', height: DOCK_HEADER.rowHeight, boxSizing: 'content-box' }}>
         <DockHeaderTitle as="h1" title={T('Lịch', 'Schedule')} testId="schedule-title" />
       </div>
       <div style={{ padding: '10px 20px 0', display: 'flex', alignItems: 'center', gap: 8 }}>

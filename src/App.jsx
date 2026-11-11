@@ -831,7 +831,6 @@ function Shell() {
         {/* iPhone safe area (status bar / Dynamic Island): the page runs under it (viewport-fit=cover + black-translucent).
             Home's dark hero deliberately extends beneath it; every other root screen gets the inset as top padding and a
             sticky paper strip so scrolled content never slides under the clock. Zero on desktop / Safari tabs. */}
-        {!heroHome && state.screen !== 'event' && <div aria-hidden data-testid="safe-top-strip" style={{ position: 'sticky', top: 0, zIndex: 30, height: SAFE_TOP, marginBottom: `calc(${SAFE_TOP} * -1)`, background: 'var(--bb-bg)', pointerEvents: 'none' }} />}
         <div style={{ paddingTop: (heroHome || state.screen === 'event') ? 0 : SAFE_TOP, paddingBottom: showBar ? DOCK_CLEARANCE : 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
           {[...(eventUnderlay ? [eventUnderlay] : []), state.screen, ...(swipeNeighbor ? [swipeNeighbor] : [])].map((s) => {
             const isCurrent = s === state.screen;

@@ -19,7 +19,7 @@ export default function Preferences() {
 
   return (
     <div style={{ animation: 'banbeFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="Preferences">
-      <div onClick={() => set({ screen: 'profile' })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
+      <div onClick={() => set({ screen: 'profile' })} style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
       <div style={{ padding: '16px 30px 42px' }}>
         <h1 style={{ ...display(27, { margin: 0, lineHeight: 1.2 }) }}>{T('Ngôn Ngữ & Hiển Thị', 'Language & Appearance')}</h1>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '10px 0 0' }}>{T('Chọn cách banbe xuất hiện với bạn. Bạn có thể đổi lại bất cứ lúc nào.', 'Choose how banbe looks. You can change it anytime.')}</p>

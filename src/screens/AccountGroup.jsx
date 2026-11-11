@@ -156,7 +156,7 @@ export default function AccountGroup() {
 
   return (
     <div style={{ position: 'relative', animation: 'banbeFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="AccountGroup">
-      <div onClick={() => set(backToAdmin ? { screen: 'accountGroup', accountGroupKey: 'admin', accountGroupBack: null } : { screen: 'profile', accountGroupBack: null })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="account-group-back">
+      <div onClick={() => set(backToAdmin ? { screen: 'accountGroup', accountGroupKey: 'admin', accountGroupBack: null } : { screen: 'profile', accountGroupBack: null })} style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="account-group-back">
         ‹ {backToAdmin ? T(GROUP_META.admin.vi, GROUP_META.admin.en) : T('Tài khoản', 'Account')}
       </div>
       <div style={{ padding: '16px 20px 40px' }}>

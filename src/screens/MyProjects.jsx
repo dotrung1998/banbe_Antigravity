@@ -14,7 +14,7 @@ export default function MyProjects() {
     return new Intl.DateTimeFormat(T('vi-VN', 'en-US'), { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d)));
   };
   return (
-    <div data-screen-label="MyProjects" data-testid="project-mine" style={{ minHeight: '100%', background: paper, color: ink, padding: '66px 20px 40px', boxSizing: 'border-box' }}>
+    <div data-screen-label="MyProjects" data-testid="project-mine" style={{ minHeight: '100%', background: paper, color: ink, padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 20px 40px', boxSizing: 'border-box' }}>
       <button type="button" onClick={() => set({ screen: 'profile' })} style={{ background: 'none', border: 0, color: ink, fontSize: 12, cursor: 'pointer', minHeight: 44, padding: 0 }}>‹ {T('Tài khoản', 'Account')}</button>
       <h1 style={display(24, { margin: '6px 0 0' })}>{T('Dự án của tôi', "Projects I'm in")}</h1>
       {!s.myProjectsLoaded ? <p style={{ color: ink3 }}>{T('Đang tải…', 'Loading…')}</p>

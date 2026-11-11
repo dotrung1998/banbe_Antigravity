@@ -421,7 +421,7 @@ export default function Account() {
     <div style={{ position: 'relative', animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Account" data-account-mode={isOrganizer ? 'host' : 'goer'} data-account-tab={tab}>
       {/* Sticky header: title + search toggle/input (unchanged by note 66, minus the tabs that used to sit under it). */}
       <div style={{ position: 'sticky', top: 0, zIndex: 5, background: paper, paddingBottom: 8 }} data-testid="account-fixed-header">
-        <div style={{ padding: `${DOCK_HEADER.top}px ${DOCK_HEADER.side}px 0`, height: DOCK_HEADER.rowHeight, boxSizing: 'content-box', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ padding: `${DOCK_HEADER.top} ${DOCK_HEADER.side}px 0`, height: DOCK_HEADER.rowHeight, boxSizing: 'content-box', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {searchOpen ? (
             <input
               ref={searchInputRef}

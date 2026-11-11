@@ -95,7 +95,7 @@ export default function EventRecap() {
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Event recap">
-      <div onClick={backFromEventRecap} role="button" data-testid="event-recap-back" style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>
+      <div onClick={backFromEventRecap} role="button" data-testid="event-recap-back" style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>
         ‹ {s.eventRecapBack === 'notifications' ? T('Thông báo', 'Notifications') : s.eventRecapBack === 'event' ? T('Sự kiện', 'Event') : T('Quay lại', 'Back')}
       </div>
       <div style={{ padding: '14px 22px 48px' }}>

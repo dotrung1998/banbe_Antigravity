@@ -86,7 +86,7 @@ export default function Reserve() {
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Reserve">
-      <div onClick={backToEvent} style={{ padding: '70px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</div>
+      <div onClick={backToEvent} style={{ padding: 'max(14px, calc(70px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</div>
       {/* Goal gradient (note 48): picking the event already counts. */}
       <div style={{ padding: '14px 22px 0' }}><BookingJourneyProgress current={1} T={T} /></div>
       <div style={{ padding: '16px 22px 0' }}>

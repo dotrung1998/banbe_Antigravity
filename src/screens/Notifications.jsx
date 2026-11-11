@@ -315,7 +315,7 @@ export default function Notifications({ overlay = false }) {
         ? { position: 'fixed', inset: 0, zIndex: 45, overflowY: 'auto', background: paper }
         : { animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }}>
       {/* Note 44 web parity: a pushed screen now (Schedule took its dock slot), so it has its own Back. */}
-      <div style={{ padding: '58px 24px 0' }}>
+      <div style={{ padding: 'max(14px, calc(58px - var(--bb-status-trim, 0px))) 24px 0' }}>
         <button type="button" onClick={leave} data-testid="notifications-back"
           style={{ background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</button>
       </div>
