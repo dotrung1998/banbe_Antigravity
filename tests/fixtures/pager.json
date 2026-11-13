@@ -1,0 +1,28 @@
+{
+  "_comment": "v2.3 pager rules (note 81): 4 rows a page, range line, end card sized to the missing rows.",
+  "pages": [
+    { "n": 0, "sizes": [] },
+    { "n": 3, "sizes": [3] },
+    { "n": 4, "sizes": [4] },
+    { "n": 5, "sizes": [4, 1] },
+    { "n": 8, "sizes": [4, 4] },
+    { "n": 18, "sizes": [4, 4, 4, 4, 2] }
+  ],
+  "ranges": [
+    { "n": 8, "page": 0, "en": "1–4 of 8", "vi": "1–4 trên 8" },
+    { "n": 8, "page": 1, "en": "5–8 of 8", "vi": "5–8 trên 8" },
+    { "n": 18, "page": 1, "en": "5–8 of 18", "vi": "5–8 trên 18" },
+    { "n": 9, "page": 2, "en": "9 of 9", "vi": "9 trên 9" },
+    { "n": 3, "page": 0, "en": "1–3 of 3", "vi": "1–3 trên 3" },
+    { "n": 8, "page": 7, "en": "5–8 of 8", "vi": "5–8 trên 8" }
+  ],
+  "endCard": [
+    { "n": 0, "room": 0, "variant": null },
+    { "n": 4, "room": 0, "variant": null },
+    { "n": 8, "room": 0, "variant": null },
+    { "n": 3, "room": 1, "variant": "solo" },
+    { "n": 7, "room": 1, "variant": "slim" },
+    { "n": 6, "room": 2, "variant": "mid" },
+    { "n": 5, "room": 3, "variant": "fill" }
+  ]
+}

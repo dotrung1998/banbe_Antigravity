@@ -17,7 +17,7 @@ import Splash from './screens/Splash.jsx';
 import LangPick from './screens/LangPick.jsx';
 import ThemePick from './screens/ThemePick.jsx';
 import Loading from './screens/Loading.jsx';
-import Home from './screens/Home.jsx';
+import Home, { BrowseScreen } from './screens/Home.jsx';
 import Account from './screens/Account.jsx';
 import AccountGroup from './screens/AccountGroup.jsx';
 import Inbox from './screens/Inbox.jsx';
@@ -104,6 +104,8 @@ const SCREENS = {
   langPick: LangPick,
   themePick: ThemePick,
   home: Home,
+  // v2.3 Browse by type / See all (note 81): rendered by Home so it shares Home's discovery items.
+  browse: BrowseScreen,
   eventProject: EventProject,
   projectJoin: ProjectJoin,
   myProjects: MyProjects,

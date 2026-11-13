@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CategoryGlyph } from './HomeDiscoveryParts.jsx';
 import { setThemeColor } from '../../lib/themeColor.js';
 import { categoryDefs } from '../../lib/eventTypes.js';
+import SeeAllFanCard from './SeeAllFanCard.jsx';
 
 const NIGHT = '#16140f';
 const ON_DARK = 'rgba(255,255,255,.58)';
@@ -37,7 +38,7 @@ const initials = (name) => String(name || '').trim().split(/\s+/).filter(Boolean
 export default function HomeShellV5({
   T, lang, tab, onTab, lists, items, canHost, user, dateLabel, areaLabel, areaActive = false, filtersActive = false, hasPrefs = true, onClearFilters,
   onOpenEvent, onSeeAll, onMap, onAccount, onSearch, onArea, onFilters, filterSummary, onFindType, onPickType, onSetPrefs, onBrowseAll,
-  typeCounts, badgeDate, trStatus, children, hostBody, below,
+  typeCounts, badgeDate, trStatus, children, hostBody, below, shortlist = null, seeAll = null, onBrowseType = null, browseTotal = null,
 }) {
   const rail = useRef(null);
   const [idx, setIdx] = useState(0);
@@ -108,9 +109,40 @@ export default function HomeShellV5({
   const typeName = (k) => { const d = TYPE_DEFS.find(x => x.key === k); return d ? (lang === 'en' ? d.en : d.vi) : k; };
   const evN = (n) => (lang === 'en' ? `${n} ${n === 1 ? 'event' : 'events'}` : `${n} sự kiện`);
   const h3 = { fontSize: 19, fontWeight: 400, margin: 0, letterSpacing: '-.01em' };
+  // Browse (types with counts): above By type today; with v2.3 (note 81) it closes Home, under the Shortlist.
+  const pickType = onBrowseType || onPickType;
+  const browseEl = (browse.length > 0 && (
+            <div data-testid="home-browse" style={{ padding: '28px 20px 0', scrollMarginTop: headH }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <h3 style={h3}>{onBrowseType ? T('Duyệt theo loại', 'Browse by type') : T('Khám phá', 'Browse')}</h3>
+                {onBrowseType && (
+                  <button type="button" data-testid="home-browse-all" onClick={() => onBrowseType('all')}
+                    style={{ minHeight: 44, padding: '0 4px', border: 'none', background: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                    {T('Xem tất cả', 'See all')} <b>{browseTotal}</b>
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+                {browse.map(([k, n]) => (
+                  <button key={k} type="button" data-testid={`home-browse-${k}`} onClick={() => pickType(k)}
+                    style={{ padding: '14px 0 12px', border: 'none', borderRadius: 16, background: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontFamily: 'inherit', fontSize: 13, color: 'inherit', cursor: 'pointer' }}>
+                    <span style={{ width: 52, height: 52, display: 'grid', placeItems: 'center', marginBottom: 4 }}><CategoryGlyph cat={k} size={28} strokeWidth={1.5} /></span>
+                    <span>{typeName(k)}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{evN(n)}</small>
+                  </button>
+                ))}
+                <button type="button" data-testid="home-browse-find" onClick={onBrowseType ? () => onBrowseType('all') : onFindType}
+                  style={{ padding: '14px 0 12px', border: 'none', borderRadius: 16, background: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontFamily: 'inherit', fontSize: 13, color: 'inherit', cursor: 'pointer' }}>
+                  <span style={{ width: 52, height: 52, display: 'grid', placeItems: 'center', marginBottom: 4 }}><Icon d={SEARCH} size={28} /></span>
+                  <span>{T('Tìm một loại', 'Find a type')}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{T(`${TYPE_DEFS.length} loại`, `${TYPE_DEFS.length} types`)}</small>
+                </button>
+              </div>
+            </div>
+          ));
 
   return (
-    <div data-testid="home-shell-v5" data-tab={tab} style={{ position: 'relative' }}>
+    // v2.3 (note 81): an explicit theme ink. Without it the content below the hero inherits the body's light-theme ink,
+    // which is unreadable in dark mode (an existing bug with the switch off, left as it is there).
+    <div data-testid="home-shell-v5" data-tab={tab} style={{ position: 'relative', color: shortlist ? 'var(--bb-fg)' : undefined }}>
       {/* Pull-to-refresh: the whole screen translates down, so the gap it opens above Home must be the hero's night
           colour, not paper. This layer hangs above the content (clipped by the scroller at rest, visible only in the
           gap while pulling/holding/springing back). */}
@@ -183,7 +215,10 @@ export default function HomeShellV5({
                     </span>
                   </button>
                 ))}
-                {list.length > 0 && (
+                {list.length > 0 && seeAll && (
+                  <SeeAllFanCard photos={list.map(e => e.img)} label={seeAll.label} count={seeAll.count} onOpen={() => onSeeAll(tab)} T={T} />
+                )}
+                {list.length > 0 && !seeAll && (
                   <button type="button" data-testid="home-hero-see-all" onClick={() => onSeeAll(tab)}
                     style={{ flex: '0 0 268px', height: 360, borderRadius: 16, scrollSnapAlign: 'start', border: '1px dashed rgba(255,255,255,.3)', background: 'rgba(255,255,255,.08)', color: '#fff', fontFamily: 'inherit', fontSize: 15, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}>
                     <span aria-hidden style={{ fontSize: 26 }}>→</span><span>{T('Xem tất cả', 'See all')}</span>
@@ -244,25 +279,10 @@ export default function HomeShellV5({
       {hosting ? hostBody : (
         <>
           {children}
-          {browse.length > 0 && (
-            <div data-testid="home-browse" style={{ padding: '28px 20px 0', scrollMarginTop: headH }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}><h3 style={h3}>{T('Khám phá', 'Browse')}</h3></div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
-                {browse.map(([k, n]) => (
-                  <button key={k} type="button" data-testid={`home-browse-${k}`} onClick={() => onPickType(k)}
-                    style={{ padding: '14px 0 12px', border: 'none', borderRadius: 16, background: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontFamily: 'inherit', fontSize: 13, color: 'inherit', cursor: 'pointer' }}>
-                    <span style={{ width: 52, height: 52, display: 'grid', placeItems: 'center', marginBottom: 4 }}><CategoryGlyph cat={k} size={28} strokeWidth={1.5} /></span>
-                    <span>{typeName(k)}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{evN(n)}</small>
-                  </button>
-                ))}
-                <button type="button" data-testid="home-browse-find" onClick={onFindType}
-                  style={{ padding: '14px 0 12px', border: 'none', borderRadius: 16, background: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontFamily: 'inherit', fontSize: 13, color: 'inherit', cursor: 'pointer' }}>
-                  <span style={{ width: 52, height: 52, display: 'grid', placeItems: 'center', marginBottom: 4 }}><Icon d={SEARCH} size={28} /></span>
-                  <span>{T('Tìm một loại', 'Find a type')}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{T(`${TYPE_DEFS.length} loại`, `${TYPE_DEFS.length} types`)}</small>
-                </button>
-              </div>
-            </div>
-          )}
+          {!shortlist && browseEl}
+          {shortlist}
+          {shortlist && browseEl}
+          {!shortlist && (<>
           <div data-testid="home-by-type" style={{ padding: '28px 20px 0' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={h3}>{T('Theo loại', 'By type')}</h3>
@@ -304,6 +324,7 @@ export default function HomeShellV5({
               </div>
             </div>
           ))}
+          </>)}
           {below}
           {/* Clearance for the floating dock, after the last section so nothing sits below a dead gap. */}
           <div style={{ height: 120 }} />

@@ -53,7 +53,8 @@ const tileBtn = { position: 'relative', display: 'inline-flex', alignItems: 'cen
 const caption = { fontSize: 10, fontWeight: 600, color: ink2, lineHeight: 1, whiteSpace: 'nowrap' };
 
 /** The two calendar tiles. `onMessage(text | '')` gets the status line (the stub shows it full width). */
-export function EventPlanButtons({ eventKey, day, month, inert = false, onMessage }) {
+// `chips` (v2.3, note 81): the same two choices as slim pills for the ticket stub's "Save the date" row.
+export function EventPlanButtons({ eventKey, day, month, inert = false, onMessage, chips = false }) {
   const { state: s, T, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule } = useBanBe();
   const [schedOpen, setSchedOpen] = useState(false);
   const [calOpen, setCalOpen] = useState(false);
@@ -78,6 +79,7 @@ export function EventPlanButtons({ eventKey, day, month, inert = false, onMessag
   };
   const google = () => window.open(googleCalendarUrl(draft), '_blank', 'noopener');
 
+  if (chips) return <PlanChips {...{ T, item, info, inert, add, ics, google, schedOpen, setSchedOpen, calOpen, setCalOpen, flash, eventKey, removeFromBanbeSchedule }} />;
   return (
     <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', ...(inert ? { pointerEvents: 'none' } : null) }} data-testid="event-plan">
       <GlassMenu open={schedOpen} onOpenChange={setSchedOpen} top={50} wrapStyle={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }} menuTestId="event-plan-menu"
@@ -108,6 +110,53 @@ export function EventPlanButtons({ eventKey, day, month, inert = false, onMessag
           </GlassMenu>
           <span style={{ ...caption, marginTop: -5 }}>{T('Lịch', 'Calendar')}</span>
         </>
+      )}
+    </div>
+  );
+}
+
+// v2.3 "Save the date" chips (note 81): 30 px pills inside a 44 px hit area. banbe turns moss with a check once the event
+// is in the banbe Schedule (a tap then opens the same status / Remove menu); Calendar opens the .ics / Google menu.
+const chipIco = { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true };
+const chipBtn = { minHeight: 44, display: 'inline-flex', alignItems: 'center', padding: 0, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit' };
+const chipFace = (added) => ({ height: 30, padding: '0 11px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+  border: added ? '1px solid transparent' : '1px solid var(--bb-rule)', background: added ? 'color-mix(in srgb, var(--bb-update) 16%, transparent)' : 'transparent', color: added ? 'var(--bb-update)' : 'var(--bb-fg)',
+  transition: 'background-color .28s, color .28s, border-color .28s' });
+function PlanChips({ T, item, info, inert, add, ics, google, schedOpen, setSchedOpen, calOpen, setCalOpen, flash, eventKey, removeFromBanbeSchedule }) {
+  const [pop, setPop] = useState(0);
+  return (
+    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', minWidth: 0, ...(inert ? { pointerEvents: 'none' } : null) }} data-testid="event-plan">
+      <GlassMenu open={schedOpen} onOpenChange={setSchedOpen} top={44} menuTestId="event-plan-menu"
+        trigger={(
+          <button type="button" className="bbv23-press" data-testid="event-plan-button" aria-haspopup={item ? 'menu' : undefined} aria-pressed={!!item}
+            onClick={() => { if (item) setSchedOpen(v => !v); else { add(); setPop(x => x + 1); } }}
+            aria-label={item ? T(`Trong lịch banbe (${sourceLabel(item.source, T)})`, `In banbe Schedule (${sourceLabel(item.source, T)})`) : T('Thêm vào lịch banbe', 'Add to banbe Schedule')}
+            style={chipBtn}>
+            <span key={pop} className={pop ? 'bbv23-pop' : undefined} style={chipFace(!!item)}>
+              {item ? <svg {...chipIco} strokeWidth={2.4}><path d="m6 12.5 4 4 8-9" /></svg>
+                : <svg {...chipIco}><path d="M18 15H6l1.5-2.5V9a4.5 4.5 0 0 1 9 0v3.5L18 15Z" /><path d="M10.5 18a2 2 0 0 0 3 0" /></svg>}
+              banbe
+            </span>
+            <span data-testid="event-plan-status" hidden>{item ? 'added' : 'none'}</span>
+          </button>
+        )}>
+        {item && <GlassMenuItem disabled testId="event-plan-in-mine">{`✓ ${T('Trong lịch của tôi', 'In My schedule')} · ${sourceLabel(item.source, T)}`}</GlassMenuItem>}
+        {item?.source === 'added' && <GlassMenuItem danger onClick={() => { removeFromBanbeSchedule(eventKey); setSchedOpen(false); flash(''); }} testId="event-plan-remove">{`⊖ ${T('Bỏ khỏi lịch banbe', 'Remove from banbe Schedule')}`}</GlassMenuItem>}
+      </GlassMenu>
+      {!info.ended && (
+        <GlassMenu open={calOpen} onOpenChange={setCalOpen} top={44} menuTestId="event-plan-cal-menu"
+          trigger={(
+            <button type="button" className="bbv23-press" data-testid="event-plan-calendar" aria-haspopup="menu" aria-expanded={calOpen}
+              onClick={() => setCalOpen(v => !v)} aria-label={T('Thêm vào lịch điện thoại', 'Add to your calendar')} style={chipBtn}>
+              <span style={chipFace(false)}>
+                <svg {...chipIco}><rect x="3.5" y="5" width="17" height="15" rx="3" /><path d="M8 3v4M16 3v4M3.5 10h17" /><path d="M8 14h2M14 14h2M8 17h2M14 17h2" /></svg>
+                {T('Lịch', 'Calendar')}
+              </span>
+            </button>
+          )}>
+          <GlassMenuItem onClick={() => { ics(); setCalOpen(false); }} testId={`calendar-ics-${info.key}`}>{`📅 ${T('Lịch Apple · ứng dụng khác (.ics)', 'Apple Calendar · other apps (.ics)')}`}</GlassMenuItem>
+          <GlassMenuItem onClick={() => { google(); setCalOpen(false); }} testId={`calendar-google-${info.key}`}>{`${T('Google Lịch', 'Google Calendar')} ↗`}</GlassMenuItem>
+        </GlassMenu>
       )}
     </div>
   );

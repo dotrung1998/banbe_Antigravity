@@ -7,7 +7,8 @@
 
 /** The screens a guest can browse (on top of the pre-login screens). */
 // 'search' (note 50): the Search screen only reads public events, same as Home/Map.
-export const GUEST_BROWSE_SCREENS = new Set(['home', 'mapExplore', 'event', 'search']);
+// 'browse' (note 81): Browse by type / See all lists only public events, same as Home.
+export const GUEST_BROWSE_SCREENS = new Set(['home', 'mapExplore', 'event', 'search', 'browse']);
 
 // 'host' / 'schedule' / 'invite': the Simple Shell (switch simple_shell) mode switch and centre "+" rows (note 66).
 export const PROMPT_CONTEXTS = ['save', 'follow', 'reserve', 'message', 'like', 'host', 'schedule', 'invite'];

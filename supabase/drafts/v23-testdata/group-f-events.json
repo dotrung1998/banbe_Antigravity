@@ -1,0 +1,572 @@
+{
+  "_comment": "v2.3 test data group F: 12 new live test events owned by the test admin's organizer (org_a96236c5). n = days after the apply day (venue date). photos = existing event-photos storage paths (no uploads). Copy rule (note 57): no dash or semicolon between ideas.",
+  "organizer": "org_a96236c5",
+  "organizerRename": {
+    "from": "Test",
+    "to": "Nhà Chung"
+  },
+  "templates": {
+    "supper": "bepnho",
+    "music": "jazzgac",
+    "fashion": "orbit",
+    "gallery": "vungtrang",
+    "popup": "orbit"
+  },
+  "events": [
+    {
+      "key": "canhchua",
+      "type": "supper",
+      "name": "Canh Chua Chủ Nhật",
+      "area": "Phú Nhuận",
+      "neighborhood": "Khu phố 7",
+      "lat": 10.799312,
+      "lng": 106.680244,
+      "n": 12,
+      "time": "19:00",
+      "price": 450000,
+      "capacity": 8,
+      "photos": [
+        "phokhuya/DSCF5891.jpg",
+        "vuonsau/DSCF4212.jpg",
+        "banrieng/DSCF4550.jpg"
+      ],
+      "details": {
+        "alcohol": "none",
+        "min_age": "16",
+        "dietary": [
+          "pescatarian",
+          "can_accommodate"
+        ],
+        "dietary_note": "Có bản chay cho nồi canh",
+        "dress_code": "Thoải mái"
+      },
+      "included": [
+        [
+          "Canh chua cá",
+          "nấu trong nồi đất, ăn chung"
+        ],
+        [
+          "3 món mặn",
+          "cá kho, rau luộc, trứng chiên"
+        ],
+        [
+          "trà đá",
+          "rót thêm thoải mái"
+        ]
+      ],
+      "description": "Một bữa cơm miền Tây trong căn nhà phố ở Phú Nhuận. Nồi canh chua cá lóc nấu với bạc hà, đậu bắp và me chua, ăn cùng cá kho tộ và rau luộc chấm kho quẹt. Bàn tròn, ăn chung, xới cơm cho nhau. Chủ nhà kể chuyện quê ở Cần Thơ trong lúc mọi người ăn. Cơm thêm thoải mái.",
+      "intro": "Bữa cơm miền Tây quanh một nồi canh chua.\n\nBàn tròn, ăn chung, cá kho tộ và rau luộc chấm kho quẹt.",
+      "greeting": [
+        "Chào bạn! Có món nào bạn không ăn được thì nhắn mình trước nhé.",
+        "Hi! Tell me before the night if there is anything you can't eat."
+      ]
+    },
+    {
+      "key": "bunchay",
+      "type": "supper",
+      "name": "Bữa Chay Sân Gạch",
+      "area": "Quận 10",
+      "neighborhood": "Khu phố 4",
+      "lat": 10.773418,
+      "lng": 106.667932,
+      "n": 15,
+      "time": "18:30",
+      "price": 380000,
+      "capacity": 10,
+      "photos": [
+        "bandai/opt-1791600247989-DSCF6107.jpg",
+        "comnha/DSCF4627.jpg",
+        "vuonsau/DSCF4880.jpg"
+      ],
+      "details": {
+        "alcohol": "none",
+        "min_age": "16",
+        "dietary": [
+          "vegetarian",
+          "vegan"
+        ],
+        "dietary_note": "Toàn bộ thực đơn thuần chay",
+        "dress_code": "Thoải mái"
+      },
+      "included": [
+        [
+          "5 món chay",
+          "theo rau chợ sáng"
+        ],
+        [
+          "nước mát",
+          "rau má hoặc sâm bí đao"
+        ],
+        [
+          "tráng miệng",
+          "chè đậu theo mùa"
+        ]
+      ],
+      "description": "Bữa tối thuần chay trên sân gạch của một căn nhà cũ ở Quận 10. Năm món nấu từ rau chợ sáng, đậu hũ tự làm và nấm rơm, không có món giả thịt. Nước rau má hoặc sâm bí đao, tráng miệng là chè đậu theo mùa. Phù hợp cả với người chưa từng ăn chay cả bữa. Ăn xong ai muốn thì ở lại rửa chén cùng.",
+      "intro": "Một bữa tối thuần chay, không món giả thịt.\n\nRau chợ sáng, đậu hũ tự làm, trên một sân gạch cũ.",
+      "greeting": [
+        "Chào bạn! Bữa này thuần chay. Có câu hỏi gì cứ nhắn mình.",
+        "Hi! The whole menu is vegan. Ask me anything."
+      ]
+    },
+    {
+      "key": "tranhtoi",
+      "type": "music",
+      "name": "Trăng Tối Acoustic",
+      "area": "Quận 1",
+      "neighborhood": "Khu phố 2",
+      "lat": 10.776884,
+      "lng": 106.700512,
+      "n": 17,
+      "time": "20:00",
+      "price": 220000,
+      "capacity": 30,
+      "photos": [
+        "chieucham/DSCF4212.jpg",
+        "jazzgac/DSCF6022.jpg",
+        "chieucham/DSCF4880.jpg"
+      ],
+      "details": {
+        "alcohol": "paid",
+        "min_age": "16",
+        "lineup": [
+          "Hà Vy",
+          "Duy (cello)"
+        ],
+        "genre": [
+          "acoustic",
+          "folk"
+        ],
+        "format": "seated",
+        "alcohol_note": "Bia và vang bán tại quầy"
+      },
+      "included": [
+        [
+          "Vào cửa",
+          "một chỗ ngồi"
+        ],
+        [
+          "2 set",
+          "khoảng 40 phút mỗi set"
+        ]
+      ],
+      "description": "Một đêm hát mộc trong phòng khách tầng ba của một toà nhà cũ ở Quận 1. Hà Vy hát những bài viết trong năm nay, Duy đệm cello thay cho guitar. Ghế xếp vòng quanh, đèn vàng, cửa sổ mở ra phía sông. Hai set, giữa giờ có trà nóng. Đến sớm để chọn chỗ gần cửa sổ, cửa đóng khi set một bắt đầu.",
+      "intro": "Giọng hát và một cây cello trong phòng khách tầng ba.\n\nHai set, ghế xếp vòng quanh, cửa sổ mở ra phía sông.",
+      "greeting": [
+        "Chào bạn! Muốn nghe bài nào thì nhắn trước, tụi mình sẽ cố.",
+        "Hi! Send a song request before the night and we will try."
+      ]
+    },
+    {
+      "key": "dembass",
+      "type": "music",
+      "name": "Đêm Bass",
+      "area": "Quận 4",
+      "neighborhood": "Khu phố 1",
+      "lat": 10.757216,
+      "lng": 106.704884,
+      "n": 13,
+      "time": "22:00",
+      "price": 250000,
+      "capacity": 60,
+      "photos": [
+        "modular/DSCF6279.jpg",
+        "orbit/opt-1791600255192-DSCF7202.jpg",
+        "modular/DSCF5973.jpg"
+      ],
+      "details": {
+        "alcohol": "paid",
+        "min_age": "18",
+        "lineup": [
+          "Kép",
+          "Mưa Nhân Tạo"
+        ],
+        "genre": [
+          "electronic"
+        ],
+        "format": "standing",
+        "alcohol_note": "Bia và cocktail bán tại quầy"
+      },
+      "included": [
+        [
+          "Vào cửa",
+          "vào và ra tự do"
+        ],
+        [
+          "earplugs",
+          "lấy ở bàn soát vé"
+        ]
+      ],
+      "description": "Một đêm bass nặng trong nhà kho cũ ở Quận 4. Kép mở màn với dub chậm, Mưa Nhân Tạo đánh tới khuya với hệ thống loa dựng riêng cho buổi này. Phòng đứng, đèn đỏ, không chụp ảnh có flash. Earplugs miễn phí ở cửa, quầy bia mở tới khi tắt nhạc. Mang theo áo khoác mỏng vì quạt thổi mạnh gần loa.",
+      "intro": "Bass nặng trong một nhà kho ở Quận 4.\n\nHai nghệ sĩ, một hệ thống loa dựng riêng, đèn đỏ tới khuya.",
+      "greeting": [
+        "Chào bạn! Có câu hỏi về đêm này cứ nhắn mình.",
+        "Hi! Got a question about the night? Just ask."
+      ]
+    },
+    {
+      "key": "saxsang",
+      "type": "music",
+      "name": "Sax Buổi Sáng",
+      "area": "Thảo Điền",
+      "neighborhood": "Khu phố 2",
+      "lat": 10.803116,
+      "lng": 106.735408,
+      "n": 16,
+      "time": "10:00",
+      "price": 150000,
+      "capacity": 25,
+      "photos": [
+        "pianomuon/DSCF4282.jpg",
+        "jazzgac/opt-1791600280500-DSCF7039.jpg",
+        "jazzgac/DSCF4238.jpg"
+      ],
+      "details": {
+        "alcohol": "none",
+        "min_age": "16",
+        "lineup": [
+          "Linh Sax",
+          "Bộ ba Gác"
+        ],
+        "genre": [
+          "jazz"
+        ],
+        "format": "seated"
+      },
+      "included": [
+        [
+          "Vào cửa",
+          "một chỗ ngồi trong vườn"
+        ],
+        [
+          "cà phê",
+          "một ly cà phê phin"
+        ]
+      ],
+      "description": "Jazz buổi sáng trong khu vườn của một quán cà phê ở Thảo Điền. Linh Sax chơi cùng bộ ba Gác những bản standard chậm, hợp với ly cà phê phin đầu ngày. Ghế mây dưới tán cây, trẻ em đi cùng được. Một ly cà phê đã gồm trong vé. Đến sớm để có ghế gần sân khấu, chó mèo không vào được vườn.",
+      "intro": "Jazz chậm và cà phê phin trong một khu vườn buổi sáng.\n\nGhế mây dưới tán cây, trẻ em đi cùng được.",
+      "greeting": [
+        "Chào bạn! Sáng hôm đó gặp nhau trong vườn nhé.",
+        "Hi! See you in the garden that morning."
+      ]
+    },
+    {
+      "key": "vaicu",
+      "type": "fashion",
+      "name": "Đổi Đồ Vải Cũ",
+      "area": "Quận 3",
+      "neighborhood": "Khu phố 6",
+      "lat": 10.783044,
+      "lng": 106.688672,
+      "n": 1,
+      "time": "14:00",
+      "price": 100000,
+      "capacity": 40,
+      "photos": [
+        "motlop/DSCF5780.jpg",
+        "compound/DSCF5796.jpg",
+        "motlop/DSCF5586.jpg"
+      ],
+      "details": {
+        "alcohol": "none",
+        "min_age": "16",
+        "brands": [
+          "Vải Cũ Collective"
+        ],
+        "experience": "sale",
+        "price_range": "budget"
+      },
+      "included": [
+        [
+          "Vào cửa",
+          "mang tối đa năm món đồ để đổi"
+        ],
+        [
+          "sửa nhỏ",
+          "đơm nút, khâu lại đường may"
+        ]
+      ],
+      "description": "Mang những bộ đồ còn tốt mà bạn không mặc nữa, đổi lấy đồ của người khác. Vải Cũ Collective phân loại theo cỡ và chất liệu, phòng thử là tấm rèm giữa phòng. Có bàn khâu sửa nhỏ để đơm nút và may lại đường chỉ. Đồ còn lại cuối buổi được gửi cho nhà may xã hội.",
+      "intro": "Đổi đồ cũ lấy đồ cũ của người khác, có bàn khâu sửa ngay tại chỗ.\n\nMang tối đa năm món, về với vài món mới cho mình.",
+      "greeting": [
+        "Chào bạn! Đồ mang đổi nhớ giặt sạch trước nhé.",
+        "Hi! Please wash the clothes you bring to swap."
+      ]
+    },
+    {
+      "key": "aodaimoi",
+      "type": "fashion",
+      "name": "Áo Dài Mới: Lookbook",
+      "area": "Quận 1",
+      "neighborhood": "Khu phố 4",
+      "lat": 10.779432,
+      "lng": 106.702116,
+      "n": 14,
+      "time": "19:00",
+      "price": 350000,
+      "capacity": 24,
+      "photos": [
+        "orbit/DSCF4627.jpg",
+        "orbit/opt-1791600256611-DSCF7039.jpg",
+        "fanci/DSCF5973.jpg"
+      ],
+      "details": {
+        "alcohol": "included",
+        "min_age": "18",
+        "brands": [
+          "Nhà Lụa",
+          "Tơ Sen"
+        ],
+        "experience": "show",
+        "price_range": "premium",
+        "alcohol_note": "Một ly vang khi vào cửa"
+      },
+      "included": [
+        [
+          "Show 30 phút",
+          "mười hai mẫu áo dài mới"
+        ],
+        [
+          "một ly vang",
+          "rót khi vào cửa"
+        ],
+        [
+          "lookbook in",
+          "bản in giới hạn"
+        ]
+      ],
+      "description": "Nhà Lụa và Tơ Sen ra mắt mười hai mẫu áo dài mới trong một biệt thự cũ ở Quận 1. Áo dài cắt gọn, vải lụa tơ tằm nhuộm tay, mặc được cả ngày thường. Show ba mươi phút trên cầu thang gỗ, sau đó các mẫu được treo lại để xem gần và đặt may theo số đo. Ăn mặc tự do.",
+      "intro": "Mười hai mẫu áo dài mới, trình diễn trên cầu thang gỗ của một biệt thự cũ.\n\nXem gần sau show, đặt may theo số đo.",
+      "greeting": [
+        "Chào bạn! Muốn đặt may sau show thì nhắn mình để giữ lịch đo.",
+        "Hi! Message me if you want a fitting slot after the show."
+      ]
+    },
+    {
+      "key": "maydo",
+      "type": "fashion",
+      "name": "Một Buổi May Đo",
+      "area": "Bình Thạnh",
+      "neighborhood": "Khu phố 12",
+      "lat": 10.802884,
+      "lng": 106.709516,
+      "n": 20,
+      "time": "15:00",
+      "price": 650000,
+      "capacity": 6,
+      "photos": [
+        "fanci/DSCF4254.jpg",
+        "aeie/DSCF4864.jpg",
+        "compound/DSCF7609.jpg"
+      ],
+      "details": {
+        "alcohol": "none",
+        "min_age": "16",
+        "brands": [
+          "Xưởng Kim Chỉ"
+        ],
+        "experience": "fitting",
+        "price_range": "mid"
+      },
+      "included": [
+        [
+          "Đo và chọn vải",
+          "với thợ may chính"
+        ],
+        [
+          "một áo sơ mi",
+          "may xong trong hai tuần"
+        ],
+        [
+          "trà",
+          "trà nóng suốt buổi"
+        ]
+      ],
+      "description": "Một buổi chiều ở Xưởng Kim Chỉ, Bình Thạnh. Thợ may chính đo cho bạn từng số, cùng bạn chọn vải từ kệ lanh và cotton, rồi vẽ dáng áo lên giấy. Vé gồm một chiếc sơ mi may đo, hoàn thành trong hai tuần và giao tận nơi. Nhóm nhỏ để ai cũng được đo kỹ. Mang theo một chiếc áo bạn thích.",
+      "intro": "Một buổi đo may với thợ chính, về với một chiếc sơ mi của riêng bạn.\n\nChọn vải, vẽ dáng, hai tuần sau nhận áo.",
+      "greeting": [
+        "Chào bạn! Mặc một chiếc áo bạn thích nhất để thợ tham khảo dáng nhé.",
+        "Hi! Wear your favourite shirt so we can use it as a reference."
+      ]
+    },
+    {
+      "key": "phimcu",
+      "type": "gallery",
+      "name": "Phim Cũ, Ảnh Mới",
+      "area": "Quận 5",
+      "neighborhood": "Khu phố 3",
+      "lat": 10.754812,
+      "lng": 106.666704,
+      "n": 19,
+      "time": "17:00",
+      "price": 90000,
+      "capacity": 30,
+      "photos": [
+        "vungtrang/DSCF2023.jpg",
+        "vungtrang/opt-1791600265692-DSCF2060.jpg",
+        "phong302/DSCF5542.jpg"
+      ],
+      "details": {
+        "alcohol": "none",
+        "min_age": "16",
+        "artists": [
+          "Kha Nguyên"
+        ],
+        "medium": [
+          "photography"
+        ]
+      },
+      "included": [
+        [
+          "Vào cửa",
+          "xem không giới hạn thời gian"
+        ],
+        [
+          "bưu thiếp",
+          "một tấm in từ triển lãm"
+        ]
+      ],
+      "description": "Kha Nguyên tìm thấy hai mươi cuộn phim chưa tráng trong một tiệm ảnh đóng cửa ở Chợ Lớn. Anh tráng chúng sau ba mươi năm và treo cạnh những tấm anh tự chụp lại đúng chỗ đó hôm nay. Triển lãm nhỏ trong một tiệm ảnh cũ, bàn rọi phim vẫn còn dùng được. Ảnh in được bán sau buổi.",
+      "intro": "Hai mươi cuộn phim bị bỏ quên, tráng sau ba mươi năm.\n\nMỗi tấm cũ treo cạnh một tấm chụp lại đúng chỗ đó hôm nay.",
+      "greeting": [
+        "Chào bạn! Kha có mặt cả buổi để kể chuyện từng cuộn phim.",
+        "Hi! Kha will be there all evening to talk about each roll."
+      ]
+    },
+    {
+      "key": "gomxanh",
+      "type": "gallery",
+      "name": "Gốm Xanh Biên Hoà",
+      "area": "Quận 1",
+      "neighborhood": "Khu phố 6",
+      "lat": 10.774188,
+      "lng": 106.693448,
+      "n": 18,
+      "time": "18:00",
+      "price": 120000,
+      "capacity": 25,
+      "photos": [
+        "noigiay/DSCF2539.jpg",
+        "sonmai/DSCF4517.jpg",
+        "noigiay/DSCF4517.jpg"
+      ],
+      "details": {
+        "alcohol": "none",
+        "min_age": "16",
+        "artists": [
+          "Lò Gốm Tân Vạn",
+          "Mai Hạ"
+        ],
+        "medium": [
+          "sculpture"
+        ]
+      },
+      "included": [
+        [
+          "Vào cửa",
+          "xem không giới hạn thời gian"
+        ],
+        [
+          "trà",
+          "trà nóng trong chén gốm"
+        ]
+      ],
+      "description": "Men xanh đồng của gốm Biên Hoà, từ những chiếc chum cũ của Lò Gốm Tân Vạn tới tượng nhỏ của nghệ nhân trẻ Mai Hạ. Triển lãm đặt gốm trên bệ gỗ thấp để bạn nhìn được cả đáy và vết lửa. Trà rót trong chén gốm của chính lò. Có thể đặt mua sau buổi xem. Bệ thấp, nhớ coi chừng chân.",
+      "intro": "Men xanh đồng Biên Hoà, từ chum cũ tới tượng nhỏ của nghệ nhân trẻ.\n\nTrà rót trong chén gốm của chính lò.",
+      "greeting": [
+        "Chào bạn! Có câu hỏi về gốm cứ nhắn mình.",
+        "Hi! Ask me anything about the ceramics."
+      ]
+    },
+    {
+      "key": "giayin",
+      "type": "gallery",
+      "name": "In Lụa Một Màu",
+      "area": "Quận 3",
+      "neighborhood": "Khu phố 9",
+      "lat": 10.785316,
+      "lng": 106.686148,
+      "n": 2,
+      "time": "16:00",
+      "price": 0,
+      "capacity": 40,
+      "photos": [
+        "noigiay/DSCF4223.jpg",
+        "khongnguoi/DSCF6366.jpg",
+        "phong302/DSCF2341.jpg"
+      ],
+      "details": {
+        "alcohol": "none",
+        "min_age": "16",
+        "artists": [
+          "Xưởng In Đèn"
+        ],
+        "medium": [
+          "print"
+        ]
+      },
+      "included": [
+        [
+          "Vào cửa tự do",
+          "giữ chỗ để có khung giờ in"
+        ],
+        [
+          "một bản in",
+          "tự kéo lụa một tấm A4"
+        ]
+      ],
+      "description": "Xưởng In Đèn treo ba mươi bản in lụa chỉ dùng một màu mực, mỗi tấm một sắc độ khác nhau. Giữa phòng là bàn in, bạn tự kéo lụa một tấm A4 để mang về. Vào cửa tự do, giữ chỗ để có khung giờ in. Mặc đồ không ngại dính mực. Mỗi khung giờ in khoảng hai mươi phút, có người hướng dẫn từng bước.",
+      "intro": "Ba mươi bản in lụa, chỉ một màu mực.\n\nTự kéo lụa một tấm để mang về, vào cửa tự do.",
+      "greeting": [
+        "Chào bạn! Nhớ mặc đồ không ngại dính mực nhé.",
+        "Hi! Wear clothes you don't mind getting ink on."
+      ]
+    },
+    {
+      "key": "chophien",
+      "type": "popup",
+      "name": "Chợ Phiên Sân Thượng",
+      "area": "Quận 1",
+      "neighborhood": "Khu phố 1",
+      "lat": 10.771408,
+      "lng": 106.698212,
+      "n": 15,
+      "time": "16:00",
+      "price": 0,
+      "capacity": 120,
+      "photos": [
+        "compound/DSCF7597.jpg",
+        "compound/DSCF7584.jpg",
+        "bandai/DSCF4517.jpg"
+      ],
+      "details": {
+        "alcohol": "none",
+        "min_age": "16",
+        "brands": [
+          "Bếp Nhỏ Sấy",
+          "Gốm Mộc",
+          "Len Vụn",
+          "Trà Sớm"
+        ],
+        "entry_mode": "drop_in",
+        "price_range": "budget"
+      },
+      "included": [
+        [
+          "Vào cửa tự do",
+          "ghé lúc nào cũng được"
+        ],
+        [
+          "trà thử",
+          "một chén trà mời ở quầy Trà Sớm"
+        ]
+      ],
+      "description": "Một buổi chợ chiều trên sân thượng ở Quận 1 với bốn quầy nhỏ của người làm đồ thủ công. Bếp Nhỏ Sấy bán trái cây sấy, Gốm Mộc mang chén bát men tro, Len Vụn có khăn và túi đan tay, Trà Sớm mời thử trà. Ghé lúc nào cũng được, vào cửa tự do. Mang túi vải nếu bạn định mua nhiều.",
+      "intro": "Bốn quầy đồ thủ công trên một sân thượng, vào cửa tự do.\n\nTrái cây sấy, gốm men tro, đồ len đan tay và một chén trà mời.",
+      "greeting": [
+        "Chào bạn! Ghé lúc nào cũng được trong buổi chiều.",
+        "Hi! Drop in any time during the afternoon."
+      ]
+    }
+  ]
+}

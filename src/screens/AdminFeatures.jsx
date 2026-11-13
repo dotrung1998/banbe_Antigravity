@@ -133,6 +133,14 @@ const FLAGS = [
     hintEn: 'Home event cards get a paper frame around the photo with the caption below, like a polaroid. Only the cards view changes, not the list. Off by default.',
   },
   {
+    // Migration 218, note 81. Web only for now. Builds on simple_shell.
+    key: 'home_v23',
+    vi: 'Trang chủ v2.3 (web)',
+    en: 'Home v2.3 (web)',
+    hintVi: 'Trang chủ, Duyệt theo loại và Chi tiết sự kiện trên web dùng thiết kế v2.3. Cần Bố cục đơn giản đang bật. Ứng dụng iPhone chưa dùng. Mặc định tắt. Cần migration 218.',
+    hintEn: 'The web Home, Browse by type and Event Detail use the v2.3 design. Needs the simple layout on. The iPhone app does not use it yet. Off by default. Needs migration 218.',
+  },
+  {
     // Note 76, migration 210. Until 210 is applied the server refuses this switch.
     key: 'event_project_hub',
     vi: 'Dự án sự kiện',

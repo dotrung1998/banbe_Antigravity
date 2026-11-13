@@ -19,6 +19,8 @@ import { shareMarket, shareWhen, shareInviteText, smsInviteHref, ZALO_COPIED } f
 import { track } from '../lib/analytics.js';
 import { nextFromHost, whenLabel } from '../lib/quickWins.js';
 import { flagOn } from '../lib/featureFlags.js';
+import ReserveBarV23 from '../components/event/ReserveBarV23.jsx';
+import { nextCompact, bookedQty, stampState, stampText, holdsSeat } from '../lib/reserveBarV23.js';
 import { eventProfile, detailFacts, introStyle, detailNotes } from '../lib/eventTypes.js';
 import { introFontFamily, introColorValue } from '../lib/introStyle.js';
 import { seatStatus, splitFacts, aboutSection, includedSection, distanceLabel, stripPhotos, HERO_SCRIM, ABOUT_LINES, dateBlock, ticketsLeftText, needToKnowRows, menuCards } from '../lib/eventDetailPresentation.js';
@@ -26,6 +28,10 @@ import { daysUntilInZone, countdownChipText } from '../lib/countdown.js';
 import { cityFor } from '../lib/mapDiscovery.js';
 import citiesData from '../data/cities.json';
 import TicketStub from '../components/event/TicketStub.jsx';
+import TicketStubV23 from '../components/event/TicketStubV23.jsx';
+import EventDetailV23View from '../components/event/EventDetailV23View.jsx';
+import { glassBar } from '../components/event/v23Style.js';
+import { knowRows, heroMotion, navOn, readProgress } from '../lib/eventDetailV23.js';
 import { visibleTabs, activeTab as pickActiveTab } from '../lib/eventDetailTabs.js';
 
 // Airbnb-style layout (mirrors iOS EventDetailView): the photo is a pinned backdrop that fades out while the
@@ -63,6 +69,9 @@ const softRule = 'rgba(var(--bb-fg-rgb),0.10)';
 const sectionHeading = display(17, { lineHeight: 1.3 });
 // Top of the floating round controls: the old fixed 66px, but never closer to the notch than inset + 16.
 const OVERLAY_TOP = 'max(66px, calc(env(safe-area-inset-top, 0px) + 16px))';
+// v2.3 (note 81): the glass nav covers the status-bar zone itself (as in the prototype), so its row and the floating Back
+// sit just under the safe area, with no fixed 66 px band above them.
+const V23_TOP = 'max(12px, calc(env(safe-area-inset-top, 0px) + 6px))';
 // Scrolled this far, the title has gone under the top edge: the solid nav bar (mockup "02 · Khi cuộn xuống") fades in.
 const COLLAPSE_AT = HERO_H - SHEET_OVERLAP - PINNED_STRIP + 70;
 // Glass over the photo, tinted with a fixed deep clay (white glyph). Note 71 phase 4: the theme clay at 0.72 left the
@@ -101,17 +110,23 @@ const pillBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 
 // The event this screen last showed and how far it was scrolled, so coming BACK to it (host page, chat, Reserve…) lands
 // exactly where it was, with no re-entrance animation. Cleared when the event is closed (Back / pull-down).
 let lastVisit = null;
+// Note 81 phase e: the last stamp each event showed this session, so the stamp slams in only on a change (a hold made,
+// the host's confirmation), never on every open.
+const stampSeen = new Map();
+const reduceMotionNow = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 // `preview` (create-event "Public preview", owner 2026-10-21): render an unsaved draft through this exact page so the
 // host sees what guests will. { ev, photos: [{ id, url }], capacity, backLabel, onBack, footer }. Nothing is fetched or
 // saved; every guest control (save, share, ⋯, calendar pill, host actions, seat chips, Reserve) is shown but inert.
 // iOS twin: EventDetailView(preview:).
 export default function EventDetail({ preview = null } = {}) {
-  const { state, T, trStatus, curEvent, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, setQty, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav, toggleFollowOrganizer, goEvent, openEventRecap, loadEventFill } = useBanBe();
+  const { state, T, trStatus, curEvent, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, goReserveAdd, openBookingConfirmed, setQty, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav, toggleFollowOrganizer, goEvent, openEventRecap, loadEventFill } = useBanBe();
   const s = state;
   const ev = preview?.ev ?? curEvent;
   // Event type profiles (migration 203): only while the switch is on; a type without a profile renders as before.
   // Note 69: the event's own type plus its second category (details.cat2, migration 207).
+  // v2.3 (note 81, switch home_v23 on top of simple_shell): tear-off price strip and the compact/full reserve bar.
+  const v23 = flagOn(s.featureFlags, 'simple_shell') && flagOn(s.featureFlags, 'home_v23');
   const typeProfile = flagOn(s.featureFlags, 'event_type_profiles') ? eventProfile(ev?.catKey, ev?.details) : null;
   const typeFacts = typeProfile ? detailFacts(typeProfile, ev?.details, s.lang === 'en' ? 'en' : 'vi') : [];
   const typeIncludedTitle = typeProfile?.detail?.includedTitle || null;
@@ -259,6 +274,8 @@ export default function EventDetail({ preview = null } = {}) {
     mapExplore: T('Bản đồ', 'Map'),
     // Note 78: opened from the ticket's Event details sheet; Back returns to that same ticket.
     confirmed: T('Vé', 'Ticket'),
+    // Note 81: opened from Browse by type / See all; Back returns to that list.
+    browse: T('Danh sách', 'List'),
   };
   // BUG 3 fix (2026-09-22 follow-up) — an event opened from a story has
   // exactly one consistent origin: StoryViewer, not whichever screen
@@ -319,6 +336,27 @@ export default function EventDetail({ preview = null } = {}) {
   // booking.status === 'confirmed' AND payment_state === 'confirmed'.
   // A checked-in booking ('attended', migration 021) is still that same paid ticket (Phase 1 Q3 "You went ✓").
   const myBookingIsTicket = isBookingTicket(myBooking) || (myBooking?.status === 'attended' && myBooking?.payment_state === 'confirmed');
+  // Note 81 phase e (v2.3): every booking of the viewer on this event (s.booking is the freshest copy of the newest),
+  // the seats they hold across them (the server's booking_holds_seat rule), and the stamp that follows.
+  const seatBookings = (() => {
+    if (preview) return [];
+    const list = (s.myEventBookings || []).filter(b => b.event_id === ev.key);
+    if (s.booking && s.booking.event_id === ev.key) {
+      const i = list.findIndex(b => b.id === s.booking.id);
+      if (i >= 0) list[i] = s.booking; else list.unshift(s.booking);
+    }
+    return list;
+  })();
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const booked = v23 ? bookedQty(seatBookings, nowTick) : 0;
+  const stamp = v23 ? stampState(seatBookings, nowTick) : null;
+  const stampKind = stamp?.kind || null;
+  // The held stamp counts down ("Held · 25 min"): refresh twice a minute while it shows.
+  useEffect(() => {
+    if (stampKind !== 'held') return undefined;
+    const id = setInterval(() => setNowTick(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, [stampKind]);
 
   // A completed event has nothing left to reserve — showing "Reserve"
   // (or even "Sold out ▪︎ message for waitlist") on something that already
@@ -377,6 +415,22 @@ export default function EventDetail({ preview = null } = {}) {
     : showRefund
       ? T('Hoàn tiền tự động 100% nếu sự kiện bị hủy', 'Automatic full refund if the event is cancelled')
       : T('Chỗ được giữ 30 phút để bạn xác nhận', 'Seats are held for 30 minutes while you confirm');
+
+  // v2.3 bar: the reserve bar while nothing is held; once the viewer holds seats on an open event, the same bar in
+  // its held mode (open the booking, or add tickets as a second booking).
+  const heldBar = v23 && !preview && booked > 0 && !ev.cancelled && !ended;
+  const v23Bar = v23 && !preview && (heldBar || (barState === 'reserve' && booked === 0));
+  const [addQty, setAddQty] = useState(null); // null = what they hold
+  useEffect(() => { setAddQty(null); }, [booked, ev.key]);
+  const heldQty = Math.max(booked, addQty ?? booked);
+  // With two bookings (a hold plus added tickets), the button opens the one that still needs something (the newest
+  // open hold), else the newest ticket. Confirmed shows one booking at a time.
+  const heldTargetId = (() => {
+    const seatB = seatBookings.filter(b => holdsSeat(b, nowTick));
+    const open = seatB.filter(b => !isBookingTicket(b) && b.status !== 'attended');
+    return (open[0] || seatB[0])?.id || null;
+  })();
+  const openHeldBooking = () => (heldTargetId && heldTargetId !== s.booking?.id ? openBookingConfirmed(heldTargetId, ev.key, 'event') : openHeld());
 
   // Phase 1 Q3: an ended page is not a dead end. Up to 3 of this host's live events still ahead ("Next from this
   // host") and a Follow host button; the photos section below already shows the recap (event_photos stays readable
@@ -473,7 +527,8 @@ export default function EventDetail({ preview = null } = {}) {
     const ck = `${sc.scrollHeight}x${sc.clientHeight}`;
     if (topsCache.current.key === ck && topsCache.current.tops) return topsCache.current.tops;
     const scTop = sc.getBoundingClientRect().top;
-    const cover = (tabRowRef.current?.getBoundingClientRect().bottom ?? scTop) - scTop;
+    const row = tabRowRef.current;
+    const cover = v23 ? (row ? row.offsetTop + row.offsetHeight : 0) : (row?.getBoundingClientRect().bottom ?? scTop) - scTop;
     const tops = tabIds.map(id => {
       const el = tabRefs[id].current;
       return el ? el.getBoundingClientRect().top - scTop + sc.scrollTop - cover - SPACE.m : 0;
@@ -521,10 +576,43 @@ export default function EventDetail({ preview = null } = {}) {
 
   // Collapsing nav bar: flips once when the title passes under the top edge (state only changes at the threshold).
   const [collapsed, setCollapsed] = useState(false);
+  // v2.3 (note 81, switch home_v23): the reserve bar opens compact and grows into the full card past ~40 px.
+  const [barCompact, setBarCompact] = useState(true);
+  const barCompactRef = useRef(true);
   const collapsedRef = useRef(false);
   const titleWrapRef = useRef(null);
   const [planMsg, setPlanMsg] = useState('');
   const navBgRef = useRef(null);
+  const progressRef = useRef(null);
+  // Note 81 phase e: the stamp slams in once per change (null → held → confirmed, also on the return from Reserve). From
+  // further down, the stub is brought back first so the stamp lands where it can be seen.
+  const [stampPlay, setStampPlay] = useState(0);
+  useEffect(() => {
+    if (!v23 || preview) return undefined;
+    const prev = stampSeen.get(ev.key);
+    stampSeen.set(ev.key, stampKind);
+    if (prev === undefined || prev === stampKind || !stampKind) return undefined;
+    const sc = scrollerRef.current;
+    const go = () => setStampPlay(x => x + 1);
+    if (sc && sc.scrollTop > 40) {
+      sc.scrollTo({ top: 0, behavior: reduceMotionNow() ? 'auto' : 'smooth' });
+      const t = setTimeout(go, reduceMotionNow() ? 0 : 460);
+      return () => clearTimeout(t);
+    }
+    go();
+    return undefined;
+  }, [stampKind, ev.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  // v2.3: the floating bar morphs its height (280 ms spring) when it changes size, and its contents fade in.
+  const barAreaRef = useRef(null);
+  const barH = useRef(0);
+  useLayoutEffect(() => {
+    const el = barAreaRef.current;
+    if (!el) return;
+    const h1 = el.offsetHeight; const h0 = barH.current; barH.current = h1;
+    if (!h0 || h0 === h1 || reduceMotionNow() || !el.animate) return;
+    el.animate([{ height: `${h0}px`, overflow: 'hidden' }, { height: `${h1}px`, overflow: 'hidden' }], { duration: 280, easing: 'cubic-bezier(.2,1.04,.3,1)' });
+    Array.from(el.children).forEach(c => c.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 220, delay: 60, easing: 'ease-out', fill: 'backwards' }));
+  }, [barCompact]);
   const navTitleRef = useRef(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const copyLink = () => {
@@ -577,6 +665,22 @@ export default function EventDetail({ preview = null } = {}) {
   const onSheetScroll = (e) => {
     const t = Math.max(0, e.currentTarget.scrollTop);
     if (!preview) lastVisit = { key: ev.key, scrollTop: t };
+    // v2.3 (note 81): hero parallax + sinking title, reading progress, the glass nav past 140 px, the bar's two sizes.
+    if (v23 && !preview) {
+      const sc = e.currentTarget;
+      if (!reduceMotionNow()) {
+        const m = heroMotion(t);
+        if (heroImgRef.current) heroImgRef.current.style.transform = m.art;
+        heroRef.current?.style.setProperty('--dp', String(m.dp));
+      }
+      if (progressRef.current) progressRef.current.style.transform = `scaleX(${readProgress(t, sc.scrollHeight, sc.clientHeight)})`;
+      const c = navOn(t);
+      if (c !== collapsedRef.current) { collapsedRef.current = c; setCollapsed(c); }
+      const bc = nextCompact(t, barCompactRef.current);
+      if (bc !== barCompactRef.current) { barCompactRef.current = bc; setBarCompact(bc); }
+      spyTabs(sc);
+      return;
+    }
     // Fades only part-way while the strip is visible; gone once the solid nav bar covers it (so the photo never peeks
     // through the sheet's rounded top corners under the bar).
     const p = titleProgress(t);
@@ -596,6 +700,10 @@ export default function EventDetail({ preview = null } = {}) {
     }
     const c = p > 0.6;
     if (c !== collapsedRef.current) { collapsedRef.current = c; setCollapsed(c); }
+    if (v23) {
+      const bc = nextCompact(t, barCompactRef.current);
+      if (bc !== barCompactRef.current) { barCompactRef.current = bc; setBarCompact(bc); }
+    }
     spyTabs(e.currentTarget);
   };
 
@@ -672,6 +780,233 @@ export default function EventDetail({ preview = null } = {}) {
   const disc = (extra) => ctl({ width: collapsed ? 44 : 40, borderRadius: 22, ...extra });
   const discRight = (i) => (collapsed ? 4 + i * 44 : 16 + i * 48);
 
+  const shareConfirmEl = shareConfirmOpen && (
+          <div onClick={s.storyCreateBusy ? undefined : () => setShareConfirmOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ background: paper, padding: '20px 20px 30px', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <div style={bg(ev.img, { width: 64, height: 64, borderRadius: 12, flex: 'none' })} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ ...display(15, { lineHeight: 1.2 }) }}>{ev.name}</div>
+                  <div style={{ fontSize: 11.5, color: ink, opacity: 0.7, marginTop: 2 }}>{ev.when}</div>
+                </div>
+              </div>
+              <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '14px 0 0' }}>
+                {T('Sẽ hiển thị dưới dạng story trong 24 giờ.', 'This will be visible as a story for 24 hours.')}
+              </p>
+              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                <div
+                  onClick={() => setShareConfirmOpen(false)}
+                  data-testid="event-share-to-story-cancel"
+                  style={{ flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 600, padding: '11px 12px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${rule}`, color: ink }}
+                >
+                  {T('Hủy', 'Cancel')}
+                </div>
+                <div
+                  onClick={doShareEventToStory}
+                  data-testid="event-share-to-story-confirm"
+                  style={{ flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 600, padding: '11px 12px', borderRadius: 12, cursor: 'pointer', background: ink, color: paper }}
+                >
+                  {T('Đăng Story', 'Post Story')}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+  const includedSheetEl = includedSheetOpen && (
+        <div
+          onClick={() => setIncludedSheetOpen(false)}
+          data-testid="event-included-sheet"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.5)', display: 'flex', alignItems: 'flex-end', zIndex: 70, animation: 'banbeFade 0.22s ease both' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            role="dialog" aria-modal="true" aria-label={T('Giới thiệu & Bao gồm', 'About & Included')}
+            style={{ background: paper, width: '100%', maxHeight: '94%', overflowY: 'auto', borderRadius: '18px 18px 0 0', padding: '10px 20px 28px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20, animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}
+          >
+            <div style={{ width: 36, height: 4, background: rule, borderRadius: 2, margin: '6px auto 0', flex: 'none' }} />
+            {/* Same header as the Share card sheet: centred title, but an X on the right instead of a Close pill. */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 36, flex: 'none' }}>
+              <span style={{ ...display(17) }}>{T('Giới thiệu & Bao gồm', 'About & Included')}</span>
+              <span
+                onClick={() => setIncludedSheetOpen(false)}
+                role="button"
+                aria-label={T('Đóng', 'Close')}
+                data-testid="event-included-sheet-close"
+                style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: 36, height: 36, borderRadius: '50%', background: 'rgba(120,120,128,0.16)', backdropFilter: 'blur(14px) saturate(1.6)', WebkitBackdropFilter: 'blur(14px) saturate(1.6)', boxShadow: 'inset 0 0 0 0.5px rgba(255,255,255,0.35), 0 1px 4px rgba(0,0,0,0.12)', color: ink, fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+              >
+                ✕
+              </span>
+            </div>
+            {/* Intro/included-presentation pass (2026-09-28) — intro FIRST,
+                Included items separately below, matching iOS's own sheet
+                exactly. The old truncate-at-90px/"Đọc thêm" toggle is gone
+                — this sheet is already its own scrollable surface, so the
+                full text just shows directly, no expand affordance needed. */}
+            {introParagraphs.length > 0 && (
+              <div data-testid="event-intro-section" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Giới thiệu sự kiện', 'About this event')}</span>
+                {/* Note 69: the host's chosen font and colour (details.intro_font / intro_color, migration 207). */}
+                {introParagraphs.map((p, i) => (
+                  <p key={i} data-intro-font={introStyle(ev.details).font || 'sans'}
+                    style={{ fontSize: 13.5, lineHeight: 1.6, color: introColorValue(introStyle(ev.details).color), fontFamily: introFontFamily(introStyle(ev.details).font), margin: 0, whiteSpace: 'pre-wrap' }}>{p}</p>
+                ))}
+              </div>
+            )}
+            {includedItems.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Bao gồm', 'Included')}</span>
+                {includedItems.map((it, i) => (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ ...display(15) }}>{it.label}</span>
+                    {it.detail && <span style={{ fontSize: 13, lineHeight: 1.55, color: ink }}>{it.detail}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+  const menuItemsEl = (<>
+        {showOpenInMap && <GlassMenuItem icon={<IconMap />} onClick={() => openEventOnMap(ev)} testId="event-open-in-map">{T('Xem trên bản đồ', 'Open in map')}</GlassMenuItem>}
+        {!cameFromHome && <GlassMenuItem icon={<IconHouse />} onClick={goHome} testId="event-back-home">{T('Về trang chính', 'Back to home')}</GlassMenuItem>}
+        {s.myOrgEventKeys.includes(ev.key) && (
+          <GlassMenuItem icon={<IconCamera />} disabled={s.storyCreateBusy} onClick={() => setShareConfirmOpen(true)} testId="event-share-to-story">
+            {s.storyCreateBusy ? T('Đang đăng…', 'Posting…') : T('Chia sẻ lên Story', 'Share to Story')}
+          </GlassMenuItem>
+        )}
+        {(showOpenInMap || !cameFromHome || s.myOrgEventKeys.includes(ev.key)) && <GlassMenuDivider />}
+        <GlassMenuItem icon={<IconLink />} onClick={copyLink} testId="event-copy-link">{T('Sao chép link', 'Copy link')}</GlassMenuItem>
+        {inviteMarket === 'VN' && <GlassMenuItem icon={<IconCopy />} onClick={copyZaloInvite} testId="event-copy-zalo">{T('Chép lời mời cho Zalo', 'Copy invite for Zalo')}</GlassMenuItem>}
+        {inviteMarket === 'US' && <GlassMenuItem icon={<IconChat />} onClick={textAFriend} testId="event-text-friend">{T('Nhắn tin cho bạn bè', 'Text a friend')}</GlassMenuItem>}
+  </>);
+  const criteriaEl = ((crit.criteria && !criteriaIsEveryone(crit.criteria)) || (crit.restricted && crit.blocked && !myBooking && !ev.cancelled && !ended)) && (
+          <div data-testid="event-criteria" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.m }}>
+            <WhoCanReserve criteria={crit.criteria} eligibility={crit.eligibility} signedIn={!!s.user} />
+            {crit.restricted && crit.blocked && !myBooking && !ev.cancelled && !ended && (
+              <div ref={critRef} style={{ scrollMarginBottom: 160 }}><CriteriaUnmetCard eligibility={crit.eligibility} returnTo="event" /></div>
+            )}
+          </div>
+        );
+  const afterHostEl = (<>
+        {barState === 'endedAttended' && !preview && s.realEventsById[ev.key] && flagOn(s.featureFlags, 'event_recap') && (
+          <button type="button" onClick={() => openEventRecap(ev.key, 'event')} data-testid="event-open-recap"
+            style={{ ...pillBtn, width: '100%', padding: '12px 14px', border: 'none', ...inkButton(), fontSize: 15, fontWeight: 600 }}>
+            {T('Xem tổng kết và gửi cảm nhận', 'See the recap and share feedback')}
+          </button>
+        )}
+        {isOver && !preview && evOrganizerId && (
+          <div data-testid="event-ended-next" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.m }}>
+            <button type="button" onClick={() => toggleFollowOrganizer(evOrganizerId)} data-testid="event-ended-follow" aria-pressed={evOrgFollowed}
+              style={{ ...pillBtn, width: '100%', minHeight: 44, padding: '11px 14px', border: `1px solid ${clay}`, background: evOrgFollowed ? clayBg : 'transparent', fontSize: 15, fontWeight: 600, color: clay }}>
+              <IconHost />{evOrgFollowed ? T('Đang theo dõi host ✓', 'Following this host ✓') : T('Theo dõi host', 'Follow host')}
+            </button>
+            {hostNext.length > 0 && (
+              <>
+                <div style={sectionHeading}>{T('Sự kiện tiếp theo của host', 'Next from this host')}</div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {hostNext.map((r, i) => (
+                    <div key={r.key} onClick={() => { scrollerRef.current?.scrollTo?.({ top: 0 }); goEvent(r.key); }} role="button" data-testid={`event-ended-next-${i}`}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 0', borderTop: i > 0 ? `1px solid ${divider}` : 'none', cursor: 'pointer' }}>
+                      <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span style={{ ...display(15), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+                        <span style={{ fontSize: 13, color: ink3 }}>{whenLabel(r.startsAt, r.tz, s.lang === 'en')}</span>
+                      </span>
+                      <span aria-hidden style={{ color: clay, fontSize: 17, flex: 'none' }}>›</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+  </>);
+
+  // v2.3 (note 81, switch home_v23): the prototype's layout and motion, same data and the same refs (zoom, pull-down,
+  // return position, tab spy). The create-event preview keeps the V8 page.
+  if (v23 && !preview) {
+    const barCompactShape = v23Bar ? barCompact : true;
+    const refundText = showRefund ? T('Hoàn tiền tự động 100% nếu sự kiện bị hủy', 'Automatic full refund if the event is cancelled') : null;
+    const placeLine = [evWhere || T('Địa điểm', 'Place'), evDistance || cityShort].filter(Boolean).join(' · ');
+    const v23Bar_ = (
+      <div ref={barAreaRef} data-testid="event-action-area" className="bbv23-bar"
+        style={{ position: 'absolute', zIndex: 46, left: barCompactShape ? 12 : 10, right: barCompactShape ? 12 : 10, bottom: `calc(${barCompactShape ? 12 : 10}px + env(safe-area-inset-bottom, 0px))`,
+          borderRadius: barCompactShape ? 999 : 30, padding: barCompactShape ? 10 : '14px 14px 16px', boxSizing: 'border-box', ...glassBar, border: '1px solid var(--v23-line)', boxShadow: 'var(--v23-shadow), var(--v23-rim)',
+          transition: 'border-radius .28s cubic-bezier(.22,.61,.36,1), left .28s, right .28s, bottom .28s, padding .28s' }}>
+        {/* The content fades under the bar instead of stopping at a hard edge. */}
+        <div aria-hidden style={{ position: 'absolute', left: -12, right: -12, top: barCompactShape ? -30 : -44, height: barCompactShape ? 30 : 44, background: 'linear-gradient(180deg, rgba(var(--bb-bg-rgb),0), var(--bb-bg))', pointerEvents: 'none', zIndex: -1 }} />
+        {v23Bar ? (
+          <ReserveBarV23 compact={barCompact} qty={heldBar ? heldQty : qty} remaining={remaining} setQty={heldBar ? setAddQty : setQty} totalFor={(n) => trStatus(eventTotal(ev, n))}
+            unitText={trStatus(eventTotal(ev, 1))} free={isFree} onReserve={goReserve} trustLine={trustLine} trustIcon={<IconShield />} T={T}
+            booked={heldBar ? booked : 0} confirmed={stampKind === 'confirmed'} phase={stamp?.phase || null} onHeld={openHeldBooking} onAdd={(extra) => goReserveAdd(booked, extra)} />
+        ) : (
+          <div onClick={reserveBarTap} role="button" data-testid="event-reserve-bar" data-state={barState} aria-disabled={!reserveBarTap || undefined} className="bbv23-press bbv23-reserve"
+            aria-label={barState === 'ticket' ? `${reserveBarLabel}, ${T('mã', 'code')} ${myBooking.code}` : undefined}
+            style={{ ...reserveBarStyle, borderRadius: 999, minHeight: 50, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}>
+            {barState === 'ticket' ? (
+              <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <span>{reserveBarLabel}</span>
+                <span data-testid="event-ticket-code" style={{ fontSize: 12.5, fontWeight: 400, opacity: 0.7, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.04em' }}>{T('Mã', 'Code')} {myBooking.code}</span>
+              </span>
+            ) : reserveBarLabel}
+          </div>
+        )}
+      </div>
+    );
+    return (
+      <EventDetailV23View
+        T={T} ev={ev} entrance={returnRef.current == null} slideIn={!zoomRef.current && returnRef.current == null}
+        dimRef={dimRef} cardRef={cardRef} scrollerRef={scrollerRef} heroRef={heroRef} heroImgRef={heroImgRef} progressRef={progressRef} tabRowRef={tabRowRef}
+        onScroll={onSheetScrollRaf} collapsed={collapsed} overlayTop={V23_TOP}
+        backLabel={backLabel} onBack={closeWithShrink} saved={isSaved(ev.key)} onSave={() => toggleFav(ev.key)} onShare={() => shareEvent(ev)}
+        menuOpen={menuOpen} setMenuOpen={setMenuOpen} menuItems={menuItemsEl}
+        toast={(s.shared || linkCopied || zaloCopied) && (
+          <div role="status" data-testid={zaloCopied ? 'event-zalo-copied' : undefined}
+            style={{ position: 'absolute', top: `calc(${V23_TOP} + 58px)`, left: '50%', transform: 'translateX(-50%)', zIndex: 60, maxWidth: '84%', fontSize: 12.5, fontWeight: 600, color: 'var(--bb-bg)', background: 'var(--bb-fg)', borderRadius: 999, padding: '9px 16px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', boxShadow: '0 14px 30px rgba(0,0,0,.28)' }}>
+            {zaloCopied ? T(ZALO_COPIED.vi, ZALO_COPIED.en) : T('Đã sao chép link', 'Link copied')}
+          </div>
+        )}
+        catLabel={evCat} minAge={facts.minAge} inviteOnly={!!ev.inviteOnly}
+        stub={(
+          <TicketStubV23 block={stubBlock} time={whenTime || null} countdown={stubCountdown} placeLine={placeLine}
+            mapsUrl={evMapsUrl} onDirections={() => { if (s.located === null) askLocation(); }} directionsLabel={T('Chỉ đường', 'Directions')}
+            price={ev.price ? (booked > 0 && !isFree ? trStatus(eventTotal(ev, booked)) : trStatus(ev.price)) : null}
+            perTicket={booked > 0 ? T(`· ${booked} vé`, `· ${booked} ${booked === 1 ? 'ticket' : 'tickets'}`) : isFree ? null : T('/ vé', '/ ticket')}
+            stamp={stamp ? { kind: stamp.kind, text: T(stampText(stamp, nowTick).vi, stampText(stamp, nowTick).en) } : null} stampPlay={stampPlay}
+            seat={seatPill ? { text: seatPill.text, kind: seat.kind } : null} saveLabel={T('Lưu ngày', 'Save the date')}
+            calendar={<EventPlanButtons eventKey={ev.key} day={stubBlock?.day} month={stubBlock?.weekday} onMessage={setPlanMsg} chips />} />
+        )}
+        afterStub={(planMsg || timeNote) && (
+          <div style={{ padding: '10px 26px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {planMsg && <div role="status" data-testid="event-plan-message" style={{ fontSize: 13, color: 'var(--bb-fg-2)' }}>{planMsg}</div>}
+            {timeNote && <div data-testid="event-venue-time-note" style={{ fontSize: 13, color: 'var(--bb-fg-3)' }}>{timeNote}</div>}
+          </div>
+        )}
+        criteria={criteriaEl && <div style={{ marginBottom: 28 }}>{criteriaEl}</div>}
+        know={knowRows(needRows, { refund: refundText })}
+        about={about} aboutExpanded={aboutExpanded} setAboutExpanded={setAboutExpanded} onAboutMore={() => setIncludedSheetOpen(true)}
+        menuTitle={menuTitle} cards={cards} onMenuMore={!sheetOnAbout && about.hasSheet ? () => setIncludedSheetOpen(true) : null}
+        host={{
+          onOpen: () => openOrganizerOfEvent(ev.key, 'event'),
+          ariaLabel: [T('Người tổ chức', 'Host'), ev.orgName, hostSubline, T('Mở trang', 'Opens profile')].filter(Boolean).join(', '),
+          avatarUrl: orgAvatarUrl, initial: orgInitial || 'B', name: ev.orgName || T('Người tổ chức', 'Host'),
+          badge: evOrgFollowed ? <FollowingBadge T={T} testId="event-host-following" /> : null,
+          sub: hostSubline || T('Người tổ chức', 'Host'), onMessage: goChat, messageLabel: T('Nhắn cho ', 'Message ') + (ev.orgName || ''),
+        }}
+        afterHost={<div style={{ display: 'flex', flexDirection: 'column', gap: SPACE.m, marginTop: (barState === 'endedAttended' || isOver) ? 18 : 0 }}>{afterHostEl}</div>}
+        photos={{
+          loading: !!s.eventPhotosLoading,
+          list: stripList.map(ph => ({ ...ph, liked: !!s.photoEngagement[ph.id]?.likedByMe })),
+          onOpen: (ph, rect) => openPhoto(realPhotos, Math.max(0, realPhotos.findIndex(x => x.id === ph.id)), ev.orgName, rect),
+        }}
+        protection={hasProtection ? protectionSteps : null}
+        tabs={{ ids: tabIds, active: activeTabId, label: tabLabel, go: goTab }}
+        secRefs={tabRefs}
+        bar={v23Bar_}
+        overlays={<>{shareConfirmEl}{includedSheetEl}</>}
+      />
+    );
+  }
+
   return (
     // `absolute, inset 0` (like Chat): fills the app's scroll viewport exactly, whatever the surrounding grid does
     // with percentage heights, so the sheet below scrolls INSIDE this screen instead of the page growing.
@@ -717,17 +1052,7 @@ export default function EventDetail({ preview = null } = {}) {
         trigger={(
           <div data-fade onClick={() => setMenuOpen(o => !o)} role="button" aria-haspopup="menu" aria-label={T('Thêm', 'More')} aria-expanded={menuOpen} data-testid="event-detail-more" style={disc()}><IconMore /></div>
         )}>
-        {showOpenInMap && <GlassMenuItem icon={<IconMap />} onClick={() => openEventOnMap(ev)} testId="event-open-in-map">{T('Xem trên bản đồ', 'Open in map')}</GlassMenuItem>}
-        {!cameFromHome && <GlassMenuItem icon={<IconHouse />} onClick={goHome} testId="event-back-home">{T('Về trang chính', 'Back to home')}</GlassMenuItem>}
-        {s.myOrgEventKeys.includes(ev.key) && (
-          <GlassMenuItem icon={<IconCamera />} disabled={s.storyCreateBusy} onClick={() => setShareConfirmOpen(true)} testId="event-share-to-story">
-            {s.storyCreateBusy ? T('Đang đăng…', 'Posting…') : T('Chia sẻ lên Story', 'Share to Story')}
-          </GlassMenuItem>
-        )}
-        {(showOpenInMap || !cameFromHome || s.myOrgEventKeys.includes(ev.key)) && <GlassMenuDivider />}
-        <GlassMenuItem icon={<IconLink />} onClick={copyLink} testId="event-copy-link">{T('Sao chép link', 'Copy link')}</GlassMenuItem>
-        {inviteMarket === 'VN' && <GlassMenuItem icon={<IconCopy />} onClick={copyZaloInvite} testId="event-copy-zalo">{T('Chép lời mời cho Zalo', 'Copy invite for Zalo')}</GlassMenuItem>}
-        {inviteMarket === 'US' && <GlassMenuItem icon={<IconChat />} onClick={textAFriend} testId="event-text-friend">{T('Nhắn tin cho bạn bè', 'Text a friend')}</GlassMenuItem>}
+        {menuItemsEl}
       </GlassMenu>
       <div data-fade onClick={() => shareEvent(ev)} role="button" aria-label={T('Chia sẻ', 'Share')} data-testid="event-detail-share" style={disc({ position: 'fixed', top: OVERLAY_TOP, right: discRight(1), zIndex: 5, ...inert })}><IconShare /></div>
       {/* Save uses the same isSaved/toggleFav as Home (keys off the real `favorites` table by event id). */}
@@ -752,7 +1077,7 @@ export default function EventDetail({ preview = null } = {}) {
         {/* The photo's foot melts into the page so the ticket floats over one surface (no hard photo/paper edge). */}
         <div aria-hidden style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 110, background: 'linear-gradient(180deg, rgba(var(--bb-bg-rgb),0), var(--bb-bg))', pointerEvents: 'none' }} />
       </div>
-      <div ref={scrollerRef} data-fade onScroll={onSheetScrollRaf} style={{ position: 'relative', zIndex: 1, flex: 1, minHeight: 0, marginTop: PINNED_STRIP, borderRadius: `${SHEET_RADIUS}px ${SHEET_RADIUS}px 0 0`, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
+      <div ref={scrollerRef} data-fade data-testid="event-scroller" onScroll={onSheetScrollRaf} style={{ position: 'relative', zIndex: 1, flex: 1, minHeight: 0, marginTop: PINNED_STRIP, borderRadius: `${SHEET_RADIUS}px ${SHEET_RADIUS}px 0 0`, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
       {/* Story-first (note 70): the pills and the title sit on the photo, in the band above the sheet. A long title grows
           the band (minHeight), never clips. */}
       <div data-testid="event-hero-title" style={{ minHeight: HERO_H - PINNED_STRIP - STUB_RISE, boxSizing: 'border-box', padding: '0 22px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: SPACE.m }}>
@@ -792,50 +1117,12 @@ export default function EventDetail({ preview = null } = {}) {
         {/* BUG 4 fix — a real confirm step, same bottom-sheet visual
             convention ReasonSheet.jsx already established (dim overlay +
             a paper panel sliding up). Cancel writes nothing at all. */}
-        {shareConfirmOpen && (
-          <div onClick={s.storyCreateBusy ? undefined : () => setShareConfirmOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
-            <div onClick={(e) => e.stopPropagation()} style={{ background: paper, padding: '20px 20px 30px', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <div style={bg(ev.img, { width: 64, height: 64, borderRadius: 12, flex: 'none' })} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ ...display(15, { lineHeight: 1.2 }) }}>{ev.name}</div>
-                  <div style={{ fontSize: 11.5, color: ink, opacity: 0.7, marginTop: 2 }}>{ev.when}</div>
-                </div>
-              </div>
-              <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '14px 0 0' }}>
-                {T('Sẽ hiển thị dưới dạng story trong 24 giờ.', 'This will be visible as a story for 24 hours.')}
-              </p>
-              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                <div
-                  onClick={() => setShareConfirmOpen(false)}
-                  data-testid="event-share-to-story-cancel"
-                  style={{ flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 600, padding: '11px 12px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${rule}`, color: ink }}
-                >
-                  {T('Hủy', 'Cancel')}
-                </div>
-                <div
-                  onClick={doShareEventToStory}
-                  data-testid="event-share-to-story-confirm"
-                  style={{ flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 600, padding: '11px 12px', borderRadius: 12, cursor: 'pointer', background: ink, color: paper }}
-                >
-                  {T('Đăng Story', 'Post Story')}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {shareConfirmEl}
         {/* Overview (V8, note 75): who can reserve, then "Good to know" (alcohol, each dietary choice, minimum age, the
             type's other facts) as icon rows; a sub-line only when the host wrote one. Then About. */}
         <div ref={secOverviewRef} data-section="overview" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.xl }}>
         {/* Who can reserve, in plain words with this viewer's result (note 70); the unmet card keeps its action. */}
-        {((crit.criteria && !criteriaIsEveryone(crit.criteria)) || (crit.restricted && crit.blocked && !myBooking && !ev.cancelled && !ended)) && (
-          <div data-testid="event-criteria" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.m }}>
-            <WhoCanReserve criteria={crit.criteria} eligibility={crit.eligibility} signedIn={!!s.user} />
-            {crit.restricted && crit.blocked && !myBooking && !ev.cancelled && !ended && (
-              <div ref={critRef} style={{ scrollMarginBottom: 160 }}><CriteriaUnmetCard eligibility={crit.eligibility} returnTo="event" /></div>
-            )}
-          </div>
-        )}
+        {criteriaEl}
         {needRows.length > 0 && (
           <div data-testid="event-type-facts" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.m }}>
             <span style={sectionLabel}>{T('Cần biết trước khi đến', 'Good to know')}</span>
@@ -919,37 +1206,7 @@ export default function EventDetail({ preview = null } = {}) {
         </div>
         </div>
         {/* L2 (switch event_recap): a guest who went opens their recap card, where the private feedback lives. */}
-        {barState === 'endedAttended' && !preview && s.realEventsById[ev.key] && flagOn(s.featureFlags, 'event_recap') && (
-          <button type="button" onClick={() => openEventRecap(ev.key, 'event')} data-testid="event-open-recap"
-            style={{ ...pillBtn, width: '100%', padding: '12px 14px', border: 'none', ...inkButton(), fontSize: 15, fontWeight: 600 }}>
-            {T('Xem tổng kết và gửi cảm nhận', 'See the recap and share feedback')}
-          </button>
-        )}
-        {isOver && !preview && evOrganizerId && (
-          <div data-testid="event-ended-next" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.m }}>
-            <button type="button" onClick={() => toggleFollowOrganizer(evOrganizerId)} data-testid="event-ended-follow" aria-pressed={evOrgFollowed}
-              style={{ ...pillBtn, width: '100%', minHeight: 44, padding: '11px 14px', border: `1px solid ${clay}`, background: evOrgFollowed ? clayBg : 'transparent', fontSize: 15, fontWeight: 600, color: clay }}>
-              <IconHost />{evOrgFollowed ? T('Đang theo dõi host ✓', 'Following this host ✓') : T('Theo dõi host', 'Follow host')}
-            </button>
-            {hostNext.length > 0 && (
-              <>
-                <div style={sectionHeading}>{T('Sự kiện tiếp theo của host', 'Next from this host')}</div>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {hostNext.map((r, i) => (
-                    <div key={r.key} onClick={() => { scrollerRef.current?.scrollTo?.({ top: 0 }); goEvent(r.key); }} role="button" data-testid={`event-ended-next-${i}`}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 0', borderTop: i > 0 ? `1px solid ${divider}` : 'none', cursor: 'pointer' }}>
-                      <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <span style={{ ...display(15), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-                        <span style={{ fontSize: 13, color: ink3 }}>{whenLabel(r.startsAt, r.tz, s.lang === 'en')}</span>
-                      </span>
-                      <span aria-hidden style={{ color: clay, fontSize: 17, flex: 'none' }}>›</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
+        {afterHostEl}
         {/* "Hình ảnh · N": the horizontal photo strip (V8 tiles). */}
         <div ref={secPhotosRef} data-section="photos" style={{ display: 'flex', flexDirection: 'column', gap: SPACE.m }}>
           <span style={sectionLabel}>{T('Hình ảnh', 'Photos')}{stripList.length > 0 ? ` · ${stripList.length}` : ''}</span>
@@ -1049,60 +1306,7 @@ export default function EventDetail({ preview = null } = {}) {
       {preview?.footer && (
         <div data-testid="event-preview-footer" style={{ flex: 'none', position: 'relative', zIndex: 2, background: paper, padding: '0 16px calc(12px + env(safe-area-inset-bottom, 0px))' }}>{preview.footer}</div>
       )}
-      {includedSheetOpen && (
-        <div
-          onClick={() => setIncludedSheetOpen(false)}
-          data-testid="event-included-sheet"
-          style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.5)', display: 'flex', alignItems: 'flex-end', zIndex: 70, animation: 'banbeFade 0.22s ease both' }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            role="dialog" aria-modal="true" aria-label={T('Giới thiệu & Bao gồm', 'About & Included')}
-            style={{ background: paper, width: '100%', maxHeight: '94%', overflowY: 'auto', borderRadius: '18px 18px 0 0', padding: '10px 20px 28px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20, animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}
-          >
-            <div style={{ width: 36, height: 4, background: rule, borderRadius: 2, margin: '6px auto 0', flex: 'none' }} />
-            {/* Same header as the Share card sheet: centred title, but an X on the right instead of a Close pill. */}
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 36, flex: 'none' }}>
-              <span style={{ ...display(17) }}>{T('Giới thiệu & Bao gồm', 'About & Included')}</span>
-              <span
-                onClick={() => setIncludedSheetOpen(false)}
-                role="button"
-                aria-label={T('Đóng', 'Close')}
-                data-testid="event-included-sheet-close"
-                style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: 36, height: 36, borderRadius: '50%', background: 'rgba(120,120,128,0.16)', backdropFilter: 'blur(14px) saturate(1.6)', WebkitBackdropFilter: 'blur(14px) saturate(1.6)', boxShadow: 'inset 0 0 0 0.5px rgba(255,255,255,0.35), 0 1px 4px rgba(0,0,0,0.12)', color: ink, fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-              >
-                ✕
-              </span>
-            </div>
-            {/* Intro/included-presentation pass (2026-09-28) — intro FIRST,
-                Included items separately below, matching iOS's own sheet
-                exactly. The old truncate-at-90px/"Đọc thêm" toggle is gone
-                — this sheet is already its own scrollable surface, so the
-                full text just shows directly, no expand affordance needed. */}
-            {introParagraphs.length > 0 && (
-              <div data-testid="event-intro-section" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Giới thiệu sự kiện', 'About this event')}</span>
-                {/* Note 69: the host's chosen font and colour (details.intro_font / intro_color, migration 207). */}
-                {introParagraphs.map((p, i) => (
-                  <p key={i} data-intro-font={introStyle(ev.details).font || 'sans'}
-                    style={{ fontSize: 13.5, lineHeight: 1.6, color: introColorValue(introStyle(ev.details).color), fontFamily: introFontFamily(introStyle(ev.details).font), margin: 0, whiteSpace: 'pre-wrap' }}>{p}</p>
-                ))}
-              </div>
-            )}
-            {includedItems.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Bao gồm', 'Included')}</span>
-                {includedItems.map((it, i) => (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ ...display(15) }}>{it.label}</span>
-                    {it.detail && <span style={{ fontSize: 13, lineHeight: 1.55, color: ink }}>{it.detail}</span>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {includedSheetEl}
     </div>
     </div>
   );

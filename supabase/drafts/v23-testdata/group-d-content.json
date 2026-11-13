@@ -1,0 +1,226 @@
+{
+  "_comment": "v2.3 test data group D. Test events only. description = About (VI, 250–450 chars, no seat counts so it never contradicts capacity). intro = date-free, so it never goes stale. included_items keep their labels and gain a short detail. details are MERGED into the existing jsonb (keys from src/data/eventTypeProfiles.json). Copy rule (note 57): no dash or semicolon between ideas.",
+  "events": {
+    "aeie-2": {
+      "description": "Xưởng may của AEIE mở cửa một buổi chiều cho người ngoài. Bạn đi qua bàn cắt, xem rập giấy treo thành hàng, sờ những cuộn vải đang chờ thành áo. Cuối buổi là một góc nhỏ với những mẫu thử chưa bao giờ được bán, mặc thử thoải mái. Nhóm nhỏ, đi theo người thợ cả, hỏi gì cũng được.",
+      "intro": "AEIE mở xưởng may ở Thảo Điền cho một nhóm nhỏ, vào một buổi chiều.\n\nĐi theo người thợ cả qua bàn cắt và kho vải, rồi dừng lại ở góc mẫu thử. Có trà, không có quầy bán hàng.",
+      "included": {
+        "Trà": "trà sen nóng, rót suốt buổi",
+        "tour xưởng 30 phút": "đi cùng thợ cả, nhóm tối đa sáu người"
+      }
+    },
+    "compound": {
+      "description": "Compound ra drop mới trên sân thượng một toà nhà cũ ở Quận 1. Hàng treo trên giá sắt, phòng thử là tấm rèm căng giữa hai cột, gương dựng vào lan can. Mặc thử dưới trời chiều, mua bằng tiền mặt hoặc chuyển khoản. Bán hết là thôi, không giữ hàng, không ship sau.",
+      "intro": "Drop mới của Compound, bán ngay trên sân thượng.\n\nMặc thử dưới trời chiều, mua tại chỗ. Bán hết là đóng cửa.",
+      "included": {
+        "Vào cửa": "vào và ra tự do trong khung giờ",
+        "sticker pack": "bộ sticker của drop này"
+      },
+      "details": {
+        "alcohol_note": "Bia lạnh bán tại quầy"
+      }
+    },
+    "fanci": {
+      "description": "Fanci biến buổi thử đồ thành một bữa tiệc nhỏ. Phòng có gương lớn, đèn ấm và một stylist đi cùng bạn từ lúc bước vào. Thử bao nhiêu bộ cũng được, thợ chỉnh sửa ngồi ngay tại chỗ nếu bạn muốn mang về luôn. Đồ uống mời suốt buổi. Hẹn giờ trước để stylist chuẩn bị sẵn vài bộ hợp dáng bạn.",
+      "intro": "Một đêm thử đồ có stylist riêng, đồ uống và thợ chỉnh sửa ngồi ngay bên cạnh.\n\nĐến tay không, về với một bộ vừa người.",
+      "included": {
+        "Stylist": "một stylist đi cùng bạn cả buổi",
+        "đồ uống": "vang trắng hoặc nước chanh sả",
+        "chỉnh sửa tại chỗ": "lên lai, bóp eo, xong trong 20 phút"
+      },
+      "details": {
+        "alcohol_note": "Vang trắng mời trong buổi"
+      }
+    },
+    "motlop": {
+      "description": "Một đêm chỉ nói về vải. Bốn nhà thiết kế nhận cùng một chất liệu, một tấm lanh mộc dệt tay, và mỗi người cắt theo một cách. Họ kể vì sao chọn đường cắt đó, cái gì hỏng, cái gì giữ lại. Bốn bộ đồ treo giữa phòng để bạn lật xem từng đường may. Cuối buổi có thể đặt may lại bất kỳ bộ nào.",
+      "intro": "Bốn nhà thiết kế, cùng một tấm vải, bốn cách cắt.\n\nMột buổi talk nhỏ về chất liệu, có đồ thật để cầm lên xem.",
+      "included": {
+        "Talk 40 phút": "bốn nhà thiết kế, mỗi người mười phút",
+        "đồ uống": "một ly bất kỳ ở quầy"
+      },
+      "details": {
+        "alcohol_note": "Quầy có bia và vang, tính riêng"
+      }
+    },
+    "orbit": {
+      "description": "Sàn thép, sân khấu tròn, khói mỏng. Bốn mươi phút trình diễn liền mạch, không nghỉ, không MC. Đây là lần đầu bộ sưu tập Afterlight của L'Édition rời khỏi cửa hàng. Sau show, các mẫu đồ được treo lại để bạn xem gần, và nhà thiết kế ở lại trò chuyện. Đến sớm để có chỗ đứng sát sàn.",
+      "intro": "ORBIT là show đầu tiên của bộ sưu tập Afterlight bên ngoài cửa hàng L'Édition.\n\nBốn mươi phút không nghỉ, rồi đồ được treo lại để xem gần.",
+      "included": {
+        "Welcome drink": "một ly khi vào cửa",
+        "zine L'Édition №4": "bản in giới hạn, mang về"
+      },
+      "details": {
+        "alcohol_note": "Một ly chào mừng khi vào cửa"
+      }
+    },
+    "khongnguoi": {
+      "description": "Ba mươi tấm ảnh thành phố không một bóng người, chụp trong sáu năm, phần lớn vào lúc năm giờ sáng hoặc ngày mùng một Tết. Trần Vũ đi bộ với một máy phim và chờ đến khi con đường trống hẳn. Triển lãm treo theo giờ chụp, từ sáng sớm tới khuya. Tác giả có mặt cả buổi để kể về từng tấm.",
+      "intro": "Ba mươi tấm ảnh Sài Gòn khi không có ai.\n\nTrần Vũ chụp trong sáu năm, phần lớn lúc trời chưa sáng. Ảnh treo theo giờ chụp.",
+      "included": {
+        "Vào cửa": "xem không giới hạn thời gian",
+        "print khổ nhỏ": "một tấm in A6 chọn trong năm mẫu"
+      }
+    },
+    "noigiay": {
+      "description": "Một giờ ngồi cùng người làm giấy dó đời thứ ba của Xưởng Giấy Dó. Anh kể về cây dó, về nồi nấu vỏ, về tấm liềm xeo giấy, và vì sao giấy này sống được vài trăm năm. Có mẫu để sờ, có tấm đang phơi dở để xem gần. Mỗi người mang về một xấp nhỏ. Phù hợp cả cho người chưa từng cầm giấy dó.",
+      "intro": "Một buổi trò chuyện về giấy dó với người làm giấy đời thứ ba.\n\nCó mẫu để sờ và một xấp giấy mang về.",
+      "included": {
+        "Talk": "khoảng 60 phút, hỏi đáp cuối buổi",
+        "trà": "trà nóng suốt buổi",
+        "mẫu giấy mang về": "một xấp năm tờ khổ A5"
+      }
+    },
+    "phong302": {
+      "description": "Triển lãm diễn ra trong một căn hộ tập thể cũ ở Quận 5. Mỗi phòng thuộc về một tác giả, đồ đạc của chủ nhà được giữ nguyên, tranh treo giữa tủ thờ và kệ sách. Lê Na, Đỗ Khang và Hà My làm việc với sơn dầu, sơn mài, tranh in và sắp đặt. Vào theo khung giờ để căn hộ không quá đông.",
+      "intro": "Ba tác giả, ba căn phòng trong một căn hộ tập thể cũ, đồ đạc giữ nguyên.\n\nVào theo khung giờ, mỗi lượt một nhóm nhỏ.",
+      "included": {
+        "Vào cửa theo khung giờ": "mỗi lượt 45 phút, chọn khung khi giữ chỗ"
+      }
+    },
+    "sonmai-2": {
+      "description": "Hai thế hệ sơn mài treo đối diện nhau trong cùng một phòng. Một bên là tranh của Nguyễn Tư từ những năm tám mươi, bên kia là tác phẩm mới của con gái ông, Nguyễn Tư An. Người xem đứng ở giữa và tự thấy chỗ hai người giống nhau, chỗ họ cãi nhau. Giám tuyển có mặt từ sáu giờ rưỡi.",
+      "intro": "Cha và con gái, hai thế hệ sơn mài, treo đối diện nhau.\n\nĐứng ở giữa và tự xem cuộc đối thoại.",
+      "included": {
+        "Vào cửa": "xem không giới hạn thời gian",
+        "tài liệu triển lãm": "sách mỏng song ngữ về từng tác phẩm"
+      }
+    },
+    "vungtrang": {
+      "description": "Sáu họa sĩ cùng làm việc với một màu trắng. Phạm Thu, Lý Đan, Ngô Bảo và ba người bạn treo tranh và sắp đặt về sự trống, về những gì còn lại khi bỏ bớt. Triển lãm mở cửa một đêm cho công chúng trước khi chuyển về kho của quỹ. Giám tuyển dẫn hai vòng xem lúc bảy giờ và tám giờ.",
+      "intro": "Sáu họa sĩ, một màu trắng, một đêm mở cửa.\n\nGiám tuyển dẫn hai vòng xem, catalogue mang về.",
+      "included": {
+        "Catalogue": "bản in 40 trang",
+        "trò chuyện với giám tuyển": "hai vòng xem, lúc 19:00 và 20:00"
+      }
+    },
+    "bangcoi": {
+      "description": "Phòng nghe nhỏ ở Quận 3, ghế xếp quanh một dàn loa cũ và một đầu băng cối. Mỗi tối chủ nhà chọn hai cuộn băng, nhạc folk và indie Việt thập niên chín mươi, và kể chuyện từng cuộn. Không điện thoại trong phòng nghe, có hộp gửi ở cửa. Trà nóng rót suốt buổi.",
+      "intro": "Nghe băng cối qua dàn loa cũ, trong một căn phòng không có điện thoại.\n\nHai cuộn băng, một ấm trà, và câu chuyện của người sưu tầm.",
+      "included": {
+        "Vào cửa": "một chỗ ngồi trong phòng nghe",
+        "trà nóng": "trà mạn rót suốt buổi"
+      }
+    },
+    "chieucham": {
+      "description": "Buổi chiều nghe nhạc mộc ở Yentown, không danh sách bài định trước. Mây Chiều hát, Tú đệm guitar, và họ chơi theo những gì khán giả đang ngồi đó muốn nghe. Đến sớm có ghế, đến muộn ngồi bậc thang. Cà phê và nước ép tính riêng ở quầy, vào cửa tự do. Mang theo một bài bạn muốn nghe, họ có thể chơi.",
+      "intro": "Một buổi chiều nhạc mộc, không danh sách bài, vào cửa tự do.\n\nĐến sớm có ghế, đến muộn ngồi bậc thang.",
+      "included": {
+        "Vào cửa tự do": "không cần vé giấy, giữ chỗ để có ghế",
+        "cà phê tính riêng": "quầy mở suốt buổi"
+      }
+    },
+    "jazzgac": {
+      "description": "Căn gác gỗ ở Quận 1, khoảng hai mươi chỗ ngồi sát sân khấu. Bộ ba Gác chơi không micro, kèn và contrabass đủ lấp căn phòng. Set một từ chín giờ, set hai từ mười giờ với khách mời Linh Sax. Một đồ uống đã gồm trong vé, quầy mở tới khi tắt đèn. Cầu thang dốc, nên đi giày đế bằng.",
+      "intro": "Jazz không micro trên một căn gác gỗ ở Quận 1.\n\nHai set, một khách mời, một đồ uống đã gồm trong vé.",
+      "included": {
+        "2 set": "21:00 và 22:00, mỗi set khoảng 45 phút",
+        "một đồ uống": "bia, vang hoặc nước không cồn"
+      },
+      "details": {
+        "alcohol_note": "Một đồ uống gồm trong vé, quầy tính riêng sau đó"
+      }
+    },
+    "modular": {
+      "description": "Bốn nghệ sĩ, bốn dàn synth modular, nối dây trực tiếp trước mặt khán giả. Không có bài thu sẵn, mỗi âm thanh được tạo ra ngay lúc đó và không lặp lại. Phòng đứng, đèn thấp, loa lớn. Có earplugs ở cửa, quầy bia mở cả đêm. Mở cửa trước nửa giờ để bạn xem các dàn máy khi chưa bật tiếng.",
+      "intro": "Một đêm synth modular, nối dây trực tiếp, không bài nào lặp lại.\n\nPhòng đứng, loa lớn, earplugs ở cửa.",
+      "included": {
+        "Vào cửa": "vào và ra tự do",
+        "earplugs miễn phí": "lấy ở bàn soát vé"
+      },
+      "details": {
+        "alcohol_note": "Bia và cocktail bán tại quầy"
+      }
+    },
+    "pianomuon": {
+      "description": "Một cây đàn upright, một người chơi, đèn tắt gần hết. Minh Châu chơi bốn mươi lăm phút Chopin và Satie, không giới thiệu giữa các bài. Khán giả ngồi trên sofa và nệm quanh đàn. Một ly vang đỏ đã gồm trong vé, rót khi bạn đến. Đến trước mười phút, cửa đóng khi bắt đầu chơi.",
+      "intro": "Bốn mươi lăm phút piano trong căn phòng gần như tối.\n\nMột người chơi, một ly vang, không ai nói chuyện giữa các bài.",
+      "included": {
+        "1 set": "khoảng 45 phút, không nghỉ",
+        "một ly vang": "vang đỏ rót khi vào"
+      },
+      "details": {
+        "alcohol_note": "Một ly vang đỏ gồm trong vé"
+      }
+    },
+    "bandai": {
+      "description": "Một chiếc bàn dài ở Thảo Điền cho những người chưa từng gặp nhau. Sáu món đi theo mùa, rượu vang rót theo món, nước lọc luôn đầy bình. Không ai rời bàn trước món cuối, và thường là ngồi thêm một lúc nữa. Báo trước nếu bạn kiêng món gì, bếp sẽ đổi cho bạn.",
+      "intro": "Một chiếc bàn dài, sáu món, và những người lạ ngồi cạnh nhau.\n\nRượu rót theo món, không ai rời bàn trước món cuối.",
+      "included": {
+        "6 món": "thực đơn theo mùa, báo trước nếu kiêng",
+        "rượu vang": "rót theo từng món",
+        "nước lọc đầy bình": "luôn có trên bàn"
+      },
+      "details": {
+        "alcohol_note": "Vang rót theo món, có lựa chọn không cồn",
+        "dietary_note": "Báo trước 24 giờ để bếp đổi món"
+      }
+    },
+    "banrieng": {
+      "description": "Bàn Riêng không đăng công khai. Minh nấu cho vài người quen của người quen trong căn bếp ở Bình Thạnh, bảy món dựa trên những gì chợ sáng có, hải sản là chính. Rượu vang chọn riêng cho từng món. Ăn mặc lịch sự, đến đúng giờ vì món đầu ra ngay khi đủ người.",
+      "intro": "Một bàn ăn riêng, chỉ dành cho người được mời.\n\nBảy món theo chợ sáng, rượu vang chọn riêng cho từng món.",
+      "included": {
+        "7 món": "hải sản là chính, đổi được nếu kiêng",
+        "rượu vang chọn riêng": "một ly cho mỗi món"
+      },
+      "details": {
+        "alcohol_note": "Vang chọn riêng theo món",
+        "dietary_note": "Có thực đơn không thịt, báo trước khi giữ chỗ"
+      }
+    },
+    "bepnho": {
+      "description": "Một ga-ra cải tạo ở Bình Thạnh, một chiếc bàn dài. Minh nấu những gì chợ Bà Chiểu có vào sáng hôm đó, nên thực đơn không lặp lại và không ai biết trước. Năm món, rượu gạo rót tới khi hết chuyện, cà phê phin để kết thúc. Người lạ ngồi cạnh nhau, ra về thường là bạn.",
+      "intro": "Bữa tối trong một ga-ra ở Bình Thạnh, thực đơn theo chợ sáng.\n\nNăm món, rượu gạo, và người lạ ngồi cạnh nhau.",
+      "included": {
+        "5 món": "theo chợ Bà Chiểu sáng hôm đó",
+        "rượu gạo": "rót tới khi hết chuyện",
+        "cà phê": "cà phê phin cuối bữa"
+      },
+      "details": {
+        "alcohol_note": "Rượu gạo gồm trong vé",
+        "dietary_note": "Có bản chay cho từng món"
+      }
+    },
+    "comnha": {
+      "description": "Bữa cơm quanh bếp than trên sân thượng ở Quận 3. Mai nướng cá theo mùa, nấu canh chua, rau hái từ chậu trên sân. Bốn món ăn chung theo kiểu cơm nhà, trà nóng và một món tráng miệng. Không có rượu, mặc thoải mái, mang theo câu chuyện. Bàn nhỏ, nên mọi người thường nói chuyện tới khuya.",
+      "intro": "Cơm nhà quanh bếp than trên sân thượng.\n\nCá nướng theo mùa, canh chua, rau hái tại chỗ.",
+      "included": {
+        "4 món": "ăn chung kiểu cơm nhà",
+        "trà": "trà nóng suốt bữa",
+        "tráng miệng": "chè hoặc trái cây theo mùa"
+      },
+      "details": {
+        "dietary_note": "Có bản chay, báo khi giữ chỗ"
+      }
+    },
+    "phokhuya": {
+      "description": "Phở lúc mười một giờ đêm ở một góc hẻm Quận 4. Tùng hầm nước dùng từ trưa, xương bò và quế hồi rang trên lửa than. Mười hai ghế nhựa, một tô, quẩy giòn và trà đá. Dành cho người đi làm ca muộn, người không ngủ được, và người chỉ muốn một tô phở thật nóng.",
+      "intro": "Một tô phở lúc nửa đêm, nước dùng hầm từ trưa.\n\nGhế nhựa, quẩy giòn, trà đá.",
+      "included": {
+        "1 tô": "tái, chín hoặc nạm",
+        "quẩy": "chiên ngay khi bạn ngồi",
+        "trà đá": "rót thêm thoải mái"
+      },
+      "details": {
+        "dietary_note": "Nói trước nếu cần bỏ hành hoặc rau thơm"
+      }
+    },
+    "vuonsau": {
+      "description": "Bữa tối trong khu vườn sau nhà ở Gò Vấp, đèn dây treo giữa hai cây xoài. Năm món dùng rau hái tại vườn, có bản chay và không gluten. Cocktail mở màn pha từ trái cây trong vườn. Nếu trời mưa, cả bàn dời vào hiên và bữa tối vẫn tiếp tục. Có muỗi vào mùa mưa, chủ nhà để sẵn tinh dầu sả.",
+      "intro": "Bữa tối giữa vườn, rau hái tại chỗ, đèn dây trên đầu.\n\nMưa thì dời vào hiên, bữa tối vẫn tiếp tục.",
+      "included": {
+        "5 món": "rau hái tại vườn, có bản chay",
+        "cocktail mở màn": "pha từ trái cây trong vườn"
+      },
+      "details": {
+        "alcohol_note": "Cocktail mở màn, có bản không cồn",
+        "dietary_note": "Có bản chay và không gluten"
+      }
+    }
+  },
+  "organizers": {
+    "Gác": {
+      "about": "Căn gác gỗ trên một toà nhà cũ ở Quận 1, mở cửa cho jazz không micro vào cuối tuần. Bộ ba Gác chơi thường xuyên và mời một khách mời mỗi đêm."
+    }
+  }
+}

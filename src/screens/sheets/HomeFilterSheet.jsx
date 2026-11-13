@@ -65,7 +65,9 @@ const Section = ({ title, right, children }) => (
 // the CTA are over the events IN THE MAP AREA (the caller passes those `items`), so "Show N" is the resulting list.
 const MAP_DATE_OPTIONS = ['any', 'today', 'tomorrow', 'weekend'];
 
-export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel, simpleShell = false, mapMode = false, forYou = null }) {
+// `browseMode` (v2.3 Browse by type / See all, note 81): the same sheet titled "Filter Music", with When, Price and Seats
+// only (the type chips already choose the type, and the list keeps its own order), over that list's `items`.
+export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel, simpleShell = false, mapMode = false, forYou = null, browseMode = false, title = null }) {
   const dateOptions = mapMode ? MAP_DATE_OPTIONS : DATE_OPTIONS;
   const [draft, setDraft] = useState(() => normalizeFilters(filters));
   const [draftSort, setDraftSort] = useState(sort || 'soonest');
@@ -124,19 +126,19 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
   return createPortal(
     <div onClick={onClose} data-testid="home-filter-backdrop"
       style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(12,12,12,0.45)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
-      <div role="dialog" aria-modal="true" aria-label={T('Bộ lọc', 'Filters')} onClick={(e) => e.stopPropagation()} data-testid="home-filter-sheet"
+      <div role="dialog" aria-modal="true" aria-label={title || T('Bộ lọc', 'Filters')} onClick={(e) => e.stopPropagation()} data-testid="home-filter-sheet"
         style={{ background: paper, color: ink, borderRadius: '22px 22px 0 0', maxHeight: '88%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both', filter: areaOpen ? 'blur(6px) brightness(0.8)' : 'none', transition: 'filter 0.25s ease' }}>
         {/* Reset on the left, close (×) on the right; equal side columns keep the title centred. */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '10px 14px 8px' }}>
           <button type="button" onClick={() => { setDraft(normalizeFilters(DEFAULT_FILTERS)); setDraftSort('soonest'); }} data-testid="home-filter-reset"
             style={{ justifySelf: 'start', border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, opacity: 0.75, cursor: 'pointer', padding: '8px 6px' }}>{T('Đặt lại', 'Reset')}</button>
-          <span style={{ ...display(17), textAlign: 'center' }}>{T('Bộ lọc', 'Filters')}</span>
+          <span style={{ ...display(17), textAlign: 'center' }}>{title || T('Bộ lọc', 'Filters')}</span>
           <button type="button" onClick={onClose} aria-label={T('Đóng', 'Close')} data-testid="home-filter-close"
             style={{ justifySelf: 'end', width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(var(--bb-fg-rgb),0.07)', color: ink, fontSize: 18, cursor: 'pointer' }}>×</button>
         </div>
 
         <div style={{ overflowY: 'auto', padding: '0 20px', flex: 1 }}>
-          {forYou && (
+          {forYou && !browseMode && (
             <Section title={T('Dành cho bạn', 'For You')} right={
               <button type="button" role="switch" aria-checked={forYou.on} onClick={() => forYou.set(!forYou.on)} data-testid="home-filter-for-you"
                 style={{ width: 46, height: 28, borderRadius: 14, border: 'none', padding: 3, cursor: 'pointer', background: forYou.on ? 'var(--bb-clay)' : 'rgba(var(--bb-fg-rgb),0.2)', display: 'flex', justifyContent: forYou.on ? 'flex-end' : 'flex-start' }}>
@@ -146,12 +148,12 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
               <div style={{ fontSize: 12.5, opacity: 0.65 }}>{T('Chỉ hiện sự kiện hợp với sở thích của bạn.', 'Only events that match your preferences.')}</div>
             </Section>
           )}
-          <Section title={T('Khu vực', 'Location')}>
+          {!browseMode && <Section title={T('Khu vực', 'Location')}>
             <button type="button" onClick={() => setAreaOpen(true)} data-testid="home-filter-area"
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minHeight: 44, border: `1px solid ${rule}`, borderRadius: RADIUS.tile, background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, padding: '0 14px', cursor: 'pointer' }}>
               <span>{areaLabel || T('Mọi nơi', 'Everywhere')}</span><span aria-hidden="true">›</span>
             </button>
-          </Section>
+          </Section>}
 
           {/* On the Map these pills drive the day window (the time bar): they dim, never remove. */}
           <Section title={T('Khi nào', 'When')}>
@@ -212,7 +214,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
             </div>
           </Section>
 
-          <Section title={T('Danh mục', 'Category')}>
+          {!browseMode && <Section title={T('Danh mục', 'Category')}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {CATEGORY_DEFS.filter(c => c.key !== 'all').map(c => {
                 const on = draft.cats.includes(c.key);
@@ -224,7 +226,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
                 );
               })}
             </div>
-          </Section>
+          </Section>}
 
           <Section title={T('Chỗ ngồi', 'Seats')}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -233,7 +235,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
             </div>
           </Section>
 
-          {!mapMode && (
+          {!mapMode && !browseMode && (
           <Section title={T('Sắp xếp', 'Sort by')}>
             <div role={simpleShell ? 'group' : undefined} aria-label={simpleShell ? T('Sắp xếp', 'Sort by') : undefined}
               data-testid={simpleShell ? 'home-sort-button' : undefined} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>

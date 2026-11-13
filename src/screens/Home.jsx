@@ -38,6 +38,13 @@ import ActivationChecklistCard from './ActivationChecklistCard.jsx';
 import { GuestBrowseBanner } from './GuestPromptSheet.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { CategoryRow, CategorySheet, HomeSearchBar, DiscoveryCard, DiscoveryRow, NextUpBanner } from '../components/home/HomeDiscoveryParts.jsx';
+import ShortlistV23, { TAB_LABEL } from '../components/home/ShortlistV23.jsx';
+import Browse from './Browse.jsx';
+import LiveLine from '../components/home/LiveLine.jsx';
+import LiveNowSheet from './sheets/LiveNowSheet.jsx';
+import { liveUpdates } from '../lib/liveLine.js';
+import { useReducedMotion } from '../lib/useReducedMotion.js';
+import { browseFilters as toBrowseFilters } from '../lib/browse.js';
 import HomeShellV5 from '../components/home/HomeShellV5.jsx';
 import QuickSheetV5 from '../components/home/QuickSheetV5.jsx';
 // Map v6 (note 74): the card pager's photos (cover first, max 6).
@@ -102,7 +109,13 @@ export const FILTER_DEFS = [
 ];
 
 
-export default function Home() {
+const TYPE_DEF_BY_KEY = new Map(categoryDefs().map(d => [d.key, d]));
+
+// v2.3 Browse by type / See all (note 81): its own screen ('browse', /browse and /see-all/<tab>), built by Home so the
+// list reads the very same discovery items, tabs and filters as Home (no second filter path, note 50).
+export function BrowseScreen() { return <Home browse />; }
+
+export default function Home({ browse = false }) {
   const {
     state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, toggleFav,
     goEvent, pickFilter, clearFilters, toggleHomeFilter, goMapExplore, toggleLang, toggleTheme, setHomeView, startHosting,
@@ -115,7 +128,7 @@ export default function Home() {
     openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, loadPulse,
     loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openEventPreferences,
     openSearch, setHomeFilters, located, allowLocation, rewardsEnabled, rewardsV2Enabled, openBookingConfirmed,
-    resolvedTheme,
+    resolvedTheme, openBrowse, setBrowse, backFromBrowse, openOrganizerProfile, openDockCreate,
   } = useBanBe();
 
   const s = state;
@@ -123,6 +136,8 @@ export default function Home() {
   // Simple Shell (switch simple_shell, note 66): Going out | Hosting in the header, one hero, one chip row, location in
   // the search bar, map as a Home view. Off = this screen exactly as before.
   const simpleShell = flagOn(s.featureFlags, 'simple_shell');
+  // v2.3 (note 81, switch home_v23, on top of simple_shell): paged Shortlist, rail of 4 + See all, Browse by type.
+  const v23 = simpleShell && flagOn(s.featureFlags, 'home_v23');
   // Calm Pass phase 3 (migration 208, note 71): Home event cards as polaroids. Cards view only; the list is unchanged.
   const polaroidCards = flagOn(s.featureFlags, 'polaroid_cards');
   // Follow-up (note 66): the Hosting view is `homeView` (session-only), shown only while organizer mode is on
@@ -315,7 +330,7 @@ export default function Home() {
         priceVnd: e.priceVnd || 0, currency: e.currency, tz: e.tz,
         status: e.status,
         // Note 50: Search, the fill badge and the Nearest sort need these; they used to be dropped here.
-        keywords: e.keywords || [], organizerName: e.organizerName || '', organizerId: e.organizerId,
+        keywords: e.keywords || [], organizerName: e.organizerName || '', organizerId: e.organizerId, organizerAvatarUrl: e.organizerAvatarUrl || '',
         capacity: e.capacity ?? null, lat: e.lat, lng: e.lng, description: e.description || '',
       };
     }), [s.discoveryEvents]);
@@ -539,14 +554,96 @@ export default function Home() {
       };
     };
     const base = { ...homeFilters, date: 'any' };
-    const byDate = (date) => applyDiscoveryFilters(discoveryItems, { ...base, date }, nowMs).filter(open).slice(0, 5).map(shape);
+    // v2.3 (note 81): at most four frames, then the See all card.
+    const railMax = v23 ? 4 : 5;
+    const byDate = (date) => applyDiscoveryFilters(discoveryItems, { ...base, date }, nowMs).filter(open).slice(0, railMax).map(shape);
     const byKey = new Map(discoveryItems.map(it => [it.key, it]));
     const ranked = forYouRanked.map(m => byKey.get(m.key)).filter(Boolean).filter(open);
     const soonest = applyDiscoveryFilters(discoveryItems, base, nowMs).filter(open);
-    return { foryou: (ranked.length ? ranked : soonest).slice(0, 5).map(shape), tonight: byDate('today'), weekend: byDate('weekend') };
+    return { foryou: (ranked.length ? ranked : soonest).slice(0, railMax).map(shape), tonight: byDate('today'), weekend: byDate('weekend') };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simpleShell, discoveryItems, homeFilters, forYouRanked, T, trStatus, Math.floor(nowMs / 60000)]);
+  }, [simpleShell, v23, discoveryItems, homeFilters, forYouRanked, T, trStatus, Math.floor(nowMs / 60000)]);
+  // Home from the v5 prototype (note 80): which hero tab is open (For You | Tonight | Weekend).
+  const [heroTab, setHeroTab] = useState('foryou');
+  // v2.3 (note 81, switch home_v23, on top of simple_shell): the Shortlist under the rail is the WHOLE tab, in the
+  // tab's order, narrowed by Home's filters (the rail stays the tab's picks). total = before the filters.
+  // The whole tab, in the tab's own order (For You ranked, else soonest), before Home's filters. Shared by the
+  // Shortlist and See all.
+  const tabItems = useCallback((tab) => {
+    const open = (it) => !it.ev.cancelled && Number.isFinite(it.startsAt) && it.startsAt >= nowMs - 3600e3;
+    if (tab === 'tonight' || tab === 'weekend') {
+      return applyDiscoveryFilters(discoveryItems, { ...DEFAULT_FILTERS, date: tab === 'tonight' ? 'today' : 'weekend' }, nowMs).filter(open);
+    }
+    if (tab === 'foryou') {
+      const byKey = new Map(discoveryItems.map(it => [it.key, it]));
+      const ranked = forYouRanked.map(m => byKey.get(m.key)).filter(Boolean).filter(open);
+      if (ranked.length) return ranked;
+    }
+    return applyDiscoveryFilters(discoveryItems, DEFAULT_FILTERS, nowMs).filter(open);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discoveryItems, forYouRanked, Math.floor(nowMs / 60000)]);
+  // One v2.3 row (EventRowV23): kicker type · when, title, place or status, price.
+  const shapeRow = useCallback((it) => {
+    const e = it.ev;
+    const fill = fillBadge(it.booked, it.capacity);
+    const soldOut = it.soldOut || fill.soldOut;
+    // The type's own name (eventTypeProfiles.json) in the reader's language, not the catalogue's raw label.
+    const def = TYPE_DEF_BY_KEY.get(it.catKeys?.[0]);
+    return {
+      key: e.key, name: e.name, img: e.img,
+      kicker: [def ? T(def.vi, def.en) : trStatus(e.catDisplay || e.cat), badgeDate(it.startsAt, e.isReal ? e.tz : null)].filter(Boolean).join(' · '),
+      place: [e.isReal ? e.area : e.locationLabel, it.distanceKm != null ? `${it.distanceKm.toFixed(1).replace('.', ',')} km` : null].filter(Boolean).join(' · '),
+      priceLabel: it.priceVnd === 0 ? T('Miễn phí', 'Free') : trStatus(e.price), isFree: it.priceVnd === 0,
+      status: soldOut ? { tone: 'alert', text: T('Hết chỗ', 'Sold out') }
+        : fill.almostFull ? { tone: 'honey', text: T(`Sắp hết · còn ${fill.left} chỗ`, `Almost full · ${fill.left} left`) } : null,
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [T, trStatus]);
+  const shortlist = useMemo(() => {
+    if (!v23) return null;
+    const tabAll = tabItems(heroTab);
+    const shown = applyDiscoveryFilters(tabAll, homeFilters, nowMs);
+    return { rows: shown.map(shapeRow), total: tabAll.length };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [v23, heroTab, tabItems, homeFilters, shapeRow, Math.floor(nowMs / 60000)]);
+  // v2.3 live line (note 81): the daily Pulse ranking + real seat fill + the Tonight / Weekend counts, only for events
+  // Home actually lists (so every update can be opened). One list for the ticker, the Reduced form and Live now.
+  const [liveIndex, setLiveIndex] = useState(0);
+  const reducedMotion = useReducedMotion();
+  const [liveOpen, setLiveOpen] = useState(false);
+  const live = useMemo(() => {
+    if (!v23 || browse) return [];
+    const byKey = new Map(discoveryItems.map(it => [it.key, it]));
+    const lookup = (id) => {
+      const it = byKey.get(id);
+      if (!it || it.ev.cancelled) return null;
+      return { seatsLeft: fillBadge(it.booked, it.capacity).left, when: badgeDate(it.startsAt, it.ev.isReal ? it.ev.tz : null) };
+    };
+    return liveUpdates({ pulse: s.pulseDaily, lookup, tonight: tabItems('tonight').length, weekend: tabItems('weekend').length });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [v23, browse, s.pulseDaily, discoveryItems, tabItems, T, Math.floor(nowMs / 60000)]);
+  useEffect(() => { if (liveIndex >= live.length) setLiveIndex(0); }, [live.length, liveIndex]);
+  // Browse's scope: the whole catalogue (every live event Home lists) or one tab. Catalogue events that share a key
+  // with a real row lose its host fields in the merge, so the host (id, name, photo) is read from the loaded real row.
+  const browseItems = useMemo(() => {
+    if (!browse) return null;
+    const scope = s.browseScope || 'all';
+    const base = scope === 'all' ? applyDiscoveryFilters(discoveryItems, DEFAULT_FILTERS, nowMs).filter(it => !it.ev.cancelled) : tabItems(scope);
+    return base.map((it) => {
+      const real = s.realEventsById?.[it.key];
+      if (it.ev.organizerId || !real?.organizerId) return it;
+      return { ...it, ev: { ...it.ev, organizerId: real.organizerId, organizerName: real.organizerName || '', organizerAvatarUrl: real.organizerAvatarUrl || '' } };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [browse, s.browseScope, discoveryItems, tabItems, s.realEventsById, Math.floor(nowMs / 60000)]);
+  const onShortlistAction = (act) => {
+    if (act === 'clear-filters') { clearFilters(); set({ homeSort: 'soonest' }); }
+    else if (act === 'map') openMapWithContext();
+    else if (act === 'types') openBrowse({ type: 'all', scope: 'all' });
+  };
+
   const heroSeeAll = (tab) => {
+    if (v23) { openBrowse({ type: 'all', scope: tab }); return; }
     if (tab === 'foryou') { if (!s.filterForYou && hasForYou) toggleHomeFilter('forYou'); }
     else if (homeFilters.date !== (tab === 'tonight' ? 'today' : 'weekend')) pickFilter(tab === 'tonight' ? 'today' : 'weekend');
     setTimeout(() => document.querySelector('[data-testid^="home-event-"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 120);
@@ -769,8 +866,7 @@ export default function Home() {
       width: inFrame ? frame.width : window.innerWidth } });
   };
   const areaName = curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label;
-  // Home from the v5 prototype (note 80): hero tab, Browse counts, By type summary and the type pick.
-  const [heroTab, setHeroTab] = useState('foryou');
+  // Home from the v5 prototype (note 80): Browse counts, By type summary and the type pick (heroTab is declared above, the Shortlist reads it).
   const [quickOpen, setQuickOpen] = useState(false);
   const shellTypeCounts = useMemo(() => {
     const o = { ...categoryCountMap };
@@ -1008,6 +1104,18 @@ export default function Home() {
       </div>
   ) : null;
 
+  if (browse) {
+    return (
+      <Browse T={T} lang={s.lang === 'en' ? 'en' : 'vi'} scope={s.browseScope || 'all'} type={s.browseType || 'all'} query={s.browseQuery || ''}
+        filters={s.browseFilters} items={browseItems || []} now={nowMs} areaLabel={areaName} shapeRow={shapeRow}
+        onType={(k) => setBrowse({ browseType: k })} onQuery={(q) => setBrowse({ browseQuery: q })}
+        onFilters={(f) => setBrowse({ browseFilters: f ? toBrowseFilters(f) : DEFAULT_FILTERS })}
+        onBack={backFromBrowse} onOpenEvent={goEvent} onOpenHost={(id) => openOrganizerProfile(id, 'browse')}
+        onMap={(type) => goMapExplore({ source: 'browse', filters: { ...toBrowseFilters(s.browseFilters), cats: type && type !== 'all' ? [type] : [] } })}
+        onHost={openDockCreate} />
+    );
+  }
+
   return (
     <>
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Home">
@@ -1112,7 +1220,17 @@ export default function Home() {
           onFindType={() => setCategorySheetOpen(true)} onPickType={shellPickType}
           onSetPrefs={() => openEventPreferences('home')}
           onBrowseAll={() => { setHomeFilters(f => ({ ...f, date: 'any' })); setTimeout(() => (document.querySelector('[data-testid="home-browse"]') || document.querySelector('[data-testid="home-by-type"]'))?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 120); }}
-          hostBody={<div data-reveal="1"><HostHome /><div style={{ height: 44 }} /></div>} below={surveySection}>
+          hostBody={<div data-reveal="1"><HostHome /><div style={{ height: 44 }} /></div>} below={surveySection}
+          seeAll={v23 && heroTab !== 'hosting' ? { count: tabItems(heroTab).length, label: TAB_LABEL[heroTab] } : null}
+          onBrowseType={v23 ? (k) => openBrowse({ type: k, scope: 'all' }) : null}
+          browseTotal={v23 ? applyDiscoveryFilters(discoveryItems, DEFAULT_FILTERS, nowMs).filter(it => !it.ev.cancelled).length : null}
+          shortlist={shortlist && (
+            <div data-reveal="2">
+              <LiveLine updates={live} index={Math.min(liveIndex, Math.max(0, live.length - 1))} onIndex={setLiveIndex} onOpen={() => setLiveOpen(true)} T={T} />
+              <ShortlistV23 T={T} lang={s.lang === 'en' ? 'en' : 'vi'} tab={heroTab} rows={shortlist.rows} total={shortlist.total}
+                filterBadge={filterBadge} onFilters={() => set({ homeFilterSheetOpen: true })} onOpenEvent={goEvent} onAction={onShortlistAction} />
+            </div>
+          )}>
           <div data-reveal="1" data-testid="home-hero" data-hero={goerHero}>
             {goerHero === 'nextUp' && (
               <NextUpBanner item={nextUp && { ...nextUp, when: nextUp.status }} onOpen={() => openSaved(nextUp)} T={T}
@@ -1125,6 +1243,10 @@ export default function Home() {
           </div>
         </HomeShellV5>
         {quickOpen && <QuickSheetV5 onClose={() => setQuickOpen(false)} />}
+        {liveOpen && live.length > 0 && (
+          <LiveNowSheet updates={live} shownIndex={reducedMotion ? liveIndex : null} T={T} onClose={() => setLiveOpen(false)}
+            onOpenEvent={(id, i) => { setLiveIndex(i); goEvent(id); }} />
+        )}
         {categorySheetOpen && (
           <CategorySheet keys={categorySheetKeys(categoryDefs(), s.lang === 'en' ? 'en' : 'vi')} counts={categoryCountMap} values={homeFilters.cats} T={T}
             onPick={(k) => { shellPickType(k); setCategorySheetOpen(false); }} onClose={() => setCategorySheetOpen(false)} />

@@ -81,7 +81,7 @@ export default function useUrlSync(goc) {
   }, [
     state.screen, state.user, state.eventKey, state.accountGroupKey, state.eventListMode, state.publicProfileHandle,
     state.organizerProfileId, state.organizerTeamOrganizerId, state.surveyPublicId, state.documentId,
-    state.attendanceEventKey, state.paymentBookingId, state.sessionChecked, state.projectEventId, state.projectJoinCode, state.projectDemoAdmin,
+    state.attendanceEventKey, state.paymentBookingId, state.sessionChecked, state.projectEventId, state.projectJoinCode, state.projectDemoAdmin, state.browseType, state.browseScope,
   ]);
 
   // URL -> state (browser back / forward)

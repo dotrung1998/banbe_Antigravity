@@ -38,7 +38,7 @@ import { cleanDetails, profileFor, publishDetails, secondCategory, detailOwner, 
 import { holdLeftCreateDraft, beginCreateDraftRestore, discardLeftCreateDraft } from '../lib/createDraftUndo.js';
 import { normalizeThemeChoice, resolveTheme, systemPrefersDark } from '../lib/themeChoice.js';
 import { homeViewAfterSync, readStoredHomeView, startHostingStep, storeHomeView } from '../lib/homeMode.js';
-import { clampQty, maxQty } from '../lib/reserveBar.js';
+import { clampQty, maxQty, MAX_QTY } from '../lib/reserveBar.js';
 import { groupPhotoRows, cardPhotoList, MAX_CARD_PHOTOS } from '../lib/eventPhotoUrls.js';
 import { tourDoneKey } from '../data/onboardingTour.js';
 
@@ -104,6 +104,8 @@ function shapeRealEvent(row, extra = {}) {
       return row.visibility === 'public' ? cardPhotoList(cover, extra.photoUrls) : (cover ? [cover] : []);
     })(),
     organizerName: extra.organizerName || '',
+    // Note 81: the host's photo for the v2.3 host deck (Browse by type); '' = monogram fallback.
+    organizerAvatarUrl: extra.organizerAvatarUrl || '',
     // TASK 3 (event creation validation pass) — AdminEvents.jsx's own
     // detailed review section. `organizerType`/`organizerVerified`/
     // `organizerHasTaxCode` are ONLY ever populated by loadPendingEvents'
@@ -638,6 +640,9 @@ const initialState = {
   // `{}` when the function isn't deployed yet — badges then simply don't show), and the Search screen query.
   homeFilters: HOME_DEFAULT_FILTERS,
   homeSort: 'soonest',
+  // Browse by type / See all (v2.3, note 81, switch home_v23): which list is open, its search and its own filters
+  // (When, Price, Seats). Public browsing state only, like homeFilters, so sign-out does not need to clear it.
+  browseType: 'all', browseScope: 'all', browseQuery: '', browseFilters: HOME_DEFAULT_FILTERS,
   homeFilterSheetOpen: false,
   eventFill: {},
   // Phase 1 Q5: the event whose approval notification the host just opened (Dashboard shows its "live" card once).
@@ -1577,6 +1582,11 @@ const initialState = {
   // picker sheet is currently open for, or null when closed.
   calendarPickerFor: null,
   booking: null,
+  // Note 81 phase e: every booking of the signed-in user on the open event (newest first; `booking` is the newest). The
+  // v2.3 stub stamps and the bar's "add tickets" count read the seat-holding ones.
+  myEventBookings: [],
+  // Reserve in "add tickets" mode (note 81 phase e): { already: seats the user already holds on this event } | null.
+  reserveAdding: null,
   reserveError: '',
   // The real events row's own status/starts_at for whichever event is
   // currently open — null until fetched, or once no matching row exists
@@ -2285,12 +2295,14 @@ export function BanBeProvider({ children }) {
     let active = true;
     (async () => {
       const { data: event } = await supabase.from('events').select('id').eq('slug', s.eventKey).maybeSingle();
-      if (!event) { if (active) set({ booking: null, holdDeadline: null }); return; }
-      const { data: booking } = await supabase.from('bookings').select('*').eq('event_id', event.id).eq('user_id', s.user.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (!event) { if (active) set({ booking: null, myEventBookings: [], holdDeadline: null }); return; }
+      // All of this user's bookings on the event (note 81 phase e: a second booking adds tickets after a hold).
+      const { data: rows } = await supabase.from('bookings').select('*').eq('event_id', event.id).eq('user_id', s.user.id).order('created_at', { ascending: false }).limit(20);
+      const booking = rows?.[0] || null;
       // Always set (even to null) — this used to only update on a hit, so
       // navigating from a booked event to one you have no booking for kept
       // showing the previous event's stale booking/countdown.
-      if (active) set({ booking: booking || null, holdDeadline: booking?.expires_at ? new Date(booking.expires_at).getTime() : null });
+      if (active) set({ booking: booking || null, myEventBookings: rows || [], holdDeadline: booking?.expires_at ? new Date(booking.expires_at).getTime() : null });
     })();
     return () => { active = false; };
   }, [set, s.user?.id, s.eventKey, s.ticketDemo]);
@@ -2718,14 +2730,17 @@ export function BanBeProvider({ children }) {
     const [photoUrlsById, orgsRes] = await Promise.all([
       photoUrlsByEvent(eventIds),
       organizerIds.length
-        ? supabase.from('organizers').select('id, name').in('id', organizerIds)
+        // avatar_path is a public column for anon too (migration 185); it feeds the v2.3 host deck (note 81).
+        ? supabase.from('organizers').select('id, name, avatar_path').in('id', organizerIds)
         : Promise.resolve({ data: [] }),
     ]);
     const orgNameById = Object.fromEntries((orgsRes.data || []).map(o => [o.id, o.name]));
+    const orgAvatarById = Object.fromEntries((orgsRes.data || []).filter(o => o.avatar_path).map(o => [o.id, organizerAvatarPublicUrl(o.avatar_path, null, 'thumb')]));
     const shaped = events.map(e => shapeRealEvent(e, {
       photoUrl: photoUrlsById[e.id]?.[0],
       photoUrls: photoUrlsById[e.id],
       organizerName: orgNameById[e.organizer_id],
+      organizerAvatarUrl: orgAvatarById[e.organizer_id],
     }));
     set(prev => ({
       discoveryEvents: shaped, discoveryEventsLoading: false, discoveryEventsLoadFailed: false,
@@ -6644,6 +6659,18 @@ export function BanBeProvider({ children }) {
     set({ scheduleAddedKeys: scheduleStore.keys(scheduleUid) });
     track('banbe_schedule_remove');
   }, [scheduleUid, set]);
+  // v2.3 Browse by type / See all (note 81). Opening a list from Home always starts unfiltered and unsearched; the
+  // event and host profile opened from it come back here (eventBackScreen / organizerProfileBack = 'browse').
+  // `keep` (browser back/forward into the same list): keep its search and filters instead of starting fresh.
+  const openBrowse = useCallback(({ type = 'all', scope = 'all', keep = false } = {}) => set(prev => {
+    const same = keep && prev.browseType === (type || 'all') && prev.browseScope === (scope || 'all');
+    return {
+      screen: 'browse', browseType: type || 'all', browseScope: scope || 'all', homeFilterSheetOpen: false,
+      browseQuery: same ? prev.browseQuery : '', browseFilters: same ? prev.browseFilters : HOME_DEFAULT_FILTERS,
+    };
+  }), [set]);
+  const setBrowse = useCallback((patch) => set(prev => (typeof patch === 'function' ? patch(prev) : patch)), [set]);
+  const backFromBrowse = useCallback(() => set({ screen: 'home' }), [set]);
   // Home → Map contract (Map redesign phase 3): an optional context { source, filters, query, forYou } the Map reads
   // once at open (applied filters, never geography — the Map frames its own area). The dock tab passes its click
   // event here, so only a plain object with a `source` counts.
@@ -6802,7 +6829,14 @@ export function BanBeProvider({ children }) {
     goEventFromStoryNav(key);
   }, [goEventFromStoryNav]);
   // Note 49: a guest is asked first; sign-in resumes through goReserve itself so attendee drafts are rebuilt.
-  const goReserve = useCallback(() => (s.user ? set({ screen: 'reserve', attendeeDrafts: makeAttendeeDrafts(s.qty, s.user.name) }) : promptSignIn('reserve')), [set, s.user, s.qty, promptSignIn]);
+  const goReserve = useCallback(() => (s.user ? set({ screen: 'reserve', reserveAdding: null, attendeeDrafts: makeAttendeeDrafts(s.qty, s.user.name) }) : promptSignIn('reserve')), [set, s.user, s.qty, promptSignIn]);
+  // Note 81 phase e: add tickets after a hold = a SECOND booking (hold_seats_with_attendees), for `extra` more names.
+  // The buyer already has their own ticket, so no row is pre-filled with their name or birthday.
+  const goReserveAdd = useCallback((already, extra) => {
+    if (!s.user) return promptSignIn('reserve');
+    const n = Math.max(1, Math.min(MAX_QTY - (already || 0), extra || 1));
+    set({ screen: 'reserve', reserveAdding: { already: already || 0 }, qty: n, attendeeDrafts: makeAttendeeDrafts(n, ''), reserveError: '' });
+  }, [set, s.user, promptSignIn]);
   const backToEvent = useCallback(() => set({ screen: 'event' }), [set]);
   const goLogin = useCallback(() => set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'home' }), [set]);
   // `back` is only honored when it's really a screen name — several call
@@ -8717,7 +8751,9 @@ export function BanBeProvider({ children }) {
   // says are still free. hold_seats stays the authority.
   const qtyCeiling = (prev) => {
     const f = prev.eventFill?.[prev.eventKey];
-    return maxQty(f?.capacity > 0 ? Math.max(0, f.capacity - f.booked) : null);
+    const seats = maxQty(f?.capacity > 0 ? Math.max(0, f.capacity - f.booked) : null);
+    // Adding tickets (note 81 phase e): 6 per person counts the seats this person already holds (migration 219).
+    return prev.reserveAdding ? Math.max(1, Math.min(seats, MAX_QTY - (prev.reserveAdding.already || 0))) : seats;
   };
   const qtyPlus = useCallback(() => set(prev => {
     const qty = clampQty(prev.qty + 1, qtyCeiling(prev));
@@ -8780,8 +8816,8 @@ export function BanBeProvider({ children }) {
       // there is one (migration 173); the others may carry an optional email.
       const attendees = s.attendeeDrafts.slice(0, s.qty).map((a, i) => ({
         name: a.name.trim(),
-        ...(i === 0 && a.useProfileDob ? { use_profile_dob: true } : { dob: a.dob }),
-        ...(i > 0 && a.email?.trim() ? { email: a.email.trim() } : {}),
+        ...(i === 0 && a.useProfileDob && !s.reserveAdding ? { use_profile_dob: true } : { dob: a.dob }),
+        ...((i > 0 || s.reserveAdding) && a.email?.trim() ? { email: a.email.trim() } : {}),
       }));
       const { data: booking, error } = await supabase.rpc('hold_seats_with_attendees', {
         p_event: s.eventKey,
@@ -8793,6 +8829,7 @@ export function BanBeProvider({ children }) {
       set(prev => ({
         loading: false,
         booking,
+        myEventBookings: [booking, ...(prev.myEventBookings || []).filter(b => b.id !== booking.id)],
         screen: defer ? prev.screen : 'confirmed',
         holdDeadline,
         now: Date.now(),
@@ -8832,6 +8869,8 @@ export function BanBeProvider({ children }) {
         EVENT_NOT_FOUND: T('Không tìm thấy sự kiện này.', 'This event could not be found.'),
         EVENT_NOT_LIVE: T('Sự kiện này đã bị huỷ hoặc chưa mở.', 'This event has been cancelled or isn’t open.'),
         SOLD_OUT: T('Rất tiếc, chỗ vừa hết.', 'Sorry, this just sold out.'),
+        // Migration 219: 6 tickets per person on one event, across all their bookings.
+        PER_PERSON_LIMIT: T('Mỗi người giữ tối đa 6 vé cho một sự kiện, tính cả các vé bạn đã giữ.', 'You can hold up to 6 tickets for one event, counting the ones you already hold.'),
         // Strict invite-only events (migration 113) — hold_seats' own gate.
         // A truthful, specific message rather than the generic fallback:
         // this isn't "try again", it's "you need an invite," which no
@@ -8841,7 +8880,7 @@ export function BanBeProvider({ children }) {
       set({ loading: false, reserveError: message });
       return false;
     }
-  }, [set, s.eventKey, s.qty, s.attendeeDrafts]);
+  }, [set, s.eventKey, s.qty, s.attendeeDrafts, s.reserveAdding]);
   const goReserveConfirmed = useCallback(() => set({ screen: 'confirmed' }), [set]);
 
   // ---- named tickets & import (migrations 151/152) ----
@@ -11671,7 +11710,7 @@ export function BanBeProvider({ children }) {
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
     isSaved, isGoing, isAwaitingConfirmation, sendEventAnnouncement, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
-    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch, openSearch, setHomeFilters,
+    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, goReserveAdd, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch, openSearch, setHomeFilters, openBrowse, setBrowse, backFromBrowse,
     loadNotifications, loadInboxThreads,
     goChat, goLogin, goDashboard, goCreate, clearCreateDefaults, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack, undoLeaveCreate, expireCreateUndo,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
@@ -11711,7 +11750,7 @@ export function BanBeProvider({ children }) {
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
     isSaved, isGoing, isAwaitingConfirmation, sendEventAnnouncement, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
-    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch, openSearch, setHomeFilters,
+    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, goReserveAdd, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch, openSearch, setHomeFilters, openBrowse, setBrowse, backFromBrowse,
     loadNotifications, loadInboxThreads,
     goChat, goLogin, goDashboard, goCreate, clearCreateDefaults, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack, undoLeaveCreate, expireCreateUndo,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,

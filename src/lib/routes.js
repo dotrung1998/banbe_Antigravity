@@ -77,6 +77,11 @@ export function screenToPath(st) {
   if (screen === 'splash') return null;
   if (STATIC[screen]) return STATIC[screen];
   switch (screen) {
+    // v2.3 Browse by type / See all (note 81): /browse[/<type>] for the whole catalogue, /see-all/<tab>[/<type>] for a Home tab.
+    case 'browse': {
+      const type = st.browseType && st.browseType !== 'all' ? `/${enc(st.browseType)}` : '';
+      return st.browseScope && st.browseScope !== 'all' ? `/see-all/${enc(st.browseScope)}${type}` : `/browse${type}`;
+    }
     case 'event': return st.eventKey ? `/event/${enc(st.eventKey)}` : '/';
     case 'reserve': return st.eventKey ? `/event/${enc(st.eventKey)}/reserve` : '/';
     case 'chat': return st.eventKey ? `/event/${enc(st.eventKey)}/chat` : '/';
@@ -115,6 +120,8 @@ export function pathToRoute(pathname) {
     return { screen, params: {} };
   }
   let m;
+  if ((m = path.match(/^\/browse(?:\/([^/]+))?$/))) return { screen: 'browse', params: {}, open: 'openBrowse', openArgs: [{ type: m[1] ? dec(m[1]) : 'all', scope: 'all', keep: true }] };
+  if ((m = path.match(/^\/see-all\/(foryou|tonight|weekend)(?:\/([^/]+))?$/))) return { screen: 'browse', params: {}, open: 'openBrowse', openArgs: [{ type: m[2] ? dec(m[2]) : 'all', scope: m[1], keep: true }] };
   if ((m = path.match(/^\/event\/([^/]+)$/))) return { screen: 'event', params: { eventKey: dec(m[1]) } };
   // The retired /event/<key>/organizer page (merged into the host profile,
   // /org/<id>): an old link resolves the organizer from the event key.

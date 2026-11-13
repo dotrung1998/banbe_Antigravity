@@ -92,6 +92,11 @@ struct AdminFeaturesView: View {
              hintVi: "Thẻ sự kiện trên Trang chủ có khung giấy quanh ảnh và chú thích bên dưới, như ảnh polaroid. Chỉ đổi kiểu xem thẻ, không đổi danh sách. Mặc định tắt.",
              hintEn: "Home event cards get a paper frame around the photo with the caption below, like a polaroid. Only the cards view changes, not the list. Off by default.",
              onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off"),
+        // Migration 218, note 81. Web only for now: iOS shows the switch but does not use it.
+        Flag(key: "home_v23", vi: "Trang chủ v2.3 (web)", en: "Home v2.3 (web)",
+             hintVi: "Trang chủ, Duyệt theo loại và Chi tiết sự kiện trên web dùng thiết kế v2.3. Cần Bố cục đơn giản đang bật. Ứng dụng iPhone chưa dùng. Mặc định tắt.",
+             hintEn: "The web Home, Browse by type and Event Detail use the v2.3 design. Needs the simple layout on. The iPhone app does not use it yet. Off by default.",
+             onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off"),
         // Note 76, migration 210. Until 210 is applied the server refuses this switch.
         Flag(key: "event_project_hub", vi: "Dự án sự kiện", en: "Event projects",
              hintVi: "Host mở một không gian riêng cho đội của từng sự kiện: việc, chủ đề có cấu trúc, đội, lịch chạy ngày diễn ra và kênh trao đổi bên ngoài. Mặc định tắt. Cần migration 210.",
