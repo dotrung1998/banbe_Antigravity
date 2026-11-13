@@ -9,7 +9,7 @@ export const MAX_DRAFTS = 5;
 export const DRAFT_FIELDS = [
   'createName', 'createCats', 'createDesc', 'createIntro', 'createKeywords', 'createChatGreeting', 'createChatGreetingEn',
   'createIncludedItems', 'createDetails', 'createKwDismissed', 'createPrice', 'createPriceCurrency', 'createSeats', 'createVisibility', 'createHostGoal', 'createCriteria',
-  'createEventDate', 'createEventTime',
+  'createEventDate', 'createEventTime', 'createEndMode', 'createEndTime',
   'createLoc', 'createLocLabel', 'createLocConfirmed', 'createLat', 'createLng', 'createAddressLine', 'createDistrict',
   'createCity', 'createPostalCode', 'createCountryCode', 'createStateProvince', 'createNeighborhood', 'createTz',
 ];

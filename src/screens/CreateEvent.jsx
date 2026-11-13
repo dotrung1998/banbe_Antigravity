@@ -23,6 +23,7 @@ import { categoryDefs, profileFor, requiredFields, keywordSuggestions, droppedDe
 import { subStepParts, partOfField, subStepDone, BASICS_PARTS, TICKETS_PARTS } from '../lib/createSubSteps.js';
 import { introFontFamily, introColorValue, INTRO_FONT_NAMES, INTRO_COLOR_NAMES } from '../lib/introStyle.js';
 import { flagOn } from '../lib/featureFlags.js';
+import { endError, endsNextDay, defaultEndTime, durationMinutes, timeRange } from '../lib/eventEnd.js';
 import RecipeSheet, { RecipeMeter, RecipeList } from './sheets/RecipeSheet.jsx';
 import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
 import { listDrafts, saveDraft, deleteDraft, draftFields, draftPhotoItems } from '../lib/eventDrafts.js';
@@ -294,6 +295,8 @@ export default function CreateEvent() {
   const fieldErrors = {
     desc: !s.createDesc.trim(),
     dateTime: !s.createEventDate || !s.createEventTime,
+    // Note 82: when it ends is required: an end time (not equal to the start) or open-ended.
+    end: !!endError(s.createEndMode, s.createEventTime, s.createEndTime),
     seats: !(parseInt(s.createSeats, 10) > 0),
     cats: s.createCats.length === 0,
     // Required unless the event type says otherwise (a music night lists its lineup instead).
@@ -349,7 +352,7 @@ export default function CreateEvent() {
   // Review summary, so they can never disagree.
   const progress = computeCreateProgress({
     hostName: !(s.orgRegName || '').trim(), name: !nameOk, description: fieldErrors.desc, categories: fieldErrors.cats,
-    included: fieldErrors.included, location: !s.createLocConfirmed, date: fieldErrors.dateTime, price: fieldErrors.price,
+    included: fieldErrors.included, location: !s.createLocConfirmed, date: fieldErrors.dateTime || fieldErrors.end, price: fieldErrors.price,
     seats: fieldErrors.seats, photos: fieldErrors.photos,
     // The type's own required facts (alcohol + minimum age for every type; lineup, artists or brands for some).
     ...typeMissing,
@@ -909,6 +912,36 @@ export default function CreateEvent() {
                 ))}
               </div>
               {attemptedReview && fieldErrors.dateTime && <p style={errText}>{T('Hãy chọn ngày và giờ diễn ra.', 'Please pick a date and time.')}</p>}
+              {/* Note 82: when it ends. An end time (after midnight = the next day) or open-ended. */}
+              <div data-testid="create-end" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: ink }}>{T('Kết thúc', 'Ends')}</span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }} role="group" aria-label={T('Kết thúc', 'Ends')}>
+                  <PickTile testId="create-end-time-mode" label={T('Có giờ kết thúc', 'At a set time')} selected={s.createEndMode === 'time'}
+                    onClick={() => set({ createEndMode: 'time', createEndTime: s.createEndTime || defaultEndTime((s.createEventTime || '19:00').slice(0, 5)) })} />
+                  <PickTile testId="create-end-open" label={T('Không giờ kết thúc', 'Open-ended')} selected={s.createEndMode === 'open'}
+                    onClick={() => set({ createEndMode: 'open' })} />
+                </div>
+                {s.createEndMode === 'time' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <input type="time" value={s.createEndTime} onChange={(e) => set({ createEndTime: e.target.value })}
+                      data-testid="create-end-time" aria-label={T('Giờ kết thúc', 'End time')} style={{ ...bigInput, flex: 1 }} />
+                    {s.createEventTime && s.createEndTime && s.createEndTime.slice(0, 5) !== s.createEventTime.slice(0, 5) && (
+                      <span data-testid="create-end-note" style={{ flex: 'none', fontSize: 13, color: ink, opacity: 0.7 }}>
+                        {(() => { const m = durationMinutes(s.createEventTime, s.createEndTime); const h = Math.floor(m / 60), mm = m % 60; const len = mm ? `${h}h${String(mm).padStart(2, '0')}` : `${h}h`;
+                          return endsNextDay(s.createEventTime, s.createEndTime) ? T(`${len} · hôm sau`, `${len} · next day`) : len; })()}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {s.createEndMode === 'open' && (
+                  <span style={{ fontSize: 13, color: ink, opacity: 0.7 }}>{T('Khách thấy "không giờ kết thúc" thay vì giờ kết thúc.', 'Guests see "open-ended" instead of an end time.')}</span>
+                )}
+                {attemptedReview && fieldErrors.end && (
+                  <p data-testid="create-end-error" style={errText}>{s.createEndMode === 'time' && s.createEndTime
+                    ? T('Giờ kết thúc phải khác giờ bắt đầu.', 'The end time must differ from the start.')
+                    : T('Chọn giờ kết thúc hoặc Không giờ kết thúc.', 'Pick an end time or Open-ended.')}</p>
+                )}
+              </div>
               {recipeById.timing?.status !== 'missing' && (
                 <Insight testId="create-timing-insight" check={recipeById.timing} T={T}
                   line={recipeById.timing.source === 'data'
@@ -1247,7 +1280,8 @@ const reviewHeading = { fontSize: 11.5, fontWeight: 600, letterSpacing: '0.06em'
 
 function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe, onBack, onConfirm, onConfirmed }) {
   const [tab, setTab] = useState('private');
-  const dateLabel = [s.createEventDate, s.createEventTime].filter(Boolean).join(' ▪︎ ') || T('Chưa chọn', 'Not set');
+  const timeLine = timeRange(s.createEventTime, s.createEndMode === 'time' ? s.createEndTime : null, s.createEndMode === 'open');
+  const dateLabel = [s.createEventDate, timeLine ? T(timeLine.vi, timeLine.en) : ''].filter(Boolean).join(' ▪︎ ') || T('Chưa chọn', 'Not set');
   const market = createFormMarket(s);
   const reviewPrice = s.createPrice.trim() ? (parsePriceInput(s.createPrice, market.currency) ?? 0) : 0;
   const priceLabel = reviewPrice > 0 ? formatMoney(reviewPrice, market.currency) : (s.createPrice.trim() || T('Miễn phí', 'Free'));

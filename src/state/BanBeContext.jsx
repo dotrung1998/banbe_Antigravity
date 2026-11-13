@@ -28,7 +28,8 @@ import { ticketDemoAllowed, TICKET_DEMO_RESET } from '../lib/ticketDemo.js';
 import { loadMapKit } from '../lib/mapkit.js';
 import { mapKitSearch } from '../lib/mapkitAdapter.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
-import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, marketColumnList, detailsColumnList, isMissingColumnError } from '../lib/mediaUrls.js';
+import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, marketColumnList, detailsColumnList, endColumnList, isEndColumnMissing, endColumnsRejected, isMissingColumnError } from '../lib/mediaUrls.js';
+import { endMode } from '../lib/eventEnd.js';
 import { rowTimeZone, rowCurrency, formatMoney, resolveEventTimeZone, eventCurrency, VN_TIME_ZONE, parsePriceInput, priceInputText, wallClockToMs, todayInZone } from '../lib/eventMarket.js';
 import { eventDraftDefaults, createDefaultsPatch, createDraftMatchesDefaults } from '../lib/smartDefaults.js';
 import { notificationRoute, runItAgainDate } from '../lib/coreLoops.js';
@@ -127,6 +128,9 @@ function shapeRealEvent(row, extra = {}) {
     capacity: row.capacity,
     eventDate: row.event_date || null,
     eventTime: row.event_time || null,
+    // Note 82 (migration 220): the end on the venue wall clock, or open-ended; neither = not stated.
+    endTime: row.end_time || null,
+    endOpen: !!row.end_open,
     submittedAt: row.submitted_at || null,
     reviewedAt: row.reviewed_at || null,
     rejectionReason: row.rejection_reason || '',
@@ -209,6 +213,7 @@ const realEventColumns = (withR2) => {
   for (const c of chatGreetingColumnList()) cols += `, ${c}`;
   for (const c of marketColumnList()) cols += `, ${c}`;
   for (const c of detailsColumnList()) cols += `, ${c}`;
+  for (const c of endColumnList()) cols += `, ${c}`;
   return withR2 ? `${cols}, cover_r2_ref` : cols;
 };
 
@@ -1293,6 +1298,9 @@ const initialState = {
   // The saved draft the open Create form came from / was last saved as (lib/eventDrafts.js).
   createDraftId: null,
   createEventTime: '',
+  // Note 82: when the event ends: 'time' (createEndTime) | 'open' (open-ended) | '' (not chosen yet).
+  createEndMode: '',
+  createEndTime: '',
   createPrice: '',
   createSeats: '',
   // Strict invite-only events (migration 113) — 'public' | 'invite'.
@@ -6963,7 +6971,7 @@ export function BanBeProvider({ children }) {
   }, [s.realEventsById, startCreate]);
   // "Start blank": drop every smart default (note 48).
   const clearCreateDefaults = useCallback(() => set({
-    createEventDate: '', createEventTime: '', createPrice: '', createSeats: '', createCats: [],
+    createEventDate: '', createEventTime: '', createEndMode: '', createEndTime: '', createPrice: '', createSeats: '', createCats: [],
     createDefaultsSource: null, createAppliedDefaults: null,
   }), [set]);
   const openHeld = useCallback(() => set({ screen: 'confirmed' }), [set]);
@@ -10753,6 +10761,20 @@ export function BanBeProvider({ children }) {
             set(prev => (prev.realEventsById[eventId] ? { realEventsById: { ...prev.realEventsById, [eventId]: { ...prev.realEventsById[eventId], chatGreeting: greeting, chatGreetingEn: greetingEn } } } : {}));
           }
         }
+        // When it ends (note 82, migration 220): the host's own update, best-effort like the greeting. Skipped (with
+        // a dev warning) while the columns are not deployed.
+        if (!isEndColumnMissing() && (s.createEndMode || s.createEditEventId)) {
+          const endPatch = s.createEndMode === 'time' && s.createEndTime
+            ? { end_time: `${s.createEndTime.slice(0, 5)}:00`, end_open: false }
+            : { end_time: null, end_open: s.createEndMode === 'open' };
+          const { error: endError } = await supabase.from('events').update(endPatch).eq('id', eventId);
+          if (endError) {
+            if (!endColumnsRejected(endError)) console.warn('end time update failed:', endError);
+            else if (import.meta.env?.DEV) console.warn('end_time/end_open missing (apply migration 220)');
+          } else {
+            set(prev => (prev.realEventsById[eventId] ? { realEventsById: { ...prev.realEventsById, [eventId]: { ...prev.realEventsById[eventId], endTime: endPatch.end_time, endOpen: endPatch.end_open } } } : {}));
+          }
+        }
         reconcileEventMediaFireAndForget(eventId);
       }
 
@@ -10838,7 +10860,7 @@ export function BanBeProvider({ children }) {
     } finally {
       createSubmitInFlightRef.current = false;
     }
-  }, [set, s.createName, s.createHostGoal, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createCountryCode, s.createStateProvince, s.createNeighborhood, s.createTz, s.createLat, s.createLng, s.createDate, s.createEventDate, s.createEventTime, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.createChatGreeting, s.createChatGreetingEn, s.createDetails, s.featureFlags, s.createCriteria, s.createCriteriaLoaded, s.createCriteriaLoad, s.createCriteriaRetryEventId, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
+  }, [set, s.createName, s.createHostGoal, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createCountryCode, s.createStateProvince, s.createNeighborhood, s.createTz, s.createLat, s.createLng, s.createDate, s.createEventDate, s.createEventTime, s.createEndMode, s.createEndTime, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.createChatGreeting, s.createChatGreetingEn, s.createDetails, s.featureFlags, s.createCriteria, s.createCriteriaLoaded, s.createCriteriaLoad, s.createCriteriaRetryEventId, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
 
   /**
@@ -10881,6 +10903,7 @@ export function BanBeProvider({ children }) {
       createLocConfirmed: !!real.addressVerified,
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
       createEventDate: real.eventDate || '', createEventTime: real.eventTime ? real.eventTime.slice(0, 5) : '',
+      createEndMode: endMode(real.endTime, real.endOpen) || '', createEndTime: real.endTime ? real.endTime.slice(0, 5) : '',
       // In the row's own currency (migration 195). A legacy VND price on a US event is left empty: the
       // resubmit re-prices it in USD, so showing dong in a dollar field would only mislead.
       createPrice: real.priceVnd && rowCurrency(real) === createFormMarket({ createCountryCode: real.countryCode }).currency

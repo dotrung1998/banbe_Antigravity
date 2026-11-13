@@ -32,6 +32,7 @@ import TicketStubV23 from '../components/event/TicketStubV23.jsx';
 import EventDetailV23View from '../components/event/EventDetailV23View.jsx';
 import { glassBar } from '../components/event/v23Style.js';
 import { knowRows, heroMotion, navOn, readProgress } from '../lib/eventDetailV23.js';
+import { timeRange } from '../lib/eventEnd.js';
 import { visibleTabs, activeTab as pickActiveTab } from '../lib/eventDetailTabs.js';
 
 // Airbnb-style layout (mirrors iOS EventDetailView): the photo is a pinned backdrop that fades out while the
@@ -482,6 +483,13 @@ export default function EventDetail({ preview = null } = {}) {
     : countdownChipText(daysUntilInZone(whenDateRaw, ev.startDate instanceof Date ? ev.startDate.getTime() : NaN, ev.tz || VN_TIME_ZONE), en);
   // Under the place: the distance when it helps choose (≤ 50 km), else "Area · city" (src/data/cities.json short name).
   const realRow = preview ? null : s.realEventsById[ev.key];
+  // Note 82 (migration 220): the time line with the end: "16:00 – 22:00", "(next day)" after midnight, or
+  // "open-ended". The real row wins; the built-in catalogue carries the same values as a fallback.
+  const endTime = realRow?.endTime ?? ev.endTime ?? null;
+  const endOpen = !!(realRow?.endOpen || (!realRow?.endTime && ev.endOpen));
+  // The start comes from the real row's venue wall clock when there is one (the end is venue time too); a catalogue-only
+  // event keeps its `when` text.
+  const timeLine = timeRange(realRow?.eventTime ? String(realRow.eventTime).slice(0, 5) : whenTime, endTime, endOpen);
   const cityId = cityFor({ city: realRow?.city ?? ev.city, stateProvince: realRow?.stateProvince ?? ev.stateProvince, countryCode: realRow?.countryCode ?? ev.countryCode, lat: ev.lat, lng: ev.lng }, CITIES);
   const cityShort = (() => { const c = cityId && CITIES.find(x => x.id === cityId); return c ? (c.short ? T(c.short.vi, c.short.en) : T(c.vi, c.en)) : null; })();
   const placeSub = evDistance ? T(`Cách ${evDistance}`, `${evDistance} away`) : cityShort ? `${T('Khu vực', 'Area')} · ${cityShort}` : T('Địa điểm', 'Place');
@@ -967,7 +975,7 @@ export default function EventDetail({ preview = null } = {}) {
         )}
         catLabel={evCat} minAge={facts.minAge} inviteOnly={!!ev.inviteOnly}
         stub={(
-          <TicketStubV23 block={stubBlock} time={whenTime || null} countdown={stubCountdown} placeLine={placeLine}
+          <TicketStubV23 block={stubBlock} time={timeLine ? T(timeLine.vi, timeLine.en) : (whenTime || null)} countdown={stubCountdown} placeLine={placeLine}
             mapsUrl={evMapsUrl} onDirections={() => { if (s.located === null) askLocation(); }} directionsLabel={T('Chỉ đường', 'Directions')}
             price={ev.price ? (booked > 0 && !isFree ? trStatus(eventTotal(ev, booked)) : trStatus(ev.price)) : null}
             perTicket={booked > 0 ? T(`· ${booked} vé`, `· ${booked} ${booked === 1 ? 'ticket' : 'tickets'}`) : isFree ? null : T('/ vé', '/ ticket')}

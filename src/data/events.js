@@ -248,6 +248,15 @@ export function agoLabel(h) {
   return h < 24 ? (h <= 1 ? '1 giờ trước' : h + ' giờ trước') : (Math.floor(h / 24) === 1 ? '1 ngày trước' : Math.floor(h / 24) + ' ngày trước');
 }
 
+// Note 82: when each catalogue event ends ('HH:MM', at or before the start = next day) or 'open' (open-ended). The
+// same values as the production rows (supabase/drafts/event-end-data), so a key served from either source agrees.
+const END = {
+  bepnho: '22:30', comnha: '22:00', bandai: 'open', phokhuya: '02:00', vuonsau: '21:30',
+  orbit: 'open', aeie: 'open', fanci: 'open', compound: '22:00', motlop: '22:30',
+  vungtrang: 'open', sonmai: '21:30', khongnguoi: 'open', noigiay: '21:00', phong302: '19:00',
+  chieucham: '18:00', jazzgac: '00:00', bangcoi: '23:00', modular: 'open', pianomuon: '01:00',
+};
+
 export const EVENTS = ROWS.map((r, idx) => {
   const st = STATUS[r[0]] || {};
   const until = relDays(r[7]);
@@ -263,6 +272,7 @@ export const EVENTS = ROWS.map((r, idx) => {
   const [jitterLat, jitterLng] = seededJitter(r[0]);
   return {
     key: r[0], catKey: r[1], cat: r[2], name: r[3],
+    endTime: END[r[0]] && END[r[0]] !== 'open' ? END[r[0]] : null, endOpen: END[r[0]] === 'open',
     img: img(heroPhoto),
     lat: baseLat + jitterLat, lng: baseLng + jitterLng,
     meta: r[5] + ' ▪︎ ' + r[6] + ' km ▪︎ ' + r[7].split(', ')[0] + ', ' + r[9],

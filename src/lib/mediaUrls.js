@@ -61,6 +61,18 @@ export function marketColumnsRejected(error) {
 let detailsColumnMissing = false;
 export const detailsColumnList = () => (detailsColumnMissing ? [] : ['details']);
 
+// `events.end_time` / `end_open` (migration 220, note 82): same idea. Without them every reader treats the end as
+// not stated and the page shows the start time alone.
+let endColumnsMissing = false;
+export const endColumnList = () => (endColumnsMissing ? [] : ['end_time', 'end_open']);
+export const isEndColumnMissing = () => endColumnsMissing;
+/** True (and remembered) when `error` is the DB lacking the end columns. */
+export function endColumnsRejected(error) {
+  if (endColumnsMissing || !isMissingColumnError(error) || !/\bend_(time|open)\b/i.test(error.message || '')) return false;
+  endColumnsMissing = true;
+  return true;
+}
+
 /**
  * Runs `build(withR2)` (returns a thenable PostgREST query). First tries with
  * the new r2 columns; if the DB does not have them yet, retries once without
@@ -76,6 +88,7 @@ export async function withR2Columns(build) {
     if (!isMissingColumnError(res?.error)) return res;
     const msg = res.error.message || '';
     if (marketColumnsRejected(res.error)) continue;
+    if (endColumnsRejected(res.error)) continue;
     if (/\bdetails\b/i.test(msg) && !detailsColumnMissing) { detailsColumnMissing = true; continue; }
     if (/chat_greeting_en/i.test(msg) && !chatGreetingEnColumnMissing) { chatGreetingEnColumnMissing = true; continue; }
     if (/chat_greeting/i.test(msg) && !/chat_greeting_en/i.test(msg) && !chatGreetingColumnMissing) { chatGreetingColumnMissing = true; continue; }

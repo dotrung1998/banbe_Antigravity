@@ -13,10 +13,19 @@ const IconHeld = () => (<svg {...ico} width={12} height={12} strokeWidth={2.4}><
 const IconOk = () => (<svg {...ico} width={12} height={12} strokeWidth={2.4}><path d="m6 12.5 4 4 8-9" /></svg>);
 const IconCal = () => (<svg {...ico} width={14} height={14}><rect x="3.5" y="5" width="17" height="15" rx="3" /><path d="M8 3v4M16 3v4M3.5 10h17" /><path d="M12 13v4M10 15h4" /></svg>);
 
+// The bite reads as paper pressed in: a touch darker than the page, a soft shadow falling inside from the top (light
+// from above), and a thin highlight on its lower lip (the glass line token: bright in light, faint in dark).
+const notch = {
+  position: 'absolute', top: -9, width: 9, height: 16, boxSizing: 'border-box',
+  background: 'color-mix(in srgb, var(--bb-bg) 93%, #000)',
+  boxShadow: 'inset 0 2px 3px rgba(0,0,0,.22), inset 0 -1px 0 var(--v23-line)',
+};
 const Perf = () => (
   <div aria-hidden style={{ position: 'relative', zIndex: 2, height: 0, margin: '0 16px', borderTop: '1.5px dashed var(--bb-rule)' }}>
-    <span style={{ position: 'absolute', top: -9, left: -24, width: 16, height: 16, borderRadius: '50%', background: 'var(--bb-bg)' }} />
-    <span style={{ position: 'absolute', top: -9, right: -24, width: 16, height: 16, borderRadius: '50%', background: 'var(--bb-bg)' }} />
+    {/* A half-circle bite on each edge (only the inner half shows, like a real ticket): it covers the stub's own
+        border at the edge and draws the card's hairline round its curve. */}
+    <span style={{ ...notch, left: -17, borderRadius: '0 8px 8px 0' }} />
+    <span style={{ ...notch, right: -17, borderRadius: '8px 0 0 8px' }} />
   </div>
 );
 
