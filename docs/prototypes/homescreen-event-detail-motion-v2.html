@@ -1,0 +1,2491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>banbe — v2.2 · Home &amp; Event Detail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* banbe prototype v2. A Liquid Glass-era pass on Home and Event Detail: same two screens, but a
+   calmer surface language, editorial type, glass chrome that reads as material rather than blur,
+   a Duo companion stage, and a roadmap. Built on the v1 logic (shared-element hero, ticket math,
+   type screens); this pass is visual system + stage + progress. */
+:root{
+  /* v2 — warm gallery palette, lifted a touch off the v1 paper */
+  --bg:#F3EEE3; --fg:#181410; --fg2:rgba(24,20,16,.72); --fg3:rgba(24,20,16,.5);
+  --rule:rgba(24,20,16,.14); --divider:rgba(24,20,16,.08);
+  --block:#E9E2D3; --inset:#FBF7EE; --sel:#FFFFFF;
+  --alert:#9A3E2D; --onalert:#fff; --clay:#A2543A; --moss:#4C5F3A; --honey:#8A6418; --plum:#6B4E7C;
+  --night:#14110C; --stage:#D9D2C4;
+  --serif:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,'Times New Roman',serif;
+  /* material tokens — every glass surface in v2 uses these three */
+  --glass:rgba(251,247,238,.62);
+  --glass-strong:rgba(251,247,238,.84);
+  --glass-line:rgba(255,255,255,.62);
+  --glass-shadow:0 18px 44px rgba(24,20,16,.16),0 2px 6px rgba(24,20,16,.06);
+  --rim:inset 0 1px 0 rgba(255,255,255,.7);
+  --shadow-1:0 1px 2px rgba(24,20,16,.05), 0 10px 30px rgba(24,20,16,.07);
+  --shadow-2:0 22px 60px rgba(24,20,16,.18), 0 3px 10px rgba(24,20,16,.06);
+  --shadow-dock:0 16px 40px rgba(24,20,16,.22);
+
+  /* Motion tokens — the numbers quoted in the panel. */
+  --t-press:110ms;
+  --t-quick:180ms;
+  --t-base:280ms;
+  --t-slow:420ms;
+  --ease-out:cubic-bezier(.22,.61,.36,1);
+  --ease-spring:cubic-bezier(.2,1.04,.3,1);
+  --ease-soft:cubic-bezier(.32,.72,0,1);
+}
+:root[data-theme="dark"]{
+  --bg:#0F0D09; --fg:#F4EDDF; --fg2:rgba(244,237,223,.74); --fg3:rgba(244,237,223,.52);
+  --rule:rgba(244,237,223,.16); --divider:rgba(244,237,223,.08);
+  --block:#1E1A13; --inset:#171410; --sel:#221E17;
+  --alert:#E8715B; --onalert:#0F0D09; --clay:#D8926C; --moss:#A9C487; --honey:#F2C46D;
+  --night:#080705; --stage:#050504;
+  --glass:rgba(20,17,12,.58);
+  --glass-strong:rgba(20,17,12,.84);
+  --glass-line:rgba(255,255,255,.09);
+  --glass-shadow:0 18px 44px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.35);
+  --rim:inset 0 1px 0 rgba(255,255,255,.06);
+  --shadow-1:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.4);
+  --shadow-2:0 24px 70px rgba(0,0,0,.6);
+  --shadow-dock:0 18px 50px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  font-family:'Be Vietnam Pro',system-ui,-apple-system,sans-serif;
+  background:
+    radial-gradient(90% 60% at 18% -10%, #FBF7EE 0%, rgba(251,247,238,0) 60%),
+    radial-gradient(70% 50% at 100% 100%, #CFC6B6 0%, rgba(207,198,182,0) 55%),
+    var(--stage);
+  color:var(--fg);-webkit-font-smoothing:antialiased;
+}
+:root[data-theme="dark"] body{background:
+  radial-gradient(90% 60% at 18% -10%, #1B1811 0%, rgba(27,24,17,0) 60%),
+  radial-gradient(70% 50% at 100% 100%, #070605 0%, rgba(7,6,5,0) 55%),
+  var(--stage)}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+svg.i{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.stage{min-height:100%;display:flex;gap:56px;justify-content:center;align-items:flex-start;flex-wrap:wrap;padding:44px 24px 90px}
+
+/* ---------------- side panel ---------------- */
+.panel{width:336px;flex:none;position:sticky;top:44px}
+.eyebrow{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--clay);font-weight:700;margin-bottom:10px}
+.panel h1{font-family:var(--serif);font-weight:400;font-size:34px;letter-spacing:-.025em;margin:0 0 10px;line-height:1.04}
+.panel .lede{font-size:13px;color:var(--fg2);line-height:1.6;margin:0 0 22px}
+.ctl{margin-bottom:12px}
+.ctl label{display:block;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg3);margin-bottom:7px}
+.seg{display:flex;background:var(--glass);border:1px solid var(--glass-line);border-radius:999px;padding:3px;
+  box-shadow:var(--rim);backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5)}
+.seg button{flex:1;height:34px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--fg3);display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:background var(--t-quick) var(--ease-out),color var(--t-quick) var(--ease-out)}
+.seg button.on{background:var(--fg);color:var(--bg)}
+.replay{width:100%;height:40px;margin-top:8px;border-radius:999px;border:1px solid var(--rule);font-size:12.5px;font-weight:600;color:var(--fg);
+  transition:transform var(--t-press) var(--ease-out),background var(--t-quick) var(--ease-out)}
+.replay:active{transform:scale(.98);background:var(--block)}
+
+/* quest log — the roadmap reads like a level list, not a changelog */
+.quest{margin-top:26px;padding-top:20px;border-top:1px solid var(--rule)}
+.questHead{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px}
+.questHead h2{font-family:var(--serif);font-size:19px;font-weight:400;margin:0;letter-spacing:-.01em}
+.questHead span{font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--fg3);letter-spacing:.08em}
+.questBar{height:3px;border-radius:99px;background:var(--block);overflow:hidden;margin-bottom:16px}
+.questBar i{display:block;height:100%;border-radius:99px;background:var(--clay);
+  transform-origin:left;animation:questIn 900ms var(--ease-spring) both}
+@keyframes questIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.questList{list-style:none;margin:0;padding:0;position:relative}
+.questList li{position:relative;display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:start;padding:0 0 15px}
+.questList li:not(:last-child)::before{content:"";position:absolute;left:12px;top:23px;bottom:2px;width:1px;background:var(--divider)}
+.questList li:last-child{padding-bottom:4px}
+.qNode{width:25px;height:25px;border-radius:50%;border:1px solid var(--rule);display:grid;place-items:center;flex:none;
+  font-size:10px;font-weight:700;color:var(--fg3);background:var(--bg);font-variant-numeric:tabular-nums}
+.questList li.done .qNode{background:var(--moss);border-color:transparent;color:#fff}
+.questList li.current .qNode{background:var(--fg);border-color:transparent;color:var(--bg);box-shadow:0 0 0 4px color-mix(in srgb,var(--clay) 18%,transparent)}
+.questList b{display:block;font-size:12.5px;font-weight:600;letter-spacing:-.005em;padding-top:2px}
+.questList small{display:block;font-size:11px;line-height:1.45;color:var(--fg3);margin-top:2px}
+.questList em{font-style:normal;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg3);
+  border:1px solid var(--rule);border-radius:99px;padding:3px 7px;margin-top:1px;white-space:nowrap}
+.questList li.current em{background:var(--fg);color:var(--bg);border-color:transparent}
+.questNext{display:flex;flex-direction:column;gap:3px;margin-top:12px;padding:11px 13px;border-radius:14px;
+  background:var(--glass);border:1px solid var(--glass-line);box-shadow:var(--rim)}
+.questNext span{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:700}
+.questNext b{font-size:12px;font-weight:600;line-height:1.4}
+
+.notes{margin-top:24px;border-top:1px solid var(--rule);padding-top:2px}
+.notes summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;
+  font-size:12.5px;font-weight:600;color:var(--fg);padding:13px 0}
+.notes summary::-webkit-details-marker{display:none}
+.notes summary::after{content:"+";font-weight:400;font-size:16px;color:var(--fg3);transition:transform var(--t-base) var(--ease-spring)}
+.notes[open] summary::after{transform:rotate(45deg)}
+.notes h2,.notes h3{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg3);font-weight:700;margin:14px 0 8px}
+.notes ul{margin:0 0 16px;padding-left:15px;font-size:12px;line-height:1.6;color:var(--fg2)}
+.notes li{margin-bottom:6px}
+.notes b{color:var(--fg);font-weight:600}
+.spec{display:grid;grid-template-columns:1fr auto;gap:5px 12px;font-size:11px;color:var(--fg2);margin:0 0 4px}
+.spec b{font-weight:500;color:var(--fg);font-variant-numeric:tabular-nums}
+
+/* ---------------- phone ---------------- */
+.phone{width:390px;height:844px;flex:none;border-radius:60px;padding:11px;position:relative;
+  background:linear-gradient(150deg,#3A342A 0%,#0B0A07 38%,#221E17 72%,#4A4336 100%);
+  box-shadow:0 70px 120px rgba(20,17,12,.38),0 18px 40px rgba(20,17,12,.22),inset 0 1px 0 rgba(255,255,255,.22)}
+.phone::after{content:"";position:absolute;inset:0;border-radius:60px;pointer-events:none;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),inset 0 1px 0 rgba(255,255,255,.35)}
+.device{position:relative;width:100%;height:100%;border-radius:50px;overflow:hidden;background:var(--bg);
+  isolation:isolate;color:var(--fg)}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:112px;height:32px;border-radius:20px;background:#000;z-index:96;pointer-events:none}
+.status{position:absolute;top:0;left:0;right:0;height:52px;z-index:95;display:flex;justify-content:space-between;align-items:center;
+  padding:2px 28px 0 32px;font-size:14.5px;font-weight:600;color:#fff;pointer-events:none;
+  transition:color var(--t-base) var(--ease-out)}
+.status.dark{color:var(--fg)}
+.status .sb-r{display:flex;align-items:center;gap:5px}
+.view{position:absolute;inset:0;overflow:hidden}
+
+/* Every screen is its own stacking context, so Home's z-indexed chrome (ticker, header, dock)
+   can never paint over Event Detail. */
+.home{isolation:isolate;z-index:1;background:var(--bg);
+  transition:transform 420ms var(--ease-soft),opacity 320ms var(--ease-out)}
+.home.pushed{transform:scale(.972) translateX(-18px);opacity:.5}
+.home.behind{visibility:hidden}
+
+/* Duo companion — a second, larger surface that reflects the last event opened. Shown at wide
+   widths when Duo is on; it reads as "the same ticket, at Air size", not a second app. */
+.duo{display:none;width:calc(430px * var(--duoScale,1));height:calc(932px * var(--duoScale,1));flex:none}
+.stage.withDuo .duo{display:block;animation:duoIn 460ms var(--ease-soft) both}
+@keyframes duoIn{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:none}}
+.duoFrame{position:relative;width:430px;height:932px;border-radius:64px;overflow:hidden;background:var(--night);
+  transform:scale(var(--duoScale,1));transform-origin:top left;
+  box-shadow:0 70px 130px rgba(20,17,12,.4),0 14px 34px rgba(20,17,12,.22),inset 0 0 0 1px rgba(255,255,255,.12)}
+.duoImg{position:absolute;inset:0;background-size:cover;background-position:center;transform:scale(1.04)}
+.duoShade{position:absolute;inset:0;background:
+  linear-gradient(180deg,rgba(5,4,3,.55) 0%,rgba(5,4,3,.05) 30%,rgba(5,4,3,.35) 62%,rgba(5,4,3,.93) 100%)}
+.duoInner{position:relative;height:100%;display:flex;flex-direction:column;justify-content:space-between;
+  padding:64px 30px 34px;color:#fff}
+.duoTop{display:flex;justify-content:space-between;align-items:center}
+.duoBrand{font-size:24px;font-weight:300;letter-spacing:-.04em}
+.duoTag{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.7);
+  border:1px solid rgba(255,255,255,.3);border-radius:99px;padding:5px 10px;backdrop-filter:blur(8px)}
+.duoCopy{display:flex;flex-direction:column;gap:0}
+.duoKicker{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.72);margin-bottom:10px}
+.duoCopy h2{font-family:var(--serif);font-weight:400;font-size:46px;line-height:1.02;letter-spacing:-.03em;margin:0 0 10px;text-wrap:balance}
+.duoMeta{font-size:12.5px;color:rgba(255,255,255,.78);margin:0 0 22px}
+.duoFacts{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-top:1px solid rgba(255,255,255,.22);
+  border-bottom:1px solid rgba(255,255,255,.22);padding:14px 0;margin-bottom:20px}
+.duoFacts div{padding-right:12px}
+.duoFacts div+div{padding-left:14px;border-left:1px solid rgba(255,255,255,.16)}
+.duoFacts small{display:block;font-size:8.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.6);margin-bottom:4px}
+.duoFacts b{font-size:15px;font-weight:500;letter-spacing:-.01em}
+.duoHost{display:flex;align-items:center;gap:11px;margin-bottom:20px}
+.duoAv{width:34px;height:34px;border-radius:50%;background:var(--clay);display:grid;place-items:center;font-size:12px;font-weight:700}
+.duoHost b{display:block;font-size:13px;font-weight:600}
+.duoHost span{display:block;font-size:11px;color:rgba(255,255,255,.66);margin-top:1px}
+.duoReserve{height:54px;border-radius:999px;background:rgba(251,247,238,.94);color:#181410;font-size:14.5px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 14px 30px rgba(0,0,0,.3);
+  transition:transform var(--t-press) var(--ease-out)}
+.duoReserve:active{transform:scale(.975)}
+.duo.pulse .duoCopy{animation:duoPulse 440ms var(--ease-spring) both}
+@keyframes duoPulse{0%{opacity:.55;transform:translateY(8px)}100%{opacity:1;transform:none}}
+
+/* ---------------- home ---------------- */
+.homeScroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;padding-bottom:126px;overscroll-behavior:contain}
+.homeScroll::-webkit-scrollbar{display:none}
+
+/* hero block: photo, tabs, snap rail */
+.hh{position:relative;color:#fff;background:var(--night);padding:168px 0 10px}
+.hhbg{position:absolute;inset:0;overflow:hidden;animation:heroIn 1400ms var(--ease-out) both}
+@keyframes heroIn{from{opacity:0;transform:scale(1.07)}to{opacity:1;transform:none}}
+.hhbg .hhArt{width:100%;height:100%;background-size:cover;background-position:center;transform:scale(1.06);opacity:.9;
+  background-image:url('/photos/optimized/DSCF4627.webp'),url('../../public/photos/optimized/DSCF4627.webp')}
+.hhshade{position:absolute;inset:0;background:
+  linear-gradient(180deg,rgba(10,9,7,.72) 0%,rgba(10,9,7,.34) 30%,rgba(10,9,7,.55) 62%,rgba(22,20,15,.97) 100%)}
+.hh::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:rgba(255,255,255,.06)}
+
+/* pinned header (sits above the scroll, wash fades in) */
+.hhead{position:absolute;top:0;left:0;right:0;z-index:40;padding:54px 0 8px;color:#fff}
+.hwash{position:absolute;inset:0;background:rgba(18,16,12,.92);opacity:0;
+  backdrop-filter:blur(18px) saturate(1.2);-webkit-backdrop-filter:blur(18px) saturate(1.2);
+  transition:opacity var(--t-quick) linear}
+:root[data-theme="dark"] .hhead{color:var(--fg)}
+:root[data-theme="dark"] .hwash{background:rgba(10,9,7,.94)}
+.hrow{position:relative;display:flex;align-items:center;gap:8px;height:46px;padding:0 18px 0 20px}
+.brand{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.wordmark{font-size:30px;font-weight:300;letter-spacing:-.04em;line-height:1}
+.hdate{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;opacity:.66}
+.gbtn{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;
+  background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.2);
+  transition:transform var(--t-press) var(--ease-out),background var(--t-quick) var(--ease-out)}
+.gbtn:active{transform:scale(.92);background:rgba(255,255,255,.2)}
+.gbtn svg{width:19px;height:19px}
+.avatar{width:40px;height:40px;border-radius:50%;background:var(--clay);color:#fff;font-size:13px;font-weight:700;
+  display:grid;place-items:center;border:1.5px solid rgba(255,255,255,.85);
+  transition:transform var(--t-press) var(--ease-out)}
+.avatar:active{transform:scale(.92)}
+.hsearch{position:relative;display:flex;align-items:center;gap:9px;margin:10px 20px 0;height:44px;padding:0 6px 0 15px;
+  border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  transition:transform var(--t-quick) var(--ease-out),background var(--t-quick) var(--ease-out)}
+.hsearch:active{transform:scale(.985);background:rgba(255,255,255,.2)}
+.hsearch svg{width:18px;height:18px;opacity:.9}
+.hsearch .sp{flex:1;text-align:left;font-size:14px;color:rgba(255,255,255,.78);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hsearch .area{display:flex;align-items:center;gap:5px;height:32px;padding:0 11px;border-radius:999px;
+  background:rgba(255,255,255,.16);font-size:12px;font-weight:600;white-space:nowrap}
+
+/* hero tabs, sliding ink */
+.htabsWrap{padding:22px 0 0;position:relative}
+.htabs{position:relative;display:flex;gap:22px;padding:0 24px;overflow-x:auto;scrollbar-width:none}
+.htabs::-webkit-scrollbar{display:none}
+.htabs button{position:relative;flex:none;font-size:16px;font-weight:300;color:rgba(255,255,255,.55);
+  padding:6px 0 9px;transition:color var(--t-base) var(--ease-out)}
+.htabs button.on{color:#fff;font-weight:600}
+.tabink{position:absolute;bottom:0;height:2px;border-radius:2px;background:#fff;
+  transition:left var(--t-slow) var(--ease-spring),width var(--t-slow) var(--ease-spring)}
+
+/* snap rail, with depth on the neighbours */
+.rail{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding:16px 24px 4px;
+  scrollbar-width:none;scroll-padding-left:24px}
+.rail::-webkit-scrollbar{display:none}
+.hc{position:relative;flex:0 0 268px;height:352px;border-radius:18px;overflow:hidden;scroll-snap-align:start;
+  text-align:left;color:#fff;background:#2A2620;transform-origin:center bottom;
+  transform:scale(var(--dz,1));
+  transition:transform var(--t-base) var(--ease-out),box-shadow var(--t-base) var(--ease-out);
+  box-shadow:0 18px 40px rgba(0,0,0,.34)}
+.hc:active{transform:scale(calc(var(--dz,1) * .975))}
+.hcTap{position:absolute;inset:0;z-index:1;border-radius:inherit}
+.hc .ph{position:absolute;inset:0;background-size:cover;background-position:center;
+  transition:transform 600ms var(--ease-out)}
+.hc:active .ph{transform:scale(1.03)}
+.hc .shade{position:absolute;inset:0;background:
+  linear-gradient(180deg,rgba(0,0,0,.34) 0%,rgba(0,0,0,0) 34%,rgba(0,0,0,.12) 55%,rgba(0,0,0,.84) 100%)}
+.hc .top{position:absolute;top:13px;left:13px;right:13px;z-index:3;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none}
+.pill{display:inline-flex;align-items:center;height:25px;padding:0 9px;border-radius:999px;font-size:10.5px;
+  font-weight:700;letter-spacing:.03em;white-space:nowrap}
+.pill.lbl{background:rgba(247,244,236,.9);color:#1B1916;backdrop-filter:blur(6px)}
+.save{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;pointer-events:auto;
+  background:rgba(0,0,0,.24);border:1px solid rgba(255,255,255,.24);transition:transform var(--t-press) var(--ease-out),background var(--t-quick)}
+.save:active{transform:scale(.86);background:rgba(0,0,0,.4)}
+.save svg{width:15px;height:15px}
+.save.on svg{fill:#fff}
+.hc .info{position:absolute;left:16px;right:16px;bottom:16px;pointer-events:none}
+.hc .k{font-size:11px;letter-spacing:.1em;text-transform:uppercase;opacity:.72;display:flex;gap:8px;align-items:center}
+.hc .t{display:block;font-size:25px;font-weight:300;line-height:1.12;letter-spacing:-.015em;margin:6px 0 7px}
+.hc .b{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px;opacity:.92}
+.hc .b b{font-weight:600}
+.dots{display:flex;justify-content:center;gap:6px;padding:14px 0 4px}
+.dots i{width:5px;height:5px;border-radius:99px;background:rgba(255,255,255,.3);
+  transition:width var(--t-base) var(--ease-spring),background var(--t-base) var(--ease-out)}
+.dots i.on{width:18px;background:#fff}
+
+/* feed below the hero */
+.pulse{display:flex;align-items:center;gap:9px;margin:18px 20px 0;padding:9px 13px;border-radius:999px;
+  background:var(--block);overflow:hidden;position:relative;z-index:2}
+.pulse .dot{width:7px;height:7px;border-radius:50%;background:var(--moss);flex:none;position:relative}
+.pulse .dot::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:1px solid var(--moss);
+  opacity:.5;animation:halo 2400ms var(--ease-out) infinite}
+@keyframes halo{0%{transform:scale(.6);opacity:.55}70%{transform:scale(1.6);opacity:0}100%{opacity:0}}
+.marquee{flex:1;overflow:hidden;white-space:nowrap;-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+.marquee span{display:inline-block;padding-left:100%;font-size:12px;color:var(--fg2);
+  animation:marq 26s linear infinite}
+@keyframes marq{to{transform:translateX(-200%)}}
+.pulse .cnt{font-size:11px;font-weight:700;color:var(--fg);flex:none;padding-left:4px;border-left:1px solid var(--rule)}
+
+.feedHead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:26px 20px 12px}
+.feedHead h2{font-size:21px;font-weight:400;letter-spacing:-.02em;margin:0}
+.feedHead .sub{font-size:12px;color:var(--fg3);margin-top:3px}
+.chipBtn{display:flex;align-items:center;gap:6px;height:34px;padding:0 12px;border-radius:999px;
+  border:1px solid var(--rule);font-size:12.5px;font-weight:600;
+  transition:transform var(--t-press) var(--ease-out),background var(--t-quick) var(--ease-out)}
+.chipBtn:active{transform:scale(.95);background:var(--block)}
+.chipBtn svg{width:14px;height:14px}
+.chipBtn .n{min-width:16px;height:16px;border-radius:99px;background:var(--fg);color:var(--bg);font-size:9.5px;
+  display:grid;place-items:center;padding:0 4px;font-weight:700}
+
+.feed{display:flex;flex-direction:column;gap:2px;padding:0 12px}
+.ev{display:flex;align-items:center;gap:13px;width:100%;padding:11px 8px;border-radius:16px;text-align:left;
+  opacity:0;transform:translateY(16px);
+  transition:opacity var(--t-slow) var(--ease-out),transform var(--t-slow) var(--ease-spring),background var(--t-quick)}
+.ev.in{opacity:1;transform:none}
+.ev:active{background:var(--block);transform:scale(.988);transition-duration:var(--t-press)}
+.ev .ph{width:82px;height:82px;border-radius:14px;flex:none;background-size:cover;background-position:center;
+  background-color:var(--block);box-shadow:var(--shadow-1)}
+.ev .tx{flex:1;min-width:0}
+.ev .k{display:block;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--fg3)}
+.ev .t{display:block;font-size:16px;font-weight:500;letter-spacing:-.01em;margin:3px 0 4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ev .s{display:block;font-size:12px;color:var(--fg2);display:flex;align-items:center;gap:6px}
+.ev .s .free{color:var(--moss);font-weight:600}
+.ev .r{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none}
+.ev .p{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.ev .chev{width:15px;height:15px;color:var(--fg3);transition:transform var(--t-quick) var(--ease-out)}
+.ev:active .chev{transform:translateX(2px)}
+.evSep{height:1px;margin:0 8px 0 103px;background:var(--divider)}
+
+.typeStrip{padding:20px 20px 8px}
+.typeStrip .sh{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:11px}
+.typeStrip h3{font-size:15px;font-weight:500;margin:0}
+.typeStrip .sh button{font-size:12px;color:var(--fg2)}
+.types{display:flex;gap:9px;overflow-x:auto;scrollbar-width:none;margin:0 -20px;padding:0 20px 4px}
+.types::-webkit-scrollbar{display:none}
+.ty{flex:none;display:flex;align-items:center;gap:7px;height:36px;padding:0 13px;border-radius:999px;
+  border:1px solid var(--rule);font-size:12.5px;transition:transform var(--t-press) var(--ease-out),background var(--t-quick)}
+.ty:active{transform:scale(.95);background:var(--block)}
+.ty i{width:6px;height:6px;border-radius:99px;background:var(--clay)}
+.ty b{font-weight:600;font-size:11px;color:var(--fg3);font-variant-numeric:tabular-nums}
+
+/* bottom dock */
+.dock{position:absolute;left:14px;right:14px;bottom:16px;height:64px;border-radius:999px;z-index:35;
+  display:flex;align-items:center;justify-content:space-between;padding:0 8px;
+  background:color-mix(in srgb,var(--bg) 82%,transparent);
+  border:1px solid var(--rule);box-shadow:var(--shadow-dock);
+  backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);
+  transform-origin:center bottom;
+  transition:transform var(--t-base) var(--ease-spring),opacity var(--t-quick)}
+.dock.mini{transform:scale(.93) translateY(6px)}
+.dk{width:56px;height:48px;border-radius:999px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  color:var(--fg3);font-size:9.5px;font-weight:600;letter-spacing:.01em;
+  transition:color var(--t-quick),transform var(--t-press) var(--ease-out)}
+.dk:active{transform:scale(.9)}
+.dk svg{width:21px;height:21px}
+.dk.on{color:var(--fg)}
+.dk.on svg{stroke-width:1.9}
+.dk.on i{opacity:1;transform:scale(1)}
+.dk i{width:4px;height:4px;border-radius:99px;background:var(--fg);opacity:0;transform:scale(.4);
+  transition:opacity var(--t-quick),transform var(--t-quick) var(--ease-spring)}
+.dk.plusDk{width:52px}
+.plusBtn{width:46px;height:46px;border-radius:50%;background:var(--fg);color:var(--bg);display:grid;place-items:center;
+  box-shadow:0 6px 18px rgba(27,25,22,.24);
+  transition:transform var(--t-base) var(--ease-spring),border-radius var(--t-base) var(--ease-spring)}
+.plusBtn svg{width:19px;height:19px;stroke-width:2}
+.plusBtn.turn{transform:rotate(45deg)}
+.plusBtn:active{transform:scale(.9)}
+
+/* ---------------- browse by type ---------------- */
+.typeView{position:absolute;inset:0;z-index:2;background:var(--bg);
+  transform:translateX(100%);opacity:0;pointer-events:none;
+  transition:transform 420ms var(--ease-soft),opacity 300ms var(--ease-out)}
+.typeView.open{transform:none;opacity:1;pointer-events:auto}
+.typeView.behind{visibility:hidden}
+.typeScroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;padding:150px 0 48px;overscroll-behavior:contain}
+.typeScroll::-webkit-scrollbar{display:none}
+.typeNav{position:absolute;top:0;left:0;right:0;z-index:6;display:flex;align-items:center;gap:6px;
+  padding:52px 12px 8px;background:var(--bg);border-bottom:1px solid var(--divider)}
+.typeNavTitle{flex:1;text-align:center;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.typeHead{padding:6px 20px 0}
+.typeKicker{font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--fg3);font-weight:700}
+.typeHead h1{font-size:31px;font-weight:300;letter-spacing:-.025em;line-height:1.08;margin:8px 0 9px}
+.typeBlurb{font-size:13px;line-height:1.55;color:var(--fg2);margin:0 0 12px;max-width:33ch}
+.typeMeta{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--fg3);margin-bottom:16px}
+.typeMeta .dot{width:3px;height:3px;border-radius:99px;background:currentColor}
+.typeChips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:0 20px 2px}
+.typeChips::-webkit-scrollbar{display:none}
+.typeChips button{flex:none;height:36px;padding:0 13px;border-radius:999px;border:1px solid var(--rule);
+  font-size:12.5px;font-weight:600;color:var(--fg2);display:flex;align-items:center;gap:7px;
+  transition:background var(--t-quick),color var(--t-quick),border-color var(--t-quick),transform var(--t-press) var(--ease-out)}
+.typeChips button:active{transform:scale(.95)}
+.typeChips button b{font-size:10px;font-weight:700;color:var(--fg3);font-variant-numeric:tabular-nums}
+.typeChips button.on{background:var(--fg);color:var(--bg);border-color:transparent}
+.typeChips button.on b{color:color-mix(in srgb,var(--bg) 72%,transparent)}
+.typeTools{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 10px;font-size:12px;color:var(--fg3)}
+.typeTools .sort{display:flex;align-items:center;gap:5px;color:var(--fg);font-weight:600}
+.typeTools svg{width:12px;height:12px}
+.typeList{display:flex;flex-direction:column;gap:2px;padding:0 12px}
+.typeEmpty{padding:40px 20px;text-align:center;color:var(--fg2);font-size:13px}
+
+/* ---------------- event detail ---------------- */
+.detail{background:var(--bg);isolation:isolate;z-index:3;opacity:0;pointer-events:none;transform:translateY(14px);
+  transition:opacity var(--t-base) var(--ease-out),transform var(--t-base) var(--ease-out)}
+.detail.open{opacity:1;pointer-events:auto;transform:none}
+.dScroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;padding-bottom:214px;overscroll-behavior:contain;background:var(--bg)}
+.dScroll::-webkit-scrollbar{display:none}
+
+.dHero{position:relative;height:352px;overflow:hidden;background:#241E17}
+/* A designed plate under the photo: if a picture is slow or missing, the hero still reads as art
+   instead of a broken-image icon. */
+.heroFallback{position:absolute;inset:0;display:grid;place-items:center;
+  background:radial-gradient(120% 85% at 28% 6%,#4A3A2A 0%,#241E17 46%,#14110D 100%)}
+.heroFallback span{font-size:190px;font-weight:300;line-height:1;letter-spacing:-.06em;color:rgba(247,244,236,.08);transform:translateY(10px)}
+.dHeroArt{position:absolute;left:0;top:-20%;width:100%;height:140%;background-size:cover;background-position:center;
+  background-color:transparent;will-change:transform;transform-origin:center 30%}
+.dHero .vig{position:absolute;inset:0;background:radial-gradient(130% 90% at 50% 0%,transparent 32%,rgba(0,0,0,.42) 100%)}
+.dHero .shade{position:absolute;inset:0;background:
+  linear-gradient(180deg,rgba(6,5,4,.68) 0%,rgba(6,5,4,.1) 34%,rgba(6,5,4,.3) 62%,rgba(6,5,4,.92) 100%)}
+.heroPills{display:flex;gap:7px;margin-bottom:12px;flex-wrap:wrap}
+.dPill{height:26px;padding:0 10px;border-radius:999px;display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;
+  letter-spacing:.03em;background:rgba(247,244,236,.92);color:#1B1916;backdrop-filter:blur(8px)}
+.dPill.out{background:rgba(0,0,0,.28);color:#fff;border:1px solid rgba(255,255,255,.5)}
+.dHero .ttl{position:absolute;left:20px;right:20px;bottom:24px;color:#fff;z-index:2}
+.dHero h1{font-size:34px;font-weight:300;line-height:1.05;letter-spacing:-.03em;margin:0;text-wrap:balance}
+.calBtn{display:inline-flex;align-items:center;gap:6px;height:27px;padding:0 10px;border-radius:999px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);font-size:11px;font-weight:600;color:#fff;
+  transition:transform var(--t-press) var(--ease-out),background var(--t-quick)}
+.calBtn:active{transform:scale(.94);background:rgba(255,255,255,.26)}
+.calBtn svg{width:12px;height:12px}
+
+/* ticket stub, the V8 shape, rising into place */
+.dStub{position:relative;margin:-16px 14px 0;border-radius:18px;background:var(--inset);
+  border:1px solid var(--divider);
+  box-shadow:0 26px 60px rgba(27,25,22,.20),0 3px 10px rgba(27,25,22,.08);overflow:hidden;
+  opacity:0;transform:translateY(22px) scale(.985);
+  transition:opacity var(--t-slow) var(--ease-out),transform 520ms var(--ease-spring)}
+.dStub.rise{opacity:1;transform:none}
+.stubTop{display:flex;gap:16px;padding:16px;align-items:stretch}
+/* The calendar page: cream, a serif month and numeral, and one hairline — the block from the
+   reference, not a tinted tile. */
+.dateBlk{flex:none;width:66px;display:flex;flex-direction:column;justify-content:center;align-items:center;
+  padding:2px 16px 2px 0;border:0;border-right:1px solid var(--rule);border-radius:0;background:none;color:var(--clay)}
+.dateBlk small{display:block;font-family:var(--serif);font-size:10px;letter-spacing:.17em;font-weight:600;text-transform:uppercase}
+.dateBlk b{display:block;font-family:var(--serif);font-size:38px;font-weight:400;line-height:1;margin:5px 0 6px;
+  color:var(--fg);letter-spacing:-.035em}
+.dateBlk span{display:block;font-size:9.5px;color:var(--fg3);letter-spacing:.16em;font-weight:600}
+.stubMain{flex:1;min-width:0}
+.stubMain .when{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.stubMain .cd{display:inline-flex;align-items:center;gap:5px;margin-top:4px;font-size:11.5px;color:var(--honey);font-weight:600}
+.stubMain .cd i{width:5px;height:5px;border-radius:99px;background:currentColor}
+.stubMain .place{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:9px;font-size:12.5px;color:var(--fg2)}
+.dirBtn{flex:none;display:inline-flex;align-items:center;gap:4px;height:30px;padding:0 10px;border-radius:999px;
+  background:var(--fg);color:var(--bg);font-size:11px;font-weight:700;
+  transition:transform var(--t-press) var(--ease-out)}
+.dirBtn:active{transform:scale(.94)}
+.dirBtn svg{width:12px;height:12px}
+.perf{position:relative;height:1px;margin:0 16px;border-top:1.5px dashed var(--rule)}
+.perf::before,.perf::after{content:"";position:absolute;top:-8px;width:16px;height:16px;border-radius:50%;background:var(--bg)}
+.perf::before{left:-24px}
+.perf::after{right:-24px}
+.stubBot{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 13px;background:var(--block)}
+.stubBot .price{display:flex;align-items:baseline;gap:4px}
+.stubBot .price b{font-size:21px;font-weight:400;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stubBot .price span{font-size:11px;color:var(--fg3)}
+.seatPill{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:999px;
+  border:1px solid var(--rule);font-size:11px;font-weight:600}
+.seatPill.few{color:var(--honey);border-color:color-mix(in srgb,var(--honey) 34%,transparent);
+  background:color-mix(in srgb,var(--honey) 10%,transparent)}
+.seatPill i{width:5px;height:5px;border-radius:99px;background:currentColor}
+
+/* sticky compact nav + tabs */
+.dnav{position:absolute;top:0;left:0;right:0;z-index:45;padding:52px 12px 0;
+  background:var(--bg);
+  border-bottom:1px solid var(--divider);
+  transform:translateY(-100%);opacity:0;
+  transition:transform var(--t-base) var(--ease-soft),opacity var(--t-quick)}
+.dnav.on{transform:none;opacity:1}
+.dnavRow{display:flex;align-items:center;gap:6px;height:48px}
+.nbtn{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:var(--fg);flex:none;
+  transition:transform var(--t-press) var(--ease-out),background var(--t-quick)}
+.nbtn:active{transform:scale(.9);background:var(--block)}
+.nbtn svg{width:20px;height:20px}
+.dnavTitle{flex:1;min-width:0;text-align:center;font-size:14px;font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.92}
+.dTabs{display:flex;gap:20px;overflow-x:auto;scrollbar-width:none;padding:0 16px 9px;
+  transform:translateY(8px);opacity:0;transition:transform var(--t-base) var(--ease-out),opacity var(--t-quick)}
+.dnav.on .dTabs{transform:none;opacity:1}
+.dTabs::-webkit-scrollbar{display:none}
+.dTabs button{position:relative;flex:none;font-size:12.5px;font-weight:500;color:var(--fg3);padding-bottom:5px;
+  transition:color var(--t-quick)}
+.dTabs button.on{color:var(--fg);font-weight:700}
+.dTabs button.on::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:2px;background:var(--fg)}
+.backFloat{position:absolute;top:54px;left:16px;z-index:44;width:42px;height:42px;border-radius:50%;
+  display:grid;place-items:center;color:#fff;background:rgba(0,0,0,.32);border:1px solid rgba(255,255,255,.26);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  transition:transform var(--t-press) var(--ease-out),opacity var(--t-quick)}
+.backFloat:active{transform:scale(.9)}
+.backFloat.hide{opacity:0;pointer-events:none}
+.backFloat svg{width:19px;height:19px}
+
+/* save the date — one slim row inside the ticket, not a card of its own */
+.stubSave{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px;
+  background:var(--inset)}
+.stubSaveLabel{display:inline-flex;align-items:center;gap:6px;flex:none;
+  font-size:11.5px;font-weight:600;color:var(--fg2);white-space:nowrap}
+.stubSaveLabel svg{width:14px;height:14px;color:var(--clay)}
+.stubSaveBtns{display:flex;gap:6px;justify-content:flex-end}
+.saveChip{height:30px;padding:0 10px;border-radius:999px;border:1px solid var(--rule);
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:600;color:var(--fg);white-space:nowrap;
+  transition:background var(--t-base),color var(--t-base),border-color var(--t-base),transform var(--t-press) var(--ease-out)}
+.saveChip:active{transform:scale(.95)}
+.saveChip > span{display:inline-flex;align-items:center;gap:5px}
+.saveChip svg{width:12px;height:12px;flex:none}
+.saveChip.added{border-color:transparent;background:color-mix(in srgb,var(--moss) 16%,transparent);color:var(--moss)}
+.saveChip.pop{animation:calPop 320ms var(--ease-spring)}
+@keyframes calPop{0%{transform:scale(.92)}55%{transform:scale(1.06)}100%{transform:scale(1)}}
+
+/* detail body */
+.dBody{padding:22px 20px 0}
+.dSec{scroll-margin-top:132px;padding-bottom:28px;margin-bottom:28px;border-bottom:1px solid var(--divider);
+  opacity:0;transform:translateY(14px);
+  transition:opacity var(--t-slow) var(--ease-out),transform var(--t-slow) var(--ease-out)}
+.dSec.in{opacity:1;transform:none}
+.dSec:last-child{border-bottom:0}
+.dH{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg3);font-weight:700;margin:0 0 14px}
+
+/* Good to know: a label/value grid, held apart by alignment and space only. */
+.knowList{display:grid;grid-template-columns:96px 1fr;gap:14px 16px;margin:0 0 28px}
+.knowList .knowRow{display:contents}
+.knowList dt{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--clay);font-weight:700;padding-top:2px}
+.knowList dd{margin:0;font-size:13px;line-height:1.55;color:var(--fg2)}
+.about{font-size:14px;line-height:1.62;color:var(--fg2);margin:0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+  transition:-webkit-line-clamp 0s}
+.about.open{display:block;-webkit-line-clamp:unset}
+.more{margin-top:10px;font-size:12.5px;font-weight:600;color:var(--fg);display:inline-flex;align-items:center;gap:5px;padding:6px 0;
+  transition:opacity var(--t-quick)}
+.more svg{width:13px;height:13px;transition:transform var(--t-base) var(--ease-spring)}
+.more.on svg{transform:rotate(180deg)}
+
+/* What's included: an editorial numbered list, no cards, no checks. */
+.incList{display:flex;flex-direction:column;gap:17px;margin:0;padding:0;list-style:none}
+.incItem{display:grid;grid-template-columns:30px 1fr;gap:12px;align-items:baseline}
+.incNo{font-family:var(--serif);font-size:15px;line-height:1.2;color:var(--clay);letter-spacing:.02em}
+.incItem b{display:block;font-size:13.5px;font-weight:600;letter-spacing:-.005em}
+.incItem .d{display:block;font-size:12px;color:var(--fg2);margin-top:2px;line-height:1.5}
+
+/* Hosted by: one plain row. */
+.hostCard{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:0;border:0;background:none}
+.hostRow{display:flex;align-items:center;gap:12px;width:100%;text-align:left}
+.hostAv{width:42px;height:42px;border-radius:50%;background:var(--clay);color:#fff;display:grid;place-items:center;
+  font-size:15px;font-weight:700;flex:none}
+.hostTx{flex:1;min-width:0}
+.hostTx b{display:block;font-size:15px;font-weight:600;letter-spacing:-.01em}
+.hostTx span{display:block;font-size:11.5px;color:var(--fg3);margin-top:2px}
+.hostMsg{flex:none;height:auto;padding:4px 0;border:0;background:none;font-size:12px;font-weight:600;color:var(--clay);
+  display:inline-flex;align-items:center;gap:5px;
+  transition:opacity var(--t-press) var(--ease-out)}
+.hostMsg:active{opacity:.55;transform:none}
+.hostMsg svg{width:13px;height:13px}
+
+.photos{display:flex;gap:9px;overflow-x:auto;scrollbar-width:none;margin:0 -20px;padding:0 20px 2px}
+.photos::-webkit-scrollbar{display:none}
+.photos .p{flex:none;width:196px;height:142px;border-radius:12px;background-size:cover;background-position:center;background-color:var(--block);
+  transition:transform var(--t-base) var(--ease-out)}
+.photos .p:active{transform:scale(.97)}
+
+.steps{position:relative;display:flex;flex-direction:column;gap:14px;padding-left:2px}
+.step{position:relative;display:flex;gap:12px}
+.step:not(:last-child)::before{content:"";position:absolute;left:11px;top:26px;bottom:-14px;width:1px;background:var(--rule)}
+.step .n{width:23px;height:23px;border-radius:50%;border:0;background:var(--block);display:grid;place-items:center;
+  font-size:10px;font-weight:700;flex:none;margin-top:1px;color:var(--fg)}
+.step b{display:block;font-size:13px;font-weight:600}
+.step span{display:block;font-size:12px;color:var(--fg2);line-height:1.5;margin-top:2px}
+
+/* reserve bar */
+.dbar{position:absolute;left:0;right:0;bottom:0;z-index:46;padding:14px 16px 24px;
+  background:var(--bg);
+  transform:translateY(100%);
+  transition:transform 460ms var(--ease-spring)}
+/* The content fades under the bar instead of stopping at a hard hairline. */
+.dbar::before{content:"";position:absolute;left:0;right:0;top:-34px;height:34px;
+  background:linear-gradient(180deg,transparent,var(--bg));pointer-events:none}
+.detail.open .dbar{transform:none}
+.chips{position:relative;display:flex;gap:8px;margin-bottom:12px}
+.chips .ink{position:absolute;top:0;bottom:0;border-radius:999px;background:var(--fg);
+  transition:left var(--t-base) var(--ease-spring),width var(--t-base) var(--ease-spring)}
+.chip{position:relative;z-index:1;flex:1;height:36px;border-radius:999px;border:1px solid var(--rule);
+  font-size:12px;font-weight:600;color:var(--fg2);display:grid;place-items:center;gap:2px;
+  transition:color var(--t-quick) var(--ease-out),transform var(--t-press) var(--ease-out),border-color var(--t-quick),opacity var(--t-quick)}
+.chip small{font-size:9.5px;opacity:.7;font-weight:600}
+.chip.on{color:var(--bg);border-color:transparent}
+.chip:active{transform:scale(.96)}
+.chip[disabled]{opacity:.32;pointer-events:none}
+.barRow{display:flex;align-items:center;gap:12px}
+.barPrice{display:flex;flex-direction:column;min-width:112px}
+.barPrice b{font-size:24px;font-weight:400;letter-spacing:-.025em;font-variant-numeric:tabular-nums;line-height:1.08}
+.barPrice span{font-size:11px;color:var(--fg3);margin-top:2px;font-variant-numeric:tabular-nums}
+.reserve{flex:1;height:52px;border-radius:999px;background:var(--fg);color:var(--bg);
+  font-size:14.5px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;position:relative;overflow:hidden;
+  box-shadow:0 10px 24px rgba(27,25,22,.16);
+  transition:transform var(--t-press) var(--ease-out),width 320ms var(--ease-spring)}
+.reserve:active{transform:scale(.975)}
+.reserve .lbl{transition:opacity var(--t-quick),transform var(--t-quick)}
+.reserve.loading .lbl,.reserve.held .lbl{opacity:0;transform:translateY(6px)}
+.reserve .ring{position:absolute;inset:0;margin:auto;width:22px;height:22px;opacity:0;transition:opacity var(--t-quick)}
+.reserve.loading .ring{opacity:1}
+.reserve .ring circle{fill:none;stroke:var(--bg);stroke-width:2;stroke-linecap:round;
+  stroke-dasharray:60;stroke-dashoffset:60}
+.reserve.loading .ring circle{animation:draw 1100ms var(--ease-out) forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.reserve .check{position:absolute;inset:0;margin:auto;width:20px;height:20px;opacity:0;transform:scale(.6)}
+.reserve .check path{fill:none;stroke:var(--bg);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:22;stroke-dashoffset:22}
+.reserve.held{display:flex;gap:8px}
+.reserve.held .check{position:static;inset:auto;margin:0;width:18px;height:18px;opacity:1;transform:none;
+  transition:transform 320ms var(--ease-spring)}
+.reserve.held .check path{animation:draw 320ms var(--ease-out) forwards}
+.reserve.held .lbl{opacity:1;transform:none}
+.barTrust{display:flex;align-items:center;justify-content:center;gap:5px;margin-top:9px;font-size:12px;color:var(--fg2)}
+.barTrust svg{width:12px;height:12px}
+.dbar.held .barTrust{color:var(--moss)}
+
+/* fly / shared element */
+.fly{position:absolute;z-index:80;background-size:cover;background-position:center;background-color:#2A2620;
+  will-change:transform,width,height,border-radius;
+  transition:left 420ms var(--ease-soft),top 420ms var(--ease-soft),width 420ms var(--ease-soft),height 420ms var(--ease-soft),border-radius 420ms var(--ease-soft),opacity 140ms linear;
+  box-shadow:0 20px 50px rgba(0,0,0,.35)}
+
+/* filter sheet */
+.scrim{position:absolute;inset:0;z-index:48;background:rgba(10,9,7,.42);opacity:0;pointer-events:none;
+  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+  transition:opacity var(--t-base) var(--ease-out)}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:49;max-height:78%;display:flex;flex-direction:column;
+  background:var(--bg);border-radius:24px 24px 0 0;box-shadow:0 -18px 50px rgba(0,0,0,.22);
+  transform:translateY(102%);transition:transform 400ms var(--ease-spring)}
+.sheet.on{transform:none}
+.sheetHead{padding:10px 18px 6px;touch-action:none;cursor:grab;flex:none}
+.grab{width:38px;height:4px;border-radius:99px;background:var(--rule);margin:0 auto 14px}
+.sheetHead .st{display:flex;align-items:center;justify-content:space-between}
+.sheetHead h3{font-size:18px;font-weight:500;letter-spacing:-.01em;margin:0}
+.xbtn{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--block);
+  transition:transform var(--t-press) var(--ease-out)}
+.xbtn:active{transform:scale(.9)}
+.xbtn svg{width:15px;height:15px}
+.sheetBody{padding:12px 18px 4px;overflow-y:auto;flex:1;min-height:0}
+.fgroup{margin-bottom:16px}
+.fgroup h4{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg3);margin:0 0 8px}
+.frow{display:flex;gap:7px;flex-wrap:wrap}
+.fopt{height:34px;padding:0 13px;border-radius:999px;border:1px solid var(--rule);font-size:12.5px;font-weight:500;
+  transition:transform var(--t-press) var(--ease-out),background var(--t-quick),color var(--t-quick),border-color var(--t-quick)}
+.fopt:active{transform:scale(.95)}
+.fopt.on{background:var(--fg);color:var(--bg);border-color:transparent;font-weight:600}
+.sheetFoot{padding:12px 18px 26px;flex:none;border-top:1px solid var(--divider)}
+.applyBtn{width:100%;height:50px;border-radius:999px;background:var(--fg);color:var(--bg);font-size:15px;font-weight:700;
+  transition:transform var(--t-press) var(--ease-out)}
+.applyBtn:active{transform:scale(.98)}
+
+/* toast */
+.toast{position:absolute;left:50%;bottom:150px;transform:translate(-50%,14px);z-index:90;
+  max-width:80%;padding:10px 16px;border-radius:999px;background:var(--fg);color:var(--bg);
+  font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;pointer-events:none;
+  transition:opacity var(--t-quick),transform var(--t-base) var(--ease-spring)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* focus, for keyboard users */
+:focus-visible{outline:2px solid var(--plum);outline-offset:2px;border-radius:8px}
+
+/* ============================================================================
+   v2 premium layer — Liquid Glass material, editorial type, floating chrome.
+   Overrides the v1 component styles above; same class names, same logic.
+   ============================================================================ */
+
+/* Home chrome reads as one piece of glass, not a blurry strip. */
+.hwash{background:rgba(18,15,11,.72);backdrop-filter:blur(28px) saturate(1.7);-webkit-backdrop-filter:blur(28px) saturate(1.7)}
+.hhead{color:#fff}
+.hsearch{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.24);box-shadow:inset 0 1px 0 rgba(255,255,255,.28)}
+.htabs button{font-weight:400}
+.htabs button.on{font-weight:600}
+.hc{border-radius:26px;box-shadow:0 26px 60px rgba(0,0,0,.38)}
+.hc .t{font-family:var(--serif);font-weight:400;font-size:28px;letter-spacing:-.02em}
+.hc .pill.lbl{background:rgba(251,247,238,.82);backdrop-filter:blur(14px) saturate(1.5)}
+.feedHead h2{font-family:var(--serif);font-weight:400;font-size:26px;letter-spacing:-.02em}
+.ev{border-radius:18px}
+.ev .ph{border-radius:18px;box-shadow:0 10px 24px rgba(24,20,16,.12)}
+.ev .t{font-size:16.5px}
+.ty{background:var(--glass);border-color:var(--glass-line);box-shadow:var(--rim);backdrop-filter:blur(16px)}
+.dock{left:14px;right:14px;bottom:14px;height:66px;background:var(--glass-strong);
+  border:1px solid var(--glass-line);box-shadow:var(--glass-shadow),var(--rim);
+  backdrop-filter:blur(30px) saturate(1.8);-webkit-backdrop-filter:blur(30px) saturate(1.8)}
+.plusBtn{background:var(--fg);box-shadow:0 10px 26px rgba(24,20,16,.3),inset 0 1px 0 rgba(255,255,255,.16)}
+
+/* Detail: a bigger cinematic hero, serif display, and a heavier ticket. */
+.dHero{height:392px}
+.dHero .ttl{left:22px;right:22px;bottom:26px;will-change:transform,opacity;transform:translateY(calc(var(--dp,0) * -24px));opacity:calc(1 - var(--dp,0) * .8)}
+.ev .ph{will-change:transform}
+
+/* reading progress, drawn under the compact tabs */
+.dProgress{position:absolute;left:0;right:0;bottom:0;height:2px;overflow:hidden;pointer-events:none}
+.dProgress i{display:block;height:100%;width:100%;background:var(--clay);transform:scaleX(0);transform-origin:left;
+  transition:transform 90ms linear}
+
+/* a haptic beat, shown as a ring where the touch landed */
+.beat{position:absolute;width:42px;height:42px;margin:0;border-radius:50%;border:1.5px solid var(--clay);
+  pointer-events:none;z-index:97;opacity:.75;transform:translate(-50%,-50%) scale(.35);
+  animation:beatOut 560ms var(--ease-out) forwards}
+@keyframes beatOut{to{transform:translate(-50%,-50%) scale(1.7);opacity:0}}
+.dHero h1{font-family:var(--serif);font-weight:400;font-size:40px;line-height:1.02;letter-spacing:-.025em}
+.heroPills{margin-bottom:13px}
+.dPill{backdrop-filter:blur(14px) saturate(1.6);-webkit-backdrop-filter:blur(14px) saturate(1.6)}
+.dStub{margin-top:-22px;border-radius:26px;border-color:var(--glass-line);
+  box-shadow:0 34px 80px rgba(24,20,16,.22),0 3px 12px rgba(24,20,16,.08),var(--rim)}
+.stubTop{padding:18px;gap:18px}
+.dateBlk{width:72px}
+.stubMain .when{font-size:16px}
+.stubBot{padding:14px 18px}
+.stubBot .price b{font-family:var(--serif);font-size:24px}
+.stubSave{padding:11px 18px}
+.dBody{padding:26px 22px 0}
+.dSec{padding-bottom:30px;margin-bottom:30px;border-color:var(--divider)}
+.dH{color:var(--fg2);letter-spacing:.16em}
+.knowList{grid-template-columns:104px 1fr;gap:15px 18px}
+.knowList dt{font-size:10px;letter-spacing:.13em}
+.knowList dd{font-size:13.5px;line-height:1.58}
+.about{font-size:14.5px;line-height:1.66}
+.incList{gap:19px}
+.incItem{grid-template-columns:32px 1fr}
+.incNo{font-size:17px}
+.incItem b{font-size:14px}
+.hostAv{width:46px;height:46px;font-size:16px}
+.hostTx b{font-size:16px}
+.dHeroArt{filter:saturate(1.06) contrast(1.02)}
+
+/* Glass nav and a floating, material reserve bar. */
+.dnav{background:var(--glass-strong);backdrop-filter:blur(30px) saturate(1.7);-webkit-backdrop-filter:blur(30px) saturate(1.7);
+  border-bottom:1px solid var(--glass-line);box-shadow:0 10px 30px rgba(24,20,16,.06)}
+.dbar{left:10px;right:10px;bottom:10px;border-radius:30px;background:var(--glass-strong);
+  border:1px solid var(--glass-line);box-shadow:var(--glass-shadow),var(--rim);
+  backdrop-filter:blur(30px) saturate(1.8);-webkit-backdrop-filter:blur(30px) saturate(1.8);
+  padding:14px 14px 18px}
+.dbar::before{top:-44px;height:44px}
+.dScroll{padding-bottom:226px}
+.chips{background:var(--block);border-radius:999px;padding:4px;gap:4px;margin-bottom:12px}
+.chips .ink{top:4px;bottom:4px}
+.chip{height:34px;border:0}
+.chip:not(.on){color:var(--fg2)}
+.reserve{height:54px;border-radius:999px;box-shadow:0 14px 32px rgba(24,20,16,.24),inset 0 1px 0 rgba(255,255,255,.14)}
+.barPrice b{font-family:var(--serif);font-size:26px}
+.barTrust{color:var(--fg2)}
+
+/* Type screens and sheets share the material. */
+.typeView{background:var(--bg)}
+.typeNav{background:var(--glass-strong);backdrop-filter:blur(30px) saturate(1.7);-webkit-backdrop-filter:blur(30px) saturate(1.7);
+  border-bottom:1px solid var(--glass-line)}
+.typeHead h1{font-family:var(--serif);font-weight:400;font-size:36px;letter-spacing:-.025em}
+.typeChips button{background:var(--glass);border-color:var(--glass-line);box-shadow:var(--rim)}
+.typeChips button.on{background:var(--fg)}
+.sheet{background:var(--bg);box-shadow:0 -24px 60px rgba(24,20,16,.26)}
+.toast{background:rgba(20,17,12,.9);color:var(--bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  box-shadow:0 14px 30px rgba(0,0,0,.28)}
+:root[data-theme="dark"] .toast{background:rgba(244,237,223,.94);color:#0F0D09}
+
+/* reduced motion: everything becomes a near-instant state change */
+body.reduced *,
+body.reduced *::before,
+body.reduced *::after{
+  animation-duration:1ms !important;animation-iteration-count:1 !important;
+  transition-duration:1ms !important;scroll-behavior:auto !important;
+}
+body.reduced .marquee span{animation:none;padding-left:0}
+body.reduced .pulse .dot::after{animation:none;opacity:0}
+body.reduced .ev{opacity:1;transform:none}
+body.reduced .dSec{opacity:1;transform:none}
+body.reduced .dStub{opacity:1;transform:none}
+@media (prefers-reduced-motion: reduce){
+  .ev,.dSec,.dStub{opacity:1;transform:none}
+  .marquee span{animation:none;padding-left:0}
+  .pulse .dot::after{animation:none}
+}
+@media (max-width:900px){
+  .stage{flex-direction:column;align-items:center;gap:26px}
+  .phone{order:1}
+  .panel{order:2;width:390px;max-width:calc(100vw - 32px);position:static}
+  .duo{order:3}
+}
+</style>
+</head>
+<body>
+<div class="stage">
+  <aside class="panel">
+    <div class="eyebrow">banbe · prototype v2.2</div>
+    <h1>Two screens, one quiet system</h1>
+    <p class="lede">A Liquid Glass-era pass on the two screens people spend the most time in: warmer paper, editorial type, chrome that reads as material rather than blur, and a Duo stage that shows the same ticket at Air size.</p>
+
+    <div class="ctl">
+      <label>Jump to</label>
+      <div class="seg" id="segScreen">
+        <button class="on" data-screen="home">Home</button>
+        <button data-screen="detail">Event</button>
+        <button data-screen="type">Types</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <label>Theme</label>
+      <div class="seg" id="segTheme">
+        <button class="on" data-theme="light">Light</button>
+        <button data-theme="dark">Dark</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <label>Motion</label>
+      <div class="seg" id="segMotion">
+        <button class="on" data-motion="full">Full</button>
+        <button data-motion="reduced">Reduced</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <label>Haptics</label>
+      <div class="seg" id="segHaptics">
+        <button class="on" data-haptics="on">On</button>
+        <button data-haptics="off">Off</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <label>Stage</label>
+      <div class="seg" id="segStage">
+        <button class="on" data-stage="solo">Solo</button>
+        <button data-stage="duo">Duo</button>
+      </div>
+    </div>
+    <button class="replay" id="replay">Replay the entrance</button>
+
+    <div class="quest">
+      <div class="questHead"><h2>Roadmap</h2><span>4 / 5</span></div>
+      <div class="questBar"><i style="width:80%"></i></div>
+      <ol class="questList">
+        <li class="done"><span class="qNode">✓</span><div><b>Foundations</b><small>Tokens, type, spacing, motion</small></div><em>v1</em></li>
+        <li class="done"><span class="qNode">✓</span><div><b>Liquid Glass shell</b><small>Material chrome, editorial type, floating bars</small></div><em>v2.0</em></li>
+        <li class="done"><span class="qNode">✓</span><div><b>Duo stage</b><small>Phone + Air preview, shared event context</small></div><em>v2.1</em></li>
+        <li class="done"><span class="qNode">✓</span><div><b>Motion lab</b><small>Scroll-linked depth, haptic scripts, reduced-motion parity</small></div><em>v2.2</em></li>
+        <li class="current"><span class="qNode">5</span><div><b>Ship to iOS</b><small>Lift the materials and beats into BanbeTheme.swift</small></div><em>v3.0</em></li>
+      </ol>
+      <div class="questNext"><span>Next up</span><b>Ship to iOS: map the glass tokens, depth offsets and haptic beats onto the Swift theme</b></div>
+    </div>
+
+    <details class="notes">
+      <summary>Design notes &amp; motion</summary>
+      <h2>What changes</h2>
+      <ul>
+        <li><b>Motion lab (v2.2).</b> Feed thumbnails ride against the scroll, the hero title sinks and fades as it leaves, the compact nav draws a reading-progress line, and primary controls carry haptic beats — 8&nbsp;ms light, 12&nbsp;ms open, a double beat on hold. Reduced flattens the depth and keeps the progress.</li>
+        <li><b>Material, not blur.</b> Glass is now a recipe: high-saturation backdrop, a 1px specular rim and a soft ambient shadow. The nav, the floating ticket bar and the dock use the same three tokens, so chrome reads as one system.</li>
+        <li><b>Duo.</b> The stage can show a second, Air-sized board beside the phone. It mirrors the event you opened — same photo, title, date, host — like a hand-off, not a second app. It scales down and stacks under the phone on a small screen.</li>
+        <li><b>Editorial type.</b> Serif for the event title, the calendar page, the price and the section numerals; sans for controls. The hierarchy is size and rhythm now, not extra rules.</li>
+        <li><b>Home keeps you oriented.</b> The header fades a night wash in as the feed slides under it, so the wordmark, search and area never disappear.</li>
+        <li><b>The hero rail reads as one card at a time.</b> Neighbours sit back 4&nbsp;% and dim; the snap decides the focus, not a tap.</li>
+        <li><b>Cards are rows now.</b> Thumbnail, time, place and price on one line — three events more per screen than the photo-first grid, and each row still opens with the photo animating into the event.</li>
+        <li><b>Browse by type opens a real screen.</b> Supper club, Music, Fashion and Gallery each push in over Home (Home steps back and dims), with the type's edit copy, a count, a switcher for the other types and its own list. Back slides it away. See all opens the same screen with every type.</li>
+        <li><b>One origin per screen.</b> Type rows open the same event detail, and Back returns to the list you came from — never to a screen you didn't leave.</li>
+        <li><b>The event opens from the card itself.</b> The tapped photo flies into the hero; back reverses it.</li>
+        <li><b>One quiet nav.</b> Over the hero, back and the pills float on glass. Past 140&nbsp;pt they hand off to a compact bar with the title and the five section tabs.</li>
+        <li><b>The stub settles, it doesn't pop.</b> It rises 22&nbsp;pt after the hero lands, which reads as the ticket being printed.</li>
+        <li><b>Reserving has a beginning and an end.</b> The ring draws while the hold is placed, then a check and the held state — never a dead tap with no feedback.</li>
+        <li><b>The ticket bar adds up.</b> Chips set the quantity, and both the total and the CTA multiply the per-ticket price — 2 vé reads 1.700.000₫, not 850.000₫ twice over. Chips past the seats left are disabled.</li>
+        <li><b>One source per fact.</b> The hero now carries only the photo, the type and the age. Time, place, price and seats live once, in the ticket stub; the bar carries only the running total. The age row no longer contradicts an "All ages" pill.</li>
+        <li><b>Less furniture.</b> Good to know is a label/value grid, What's included is a numbered editorial list, and the host is one plain row — no cards and no row rules, just one hairline closing each section.</li>
+        <li><b>Save the date, in either calendar.</b> A slim row inside the ticket adds the event to the banbe schedule (the bell turns into a spring check) or hands it to Apple Calendar — two actions in 50 pt instead of a card of their own.</li>
+      </ul>
+
+      <h2>Motion spec (lift these into the theme)</h2>
+      <div class="spec"><span>Press</span><b>110 ms · out</b></div>
+      <div class="spec"><span>State change</span><b>180–280 ms · out</b></div>
+      <div class="spec"><span>Entrance / reveal</span><b>420 ms · spring 1.04</b></div>
+      <div class="spec"><span>Shared hero</span><b>420 ms · soft</b></div>
+      <div class="spec"><span>Type push</span><b>420 ms · soft</b></div>
+      <div class="spec"><span>Rail snap</span><b>280 ms · spring</b></div>
+      <div class="spec"><span>Sheet drag</span><b>release at 90 pt</b></div>
+      <div class="spec"><span>Parallax</span><b>0.40 × scroll</b></div>
+      <div class="spec"><span>Stagger</span><b>40 ms per item</b></div>
+      <div class="spec"><span>Scroll depth</span><b>−14 px · thumbnails</b></div>
+      <div class="spec"><span>Haptics</span><b>8 / 12 / double</b></div>
+      <div class="spec"><span>Reduced parity</span><b>depth off · progress on</b></div>
+
+      <h2>Why it's easier to use</h2>
+      <ul>
+        <li>Every target is at least 44&nbsp;pt; the nav hands off at a scroll position you can feel, not a threshold you have to hunt.</li>
+        <li>Motion only ever explains a change of place — nothing moves that you didn't touch, and nothing delays reading.</li>
+        <li>Reduced motion is a first-class state, not a fallback: <b>Reduced</b> above flattens every duration and removes the scroll depth, and <code>prefers-reduced-motion</code> does the same automatically. Reading progress stays, because it is information.</li>
+        <li>Text contrast moves with the surface: white over photo, ink the moment the bar turns solid.</li>
+      </ul>
+    </details>
+  </aside>
+
+  <div class="phone">
+    <div class="device" id="device">
+      <div class="island"></div>
+      <div class="status" id="statusBar">
+        <span>9:41</span>
+        <span class="sb-r">
+          <svg class="i" width="17" height="12" viewBox="0 0 17 12"><path d="M1 8v3M5 6v5M9 3.5v7.5M13 1v10"/></svg>
+          <svg class="i" width="16" height="12" viewBox="0 0 16 12"><path d="M1 5.2a10 10 0 0 1 14 0M3.4 7.6a6.6 6.6 0 0 1 9.2 0M6 10a3 3 0 0 1 4 0"/><circle cx="8" cy="11" r=".6" fill="currentColor" stroke="none"/></svg>
+          <svg class="i" width="24" height="12" viewBox="0 0 24 12"><rect x="1" y="2.5" width="19" height="7" rx="2"/><path d="M22 5v2.4"/><rect x="3" y="4.5" width="14" height="3" rx="1" fill="currentColor" stroke="none"/></svg>
+        </span>
+      </div>
+
+      <!-- ============ HOME ============ -->
+      <section class="view home" id="homeView">
+        <div class="homeScroll" id="homeScroll">
+          <div class="hh">
+            <div class="hhbg"><div class="hhArt" id="hhImg"></div></div>
+            <div class="hhshade"></div>
+
+            <div class="htabsWrap">
+              <div class="htabs" id="homeTabs">
+                <button class="on" data-tab="foryou">For You</button>
+                <button data-tab="tonight">Tonight</button>
+                <button data-tab="weekend">Weekend</button>
+                <span class="tabink" id="tabink"></span>
+              </div>
+            </div>
+
+            <div class="rail" id="rail"></div>
+            <div class="dots" id="dots"></div>
+          </div>
+
+          <div class="pulse" id="pulse">
+            <span class="dot"></span>
+            <span class="marquee"><span id="pulseText">Linh just took 2 tickets to Jazz Ở Gác · 14 people going tonight · Bếp Nhỏ №12 is down to 3 seats · ORBIT added a second show · Vùng Trắng opens at 18:00</span></span>
+            <span class="cnt">Live</span>
+          </div>
+
+          <div class="feedHead">
+            <div>
+              <h2 id="feedTitle">For You</h2>
+              <div class="sub" id="feedSub">4 events · picked for you</div>
+            </div>
+            <button class="chipBtn" id="openFilters">
+              <svg class="i" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
+              Filters
+            </button>
+          </div>
+
+          <div class="feed" id="feed"></div>
+
+          <div class="typeStrip">
+            <div class="sh"><h3>Browse by type</h3><button id="seeAllTypes">See all</button></div>
+            <div class="types">
+              <button class="ty" data-type="supper"><i></i>Supper club <b>5</b></button>
+              <button class="ty" data-type="music"><i></i>Music <b>5</b></button>
+              <button class="ty" data-type="fashion"><i></i>Fashion <b>4</b></button>
+              <button class="ty" data-type="gallery"><i></i>Gallery <b>4</b></button>
+            </div>
+          </div>
+        </div>
+
+        <header class="hhead" id="hhead">
+          <div class="hwash" id="hwash"></div>
+          <div class="hrow">
+            <div class="brand">
+              <div class="wordmark">banbe</div>
+              <div class="hdate" id="hdate">Thursday, 9 July</div>
+            </div>
+            <button class="gbtn" data-toast="Map" aria-label="Map"><svg class="i" viewBox="0 0 24 24"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg></button>
+            <button class="avatar" data-toast="Account" aria-label="Account">M</button>
+          </div>
+          <button class="hsearch" data-toast="Search events, hosts, places">
+            <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4.5 4.5"/></svg>
+            <span class="sp">Search events, hosts, places</span>
+            <span class="area"><svg class="i" width="13" height="13" viewBox="0 0 24 24"><path d="M12 21s7-5.4 7-11a7 7 0 1 0-14 0c0 5.6 7 11 7 11Z"/><circle cx="12" cy="10" r="2.4"/></svg>Bình Thạnh</span>
+          </button>
+        </header>
+
+        <nav class="dock" id="dock" aria-label="Main">
+          <button class="dk on" data-toast="Home"><svg class="i" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z"/><path d="M9 21v-7h6v7"/></svg><span>Home</span><i></i></button>
+          <button class="dk" data-toast="Map"><svg class="i" viewBox="0 0 24 24"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg><span>Map</span><i></i></button>
+          <button class="dk plusDk" id="plusBtn" aria-label="Create"><span class="plusBtn" id="plusInner"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span></button>
+          <button class="dk" data-toast="Inbox"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z"/><path d="M4 7l8 6 8-6"/></svg><span>Inbox</span><i></i></button>
+          <button class="dk" data-toast="Account"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg><span>You</span><i></i></button>
+        </nav>
+      </section>
+
+      <!-- ============ EVENT DETAIL ============ -->
+      <section class="view detail" id="detailView" aria-hidden="true">
+        <div class="dScroll" id="dScroll">
+          <div class="dHero" id="dHero">
+            <div class="heroFallback"><span id="heroMono">B</span></div>
+            <div class="dHeroArt" id="dHeroImg"></div>
+            <div class="vig"></div>
+            <div class="shade"></div>
+            <div class="ttl">
+              <div class="heroPills">
+                <span class="dPill" id="dCat">Supper club</span>
+                <span class="dPill out" id="dAge">18+</span>
+              </div>
+              <h1 id="dTitle">Bếp Nhỏ №12</h1>
+            </div>
+          </div>
+
+          <div class="dStub" id="dStub">
+            <div class="stubTop">
+              <div class="dateBlk">
+                <small>JUL</small>
+                <b>11</b>
+                <span>SAT</span>
+              </div>
+              <div class="stubMain">
+                <div class="when" id="stubWhen">19:00 – 22:30</div>
+                <div class="cd"><i></i><span id="stubCd">In 2 days</span></div>
+                <div class="place">
+                  <span id="stubPlace">Bình Thạnh · 2,1 km</span>
+                  <button class="dirBtn" data-toast="Opening directions">
+                    <svg class="i" viewBox="0 0 24 24"><path d="M12 3v18M12 3 7 8M12 3l5 5"/></svg>Directions
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="perf"></div>
+            <div class="stubBot">
+              <div class="price"><b id="stubPrice">900.000₫</b><span id="stubUnit">/ vé</span></div>
+              <span class="seatPill few"><i></i><span id="seatText">3 tickets left</span></span>
+            </div>
+            <div class="stubSave">
+              <span class="stubSaveLabel">
+                <svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M12 13v4M10 15h4"/></svg>
+                Save the date
+              </span>
+              <div class="stubSaveBtns">
+                <button class="saveChip" id="addBanbe" aria-pressed="false" aria-label="Save to your banbe schedule">
+                  <span id="banbeAction"><svg class="i" viewBox="0 0 24 24"><path d="M18 15H6l1.5-2.5V9a4.5 4.5 0 0 1 9 0v3.5L18 15Z"/><path d="M10.5 18a2 2 0 0 0 3 0"/></svg><span>banbe</span></span>
+                </button>
+                <button class="saveChip" id="addApple" aria-label="Add to Apple Calendar">
+                  <svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M8 14h2M14 14h2M8 17h2M14 17h2"/></svg>
+                  <span>Apple Calendar</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="dBody">
+            <section class="dSec" id="sec-overview">
+              <h2 class="dH">Good to know</h2>
+              <dl class="knowList" id="knowCard"></dl>
+              <h2 class="dH">About</h2>
+              <p class="about" id="aboutText">Mười bốn chỗ. Một ga-ra cải tạo ở Bình Thạnh. Minh nấu những gì chợ Bà Chiểu có vào sáng hôm đó, nên thực đơn không lặp lại và không ai biết trước. Bàn dài, người lạ ngồi cạnh nhau, rượu gạo rót tới khi hết chuyện.</p>
+              <button class="more" id="moreBtn">Read more <svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+            </section>
+
+            <section class="dSec" id="sec-menu">
+              <h2 class="dH">What's included</h2>
+              <ul class="incList" id="menuList"></ul>
+            </section>
+
+            <section class="dSec" id="sec-host">
+              <h2 class="dH">Hosted by</h2>
+              <div class="hostCard">
+                <span class="hostAv" id="hostAv">M</span>
+                <span class="hostTx"><b id="hostName">Minh</b><span id="hostSub">Joined 2021 · 34 dinners hosted</span></span>
+                <button class="hostMsg" data-toast="Message Minh"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12Z"/></svg>Message</button>
+              </div>
+            </section>
+
+            <section class="dSec" id="sec-photos">
+              <h2 class="dH">From the last one</h2>
+              <div class="photos">
+                <span class="p" style="background-image:url('/photos/optimized/DSCF2503.webp'),url('../../public/photos/optimized/DSCF2503.webp')"></span>
+                <span class="p" style="background-image:url('/photos/optimized/DSCF5891.webp'),url('../../public/photos/optimized/DSCF5891.webp')"></span>
+                <span class="p" style="background-image:url('/photos/optimized/DSCF4627.webp'),url('../../public/photos/optimized/DSCF4627.webp')"></span>
+              </div>
+            </section>
+
+            <section class="dSec" id="sec-protect">
+              <h2 class="dH">Protected booking</h2>
+              <div class="steps">
+                <div class="step"><span class="n">1</span><span><b>You hold the seat</b><span>The host sees your request right away.</span></span></div>
+                <div class="step"><span class="n">2</span><span><b>The host has 1 hour</b><span>banbe reminds them once, then you get an answer either way.</span></span></div>
+                <div class="step"><span class="n">3</span><span><b>Pay only when accepted</b><span>Nothing leaves your account while the request is open.</span></span></div>
+                <div class="step"><span class="n">4</span><span><b>Refundable until 7 days</b><span>Cancel before the day and the seat goes back to the table.</span></span></div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <button class="backFloat" id="backFloat" aria-label="Back">
+          <svg class="i" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg>
+        </button>
+
+        <header class="dnav" id="dnav">
+          <div class="dnavRow">
+            <button class="nbtn" id="navBack" aria-label="Back"><svg class="i" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg></button>
+            <div class="dnavTitle" id="dnavTitle">Bếp Nhỏ №12</div>
+            <button class="nbtn" data-toast="Saved"><svg class="i" viewBox="0 0 24 24"><path d="M6 4h12v17l-6-4.2L6 21V4Z"/></svg></button>
+            <button class="nbtn" data-toast="Share"><svg class="i" viewBox="0 0 24 24"><path d="M12 16V4M12 4 8 8M12 4l4 4"/><path d="M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"/></svg></button>
+          </div>
+          <div class="dTabs" id="dTabs">
+            <button class="on" data-sec="sec-overview">Overview</button>
+            <button data-sec="sec-menu">Menu</button>
+            <button data-sec="sec-host">Host</button>
+            <button data-sec="sec-photos">Photos</button>
+            <button data-sec="sec-protect">Protection</button>
+          </div>
+          <div class="dProgress"><i id="dProgressFill"></i></div>
+        </header>
+
+        <div class="dbar" id="dbar">
+          <div class="chips" id="chips">
+            <span class="ink" id="chipInk"></span>
+            <button class="chip on" data-qty="1">1 vé</button>
+            <button class="chip" data-qty="2">2 vé</button>
+            <button class="chip" data-qty="3">3 vé</button>
+          </div>
+          <div class="barRow">
+            <div class="barPrice"><b id="barPrice">900.000₫</b><span id="barUnit">per ticket</span></div>
+            <button class="reserve" id="reserve">
+              <span class="lbl" id="reserveLbl">Reserve · 900.000₫</span>
+              <svg class="ring" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/></svg>
+              <svg class="check" viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"/></svg>
+            </button>
+          </div>
+          <div class="barTrust" id="barTrust">
+            <svg class="i" viewBox="0 0 24 24"><path d="m12 3 7 3v5c0 4.4-3 8.2-7 10-4-1.8-7-5.6-7-10V6l7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+            <span id="trustText">The host has 1 hour to confirm · banbe reminds them</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ BROWSE BY TYPE ============ -->
+      <section class="view typeView" id="typeView" aria-hidden="true">
+        <div class="typeScroll" id="typeScroll">
+          <div class="typeHead">
+            <div class="typeKicker">Browse by type</div>
+            <h1 id="typeTitle">Supper club</h1>
+            <p class="typeBlurb" id="typeBlurb">Long tables, one menu, and strangers who leave as friends.</p>
+            <div class="typeMeta">
+              <span id="typeCount">5 events</span>
+              <span class="dot"></span>
+              <span>This week · Bình Thạnh</span>
+            </div>
+          </div>
+
+          <div class="typeChips" id="typeChips">
+            <button data-type="all">All <b>18</b></button>
+            <button data-type="supper" class="on">Supper club <b>5</b></button>
+            <button data-type="music">Music <b>5</b></button>
+            <button data-type="fashion">Fashion <b>4</b></button>
+            <button data-type="gallery">Gallery <b>4</b></button>
+          </div>
+
+          <div class="typeTools">
+            <span><b id="typeShowCount">5</b> events</span>
+            <span class="sort">Soonest <svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>
+          </div>
+
+          <div class="typeList" id="typeList"></div>
+        </div>
+
+        <header class="typeNav">
+          <button class="nbtn" id="typeBack" aria-label="Back to Home"><svg class="i" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg></button>
+          <div class="typeNavTitle" id="typeNavTitle">Supper club</div>
+          <button class="nbtn" data-toast="Map"><svg class="i" viewBox="0 0 24 24"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg></button>
+        </header>
+      </section>
+
+      <div class="scrim" id="scrim"></div>
+      <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Filters">
+        <div class="sheetHead" id="sheetHead">
+          <div class="grab"></div>
+          <div class="st">
+            <h3>Filters</h3>
+            <button class="xbtn" id="closeSheet" aria-label="Close"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="sheetBody">
+          <div class="fgroup">
+            <h4>When</h4>
+            <div class="frow" data-fgroup>
+              <button class="fopt on">Any day</button>
+              <button class="fopt">Tonight</button>
+              <button class="fopt">This weekend</button>
+              <button class="fopt">Next 7 days</button>
+            </div>
+          </div>
+          <div class="fgroup">
+            <h4>Price</h4>
+            <div class="frow" data-fgroup>
+              <button class="fopt on">Any price</button>
+              <button class="fopt">Free</button>
+              <button class="fopt">Under 300k</button>
+              <button class="fopt">300–800k</button>
+            </div>
+          </div>
+          <div class="fgroup">
+            <h4>Type</h4>
+            <div class="frow" data-fgroup>
+              <button class="fopt on">All</button>
+              <button class="fopt">Supper club</button>
+              <button class="fopt">Music</button>
+              <button class="fopt">Fashion</button>
+              <button class="fopt">Gallery</button>
+            </div>
+          </div>
+          <div class="fgroup">
+            <h4>Seats</h4>
+            <div class="frow" data-fgroup>
+              <button class="fopt on">Any</button>
+              <button class="fopt">Hide sold out</button>
+            </div>
+          </div>
+        </div>
+        <div class="sheetFoot">
+          <button class="applyBtn" id="applyFilters">Show 4 events</button>
+        </div>
+      </div>
+
+      <div class="toast" id="toast"></div>
+    </div>
+  </div>
+
+  <div class="duo" id="duo" aria-hidden="true">
+    <div class="duoFrame">
+      <div class="duoImg" id="duoImg"></div>
+      <div class="duoShade"></div>
+      <div class="duoInner">
+        <div class="duoTop">
+          <span class="duoBrand">banbe</span>
+          <span class="duoTag">Duo preview</span>
+        </div>
+        <div class="duoCopy">
+          <div class="duoKicker" id="duoKicker">Supper club</div>
+          <h2 id="duoTitle">Bếp Nhỏ №12</h2>
+          <p class="duoMeta" id="duoMeta">Sat 11.07 · 19:00 · Bình Thạnh</p>
+          <div class="duoFacts">
+            <div><small>Date</small><b id="duoDate">JUL 11</b></div>
+            <div><small>Time</small><b id="duoTime">19:00</b></div>
+            <div><small>From</small><b id="duoPrice">900.000₫</b></div>
+          </div>
+          <div class="duoHost">
+            <span class="duoAv" id="duoAv">M</span>
+            <div><b id="duoHostName">Minh</b><span id="duoHostSub">Joined 2021 · 34 dinners hosted</span></div>
+          </div>
+          <button class="duoReserve" id="duoReserve">Reserve on this iPhone</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ------------------------------------------------------------------------------------------------
+   Data — the real catalogue's copy (src/data/events.js), trimmed to what these two screens show.
+   ------------------------------------------------------------------------------------------------ */
+const PHOTO = name => `/photos/optimized/${name}`;
+const PHOTO_FILE = name => `../../public/photos/optimized/${name}`;
+/* Served builds answer /photos/…; a preview that reads the file directly answers the repo path.
+   Listing both in one background lets the browser fall through to whichever exists. */
+const photoLayers = name => `url('${PHOTO(name)}'),url('${PHOTO_FILE(name)}')`;
+
+const EVENTS = {
+  bepnho: {
+    id: 'bepnho', title: 'Bếp Nhỏ №12', kicker: 'Supper club', cat: 'Supper club', age: '18+',
+    day: 'Sat 11.07', dateLong: 'Sat 11.07 · 19:00', when: '19:00 – 22:30', area: 'Bình Thạnh · 2,1 km',
+    price: '900.000₫', seats: 3, host: 'Minh', hostSub: 'Joined 2021 · 34 dinners hosted',
+    joined: 'JUL', dayNum: '11', dow: 'SAT', photo: 'DSCF4627.webp',
+    about: 'Mười bốn chỗ. Một ga-ra cải tạo ở Bình Thạnh. Minh nấu những gì chợ Bà Chiểu có vào sáng hôm đó, nên thực đơn không lặp lại và không ai biết trước. Bàn dài, người lạ ngồi cạnh nhau, rượu gạo rót tới khi hết chuyện.',
+    menu: [['Chợ sáng', 'Five courses, whatever the market had'], ['Rượu gạo', 'Poured through the meal'], ['Cà phê', 'Vietnamese coffee, brewed at the table']]
+  },
+  orbit: {
+    id: 'orbit', title: 'ORBIT: Afterlight', kicker: 'Fashion', cat: 'Fashion', age: 'All ages',
+    day: 'Fri 10.07', dateLong: 'Fri 10.07 · 20:00', when: '20:00 – 20:40', area: 'Quận 1 · 4,8 km',
+    price: '400.000₫', seats: 23, host: 'Rue Miche', hostSub: 'Joined 2023 · 6 shows hosted',
+    joined: 'JUL', dayNum: '10', dow: 'FRI', photo: 'DSCF2836.webp',
+    about: 'Sàn thép, sân khấu tròn, khói. Bốn mươi phút, không nghỉ. Bộ sưu tập mới của L\'Édition, lần đầu ra mắt ngoài cửa hàng — đứng xem, không có ghế, đi lại thoải mái.',
+    menu: [['Welcome drink', 'One glass on arrival'], ['Runway', 'Forty minutes, no interval'], ['Zine', 'L\'Édition №4, signed']]
+  },
+  jazzgac: {
+    id: 'jazzgac', title: 'Jazz Ở Gác', kicker: 'Music', cat: 'Music', age: 'All ages',
+    day: 'Thu 09.07', dateLong: 'Thu 09.07 · 21:00', when: '21:00 – 23:00', area: 'Quận 1 · 4,7 km',
+    price: '250.000₫', seats: 16, host: 'Gác', hostSub: 'Joined 2022 · 58 nights hosted',
+    joined: 'JUL', dayNum: '9', dow: 'THU', photo: 'DSCF7257.webp',
+    about: 'Gác gỗ hai mươi chỗ, kèn không micro. Set hai bắt đầu lúc mười giờ, chơi tới khi hết bài. Không ồn, không đứng, không quay phim — chỉ nhạc và một ly.',
+    menu: [['Set one', 'Doors at 20:30, seated'], ['Set two', 'Starts at 22:00'], ['One drink', 'Included with the seat']]
+  },
+  vungtrang: {
+    id: 'vungtrang', title: 'Vùng Trắng', kicker: 'Gallery', cat: 'Gallery', age: 'All ages',
+    day: 'Sun 12.07', dateLong: 'Sun 12.07 · 18:00', when: '18:00 – 21:00', area: 'Thảo Điền · 6,3 km',
+    price: '150.000₫', seats: 41, host: 'Nguyen Art Foundation', hostSub: 'Joined 2019 · 22 openings',
+    joined: 'JUL', dayNum: '12', dow: 'SUN', photo: 'DSCF6107.webp',
+    about: 'Sáu họa sĩ, một màu. Triển lãm nhóm về sự trống, mở cửa một đêm trước công chúng — đi bộ qua sáu phòng, dừng bao lâu cũng được.',
+    menu: [['Catalogue', 'Printed, one per guest'], ['Curator talk', '19:00, thirty minutes'], ['Print', 'Small format, for sale']]
+  },
+  phokhuya: {
+    id: 'phokhuya', title: 'Phở Khuya', kicker: 'Supper club', cat: 'Supper club', age: 'All ages',
+    day: 'Sat 11.07', dateLong: 'Sat 11.07 · 23:00', when: '23:00 – 00:30', area: 'Quận 4 · 2,8 km',
+    price: '350.000₫', seats: 9, host: 'Tùng', hostSub: 'Joined 2020 · 112 nights hosted',
+    joined: 'JUL', dayNum: '11', dow: 'SAT', photo: 'DSCF5891.webp',
+    about: 'Phở lúc mười một giờ đêm, nước dùng hầm từ trưa. Mười hai ghế nhựa trên vỉa hè, hết nồi là hết. Đến trễ mười lăm phút là mất phần nước béo.',
+    menu: [['Một tô', 'Phở bò, nước dùng hầm 10 tiếng'], ['Quẩy', 'Fried dough, one per bowl'], ['Trà đá', 'Iced tea, free refills']]
+  },
+  chieucham: {
+    id: 'chieucham', title: 'Chiều Chậm', kicker: 'Music', cat: 'Music', age: 'All ages',
+    day: 'Sun 12.07', dateLong: 'Sun 12.07 · 15:00', when: '15:00 – 19:00', area: 'Yentown · 4,5 km',
+    price: 'Miễn phí', seats: 58, host: 'Yentown', hostSub: 'Joined 2021 · 40 afternoons hosted',
+    joined: 'JUL', dayNum: '12', dow: 'SUN', photo: 'DSCF5481.webp',
+    about: 'Ba DJ, một buổi chiều, không danh sách nhạc định trước. Sân có bóng râm, đến sớm thì có chỗ ngồi, cà phê tính riêng.',
+    menu: [['Entry', 'Free, no ticket needed'], ['Seating', 'First come, forty chairs'], ['Cà phê', 'Order at the bar']]
+  },
+  bangcoi: {
+    id: 'bangcoi', title: 'Băng Cối', kicker: 'Music', cat: 'Music', age: 'All ages',
+    day: 'Fri 10.07', dateLong: 'Fri 10.07 · 20:00', when: '20:00 – 22:00', area: 'Quận 3 · 3,6 km',
+    price: '180.000₫', seats: 22, host: 'Băng Cối', hostSub: 'Joined 2022 · 27 listenings',
+    joined: 'JUL', dayNum: '10', dow: 'FRI', photo: 'DSCF6366.webp',
+    about: 'Nghe nhạc từ băng cối qua dàn loa cũ. Không điện thoại trong phòng nghe, không nói chuyện khi đang quay — hai mươi hai chỗ ngồi trên sàn.',
+    menu: [['Entry', 'One listening, 90 minutes'], ['Trà nóng', 'Refilled through the set'], ['Liner notes', 'Printed for each tape']]
+  },
+  comnha: {
+    id: 'comnha', title: 'Cơm Nhà Mai', kicker: 'Supper club', cat: 'Supper club', age: 'All ages',
+    day: 'Thu 09.07', dateLong: 'Thu 09.07 · 19:30', when: '19:30 – 22:00', area: 'Quận 3 · 3,4 km',
+    price: '700.000₫', seats: 5, host: 'Mai', hostSub: 'Joined 2022 · 41 dinners hosted',
+    dayNum: '9', dow: 'THU', photo: 'DSCF4423.webp',
+    about: 'Tám chỗ quanh bếp than trên sân thượng. Mai nấu cơm nhà miền Trung, cá nướng theo mùa — đổi tuỳ hôm bạn đến, không có thực đơn in sẵn.',
+    menu: [['Bốn món', 'Seasonal, cooked at the table'], ['Trà', 'Refilled through the meal'], ['Tráng miệng', 'Whatever Mai made that afternoon']]
+  },
+  bandai: {
+    id: 'bandai', title: 'Bàn Dài №4', kicker: 'Supper club', cat: 'Supper club', age: '18+',
+    day: 'Fri 10.07', dateLong: 'Fri 10.07 · 19:00', when: '19:00 – 22:30', area: 'Thảo Điền · 6,1 km',
+    price: '1.200.000₫', seats: 2, host: 'Bàn Dài', hostSub: 'Joined 2022 · 18 tables hosted',
+    dayNum: '10', dow: 'FRI', photo: 'DSCF2503.webp',
+    about: 'Một bàn, mười sáu người lạ, sáu món. Không ai rời bàn trước món cuối. Rượu vang rót suốt bữa, nước lọc đầy bình.',
+    menu: [['Sáu món', 'One long table, no menu cards'], ['Rượu vang', 'Poured through the meal'], ['Nước', 'Still and sparkling, refilled']]
+  },
+  vuonsau: {
+    id: 'vuonsau', title: 'Vườn Sau', kicker: 'Supper club', cat: 'Supper club', age: 'All ages',
+    day: 'Sun 12.07', dateLong: 'Sun 12.07 · 18:00', when: '18:00 – 21:00', area: 'Gò Vấp · 7,2 km',
+    price: '850.000₫', seats: 6, host: 'Vườn Sau', hostSub: 'Joined 2023 · 9 garden dinners',
+    dayNum: '12', dow: 'SUN', photo: 'DSCF5542.webp',
+    about: 'Bữa tối ngoài vườn sau nhà, đèn dây giăng ngang. Trời mưa thì cả bàn dời vô hiên. Rau hái tại vườn trước khi nấu.',
+    menu: [['Năm món', 'Vegetables picked that afternoon'], ['Cocktail', 'One to start'], ['Muỗi', 'Spray provided, bring sleeves']]
+  },
+  modular: {
+    id: 'modular', title: 'Đêm Modular', kicker: 'Music', cat: 'Music', age: '18+',
+    day: 'Sat 11.07', dateLong: 'Sat 11.07 · 21:30', when: '21:30 – 01:00', area: 'Quận 4 · 3,0 km',
+    price: '200.000₫', seats: 27, host: 'OBJoff', hostSub: 'Joined 2021 · 23 nights hosted',
+    dayNum: '11', dow: 'SAT', photo: 'DSCF4864.webp',
+    about: 'Bốn nghệ sĩ, bốn dàn máy, nối dây trực tiếp. Không có bài nào lặp lại — mỗi set đi một đường khác và dừng khi hết ý.',
+    menu: [['Entry', 'Four live sets'], ['Earplugs', 'Free at the door'], ['Nước', 'Free, bring your bottle']]
+  },
+  pianomuon: {
+    id: 'pianomuon', title: 'Piano Muộn', kicker: 'Music', cat: 'Music', age: 'All ages',
+    day: 'Sun 12.07', dateLong: 'Sun 12.07 · 22:00', when: '22:00 – 23:00', area: 'Quận 1 · 5,2 km',
+    price: '300.000₫', seats: 11, host: 'Nhà Piano', hostSub: 'Joined 2020 · 64 recitals hosted',
+    dayNum: '12', dow: 'SUN', photo: 'DSCF5780.webp',
+    about: 'Một cây đàn, một người chơi, đèn tắt gần hết. Bốn mươi lăm phút, không nghỉ, không micro. Vào trễ phải chờ hết bài mới được mở cửa.',
+    menu: [['Một set', 'Forty-five minutes, no interval'], ['Một ly vang', 'Poured before the set'], ['Ghế', 'Eleven chairs, no standing']]
+  },
+  aeie: {
+    id: 'aeie', title: 'AEIE: Mở Xưởng', kicker: 'Fashion', cat: 'Fashion', age: 'All ages',
+    day: 'Sat 11.07', dateLong: 'Sat 11.07 · 16:00', when: '16:00 – 19:00', area: 'Thảo Điền · 6,3 km',
+    price: '300.000₫', seats: 18, host: 'AEIE Studios', hostSub: 'Joined 2023 · 8 studio days',
+    dayNum: '11', dow: 'SAT', photo: 'DSCF4039.webp',
+    about: 'Xưởng may mở cửa một buổi chiều. Xem rập, vải, và những mẫu chưa bao giờ bán ra ngoài — hỏi gì cũng được, không có gì phải mua.',
+    menu: [['Tour', 'Thirty minutes through the studio'], ['Trà', 'Iced, at the cutting table'], ['Mẫu', 'Sample rack, browsing only']]
+  },
+  fanci: {
+    id: 'fanci', title: 'Fanci: Đêm Thử Đồ', kicker: 'Fashion', cat: 'Fashion', age: '18+',
+    day: 'Thu 09.07', dateLong: 'Thu 09.07 · 19:00', when: '19:00 – 22:00', area: 'Quận 1 · 5,0 km',
+    price: '500.000₫', seats: 12, host: 'Fanci Club', hostSub: 'Joined 2022 · 11 fitting nights',
+    dayNum: '9', dow: 'THU', photo: 'DSCF4223.webp',
+    about: 'Thử đồ như một buổi tiệc: gương, đèn, và một stylist cho mỗi ba khách. Không có sân khấu, chỉ có người mặc và người xem.',
+    menu: [['Stylist', 'One per three guests'], ['Đồ uống', 'One glass included'], ['Chỉnh sửa', 'On the spot, same night']]
+  },
+  compound: {
+    id: 'compound', title: 'Compound: Sân Thượng', kicker: 'Fashion', cat: 'Fashion', age: 'All ages',
+    day: 'Sun 12.07', dateLong: 'Sun 12.07 · 17:00', when: '17:00 – 20:00', area: 'Quận 1 · 4,6 km',
+    price: '250.000₫', seats: 31, host: 'Compound Garment', hostSub: 'Joined 2022 · 14 drops',
+    dayNum: '12', dow: 'SUN', photo: 'DSCF6279.webp',
+    about: 'Drop mới ra mắt trên sân thượng, mặc thử ngay dưới nắng chiều. Số lượng giới hạn, mỗi người hai món, bán hết là thôi.',
+    menu: [['Vào cửa', 'One entry, no re-entry'], ['Sticker pack', 'One per guest'], ['Mặc thử', 'Two pieces at a time']]
+  },
+  sonmai: {
+    id: 'sonmai', title: 'Đối Thoại Sơn Mài', kicker: 'Gallery', cat: 'Gallery', age: 'All ages',
+    day: 'Fri 10.07', dateLong: 'Fri 10.07 · 18:30', when: '18:30 – 21:00', area: 'Quận 1 · 4,4 km',
+    price: '100.000₫', seats: 26, host: 'Galerie Quỳnh', hostSub: 'Joined 2019 · 52 openings',
+    dayNum: '10', dow: 'FRI', photo: 'DSCF6837.webp',
+    about: 'Hai thế hệ sơn mài treo đối diện nhau, người xem đứng giữa. Sáu tác phẩm lớn, một phòng, ánh sáng thấp.',
+    menu: [['Vào cửa', 'One evening'], ['Tài liệu', 'Exhibition notes'], ['Trò chuyện', 'With the curator at 19:30']]
+  },
+  khongnguoi: {
+    id: 'khongnguoi', title: 'Ảnh Không Người', kicker: 'Gallery', cat: 'Gallery', age: 'All ages',
+    day: 'Sat 11.07', dateLong: 'Sat 11.07 · 17:00', when: '17:00 – 20:00', area: 'Quận 3 · 3,2 km',
+    price: '120.000₫', seats: 35, host: 'Lâm', hostSub: 'Joined 2021 · 3 solo shows',
+    dayNum: '11', dow: 'SAT', photo: 'DSCF7202.webp',
+    about: 'Ba mươi tấm ảnh thành phố, không một bóng người. Chụp trong sáu năm, đi bộ lúc năm giờ sáng. Triển lãm cá nhân đầu tiên của Lâm.',
+    menu: [['Vào cửa', 'One evening'], ['In ấn', 'Small prints, order only'], ['Ghi chú', 'A5, one per guest']]
+  },
+  phong302: {
+    id: 'phong302', title: 'Phòng 302', kicker: 'Gallery', cat: 'Gallery', age: 'All ages',
+    day: 'Sun 12.07', dateLong: 'Sun 12.07 · 15:00', when: '15:00 – 19:00', area: 'Quận 5 · 5,7 km',
+    price: '150.000₫', seats: 14, host: 'Phòng 302', hostSub: 'Joined 2022 · 6 exhibitions',
+    dayNum: '12', dow: 'SUN', photo: 'DSCF7039.webp',
+    about: 'Triển lãm trong căn hộ tập thể cũ. Mỗi phòng một tác giả, đồ đạc giữ nguyên — lên cầu thang bộ, tầng ba, cửa xanh.',
+    menu: [['Vào cửa', 'Timed entry, every 30 min'], ['Bản đồ', 'One floor plan per guest'], ['Trà', 'At the kitchen, free']]
+  }
+};
+
+const RAIL = ['bepnho', 'orbit', 'jazzgac', 'vungtrang'];
+const FEED = ['phokhuya', 'jazzgac', 'chieucham', 'bangcoi'];
+
+/* The four browse types, their edit copy, and the map from an event's kicker back to a key. */
+const TYPE = {
+  supper: { name: 'Supper club', blurb: 'Long tables, one menu, and strangers who leave as friends.' },
+  music: { name: 'Music', blurb: 'Small rooms, live sets, and no phones in the listening room.' },
+  fashion: { name: 'Fashion', blurb: 'Runways, sample racks, and studio doors open for one night.' },
+  gallery: { name: 'Gallery', blurb: 'Openings, curator talks, and work you can stand in front of.' }
+};
+const TYPE_OF = { 'Supper club': 'supper', Music: 'music', Fashion: 'fashion', Gallery: 'gallery' };
+const typeKeyOf = e => TYPE_OF[e.kicker];
+const eventsOfType = key => Object.values(EVENTS)
+  .filter(e => key === 'all' || typeKeyOf(e) === key)
+  .sort((a, b) => Number(a.dayNum) - Number(b.dayNum));
+
+/* ------------------------------------------------------------------------------------------------
+   Refs + tiny helpers
+   ------------------------------------------------------------------------------------------------ */
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const device = $('#device');
+const homeView = $('#homeView');
+const homeScroll = $('#homeScroll');
+const typeView = $('#typeView');
+const typeScroll = $('#typeScroll');
+const dScroll = $('#dScroll');
+const detail = $('#detailView');
+const dHero = $('#dHero');
+const dProgressFill = $('#dProgressFill');
+const dHeroImg = $('#dHeroImg');
+const dnav = $('#dnav');
+const dTabs = $('#dTabs');
+const statusBar = $('#statusBar');
+const toastEl = $('#toast');
+
+const reduceQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+let reduced = reduceQuery.matches;
+let detailOpen = false;
+let closing = false;
+let lastCard = null;
+let openTimer = 0;
+let flyClean = 0;
+let qty = 1;
+let held = false;
+/* 'home' or 'type': whichever screen the detail was opened from, and where Back returns to. */
+let baseScreen = 'home';
+let currentType = 'supper';
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* Ticket money. Prices are stored as display strings ("850.000₫"), so read the digits back out
+   before multiplying — the bar had been repeating one ticket's price for 2 and 3. */
+const group = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+const priceOf = e => {
+  if (!e || e.price === 'Miễn phí') return 0;
+  const digits = String(e.price).replace(/[^\d]/g, '');
+  return digits ? Number(digits) : 0;
+};
+const currentEvent = () => EVENTS[detail.dataset.eventId] || null;
+
+function knowFor(e) {
+  const byType = {
+    supper: [
+      ['Alcohol', 'Rice wine through the meal. Nothing to bring.'],
+      ['Dietary', 'Tell the host 24 h ahead — the menu is set that morning.']
+    ],
+    music: [
+      ['Doors', 'Come 30 minutes before the first set; the room fills quietly.'],
+      ['Phones', 'Silent, and no filming during a set.']
+    ],
+    fashion: [
+      ['Entry', 'Timed entry, one in one out.'],
+      ['Fittings', 'Try on at the rack; no changing-room queue.']
+    ],
+    gallery: [
+      ['Entry', 'Timed entry every 30 minutes.'],
+      ['Access', 'Step-free at the main entrance.']
+    ]
+  };
+  const rows = byType[typeKeyOf(e)] || byType.supper;
+  return rows.concat([['Cancellation', 'Free until 7 days before — then the seat returns to the table.']]);
+}
+
+let calSaved = false;
+const calSavedIds = new Set();
+function setCalSaved(on, quiet) {
+  calSaved = on;
+  const id = detail.dataset.eventId;
+  if (id) {
+    if (on) calSavedIds.add(id);
+    else calSavedIds.delete(id);
+  }
+  const chip = $('#addBanbe');
+  const action = $('#banbeAction');
+  chip.classList.toggle('added', on);
+  chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+  chip.setAttribute('aria-label', on ? 'Remove from your banbe schedule' : 'Save to your banbe schedule');
+  action.innerHTML = on
+    ? '<svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></svg><span>Saved</span>'
+    : '<svg class="i" viewBox="0 0 24 24"><path d="M18 15H6l1.5-2.5V9a4.5 4.5 0 0 1 9 0v3.5L18 15Z"/><path d="M10.5 18a2 2 0 0 0 3 0"/></svg><span>banbe</span>';
+  if (!quiet) {
+    chip.classList.remove('pop');
+    void chip.offsetWidth;
+    chip.classList.add('pop');
+  }
+}
+
+$('#addBanbe').addEventListener('click', () => {
+  setCalSaved(!calSaved);
+  toast(calSaved
+    ? 'Added to your banbe schedule — reminder the day before'
+    : 'Removed from your banbe schedule');
+});
+$('#addApple').addEventListener('click', () => {
+  toast('Opening Apple Calendar…');
+});
+const reserveLabel = () => {
+  const e = currentEvent();
+  if (!e) return 'Reserve';
+  const per = priceOf(e);
+  if (!per) return 'Reserve';
+  return `Reserve · ${group(per * qty)}₫`;
+};
+
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('on');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => toastEl.classList.remove('on'), 1900);
+}
+
+/* ------------------------------------------------------------------------------------------------
+   Home: rail + feed
+   ------------------------------------------------------------------------------------------------ */
+function railCard(id) {
+  const e = EVENTS[id];
+  return `
+    <div class="hc" data-id="${id}">
+      <span class="ph" style="background-image:${photoLayers(e.photo)}"></span>
+      <span class="shade"></span>
+      <span class="top">
+        <span class="pill lbl">${esc(e.kicker)}</span>
+        <button class="save" data-save="${id}" aria-label="Save ${esc(e.title)}">
+          <svg class="i" viewBox="0 0 24 24"><path d="M6 4h12v17l-6-4.2L6 21V4Z"/></svg>
+        </button>
+      </span>
+      <button class="hcTap" data-id="${id}" aria-label="Open ${esc(e.title)}"></button>
+      <span class="info">
+        <span class="k">${esc(e.day)} · ${esc(e.when.slice(0, 5))}</span>
+        <span class="t">${esc(e.title)}</span>
+        <span class="b"><span>${esc(e.area.split(' · ')[0])}</span><b>${esc(e.price)}</b></span>
+      </span>
+    </div>`;
+}
+
+function feedRow(id) {
+  const e = EVENTS[id];
+  const free = e.price === 'Miễn phí';
+  return `
+    <button class="ev" data-id="${id}" aria-label="Open ${esc(e.title)}">
+      <span class="ph" style="background-image:${photoLayers(e.photo)}"></span>
+      <span class="tx">
+        <span class="k">${esc(e.kicker)} · ${esc(e.when.slice(0, 5))}</span>
+        <span class="t">${esc(e.title)}</span>
+        <span class="s">${esc(e.area.split(' · ')[0])} · ${esc(e.area.split(' · ')[1])} ${free ? '<span class="free">· Free</span>' : ''}</span>
+      </span>
+      <span class="r">
+        <span class="p">${esc(free ? 'Free' : e.price)}</span>
+        <svg class="i chev" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+      </span>
+    </button>`;
+}
+
+$('#rail').innerHTML = RAIL.map(railCard).join('');
+$('#feed').innerHTML = FEED.map(feedRow).join('');
+
+/* Reveal the feed rows in sequence, once; the observer is re-run by Replay. */
+const revealObserver = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    const el = entry.target;
+    const i = Number(el.dataset.i || 0);
+    el.style.transitionDelay = reduced ? '0ms' : (i * 40) + 'ms';
+    el.addEventListener('transitionend', () => { el.style.transitionDelay = '0ms'; }, { once: true });
+    el.classList.add('in');
+    revealObserver.unobserve(el);
+  });
+}, { threshold: 0.16, root: homeScroll });
+
+function observeFeed() {
+  $$('#feed .ev').forEach((el, i) => {
+    el.dataset.i = i;
+    el.classList.remove('in');
+    revealObserver.observe(el);
+  });
+}
+observeFeed();
+
+/* Detail sections reveal on scroll, 40 ms apart within their own block. */
+const secObserver = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    const el = entry.target;
+    el.style.transitionDelay = reduced ? '0ms' : '40ms';
+    el.addEventListener('transitionend', () => { el.style.transitionDelay = '0ms'; }, { once: true });
+    el.classList.add('in');
+    secObserver.unobserve(el);
+  });
+}, { threshold: 0.1, root: dScroll });
+
+function observeSections() {
+  $$('.dSec').forEach(sec => {
+    sec.classList.remove('in');
+    secObserver.observe(sec);
+  });
+}
+observeSections();
+
+/* ------------------------------------------------------------------------------------------------
+   Home: scrolling header wash, dock collapse, rail depth
+   ------------------------------------------------------------------------------------------------ */
+const hwash = $('#hwash');
+const dock = $('#dock');
+const hhImg = $('#hhImg');
+let lastHomeY = 0;
+let homeRaf = 0;
+
+homeScroll.addEventListener('scroll', () => {
+  if (homeRaf) return;
+  homeRaf = requestAnimationFrame(() => {
+    homeRaf = 0;
+    const y = homeScroll.scrollTop;
+    const wash = Math.min(1, Math.max(0, y / 70));
+    hwash.style.opacity = String(wash * 0.94);
+    hhImg.style.transform = `scale(${1.06 + Math.min(y, 400) / 4000}) translateY(${Math.min(y, 400) * 0.08}px)`;
+
+    const goingDown = y > lastHomeY + 3;
+    const goingUp = y < lastHomeY - 3;
+    if (goingDown && y > 90) dock.classList.add('mini');
+    if (goingUp || y < 40) dock.classList.remove('mini');
+    lastHomeY = y;
+
+    depthRail();
+    depthFeed();
+  });
+}, { passive: true });
+
+/* v2.2 — scroll-linked depth. The thumbnail rides against the scroll, so the row reads as a
+   surface with the card sitting slightly above it. Four rows, one rect each: cheap. */
+function depthFeed() {
+  const thumbs = $$('#feed .ev .ph');
+  if (reduced) {
+    thumbs.forEach(p => { p.style.transform = ''; });
+    return;
+  }
+  const box = homeScroll.getBoundingClientRect();
+  const mid = box.top + box.height / 2;
+  thumbs.forEach(ph => {
+    const r = ph.getBoundingClientRect();
+    const off = (r.top + r.height / 2 - mid) / box.height;
+    ph.style.transform = `translateY(${(off * -14).toFixed(1)}px)`;
+  });
+}
+
+/* Rail depth: the card nearest the centre is full size, its neighbours sit back. */
+const rail = $('#rail');
+function depthRail() {
+  if (reduced) {
+    $$('.hc').forEach(c => c.style.removeProperty('--dz'));
+    return;
+  }
+  const centre = rail.scrollLeft + rail.clientWidth / 2;
+  $$('.hc').forEach(card => {
+    const c = card.offsetLeft + card.offsetWidth / 2;
+    const d = Math.min(1, Math.abs(c - centre) / 300);
+    card.style.setProperty('--dz', String(1 - d * 0.05));
+  });
+}
+
+/* Rail dots follow the snapped card. */
+const dotsEl = $('#dots');
+dotsEl.innerHTML = RAIL.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('');
+rail.addEventListener('scroll', () => {
+  const w = 268 + 12;
+  const i = Math.round(rail.scrollLeft / w);
+  $$('#dots i').forEach((d, j) => d.classList.toggle('on', j === i));
+  depthRail();
+}, { passive: true });
+
+/* Tabs: one ink that slides between labels. */
+const homeTabs = $('#homeTabs');
+const tabink = $('#tabink');
+function moveTabInk(btn) {
+  if (!btn) return;
+  tabink.style.left = (btn.offsetLeft) + 'px';
+  tabink.style.width = (btn.offsetWidth) + 'px';
+}
+homeTabs.addEventListener('click', e => {
+  const btn = e.target.closest('button[data-tab]');
+  if (!btn) return;
+  $$('#homeTabs button[data-tab]').forEach(b => b.classList.toggle('on', b === btn));
+  moveTabInk(btn);
+  const labels = { foryou: ['For You', '4 events · picked for you'], tonight: ['Tonight', '4 events · Thu 09.07'], weekend: ['Weekend', '6 events · Sat 11 – Sun 12'] };
+  const [t, s] = labels[btn.dataset.tab];
+  $('#feedTitle').textContent = t;
+  $('#feedSub').textContent = s;
+  if (btn.dataset.tab === 'weekend') {
+    $('#feed').innerHTML = ['bepnho', 'vungtrang', 'chieucham', 'phokhuya'].map(feedRow).join('');
+  } else {
+    $('#feed').innerHTML = FEED.map(feedRow).join('');
+  }
+  observeFeed();
+});
+requestAnimationFrame(() => moveTabInk($('#homeTabs button.on')));
+window.addEventListener('resize', () => moveTabInk($('#homeTabs button.on')));
+
+/* ------------------------------------------------------------------------------------------------
+   Browse by type: the screen a category chip opens. One view serves "All" and each of the four
+   types, so the switcher inside it never needs a trip back to Home.
+   ------------------------------------------------------------------------------------------------ */
+function syncSeg() {
+  const want = detailOpen ? 'detail' : baseScreen;
+  $$('#segScreen button').forEach(b => b.classList.toggle('on', b.dataset.screen === want));
+  /* Only the top screen is reachable by assistive tech. */
+  homeView.setAttribute('aria-hidden', (detailOpen || baseScreen === 'type') ? 'true' : 'false');
+  typeView.setAttribute('aria-hidden', (detailOpen || baseScreen !== 'type') ? 'true' : 'false');
+  detail.setAttribute('aria-hidden', detailOpen ? 'false' : 'true');
+}
+
+function revealTypeRows() {
+  clearTimeout(revealTypeRows._t);
+  const run = () => {
+    $$('#typeList .ev').forEach((el, i) => {
+      el.style.transitionDelay = reduced ? '0ms' : (Math.min(i, 6) * 40) + 'ms';
+      el.addEventListener('transitionend', () => { el.style.transitionDelay = '0ms'; }, { once: true });
+      requestAnimationFrame(() => el.classList.add('in'));
+    });
+  };
+  /* Let the push (or the type switch) land first, then stagger the rows into it. */
+  revealTypeRows._t = setTimeout(run, reduced ? 0 : 120);
+}
+
+function renderType(key) {
+  currentType = key;
+  const meta = key === 'all'
+    ? { name: 'All events', blurb: 'Everything happening this week, across all four types.' }
+    : TYPE[key];
+  $('#typeTitle').textContent = meta.name;
+  $('#typeNavTitle').textContent = meta.name;
+  $('#typeBlurb').textContent = meta.blurb;
+
+  const list = eventsOfType(key);
+  $('#typeCount').textContent = `${list.length} event${list.length === 1 ? '' : 's'}`;
+  $('#typeShowCount').textContent = String(list.length);
+  $('#typeList').innerHTML = list.map(e => feedRow(e.id)).join('');
+  $$('#typeChips button').forEach(b => b.classList.toggle('on', b.dataset.type === key));
+  revealTypeRows();
+}
+
+function openType(key) {
+  if (detailOpen || closing) return;
+  baseScreen = 'type';
+  renderType(key);
+  typeScroll.scrollTop = 0;
+  typeView.classList.add('open');
+  typeView.setAttribute('aria-hidden', 'false');
+  homeView.classList.add('pushed');
+  syncSeg();
+  /* The type nav only covers the status bar once it has slid in, so flip the bar's ink late
+     enough that its text is never dark on the Home hero behind the push. */
+  clearTimeout(openType._t);
+  openType._t = setTimeout(() => {
+    if (baseScreen === 'type' && !detailOpen) updateStatus();
+  }, reduced ? 0 : 180);
+}
+
+function closeType() {
+  if (detailOpen || closing) return;
+  clearTimeout(openType._t);
+  typeView.classList.remove('open');
+  typeView.setAttribute('aria-hidden', 'true');
+  homeView.classList.remove('pushed');
+  baseScreen = 'home';
+  statusBar.classList.remove('dark');
+  syncSeg();
+}
+
+$('#seeAllTypes').addEventListener('click', () => openType('all'));
+$('#typeBack').addEventListener('click', closeType);
+$$('.types .ty').forEach(b => {
+  b.addEventListener('click', () => openType(b.dataset.type));
+});
+$('#typeChips').addEventListener('click', e => {
+  const chip = e.target.closest('button[data-type]');
+  if (!chip) return;
+  renderType(chip.dataset.type);
+  typeScroll.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+});
+
+/* Counts on both chip rows stay honest to the catalogue, not hard-coded. */
+$$('#typeChips button').forEach(b => {
+  const n = eventsOfType(b.dataset.type).length;
+  const el = b.querySelector('b');
+  if (el) el.textContent = String(n);
+});
+$$('.types .ty').forEach(b => {
+  const n = eventsOfType(b.dataset.type).length;
+  const el = b.querySelector('b');
+  if (el) el.textContent = String(n);
+});
+
+/* Save: a small spring pop, and it never opens the event. */
+document.addEventListener('click', e => {
+  const save = e.target.closest('[data-save]');
+  if (!save) return;
+  e.preventDefault();
+  e.stopPropagation();
+  save.classList.toggle('on');
+  save.animate?.(
+    [{ transform: 'scale(.8)' }, { transform: 'scale(1.16)' }, { transform: 'scale(1)' }],
+    { duration: reduced ? 1 : 320, easing: 'cubic-bezier(.2,1.04,.3,1)' }
+  );
+  toast(save.classList.contains('on') ? 'Saved' : 'Removed from saved');
+});
+
+/* ------------------------------------------------------------------------------------------------
+   Detail: fill, open with a shared-element hero, close in reverse
+   ------------------------------------------------------------------------------------------------ */
+function fillDetail(id) {
+  const e = EVENTS[id];
+  detail.dataset.eventId = id;
+  $('#dCat').textContent = e.cat;
+  $('#dAge').textContent = e.age;
+  $('#dTitle').textContent = e.title;
+  $('#dnavTitle').textContent = e.title;
+  dHeroImg.style.backgroundImage = photoLayers(e.photo);
+  $('#heroMono').textContent = (e.title.trim()[0] || 'B').toUpperCase();
+
+  $('#stubWhen').textContent = e.when;
+  $('#stubPlace').textContent = e.area;
+  $('#stubCd').textContent = 'In 2 days';
+  const free = priceOf(e) === 0;
+  $('#stubPrice').textContent = free ? 'Free' : e.price;
+  $('#stubUnit').textContent = free ? '' : '/ vé';
+  $('#seatText').textContent = `${e.seats} ticket${e.seats === 1 ? '' : 's'} left`;
+  $('#seatText').closest('.seatPill').classList.toggle('few', e.seats <= 3);
+
+  /* Rows follow the type (and its real age), so a gallery no longer claims a rice-wine menu. */
+  $('#knowCard').innerHTML = knowFor(e).map(([title, text]) => `
+    <div class="knowRow">
+      <dt>${esc(title)}</dt>
+      <dd>${esc(text)}</dd>
+    </div>
+  `).join('');
+
+  setCalSaved(calSavedIds.has(id), true);
+
+  $('#aboutText').textContent = e.about;
+  $('#aboutText').classList.remove('open');
+  $('#moreBtn').classList.remove('on');
+  $('#moreBtn').firstChild.textContent = 'Read more ';
+
+  $('#hostAv').textContent = e.host.charAt(0).toUpperCase();
+  $('#hostName').textContent = e.host;
+  $('#hostSub').textContent = e.hostSub;
+
+  $('#menuList').innerHTML = e.menu.map((m, i) => `
+    <li class="incItem">
+      <span class="incNo">0${i + 1}</span>
+      <span><b>${esc(m[0])}</b><span class="d">${esc(m[1])}</span></span>
+    </li>
+  `).join('');
+
+  /* A chip above the seats left is not a choice. */
+  $$('.chip', chipsEl).forEach(c => {
+    const n = Number(c.dataset.qty);
+    c.disabled = n > e.seats;
+    c.classList.toggle('off', n > e.seats);
+  });
+
+  /* The stub's own date block. Every catalogue event this prototype shows is in July. */
+  const dow = (e.day.split(' ')[0] || '').toUpperCase();
+  const dateBlk = $('.dateBlk');
+  dateBlk.querySelector('small').textContent = 'JUL';
+  dateBlk.querySelector('b').textContent = e.dayNum;
+  dateBlk.querySelector('span').textContent = dow.length === 3 ? dow : e.dow;
+
+  syncDuo(e);
+}
+
+function heroRect() {
+  const r = $('#dHero').getBoundingClientRect();
+  const d = device.getBoundingClientRect();
+  return { left: r.left - d.left, top: r.top - d.top, width: r.width, height: r.height };
+}
+
+/* The Duo surface is a second, larger board for the same ticket. It mirrors the event that is
+   focused (or the first rail event before anything is opened) — a stage, not a second app. */
+function syncDuo(e) {
+  if (!e) return;
+  $('#duoImg').style.backgroundImage = photoLayers(e.photo);
+  $('#duoKicker').textContent = e.cat;
+  $('#duoTitle').textContent = e.title;
+  $('#duoMeta').textContent = `${e.day} · ${e.when.split(' – ')[0]} · ${e.area.split(' · ')[0]}`;
+  $('#duoDate').textContent = `JUL ${e.dayNum}`;
+  $('#duoTime').textContent = e.when.split(' – ')[0];
+  $('#duoPrice').textContent = e.price === 'Miễn phí' ? 'Free' : e.price;
+  $('#duoAv').textContent = e.host.charAt(0).toUpperCase();
+  $('#duoHostName').textContent = e.host;
+  $('#duoHostSub').textContent = e.hostSub;
+  const duo = $('#duo');
+  duo.classList.remove('pulse');
+  void duo.offsetWidth;
+  duo.classList.add('pulse');
+}
+
+function openDetail(id, sourceCard) {
+  if (detailOpen || closing) return;
+  detailOpen = true;
+  lastCard = sourceCard || null;
+  syncSeg();
+
+  fillDetail(id);
+  qty = 1;
+  held = false;
+  setQty(1, true);
+  setReserve(false, false);
+  dScroll.scrollTop = 0;
+  dHeroImg.style.transform = '';
+  dHero.style.removeProperty('--dp');
+  dProgressFill.style.transform = 'scaleX(0)';
+  dnav.classList.remove('on');
+  dTabs.classList.remove('on');
+  $('#backFloat').classList.remove('hide');
+  $('#dStub').classList.remove('rise');
+  $$('.dSec').forEach(s => s.classList.remove('in'));
+
+  detail.classList.add('open');
+  detail.setAttribute('aria-hidden', 'false');
+
+  const sourcePh = sourceCard ? sourceCard.querySelector('.ph') : null;
+  if (!sourcePh || reduced) {
+    $('#dStub').classList.add('rise');
+    observeSections();
+    updateStatus();
+    return;
+  }
+
+  const d = device.getBoundingClientRect();
+  const from = sourcePh.getBoundingClientRect();
+  const to = heroRect();
+  const onScreen = from.bottom > d.top && from.top < d.bottom;
+
+  /* Nothing to fly from if the card scrolled away: open in place, never from off-screen. */
+  if (!onScreen) {
+    $('#dStub').classList.add('rise');
+    observeSections();
+    updateStatus();
+    return;
+  }
+
+  sourcePh.style.visibility = 'hidden';
+  dHeroImg.style.opacity = '0';
+
+  const fly = document.createElement('div');
+  fly.className = 'fly';
+  fly.style.left = (from.left - d.left) + 'px';
+  fly.style.top = (from.top - d.top) + 'px';
+  fly.style.width = from.width + 'px';
+  fly.style.height = from.height + 'px';
+  fly.style.borderRadius = '14px';
+  fly.style.backgroundImage = photoLayers(EVENTS[id].photo);
+  device.appendChild(fly);
+
+  requestAnimationFrame(() => {
+    fly.style.left = to.left + 'px';
+    fly.style.top = to.top + 'px';
+    fly.style.width = to.width + 'px';
+    fly.style.height = to.height + 'px';
+    fly.style.borderRadius = '0px';
+  });
+
+  openTimer = setTimeout(() => {
+    dHeroImg.style.opacity = '1';
+    fly.style.opacity = '0';
+    $('#dStub').classList.add('rise');
+    observeSections();
+    updateStatus();
+    flyClean = setTimeout(() => {
+      fly.remove();
+      sourcePh.style.visibility = '';
+    }, 160);
+  }, 400);
+}
+
+function closeDetail() {
+  if (!detailOpen || closing) return;
+  closing = true;
+  clearTimeout(openTimer);
+  clearTimeout(flyClean);
+  $$('.fly').forEach(f => f.remove());
+
+  const sourcePh = lastCard ? lastCard.querySelector('.ph') : null;
+
+  if (!sourcePh || reduced) {
+    finishClose();
+    return;
+  }
+
+  const d = device.getBoundingClientRect();
+  const from = heroRect();
+  const to = sourcePh.getBoundingClientRect();
+  const visible = to.bottom > d.top && to.top < d.bottom;
+
+  if (!visible) {
+    finishClose();
+    return;
+  }
+
+  dHeroImg.style.opacity = '0';
+  const fly = document.createElement('div');
+  fly.className = 'fly';
+  fly.style.left = from.left + 'px';
+  fly.style.top = from.top + 'px';
+  fly.style.width = from.width + 'px';
+  fly.style.height = from.height + 'px';
+  fly.style.borderRadius = '0px';
+  fly.style.backgroundImage = photoLayers(EVENTS[lastCard.dataset.id].photo);
+  device.appendChild(fly);
+  sourcePh.style.visibility = 'hidden';
+
+  detail.classList.remove('open');
+  detail.setAttribute('aria-hidden', 'true');
+
+  requestAnimationFrame(() => {
+    fly.style.left = (to.left - d.left) + 'px';
+    fly.style.top = (to.top - d.top) + 'px';
+    fly.style.width = to.width + 'px';
+    fly.style.height = to.height + 'px';
+    fly.style.borderRadius = '14px';
+  });
+
+  setTimeout(() => {
+    fly.remove();
+    sourcePh.style.visibility = '';
+    dHeroImg.style.opacity = '1';
+    finishClose(true);
+  }, 400);
+}
+
+function finishClose(keepHero) {
+  detailOpen = false;
+  closing = false;
+  syncSeg();
+  detail.classList.remove('open');
+  detail.setAttribute('aria-hidden', 'true');
+  if (!keepHero) dHeroImg.style.opacity = '1';
+  $$('.hc .ph, .ev .ph').forEach(p => { p.style.visibility = ''; });
+  dnav.classList.remove('on');
+  dTabs.classList.remove('on');
+  dScroll.scrollTop = 0;
+  updateStatus();
+}
+
+/* Open from any card. Save is its own control inside the card, so it must not open the event. */
+document.addEventListener('click', e => {
+  if (e.target.closest('[data-save]')) return;
+  const card = e.target.closest('.hc, .ev');
+  if (!card || !card.dataset.id) return;
+  openDetail(card.dataset.id, card);
+});
+
+$('#backFloat').addEventListener('click', closeDetail);
+$('#navBack').addEventListener('click', closeDetail);
+
+/* Detail scroll: parallax, nav hand-off, active tab. */
+let detailRaf = 0;
+dScroll.addEventListener('scroll', () => {
+  if (!detailOpen || detailRaf) return;
+  detailRaf = requestAnimationFrame(() => {
+    detailRaf = 0;
+    const y = dScroll.scrollTop;
+    if (!reduced) {
+      /* The image is 140% tall with 20% of slack above and below, so a 0.2× downward
+         offset at 336 pt of scroll exactly uses that slack and never shows a dark band. */
+      dHeroImg.style.transform = `translate3d(0, ${y * 0.2}px, 0) scale(${1 + y / 4000})`;
+      dHero.style.setProperty('--dp', String(Math.min(1, y / 300)));
+    }
+    const max = dScroll.scrollHeight - dScroll.clientHeight;
+    dProgressFill.style.transform = `scaleX(${max > 0 ? Math.min(1, y / max) : 0})`;
+    const collapsed = y > 140;
+    dnav.classList.toggle('on', collapsed);
+    dTabs.classList.toggle('on', collapsed);
+    $('#backFloat').classList.toggle('hide', collapsed);
+    updateActiveTab();
+    updateStatus();
+  });
+}, { passive: true });
+
+function updateActiveTab() {
+  const top = dScroll.getBoundingClientRect().top + 132;
+  let active = 'sec-overview';
+  $$('.dSec').forEach(sec => {
+    if (sec.getBoundingClientRect().top <= top) active = sec.id;
+  });
+  $$('#dTabs button').forEach(b => b.classList.toggle('on', b.dataset.sec === active));
+}
+
+dTabs.addEventListener('click', e => {
+  const btn = e.target.closest('button[data-sec]');
+  if (!btn) return;
+  const sec = document.getElementById(btn.dataset.sec);
+  if (!sec) return;
+  const y = sec.getBoundingClientRect().top - dScroll.getBoundingClientRect().top + dScroll.scrollTop - 132;
+  dScroll.scrollTo({ top: y, behavior: reduced ? 'auto' : 'smooth' });
+  $$('#dTabs button').forEach(b => b.classList.toggle('on', b === btn));
+});
+
+/* White over photo, ink once the content is light — and always ink over the type list. */
+function updateStatus() {
+  statusBar.classList.toggle('dark', detailOpen ? dScroll.scrollTop > 135 : baseScreen === 'type');
+}
+updateStatus();
+
+/* Read more. */
+$('#moreBtn').addEventListener('click', () => {
+  const open = $('#aboutText').classList.toggle('open');
+  $('#moreBtn').classList.toggle('on', open);
+  $('#moreBtn').firstChild.textContent = open ? 'Read less ' : 'Read more ';
+});
+
+/* ------------------------------------------------------------------------------------------------
+   Reserve bar: chips that share one ink, a price that reacts, a hold with a real ending.
+   ------------------------------------------------------------------------------------------------ */
+const chipsEl = $('#chips');
+const chipInk = $('#chipInk');
+
+function setQty(n, instant) {
+  const e = currentEvent();
+  if (!e) return;
+  qty = Math.max(1, Math.min(n, Math.max(1, e.seats)));
+
+  $$('.chip', chipsEl).forEach(c => {
+    const v = Number(c.dataset.qty);
+    const off = v > e.seats;
+    c.disabled = off;
+    c.classList.toggle('off', off);
+    c.classList.toggle('on', v === qty);
+  });
+
+  const btn = chipsEl.querySelector(`.chip[data-qty="${qty}"]`);
+  if (btn) {
+    if (instant || reduced) {
+      chipInk.style.transition = 'none';
+      chipInk.style.left = btn.offsetLeft + 'px';
+      chipInk.style.width = btn.offsetWidth + 'px';
+      requestAnimationFrame(() => { chipInk.style.transition = ''; });
+    } else {
+      chipInk.style.left = btn.offsetLeft + 'px';
+      chipInk.style.width = btn.offsetWidth + 'px';
+    }
+  }
+
+  renderTicketBar();
+  const total = $('#barPrice');
+  total.animate?.([
+    { transform: 'translateY(0)', opacity: 1 },
+    { transform: 'translateY(-5px)', opacity: .55 },
+    { transform: 'translateY(0)', opacity: 1 }
+  ], { duration: reduced ? 1 : 260, easing: 'cubic-bezier(.22,.61,.36,1)' });
+}
+
+/* The one place the sum lives: per-ticket price × quantity, and the CTA always says the same
+   number as the total, so 2 and 3 can never read as one ticket's price again. */
+function renderTicketBar() {
+  const e = currentEvent();
+  if (!e) return;
+  const per = priceOf(e);
+  const free = per === 0;
+  const total = per * qty;
+
+  $('#barPrice').textContent = free ? 'Free' : group(total) + '₫';
+  $('#barUnit').textContent = free
+    ? 'no charge'
+    : (qty === 1 ? 'per ticket' : `Total · ${qty} × ${group(per)}₫`);
+
+  if (!held) $('#reserveLbl').textContent = reserveLabel();
+  $('#trustText').textContent = held
+    ? 'Seats held · the host has 1 hour to confirm'
+    : 'The host has 1 hour to confirm · banbe reminds them';
+}
+
+chipsEl.addEventListener('click', e => {
+  const chip = e.target.closest('.chip');
+  if (!chip || held || chip.disabled) return;
+  setQty(Number(chip.dataset.qty));
+});
+
+function setReserve(loading, done) {
+  const btn = $('#reserve');
+  btn.classList.toggle('loading', loading);
+  btn.classList.toggle('held', done);
+  $('#dbar').classList.toggle('held', done);
+  $('#reserveLbl').textContent = done ? 'Seats held' : reserveLabel();
+}
+
+$('#reserve').addEventListener('click', () => {
+  const btn = $('#reserve');
+  if (btn.classList.contains('loading') || btn.classList.contains('held')) return;
+  held = false;
+  setReserve(true, false);
+  setTimeout(() => {
+    setReserve(false, true);
+    held = true;
+    haptic('success', btn);
+    $('#trustText').textContent = 'Seats held · the host has 1 hour to confirm';
+    const e = currentEvent();
+    const per = e ? priceOf(e) : 0;
+    const total = per * qty;
+    toast(`${qty} seat${qty > 1 ? 's' : ''} held${total ? ' · ' + group(total) + '₫' : ''} — the host has 1 hour`);
+  }, reduced ? 60 : 1150);
+});
+
+/* ------------------------------------------------------------------------------------------------
+   Filter sheet: springs up, drags down with the scrim following the finger
+   ------------------------------------------------------------------------------------------------ */
+const sheet = $('#sheet');
+const scrim = $('#scrim');
+
+function openSheet() {
+  sheet.classList.add('on');
+  scrim.classList.add('on');
+  sheet.style.transform = '';
+  scrim.style.opacity = '';
+}
+function closeSheet() {
+  sheet.classList.remove('on');
+  scrim.classList.remove('on');
+  sheet.style.transform = '';
+  scrim.style.opacity = '';
+}
+
+$('#openFilters').addEventListener('click', openSheet);
+$('#closeSheet').addEventListener('click', closeSheet);
+$('#applyFilters').addEventListener('click', () => {
+  closeSheet();
+  toast('Filters applied');
+});
+scrim.addEventListener('click', closeSheet);
+
+/* one choice per group */
+$$('[data-fgroup]').forEach(group => {
+  group.addEventListener('click', e => {
+    const opt = e.target.closest('.fopt');
+    if (!opt) return;
+    $$('.fopt', group).forEach(o => o.classList.toggle('on', o === opt));
+  });
+});
+
+/* drag to dismiss */
+let dragging = false;
+let dragStart = 0;
+let dragY = 0;
+const sheetHead = $('#sheetHead');
+
+sheetHead.addEventListener('pointerdown', e => {
+  if (reduced) return;
+  dragging = true;
+  dragStart = e.clientY;
+  dragY = 0;
+  sheet.style.transition = 'none';
+  scrim.style.transition = 'none';
+  try { sheetHead.setPointerCapture(e.pointerId); } catch (_) {}
+});
+
+sheetHead.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  dragY = Math.max(0, e.clientY - dragStart);
+  sheet.style.transform = `translateY(${dragY}px)`;
+  scrim.style.opacity = String(Math.max(0, 1 - dragY / 340));
+});
+
+function endDrag() {
+  if (!dragging) return;
+  dragging = false;
+  sheet.style.transition = '';
+  scrim.style.transition = '';
+  if (dragY > 90) {
+    closeSheet();
+  } else {
+    sheet.style.transform = '';
+    scrim.style.opacity = '';
+  }
+  dragY = 0;
+}
+sheetHead.addEventListener('pointerup', endDrag);
+sheetHead.addEventListener('pointercancel', endDrag);
+
+/* ------------------------------------------------------------------------------------------------
+   Dock "+", toasts, panel controls
+   ------------------------------------------------------------------------------------------------ */
+$('#plusInner').addEventListener('click', () => {
+  const on = $('#plusInner').classList.toggle('turn');
+  toast(on ? 'Create — what are you hosting?' : 'Closed');
+});
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-toast]');
+  if (!el) return;
+  toast(el.dataset.toast);
+});
+
+/* theme */
+$$('#segTheme button').forEach(b => {
+  b.addEventListener('click', () => {
+    $$('#segTheme button').forEach(x => x.classList.toggle('on', x === b));
+    document.documentElement.dataset.theme = b.dataset.theme;
+    if (b.dataset.theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  });
+});
+
+/* v2.2 — haptic scripts. A beat is a device vibration where the platform has one, and a ring
+   where the touch landed so the rhythm is visible in a browser too. */
+let hapticsOn = true;
+function beatAt(el) {
+  if (!el) return;
+  const d = device.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  if (r.bottom < d.top || r.top > d.bottom) return;
+  const b = document.createElement('span');
+  b.className = 'beat';
+  b.style.left = (r.left - d.left + r.width / 2) + 'px';
+  b.style.top = (r.top - d.top + r.height / 2) + 'px';
+  device.appendChild(b);
+  setTimeout(() => b.remove(), 620);
+}
+function haptic(kind, el) {
+  if (!hapticsOn) return;
+  const pattern = { light: 8, select: 10, open: 12, hold: [8, 24, 8], success: [10, 36, 16] }[kind] || 8;
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (_) {}
+  if (!reduced) beatAt(el);
+}
+$$('#segHaptics button').forEach(b => {
+  b.addEventListener('click', () => {
+    $$('#segHaptics button').forEach(x => x.classList.toggle('on', x === b));
+    hapticsOn = b.dataset.haptics === 'on';
+    if (hapticsOn) haptic('light', b);
+  });
+});
+/* One delegated map from control to beat, so the rhythm stays consistent across screens. */
+document.addEventListener('click', e => {
+  if (e.target.closest('[data-save]')) return;
+  const reserve = e.target.closest('#reserve');
+  if (reserve) return haptic('hold', reserve);
+  const chip = e.target.closest('.chip');
+  if (chip && !chip.disabled) return haptic('select', chip);
+  const cal = e.target.closest('.saveChip');
+  if (cal) return haptic('success', cal);
+  const ty = e.target.closest('.ty, .fopt');
+  if (ty) return haptic('light', ty);
+  const tab = e.target.closest('.htabs button, #dTabs button, .typeChips button, #segStage button');
+  if (tab) return haptic('light', tab);
+  const card = e.target.closest('.ev, .hcTap');
+  if (card) return haptic('open', card);
+});
+
+/* motion */
+function applyMotion(reducedNow) {
+  reduced = reducedNow;
+  document.body.classList.toggle('reduced', reducedNow);
+  $$('#segMotion button').forEach(b => b.classList.toggle('on', (b.dataset.motion === 'reduced') === reducedNow));
+  if (reducedNow) {
+    $$('.ev').forEach(el => el.classList.add('in'));
+    $$('.dSec').forEach(el => el.classList.add('in'));
+    /* v2.2 parity: depth is a decoration, so Reduced removes every offset and leaves the
+       reading progress (it is information, not motion). */
+    depthFeed();
+    dHero.style.removeProperty('--dp');
+  } else {
+    depthFeed();
+    if (detailOpen) dHero.style.setProperty('--dp', String(Math.min(1, dScroll.scrollTop / 300)));
+  }
+}
+$$('#segMotion button').forEach(b => {
+  b.addEventListener('click', () => applyMotion(b.dataset.motion === 'reduced'));
+});
+reduceQuery.addEventListener?.('change', e => applyMotion(e.matches));
+
+/* The Duo board scales to whatever width the stage has, so it also reads on a phone. */
+function fitDuo() {
+  const s = Math.min(1, (document.documentElement.clientWidth - 40) / 430);
+  const duo = $('#duo');
+  duo.style.setProperty('--duoScale', String(Math.max(.62, s)));
+}
+window.addEventListener('resize', fitDuo);
+fitDuo();
+
+/* stage: Solo, or Solo + the Duo board */
+$$('#segStage button').forEach(b => {
+  b.addEventListener('click', () => {
+    $$('#segStage button').forEach(x => x.classList.toggle('on', x === b));
+    const duoOn = b.dataset.stage === 'duo';
+    document.querySelector('.stage').classList.toggle('withDuo', duoOn);
+    $('#duo').setAttribute('aria-hidden', duoOn ? 'false' : 'true');
+    if (duoOn) {
+      fitDuo();
+      syncDuo(currentEvent() || EVENTS[RAIL[0]]);
+      /* On a stacked phone layout the board lives below the panel; bring it into view. */
+      if (window.matchMedia('(max-width: 900px)').matches) {
+        setTimeout(() => $('#duo').scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' }), 80);
+      }
+    }
+  });
+});
+
+$('#duoReserve').addEventListener('click', () => {
+  haptic('open', $('#duoReserve'));
+  if (detailOpen) {
+    toast('This ticket is already open on the left iPhone');
+    return;
+  }
+  const id = detail.dataset.eventId || RAIL[0];
+  const card = $('#rail .hc');
+  if (card) openDetail(id, card);
+});
+
+/* jump */
+function hardCloseDetail() {
+  if (!detailOpen) return;
+  clearTimeout(openTimer);
+  clearTimeout(flyClean);
+  $$('.fly').forEach(f => f.remove());
+  finishClose();
+}
+$$('#segScreen button').forEach(b => {
+  b.addEventListener('click', () => {
+    const want = b.dataset.screen;
+    if (want === 'detail') {
+      const card = baseScreen === 'type'
+        ? ($('#typeList .ev') || $('#rail .hc'))
+        : $('#rail .hc');
+      if (card) openDetail(card.dataset.id, card);
+      return;
+    }
+    hardCloseDetail();
+    if (want === 'home') {
+      if (baseScreen === 'type') closeType();
+    } else {
+      openType(currentType === 'all' ? 'supper' : currentType);
+    }
+  });
+});
+
+/* replay the entrance */
+$('#replay').addEventListener('click', () => {
+  hardCloseDetail();
+  closeType();
+  homeScroll.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+  $$('#feed .ev').forEach(el => { el.classList.remove('in'); el.style.transitionDelay = '0ms'; });
+  if (reduced) {
+    $$('#feed .ev').forEach(el => el.classList.add('in'));
+  } else {
+    observeFeed();
+  }
+  rail.scrollTo({ left: 0, behavior: reduced ? 'auto' : 'smooth' });
+  $$('#dots i').forEach((d, i) => d.classList.toggle('on', i === 0));
+  toast('Entrance replayed');
+});
+
+/* keep the stub's stamps and the rail in place on resize */
+window.addEventListener('resize', () => {
+  depthRail();
+  moveTabInk($('#homeTabs button.on'));
+  setQty(qty, true);
+});
+
+/* first paint */
+document.documentElement.dataset.theme = 'light';
+applyMotion(reduced);
+syncDuo(EVENTS[RAIL[0]]);
+depthFeed();
+requestAnimationFrame(() => {
+  depthRail();
+  moveTabInk($('#homeTabs button.on'));
+});
+/* The tab ink measures text, so re-measure once the webfont has actually landed. */
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => moveTabInk($('#homeTabs button.on')));
+}
+</script>
+</body>
+</html>
