@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14110D">
 <title>banbe — v2.4 · Home &amp; Event Detail</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -1260,12 +1261,16 @@ body.fill.panelOpen .panel{transform:none;visibility:visible;transition:transfor
   background:rgba(24,20,16,.55);color:#fff;font-size:13px;font-weight:700;align-items:center;justify-content:center;
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 body.fill .stageFab{display:flex}
+/* app only: nothing around the app, and the page itself never scrolls, zooms on double tap or bounces */
+body.appOnly .panel,body.appOnly .stageFab,body.appOnly .panelClose{display:none!important}
+html:has(body.appOnly){height:100%;overflow:hidden;overscroll-behavior:none}
+body.appOnly{margin:0;overscroll-behavior:none;touch-action:manipulation;background:var(--bg)}
 .panelClose{display:none}
 body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px auto;width:36px;height:36px;border-radius:50%;
   align-items:center;justify-content:center;background:var(--block);z-index:2}
 </style>
 </head>
-<body>
+<body class="fill appOnly">
 <button class="stageFab" id="stageFab" aria-label="Stage controls">⋮</button>
 <div class="stage">
   <aside class="panel">
@@ -4021,7 +4026,8 @@ const VARIANTS = {
 };
 let stageMode = 'solo';
 /* 'frame' = the device drawn at whatever scale fits; 'fill' = this screen is the device */
-let fitMode = 'frame';
+/* v2.4: the app only. The screen you open it on IS the device; no stage, no panel. */
+let fitMode = 'fill';
 function viewportSize() {
   const vv = window.visualViewport;
   return { w: Math.round(vv ? vv.width : window.innerWidth), h: Math.round(vv ? vv.height : window.innerHeight) };
@@ -4188,12 +4194,7 @@ function setFit(mode) {
 $$('#segFit button').forEach(b => b.addEventListener('click', () => setFit(b.dataset.fit)));
 $('#stageFab').addEventListener('click', () => document.body.classList.add('panelOpen'));
 $('#panelClose').addEventListener('click', () => document.body.classList.remove('panelOpen'));
-/* a phone-sized touch screen starts filled: a 40 % phone inside a phone is not a test */
-(function autoFit() {
-  const { w } = viewportSize();
-  const touch = window.matchMedia('(pointer: coarse)').matches;
-  if (touch && w <= 520) setTimeout(() => setFit('fill'), 0);
-})();
+
 
 /* jump */
 function hardCloseDetail() {
@@ -4236,7 +4237,11 @@ $('#replay').addEventListener('click', () => {
 window.addEventListener('resize', refit);
 
 /* first paint */
-document.documentElement.dataset.theme = 'light';
+/* the app follows the device: light or dark, and reduced motion, from the system settings */
+const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+const followTheme = () => { document.documentElement.dataset.theme = darkQuery.matches ? 'dark' : 'light'; };
+followTheme();
+darkQuery.addEventListener?.('change', followTheme);
 applyMotion(reduced);
 applyDevice(false);
 requestAnimationFrame(() => {
