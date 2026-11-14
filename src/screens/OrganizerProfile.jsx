@@ -9,6 +9,9 @@ import { bg } from '../data/events.js';
 import { SocialLinksEditor } from './SocialLinksEditor.jsx';
 import ProfileShareSheet, { profileShareLinks } from './sheets/ProfileShareSheet.jsx';
 import { LongIntroPreview, SocialLinksRow } from './LongIntro.jsx';
+import { flagOn } from '../lib/featureFlags.js';
+import OrganizerProfileV23 from '../components/profile/OrganizerProfileV23.jsx';
+import { formatMoney, cardDateBadge, rowTimeZone, rowCurrency } from '../lib/eventMarket.js';
 
 function organizerAvatarUrl(path, r2Ref, variant = 'card') {
   return organizerAvatarPublicUrl(path, r2Ref, variant);
@@ -28,7 +31,7 @@ function organizerPhotoUrl(path, r2Ref) {
 // hide what's missing rather than invent it.
 export default function OrganizerProfile() {
   const {
-    state, T, backFromOrganizerProfile, shareOrganizerProfile, toggleFollowOrganizer,
+    state, T, trStatus, backFromOrganizerProfile, shareOrganizerProfile, toggleFollowOrganizer,
     loadOrganizerProfileExtras, loadOrganizerPhotos, openPhoto, goEvent, orgRegNameType, orgRegDescType, saveOrganizerProfile,
     openOrganizerTeam,
     orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink,
@@ -38,6 +41,7 @@ export default function OrganizerProfile() {
   const [pastOpen, setPastOpen] = useState(false);
   const [shareCardOpen, setShareCardOpen] = useState(false);
   const [qrSrc, setQrSrc] = useState(null);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState('');
@@ -104,6 +108,122 @@ export default function OrganizerProfile() {
   const orgPhotos = (s.organizerPhotos || []).map(p => ({ id: p.id, url: organizerPhotoUrl(p.storage_path, p.r2_ref), eventId: p.event_id }));
   const monogram = (org.name || '?').trim()[0]?.toUpperCase() || '?';
   const avatarSrc = avatarPreview || organizerAvatarUrl(org.avatar_path, org.avatar_r2_ref || (org.id === s.myOrganizerId ? s.myOrganizerAvatarR2Ref : ''));
+
+  const editCardEl = (
+            <div style={{ ...cardGlass({ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }) }} data-testid="organizer-profile-edit-card">
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <div
+                  onClick={() => avatarInputRef.current?.click()}
+                  style={{ flex: 'none', width: 52, height: 52, borderRadius: 12, overflow: 'hidden', cursor: 'pointer', background: 'rgba(0,0,0,0.05)' }}
+                >
+                  {avatarSrc && <img src={avatarSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                </div>
+                <span onClick={() => avatarInputRef.current?.click()} style={{ fontSize: 12, color: ink, textDecoration: 'underline', cursor: 'pointer' }}>{T('Đổi ảnh', 'Change photo')}</span>
+                <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" data-testid="organizer-profile-avatar-input" style={{ display: 'none' }} onChange={onPickAvatar} />
+              </div>
+              <input
+                value={s.orgRegName} onChange={orgRegNameType} data-testid="organizer-profile-name-input"
+                style={{ fontSize: 14, fontWeight: 600, color: ink, border: `1px solid ${rule}`, borderRadius: 10, padding: '9px 11px', outline: 'none' }}
+              />
+              <textarea
+                value={s.orgRegDesc} onChange={orgRegDescType} rows={3} maxLength={2000}
+                placeholder={T('Giới thiệu ngắn về bạn/nhóm tổ chức…', 'A short introduction to you/your host team…')}
+                data-testid="organizer-profile-intro-input"
+                style={{ fontSize: 13, color: ink, border: `1px solid ${rule}`, borderRadius: 10, padding: '10px 12px', outline: 'none', resize: 'vertical', lineHeight: 1.5 }}
+              />
+              {/* Organizer Team pass (2026-09-27, Stage 3) — a SEPARATE
+                  long-form intro, never overwriting orgRegDesc above. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T('Giới thiệu chi tiết (không bắt buộc)', 'Long-form intro (optional)')}</span>
+                <textarea
+                  value={s.orgRegIntroLong} onChange={orgRegIntroLongType} rows={5} maxLength={4000}
+                  data-testid="organizer-profile-intro-long-input"
+                  style={{ fontSize: 13, color: ink, border: `1px solid ${rule}`, borderRadius: 10, padding: '10px 12px', outline: 'none', resize: 'vertical', lineHeight: 1.5 }}
+                />
+              </div>
+              <SocialLinksEditor
+                T={T} links={s.orgRegLinks} open={s.orgRegLinksOpen}
+                onToggleOpen={toggleOrgRegLinksOpen} onAdd={addOrgRegLink}
+                onSetField={setOrgRegLink} onRemove={removeOrgRegLink}
+                testPrefix="organizer-profile-link"
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <span
+                  onClick={doSave}
+                  data-testid="organizer-profile-save"
+                  style={{ flex: 1, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: paper, background: ink, padding: '10px 0', borderRadius: 10, cursor: 'pointer', opacity: s.orgProfileSaving ? 0.6 : 1 }}
+                >
+                  {s.orgProfileSaving ? T('Đang lưu…', 'Saving…') : T('Lưu', 'Save')}
+                </span>
+                <span onClick={() => setEditing(false)} style={{ flex: 1, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '10px 0', borderRadius: 10, cursor: 'pointer', border: `1px solid ${rule}` }}>
+                  {T('Huỷ', 'Cancel')}
+                </span>
+              </div>
+              {s.orgProfileError && <p style={{ fontSize: 11.5, color: alert, margin: 0 }}>{s.orgProfileError}</p>}
+            </div>
+  );
+  const qrEl = qrOpen && (
+    <div onClick={() => setQrOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: paper, borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+        {qrSrc ? <img src={qrSrc} alt="QR" style={{ width: 220, height: 220 }} /> : <div style={{ width: 220, height: 220 }} />}
+        <span style={{ fontSize: 12, color: ink }}>{org.name}</span>
+      </div>
+    </div>
+  );
+  const shareSheetEl = (
+    <ProfileShareSheet
+      open={shareCardOpen}
+      onClose={() => setShareCardOpen(false)}
+      kindLabel={T('Tổ chức', 'Host')}
+      name={org.name || ''}
+      subtitle={T(`${org.event_count ?? 0} sự kiện · ${org.follower_count ?? 0} người theo dõi`, `${org.event_count ?? 0} events · ${org.follower_count ?? 0} followers`)}
+      detail={org.about || ''}
+      avatarUrl={organizerAvatarUrl(org.avatar_path, org.avatar_r2_ref || (org.id === s.myOrganizerId ? s.myOrganizerAvatarR2Ref : ''))}
+      roundAvatar={false}
+      link={profileShareLinks().host(org.id)}
+      idPrefix="organizer-profile-share-card"
+      kind="host"
+      publishId={org.id}
+      isOwner={isCardOwner}
+    />
+  );
+
+  // v2.3 (note 81, switch home_v23): the prototype's host profile; the important actions on the page, the rest in ⋯.
+  if (flagOn(s.featureFlags, 'simple_shell') && flagOn(s.featureFlags, 'home_v23')) {
+    const toRow = (e, past = false) => {
+      const startMs = e.startsAt ? Date.parse(e.startsAt) : null;
+      return {
+        key: e.key, name: e.name, img: e.photoUrl || e.img || '',
+        kicker: [trStatus(e.catLabel || ''), startMs ? cardDateBadge(startMs, rowTimeZone(e), T) : ''].filter(Boolean).join(' · '),
+        place: e.area || '', isFree: !e.priceVnd,
+        priceLabel: past ? '' : e.priceVnd ? formatMoney(e.priceVnd, rowCurrency(e)) : T('Miễn phí', 'Free'),
+      };
+    };
+    const copyLink = () => {
+      const done = () => { setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000); };
+      try { navigator.clipboard.writeText(`https://banbe.app/org/${org.id}`).then(done, done); } catch { done(); }
+    };
+    return (
+      <OrganizerProfileV23 T={T} org={org} avatarSrc={avatarSrc} monogram={monogram} isOwner={isOwner} following={following} guest={!s.user?.id}
+        followError={!isOwner ? s.followWriteError : null}
+        onBack={backFromOrganizerProfile} onFollow={() => toggleFollowOrganizer(org.id)} onShare={() => setShareCardOpen(true)} onCopyLink={copyLink}
+        onQr={() => setQrOpen(true)} onTeam={() => openOrganizerTeam(org.id, 'organizerProfile')}
+        editing={isOwner && editing} onEdit={() => setEditing(v => !v)} editCard={editCardEl}
+        upcoming={s.organizerProfileUpcoming || []} past={s.organizerProfilePast || []} toRow={toRow} onOpenEvent={goEvent}
+        photos={orgPhotos} photosLoading={!!s.organizerPhotosLoading} onOpenPhoto={(i, rect) => openPhoto(orgPhotos, i, org.name, rect)}
+        likedOf={(id) => !!s.photoEngagement[id]?.likedByMe}
+        aboutExtra={(org.intro_long || (org.social_links || []).length > 0) ? (<><LongIntroPreview T={T} text={org.intro_long} /><SocialLinksRow links={org.social_links} /></>) : null}
+        overlays={(<>
+          {qrEl}
+          {shareSheetEl}
+          {(linkCopied || s.profileLinkCopiedFlash) && (
+            <div role="status" style={{ position: 'fixed', left: '50%', bottom: 110, transform: 'translateX(-50%)', zIndex: 60, padding: '10px 16px', borderRadius: 999, background: 'var(--bb-fg)', color: 'var(--bb-bg)', fontSize: 13, fontWeight: 600 }}>
+              {T('Đã sao chép link tổ chức', 'Organizer link copied')}
+            </div>
+          )}
+        </>)} />
+    );
+  }
 
   return (
     <div style={{ minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Organizer profile">
@@ -229,57 +349,7 @@ export default function OrganizerProfile() {
       {isOwner && (
         <div style={{ margin: `${SPACE.s}px 16px 0` }}>
           {editing ? (
-            <div style={{ ...cardGlass({ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }) }} data-testid="organizer-profile-edit-card">
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <div
-                  onClick={() => avatarInputRef.current?.click()}
-                  style={{ flex: 'none', width: 52, height: 52, borderRadius: 12, overflow: 'hidden', cursor: 'pointer', background: 'rgba(0,0,0,0.05)' }}
-                >
-                  {avatarSrc && <img src={avatarSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                </div>
-                <span onClick={() => avatarInputRef.current?.click()} style={{ fontSize: 12, color: ink, textDecoration: 'underline', cursor: 'pointer' }}>{T('Đổi ảnh', 'Change photo')}</span>
-                <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" data-testid="organizer-profile-avatar-input" style={{ display: 'none' }} onChange={onPickAvatar} />
-              </div>
-              <input
-                value={s.orgRegName} onChange={orgRegNameType} data-testid="organizer-profile-name-input"
-                style={{ fontSize: 14, fontWeight: 600, color: ink, border: `1px solid ${rule}`, borderRadius: 10, padding: '9px 11px', outline: 'none' }}
-              />
-              <textarea
-                value={s.orgRegDesc} onChange={orgRegDescType} rows={3} maxLength={2000}
-                placeholder={T('Giới thiệu ngắn về bạn/nhóm tổ chức…', 'A short introduction to you/your host team…')}
-                data-testid="organizer-profile-intro-input"
-                style={{ fontSize: 13, color: ink, border: `1px solid ${rule}`, borderRadius: 10, padding: '10px 12px', outline: 'none', resize: 'vertical', lineHeight: 1.5 }}
-              />
-              {/* Organizer Team pass (2026-09-27, Stage 3) — a SEPARATE
-                  long-form intro, never overwriting orgRegDesc above. */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T('Giới thiệu chi tiết (không bắt buộc)', 'Long-form intro (optional)')}</span>
-                <textarea
-                  value={s.orgRegIntroLong} onChange={orgRegIntroLongType} rows={5} maxLength={4000}
-                  data-testid="organizer-profile-intro-long-input"
-                  style={{ fontSize: 13, color: ink, border: `1px solid ${rule}`, borderRadius: 10, padding: '10px 12px', outline: 'none', resize: 'vertical', lineHeight: 1.5 }}
-                />
-              </div>
-              <SocialLinksEditor
-                T={T} links={s.orgRegLinks} open={s.orgRegLinksOpen}
-                onToggleOpen={toggleOrgRegLinksOpen} onAdd={addOrgRegLink}
-                onSetField={setOrgRegLink} onRemove={removeOrgRegLink}
-                testPrefix="organizer-profile-link"
-              />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <span
-                  onClick={doSave}
-                  data-testid="organizer-profile-save"
-                  style={{ flex: 1, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: paper, background: ink, padding: '10px 0', borderRadius: 10, cursor: 'pointer', opacity: s.orgProfileSaving ? 0.6 : 1 }}
-                >
-                  {s.orgProfileSaving ? T('Đang lưu…', 'Saving…') : T('Lưu', 'Save')}
-                </span>
-                <span onClick={() => setEditing(false)} style={{ flex: 1, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '10px 0', borderRadius: 10, cursor: 'pointer', border: `1px solid ${rule}` }}>
-                  {T('Huỷ', 'Cancel')}
-                </span>
-              </div>
-              {s.orgProfileError && <p style={{ fontSize: 11.5, color: alert, margin: 0 }}>{s.orgProfileError}</p>}
-            </div>
+            editCardEl
           ) : (
             <div onClick={() => setEditing(true)} data-testid="organizer-profile-edit" role="button" style={{ minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 600, color: ink, background: surface2, borderRadius: RADIUS.pill, cursor: 'pointer' }}>
               {T('Chỉnh sửa hồ sơ tổ chức', "Edit organizer profile")}
@@ -294,7 +364,7 @@ export default function OrganizerProfile() {
           <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
             {s.organizerProfileUpcoming.map((e, i, arr) => (
               <div key={e.key} onClick={() => goEvent(e.key)} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '10px 0', borderBottom: i < arr.length - 1 ? `1px solid ${rule}` : 'none', cursor: 'pointer' }}>
-                <div style={bg(e.img, { flex: 'none', width: 48, height: 48, borderRadius: 10 })} />
+                <div style={bg(e.img || e.photoUrl, { flex: 'none', width: 48, height: 48, borderRadius: 10 })} />
                 <span style={{ ...display(14, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</span>
               </div>
             ))}
@@ -319,7 +389,7 @@ export default function OrganizerProfile() {
             <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
               {s.organizerProfilePast.map((e, i, arr) => (
                 <div key={e.key} onClick={() => goEvent(e.key)} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '10px 0', borderBottom: i < arr.length - 1 ? `1px solid ${rule}` : 'none', cursor: 'pointer' }}>
-                  <div style={bg(e.img, { flex: 'none', width: 48, height: 48, borderRadius: 10 })} />
+                  <div style={bg(e.img || e.photoUrl, { flex: 'none', width: 48, height: 48, borderRadius: 10 })} />
                   <span style={{ ...display(14, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</span>
                 </div>
               ))}

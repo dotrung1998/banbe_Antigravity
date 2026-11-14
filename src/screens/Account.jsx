@@ -12,6 +12,9 @@ import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCent
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
 import ActionCenter from './ActionCenter.jsx';
 import AccountSearchResults from './AccountSearch.jsx';
+import { getFont } from '../lib/fontPref.js';
+
+const FONT_LABEL = { current: { vi: 'Mặc định', en: 'Current' }, serif: { vi: 'Có chân', en: 'Serif' }, vietnam: { vi: 'Be Vietnam Pro', en: 'Be Vietnam Pro' } };
 import { takeSearchState, resetSearchState } from '../lib/accountSearch.js';
 import { useSubmittedEvents } from '../lib/submittedEvents.jsx';
 import ProfileShareSheet, { profileShareLinks } from './sheets/ProfileShareSheet.jsx';
@@ -125,7 +128,7 @@ function RowGroup({ title, testId, top = 30, children }) {
 export default function Account() {
   const project = useEventProject();
   const {
-    state, T, set, goEditName, openRefundAccounts, openSecurity, openEventPreferences, openPolicy, pickTheme, toggleLang, openAdminEvents, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
+    state, T, set, goEditName, openPreferences, openRefundAccounts, openSecurity, openEventPreferences, openPolicy, pickTheme, toggleLang, openAdminEvents, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
     startHosting,
     openMyRefunds,
     loadHomeStories, openStoryViewer, openStoryLibraryPicker, openStoryCameraPicker,
@@ -361,6 +364,9 @@ export default function Account() {
     s.user ? notificationsRow : null,
     s.user ? <MoreRow key="foryou" icon="star" label={T('Gợi ý Dành cho bạn', 'For You preferences')} sub={T('Sở thích và mục tiêu', 'Interests and goals')} testId="account-event-preferences" onClick={() => openEventPreferences(null)} /> : null,
     <MoreRow key="appearance" icon="sun" label={T('Giao diện', 'Appearance')} testId="account-appearance" end={seg('account-theme', [['light', T('Sáng', 'Light'), !shownDark, () => pickTheme('light')], ['dark', T('Tối', 'Dark'), shownDark, () => pickTheme('dark')]])} />,
+    // Note 83: the font choice (and the rest of App Preferences: glass, map controls, payment documents).
+    <MoreRow key="font" icon="sliders" label={T('Phông chữ & hiển thị khác', 'Font & more display')} sub={T(`Phông chữ: ${FONT_LABEL[getFont()].vi}`, `Font: ${FONT_LABEL[getFont()].en}`)}
+      testId="account-font" onClick={openPreferences} />,
     <MoreRow key="language" icon="globe" label={T('Ngôn ngữ', 'Language')} testId="account-language" end={seg('account-lang', [['vi', 'VI', s.lang !== 'en', () => s.lang === 'en' && toggleLang()], ['en', 'EN', s.lang === 'en', () => s.lang !== 'en' && toggleLang()]])} />,
     s.user ? <MoreRow key="refund-accounts" icon="bank" label={T('Tài khoản thanh toán & nhận hoàn tiền', 'Payment & refund accounts')} testId="account-refund-accounts" onClick={() => openRefundAccounts('profile')} /> : null,
     s.user ? <MoreRow key="security" icon="shield" label={T('Quyền riêng tư & bảo mật', 'Privacy & security')} sub={T('Face ID, người bị chặn, xoá tài khoản', 'Face ID, blocked people, delete account')} testId="account-security" onClick={openSecurity} /> : null,
@@ -435,8 +441,16 @@ export default function Account() {
           ) : (
             <h1 data-testid="account-title" style={{ margin: 0, fontSize: 30, fontWeight: 300, letterSpacing: '-.01em', color: ink }}>{T('Tài khoản', 'Account')}</h1>
           )}
-          <span style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 'none', marginLeft: searchOpen ? 12 : 0 }}>
-            {s.user && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none', marginLeft: searchOpen ? 8 : 0 }}>
+            {/* Search Account (every row, by name or keyword, both languages). × closes it and clears the query. */}
+            <button type="button" onClick={toggleSearch} data-testid="account-search-toggle" aria-expanded={searchOpen}
+              aria-label={searchOpen ? T('Đóng tìm kiếm', 'Close search') : T('Tìm trong tài khoản', 'Search Account')}
+              style={{ width: 44, height: 44, border: 'none', background: 'none', color: ink, display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0 }}>
+              {searchOpen
+                ? <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg>
+                : <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>}
+            </button>
+            {s.user && !searchOpen && (
               <button type="button" onClick={() => setShareCardFor('member')} data-testid="account-share-profile" aria-label={T('Chia sẻ hồ sơ', 'Share profile')}
                 style={{ width: 44, height: 44, border: 'none', background: 'none', color: ink, display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0 }}>
                 <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><path d="M12 15V4M8 8l4-4 4 4M5 12v7h14v-7" /></svg>

@@ -47,15 +47,17 @@ export default function ShortlistV23({ T, lang, tab, rows, total, filterBadge, o
         renderRow={r => <EventRowV23 row={r} onOpen={() => onOpenEvent(r.key)} />}
         renderEnd={end => <EndCard card={card} variant={end.variant} onAction={onAction} T={T} />}
         empty={(
-          <div style={{ margin: '0 20px', padding: '20px 16px', borderRadius: 16, background: 'var(--bb-block)', textAlign: 'center' }}>
-            <div style={{ fontSize: 15.5, fontWeight: 600 }}>
-              {total > 0 ? T(`Không có gì trong ${label.vi} khớp bộ lọc.`, `Nothing in ${label.en} matches these filters.`) : T(`${label.vi} chưa có sự kiện.`, `Nothing in ${label.en} yet.`)}
-            </div>
-            <button type="button" data-testid={total > 0 ? 'home-shortlist-clear' : 'home-shortlist-types'} onClick={() => onAction(total > 0 ? 'clear-filters' : 'types')}
-              style={{ marginTop: 12, minHeight: 44, padding: '0 18px', borderRadius: 999, border: 'none', background: 'var(--bb-fg)', color: 'var(--bb-bg)', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-              {total > 0 ? T('Xoá bộ lọc', 'Clear filters') : T('Duyệt theo loại', 'Browse by type')}
-            </button>
-          </div>
+          <EndCard variant="solo" onAction={onAction} T={T} card={total > 0 ? {
+            kind: 'empty', eyebrow: { vi: label.vi, en: label.en },
+            title: { vi: `Không có gì trong ${label.vi} khớp bộ lọc.`, en: `Nothing in ${label.en} matches these filters.` },
+            body: { vi: 'Xoá bộ lọc để xem lại mọi thứ.', en: 'Clear the filters to see everything again.' },
+            actions: [{ act: 'clear-filters', primary: true, testId: 'home-shortlist-clear', label: { vi: 'Xoá bộ lọc', en: 'Clear filters' } }],
+          } : {
+            kind: 'empty', eyebrow: { vi: label.vi, en: label.en },
+            title: { vi: `${label.vi} chưa có sự kiện.`, en: `Nothing in ${label.en} yet.` },
+            body: { vi: 'Duyệt theo loại để tìm thứ đang diễn ra.', en: 'Browse by type to find something on.' },
+            actions: [{ act: 'types', primary: true, testId: 'home-shortlist-types', label: { vi: 'Duyệt theo loại', en: 'Browse by type' } }],
+          }} />
         )} />
     </section>
   );

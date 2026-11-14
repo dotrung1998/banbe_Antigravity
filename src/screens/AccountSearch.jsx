@@ -70,6 +70,9 @@ export function useAccountSearchEntries() {
       'settings cài đặt tùy chỉnh preferences', () => g.openAccountGroup('preferences')),
     e('language', 'personal', setVi, setEn, 'Ngôn ngữ & Hiển thị', 'Language & Appearance', 'sliders',
       'ngôn ngữ language tiếng việt english vn en theme giao diện sáng tối dark light mode hiển thị appearance kính glass độ trong suốt', () => g.openPreferences()),
+    // Note 83: the font choice lives on the App Preferences screen.
+    e('font', 'personal', setVi, setEn, 'Phông chữ', 'Font', 'sliders',
+      'font phông chữ phong chu kiểu chữ kieu chu typeface chữ serif có chân jost be vietnam pro typography', () => g.openPreferences()),
     e('security', 'personal', setVi, setEn, 'Bảo mật', 'Security', 'shield',
       'security mật khẩu password face id sinh trắc biometric đăng nhập login khóa lock đổi mật khẩu', () => g.openSecurity()),
     e('eventPreferences', 'personal', setVi, setEn, 'Sở thích sự kiện', 'Event preferences', 'sliders',

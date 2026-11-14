@@ -14,6 +14,7 @@ const ROW = (id, name, capacity) => ({
   id, name, cat_key: 'supper', starts_at: inDays(5), price_vnd: 850000, capacity, seats_remaining: capacity, status: 'live', visibility: 'public',
   area: 'Quận 1', country_code: 'VN', state_province: 'Hồ Chí Minh', tz: 'Asia/Ho_Chi_Minh', currency: 'VND', organizer_id: 'org_v23_detail',
   description: 'A long table, five courses and strangers side by side. '.repeat(6), details: { v: 1, alcohol: 'included', min_age: '18' },
+  intro: 'Host intro paragraph one.\n\nHost intro paragraph two.',
 });
 const EVENTS = { [BIG]: ROW(BIG, 'Big table test', 20), [SMALL]: ROW(SMALL, 'Small table test', 3) };
 
@@ -161,4 +162,15 @@ test('v2.3 layout: serif hero title, one glass Back, the nav with tabs and readi
     const b = await page.getByTestId(id).boundingBox();
     expect(b.height, id).toBeGreaterThanOrEqual(44);
   }
+});
+
+test('About has no "More ›" sheet link any more; Read more also shows the host\'s long intro', async ({ page }) => {
+  await mockSupabase(page, ON);
+  await openEvent(page, BIG);
+  await expect(page.getByTestId('event-included-section')).toHaveCount(0);
+  await expect(page.getByTestId('event-intro-section')).toHaveCount(0);
+  await page.getByTestId('event-read-more').click();
+  await expect(page.getByTestId('event-intro-section')).toContainText('Host intro paragraph one.');
+  await expect(page.getByTestId('event-intro-section')).toContainText('Host intro paragraph two.');
+  await expect(page.getByTestId('event-read-more')).toHaveAttribute('aria-expanded', 'true');
 });

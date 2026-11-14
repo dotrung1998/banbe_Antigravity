@@ -78,11 +78,12 @@ export const dockHighlight = 'rgba(var(--bb-fg-rgb), 0.12)';
 // prototype's stand-in face) but designed for full, clean Vietnamese
 // diacritic coverage, so tone marks sit right at any weight/size.
 export const FACE = "'Be Vietnam Pro', system-ui, sans-serif";
-export const DISPLAY_FACE = "'Jost', 'Be Vietnam Pro', system-ui, sans-serif";
+// Note 83: the title face follows the chosen font (src/lib/fontPref.js); Jost when nothing is set.
+export const DISPLAY_FACE = "var(--bb-font-display, 'Jost', 'Be Vietnam Pro', system-ui, sans-serif)";
 
 // Display/title text: 600, tight tracking.
 export const display = (size, extra) => ({
-  fontFamily: DISPLAY_FACE, fontWeight: 600, letterSpacing: '-0.02em', fontSize: size, color: ink, ...extra,
+  fontFamily: DISPLAY_FACE, fontWeight: 'var(--bb-font-display-weight, 600)', letterSpacing: '-0.02em', fontSize: size, color: ink, ...extra,
 });
 
 // One shape language for discovery surfaces (note 50, "4 levels" video lesson): cards and icon tiles share

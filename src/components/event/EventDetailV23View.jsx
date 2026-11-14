@@ -39,8 +39,10 @@ const Sec = ({ secRef, id, testId, last, children }) => (
 export default function EventDetailV23View(p) {
   const { T, ev, entrance, dimRef, cardRef, scrollerRef, heroRef, heroImgRef, progressRef, tabRowRef, onScroll, collapsed,
     backLabel, onBack, saved, onSave, onShare, menuOpen, setMenuOpen, menuItems, toast,
-    catLabel, minAge, inviteOnly, stub, afterStub, criteria, know, about, aboutExpanded, setAboutExpanded, onAboutMore,
-    menuTitle, cards, onMenuMore, host, afterHost, photos, protection, tabs, bar, overlays } = p;
+    catLabel, minAge, inviteOnly, stub, afterStub, criteria, know, about, aboutExpanded, setAboutExpanded, introExtra = [], introCss = null,
+    menuTitle, cards, host, afterHost, photos, protection, tabs, bar, overlays, inert = false, footer = null, scrollPad = 230 } = p;
+  // The create-event preview (inert): every guest control shows but does nothing.
+  const off = inert ? { pointerEvents: 'none' } : null;
 
   // Sections reveal on scroll, 40 ms apart, inside this scroller. A return visit or Reduce Motion shows them at once
   // (.bbv23-noent / the reduced-motion CSS).
@@ -80,7 +82,7 @@ export default function EventDetailV23View(p) {
       <div ref={cardRef} className={`bbv23${p.slideIn ? ' bbv23-in' : ''}`} data-testid="event-detail-v23" style={{ position: 'relative', zIndex: 1, height: '100%', overflow: 'hidden', isolation: 'isolate' }}>
         <div data-fade aria-hidden style={{ position: 'absolute', inset: 0, background: 'var(--bb-bg)', zIndex: -1 }} />
         <div ref={scrollerRef} data-testid="event-scroller" onScroll={onScroll} className="bbv23-scroll"
-          style={{ position: 'absolute', inset: 0, overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain', paddingBottom: 'calc(230px + env(safe-area-inset-bottom, 0px))' }}>
+          style={{ position: 'absolute', inset: 0, overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain', paddingBottom: `calc(${scrollPad}px + env(safe-area-inset-bottom, 0px))` }}>
           {/* Hero: the shared element the card zooms into. */}
           <div ref={heroRef} data-testid="event-hero" style={{ position: 'relative', height: 392, overflow: 'hidden', background: '#241E17' }}>
             <div aria-hidden style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'radial-gradient(120% 85% at 28% 6%, #4A3A2A 0%, #241E17 46%, #14110D 100%)' }}>
@@ -122,14 +124,18 @@ export default function EventDetailV23View(p) {
                 )}
                 {about.visible && (
                   <div>
-                    <H action={about.hasSheet && (
-                      <button type="button" onClick={onAboutMore} data-testid="event-included-section" className="bbv23-press"
-                        style={{ minHeight: 44, margin: '-14px 0', padding: 0, border: 'none', background: 'none', color: 'var(--bb-clay)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{T('Xem thêm', 'More')} ›</button>
-                    )}>{T('Giới thiệu', 'About')}</H>
+                    <H>{T('Giới thiệu', 'About')}</H>
                     {about.body && (
-                      <p data-testid="event-description" style={{ margin: 0, fontSize: 15, lineHeight: 1.66, color: 'var(--bb-fg-2)', ...(about.clampable && !aboutExpanded ? { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : null) }}>{about.body}</p>
+                      <p data-testid="event-description" style={{ margin: 0, fontSize: 15, lineHeight: 1.66, color: 'var(--bb-fg-2)', ...((about.clampable || introExtra.length) && !aboutExpanded ? { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : null) }}>{about.body}</p>
                     )}
-                    {about.clampable && (
+                    {/* The host's longer introduction (their own font and colour, note 69), under Read more: it used to live
+                        only in the About & Included sheet, which this page no longer needs. */}
+                    {aboutExpanded && introExtra.length > 0 && (
+                      <div data-testid="event-intro-section" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+                        {introExtra.map((t, i) => <p key={i} style={{ margin: 0, fontSize: 15, lineHeight: 1.66, whiteSpace: 'pre-wrap', color: 'var(--bb-fg-2)', ...introCss }}>{t}</p>)}
+                      </div>
+                    )}
+                    {(about.clampable || introExtra.length > 0) && (
                       <button type="button" onClick={() => setAboutExpanded(v => !v)} data-testid="event-read-more" aria-expanded={aboutExpanded} className="bbv23-more"
                         style={{ marginTop: 4, minHeight: 44, padding: 0, border: 'none', background: 'none', color: 'var(--bb-fg)', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
                         {aboutExpanded ? T('Thu gọn', 'Read less') : T('Xem thêm', 'Read more')} <IconChev />
@@ -141,10 +147,7 @@ export default function EventDetailV23View(p) {
 
               {cards.length > 0 && (
                 <Sec secRef={p.secRefs.menu} id="menu" testId="event-included-items" last={lastId === 'menu'}>
-                  <H action={onMenuMore && (
-                    <button type="button" onClick={onMenuMore} data-testid="event-included-section" className="bbv23-press"
-                      style={{ minHeight: 44, margin: '-14px 0', padding: 0, border: 'none', background: 'none', color: 'var(--bb-clay)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{T('Xem thêm', 'More')} ›</button>
-                  )}>{menuTitle}</H>
+                  <H>{menuTitle}</H>
                   <ol style={{ display: 'flex', flexDirection: 'column', gap: 19, margin: 0, padding: 0, listStyle: 'none' }}>
                     {cards.map((c, i) => (
                       <li key={i} data-testid={`event-included-item-${i}`} style={{ display: 'grid', gridTemplateColumns: '32px 1fr', gap: 12, alignItems: 'baseline' }}>
@@ -161,7 +164,7 @@ export default function EventDetailV23View(p) {
 
               <Sec secRef={p.secRefs.host} id="host" last={lastId === 'host'}>
                 <H>{T('Chủ nhà', 'Hosted by')}</H>
-                <div data-testid="event-host-section" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div data-testid="event-host-section" style={{ display: 'flex', alignItems: 'center', gap: 12, ...off }}>
                   <div onClick={host.onOpen} data-testid="event-organizer-row" role="button" aria-label={host.ariaLabel} className="bbv23-press"
                     style={{ flex: 1, minWidth: 0, minHeight: 46, display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
                     <span style={{ width: 46, height: 46, borderRadius: '50%', overflow: 'hidden', background: 'var(--bb-clay)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 16, fontWeight: 700, flex: 'none' }}>
@@ -188,9 +191,9 @@ export default function EventDetailV23View(p) {
                 {photos.loading ? (
                   <p style={{ fontSize: 13, color: 'var(--bb-fg-3)', margin: 0 }}>{T('Đang tải…', 'Loading…')}</p>
                 ) : photos.list.length ? (
-                  <div data-testid="event-photo-strip" style={{ display: 'flex', gap: 9, overflowX: 'auto', scrollbarWidth: 'none', margin: '0 -22px', padding: '0 22px 2px' }} data-hscroll>
+                  <div data-testid="event-photo-strip" style={{ display: 'flex', gap: 9, overflowX: 'auto', scrollbarWidth: 'none', margin: '0 -22px', padding: '0 22px 2px', ...(inert ? { cursor: 'default' } : null) }} data-hscroll>
                     {photos.list.map((ph, i) => (
-                      <div key={ph.id} onClick={(e) => photos.onOpen(ph, e.currentTarget.getBoundingClientRect())} data-testid={`event-photo-${i}`} data-photo-thumb={ph.id} role="button" aria-label={T(`Ảnh ${i + 1}`, `Photo ${i + 1}`)} className="bbv23-photo"
+                      <div key={ph.id} onClick={inert ? undefined : (e) => photos.onOpen(ph, e.currentTarget.getBoundingClientRect())} data-testid={`event-photo-${i}`} data-photo-thumb={ph.id} role="button" aria-label={T(`Ảnh ${i + 1}`, `Photo ${i + 1}`)} className="bbv23-photo"
                         style={bg(ph.url, { flex: 'none', width: 196, height: 142, borderRadius: 12, cursor: 'pointer', backgroundColor: 'var(--bb-surface-2)', position: 'relative' })}>
                         {ph.liked && (
                           <span style={{ position: 'absolute', top: 8, right: 8, color: '#fff', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.55))' }}>
@@ -237,17 +240,20 @@ export default function EventDetailV23View(p) {
         <header data-testid="event-nav-bar" aria-hidden={!collapsed} className={`bbv23-nav${collapsed ? ' on' : ''}`}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 45, padding: `calc(${p.overlayTop} - 2px) 8px 0`, ...glassBar, borderBottom: '1px solid var(--v23-line)', boxShadow: '0 10px 30px rgba(24,20,16,.06)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 48 }}>
+            {/* In the preview only Back works (it returns to the host's Private tab). */}
             <button type="button" onClick={onBack} aria-label={backLabel} data-testid="event-nav-back" className="bbv23-press" style={nbtn} tabIndex={collapsed ? 0 : -1}><IconBack /></button>
             <div style={{ flex: 1, minWidth: 0, textAlign: 'center', fontSize: 14.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.name}</div>
+            <span style={{ display: 'contents', ...off }}>
             <button type="button" onClick={onSave} aria-label={saved ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')} aria-pressed={saved} data-testid="event-detail-save" className="bbv23-press" tabIndex={collapsed ? 0 : -1}
-              style={{ ...nbtn, color: saved ? 'var(--bb-clay)' : 'var(--bb-fg)' }}><IconSave on={saved} /></button>
-            <button type="button" onClick={onShare} aria-label={T('Chia sẻ', 'Share')} data-testid="event-detail-share" className="bbv23-press" style={nbtn} tabIndex={collapsed ? 0 : -1}><IconShare /></button>
-            <GlassMenu open={menuOpen} onOpenChange={setMenuOpen} top={46} label={T('Tuỳ chọn sự kiện', 'Event options')} menuTestId="event-detail-menu"
+              style={{ ...nbtn, ...off, color: saved ? 'var(--bb-clay)' : 'var(--bb-fg)' }}><IconSave on={saved} /></button>
+            <button type="button" onClick={onShare} aria-label={T('Chia sẻ', 'Share')} data-testid="event-detail-share" className="bbv23-press" style={{ ...nbtn, ...off }} tabIndex={collapsed ? 0 : -1}><IconShare /></button>
+            <GlassMenu open={menuOpen} onOpenChange={setMenuOpen} top={46} label={T('Tuỳ chọn sự kiện', 'Event options')} menuTestId="event-detail-menu" wrapStyle={off || undefined}
               trigger={(
                 <button type="button" onClick={() => setMenuOpen(o => !o)} aria-haspopup="menu" aria-label={T('Thêm', 'More')} aria-expanded={menuOpen} data-testid="event-detail-more" className="bbv23-press" style={nbtn} tabIndex={collapsed ? 0 : -1}><IconMore /></button>
               )}>
               {menuItems}
             </GlassMenu>
+            </span>
           </div>
           <div ref={tabRowRef} data-testid="event-tabs" role="navigation" aria-label={T('Các mục', 'Sections')} className="bbv23-tabs bbv23-scroll"
             style={{ display: 'flex', gap: 20, overflowX: 'auto', padding: '0 16px', scrollbarWidth: 'none' }}>
@@ -268,7 +274,13 @@ export default function EventDetailV23View(p) {
         </header>
 
         {toast}
-        {bar}
+        {footer ? (
+          // Preview: the (inactive) reserve bar guests will see, then the host's own Confirm & submit under it.
+          <div data-testid="event-preview-bottom" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 46, display: 'flex', flexDirection: 'column' }}>
+            <div aria-hidden style={{ position: 'relative', height: 76, pointerEvents: 'none' }}>{bar}</div>
+            <div data-testid="event-preview-footer" style={{ background: 'var(--bb-bg)', padding: '8px 16px calc(12px + env(safe-area-inset-bottom, 0px))', borderTop: '1px solid var(--bb-divider)' }}>{footer}</div>
+          </div>
+        ) : bar}
         {overlays}
       </div>
     </div>

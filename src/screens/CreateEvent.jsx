@@ -1312,6 +1312,7 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
     catKey: firstCat?.key, catLabel: firstCat?.vi || '',
     area: s.createDistrict || '', lat: s.createLat, lng: s.createLng, startsAt: draftDateObj,
     priceVnd: parseDraftPriceVnd(s.createPrice, market.currency), seats: parseInt(s.createSeats, 10) || null,
+    endTime: s.createEndMode === 'time' ? (s.createEndTime || '').slice(0, 5) || null : null, endOpen: s.createEndMode === 'open',
     timeZone: market.timeZone, currency: market.currency,
     description: s.createDesc.trim(), intro: s.createIntro.trim(), includedItems,
     inviteOnly: s.createVisibility === 'invite', organizerName: (s.orgRegName || '').trim(),

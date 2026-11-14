@@ -161,3 +161,15 @@ function PlanChips({ T, item, info, inert, add, ics, google, schedOpen, setSched
     </div>
   );
 }
+
+/** The same two chips, inert, for the create-event preview (a draft is not a real event yet, so nothing to add). */
+export function PlanChipsPreview({ T }) {
+  return (
+    <div aria-hidden style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', pointerEvents: 'none' }} data-testid="event-plan-preview">
+      {[['banbe', <svg key="b" {...chipIco}><path d="M18 15H6l1.5-2.5V9a4.5 4.5 0 0 1 9 0v3.5L18 15Z" /><path d="M10.5 18a2 2 0 0 0 3 0" /></svg>],
+        [T('Lịch', 'Calendar'), <svg key="c" {...chipIco}><rect x="3.5" y="5" width="17" height="15" rx="3" /><path d="M8 3v4M16 3v4M3.5 10h17" /><path d="M8 14h2M14 14h2M8 17h2M14 17h2" /></svg>]].map(([label, icon]) => (
+        <span key={label} style={{ ...chipBtn, cursor: 'default' }}><span style={chipFace(false)}>{icon}{label}</span></span>
+      ))}
+    </div>
+  );
+}

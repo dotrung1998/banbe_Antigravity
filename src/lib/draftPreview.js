@@ -38,6 +38,8 @@ export function shapeDraftAsCurEvent(d) {
     urgent: false,
     desc: d.description || '', included: items.map(it => it.label).join(' ▪︎ '), includedItems: items, intro: d.intro || '',
     details: d.details || {}, capacity: seats,
+    // Note 82: the end, so the preview's time line matches what guests will see.
+    endTime: d.endTime || null, endOpen: !!d.endOpen,
     host: d.organizerName || '', hostShort: d.organizerName || '', greeting: '',
     gallery: [], orgGallery: [], orgName: d.organizerName || '', orgIg: '', orgDesc: '',
     orgSince: '', orgCount: 0, orgTrusted: false,

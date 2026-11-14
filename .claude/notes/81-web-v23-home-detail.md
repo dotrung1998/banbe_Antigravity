@@ -128,6 +128,46 @@ The first pass only changed the stub and the bar inside the V8 page. The owner l
 - Tests: `tests/public/event-detail-v23-held.spec.js` 5/5 (held stamp + total held + Seats held; adding copy and Reserve's add mode; holding 5 → stops at 6 with the reason; held → confirmed slams in moss + View your ticket; cancelled booking = no stamp). Both v2.3 detail specs 30/30 on Chromium, Firefox and WebKit. `npm run test:unit` 1006/1006. `vite build` green. Public suite on Chromium: 44 passed, the same 3 known failures (sign-in tour time of day, the two profile-card onboarding stalls).
 - Not verified: a real successful hold against production after 219 (only refusals were checked there; the allowed path was proven on the throwaway stack). iOS has no PER_PERSON_LIMIT message yet (it shows its generic hold error).
 
+## Follow-up 2026-11-14 · Next up, pager signs, cover zoom, end cards, host profile (IMPLEMENTED, committed 2026-11-14)
+- **Next up** (`src/components/home/NextUpV23.jsx`, rules `src/lib/nextUp.js`, tests `tests/unit/nextUp.test.mjs`, `tests/public/home-nextup-v23.spec.js`), from the owner's mock-up: a ticket card per upcoming EVENT (photo, date badge, countdown chip, type · area, name, perforation with pressed notches, Starts / Tickets / Status, the main button + Directions). Built from the bookings Home already loads (no new query; booked events Home hasn't loaded are fetched with `loadRealEventsById`). For people with several tickets (patterns from Ticketmaster/DICE grouping a party, Apple Wallet's stack, Airbnb's upcoming trips):
+  - one card per event, people counted across bookings ("3 people" + "2 bookings");
+  - soonest first, swipeable with the next card peeking, "1 of 3" and dots;
+  - the button follows what the event needs: Show ticket (all confirmed), Pay now (a hold runs, "Payment due · 20 min left"), View status (host confirming); a mixed event says "1 ready" + "2 waiting";
+  - Starts shows the start with "to 22:30" or "(+1)" after midnight, or "open-ended" (note 82). The chip: Happening now / Tonight / Today / Tomorrow / In N days in the venue's zone. Gifted, cancelled and lapsed bookings and events past their end (or start + 12 h) are left out.
+  - Replaces the 24 h reminder banner while home_v23 is on (the banner still shows when there are no upcoming tickets). "Doors" in the mock-up is "Starts" (there is no doors data).
+- **Pager swipe signs** (`Pager.jsx`): the right tab nudges ONCE, the first time this browser ever opens a list with hints (`localStorage banbe.v23.pagerNudgeSeen`); both tabs darken while the list is swiped (`data-swiping`) and fade back; tabs are 18 px wide (were 28) so they stay clear of the prices; the pages no longer lean/bounce at the edge and the "last page" hop is gone. The tabs are below 44 px wide on purpose (the page numbers under the list stay the 44 px way to turn pages). Lists now remember their page for the session (`savedPages`), so coming back from an event lands on the same page.
+- **Cover expand / collapse**: rows mark their thumbnail `data-zoom-photo` and `zoomOrigin.js` measures that, so the hero grows out of the thumbnail and shrinks back into it on close (Home Shortlist, Browse, profile rows, Next up photo). Root cause of "no zoom": the origin was the whole 390 px row, and in dev React's double effect run measured the hero mid-zoom and restarted it from full size; running animations are now cancelled before measuring. Closing after scrolling far down fades instead of flying in from off screen.
+- **End and empty cards** (`EndCard.jsx`): the prototype's `.endCard`: dashed paper card with a faint honey glow, three clay dots that bob twice, eyebrow, serif line, body, centred actions (first primary); rises in; slim/mid variants as in the prototype. The Shortlist and Browse empty states now use the same card (testids kept via `action.testId`).
+- **Host profile** (`src/components/profile/OrganizerProfileV23.jsx`, behind home_v23): the prototype's profile: centred face with a clay ring that springs in, serif name, role line, tags (areas of upcoming events, "N coming up"), stats block, two actions (Follow for a visitor or a guest, Edit profile for the owner; Share beside it), About (+ long intro and links), Coming up as v2.3 rows, Past collapsed, Photos. The rarer actions (QR code, Team, Copy link) moved into a ⋯ menu next to Share at the top right. Also fixed on the old layout: upcoming/past rows showed no photo (they read `e.img`; the shape has `photoUrl`).
+- Tests: unit 1013/1013; `browse-v23.spec.js` 9/9 (new: one-time nudge + swipe darkening, slim tab, dashed end/empty card); `home-nextup-v23.spec.js` 1/1; public suite on Chromium 44 passed + the same 3 known failures. Checked on real data at 390×844 in light and dark (Next up with injected bookings only; nothing written).
+
+## Follow-up 2026-11-14 (2) · Cover collapse as an overlay, profile back route (IMPLEMENTED, committed 2026-11-14)
+- **Collapse**: closing an event now switches back to the previous screen AT ONCE and flies a copy of the cover, fixed
+  on top of everything, from the hero to the card it came from (`flyBack` in `src/lib/zoomOrigin.js`). The card is found
+  again in the returned screen (visible `[data-zoom-src=<key>]` nearest to where it was tapped, its `[data-zoom-photo]`)
+  and hidden until the cover lands; then the copy fades. The returned screen's CSS entrance animations are held off
+  (`html[data-zoom-return]`) until the NEXT screen change (App `noteScreenChange`, a layout effect), because removing
+  them earlier restarts them (seen as a late 6 px push-in on Browse). Works on Home, Browse and the host profile. Scrolled
+  far down or Reduce Motion: the old shrink-and-fade.
+- **Event → host profile → event → Back** now returns to the PROFILE (it used to jump to Home: the anti-loop rule kept
+  the old back target). One-step memory `profileEventReturn`: the profile's Back then returns to the FIRST event with
+  that event's own back target; reopening the same profile from an event that came from it keeps the memory, so
+  profile ↔ event never loops. Walked on real data: /event/vaicu → /org → /event/giayin → Back /org (the cover lands in
+  the profile's row) → Back /event/vaicu → Back /browse.
+- Tests: `browse-v23.spec.js` "flies the cover back" (overlay present while the list is already back, no late shift).
+
+## Follow-up 2026-11-14 (3) · About without the sheet, the create preview on the v2.3 page (IMPLEMENTED, committed 2026-11-14)
+- The "More ›" links on About and on the included heading (they opened the About & Included sheet) are gone: the page
+  already shows the included items numbered with their detail lines, and the one thing only the sheet had, the host's
+  longer introduction (their font and colour, note 69), now opens inline under "Read more" (`event-intro-section`).
+- The create-event **Public preview** now renders the v2.3 page too (it kept the V8 page before): same hero, stub (with
+  the end time, note 82), sections and nav; every guest control is shown but inert (Save, Share, ⋯, Directions, the
+  host row, photos, the calendar chips as static pills since a draft is not a real event); at the bottom the compact
+  reserve bar guests will see (inert) sits above the host's own footer ("Preview: this is exactly what guests will see"
+  + Confirm & submit). Back returns to the Private tab. Checked by filling the form (dev state + 3 photos), Review,
+  Public: "19:00 – 22:30", intro under Read more, no More links, Reserve inert, Back → Private.
+- Test: `event-detail-v23.spec.js` 6/6 (new: no More link, intro under Read more).
+
 ## Facts checked on production (read-only, 2026-11-13)
 - Migrations applied up to 217, except 182–184 (held back on purpose). 167 hourly `goc_mark_past_events` is live: it ends `live` events with `starts_at < now() - 12h`.
 - `seats_remaining` always equals `capacity` (never decremented, note 50). Availability is `get_public_event_fill`.

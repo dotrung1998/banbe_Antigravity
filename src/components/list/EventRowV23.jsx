@@ -15,7 +15,7 @@ export default function EventRowV23({ row, onOpen, testId }) {
     <div data-testid={testId || `home-event-${row.key}`} data-zoom-src={row.key} onClick={onOpen} role="link" tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter') onOpen(); }}
       style={{ height: ROW_HEIGHT, boxSizing: 'border-box', display: 'flex', gap: 12, alignItems: 'center', padding: '0 20px 12px', cursor: 'pointer' }}>
-      <div aria-hidden="true" style={{ width: 80, height: 80, flex: 'none', borderRadius: RADIUS.thumb, background: row.img ? `var(--bb-block) center/cover no-repeat url("${row.img}")` : 'var(--bb-block)' }} />
+      <div aria-hidden="true" data-zoom-photo style={{ width: 80, height: 80, flex: 'none', borderRadius: RADIUS.thumb, background: row.img ? `var(--bb-block) center/cover no-repeat url("${row.img}")` : 'var(--bb-block)' }} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', opacity: 0.72, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.kicker}</span>
         <span style={{ ...display(16, { lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{row.name}</span>

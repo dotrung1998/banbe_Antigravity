@@ -6,7 +6,8 @@
 // every entrance.
 
 // The prototype's serif (system faces only, no download): Iowan on Apple devices, Palatino / Georgia elsewhere.
-export const SERIF = "'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif";
+// Note 83: follows the chosen font (--bb-font-accent, src/lib/fontPref.js); the serif when nothing is set.
+export const SERIF = "var(--bb-font-accent, 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif)";
 
 export const glassBar = {
   background: 'var(--bb-rt-bar, rgba(var(--bb-bg-rgb), 0.84))',

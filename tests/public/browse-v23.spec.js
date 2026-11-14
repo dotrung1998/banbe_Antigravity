@@ -140,7 +140,7 @@ test('own Filters: When, Price, Seats only, with a badge and a live count', asyn
   await expect(page.getByTestId('browse-count')).toHaveText(new RegExp(`^${n} event`));
 });
 
-test('swipe signs: an edge tab toward the next page and a cue line that fades after the first turn', async ({ page }) => {
+test('swipe signs: a slim edge tab toward the next page and a cue line that fades after the first turn', async ({ page }) => {
   await mockSupabase(page);
   await guestOpen(page, '/browse/music');
   await expect(page.getByTestId('browse-screen')).toBeVisible({ timeout: 20000 });
@@ -149,10 +149,11 @@ test('swipe signs: an edge tab toward the next page and a cue line that fades af
   expect(pages).toBeGreaterThanOrEqual(2);
   const next = page.getByTestId('browse-list-hint-next');
   await expect(next).toBeVisible();
-  await expect(next).toHaveAttribute('data-last', pages === 2 ? 'true' : 'false');
+  // Slim enough to stay clear of the prices; no pages lean or bounce at the edge.
+  expect((await next.boundingBox()).width).toBeLessThanOrEqual(20);
   await expect(page.getByTestId('browse-list-hint-prev')).toHaveCount(0);
   await expect(page.getByTestId('browse-list-cue')).toHaveAttribute('data-gone', 'false');
-  // The tab pulses on a loop, so Playwright never sees it "stable"; a person taps it mid-pulse just fine.
+  // The first visit nudges the tab once, so it may still be moving.
   await next.click({ force: true });
   await expect(list).toHaveAttribute('data-page', '1');
   await expect(page.getByTestId('browse-list-cue')).toHaveAttribute('data-gone', 'true');
@@ -170,4 +171,69 @@ test('reduced motion: the host deck does not turn over', async ({ page }) => {
   const first = await deck.innerHTML();
   await page.waitForTimeout(3600);
   expect(await deck.innerHTML()).toBe(first);
+});
+
+test('the next tab nudges only on the very first visit; both tabs darken while the list is swiped', async ({ page }) => {
+  await mockSupabase(page);
+  await guestOpen(page, '/browse/music');
+  const next = page.getByTestId('browse-list-hint-next');
+  await expect(next).toBeVisible({ timeout: 20000 });
+  await expect(next).toHaveAttribute('data-nudge', 'true');
+  expect(await page.evaluate(() => localStorage.getItem('banbe.v23.pagerNudgeSeen'))).toBe('1');
+  // Swiping the track: the tabs' wrapper flags the swipe (darker tabs), then settles back.
+  const wrap = page.locator('[data-swiping]').first();
+  await page.getByTestId('browse-list-track').evaluate((el) => { el.scrollLeft = 80; el.dispatchEvent(new Event('scroll')); });
+  await expect(wrap).toHaveAttribute('data-swiping', '1');
+  await expect(wrap).toHaveAttribute('data-swiping', '0', { timeout: 2000 });
+  // A later visit: no nudge.
+  await page.reload();
+  await expect(page.getByTestId('browse-list-hint-next')).toBeVisible({ timeout: 20000 });
+  await expect(page.getByTestId('browse-list-hint-next')).toHaveAttribute('data-nudge', 'false');
+});
+
+test('end and empty cards use the v2.3 paper card (dashed edge, serif line)', async ({ page }) => {
+  await mockSupabase(page);
+  await guestOpen(page, '/browse/music');
+  await expect(page.getByTestId('browse-screen')).toBeVisible({ timeout: 20000 });
+  await page.getByTestId('browse-search').click();
+  const input = page.getByTestId('browse-search-input');
+  if (await input.isVisible().catch(() => false)) {
+    await input.fill('zzzz no such event');
+    const card = page.getByTestId('list-end-card');
+    await expect(card).toBeVisible();
+    expect(await card.evaluate(el => getComputedStyle(el).borderTopStyle)).toBe('dashed');
+    await expect(page.getByTestId('browse-empty-clear')).toBeVisible();
+  }
+});
+
+test('closing an event flies the cover back over the list it came from, without replaying the list', async ({ page }) => {
+  await mockSupabase(page);
+  await guestOpen(page, '/browse/music');
+  const row = page.locator('[data-testid^="browse-event-"]').first();
+  await expect(row).toBeVisible({ timeout: 20000 });
+  await page.waitForTimeout(900);
+  await row.click();
+  await expect(page.getByTestId('event-detail-back')).toBeVisible({ timeout: 15000 });
+  await page.waitForTimeout(900);
+  await page.getByTestId('event-detail-back').click();
+  // The overlay exists while the list is already back underneath it.
+  await expect(page.getByTestId('zoom-return-fly')).toHaveCount(1);
+  await expect(page).toHaveURL(/\/browse\/music$/);
+  expect(await page.evaluate(() => document.documentElement.dataset.zoomReturn)).toBe('1');
+  await expect(page.getByTestId('zoom-return-fly')).toHaveCount(0, { timeout: 3000 });
+  // The list stays put (no late push-in once the cover has landed).
+  const box = await page.locator('[data-testid^="browse-event-"]').first().boundingBox();
+  expect(Math.round(box.x)).toBe(0);
+});
+
+test('font choice: serif and Be Vietnam Pro reach titles and accents; the default keeps Jost', async ({ page }) => {
+  await mockSupabase(page);
+  for (const [font, re] of [['serif', /Iowan|Palatino|Georgia/], ['vietnam', /Be Vietnam Pro/], ['current', /Jost/]]) {
+    await page.addInitScript((f) => { try { localStorage.setItem('banbe.font.v1', f); } catch { /* */ } }, font);
+    await guestOpen(page, '/browse/music');
+    await expect(page.getByTestId('browse-screen')).toBeVisible({ timeout: 20000 });
+    expect(await page.evaluate(() => document.documentElement.dataset.bbFont)).toBe(font);
+    const fam = await page.evaluate(() => getComputedStyle(document.querySelector('[data-testid^="browse-event-"] span:nth-child(2)') || document.body).fontFamily);
+    expect(fam, font).toMatch(re);
+  }
 });

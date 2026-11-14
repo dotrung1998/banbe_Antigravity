@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import { applyGlassOpacity } from './lib/glassOpacity.js'
 import { installZoomOrigin } from './lib/zoomOrigin.js'
+import { applyFont } from './lib/fontPref.js'
 import App from './App.jsx'
 import { PublicPolicy } from './screens/Policy.jsx'
 import PublicDataDeletion from './screens/PublicDataDeletion.jsx'
@@ -18,6 +19,7 @@ const Root = publicPath === '/privacy' ? PublicPolicy
 
 applyGlassOpacity()
 applyMapSurface()
+applyFont()
 installZoomOrigin()
 
 createRoot(document.getElementById('root')).render(

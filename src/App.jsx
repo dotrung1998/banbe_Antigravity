@@ -98,6 +98,7 @@ import EventOnboarding, { useEventOnboardingActive } from './screens/EventOnboar
 import EventProject from './screens/EventProject.jsx';
 import ProjectJoin from './screens/ProjectJoin.jsx';
 import MyProjects from './screens/MyProjects.jsx';
+import { noteScreenChange } from './lib/zoomOrigin.js';
 
 const SCREENS = {
   splash: Splash,
@@ -328,6 +329,8 @@ function Shell() {
     dockCollapseStore.set(false);
   }, []);
   useEffect(() => { resetDockForNewSection(); }, [state.accountTab, state.inboxView, resetDockForNewSection]);
+  // Note 81: a cover flown back over the previous screen keeps that screen's entrances off until the next change.
+  useLayoutEffect(() => { noteScreenChange(); }, [state.screen]);
   useEffect(() => {
     window.addEventListener('bb:section-change', resetDockForNewSection);
     return () => window.removeEventListener('bb:section-change', resetDockForNewSection);

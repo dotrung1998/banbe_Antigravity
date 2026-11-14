@@ -139,18 +139,22 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
         renderRow={r => <EventRowV23 row={r} onOpen={() => onOpenEvent(r.key)} testId={`browse-event-${r.key}`} />}
         renderEnd={end => <EndCard card={card} variant={end.variant} onAction={onEnd} T={T} />}
         empty={(
-          <div style={{ margin: '0 20px', padding: '22px 16px', borderRadius: 16, background: 'var(--bb-block)', textAlign: 'center' }}>
-            <div style={{ fontSize: 15.5, fontWeight: 600 }}>
-              {query.trim() ? T(`Không có sự kiện nào khớp “${query.trim()}”.`, `No events match “${query.trim()}”.`)
-                : hidden > 0 ? T('Không có sự kiện nào khớp bộ lọc.', 'None of these match your filters.') : T('Chưa có gì ở đây.', 'Nothing here yet.')}
-            </div>
-            {(query.trim() || hidden > 0) && (
-              <button type="button" data-testid="browse-empty-clear" onClick={() => onEnd(query.trim() ? 'clear-search' : 'clear-filters')}
-                style={{ marginTop: 12, minHeight: 44, padding: '0 18px', borderRadius: 999, border: 'none', background: 'var(--bb-fg)', color: 'var(--bb-bg)', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                {query.trim() ? T('Xoá tìm kiếm', 'Clear search') : T('Xoá bộ lọc', 'Clear filters')}
-              </button>
-            )}
-          </div>
+          <EndCard variant="solo" onAction={onEnd} T={T} card={query.trim() ? {
+            kind: 'empty', eyebrow: { vi: 'Tìm kiếm', en: 'Search' },
+            title: { vi: `Không có sự kiện nào khớp “${query.trim()}”.`, en: `No events match “${query.trim()}”.` },
+            body: { vi: 'Thử tên khác, một khu vực hoặc một loại sự kiện.', en: 'Try another name, an area or a type.' },
+            actions: [{ act: 'clear-search', primary: true, testId: 'browse-empty-clear', label: { vi: 'Xoá tìm kiếm', en: 'Clear search' } }],
+          } : hidden > 0 ? {
+            kind: 'empty', eyebrow: { vi: 'Bộ lọc', en: 'Filters' },
+            title: { vi: 'Không có sự kiện nào khớp bộ lọc.', en: 'None of these match your filters.' },
+            body: { vi: 'Xoá bộ lọc để xem lại mọi thứ.', en: 'Clear the filters to see everything again.' },
+            actions: [{ act: 'clear-filters', primary: true, testId: 'browse-empty-clear', label: { vi: 'Xoá bộ lọc', en: 'Clear filters' } }],
+          } : {
+            kind: 'empty', eyebrow: { vi: 'Sắp có', en: 'Coming up' },
+            title: { vi: 'Chưa có gì ở đây.', en: 'Nothing here yet.' },
+            body: { vi: 'Sự kiện mới sẽ hiện ở đây khi chủ nhà đăng.', en: 'New events show up here when hosts post them.' },
+            actions: [],
+          }} />
         )} />
       <div style={{ height: 120 }} />
 

@@ -1,7 +1,7 @@
 import { glassCapsuleInactive } from '../lib/glassOpacity.js';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { EVENTS, bg, agoLabel, haversineKm, catalogStartMs } from '../data/events.js';
+import { EVENTS, bg, agoLabel, haversineKm, catalogStartMs, mapsUrl } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
 import { prefsIsEmpty, declaredGoals } from '../lib/eventPrefs.js';
 import { intentTitle, isEventLocalDay } from '../lib/coreLoops.js';
@@ -55,7 +55,10 @@ import PulseTicker from '../components/home/PulseTicker.jsx';
 import { setBellOrigin } from '../lib/bellOrigin.js';
 import { supabase } from '../lib/supabase.js';
 import { savedComingUp, fillText, whenLabel } from '../lib/quickWins.js';
-import { rowTimeZone } from '../lib/eventMarket.js';
+import { rowTimeZone, wallClockToMs } from '../lib/eventMarket.js';
+import NextUpV23 from '../components/home/NextUpV23.jsx';
+import { nextUpGroups, nextUpStatus, nextUpChip, peopleLine, dateBadge } from '../lib/nextUp.js';
+import { endsNextDay } from '../lib/eventEnd.js';
 import {
   applyDiscoveryFilters, sortEvents, fillBadge, activeFilterCount, optionCounts, relaxationHints, DEFAULT_FILTERS,
   categoryCounts, categoryRowKeys, categorySheetKeys,
@@ -128,7 +131,7 @@ export default function Home({ browse = false }) {
     openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, loadPulse,
     loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openEventPreferences,
     openSearch, setHomeFilters, located, allowLocation, rewardsEnabled, rewardsV2Enabled, openBookingConfirmed,
-    resolvedTheme, openBrowse, setBrowse, backFromBrowse, openOrganizerProfile, openDockCreate,
+    resolvedTheme, openBrowse, setBrowse, backFromBrowse, openOrganizerProfile, openDockCreate, goSchedule,
   } = useBanBe();
 
   const s = state;
@@ -171,6 +174,13 @@ export default function Home({ browse = false }) {
   // of events other people are booking. Loaded once signed in, refreshed
   // each time Home mounts (a hold or a verification can settle anywhere:
   // another tab or device, the bank webhook).
+  // v2.3 Next up (note 81): booked events Home has not loaded yet (photo, venue zone, end time, map pin).
+  useEffect(() => {
+    if (!v23 || !s.user?.id) return;
+    const missing = [...new Set((s.paymentBookings || []).map(b => b.event_id).filter(id => id && !(id in s.realEventsById)))];
+    if (missing.length) loadRealEventsById(missing);
+  }, [v23, s.user?.id, s.paymentBookings]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!s.user?.id) return;
     loadPaymentBookings();
@@ -781,6 +791,47 @@ export default function Home({ browse = false }) {
     // Array.sort is stable so everything else keeps its existing order.
     .sort((a, b) => reminderRank(a.reminder) - reminderRank(b.reminder));
   const nextUp = savedList.find(x => x.reminder) || null;
+  // v2.3 Next up (note 81): every upcoming ticket of the viewer as a ticket card, one per event, soonest first, from
+  // the bookings Home already loads (src/lib/nextUp.js). Replaces the 24 h reminder banner while home_v23 is on.
+  const nextUpItems = (() => {
+    if (!v23 || !s.user) return [];
+    const nowMs2 = Date.now();
+    const evInfo = {};
+    const shape = {};
+    for (const b of s.paymentBookings || []) {
+      const id = b.event_id || b.events?.id;
+      if (!id || evInfo[id]) continue;
+      const real = s.realEventsById[id] || null;
+      const demo = EVENTS.find(e => e.key === id) || null;
+      const tz = real ? rowTimeZone(real) : 'Asia/Ho_Chi_Minh';
+      const date = real?.eventDate || b.events?.event_date;
+      const start = String(real?.eventTime || b.events?.event_time || '').slice(0, 5);
+      const startMs = real?.startsAt ? Date.parse(real.startsAt) : (date && start ? wallClockToMs(date, start, tz) : NaN);
+      if (!Number.isFinite(startMs)) continue;
+      const endTime = real?.endTime ? String(real.endTime).slice(0, 5) : (demo?.endTime || null);
+      const endOpen = !!(real?.endOpen || (!real?.endTime && demo?.endOpen));
+      const endMs = endTime && date ? wallClockToMs(date, endTime, tz) + (endsNextDay(start, endTime) ? 86400000 : 0) : null;
+      evInfo[id] = { startMs, endMs, cancelled: real?.status === 'cancelled' || real?.status === 'removed' };
+      const nextDay = !!endTime && endsNextDay(start, endTime);
+      shape[id] = {
+        name: real?.name || b.events?.name || demo?.name || '', img: real?.photoUrl || demo?.img || '',
+        kicker: [trStatus(real?.catLabel || demo?.cat || ''), real?.area || b.events?.area || demo?.area || ''].filter(Boolean).join(' · '),
+        badge: dateBadge(startMs, tz, s.lang === 'en'), tz,
+        time: start,
+        // "to 22:30", "(+1)" when it ends after midnight, or open-ended (note 82).
+        timeNote: endTime ? T(`đến ${endTime}${nextDay ? ' (+1)' : ''}`, `to ${endTime}${nextDay ? ' (+1)' : ''}`) : endOpen ? T('không giờ kết thúc', 'open-ended') : null,
+        mapsUrl: real?.lat != null ? mapsUrl({ lat: real.lat, lng: real.lng }) : (demo ? mapsUrl(demo) : null),
+      };
+    }
+    return nextUpGroups(s.paymentBookings || [], evInfo, nowMs2).map(g => ({
+      g, ev: shape[g.eventId], status: nextUpStatus(g, nowMs2), chip: nextUpChip(g, nowMs2, shape[g.eventId].tz), people: peopleLine(g),
+    }));
+  })();
+  const onNextUp = (action, it) => {
+    if (action === 'open') return goEvent(it.g.eventId);
+    if (action === 'pay') return openPaymentDetails(it.g.primaryId, 'home');
+    return openBookingConfirmed(it.g.primaryId, it.g.eventId, 'home');
+  };
   // L7 day-of card (switch live_activity): on the event's own day in the VENUE's zone, a confirmed ticket of the
   // person's own (not one gifted away) is one tap away from the Next-up banner. No countdown, no urgency words.
   const nextUpTicket = flagOn(s.featureFlags, 'live_activity') && nextUp && isEventLocalDay(nextUp.startMs, Date.now(), nextUp.tz)
@@ -1232,7 +1283,8 @@ export default function Home({ browse = false }) {
             </div>
           )}>
           <div data-reveal="1" data-testid="home-hero" data-hero={goerHero}>
-            {goerHero === 'nextUp' && (
+            {nextUpItems.length > 0 && <NextUpV23 items={nextUpItems} onAction={onNextUp} onSchedule={goSchedule} T={T} />}
+            {goerHero === 'nextUp' && !nextUpItems.length && (
               <NextUpBanner item={nextUp && { ...nextUp, when: nextUp.status }} onOpen={() => openSaved(nextUp)} T={T}
                 onShowTicket={nextUpTicket ? () => openBookingConfirmed(nextUpTicket.id, nextUpTicket.event_id, 'home') : null} />
             )}

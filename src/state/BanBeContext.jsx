@@ -611,6 +611,8 @@ const initialState = {
   hasHosted: false,
   eventKey: 'bepnho',
   eventBackScreen: 'home',
+  // Event → host profile → event: where the profile's Back returns to (note 81). { eventKey, eventBackScreen } | null
+  profileEventReturn: null,
   // The "Going"/"Saved" cards on Account open a filtered list of events —
   // always entered from (and returned to) Account, so there's no need for
   // a whole back-stack, just which filter is showing.
@@ -6768,10 +6770,15 @@ export function BanBeProvider({ children }) {
     // through: its own back already returns to the event, so recording 'chat'
     // here made event <-> chat ping-pong forever.
     eventBackScreen: (prev.screen === 'event'
-      || (prev.screen === 'organizerProfile' && prev.organizerProfileBack === 'event')
       || (prev.screen === 'chat' && !['inbox', 'notifications', 'paymentDetails'].includes(prev.chatBack)))
       ? prev.eventBackScreen
       : prev.screen,
+    // Event → host profile → another event (note 81): Back now returns to the PROFILE (it used to skip to Home to avoid
+    // an event ↔ profile loop). The profile's own Back then returns to the first event, with that event's own back
+    // target, from this one-step memory; opening the profile from anywhere else clears it.
+    ...(prev.screen === 'organizerProfile' && prev.organizerProfileBack === 'event'
+      ? { profileEventReturn: { eventKey: prev.eventKey, eventBackScreen: prev.eventBackScreen } }
+      : null),
     // A fresh, non-story-originated event open invalidates any pending
     // story-return snapshot/back-label — see goEventFromStory()'s own
     // comment. BUG 3 fix (2026-09-22 follow-up): also clears
@@ -7339,9 +7346,15 @@ export function BanBeProvider({ children }) {
    * effect regardless of entry path (in-app nav or a deep link). */
   const openOrganizerProfile = useCallback(async (organizerId, back = 'profile') => {
     if (!organizerId) return;
-    set({
-      screen: 'organizerProfile', organizerProfile: null, organizerProfileLoading: true, organizerProfileError: '',
-      organizerProfileBack: back, organizerProfileId: organizerId, organizerProfileExtrasLoadedFor: '', arrivedFromSharedLink: false,
+    set(prev => {
+      // From an event that was itself opened from this same profile: this is going BACK to the profile, so keep its
+      // own back target and return memory (note 81; otherwise profile ↔ event would loop).
+      const backToSame = back === 'event' && prev.screen === 'event' && prev.eventBackScreen === 'organizerProfile' && prev.organizerProfileId === organizerId;
+      return {
+        screen: 'organizerProfile', organizerProfile: null, organizerProfileLoading: true, organizerProfileError: '',
+        organizerProfileBack: backToSame ? prev.organizerProfileBack : back, organizerProfileId: organizerId, organizerProfileExtrasLoadedFor: '', arrivedFromSharedLink: false,
+        profileEventReturn: backToSame ? prev.profileEventReturn : null,
+      };
     });
     const { data, error } = await supabase.rpc('get_organizer_profile', { p_organizer_id: organizerId });
     if (error || data?.success === false) {
@@ -7353,7 +7366,14 @@ export function BanBeProvider({ children }) {
     set({ organizerProfile: data, organizerProfileLoading: false });
     if (followSyncRef.current.reconcile(organizerId, !!data?.following)) followSyncRef.current.load({ silent: true });
   }, [set, T]);
-  const backFromOrganizerProfile = useCallback(() => set(prev => ({ screen: prev.organizerProfileBack || 'profile' })), [set]);
+  const backFromOrganizerProfile = useCallback(() => set(prev => {
+    const ret = prev.profileEventReturn;
+    // Reached from an event, and an event was opened from here since: back to that FIRST event (note 81).
+    if (prev.organizerProfileBack === 'event' && ret) {
+      return { screen: 'event', eventKey: ret.eventKey, eventBackScreen: ret.eventBackScreen, profileEventReturn: null, eventBackIsStory: false };
+    }
+    return { screen: prev.organizerProfileBack || 'profile', profileEventReturn: null };
+  }), [set]);
   /** Live "track record" for an event's host (EventDetail's Track record row):
    * events published (live/ended) and the year of their first one, straight
    * from get_organizer_profile — never the catalogue's baked-in numbers.

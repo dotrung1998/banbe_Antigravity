@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { getGlassOpacity, setGlassOpacity, glassCapsuleInactive } from '../lib/glassOpacity.js';
 import { getMapSurface, setMapSurface } from '../lib/mapSurface.js';
+import { getFont, setFont, FONT_SAMPLE } from '../lib/fontPref.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 
 export default function Preferences() {
   const [mapSurface, setMapSurfaceState] = useState(getMapSurface);
+  const [font, setFontState] = useState(getFont);
   const { state, T, set, pickTheme, toggleAutoEmailDocuments } = useBanBe();
   const options = [
     { key: 'vi', title: 'Tiếng Việt', subtitle: T('Mặc định', 'Vietnamese') },
@@ -34,6 +36,16 @@ export default function Preferences() {
           {themes.map(option => (
             <Choice key={option.key} active={state.theme === option.key} title={option.title} subtitle={option.subtitle} onClick={() => pickTheme(option.key)} />
           ))}
+        </Section>
+
+        {/* Note 83: the typeface for the whole app, previewed in each row's own title. Saved in this browser. */}
+        <Section title={T('Phông chữ', 'Font')}>
+          <Choice active={font === 'current'} testId="pref-font-current" titleFont={FONT_SAMPLE.current} title={T('Mặc định', 'Current')}
+            subtitle={T('Jost cho tiêu đề, Be Vietnam Pro cho nội dung', 'Jost for titles, Be Vietnam Pro for text')} onClick={() => setFontState(setFont('current'))} />
+          <Choice active={font === 'serif'} testId="pref-font-serif" titleFont={FONT_SAMPLE.serif} titleWeight={400} title={T('Có chân (Serif)', 'Serif')}
+            subtitle={T('Tiêu đề có chân như thẻ cuối danh sách, nội dung Be Vietnam Pro', 'Serif titles like the end-of-list card, Be Vietnam Pro text')} onClick={() => setFontState(setFont('serif'))} />
+          <Choice active={font === 'vietnam'} testId="pref-font-vietnam" titleFont={FONT_SAMPLE.vietnam} title="Be Vietnam Pro"
+            subtitle={T('Một phông cho toàn bộ ứng dụng', 'One typeface for the whole app')} onClick={() => setFontState(setFont('vietnam'))} />
         </Section>
 
         <Section title={T('Liquid Glass', 'Liquid Glass')}>
@@ -96,11 +108,11 @@ function Section({ title, children }) {
   );
 }
 
-function Choice({ active, title, subtitle, onClick, testId }) {
+function Choice({ active, title, subtitle, onClick, testId, titleFont, titleWeight }) {
   return (
     <div onClick={onClick} data-testid={testId} style={{ ...cardGlass({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '17px 18px', cursor: 'pointer' }), border: active ? `1.5px solid ${ink}` : `1px solid ${rule}` }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <span style={{ ...display(17, { color: ink }) }}>{title}</span>
+        <span style={{ ...display(17, { color: ink }), ...(titleFont ? { fontFamily: titleFont, fontWeight: titleWeight || 600 } : null) }}>{title}</span>
         <span style={{ fontSize: 11.5, color: ink }}>{subtitle}</span>
       </div>
       <span style={{ fontSize: 15, color: ink }}>{active ? '✓' : '›'}</span>

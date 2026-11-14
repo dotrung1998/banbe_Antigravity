@@ -36,7 +36,7 @@ const Perf = () => (
  * price) · stampPlay: a counter; each increase slams the stamp in (Reduce Motion: a fade), the stub gives a millimetre
  * under it, and a confirmation sends one sheen across the strip.
  */
-export default function TicketStubV23({ block, time, countdown, placeLine, mapsUrl, onDirections, directionsLabel, price, perTicket, seat, stamp = null, stampPlay = 0, calendar = null, saveLabel }) {
+export default function TicketStubV23({ block, time, countdown, placeLine, mapsUrl, onDirections, directionsLabel, price, perTicket, seat, stamp = null, stampPlay = 0, calendar = null, saveLabel, inert = false }) {
   const few = seat?.kind === 'few';
   const going = seat?.kind === 'going';
   const confirmed = stamp?.kind === 'confirmed';
@@ -89,7 +89,7 @@ export default function TicketStubV23({ block, time, countdown, placeLine, mapsU
             {mapsUrl && (
               // 44 px hit area around the prototype's 30 px pill.
               <a href={mapsUrl} target="_blank" rel="noopener noreferrer" data-testid="event-maps-link" onClick={onDirections} className="bbv23-press"
-                style={{ flex: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
+                style={{ flex: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center', textDecoration: 'none', ...(inert ? { pointerEvents: 'none' } : null) }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, height: 30, padding: '0 11px', borderRadius: 999, background: 'var(--bb-fg)', color: 'var(--bb-bg)', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
                   <IconUp />{directionsLabel}
                 </span>

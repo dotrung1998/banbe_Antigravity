@@ -13,21 +13,30 @@ const CHEV = (d) => (
 );
 const PAGE_TURN_MS = 440;
 const STAGGER_MS = 45;
-// Swipe signs (Browse by type / See all, note 81), in the "How banbe works" deck's language: a soft tab at the right
-// edge pulses toward the next page, a springy hop replaces the pulse when the next page is the last, a quieter tab on
-// the left once you can go back. Reduced motion: the tabs stay, nothing moves.
+// Swipe signs (Browse by type / See all, note 81): slim tabs at the edges, narrow enough to stay clear of the prices.
+// The right one nudges toward the next page ONCE, the first time this person ever opens a list with hints (remembered
+// in this browser); after that the tabs sit still. While the list is being swiped both tabs darken, then fade back.
+// No edge bounce, no peek. Reduced motion: no nudge.
 const HINT_CSS = `
-@keyframes bbV23TabPulse { 0%, 100% { transform: translate(0, -50%); } 50% { transform: translate(-5px, -50%); } }
-@keyframes bbV23TabHop { 0%, 60%, 100% { transform: translate(0, -50%); } 70% { transform: translate(-9px, -50%); } 80% { transform: translate(0, -50%); } 88% { transform: translate(-4px, -50%); } }
-.bb-v23-tab { position: absolute; top: 50%; transform: translate(0, -50%); z-index: 2; width: 28px; height: 64px; border: none; padding: 0;
-  display: grid; place-items: center; cursor: pointer; color: var(--bb-fg); background: rgba(var(--bb-fg-rgb), 0.09); font: inherit; font-size: 18px; }
-.bb-v23-tab.next { right: 0; border-radius: 14px 0 0 14px; animation: bbV23TabPulse 1.6s ease-in-out infinite; }
-.bb-v23-tab.next.last { animation: bbV23TabHop 2.2s cubic-bezier(.2,1.2,.4,1) infinite; }
-.bb-v23-tab.prev { left: 0; border-radius: 0 14px 14px 0; opacity: 0.6; }
-@media (prefers-reduced-motion: reduce) { .bb-v23-tab.next, .bb-v23-tab.next.last { animation: none; } }
+@keyframes bbV23TabNudge { 0%, 100% { transform: translate(0, -50%); } 20% { transform: translate(-6px, -50%); } 40% { transform: translate(0, -50%); } 60% { transform: translate(-4px, -50%); } 80% { transform: translate(0, -50%); } }
+.bb-v23-tab { position: absolute; top: 50%; transform: translate(0, -50%); z-index: 2; width: 18px; height: 56px; border: none; padding: 0;
+  display: grid; place-items: center; cursor: pointer; color: var(--bb-fg); background: rgba(var(--bb-fg-rgb), 0.08); font: inherit; font-size: 15px;
+  transition: background-color .6s ease, opacity .6s ease; }
+.bb-v23-tab.next { right: 0; border-radius: 10px 0 0 10px; }
+.bb-v23-tab.next.nudge { animation: bbV23TabNudge 1.4s ease-in-out .8s 1 both; }
+.bb-v23-tab.prev { left: 0; border-radius: 0 10px 10px 0; opacity: 0.6; }
+[data-swiping="1"] > .bb-v23-tab { background: rgba(var(--bb-fg-rgb), 0.22); opacity: 1; transition: background-color .12s ease, opacity .12s ease; }
+@media (prefers-reduced-motion: reduce) { .bb-v23-tab.next.nudge { animation: none; } }
 .bb-v23-cue { transition: opacity .4s ease; }
 .bb-v23-cue.gone { opacity: 0; }
 `;
+const NUDGE_KEY = 'banbe.v23.pagerNudgeSeen';
+let nudgeSeenThisLoad = false;
+const nudgeSeen = () => { if (nudgeSeenThisLoad) return true; try { return localStorage.getItem(NUDGE_KEY) === '1'; } catch { return false; } };
+const markNudgeSeen = () => { nudgeSeenThisLoad = true; try { localStorage.setItem(NUDGE_KEY, '1'); } catch { /* private mode */ } };
+// The page each list was on, so coming back from an event lands on the same page (and the cover can shrink back into
+// the row it came from). Per list (testId) and content (signature), for this page load only.
+const savedPages = new Map();
 
 /**
  * @param {object} p
@@ -45,7 +54,15 @@ export default function Pager({ items, getKey, renderRow, renderEnd, empty = nul
   const reduced = useReducedMotion();
   const pages = useMemo(() => paginate(items, PAGE_SIZE), [items]);
   const signature = useMemo(() => items.map(getKey).join('|'), [items, getKey]);
-  const [page, setPage] = useState(0);
+  const pageKey = `${testId}|${signature}`;
+  const [page, setPage] = useState(() => clampPage(savedPages.get(pageKey) || 0, pages.length || 1));
+  const swipeRef = useRef(null);
+  const swipeTimer = useRef(0);
+  // The one-time nudge: decided once per mount, remembered as soon as it is shown.
+  const [nudge] = useState(() => hints && !nudgeSeen());
+  useEffect(() => { if (nudge) markNudgeSeen(); }, [nudge]);
+  useEffect(() => { savedPages.set(pageKey, page); }, [pageKey, page]);
+  useEffect(() => () => clearTimeout(swipeTimer.current), []);
   const trackRef = useRef(null);
   const numsRef = useRef(null);
   const inkRef = useRef(null);
@@ -54,29 +71,15 @@ export default function Pager({ items, getKey, renderRow, renderEnd, empty = nul
   const prevPage = useRef(0);
   // The cue line fades after the first page turn; the peek plays once per list.
   const [turned, setTurned] = useState(false);
-  const peeked = useRef('');
 
-  // A new list (another tab, other filters) starts on page one, without animation.
-  useEffect(() => {
-    setPage(0);
-    prevPage.current = 0;
+  // A new list (another tab, other filters) starts on its saved page (page one the first time), without animation.
+  useLayoutEffect(() => {
+    const start = clampPage(savedPages.get(pageKey) || 0, pages.length || 1);
+    setPage(start);
+    prevPage.current = start;
     target.current = null;
-    if (trackRef.current) trackRef.current.scrollLeft = 0;
-  }, [signature]);
-
-  // When a multi-page list opens, the pages lean left for a moment so the next one shows its edge. Once per list.
-  useEffect(() => {
-    if (!hints || reduced || turned || pages.length < 2 || peeked.current === signature) return undefined;
-    peeked.current = signature;
-    const t = setTimeout(() => {
-      trackRef.current?.querySelectorAll('[data-pager-page]').forEach((el, i) => {
-        if (i > 1) return;
-        el.animate?.([{ transform: 'none' }, { transform: 'translateX(-46px)', offset: 0.45 }, { transform: 'translateX(-46px)', offset: 0.6 }, { transform: 'none' }],
-          { duration: 1100, easing: 'cubic-bezier(.45,0,.2,1)' });
-      });
-    }, 650);
-    return () => clearTimeout(t);
-  }, [hints, reduced, turned, pages.length, signature]);
+    if (trackRef.current) trackRef.current.scrollLeft = start * trackRef.current.clientWidth;
+  }, [signature]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const placeInk = useCallback((from, animate) => {
     const nums = numsRef.current, ink = inkRef.current;
@@ -136,6 +139,12 @@ export default function Pager({ items, getKey, renderRow, renderEnd, empty = nul
   const onScroll = () => {
     const el = trackRef.current;
     if (!el || !el.clientWidth) return;
+    // Both tabs darken while the list moves, then fade back once it settles.
+    if (hints && swipeRef.current) {
+      swipeRef.current.dataset.swiping = '1';
+      clearTimeout(swipeTimer.current);
+      swipeTimer.current = setTimeout(() => { if (swipeRef.current) swipeRef.current.dataset.swiping = '0'; }, 220);
+    }
     const at = pageAt(el.scrollLeft, el.clientWidth, pages.length);
     if (target.current !== null) {
       if (at !== target.current) return;
@@ -154,13 +163,13 @@ export default function Pager({ items, getKey, renderRow, renderEnd, empty = nul
   return (
     <div data-testid={testId} data-page={page} data-pages={pages.length}>
       {hints && <style>{HINT_CSS}</style>}
-      <div style={{ position: 'relative' }}>
+      <div ref={swipeRef} data-swiping="0" style={{ position: 'relative' }}>
       {hints && nav && page > 0 && (
         <button type="button" className="bb-v23-tab prev" onClick={() => go(page - 1)} aria-label={T('Trang trước', 'Previous page')} data-testid={`${testId}-hint-prev`}>‹</button>
       )}
       {hints && nav && page < pages.length - 1 && (
-        <button type="button" className={`bb-v23-tab next${page === pages.length - 2 ? ' last' : ''}`} onClick={() => go(page + 1)}
-          aria-label={T('Trang sau', 'Next page')} data-testid={`${testId}-hint-next`} data-last={page === pages.length - 2 ? 'true' : 'false'}>›</button>
+        <button type="button" className={`bb-v23-tab next${nudge ? ' nudge' : ''}`} onClick={() => go(page + 1)}
+          aria-label={T('Trang sau', 'Next page')} data-testid={`${testId}-hint-next`} data-nudge={nudge ? 'true' : 'false'}>›</button>
       )}
       <div ref={trackRef} data-hscroll onScroll={onScroll} data-testid={`${testId}-track`}
         style={{ display: 'flex', overflowX: 'auto', scrollSnapType: 'x mandatory', scrollbarWidth: 'none', overscrollBehaviorX: 'contain' }}>

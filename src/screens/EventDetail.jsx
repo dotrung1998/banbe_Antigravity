@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { recentZoomOrigin } from '../lib/zoomOrigin.js';
+import { recentZoomOrigin, flyBack } from '../lib/zoomOrigin.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg, mapsUrl, haversineKm } from '../data/events.js';
 import { paper, ink, rule, display, inkButton, clay, clayBg, honey, honeyBg, block, surface2, ink2, ink3, divider, RADIUS, SPACE } from '../theme.js';
@@ -7,7 +7,7 @@ import { isBookingTicket } from '../lib/bookingTicket.js';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
 import { criteriaIsEveryone } from '../lib/eventPrefs.js';
 import FollowingBadge from '../components/FollowingBadge.jsx';
-import EventPlanTitle, { EventPlanButtons } from './EventPlanActions.jsx';
+import EventPlanTitle, { EventPlanButtons, PlanChipsPreview } from './EventPlanActions.jsx';
 import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
 import { reserveBarState, eventTotal, eventPrice, currencyUnavailable, clampQty, maxQty, CURRENCY_UNAVAILABLE_REASON, QTY_PRESETS, presetSelected, presetEnabled } from '../lib/reserveBar.js';
 import GlassMenu, { GlassMenuItem, GlassMenuDivider } from '../components/GlassMenu.jsx';
@@ -162,6 +162,10 @@ export default function EventDetail({ preview = null } = {}) {
   useLayoutEffect(() => {
     const o = zoomRef.current; const hero = heroRef.current;
     if (!o || !hero || !hero.animate) return;
+    // Measure the hero where it rests: a zoom already running (React's dev double-run of effects) would otherwise be
+    // measured mid-flight and the second run would start from full size.
+    hero.getAnimations?.().forEach(a => a.cancel());
+    fadeEls().forEach(el => el.getAnimations?.().forEach(a => a.cancel()));
     const R = hero.getBoundingClientRect();
     if (!R.width || !R.height) return;
     hero.animate([zoomPose(o, R), { transformOrigin: '0 0', transform: 'translate(0px, 0px) scale(1)', clipPath: 'inset(0px 0px 0px 0px round 0px)' }], { duration: ZOOM_MS, easing: ZOOM_EASE });
@@ -190,13 +194,13 @@ export default function EventDetail({ preview = null } = {}) {
     buzz();
     if (!card) { backFromEvent(); return; }
     const o = zoomRef.current; const hero = heroRef.current;
-    if (o && hero?.animate) {
-      // Drop any pull-down pose, fade the page out first, then shrink the photo back into the card it came from.
-      card.style.transition = 'none'; card.style.transform = ''; card.style.borderRadius = ''; card.style.overflow = '';
-      fadeEls().forEach(el => el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, easing: 'ease-in', fill: 'forwards' }));
-      const R = hero.getBoundingClientRect();
-      hero.animate([{ transformOrigin: '0 0', transform: 'translate(0px, 0px) scale(1)', clipPath: 'inset(0px 0px 0px 0px round 0px)' }, zoomPose(o, R)], { duration: ZOOM_MS - 40, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
-      setTimeout(() => backFromEvent(), ZOOM_MS - 60);
+    // The cover flies back into the card it came from as an overlay over the screen you return to (flyBack): the
+    // previous screen is shown at once, without replaying its entrance. Only while the cover is on screen; scrolled
+    // far down (or Reduce Motion), the page shrinks and fades instead.
+    const heroRect = hero?.getBoundingClientRect();
+    if (o && heroRect && heroRect.bottom > 60 && !reduceMotionNow()) {
+      flyBack({ from: { left: heroRect.left, top: heroRect.top, width: heroRect.width, height: heroRect.height }, fallback: o, key: ev.key, img: ev.img });
+      backFromEvent();
       return;
     }
     card.style.transition = 'transform 0.44s cubic-bezier(.4,0,.6,1), opacity 0.4s ease, border-radius 0.3s ease';
@@ -674,7 +678,7 @@ export default function EventDetail({ preview = null } = {}) {
     const t = Math.max(0, e.currentTarget.scrollTop);
     if (!preview) lastVisit = { key: ev.key, scrollTop: t };
     // v2.3 (note 81): hero parallax + sinking title, reading progress, the glass nav past 140 px, the bar's two sizes.
-    if (v23 && !preview) {
+    if (v23) {
       const sc = e.currentTarget;
       if (!reduceMotionNow()) {
         const m = heroMotion(t);
@@ -930,9 +934,11 @@ export default function EventDetail({ preview = null } = {}) {
   </>);
 
   // v2.3 (note 81, switch home_v23): the prototype's layout and motion, same data and the same refs (zoom, pull-down,
-  // return position, tab spy). The create-event preview keeps the V8 page.
-  if (v23 && !preview) {
-    const barCompactShape = v23Bar ? barCompact : true;
+  // return position, tab spy). The create-event preview uses it too: guest controls inert, the host's footer below.
+  if (v23) {
+    // Preview: the compact reserve bar guests will see, inert, above the host's footer.
+    const previewBar = !!preview && barState === 'reserve';
+    const barCompactShape = (v23Bar && !preview) ? barCompact : true;
     const refundText = showRefund ? T('Hoàn tiền tự động 100% nếu sự kiện bị hủy', 'Automatic full refund if the event is cancelled') : null;
     const placeLine = [evWhere || T('Địa điểm', 'Place'), evDistance || cityShort].filter(Boolean).join(' · ');
     const v23Bar_ = (
@@ -942,8 +948,8 @@ export default function EventDetail({ preview = null } = {}) {
           transition: 'border-radius .28s cubic-bezier(.22,.61,.36,1), left .28s, right .28s, bottom .28s, padding .28s' }}>
         {/* The content fades under the bar instead of stopping at a hard edge. */}
         <div aria-hidden style={{ position: 'absolute', left: -12, right: -12, top: barCompactShape ? -30 : -44, height: barCompactShape ? 30 : 44, background: 'linear-gradient(180deg, rgba(var(--bb-bg-rgb),0), var(--bb-bg))', pointerEvents: 'none', zIndex: -1 }} />
-        {v23Bar ? (
-          <ReserveBarV23 compact={barCompact} qty={heldBar ? heldQty : qty} remaining={remaining} setQty={heldBar ? setAddQty : setQty} totalFor={(n) => trStatus(eventTotal(ev, n))}
+        {(v23Bar || previewBar) ? (
+          <ReserveBarV23 compact={preview ? true : barCompact} qty={heldBar ? heldQty : qty} remaining={remaining} setQty={heldBar ? setAddQty : setQty} totalFor={(n) => trStatus(eventTotal(ev, n))}
             unitText={trStatus(eventTotal(ev, 1))} free={isFree} onReserve={goReserve} trustLine={trustLine} trustIcon={<IconShield />} T={T}
             booked={heldBar ? booked : 0} confirmed={stampKind === 'confirmed'} phase={stamp?.phase || null} onHeld={openHeldBooking} onAdd={(extra) => goReserveAdd(booked, extra)} />
         ) : (
@@ -981,7 +987,8 @@ export default function EventDetail({ preview = null } = {}) {
             perTicket={booked > 0 ? T(`· ${booked} vé`, `· ${booked} ${booked === 1 ? 'ticket' : 'tickets'}`) : isFree ? null : T('/ vé', '/ ticket')}
             stamp={stamp ? { kind: stamp.kind, text: T(stampText(stamp, nowTick).vi, stampText(stamp, nowTick).en) } : null} stampPlay={stampPlay}
             seat={seatPill ? { text: seatPill.text, kind: seat.kind } : null} saveLabel={T('Lưu ngày', 'Save the date')}
-            calendar={<EventPlanButtons eventKey={ev.key} day={stubBlock?.day} month={stubBlock?.weekday} onMessage={setPlanMsg} chips />} />
+            inert={!!preview}
+            calendar={preview ? <PlanChipsPreview T={T} /> : realRow ? <EventPlanButtons eventKey={ev.key} day={stubBlock?.day} month={stubBlock?.weekday} onMessage={setPlanMsg} chips /> : null} />
         )}
         afterStub={(planMsg || timeNote) && (
           <div style={{ padding: '10px 26px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -991,8 +998,11 @@ export default function EventDetail({ preview = null } = {}) {
         )}
         criteria={criteriaEl && <div style={{ marginBottom: 28 }}>{criteriaEl}</div>}
         know={knowRows(needRows, { refund: refundText })}
-        about={about} aboutExpanded={aboutExpanded} setAboutExpanded={setAboutExpanded} onAboutMore={() => setIncludedSheetOpen(true)}
-        menuTitle={menuTitle} cards={cards} onMenuMore={!sheetOnAbout && about.hasSheet ? () => setIncludedSheetOpen(true) : null}
+        about={about} aboutExpanded={aboutExpanded} setAboutExpanded={setAboutExpanded}
+        introExtra={introParagraphs.filter(p => p !== about.body)}
+        introCss={{ fontFamily: introFontFamily(introStyle(ev.details).font), color: introColorValue(introStyle(ev.details).color) }}
+        menuTitle={menuTitle} cards={cards}
+        inert={!!preview} footer={preview?.footer || null} scrollPad={preview ? 300 : 230}
         host={{
           onOpen: () => openOrganizerOfEvent(ev.key, 'event'),
           ariaLabel: [T('Người tổ chức', 'Host'), ev.orgName, hostSubline, T('Mở trang', 'Opens profile')].filter(Boolean).join(', '),
