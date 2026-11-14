@@ -467,7 +467,7 @@ input::placeholder, textarea::placeholder {
     text-align: center;
     background: var(--bb-bg);
     color: var(--bb-fg);
-    font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+    font-family: var(--bb-face, 'Be Vietnam Pro'), system-ui, sans-serif;
     font-size: 15px;
     line-height: 1.6;
   }

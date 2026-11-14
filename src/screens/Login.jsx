@@ -98,7 +98,7 @@ export default function Login() {
       ? (isSignup ? T('Tạo tài khoản', 'Create account') : T('Đăng nhập', 'Log in'))
       : (isSignup ? T('Gửi mã đăng ký', 'Send sign-up code') : T('Gửi mã đăng nhập', 'Send sign-in code'));
 
-  const FF = "'Be Vietnam Pro', sans-serif";
+  const FF = "var(--bb-face, 'Be Vietnam Pro'), sans-serif";
   // iOS BanbeField: 14pt text, 13pt padding, radius 12, flat field fill.
   const fieldStyle = (extra) => ({ width: '100%', boxSizing: 'border-box', padding: 13, borderRadius: 12, border: 'none', background: 'var(--bb-field)', fontSize: 14, fontFamily: FF, color: ink, outline: 'none', ...extra });
   const note = (extra) => ({ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0', textAlign: 'center', ...extra });

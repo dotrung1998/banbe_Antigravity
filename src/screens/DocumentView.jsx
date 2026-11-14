@@ -122,7 +122,7 @@ export default function DocumentView() {
                 value={reason} onChange={(e) => setReason(e.target.value)}
                 placeholder={T('Lý do thay thế (bắt buộc, khách sẽ thấy lý do này)', 'Reason for replacing (required, the guest will see this)')}
                 rows={2} data-testid="document-replace-reason"
-                style={{ fontSize: 12.5, padding: 10, borderRadius: 10, border: `1px solid rgba(27,25,22,0.16)`, fontFamily: "'Be Vietnam Pro', sans-serif", resize: 'vertical' }}
+                style={{ fontSize: 12.5, padding: 10, borderRadius: 10, border: `1px solid rgba(27,25,22,0.16)`, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif", resize: 'vertical' }}
               />
               {errorMessage && <p style={{ fontSize: 11.5, color: alert, margin: 0 }} data-testid="document-replace-error">{errorMessage}</p>}
               <div style={{ display: 'flex', gap: 8 }}>

@@ -121,7 +121,7 @@ export default function HelpReader({ title, intro, sections, onBack, backLabel, 
           type="search" value={query} onChange={(e) => setQuery(e.target.value)}
           placeholder={T('Tìm trong tài liệu…', 'Search this page…')}
           aria-label={T('Tìm kiếm', 'Search')} data-testid={`${testId}-search`}
-          style={{ ...fieldGlass({ marginTop: 16, padding: '12px 14px', border: 'none', width: '100%', boxSizing: 'border-box' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }}
+          style={{ ...fieldGlass({ marginTop: 16, padding: '12px 14px', border: 'none', width: '100%', boxSizing: 'border-box' }), fontSize: 14, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif", color: ink, outline: 'none' }}
         />
         {!!tokens.length && (
           <div style={{ fontSize: 12, color: ink, opacity: 0.65, marginTop: 8 }} data-testid={`${testId}-result-count`}>

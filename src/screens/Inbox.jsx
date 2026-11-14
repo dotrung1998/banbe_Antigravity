@@ -239,7 +239,7 @@ function FeedbackFlow({ onClose, T }) {
             value={text}
             onChange={(e) => setText(e.target.value)}
             data-testid="feedback-text"
-            style={{ ...fieldGlass({ borderRadius: 12, border: `1px solid ${rule}`, padding: 12, minHeight: 160, resize: 'none' }), fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }}
+            style={{ ...fieldGlass({ borderRadius: 12, border: `1px solid ${rule}`, padding: 12, minHeight: 160, resize: 'none' }), fontSize: 13.5, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif", color: ink, outline: 'none' }}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 14, color: ink }}>{T('Tôi đang báo lỗi', "I'm reporting a bug")}</span>
@@ -348,7 +348,7 @@ export default function Inbox() {
             data-testid="inbox-search-input"
             style={{
               ...fieldGlass({ flex: 1, minWidth: 0, padding: '10px 14px', borderRadius: 999, border: 'none' }),
-              fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none',
+              fontSize: 13.5, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif", color: ink, outline: 'none',
               animation: `banbeIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both`,
             }}
           />

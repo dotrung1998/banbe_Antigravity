@@ -226,14 +226,18 @@ test('closing an event flies the cover back over the list it came from, without 
   expect(Math.round(box.x)).toBe(0);
 });
 
-test('font choice: serif and Be Vietnam Pro reach titles and accents; the default keeps Jost', async ({ page }) => {
+test('font choice: Serif or Be Vietnam Pro, each one typeface for titles AND text; an old stored choice reads as Be Vietnam Pro', async ({ page }) => {
   await mockSupabase(page);
-  for (const [font, re] of [['serif', /Iowan|Palatino|Georgia/], ['vietnam', /Be Vietnam Pro/], ['current', /Jost/]]) {
-    await page.addInitScript((f) => { try { localStorage.setItem('banbe.font.v1', f); } catch { /* */ } }, font);
+  for (const [stored, font, re] of [['serif', 'serif', /Iowan|Palatino|Georgia/], ['vietnam', 'vietnam', /Be Vietnam Pro/], ['current', 'vietnam', /Be Vietnam Pro/]]) {
+    await page.addInitScript((f) => { try { localStorage.setItem('banbe.font.v1', f); } catch { /* */ } }, stored);
     await guestOpen(page, '/browse/music');
     await expect(page.getByTestId('browse-screen')).toBeVisible({ timeout: 20000 });
     expect(await page.evaluate(() => document.documentElement.dataset.bbFont)).toBe(font);
-    const fam = await page.evaluate(() => getComputedStyle(document.querySelector('[data-testid^="browse-event-"] span:nth-child(2)') || document.body).fontFamily);
-    expect(fam, font).toMatch(re);
+    const [title, text] = await page.evaluate(() => {
+      const row = document.querySelector('[data-testid^="browse-event-"]');
+      return [getComputedStyle(row.querySelector('span:nth-child(2)')).fontFamily, getComputedStyle(document.body).fontFamily];
+    });
+    expect(title, `${stored} title`).toMatch(re);
+    expect(text, `${stored} text`).toMatch(re);
   }
 });

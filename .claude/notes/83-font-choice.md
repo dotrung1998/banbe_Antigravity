@@ -8,18 +8,17 @@ surface).
   that screen had NO entry in Account (the old "Settings" row was defined but never rendered, and the search button
   was gone), so the row was added and the Account **search button** is back in the header (magnifier beside Share,
   × closes and clears); searching "font" / "phông chữ" / "serif" finds a Font entry (`AccountSearch.jsx`).
-- The **Font** section, three rows, each previewed in its own face (`Preferences.jsx`):
-  - **Current** (default): Jost for titles, Be Vietnam Pro for text, the serif for the v2.3 accents.
-  - **Serif**: the serif of the v2.3 end-of-list card (Iowan Old Style / Palatino / Georgia, system faces, no download)
-    for every title and accent at weight 400, Be Vietnam Pro for text (the end card's own pairing).
-  - **Be Vietnam Pro**: one face for titles, accents and text.
-- `src/lib/fontPref.js`: `getFont` / `setFont` / `applyFont` (localStorage `banbe.font.v1`), applied in `main.jsx` before
-  the first render as `<html data-bb-font>` + CSS variables: `--bb-font-display`, `--bb-font-display-weight`,
-  `--bb-font-accent`, `--bb-font-title`.
-- Wiring, no per-component forks: `theme.js` `DISPLAY_FACE` = `var(--bb-font-display, 'Jost', …)` and `display()` weight
-  = `var(--bb-font-display-weight, 600)`; the v2.3 `SERIF` (`v23Style.js`) = `var(--bb-font-accent, serif…)`; the Home
-  hero-rail card titles (body face, weight 300) read `--bb-font-title` (serif in Serif mode).
-- Body text stays Be Vietnam Pro in every option (full Vietnamese diacritics). `index.html` now loads Be Vietnam Pro
-  300–800 + italic 400 (the Google Fonts embed). Canvas drawings (share card, reports) keep their own font strings.
-- Test: `tests/public/browse-v23.spec.js` "font choice" (attribute + computed title face for all three).
+- **Revised 2026-11-14 (owner): two options, each ONE typeface for the whole app** (titles, accents AND text):
+  - **Serif**: the serif of the v2.3 cards (Iowan Old Style / Palatino / Georgia, system faces, no download), titles
+    at weight 400.
+  - **Be Vietnam Pro** (the default): Be Vietnam Pro everywhere. The old "Current" (Jost titles) is gone; a stored
+    'current' reads as Be Vietnam Pro.
+- `src/lib/fontPref.js`: `getFont` / `setFont` / `applyFont` (localStorage `banbe.font.v1`), applied in `main.jsx`
+  before the first render as `<html data-bb-font>` + CSS variables `--bb-face` (body text, theme.js `FACE`, index.css),
+  `--bb-font-display` + `--bb-font-display-weight` (theme.js `DISPLAY_FACE` / `display()`), `--bb-font-accent` (v2.3
+  `SERIF`), `--bb-font-title` (Home hero-card titles). 18 screens/components that hard-coded 'Be Vietnam Pro' for
+  inputs and labels now read `var(--bb-face, 'Be Vietnam Pro')`; canvas and PDF drawings (share card, reports, ticket
+  PDF, dispute export) keep their own font strings.
+- `index.html` loads Be Vietnam Pro 300–800 + italic 400 (the Google Fonts embed).
+- Test: `tests/public/browse-v23.spec.js` "font choice" (attribute, title face and body face for Serif, Be Vietnam Pro and an old stored "current").
 - Not done: the setting is per browser (not synced to the account), and iOS has no font choice.

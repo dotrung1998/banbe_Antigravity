@@ -125,7 +125,7 @@ export default function PersistentSearchBar() {
               onKeyDown={(e) => { if (e.key === 'Enter') { fns.submit?.(text); e.currentTarget.blur(); } }}
               enterKeyHint="search" placeholder={h.placeholder} aria-label={mapOn ? T('Tìm sự kiện trên bản đồ', 'Search events on the map') : T('Tìm kiếm', 'Search')}
               data-testid={mapOn ? 'map-search-input' : 'search-input'} data-bare
-              style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, color: ink, fontFamily: "'Be Vietnam Pro', sans-serif" }} />
+              style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, color: ink, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif" }} />
             {text && (
               <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setText('')} data-testid={mapOn ? 'map-search-clear' : 'search-clear'} aria-label={T('Xoá tìm kiếm', 'Clear search')}
                 style={{ width: 44, height: 44, marginInlineEnd: -14, border: 'none', background: 'none', cursor: 'pointer', color: ink2, fontSize: 18, lineHeight: 1, flex: 'none' }}>×</button>

@@ -170,7 +170,7 @@ export default function AreaSheet({ embedded = false, onDone }) {
             onChange={(e) => setQuery(e.target.value)}
             placeholder={T('Tìm khu vực, tỉnh/thành, bang…', 'Search area, province, state…')}
             data-testid="area-sheet-search" data-bare
-            style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, color: ink, fontFamily: "'Be Vietnam Pro', sans-serif" }}
+            style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, color: ink, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif" }}
           />
           {query && <span onClick={() => setQuery('')} data-testid="area-sheet-search-clear" style={{ cursor: 'pointer', color: ink, opacity: 0.5, fontSize: 16, lineHeight: 1 }}>×</span>}
         </div>

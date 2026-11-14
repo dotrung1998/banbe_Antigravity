@@ -40,10 +40,8 @@ export default function Preferences() {
 
         {/* Note 83: the typeface for the whole app, previewed in each row's own title. Saved in this browser. */}
         <Section title={T('Phông chữ', 'Font')}>
-          <Choice active={font === 'current'} testId="pref-font-current" titleFont={FONT_SAMPLE.current} title={T('Mặc định', 'Current')}
-            subtitle={T('Jost cho tiêu đề, Be Vietnam Pro cho nội dung', 'Jost for titles, Be Vietnam Pro for text')} onClick={() => setFontState(setFont('current'))} />
           <Choice active={font === 'serif'} testId="pref-font-serif" titleFont={FONT_SAMPLE.serif} titleWeight={400} title={T('Có chân (Serif)', 'Serif')}
-            subtitle={T('Tiêu đề có chân như thẻ cuối danh sách, nội dung Be Vietnam Pro', 'Serif titles like the end-of-list card, Be Vietnam Pro text')} onClick={() => setFontState(setFont('serif'))} />
+            subtitle={T('Một phông cho toàn bộ ứng dụng', 'One typeface for the whole app')} onClick={() => setFontState(setFont('serif'))} />
           <Choice active={font === 'vietnam'} testId="pref-font-vietnam" titleFont={FONT_SAMPLE.vietnam} title="Be Vietnam Pro"
             subtitle={T('Một phông cho toàn bộ ứng dụng', 'One typeface for the whole app')} onClick={() => setFontState(setFont('vietnam'))} />
         </Section>

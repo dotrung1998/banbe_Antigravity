@@ -280,7 +280,7 @@ export default function Attendance() {
           only un-rounded surface on the screen. */}
       <div style={{ margin: '18px 22px 0', background: ink, borderRadius: 12, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: 12.5, color: paper }}>{T('Đã đến', 'Checked in')}</span>
-        <span style={{ fontFamily: "'Be Vietnam Pro', sans-serif", fontWeight: 600, letterSpacing: '-0.02em', fontSize: 24, color: paper }}>{checkedCount} / {guests.length}</span>
+        <span style={{ fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif", fontWeight: 600, letterSpacing: '-0.02em', fontSize: 24, color: paper }}>{checkedCount} / {guests.length}</span>
       </div>
       {/* Modest breathing room below the now-rounded panel — bumped from
           10px into this screen's own 12-16px spacing ladder. */}
@@ -359,7 +359,7 @@ export default function Attendance() {
                           placeholder={T('Vì sao thay thế bản cũ?', 'Why are you replacing the old one?')}
                           rows={2}
                           data-testid="guest-replace-reason"
-                          style={{ fontSize: 11.5, padding: 8, borderRadius: 10, border: '1px solid rgba(27,25,22,0.16)', fontFamily: "'Be Vietnam Pro', sans-serif", resize: 'vertical' }}
+                          style={{ fontSize: 11.5, padding: 8, borderRadius: 10, border: '1px solid rgba(27,25,22,0.16)', fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif", resize: 'vertical' }}
                         />
                         <div style={{ display: 'flex', gap: 6 }}>
                           <span

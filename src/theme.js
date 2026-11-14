@@ -77,7 +77,8 @@ export const dockHighlight = 'rgba(var(--bb-fg-rgb), 0.12)';
 // Be Vietnam Pro — same geometric, rounded-sans vibe as Poppins (the
 // prototype's stand-in face) but designed for full, clean Vietnamese
 // diacritic coverage, so tone marks sit right at any weight/size.
-export const FACE = "'Be Vietnam Pro', system-ui, sans-serif";
+// Note 83: the text face follows the chosen font (--bb-face, src/lib/fontPref.js); Be Vietnam Pro when nothing is set.
+export const FACE = "var(--bb-face, 'Be Vietnam Pro'), system-ui, sans-serif";
 // Note 83: the title face follows the chosen font (src/lib/fontPref.js); Jost when nothing is set.
 export const DISPLAY_FACE = "var(--bb-font-display, 'Jost', 'Be Vietnam Pro', system-ui, sans-serif)";
 

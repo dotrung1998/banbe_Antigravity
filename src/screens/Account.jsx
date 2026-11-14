@@ -14,7 +14,7 @@ import ActionCenter from './ActionCenter.jsx';
 import AccountSearchResults from './AccountSearch.jsx';
 import { getFont } from '../lib/fontPref.js';
 
-const FONT_LABEL = { current: { vi: 'Mặc định', en: 'Current' }, serif: { vi: 'Có chân', en: 'Serif' }, vietnam: { vi: 'Be Vietnam Pro', en: 'Be Vietnam Pro' } };
+const FONT_LABEL = { serif: { vi: 'Có chân (Serif)', en: 'Serif' }, vietnam: { vi: 'Be Vietnam Pro', en: 'Be Vietnam Pro' } };
 import { takeSearchState, resetSearchState } from '../lib/accountSearch.js';
 import { useSubmittedEvents } from '../lib/submittedEvents.jsx';
 import ProfileShareSheet, { profileShareLinks } from './sheets/ProfileShareSheet.jsx';

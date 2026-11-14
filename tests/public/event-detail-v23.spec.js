@@ -136,13 +136,14 @@ test('3 seats left: 4+ stays visible but quiet, and a tap says how many are left
   await expect(page.getByTestId('event-qty-stepper')).toHaveCount(0);
 });
 
-test('v2.3 layout: serif hero title, one glass Back, the nav with tabs and reading progress past 140 px', async ({ page }) => {
+test('v2.3 layout: hero title in the chosen font, one glass Back, the nav with tabs and reading progress past 140 px', async ({ page }) => {
   await mockSupabase(page, ON);
   await openEvent(page, BIG);
   await expect(page.getByTestId('event-detail-v23')).toBeVisible();
   const h1 = page.getByTestId('event-hero-title').locator('h1');
   await expect(h1).toHaveText('Big table test');
-  expect(await h1.evaluate(el => getComputedStyle(el).fontFamily)).toMatch(/Iowan|Palatino|Georgia/);
+  // The title follows the font choice (note 83): Be Vietnam Pro by default.
+  expect(await h1.evaluate(el => getComputedStyle(el).fontFamily)).toMatch(/Be Vietnam Pro/);
   await expect(page.getByTestId('event-detail-back')).toBeVisible();
   const nav = page.getByTestId('event-nav-bar');
   await expect(nav).toHaveAttribute('aria-hidden', 'true');

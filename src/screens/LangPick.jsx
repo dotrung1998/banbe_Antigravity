@@ -41,7 +41,7 @@ export default function LangPick() {
       <span style={{ ...display(27, { lineHeight: 1.2, color: ink }) }}>Chọn ngôn ngữ</span>
       <span
         style={{
-          fontFamily: "'Be Vietnam Pro',sans-serif",
+          fontFamily: "var(--bb-face, 'Be Vietnam Pro'),sans-serif",
           fontWeight: 400,
           letterSpacing: '-0.01em',
           fontSize: 19,

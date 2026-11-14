@@ -392,7 +392,7 @@ export default function Chat() {
           value={s.chatDraft} onChange={chatOnType} onKeyDown={chatOnKey}
           placeholder={canCompose ? ('Viết cho ' + headerTitle + '…') : T('Đang mở cuộc trò chuyện…', 'Opening conversation…')}
           disabled={!canCompose}
-          style={{ ...fieldGlass({ flex: 1, padding: '12px 14px', borderRadius: 999, border: 'none' }), fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none', opacity: canCompose ? 1 : 0.6 }}
+          style={{ ...fieldGlass({ flex: 1, padding: '12px 14px', borderRadius: 999, border: 'none' }), fontSize: 13.5, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif", color: ink, outline: 'none', opacity: canCompose ? 1 : 0.6 }}
         />
         <div onClick={canCompose ? chatSend : undefined} style={{ borderRadius: 999, padding: '12px 20px', display: 'flex', alignItems: 'center', flex: 'none', fontSize: 13.5, fontWeight: 600, background: ink, color: paper, userSelect: 'none', opacity: canCompose ? 1 : 0.5, cursor: canCompose ? 'pointer' : 'default' }}>Gửi</div>
       </div>

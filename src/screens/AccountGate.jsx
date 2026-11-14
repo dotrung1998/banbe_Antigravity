@@ -17,7 +17,7 @@ import {
   submitEnrollmentDob, dobSaveErrorText, confirmDob,
 } from '../lib/accountGate.js';
 
-const FONT = "'Be Vietnam Pro', sans-serif";
+const FONT = "var(--bb-face, 'Be Vietnam Pro'), sans-serif";
 const inputStyle = (extra) => ({
   ...fieldGlass({ padding: 14, border: 'none', boxSizing: 'border-box' }),
   fontSize: 15, fontFamily: FONT, color: ink, outline: 'none', ...extra,

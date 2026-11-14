@@ -16,7 +16,7 @@ export default function Security() {
 
   const fieldStyle = {
     ...fieldGlass({ marginTop: 10, padding: 14, border: 'none', width: '100%', boxSizing: 'border-box' }),
-    fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none',
+    fontSize: 14, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif", color: ink, outline: 'none',
   };
   const tooShort = s.securityPassword.length > 0 && s.securityPassword.length < 8;
   const canSave = !s.securityBusy && s.securityPassword.length >= 8 && s.securityPassword === s.securityPasswordConfirm;

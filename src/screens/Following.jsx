@@ -78,7 +78,7 @@ export default function Following() {
                 placeholder={T('Tìm tổ chức bạn theo dõi…', 'Search hosts you follow…')}
                 aria-label={T('Tìm tổ chức bạn theo dõi', 'Search hosts you follow')}
                 data-testid="following-search" data-bare
-                style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 13.5, color: ink, fontFamily: "'Be Vietnam Pro', sans-serif" }}
+                style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 13.5, color: ink, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif" }}
               />
               {query && <span onClick={() => setQuery('')} role="button" aria-label={T('Xoá', 'Clear')} data-testid="following-search-clear" style={{ cursor: 'pointer', color: ink, opacity: 0.5, fontSize: 16, lineHeight: 1 }}>×</span>}
             </div>

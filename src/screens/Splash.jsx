@@ -60,8 +60,8 @@ export default function Splash() {
           background: 'transparent', pointerEvents: 'none', animation: 'banbeIn 0.7s cubic-bezier(.22,.61,.36,1) both',
         }}
       />
-      <div data-testid="splash-greeting" className="bb-wel-rise" style={{ fontFamily: "'Be Vietnam Pro',sans-serif", fontSize: 22, fontWeight: 600, color: ink, marginTop: 18, padding: '0 32px', textAlign: 'center', animationDelay: '0.6s', animationDuration: '1s' }}>{greeting}</div>
-      <span style={{ fontFamily: "'Be Vietnam Pro',sans-serif", fontSize: 14, fontWeight: 400, letterSpacing: '0.01em', color: ink, opacity: 0.75, marginTop: 8, animation: 'banbeFade 0.9s ease 0.9s both' }}>{T('bạn mới mỗi tuần', 'new friends every week')}</span>
+      <div data-testid="splash-greeting" className="bb-wel-rise" style={{ fontFamily: "var(--bb-face, 'Be Vietnam Pro'),sans-serif", fontSize: 22, fontWeight: 600, color: ink, marginTop: 18, padding: '0 32px', textAlign: 'center', animationDelay: '0.6s', animationDuration: '1s' }}>{greeting}</div>
+      <span style={{ fontFamily: "var(--bb-face, 'Be Vietnam Pro'),sans-serif", fontSize: 14, fontWeight: 400, letterSpacing: '0.01em', color: ink, opacity: 0.75, marginTop: 8, animation: 'banbeFade 0.9s ease 0.9s both' }}>{T('bạn mới mỗi tuần', 'new friends every week')}</span>
     </div>
   );
 }

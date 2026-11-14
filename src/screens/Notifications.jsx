@@ -332,7 +332,7 @@ export default function Notifications({ overlay = false }) {
             data-testid="notifications-search-input"
             style={{
               ...fieldGlass({ flex: 1, minWidth: 0, padding: '10px 14px', borderRadius: 999, border: 'none' }),
-              fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none',
+              fontSize: 13.5, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif", color: ink, outline: 'none',
               animation: `banbeIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both`,
             }}
           />

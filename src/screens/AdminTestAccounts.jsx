@@ -68,7 +68,7 @@ export default function AdminTestAccounts() {
 
   const say = (text, bad = false) => setMsg({ text, bad });
   const fail = (code) => { const e = ERRORS[code]; say(e ? T(e[0], e[1]) : T('Không thực hiện được. Thử lại.', "Couldn't do that. Try again."), true); };
-  const fieldStyle = { ...fieldGlass({ marginTop: 10, padding: 14, border: 'none', width: '100%', boxSizing: 'border-box' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' };
+  const fieldStyle = { ...fieldGlass({ marginTop: 10, padding: 14, border: 'none', width: '100%', boxSizing: 'border-box' }), fontSize: 14, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif", color: ink, outline: 'none' };
 
   const applyBypass = async () => {
     const next = confirmTo;

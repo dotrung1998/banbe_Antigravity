@@ -15,7 +15,7 @@ export default function ResetPassword() {
     cursor: valid && !s.resetPasswordBusy ? 'pointer' : 'default',
     ...(valid ? {} : { background: 'rgba(var(--bb-fg-rgb), 0.16)', color: ink, boxShadow: 'none', border: 'none', textShadow: 'none' }),
   });
-  const fieldStyle = { width: '100%', boxSizing: 'border-box', padding: 13, borderRadius: 12, border: 'none', background: 'var(--bb-field)', fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' };
+  const fieldStyle = { width: '100%', boxSizing: 'border-box', padding: 13, borderRadius: 12, border: 'none', background: 'var(--bb-field)', fontSize: 14, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif", color: ink, outline: 'none' };
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 26px 40px', background: paper, color: ink }} data-screen-label="ResetPassword">

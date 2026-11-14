@@ -992,13 +992,13 @@ export default function MapExplore() {
           // City bubble (zoomed out): "TP.HCM  5"; tap = fly to that city.
           const c = CITY_BY_ID.get(g.cityId);
           const n = g.ids.length;
-          pinEl.style.cssText = `min-height:40px;padding:0 8px 0 16px;box-sizing:border-box;border-radius:20px;background:${ink};color:${paper};border:2px solid ${paper};display:flex;align-items:center;gap:9px;font:700 15px/1 'Be Vietnam Pro',sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 3px 12px rgba(27,25,22,0.38);`;
+          pinEl.style.cssText = `min-height:40px;padding:0 8px 0 16px;box-sizing:border-box;border-radius:20px;background:${ink};color:${paper};border:2px solid ${paper};display:flex;align-items:center;gap:9px;font:700 15px/1 var(--bb-face, 'Be Vietnam Pro'),sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 3px 12px rgba(27,25,22,0.38);`;
           pinEl.setAttribute('data-testid', `map-city-${g.cityId}`);
           pinEl.setAttribute('data-count', String(n));
           pinEl.setAttribute('aria-label', T(`${c.vi}, ${n} sự kiện, phóng tới`, `${c.en}, ${n} event${n === 1 ? '' : 's'}, go there`));
           pinEl.textContent = en ? c.short.en : c.short.vi;
           const badge = document.createElement('span');
-          badge.style.cssText = `min-width:24px;height:24px;padding:0 7px;box-sizing:border-box;border-radius:12px;background:${paper};color:${ink};display:inline-flex;align-items:center;justify-content:center;font:700 13px/1 'Be Vietnam Pro',sans-serif;`;
+          badge.style.cssText = `min-width:24px;height:24px;padding:0 7px;box-sizing:border-box;border-radius:12px;background:${paper};color:${ink};display:inline-flex;align-items:center;justify-content:center;font:700 13px/1 var(--bb-face, 'Be Vietnam Pro'),sans-serif;`;
           badge.textContent = String(n);
           parts.badge = badge;
           pinEl.appendChild(badge);
@@ -1020,7 +1020,7 @@ export default function MapExplore() {
           bub.style.cssText = `min-width:52px;height:52px;padding:0 10px;box-sizing:border-box;border-radius:26px;background:${ink};color:${paper};display:flex;align-items:center;justify-content:center;font:600 22px/1 ${DISPLAY_FACE};box-shadow:0 3px 10px rgba(27,25,22,0.35);`;
           bub.textContent = String(n);
           const lbl = document.createElement('span');
-          lbl.style.cssText = `max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 8px;border-radius:999px;background:${paper};color:${ink};font:700 12px/1.3 'Be Vietnam Pro',sans-serif;box-shadow:0 1px 4px rgba(27,25,22,0.2);`;
+          lbl.style.cssText = `max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 8px;border-radius:999px;background:${paper};color:${ink};font:700 12px/1.3 var(--bb-face, 'Be Vietnam Pro'),sans-serif;box-shadow:0 1px 4px rgba(27,25,22,0.2);`;
           lbl.textContent = name;
           parts.bub = bub; parts.lbl = lbl;
           pinEl.appendChild(bub);
@@ -1033,7 +1033,7 @@ export default function MapExplore() {
           // same icons as the category row, so the row reads as the key. Selected = ink fill.
           const label = ev.priceVnd > 0 ? formatMoneyShort(ev.priceVnd, ev.currency) : T('Miễn phí', 'Free');
           const cat = CATEGORY_DEFS.find(c => c.key === ev.catKey);
-          pinEl.style.cssText = `height:30px;min-width:30px;padding:0 10px 0 8px;gap:5px;box-sizing:border-box;border-radius:15px;background:${isSelected ? ink : paper};color:${isSelected ? paper : ink};border:1.5px solid ${ink};position:relative;display:flex;align-items:center;justify-content:center;font:600 12.5px/1 'Be Vietnam Pro',sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 2px 6px rgba(27,25,22,0.3);transform:scale(${isSelected ? 1.12 : 1});`;
+          pinEl.style.cssText = `height:30px;min-width:30px;padding:0 10px 0 8px;gap:5px;box-sizing:border-box;border-radius:15px;background:${isSelected ? ink : paper};color:${isSelected ? paper : ink};border:1.5px solid ${ink};position:relative;display:flex;align-items:center;justify-content:center;font:600 12.5px/1 var(--bb-face, 'Be Vietnam Pro'),sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 2px 6px rgba(27,25,22,0.3);transform:scale(${isSelected ? 1.12 : 1});`;
           pinEl.setAttribute('data-testid', `map-pin-${ev.id}`);
           pinEl.setAttribute('data-cat', ev.catKey || 'all');
           pinEl.setAttribute('aria-label', [ev.name || '', cat ? T(cat.vi, cat.en) : null, label].filter(Boolean).join(', '));
@@ -1046,7 +1046,7 @@ export default function MapExplore() {
           if (zoom512 >= 15 || isSelected) {
             const name = document.createElement('span');
             name.setAttribute('data-testid', `map-pinname-${ev.id}`);
-            name.style.cssText = `position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 11.5px/1.2 'Be Vietnam Pro',sans-serif;color:${ink};background:${paper};padding:2px 8px;border-radius:999px;box-shadow:0 1px 2px rgba(27,25,22,0.2);pointer-events:none;`;
+            name.style.cssText = `position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 11.5px/1.2 var(--bb-face, 'Be Vietnam Pro'),sans-serif;color:${ink};background:${paper};padding:2px 8px;border-radius:999px;box-shadow:0 1px 2px rgba(27,25,22,0.2);pointer-events:none;`;
             name.textContent = ev.name || '';
             pinEl.appendChild(name);
           }
@@ -1062,7 +1062,7 @@ export default function MapExplore() {
           // Cluster (zoom in) or stack (same place: select the first; the card steps through the rest).
           const n = g.ids.length;
           const stack = g.kind === 'stack';
-          pinEl.style.cssText = `height:${stack ? 30 : 36}px;min-width:${stack ? 30 : 36}px;padding:0 ${stack ? 10 : 6}px;box-sizing:border-box;border-radius:18px;background:${isSelected ? ink : paper};color:${isSelected ? paper : ink};border:${stack ? 1.5 : 2}px solid ${ink};display:flex;align-items:center;justify-content:center;gap:4px;font:700 13px/1 'Be Vietnam Pro',sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(27,25,22,0.32);`;
+          pinEl.style.cssText = `height:${stack ? 30 : 36}px;min-width:${stack ? 30 : 36}px;padding:0 ${stack ? 10 : 6}px;box-sizing:border-box;border-radius:18px;background:${isSelected ? ink : paper};color:${isSelected ? paper : ink};border:${stack ? 1.5 : 2}px solid ${ink};display:flex;align-items:center;justify-content:center;gap:4px;font:700 13px/1 var(--bb-face, 'Be Vietnam Pro'),sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(27,25,22,0.32);`;
           pinEl.setAttribute('data-testid', `map-${g.kind}-${g.ids[0]}`);
           pinEl.setAttribute('data-count', String(n));
           pinEl.setAttribute('aria-label', stack
