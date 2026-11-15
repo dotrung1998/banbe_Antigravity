@@ -113,6 +113,30 @@ test('See all carries Home three tabs: another tab switches in place and the URL
   await expect(page.getByTestId('browse-screen')).toBeVisible();
 });
 
+test('from a tab, Browse by type opens the catalogue grid and Back returns to that tab', async ({ page }) => {
+  await mockSupabase(page);
+  await guestOpen(page, '/see-all/tonight');
+  const screen = page.getByTestId('browse-screen');
+  await expect(screen).toBeVisible({ timeout: 20000 });
+  // Note 86: the way out of one tab's types to every type in the catalogue, without going back to Home first.
+  const link = page.getByTestId('browse-browse-types');
+  await expect(link).toBeVisible();
+  await shot(page, 'b5-see-all-browse-types');
+  await link.click();
+  await expect(page).toHaveURL(/\/browse$/);
+  await expect(screen).toHaveAttribute('data-mode', 'index');
+  await expect(screen).toHaveAttribute('data-scope', 'all');
+  await expect(page.getByTestId('browse-scope-tabs')).toHaveCount(0);
+  await expect(page.getByTestId('browse-browse-types')).toHaveCount(0);
+  await expect(page.getByTestId('browse-grid-music')).toBeVisible();
+  // Back steps up to the tab the grid was opened from, not Home.
+  await expect(page.getByTestId('browse-back')).toHaveAttribute('aria-label', 'Back to Tonight');
+  await page.getByTestId('browse-back').click();
+  await expect(page).toHaveURL(/\/see-all\/tonight$/);
+  await expect(screen).toHaveAttribute('data-scope', 'tonight');
+  await expect(page.getByTestId('browse-scope-tonight')).toHaveAttribute('aria-selected', 'true');
+});
+
 test('rail of four ends in See all, which opens that tab; browser back and forward keep the list', async ({ page }) => {
   await mockSupabase(page);
   await guestOpen(page, '/');

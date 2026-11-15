@@ -6,6 +6,8 @@
 // · /browse — Browse by type, TYPES ONLY (note 85): every type of the whole catalogue as one grid of counts and nothing
 //   else. A tile opens that type's list (/browse/<type>), whose "All" chip leads back to the grid. A search typed on the
 //   grid is the one thing that turns it into a list (every type's matches).
+// A tab screen closes its type chips with a "Browse by type" link (note 86): the catalogue's grid opens over the tab and
+// remembers it, so Back there returns to that tab instead of Home.
 // The magnifier left of Map turns the title into a search field (the native keyboard, Done keeps the query as the
 // list's filter, × clears it). The list pages four rows at a time with the onboarding-style swipe signs and ends with
 // an end card. Pure view: Home.jsx passes the scope's items (the same discovery items Home uses, so there is no second
@@ -32,6 +34,8 @@ const SEARCH = <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></>;
 const CLOSE = <path d="M6 6l12 12M18 6 6 18" />;
 const MAP = <><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></>;
 const SLIDERS = <><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>;
+const GRID = <><rect x="4" y="4" width="6.5" height="6.5" rx="1.6" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6" /></>;
+const CHEVRON = <path d="m9 5 7 7-7 7" />;
 
 // The Home tabs, in Home's own order and words: See all carries them so a reader changes tab in place (note 85).
 const SCOPES = ['foryou', 'tonight', 'weekend'];
@@ -43,9 +47,12 @@ const SCOPES = ['foryou', 'tonight', 'weekend'];
  * @param {Array} p.items  the scope's discovery items, in the scope's order
  * @param {(it) => object} p.shapeRow  discovery item → EventRowV23 row
  * @param {(tab: string) => void} p.onScope  switch to another Home tab without leaving the screen
+ * @param {string|null} p.from  the Home tab this grid was opened out of (Back returns to it, note 86)
+ * @param {() => void} p.onBrowseTypes  open Browse by type from inside a tab (note 86)
  */
 export default function Browse({ T, lang, scope, type, query, filters, items, now, areaLabel, shapeRow,
-  onType, onQuery, onFilters, onBack, onOpenEvent, onOpenHost, onMap, onHost, onScope = () => {} }) {
+  onType, onQuery, onFilters, onBack, onOpenEvent, onOpenHost, onMap, onHost, onScope = () => {}, from = null,
+  onBrowseTypes = () => {} }) {
   const reduced = useReducedMotion();
   const tabLabel = scope !== 'all' ? (TAB_LABEL[scope] || null) : null;
   const typeDef = TYPE_DEFS.find(d => d.key === type) || null;
@@ -104,9 +111,13 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
     else if (act === 'map') onMap(effType);
     else if (act === 'host') onHost();
   };
-  // Back goes up to the grid from a type's list (the grid is its parent), Home everywhere else (note 85).
+  // Back steps up one level (notes 85 and 86): a type's list returns to the grid it was chosen from, the grid returns to
+  // the Home tab it was opened out of, and a tab's list returns Home. The label says which way it goes.
   const fromTypeList = scope === 'all' && effType !== 'all';
-  const backLabel = fromTypeList ? T('Mọi loại', 'All types') : T('Về Trang chủ', 'Back to Home');
+  const fromTab = scope === 'all' && !fromTypeList && TAB_LABEL[from] ? from : null;
+  const backLabel = fromTypeList ? T('Mọi loại', 'All types')
+    : fromTab ? T(`Về ${TAB_LABEL[fromTab].vi}`, `Back to ${TAB_LABEL[fromTab].en}`)
+      : T('Về Trang chủ', 'Back to Home');
   const goBack = () => { if (fromTypeList) pickType('all'); else onBack(); };
 
   return (
@@ -201,6 +212,19 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {/* The way out of one tab's types to every type in the catalogue (note 86): right under the chips, in the quiet
+              link look Home uses for "See all", so it reads as somewhere to go rather than another filter. Never drawn on
+              /browse itself, which is where it leads. */}
+          {scope !== 'all' && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 20px' }}>
+              <button type="button" onClick={onBrowseTypes} data-testid="browse-browse-types"
+                aria-label={T('Duyệt mọi loại sự kiện', 'Browse every event type')}
+                style={{ minHeight: 44, padding: '0 4px', border: 'none', background: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <Icon d={GRID} size={16} />{T('Duyệt theo loại', 'Browse by type')}<Icon d={CHEVRON} size={13} />
+              </button>
             </div>
           )}
 
