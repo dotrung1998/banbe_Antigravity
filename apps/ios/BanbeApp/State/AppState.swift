@@ -575,13 +575,13 @@ final class AppState: ObservableObject {
     @Published var searchBackScreen: Screen = .home
     /// Note 81 (switch home_v23): the Browse screen's type ("all" or a type key), scope ("all" | foryou | tonight |
     /// weekend), its search and its own filters (When, Price, Seats). Opening it fresh clears search and filters.
+    /// The URL (web) and the scope say which of the two screens it is (note 85): /browse carries no scope and is
+    /// Browse by type (the catalogue's types), /see-all/<tab> carries one Home tab. Scope "all" + type "all" is
+    /// therefore the type grid, never a list.
     @Published var browseType = "all"
     @Published var browseScope = "all"
     @Published var browseQuery = ""
     @Published var browseFilters = HomeDiscovery.Filters.default
-    /// Which of the See all screen's two views is open: the scoped list (false) or the same scope as its type grid
-    /// (true). A fresh open lands on the list; coming back from an event keeps whichever view was open.
-    @Published var browseShowTypes = false
     /// Search opened from Home is an OVERLAY on top of Home (RootView), not a screen switch: Home stays mounted, so
     /// opening never flashes a blank page and closing never rebuilds Home (no reload stutter).
     @Published var searchOverlayOpen = false

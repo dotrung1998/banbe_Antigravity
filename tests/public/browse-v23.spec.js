@@ -52,18 +52,65 @@ async function guestOpen(page, path = '/') {
 }
 const shot = async (page, name) => { if (SHOTS) { await page.waitForTimeout(700); await page.screenshot({ path: `${SHOTS}/${name}.png` }); } };
 
-test('a guest deep link opens Browse on that type; Back returns Home', async ({ page }) => {
+test('a guest deep link opens Browse on that type; Back steps up to the grid, then Home', async ({ page }) => {
   await mockSupabase(page);
   await guestOpen(page, '/browse/music');
   const screen = page.getByTestId('browse-screen');
   await expect(screen).toBeVisible({ timeout: 20000 });
   await expect(screen).toHaveAttribute('data-type', 'music');
-  await expect(page.getByTestId('browse-title')).toHaveText('Music');
+  await expect(screen).toHaveAttribute('data-mode', 'list');
+  await expect(page.getByTestId('browse-nav-title')).toHaveText('Music');
   await expect(page.getByTestId('browse-type-music')).toHaveAttribute('aria-selected', 'true');
   await shot(page, 'b1-browse-music');
+  // The type's list is a child of the grid, so Back steps up to it instead of jumping Home (note 85).
+  await page.getByTestId('browse-back').click();
+  await expect(page).toHaveURL(/\/browse$/);
+  await expect(screen).toHaveAttribute('data-mode', 'index');
   await page.getByTestId('browse-back').click();
   await expect(page.locator('[data-screen-label="Home"]')).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
+});
+
+test('Browse by type is types only; a tile opens its list and All returns to the grid', async ({ page }) => {
+  await mockSupabase(page);
+  await guestOpen(page, '/browse');
+  const screen = page.getByTestId('browse-screen');
+  await expect(screen).toBeVisible({ timeout: 20000 });
+  await expect(screen).toHaveAttribute('data-mode', 'index');
+  // The grid is the whole screen: no type chips, no list, no filters row, no scope tabs.
+  await expect(page.getByTestId('browse-title')).toHaveText('Browse by type');
+  await expect(page.getByTestId('browse-type-chips')).toHaveCount(0);
+  await expect(page.getByTestId('browse-list')).toHaveCount(0);
+  await expect(page.getByTestId('browse-filters-button')).toHaveCount(0);
+  await expect(page.getByTestId('browse-scope-tabs')).toHaveCount(0);
+  const tile = page.getByTestId('browse-grid-music');
+  await expect(tile).toBeVisible();
+  await expect(page.getByTestId('browse-grid-count-music')).toHaveText(/\d+ events?$/);
+  await shot(page, 'b3-browse-by-type');
+  await tile.click();
+  await expect(page).toHaveURL(/\/browse\/music$/);
+  await expect(screen).toHaveAttribute('data-mode', 'list');
+  await expect(page.getByTestId('browse-nav-title')).toHaveText('Music');
+  await page.getByTestId('browse-type-all').click();
+  await expect(page).toHaveURL(/\/browse$/);
+  await expect(screen).toHaveAttribute('data-mode', 'index');
+});
+
+test('See all carries Home three tabs: another tab switches in place and the URL follows', async ({ page }) => {
+  await mockSupabase(page);
+  await guestOpen(page, '/see-all/foryou');
+  const screen = page.getByTestId('browse-screen');
+  await expect(screen).toBeVisible({ timeout: 20000 });
+  await expect(page.getByTestId('browse-scope-tabs')).toBeVisible();
+  await expect(page.getByTestId('browse-scope-foryou')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('browse-scope-weekend')).toHaveAttribute('aria-selected', 'false');
+  await shot(page, 'b4-see-all-tabs');
+  await page.getByTestId('browse-scope-weekend').click();
+  await expect(page).toHaveURL(/\/see-all\/weekend$/);
+  await expect(screen).toHaveAttribute('data-scope', 'weekend');
+  await expect(page.getByTestId('browse-scope-weekend')).toHaveAttribute('aria-selected', 'true');
+  // The screen stays the open one (no trip through Home) and its own content now describes that tab.
+  await expect(page.getByTestId('browse-screen')).toBeVisible();
 });
 
 test('rail of four ends in See all, which opens that tab; browser back and forward keep the list', async ({ page }) => {

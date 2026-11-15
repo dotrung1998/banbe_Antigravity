@@ -44,7 +44,7 @@ import LiveLine from '../components/home/LiveLine.jsx';
 import LiveNowSheet from './sheets/LiveNowSheet.jsx';
 import { liveUpdates } from '../lib/liveLine.js';
 import { useReducedMotion } from '../lib/useReducedMotion.js';
-import { browseFilters as toBrowseFilters } from '../lib/browse.js';
+import { browseFilters as toBrowseFilters, typeCounts as browseTypeCounts } from '../lib/browse.js';
 import HomeShellV5 from '../components/home/HomeShellV5.jsx';
 import QuickSheetV5 from '../components/home/QuickSheetV5.jsx';
 // Map v6 (note 74): the card pager's photos (cover first, max 6).
@@ -667,6 +667,14 @@ export default function Home({ browse = false }) {
     setTimeout(() => document.querySelector('[data-testid^="home-event-"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 120);
   };
 
+  // Note 85: See all carries Home's three tabs, so a reader changes tab without going back to Home first. The tab is
+  // what changes: its search and its own filters start clean (the same reset a fresh See all takes), and the type
+  // survives only where the new tab still has it (a tab can be a different slice of the catalogue).
+  const browseScopeTo = (tab) => {
+    const keepType = (browseTypeCounts(tabItems(tab))[s.browseType] || 0) > 0;
+    setBrowse({ browseScope: tab, browseType: keepType ? s.browseType : 'all', browseQuery: '', browseFilters: DEFAULT_FILTERS });
+  };
+
   // Retention roadmap P1 ("Cuối tuần này") — reuses the SAME district
   // (curArea) and category (homeFilters.cats) picks already driving the main feed
   // above, rather than inventing a separate preference of its own; there is
@@ -1167,7 +1175,7 @@ export default function Home({ browse = false }) {
     return (
       <Browse T={T} lang={s.lang === 'en' ? 'en' : 'vi'} scope={s.browseScope || 'all'} type={s.browseType || 'all'} query={s.browseQuery || ''}
         filters={s.browseFilters} items={browseItems || []} now={nowMs} areaLabel={areaName} shapeRow={shapeRow}
-        view={s.browseView || 'events'} onView={(v) => setBrowse({ browseView: v })}
+        onScope={browseScopeTo}
         onType={(k) => setBrowse({ browseType: k })} onQuery={(q) => setBrowse({ browseQuery: q })}
         onFilters={(f) => setBrowse({ browseFilters: f ? toBrowseFilters(f) : DEFAULT_FILTERS })}
         onBack={backFromBrowse} onOpenEvent={goEvent} onOpenHost={(id) => openOrganizerProfile(id, 'browse')}

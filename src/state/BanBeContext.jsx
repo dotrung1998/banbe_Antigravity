@@ -647,11 +647,11 @@ const initialState = {
   // `{}` when the function isn't deployed yet — badges then simply don't show), and the Search screen query.
   homeFilters: HOME_DEFAULT_FILTERS,
   homeSort: 'soonest',
-  // Browse by type / See all (v2.3, note 81, switch home_v23): which list is open, its search and its own filters
-  // (When, Price, Seats). Public browsing state only, like homeFilters, so sign-out does not need to clear it.
-  // browseView is which of the screen's two views is open: 'events' (the scoped list) or 'types' (the very same scope
-  // as its type grid). Session view state, not part of the URL, so /browse and /see-all/<tab> keep their list meaning.
-  browseType: 'all', browseScope: 'all', browseView: 'events', browseQuery: '', browseFilters: HOME_DEFAULT_FILTERS,
+  // Browse by type / See all (v2.3, notes 81 and 85): which list is open, its search and its own filters (When, Price,
+  // Seats). Public browsing state only, like homeFilters, so sign-out does not need to clear it. The URL says which of
+  // the two screens it is: /browse carries no scope (Browse by type, the catalogue's types) and /see-all/<tab> carries
+  // one Home tab. `all` scope + `all` type is therefore the type grid, never a list.
+  browseType: 'all', browseScope: 'all', browseQuery: '', browseFilters: HOME_DEFAULT_FILTERS,
   homeFilterSheetOpen: false,
   eventFill: {},
   // Phase 1 Q5: the event whose approval notification the host just opened (Dashboard shows its "live" card once).
@@ -6671,15 +6671,13 @@ export function BanBeProvider({ children }) {
     set({ scheduleAddedKeys: scheduleStore.keys(scheduleUid) });
     track('banbe_schedule_remove');
   }, [scheduleUid, set]);
-  // v2.3 Browse by type / See all (note 81). Opening a list from Home always starts unfiltered and unsearched; the
-  // event and host profile opened from it come back here (eventBackScreen / organizerProfileBack = 'browse').
-  // `keep` (browser back/forward into the same list): keep its search, filters and view instead of starting fresh.
-  // A fresh open lands on the list (Events). By type is one tap away and keeps the very same scope.
+  // v2.3 Browse by type / See all (note 81, reworked in note 85). Opening a list from Home always starts unfiltered and
+  // unsearched; the event and host profile opened from it come back here (eventBackScreen / organizerProfileBack =
+  // 'browse'). `keep` (browser back/forward into the same list): keep its search and filters instead of starting fresh.
   const openBrowse = useCallback(({ type = 'all', scope = 'all', keep = false } = {}) => set(prev => {
     const same = keep && prev.browseType === (type || 'all') && prev.browseScope === (scope || 'all');
     return {
       screen: 'browse', browseType: type || 'all', browseScope: scope || 'all', homeFilterSheetOpen: false,
-      browseView: same ? prev.browseView : 'events',
       browseQuery: same ? prev.browseQuery : '', browseFilters: same ? prev.browseFilters : HOME_DEFAULT_FILTERS,
     };
   }), [set]);
