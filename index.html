@@ -8,7 +8,9 @@
     <meta name="theme-color" content="#16140f" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- No apple-mobile-web-app-status-bar-style: deprecated, and ignored since iOS 26.1 (it used to be
+         black-translucent). The Home Screen app now takes its status-bar colour from the fixed strip at the top of
+         the page (body::before in src/index.css); see that rule's comment. -->
     <title>banbe</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

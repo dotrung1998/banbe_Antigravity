@@ -833,9 +833,10 @@ function Shell() {
             drops the old sibling), so React never tears down and remounts
             the destination the way changing `<Screen key={state.screen}/>`'s
             own key used to. */}
-        {/* iPhone safe area (status bar / Dynamic Island): the page runs under it (viewport-fit=cover + black-translucent).
-            Home's dark hero deliberately extends beneath it; every other root screen gets the inset as top padding and a
-            sticky paper strip so scrolled content never slides under the clock. Zero on desktop / Safari tabs. */}
+        {/* iPhone safe area (status bar / Dynamic Island): the page runs under it (viewport-fit=cover; since iOS 26.1
+            the system draws the bar itself and colours it from body::before, see src/index.css). Home's dark hero
+            deliberately extends beneath it; every other root screen gets the inset as top padding and a sticky paper
+            strip so scrolled content never slides under the clock. Zero on desktop / Safari tabs. */}
         <div style={{ paddingTop: (heroHome || state.screen === 'event') ? 0 : SAFE_TOP, paddingBottom: showBar ? DOCK_CLEARANCE : 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
           {[...(eventUnderlay ? [eventUnderlay] : []), state.screen, ...(swipeNeighbor ? [swipeNeighbor] : [])].map((s) => {
             const isCurrent = s === state.screen;

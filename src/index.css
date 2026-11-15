@@ -181,7 +181,14 @@ html, body {
 }
 
 /* iPhone status bar / Dynamic Island strip (web app opened full screen): painted with the dark hero colour on EVERY
-   screen so no pale band shows above the content. 0 high on desktop, in the desktop phone frame and in Safari tabs. */
+   screen so no pale band shows above the content. 0 high on desktop, in the desktop phone frame and in Safari tabs.
+
+   iOS 26.1+ draws the status bar itself, above the page: `black-translucent` and `theme-color` are ignored, and the
+   bar takes its colour from a fixed element at the very top of the page (WebKit's rules: at least 6 px tall, at least
+   80% wide, within 4 px of the top). Apple's answer on WebKit bug 317153 is to remove black-translucent and let the
+   bar follow the page. So this element is that top edge: full width, fixed at top 0, dark on every screen. Without a
+   real height there (the inset is 0 once the system sits above the page) the bar fell back to the paper canvas and
+   the blurred white band the owner reported on 2026-11-15. */
 body::before {
   content: '';
   position: fixed;
@@ -192,8 +199,16 @@ body::before {
   pointer-events: none;
 }
 
+/* Phones/tablets (the desktop phone frame and Safari tabs keep the rules above): never let the strip collapse to 0,
+   which is what iOS 26.1+ samples for the status bar. 12 px is the tested minimum for a solid bar without the blur. */
+@media (pointer: coarse) {
+  body::before { height: max(var(--bb-safe-top, env(safe-area-inset-top, 0px)), 12px); }
+}
+
+/* The rest of the page is painted by .bb-stage/#root over this; body is what the system samples as the page's own
+   background, so it stays night too instead of flashing (or tinting the status bar) paper. */
 body {
-  background: #EFEBE0;
+  background: #16140f;
   font-family: var(--bb-face, 'Be Vietnam Pro'), system-ui, sans-serif;
   min-height: 100vh;
   color: var(--bb-fg);
