@@ -609,13 +609,21 @@ export default function Home({ browse = false }) {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [T, trStatus]);
-  const shortlist = useMemo(() => {
+  // The Shortlist follows the FILTERS, not the hero tab: it is every event Home lists, narrowed by Home's filters and
+  // in Home's own order (homeSort, else the feed's). The tabs above only switch the rail, so the list under it never
+  // empties just because For You is open. total = before the filters.
+  const shortlistBase = useMemo(() => {
     if (!v23) return null;
-    const tabAll = tabItems(heroTab);
-    const shown = applyDiscoveryFilters(tabAll, homeFilters, nowMs);
-    return { rows: shown.map(shapeRow), total: tabAll.length };
+    const open = (it) => !it.ev.cancelled && Number.isFinite(it.startsAt) && it.startsAt >= nowMs - 3600e3;
+    return applyDiscoveryFilters(discoveryItems, DEFAULT_FILTERS, nowMs).filter(open);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v23, heroTab, tabItems, homeFilters, shapeRow, Math.floor(nowMs / 60000)]);
+  }, [v23, discoveryItems, Math.floor(nowMs / 60000)]);
+  const shortlist = useMemo(() => {
+    if (!shortlistBase) return null;
+    const narrowed = applyDiscoveryFilters(shortlistBase, homeFilters, nowMs);
+    return { rows: (s.homeSort && s.homeSort !== 'soonest' ? sortEvents(narrowed, s.homeSort) : narrowed).map(shapeRow), total: shortlistBase.length };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shortlistBase, homeFilters, s.homeSort, shapeRow, Math.floor(nowMs / 60000)]);
   // v2.3 live line (note 81): the daily Pulse ranking + real seat fill + the Tonight / Weekend counts, only for events
   // Home actually lists (so every update can be opened). One list for the ticker, the Reduced form and Live now.
   const [liveIndex, setLiveIndex] = useState(0);
@@ -1278,7 +1286,7 @@ export default function Home({ browse = false }) {
           shortlist={shortlist && (
             <div data-reveal="2">
               <LiveLine updates={live} index={Math.min(liveIndex, Math.max(0, live.length - 1))} onIndex={setLiveIndex} onOpen={() => setLiveOpen(true)} T={T} />
-              <ShortlistV23 T={T} lang={s.lang === 'en' ? 'en' : 'vi'} tab={heroTab} rows={shortlist.rows} total={shortlist.total}
+              <ShortlistV23 T={T} lang={s.lang === 'en' ? 'en' : 'vi'} rows={shortlist.rows} total={shortlist.total}
                 filterBadge={filterBadge} onFilters={() => set({ homeFilterSheetOpen: true })} onOpenEvent={goEvent} onAction={onShortlistAction} />
             </div>
           )}>

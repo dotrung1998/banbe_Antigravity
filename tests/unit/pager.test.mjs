@@ -45,29 +45,28 @@ test('the nearest page wins and indexes are clamped', () => {
   assert.equal(clampPage(5, 0), 0);
 });
 
-test('Shortlist end: filters hide some, or the end of the tab', () => {
-  const tabLabel = { vi: 'Dành cho bạn', en: 'For You' };
-  const f = shortlistEnd({ tab: 'foryou', tabLabel, total: 8, shown: 5, filtersOn: true });
+test('Shortlist end: filters hide some, or the end of the list', () => {
+  const f = shortlistEnd({ total: 8, shown: 5, filtersOn: true });
   assert.equal(f.kind, 'filters');
   assert.equal(f.title.en, '3 more are just outside your filters.');
   assert.equal(f.actions[0].act, 'clear-filters');
   assert.equal(f.actions[0].label.en, 'Show all 8');
-  const one = shortlistEnd({ tab: 'foryou', tabLabel, total: 6, shown: 5, filtersOn: true });
+  const one = shortlistEnd({ total: 6, shown: 5, filtersOn: true });
   assert.equal(one.title.en, '1 more is just outside your filters.');
-  const end = shortlistEnd({ tab: 'tonight', tabLabel: { vi: 'Tối nay', en: 'Tonight' }, total: 3, shown: 3, filtersOn: false });
+  // The Shortlist follows the filters, not the hero tab, so the end names the whole list, never a tab.
+  const end = shortlistEnd({ total: 3, shown: 3, filtersOn: false });
   assert.equal(end.kind, 'end');
-  assert.equal(end.eyebrow.en, 'End of Tonight');
+  assert.equal(end.eyebrow.en, '3 events in all');
   assert.equal(end.actions[0].act, 'types');
-  // filters on but nothing hidden: plain end of tab
-  assert.equal(shortlistEnd({ tab: 'weekend', tabLabel, total: 4, shown: 4, filtersOn: true }).kind, 'end');
+  // filters on but nothing hidden: plain end of the list
+  assert.equal(shortlistEnd({ total: 4, shown: 4, filtersOn: true }).kind, 'end');
   const s = slimmed(f);
   assert.equal(s.body, null);
   assert.equal(s.actions.length, 1);
 });
 
 test('end-card copy follows the copy rule (no dash or semicolon between ideas, no fake actions)', () => {
-  const tabLabel = { vi: 'Cuối tuần', en: 'Weekend' };
-  const cards = [shortlistEnd({ tab: 'weekend', tabLabel, total: 9, shown: 2, filtersOn: true }), shortlistEnd({ tab: 'weekend', tabLabel, total: 2, shown: 2, filtersOn: false }), shortlistEnd({ tab: 'tonight', tabLabel, total: 2, shown: 2, filtersOn: false })];
+  const cards = [shortlistEnd({ total: 9, shown: 2, filtersOn: true }), shortlistEnd({ total: 2, shown: 2, filtersOn: false })];
   for (const c of cards) {
     const all = [c.eyebrow, c.title, c.body, ...c.actions.map(a => a.label)].flatMap(x => [x.vi, x.en]).join(' | ');
     assert.doesNotMatch(all, /—|;| - /);

@@ -8,11 +8,11 @@
 const L = (vi, en) => ({ vi, en });
 
 /**
- * Home Shortlist end card.
- * @param {{ tab: 'foryou'|'tonight'|'weekend', tabLabel: {vi,en}, total: number, shown: number, filtersOn: boolean }} p
- *   total = the tab's events before Home's filters, shown = after.
+ * Home Shortlist end card. The Shortlist follows Home's filters, not the hero tab, so its copy talks about events only.
+ * @param {{ total: number, shown: number, filtersOn: boolean }} p
+ *   total = every event Home lists before Home's filters, shown = after.
  */
-export function shortlistEnd({ tab, tabLabel, total, shown, filtersOn }) {
+export function shortlistEnd({ total, shown, filtersOn }) {
   const hidden = Math.max(0, total - shown);
   if (filtersOn && hidden > 0) {
     return {
@@ -27,10 +27,8 @@ export function shortlistEnd({ tab, tabLabel, total, shown, filtersOn }) {
   }
   return {
     kind: 'end',
-    eyebrow: L(`Hết mục ${tabLabel.vi}`, `End of ${tabLabel.en}`),
-    title: tab === 'tonight'
-      ? L('Tối nay chỉ có vậy. Chỗ đẹp hết trước.', 'That’s tonight. The good seats go first.')
-      : L('Bạn đã xem hết các gợi ý.', 'You’ve seen every pick.'),
+    eyebrow: L(`Tất cả ${total} sự kiện`, `${total} ${total === 1 ? 'event' : 'events'} in all`),
+    title: L('Bạn đã xem hết các sự kiện.', 'You’ve seen every event.'),
     body: L('Duyệt theo loại hoặc mở bản đồ để xem thêm quanh bạn.', 'Browse by type or open the map to see more around you.'),
     actions: [{ act: 'types', label: L('Duyệt mọi loại', 'Browse every type'), primary: true }, { act: 'map', label: L('Mở bản đồ', 'Open the map') }],
   };

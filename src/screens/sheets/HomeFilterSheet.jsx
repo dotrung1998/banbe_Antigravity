@@ -137,7 +137,9 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
             style={{ justifySelf: 'end', width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(var(--bb-fg-rgb),0.07)', color: ink, fontSize: 18, cursor: 'pointer' }}>×</button>
         </div>
 
-        <div style={{ overflowY: 'auto', padding: '0 20px', flex: 1 }}>
+        {/* overscrollBehavior: contain — this is the only scroller in the overlay, and its overscroll must not chain to
+            the page behind the sheet. */}
+        <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: '0 20px', flex: 1 }}>
           {forYou && !browseMode && (
             <Section title={T('Dành cho bạn', 'For You')} right={
               <button type="button" role="switch" aria-checked={forYou.on} onClick={() => forYou.set(!forYou.on)} data-testid="home-filter-for-you"
