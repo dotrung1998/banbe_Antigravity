@@ -485,6 +485,12 @@ function Shell() {
   const onGesturePointerDown = (e) => {
     if (gestureBlocked) return;
     const el = scrollRef.current;
+    // Sheets, the dock and every other overlay are rendered through a PORTAL into .bb-screen, so their DOM is not
+    // inside the scroller — but React still bubbles their events up the component tree, and this handler sits on an
+    // ancestor in that tree. Without this check, dragging a control inside a sheet (the filter sheet's price range)
+    // started a root swipe/pull and moved the screen behind the sheet. Only pointers that began inside the scroller
+    // (or anywhere outside a portal, e.g. a screen's own content) may drive the root gesture.
+    if (el && e.target instanceof Node && !el.contains(e.target)) return;
     // The app renders centered with its own maxWidth — on a wider viewport
     // that leaves empty space on both sides, so edge-zone math below needs
     // the drag's start X relative to THIS container's own left edge, never
