@@ -13,6 +13,7 @@ extension AppState {
         browseType = t
         browseScope = sc
         if !same { browseQuery = ""; browseFilters = .default }
+        browseShowTypes = false
         homeFilterSheetOpen = false
         screen = .browse
     }
@@ -97,9 +98,12 @@ struct BrowseView: View {
         let q = app.browseQuery.trimmingCharacters(in: .whitespaces)
         let navTitle = !q.isEmpty ? "“\(q)” · \(titleText)" : (tabLabel != nil && effType != "all" ? "\(tabLabel!.t(app.isEN)) · \(titleText)" : titleText)
         let nFilters = BrowseRules.filterCount(app.browseFilters)
+        // In the type grid the header describes the whole scope (the tiles carry their own per-type counts).
+        let headCount = app.browseShowTypes ? entries.count : result.list.count
 
         VStack(spacing: 0) {
             nav(navTitle)
+            viewSwitch
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
@@ -109,25 +113,29 @@ struct BrowseView: View {
                                 .accessibilityAddTraits(.isHeader)
                                 .accessibilityIdentifier("browse.title")
                             HostDeckView(hosts: hosts) { hostsOpen = true }
-                            Text([app.T("\(result.list.count) sự kiện", "\(result.list.count) \(result.list.count == 1 ? "event" : "events")"),
+                            Text([app.T("\(headCount) sự kiện", "\(headCount) \(headCount == 1 ? "event" : "events")"),
                                   app.area == LocationHierarchy.allID ? nil : app.currentAreaLabel].compactMap { $0 }.joined(separator: " · "))
                                 .font(.app(size: 13)).opacity(0.72).padding(.top, 6)
                         }
                         .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 8)
-                        if !chips.isEmpty { typeChips(chips, counts: counts, total: entries.count, selected: effType) }
-                        HStack {
-                            (Text("\(result.list.count)").bold() + Text(" " + app.T("sự kiện", result.list.count == 1 ? "event" : "events")))
-                                .font(.app(size: 14))
-                                .accessibilityIdentifier("browse.count")
-                            Spacer()
-                            filtersButton(nFilters)
+                        if app.browseShowTypes {
+                            typeGrid(chips, counts: counts)
+                        } else {
+                            if !chips.isEmpty { typeChips(chips, counts: counts, total: entries.count, selected: effType) }
+                            HStack {
+                                (Text("\(result.list.count)").bold() + Text(" " + app.T("sự kiện", result.list.count == 1 ? "event" : "events")))
+                                    .font(.app(size: 14))
+                                    .accessibilityIdentifier("browse.count")
+                                Spacer()
+                                filtersButton(nFilters)
+                            }
+                            .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 12)
+                            .id("browse.listTop")
+                            V23Pager(items: rows, key: \.key, listID: "browse.list", hints: true,
+                                     row: { r in EventRowV23View(row: r, idPrefix: "browse.event") { app.goEvent(r.key) } },
+                                     end: { v in EndCardView(model: card, variant: v) { onEnd($0, proxy: proxy) } },
+                                     empty: { EndCardView(model: emptyCard(hidden: result.hidden), variant: .solo) { onEnd($0, proxy: proxy) } })
                         }
-                        .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 12)
-                        .id("browse.listTop")
-                        V23Pager(items: rows, key: \.key, listID: "browse.list", hints: true,
-                                 row: { r in EventRowV23View(row: r, idPrefix: "browse.event") { app.goEvent(r.key) } },
-                                 end: { v in EndCardView(model: card, variant: v) { onEnd($0, proxy: proxy) } },
-                                 empty: { EndCardView(model: emptyCard(hidden: result.hidden), variant: .solo) { onEnd($0, proxy: proxy) } })
                         Color.clear.frame(height: 120)
                     }
                     .foregroundStyle(app.palette.ink)
@@ -155,6 +163,77 @@ struct BrowseView: View {
             .presentationDetents([.large])
         }
         .accessibilityIdentifier("browse.screen")
+    }
+
+    // MARK: Events | By type
+
+    /// The screen's two views, in the type chips' own look: the scoped list (Events), or the same scope as its type
+    /// grid (By type). Copy follows note 57 (no dash or semicolon between ideas).
+    private var viewSwitch: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                viewChip(app.T("Sự kiện", "Events"), key: "events", on: !app.browseShowTypes) { app.browseShowTypes = false }
+                viewChip(app.T("Theo loại", "By type"), key: "types", on: app.browseShowTypes) { app.browseShowTypes = true }
+            }
+            .padding(.horizontal, 20).padding(.top, 10)
+        }
+        .rootSwipeExclusion("browseViewSwitch")
+        .accessibilityIdentifier("browse.viewSwitch")
+    }
+
+    private func viewChip(_ title: String, key: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button { Haptics.selection(); action() } label: {
+            Text(title).font(.app(size: 14, weight: .semibold))
+                .foregroundStyle(on ? app.palette.paper : app.palette.ink)
+                .padding(.horizontal, 16).frame(minHeight: 44)
+                .background(on ? app.palette.ink : .clear, in: Capsule())
+                .overlay(Capsule().stroke(on ? .clear : app.palette.rule, lineWidth: 1))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityIdentifier("browse.view.\(key)")
+    }
+
+    private func eventCount(_ n: Int) -> String {
+        app.isEN ? "\(n) \(n == 1 ? "event" : "events")" : "\(n) sự kiện"
+    }
+
+    /// Every type with an event in this scope, most events first, in Home's Browse by type tiles. A tile opens the
+    /// scoped list for that type, the same step the type chips take.
+    @ViewBuilder
+    private func typeGrid(_ chips: [(key: String, vi: String, en: String)], counts: [String: Int]) -> some View {
+        if chips.isEmpty {
+            Text(app.T("Chưa có gì ở đây.", "Nothing here yet."))
+                .font(.app(size: 14)).opacity(0.72)
+                .padding(.horizontal, 20).padding(.top, 18)
+                .accessibilityIdentifier("browse.typeGrid.empty")
+        } else {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4, alignment: .top), count: 3), spacing: 4) {
+                ForEach(chips, id: \.key) { (d: (key: String, vi: String, en: String)) in
+                    Button {
+                        Haptics.selection()
+                        app.browseType = d.key
+                        app.browseShowTypes = false
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: CategoryGlyph.symbol(d.key)).font(.app(size: 24, weight: .light)).frame(width: 52, height: 52)
+                            Text(app.T(d.vi, d.en)).font(.app(size: 13)).lineLimit(1).minimumScaleFactor(0.8)
+                            Text(eventCount(counts[d.key] ?? 0)).font(.app(size: 11.5)).opacity(0.64).lineLimit(1).minimumScaleFactor(0.8)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 14).padding(.bottom, 12)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("browse.grid.\(d.key)")
+                }
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 20).padding(.top, 10)
+            .accessibilityIdentifier("browse.typeGrid")
+        }
     }
 
     // MARK: parts

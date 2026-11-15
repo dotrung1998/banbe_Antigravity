@@ -1,10 +1,12 @@
 // Browse by type / See all (v2.3, note 81, switch home_v23). One screen for both: "Browse by type" lists the whole
-// catalogue, "See all" one Home tab (For You, Tonight, Weekend) with type chips counted inside that tab. Under the title
-// a deck of host faces replaces the description (a tap lists the hosts, a host opens their real profile). The magnifier
-// left of Map turns the title into a search field (the native keyboard, Done keeps the query as the list's filter,
-// × clears it). Its own Filters (When, Price, Seats). The list pages four rows at a time with the onboarding-style swipe
-// signs and ends with an end card. Pure view: Home.jsx passes the scope's items (the same discovery items Home uses, so
-// there is no second filter path) and the handlers. Rules: src/lib/browse.js, src/lib/pager.js.
+// catalogue, "See all" one Home tab (For You, Tonight, Weekend) with type chips counted inside that tab. Under the
+// header row an Events | By type switch shows the same scope as its type grid instead of the list (so every count
+// describes the very events the list holds). Under the title a deck of host faces replaces the description (a tap
+// lists the hosts, a host opens their real profile). The magnifier left of Map turns the title into a search field
+// (the native keyboard, Done keeps the query as the list's filter, × clears it). Its own Filters (When, Price, Seats).
+// The list pages four rows at a time with the onboarding-style swipe signs and ends with an end card. Pure view:
+// Home.jsx passes the scope's items (the same discovery items Home uses, so there is no second filter path) and the
+// handlers. Rules: src/lib/browse.js, src/lib/pager.js.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Pager from '../components/list/Pager.jsx';
 import EndCard from '../components/list/EndCard.jsx';
@@ -28,15 +30,19 @@ const CLOSE = <path d="M6 6l12 12M18 6 6 18" />;
 const MAP = <><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></>;
 const SLIDERS = <><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>;
 
+// The screen's two views: the scoped list, or the same scope's types. Read by Home.jsx and the URL sync as state.
+const VIEWS = [['events', 'Sự kiện', 'Events'], ['types', 'Theo loại', 'By type']];
+
 /**
  * @param {object} p
  * @param {'all'|'foryou'|'tonight'|'weekend'} p.scope
  * @param {string} p.type  'all' or a type key
+ * @param {'events'|'types'} p.view  the list, or the type grid for the same scope
  * @param {Array} p.items  the scope's discovery items, in the scope's order
  * @param {(it) => object} p.shapeRow  discovery item → EventRowV23 row
  */
 export default function Browse({ T, lang, scope, type, query, filters, items, now, areaLabel, shapeRow,
-  onType, onQuery, onFilters, onBack, onOpenEvent, onOpenHost, onMap, onHost }) {
+  onType, onQuery, onFilters, onBack, onOpenEvent, onOpenHost, onMap, onHost, view = 'events', onView = () => {} }) {
   const reduced = useReducedMotion();
   const tabLabel = scope !== 'all' ? (TAB_LABEL[scope] || null) : null;
   const typeDef = TYPE_DEFS.find(d => d.key === type) || null;
@@ -51,6 +57,18 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
   const nFilters = browseFilterCount(filters);
   const others = chips.filter(d => d.key !== effType).map(d => ({ key: d.key, name: { vi: d.vi, en: d.en }, count: counts[d.key] }));
   const card = browseEnd({ type: effType, typeName: effType === 'all' ? null : typeName, list, hidden, query, others });
+
+  // Events | By type (no dash or semicolon in the copy, note 57). Both views read the very same scope items, so the
+  // grid's counts and the list's rows always describe the same set of events.
+  const showingTypes = view === 'types';
+  const evN = (n) => T(`${n} sự kiện`, `${n} ${n === 1 ? 'event' : 'events'}`);
+  // The type chips and the view switch share one chip look (ink fill when selected).
+  const chipLook = (on) => ({
+    flex: 'none', display: 'flex', alignItems: 'center', gap: 6, minHeight: 44, padding: '0 14px', borderRadius: 999,
+    fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+    border: on ? 'none' : '1px solid var(--bb-rule)', background: on ? 'var(--bb-fg)' : 'none', color: on ? 'var(--bb-bg)' : 'inherit',
+  });
+  const scopeCount = showingTypes ? items.length : list.length;
 
   const title = effType !== 'all' && typeName ? T(typeName.vi, typeName.en)
     : tabLabel ? T(tabLabel.vi, tabLabel.en) : T('Mọi sự kiện', 'All events');
@@ -76,7 +94,7 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
   };
 
   return (
-    <div data-testid="browse-screen" data-scope={scope} data-type={effType} style={{ minHeight: '100%', background: 'var(--bb-bg)', color: 'var(--bb-fg)', animation: enter }}>
+    <div data-testid="browse-screen" data-scope={scope} data-type={effType} data-view={view} style={{ minHeight: '100%', background: 'var(--bb-bg)', color: 'var(--bb-fg)', animation: enter }}>
       <style>{'@keyframes bbV23PushIn { from { transform: translateX(28%); opacity: .4; } to { transform: none; opacity: 1; } }'}</style>
       <header data-testid="browse-nav" style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bb-bg)', borderBottom: '1px solid var(--bb-rule)' }}>
         <button type="button" onClick={onBack} aria-label={T('Về Trang chủ', 'Back to Home')} data-testid="browse-back" style={navBtn}><Icon d={BACK} /></button>
@@ -98,64 +116,95 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
         <button type="button" onClick={() => onMap(effType)} aria-label={T('Xem trên bản đồ', 'See on the map')} data-testid="browse-map" style={navBtn}><Icon d={MAP} /></button>
       </header>
 
+      {/* Events | By type, right under the header row, in the type chips' own look. */}
+      <div role="tablist" aria-label={T('Cách xem', 'View')} data-hscroll data-testid="browse-view-switch"
+        style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '10px 20px 0', scrollbarWidth: 'none' }}>
+        {VIEWS.map(([k, vi, en]) => {
+          const on = view === k;
+          return (
+            <button key={k} type="button" role="tab" aria-selected={on} data-testid={`browse-view-${k}`} onClick={() => onView(k)} style={chipLook(on)}>
+              <span>{T(vi, en)}</span>
+            </button>
+          );
+        })}
+      </div>
+
       <div style={{ padding: '18px 20px 8px' }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.72 }}>{kicker}</div>
         <h1 data-testid="browse-title" style={{ margin: '4px 0 10px', fontSize: 30, fontWeight: 400, letterSpacing: '-.02em', lineHeight: 1.1 }}>{title}</h1>
         <HostDeck hosts={hosts} onOpen={() => setHostsOpen(true)} T={T} />
         <div style={{ fontSize: 13, opacity: 0.72, marginTop: 6 }}>
-          {[T(`${list.length} sự kiện`, `${list.length} ${list.length === 1 ? 'event' : 'events'}`), areaLabel].filter(Boolean).join(' · ')}
+          {[evN(scopeCount), areaLabel].filter(Boolean).join(' · ')}
         </div>
       </div>
 
-      {chips.length > 0 && (
-        <div role="tablist" aria-label={T('Loại sự kiện', 'Event types')} data-hscroll data-testid="browse-type-chips"
-          style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '6px 20px 10px', scrollbarWidth: 'none' }}>
-          {[{ key: 'all', vi: 'Tất cả', en: 'All' }, ...chips].map(d => {
-            const on = effType === d.key;
-            const n = d.key === 'all' ? items.length : counts[d.key];
-            return (
-              <button key={d.key} type="button" role="tab" aria-selected={on} data-testid={`browse-type-${d.key}`} onClick={() => onType(d.key)}
-                style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 6, minHeight: 44, padding: '0 14px', borderRadius: 999, border: on ? 'none' : '1px solid var(--bb-rule)', background: on ? 'var(--bb-fg)' : 'none', color: on ? 'var(--bb-bg)' : 'inherit', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                {d.key !== 'all' && <CategoryGlyph cat={d.key} size={16} strokeWidth={1.6} />}
-                <span>{T(d.vi, d.en)}</span>
-                <span data-testid={`browse-type-count-${d.key}`} style={{ fontWeight: 500, opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>{n}</span>
-              </button>
-            );
-          })}
+      {showingTypes ? (
+        /* The type grid, in the same tiles as Home's "Browse by type": a tile opens the scoped list for that type. */
+        <div data-testid="browse-type-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, padding: '6px 20px 0' }}>
+          {chips.map(d => (
+            <button key={d.key} type="button" data-testid={`browse-grid-${d.key}`} onClick={() => { onType(d.key); onView('events'); }}
+              style={{ padding: '14px 0 12px', border: 'none', borderRadius: 16, background: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontFamily: 'inherit', fontSize: 13, color: 'inherit', cursor: 'pointer' }}>
+              <span style={{ width: 52, height: 52, display: 'grid', placeItems: 'center', marginBottom: 4 }}><CategoryGlyph cat={d.key} size={28} strokeWidth={1.5} /></span>
+              <span>{T(d.vi, d.en)}</span>
+              <small data-testid={`browse-grid-count-${d.key}`} style={{ fontSize: 11.5, opacity: 0.64 }}>{evN(counts[d.key])}</small>
+            </button>
+          ))}
         </div>
+      ) : (
+        <>
+          {chips.length > 0 && (
+            <div role="tablist" aria-label={T('Loại sự kiện', 'Event types')} data-hscroll data-testid="browse-type-chips"
+              style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '6px 20px 10px', scrollbarWidth: 'none' }}>
+              {[{ key: 'all', vi: 'Tất cả', en: 'All' }, ...chips].map(d => {
+                const on = effType === d.key;
+                const n = d.key === 'all' ? items.length : counts[d.key];
+                return (
+                  <button key={d.key} type="button" role="tab" aria-selected={on} data-testid={`browse-type-${d.key}`} onClick={() => onType(d.key)} style={chipLook(on)}>
+                    {d.key !== 'all' && <CategoryGlyph cat={d.key} size={16} strokeWidth={1.6} />}
+                    <span>{T(d.vi, d.en)}</span>
+                    <span data-testid={`browse-type-count-${d.key}`} style={{ fontWeight: 500, opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div ref={scrollRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '6px 20px 12px', scrollMarginTop: 72 }}>
+            <span data-testid="browse-count" style={{ fontSize: 14 }}><b>{list.length}</b> {T('sự kiện', list.length === 1 ? 'event' : 'events')}</span>
+            <button type="button" onClick={() => setFiltersOpen(true)} data-testid="browse-filters-button"
+              aria-label={nFilters ? T(`Bộ lọc, đang bật ${nFilters}`, `Filters, ${nFilters} on`) : T('Bộ lọc', 'Filters')}
+              style={{ minHeight: 44, padding: '0 14px', borderRadius: 999, border: 'none', background: 'var(--bb-block)', color: 'inherit', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <Icon d={SLIDERS} size={17} />{T('Bộ lọc', 'Filters')}
+              {nFilters > 0 && <span data-testid="browse-filter-badge" style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 999, background: 'var(--bb-fg)', color: 'var(--bb-bg)', fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{nFilters}</span>}
+            </button>
+          </div>
+
+          <Pager items={rows} getKey={r => r.key} lang={lang} T={T} testId="browse-list" rowHeight={ROW_HEIGHT} hints
+            renderRow={r => <EventRowV23 row={r} onOpen={() => onOpenEvent(r.key)} testId={`browse-event-${r.key}`} />}
+            renderEnd={end => <EndCard card={card} variant={end.variant} onAction={onEnd} T={T} />}
+            empty={(
+              <EndCard variant="solo" onAction={onEnd} T={T} card={query.trim() ? {
+                kind: 'empty', eyebrow: { vi: 'Tìm kiếm', en: 'Search' },
+                title: { vi: `Không có sự kiện nào khớp “${query.trim()}”.`, en: `No events match “${query.trim()}”.` },
+                body: { vi: 'Thử tên khác, một khu vực hoặc một loại sự kiện.', en: 'Try another name, an area or a type.' },
+                actions: [{ act: 'clear-search', primary: true, testId: 'browse-empty-clear', label: { vi: 'Xoá tìm kiếm', en: 'Clear search' } }],
+              } : hidden > 0 ? {
+                kind: 'empty', eyebrow: { vi: 'Bộ lọc', en: 'Filters' },
+                title: { vi: 'Không có sự kiện nào khớp bộ lọc.', en: 'None of these match your filters.' },
+                body: { vi: 'Xoá bộ lọc để xem lại mọi thứ.', en: 'Clear the filters to see everything again.' },
+                actions: [{ act: 'clear-filters', primary: true, testId: 'browse-empty-clear', label: { vi: 'Xoá bộ lọc', en: 'Clear filters' } }],
+              } : {
+                kind: 'empty', eyebrow: { vi: 'Sắp có', en: 'Coming up' },
+                title: { vi: 'Chưa có gì ở đây.', en: 'Nothing here yet.' },
+                body: { vi: 'Sự kiện mới sẽ hiện ở đây khi chủ nhà đăng.', en: 'New events show up here when hosts post them.' },
+                actions: [],
+              }} />
+            )} />
+        </>
       )}
-
-      <div ref={scrollRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '6px 20px 12px', scrollMarginTop: 72 }}>
-        <span data-testid="browse-count" style={{ fontSize: 14 }}><b>{list.length}</b> {T('sự kiện', list.length === 1 ? 'event' : 'events')}</span>
-        <button type="button" onClick={() => setFiltersOpen(true)} data-testid="browse-filters-button"
-          aria-label={nFilters ? T(`Bộ lọc, đang bật ${nFilters}`, `Filters, ${nFilters} on`) : T('Bộ lọc', 'Filters')}
-          style={{ minHeight: 44, padding: '0 14px', borderRadius: 999, border: 'none', background: 'var(--bb-block)', color: 'inherit', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-          <Icon d={SLIDERS} size={17} />{T('Bộ lọc', 'Filters')}
-          {nFilters > 0 && <span data-testid="browse-filter-badge" style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 999, background: 'var(--bb-fg)', color: 'var(--bb-bg)', fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{nFilters}</span>}
-        </button>
-      </div>
-
-      <Pager items={rows} getKey={r => r.key} lang={lang} T={T} testId="browse-list" rowHeight={ROW_HEIGHT} hints
-        renderRow={r => <EventRowV23 row={r} onOpen={() => onOpenEvent(r.key)} testId={`browse-event-${r.key}`} />}
-        renderEnd={end => <EndCard card={card} variant={end.variant} onAction={onEnd} T={T} />}
-        empty={(
-          <EndCard variant="solo" onAction={onEnd} T={T} card={query.trim() ? {
-            kind: 'empty', eyebrow: { vi: 'Tìm kiếm', en: 'Search' },
-            title: { vi: `Không có sự kiện nào khớp “${query.trim()}”.`, en: `No events match “${query.trim()}”.` },
-            body: { vi: 'Thử tên khác, một khu vực hoặc một loại sự kiện.', en: 'Try another name, an area or a type.' },
-            actions: [{ act: 'clear-search', primary: true, testId: 'browse-empty-clear', label: { vi: 'Xoá tìm kiếm', en: 'Clear search' } }],
-          } : hidden > 0 ? {
-            kind: 'empty', eyebrow: { vi: 'Bộ lọc', en: 'Filters' },
-            title: { vi: 'Không có sự kiện nào khớp bộ lọc.', en: 'None of these match your filters.' },
-            body: { vi: 'Xoá bộ lọc để xem lại mọi thứ.', en: 'Clear the filters to see everything again.' },
-            actions: [{ act: 'clear-filters', primary: true, testId: 'browse-empty-clear', label: { vi: 'Xoá bộ lọc', en: 'Clear filters' } }],
-          } : {
-            kind: 'empty', eyebrow: { vi: 'Sắp có', en: 'Coming up' },
-            title: { vi: 'Chưa có gì ở đây.', en: 'Nothing here yet.' },
-            body: { vi: 'Sự kiện mới sẽ hiện ở đây khi chủ nhà đăng.', en: 'New events show up here when hosts post them.' },
-            actions: [],
-          }} />
-        )} />
+      {showingTypes && chips.length === 0 && (
+        <div data-testid="browse-type-grid-empty" style={{ padding: '18px 20px 0', fontSize: 14, opacity: 0.72 }}>{T('Chưa có gì ở đây.', 'Nothing here yet.')}</div>
+      )}
       <div style={{ height: 120 }} />
 
       {hostsOpen && (

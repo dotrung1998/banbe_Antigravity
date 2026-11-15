@@ -579,6 +579,9 @@ final class AppState: ObservableObject {
     @Published var browseScope = "all"
     @Published var browseQuery = ""
     @Published var browseFilters = HomeDiscovery.Filters.default
+    /// Which of the See all screen's two views is open: the scoped list (false) or the same scope as its type grid
+    /// (true). A fresh open lands on the list; coming back from an event keeps whichever view was open.
+    @Published var browseShowTypes = false
     /// Search opened from Home is an OVERLAY on top of Home (RootView), not a screen switch: Home stays mounted, so
     /// opening never flashes a blank page and closing never rebuilds Home (no reload stutter).
     @Published var searchOverlayOpen = false

@@ -1167,6 +1167,7 @@ export default function Home({ browse = false }) {
     return (
       <Browse T={T} lang={s.lang === 'en' ? 'en' : 'vi'} scope={s.browseScope || 'all'} type={s.browseType || 'all'} query={s.browseQuery || ''}
         filters={s.browseFilters} items={browseItems || []} now={nowMs} areaLabel={areaName} shapeRow={shapeRow}
+        view={s.browseView || 'events'} onView={(v) => setBrowse({ browseView: v })}
         onType={(k) => setBrowse({ browseType: k })} onQuery={(q) => setBrowse({ browseQuery: q })}
         onFilters={(f) => setBrowse({ browseFilters: f ? toBrowseFilters(f) : DEFAULT_FILTERS })}
         onBack={backFromBrowse} onOpenEvent={goEvent} onOpenHost={(id) => openOrganizerProfile(id, 'browse')}
